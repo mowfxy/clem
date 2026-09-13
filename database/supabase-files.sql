@@ -1,3 +1,9 @@
+insert into storage.buckets(id,name,public,file_size_limit)
+values('mowr-files','mowr-files',false,52428800)
+on conflict(id) do update set public=false,file_size_limit=52428800;
+create policy mowr_files_read on storage.objects for select to authenticated using(bucket_id='mowr-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
+create policy mowr_files_delete on storage.objects for delete to authenticated using(bucket_id='mowr-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
+
 create table if not exists public.mowr_files (
  id uuid primary key,
  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -26,7 +32,7 @@ end $$;
 create trigger enforce_mowr_quota before insert on public.mowr_files for each row execute function public.check_mowr_storage_quota();
 create index mowr_files_owner on public.mowr_files(owner_id);
 drop policy if exists mowr_files_insert on storage.objects;
-create policy mowr_files_insert on storage.objects for insert to authenticated with check(bucket_id='mowr-files' and (storage.foldername(name))[1]=(select auth.uid())::text and exists(select 1 from public.mowr_files f where f.owner_id=(select auth.uid()) and f.object_key=name and f.status='reserved'));
+create policy mowr_files_insert on storage.objects for insert to authenticated with check(bucket_id='mowr-files' and (storage.foldername(name))[1]=(select auth.uid())::text and exists(select 1 from public.mowr_files f where f.owner_id=(select auth.uid()) and f.object_key=storage.objects.name and f.status='reserved'));
 
 -- A reservation cannot be removed while it still holds an uploaded object.
 drop policy files_metadata_delete on public.mowr_files;

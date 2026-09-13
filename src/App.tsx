@@ -380,6 +380,10 @@ export default function App() {
       const supported = /projectile|trajectory|launch|ball|motion/i.test(
         prompt,
       );
+      if (!supported) {
+        updateChat(id, c => ({...c,messages:[...c.messages,{id:messageId,role:'assistant',content:'This visual is not supported yet. The current interactive engine can model projectile trajectories. Your request is saved here; no unrelated example has been created.'}]}));
+        return;
+      }
       updateChat(id, (c) => ({
         ...c,
         messages: [
