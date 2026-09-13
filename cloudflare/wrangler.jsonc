@@ -1,0 +1,7 @@
+{
+ "name":"mowr-database",
+ "main":"database-worker.js",
+ "compatibility_date":"2026-09-13",
+ "observability":{"enabled":true},
+ "d1_databases":[{"binding":"DB","database_name":"mowr-workspaces","database_id":"7574b2c5-0815-497b-9faa-ea62137cb8c7"}]
+}

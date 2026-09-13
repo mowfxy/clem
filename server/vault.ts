@@ -1,0 +1,4 @@
+import { createCipheriv,createDecipheriv,randomBytes,createHash } from 'node:crypto';
+function key(){const s=process.env.CREDENTIAL_ENCRYPTION_KEY||process.env.SESSION_SECRET;if(!s||s.length<32)throw new Error('Configure a strong CREDENTIAL_ENCRYPTION_KEY.');return createHash('sha256').update(s).digest();}
+export function encrypt(value:string,owner:string){const iv=randomBytes(12);const c=createCipheriv('aes-256-gcm',key(),iv);c.setAAD(Buffer.from(owner));const encrypted=Buffer.concat([c.update(value,'utf8'),c.final()]);return {ciphertext:Buffer.concat([c.getAuthTag(),encrypted]).toString('base64'),nonce:iv.toString('base64')};}
+export function decrypt(ciphertext:string,nonce:string,owner:string){const data=Buffer.from(ciphertext,'base64');const d=createDecipheriv('aes-256-gcm',key(),Buffer.from(nonce,'base64'));d.setAAD(Buffer.from(owner));d.setAuthTag(data.subarray(0,16));return Buffer.concat([d.update(data.subarray(16)),d.final()]).toString('utf8');}

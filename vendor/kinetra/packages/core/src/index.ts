@@ -1,0 +1,90 @@
+/**
+ * Kinetra core library.
+ *
+ * The core is intentionally framework-free: pure TypeScript that can be
+ * embedded in the CLI, the desktop app, the Codex plugin scripts, or any
+ * third-party integration. Every public surface is documented in
+ * docs/architecture.md and exercised by the test suite in test/.
+ */
+
+export * from "./types.js";
+export * from "./errors.js";
+export * from "./result.js";
+export * from "./units.js";
+export * from "./validation.js";
+export * from "./artifacts.js";
+export * from "./utils/hash.js";
+export * from "./utils/id.js";
+export * from "./utils/text.js";
+export * from "./dld/boolean.js";
+export * from "./dld/truth_table.js";
+export * from "./dld/expression.js";
+export * from "./dld/kmap.js";
+export * from "./dld/simplify.js";
+export * from "./dld/circuit.js";
+export * from "./dld/timing.js";
+export * from "./dld/sequential.js";
+export * from "./math/expression.js";
+export * from "./math/eval.js";
+export * from "./math/symbolic.js";
+export * from "./math/algebra.js";
+export * from "./math/calculus.js";
+export * from "./math/linear.js";
+export * from "./math/complex.js";
+export * from "./math/probability.js";
+export * from "./graph/spec.js";
+export * from "./graph/render_svg.js";
+export * from "./graph/sample.js";
+export * from "./diagram/primitives.js";
+export * from "./diagram/scene2d.js";
+export * from "./diagram/freebody.js";
+export * from "./diagram/electrostatics.js";
+export * from "./diagram/projectile.js";
+export * from "./diagram/pulley.js";
+export * from "./diagram/optics.js";
+export * from "./diagram/fields.js";
+export * from "./diagram/circuit_schematic.js";
+export * from "./diagram/logic_schematic.js";
+export * from "./diagram/timing_render.js";
+export * from "./scene3d/types.js";
+export * from "./scene3d/projection.js";
+export * from "./scene3d/coords.js";
+export * from "./scene3d/render_svg.js";
+export * from "./circuit/circuit.js";
+export * from "./circuit/spice.js";
+export * from "./ingest/text.js";
+export * from "./ingest/markdown.js";
+export * from "./ingest/json_doc.js";
+export * from "./ingest/pdf.js";
+export * from "./ingest/chunk.js";
+export * from "./ingest/course_organizer.js";
+export * from "./store/sqlite.js";
+export * from "./store/migrations.js";
+export * from "./store/library.js";
+export * from "./store/history.js";
+export * from "./store/mastery.js";
+export * from "./store/artifacts.js";
+export * from "./retrieval/index.js";
+export * from "./retrieval/lexical.js";
+export * from "./retrieval/vector.js";
+export * from "./retrieval/hybrid.js";
+export * from "./retrieval/benchmark.js";
+export * from "./assessment/quiz.js";
+export * from "./assessment/exam.js";
+export * from "./assessment/grading.js";
+export * from "./assessment/flashcards.js";
+export * from "./assessment/mastery_rules.js";
+export * from "./pdf/pdf.js";
+export * from "./pdf/layout.js";
+export * from "./pdf/text.js";
+export * from "./pdf/equation.js";
+export * from "./pdf/figure.js";
+export * from "./pdf/page.js";
+export * from "./pdf/document.js";
+export * from "./providers/types.js";
+export * from "./providers/mock.js";
+export * from "./providers/router.js";
+export * from "./prompts/templates.js";
+export * from "./prompts/sanitize.js";
+export * from "./workspace/artifact.js";
+export * from "./workspace/workspace.js";

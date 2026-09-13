@@ -1,0 +1,3 @@
+interface:
+  display_name: "Kinetra Retrieval"
+  short_description: "Local hybrid lexical+vector index with recall benchmarks"
