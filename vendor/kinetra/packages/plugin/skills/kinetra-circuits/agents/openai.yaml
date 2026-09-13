@@ -1,0 +1,3 @@
+interface:
+  display_name: "Kinetra Circuits"
+  short_description: "DC and transient RC/RL/RLC analysis with a SPICE-lite solver"

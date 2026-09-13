@@ -1,0 +1,49 @@
+{
+  "name": "kinetra",
+  "version": "0.1.0",
+  "description": "Kinetra Codex plugin: local-first Karnaugh maps, circuit analysis, physics diagrams, retrieval, study plans, and assessment for technical engineering coursework.",
+  "author": {
+    "name": "Kinetra Contributors",
+    "url": "https://github.com/Mohamed-Khaled-011008/kinetra"
+  },
+  "homepage": "https://github.com/Mohamed-Khaled-011008/kinetra",
+  "repository": "https://github.com/Mohamed-Khaled-011008/kinetra",
+  "license": "Apache-2.0",
+  "keywords": [
+    "kinetra",
+    "karnaugh-map",
+    "boolean-minimization",
+    "circuit-analysis",
+    "spice-lite",
+    "physics-diagram",
+    "free-body",
+    "retrieval",
+    "study-plan",
+    "assessment",
+    "engineering-education",
+    "local-first"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Kinetra",
+    "shortDescription": "Local-first engineering learning workbench",
+    "longDescription": "Kinetra is a local-first technical learning and engineering workbench. This Codex plugin exposes six skills that route into Kinetra's deterministic TypeScript core for Karnaugh maps, DC/transient circuit analysis, physics diagrams, lexical+vector retrieval, study-plan generation, and quiz/exam generation.",
+    "developerName": "Kinetra Contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Mohamed-Khaled-011008/kinetra",
+    "privacyPolicyURL": "https://github.com/Mohamed-Khaled-011008/kinetra/blob/main/SECURITY.md",
+    "termsOfServiceURL": "https://github.com/Mohamed-Khaled-011008/kinetra/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Solve this 4-variable K-map for minimum SOP",
+      "Analyze an RC low-pass filter transient and plot V(t)",
+      "Build a hybrid retrieval index over my lecture notes"
+    ],
+    "brandColor": "#1F6FEB",
+    "composerIcon": "./assets/kinetra-icon.svg",
+    "logo": "./assets/kinetra-logo.png"
+  }
+}

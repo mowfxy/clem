@@ -1,0 +1,3 @@
+interface:
+  display_name: "Kinetra K-map"
+  short_description: "Solve 2-4 variable Karnaugh maps and SOP/POS minimisation"

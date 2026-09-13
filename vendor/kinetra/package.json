@@ -1,0 +1,26 @@
+{
+  "name": "kinetra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kinetra - open-source local-first AI technical learning and engineering workbench.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [ "packages/core", "packages/cli" ],
+  "scripts": {
+    "test": "node --experimental-strip-types --import ./scripts/_register.mjs --test packages/core/test/**/*.test.ts packages/plugin/test/**/*.test.ts",
+    "test:core": "node --experimental-strip-types --import ./scripts/_register.mjs --test packages/core/test/**/*.test.ts",
+    "test:plugin": "node --experimental-strip-types --import ./scripts/_register.mjs --test packages/plugin/test/**/*.test.ts",
+    "test:diagrams": "node --experimental-strip-types --import ./scripts/_register.mjs --test packages/core/test/diagram/*.test.ts",
+    "typecheck:diagrams": "tsc -p packages/core/tsconfig.diagrams.json",
+    "audit:diagrams": "node --experimental-strip-types --import ./scripts/_register.mjs scripts/audit-diagrams.mjs",
+    "examples:diagrams": "node --experimental-strip-types --import ./scripts/_register.mjs examples/render-diagrams.mjs",
+    "diagram": "node --experimental-strip-types --import ./scripts/_register.mjs packages/cli/src/bin/kinetra.ts diagram",
+    "demo": "node --experimental-strip-types --import ./scripts/_register.mjs packages/cli/src/bin/kinetra.ts demo",
+    "demo:workflow-a": "node --experimental-strip-types --import ./scripts/_register.mjs packages/cli/src/bin/kinetra.ts workflow-a",
+    "demo:workflow-b": "node --experimental-strip-types --import ./scripts/_register.mjs packages/cli/src/bin/kinetra.ts workflow-b",
+    "demo:workflow-c": "node --experimental-strip-types --import ./scripts/_register.mjs packages/cli/src/bin/kinetra.ts workflow-c",
+    "demo:workflow-d": "node --experimental-strip-types --import ./scripts/_register.mjs packages/cli/src/bin/kinetra.ts workflow-d",
+    "benchmark": "node --experimental-strip-types --import ./scripts/_register.mjs packages/cli/src/bin/kinetra.ts benchmark"
+  },
+  "engines": { "node": ">=25" }
+}
