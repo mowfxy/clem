@@ -12,11 +12,11 @@ The initial JavaScript bundle changed from approximately 214.7 KB gzip before ro
 
 ## Remaining external setup
 
-- Zoho domain and mailbox deletion requests stall in the connected admin console. Mail hosting became disabled for kourseify.com, but the domain and two users still appear. No completed removal or new mailbox is claimed. DNS mail records have not been switched to an unverified mailbox.
+- Zoho domain and mailbox deletion requests require Google re-verification in a separate popup. Automation can read these popups but cannot operate them reliably; a regular-tab fallback did not return the verification to the admin operation. User completion of the original verification popup is pending. Mail hosting became disabled for kourseify.com, but the domain and two users still appear. No completed removal or new mailbox is claimed. DNS mail records have not been switched to an unverified mailbox.
 - support@mowrai.com needs a working Zoho mailbox and SMTP password before app mail and Supabase custom SMTP can send. Branded templates are in emails/. Supabase security notification switches are enabled. Custom templates cannot be edited in its dashboard until SMTP is configured.
 - Google authentication and Drive credentials remain blank in the ignored .env.local. Production auth redirect URLs and manual account linking are configured; TOTP is enabled.
 - User requested subscription connections only. No OpenAI key was created. Codex documents subscription device-code login through App Server, requiring a hosted isolated runtime. Cloudflare Containers currently rejects access because the account lacks Workers Paid. A spending decision is pending. No verified Grok consumer-subscription integration was found.
-- Vercel Git integration rejects connection until its account has a GitHub login connection. CLI production deployment works; source is pushed to the requested repository.
+- Vercel's GitHub login connection is verified. The GitHub app still needs repository permission; its installation is prepared for only mowafymxis/mowr, awaiting user confirmation. CLI production deployment works; source is pushed to the requested repository.
 - npm audit reports two high findings through pptxgenjs/image-size with no available patched image-size release at inspection. The app's presentation export does not accept arbitrary image files into that package. Review when upstream publishes a fix.
 
 Do not treat configured capability flags as proof that email delivery, Google sign-in, or subscription inference has passed an end-to-end test. These remain pending.
