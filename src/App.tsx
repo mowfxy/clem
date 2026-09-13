@@ -1731,9 +1731,8 @@ export default function App() {
                           Connect a model
                         </button>
                         <p className="muted">
-                          Connect official provider APIs through the backend.
-                          Consumer subscriptions do not automatically grant API
-                          access.
+                          Manage your subscription connections. Codex and Grok
+                          connections are not available in this release yet.
                         </p>
                         {models.map((m) => (
                           <div className="setting-row" key={m.id}>
