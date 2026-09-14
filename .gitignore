@@ -12,7 +12,7 @@ playwright-report/
 
 .work/
 artifacts/
-api/index.js
+.runtime/
 
 
 vendor/sans/
