@@ -1,3 +1,5 @@
+import {FileCard} from './FileCard';
+import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
 import {SecuritySettings,ContactSettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
@@ -45,6 +47,7 @@ import { PlanEditor } from "./PlanEditor";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { extractFiles, exportDocx, exportSlides } from "./documents";
+const DocumentViewer = lazy(() => import("./DocumentViewer"));
 const Visual = lazy(() => import("./Visual"));
 const modelPlaceholders: Model[] = [
   {
@@ -142,6 +145,7 @@ export default function App() {
   const [filter, setFilter] = useState("All");
   const [sidebar, setSidebar] = useState(false);
   const [attach, setAttach] = useState(false);
+  const [viewFile, setViewFile] = useState<StoredFile | null>(null);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [apiReady, setApiReady] = useState(false);
@@ -1085,17 +1089,7 @@ export default function App() {
                               <span className="thinking">Thinking…</span>
                             )}
                           </div>
-                          {m.attachments?.length ? (
-                            <p className="fine">
-                              {m.attachments
-                                .map(
-                                  (id) =>
-                                    state.files.find((f) => f.id === id)?.name,
-                                )
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </p>
-                          ) : null}
+                          {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=><FileCard key={f.id} file={f} onOpen={()=>setViewFile(f)} onError={setToast}/>)}
                           {m.role === "assistant" &&
                             m.content &&
                             !m.plan &&
@@ -1593,7 +1587,7 @@ export default function App() {
                       <div className="file-row" key={f.id}>
                         <Icon name="files" size={24} />
                         <div>
-                          <span>{f.name}</span>
+                          <button className="file-open" onClick={()=>setViewFile(f)}>{f.name}</button>
                           <small>
                             {state.spaces.find((s) => s.id === f.spaceId)
                               ?.name || "Personal workspace"}{" "}
@@ -2357,6 +2351,7 @@ export default function App() {
           ) : null}
         </Modal>
       )}
+      {viewFile&&<Suspense fallback={<div className="toast">Opening document…</div>}><DocumentViewer modelId={models.find(m=>m.connected)?.id} key={viewFile.id} file={viewFile} onClose={()=>setViewFile(null)} onAsk={selection=>{setDraft('Please help me revise this selection:\n\n'+selection);setAttachments(a=>[...new Set([...a,viewFile.id])]);navigate('/app');}}/></Suspense>}
       {toast && (
         <div className="toast" role="status">
           {toast}

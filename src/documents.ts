@@ -8,8 +8,10 @@ export async function extractFiles(files:StoredFile[],signal?:AbortSignal){
   const pdfjs=await import('pdfjs-dist');pdfjs.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).href;
   const loading=pdfjs.getDocument({data:new Uint8Array(await blob.arrayBuffer()),useSystemFonts:false});const pdf=await loading.promise;
   try{if(pdf.numPages>200)throw new Error('Use an excerpt of 200 pages or fewer for this local development connection.');for(let p=1;p<=pdf.numPages;p++){signal?.throwIfAborted();const page=await pdf.getPage(p);const content=await page.getTextContent();text+=`\n[${file.name}, page ${p}]\n${content.items.map(item=>'str' in item?item.str:'').join(' ')}\n`;page.cleanup();if(text.length>180_000)throw new Error('This PDF exceeds the local context budget. Use a shorter excerpt.');}if(!text.replace(/\[.*?\]/g,'').trim())throw new Error('This PDF has no extractable text. Upload an OCR text version.');}finally{await loading.destroy();}
- }else if(file.type.startsWith('text/')||/\.(md|csv|json|txt|srt|vtt)$/i.test(file.name)){if(blob.size>180_000)throw new Error('This text file exceeds the 180 KB local context limit.');text=await blob.text();}
+ }else if(/\.(docx|pptx|xlsx)$/i.test(file.name)){text=await (await import('./office')).officeText(blob,file.name);}
+ else if(file.type.startsWith('text/')||/\.(md|csv|json|txt|srt|vtt)$/i.test(file.name)){if(blob.size>180_000)throw new Error('This text file exceeds the 180 KB local context limit.');text=await blob.text();}
  else throw new Error(`${file.name} is stored, but this file type cannot be analyzed yet. Use a PDF or text excerpt.`);
+ const saved=await (await import('./document-state')).loadEdits(file);if(saved.content?.text!==undefined)text=saved.content.text;if(saved.content?.notes?.length)text+='\nSaved annotations:\n'+saved.content.notes.map(n=>'Page '+n.page+': '+n.text).join('\n');
  total+=`\nSource: ${file.name}\n${text}\n`;if(total.length>200_000)throw new Error('Selected sources exceed the local context limit. Select fewer documents.');
  }return total;
 }

@@ -128,7 +128,7 @@ test("accounts, scoped persistence and encrypted connections work with PostgreSQ
         "providers",
         "POST",
         {
-          provider: "openai",
+          provider: "anthropic",
           key: "test-dummy-key-do-not-use",
           model: "example",
           context: 32000,
@@ -141,7 +141,9 @@ test("accounts, scoped persistence and encrypted connections work with PostgreSQ
   const creds = await pg.query("SELECT ciphertext FROM mowr_credentials");
   assert.ok(!(creds.rows[0] as any).ciphertext.includes("test-dummy"));
   const models = await (await request("models", "GET", undefined, bc)).json();
-  assert.equal(models[0].connected, false);
+  assert.equal(models.find((m:any)=>m.id==='anthropic').connected, false);
+  assert.equal((await request('providers','POST',{provider:'openai',key:'test-dummy-key',model:'example'},ac)).status,400);
+  assert.equal((await request('subscriptions','GET')).status,401);
   const wrong = await request("auth/login", "POST", {
     email: "alice@example.test",
     password: "not-the-password",

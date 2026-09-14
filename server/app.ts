@@ -1,3 +1,4 @@
+import {subscriptionsRouter,subscriptionReady,cleanExpiredSubscriptionSessions} from './subscriptions.ts';
 import {filesRouter} from './files.ts';
 import {securityRouter,supportRouter,emailAllowed} from './security.ts';
 import {databaseReady} from './db.ts';
@@ -60,6 +61,7 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "3mb" }));
 app.use('/api/github',githubRouter);
+app.use('/api/subscriptions',subscriptionsRouter);
 app.use('/api/security',securityRouter);
 app.use('/api/support',supportRouter);
 if(supabaseConfig())app.use('/api/files',filesRouter);
@@ -101,6 +103,8 @@ async function credential(userId: string, provider: string) {
   return {
     key: decrypt(rows[0].ciphertext, rows[0].nonce, userId),
     model: String(rows[0].metadata.model || ""),
+    kind: rows[0].metadata.kind,
+    owner: userId,
   };
 }
 app.get("/api/health", (_req, res) =>
@@ -223,7 +227,7 @@ app.get("/api/models", async (req, res) => {
       const m = list.find((m) => m.id === row.provider);
       if (m) {
         m.name = row.metadata.model;
-        m.connected = true;
+        m.connected = (row.provider!=='openai'&&row.provider!=='xai')||row.metadata.kind==='subscription';
         m.context = Number(row.metadata.context || 32000);
         m.specialties = Array.isArray(row.metadata.specialties)
           ? row.metadata.specialties
@@ -238,13 +242,13 @@ app.get("/api/models", async (req, res) => {
     })),
   );
 });
-app.post('/api/providers/check',async(req,res)=>{const user=await requireUser(req,res);if(!user)return;if(!await rate('provider-check:'+user.id,6)){res.status(429).json({error:'Please wait a minute before checking another key.'});return;}const body=z.object({provider:z.enum(['openai','xai']),key:z.string().min(10).max(1000)}).parse(req.body);const url=body.provider==='openai'?'https://api.openai.com/v1/models':'https://api.x.ai/v1/models';const response=await fetch(url,{headers:{Authorization:'Bearer '+body.key},signal:AbortSignal.timeout(12000),redirect:'error'});if(!response.ok){res.status(400).json({error:'Provider rejected the key or access (HTTP '+response.status+'). Check your key, permissions, and billing.'});return;}const data=await response.json();const models=(data.data||[]).filter((m:{id:string})=>body.provider==='xai'?/grok/i.test(m.id)&&!/image|video|voice/i.test(m.id):/^(gpt-|o[1-9]|chatgpt-)/.test(m.id)&&!/audio|realtime|transcrib|tts|image/.test(m.id)).map((m:{id:string})=>m.id).sort();res.json({models});});
+app.post('/api/providers/check',async(req,res)=>{const user=await requireUser(req,res);if(!user)return;res.status(400).json({error:'Use subscription sign-in for Codex and Grok. API keys are not accepted.'});});
 app.post("/api/providers", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const b = z
     .object({
-      provider: z.enum(["openai", "anthropic", "google", "xai"]),
+      provider: z.enum(["anthropic", "google"]),
       key: z.string().min(10).max(1000),
       model: z.string().min(1).max(100),
       context: z.number().int().min(1000).max(2000000).default(32000),
@@ -623,6 +627,7 @@ app.get("/api/cron", async (req, res) => {
     res.status(401).json({ error: "Unauthorized scheduler." });
     return;
   }
+  if(subscriptionReady())await cleanExpiredSubscriptionSessions();
   res.json(await runDue());
 });
 app.use(
