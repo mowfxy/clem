@@ -50,6 +50,8 @@ export function putMemory(
       m.scope === input.scope &&
       m.key === input.key &&
       m.text === input.text &&
+      m.kind === input.kind &&
+      JSON.stringify([...m.sharedWith].sort()) === JSON.stringify([...input.sharedWith].sort()) &&
       !m.supersededBy,
   );
   if (duplicate) return state;
@@ -128,7 +130,7 @@ export function retrieveMemory(
     .map((m) => ({
       memory: m,
       score:
-        terms.reduce(
+        (m.kind === "preference" && m.confirmed ? 1 : 0) + terms.reduce(
           (score, t) =>
             score +
             (m.text.toLowerCase().includes(t) ? 1 : 0) +

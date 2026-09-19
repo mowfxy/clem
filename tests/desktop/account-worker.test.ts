@@ -10,6 +10,7 @@ const schema = readFileSync(
 function setup() {
   const database = new DatabaseSync(":memory:");
   database.exec(schema);
+  database.exec(readFileSync(new URL("../../cloudflare/sync-schema.sql",import.meta.url),"utf8"));
   const DB = {
     prepare(sql: string) {
       return {
@@ -134,4 +135,19 @@ test("username probing is rate limited without account details", async () => {
     globalThis.fetch = original;
     database.close();
   }
+});
+
+test('essential sync rejects workspace data, isolates accounts and compares revisions',async()=>{
+ const {database,env}=setup(),original=globalThis.fetch;let id='sync-a';
+ globalThis.fetch=async()=>Response.json({id,email:'a@example.test',email_confirmed_at:'2026-09-20'});
+ const call=(kind:string,body?:unknown)=>worker.fetch(new Request('https://account.example/sync/'+kind,{method:body?'POST':'GET',headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}),env);
+ try{
+  assert.equal((await call('chats',{revision:0,data:[]})).status,400);
+  assert.equal((await call('notes',{revision:0,data:[{id:'project:a',text:'Memory',files:['secret.txt']}]})).status,400);
+  assert.equal((await call('notes',{revision:0,data:[{id:'project:a',text:'Memory'}]})).status,200);
+  assert.equal((await call('notes',{revision:0,data:[]})).status,409);
+  assert.equal((await call('notes',{revision:1,data:[{id:'project:a',text:'Correction'}]})).status,200);
+  const saved=await(await call('notes')).json();assert.equal(saved.revision,2);assert.equal(saved.data[0].text,'Correction');
+  id='sync-b';assert.deepEqual(await(await call('notes')).json(),{revision:0,data:[]});
+ }finally{globalThis.fetch=original;database.close();}
 });

@@ -38,6 +38,7 @@ export function returnToDesktop(session: Session) {
   form.method = "POST";
   form.action = callback;
   for (const [name, value] of Object.entries({
+    state: new URL(callback).pathname.split("/").at(-1)!,
     access_token: session.access_token,
     refresh_token: session.refresh_token,
   })) {

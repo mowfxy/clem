@@ -1,3 +1,7 @@
+import {localSourceContext} from "./source-context";
+import {essentials,applyEssentials} from "./essential-state";
+import {Illustration} from "./Illustrations";
+import {openWorkflow} from "./workflow-state";
 import {YouTubeReferences} from "./YouTubeReferences";
 import {youtubeReference} from "./youtube";
 import {desktop,desktopChat} from './desktop/bridge';
@@ -52,7 +56,7 @@ import { GitHubPicker } from "./GitHub";
 import { PlanEditor } from "./PlanEditor";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { extractFiles, exportDocx, exportSlides } from "./documents";
+import { exportDocx, exportSlides } from "./documents";
 const DocumentViewer = lazy(() => import("./DocumentViewer"));
 const Visual = lazy(() => import("./Visual"));
 const modelPlaceholders: Model[] = [
@@ -133,9 +137,6 @@ function Modal({
 export default function App() {
   const [state, setState] = useState<State>(emptyState);
   const [session, setSession] = useState<Session>(defaultSession);
-  const [syncReady, setSyncReady] = useState(false);
-  const cloudRevision = useRef(0);
-  const cloudSaving = useRef(Promise.resolve());
   const [ready, setReady] = useState(false);
   const [route, setRoute] = useState(location.hash.slice(1) || "/");
   const [chatId, setChatId] = useState<string | null>(null);
@@ -206,7 +207,6 @@ export default function App() {
   async function refreshSession() {
     const version = ++sessionVersion.current;
     setReady(false);
-    setSyncReady(false);
     abort.current?.abort();
     setChatId(null);
     setSpaceId(null);
@@ -217,47 +217,22 @@ export default function App() {
     ownerRef.current = data.user?.id || "guest";
     setStorageNamespace(ownerRef.current);
     let local = await loadState().catch(() => structuredClone(emptyState));
-    if (data.user && data.database) {
-      try {
-        const cloud = await api<{ state: State | null; revision: number }>(
-          "workspace",
-        );
-        if (version !== sessionVersion.current) return;
-        cloudRevision.current = Number(cloud.revision);
-        local = cloud.state
-          ? { ...emptyState, ...cloud.state }
-          : { ...emptyState, name: data.user.name };
-        setSyncReady(true);
-      } catch (e) {
-        setToast((e as Error).message);
-      }
-    }
     if (version !== sessionVersion.current) return;
     setState(local);
     setReady(true);
     void refreshModels();
   }
-  useEffect(() => {
-    if (!syncReady || !session.user || !session.database) return;
-    const version = sessionVersion.current;
-    const timer = setTimeout(() => {
-      cloudSaving.current = cloudSaving.current
-        .then(async () => {
-          if (version !== sessionVersion.current) return;
-          const result = await api<{ revision: number }>("workspace", "PUT", {
-            state,
-            ownerId: session.user!.id,
-            revision: cloudRevision.current,
-          });
-          cloudRevision.current = result.revision;
-        })
-        .catch((e) => {
-          setToast((e as Error).message);
-          setSyncReady(false);
-        });
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [state, syncReady, session.user?.id]);
+  const essentialData=JSON.stringify(essentials(state));
+  useEffect(()=>{
+    if(!ready||!desktop||!session.user)return;
+    let active=true;
+    const timer=setTimeout(()=>{void desktop!.invoke({action:"essentialSync",...JSON.parse(essentialData)}).then(result=>{
+      if(!active)return;
+      if(result.error)setToast(result.error);
+      setState(current=>JSON.stringify(essentials(current))===essentialData?applyEssentials(current,result):current);
+    }).catch(e=>{if(active)setToast("Saved locally. "+e.message);});},2000);
+    return()=>{active=false;clearTimeout(timer);};
+  },[essentialData,ready,session.user?.id]);
   async function refreshModels() {
     try {
       const r = await fetch("/api/models");
@@ -457,7 +432,7 @@ export default function App() {
         ],
       }));
       try {
-        const sources = await attachmentText([...(user.attachments||[]),...(activeSpace?.sources||[])]);
+        const sources = await attachmentText([...(user.attachments||[]),...(activeSpace?.sources||[])],prompt);
         const raw = await streamChat(
           [
             {
@@ -542,7 +517,7 @@ export default function App() {
       const fileText = await attachmentText([
         ...attachments,
         ...(activeSpace?.sources || []),
-      ]);
+      ],prompt);
       await streamChat(
         [
           {
@@ -591,10 +566,10 @@ export default function App() {
       setRunning(false);
     }
   }
-  async function attachmentText(ids: string[]) {
-    return extractFiles(
+  async function attachmentText(ids: string[],query="") {
+    return localSourceContext(
       stateRef.current.files.filter((f) => ids.includes(f.id)),
-      abort.current?.signal,
+      query,ownerRef.current,abort.current?.signal,
     );
   }
   async function runPlan(plan: Plan, messageId: string) {
@@ -613,9 +588,13 @@ export default function App() {
             ?.messages.flatMap((m) => m.attachments || []) || [],
         ),
       ];
-      const sources = await attachmentText([...sourceIds,...(activeSpace?.sources||[])]);
+      const sources = await attachmentText([...sourceIds,...(activeSpace?.sources||[])],plan.goal);
+      const workflow = await openWorkflow(ownerRef.current, approved, JSON.stringify({sources, scope:desktopScope, memory:activeSpace?.memory || (!spaceId ? state.memory : "")}));
+      current = workflow.plan;
+      await workflow.save(current);
+      updatePlan(id, messageId, current);
       const result = await executePlan(
-        approved,
+        current,
         models,
         async (task, inputs, signal) =>
           streamChat(
@@ -628,13 +607,13 @@ export default function App() {
               {
                 role: "user",
                 content: JSON.stringify({
-                  goal: plan.goal,
-                  instructions: task.instructions,
-                  expectedOutput: task.output,
-                  inputs,
-                  sources,
+                  goal: plan.goal.slice(0,4000),
+                  instructions: task.instructions.slice(0,8000),
+                  expectedOutput: task.output.slice(0,2000),
+                  inputs: Object.fromEntries(Object.entries(inputs).map(([key,value])=>[key,value.length>Math.floor(18000/Math.max(1,Object.keys(inputs).length))?value.slice(0,Math.floor(18000/Math.max(1,Object.keys(inputs).length)))+"\n[Earlier output excerpted to fit context]":value])),
+                  sources: sources.length>18000?sources.slice(0,18000)+"\n[Sources excerpted to fit context; disclose missing evidence]":sources,
                   scopeMemory:
-                    activeSpace?.memory || (!spaceId ? state.memory : ""),
+                    (activeSpace?.memory || (!spaceId ? state.memory : "")).slice(0,3000),
                 }),
               },
             ],
@@ -643,11 +622,12 @@ export default function App() {
             () => {}, "step",
           ),
         abort.current.signal,
-        (t) => {
+        async (t) => {
           current = {
             ...current,
             tasks: current.tasks.map((x) => (x.id === t.id ? t : x)),
           };
+          await workflow.save(current);
           updatePlan(id, messageId, current);
         },
       );
@@ -684,52 +664,8 @@ export default function App() {
         }
         const id = uid();
         try {
-          const remote = !!(
-            session.user &&
-            session.database &&
-            session.storage
-          );
-          if (remote) {
-            let scopeId = spaceId;
-            if (scopeId) {
-              const space = stateRef.current.spaces.find(
-                (x) => x.id === scopeId,
-              )!;
-              await api("scopes", "POST", {
-                id: space.id,
-                kind: space.kind,
-                name: space.name,
-                memory: space.memory,
-              });
-            } else {
-              scopeId = (await api<{ id: string }>("scopes/personal")).id;
-            }
-            const reservation = await api<{ url: string }>(
-              "files/reserve",
-              "POST",
-              {
-                id,
-                scopeId,
-                name: file.name,
-                size: file.size,
-                type: file.type || "application/octet-stream",
-              },
-            );
-            try {
-              const uploaded = await fetch(reservation.url, {
-                method: "PUT",
-                headers: {
-                  "Content-Type": file.type || "application/octet-stream",
-                },
-                body: file,
-              });
-              if (!uploaded.ok) throw new Error("Storage rejected the upload.");
-              await api("files/" + id + "/complete", "POST", {});
-            } catch (error) {
-              await api("files/" + id, "DELETE").catch(() => {});
-              throw error;
-            }
-          } else await storeBlob(id, file);
+          const remote = false;
+          await storeBlob(id, file);
           used += file.size;
           added.push({
             id,
@@ -976,7 +912,7 @@ export default function App() {
                 </p>
               )}
             </div>
-            {desktop&&<><LinkedFolders scope={desktopScope}/><MemoryPanel scope={desktopScope}/><TelegramPanel scope={desktopScope}/></>}
+            {desktop&&<><LinkedFolders scope={desktopScope}/><MemoryPanel scope={desktopScope} context={JSON.stringify(activeChat?.messages.filter(m=>!m.plan).slice(-10).map(m=>({role:m.role,content:m.content.slice(0,3000)})))||""} source={activeChat?`chat:${activeChat.id}`:"new conversation"} spaces={state.spaces.map(s=>({scope:`${s.kind}:${s.id}`,name:s.name}))}/><TelegramPanel scope={desktopScope}/></>}
             <div className="sidebar-bottom">
               <button
                 className="account-button"
@@ -1303,12 +1239,7 @@ export default function App() {
                     (route.endsWith("projects") ? "project" : "subject"),
                 ) && (
                   <div className="empty-state">
-                    <Icon
-                      name={
-                        route.endsWith("projects") ? "projects" : "subjects"
-                      }
-                      size={62}
-                    />
+                    <Illustration ambient scene={route.endsWith("projects")?"build":"learn"} className="workspace-idle-art"/>
                     <h2>Some ideas deserve their own space.</h2>
                     <p>
                       Bring related chats, files, and memory together.
@@ -1396,7 +1327,7 @@ export default function App() {
                 </div>
                 {!state.skills.length && (
                   <div className="empty-state">
-                    <Icon name="skills" size={56} />
+                    <Illustration ambient scene="orchestrate" className="workspace-idle-art"/>
                     <h2>Your way of working belongs here.</h2>
                     <p>Create a multi-step workflow, or import one as JSON.</p>
                   </div>
@@ -1577,7 +1508,7 @@ export default function App() {
                       {sizeLabel(bytes)}{" "}
                       <span className="muted">of 1.5 GB</span>
                     </span>
-                    <span className="fine">Private cloud storage</span>
+                    <span className="fine">Stored on this device</span>
                   </div>
                   <progress max={MAX_BYTES} value={bytes} />
                 </div>
@@ -1800,10 +1731,10 @@ export default function App() {
                       <>
                         <h2>Your work is yours.</h2>
                         <p className="muted">
-                          Your workspace is stored on this device and synced
-                          when you sign in with a database connection. Downloads
-                          include conversation text and metadata; files can be
-                          downloaded from Files.
+                          Chats, files, projects, subjects and document edits stay on this device.
+                          Only skills, memory and essential account information sync to Cloudflare.
+                          Selected context is sent to your connected model when you ask for help.
+                          Exported workspace JSON includes text and metadata; download file contents separately.
                         </p>
                         <div className="setting-row">
                           <div>
@@ -1833,9 +1764,7 @@ export default function App() {
                     <h3>Workspace storage</h3>
                     <p>
                       {sizeLabel(bytes)} of 1.5 GB ·{" "}
-                      {session.user && session.database
-                        ? "Account sync enabled"
-                        : "Saved on this device"}
+                      Saved on this device
                     </p>
                   </div>
                   <button onClick={() => navigate("/app/files")}>
@@ -2045,7 +1974,7 @@ export default function App() {
                 </button>
                 <button onClick={() => setModal("drive")}>
                   <Icon name="drive" size={18} />
-                  Drive folder
+                  Import from Drive
                 </button>
                 <button
                   className="primary"
@@ -2057,14 +1986,14 @@ export default function App() {
                   Start a conversation <Icon name="arrow" size={18} />
                 </button>
               </div>
-              <h3>In this space</h3>
-              {state.files
-                .filter((f) => f.spaceId === activeSpace.id)
-                .map((f) => (
-                  <p className="fine" key={f.id}>
-                    {f.name} · {sizeLabel(f.size)}
-                  </p>
-                ))}
+              <h3>Memory sources - on this device</h3>
+              <p className="fine">These files stay on your device. Selected excerpts are used when you ask about this space. Files are never synced to Cloudflare.</p>
+              {state.files.filter(f=>f.spaceId===activeSpace.id).map(f=>(
+                <div className="space-source-row" key={f.id}>
+                  <button onClick={()=>setViewFile(f)}>{f.name} - {sizeLabel(f.size)}</button>
+                  <label><input type="checkbox" checked={activeSpace.sources.includes(f.id)} onChange={e=>{const checked=e.target.checked;patch(s=>({...s,spaces:s.spaces.map(x=>x.id===activeSpace.id?{...x,sources:checked?[...new Set([...x.sources,f.id])]:x.sources.filter(id=>id!==f.id)}:x)}));}}/>Use as memory source</label>
+                </div>
+              ))}
               {state.chats
                 .filter((c) => c.spaceId === activeSpace.id)
                 .map((c) => (
@@ -2360,7 +2289,7 @@ export default function App() {
           ) : null}
         </Modal>
       )}
-      {viewFile&&<Suspense fallback={<div className="toast">Opening document…</div>}><DocumentViewer modelId={models.find(m=>m.connected)?.id} key={viewFile.id} file={viewFile} onClose={()=>setViewFile(null)} onAsk={selection=>{setDraft('Please help me revise this selection:\n\n'+selection);setAttachments(a=>[...new Set([...a,viewFile.id])]);navigate('/app');}}/></Suspense>}
+      {viewFile&&<Suspense fallback={<div className="toast">Opening document…</div>}><DocumentViewer scope={desktopScope} modelId={models.find(m=>m.connected)?.id} key={viewFile.id} file={viewFile} onClose={()=>setViewFile(null)} onAsk={selection=>{setDraft('Please help me revise this selection:\n\n'+selection);setAttachments(a=>[...new Set([...a,viewFile.id])]);navigate('/app');}}/></Suspense>}
       {toast && (
         <div className="toast" role="status">
           {toast}

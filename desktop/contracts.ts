@@ -1,3 +1,4 @@
+import {syncSchemas} from "../core/sync.ts";
 import { z } from "zod";
 
 export const scopeSchema = z
@@ -5,7 +6,9 @@ export const scopeSchema = z
   .regex(/^(chat|project|subject):[a-zA-Z0-9_-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
+  z.object({action:z.literal("essentialSync"),skills:syncSchemas.skills,notes:syncSchemas.notes}),
   z.object({ action: z.literal("browserLogin") }),
+  z.object({ action: z.literal("driveConnect") }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),
@@ -43,6 +46,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("cancel"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryList"), scope: scopeSchema }),
+  z.object({ action: z.literal("memoryClear"), scope: scopeSchema }),
   z.object({
     action: z.literal("memorySave"),
     scope: scopeSchema,
@@ -50,6 +54,7 @@ export const requestSchema = z.discriminatedUnion("action", [
     text: z.string().min(1).max(2000),
     kind: z.enum(["fact", "preference"]),
     sharedWith: z.array(scopeSchema).max(10),
+    source: z.string().max(300).optional(),
   }),
   z.object({ action: z.literal("memoryForget"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryToggle"), enabled: z.boolean() }),

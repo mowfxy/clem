@@ -84,3 +84,12 @@ test("hybrid retrieval accepts supplied semantic vectors and deduplicates", () =
   );
   assert.equal(putMemory(state, input()).records.length, 1);
 });
+
+test('preferences apply without repeating keywords and sharing changes replace prior records',()=>{
+ let state=putMemory(base,input());
+ assert.equal(retrieveMemory(state,'project:a','Describe the experiment').length,1);
+ state=putMemory(state,{...input(),sharedWith:['project:b']});
+ assert.equal(retrieveMemory(state,'project:b','anything').length,1);
+ state=putMemory(state,{...input(),sharedWith:[]});
+ assert.equal(retrieveMemory(state,'project:b','anything').length,0);
+});

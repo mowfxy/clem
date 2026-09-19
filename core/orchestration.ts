@@ -39,16 +39,16 @@ export function parseLeadPlan(raw:string,goal:string,lead:string,models:Model[])
  });
  const plan:Plan={id:crypto.randomUUID(),goal,lead,tasks,approved:false,revision:1,origin:'lead',kind:'long'};validatePlan(plan,models);return plan;
 }
-export async function executePlan(plan: Plan, models: Model[], run: (task: Subtask, inputs: Record<string,string>, signal: AbortSignal)=>Promise<string>, signal: AbortSignal, update:(task:Subtask)=>void) {
+export async function executePlan(plan: Plan, models: Model[], run: (task: Subtask, inputs: Record<string,string>, signal: AbortSignal)=>Promise<string>, signal: AbortSignal, update:(task:Subtask)=>void|Promise<void>) {
  validatePlan(plan,models);
  if(!plan.approved) throw new Error('Review and approve the plan before execution.');
  const results:Record<string,string>={};
  for(const task of plan.tasks){
   signal.throwIfAborted();
   if(task.status==='complete'&&task.result){results[task.id]=task.result;continue;}
-  update({...task,status:'running'});
-  try{const result=await run(task,Object.fromEntries(task.dependsOn.map(id=>[id,results[id]])),signal); signal.throwIfAborted();results[task.id]=result;update({...task,status:'complete',result});}
-  catch(error){update({...task,status:'failed'});throw error;}
+  await update({...task,status:'running'});
+  try{const result=await run(task,Object.fromEntries(task.dependsOn.map(id=>[id,results[id]])),signal); signal.throwIfAborted();results[task.id]=result;await update({...task,status:'complete',result});}
+  catch(error){await update({...task,status:'failed'});throw error;}
  }
  return results[plan.tasks.at(-1)!.id];
 }

@@ -1,6 +1,6 @@
 import {signOutSupabase} from './supabase';
 import {desktop} from './desktop/bridge';
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Icon } from "./Icons";
 export type Session = {
   user: { id: string; name: string; email?: string } | null;
@@ -315,28 +315,34 @@ export function DrivePicker({
   onFile: (file: File) => void;
 }) {
   const [files, setFiles] = useState<DriveFile[]>([]);
+  const loadVersion=useRef(0);
   const [error, setError] = useState("");
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState<string>();
   async function load(next?: string) {
+    const version=++loadVersion.current;
     setBusy(true);
     try {
       const data = await api<{ files: DriveFile[]; nextPageToken?: string }>(
         `drive/files?folder=${encodeURIComponent(folder)}${next ? "&page=" + encodeURIComponent(next) : ""}`,
       );
+      if(version!==loadVersion.current)return;
       setFiles((f) => (next ? [...f, ...data.files] : data.files));
       setPage(data.nextPageToken);
       setError("");
     } catch (e) {
-      setError((e as Error).message);
+      if(version===loadVersion.current)setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if(version===loadVersion.current)setBusy(false);
     }
   }
   useEffect(() => {
     if (session.user && session.drive) void load();
-  }, [folder]);
+    const refresh = () => { if (session.user && session.drive) void load(); };
+    window.addEventListener("focus", refresh);
+    return () => {loadVersion.current++;window.removeEventListener("focus", refresh);};
+  }, [folder, session.user?.id, session.drive]);
   return (
     <div>
       <p className="muted">
@@ -348,11 +354,14 @@ export function DrivePicker({
           <div className="modal-actions">
             <button
               onClick={() => {
-                window.location.href = "/api/drive/connect";
+                if (desktop) void desktop.invoke({action:"driveConnect"}).catch(e=>setError(e.message));
+                else window.location.href = "/api/drive/connect";
               }}
             >
               Connect / reconnect Drive
             </button>
+            <button disabled={busy} onClick={()=>void load()}>Refresh</button>
+            <button disabled={busy} onClick={()=>{setBusy(true);void api("drive/connection","DELETE").then(()=>{setFiles([]);setPage(undefined);setError("");}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>Disconnect</button>
             {folder && <button onClick={() => setFolder("")}>All files</button>}
           </div>
           {busy && <p className="fine">Loading Drive…</p>}
@@ -360,6 +369,7 @@ export function DrivePicker({
             {files.map((f) => (
               <button
                 key={f.id}
+                disabled={busy}
                 onClick={async () => {
                   if (f.mimeType === "application/vnd.google-apps.folder") {
                     setFolder(f.id);
@@ -373,9 +383,7 @@ export function DrivePicker({
                     onFile(
                       new File(
                         [blob],
-                        f.mimeType === "application/vnd.google-apps.document"
-                          ? f.name + ".txt"
-                          : f.name,
+                        decodeURIComponent(r.headers.get("X-Mowr-File-Name") || encodeURIComponent(f.name)),
                         { type: blob.type },
                       ),
                     );

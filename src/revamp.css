@@ -16,3 +16,5 @@
 .ink-icon .stroke{stroke-dasharray:1;stroke-dashoffset:0}button:hover .ink-icon .stroke:not(.stroke-0),a:hover .ink-icon .stroke:not(.stroke-0),button:focus-visible .ink-icon .stroke:not(.stroke-0){animation:ink-detail-write .6s ease both}.ink-icon .stroke-2{animation-delay:.12s!important}.ink-icon .stroke-3{animation-delay:.2s!important}[data-quiet=true] .ink-icon .stroke{animation:none!important}
 
 .is-thinking .mark-petal{animation:none!important;transform:none!important}
+
+.workspace-idle-art{width:220px;height:170px;margin:0 auto 12px}.workspace-idle-art svg{width:100%;height:100%;display:block}

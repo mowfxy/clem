@@ -42,7 +42,7 @@ Publisher metadata is **Mowr Ai**. Unsigned previews produce Windows unknown-pub
 
 Flow: download → install → sign in/create account → username → display name → memory preference → plan → secure browser checkout → workspace. Setup is saved server-side; partial checkout never sets a local paid flag. Reopening fetches entitlement again. Offline generation fails closed. The current preview requires connectivity to enter the workspace; offline viewing is not yet implemented.
 
-Supabase verifies passwords and email. Main-process auth storage uses Windows DPAPI; Codex is configured for keyring credentials and forced ChatGPT login, with no API-key environment inherited. Separate Mowr users receive separate Codex homes. Google uses PKCE with an expiring random loopback callback path; configure the Supabase redirect allowlist for `http://127.0.0.1:*/callback/**` before testing. This callback must be verified in the live project. Authenticator challenges, enrollment/removal, password/email changes, other-session revocation and password-verified Google unlinking have UI and main-process handlers. Google linking for an already signed-in user remains to be finished. Existing access-token revocation follows Supabase expiry; strict immediate access-token revocation is not claimed.
+Supabase verifies passwords and email. Main-process auth storage uses Windows DPAPI; Codex is configured for keyring credentials and forced ChatGPT login, with no API-key environment inherited. Separate Mowr users receive separate Codex homes. Google authentication uses the standalone website sign-in page with Supabase PKCE. Configure the Supabase redirect allowlist for `https://mowrai.com/`. The authenticated page submits tokens to the one-time desktop loopback receiver; the Google OAuth client itself uses the Supabase hosted callback. Authenticator challenges, enrollment/removal, password/email changes, other-session revocation and password-verified Google unlinking have UI and main-process handlers. Google linking for an already signed-in user remains to be finished. Existing access-token revocation follows Supabase expiry; strict immediate access-token revocation is not claimed.
 
 The owner exemption is assigned only after the Worker independently retrieves a verified Supabase user whose current email is allowlisted and has no pending email change. The grant is persisted against immutable user ID and remains a payment exemption, not an administrator role. A different user adopting an unverified email cannot acquire it.
 
@@ -89,3 +89,22 @@ Grok Build's official CLI supports subscription authentication, but its credenti
 Desktop sign-in uses the website for email, Google and MFA. A five-minute, single-use loopback receiver accepts a bounded form POST only from https://mowrai.com at a random callback path. The main process verifies the user, persists the session in the Windows-protected vault, and focuses the app. Credentials never enter the desktop renderer. Interrupted attempts can be restarted with Open browser again. The website preserves the callback in tab-scoped session storage across OAuth redirects.
 
 The window uses Electron hidden-title-bar overlay with native minimize, maximize/restore and close controls over the app background. The application menu is removed; the header remains draggable.
+
+## Storage contract (20 September 2026)
+
+| Data | Authoritative storage | Cloud behavior |
+| --- | --- | --- |
+| Chats, projects, subjects, attachments, Office/PDF edits, workflow checkpoints | Account-separated local IndexedDB | Never uploaded as workspace records |
+| Extracted source text | Local cache keyed by account/file/edit revision | Only selected excerpts sent to the model for an explicit request |
+| Skills, confirmed memories, explicitly entered memory notes | Local copies with Cloudflare D1 sync | Strict schemas, bounded payloads, revision compare-and-swap and three-way merge |
+| Authentication, setup, entitlement, encrypted Drive grant | Supabase identity / Cloudflare essential records | Necessary account and connector services |
+
+The three sync collections are `skills`, `memory` and `notes`. Notes contain only an opaque scope identifier and user-entered memory text; no project names, chats, source documents or file lists. Unmatched scope notes stay in the local sync cache so a second device cannot accidentally erase them. Conflicting edits are reported and kept locally, not silently overwritten. Offline changes stay local and retry on the next sync or restart; no guarantee of immediate cross-device refresh is made.
+
+`core/sync.ts` owns payload validation and merge behavior. `desktop/essential-sync.ts` owns authenticated, serialized sync. `src/essential-state.ts` builds the minimal renderer payload. `src/source-context.ts` caches local text and `core/source-context.ts` selects bounded, labelled excerpts. The desktop cannot invoke whole-workspace upload. Legacy server upload routes return 410 unless an operator explicitly enables migration-only `MOWR_LEGACY_WORKSPACE=true`.
+
+Project and subject details allow adding local files, importing a Drive copy, opening documents and toggling which files participate as memory sources. These use the same local file store and scoped retrieval. Memory sources are documents, not automatically confirmed facts.
+
+Cloudflare migration: apply `cloudflare/sync-schema.sql` to the existing D1 database, then deploy `cloudflare/account.wrangler.jsonc`. The public Supabase URL/key are explicit bindings in config so a CLI deployment cannot omit them; credentials remain secrets. Existing legacy tables are retained for migration safety. Read-only production counts on 20 September found zero legacy workspace, file and scope records.
+
+Decorative app illustrations run a restrained idle cycle without hover, stop offscreen/when hidden, and respect system reduced motion and the existing quiet-workspace setting. Setup has a pause/play control.

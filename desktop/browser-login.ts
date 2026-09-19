@@ -19,10 +19,14 @@ export async function browserLogin(
       "Content-Security-Policy",
       "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
     );
+    if (req.url !== path) {
+      res.writeHead(404).end("Not found.");
+      return;
+    }
     if (
       req.url !== path ||
       req.method !== "POST" ||
-      req.headers.origin !== "https://mowrai.com" ||
+      !["https://mowrai.com", "null"].includes(req.headers.origin || "") ||
       used ||
       !active
     ) {
@@ -49,6 +53,13 @@ export async function browserLogin(
       const fields = new URLSearchParams(body);
       const access_token = fields.get("access_token"),
         refresh_token = fields.get("refresh_token");
+      // The unguessable callback is a capability; opaque browser origins also
+      // prove possession in the POST body. Never accept absent/foreign origins.
+      if (
+        req.headers.origin === "null" &&
+        fields.get("state") !== path.split("/").at(-1)
+      )
+        throw Error("Invalid return state");
       if (!access_token || !refresh_token) throw Error("Missing session");
       if (!active) throw Error("Expired");
       await accept({ access_token, refresh_token });

@@ -1,3 +1,4 @@
+import { validateSync } from "../core/sync.ts";
 import {
   normalizeUsername,
   validUsername,
@@ -129,6 +130,96 @@ export default {
       }
       if (!(await limit(env, "user:" + user.id, 60)))
         return json({ error: "Try again shortly." }, 429);
+      if (path.startsWith("/sync/")) {
+        const kind = path.slice(6);
+        if (!["skills", "memory", "notes"].includes(kind))
+          return json({ error: "Only skills and memory can be synced." }, 400);
+        if (request.method === "GET") {
+          const row = await env.DB.prepare(
+            "SELECT revision,payload FROM desktop_sync WHERE user_id=? AND kind=?",
+          )
+            .bind(user.id, kind)
+            .first();
+          return json(
+            row
+              ? { revision: row.revision, data: JSON.parse(row.payload) }
+              : { revision: 0, data: [] },
+          );
+        }
+        const reader = request.body?.getReader();
+        let raw = "";
+        const decoder = new TextDecoder();
+        let bytes = 0;
+        if (!reader) return json({ error: "Missing data" }, 400);
+        try {
+          for (;;) {
+            const part = await reader.read();
+            if (part.done) break;
+            bytes += part.value.length;
+            if (bytes > 1000000) {
+              await reader.cancel();
+              return json({ error: "Sync data exceeds 1 MB." }, 413);
+            }
+            raw += decoder.decode(part.value, { stream: true });
+          }
+          raw += decoder.decode();
+        } finally {
+          reader.releaseLock();
+        }
+        let body, data;
+        try {
+          body = JSON.parse(raw);
+          if (
+            Object.keys(body).some((k) => !["revision", "data"].includes(k)) ||
+            !Number.isSafeInteger(body.revision) ||
+            body.revision < 0
+          )
+            throw Error();
+          data = validateSync(kind, body.data);
+        } catch {
+          return json(
+            {
+              error:
+                "Invalid sync data. Chats, files and projects must stay local.",
+            },
+            400,
+          );
+        }
+        const row = await env.DB.prepare(
+          "INSERT INTO desktop_sync(user_id,kind,revision,payload,updated_at) SELECT ?,?,1,?,? WHERE ?=0 ON CONFLICT(user_id,kind) DO UPDATE SET revision=desktop_sync.revision+1,payload=excluded.payload,updated_at=excluded.updated_at WHERE desktop_sync.revision=? RETURNING revision",
+        )
+          .bind(
+            user.id,
+            kind,
+            JSON.stringify(data),
+            new Date().toISOString(),
+            body.revision,
+            body.revision,
+          )
+          .first();
+        // Existing revisions use UPDATE because the conditional INSERT intentionally has no row.
+        const updated =
+          row ||
+          (body.revision > 0
+            ? await env.DB.prepare(
+                "UPDATE desktop_sync SET revision=revision+1,payload=?,updated_at=? WHERE user_id=? AND kind=? AND revision=? RETURNING revision",
+              )
+                .bind(
+                  JSON.stringify(data),
+                  new Date().toISOString(),
+                  user.id,
+                  kind,
+                  body.revision,
+                )
+                .first()
+            : null);
+        return updated
+          ? json({ revision: updated.revision })
+          : json(
+              { error: "Sync changed on another device. Retry to merge." },
+              409,
+            );
+      }
       if (ownerEligible(user))
         await env.DB.prepare(
           "INSERT OR IGNORE INTO desktop_owner_grants(user_id,granted_at) VALUES(?,?)",

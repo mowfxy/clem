@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { neonConfig } from "@neondatabase/serverless";
+process.env.MOWR_LEGACY_WORKSPACE="true";
 const pg = new PGlite();
 await pg.exec(await fs.readFile("database/001_core.sql", "utf8"));
 await pg.exec(await fs.readFile("database/002_accounts.sql", "utf8"));
@@ -198,3 +199,42 @@ test('GitHub connections isolate tokens and reject unsafe imports',async()=>{
  await request('github/file?repo=owner/repo&filePath=README.md','GET',undefined,ac);assert.equal(authorized,'');
  }finally{globalThis.fetch=rawFetch}
 });
+
+test('desktop Drive enforces identity, consent state, exports and disconnect',async()=>{
+ const rawFetch=globalThis.fetch;
+ const names=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','APP_URL'];const previous=Object.fromEntries(names.map(n=>[n,process.env[n]]));
+ Object.assign(process.env,{SUPABASE_URL:'https://drive-test.supabase.co',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_test',GOOGLE_CLIENT_ID:'test-id',GOOGLE_CLIENT_SECRET:'test-secret',APP_URL:'http://127.0.0.1:5173'});
+ await pg.exec('CREATE TABLE IF NOT EXISTS mowr_security (owner_id text primary key,email_mfa boolean default false)');
+ const uid='11111111-1111-4111-8111-111111111111';await pg.query('INSERT INTO mowr_users(id,display_name) VALUES($1,$2) ON CONFLICT DO NOTHING',['supabase:'+uid,'Drive test']);
+ const token='e30.'+Buffer.from(JSON.stringify({aal:'aal1'})).toString('base64url')+'.test';let exportUrl='',revoked=false;
+ globalThis.fetch=async(input:any,init:any)=>{
+  const url=String(input);
+  if(url.startsWith('https://drive-test.supabase.co/'))return init?.headers?.Authorization==='Bearer '+token?Response.json({id:uid,email_confirmed_at:'2026-09-19',email:'test@example.test'}):new Response('{}',{status:401});
+  if(url==='https://oauth2.googleapis.com/token')return Response.json({refresh_token:'fixture-refresh',access_token:'fixture-access'});
+  if(url==='https://oauth2.googleapis.com/revoke'){revoked=true;return new Response('{}');}
+  if(url.startsWith('https://www.googleapis.com/drive/v3/files/')){
+   if(url.includes('/export?')){exportUrl=url;return new Response('fixture-office-bytes');}
+   return Response.json({id:'doc123',name:'Research',mimeType:'application/vnd.google-apps.document'});
+  }
+  if(url.startsWith('https://www.googleapis.com/drive/v3/files?'))return Response.json({files:[{id:'doc123',name:'Research'}]});
+  return rawFetch(input,init);
+ };
+ const base=`http://127.0.0.1:${port}/api/drive/`;
+ const headers={Authorization:'Bearer '+token,Origin:'http://127.0.0.1:5173'};
+ const cookie='mowr_supabase='+token;
+ try{
+  assert.equal((await rawFetch(base+'files',{headers:{Authorization:'Bearer forged'}})).status,401);
+  const connect=await rawFetch(base+'connect?desktop=1&account='+uid,{headers:{Cookie:cookie},redirect:'manual'});assert.equal(connect.status,302);
+  const google=new URL(connect.headers.get('location')!);const state=google.searchParams.get('state');const oauthCookie=connect.headers.get('set-cookie')!.split(';')[0];
+  const wrong=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie},redirect:'manual'});assert.equal(wrong.status,400);
+  const callback=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie+'; '+oauthCookie},redirect:'manual'});assert.equal(callback.status,200);assert.match(await callback.text(),/Drive is connected/);
+  assert.equal((await rawFetch(base+'files',{headers})).status,200);
+  const download=await rawFetch(base+'file/doc123',{headers});assert.equal(download.status,200);assert.equal(decodeURIComponent(download.headers.get('X-Mowr-File-Name')!),'Research.docx');assert.match(exportUrl,/wordprocessingml/);
+  assert.equal((await rawFetch(base+'connection',{method:'DELETE',headers})).status,200);assert.ok(revoked);
+  assert.equal((await pg.query("SELECT * FROM mowr_credentials WHERE owner_id=$1 AND provider='drive'",['supabase:'+uid])).rows.length,0);
+  await pg.query('INSERT INTO mowr_security(owner_id,email_mfa) VALUES($1,true)',['supabase:'+uid]);
+  assert.equal((await rawFetch(base+'files',{headers})).status,401);
+ }finally{globalThis.fetch=rawFetch;for(const name of names){if(previous[name]===undefined)delete process.env[name];else process.env[name]=previous[name];}}
+});
+
+test('production storage policy blocks legacy workspace uploads',async()=>{delete process.env.MOWR_LEGACY_WORKSPACE;try{for(const path of ['workspace','scopes','files/reserve'])assert.equal((await request(path,'POST',{})).status,410);}finally{process.env.MOWR_LEGACY_WORKSPACE='true';}});
