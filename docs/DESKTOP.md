@@ -107,4 +107,4 @@ Project and subject details allow adding local files, importing a Drive copy, op
 
 Cloudflare migration: apply `cloudflare/sync-schema.sql` to the existing D1 database, then deploy `cloudflare/account.wrangler.jsonc`. The public Supabase URL/key are explicit bindings in config so a CLI deployment cannot omit them; credentials remain secrets. Existing legacy tables are retained for migration safety. Read-only production counts on 20 September found zero legacy workspace, file and scope records.
 
-Decorative app illustrations run a restrained idle cycle without hover, stop offscreen/when hidden, and respect system reduced motion and the existing quiet-workspace setting. Setup has a pause/play control.
+Decorative app illustrations run a restrained idle cycle without hover, stop offscreen/when hidden, and respect system reduced motion and the existing quiet-workspace setting. There are no illustration playback buttons.

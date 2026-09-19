@@ -34,9 +34,8 @@ try {
   });
   await page.goto("http://127.0.0.1:5198/");
   const art=page.locator('.setup-idle-art svg');
+  assert.equal(await page.getByRole("button",{name:/illustration/i}).count(),0);
   const before=await art.innerHTML();await page.waitForTimeout(900);assert.notEqual(await art.innerHTML(),before);
-  await page.getByRole('button',{name:'Pause illustration'}).click();const paused=await art.innerHTML();await page.waitForTimeout(400);assert.equal(await art.innerHTML(),paused);
-  await page.getByRole('button',{name:'Play illustration'}).click();
   await page.getByLabel("Username", { exact: true }).fill("test_name");
   await page.getByText("Available", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Continue", exact: true }).click();

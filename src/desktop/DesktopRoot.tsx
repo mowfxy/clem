@@ -146,18 +146,14 @@ function SetupContent() {
           className="setup-card"
           aria-busy={busy}
         >
-          <div className="setup-emblem" aria-hidden="true"><Logo size={40}/></div>
           <Illustration scene={state?.user ? (step===2?"sprout":step===3?"bridge":"pencil") : "kite"} ambient className="setup-idle-art"/>
-          <button className="setup-motion-toggle" onClick={e=>{const quiet=document.documentElement.dataset.quiet!=="true";document.documentElement.dataset.quiet=String(quiet);e.currentTarget.textContent=quiet?"Play illustration":"Pause illustration";}}>Pause illustration</button>
           {!state ? (
             <>
               <h1>Opening Mowr…</h1>
             </>
           ) : !state.user ? (
             <>
-              <h1 ref={heading} tabIndex={-1}>
-                Welcome to Mowr.
-              </h1>
+              <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Welcome to Mowr.</h1></div>
               <p>
                 {browserPending
                   ? "Finish signing in in your browser."
