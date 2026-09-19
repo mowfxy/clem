@@ -1,3 +1,5 @@
+import {YouTubeReferences} from "./YouTubeReferences";
+import {youtubeReference} from "./youtube";
 import {desktop,desktopChat} from './desktop/bridge';
 import {LinkedFolders} from './desktop/LinkedFolders';
 import {MemoryPanel} from './desktop/MemoryPanel';
@@ -1088,7 +1090,7 @@ export default function App() {
                           <div className="message-text">
                             {(m.content ? (
                               m.role === "assistant" ? (
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{a:({href,children})=><a href={href} className={href&&youtubeReference(href)?"youtube-citation":undefined} target="_blank" rel="noopener">{children}</a>}}>
                                   {m.content}
                                 </ReactMarkdown>
                               ) : (
@@ -1098,6 +1100,7 @@ export default function App() {
                               <span className="thinking">Thinkingâ€¦</span>
                             )}
                           </div>
+                          {m.content && <YouTubeReferences text={m.content}/> }
                           {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=><FileCard key={f.id} file={f} onOpen={()=>setViewFile(f)} onError={setToast}/>)}
                           {m.role === "assistant" &&
                             m.content &&
@@ -2243,14 +2246,11 @@ export default function App() {
                 try {
                   url = new URL(String(fd.get("url")));
                   if (
-                    url.protocol !== "https:" ||
-                    !["www.youtube.com", "youtube.com", "youtu.be"].includes(
-                      url.hostname,
-                    )
+                    !youtubeReference(url.href)
                   )
                     throw Error();
                 } catch {
-                  setToast("Use a valid HTTPS YouTube or youtu.be link.");
+                  setToast("Use a YouTube video link, such as youtube.com/watch?v=…");
                   return;
                 }
                 setDraft(

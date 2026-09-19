@@ -303,7 +303,7 @@ void app.whenReady().then(async () => {
     const response = await net.fetch(pathToFileURL(path).toString());
     response.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src https://www.youtube-nocookie.com; object-src 'none'",
     );
     return response;
   });
@@ -326,9 +326,16 @@ void app.whenReady().then(async () => {
       webSecurity: true,
     },
   });
+  window.webContents.session.webRequest.onBeforeSendHeaders(
+    {urls:["https://www.youtube-nocookie.com/embed/*"]},
+    (details,callback)=>{
+      if(details.webContentsId===window.webContents.id)details.requestHeaders.Referer="https://com.mowrai.desktop/";
+      callback({requestHeaders:details.requestHeaders});
+    },
+  );
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (
-      /^https:\/\/(mowrai\.com|developers\.openai\.com|learn\.chatgpt\.com)\//.test(
+      /^https:\/\/(mowrai\.com|developers\.openai\.com|learn\.chatgpt\.com|www\.youtube\.com)\//.test(
         url,
       )
     )
