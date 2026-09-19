@@ -60,3 +60,15 @@ test("cancelled browser handoff cannot receive a session", async () => {
   flow.stop();
   await assert.rejects(fetch(callback));
 });
+
+test('opaque-origin handoff requires the callback nonce in its POST body',async()=>{
+ for(const valid of [false,true]){
+  let count=0;const flow=await browserLogin(async()=>{count++;},()=>{});
+  const callback=new URLSearchParams(new URL(flow.url).hash.split('?')[1]).get('callback')!;
+  try{
+   assert.equal((await fetch(new URL('/.well-known/appspecific/com.chrome.devtools.json',callback))).status,404);
+   const response=await fetch(callback,{method:'POST',headers:{Origin:'null'},body:new URLSearchParams({state:valid?new URL(callback).pathname.split('/').at(-1)!:'wrong',access_token:'fixture',refresh_token:'fixture'})});
+   assert.equal(response.status,valid?200:400);assert.equal(count,valid?1:0);
+  }finally{flow.stop();}
+ }
+});

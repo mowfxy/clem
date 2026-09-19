@@ -60,6 +60,13 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "3mb" }));
+// Retained legacy readers support migration, but desktop-owned content cannot be uploaded.
+app.use((req,res,next)=>{
+  if(process.env.MOWR_LEGACY_WORKSPACE!=="true" && ["POST","PUT","PATCH"].includes(req.method) && /^\/api\/(workspace|scopes|files)(\/|$)/.test(req.path)) {
+    res.status(410).json({error:"Chats, files, projects and subjects are stored locally in the Mowr desktop app."});return;
+  }
+  next();
+});
 app.use('/api/github',githubRouter);
 app.use('/api/subscriptions',subscriptionsRouter);
 app.use('/api/security',securityRouter);
@@ -447,6 +454,27 @@ app.post("/api/scopes", async (req, res) => {
   await db()`INSERT INTO mowr_scopes(id,owner_id,kind,name,memory) VALUES(${b.id},${u.id},${b.kind},${b.name},${b.memory}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,memory=excluded.memory WHERE mowr_scopes.owner_id=${u.id}`;
   res.json({ ok: true });
 });
+async function requireDriveUser(req: express.Request, res: express.Response) {
+  if (!req.headers.authorization) return requireUser(req, res);
+  const token = req.headers.authorization.match(/^Bearer ([^ ]+)$/)?.[1];
+  const user = token ? await supabaseIdentity(token) : null;
+  if (!user || !await emailAllowed(req, user.id)) {
+    res.status(401).json({error: "Complete account verification before using Drive."}); return null;
+  }
+  const rows = await db()`SELECT disabled FROM mowr_users WHERE id=${user.id}`;
+  if (!rows.length || rows[0].disabled) { res.status(401).json({error: "Sign in again."}); return null; }
+  return user;
+}
+app.delete("/api/drive/connection", async (req, res) => {
+  const user = await requireDriveUser(req, res); if (!user) return;
+  const saved = await credential(user.id, "drive");
+  if (saved) {
+    const result = await fetch("https://oauth2.googleapis.com/revoke", {method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({token:saved.key}), signal:AbortSignal.timeout(15000)});
+    if (!result.ok && result.status !== 400) throw Error("Google could not revoke access. Try again.");
+  }
+  await db()`DELETE FROM mowr_credentials WHERE owner_id=${user.id} AND provider='drive'`;
+  res.json({ok:true});
+});
 app.get("/api/drive/connect", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
@@ -455,7 +483,8 @@ app.get("/api/drive/connect", async (req, res) => {
       "Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and APP_URL to .env.local.",
     );
   const nonce = randomUUID();
-  const state = await signState({ sub: u.id, nonce });
+  if (req.query.account && u.id !== "supabase:" + String(req.query.account)) throw Error("Sign in to the same Mowr account as your desktop, then reconnect Drive.");
+  const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1" });
   res.cookie("mowr_oauth", nonce, {
     httpOnly: true,
     secure: !!process.env.VERCEL,
@@ -502,7 +531,10 @@ app.get("/api/drive/callback", async (req, res) => {
     );
   const enc = encrypt(token.refresh_token, u.id);
   await db()`INSERT INTO mowr_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,'{}') ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce`;
-  res.redirect(process.env.APP_URL + "/#/app/connectors");
+  if (state.desktop) {
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+    res.type("html").send('<!doctype html><title>Drive connected</title><body style="background:#141414;color:#eeece4;font:18px system-ui;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>Drive is connected.</h1><p>Return to Mowr to choose your files.</p></body>');
+  } else res.redirect(process.env.APP_URL + "/#/app/connectors");
 });
 async function driveToken(userId: string) {
   const c = await credential(userId, "drive");
@@ -521,7 +553,7 @@ async function driveToken(userId: string) {
   return (await r.json()).access_token;
 }
 app.get("/api/drive/files", async (req, res) => {
-  const u = await requireUser(req, res);
+  const u = await requireDriveUser(req, res);
   if (!u) return;
   const token = await driveToken(u.id);
   const folder = String(req.query.folder || "");
@@ -539,7 +571,7 @@ app.get("/api/drive/files", async (req, res) => {
   res.json(await r.json());
 });
 app.get("/api/drive/file/:id", async (req, res) => {
-  const u = await requireUser(req, res);
+  const u = await requireDriveUser(req, res);
   if (!u) return;
   const id = String(req.params.id);
   if (!/^[\w-]{1,150}$/.test(id)) throw new Error("Invalid Drive file.");
@@ -552,15 +584,20 @@ app.get("/api/drive/file/:id", async (req, res) => {
   const m = await meta.json();
   if (Number(m.size) > 30000000)
     throw new Error("Choose a Drive document under 30 MB.");
-  const isDoc = m.mimeType === "application/vnd.google-apps.document";
-  const url = isDoc
-    ? `https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=text/plain`
+  const formats: Record<string, {mime:string; extension:string}> = {
+    "application/vnd.google-apps.document": {mime:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",extension:".docx"},
+    "application/vnd.google-apps.spreadsheet": {mime:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",extension:".xlsx"},
+    "application/vnd.google-apps.presentation": {mime:"application/vnd.openxmlformats-officedocument.presentationml.presentation",extension:".pptx"},
+  };
+  const format = formats[m.mimeType];
+  const url = format
+    ? `https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=${encodeURIComponent(format.mime)}`
     : `https://www.googleapis.com/drive/v3/files/${id}?alt=media`;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok || !r.body)
     throw new Error("This Drive file cannot be downloaded.");
-  res.setHeader("Content-Type", isDoc ? "text/plain" : m.mimeType);
-  res.setHeader("X-Mowr-File-Name", encodeURIComponent(m.name));
+  res.setHeader("Content-Type", format?.mime || m.mimeType);
+  res.setHeader("X-Mowr-File-Name", encodeURIComponent(m.name + (format?.extension || "")));
   let bytes = 0;
   for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) {
     bytes += chunk.length;

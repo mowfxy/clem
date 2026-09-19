@@ -29,3 +29,9 @@ Sources:
 - https://developers.google.com/workspace/drive/api/guides/api-specific-auth
 - https://developers.google.com/youtube/player_parameters
 - https://developers.google.com/youtube/terms/required-minimum-functionality
+
+## Desktop connection
+
+In Mowr, open Drive and choose **Connect / reconnect Drive**. A separate browser sign-in screen opens; use the same Mowr account as desktop, then grant Google access. Return to Mowr and choose **Refresh** if files have not appeared yet. Select a file to import a local copy. **Disconnect** revokes the saved Google grant.
+
+Desktop calls the deployed Drive service using its main-process session. The client secret remains in Vercel, never in the desktop bundle. Google Docs/Sheets/Slides export to Office formats using Google's supported export MIME types: https://developers.google.com/workspace/drive/api/guides/ref-export-formats .

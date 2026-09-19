@@ -1,3 +1,4 @@
+import {EssentialSync} from "./essential-sync";
 import { securityActions, handleSecurity } from "./security";
 import {
   app,
@@ -66,6 +67,7 @@ void app.whenReady().then(async () => {
   const vault = new Vault(join(app.getPath("userData"), "protected"));
   const auth = new DesktopAuth(vault, config);
   await auth.initialize();
+  const essentialSync=new EssentialSync(vault,auth);
   const local = join(app.getPath("userData"), "runtime");
   await mkdir(local, { recursive: true });
   const codexExecutable =
@@ -268,7 +270,7 @@ void app.whenReady().then(async () => {
         database: false,
         auth: true,
         storage: false,
-        drive: false,
+        drive: true,
         scheduler: false,
       });
     }
@@ -285,6 +287,17 @@ void app.whenReady().then(async () => {
           tools: [],
         },
       ]);
+    }
+    if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection")) {
+      try {
+        if (!await auth.user()) return Response.json({error:"Sign in first."},{status:401});
+        const { data } = await auth.client!.auth.getSession();
+        const response = await fetch("https://mowrai.com" + url.pathname + url.search, {
+          method:request.method, redirect:"error", signal:AbortSignal.timeout(60000),
+          headers:{Authorization:"Bearer " + data.session!.access_token, Origin:"https://mowrai.com"},
+        });
+        return new Response(response.body, {status:response.status, headers:{"Content-Type":response.headers.get("Content-Type") || "application/octet-stream", "X-Mowr-File-Name":response.headers.get("X-Mowr-File-Name") || "", "Cache-Control":"no-store"}});
+      } catch { return Response.json({error:"Drive is unavailable. Check your connection and retry."},{status:502}); }
     }
     if (url.pathname.startsWith("/api/"))
       return Response.json(
@@ -416,6 +429,14 @@ void app.whenReady().then(async () => {
     const user = await auth.user();
     if (!user) throw Error("Sign in first.");
     selectProvider(user.id);
+    if (request.action === "driveConnect") {
+      await shell.openExternal("https://mowrai.com/#/drive-connect?account=" + encodeURIComponent(user.id));
+      return {ok:true};
+    }
+    if(request.action==="essentialSync") {
+      const [skills,notes]=await Promise.all([essentialSync.exchange(user.id,"skills",request.skills),essentialSync.exchange(user.id,"notes",request.notes)]);
+      return {skills:skills.data,notes:notes.data,error:skills.error||notes.error};
+    }
     if (request.action === "telegramStatus") {
       telegram.start(user.id);
       return telegram.status(user.id);
@@ -471,11 +492,20 @@ void app.whenReady().then(async () => {
         records: [],
       });
     if (request.action === "memoryList") {
-      const state = await loadMemory();
+      let state = await loadMemory();
+      const synced=await essentialSync.exchange(user.id,"memory",state.records.map(({embedding,...record})=>record));
+      state={...state,records:synced.data as unknown as MemoryState["records"]};
+      await vault.write(memoryKey,state);
       return {
         ...state,
+        syncError:synced.error,
         records: state.records.filter((m) => m.scope === request.scope),
       };
+    }
+    if (request.action === "memoryClear") {
+      const state = await loadMemory();
+      await vault.write(memoryKey, forgetMemory(state,state.records.filter(m=>m.scope===request.scope).map(m=>m.id)));
+      return {ok:true};
     }
     if (request.action === "memoryToggle") {
       await vault.write(memoryKey, {
@@ -502,7 +532,7 @@ void app.whenReady().then(async () => {
         confidence: 1,
         source: {
           id: "user:" + randomBytes(16).toString("hex"),
-          locator: "Explicit entry in memory controls",
+          locator: request.source || "Explicit entry in memory controls",
           at: now,
         },
         derivedFrom: [],

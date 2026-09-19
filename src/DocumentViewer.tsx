@@ -6,10 +6,10 @@ import {getBlob,download} from './store';
 import {Icon} from './Icons';
 import './documents.css';
 
-type ViewerProps={file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void;modelId?:string};
+type ViewerProps={scope?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void;modelId?:string};
 const OfficeEditor=lazy(()=>import('./OfficeEditor'));
 export default function DocumentViewer(props:ViewerProps){return /\.(docx|pptx|xlsx)$/i.test(props.file.name)?<Suspense fallback={<div className="toast">Opening document…</div>}><OfficeEditor {...props}/></Suspense>:<BasicDocumentViewer {...props}/>;}
-function BasicDocumentViewer({file,onClose,onAsk,modelId}:{modelId?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void}){
+function BasicDocumentViewer({file,onClose,onAsk,modelId,scope}:{scope?:string;modelId?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void}){
  const [blob,setBlob]=useState<Blob>(),[pdf,setPdf]=useState<PDFDocumentProxy>(),[page,setPage]=useState(1),[zoom,setZoom]=useState(1),[text,setText]=useState(''),[error,setError]=useState(''),[selected,setSelected]=useState('');
  const [revision,setRevision]=useState(0),[notes,setNotes]=useState<{page:number;text:string}[]>([]),[note,setNote]=useState(''),[editing,setEditing]=useState(false),[status,setStatus]=useState(''),[saving,setSaving]=useState(false),[ready,setReady]=useState(false),[dirty,setDirty]=useState(false);
  const closeRef=useRef(onClose);closeRef.current=onClose;
@@ -17,7 +17,7 @@ function BasicDocumentViewer({file,onClose,onAsk,modelId}:{modelId?:string;file:
  const [instruction,setInstruction]=useState(''),[proposal,setProposal]=useState(''),[revising,setRevising]=useState(false),[proposalReady,setProposalReady]=useState(false);
  const revisionAbort=useRef<AbortController|null>(null),revisionSource=useRef(''),revisionPage=useRef(1);
  useEffect(()=>()=>revisionAbort.current?.abort(),[]);
- async function revise(){if(!modelId||!selected||!instruction.trim())return;revisionAbort.current?.abort();const controller=new AbortController();revisionAbort.current=controller;revisionSource.current=selected;revisionPage.current=page;setRevising(true);setProposalReady(false);setProposal('');setStatus('');try{const {reviseSelection}=await import('./document-revision');await reviseSelection(modelId,selected,instruction,controller.signal,setProposal);setProposalReady(true);}catch(e){if(!controller.signal.aborted)setStatus((e as Error).message);}finally{setRevising(false);}}
+ async function revise(){if(!modelId||!selected||!instruction.trim())return;revisionAbort.current?.abort();const controller=new AbortController();revisionAbort.current=controller;revisionSource.current=selected;revisionPage.current=page;setRevising(true);setProposalReady(false);setProposal('');setStatus('');try{const {reviseSelection}=await import('./document-revision');await reviseSelection(modelId,selected,instruction,controller.signal,setProposal,scope);setProposalReady(true);}catch(e){if(!controller.signal.aborted)setStatus((e as Error).message);}finally{setRevising(false);}}
  function applyProposal(){const source=revisionSource.current;if(pdf){if(proposal.length>2000){setStatus('Shorten the note to 2,000 characters before applying.');return;}setNotes([...notes.filter(n=>n.page!==revisionPage.current),{page:revisionPage.current,text:proposal}]);}else{const start=text.indexOf(source);if(start<0||text.indexOf(source,start+1)!==-1){setStatus('Select a unique passage in the current document and try again.');return;}const next=text.slice(0,start)+proposal+text.slice(start+source.length);if(next.length>200000){setStatus('This replacement would exceed the document size limit.');return;}setText(next);}setDirty(true);setProposal('');setProposalReady(false);setStatus('Applied to the preview. Save changes to keep this edit.');}
  const textLayer=useRef<HTMLDivElement>(null);
  const canvas=useRef<HTMLCanvasElement>(null),surface=useRef<HTMLDivElement>(null);

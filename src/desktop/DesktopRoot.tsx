@@ -1,3 +1,4 @@
+import {Illustration} from "../Illustrations";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Logo } from "../Icons";
 import { desktop } from "./bridge";
@@ -146,12 +147,8 @@ function SetupContent() {
           aria-busy={busy}
         >
           <div className="setup-emblem" aria-hidden="true"><Logo size={40}/></div>
-          <svg className="setup-vignette" viewBox="0 0 240 72" fill="none" aria-hidden="true">
-            <path className="vignette-ground" d="M20 62C74 57 166 57 220 62" stroke="currentColor"/>
-            <g className="vignette-page"><path d="M83 12l42-5 7 48-42 5z" fill="#232521" stroke="#a8b69a" strokeWidth="1.4"/><path d="M93 24l23-3m-22 11l23-3m-22 11l15-2" stroke="#a8b69a" strokeWidth="1.4" strokeLinecap="round"/></g>
-            <path className="vignette-line" d="M133 43c23 2 35-9 30-19-4-8-15-3-12 3 4 7 22 1 33-12" stroke="#b7bddc" strokeWidth="1.5" strokeLinecap="round" pathLength="1"/>
-            <path className="vignette-star" d="M62 21v12m-6-6h12M192 42v8m-4-4h8" stroke="#c2bb92" strokeWidth="1.4" strokeLinecap="round"/>
-          </svg>
+          <Illustration scene={state?.user ? (step===2?"sprout":step===3?"bridge":"pencil") : "kite"} ambient className="setup-idle-art"/>
+          <button className="setup-motion-toggle" onClick={e=>{const quiet=document.documentElement.dataset.quiet!=="true";document.documentElement.dataset.quiet=String(quiet);e.currentTarget.textContent=quiet?"Play illustration":"Pause illustration";}}>Pause illustration</button>
           {!state ? (
             <>
               <h1>Opening Mowr…</h1>
@@ -260,10 +257,10 @@ function SetupContent() {
                         checked={memory}
                         onChange={(e) => setMemory(e.target.checked)}
                       />
-                      Enable local memory
+                      Enable memory
                     </label>
                     <p className="fine">
-                      Stored locally. Edit or forget anytime.
+                      Memory syncs to your account. Files stay local.
                     </p>
                   </>
                 ) : (

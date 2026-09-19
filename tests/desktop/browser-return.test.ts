@@ -43,7 +43,7 @@ test("browser stores only expiring callback metadata and submits tokens in POST 
   assert.ok(submitted);
   assert.deepEqual(
     inputs.map((i) => i.value),
-    ["test-access", "test-refresh"],
+    ["a".repeat(64), "test-access", "test-refresh"],
   );
   assert.equal(store.size, 0);
   assert.equal(hasDesktopReturn(), false);

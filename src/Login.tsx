@@ -1,3 +1,4 @@
+import {returnToDrive} from "./drive-signin";
 import {returnToDesktop} from './desktop-signin';
 import {useEffect,useState} from 'react';
 import {getSupabase,bridgeSession} from './supabase';
@@ -8,7 +9,7 @@ export function Login(_props: {onClose?:()=>void} = {}){
  useEffect(()=>{document.title='Sign in to Mowr';},[]);
  const client=getSupabase();
  useEffect(()=>{if(location.hash.includes('/mfa'))void client?.auth.mfa.listFactors().then(r=>{if(r.data?.totp[0])setFactor(r.data.totp[0].id);});},[]);
- async function finish(){const {data,error}=await client!.auth.getSession();if(error)throw error;if(!data.session)throw Error('Check your email to confirm your account.');const factors=await client!.auth.mfa.listFactors();if(factors.error)throw factors.error;const level=await client!.auth.mfa.getAuthenticatorAssuranceLevel();if(factors.data.totp.length&&level.data?.currentLevel!=='aal2'){setFactor(factors.data.totp[0].id);return;}try{await bridgeSession(data.session.access_token);}catch(e){if(location.hash.includes('email-mfa')){setEmailMfa(true);return;}throw e;}if(!returnToDesktop(data.session))location.hash='/app';}
+ async function finish(){const {data,error}=await client!.auth.getSession();if(error)throw error;if(!data.session)throw Error('Check your email to confirm your account.');const factors=await client!.auth.mfa.listFactors();if(factors.error)throw factors.error;const level=await client!.auth.mfa.getAuthenticatorAssuranceLevel();if(factors.data.totp.length&&level.data?.currentLevel!=='aal2'){setFactor(factors.data.totp[0].id);return;}try{await bridgeSession(data.session.access_token);}catch(e){if(location.hash.includes('email-mfa')){setEmailMfa(true);return;}throw e;}if(!returnToDesktop(data.session)&&!returnToDrive())location.hash='/app';}
  async function run(fn:()=>Promise<void>){setBusy(true);setError('');setMessage('');try{if(!client)throw Error('Sign-in is temporarily unavailable. Please try again shortly.');await fn();}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  return <main className="auth-page"><section className="login-card"><Logo size={30}/><h1>{factor||emailMfa?'Verify your sign-in':mode==='signup'?'Your space to think.':mode==='forgot'?'Forgot your password?':mode==='reset'?'Choose a new password.':'Welcome back.'}</h1><p>{factor?'Enter the code from your authenticator app.':emailMfa?'Request a verification code, then enter it below.':mode==='forgot'?'We’ll email you a secure reset link.':'A little room for your next thought.'}</p><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void run(async()=>{
  if(factor){const {error}=await client!.auth.mfa.challengeAndVerify({factorId:factor,code:String(f.get('code'))});if(error)throw error;await finish();return;}

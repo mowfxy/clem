@@ -4,7 +4,7 @@ declare global {
     mowrDesktop?: DesktopBridge;
   }
 }
-export const desktop = window.mowrDesktop;
+export const desktop = typeof window === "undefined" ? undefined : window.mowrDesktop;
 export async function desktopChat(
   messages: { role: string; content: string }[],
   scope: string,
