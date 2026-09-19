@@ -5,11 +5,6 @@ import type { DesktopStatus } from "../../desktop/contracts";
 import "./desktop.css";
 
 const App = lazy(() => import("../App"));
-const Illustration = lazy(() =>
-  import("./SetupIllustration").then((module) => ({
-    default: module.SetupIllustration,
-  })),
-);
 export default function DesktopRoot() {
   return (
     <>
@@ -144,26 +139,48 @@ function SetupContent() {
   ];
   return (
     <main className="desktop-setup">
-
       <div className="setup-layout">
-        <div className="setup-art">
-          <Suspense fallback={<Logo size={160} />}>
-            <Illustration
-              scene={
-                !state?.user
-                  ? "kite"
-                  : step === 0
-                    ? "conversation"
-                    : step === 1
-                      ? "sprout"
-                      : step === 2
-                        ? "bridge"
-                        : "telescope"
-              }
-            />
-          </Suspense>
-        </div>
-        <section className="setup-card" aria-busy={busy}>
+        <section
+          key={state?.user ? `step-${step}` : "welcome"}
+          className="setup-card"
+          aria-busy={busy}
+        >
+          <div className="setup-emblem" aria-hidden="true">
+            {!state?.user ? (
+              <Logo size={28} />
+            ) : (
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 28 28"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {step === 0 ? (
+                  <>
+                    <circle cx="14" cy="11" r="4" />
+                    <path d="M6 24v-3a8 8 0 0116 0v3M20 5h6m-3-3v6" />
+                  </>
+                ) : step === 1 ? (
+                  <>
+                    <path d="M5 7h18M14 7v16M10 23h8" />
+                  </>
+                ) : step === 2 ? (
+                  <>
+                    <rect x="5" y="4" width="18" height="20" rx="3" />
+                    <path d="M10 10h8M10 14h8M10 18h4" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M5 14l6 6L24 7" />
+                  </>
+                )}
+              </svg>
+            )}
+          </div>
           {!state ? (
             <>
               <h1>Opening Mowr…</h1>
@@ -176,7 +193,7 @@ function SetupContent() {
               <p>
                 {browserPending
                   ? "Finish signing in in your browser."
-                  : "A little room for your next thought."}
+                  : "Your workspace starts here."}
               </p>
               <button
                 className="primary browser-signin"
@@ -362,6 +379,16 @@ function SetupContent() {
             <p className="inline-error" role="alert">
               {error}
             </p>
+          )}
+          {state?.user && (
+            <div
+              className="setup-progress"
+              aria-label={`Step ${Math.min(step + 1, 4)} of 4`}
+            >
+              {[0, 1, 2, 3].map((index) => (
+                <span key={index} data-complete={index <= step} />
+              ))}
+            </div>
           )}
           <p className="setup-legal">
             <a
