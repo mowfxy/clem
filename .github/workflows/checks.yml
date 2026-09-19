@@ -13,6 +13,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:desktop
+      - run: npx tsc -p desktop/tsconfig.json
       - run: npm run typecheck:server
       - run: npm run build:vercel
       - run: node scripts/check-performance-budget.mjs

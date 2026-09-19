@@ -1,14 +1,21 @@
 import {useEffect,useRef,useState} from 'react';
+import {desktop} from './desktop/bridge';
+import {LocalProvider} from './desktop/LocalProvider';
 import {api,type Session} from './Cloud';
 import {Icon} from './Icons';
 type Provider='openai'|'xai';
 type Attempt={provider:Provider;sessionId:string;status:string;verificationUrl?:string;userCode?:string};
 export function ProviderConnection({session,onDone}:{session:Session;onDone:()=>void}){
+ if(desktop)return <LocalProvider onDone={onDone}/>;
+ return <CloudProviderConnection session={session} onDone={onDone}/>;
+}
+function CloudProviderConnection({session,onDone}:{session:Session;onDone:()=>void}){
  const [available,setAvailable]=useState(false),[connected,setConnected]=useState<string[]>([]),[attempt,setAttempt]=useState<Attempt|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const done=useRef(onDone);done.current=onDone;
  useEffect(()=>{let active=true;if(session.user)void api<{available:boolean;connections:{provider:string}[]}>('subscriptions').then(data=>{if(active){setAvailable(data.available);setConnected(data.connections.map(c=>c.provider));}}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[session.user?.id]);
  useEffect(()=>{if(!attempt)return;let active=true;let timer:ReturnType<typeof setTimeout>;const poll=async()=>{try{const state=await api<{status:string;verificationUrl?:string;userCode?:string;error?:string}>('subscriptions/'+attempt.provider+'/'+attempt.sessionId);if(!active)return;if(state.status==='complete'){setConnected(c=>[...new Set([...c,attempt.provider])]);setAttempt(null);done.current();return;}if(state.status==='failed')throw Error(state.error||'Sign-in failed. Please try again.');setAttempt(a=>a?{...a,...state}:a);timer=setTimeout(()=>void poll(),5000);}catch(e){if(active){setError((e as Error).message);setAttempt(null);}}};timer=setTimeout(()=>void poll(),1000);return()=>{active=false;clearTimeout(timer);};},[attempt?.sessionId,attempt?.provider]);
  async function start(provider:Provider){setBusy(true);setError('');try{const result=await api<{sessionId:string;status:string}>('subscriptions/'+provider,'POST',{});setAttempt({provider,...result});}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  async function disconnect(provider:Provider){setBusy(true);setError('');try{await api('subscriptions/'+provider,'DELETE');setConnected(c=>c.filter(p=>p!==provider));setAttempt(null);done.current();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ if(!session.user)return <div className="subscription-connections"><p>Sign in to Mowr before connecting your ChatGPT or Grok subscription.</p><a className="secondary" href="#/login">Sign in</a></div>;
  return <div className="subscription-connections"><p className="fine">Use your own subscription. Sign in directly with the provider; Mowr never asks for your password or an API key.</p>{error&&<p role="alert">{error}</p>}{(['openai','xai'] as const).map(provider=><div className="security-block" key={provider}><h3>{provider==='openai'?'Codex · ChatGPT':'Grok Build'}</h3><p className="fine">{connected.includes(provider)?'Subscription connected.':provider==='openai'?'Connect an account with Codex access.':'Connect an account with Grok Build access.'}</p>{attempt?.provider===provider?<><p className="fine">{attempt.userCode?'Enter this code on the provider’s sign-in page.':'Preparing secure sign-in…'}</p>{attempt.userCode&&<strong className="device-code">{attempt.userCode}</strong>}{attempt.verificationUrl&&<a className="secondary" href={attempt.verificationUrl} target="_blank" rel="noreferrer">Continue sign-in <Icon name="arrow" size={14}/></a>}<button className="secondary" disabled={busy} onClick={()=>void disconnect(provider)}>Cancel</button></>:<button className="secondary" disabled={busy||!!attempt||!session.user||(!available&&!connected.includes(provider))} onClick={()=>void(connected.includes(provider)?disconnect(provider):start(provider))}>{connected.includes(provider)?'Disconnect':available?'Connect subscription':'Connection unavailable'}</button>}</div>)}<p className="fine">Connections use a shared free runtime allowance. Requests pause when it is exhausted. Your provider’s subscription limits also apply.</p></div>;
 }

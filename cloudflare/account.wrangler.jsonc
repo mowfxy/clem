@@ -1,0 +1,10 @@
+{
+ "name":"mowr-accounts",
+ "main":"account-worker.js",
+ "compatibility_date":"2026-09-19",
+ "workers_dev":true,
+ "observability":{"enabled":false},
+ "d1_databases":[{"binding":"DB","database_name":"mowr-workspaces","database_id":"7574b2c5-0815-497b-9faa-ea62137cb8c7"}],
+ "triggers":{"crons":["17 * * * *"]},
+ "vars":{"LEMON_TEST_MODE":"true"}
+}

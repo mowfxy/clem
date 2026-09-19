@@ -1,31 +1,37 @@
-# Production status — 14 September 2026
+# Production status — 19 September 2026
 
-Mowr is served at https://mowrai.com from Vercel. GitHub is connected to mowafymxis/mowr. Cloudflare D1 stores workspace records and encrypted provider credentials; Supabase handles identity and private original files.
+## Implemented
 
-## This update
+- Electron Windows desktop with bundled React assets, sandboxed renderer, typed/validated IPC, native controls and folder dialog. The official Codex Windows CLI is bundled; no Vercel Sandbox or paid API fallback is used by desktop.
+- Supabase authentication in the main process with Windows-protected persistence, PKCE browser sign-in, authenticator challenges and account-security handlers.
+- Saved one-question onboarding: unique username, display name, optional memory, $2/month plan, Lemon Squeezy checkout preparation. Server-side verified owner exemptions bind to immutable user IDs.
+- Cloudflare account Worker deployed using the existing D1 database. Additive schema applied without changing legacy workspace tables. Payments remain disabled pending the owner's Lemon Squeezy key/store/variant/webhook secret.
+- Local Codex chat adapter, timeout/cancellation, bounded context, per-account provider homes, scoped folder retrieval and explicit local memory controls. Memory includes provenance, corrections, supersession, deletion and optional-vector retrieval; no automatic embeddings or accuracy marketing claim.
+- Telegram-only pairing and polling, bounded media validation, local PDF/DOCX/text extraction, Codex image input and basic paginated PDF replies. WhatsApp removed at the owner's request.
+- Marketing source directs users to desktop download/setup, with $2/month pricing. Browser workspace route now shows the desktop/account page.
+- Existing Office paragraph/cell patch work preserved, with original-format export. PDF editing remains notes/annotation pages, not arbitrary element replacement.
 
-- Native PDF canvas viewer with selectable text, page navigation, zoom, page notes, and annotated PDF export. Notes append to separate pages and never overwrite source content. Non-Latin note export reports a limitation instead of silently replacing characters.
-- DOCX, PPTX and XLSX uploads have safe text extraction and previews. This is not a full fidelity Office layout editor. Edited Office text downloads separately as text; the original file stays available.
-- Streamed AI revision proposals support reviewing and applying replacements to text, or adding PDF page notes. This does not replace arbitrary text or graphics inside an existing PDF.
-- A file has one current edit record with revision checks. Saves update that file only; they do not duplicate other attachments. Deleting a file removes its edit record.
-- Codex and Grok Build device sign-in use isolated Vercel Sandbox sessions. Both CLIs produced valid device challenges in live isolated smoke tests. A complete user login and successful subscribed model response have **not** yet been verified.
-- Each runtime has one vCPU and a fixed timeout. The application reserves worst-case runtime seconds against a shared 12,000-second monthly ceiling and does not request paid overflow. Provider subscription limits remain separate.
-- The clean CLI snapshot is about 1.14 GB and expires on 14 October 2026. Replace SUBSCRIPTION_RUNTIME_SNAPSHOT_ID before expiry. Never snapshot a VM after user authentication.
-- Connection states, execution locks and runtime reservations are in Cloudflare D1. Credentials are encrypted per account. Finished or cancelled VMs are deleted; the daily authenticated scheduler also cleans expired sessions.
-- All repository email templates and the app-generated transactional email shell use Mowr's dark palette. Only the signup Auth template was verified as saved in Supabase. Other Auth templates still need the Auth Management API or dashboard; the installed Supabase MCP has no Auth configuration method.
+## Verified
 
-## Completed infrastructure
+- Final checks: 37 automated tests passed, frontend/server/desktop typechecks passed, and DOCX/PPTX/XLSX browser round-trip checks passed. Packaged desktop smoke passed again after dependency cleanup.
+- Marketing deployed to https://mowrai.com. The application archive contains 52 entries and no production node_modules tree; bundled main-process dependencies keep the archive approximately 7.5 MB.
+- Baseline: 19 existing tests, frontend build and server typecheck passed before migration.
+- Desktop policy tests cover identity/username races, owner verification, payment states, MAC validation, memory scope isolation/deletion, folders, IPC schemas and Telegram pairing.
+- Actual packaged EXE launched under a temporary profile. Smoke verified local UI, no renderer Node access or auth storage, sign-in/signup navigation, reduced motion, local Kinetra calculations and rejected unsupported IPC.
+- Windows Authenticode check reports **NotSigned**. The installer is an unsigned preview. No certificate or paid resource was purchased.
+- Account Worker `/entitlement` rejects unauthenticated requests with HTTP 401.
+- Initial JavaScript: approximately 71 KB gzip versus approximately 100 KB before migration; build evidence only, not field Core Web Vitals.
+- Production environment inventory still lacks app SMTP password and Google Drive OAuth credentials. No secret values were printed or copied into the desktop renderer.
 
-Zoho verified mowrai.com and completed MX, SPF and DKIM checks after kourseify.com was removed. The owner reports mailbox and Supabase SMTP setup completed. Google identity manual linking, secure email changes and TOTP are configured in Supabase. Private file ownership, reservation and MFA storage policies have been tested against Supabase.
+## Not yet verified / unfinished
 
-## Remaining verification and configuration
+- Full real-account desktop sign-in, delivered reset email, Google callback allowlist, Google linking and subscription inference require live end-to-end verification. Authenticated account testing has not been simulated as success.
+- Lemon Squeezy real/test checkout, webhook delivery, customer portal/renewals and direct app return need configuration and verification. Owner asked to provide the key later.
+- Telegram delivery requires the user's bot token and provider authorization. Outgoing generated images and richer document formatting are not finished.
+- Grok Build official subscription protocol was investigated; desktop integration remains disabled pending secure credential behavior and inference verification.
+- No paid embedding model or local semantic model installed. Automatic memory extraction, large relevance/fidelity benchmark, durable multi-step resume, folder file-operation review/undo, broad diagram types and full professional Office/PDF editing remain incomplete.
+- Folder indexing applies ignore rules, skips symlinks/dotfiles/secret-like names and bounds work. Windows hidden attributes and stronger race-resistant file access remain hardening work.
+- Current desktop requires an online entitlement check to open the workspace; offline read-only access remains unfinished.
+- The repository is private. Public installer distribution must be configured before the marketing download button can link to a public artifact. No inaccessible private-release URL is advertised as a public download.
 
-- Production app SMTP_PASSWORD is absent. Supabase SMTP and the app contact form are separate configurations. App support emails need this server secret in Vercel.
-- Google Drive client ID and secret are absent. Google sign-in also needs its configured OAuth credentials and end-to-end identity linking tests.
-- Complete each provider device authorization in Settings, then verify generation, refresh, disconnect, cancellation and account isolation with authenticated accounts. Device-code smoke tests alone do not prove subscription inference.
-- Full fidelity Word/PowerPoint/Excel editing and arbitrary PDF element replacement remain unfinished.
-- Saved email templates are not proof of actual delivery. A delivered recovery email and a contact-form email still need verification.
-
-## Checks
-
-19 automated tests pass, including PDF note pagination, preservation of original pages, fragmented AI revision streams, incomplete-response rejection, account isolation and existing security checks. Backend typecheck passes. Browser checks verified local uploads, text editing, saved edits after reopening, and PDF rendering. Heavy PDF/Office libraries remain lazy loaded; the main entry bundle is unchanged by the editor. These are build observations, not field performance measurements.
+See [DESKTOP.md](DESKTOP.md) for setup, module responsibilities, provider sources and migration boundaries. Legacy web runtime remains for existing accounts and must be retired after account/data migration, not deleted prematurely.

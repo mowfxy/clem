@@ -1,29 +1,39 @@
 # Mowr
 
-A compact workspace for conversations, personal skills, files, and interactive visuals.
+A Windows desktop workspace for conversations, projects, subjects, local files and document drafts. The React interface ships inside the application; Codex connectivity and document tools run on the user's PC. https://mowrai.com is the marketing and account site. Subscriptions cost **$2/month**, purchased inside the app through Lemon Squeezy browser checkout.
 
-## Production
+This is a **desktop preview**, not a fully verified production release. See [production status](docs/PRODUCTION-STATUS.md) and [desktop architecture and operations](docs/DESKTOP.md) for tested capabilities, security boundaries and remaining work.
 
-- Site: https://mowrai.com
-- Frontend and API: Vercel
-- Identity and private files: Supabase
-- Workspace, skills, encrypted connections: Cloudflare D1 through an authenticated Worker
-- Email sender: support@mowrai.com (Zoho SMTP credentials required)
+## Run on Windows
 
-## Development
+Use Node 25 and npm. Run `npm ci`, copy `.env.example` to `.env.local`, set the Supabase public URL/key, then run `npm run desktop:dev`.
 
-Use Node 25+ for the TypeScript test loader. Run `npm ci`, fill the ignored `.env.local` using `.env.example`, then run `npm run server` and `npm run dev` in separate terminals.
+`npm run desktop:installer` writes the Windows EXE to `release/`. It bundles the official Codex CLI. Sign in, complete setup, and connect ChatGPT from Settings. Owner exemptions are verified server-side; other accounts cannot purchase until Lemon Squeezy is configured. Unsigned previews show Windows publisher warnings.
 
-`npm test` runs isolated tests without loading production environment files. `npm run typecheck:server` checks the backend. `npm run build:vercel` bundles the API and builds the frontend.
+For the website, run `npm run server` and `npm run dev` separately. Legacy account/file services remain during migration; the website no longer opens the browser workspace.
 
-## Deployment
+## Verify changes
 
-The Vercel project uses `npm run build:vercel`. `npm run deploy` synchronizes configured server variables and deploys an allowlisted bundle. Never commit `.env.local`, `.work`, or `.deploy`.
+```powershell
+npm test
+npm run test:desktop
+npm run typecheck:server
+npm run desktop:build
+npm run desktop:smoke
+node scripts/check-performance-budget.mjs
+```
 
-Database definitions are in `cloudflare/schema.sql` and `database/supabase-files.sql`. `database/004_file_security.sql` requires its placeholder to be replaced privately with FILE_GATE_SECRET before application. The deployed project already has these migrations.
+Smoke tests use a temporary profile. Real account authorization, payments and Telegram delivery require user participation and credentials; fixtures do not verify those services.
 
-`emails/` contains branded transactional templates. `scripts/configure-supabase.mjs` configures auth templates and SMTP using a management token and SMTP credentials from `.env.local`. Google sign-in requires separate Google OAuth credentials. Google Drive uses GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
+## Find the code
 
-Codex and Grok subscription connections are under integration review; do not represent a consumer subscription as an API key or promise unsupported authorization.
+- `desktop/`: main process, protected storage, authentication, local Codex, folders, memory and Telegram.
+- `src/desktop/`: onboarding and desktop controls. `src/App.tsx` retains the workspace design.
+- `cloudflare/account-*`: account/entitlement Worker, Lemon Squeezy and additive D1 schema.
+- `core/`, `vendor/kinetra/`: shared workflows and deterministic geometry.
+- `server/`, `database/`: legacy web services and migrations retained during migration.
+- `tests/desktop/`: policy, isolation, memory, folders, messaging and export regression tests.
 
-Fonts include their licenses in public/fonts. The vendored Kinetra engine retains its license in vendor/kinetra/LICENSE.
+Generated bundles, installers, credentials and screenshots are ignored. Historical owner-only helper scripts are preserved locally in `.maintainer/archive-2026-09-19/` with a SHA-256 manifest; never deploy that archive.
+
+Font licenses remain in `public/fonts`, and Kinetra's license in `vendor/kinetra/LICENSE`. Support: support@mowrai.com.

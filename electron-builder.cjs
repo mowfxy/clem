@@ -1,0 +1,26 @@
+module.exports = {
+  appId: "com.mowrai.desktop",
+  productName: "Mowr",
+  copyright: "Copyright © Mowr Ai",
+  directories: { output: "release", app: "desktop-package" },
+  asar: true,
+  electronVersion: "44.4.3",
+  extraResources:[{from:'node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc',to:'codex',filter:['**/*']}],
+  files: ["dist/**/*", "desktop-dist/**/*", "desktop/icon.ico", "package.json","!node_modules/**/*"],
+  extraMetadata: { main: "desktop-dist/main.cjs", author: { name: "Mowr Ai" } },
+  win: {
+    target: [{ target: "nsis", arch: ["x64"] }],
+    icon: "desktop/icon.ico",
+    signtoolOptions: { publisherName: "Mowr Ai" },
+    artifactName: "Mowr-Setup-${version}.${ext}",
+  },
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: true,
+    createStartMenuShortcut: true,
+    deleteAppDataOnUninstall: false,
+  },
+  forceCodeSigning: process.env.MOWR_REQUIRE_SIGNING === "true",
+};
