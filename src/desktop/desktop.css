@@ -37,64 +37,110 @@
   background: var(--bg, #171815);
   color: var(--text, #eeeade);
 }
-.desktop-setup > header {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 26px;
-}
-.desktop-setup > header small {
-  margin-left: auto;
-  font: 10px monospace;
-  letter-spacing: 0.15em;
-  opacity: 0.6;
-}
 .setup-layout {
-  width: min(100%, 1020px);
+  width: min(100%, 380px);
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(40px, 5vw, 80px);
-  align-items: center;
-}
-.setup-art {
-  min-height: 360px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.setup-art .ink-scene {
-  width: 100%;
-  aspect-ratio: 480/390;
-}
-.setup-art p {
-  font-size: 26px;
-  line-height: 1.4;
-  margin-left: 15%;
-  opacity: 0.8;
 }
 .setup-card {
-  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  animation: setup-enter 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.setup-emblem {
+  height: 52px;
+  width: 52px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 24px;
+  color: #e9e9e3;
+  background: #202020;
+  border: 1px solid #333;
+  border-radius: 15px;
+}
+.setup-emblem svg {
+  animation: setup-mark 360ms ease-out both;
 }
 .setup-card h1 {
-  font-size: 44px;
-  line-height: 1.13;
-  font-weight: 450;
-  letter-spacing: -0.035em;
+  font-family: "Mowafy Sans Text", Arial, sans-serif;
+  font-size: 27px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.7px;
+  margin: 0 0 12px;
   outline: none;
 }
-.setup-card p {
+.setup-card > p,
+.setup-card form > p {
+  font-size: 13px;
   line-height: 1.6;
+  color: #999;
+  margin: 0;
+}
+.setup-card .eyebrow {
+  font-size: 11px;
+  letter-spacing: 0;
+  margin-bottom: 10px;
+  color: #888;
 }
 .setup-card form {
   display: grid;
-  gap: 18px;
-  margin: 26px 0;
+  gap: 16px;
+  margin: 24px 0 18px;
+  text-align: left;
 }
 .setup-card label {
   display: grid;
   gap: 8px;
-  font-size: 14px;
+  font-size: 12px;
+  color: #bcbcb6;
+}
+.setup-card form > p {
+  text-align: center;
+}
+.setup-progress {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 28px 0 0;
+}
+.setup-progress span {
+  width: 22px;
+  height: 3px;
+  border-radius: 3px;
+  background: #303030;
+  transition: background-color 180ms ease;
+}
+.setup-progress span[data-complete="true"] {
+  background: #c7c7bd;
+}
+@keyframes setup-enter {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes setup-mark {
+  from {
+    opacity: 0.4;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .setup-card,
+  .setup-emblem svg {
+    animation: none;
+  }
+  .setup-progress span {
+    transition: none;
+  }
 }
 .setup-card input:not([type="checkbox"]) {
   width: 100%;
@@ -111,7 +157,9 @@
 }
 .setup-card .primary {
   justify-content: center;
-  min-height: 46px;
+  min-height: 42px;
+  border-radius: 8px;
+  font-size: 13px;
 }
 .setup-card > .secondary {
   width: 100%;
@@ -145,6 +193,8 @@
 .setup-navigation {
   display: flex;
   gap: 22px;
+  justify-content: center;
+  font-size: 12px;
 }
 .setup-navigation button {
   border: 0;
@@ -155,7 +205,7 @@
 .setup-legal {
   font-size: 12px;
   opacity: 0.65;
-  margin-top: 30px;
+  margin-top: 26px;
 }
 .desktop-folder-panel {
   border-top: 1px solid #7774;
@@ -177,29 +227,43 @@
   font-size: 22px;
   letter-spacing: 0.15em;
 }
-@media (max-width: 950px) {
-  .setup-layout {
-    gap: 30px;
+
+@media (max-width: 500px) {
+  .desktop-setup {
+    padding: 28px 24px;
   }
   .setup-card h1 {
-    font-size: 36px;
-  }
-  .setup-art p {
-    font-size: 21px;
+    font-size: 25px;
   }
 }
-@media (max-width: 700px) {
-  .setup-layout {
-    grid-template-columns: 1fr;
+@media (max-height: 600px) {
+  .desktop-setup {
+    place-items: start center;
+    padding-block: 24px;
   }
-  .setup-art {
-    display: none;
-  }
-  .setup-card {
-    margin: auto;
-  }
-  .desktop-setup > header small {
-    display: none;
+  .setup-emblem {
+    margin-bottom: 16px;
   }
 }
-.desktop-content .app-shell{height:calc(100vh - 40px);min-height:0}
+.desktop-content .app-shell {
+  height: calc(100vh - 40px);
+  min-height: 0;
+}
+
+.setup-card .setup-legal {
+  margin-top: 26px;
+  font-size: 11px;
+  color: #777;
+}
+.setup-card .setup-price {
+  font-size: 38px;
+  color: #eee;
+}
+.setup-navigation button:hover {
+  color: #fff;
+}
+.setup-card .inline-error {
+  color: #eda699;
+  margin-top: 16px;
+}
+.setup-card .setup-legal{opacity:1;color:#999}
