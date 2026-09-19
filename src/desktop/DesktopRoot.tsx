@@ -13,10 +13,7 @@ const Illustration = lazy(() =>
 export default function DesktopRoot() {
   return (
     <>
-      <div className="desktop-titlebar">
-        <Logo size={18} />
-        <span>mowr</span>
-      </div>
+      <div className="desktop-titlebar" aria-hidden="true" />
       <div className="desktop-content">
         <SetupContent />
       </div>
