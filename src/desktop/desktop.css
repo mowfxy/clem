@@ -30,7 +30,10 @@
 }
 .desktop-setup {
   min-height: calc(100vh - 40px);
-  padding: 24px 5vw;
+  padding: 40px 5vw;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
   background: var(--bg, #171815);
   color: var(--text, #eeeade);
 }
@@ -47,11 +50,11 @@
   opacity: 0.6;
 }
 .setup-layout {
-  max-width: 1150px;
-  margin: 3vh auto;
+  width: min(100%, 1020px);
+  margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8vw;
+  gap: clamp(40px, 5vw, 80px);
   align-items: center;
 }
 .setup-art {
