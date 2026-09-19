@@ -13,7 +13,7 @@
 
 ## Verified
 
-- Final checks: 37 automated tests passed, frontend/server/desktop typechecks passed, and DOCX/PPTX/XLSX browser round-trip checks passed. Packaged desktop smoke passed again after dependency cleanup.
+- Final checks: 41 automated tests passed, frontend/server/desktop typechecks passed, and DOCX/PPTX/XLSX browser round-trip checks passed. Packaged desktop smoke passed again after dependency cleanup.
 - Marketing deployed to https://mowrai.com. The application archive contains 52 entries and no production node_modules tree; bundled main-process dependencies keep the archive approximately 7.5 MB.
 - Baseline: 19 existing tests, frontend build and server typecheck passed before migration.
 - Desktop policy tests cover identity/username races, owner verification, payment states, MAC validation, memory scope isolation/deletion, folders, IPC schemas and Telegram pairing.
@@ -21,7 +21,7 @@
 - Windows Authenticode check reports **NotSigned**. The installer is an unsigned preview. No certificate or paid resource was purchased.
 - Account Worker `/entitlement` rejects unauthenticated requests with HTTP 401.
 - Initial JavaScript: approximately 71 KB gzip versus approximately 100 KB before migration; build evidence only, not field Core Web Vitals.
-- Production environment inventory still lacks app SMTP password and Google Drive OAuth credentials. No secret values were printed or copied into the desktop renderer.
+- Google Drive client ID, client secret and APP_URL are configured in Vercel Production from the local environment. The secret remains server-side. Desktop Drive connection and real-account authorization remain unfinished. SMTP delivery still requires live verification.
 
 ## Not yet verified / unfinished
 

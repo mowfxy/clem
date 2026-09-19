@@ -145,42 +145,13 @@ function SetupContent() {
           className="setup-card"
           aria-busy={busy}
         >
-          <div className="setup-emblem" aria-hidden="true">
-            {!state?.user ? (
-              <Logo size={28} />
-            ) : (
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 28 28"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                {step === 0 ? (
-                  <>
-                    <circle cx="14" cy="11" r="4" />
-                    <path d="M6 24v-3a8 8 0 0116 0v3M20 5h6m-3-3v6" />
-                  </>
-                ) : step === 1 ? (
-                  <>
-                    <path d="M5 7h18M14 7v16M10 23h8" />
-                  </>
-                ) : step === 2 ? (
-                  <>
-                    <rect x="5" y="4" width="18" height="20" rx="3" />
-                    <path d="M10 10h8M10 14h8M10 18h4" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M5 14l6 6L24 7" />
-                  </>
-                )}
-              </svg>
-            )}
-          </div>
+          <div className="setup-emblem" aria-hidden="true"><Logo size={40}/></div>
+          <svg className="setup-vignette" viewBox="0 0 240 72" fill="none" aria-hidden="true">
+            <path className="vignette-ground" d="M20 62C74 57 166 57 220 62" stroke="currentColor"/>
+            <g className="vignette-page"><path d="M83 12l42-5 7 48-42 5z" fill="#232521" stroke="#a8b69a" strokeWidth="1.4"/><path d="M93 24l23-3m-22 11l23-3m-22 11l15-2" stroke="#a8b69a" strokeWidth="1.4" strokeLinecap="round"/></g>
+            <path className="vignette-line" d="M133 43c23 2 35-9 30-19-4-8-15-3-12 3 4 7 22 1 33-12" stroke="#b7bddc" strokeWidth="1.5" strokeLinecap="round" pathLength="1"/>
+            <path className="vignette-star" d="M62 21v12m-6-6h12M192 42v8m-4-4h8" stroke="#c2bb92" strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
           {!state ? (
             <>
               <h1>Opening Mowr…</h1>
