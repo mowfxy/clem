@@ -1,6 +1,36 @@
+.desktop-titlebar {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: #141414;
+  color: #eeece4;
+  app-region: drag;
+  -webkit-app-region: drag;
+  user-select: none;
+  font-size: 13px;
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 10000;
+  padding-right: 150px;
+}
+.desktop-content {
+  height: calc(100vh - 40px);
+  margin-top: 40px;
+  overflow: auto;
+  background: #141414;
+}
+.desktop-content .app {
+  height: calc(100vh - 40px);
+}
+.browser-signin {
+  width: 100%;
+  margin-top: 24px;
+}
 .desktop-setup {
-  min-height: 100vh;
-  padding: 32px 5vw;
+  min-height: calc(100vh - 40px);
+  padding: 24px 5vw;
   background: var(--bg, #171815);
   color: var(--text, #eeeade);
 }
@@ -18,14 +48,14 @@
 }
 .setup-layout {
   max-width: 1150px;
-  margin: 5vh auto;
+  margin: 3vh auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8vw;
   align-items: center;
 }
 .setup-art {
-  min-height: 480px;
+  min-height: 360px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -169,3 +199,4 @@
     display: none;
   }
 }
+.desktop-content .app-shell{height:calc(100vh - 40px);min-height:0}
