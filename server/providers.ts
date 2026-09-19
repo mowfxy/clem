@@ -10,7 +10,7 @@ const configs:Config[]=[
  {id:'google',provider:'Google',prefix:'GEMINI',url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'},
  {id:'xai',provider:'xAI',prefix:'XAI',url:'https://api.x.ai/v1/chat/completions'},
 ];
-export function modelCatalog():Model[]{return configs.map(c=>({id:c.id,name:process.env[`${c.prefix}_MODEL`]||c.provider,provider:c.provider,connected:!['openai','xai'].includes(c.id)&&Boolean(process.env[`${c.prefix}_API_KEY`]&&process.env[`${c.prefix}_MODEL`]),context:Number(process.env[`${c.prefix}_CONTEXT`]||32000),specialties:(process.env[`${c.prefix}_SPECIALTIES`]||'').split(',').filter(Boolean),tools:[]}));}
+export function modelCatalog():Model[]{return configs.map(c=>({id:c.id,name:c.id==='openai'?'Codex':c.id==='xai'?'Grok Build':process.env[`${c.prefix}_MODEL`]||c.provider,provider:c.provider,connected:!['openai','xai'].includes(c.id)&&Boolean(process.env[`${c.prefix}_API_KEY`]&&process.env[`${c.prefix}_MODEL`]),context:Number(process.env[`${c.prefix}_CONTEXT`]||32000),specialties:(process.env[`${c.prefix}_SPECIALTIES`]||'').split(',').filter(Boolean),tools:[]}));}
 export function requestSpec(id:string,messages:ChatInput[],credential?:ProviderCredential){
  if(id==='openai'||id==='xai')throw Error('Connect your subscription in Settings. Codex and Grok do not use API keys in Mowr.');
  const c=configs.find(c=>c.id===id);if(!c)throw new Error('Unknown provider.');

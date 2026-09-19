@@ -1,0 +1,314 @@
+import {
+  normalizeUsername,
+  validUsername,
+  ownerEligible,
+  subscriptionActive,
+  verifySignature,
+} from "./account-policy.js";
+
+const json = (data, status = 200) =>
+  Response.json(data, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+async function limit(env, key, max) {
+  const now = Math.floor(Date.now() / 60000);
+  const row = await env.DB.prepare(
+    "INSERT INTO desktop_rate_limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires<? THEN 1 ELSE count+1 END,expires=excluded.expires RETURNING count",
+  )
+    .bind(key, now, now)
+    .first();
+  return row.count <= max;
+}
+async function lemon(env, path, body) {
+  const r = await fetch("https://api.lemonsqueezy.com/v1/" + path, {
+    method: body ? "POST" : "GET",
+    headers: {
+      Authorization: "Bearer " + env.LEMON_API_KEY,
+      Accept: "application/vnd.api+json",
+      "Content-Type": "application/vnd.api+json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!r.ok) throw Error("Payment provider unavailable.");
+  return r.json();
+}
+async function webhook(request, env) {
+  const raw = await request.text();
+  if (raw.length > 256000) return json({ error: "Payload too large" }, 413);
+  if (
+    !(await verifySignature(
+      raw,
+      request.headers.get("X-Signature"),
+      env.LEMON_WEBHOOK_SECRET,
+    ))
+  )
+    return json({ error: "Invalid signature" }, 401);
+  const event = JSON.parse(raw);
+  if (event.data?.type !== "subscriptions") return json({ received: true });
+  if (!/^\d+$/.test(String(event.data.id)))
+    return json({ error: "Invalid subscription" }, 400);
+  // Retrieve authoritative current state: duplicates and out-of-order deliveries cannot restore stale access.
+  const current = await lemon(env, "subscriptions/" + event.data.id),
+    a = current.data.attributes;
+  if (
+    String(a.store_id) !== env.LEMON_STORE_ID ||
+    String(a.variant_id) !== env.LEMON_VARIANT_ID ||
+    Boolean(a.test_mode) !== (env.LEMON_TEST_MODE === "true")
+  )
+    return json({ error: "Wrong product or environment" }, 400);
+  const checkoutId = event.meta?.custom_data?.checkout_id;
+  const existing = await env.DB.prepare(
+    "SELECT user_id FROM desktop_subscriptions WHERE subscription_id=?",
+  )
+    .bind(String(event.data.id))
+    .first();
+  const checkout = checkoutId
+    ? await env.DB.prepare("SELECT user_id FROM desktop_checkouts WHERE id=?")
+        .bind(checkoutId)
+        .first()
+    : null;
+  const owner = existing?.user_id || checkout?.user_id;
+  if (!owner) return json({ error: "Unrecognized desktop checkout" }, 400);
+  if (existing && checkout && existing.user_id !== checkout.user_id)
+    return json({ error: "Checkout owner mismatch" }, 400);
+  const until = a.ends_at || a.renews_at;
+  await env.DB.prepare(
+    "INSERT INTO desktop_subscriptions(subscription_id,user_id,status,valid_until,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(subscription_id) DO UPDATE SET status=excluded.status,valid_until=excluded.valid_until,updated_at=excluded.updated_at WHERE excluded.updated_at>=desktop_subscriptions.updated_at",
+  )
+    .bind(String(event.data.id), owner, a.status, until || null, a.updated_at)
+    .run();
+  return json({ received: true });
+}
+export default {
+  async fetch(request, env) {
+    try {
+      const path = new URL(request.url).pathname;
+      if (path === "/webhooks/lemon" && request.method === "POST")
+        return await webhook(request, env);
+      if (request.method !== "GET" && request.method !== "POST")
+        return json({ error: "Method not allowed" }, 405);
+      if (
+        !(await limit(
+          env,
+          "ip:" + (request.headers.get("CF-Connecting-IP") || "unknown"),
+          90,
+        ))
+      )
+        return json({ error: "Try again shortly." }, 429);
+      const authorization = request.headers.get("Authorization");
+      if (!authorization?.startsWith("Bearer "))
+        return json({ error: "Sign in required" }, 401);
+      const check = await fetch(env.SUPABASE_URL + "/auth/v1/user", {
+        headers: {
+          apikey: env.SUPABASE_ANON_KEY,
+          Authorization: authorization,
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!check.ok) return json({ error: "Session expired" }, 401);
+      const user = await check.json();
+      if (!user.id || !user.email_confirmed_at)
+        return json({ error: "Verify your email first" }, 403);
+      if (user.factors?.some((f) => f.status === "verified")) {
+        const encoded = authorization.slice(7).split(".")[1];
+        let claims;
+        try {
+          claims = JSON.parse(
+            atob(encoded.replace(/-/g, "+").replace(/_/g, "/")),
+          );
+        } catch {
+          return json({ error: "Authenticator verification required" }, 403);
+        }
+        if (claims.sub !== user.id || claims.aal !== "aal2")
+          return json({ error: "Authenticator verification required" }, 403);
+      }
+      if (!(await limit(env, "user:" + user.id, 60)))
+        return json({ error: "Try again shortly." }, 429);
+      if (ownerEligible(user))
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO desktop_owner_grants(user_id,granted_at) VALUES(?,?)",
+        )
+          .bind(user.id, new Date().toISOString())
+          .run();
+      const grant = await env.DB.prepare(
+        "SELECT user_id FROM desktop_owner_grants WHERE user_id=?",
+      )
+        .bind(user.id)
+        .first();
+      const subscriptions = await env.DB.prepare(
+        "SELECT * FROM desktop_subscriptions WHERE user_id=?",
+      )
+        .bind(user.id)
+        .all();
+      const active =
+        !!grant || subscriptions.results.some((s) => subscriptionActive(s));
+      if (path === "/entitlement")
+        return json({
+          active,
+          reason: grant
+            ? "owner"
+            : active
+              ? "subscription"
+              : "subscription_required",
+        });
+      if (path === "/username") {
+        if (!(await limit(env, "username:" + user.id, 30)))
+          return json({ error: "Try again shortly." }, 429);
+        const username = normalizeUsername(
+          new URL(request.url).searchParams.get("value"),
+        );
+        if (!validUsername(username))
+          return json({ available: false, valid: false });
+        const found = await env.DB.prepare(
+          "SELECT user_id FROM desktop_profiles WHERE username=?",
+        )
+          .bind(username)
+          .first();
+        return json({
+          available: !found || found.user_id === user.id,
+          valid: true,
+        });
+      }
+      if (path === "/profile") {
+        if (request.method === "GET") {
+          const row = await env.DB.prepare(
+            "SELECT * FROM desktop_profiles WHERE user_id=?",
+          )
+            .bind(user.id)
+            .first();
+          return json(
+            row
+              ? {
+                  step: row.setup_step,
+                  username: row.username || "",
+                  displayName: row.display_name,
+                  memory: !!row.memory,
+                }
+              : { step: 0, username: "", displayName: "", memory: true },
+          );
+        }
+        const body = await request.json(),
+          username = normalizeUsername(body.username);
+        if (
+          !validUsername(username) ||
+          typeof body.displayName !== "string" ||
+          body.displayName.length > 80 ||
+          !Number.isInteger(body.step) ||
+          body.step < 0 ||
+          body.step > 4 ||
+          typeof body.memory !== "boolean"
+        )
+          return json({ error: "Invalid setup information" }, 400);
+        try {
+          await env.DB.prepare(
+            "INSERT INTO desktop_profiles(user_id,username,display_name,setup_step,memory) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,display_name=excluded.display_name,setup_step=excluded.setup_step,memory=excluded.memory",
+          )
+            .bind(
+              user.id,
+              username,
+              body.displayName.trim(),
+              body.step,
+              body.memory ? 1 : 0,
+            )
+            .run();
+        } catch (error) {
+          if (String(error).includes("UNIQUE"))
+            return json(
+              { error: "That username was just taken. Choose another." },
+              409,
+            );
+          throw error;
+        }
+        return json({ ok: true });
+      }
+      if (path === "/checkout" && request.method === "POST") {
+        if (active) return json({ error: "You already have access." }, 409);
+        if (!env.LEMON_API_KEY || !env.LEMON_STORE_ID || !env.LEMON_VARIANT_ID)
+          return json(
+            { error: "Payments are not configured yet. Your setup is saved." },
+            503,
+          );
+        const profile = await env.DB.prepare(
+          "SELECT setup_step FROM desktop_profiles WHERE user_id=?",
+        )
+          .bind(user.id)
+          .first();
+        if (!profile || profile.setup_step < 3)
+          return json({ error: "Complete desktop setup first." }, 409);
+        if (!(await limit(env, "checkout:" + user.id, 3)))
+          return json({ error: "Wait before retrying checkout." }, 429);
+        const pending = await env.DB.prepare(
+          "SELECT url FROM desktop_checkouts WHERE user_id=? AND expires_at>? AND url IS NOT NULL ORDER BY expires_at DESC LIMIT 1",
+        )
+          .bind(user.id, new Date().toISOString())
+          .first();
+        if (pending) return json({ url: pending.url });
+        const variant = await lemon(env, "variants/" + env.LEMON_VARIANT_ID),
+          v = variant.data.attributes;
+        if (
+          !v.is_subscription ||
+          v.interval !== "month" ||
+          v.interval_count !== 1 ||
+          v.price !== 200
+        )
+          throw Error(
+            "Configure the $2 monthly variant before enabling checkout.",
+          );
+        const store = await lemon(env, "stores/" + env.LEMON_STORE_ID);
+        if (store.data.attributes.currency !== "USD")
+          throw Error("Checkout store must use USD.");
+        const id = crypto.randomUUID(),
+          expires = new Date(Date.now() + 30 * 60000).toISOString();
+        await env.DB.prepare(
+          "INSERT INTO desktop_checkouts(id,user_id,expires_at) VALUES(?,?,?)",
+        )
+          .bind(id, user.id, expires)
+          .run();
+        const result = await lemon(env, "checkouts", {
+          data: {
+            type: "checkouts",
+            attributes: {
+              custom_price: 200,
+              test_mode: env.LEMON_TEST_MODE === "true",
+              expires_at: expires,
+              product_options: {
+                enabled_variants: [Number(env.LEMON_VARIANT_ID)],
+                redirect_url: "https://mowrai.com/#/desktop-return",
+              },
+              checkout_options: { skip_trial: true },
+              checkout_data: { email: user.email, custom: { checkout_id: id } },
+            },
+            relationships: {
+              store: { data: { type: "stores", id: env.LEMON_STORE_ID } },
+              variant: { data: { type: "variants", id: env.LEMON_VARIANT_ID } },
+            },
+          },
+        });
+        const url = result.data.attributes.url;
+        await env.DB.prepare("UPDATE desktop_checkouts SET url=? WHERE id=?")
+          .bind(url, id)
+          .run();
+        return json({ url });
+      }
+      return json({ error: "Not found" }, 404);
+    } catch {
+      return json(
+        {
+          error:
+            "Account service could not complete this request. Your existing data is unchanged.",
+        },
+        503,
+      );
+    }
+  },
+  async scheduled(_event, env) {
+    await env.DB.prepare("DELETE FROM desktop_rate_limits WHERE expires<?")
+      .bind(Math.floor(Date.now() / 60000) - 60)
+      .run();
+  },
+};

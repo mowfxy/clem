@@ -1,0 +1,171 @@
+.desktop-setup {
+  min-height: 100vh;
+  padding: 32px 5vw;
+  background: var(--bg, #171815);
+  color: var(--text, #eeeade);
+}
+.desktop-setup > header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 26px;
+}
+.desktop-setup > header small {
+  margin-left: auto;
+  font: 10px monospace;
+  letter-spacing: 0.15em;
+  opacity: 0.6;
+}
+.setup-layout {
+  max-width: 1150px;
+  margin: 5vh auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8vw;
+  align-items: center;
+}
+.setup-art {
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.setup-art .ink-scene {
+  width: 100%;
+  aspect-ratio: 480/390;
+}
+.setup-art p {
+  font-size: 26px;
+  line-height: 1.4;
+  margin-left: 15%;
+  opacity: 0.8;
+}
+.setup-card {
+  max-width: 440px;
+}
+.setup-card h1 {
+  font-size: 44px;
+  line-height: 1.13;
+  font-weight: 450;
+  letter-spacing: -0.035em;
+  outline: none;
+}
+.setup-card p {
+  line-height: 1.6;
+}
+.setup-card form {
+  display: grid;
+  gap: 18px;
+  margin: 26px 0;
+}
+.setup-card label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.setup-card input:not([type="checkbox"]) {
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid #686b6066;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.setup-card input:focus-visible {
+  outline: 2px solid #bbd8a3;
+  outline-offset: 3px;
+}
+.setup-card .primary {
+  justify-content: center;
+  min-height: 46px;
+}
+.setup-card > .secondary {
+  width: 100%;
+  margin: 10px 0;
+}
+.setup-card .setup-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid #686b6066;
+  border-radius: 12px;
+}
+.setup-card .setup-choice input {
+  width: 18px;
+  height: 18px;
+}
+.setup-card .setup-price {
+  font-size: 48px;
+  margin-bottom: 0;
+}
+.setup-price span {
+  font-size: 16px;
+  opacity: 0.65;
+}
+.availability {
+  min-height: 25px;
+  margin: 0;
+  font-size: 13px;
+}
+.setup-navigation {
+  display: flex;
+  gap: 22px;
+}
+.setup-navigation button {
+  border: 0;
+  background: none;
+  color: inherit;
+  padding: 6px 0;
+}
+.setup-legal {
+  font-size: 12px;
+  opacity: 0.65;
+  margin-top: 30px;
+}
+.desktop-folder-panel {
+  border-top: 1px solid #7774;
+  padding: 12px;
+  margin-top: 10px;
+}
+.desktop-folder-panel p {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.desktop-folder-panel button {
+  font-size: 12px;
+}
+.desktop-provider {
+  display: grid;
+  gap: 12px;
+}
+.desktop-provider code {
+  font-size: 22px;
+  letter-spacing: 0.15em;
+}
+@media (max-width: 950px) {
+  .setup-layout {
+    gap: 30px;
+  }
+  .setup-card h1 {
+    font-size: 36px;
+  }
+  .setup-art p {
+    font-size: 21px;
+  }
+}
+@media (max-width: 700px) {
+  .setup-layout {
+    grid-template-columns: 1fr;
+  }
+  .setup-art {
+    display: none;
+  }
+  .setup-card {
+    margin: auto;
+  }
+  .desktop-setup > header small {
+    display: none;
+  }
+}

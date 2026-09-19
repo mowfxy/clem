@@ -1,3 +1,7 @@
+import {desktop,desktopChat} from './desktop/bridge';
+import {LinkedFolders} from './desktop/LinkedFolders';
+import {MemoryPanel} from './desktop/MemoryPanel';
+import {TelegramPanel} from './desktop/TelegramPanel';
 import {FileCard} from './FileCard';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
@@ -133,6 +137,8 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [route, setRoute] = useState(location.hash.slice(1) || "/");
   const [chatId, setChatId] = useState<string | null>(null);
+  const draftChatId=useRef(crypto.randomUUID());
+  useEffect(()=>{if(chatId)draftChatId.current=crypto.randomUUID();},[chatId]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [long, setLong] = useState(false);
@@ -265,6 +271,7 @@ export default function App() {
   const patch = (fn: (s: State) => State) => setState(fn);
   const activeChat = state.chats.find((c) => c.id === chatId);
   const activeSpace = state.spaces.find((s) => s.id === spaceId);
+  const desktopScope=activeSpace?`${activeSpace.kind}:${activeSpace.id}`:`chat:${chatId||draftChatId.current}`;
   const skills = state.skills.filter(s=>!s.builtin);
   const bytes = state.files.reduce((n, f) => n + f.size, 0);
   function newChat(id: string | null = null) {
@@ -297,6 +304,7 @@ export default function App() {
     onText: (text: string) => void,
     mode: "chat"|"plan"|"step"="chat",
   ) {
+    if(desktop)return desktopChat(messages,desktopScope,signal,onText);
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -350,7 +358,7 @@ export default function App() {
       setModal("skill-create");
       return;
     }
-    const id = chatId || uid();
+    const id = chatId || (desktop?draftChatId.current:uid());
     const messageId = uid();
     const user = {
       id: uid(),
@@ -966,6 +974,7 @@ export default function App() {
                 </p>
               )}
             </div>
+            {desktop&&<><LinkedFolders scope={desktopScope}/><MemoryPanel scope={desktopScope}/><TelegramPanel scope={desktopScope}/></>}
             <div className="sidebar-bottom">
               <button
                 className="account-button"
@@ -1729,8 +1738,8 @@ export default function App() {
                           Connect a model
                         </button>
                         <p className="muted">
-                          Manage your subscription connections. Codex and Grok
-                          connections are not available in this release yet.
+                          Connect your ChatGPT or Grok subscription. Your provider
+                          account and usage limits stay with you.
                         </p>
                         {models.map((m) => (
                           <div className="setting-row" key={m.id}>
@@ -1898,7 +1907,7 @@ export default function App() {
               onDone={() => {
                 setModal(null);
                 void refreshModels();
-                setToast("Model connected.");
+                setToast("Connections updated.");
               }}
             />
           ) : modal === "about" ? (

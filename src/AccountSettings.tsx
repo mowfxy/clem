@@ -3,9 +3,15 @@ import type {User} from '@supabase/supabase-js';
 import {getSupabase,bridgeSession} from './supabase';
 import {api} from './Cloud';
 import {Icon} from './Icons';
+import {desktop} from './desktop/bridge';
+import {LocalSecurity} from './desktop/LocalSecurity';
 export const presetIcons=['new','visuals','projects','subjects','research','skills','files','diagram','analysis','slides','long','connectors'];
 export function IconPicker({value,onChange}:{value:string;onChange:(icon:string)=>void}){return <div className="preset-icons" aria-label="Choose an icon">{presetIcons.map(icon=><button type="button" key={icon} aria-label={icon+' icon'} aria-pressed={value===icon} onClick={()=>onChange(icon)}><Icon name={icon} size={23}/></button>)}</div>;}
 export function SecuritySettings(){
+ if(desktop)return <LocalSecurity/>;
+ return <WebSecuritySettings/>;
+}
+function WebSecuritySettings(){
  const client=getSupabase(),[user,setUser]=useState<User>(),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[factor,setFactor]=useState<{id:string;qr:string;secret:string}>(),[code,setCode]=useState('');
  async function refresh(){if(!client)return;const {data,error}=await client.auth.getUser();if(error)throw error;setUser(data.user);}
  useEffect(()=>{void refresh().catch(e=>setMessage(e.message));},[]);

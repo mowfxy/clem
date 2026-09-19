@@ -1,12 +1,15 @@
 import {loadEdits,saveEdits} from './document-state';
-import {useEffect,useRef,useState} from 'react';
+import {lazy,Suspense,useEffect,useRef,useState} from 'react';
 import type {PDFDocumentProxy} from 'pdfjs-dist';
 import type {StoredFile} from '../core/types';
 import {getBlob,download} from './store';
 import {Icon} from './Icons';
 import './documents.css';
 
-export default function DocumentViewer({file,onClose,onAsk,modelId}:{modelId?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void}){
+type ViewerProps={file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void;modelId?:string};
+const OfficeEditor=lazy(()=>import('./OfficeEditor'));
+export default function DocumentViewer(props:ViewerProps){return /\.(docx|pptx|xlsx)$/i.test(props.file.name)?<Suspense fallback={<div className="toast">Opening document…</div>}><OfficeEditor {...props}/></Suspense>:<BasicDocumentViewer {...props}/>;}
+function BasicDocumentViewer({file,onClose,onAsk,modelId}:{modelId?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void}){
  const [blob,setBlob]=useState<Blob>(),[pdf,setPdf]=useState<PDFDocumentProxy>(),[page,setPage]=useState(1),[zoom,setZoom]=useState(1),[text,setText]=useState(''),[error,setError]=useState(''),[selected,setSelected]=useState('');
  const [revision,setRevision]=useState(0),[notes,setNotes]=useState<{page:number;text:string}[]>([]),[note,setNote]=useState(''),[editing,setEditing]=useState(false),[status,setStatus]=useState(''),[saving,setSaving]=useState(false),[ready,setReady]=useState(false),[dirty,setDirty]=useState(false);
  const closeRef=useRef(onClose);closeRef.current=onClose;

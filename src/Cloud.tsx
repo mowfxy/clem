@@ -1,4 +1,5 @@
 import {signOutSupabase} from './supabase';
+import {desktop} from './desktop/bridge';
 import { useEffect, useState } from "react";
 import { Icon } from "./Icons";
 export type Session = {
@@ -22,6 +23,7 @@ export async function api<T = Record<string, unknown>>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
+  if(path==="auth/logout"&&desktop){await desktop.invoke({action:'logout'});location.reload();return {} as T;}
   if(path==="auth/logout")await signOutSupabase();
   const r = await fetch("/api/" + path, {
     method,
