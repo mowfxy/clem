@@ -269,6 +269,8 @@
 
 .setup-idle-art{width:230px;height:165px;margin:-16px auto 8px;overflow:hidden}
 .setup-idle-art svg{display:block;width:100%;height:100%}
-.setup-motion-toggle{display:block;margin:0 auto 18px;padding:3px 8px;border:0;background:none;color:#858582;font-size:10px}
-@media(max-height:750px){.setup-idle-art{height:110px;width:170px}.setup-motion-toggle{margin-bottom:10px}}
-@media(prefers-reduced-motion:reduce){.setup-motion-toggle{display:none}}
+
+.setup-welcome-heading{display:flex;align-items:center;justify-content:center;gap:13px;margin:18px 0 0}
+.setup-welcome-heading h1{margin:0;white-space:nowrap}
+.setup-welcome-heading .mowr-mark{flex-shrink:0;width:36px;height:36px}
+@media(max-width:500px){.setup-welcome-heading{gap:9px}.setup-welcome-heading h1{font-size:29px}.setup-welcome-heading .mowr-mark{width:29px;height:29px}}
