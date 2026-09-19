@@ -3,7 +3,7 @@ import { Logo } from "../Icons";
 import { desktop } from "./bridge";
 import type { DesktopStatus } from "../../desktop/contracts";
 import "./desktop.css";
-import { MfaChallenge } from "./MfaChallenge";
+
 const App = lazy(() => import("../App"));
 const Illustration = lazy(() =>
   import("./SetupIllustration").then((module) => ({
@@ -11,11 +11,43 @@ const Illustration = lazy(() =>
   })),
 );
 export default function DesktopRoot() {
-  useEffect(()=>desktop!.onAttachment(event=>{void import('./attachment-processing').then(module=>module.extractAttachment(event.bytes,event.name,event.mime)).then(text=>desktop!.invoke({action:'attachmentResult',id:event.id,text})).catch(()=>desktop!.invoke({action:'attachmentResult',id:event.id,error:true}));}),[]);
+  return (
+    <>
+      <div className="desktop-titlebar">
+        <Logo size={18} />
+        <span>mowr</span>
+      </div>
+      <div className="desktop-content">
+        <SetupContent />
+      </div>
+    </>
+  );
+}
+function SetupContent() {
+  useEffect(
+    () =>
+      desktop!.onAttachment((event) => {
+        void import("./attachment-processing")
+          .then((module) =>
+            module.extractAttachment(event.bytes, event.name, event.mime),
+          )
+          .then((text) =>
+            desktop!.invoke({ action: "attachmentResult", id: event.id, text }),
+          )
+          .catch(() =>
+            desktop!.invoke({
+              action: "attachmentResult",
+              id: event.id,
+              error: true,
+            }),
+          );
+      }),
+    [],
+  );
   const [state, setState] = useState<DesktopStatus | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [signup, setSignup] = useState(false),
+    [browserPending, setBrowserPending] = useState(false),
     [pending, setPending] = useState(false);
   const [username, setUsername] = useState(""),
     [name, setName] = useState(""),
@@ -25,6 +57,7 @@ export default function DesktopRoot() {
   async function refresh() {
     const next = (await desktop!.invoke({ action: "status" })) as DesktopStatus;
     setState(next);
+    if (next.user) setBrowserPending(false);
     setUsername(next.setup.username);
     setName(next.setup.displayName);
     setMemory(next.setup.memory);
@@ -33,7 +66,11 @@ export default function DesktopRoot() {
     void refresh().catch((e) => setError(e.message));
     const focus = () => void refresh().catch((e) => setError(e.message));
     window.addEventListener("focus", focus);
-    return () => window.removeEventListener("focus", focus);
+    const unsubscribe = desktop!.onAuth(focus);
+    return () => {
+      window.removeEventListener("focus", focus);
+      unsubscribe();
+    };
   }, []);
   useEffect(() => {
     heading.current?.focus();
@@ -91,8 +128,6 @@ export default function DesktopRoot() {
     });
     await refresh();
   }
-  if (state?.mfaFactor)
-    return <MfaChallenge factorId={state.mfaFactor} onComplete={refresh} />;
   if (state?.user && state.setup.step >= 4 && state.entitlement.active)
     return (
       <Suspense
@@ -105,18 +140,14 @@ export default function DesktopRoot() {
     );
   const step = state?.setup.step || 0;
   const titles = [
-    "Choose your username.",
-    "What should Mowr call you?",
+    "Your username.",
+    "Your name.",
     "Remember what matters?",
-    "A little room for your next thought.",
+    "Make room.",
   ];
   return (
     <main className="desktop-setup">
-      <header>
-        <Logo size={30} />
-        <span>mowr</span>
-        <small>YOUR SPACE, ON YOUR PC</small>
-      </header>
+
       <div className="setup-layout">
         <div className="setup-art">
           <Suspense fallback={<Logo size={160} />}>
@@ -134,122 +165,40 @@ export default function DesktopRoot() {
               }
             />
           </Suspense>
-          <p>
-            Room to think.
-            <br />
-            Space to make something of it.
-          </p>
         </div>
         <section className="setup-card" aria-busy={busy}>
           {!state ? (
             <>
               <h1>Opening Mowr…</h1>
-              <p>Checking your saved account.</p>
             </>
           ) : !state.user ? (
             <>
-              <p className="eyebrow">WELCOME TO MOWR</p>
               <h1 ref={heading} tabIndex={-1}>
-                {signup
-                  ? "Make yourself at home."
-                  : "Your next thought starts here."}
+                Welcome to Mowr.
               </h1>
               <p>
-                Sign in or create an account, then make this space yours. No
-                payment is needed to set up.
+                {browserPending
+                  ? "Finish signing in in your browser."
+                  : "A little room for your next thought."}
               </p>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const form = event.currentTarget,
-                    data = new FormData(form);
-                  void run(async () => {
-                    const next = await desktop!.invoke({
-                      action: signup ? "signup" : "login",
-                      email: String(data.get("email")),
-                      password: String(data.get("password")),
-                    });
-                    form.reset();
-                    setState(next);
-                    if (!next.user)
-                      setError(
-                        "Check your inbox to verify your account before signing in.",
-                      );
-                    else await refresh();
-                  });
-                }}
-              >
-                <label>
-                  Email
-                  <input
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                  />
-                </label>
-                <label>
-                  Password
-                  <input
-                    name="password"
-                    type="password"
-                    autoComplete={signup ? "new-password" : "current-password"}
-                    minLength={signup ? 12 : 1}
-                    required
-                  />
-                </label>
-                <button
-                  className="primary"
-                  disabled={busy || !state.configured}
-                >
-                  {signup ? "Create account" : "Sign in"}
-                </button>
-              </form>
               <button
-                className="secondary"
+                className="primary browser-signin"
                 disabled={busy || !state.configured}
                 onClick={() =>
                   void run(async () => {
-                    await desktop!.invoke({ action: "google" });
-                    setError(
-                      "Finish signing in in your browser, then return here.",
-                    );
+                    await desktop!.invoke({ action: "browserLogin" });
+                    setBrowserPending(true);
                   })
                 }
               >
-                Continue with Google in browser
-              </button>
-              <button className="login-text" onClick={() => setSignup(!signup)}>
-                {signup
-                  ? "Already have an account? Sign in"
-                  : "New here? Create an account"}
-              </button>
-              <button
-                className="login-text"
-                onClick={() => {
-                  const email =
-                    document.querySelector<HTMLInputElement>(
-                      "input[name=email]",
-                    )?.value;
-                  if (!email) {
-                    setError("Enter your email address first.");
-                    return;
-                  }
-                  void run(async () => {
-                    await desktop!.invoke({ action: "reset", email });
-                    setError(
-                      "If an account exists, a recovery email will arrive.",
-                    );
-                  });
-                }}
-              >
-                Forgot password?
+                {busy
+                  ? "Opening�"
+                  : browserPending
+                    ? "Open browser again"
+                    : "Sign in with browser"}
               </button>
               {!state.configured && (
-                <p role="status">
-                  This build needs its public authentication settings before
-                  sign-in is available.
-                </p>
+                <p role="status">Sign-in is unavailable in this build.</p>
               )}
             </>
           ) : (
@@ -275,10 +224,7 @@ export default function DesktopRoot() {
               >
                 {step === 0 ? (
                   <>
-                    <p>
-                      Your unique name in Mowr. You can choose a separate
-                      display name next.
-                    </p>
+                    <p>Unique to you.</p>
                     <label>
                       Username
                       <input
@@ -322,10 +268,7 @@ export default function DesktopRoot() {
                   </>
                 ) : step === 2 ? (
                   <>
-                    <p>
-                      Keep useful facts with their sources in the conversation,
-                      project or subject where they belong.
-                    </p>
+                    <p>Keep useful context for next time.</p>
                     <label className="setup-choice">
                       <input
                         type="checkbox"
@@ -335,8 +278,7 @@ export default function DesktopRoot() {
                       Enable local memory
                     </label>
                     <p className="fine">
-                      You can inspect, correct or forget memories.
-                      Synchronization is off by default.
+                      Stored locally. Edit or forget anytime.
                     </p>
                   </>
                 ) : (
@@ -344,16 +286,13 @@ export default function DesktopRoot() {
                     <p className="setup-price">
                       $2 <span>/ month</span>
                     </p>
-                    <p>
-                      Use your own ChatGPT subscription. Provider usage limits
-                      apply. Mowr runs its tools locally on your PC.
-                    </p>
+                    <p>Requires your own ChatGPT subscription.</p>
                     {state.entitlement.active ? (
-                      <p>Full access is active for this account.</p>
+                      <p>Your access is ready.</p>
                     ) : (
                       <p>
                         {pending
-                          ? "Waiting for payment confirmation. You can safely close Mowr and return later."
+                          ? "Waiting for payment�"
                           : "Continue to Lemon Squeezy’s secure checkout in your browser. Your setup is saved if you cancel."}
                       </p>
                     )}
@@ -375,7 +314,7 @@ export default function DesktopRoot() {
                         ? "Open workspace"
                         : pending
                           ? "Return to checkout"
-                          : "Continue to secure checkout"}
+                          : "Subscribe"}
                 </button>
               </form>
               <div className="setup-navigation">

@@ -12,7 +12,7 @@ import {
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { mkdir, writeFile, unlink } from "node:fs/promises";
-import { createServer } from "node:http";
+import { browserLogin } from "./browser-login";
 import { randomBytes, randomUUID } from "node:crypto";
 import { requestSchema, type DesktopStatus } from "./contracts";
 import { Vault } from "./vault";
@@ -313,7 +313,10 @@ void app.whenReady().then(async () => {
     minWidth: 800,
     minHeight: 600,
     title: "Mowr",
-    backgroundColor: "#171815",
+    backgroundColor: "#141414",
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#141414", symbolColor: "#eeece4", height: 40 },
+    autoHideMenuBar: true,
     icon: join(__dirname, "../desktop/icon.ico"),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
@@ -338,33 +341,10 @@ void app.whenReady().then(async () => {
   window.webContents.session.setPermissionRequestHandler(
     (_contents, _permission, callback) => callback(false),
   );
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      { label: "Mowr", submenu: [{ role: "quit" }] },
-      {
-        label: "Edit",
-        submenu: [
-          { role: "undo" },
-          { role: "redo" },
-          { type: "separator" },
-          { role: "cut" },
-          { role: "copy" },
-          { role: "paste" },
-          { role: "selectAll" },
-        ],
-      },
-      {
-        label: "View",
-        submenu: [
-          { role: "resetZoom" },
-          { role: "zoomIn" },
-          { role: "zoomOut" },
-          { role: "togglefullscreen" },
-        ],
-      },
-    ]),
-  );
-  let usernameRequest:AbortController|undefined;
+  Menu.setApplicationMenu(null);
+  let loginAttempt: Awaited<ReturnType<typeof browserLogin>> | undefined;
+  app.on("before-quit", () => loginAttempt?.stop());
+  let usernameRequest: AbortController | undefined;
   ipcMain.handle("mowr:request", async (event, input) => {
     if (
       event.sender !== window.webContents ||
@@ -391,77 +371,40 @@ void app.whenReady().then(async () => {
       if (result.error) throw Error("Invalid authenticator code.");
       return status();
     }
-    if (request.action === "login" || request.action === "signup") {
-      if (!auth.client) throw Error("Authentication is not configured.");
-      const result =
-        request.action === "login"
-          ? await auth.client.auth.signInWithPassword(request)
-          : await auth.client.auth.signUp({
-              email: request.email,
-              password: request.password,
-              options: { emailRedirectTo: "https://mowrai.com/" },
-            });
-      if (result.error) throw Error(result.error.message);
-      return status();
+    if (request.action === "browserLogin") {
+      if (!auth.client) throw Error("Sign-in is unavailable.");
+      loginAttempt?.stop();
+      loginAttempt = await browserLogin(
+        async (tokens) => {
+          const verified = await auth.client!.auth.getUser(tokens.access_token);
+          if (verified.error || !verified.data.user?.email_confirmed_at)
+            throw Error("Verify your email first.");
+          const result = await auth.client!.auth.setSession(tokens);
+          if (result.error) throw result.error;
+          if (!(await auth.user()))
+            throw Error("Finish verification in your browser.");
+        },
+        () => {
+          window.show();
+          if (window.isMinimized()) window.restore();
+          window.focus();
+          window.webContents.send("mowr:auth");
+        },
+      );
+      try {
+        await shell.openExternal(loginAttempt.url);
+      } catch (e) {
+        loginAttempt.stop();
+        throw e;
+      }
+      return { ok: true };
     }
     if (request.action === "logout") {
+      loginAttempt?.stop();
       codex.stop();
       selectProvider("signed-out");
       await auth.client?.auth.signOut();
       return status();
-    }
-    if (request.action === "reset") {
-      if (!auth.client) throw Error("Authentication is not configured.");
-      const result = await auth.client.auth.resetPasswordForEmail(
-        request.email,
-        { redirectTo: "https://mowrai.com/?recovery=1" },
-      );
-      if (result.error) throw Error(result.error.message);
-      return { ok: true };
-    }
-    if (request.action === "google") {
-      if (!auth.client) throw Error("Authentication is not configured.");
-      const nonce = randomBytes(24).toString("hex");
-      const server = createServer(async (req, res) => {
-        const url = new URL(req.url || "/", "http://127.0.0.1");
-        if (url.pathname !== "/callback/" + nonce) {
-          res.writeHead(404).end();
-          return;
-        }
-        try {
-          const code = url.searchParams.get("code");
-          if (!code) throw Error();
-          const result = await auth.client!.auth.exchangeCodeForSession(code);
-          if (result.error) throw result.error;
-          res.setHeader("Content-Type", "text/plain");
-          res.end("Signed in. Return to Mowr.");
-          window.focus();
-        } catch {
-          res
-            .writeHead(400)
-            .end("Sign-in failed. Return to Mowr and try again.");
-        } finally {
-          server.close();
-        }
-      });
-      await new Promise<void>((resolve) =>
-        server.listen(0, "127.0.0.1", resolve),
-      );
-      const address = server.address() as { port: number };
-      const { data, error } = await auth.client.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          skipBrowserRedirect: true,
-          redirectTo: `http://127.0.0.1:${address.port}/callback/${nonce}`,
-        },
-      });
-      if (error || !data.url) {
-        server.close();
-        throw Error("Browser sign-in is unavailable.");
-      }
-      setTimeout(() => server.close(), 180000).unref();
-      await shell.openExternal(data.url);
-      return { ok: true };
     }
     const user = await auth.user();
     if (!user) throw Error("Sign in first.");
@@ -478,9 +421,14 @@ void app.whenReady().then(async () => {
     }
     if (securityActions.has(request.action))
       return handleSecurity(auth, user, request);
-    if (request.action === "username"){
-      usernameRequest?.abort();usernameRequest=new AbortController();
-      return auth.cloud("/username?value=" + encodeURIComponent(request.username),undefined,usernameRequest.signal);
+    if (request.action === "username") {
+      usernameRequest?.abort();
+      usernameRequest = new AbortController();
+      return auth.cloud(
+        "/username?value=" + encodeURIComponent(request.username),
+        undefined,
+        usernameRequest.signal,
+      );
     }
     if (request.action === "setup") {
       await auth.cloud("/profile", request);

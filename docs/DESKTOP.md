@@ -83,3 +83,9 @@ Text, JPEG/PNG, PDF, DOCX and text attachments are accepted with a 20 MB applica
 - [Grok Build enterprise authentication](https://docs.x.ai/build/enterprise)
 
 Grok Build's official CLI supports subscription authentication, but its credential behavior and complete subscribed inference have not been verified in this desktop runtime. It remains disabled; no paid API substitute is used.
+
+## Browser sign-in and window chrome
+
+Desktop sign-in uses the website for email, Google and MFA. A five-minute, single-use loopback receiver accepts a bounded form POST only from https://mowrai.com at a random callback path. The main process verifies the user, persists the session in the Windows-protected vault, and focuses the app. Credentials never enter the desktop renderer. Interrupted attempts can be restarted with Open browser again. The website preserves the callback in tab-scoped session storage across OAuth redirects.
+
+The window uses Electron hidden-title-bar overlay with native minimize, maximize/restore and close controls over the app background. The application menu is removed; the header remains draggable.

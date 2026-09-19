@@ -5,19 +5,8 @@ export const scopeSchema = z
   .regex(/^(chat|project|subject):[a-zA-Z0-9_-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
-  z.object({
-    action: z.literal("login"),
-    email: z.email(),
-    password: z.string().min(1).max(128),
-  }),
-  z.object({
-    action: z.literal("signup"),
-    email: z.email(),
-    password: z.string().min(12).max(128),
-  }),
+  z.object({ action: z.literal("browserLogin") }),
   z.object({ action: z.literal("logout") }),
-  z.object({ action: z.literal("reset"), email: z.email() }),
-  z.object({ action: z.literal("google") }),
   z.object({
     action: z.literal("mfa"),
     factorId: z.string().uuid(),
@@ -110,6 +99,7 @@ export type DesktopStatus = {
   mfaFactor?: string;
 };
 export type DesktopBridge = {
+  onAuth: (listener: () => void) => () => void;
   onAttachment: (
     listener: (event: {
       id: string;
