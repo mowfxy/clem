@@ -3,14 +3,17 @@ import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 
 export class Codex {
-  private loginProcess:ChildProcessWithoutNullStreams|null=null;
+  private loginProcess: ChildProcessWithoutNullStreams | null = null;
   private starting = false;
   private active = new Map<string, ChildProcessWithoutNullStreams>();
-  constructor(
-    private executable: string,
-    private home: string,
-    private workspace: string,
-  ) {}
+  private executable: string;
+  private home: string;
+  private workspace: string;
+  constructor(executable: string, home: string, workspace: string) {
+    this.executable = executable;
+    this.home = home;
+    this.workspace = workspace;
+  }
   private async start(args: string[]) {
     await mkdir(this.home, { recursive: true });
     await mkdir(this.workspace, { recursive: true });
@@ -65,10 +68,114 @@ export class Codex {
       });
     });
   }
+  private catalog: { at: number; models: any[] } | null = null;
+  private catalogRequest: Promise<any[]> | null = null;
+  async models(): Promise<any[]> {
+    if (this.catalog && Date.now() - this.catalog.at < 60000)
+      return this.catalog.models;
+    if (this.catalogRequest) return this.catalogRequest;
+    this.catalogRequest = this.readModels().finally(() => {
+      this.catalogRequest = null;
+    });
+    return this.catalogRequest;
+  }
+  private async readModels(): Promise<any[]> {
+    if (!(await this.status())) return [];
+    const child = await this.start(["app-server"]);
+    const lines = createInterface({ input: child.stdout });
+    return new Promise((resolve, reject) => {
+      let ended = false,
+        bytes = 0,
+        id = 1;
+      const models: any[] = [];
+      const finish = (error?: Error) => {
+        if (ended) return;
+        ended = true;
+        clearTimeout(timer);
+        lines.close();
+        child.kill();
+        if (error) reject(error);
+        else {
+          this.catalog = { at: Date.now(), models };
+          resolve(models);
+        }
+      };
+      const timer = setTimeout(
+        () => finish(Error("Model sync timed out. Try again.")),
+        20000,
+      );
+      const send = (method: string, params: any, requestId?: number) =>
+        child.stdin.write(
+          JSON.stringify({
+            method,
+            params,
+            ...(requestId ? { id: requestId } : {}),
+          }) + "\n",
+        );
+      child.on("error", () =>
+        finish(Error("Codex model sync could not start.")),
+      );
+      child.on("close", () => finish(Error("Codex model sync ended early.")));
+      child.stdin.on("error", () =>
+        finish(Error("Codex model sync disconnected.")),
+      );
+      child.stderr.resume();
+      lines.on("line", (line) => {
+        try {
+          bytes += line.length;
+          if (bytes > 2000000) throw Error("Model catalog too large.");
+          const message = JSON.parse(line);
+          if (message.id !== id) return;
+          if (message.error) throw Error("Codex could not list models.");
+          if (id === 1) {
+            send("initialized", {});
+            send("model/list", { limit: 100, includeHidden: false }, ++id);
+            return;
+          }
+          for (const m of message.result.data) {
+            if (m.hidden || !m.model) continue;
+            models.push({
+              id: m.model,
+              name: m.displayName || m.model,
+              provider: "OpenAI",
+              connected: true,
+              context: 32000,
+              specialties: [],
+              tools: [],
+              description: m.description || "",
+              reasoningEfforts: m.supportedReasoningEfforts || [],
+              defaultReasoningEffort: m.defaultReasoningEffort,
+              isDefault: m.isDefault,
+            });
+          }
+          if (message.result.nextCursor) {
+            if (id > 20) throw Error("Model catalog too large.");
+            send(
+              "model/list",
+              {
+                limit: 100,
+                includeHidden: false,
+                cursor: message.result.nextCursor,
+              },
+              ++id,
+            );
+          } else finish();
+        } catch (e) {
+          finish(e as Error);
+        }
+      });
+      send(
+        "initialize",
+        { clientInfo: { name: "mowr", version: "0.2.0" } },
+        id,
+      );
+    });
+  }
   async login() {
+    this.catalog = null;
     this.loginProcess?.kill();
     const child = await this.start(["login", "--device-auth"]);
-    this.loginProcess=child;
+    this.loginProcess = child;
     let output = "";
     return new Promise<{ url: string; code: string }>((resolve, reject) => {
       let delivered = false;
@@ -98,7 +205,7 @@ export class Codex {
         );
       });
       child.on("close", () => {
-        if(this.loginProcess===child)this.loginProcess=null;
+        if (this.loginProcess === child) this.loginProcess = null;
         clearTimeout(timer);
         if (!delivered)
           reject(Error("No provider sign-in challenge was received."));
@@ -106,6 +213,7 @@ export class Codex {
     });
   }
   async logout() {
+    this.catalog = null;
     this.loginProcess?.kill();
     const child = await this.start(["logout"]);
     await new Promise<void>((resolve, reject) => {
@@ -127,6 +235,7 @@ export class Codex {
     prompt: string,
     emit: (event: any) => void,
     images: string[] = [],
+    selection?: { model?: string; reasoning?: string },
   ) {
     if (this.active.size || this.starting)
       throw Error("Wait for the current request or cancel it.");
@@ -135,6 +244,25 @@ export class Codex {
     try {
       if (!(await this.status()))
         throw Error("Connect your ChatGPT subscription first.");
+      const options: string[] = [];
+      if (selection?.model) {
+        const available = await this.models();
+        const chosen = available.find((m) => m.id === selection.model);
+        if (!chosen)
+          throw Error(
+            "That model is no longer available. Refresh your models.",
+          );
+        options.push("--model", chosen.id);
+        if (selection.reasoning) {
+          if (
+            !chosen.reasoningEfforts.some(
+              (e: any) => e.reasoningEffort === selection.reasoning,
+            )
+          )
+            throw Error("That reasoning level is unavailable for this model.");
+          options.push("-c", `model_reasoning_effort="${selection.reasoning}"`);
+        }
+      }
       child = await this.start([
         "exec",
         "--ignore-user-config",
@@ -150,6 +278,7 @@ export class Codex {
         "-c",
         'web_search="disabled"',
         "--json",
+        ...options,
         ...images.flatMap((path) => ["--image", path]),
         "-",
       ]);

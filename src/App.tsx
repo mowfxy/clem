@@ -4,7 +4,7 @@ import "./settings.css";
 import {localSourceContext} from "./source-context";
 import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
-import {openWorkflow} from "./workflow-state";
+import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {YouTubeReferences} from "./YouTubeReferences";
 import {youtubeReference} from "./youtube";
 import {desktop,desktopChat} from './desktop/bridge';
@@ -150,6 +150,8 @@ export default function App() {
   const [long, setLong] = useState(false);
   const [models, setModels] = useState<Model[]>(modelPlaceholders);
   const [model, setModel] = useState("");
+  const [reasoning,setReasoning]=useState("");
+  const [deleteChatId,setDeleteChatId]=useState<string|null>(null);
   const [modal, setModal] = useState<string | null>(null);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [toast, setToast] = useState("");
@@ -241,13 +243,15 @@ export default function App() {
       const r = await fetch("/api/models");
       if (!r.ok) throw Error();
       const list: Model[] = await r.json();
-      setModels((list.length ? list : modelPlaceholders).filter(m=>m.id!=='google').map(m=>m.id==='anthropic'?{...m,name:'Claude',connected:false}:m));
-      setModel((m) => m || list.find((x) => x.connected)?.id || "");
+      setModels((desktop ? list : (list.length ? list : modelPlaceholders)).filter(m=>m.id!=='google').map(m=>m.id==='anthropic'?{...m,name:'Claude',connected:false}:m));
+      setModel((m) => list.some(x=>x.id===m&&x.connected)?m:list.find(x=>x.connected&&x.isDefault)?.id||list.find(x=>x.connected)?.id||"");
       setApiReady(true);
     } catch {
       setApiReady(false);
     }
   }
+  useEffect(()=>{const sync=()=>{if(!document.hidden)void refreshModels();};window.addEventListener('focus',sync);const timer=setInterval(sync,60000);return()=>{window.removeEventListener('focus',sync);clearInterval(timer);};},[]);
+  useEffect(()=>{const selected=models.find(m=>m.id===model);if(selected&&!selected.reasoningEfforts?.some(e=>e.reasoningEffort===reasoning))setReasoning(selected.defaultReasoningEffort||"");},[models,model,reasoning]);
   const patch = (fn: (s: State) => State) => setState(fn);
   const activeChat = state.chats.find((c) => c.id === chatId);
   const activeSpace = state.spaces.find((s) => s.id === spaceId);
@@ -283,8 +287,9 @@ export default function App() {
     signal: AbortSignal,
     onText: (text: string) => void,
     mode: "chat"|"plan"|"step"="chat",
+    effort?:string,
   ) {
-    if(desktop)return desktopChat(messages,desktopScope,signal,onText);
+    if(desktop)return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined});
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -622,7 +627,7 @@ export default function App() {
             ],
             task.model,
             signal,
-            () => {}, "step",
+            () => {}, "step", task.reasoning,
           ),
         abort.current.signal,
         async (t) => {
@@ -803,7 +808,7 @@ export default function App() {
           </button>
         </div>
         <div className="composer-tools">
-          <ModelSelector models={models} value={model} onChange={setModel} onConnect={()=>openSettings("Models")}/>
+          <ModelSelector models={models} value={model} effort={reasoning} onEffort={setReasoning} onChange={id=>{setModel(id);setReasoning(models.find(m=>m.id===id)?.defaultReasoningEffort||"");}} onConnect={()=>openSettings("Models")}/>
           {running ? (
             <button
               type="button"
@@ -887,9 +892,8 @@ export default function App() {
               </div>
               {state.chats.length ? (
                 state.chats.slice(0, 12).map((c) => (
-                  <button
+                  <div className="history-row" key={c.id}><button
                     className={`history-item ${c.id === chatId && route === "/app" ? "chosen" : ""}`}
-                    key={c.id}
                     onClick={() => {
                       setChatId(c.id);
                       setSpaceId(c.spaceId);
@@ -898,7 +902,7 @@ export default function App() {
                   >
                     <span className="history-dot" />
                     {c.title}
-                  </button>
+                  </button><button className="history-delete" aria-label={`Delete chat ${c.title}`} disabled={running} onClick={()=>setDeleteChatId(c.id)}><Icon name="trash" size={15}/></button></div>
                 ))
               ) : (
                 <p className="history-empty">
@@ -951,7 +955,7 @@ export default function App() {
                   `Your ${route.split("/").at(-1)}`
                 )}
               </span>
-
+              {activeChat&&route==="/app"&&<button aria-label="Delete current chat" disabled={running} onClick={()=>setDeleteChatId(activeChat.id)}><Icon name="trash" size={16}/></button>}
             </header>
             {route === "/app" ? (
               <div
@@ -1801,6 +1805,7 @@ export default function App() {
           e.target.value = "";
         }}
       />
+      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device. Saved files and memory are kept.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id)newChat();setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
       {modal && (
         <Modal
           title={
@@ -1877,8 +1882,7 @@ export default function App() {
                   )
                   .map((c) => (
                     <button
-                      key={c.id}
-                      onClick={() => {
+                        onClick={() => {
                         setChatId(c.id);
                         setSpaceId(c.spaceId);
                         navigate("/app");
@@ -1998,7 +2002,6 @@ export default function App() {
                 .map((c) => (
                   <button
                     className="space-chat-link"
-                    key={c.id}
                     onClick={() => {
                       setChatId(c.id);
                       setSpaceId(c.spaceId);

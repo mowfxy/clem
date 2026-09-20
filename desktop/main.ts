@@ -276,17 +276,7 @@ void app.whenReady().then(async () => {
     }
     if (url.pathname === "/api/models") {
       const user = await auth.user();
-      return Response.json([
-        {
-          id: "openai",
-          name: "Codex",
-          provider: "OpenAI",
-          connected: user ? await selectProvider(user.id).status() : false,
-          context: 32000,
-          specialties: [],
-          tools: [],
-        },
-      ]);
+      try{return Response.json(user?await selectProvider(user.id).models():[]);}catch{return Response.json({error:"Could not sync Codex models. Try refreshing."},{status:503});}
     }
     if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection")) {
       try {
@@ -620,6 +610,7 @@ void app.whenReady().then(async () => {
       void codex
         .run(request.id, prompt, (event) =>
           window.webContents.send("mowr:chat", event),
+          [], {model:request.model,reasoning:request.reasoning}
         )
         .then(() =>
           vault.write(checkpoint, { status: "complete", scope: request.scope }),

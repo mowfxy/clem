@@ -1,0 +1,133 @@
+.model-selector .model-menu {
+  width: 320px;
+  max-width: calc(100vw - 40px);
+  padding: 8px;
+  background: #22221f;
+  border: 1px solid #45453e;
+  border-radius: 12px;
+  box-shadow: 0 14px 45px #0006;
+  z-index: 60;
+}
+.model-menu header {
+  padding: 10px 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.model-menu header small {
+  font-size: 10px;
+  color: #98988e;
+}
+.model-options {
+  max-height: 270px;
+  overflow: auto;
+}
+.model-options button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+.model-options button > span {
+  min-width: 0;
+}
+.model-options button small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #99998f;
+  margin-top: 4px;
+}
+.model-options button[aria-pressed="true"] {
+  background: #33342e;
+}
+.model-menu fieldset {
+  border: 0;
+  border-top: 1px solid #3a3a34;
+  margin: 8px 0 0;
+  padding: 12px 8px;
+}
+.model-menu legend {
+  font-size: 11px;
+  color: #aaa;
+  padding: 0 4px;
+}
+.reasoning-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.reasoning-options button {
+  font-size: 11px;
+  text-transform: capitalize;
+  padding: 6px 9px;
+  border: 1px solid #45453f;
+  border-radius: 6px;
+}
+.reasoning-options button[aria-pressed="true"] {
+  background: #e3e3d9;
+  color: #23231f;
+}
+.effort-caption {
+  font-size: 10px;
+  color: #999;
+  text-transform: capitalize;
+  border-left: 1px solid #555;
+  padding-left: 8px;
+}
+.model-menu > p {
+  padding: 12px;
+  font-size: 12px;
+  color: #aaa;
+}
+.plan-editor .model-menu {
+  bottom: auto;
+  top: 34px;
+}
+.step-head h3 {
+  font:
+    500 15px "Mowafy Sans Text",
+    sans-serif;
+  margin: 0;
+  flex: 1;
+}
+.step-instructions {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 14px 0;
+}
+.step-instructions p {
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0;
+  flex: 1;
+}
+.step-instructions button {
+  flex-shrink: 0;
+}
+.plan-editor .step-output {
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.6;
+}
+.history-row {
+  display: flex;
+  align-items: center;
+}
+.history-row .history-item {
+  min-width: 0;
+  flex: 1;
+}
+.history-delete {
+  opacity: 0;
+  padding: 6px;
+  color: #999;
+}
+.history-row:hover .history-delete,
+.history-row:focus-within .history-delete {
+  opacity: 1;
+}

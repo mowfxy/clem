@@ -6,12 +6,13 @@ export type WorkflowCheckpoint = {
 };
 export async function workflowSignature(plan: Plan, context: string) {
   const definitions = plan.tasks.map(
-    ({ id, title, instructions, output, model, dependsOn }) => ({
+    ({ id, title, instructions, output, model, reasoning, dependsOn }) => ({
       id,
       title,
       instructions,
       output,
       model,
+      reasoning,
       dependsOn,
     }),
   );
