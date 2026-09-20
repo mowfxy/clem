@@ -2,7 +2,7 @@ import {loadEdits,saveEdits} from './document-state';
 import {lazy,Suspense,useEffect,useRef,useState} from 'react';
 import type {PDFDocumentProxy} from 'pdfjs-dist';
 import type {StoredFile} from '../core/types';
-import {getBlob,download} from './store';
+import {getBlob,download,downloadMade} from './store';
 import {Icon} from './Icons';
 import './documents.css';
 
@@ -35,7 +35,7 @@ function BasicDocumentViewer({file,onClose,onAsk,modelId,scope}:{scope?:string;m
  useEffect(()=>{const close=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();if(!dirty||window.confirm('Discard unsaved document changes?'))closeRef.current();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[dirty]);
  useEffect(()=>{if(!dirty)return;const warn=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
  async function save(){setSaving(true);setStatus('');try{const saved=await saveEdits(file,revision,pdf?{notes}:{text});setRevision(saved.revision);setStatus('Saved changes to this file.');setEditing(false);setDirty(false);}catch(e){setStatus((e as Error).message);}finally{setSaving(false);}}
- async function exportEdited(){try{if(!blob)return;if(pdf){const {annotatedPdf}=await import('./pdf-annotations');download(await annotatedPdf(blob,notes),file.name.replace(/\.pdf$/i,'-annotated.pdf'));}else download(new Blob([text],{type:'text/plain'}),file.name.replace(/\.[^.]+$/,'')+'-edited.txt');}catch(e){setStatus((e as Error).message);}}
+ async function exportEdited(){try{if(!blob)return;if(pdf){const {annotatedPdf}=await import('./pdf-annotations');await downloadMade(await annotatedPdf(blob,notes),file.name.replace(/\.pdf$/i,'-annotated.pdf'));}else await downloadMade(new Blob([text],{type:'text/plain'}),file.name.replace(/\.[^.]+$/,'')+'-edited.txt');}catch(e){setStatus((e as Error).message);}}
  return <aside className="document-viewer" role="dialog" aria-label={'Document viewer: '+file.name} ref={surface} onMouseUp={()=>{const selection=window.getSelection();if(selection&&surface.current?.contains(selection.anchorNode))setSelected(selection.toString().slice(0,10000));}}>
   <header><div><strong>{file.name}</strong><small>{pdf?'PDF':/\.(docx|pptx|xlsx)$/i.test(file.name)?'Office text preview':'Document'}</small></div><button className="icon-button" disabled={!blob} aria-label="Download original" onClick={()=>blob&&download(blob,file.name)}><Icon name="download" size={18}/></button><button className="icon-button" aria-label="Close document" onClick={requestClose}><Icon name="close" size={18}/></button></header>
   {pdf&&<nav className="document-toolbar"><button disabled={page===1} onClick={()=>setPage(page-1)}>Previous</button><span>{page} / {pdf.numPages}</span><button disabled={page===pdf.numPages} onClick={()=>setPage(page+1)}>Next</button><button disabled={zoom<=.5} onClick={()=>setZoom(Math.max(.5,zoom-.25))}>−</button><span>{Math.round(zoom*100)}%</span><button disabled={zoom>=2} onClick={()=>setZoom(Math.min(2,zoom+.25))}>+</button></nav>}

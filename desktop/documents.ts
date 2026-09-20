@@ -1,3 +1,4 @@
+import {markContent} from "../core/provenance.ts";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 export async function textPdf(text: string) {
   if (text.length > 60000) throw Error("Use a shorter document.");
@@ -44,5 +45,5 @@ export async function textPdf(text: string) {
       size: 8,
     });
   document.setCreator("Mowr");
-  return document.save();
+  return new Uint8Array(await (await markContent(new Blob([new Uint8Array(await document.save())]),"document.pdf")).arrayBuffer());
 }

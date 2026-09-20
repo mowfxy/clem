@@ -1,6 +1,6 @@
 # Mowr
 
-A Windows desktop workspace for conversations, projects, subjects, local files and document drafts. The React interface ships inside the application; Codex connectivity and document tools run on the user's PC. https://mowrai.com is the marketing and account site. Subscriptions cost **$2/month**, purchased inside the app through Lemon Squeezy browser checkout.
+A Windows desktop workspace for conversations, projects, subjects, local files and document drafts. The React interface ships inside the application; Codex connectivity and document tools run on the user's PC. https://mowrai.com is the marketing and account site. The planned subscription is **$2/month**; Lemon Squeezy payments are currently deferred.
 
 This is a **desktop preview**, not a fully verified production release. See [production status](docs/PRODUCTION-STATUS.md) and [desktop architecture and operations](docs/DESKTOP.md) for tested capabilities, security boundaries and remaining work.
 
@@ -12,6 +12,8 @@ Use Node 25 and npm. Run `npm ci`, copy `.env.example` to `.env.local`, set the 
 
 For the website, run `npm run server` and `npm run dev` separately. Legacy account/file services remain during migration; the website no longer opens the browser workspace.
 
+Chats and files stay in Documents/Mowr. Subjects can hold AI quizzes and flashcards and move between users as ZIP archives. Read [local data and subject transfers](docs/LOCAL-DATA.md) before uninstalling or sharing an archive. The [export checker](https://check.mowrai.com) checks invisible markers locally in the browser.
+
 ## Verify changes
 
 ```powershell
@@ -21,6 +23,9 @@ npm run typecheck:server
 npm run desktop:build
 npm run desktop:smoke
 node scripts/check-performance-budget.mjs
+node scripts/verify-settings.mjs
+node scripts/verify-study-memory.mjs
+node scripts/verify-provenance.mjs
 ```
 
 Smoke tests use a temporary profile. Real account authorization, payments and Telegram delivery require user participation and credentials; fixtures do not verify those services.

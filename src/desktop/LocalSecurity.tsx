@@ -179,7 +179,7 @@ export function LocalSecurity() {
         )}
         {error && <p role="status">{error}</p>}
       </SettingsPopup>{" "}
-      <h3>Sessions</h3>
+      <div className="settings-action"><div><h3>Sessions</h3><p>Sign out your other devices.</p></div>
       <button
         disabled={busy}
         onClick={() =>
@@ -191,6 +191,7 @@ export function LocalSecurity() {
       >
         Revoke other sessions
       </button>
+      </div>
       {info?.google && (
         <SettingsPopup
           title="Google account"

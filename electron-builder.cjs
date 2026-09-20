@@ -15,6 +15,7 @@ module.exports = {
     artifactName: "Mowr-Setup-${version}.${ext}",
   },
   nsis: {
+    include: "desktop/installer.nsh",
     oneClick: false,
     perMachine: false,
     allowToChangeInstallationDirectory: true,

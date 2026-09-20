@@ -1,3 +1,4 @@
+import {mockLocalStorage} from './fixture-local-storage.mjs';
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -87,6 +88,7 @@ try {
             : {},
     });
   });
+  await mockLocalStorage(page);
   await page.goto("http://127.0.0.1:5198/fixture");
   await page.evaluate(async () => {
     const { default: RefreshRuntime } = await import("/@react-refresh");
@@ -150,7 +152,7 @@ try {
   for (const [name, button] of [
     ["Linked folders", "Manage folders"],
     ["Telegram", "Connect"],
-    ["Memory", "Review memory"],
+    ["Memory", "Open memory"],
   ]) {
     await page
       .locator(".settings-tabs")
@@ -161,7 +163,7 @@ try {
       .locator(".settings-content")
       .getByRole("button", { name: button, exact: true })
       .click();
-    await page.locator(".settings-dialog .desktop-folder-panel").waitFor();
+    await page.locator(name==="Memory"?".settings-dialog .memory-conversation":".settings-dialog .desktop-folder-panel").waitFor();
     await page.keyboard.press("Escape");
   }
   await page
@@ -204,7 +206,7 @@ try {
   await page.evaluate(() => document.getElementById("scroll-fixture").remove());
   await page.locator(".workspace").evaluate((el) => (el.scrollTop = 0));
   const brand = await page.locator(".sidebar>.brand").boundingBox();
-  assert.ok(brand.y >= 40, "Brand below titlebar");
+  assert.ok(brand.y >= 0 && brand.y < 40, "Brand blends into window top");
   await page.evaluate(() => (location.hash = "/app"));
   await page.locator(".greeting-row").waitFor();
   assert.ok(

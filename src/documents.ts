@@ -1,4 +1,4 @@
-import { download, getBlob } from './store';
+import { downloadMade, getBlob } from './store';
 import type { StoredFile } from '../core/types';
 export async function extractFiles(files:StoredFile[],signal?:AbortSignal){
  let total='';
@@ -17,8 +17,8 @@ export async function extractFiles(files:StoredFile[],signal?:AbortSignal){
 }
 const safeTitle=(title:string)=>title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').slice(0,80)||'Mowr document';
 export async function exportDocx(content:string,title='Mowr document') {
-  download(await (await import('./document-export')).docxBlob(content,title),safeTitle(title)+'.docx');
+  await downloadMade(await (await import('./document-export')).docxBlob(content,title),safeTitle(title)+'.docx');
 }
 export async function exportSlides(content:string,title='Mowr presentation') {
-  download(await (await import('./document-export')).slidesBlob(content,title),safeTitle(title)+'.pptx');
+  await downloadMade(await (await import('./document-export')).slidesBlob(content,title),safeTitle(title)+'.pptx');
 }

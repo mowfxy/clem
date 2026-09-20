@@ -18,7 +18,7 @@ This flow is implemented, but a real user's authorization and subsequent inferen
 - Sign the Windows executable/installer, publish it at a public download URL, and establish a tested update and rollback process. The GitHub repository is private; private artifacts are not public downloads.
 - Configure and test Lemon Squeezy checkout, webhook, renewals and portal before a paid launch. Payments remain deferred at the owner's request; non-exempt accounts still require entitlement.
 - Finish offline workspace access. The startup entitlement check still needs a connection.
-- Provide a full local backup/restore path including file contents. Current JSON export contains metadata/text, not all blobs. Confirm uninstall/update behavior and storage-full recovery.
+- Subject ZIP export/import now includes chats, source files, document edits, quizzes, flashcards and attempt history. Workspace-wide JSON still excludes file contents. Verify the Documents migration and keep/delete uninstall choices on a clean Windows machine, plus storage-full recovery.
 - Complete folder access hardening (Windows hidden-file attributes and race-resistant reads), and test large local files under memory pressure. There is no Mowr storage/upload quota now, but disk capacity, browser storage and document parsers have practical limits.
 
 ## Explicit preview limitations
@@ -28,3 +28,18 @@ Grok is disabled. PDF edits are annotations, not full page-layout editing. Memor
 ## Current UI verification
 
 Desktop-sized browser fixture checks default workspace routing, complete sidebar visibility, no new-chat overflow, compact settings, modal password action through mocked IPC, keyboard dismissal, profile selection, removal of scope selectors, styled dropdown semantics, Drive dialog and narrow-screen overflow. Unit and desktop tests cover data/security contracts. Live provider and Google account flows remain separate verification tasks.
+
+## September 20 local-first update
+
+- Sidebar fills the window height; the draggable titlebar begins alongside it. Memory and automations have illustrated cards; sessions/privacy use consistent action rows.
+- Renderer storage lives under the Windows Documents known folder in `Mowr/Local data`. Readable account snapshots and source blobs live under `Mowr/Accounts/<account>/`. The first launch copies existing renderer storage before opening Chromium. Original AppData copies are retained as migration fallback; protected authentication remains in AppData.
+- Uninstall keeps data by default. Interactive uninstall offers explicit permanent removal of Documents/Mowr and protected AppData; cancellation, silent uninstall and updates do not opt in. This is compiled but still requires a clean-machine lifecycle test.
+- Subjects support generated quizzes and flashcards, saved attempt scores, ZIP sharing/import with fresh identifiers, and deletion of owned files, chats, sets, workflow checkpoints and source indexes. ZIP processing has a 250 MB archive / 500 MB expanded safety ceiling; this is not a local storage quota. Archives may contain private course context and conversations: share intentionally.
+- Memory chat edits the displayed summary and existing confirmed facts, with stale-write detection on facts. Source text is not overwritten by memory changes. Selected model context still needs real-world relevance testing.
+- Desktop automations are daily/weekly prompts run by the signed-in local app using the selected Codex model. They consume subscription allowance. The computer must be awake and the app open. A missed slot runs once on return; the next slot is claimed before inference to avoid automatic duplicate spending after a crash. If a crash interrupts a claimed slot, that slot is not retried automatically. Results are local chats; there is no server URL setup or background Windows service.
+- New/edited PDF, Office, Markdown, SVG and LaTeX exports carry an invisible versioned SHA-256 marker. Original source downloads remain unchanged. The public checker operates entirely in the browser; it finds markers and checks marked bytes, not authorship. Markers are unsigned, forgeable and removable. Re-exporting can remove them; existing old exports are not retroactively marked.
+- Attached templates/examples can guide structure and style when explicitly requested. Office element editing preserves the source archive. General generated-document exports do not guarantee pixel-identical template reproduction.
+
+Automated coverage includes provenance/alteration checks, readable marked PDFs/Office ZIPs, archive validation, account-isolated disk persistence, subject generation and scoring, ZIP transfer, memory editing, a due automation producing one saved chat, compact settings and sidebar layout. Browser model/IPC flows are fixtures, not live subscription evidence.
+
+The existing signed-in Windows profile was migrated successfully: its saved chat remained available and the sidebar began at y=0. The protected Chromium key is copied before Electron initializes; its encrypted-key migration also has an isolated regression check. Code signing and a full install/uninstall lifecycle on a clean machine remain outstanding.

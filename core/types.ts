@@ -8,4 +8,7 @@ export type Message = { id: string; role: 'user' | 'assistant'; content: string;
 export type Chat = { id: string; title: string; spaceId: string | null; messages: Message[]; updated: number };
 export type StoredFile = { remote?:boolean; id: string; name: string; size: number; type: string; created: number; spaceId: string | null };
 export type VisualRecord = { id: string; chatId: string; title: string; created: number };
-export type Automation = { id: string; name: string; prompt: string; schedule: string; enabled: boolean; spaceId: string | null };
+export type Automation = {model?:string;nextRun?:number;lastRun?:number;lastError?:string; id: string; name: string; prompt: string; schedule: string; enabled: boolean; spaceId: string | null };
+
+export type StudyItem={question:string;answer:string;choices?:string[];correct?:number};
+export type StudySet={id:string;spaceId:string;chatId?:string;kind:'quiz'|'flashcards';title:string;items:StudyItem[];created:number;attempts:{at:number;correct:number;total:number}[]};

@@ -21,6 +21,7 @@ export class DesktopAuth {
         this.vault.write("auth-" + Buffer.from(key).toString("hex"), null),
     };
     this.client = createClient(this.config.url, this.config.key, {
+      global:{fetch:(input,init)=>fetch(input,{...init,signal:init?.signal?AbortSignal.any([init.signal,AbortSignal.timeout(12000)]):AbortSignal.timeout(12000)})},
       auth: {
         storage,
         flowType: "pkce",

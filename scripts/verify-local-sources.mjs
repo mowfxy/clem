@@ -1,3 +1,4 @@
+import {mockLocalStorage} from './fixture-local-storage.mjs';
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -78,6 +79,7 @@ try {
           : {},
     });
   });
+  await mockLocalStorage(page);
   await page.goto("http://127.0.0.1:5198/fixture");
   await page.evaluate(async () => {
     const { default: RefreshRuntime } = await import("/@react-refresh");
@@ -116,7 +118,7 @@ try {
     .getByRole("button", { name: "Local research", exact: true })
     .click();
   await page
-    .locator("input[type=file]")
+    .locator("input[type=file][multiple]")
     .first()
     .setInputFiles({
       name: "project-memory.txt",
