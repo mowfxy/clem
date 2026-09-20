@@ -1,3 +1,5 @@
+import {ProfileAvatar, ProfilePicker} from "./ProfileAvatar";
+import "./settings.css";
 import {localSourceContext} from "./source-context";
 import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
@@ -134,11 +136,12 @@ function Modal({
     </dialog>
   );
 }
+function workspaceRoute(){const route=location.hash.slice(1)||"/";return desktop&&!route.startsWith("/app")?"/app":route;}
 export default function App() {
   const [state, setState] = useState<State>(emptyState);
   const [session, setSession] = useState<Session>(defaultSession);
   const [ready, setReady] = useState(false);
-  const [route, setRoute] = useState(location.hash.slice(1) || "/");
+  const [route, setRoute] = useState(workspaceRoute());
   const [chatId, setChatId] = useState<string | null>(null);
   const draftChatId=useRef(crypto.randomUUID());
   useEffect(()=>{if(chatId)draftChatId.current=crypto.randomUUID();},[chatId]);
@@ -159,6 +162,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [apiReady, setApiReady] = useState(false);
   const [settingsTab, setSettingsTab] = useState("General");
+  const [settingsScope,setSettingsScope]=useState("");
   const abort = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -175,7 +179,7 @@ export default function App() {
     setFilter("All");
   };
   useEffect(() => {
-    const cb = () => setRoute(location.hash.slice(1) || "/");
+    const cb = () => setRoute(workspaceRoute());
     window.addEventListener("hashchange", cb);
     void refreshSession();
     const authChanged=()=>{void refreshSession();};window.addEventListener("mowr-auth",authChanged);
@@ -912,13 +916,13 @@ export default function App() {
                 </p>
               )}
             </div>
-            {desktop&&<><LinkedFolders scope={desktopScope}/><MemoryPanel scope={desktopScope} context={JSON.stringify(activeChat?.messages.filter(m=>!m.plan).slice(-10).map(m=>({role:m.role,content:m.content.slice(0,3000)})))||""} source={activeChat?`chat:${activeChat.id}`:"new conversation"} spaces={state.spaces.map(s=>({scope:`${s.kind}:${s.id}`,name:s.name}))}/><TelegramPanel scope={desktopScope}/></>}
+
             <div className="sidebar-bottom">
               <button
                 className="account-button"
                 onClick={() => navigate("/app/account")}
               >
-                <span className="avatar"><Icon name={state.avatar||"new"} size={20}/></span>
+                <span className="avatar"><ProfileAvatar value={state.avatar} size={30}/></span>
                 <span>
                   {state.name}
                   <small>{session.user ? "Signed in" : "Your workspace"}</small>
@@ -1606,6 +1610,8 @@ export default function App() {
                       "General",
                       "Security",
                       "Models",
+                      "Linked folders",
+                      "Telegram",
                       "Memory",
                       "Automations",
                       "Data & privacy",
@@ -1621,9 +1627,11 @@ export default function App() {
                     ))}
                   </nav>
                   <div className="settings-content">
+                    {desktop&&["Memory","Linked folders","Telegram"].includes(settingsTab)&&<label className="field settings-scope">Space<select aria-label="Space" value={settingsScope||desktopScope} onChange={e=>setSettingsScope(e.target.value)}><option value={desktopScope}>Current conversation{activeSpace?` ï¿½ ${activeSpace.name}`:""}</option>{state.spaces.filter(s=>`${s.kind}:${s.id}`!==desktopScope).map(s=><option key={s.id} value={`${s.kind}:${s.id}`}>{s.name}</option>)}</select></label>}
+                    {desktop&&settingsTab==="Linked folders"?<LinkedFolders key={settingsScope||desktopScope} scope={settingsScope||desktopScope}/>:desktop&&settingsTab==="Telegram"?<TelegramPanel key={settingsScope||desktopScope} scope={settingsScope||desktopScope}/>:null}
                     {settingsTab === "Security" ? <SecuritySettings/> : settingsTab === "Contact us" ? <ContactSettings/> : settingsTab === "General" ? (
                       <>
-                        <h2>Profile</h2><div className="profile-preview"><span className="avatar large"><Icon name={state.avatar||"new"} size={30}/></span><div><h3>{state.name}</h3><p className="fine">Choose a profile icon</p></div></div><IconPicker value={state.avatar||"new"} onChange={avatar=>patch(s=>({...s,avatar}))}/>
+                        <h2>Profile</h2><div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h3>{state.name}</h3><p className="fine">A little character for your corner.</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/>
                         <label className="field">
                           What should we call you?
                           <input
@@ -1702,9 +1710,10 @@ export default function App() {
                         </button>
                         
                       </>
-                    ) : settingsTab === "Memory" ? (
+                    ) : settingsTab === "Linked folders" || settingsTab === "Telegram" ? null : settingsTab === "Memory" ? (
                       <>
-                        <h2>Context, with boundaries.</h2>
+                        <h2>Memory</h2>
+                        {desktop&&<MemoryPanel key={settingsScope||desktopScope} scope={settingsScope||desktopScope} context={(settingsScope||desktopScope)===desktopScope?JSON.stringify(activeChat?.messages.filter(m=>!m.plan).slice(-10).map(m=>({role:m.role,content:m.content.slice(0,3000)})))||"":""} source={activeChat&&(!settingsScope||settingsScope===desktopScope)?`chat:${activeChat.id}`:"settings"} spaces={state.spaces.map(s=>({scope:`${s.kind}:${s.id}`,name:s.name}))}/>}
                         <p className="muted">
                           This memory is used only in personal conversations.
                           Every project and subject has its own independent
@@ -1758,7 +1767,7 @@ export default function App() {
               <div className="page account-page">
                 <span className="eyebrow">Your corner of Mowr</span>
                 <h1>Your account.</h1>
-                <div className="profile-preview"><span className="avatar large"><Icon name={state.avatar||"new"} size={30}/></span><div><h2>{state.name}</h2><p className="fine">{session.user?.email}</p></div></div><IconPicker value={state.avatar||"new"} onChange={avatar=>patch(s=>({...s,avatar}))}/><div className="setting-row"><div><h3>Account security</h3><p>Password, email, Google sign-in, and two-factor authentication.</p></div><button onClick={()=>openSettings("Security")}>Manage security</button></div>
+                <div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h2>{state.name}</h2><p className="fine">{session.user?.email}</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/><div className="setting-row"><div><h3>Account security</h3><p>Password, email, Google sign-in, and two-factor authentication.</p></div><button onClick={()=>openSettings("Security")}>Manage security</button></div>
                 <div className="setting-row">
                   <div>
                     <h3>Workspace storage</h3>
@@ -2179,7 +2188,7 @@ export default function App() {
                   )
                     throw Error();
                 } catch {
-                  setToast("Use a YouTube video link, such as youtube.com/watch?v=…");
+                  setToast("Use a YouTube video link, such as youtube.com/watch?v=ï¿½");
                   return;
                 }
                 setDraft(

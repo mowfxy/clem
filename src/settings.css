@@ -1,0 +1,177 @@
+/* Workspace settings share the app's ink, paper shapes and type roles. */
+.workspace .settings-page {
+  max-width: 1120px;
+  margin: 42px auto 0;
+  padding: 0 44px 64px;
+  width: 100%;
+}
+.settings-page .page-heading {
+  padding-bottom: 26px;
+  border-bottom: 1px solid #303030;
+  margin-bottom: 0;
+}
+.settings-page .page-heading h1 {
+  font-family: "Soft Ink Serif", Georgia, serif;
+  font-size: 40px;
+  font-weight: 400;
+  letter-spacing: -1px;
+}
+.settings-page .page-heading p {
+  color: #99998f;
+  font-size: 14px;
+  margin-top: 8px;
+}
+.settings-page .settings-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 42px;
+  margin-top: 28px;
+}
+.settings-page .settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 18px;
+  border-right: 1px solid #303030;
+}
+.settings-page .settings-tabs button {
+  justify-content: flex-start;
+  text-align: left;
+  font-size: 13px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  color: #aaa99f;
+  background: transparent;
+  border: 0;
+}
+.settings-page .settings-tabs button.active {
+  background: #292925;
+  color: #f1efe7;
+}
+.settings-page .settings-tabs button:hover {
+  background: #22221f;
+  color: #eee;
+}
+.settings-page .settings-content {
+  max-width: 660px;
+  min-width: 0;
+  padding: 8px 0;
+}
+.settings-page .settings-content h2 {
+  font-family: "Soft Ink Serif", Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.5px;
+  margin: 0 0 16px;
+}
+.settings-page .settings-content h3 {
+  font-size: 15px;
+  font-weight: 500;
+}
+.settings-page .settings-content .field {
+  max-width: none;
+  gap: 9px;
+  margin: 24px 0;
+}
+.settings-page .settings-content input:not([type="checkbox"]),
+.settings-page .settings-content textarea,
+.settings-page .settings-content select {
+  width: 100%;
+  background: #1c1c1b;
+  border: 1px solid #3b3b36;
+  border-radius: 9px;
+  padding: 12px 14px;
+  font-size: 14px;
+}
+.settings-page .setting-row {
+  padding: 22px 0;
+  gap: 24px;
+  border-bottom: 1px solid #303030;
+  align-items: center;
+}
+.settings-page .setting-row p,
+.settings-page .muted {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #aaa99f;
+}
+.settings-page .profile-preview {
+  margin: 20px 0;
+}
+.profile-preview .avatar.large {
+  width: 76px;
+  height: 76px;
+  background: transparent;
+  border: 0;
+}
+.settings-content .desktop-folder-panel {
+  border: 0;
+  margin: 0 0 24px;
+  padding: 0;
+}
+.settings-content .desktop-folder-panel p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #aaa99f;
+}
+.settings-content .desktop-folder-panel > strong,
+.settings-content .desktop-folder-panel > summary {
+  font-size: 22px;
+  margin-bottom: 20px;
+}
+.settings-content .desktop-folder-panel button {
+  font-size: 13px;
+  padding: 10px 14px;
+  background: #272725;
+  border: 1px solid #41413b;
+  border-radius: 8px;
+  margin: 4px 4px 4px 0;
+}
+.settings-content .settings-scope {
+  padding-bottom: 24px;
+  border-bottom: 1px solid #303030;
+}
+.new-chat-content .greeting-row {
+  align-items: center;
+  gap: 16px;
+}
+.new-chat-content .greeting-row h1 {
+  margin: 0;
+  line-height: 1.15;
+}
+.new-chat-content .greeting-row > .mowr-mark {
+  flex-shrink: 0;
+  display: block;
+}
+.account-button .avatar {
+  background: transparent;
+  border: 0;
+}
+@media (max-width: 760px) {
+  .workspace .settings-page {
+    padding: 0 22px 40px;
+    margin-top: 24px;
+  }
+  .settings-page .settings-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .settings-page .settings-tabs {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid #303030;
+    padding: 0 0 16px;
+  }
+  .settings-page .settings-tabs button {
+    padding: 9px 11px;
+  }
+  .settings-page .setting-row {
+    flex-wrap: wrap;
+  }
+  .new-chat-content .greeting-row h1 {
+    font-size: 30px;
+  }
+}
+.settings-content .desktop-folder-panel label{display:flex;flex-direction:column;gap:9px;margin:18px 0;font-size:13px;color:#c9c8c0}.settings-content .desktop-folder-panel label:has(input[type=checkbox]){flex-direction:row;align-items:center;gap:10px}.settings-content .desktop-folder-panel form{padding:20px;background:#191918;border:1px solid #33332f;border-radius:12px;margin:22px 0}.settings-content .desktop-folder-panel>summary{list-style:none;font-size:16px;color:#d3d2c9;padding-bottom:16px;border-bottom:1px solid #303030}.settings-content .desktop-folder-panel>summary::-webkit-details-marker{display:none}.settings-content .desktop-folder-panel input[type=checkbox]{accent-color:#b6c39e}.settings-content .desktop-folder-panel>button{margin-top:12px;margin-bottom:12px}.settings-content .desktop-folder-panel form button[type=submit]{background:#e5e3da;color:#242421}
