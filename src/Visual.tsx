@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { Icon } from './Icons';
-import { download } from './store';
+import { downloadMade } from './store';
 
 type Data = { points:{x:number;y:number}[]; apex:{x:number;y:number};range:number;flightTime:number;maxHeight:number;svg:string;latex:string };
 export default function Visual({compact=false}:{compact?:boolean}){
@@ -34,6 +34,6 @@ export default function Visual({compact=false}:{compact?:boolean}){
   {view==='3d'?<div className="scene" ref={host} aria-label="Three-dimensional trajectory. Drag to orbit, scroll to zoom."/>:data&&<TrajectoryDiagram {...data}/>}
   <div className="visual-controls"><label>Launch angle <span>{angle}°</span><input aria-label="Launch angle" type="range" min="10" max="80" value={angle} onChange={e=>setAngle(+e.target.value)}/></label><label>Initial speed <span>{speed} m/s</span><input aria-label="Initial speed" type="range" min="5" max="30" value={speed} onChange={e=>setSpeed(+e.target.value)}/></label></div>
   <div className="visual-caption">{data?`Flight time ${data.flightTime.toFixed(2)} s · Gravity 9.81 m/s² · No air resistance`:'Deterministic physics · Kinetra + Three.js'}<span>Drag to orbit</span></div>
-  {!compact&&<div className="visual-exports"><button disabled={!data} onClick={()=>data&&download(new Blob([data.svg],{type:'image/svg+xml'}),'projectile.svg')}><Icon name="download" size={17}/> Save SVG</button><button disabled={!data} onClick={()=>data&&download(new Blob([data.latex],{type:'text/plain'}),'projectile.tex')}>LaTeX source</button><button disabled={!data} onClick={()=>{setView("diagram");setTimeout(()=>window.print(),150);}}>Print / PDF</button></div>}
+  {!compact&&<div className="visual-exports"><button disabled={!data} onClick={()=>data&&downloadMade(new Blob([data.svg],{type:'image/svg+xml'}),'projectile.svg')}><Icon name="download" size={17}/> Save SVG</button><button disabled={!data} onClick={()=>data&&downloadMade(new Blob([data.latex],{type:'text/plain'}),'projectile.tex')}>LaTeX source</button><button disabled={!data} onClick={()=>{if(data)void import("./visual-pdf").then(m=>m.exportDiagramPdf(data.svg)).catch(()=>setError("Could not export PDF. Please try again."));}}>Save PDF</button></div>}
  </section>;
 }

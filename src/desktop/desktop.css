@@ -326,14 +326,15 @@ body:has(.desktop-content) {
   overflow: hidden;
 }
 .desktop-content .sidebar {
-  top: 40px;
+  top: 0;
   bottom: 0;
-  height: calc(100dvh - 40px);
+  height: 100dvh;
   padding-top: 18px;
   overflow-y: auto;
 }
 .desktop-titlebar:has(+ .desktop-content .sidebar) {
-  background: linear-gradient(to right, #111 244px, #141414 244px);
+  left: 244px;
+  background: #141414;
 }
 .desktop-content .workspace {
   height: 100%;
@@ -383,3 +384,9 @@ body:has(.desktop-content) {
     margin-top: 12px;
   }
 }
+.desktop-content .sidebar>.brand{-webkit-app-region:drag;app-region:drag}
+
+@media(max-width:760px){.desktop-titlebar:has(+.desktop-content .sidebar){left:0}}
+
+@media(min-width:1600px){.desktop-titlebar:has(+.desktop-content .sidebar){left:265px}}
+@media(min-width:761px) and (max-width:1150px){.desktop-titlebar:has(+.desktop-content .sidebar){left:218px}}

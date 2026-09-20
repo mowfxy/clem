@@ -1,3 +1,6 @@
+import {WorkspaceDisk} from "./workspace-disk";
+import {cp,access} from "node:fs/promises";
+import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
 import { securityActions, handleSecurity } from "./security";
 import {
@@ -62,11 +65,33 @@ app.on("before-quit", () => {
   codex?.stop();
   telegram?.stop();
 });
+const workspaceRoot=app.commandLine.hasSwitch('user-data-dir')?join(app.getPath('userData'),'Workspace'):join(app.getPath('documents'),'Mowr');
+const previousSession=app.getPath('sessionData');
+const durableSession=join(workspaceRoot,'Local data');
+// Chromium's OSCrypt key lives in Local State. Copy it before Electron becomes ready,
+// otherwise DPAPI-protected vault entries remain encrypted with an unavailable key.
+mkdirSync(durableSession,{recursive:true});
+const cryptoMigration=join(durableSession,'.crypto-migration-v1');
+if(!existsSync(cryptoMigration)){
+  const source=join(previousSession,'Local State'),target=join(durableSession,'Local State');
+  if(existsSync(source)&&source!==target){
+    const backup=join(durableSession,'.pre-migration-local-state');
+    if(existsSync(target)&&!existsSync(backup))copyFileSync(target,backup);
+    copyFileSync(source,target);
+  }
+  writeFileSync(cryptoMigration,'1');
+}
+app.setPath('sessionData',durableSession);
+const disk=new WorkspaceDisk(workspaceRoot);
 void app.whenReady().then(async () => {
+  await mkdir(durableSession,{recursive:true});
+  const migrationMarker=join(durableSession,'.migration-complete');
+  try{await access(migrationMarker);}catch{for(const name of ['IndexedDB','Local Storage','Session Storage']){const source=join(previousSession,name);try{await access(source);}catch{continue;}await cp(source,join(durableSession,name),{recursive:true,force:false,errorOnExist:false});}await writeFile(migrationMarker,'1');}
   app.setAppUserModelId("com.mowrai.desktop");
   const vault = new Vault(join(app.getPath("userData"), "protected"));
   const auth = new DesktopAuth(vault, config);
-  await auth.initialize();
+  // Restoring a session can require the network. Always open the window first.
+  void auth.initialize().catch(()=>{});
   const essentialSync=new EssentialSync(vault,auth);
   const local = join(app.getPath("userData"), "runtime");
   await mkdir(local, { recursive: true });
@@ -273,6 +298,12 @@ void app.whenReady().then(async () => {
         drive: true,
         scheduler: false,
       });
+    }
+    if(url.pathname==='/api/local/state'||/^\/api\/local\/files\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
+      try{const user=await auth.user();if(!user)return Response.json({error:'Sign in first.'},{status:401});if(request.headers.get('X-Mowr-Owner')!==user.id)return Response.json({error:'Account changed.'},{status:409});
+      if(url.pathname.endsWith('/state')){if(request.method==='GET')return Response.json(await disk.readState(user.id));if(request.method==='PUT'){const value=await request.json();await disk.writeState(user.id,value);return Response.json({ok:true});}}
+      else {const id=url.pathname.split('/').at(-1)!;if(request.method==='GET'){const file=await disk.readFile(user.id,id);return file?new Response(new Uint8Array(file)):new Response(null,{status:404});}if(request.method==='PUT'){await disk.writeFile(user.id,id,new Uint8Array(await request.arrayBuffer()));return Response.json({ok:true});}if(request.method==='DELETE'){await disk.deleteFile(user.id,id);return Response.json({ok:true});}}
+      return new Response(null,{status:405});}catch{return Response.json({error:'Could not access your Documents/Mowr workspace. Check available disk space and permissions.'},{status:500});}
     }
     if (url.pathname === "/api/models") {
       const user = await auth.user();
@@ -491,6 +522,16 @@ void app.whenReady().then(async () => {
         syncError:synced.error,
         records: state.records.filter((m) => m.scope === request.scope),
       };
+    }
+    if(request.action==='memoryEdit'){
+      let state=await loadMemory();
+      const current=state.records.filter(m=>m.scope===request.scope&&m.confirmed&&!m.supersededBy);
+      const expected=new Map(request.expected.map(m=>[m.id,m.text]));
+      if(current.length!==expected.size||current.some(m=>expected.get(m.id)!==m.text))throw Error('Memory changed. Reopen it before trying again.');
+      if(new Set(request.records.map(m=>m.id)).size!==request.records.length||request.records.some(m=>!expected.has(m.id)))throw Error('Invalid memory update.');
+      state=forgetMemory(state,current.filter(m=>!request.records.some(x=>x.id===m.id)).map(m=>m.id));
+      for(const edited of request.records){const before=current.find(m=>m.id===edited.id)!;if(before.text!==edited.text)state=putMemory(state,{...before,text:edited.text,source:{id:'user:'+randomBytes(16).toString('hex'),locator:'Updated by you in memory chat',at:new Date().toISOString()}});}
+      await vault.write(memoryKey,state);return {ok:true};
     }
     if (request.action === "memoryClear") {
       const state = await loadMemory();

@@ -1,0 +1,157 @@
+.settings-feature {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 12px;
+  background: #20291c;
+  margin-bottom: 24px;
+}
+.settings-feature.automation {
+  background: #23252e;
+}
+.settings-feature > div {
+  flex: 1;
+  min-width: 0;
+}
+.settings-feature svg {
+  width: 130px;
+  flex-shrink: 0;
+}
+.settings-feature .eyebrow {
+  font-size: 9px !important;
+  color: #aab49f;
+}
+.settings-page .settings-content .settings-feature h3 {
+  font:
+    400 23px/1.15 "Soft Ink Serif",
+    Georgia,
+    serif;
+  margin: 10px 0;
+}
+.settings-page .settings-content .settings-feature p {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #b3b8ab;
+}
+.feature-hand {
+  transform-origin: 73px 57px;
+  animation: feature-clock 18s linear infinite;
+}
+.feature-spark {
+  animation: feature-glow 5s ease-in-out infinite;
+}
+@keyframes feature-clock {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes feature-glow {
+  50% {
+    opacity: 0.3;
+    transform: translateY(-3px);
+  }
+}
+.memory-summary {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.8;
+  padding: 20px;
+  border: 1px solid #3a3a33;
+  border-radius: 9px;
+  background: #22231e;
+}
+.study-tabs,
+.subject-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.study-item {
+  padding: 18px 0;
+  border-top: 1px solid #373731;
+}
+.study-item h3 {
+  font-size: 15px;
+}
+.study-item button {
+  font-size: 12px;
+}
+.study-card {
+  padding: 20px;
+  border: 1px solid #44443a;
+  border-radius: 10px;
+  margin: 12px 0;
+}
+.study-card label {
+  display: block;
+  padding: 8px;
+}
+.settings-chat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #34342f;
+}
+.settings-chat-row > span {
+  flex: 1;
+}
+.settings-chat-row button {
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-feature svg * {
+    animation: none !important;
+  }
+}
+[data-quiet="true"] .settings-feature svg * {
+  animation: none !important;
+}
+@media (max-width: 600px) {
+  .settings-feature {
+    padding: 18px;
+  }
+  .settings-feature svg {
+    width: 85px;
+  }
+}
+
+.subject-study .study-tabs button[aria-pressed="true"] {
+  background: #34362d;
+  border-color: #626851;
+  color: #f0eee5;
+}
+.subject-study .study-tabs button,
+.subject-tools button,
+.subject-import {
+  border: 1px solid #44443e;
+  border-radius: 7px;
+  font-size: 12px;
+  padding: 8px 11px;
+}
+.subject-import {
+  margin-bottom: 18px;
+}
+.study-card input {
+  margin-right: 9px;
+  accent-color: #aebc98;
+}
+.study-card h4 {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.subject-study > h3 {
+  margin-top: 25px;
+}
+.study-item p {
+  font-size: 12px;
+}
+.subject-study {
+  margin-bottom: 24px;
+}
+
+.settings-feature[data-motion="false"] svg * {
+  animation-play-state: paused !important;
+}

@@ -1,0 +1,68 @@
+.provenance-page {
+  min-height: 100dvh;
+  background: #141414;
+  color: #eeece5;
+  padding: 32px 6vw;
+  display: flex;
+  flex-direction: column;
+}
+.provenance-page header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+}
+.provenance-page section {
+  width: min(100%, 540px);
+  margin: auto;
+  padding: 70px 0;
+}
+.provenance-page h1 {
+  font:
+    400 clamp(36px, 5vw, 56px) / 1.08 "Soft Ink Serif",
+    Georgia,
+    serif;
+  margin: 18px 0 24px;
+  letter-spacing: -1.5px;
+}
+.provenance-page p {
+  font-size: 15px;
+  color: #aaa99e;
+  line-height: 1.7;
+}
+.checker-drop {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  margin: 32px 0;
+  border: 1px dashed #626258;
+  border-radius: 12px;
+  background: #1e201a;
+  font-size: 14px;
+}
+.checker-drop input {
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.checker-result {
+  background: #292c22;
+  border: 1px solid #444b38;
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 24px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.provenance-page small,
+.provenance-page footer {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #919187;
+}
+.provenance-page footer {
+  padding-top: 24px;
+  border-top: 1px solid #30302c;
+}
