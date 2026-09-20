@@ -314,6 +314,7 @@ export function DrivePicker({
   session: Session;
   onFile: (file: File) => void;
 }) {
+  const [connected,setConnected]=useState(false);
   const [files, setFiles] = useState<DriveFile[]>([]);
   const loadVersion=useRef(0);
   const [error, setError] = useState("");
@@ -330,6 +331,7 @@ export function DrivePicker({
       if(version!==loadVersion.current)return;
       setFiles((f) => (next ? [...f, ...data.files] : data.files));
       setPage(data.nextPageToken);
+      setConnected(true);
       setError("");
     } catch (e) {
       if(version===loadVersion.current)setError((e as Error).message);
@@ -344,10 +346,9 @@ export function DrivePicker({
     return () => {loadVersion.current++;window.removeEventListener("focus", refresh);};
   }, [folder, session.user?.id, session.drive]);
   return (
-    <div>
+    <div className="drive-picker">
       <p className="muted">
-        Choose a document or open a folder. Only selected documents are added to
-        this conversation.
+        Choose files to add to this conversation.
       </p>
       {session.user && session.drive ? (
         <>
@@ -358,13 +359,14 @@ export function DrivePicker({
                 else window.location.href = "/api/drive/connect";
               }}
             >
-              Connect / reconnect Drive
+              Connect Drive
             </button>
             <button disabled={busy} onClick={()=>void load()}>Refresh</button>
-            <button disabled={busy} onClick={()=>{setBusy(true);void api("drive/connection","DELETE").then(()=>{setFiles([]);setPage(undefined);setError("");}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>Disconnect</button>
+            {connected&&<button disabled={busy} onClick={()=>{setBusy(true);void api("drive/connection","DELETE").then(()=>{setConnected(false);setFiles([]);setPage(undefined);setError("");}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>Disconnect</button>}
             {folder && <button onClick={() => setFolder("")}>All files</button>}
           </div>
           {busy && <p className="fine">Loading Drive…</p>}
+          {!busy&&!error&&connected&&!files.length&&<p className="fine">No files in this folder.</p>}
           <div className="drive-list">
             {files.map((f) => (
               <button
@@ -411,9 +413,7 @@ export function DrivePicker({
         </>
       ) : (
         <p className="setup-note">
-          Sign in and configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, APP_URL,
-          and DATABASE_URL in .env.local. Add APP_URL/api/drive/callback as your
-          Google OAuth redirect URL.
+          Google Drive is not available yet. Sign in to Mowr and try again.
         </p>
       )}
       {error && <p className="inline-error">{error}</p>}

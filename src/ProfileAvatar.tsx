@@ -87,12 +87,12 @@ export function ProfileAvatar({
     >
       <path
         d={c.body}
-        fill={c.color}
-        stroke="#eeeade"
-        strokeWidth="1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
         strokeLinejoin="round"
       />
-      <g className="character-face" fill="#292b2b">
+      <g className="character-face" fill="currentColor">
         <g className="character-eyes">
           <ellipse cx="40" cy="52" rx="2.5" ry="3.4" />
           <ellipse cx="57" cy="52" rx="2.5" ry="3.4" />
@@ -100,7 +100,7 @@ export function ProfileAvatar({
         <path
           d="M43 62Q49 67 55 61"
           fill="none"
-          stroke="#292b2b"
+          stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
         />
@@ -109,7 +109,7 @@ export function ProfileAvatar({
         className="character-arm"
         d="M69 61Q78 69 83 59"
         fill="none"
-        stroke="#eeeade"
+        stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
       />

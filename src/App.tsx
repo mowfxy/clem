@@ -1,3 +1,4 @@
+import {SettingsPopup} from "./SettingsPopup";
 import {ProfileAvatar, ProfilePicker} from "./ProfileAvatar";
 import "./settings.css";
 import {localSourceContext} from "./source-context";
@@ -39,7 +40,6 @@ import {
   deleteBlob,
   download,
   sizeLabel,
-  MAX_BYTES,
 } from "./store";
 import type { State } from "./store";
 import { Icon, Logo } from "./Icons";
@@ -119,7 +119,7 @@ function Modal({
       ref={ref}
       onCancel={onClose}
       onClick={(e) => {
-        if (e.target === ref.current) onClose();
+        if(e.target===ref.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)onClose();}
       }}
     >
       <div className="modal-heading">
@@ -162,7 +162,6 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [apiReady, setApiReady] = useState(false);
   const [settingsTab, setSettingsTab] = useState("General");
-  const [settingsScope,setSettingsScope]=useState("");
   const abort = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -657,20 +656,13 @@ export default function App() {
     const batch = Array.from(files);
     const owner=ownerRef.current;
     fileQueue.current = fileQueue.current.then(async () => {
-      let used = stateRef.current.files.reduce((n, f) => n + f.size, 0);
       const added: StoredFile[] = [];
       for (const file of batch) {
         if(owner!==ownerRef.current)return;
-        if(file.size>52_428_800){setToast("Each file can be up to 50 MB. Split larger files before uploading.");continue;}
-        if (used + file.size > MAX_BYTES) {
-          setToast("This file would exceed your 1.5 GB storage limit.");
-          continue;
-        }
         const id = uid();
         try {
           const remote = false;
           await storeBlob(id, file);
-          used += file.size;
           added.push({
             id,
             name: file.name,
@@ -1510,11 +1502,10 @@ export default function App() {
                   <div>
                     <span>
                       {sizeLabel(bytes)}{" "}
-                      <span className="muted">of 1.5 GB</span>
+                      <span className="muted">used</span>
                     </span>
                     <span className="fine">Stored on this device</span>
                   </div>
-                  <progress max={MAX_BYTES} value={bytes} />
                 </div>
                 <div className="search-field">
                   <Icon name="research" size={19} />
@@ -1627,11 +1618,10 @@ export default function App() {
                     ))}
                   </nav>
                   <div className="settings-content">
-                    {desktop&&["Memory","Linked folders","Telegram"].includes(settingsTab)&&<label className="field settings-scope">Space<select aria-label="Space" value={settingsScope||desktopScope} onChange={e=>setSettingsScope(e.target.value)}><option value={desktopScope}>Current conversation{activeSpace?` � ${activeSpace.name}`:""}</option>{state.spaces.filter(s=>`${s.kind}:${s.id}`!==desktopScope).map(s=><option key={s.id} value={`${s.kind}:${s.id}`}>{s.name}</option>)}</select></label>}
-                    {desktop&&settingsTab==="Linked folders"?<LinkedFolders key={settingsScope||desktopScope} scope={settingsScope||desktopScope}/>:desktop&&settingsTab==="Telegram"?<TelegramPanel key={settingsScope||desktopScope} scope={settingsScope||desktopScope}/>:null}
-                    {settingsTab === "Security" ? <SecuritySettings/> : settingsTab === "Contact us" ? <ContactSettings/> : settingsTab === "General" ? (
+                    {desktop&&settingsTab==="Linked folders"?<SettingsPopup title="Linked folders" description="Choose folders available to this conversation or project." action="Manage folders"><LinkedFolders scope={desktopScope}/></SettingsPopup>:desktop&&settingsTab==="Telegram"?<SettingsPopup title="Telegram" description="Connect your bot to this workspace." action="Connect"><TelegramPanel scope={desktopScope}/></SettingsPopup>:null}
+                    {settingsTab === "Security" ? <SecuritySettings/> : settingsTab === "Contact us" ? <SettingsPopup title="Contact us" description="Ask for help, report a bug, or share an idea." action="Write a message"><ContactSettings/></SettingsPopup> : settingsTab === "General" ? (
                       <>
-                        <h2>Profile</h2><div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h3>{state.name}</h3><p className="fine">A little character for your corner.</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/>
+<SettingsPopup title="Profile" description={state.name} action="Edit profile">                        <h2>Profile</h2><div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h3>{state.name}</h3><p className="fine">A little character for your corner.</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/>
                         <label className="field">
                           What should we call you?
                           <input
@@ -1642,7 +1632,7 @@ export default function App() {
                             }
                           />
                         </label>
-                        <div className="setting-row">
+</SettingsPopup>                        <div className="setting-row">
                           <div>
                             <h3>A quieter workspace</h3>
                             <p>
@@ -1671,7 +1661,7 @@ export default function App() {
                       </>
                     ) : settingsTab === "Models" ? (
                       <>
-                        <h2>Your models, together.</h2>
+                        <h2>Models</h2>
                         <button
                           className="primary"
                           onClick={() => setModal("connect-model")}
@@ -1712,9 +1702,9 @@ export default function App() {
                       </>
                     ) : settingsTab === "Linked folders" || settingsTab === "Telegram" ? null : settingsTab === "Memory" ? (
                       <>
-                        <h2>Memory</h2>
-                        {desktop&&<MemoryPanel key={settingsScope||desktopScope} scope={settingsScope||desktopScope} context={(settingsScope||desktopScope)===desktopScope?JSON.stringify(activeChat?.messages.filter(m=>!m.plan).slice(-10).map(m=>({role:m.role,content:m.content.slice(0,3000)})))||"":""} source={activeChat&&(!settingsScope||settingsScope===desktopScope)?`chat:${activeChat.id}`:"settings"} spaces={state.spaces.map(s=>({scope:`${s.kind}:${s.id}`,name:s.name}))}/>}
-                        <p className="muted">
+<SettingsPopup title="Conversation memory" description="Review facts saved for your current conversation or project." action="Review memory">                        <h2>Memory</h2>
+                        {desktop&&<MemoryPanel scope={desktopScope} context={true?JSON.stringify(activeChat?.messages.filter(m=>!m.plan).slice(-10).map(m=>({role:m.role,content:m.content.slice(0,3000)})))||"":""} source={activeChat?`chat:${activeChat.id}`:"settings"} spaces={state.spaces.map(s=>({scope:`${s.kind}:${s.id}`,name:s.name}))}/>}
+</SettingsPopup><SettingsPopup title="Personal preferences" description="Background and preferences for personal conversations." action="Edit preferences">                        <p className="muted">
                           This memory is used only in personal conversations.
                           Every project and subject has its own independent
                           memory.
@@ -1733,9 +1723,9 @@ export default function App() {
                         <span className="fine">
                           Saved to your workspace as you write.
                         </span>
-                      </>
+</SettingsPopup>                      </>
                     ) : settingsTab === "Automations" ? (
-                      <AutomationPanel session={session} models={models} />
+                      <SettingsPopup title="Automations" description="Manage scheduled work and recurring tasks." action="Manage automations"><AutomationPanel session={session} models={models} /></SettingsPopup>
                     ) : (
                       <>
                         <h2>Your work is yours.</h2>
@@ -1772,7 +1762,7 @@ export default function App() {
                   <div>
                     <h3>Workspace storage</h3>
                     <p>
-                      {sizeLabel(bytes)} of 1.5 GB ·{" "}
+                      {sizeLabel(bytes)} used ·{" "}
                       Saved on this device
                     </p>
                   </div>

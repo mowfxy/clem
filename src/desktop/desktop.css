@@ -265,12 +265,121 @@
   color: #eda699;
   margin-top: 16px;
 }
-.setup-card .setup-legal{opacity:1;color:#999}
+.setup-card .setup-legal {
+  opacity: 1;
+  color: #999;
+}
 
-.setup-idle-art{width:230px;height:165px;margin:-16px auto 8px;overflow:hidden}
-.setup-idle-art svg{display:block;width:100%;height:100%}
+.setup-idle-art {
+  width: 230px;
+  height: 165px;
+  margin: -16px auto 8px;
+  overflow: hidden;
+}
+.setup-idle-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 
-.setup-welcome-heading{display:flex;align-items:center;justify-content:center;gap:13px;margin:18px 0 0}
-.setup-welcome-heading h1{margin:0;white-space:nowrap}
-.setup-welcome-heading .mowr-mark{flex-shrink:0;width:36px;height:36px}
-@media(max-width:500px){.setup-welcome-heading{gap:9px}.setup-welcome-heading h1{font-size:29px}.setup-welcome-heading .mowr-mark{width:29px;height:29px}}
+.setup-welcome-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  margin: 18px 0 0;
+}
+.setup-welcome-heading h1 {
+  margin: 0;
+  white-space: nowrap;
+}
+.setup-welcome-heading .mowr-mark {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+}
+@media (max-width: 500px) {
+  .setup-welcome-heading {
+    gap: 9px;
+  }
+  .setup-welcome-heading h1 {
+    font-size: 29px;
+  }
+  .setup-welcome-heading .mowr-mark {
+    width: 29px;
+    height: 29px;
+  }
+}
+/* The desktop title bar and content share one viewport, never two. */
+html:has(.desktop-content),
+body:has(.desktop-content) {
+  height: 100%;
+  overflow: hidden;
+}
+.desktop-content {
+  height: calc(100dvh - 40px);
+  overflow: hidden;
+}
+.desktop-content .app {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.desktop-content .sidebar {
+  top: 40px;
+  bottom: 0;
+  height: calc(100dvh - 40px);
+  padding-top: 18px;
+  overflow-y: auto;
+}
+.desktop-titlebar:has(+ .desktop-content .sidebar) {
+  background: linear-gradient(to right, #111 244px, #141414 244px);
+}
+.desktop-content .workspace {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.desktop-content .chat-view {
+  min-height: calc(100dvh - 92px);
+}
+.desktop-content .chat-view:not(.has-messages) {
+  height: calc(100dvh - 92px);
+  min-height: 0;
+  overflow: auto;
+}
+.desktop-content .new-chat-content {
+  padding: 20px 0;
+  transform: none;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #454540 transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #454540;
+  border: 2px solid #141414;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #62625a;
+}
+@media (max-height: 580px) {
+  .desktop-content .new-chat-content {
+    padding: 12px 0;
+  }
+  .desktop-content .greeting-row {
+    margin-bottom: 20px;
+  }
+  .desktop-content .suggestions {
+    margin-top: 12px;
+  }
+}

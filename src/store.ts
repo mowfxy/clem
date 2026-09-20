@@ -1,6 +1,5 @@
 import { get, set, del } from 'idb-keyval';
 import type { Chat, Space, StoredFile, Skill, VisualRecord, Automation } from '../core/types';
-export const MAX_BYTES = 1_500_000_000;
 export type State = { essentialNotes?:{id:string;text:string}[]; chats:Chat[];spaces:Space[];files:StoredFile[];skills:Skill[];visuals:VisualRecord[];automations:Automation[];avatar?:string;name:string;memory:string;quiet:boolean };
 export const emptyState:State={chats:[],spaces:[],files:[],skills:[],visuals:[],automations:[],name:'Thinker',memory:'',quiet:false};
 let namespace='guest';

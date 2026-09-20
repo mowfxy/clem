@@ -1,3 +1,4 @@
+import { SettingsPopup } from "../SettingsPopup";
 import { useEffect, useState } from "react";
 import { desktop } from "./bridge";
 export function LocalSecurity() {
@@ -35,126 +36,149 @@ export function LocalSecurity() {
       <p>
         {info?.email} · {info?.verified ? "Verified" : "Verification required"}
       </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const form = e.currentTarget,
-            password = String(new FormData(form).get("password"));
-          void run(async () => {
-            await desktop!.invoke({ action: "passwordChange", password });
-            form.reset();
-          });
-        }}
+      <SettingsPopup
+        title="Password"
+        description="Update the password you use to sign in."
+        action="Change"
       >
-        <h3>Password</h3>
-        <label>
-          New password
-          <input
-            name="password"
-            type="password"
-            minLength={12}
-            maxLength={128}
-            autoComplete="new-password"
-            required
-          />
-        </label>
-        <button disabled={busy}>Save password</button>
-      </form>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const email = String(new FormData(e.currentTarget).get("email"));
-          void run(
-            () => desktop!.invoke({ action: "emailChange", email }),
-            "Confirm the change using the links sent by email.",
-          );
-        }}
-      >
-        <h3>Email</h3>
-        <label>
-          New email
-          <input name="email" type="email" required />
-        </label>
-        <button disabled={busy}>Change email</button>
-      </form>
-      <h3>Authenticator</h3>
-      {info?.factors.map((factor) => (
-        <form
-          key={factor.id}
-          onSubmit={(e) => {
-            e.preventDefault();
-            const code = String(new FormData(e.currentTarget).get("code"));
-            void run(() =>
-              desktop!.invoke({
-                action: "mfaRemove",
-                factorId: factor.id,
-                code,
-              }),
-            );
-          }}
-        >
-          <p>{factor.name}</p>
-          <label>
-            Current code
-            <input
-              name="code"
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              required
-            />
-          </label>
-          <button disabled={busy}>Verify and remove</button>
-        </form>
-      ))}
-      {enrollment ? (
+        {" "}
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const code = String(new FormData(e.currentTarget).get("code"));
+            const form = e.currentTarget,
+              password = String(new FormData(form).get("password"));
             void run(async () => {
-              await desktop!.invoke({
-                action: "mfa",
-                factorId: enrollment.id,
-                code,
-              });
-              setEnrollment(null);
+              await desktop!.invoke({ action: "passwordChange", password });
+              form.reset();
             });
           }}
         >
-          <img
-            width="220"
-            height="220"
-            src={
-              "data:image/svg+xml;charset=utf-8," +
-              encodeURIComponent(enrollment.qr)
-            }
-            alt="Scan this QR code with your authenticator"
-          />
+          <h3>Password</h3>
           <label>
-            Authenticator code
+            New password
             <input
-              name="code"
-              inputMode="numeric"
-              pattern="[0-9]{6}"
+              name="password"
+              type="password"
+              minLength={12}
+              maxLength={128}
+              autoComplete="new-password"
               required
             />
           </label>
-          <button disabled={busy}>Verify and enable</button>
+          <button disabled={busy}>Save password</button>
         </form>
-      ) : (
-        <button
-          disabled={busy || !!info?.factors.length}
-          onClick={() =>
+        {error && <p role="status">{error}</p>}
+      </SettingsPopup>
+      <SettingsPopup
+        title="Email address"
+        description={info?.email}
+        action="Change"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const email = String(new FormData(e.currentTarget).get("email"));
             void run(
-              async () =>
-                setEnrollment(await desktop!.invoke({ action: "mfaEnroll" })),
-              "Scan the code to finish setup.",
-            )
-          }
+              () => desktop!.invoke({ action: "emailChange", email }),
+              "Confirm the change using the links sent by email.",
+            );
+          }}
         >
-          Add authenticator
-        </button>
-      )}
+          <h3>Email</h3>
+          <label>
+            New email
+            <input name="email" type="email" required />
+          </label>
+          <button disabled={busy}>Change email</button>
+        </form>
+        {error && <p role="status">{error}</p>}
+      </SettingsPopup>
+      <SettingsPopup
+        title="Authenticator"
+        description="Protect your account with a verification code."
+        action="Manage"
+      >
+        {" "}
+        <h3>Authenticator</h3>
+        {info?.factors.map((factor) => (
+          <form
+            key={factor.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const code = String(new FormData(e.currentTarget).get("code"));
+              void run(() =>
+                desktop!.invoke({
+                  action: "mfaRemove",
+                  factorId: factor.id,
+                  code,
+                }),
+              );
+            }}
+          >
+            <p>{factor.name}</p>
+            <label>
+              Current code
+              <input
+                name="code"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                required
+              />
+            </label>
+            <button disabled={busy}>Verify and remove</button>
+          </form>
+        ))}
+        {enrollment ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const code = String(new FormData(e.currentTarget).get("code"));
+              void run(async () => {
+                await desktop!.invoke({
+                  action: "mfa",
+                  factorId: enrollment.id,
+                  code,
+                });
+                setEnrollment(null);
+              });
+            }}
+          >
+            <img
+              width="220"
+              height="220"
+              src={
+                "data:image/svg+xml;charset=utf-8," +
+                encodeURIComponent(enrollment.qr)
+              }
+              alt="Scan this QR code with your authenticator"
+            />
+            <label>
+              Authenticator code
+              <input
+                name="code"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                required
+              />
+            </label>
+            <button disabled={busy}>Verify and enable</button>
+          </form>
+        ) : (
+          <button
+            disabled={busy || !!info?.factors.length}
+            onClick={() =>
+              void run(
+                async () =>
+                  setEnrollment(await desktop!.invoke({ action: "mfaEnroll" })),
+                "Scan the code to finish setup.",
+              )
+            }
+          >
+            Add authenticator
+          </button>
+        )}
+        {error && <p role="status">{error}</p>}
+      </SettingsPopup>{" "}
       <h3>Sessions</h3>
       <button
         disabled={busy}
@@ -168,33 +192,40 @@ export function LocalSecurity() {
         Revoke other sessions
       </button>
       {info?.google && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const form = e.currentTarget,
-              password = String(new FormData(form).get("password"));
-            void run(async () => {
-              await desktop!.invoke({ action: "unlinkGoogle", password });
-              form.reset();
-            });
-          }}
+        <SettingsPopup
+          title="Google account"
+          description="Manage your linked Google sign-in."
+          action="Manage"
         >
-          <h3>Linked Google account</h3>
-          <p>
-            Verify a working password before unlinking, so you can still sign
-            in.
-          </p>
-          <label>
-            Current password
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          <button disabled={busy}>Verify password and unlink</button>
-        </form>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.currentTarget,
+                password = String(new FormData(form).get("password"));
+              void run(async () => {
+                await desktop!.invoke({ action: "unlinkGoogle", password });
+                form.reset();
+              });
+            }}
+          >
+            <h3>Linked Google account</h3>
+            <p>
+              Verify a working password before unlinking, so you can still sign
+              in.
+            </p>
+            <label>
+              Current password
+              <input
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
+            </label>
+            <button disabled={busy}>Verify password and unlink</button>
+          </form>
+          {error && <p role="status">{error}</p>}
+        </SettingsPopup>
       )}
       {error && <p role="status">{error}</p>}
     </section>

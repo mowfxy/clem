@@ -1,135 +1,216 @@
-/* Workspace settings share the app's ink, paper shapes and type roles. */
-.workspace .settings-page {
-  max-width: 1120px;
-  margin: 42px auto 0;
-  padding: 0 44px 64px;
+/* Compact settings; the surrounding workspace owns scrolling. */
+.settings-page {
   width: 100%;
+  max-width: 1040px !important;
+  margin: 28px auto 0 !important;
+  padding: 0 36px 48px !important;
 }
 .settings-page .page-heading {
-  padding-bottom: 26px;
   border-bottom: 1px solid #303030;
+  padding-bottom: 22px;
   margin-bottom: 0;
 }
 .settings-page .page-heading h1 {
   font-family: "Soft Ink Serif", Georgia, serif;
-  font-size: 40px;
+  font-size: 30px;
   font-weight: 400;
-  letter-spacing: -1px;
 }
 .settings-page .page-heading p {
-  color: #99998f;
-  font-size: 14px;
-  margin-top: 8px;
+  font-size: 13px;
+  color: #999;
 }
 .settings-page .settings-layout {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 42px;
-  margin-top: 28px;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 34px;
+  margin-top: 24px;
+  align-items: start;
 }
 .settings-page .settings-tabs {
+  position: sticky;
+  top: 24px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-right: 18px;
-  border-right: 1px solid #303030;
+  gap: 3px;
+  max-height: calc(100dvh - 110px);
+  overflow: auto;
+  border: 0;
+  padding: 0 12px 0 0;
 }
 .settings-page .settings-tabs button {
-  justify-content: flex-start;
+  font-size: 12px;
+  padding: 10px 12px;
   text-align: left;
-  font-size: 13px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  color: #aaa99f;
-  background: transparent;
+  justify-content: flex-start;
+  background: none;
   border: 0;
+  border-radius: 7px;
+  color: #aaa;
 }
 .settings-page .settings-tabs button.active {
   background: #292925;
-  color: #f1efe7;
-}
-.settings-page .settings-tabs button:hover {
-  background: #22221f;
   color: #eee;
 }
 .settings-page .settings-content {
-  max-width: 660px;
   min-width: 0;
-  padding: 8px 0;
+  max-width: 620px;
+  padding: 0;
+  font-size: 13px;
 }
 .settings-page .settings-content h2 {
-  font-family: "Soft Ink Serif", Georgia, serif;
-  font-size: 30px;
-  font-weight: 400;
-  letter-spacing: -0.5px;
-  margin: 0 0 16px;
+  font:
+    500 18px "Mowafy Sans Text",
+    sans-serif;
+  letter-spacing: -0.3px;
+  margin: 4px 0 20px;
 }
-.settings-page .settings-content h3 {
-  font-size: 15px;
-  font-weight: 500;
+.settings-page .settings-content h3,
+.settings-action h3 {
+  font:
+    500 13px "Mowafy Sans Text",
+    sans-serif;
+  margin: 0 0 5px;
 }
-.settings-page .settings-content .field {
-  max-width: none;
-  gap: 9px;
-  margin: 24px 0;
+.settings-page .settings-content p,
+.settings-action p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #999;
+  margin: 0;
 }
-.settings-page .settings-content input:not([type="checkbox"]),
-.settings-page .settings-content textarea,
-.settings-page .settings-content select {
-  width: 100%;
-  background: #1c1c1b;
-  border: 1px solid #3b3b36;
-  border-radius: 9px;
-  padding: 12px 14px;
+.settings-action,
+.settings-page .setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding: 20px 0;
+  border-bottom: 1px solid #303030;
+}
+.settings-action > div {
+  min-width: 0;
+}
+.settings-action button,
+.settings-page .settings-content button {
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid #3d3d39;
+  border-radius: 7px;
+  background: #242422;
+  white-space: nowrap;
+}
+.settings-page .settings-content .primary {
+  background: #e8e7e0;
+  color: #222;
+  margin-bottom: 14px;
+}
+.settings-page .security-settings > p {
+  margin-bottom: 12px;
+}
+.settings-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 80px);
+  padding: 0;
+  border: 1px solid #41413b;
+  border-radius: 14px;
+  background: #1b1b19;
+  color: #eeece5;
+  box-shadow: 0 24px 100px #0008;
+}
+.settings-dialog::backdrop {
+  background: #0009;
+}
+.settings-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid #363631;
+  position: sticky;
+  top: 0;
+  background: #1b1b19;
+  z-index: 1;
+}
+.settings-dialog > header h2 {
+  font:
+    500 17px "Mowafy Sans Text",
+    sans-serif;
+  margin: 0;
+}
+.settings-dialog > header button {
+  font-size: 23px;
+  padding: 0 5px;
+  color: #aaa;
+}
+.settings-dialog-body {
+  padding: 22px;
+  font-size: 13px;
+}
+.settings-dialog-body h2 {
+  font:
+    500 18px "Mowafy Sans Text",
+    sans-serif;
+}
+.settings-dialog-body h3 {
   font-size: 14px;
 }
-.settings-page .setting-row {
-  padding: 22px 0;
-  gap: 24px;
-  border-bottom: 1px solid #303030;
+.settings-dialog-body p {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #a5a49c;
+}
+.settings-dialog-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 12px;
+}
+.settings-dialog-body label:has(input[type="checkbox"]) {
+  flex-direction: row;
   align-items: center;
 }
-.settings-page .setting-row p,
-.settings-page .muted {
-  font-size: 13px;
-  line-height: 1.7;
-  color: #aaa99f;
+.settings-dialog-body input:not([type="checkbox"]),
+.settings-dialog-body textarea,
+.settings-dialog-body select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #44443d;
+  border-radius: 7px;
+  background: #22221f;
+  font:
+    13px "Mowafy Sans Text",
+    sans-serif;
+  color: #eee;
 }
-.settings-page .profile-preview {
-  margin: 20px 0;
+.settings-dialog-body button {
+  font-size: 12px;
+  padding: 9px 12px;
+  border: 1px solid #44443d;
+  background: #292925;
+  border-radius: 7px;
+  margin: 4px 5px 4px 0;
 }
-.profile-preview .avatar.large {
-  width: 76px;
-  height: 76px;
-  background: transparent;
-  border: 0;
-}
-.settings-content .desktop-folder-panel {
-  border: 0;
-  margin: 0 0 24px;
+.settings-dialog-body .desktop-folder-panel {
   padding: 0;
+  border: 0;
+  margin: 0;
 }
-.settings-content .desktop-folder-panel p {
-  font-size: 14px;
-  line-height: 1.7;
-  color: #aaa99f;
+.settings-dialog-body .profile-preview {
+  margin: 0;
 }
-.settings-content .desktop-folder-panel > strong,
-.settings-content .desktop-folder-panel > summary {
-  font-size: 22px;
+.settings-dialog-body .profile-preview .avatar.large {
+  background: none;
+  border: 0;
+}
+.settings-dialog-body .profile-preview + h2 {
+  display: none;
+}
+.settings-dialog-body .profile-picker {
   margin-bottom: 20px;
 }
-.settings-content .desktop-folder-panel button {
-  font-size: 13px;
-  padding: 10px 14px;
-  background: #272725;
-  border: 1px solid #41413b;
-  border-radius: 8px;
-  margin: 4px 4px 4px 0;
-}
-.settings-content .settings-scope {
-  padding-bottom: 24px;
-  border-bottom: 1px solid #303030;
+.settings-dialog-body .desktop-folder-panel > summary {
+  font-size: 14px;
 }
 .new-chat-content .greeting-row {
   align-items: center;
@@ -148,30 +229,158 @@
   border: 0;
 }
 @media (max-width: 760px) {
-  .workspace .settings-page {
-    padding: 0 22px 40px;
-    margin-top: 24px;
+  .settings-page {
+    padding: 0 20px 32px !important;
   }
   .settings-page .settings-layout {
     grid-template-columns: 1fr;
-    gap: 24px;
+    gap: 18px;
   }
   .settings-page .settings-tabs {
-    position: static;
+    top: 0;
     flex-direction: row;
     flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid #303030;
-    padding: 0 0 16px;
+    max-height: none;
+    background: #141414;
+    padding: 10px 0;
+    z-index: 2;
+  }
+  .settings-action {
+    gap: 12px;
   }
   .settings-page .settings-tabs button {
-    padding: 9px 11px;
-  }
-  .settings-page .setting-row {
-    flex-wrap: wrap;
+    padding: 8px;
   }
   .new-chat-content .greeting-row h1 {
-    font-size: 30px;
+    font-size: 28px;
   }
 }
-.settings-content .desktop-folder-panel label{display:flex;flex-direction:column;gap:9px;margin:18px 0;font-size:13px;color:#c9c8c0}.settings-content .desktop-folder-panel label:has(input[type=checkbox]){flex-direction:row;align-items:center;gap:10px}.settings-content .desktop-folder-panel form{padding:20px;background:#191918;border:1px solid #33332f;border-radius:12px;margin:22px 0}.settings-content .desktop-folder-panel>summary{list-style:none;font-size:16px;color:#d3d2c9;padding-bottom:16px;border-bottom:1px solid #303030}.settings-content .desktop-folder-panel>summary::-webkit-details-marker{display:none}.settings-content .desktop-folder-panel input[type=checkbox]{accent-color:#b6c39e}.settings-content .desktop-folder-panel>button{margin-top:12px;margin-bottom:12px}.settings-content .desktop-folder-panel form button[type=submit]{background:#e5e3da;color:#242421}
+/* Native Chromium customizable selects retain keyboard/form semantics. */
+select {
+  color-scheme: dark;
+  background: #22221f;
+  color: #ecebe3;
+  border: 1px solid #41413b;
+  border-radius: 7px;
+  font:
+    13px "Mowafy Sans Text",
+    sans-serif;
+  padding: 9px 12px;
+}
+select option {
+  background: #22221f;
+  color: #ecebe3;
+}
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+  select::picker-icon {
+    color: #aaa;
+    transition: rotate 0.15s;
+  }
+  select:open::picker-icon {
+    rotate: 180deg;
+  }
+  ::picker(select) {
+    background: #22221f;
+    border: 1px solid #484840;
+    border-radius: 9px;
+    padding: 5px;
+    box-shadow: 0 10px 32px #0007;
+    color: #eee;
+    font:
+      13px "Mowafy Sans Text",
+      sans-serif;
+    max-height: 280px;
+  }
+  option {
+    padding: 9px 12px;
+    border-radius: 5px;
+    gap: 10px;
+  }
+  option:hover,
+  option:focus {
+    background: #353530;
+  }
+  option:checked {
+    background: #30312c;
+  }
+  option::checkmark {
+    color: #c7cfb5;
+  }
+}
+dialog:has(.drive-picker) {
+  width: min(520px, calc(100vw - 32px));
+  padding: 22px;
+  background: #1c1c1a;
+  border: 1px solid #41413a;
+  border-radius: 13px;
+}
+dialog:has(.drive-picker) .modal-heading {
+  margin-bottom: 16px;
+}
+dialog:has(.drive-picker) h2 {
+  font:
+    500 19px "Mowafy Sans Text",
+    sans-serif;
+  letter-spacing: -0.3px;
+}
+.drive-picker > p {
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0 0 20px;
+}
+.drive-picker .modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.drive-picker .modal-actions button {
+  font-size: 12px;
+  padding: 9px 12px;
+  border: 1px solid #45453d;
+  border-radius: 7px;
+  background: #292925;
+}
+.drive-picker .modal-actions button:first-child {
+  background: #e5e5db;
+  color: #222;
+}
+.drive-picker .drive-list {
+  max-height: 320px;
+  overflow: auto;
+}
+.drive-picker .drive-list button {
+  padding: 12px;
+  font-size: 13px;
+}
+.drive-picker .inline-error {
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 14px;
+  background: #292925;
+  border-radius: 7px;
+}
+.drive-picker .inline-error:empty {
+  display: none;
+}
+.settings-dialog-body .primary,
+.settings-dialog-body button[type="submit"] {
+  background: #e5e5db;
+  color: #242421;
+  border-color: #e5e5db;
+}
+.settings-dialog-body > section > h2:first-child,
+.settings-dialog-body > h2:first-child {
+  display: none;
+}
+.settings-dialog-body form > h3:first-child {
+  margin-top: 0;
+}
+.settings-dialog-body input[type="checkbox"] {
+  accent-color: #aeb99a;
+}
