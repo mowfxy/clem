@@ -65,7 +65,7 @@ export async function browserLogin(
       await accept({ access_token, refresh_token });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.end(
-        '<!doctype html><html><title>Signed in — Mowr</title><body style="background:#141414;color:#eeece4;font:20px system-ui;display:grid;place-content:center;height:90vh;text-align:center"><h1>You’re signed in.</h1><p>Return to Mowr. You can close this tab.</p></body></html>',
+        '<!doctype html><html><title>Signed in — Mowr</title><body style="margin:0;padding:24px;box-sizing:border-box;background:#141414;color:#eeece4;font:14px/1.6 system-ui;display:grid;place-content:center;min-height:100vh;text-align:center"><div style="margin:0 auto 20px;width:44px;height:44px;border:1px solid #42423c;border-radius:50%;display:grid;place-items:center;font-size:22px">&#10003;</div><h1 style="font:400 30px Georgia;margin:0 0 12px">You’re signed in.</h1><p style="color:#a3a39a;margin:0">Return to Mowr to continue.<br>You can close this tab.</p></body></html>',
       );
       completed();
     } catch {

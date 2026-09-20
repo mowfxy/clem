@@ -62,8 +62,8 @@ export function LocalProvider({ onDone }: { onDone: () => void }) {
       </button>
       {challenge && (
         <>
-          <p>Open the provider address in your browser and enter this code:</p>
-          <p>{challenge.url}</p>
+          <p>Sign in with ChatGPT, then enter this code. Device code login must be enabled in your ChatGPT security settings.</p>
+          <a className="secondary" href={challenge.url} target="_blank" rel="noreferrer">Open sign-in page</a>
           <code>{challenge.code}</code>
         </>
       )}
