@@ -10,14 +10,12 @@
 .settings-feature.automation {
   background: #23252e;
 }
-.settings-feature > div {
+.settings-feature-copy {
   flex: 1;
   min-width: 0;
 }
-.settings-feature svg {
-  width: 130px;
-  flex-shrink: 0;
-}
+.settings-feature .settings-feature-art { width: 180px; flex: 0 0 180px; }
+.settings-feature-art svg { width: 100%; }
 .settings-feature .eyebrow {
   font-size: 9px !important;
   color: #aab49f;
@@ -33,24 +31,6 @@
   font-size: 12px;
   line-height: 1.65;
   color: #b3b8ab;
-}
-.feature-hand {
-  transform-origin: 73px 57px;
-  animation: feature-clock 18s linear infinite;
-}
-.feature-spark {
-  animation: feature-glow 5s ease-in-out infinite;
-}
-@keyframes feature-clock {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes feature-glow {
-  50% {
-    opacity: 0.3;
-    transform: translateY(-3px);
-  }
 }
 .memory-summary {
   white-space: pre-wrap;
@@ -113,9 +93,7 @@
   .settings-feature {
     padding: 18px;
   }
-  .settings-feature svg {
-    width: 85px;
-  }
+  .settings-feature .settings-feature-art { width: 110px; flex-basis: 110px; }
 }
 
 .subject-study .study-tabs button[aria-pressed="true"] {
@@ -150,8 +128,4 @@
 }
 .subject-study {
   margin-bottom: 24px;
-}
-
-.settings-feature[data-motion="false"] svg * {
-  animation-play-state: paused !important;
 }

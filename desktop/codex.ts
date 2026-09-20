@@ -3,6 +3,10 @@ import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 
 export class Codex {
+  private inspections = new Set<ChildProcessWithoutNullStreams>();
+  get busy() {
+    return this.starting || this.active.size > 0;
+  }
   private loginProcess: ChildProcessWithoutNullStreams | null = null;
   private starting = false;
   private active = new Map<string, ChildProcessWithoutNullStreams>();
@@ -171,7 +175,113 @@ export class Codex {
       );
     });
   }
+  private accountCache: { at: number; value: any } | null = null;
+  private accountRequest: Promise<any> | null = null;
+  async account(force = false): Promise<any> {
+    if (
+      !force &&
+      this.accountCache &&
+      Date.now() - this.accountCache.at < 60000
+    )
+      return this.accountCache.value;
+    if (this.accountRequest) return this.accountRequest;
+    this.accountRequest = this.readAccount()
+      .then((value) => {
+        this.accountCache = { at: Date.now(), value };
+        return value;
+      })
+      .finally(() => {
+        this.accountRequest = null;
+      });
+    return this.accountRequest;
+  }
+  private async readAccount(): Promise<any> {
+    const child = await this.start(["app-server"]);
+    this.inspections.add(child);
+    const lines = createInterface({ input: child.stdout });
+    return new Promise((resolve, reject) => {
+      let ended = false,
+        bytes = 0,
+        account: any = null;
+      const finish = (value?: any, error?: Error) => {
+        if (ended) return;
+        ended = true;
+        clearTimeout(timer);
+        lines.close();
+        this.inspections.delete(child);
+        child.kill();
+        error ? reject(error) : resolve(value);
+      };
+      const timer = setTimeout(
+        () =>
+          finish(
+            undefined,
+            Error("Account usage could not be refreshed. Try again."),
+          ),
+        20000,
+      );
+      const send = (id: number, method: string, params: unknown) =>
+        child.stdin.write(JSON.stringify({ id, method, params }) + "\n");
+      child.stderr.resume();
+      child.on("error", () =>
+        finish(undefined, Error("Codex could not start.")),
+      );
+      child.on("close", () =>
+        finish(undefined, Error("Account check interrupted.")),
+      );
+      child.stdin.on("error", () =>
+        finish(undefined, Error("Account check disconnected.")),
+      );
+      lines.on("line", (line) => {
+        try {
+          bytes += line.length;
+          if (bytes > 2000000) throw Error("Account response too large.");
+          const m = JSON.parse(line);
+          if (![1, 2, 3].includes(m.id)) return;
+          if (m.error) {
+            if (m.id === 3) {
+              finish({
+                connected: true,
+                ...account,
+                usage: null,
+                usageError: "Usage is unavailable from the provider.",
+                checkedAt: Date.now(),
+              });
+              return;
+            }
+            throw Error("Could not read the connected account.");
+          }
+          if (m.id === 1) {
+            child.stdin.write(
+              JSON.stringify({ method: "initialized", params: {} }) + "\n",
+            );
+            send(2, "account/read", { refreshToken: false });
+          }
+          if (m.id === 2) {
+            const a = m.result?.account;
+            if (a?.type !== "chatgpt") {
+              finish({ connected: false, checkedAt: Date.now() });
+              return;
+            }
+            account = { email: a.email || null, plan: a.planType || null };
+            send(3, "account/rateLimits/read", {});
+          }
+          if (m.id === 3)
+            finish({
+              connected: true,
+              ...account,
+              usage: m.result,
+              checkedAt: Date.now(),
+            });
+        } catch (e) {
+          finish(undefined, e as Error);
+        }
+      });
+      send(1, "initialize", { clientInfo: { name: "mowr", version: "0.2.0" } });
+    });
+  }
   async login() {
+    this.accountCache = null;
     this.catalog = null;
     this.loginProcess?.kill();
     const child = await this.start(["login", "--device-auth"]);
@@ -213,6 +323,7 @@ export class Codex {
     });
   }
   async logout() {
+    this.accountCache = null;
     this.catalog = null;
     this.loginProcess?.kill();
     const child = await this.start(["logout"]);
@@ -227,6 +338,7 @@ export class Codex {
     this.active.get(id)?.kill();
   }
   stop() {
+    for (const child of this.inspections) child.kill();
     this.loginProcess?.kill();
     for (const child of this.active.values()) child.kill();
   }
@@ -326,6 +438,7 @@ export class Codex {
       clearTimeout(timer);
       lines.close();
       this.active.delete(id);
+      this.accountCache = null;
     }
   }
 }

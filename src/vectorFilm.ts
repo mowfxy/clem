@@ -1,5 +1,5 @@
 /** Authored 24 fps vector cels. Geometry is redrawn, never moved as a rigid SVG group. */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'schedule'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation';
 type P=[number,number];
 const WHITE='#f3f2ec',BLUE='#8197e2',RED='#d87968';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
@@ -86,5 +86,20 @@ function telescope(t:number,_id:string){const focus=phase(t,.7,2.5),blink=phase(
 function pencil(t:number,_id:string){const write=phase(t,.6,3.6),x=147+write*168,y=206+Math.sin(write*Math.PI*2)*17;let out=stroke([[79,103],[284,92],[312,319],[99,333],[79,103]],t,9);out+=stroke([[110,139],[181,133]],t,6);const line:P[]=[];for(let i=0;i<=35*write;i++){line.push([128+i*4.7,254+Math.sin(i*.4)*13]);}if(line.length>1)out+=stroke(line,t,8);out+=shape([[x,y],[x+23,y-59],[x+84,y-137],[x+107,y-115],[x+47,y-34]],BLUE)+stroke([[x,y],[x+23,y-59],[x+47,y-34],[x,y]],t,7)+stroke([[x+71,y-121],[x+94,y-101]],t,7);return out;}
 function bridge(t:number,_id:string){const join=phase(t,.7,3),spring=phase(t,3,3.25)-phase(t,3.25,4);let out=stroke([[61,303],[150,303],[161,272],[162,222]],t,11)+stroke([[416,303],[329,303],[319,273],[318,222]],t,11);out+=stroke([[162,224],[189,183+spring*12],[239,168+spring*18],[289,184+spring*12],[318,224]],t,12);out+=stroke([[187,192],[188,279],[164,280]],t,7)+stroke([[291,192],[291,279],[318,280]],t,7);out+=blob(123+join*228,166-Math.sin(join*Math.PI)*71,29,t,RED,.22*spring);out+=stroke([[64,337],[123,332],[175,339],[245,333],[306,339],[369,332],[416,337]],t,5);return out;}
 function conversation(t:number,_id:string){const reply=phase(t,1,2.8),squash=phase(t,2.8,3.1)-phase(t,3.1,3.8);let out=stroke([[66,94],[160,73],[239,100],[245,168],[214,196],[171,191],[140,221],[142,189],[77,181],[66,94]],t,10);out+=stroke([[255,183],[323,163],[398,186],[405,253],[379,281],[353,279],[361,311],[320,284],[258,268],[255,183]],t,10);for(let i=0;i<3;i++)out+=blob(111+i*44,135,10,t,WHITE);const tick:P[]=[[285,226],[307,245+8*squash],[366,202]];if(reply>0)out+=ink(spline(tick).slice(0,Math.max(2,Math.floor(21*reply))),10,t).replaceAll(WHITE,BLUE);return out;}
-const scenes={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation};
+// The completed recurring task holds, with quietly redrawn ink contours.
+function schedule(t:number,_id:string){
+ let out=stroke([[113,123],[172,121],[209,148],[244,185],[292,218],[352,235]],t,7);
+ out+=stroke([[351,297],[299,325],[223,315],[174,277]],t,7);
+ out+=stroke([[174,277],[176,299]],t,7)+stroke([[174,277],[197,277]],t,7);
+ out+=rect(64,73,79,91,t,-3);
+ out+=stroke([[81,99],[119,97]],t,5)+stroke([[80,117],[116,116]],t,5);
+ const ring:P[]=[];for(let i=0;i<=40;i++){const a=i/40*Math.PI*2;ring.push([267+Math.cos(a)*54,113+Math.sin(a)*54]);}
+ out+=blob(267,113,53,t,BLUE)+stroke(ring,t,7);
+ out+=stroke([[266,80],[266,114],[292,129]],t,7);
+ out+=rect(323,211,83,101,t,3);
+ out+=stroke([[341,260],[356,276],[388,241]],t,8);
+ out+=shape(deform([[109,247],[135,270],[111,294],[85,271]],t),RED);
+ return out;
+}
+const scenes={schedule,balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation};
 export function filmFrame(scene:Scene,seconds:number,id:string){const t=Math.max(0,seconds);return `<defs><filter id="${id}" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="4"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/></filter></defs>${scenes[scene](t,id)}`;}

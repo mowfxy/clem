@@ -32,7 +32,7 @@
 - No paid embedding model or local semantic model installed. Memory suggestions are generated on request and require explicit confirmation. A large relevance/fidelity benchmark, folder file-operation review/undo, broad diagram types and full visual Office/PDF layout editing remain incomplete.
 - Folder indexing applies ignore rules, skips symlinks/dotfiles/secret-like names and bounds work. Windows hidden attributes and stronger race-resistant file access remain hardening work.
 - Current desktop requires an online entitlement check to open the workspace; offline read-only access remains unfinished.
-- The repository is private. Public installer distribution must be configured before the marketing download button can link to a public artifact. No inaccessible private-release URL is advertised as a public download.
+- The source repository is private. Public unsigned preview installers are distributed through the separate mowafymxis/mowr-releases repository; /download/windows is the direct installer route.
 
 See [DESKTOP.md](DESKTOP.md) for setup, module responsibilities, provider sources and migration boundaries. Legacy web runtime remains for existing accounts and must be retired after account/data migration, not deleted prematurely.
 

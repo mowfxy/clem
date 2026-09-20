@@ -1,3 +1,4 @@
+import {boundedConversation} from "../../core/chat-context.ts";
 import type { DesktopBridge } from "../../desktop/contracts";
 declare global {
   interface Window {
@@ -12,6 +13,7 @@ export async function desktopChat(
   onText: (text: string) => void,
   selection?: {model?:string;reasoning?:string},
 ) {
+  messages=boundedConversation(messages);
   const id = crypto.randomUUID();
   let result = "";
   return new Promise<string>((resolve, reject) => {

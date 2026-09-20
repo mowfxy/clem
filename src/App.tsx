@@ -1,3 +1,4 @@
+import {ModelsSettings} from "./ModelsSettings";
 import {SubjectStudy} from './SubjectStudy';
 import {studyRequest,studyInstructions} from '../core/study-request';
 import {SettingsFeature} from "./SettingsFeature";
@@ -170,6 +171,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [apiReady, setApiReady] = useState(false);
   const [settingsTab, setSettingsTab] = useState("General");
+  const [accountRevision,setAccountRevision]=useState(0);
   const abort = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -1726,46 +1728,7 @@ export default function App() {
                         </div>
                       </>
                     ) : settingsTab === "Models" ? (
-                      <>
-                        <h2>Models</h2>
-                        <button
-                          className="primary"
-                          onClick={() => setModal("connect-model")}
-                        >
-                          <Icon name="plus" size={17} />
-                          Connect a model
-                        </button>
-                        <p className="muted">
-                          Connect your ChatGPT or Grok subscription. Your provider
-                          account and usage limits stay with you.
-                        </p>
-                        {models.map((m) => (
-                          <div className="setting-row" key={m.id}>
-                            <div>
-                              <h3>{m.name}</h3>
-                              <p>
-                                {m.provider} ·{" "}
-                                {m.id==='anthropic'?'Coming soon':m.connected ? 'Connected' : 'Not connected'}
-                              </p>
-                            </div>
-                            <span
-                              className={`connection-state ${m.connected ? "connected" : ""}`}
-                            >
-                              {m.id==='anthropic'?'Coming soon':m.connected ? 'Available' : 'Setup needed'}
-                            </span>
-                          </div>
-                        ))}
-                        <button
-                          onClick={() => {
-                            void refreshModels();
-                            setToast("Provider configuration refreshed.");
-                          }}
-                        >
-                          <Icon name="drive" size={17} />
-                          Refresh connections
-                        </button>
-                        
-                      </>
+                      <ModelsSettings key={accountRevision} locked={running} models={models} onConnect={()=>setModal("connect-model")} onRefresh={refreshModels}/>
                     ) : settingsTab === "Linked folders" || settingsTab === "Telegram" ? null : settingsTab === "Memory" ? (
                       <>
 <SettingsFeature kind="memory"/><SettingsPopup title="Memory summary" description="See and change the context Mowr uses for this space." action="Open memory"><MemoryConversation scope={desktopScope} models={models} summary={activeSpace ? activeSpace.memory : state.memory} onSummary={text=>patch(s=>activeSpace?{...s,spaces:s.spaces.map(x=>x.id===activeSpace.id?{...x,memory:text}:x)}:{...s,memory:text})}/></SettingsPopup></>
@@ -1852,7 +1815,7 @@ export default function App() {
         <Modal
           title={
             modal === "connect-model"
-              ? "Connect your model"
+              ? "Connect an account"
               : modal === "about"
                 ? "A little about Mowr"
                 : modal === "search"
@@ -1885,6 +1848,7 @@ export default function App() {
               onDone={() => {
                 setModal(null);
                 void refreshModels();
+                setAccountRevision(n=>n+1);
                 setToast("Connections updated.");
               }}
             />
