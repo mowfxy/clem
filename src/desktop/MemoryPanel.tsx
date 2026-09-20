@@ -65,7 +65,7 @@ export function MemoryPanel({
     }
   }
   return (
-    <details className="desktop-folder-panel">
+    <details open className="desktop-folder-panel">
       <summary>Memory for this space</summary>
       <label>
         <input

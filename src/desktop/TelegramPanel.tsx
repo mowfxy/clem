@@ -17,7 +17,7 @@ export function TelegramPanel({ scope }: { scope: string }) {
     return () => clearInterval(timer);
   }, []);
   return (
-    <details className="desktop-folder-panel">
+    <details open className="desktop-folder-panel">
       <summary>Telegram</summary>
       <p>
         Connect your own bot from BotFather. Pair it with this space. Mowr must
