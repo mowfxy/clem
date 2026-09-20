@@ -41,5 +41,12 @@
       "path": "/api/cron",
       "schedule": "0 8 * * *"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/download/windows",
+      "destination": "https://github.com/mowafymxis/mowr-releases/releases/download/v0.2.0-preview.2/Mowr-Setup-0.2.0-preview.2.exe",
+      "permanent": false
+    }
   ]
 }

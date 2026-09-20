@@ -87,3 +87,9 @@ test("Codex execution passes selected model and effort and rejects unsupported e
     /unavailable/,
   );
 });
+
+test('Codex account usage reads real RPC buckets, caches, and keeps missing usage distinct from zero',async()=>{
+ const codex:any=new Codex('fixture','fixture','fixture');let starts=0,unavailable=false;
+ codex.start=async()=>{starts++;const p=fake();p.stdin.on('data',(data:Buffer)=>{const req=JSON.parse(data.toString());if(!req.id)return;const result=req.method==='initialize'?{}:req.method==='account/read'?{account:{type:'chatgpt',email:'fixture@example.com',planType:'plus'}}:{rateLimits:{primary:{usedPercent:42,windowDurationMins:300,resetsAt:1900000000}},rateLimitsByLimitId:{codex:{primary:{usedPercent:42,windowDurationMins:300,resetsAt:1900000000}}}};queueMicrotask(()=>p.stdout.write(JSON.stringify(req.method==='account/rateLimits/read'&&unavailable?{id:req.id,error:{message:'unavailable'}}:{id:req.id,result})+'\n'));});return p;};
+ const account=await codex.account();assert.equal(account.email,'fixture@example.com');assert.equal(account.usage.rateLimitsByLimitId.codex.primary.usedPercent,42);await codex.account();assert.equal(starts,1);unavailable=true;const missing=await codex.account(true);assert.equal(missing.connected,true);assert.equal(missing.usage,null);assert.match(missing.usageError,/unavailable/);
+});

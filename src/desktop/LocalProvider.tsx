@@ -1,76 +1,114 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { desktop } from "./bridge";
+import { Icon } from "../Icons";
+import "../models-settings.css";
 export function LocalProvider({ onDone }: { onDone: () => void }) {
-  const [connected, setConnected] = useState(false),
-    [error, setError] = useState(""),
+  const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [challenge, setChallenge] = useState<{ url: string; code: string } | null>(
-      null,
-    );
+    [challenge, setChallenge] = useState<{
+      id: string;
+      url: string;
+      code: string;
+    } | null>(null);
+  const done = useRef(onDone);
+  done.current = onDone;
   useEffect(() => {
-    let active = true;
-    const check = () =>
-      void desktop!
-        .invoke({ action: "providerStatus" })
-        .then((result) => {
-          if (active) {
-            setConnected(result.connected);
-            if (result.connected) {
-              setChallenge(null);
-              onDone();
-            }
-          }
-        })
-        .catch(() => {});
-    check();
-    const timer = setInterval(check, 5000);
+    if (!challenge) return;
+    let active = true,
+      timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const result = await desktop!.invoke({
+          action: "providerAccountStatus",
+          id: challenge.id,
+        });
+        if (!active) return;
+        if (result.connected) {
+          await desktop!.invoke({
+            action: "providerAccountSelect",
+            id: challenge.id,
+          });
+          if (active) done.current();
+          return;
+        }
+      } catch (e) {
+        if (active) setError((e as Error).message);
+      }
+      if (active) timer = setTimeout(() => void poll(), 5000);
+    };
+    timer = setTimeout(() => void poll(), 2500);
     return () => {
       active = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, []);
+  }, [challenge?.id]);
+  async function start() {
+    setBusy(true);
+    setError("");
+    try {
+      setChallenge(await desktop!.invoke({ action: "providerAccountAdd" }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="desktop-provider">
-      <h3>Codex · your ChatGPT subscription</h3>
-      <p>
-        {connected
-          ? "Connected on this PC."
-          : "Connect through the official Codex CLI. No API key is used."}
-      </p>
-      <button
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          setError("");
-          void desktop!
-            .invoke({ action: connected ? "providerLogout" : "providerLogin" })
-            .then((result) => {
-              if (connected) {
-                setConnected(false);
-                onDone();
-              } else setChallenge(result);
-            })
-            .catch((e) => setError(e.message))
-            .finally(() => setBusy(false));
-        }}
-      >
-        {busy
-          ? "Connecting…"
-          : connected
-            ? "Disconnect"
-            : "Connect subscription"}
-      </button>
-      {challenge && (
+      <div className="provider-intro">
+        <span className="model-provider-mark">
+          <Icon name="visuals" size={26} />
+        </span>
+        <div>
+          <h3>Codex, with ChatGPT</h3>
+          <p>Your models and subscription, together in Mowr.</p>
+        </div>
+      </div>
+      {!challenge ? (
         <>
-          <p>Sign in with ChatGPT, then enter this code. Device code login must be enabled in your ChatGPT security settings.</p>
-          <a className="secondary" href={challenge.url} target="_blank" rel="noreferrer">Open sign-in page</a>
-          <code>{challenge.code}</code>
+          <ol className="provider-steps">
+            <li>
+              <span>01</span>Sign in securely with your ChatGPT account.
+            </li>
+            <li>
+              <span>02</span>Your available models and usage sync automatically.
+            </li>
+            <li>
+              <span>03</span>Add another account or switch anytime in Settings.
+            </li>
+          </ol>
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={() => void start()}
+          >
+            {busy ? "Preparing sign-in…" : "Continue with ChatGPT"}
+            <Icon name="arrow" size={16} />
+          </button>
         </>
+      ) : (
+        <div className="provider-challenge">
+          <p>Enter this code on the ChatGPT sign-in page.</p>
+          <code>{challenge.code}</code>
+          <a
+            className="primary"
+            href={challenge.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open sign-in page
+            <Icon name="arrow" size={15} />
+          </a>
+          <p className="provider-wait">Waiting for your account…</p>
+          <p>
+            Enable device-code login in ChatGPT security settings if prompted.
+          </p>
+        </div>
       )}
       {error && <p role="alert">{error}</p>}
-      <p className="fine">
-        Credentials stay in the Windows credential store. The official Codex
-        CLI is included. Grok Build is not enabled in this build.
+      <p className="provider-note">
+        No API key needed. Credentials stay in Windows’ protected credential
+        store. Usage and model access follow your account’s plan.
       </p>
     </div>
   );

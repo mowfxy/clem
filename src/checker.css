@@ -2,67 +2,160 @@
   min-height: 100dvh;
   background: #141414;
   color: #eeece5;
-  padding: 32px 6vw;
+  padding: 30px 6vw;
   display: flex;
   flex-direction: column;
 }
-.provenance-page header {
-  display: flex;
+.provenance-page header a {
+  display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-size: 15px;
+  font-size: 16px;
 }
-.provenance-page section {
-  width: min(100%, 540px);
+.checker-slash {
+  color: #72726b;
+  margin: 0 7px;
+}
+.checker-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 90px;
+  width: min(100%, 1040px);
   margin: auto;
-  padding: 70px 0;
+  padding: 48px 0 65px;
+}
+.checker-intro .checker-art {
+  width: 220px;
+  margin: 0 0 14px -25px;
 }
 .provenance-page h1 {
   font:
-    400 clamp(36px, 5vw, 56px) / 1.08 "Soft Ink Serif",
+    400 clamp(36px, 4.3vw, 56px) / 1.08 "Soft Ink Serif",
     Georgia,
     serif;
-  margin: 18px 0 24px;
+  margin: 14px 0 20px;
   letter-spacing: -1.5px;
 }
 .provenance-page p {
-  font-size: 15px;
+  font-size: 14px;
   color: #aaa99e;
   line-height: 1.7;
 }
-.checker-drop {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 24px;
-  margin: 32px 0;
-  border: 1px dashed #626258;
-  border-radius: 12px;
-  background: #1e201a;
-  font-size: 14px;
+.checker-intro > p {
+  max-width: 310px;
 }
-.checker-drop input {
-  max-width: 100%;
-  border: 0;
-  padding: 0;
-  background: transparent;
+.checker-drop {
+  text-align: center;
+  padding: 35px 26px 28px;
+  border: 1px solid #414139;
+  border-radius: 16px;
+  background: #1d201b;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.checker-drop.dragging {
+  border-color: #aab695;
+  background: #272f22;
+}
+.checker-file-mark {
+  display: inline-flex;
+  color: #c0c9b3;
+  margin-bottom: 17px;
+}
+.checker-drop h2 {
+  font:
+    400 25px/1.2 "Soft Ink Serif",
+    Georgia,
+    serif;
+  margin: 0 0 12px;
+}
+.checker-drop p {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  margin: 0 0 24px;
+}
+.checker-drop button.primary {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  font-size: 13px;
+  padding: 11px 19px;
+  border-radius: 8px;
+}
+.checker-drop small {
+  display: block;
+  margin-top: 24px;
+  font-size: 11px;
+  color: #8d9386;
+}
+.checker-drop input[hidden] {
+  display: none !important;
 }
 .checker-result {
-  background: #292c22;
-  border: 1px solid #444b38;
+  background: #242821;
+  border: 1px solid #414b38;
   border-radius: 10px;
   padding: 18px;
-  margin-bottom: 24px;
-  font-size: 14px;
+  margin-top: 16px;
+  font-size: 13px;
   line-height: 1.65;
 }
-.provenance-page small,
-.provenance-page footer {
-  font-size: 12px;
-  line-height: 1.8;
-  color: #919187;
+.checker-private {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px !important;
+  margin: 20px 0 9px;
+}
+.checker-disclaimer {
+  display: block;
+  max-width: 360px;
+  text-align: center;
+  margin: 0 auto;
+  color: #85867e;
+  font-size: 11px;
+  line-height: 1.7;
 }
 .provenance-page footer {
-  padding-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #919187;
+  padding-top: 20px;
   border-top: 1px solid #30302c;
+}
+.checker-drop:focus-within {
+  outline: 2px solid #b2bba2;
+  outline-offset: 4px;
+}
+@media (max-width: 760px) {
+  .provenance-page {
+    padding: 24px;
+  }
+  .checker-layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    max-width: 450px;
+    padding: 25px 0 45px;
+  }
+  .checker-intro .checker-art {
+    width: 150px;
+    margin: 0 0 0 -18px;
+  }
+  .provenance-page h1 {
+    font-size: 40px;
+  }
+  .checker-intro > p {
+    max-width: none;
+  }
+  .checker-drop {
+    padding: 26px 18px;
+  }
+  .provenance-page footer {
+    gap: 15px;
+  }
 }

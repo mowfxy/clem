@@ -32,7 +32,7 @@ npm run desktop:smoke
 npm run desktop:installer
 ```
 
-The NSIS installer is written to `release/Mowr-Setup-0.2.0-preview.1.exe`. `desktop-package/` is a generated staging tree with no server dependency requirement. The installer bundles the pinned official Codex Windows binaries. `desktop:dev` rebuilds before opening. Test the packaged binary with `MOWR_SMOKE_PACKAGED=1` when running `desktop:smoke`.
+The NSIS installer is written to `release/Mowr-Setup-0.2.0-preview.2.exe`. `desktop-package/` is a generated staging tree with no server dependency requirement. The installer bundles the pinned official Codex Windows binaries. `desktop:dev` rebuilds before opening. Test the packaged binary with `MOWR_SMOKE_PACKAGED=1` when running `desktop:smoke`.
 
 Checks: `npm test`, `npm run test:desktop`, `npm run typecheck:server`, `npx tsc -p desktop/tsconfig.json`, `npm run build`, and `node scripts/check-performance-budget.mjs`.
 
