@@ -141,7 +141,7 @@ try {
   );
   await page.getByRole("button", { name: "Edit profile", exact: true }).click();
   await page.getByRole("group", { name: "Choose your character" }).waitFor();
-  await page.getByRole("button", { name: "Moth", exact: true }).click();
+  await page.getByRole("button", { name: "Fold", exact: true }).click();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.screenshot({
     path: "artifacts/settings-profile.png",

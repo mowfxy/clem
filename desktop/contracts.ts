@@ -32,6 +32,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("unlinkFolder"), id: z.string().uuid() }),
   z.object({
     action: z.literal("chat"),
+    model:z.string().regex(/^[a-zA-Z0-9._:-]{1,100}$/).optional(),
+    reasoning:z.enum(["none","minimal","low","medium","high","xhigh","max","ultra"]).optional(),
     id: z.string().uuid(),
     scope: scopeSchema,
     messages: z

@@ -10,6 +10,7 @@ export async function desktopChat(
   scope: string,
   signal: AbortSignal,
   onText: (text: string) => void,
+  selection?: {model?:string;reasoning?:string},
 ) {
   const id = crypto.randomUUID();
   let result = "";
@@ -44,7 +45,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...selection as any })
       .catch((error) => {
         cleanup();
         reject(error);

@@ -1,4 +1,4 @@
-import { get, set } from "idb-keyval";
+import { get, set, del } from "idb-keyval";
 import type { Plan } from "../core/types";
 import {
   resumeWorkflow,
@@ -22,4 +22,10 @@ export async function openWorkflow(owner: string, plan: Plan, context: string) {
         updatedAt: Date.now(),
       } satisfies WorkflowCheckpoint),
   };
+}
+
+export async function deleteWorkflowCheckpoints(owner: string, plans: Plan[]) {
+  await Promise.all(
+    plans.map((plan) => del(`mowr-workflow:${owner}:${plan.id}`)),
+  );
 }
