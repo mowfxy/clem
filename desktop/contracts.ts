@@ -26,6 +26,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("checkout") }),
   z.object({ action: z.literal("providerAccounts"), refresh:z.boolean().optional() }),
   z.object({ action: z.literal("providerAccountAdd") }),
+  z.object({ action: z.literal("providerAccountRetry"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
   z.object({ action: z.literal("providerAccountStatus"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
   z.object({ action: z.literal("providerAccountSelect"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
   z.object({ action: z.literal("providerAccountRemove"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
@@ -127,6 +128,8 @@ export type DesktopBridge = {
       id: string;
       type: string;
       text?: string;
+      file?: import("../core/types").StoredFile;
+      scope?: string;
       error?: string;
     }) => void,
   ) => () => void;

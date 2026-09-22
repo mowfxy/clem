@@ -286,3 +286,8 @@
     gap: 8px;
   }
 }
+.account-recovery{display:flex;gap:20px;align-items:center;padding:16px 20px;border-top:1px solid #30312e;background:#191a18}
+.account-recovery>div{flex:1}.account-recovery p{margin:0!important;font-size:12px!important;line-height:1.6;color:#a8aaa1}
+.account-recovery button{font-size:12px;white-space:nowrap}.provider-recovery{padding:14px;border:1px solid #594c3e;border-radius:10px;margin-top:16px}
+.connected-account>header p{text-transform:none!important}
+@media(max-width:760px){.account-recovery{align-items:flex-start;flex-direction:column}}

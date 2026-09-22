@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { Model } from "../core/types";
 import { desktop } from "./desktop/bridge";
+import {LocalProvider} from "./desktop/LocalProvider";
 import { Icon } from "./Icons";
 import "./models-settings.css";
 type WindowUsage = {
@@ -17,6 +18,8 @@ type Bucket = {
 type Account = {
   id: string;
   connected: boolean;
+  pending?:boolean;
+  loginError?:string;
   email?: string;
   plan?: string;
   error?: string;
@@ -28,6 +31,11 @@ type Account = {
     ordinaryUsageAllowed?: boolean | null;
   };
 };
+function Reconnect({id,onClose,onDone}:{id:string;onClose:()=>void;onDone:()=>void}){
+ const ref=useRef<HTMLDialogElement>(null);
+ useEffect(()=>{ref.current?.showModal();},[]);
+ return <dialog ref={ref} className="settings-dialog" onCancel={onClose}><div className="modal-heading"><h2>Connect ChatGPT</h2><button aria-label="Close connection" onClick={onClose}><Icon name="close"/></button></div><LocalProvider accountId={id} onDone={onDone}/></dialog>;
+}
 function duration(minutes?: number | null) {
   if (!minutes) return "Usage window";
   if (minutes === 10080) return "Weekly";
@@ -140,6 +148,7 @@ export function ModelsSettings({
       active: "",
       accounts: [],
     }),
+    [retryId,setRetryId]=useState<string|null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function refresh(force = false) {
@@ -163,6 +172,12 @@ export function ModelsSettings({
   useEffect(() => {
     void refresh();
   }, []);
+  useEffect(()=>{
+    const onFocus=()=>{if(!busy)void refresh(true);};
+    window.addEventListener("focus",onFocus);
+    const timer=data.accounts.some(a=>a.pending)?setTimeout(onFocus,5000):undefined;
+    return()=>{window.removeEventListener("focus",onFocus);clearTimeout(timer);};
+  },[busy,data.accounts]);
   async function change(id: string, remove = false) {
     if (locked) return;
     if (
@@ -220,6 +235,7 @@ export function ModelsSettings({
             : "Connect account"}
         </button>
       </div>
+      {retryId&&<Reconnect id={retryId} onClose={()=>setRetryId(null)} onDone={()=>{setRetryId(null);void refresh(true);}}/>}
       {error && <p role="alert">{error}</p>}
       <div className="connected-accounts">
         {data.accounts
@@ -230,7 +246,7 @@ export function ModelsSettings({
                 <div>
                   <h3>{a.email || "ChatGPT account"}</h3>
                   <p>
-                    {a.connected ? a.plan || "Connected" : "Sign-in incomplete"}
+                    {a.connected ? a.plan || "Connected" : a.pending ? "Waiting for browser sign-in" : "Connection needs attention"}
                     {a.id === data.active && a.connected && (
                       <span className="account-active">Active</span>
                     )}
@@ -257,10 +273,7 @@ export function ModelsSettings({
               ) : a.connected ? (
                 <Usage account={a} />
               ) : (
-                <p>
-                  Remove this unfinished connection and try adding the account
-                  again.
-                </p>
+                <div className="account-recovery"><div><p>{a.loginError || (a.pending?"Finish in your browser, then return here.":"Your ChatGPT account is not connected to Mowr yet.")}</p></div><button className="secondary" disabled={busy||locked} onClick={()=>setRetryId(a.id)}>{a.pending?"Continue sign-in":"Retry sign-in"}<Icon name="arrow" size={16}/></button></div>
               )}
             </article>
           ))}

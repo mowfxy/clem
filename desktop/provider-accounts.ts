@@ -64,7 +64,7 @@ export class ProviderAccounts {
     const accounts = await Promise.all(
       r.ids.map(async (id) => {
         try {
-          return { id, ...(await this.client(owner, id).account(refresh)) };
+          return { id, ...(await this.client(owner, id).account(refresh)), ...this.client(owner,id).loginState() };
         } catch {
           return {
             id,
@@ -95,8 +95,12 @@ export class ProviderAccounts {
       }
     });
   }
+  async retry(owner:string,id:string){
+    this.assertIdle();
+    return {id,...await (await this.checked(owner,id)).login()};
+  }
   async status(owner: string, id: string) {
-    return { id, ...(await (await this.checked(owner, id)).account(true)) };
+    return { id, ...(await (await this.checked(owner, id)).account(true)), ...(await this.checked(owner,id)).loginState() };
   }
   async activate(owner: string, id: string) {
     return this.exclusive(async () => {

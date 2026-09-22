@@ -1,0 +1,17 @@
+.messages .message{position:relative;margin:0 0 38px;padding:0 0 0 46px}
+.messages .message.user{display:flex;flex-direction:column;align-items:flex-end;padding:0;margin-bottom:40px}
+.messages .message.user .message-text{width:fit-content;max-width:80%;padding:13px 19px;border-radius:21px;background:#242424;white-space:pre-wrap;font-size:15px;line-height:1.65}
+.messages .message.assistant .message-text{font-family:'Soft Ink Serif',Georgia,serif;font-size:16px;line-height:1.7;background:none;padding:0}
+.message-mark{position:absolute;left:0;top:2px;color:#eeece4}
+.message-text p:last-child{margin-bottom:0}
+.history-more{flex-shrink:0;padding:4px 7px;letter-spacing:2px;font-size:20px;color:#aaa}
+.chat-options{position:fixed;inset:auto;margin:0;min-width:160px;padding:5px;background:#252525;color:#e8e6e0;border:1px solid #424242;border-radius:11px;box-shadow:0 12px 36px #0006}
+.chat-options:popover-open{display:grid}
+.chat-options button{justify-content:flex-start;font-size:13px;padding:10px 12px}
+.chat-options button:hover{background:#ffffff0d}
+@media(max-width:760px){.messages .message{padding-left:36px}.messages .message.assistant .message-text{font-size:16px}.messages .message.user .message-text{max-width:90%}.message-mark svg{width:25px;height:25px}}
+
+.history-row:has(.history-item.chosen){background:#292929;border-radius:7px}
+.history-row .history-item.chosen{background:transparent}
+.history-row .history-more:focus-visible{outline-offset:-3px}
+.space-heading-actions{display:flex;align-items:center;gap:10px}.space-heading-actions .subject-import{margin:0;padding:10px;border:1px solid #393939;border-radius:8px;width:40px;height:40px}

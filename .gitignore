@@ -14,10 +14,11 @@ playwright-report/
 artifacts/
 .runtime/
 
-
 vendor/sans/
 vendor/serif/
 desktop-dist/
 desktop-package/
 .maintainer/
 release/
+
+desktop/generated/

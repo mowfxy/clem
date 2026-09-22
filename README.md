@@ -24,6 +24,9 @@ npm run desktop:build
 npm run desktop:smoke
 node scripts/check-performance-budget.mjs
 node scripts/verify-settings.mjs
+node scripts/verify-model-workflow.mjs
+node scripts/verify-thinking-logo.mjs
+node scripts/verify-kinetra-pdf.mjs
 node scripts/verify-study-memory.mjs
 node scripts/verify-provenance.mjs
 ```
@@ -35,7 +38,7 @@ Smoke tests use a temporary profile. Real account authorization, payments and Te
 - `desktop/`: main process, protected storage, authentication, local Codex, folders, memory and Telegram.
 - `src/desktop/`: onboarding and desktop controls. `src/App.tsx` retains the workspace design.
 - `cloudflare/account-*`: account/entitlement Worker, Lemon Squeezy and additive D1 schema.
-- `core/`, `vendor/kinetra/`: shared workflows and deterministic geometry.
+- `core/`, `vendor/kinetra/`: shared workflows and bundled Kinetra guides, calculations and document illustrations.
 - `server/`, `database/`: legacy web services and migrations retained during migration.
 - `tests/desktop/`: policy, isolation, memory, folders, messaging and export regression tests.
 

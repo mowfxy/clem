@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { desktop } from "./bridge";
 import { Icon } from "../Icons";
 import "../models-settings.css";
-export function LocalProvider({ onDone }: { onDone: () => void }) {
+export function LocalProvider({ onDone, accountId }: { onDone: () => void; accountId?:string }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [challenge, setChallenge] = useState<{
@@ -23,6 +23,7 @@ export function LocalProvider({ onDone }: { onDone: () => void }) {
           id: challenge.id,
         });
         if (!active) return;
+        if(result.loginError){setError(result.loginError);return;}
         if (result.connected) {
           await desktop!.invoke({
             action: "providerAccountSelect",
@@ -41,18 +42,19 @@ export function LocalProvider({ onDone }: { onDone: () => void }) {
       active = false;
       clearTimeout(timer);
     };
-  }, [challenge?.id]);
+  }, [challenge]);
   async function start() {
     setBusy(true);
     setError("");
     try {
-      setChallenge(await desktop!.invoke({ action: "providerAccountAdd" }));
+      setChallenge(await desktop!.invoke(accountId||challenge?.id?{action:"providerAccountRetry",id:accountId||challenge!.id}:{ action: "providerAccountAdd" }));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
+  useEffect(()=>{if(accountId)void start();},[accountId]);
   return (
     <div className="desktop-provider">
       <div className="provider-intro">
@@ -105,7 +107,7 @@ export function LocalProvider({ onDone }: { onDone: () => void }) {
           </p>
         </div>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && <div className="provider-recovery"><p role="alert">{error}</p><button className="secondary" disabled={busy} onClick={()=>void start()}>Try again</button></div>}
       <p className="provider-note">
         No API key needed. Credentials stay in Windows’ protected credential
         store. Usage and model access follow your account’s plan.

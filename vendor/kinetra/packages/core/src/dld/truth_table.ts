@@ -8,7 +8,7 @@
 import { enumerateInputs, evaluateLiteral, fromVariableIndex, notMask, card, context, allAssignmentsMask } from "./boolean.js";
 import type { BooleanContext } from "./boolean.js";
 import type { BoolExpr } from "./expression.js";
-import { walk } from "./expression.js";
+import { walk, variable, not } from "./expression.js";
 import { KinetraError } from "../errors.js";
 
 export interface TruthTableRow {

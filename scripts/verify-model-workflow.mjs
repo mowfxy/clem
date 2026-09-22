@@ -39,6 +39,7 @@ try {
         if (r.action === "chat") {
           setTimeout(() => {
             for (const fn of listeners) {
+              fn({id:r.id,type:'artifact',scope:r.scope,file:{id:'generated-pdf',name:'Charged rods.pdf',type:'application/pdf',size:24000,created:Date.now()}});
               fn({
                 id: r.id,
                 type: "delta",
@@ -77,10 +78,7 @@ try {
             ? [
                 {
                   id: "gpt-6-astra",
-                  reasoningEfforts: [
-                    { reasoningEffort: "low", description: "Fast" },
-                    { reasoningEffort: "high", description: "Thorough" },
-                  ],
+                  reasoningEfforts: ["low","medium","high","xhigh","max","ultra"].map(reasoningEffort=>({reasoningEffort,description:reasoningEffort})),
                   defaultReasoningEffort: "low",
                   name: "Astra",
                   provider: "OpenAI",
@@ -89,6 +87,7 @@ try {
                   specialties: [],
                   tools: [],
                 },
+                ...["Sol", "Luna", "Terra", "GPT-5.5"].map(name=>({id:name,name,connected:true,provider:"OpenAI",context:32000,specialties:[],tools:[]})),
               ]
             : {},
     });
@@ -111,7 +110,7 @@ try {
           title: "Research plan",
           spaceId: null,
           updated: 1,
-          messages: [
+          messages: [{id:"user-message",role:"user",content:"Help me understand the experiment."},
             {
               id: "message-fixture",
               role: "assistant",
@@ -180,9 +179,11 @@ try {
   await page
     .locator(".plan-steps .model-selector")
     .first()
-    .getByRole("button", { name: "Choose model", exact: true })
+    .getByRole("button", { name: "Reasoning effort", exact: true })
     .click();
-  await page.getByRole("button", { name: "high", exact: true }).click();
+  await page.getByRole("slider").press("ArrowRight");
+  await page.getByRole("slider").press("ArrowRight");
+  await page.keyboard.press("Escape");
   await page.waitForTimeout(100);
   assert.ok(
     (await page.locator(".plan-steps .model-selector").first().innerText())
@@ -190,9 +191,20 @@ try {
       .includes("high"),
   );
   await page.screenshot({ path: "artifacts/plan-editor.png", fullPage: true });
-  await page
-    .getByRole("button", { name: "Delete current chat", exact: true })
-    .click();
+  assert.equal(await page.locator('.message-author,.artifact-actions,.chat-actions').count(),0);
+  await page.getByRole('button',{name:'Chat options for Research plan',exact:true}).click();
+  await page.getByRole('button',{name:'Pin chat',exact:true}).click();
+  await page.getByRole('button',{name:'Chat options for Research plan',exact:true}).click();
+  await page.getByRole('button',{name:'Unpin chat',exact:true}).waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.chat-options:popover-open').count(),0);
+  const bubble=await page.locator('.message.user .message-text').boundingBox();
+  const messages=await page.locator('.messages').boundingBox();
+  assert.ok(bubble.width<messages.width*.8);
+  assert.ok(Math.abs(bubble.x+bubble.width-messages.x-messages.width)<2);
+  await page.screenshot({path:'artifacts/conversation-layout.png',fullPage:true});
+  await page.getByRole('button',{name:'Chat options for Research plan',exact:true}).click();
+  await page.getByRole('button',{name:'Delete chat',exact:true}).click();
   await page
     .getByRole("button", { name: "Delete conversation", exact: true })
     .click();
@@ -206,6 +218,39 @@ try {
   await page.locator(".greeting-row").waitFor();
   await page.getByRole("button", { name: "Choose model", exact: true }).click();
   await page.screenshot({ path: "artifacts/model-picker.png", fullPage: true });
+  await page.getByRole('button',{name:'Astra',exact:true}).click();
+  assert.equal(await page.getByRole('dialog',{name:'Select model'}).count(),0);
+  await page.getByRole('button',{name:'Reasoning effort',exact:true}).click();
+  await page.getByRole('slider').press('End');
+  assert.equal(await page.getByRole('slider').getAttribute('aria-valuetext'),'Ultra');
+
+  await page.waitForTimeout(280);
+  assert.ok(parseFloat(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).width))>100);
+  assert.equal(await page.locator('.effort-fill i').count(),3);
+  assert.equal(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).overflow),'hidden');
+  assert.equal(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(233, 232, 226)');
+  const ripple=page.locator('.effort-fill i').first();
+  const before=await ripple.evaluate(el=>getComputedStyle(el).transform);
+  await page.waitForTimeout(180);
+  assert.notEqual(await ripple.evaluate(el=>getComputedStyle(el).transform),before);
+  await page.screenshot({path:'artifacts/reasoning-picker.png'});
+  await page.emulateMedia({reducedMotion:'reduce'});
+  assert.equal(await page.locator('.effort-fill i').first().evaluate(el=>getComputedStyle(el).animationName),'none');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.getByRole('button',{name:'Reset reasoning to model default'}).click();
+  assert.equal(await page.getByRole('slider').getAttribute('aria-valuetext'),'Light');
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({width:860,height:600});
+  await page.getByRole('button',{name:'Choose model',exact:true}).click();
+  const bounds=await page.getByRole('dialog',{name:'Select model'}).boundingBox();
+  assert.ok(bounds.width<=264 && bounds.y>=0 && bounds.y+bounds.height<=600);
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({width:1440,height:960});
+  await page.locator('.composer textarea').fill('Make a PDF about charged rods');
+  await page.getByRole('button',{name:'Send message',exact:true}).click();
+  await page.locator('.message.assistant .document-card').getByText('Charged rods.pdf',{exact:true}).waitFor();
+  assert.equal(await page.locator('.message.assistant .document-card').count(),1);
+  await page.getByText('Based on your local source.',{exact:true}).waitFor();
   console.log(
     "PASS popup task edits, per-step reasoning selection, deletion and synced-model picker",
   );

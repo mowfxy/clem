@@ -64,7 +64,8 @@ import { GitHubPicker } from "./GitHub";
 import { PlanEditor } from "./PlanEditor";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { exportDocx, exportSlides } from "./documents";
+import { ChatMenu } from "./ChatMenu";
+import "./conversation.css";
 const DocumentViewer = lazy(() => import("./DocumentViewer"));
 const Visual = lazy(() => import("./Visual"));
 const modelPlaceholders: Model[] = [
@@ -265,6 +266,13 @@ export default function App() {
   const patch = (fn: (s: State) => State) => {const next=fn(stateRef.current);stateRef.current=next;setState(next);};
   const activeChat = state.chats.find((c) => c.id === chatId);
   const activeSpace = state.spaces.find((s) => s.id === spaceId);
+  useEffect(()=>{
+    const receive=(event:Event)=>{const {file}=(event as CustomEvent).detail as {file:StoredFile};
+      patch(current=>({...current,files:current.files.some(f=>f.id===file.id)?current.files:[...current.files,file]}));
+    };
+    window.addEventListener('mowr:artifact',receive);return ()=>window.removeEventListener('mowr:artifact',receive);
+  },[]);
+  const conversationTarget=chatId||draftChatId.current;
   const desktopScope=activeSpace?`${activeSpace.kind}:${activeSpace.id}`:`chat:${chatId||draftChatId.current}`;
   const skills = state.skills.filter(s=>!s.builtin);
   const bytes = state.files.reduce((n, f) => n + f.size, 0);
@@ -299,7 +307,13 @@ export default function App() {
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
   ) {
-    if(desktop)return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined});
+    if(desktop){
+      const target=conversationTarget;
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined},file=>updateChat(target,c=>{
+        const last=[...c.messages].reverse().find(m=>m.role==='assistant');
+        return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
+      }));
+    }
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -954,7 +968,7 @@ export default function App() {
                 </button>
               </div>
               {state.chats.length ? (
-                state.chats.slice(0, 12).map((c) => (
+                [...state.chats].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||b.updated-a.updated).slice(0, 12).map((c) => (
                   <div className="history-row" key={c.id}><button
                     className={`history-item ${c.id === chatId && route === "/app" ? "chosen" : ""}`}
                     onClick={() => {
@@ -965,7 +979,7 @@ export default function App() {
                   >
                     <span className="history-dot" />
                     {c.title}
-                  </button><button className="history-delete" aria-label={`Delete chat ${c.title}`} disabled={running} onClick={()=>setDeleteChatId(c.id)}><Icon name="trash" size={15}/></button></div>
+                  </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={running} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
                 ))
               ) : (
                 <p className="history-empty">
@@ -1018,7 +1032,6 @@ export default function App() {
                   `Your ${route.split("/").at(-1)}`
                 )}
               </span>
-              {activeChat&&route==="/app"&&<button aria-label="Delete current chat" disabled={running} onClick={()=>setDeleteChatId(activeChat.id)}><Icon name="trash" size={16}/></button>}
             </header>
             {route === "/app" ? (
               <div
@@ -1068,24 +1081,7 @@ export default function App() {
                     <div className="messages">
                       {activeChat.messages.map((m) => (
                         <article key={m.id} className={`message ${m.role}`}>
-                          <div className="message-author">
-                            {m.role === "assistant" ? (
-                              <Logo
-                                size={27}
-                                thinking={
-                                  running &&
-                                  (!m.content ||
-                                    m.content ===
-                                      "The lead model is preparing a plan for your review.")
-                                }
-                              />
-                            ) : (
-                              <span className="mini-avatar">
-                                {state.name.slice(0, 1)}
-                              </span>
-                            )}
-                            {m.role === "assistant" ? "Mowr" : state.name}
-                          </div>
+                          {m.role === "assistant" && <div className="message-mark"><Logo size={30} thinking={running && m.id === activeChat.messages.at(-1)?.id}/></div>}
                           <div className="message-text">
                             {(m.content ? (
                               m.role === "assistant" ? (
@@ -1101,43 +1097,6 @@ export default function App() {
                           </div>
                           {m.content && <YouTubeReferences text={m.content}/> }
                           {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=><FileCard key={f.id} file={f} onOpen={()=>setViewFile(f)} onError={setToast}/>)}
-                          {m.role === "assistant" &&
-                            m.content &&
-                            !m.plan &&
-                            !m.visual && (
-                              <div className="artifact-actions">
-                                <button
-                                  onClick={() =>
-                                    void exportDocx(
-                                      m.content,
-                                      activeChat.title,
-                                    ).catch(() =>
-                                      setToast(
-                                        "Document export failed. Try again.",
-                                      ),
-                                    )
-                                  }
-                                >
-                                  <Icon name="files" size={15} />
-                                  Word document
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    void exportSlides(
-                                      m.content,
-                                      activeChat.title,
-                                    ).catch(() =>
-                                      setToast(
-                                        "Presentation export failed. Try again.",
-                                      ),
-                                    )
-                                  }
-                                >
-                                  <Icon name="slides" size={15} />
-                                  Presentation
-                                </button>
-                              </div>
-                            )}
                           {m.visual && (
                             <Suspense fallback={<p>Opening the visual…</p>}>
                               <Visual />
@@ -1157,47 +1116,7 @@ export default function App() {
                           )}
                         </article>
                       ))}
-                      <div className="chat-actions">
-                        <button
-                          onClick={() =>
-                            void downloadMade(
-                              new Blob(
-                                [
-                                  activeChat.messages
-                                    .map(
-                                      (m) =>
-                                        `${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`,
-                                    )
-                                    .join("\n\n---\n\n"),
-                                ],
-                                { type: "text/markdown" },
-                              ),
-                              `${activeChat.title.slice(0, 40)}.md`,
-                            )
-                          }
-                        >
-                          <Icon name="download" size={16} /> Export conversation
-                        </button>
-                        <button
-                          onClick={() => {
-                            patch((s) => ({
-                              ...s,
-                              chats: s.chats.filter(
-                                (c) => c.id !== activeChat.id,
-                              ),
-                              visuals: s.visuals.filter(
-                                (v) => v.chatId !== activeChat.id,
-                              ),
-                            }));
-                            newChat();
-                            setToast(
-                              "Conversation and its visual references deleted.",
-                            );
-                          }}
-                        >
-                          <Icon name="trash" size={16} /> Delete
-                        </button>
-                      </div>
+
                     </div>
                     <div className="chat-composer">
                       {composerUI}
@@ -1224,6 +1143,8 @@ export default function App() {
                         : "A dedicated space for each subject you’re making sense of."}
                     </p>
                   </div>
+                  <div className="space-heading-actions">
+                  {route.endsWith('subjects')&&<button className="subject-import icon-button" aria-label="Import subject ZIP" title="Import subject ZIP" onClick={()=>archiveUploader.current?.click()}><Icon name="import" size={21}/></button>}
                   <button
                     className="primary"
                     onClick={() =>
@@ -1236,9 +1157,8 @@ export default function App() {
                   >
                     <Icon name="plus" size={19} />
                     New {route.endsWith("projects") ? "project" : "subject"}
-                  </button>
+                  </button></div>
                 </div>
-                {route.endsWith('subjects')&&<button className="subject-import" onClick={()=>archiveUploader.current?.click()}>Import subject ZIP</button>}
                 <div className="search-field">
                   <Icon name="research" size={19} />
                   <input
