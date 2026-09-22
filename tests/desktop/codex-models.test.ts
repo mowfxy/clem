@@ -93,3 +93,36 @@ test('Codex account usage reads real RPC buckets, caches, and keeps missing usag
  codex.start=async()=>{starts++;const p=fake();p.stdin.on('data',(data:Buffer)=>{const req=JSON.parse(data.toString());if(!req.id)return;const result=req.method==='initialize'?{}:req.method==='account/read'?{account:{type:'chatgpt',email:'fixture@example.com',planType:'plus'}}:{rateLimits:{primary:{usedPercent:42,windowDurationMins:300,resetsAt:1900000000}},rateLimitsByLimitId:{codex:{primary:{usedPercent:42,windowDurationMins:300,resetsAt:1900000000}}}};queueMicrotask(()=>p.stdout.write(JSON.stringify(req.method==='account/rateLimits/read'&&unavailable?{id:req.id,error:{message:'unavailable'}}:{id:req.id,result})+'\n'));});return p;};
  const account=await codex.account();assert.equal(account.email,'fixture@example.com');assert.equal(account.usage.rateLimitsByLimitId.codex.primary.usedPercent,42);await codex.account();assert.equal(starts,1);unavailable=true;const missing=await codex.account(true);assert.equal(missing.connected,true);assert.equal(missing.usage,null);assert.match(missing.usageError,/unavailable/);
 });
+
+test("device login remains resumable and exposes completion failures", async () => {
+ const codex:any=new Codex('fixture','fixture','fixture');const p=fake();
+ codex.start=async()=>{setTimeout(()=>p.stdout.write('https://auth.openai.com/codex/device ABCD-EFGH'),0);return p;};
+ const challenge=await codex.login();assert.equal(codex.loginState().pending,true);
+ assert.deepEqual(await codex.login(),challenge);
+ p.stderr.write('Failed to save to keyring');p.emit('close',1);
+ assert.equal(codex.loginState().pending,false);
+ assert.match(codex.loginState().loginError,/Windows could not save/);
+});
+test("successful device login invalidates disconnected account cache", async () => {
+ const codex:any=new Codex('fixture','fixture','fixture');const p=fake();
+ codex.start=async()=>{setTimeout(()=>p.stdout.write('https://auth.openai.com/codex/device ABCD-EFGH'),0);return p;};
+ await codex.login();codex.accountCache={at:Date.now(),value:{connected:false}};
+ p.emit('close',0);assert.equal(codex.accountCache,null);assert.equal(codex.loginState().loginError,null);
+});
+
+test("a slow usage service does not discard a confirmed sign-in", async (t) => {
+ t.mock.timers.enable({apis:['setTimeout']});
+ const codex:any=new Codex('fixture','fixture','fixture');
+ codex.start=async()=>{const p=fake();p.stdin.on('data',(data:Buffer)=>{
+   const req=JSON.parse(data.toString());
+   if(req.method==='initialize')queueMicrotask(()=>p.stdout.write(JSON.stringify({id:req.id,result:{}})+'\n'));
+   if(req.method==='account/read')queueMicrotask(()=>p.stdout.write(JSON.stringify({id:req.id,result:{account:{type:'chatgpt',email:'fixture@example.com',planType:'plus'}}})+'\n'));
+ });return p;};
+ const pending=codex.account();
+ for(let i=0;i<10;i++)await Promise.resolve();
+ t.mock.timers.tick(20001);
+ const account=await pending;
+ assert.equal(account.connected,true);
+ assert.equal(account.usage,null);
+ assert.match(account.usageError,/timed out/);
+});

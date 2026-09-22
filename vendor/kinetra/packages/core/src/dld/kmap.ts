@@ -334,7 +334,7 @@ function minimize(
     if (form === "sop") return and(...sopArgs);
     // POS clause: negate each literal and OR.
     const posArgs = sopArgs.map((a) =>
-      a.type === "not" ? variable(a.arg.name) : not(variable(a.type === "var" ? a.name : "?")),
+      a.type === "not" ? a.arg : not(a),
     );
     return or(...posArgs);
   });

@@ -4,6 +4,7 @@
  */
 
 import type { Expr } from "./expression.js";
+import { derivative } from "./symbolic.js";
 import { KinetraError } from "../errors.js";
 import { approxEqual, clamp } from "../utils/text.js";
 

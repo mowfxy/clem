@@ -16,6 +16,7 @@ try {
     const listeners = new Set();
     window.requests = [];
     window.activeAccount="default";
+    window.recovery=false;
     window.mowrDesktop = {
       onAuth: () => () => {},
       onAttachment: () => () => {},
@@ -25,6 +26,8 @@ try {
       },
       invoke: async (r) => {
         window.requests.push(r);
+        if(r.action==='providerAccountRetry')return {id:r.id,url:'https://auth.openai.com/codex/device',code:'RETRY-CODE'};
+        if(r.action==='providerAccounts'&&window.recovery)return {active:'default',accounts:[{id:'22222222-2222-4222-8222-222222222222',connected:false,loginError:'Sign-in expired. Start again to get a new code.'}]};
         if(r.action==='providerAccounts')return {active:window.activeAccount,accounts:[{id:'default',connected:true,email:'personal@example.com',plan:'plus',checkedAt:Date.now(),usage:{rateLimitsByLimitId:{codex:{primary:{usedPercent:42,windowDurationMins:300,resetsAt:Date.now()/1000+9000},secondary:{usedPercent:18,windowDurationMins:10080,resetsAt:Date.now()/1000+86400}}}}},{id:'11111111-1111-4111-8111-111111111111',connected:true,email:'work@example.com',plan:'pro',usageError:'Usage is unavailable from the provider.'}]};
         if(r.action==='providerAccountSelect'){window.activeAccount=r.id;return {ok:true};}
         if(r.action==='providerAccountAdd')return {id:'22222222-2222-4222-8222-222222222222',url:'https://auth.openai.com/codex/device',code:'TEST-TEST'};
@@ -212,6 +215,13 @@ try {
   await page.locator(".workspace").evaluate((el) => (el.scrollTop = 0));
   const brand = await page.locator(".sidebar>.brand").boundingBox();
   assert.ok(brand.y >= 0 && brand.y < 40, "Brand blends into window top");
+  for (const width of [800, 1000, 1140, 1440, 1700]) {
+    await page.setViewportSize({ width, height: 960 });
+    const sidebar = await page.locator(".sidebar").boundingBox();
+    const titlebar = await page.locator(".desktop-titlebar").boundingBox();
+    assert.ok(Math.abs(titlebar.x - sidebar.x - sidebar.width) < 1, `Titlebar meets sidebar at ${width}px`);
+  }
+  await page.setViewportSize({ width: 1440, height: 960 });
   await page.evaluate(() => (location.hash = "/app"));
   await page.locator(".greeting-row").waitFor();
   assert.ok(
@@ -257,6 +267,13 @@ try {
   await page.getByRole('button',{name:'Continue with ChatGPT',exact:true}).click();
   await page.getByText('TEST-TEST',{exact:true}).waitFor();
   await page.keyboard.press('Escape');
+  await page.evaluate(()=>window.recovery=true);
+  await page.getByRole('button',{name:'Refresh connections'}).click();
+  await page.getByRole('button',{name:'Retry sign-in',exact:true}).waitFor();
+  await page.screenshot({path:'artifacts/account-recovery.png'});
+  await page.getByRole('button',{name:'Retry sign-in',exact:true}).click();
+  await page.getByText('RETRY-CODE',{exact:true}).waitFor();
+  await page.keyboard.press('Escape');
   for(const [tab,scene] of [['Memory','orchestrate'],['Automations','schedule']]){
    await page.locator('.settings-tabs').getByRole('button',{name:tab,exact:true}).click();
    const art=page.locator('.settings-feature-art svg');await art.waitFor();
@@ -264,6 +281,16 @@ try {
    await page.screenshot({path:'artifacts/settings-'+tab.toLowerCase()+'.png'});
    await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(100);const still=await art.innerHTML();await page.waitForTimeout(200);assert.equal(await art.innerHTML(),still);await page.emulateMedia({reducedMotion:'no-preference'});
   }
+  await page.evaluate(()=>location.hash='/app/visuals');
+  assert.equal(await page.locator('.kinetra-grid').count(),0);
+  await page.evaluate(()=>location.hash='/app/subjects');
+  const importer=page.getByRole('button',{name:'Import subject ZIP',exact:true});
+  await importer.waitFor();
+  assert.equal(await page.locator('.space-heading-actions').getByRole('button').count(),2);
+  const chooser=page.waitForEvent('filechooser');await importer.click();await chooser;
+  await page.mouse.move(800,300);
+  assert.equal(await importer.locator('svg path').count(),2);
+  await page.screenshot({path:'artifacts/subjects-import.png'});
   await page.setViewportSize({ width: 600, height: 900 });
   assert.ok(
     await page.evaluate(

@@ -37,10 +37,13 @@ await build({
     },
   ],
 });
+await build({entryPoints:["desktop/kinetra-worker.ts"],outfile:"desktop-dist/kinetra-worker.cjs",bundle:true,platform:"node",format:"cjs"});
 await copyFile("desktop/preload.cjs", "desktop-dist/preload.cjs");
 await mkdir("desktop-package/desktop", { recursive: true });
 await cp("dist", "desktop-package/dist", { recursive: true });
 await cp("desktop-dist", "desktop-package/desktop-dist", { recursive: true });
+await mkdir("desktop-package/licenses",{recursive:true});
+await copyFile("vendor/kinetra/LICENSE","desktop-package/licenses/kinetra.txt");
 await copyFile("desktop/icon.ico", "desktop-package/desktop/icon.ico");
 const manifest = JSON.parse(await readFile("package.json", "utf8"));
 await writeFile(

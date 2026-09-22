@@ -387,6 +387,3 @@ body:has(.desktop-content) {
 .desktop-content .sidebar>.brand{-webkit-app-region:drag;app-region:drag}
 
 @media(max-width:760px){.desktop-titlebar:has(+.desktop-content .sidebar){left:0}}
-
-@media(min-width:1600px){.desktop-titlebar:has(+.desktop-content .sidebar){left:265px}}
-@media(min-width:761px) and (max-width:1150px){.desktop-titlebar:has(+.desktop-content .sidebar){left:218px}}

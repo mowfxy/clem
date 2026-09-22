@@ -158,7 +158,7 @@ export function solveTransient(circuit: Circuit, opts: TransientOptions): Transi
   for (const n of nodeIds) nodeVoltages.set(n, []);
   for (const c of circuit.components) componentCurrents.set(c.id, []);
   if (opts.recordNodes) for (const n of opts.recordNodes) if (!nodeVoltages.has(n)) nodeVoltages.set(n, []);
-  if (opts.recordComponents) for (const c of opts.recordComponents) if (!componentCurrents.has(c.id)) componentCurrents.set(c.id, []);
+  if (opts.recordComponents) for (const c of opts.recordComponents) if (!componentCurrents.has(c)) componentCurrents.set(c, []);
 
   // State: previous step voltages and inductor currents.
   const vPrev = new Array(dim + 1).fill(0);

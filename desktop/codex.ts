@@ -1,12 +1,18 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
+import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
+import {runKinetraTurn} from "./kinetra-turn.ts";
 
 export class Codex {
+  private turn: {id:string;cancelled:boolean} | null = null;
   private inspections = new Set<ChildProcessWithoutNullStreams>();
   get busy() {
-    return this.starting || this.active.size > 0;
+    return this.turn !== null || this.starting || this.active.size > 0;
   }
+  private loginError: string | null = null;
+  private loginChallenge: {url:string;code:string} | null = null;
+  loginState(){return {pending:!!this.loginProcess,loginError:this.loginError,challenge:this.loginProcess?this.loginChallenge:null};}
   private loginProcess: ChildProcessWithoutNullStreams | null = null;
   private starting = false;
   private active = new Map<string, ChildProcessWithoutNullStreams>();
@@ -214,10 +220,7 @@ export class Codex {
       };
       const timer = setTimeout(
         () =>
-          finish(
-            undefined,
-            Error("Account usage could not be refreshed. Try again."),
-          ),
+          account ? finish({connected:true,...account,usage:null,usageError:"Usage refresh timed out. Try refreshing.",checkedAt:Date.now()}) : finish(undefined, Error("Account status could not be refreshed. Try again.")),
         20000,
       );
       const send = (id: number, method: string, params: unknown) =>
@@ -281,6 +284,8 @@ export class Codex {
     });
   }
   async login() {
+    if(this.loginProcess && this.loginChallenge)return this.loginChallenge;
+    this.loginError = null;
     this.accountCache = null;
     this.catalog = null;
     this.loginProcess?.kill();
@@ -290,9 +295,10 @@ export class Codex {
     return new Promise<{ url: string; code: string }>((resolve, reject) => {
       let delivered = false;
       const timer = setTimeout(() => {
+        this.loginError = "Sign-in expired. Start again to get a new code.";
         child.kill();
-        if (!delivered) reject(Error("Provider sign-in timed out."));
-      }, 180000);
+        if (!delivered) reject(Error(this.loginError));
+      }, 900000);
       const collect = (part: Buffer) => {
         output += part.toString().replace(/\x1b\[[0-9;]*m/g, "");
         if (output.length > 16000) {
@@ -303,6 +309,7 @@ export class Codex {
           code = output.match(/\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b/)?.[0];
         if (url && code && !delivered) {
           delivered = true;
+          this.loginChallenge = {url,code};
           resolve({ url, code });
         }
       };
@@ -314,7 +321,10 @@ export class Codex {
           Error("Install the official Codex CLI to connect your subscription."),
         );
       });
-      child.on("close", () => {
+      child.on("close", (code) => {
+        this.accountCache = null;
+        this.catalog = null;
+        if(code !== 0 && !this.loginError)this.loginError = /keyring|credential store|credential manager/i.test(output)?"Windows could not save the Codex credentials. Please retry sign-in.":"Codex could not finish connecting on this device. Please retry sign-in.";
         if (this.loginProcess === child) this.loginProcess = null;
         clearTimeout(timer);
         if (!delivered)
@@ -335,14 +345,28 @@ export class Codex {
     });
   }
   cancel(id: string) {
+    if(this.turn?.id===id)this.turn.cancelled=true;
     this.active.get(id)?.kill();
   }
   stop() {
+    if(this.turn)this.turn.cancelled=true;
     for (const child of this.inspections) child.kill();
     this.loginProcess?.kill();
     for (const child of this.active.values()) child.kill();
   }
-  async run(
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>){
+    if(this.busy)throw Error("Wait for the current request or cancel it.");
+    const turn={id,cancelled:false};this.turn=turn;
+    try{
+      const text=await runKinetraTurn(prompt,kinetraInstructions,async input=>{
+        let output="";
+        await this.runOnce(id,input,event=>{if(event.type==="delta")output+=event.text||"";},images,selection);
+        return output;
+      },request=>kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined),()=>turn.cancelled);
+      emit({id,type:"delta",text});emit({id,type:"done"});
+    }finally{this.turn=null;}
+  }
+  private async runOnce(
     id: string,
     prompt: string,
     emit: (event: any) => void,
@@ -375,6 +399,7 @@ export class Codex {
           options.push("-c", `model_reasoning_effort="${selection.reasoning}"`);
         }
       }
+      if(this.turn?.cancelled)throw Error("Request cancelled");
       child = await this.start([
         "exec",
         "--ignore-user-config",
@@ -398,6 +423,7 @@ export class Codex {
       this.starting = false;
     }
     this.active.set(id, child);
+    if(this.turn?.cancelled)child.kill();
     let completed = false,
       bytes = 0;
     const timer = setTimeout(() => child.kill(), 180000);

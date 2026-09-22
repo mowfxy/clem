@@ -12,6 +12,7 @@ export async function desktopChat(
   signal: AbortSignal,
   onText: (text: string) => void,
   selection?: {model?:string;reasoning?:string},
+  onArtifact?: (file:import("../../core/types").StoredFile)=>void,
 ) {
   messages=boundedConversation(messages);
   const id = crypto.randomUUID();
@@ -28,6 +29,7 @@ export async function desktopChat(
     };
     const unsubscribe = desktop!.onChat((event) => {
       if (event.id !== id) return;
+      if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file);}
       if (event.type === "delta") {
         result += event.text || "";
         onText(result);

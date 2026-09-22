@@ -6,7 +6,7 @@ module.exports = {
   asar: true,
   electronVersion: "44.4.3",
   extraResources:[{from:'node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc',to:'codex',filter:['**/*']}],
-  files: ["dist/**/*", "desktop-dist/**/*", "desktop/icon.ico", "package.json","!node_modules/**/*"],
+  files: ["dist/**/*", "desktop-dist/**/*", "desktop/icon.ico", "licenses/**/*", "package.json","!node_modules/**/*"],
   extraMetadata: { main: "desktop-dist/main.cjs", author: { name: "Mowr Ai" } },
   win: {
     target: [{ target: "nsis", arch: ["x64"] }],

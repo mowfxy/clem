@@ -40,6 +40,16 @@ try {
     return r.json();
   });
   assert.ok(Math.abs(diagram.range - 225 / 9.81) < 1e-8);
+  const toolResult=await app.evaluate(async({app})=>{
+    const {Worker}=process.getBuiltinModule('worker_threads'),{join}=process.getBuiltinModule('path');
+    const root=app.isPackaged?join(app.getAppPath(),'desktop-dist'):app.getAppPath();
+    return new Promise((resolve,reject)=>{
+      const worker=new Worker(join(root,'kinetra-worker.cjs'),{workerData:{module:'mowr',fn:'integrateExpression',args:['x^2','x',0,1]}});
+      const timer=setTimeout(()=>{worker.terminate();reject(Error('worker timeout'));},10000);
+      worker.once('message',value=>{clearTimeout(timer);worker.terminate();resolve(value);});worker.once('error',e=>{clearTimeout(timer);reject(e);});
+    });
+  });
+  assert.ok(Math.abs(toolResult.result-1/3)<1e-8,'Packaged Kinetra worker executes');
   assert.ok(
     await page.evaluate(() =>
       window.mowrDesktop.invoke({ action: "shell", command: "whoami" }).then(
@@ -57,6 +67,20 @@ try {
   await page.getByRole("button", { name: "Open browser again" }).waitFor();
   const opened = await app.evaluate(() => globalThis.__openedUrl);
   assert.ok(opened.startsWith("https://mowrai.com/#/desktop-signin?callback="));
+  // Exercise the real Electron popup handler, including host-spoofing rejection.
+  for (const url of ["https://auth.openai.com/codex/device", "https://auth.openai.com.evil.example/codex/device", "http://auth.openai.com/codex/device"]) {
+    await app.evaluate(() => { globalThis.__openedUrl = null; });
+    await page.evaluate((href) => {
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      document.body.append(link);
+      link.click();
+      link.remove();
+    }, url);
+    await page.waitForTimeout(200);
+    assert.equal(await app.evaluate(() => globalThis.__openedUrl), url.startsWith("https://auth.openai.com/") ? url : null);
+  }
   const titlebar = await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     return { menu: w.isMenuBarVisible() };
