@@ -1,17 +1,6 @@
 import { useEffect, useRef } from "react";
 
-// Four authored ribbons share the six-Bezier contour of a Mowr petal.
-// They cross, collect into the mark, hold, then open back into loose ink.
-const petal = [
-  64, 11, 87, 4, 104, 20, 103, 42, 103, 57, 94, 70, 84, 72, 78, 73, 79, 65, 81,
-  61, 85, 48, 75, 43, 65, 48, 55, 52, 49, 43, 49, 31, 49, 22, 54, 15, 64, 11,
-];
-const smooth = (t: number) => {
-  const x = Math.max(0, Math.min(1, t));
-  return x * x * (3 - 2 * x);
-};
-const mix = (a: number[], b: number[], t: number) =>
-  a.map((n, i) => n + (b[i] - n) * smooth(t));
+// Four tapered ink ribbons continuously pass a bend along the selected fill.
 const path = (p: number[]) =>
   `M${p.slice(0, 2).join(" ")} ${Array.from(
     { length: 6 },
@@ -65,37 +54,15 @@ function ribbon(a: number, b: number, y: number, bend: number, weight: number) {
   ];
 }
 function poses(width: number, i: number) {
-  const usable = Math.max(24, width - 14),
-    center = usable / 2;
-  const direction = i % 2 ? -1 : 1;
-  const loose = ribbon(
-    3,
-    usable - 3,
-    7 + i * 3,
-    (i % 2 ? -1 : 1) * 2.5,
-    0.85 + i * 0.12,
-  );
-  const weave = ribbon(
-    center - usable * 0.36,
-    center + usable * 0.36,
-    9 + i * 1.7,
-    (i % 2 ? -1 : 1) * 6,
-    1.45,
-  );
-  if (direction < 0)
-    for (let j = 0; j < loose.length; j += 2) {
-      loose[j] = usable - loose[j];
-      weave[j] = usable - weave[j];
-    }
-  const angle = (i * Math.PI) / 2,
-    c = Math.cos(angle),
-    s = Math.sin(angle);
-  const mark = petal.map((n, j) => {
-    const x = (petal[j - (j % 2)] - 72) * 0.145,
-      y = (petal[j - (j % 2) + 1] - 72) * 0.145;
-    return j % 2 ? 12 + x * s + y * c : center + x * c - y * s;
-  });
-  return { loose, weave, mark };
+  return {
+    loose: ribbon(
+      3,
+      Math.max(24, width - 14) - 3,
+      7 + i * 3,
+      (i % 2 ? -1 : 1) * 2.5,
+      0.85 + i * 0.12,
+    ),
+  };
 }
 export function ReasoningInk() {
   const ref = useRef<SVGSVGElement>(null);
@@ -111,36 +78,33 @@ export function ReasoningInk() {
       inView = true;
     let artwork = paths.map((_, i) => poses(100, i));
     const still = () => {
-      paths.forEach((p, i) => p.setAttribute("d", path(artwork[i].mark)));
-      svg.dataset.phase = "resolved";
+      paths.forEach((p, i) => p.setAttribute("d", path(artwork[i].loose)));
+      svg.dataset.phase = "flow";
     };
     const paint = (ms: number) => {
-      const t = ms % 7200;
-      svg.dataset.phase =
-        t < 1800
-          ? "weaving"
-          : t < 3300
-            ? "gathering"
-            : t < 4750
-              ? "resolved"
-              : "unfolding";
+      svg.dataset.phase = "flow";
       paths.forEach((p, i) => {
-        const { loose, weave, mark } = artwork[i];
-        // Paired strands lead; the other pair joins after the crossing clears.
-        const delay = [0, 110, 290, 200][i];
-        const d =
-          t < 1800
-            ? mix(loose, weave, (t - 250 - delay) / 1300)
-            : t < 3300
-              ? mix(weave, mark, (t - 1800 - delay) / 1100)
-              : t < 4750
-                ? mark
-                : t < 5950
-                  ? mix(mark, weave, (t - 4750 - delay) / 850)
-                  : mix(weave, loose, (t - 5950) / 1050);
-        p.setAttribute("d", path(d));
+        const usable = Math.max(24, width - 14);
+        const phase = (ms / 6200) * Math.PI * 2 - i * 0.65;
+        // The shared swell travels left to right; staggered counter-curves
+        // keep each strand distinct without collapsing the flowing silhouette.
+        const contour = ribbon(
+          3,
+          usable - 3,
+          7 + i * 3,
+          Math.sin(phase) * 2.8 + Math.sin(phase * 0.5 + i * 0.4) * 0.5,
+          0.8 + i * 0.1,
+        );
+        for (let j = 0; j < contour.length; j += 2) {
+          const u = contour[j] / usable;
+          if (u > 0.08 && u < 0.92)
+            contour[j + 1] +=
+              Math.sin(u * Math.PI * 2 - phase) * 1.4 * Math.sin(u * Math.PI);
+        }
+        p.setAttribute("d", path(contour));
       });
     };
+
     const stop = () => {
       cancelAnimationFrame(frame);
       frame = 0;
@@ -207,7 +171,7 @@ export function ReasoningInk() {
       viewBox="0 0 100 24"
     >
       {[0, 1, 2, 3].map((i) => (
-        <path key={i} d={path(poses(100, i).mark)} />
+        <path key={i} d={path(poses(100, i).loose)} />
       ))}
     </svg>
   );

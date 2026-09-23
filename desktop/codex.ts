@@ -2,7 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
-import {runKinetraTurn} from "./kinetra-turn.ts";
+import {streamCodex} from "./codex-stream.ts";
+import {toolRequest,runKinetraTurn} from "./kinetra-turn.ts";
 
 /** Provider output is never shown verbatim: it can include sensitive diagnostics. */
 export function codexFailureMessage(error: unknown): string {
@@ -372,12 +373,20 @@ export class Codex {
     if(this.busy)throw Error("Wait for the current request or cancel it.");
     const turn={id,cancelled:false};this.turn=turn;
     try{
-      const text=await runKinetraTurn(prompt,kinetraInstructions,async input=>{
-        let output="";
-        await this.runOnce(id,input,event=>{if(event.type==="delta")output+=event.text||"";},images,selection);
+      await runKinetraTurn(prompt,kinetraInstructions,async input=>{
+        let output="",delivered=0;
+        await this.runOnce(id,input,event=>{
+          if(event.type!=="delta")return;
+          output+=event.text||"";
+          // Hold possible tool envelopes, but stream ordinary prose immediately.
+          if(output.trimStart()&&!output.trimStart().startsWith("{")){
+            emit({id,type:"delta",text:output.slice(delivered)});delivered=output.length;
+          }
+        },images,selection);
+        if(!toolRequest(output)&&delivered<output.length)emit({id,type:"delta",text:output.slice(delivered)});
         return output;
       },request=>kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined),()=>turn.cancelled);
-      emit({id,type:"delta",text});emit({id,type:"done"});
+      emit({id,type:"done"});
     }finally{this.turn=null;}
   }
   private async runOnce(
@@ -392,9 +401,7 @@ export class Codex {
     this.starting = true;
     let child: ChildProcessWithoutNullStreams;
     try {
-      if (!(await this.status()))
-        throw Error("Connect your ChatGPT subscription first.");
-      const options: string[] = [];
+
       if (selection?.model) {
         const available = await this.models();
         const chosen = available.find((m) => m.id === selection.model);
@@ -402,7 +409,7 @@ export class Codex {
           throw Error(
             "That model is no longer available. Refresh your models.",
           );
-        options.push("--model", chosen.id);
+
         if (selection.reasoning) {
           if (
             !chosen.reasoningEfforts.some(
@@ -410,82 +417,21 @@ export class Codex {
             )
           )
             throw Error("That reasoning level is unavailable for this model.");
-          options.push("-c", `model_reasoning_effort="${selection.reasoning}"`);
+
         }
       }
       if(this.turn?.cancelled)throw Error("Request cancelled");
-      child = await this.start([
-        "exec",
-        "--ignore-user-config",
-        // exec's isolated config requires these overrides on the subcommand itself.
-        "-c",
-        'cli_auth_credentials_store="keyring"',
-        "-c",
-        'forced_login_method="chatgpt"',
-        "--ignore-rules",
-        "--ephemeral",
-        "--skip-git-repo-check",
-        "--sandbox",
-        "read-only",
-        "-c",
-        "features.shell_tool=false",
-        "-c",
-        "features.unified_exec=false",
-        "-c",
-        'web_search="disabled"',
-        "--json",
-        ...options,
-        ...images.flatMap((path) => ["--image", path]),
-        "-",
-      ]);
+      child = await this.start(["app-server", "-c", 'cli_auth_credentials_store="keyring"',
+        "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false",
+        "-c", "features.unified_exec=false", "-c", 'web_search="disabled"']);
     } finally {
       this.starting = false;
     }
     this.active.set(id, child);
     if(this.turn?.cancelled)child.kill();
-    let completed = false,
-      bytes = 0;
-    let failure = "", stderr = "", timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 180000);
-    const lines = createInterface({ input: child.stdout });
-    lines.on("line", (line) => {
-      bytes += line.length;
-      if (bytes > 2_000_000) {
-        child.kill();
-        return;
-      }
-      try {
-        const event = JSON.parse(line);
-        if (
-          event.type === "item.completed" &&
-          event.item?.type === "agent_message"
-        )
-          emit({ id, type: "delta", text: event.item.text });
-        if (event.type === "turn.completed") completed = true;
-        if (event.type === "turn.failed") failure = String(event.error?.message || "Codex rejected this request.");
-        else if (event.type === "error") failure = String(event.message || event.error?.message || "Codex request failed.");
-      } catch {
-        child.kill();
-      }
-    });
-    child.stderr.on("data", part => { stderr = (stderr + String(part)).slice(-16000); });
     try {
-      await new Promise<void>((resolve, reject) => {
-        child.on("error", () => reject(Error("Codex could not start.")));
-        child.stdin.on("error", () => reject(Error("Codex connection closed.")));
-        child.on("close", (code) =>
-          code === 0 && completed
-            ? resolve()
-            : reject(
-                Error(this.turn?.cancelled ? "Request cancelled" : timedOut ? "Codex request timed out" : failure || stderr || "Codex rejected this request."),
-              ),
-        );
-        child.stdin.end(prompt);
-      });
-      emit({ id, type: "done" });
+      await streamCodex(child,prompt,selection,images,text=>emit({id,type:"delta",text}),()=>!!this.turn?.cancelled);
     } finally {
-      clearTimeout(timer);
-      lines.close();
       this.active.delete(id);
       this.accountCache = null;
     }

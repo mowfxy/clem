@@ -107,7 +107,7 @@ try {
       chats: [
         {
           id: "chat-fixture",
-          title: "Research plan",
+          title: "Research plan",model:"gpt-6-astra",reasoning:"high",
           spaceId: null,
           updated: 1,
           messages: [{id:"user-message",role:"user",content:"Help me understand the experiment."},
@@ -235,14 +235,14 @@ try {
   assert.notEqual(await ink.getAttribute('d'),before);
   await page.screenshot({path:'artifacts/reasoning-picker.png'});
   const frames=[];
-  for (const phase of ['gathering','resolved','unfolding']) {
+  for (const phase of ['flow','flow','flow']) {
     await page.waitForFunction(phase=>document.querySelector('.reasoning-ink')?.dataset.phase===phase,phase);
     await page.waitForTimeout(550);
     frames.push(await page.locator('.reasoning-ink').evaluate(el=>el.outerHTML));
     await page.locator('.effort-panel').screenshot({path:`artifacts/reasoning-${phase}.png`});
   }
   const strip=await browser.newPage({viewport:{width:700,height:240}});
-  await strip.setContent(`<body style="background:#292927;color:#ddd;font:13px sans-serif;padding:20px;display:flex;gap:20px">${frames.map((svg,i)=>`<div><p>${['Gather','Resolve','Unfold'][i]}</p><div style="width:200px;height:24px;background:#e9e8e2;border-radius:12px;overflow:hidden">${svg}</div></div>`).join('')}<style>svg{width:200px;height:24px;fill:#72726b;opacity:.65}</style>`);
+  await strip.setContent(`<body style="background:#292927;color:#ddd;font:13px sans-serif;padding:20px;display:flex;gap:20px">${frames.map((svg,i)=>`<div><p>${['Flow 1','Flow 2','Flow 3'][i]}</p><div style="width:200px;height:24px;background:#e9e8e2;border-radius:12px;overflow:hidden">${svg}</div></div>`).join('')}<style>svg{width:200px;height:24px;fill:#72726b;opacity:.65}</style>`);
   await strip.screenshot({path:'artifacts/reasoning-sequence.png'});
   await strip.close();
   await page.emulateMedia({reducedMotion:'reduce'});
@@ -272,6 +272,18 @@ try {
   await page.locator('.message.assistant .document-card').getByText('Charged rods.pdf',{exact:true}).waitFor();
   assert.equal(await page.locator('.message.assistant .document-card').count(),1);
   await page.getByText('Based on your local source.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Reasoning effort',exact:true}).click();
+  await page.getByRole('slider').press('End');await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'New chat',exact:true}).click();
+  await page.getByRole('button',{name:'Choose model',exact:true}).click();
+  await page.getByRole('button',{name:'Sol',exact:true}).click();
+  await page.getByRole('button',{name:'Make a PDF about charged rods',exact:true}).click();
+  assert.match(await page.getByRole('button',{name:'Choose model',exact:true}).innerText(),/Astra/);
+  assert.equal(await page.getByRole('button',{name:'Reasoning effort',exact:true}).innerText(), 'Ultra');
+  await page.waitForFunction(async()=>{
+    const store=await import('/src/store.ts');const saved=await store.loadState();
+    return saved.chats.some(c=>c.title==='Make a PDF about charged rods'&&c.model==='gpt-6-astra'&&c.reasoning==='ultra');
+  });
   console.log(
     "PASS popup task edits, per-step reasoning selection, deletion and synced-model picker",
   );

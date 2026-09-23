@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
+import { streamCodex } from "../../desktop/codex-stream.ts";
 import { Codex, codexFailureMessage } from "../../desktop/codex.ts";
 function fake() {
   const p: any = new EventEmitter();
@@ -62,25 +63,20 @@ test("Codex execution passes selected model and effort and rejects unsupported e
   codex.models = async () => [
     { id: "model-a", reasoningEfforts: [{ reasoningEffort: "high" }] },
   ];
-  let args: string[] = [];
+  let args: string[] = [], turn:any, thread:any;
   codex.start = async (a: string[]) => {
-    args = a;
-    const p = fake();
-    p.stdin.on("finish", () => {
-      p.stdout.write(JSON.stringify({ type: "turn.completed" }) + "\n");
-      setTimeout(() => p.emit("close", 0), 5);
-    });
-    return p;
+    args = a;const p=fake();
+    p.stdin.on("data",(data:Buffer)=>{const req=JSON.parse(data.toString());
+      if(req.method==="initialize")queueMicrotask(()=>p.stdout.write(JSON.stringify({id:1,result:{}})+"\n"));
+      if(req.method==="thread/start"){thread=req.params;queueMicrotask(()=>p.stdout.write(JSON.stringify({id:2,result:{thread:{id:"t"}}})+"\n"));}
+      if(req.method==="turn/start"){turn=req.params;queueMicrotask(()=>p.stdout.write(JSON.stringify({method:"turn/completed",params:{threadId:"t",turn:{status:"completed"}}})+"\n"));}
+    });return p;
   };
-  await codex.run("id", "prompt", () => {}, [], {
-    model: "model-a",
-    reasoning: "high",
-  });
-  assert.equal(args[args.indexOf("--model") + 1], "model-a");
-  assert.ok(args.includes('model_reasoning_effort="high"'));
-  assert.ok(args.includes('--ignore-user-config'));
-  assert.ok(args.indexOf('cli_auth_credentials_store="keyring"') > args.indexOf('exec'));
-  assert.ok(args.includes('forced_login_method="chatgpt"'));
+  await codex.run("id", "prompt", () => {}, [], {model:"model-a",reasoning:"high"});
+  assert.equal(turn.model,"model-a");assert.equal(turn.effort,"high");
+  assert.equal(thread.ephemeral,true);assert.equal(thread.sandbox,"read-only");
+  assert.equal(thread.config["features.shell_tool"],false);
+  assert.ok(args.includes('cli_auth_credentials_store="keyring"'));
   await assert.rejects(
     () =>
       codex.run("id", "prompt", () => {}, [], {
@@ -133,9 +129,8 @@ test("a slow usage service does not discard a confirmed sign-in", async (t) => {
 test("Codex retains a terminal provider failure and exposes only curated text", async () => {
   const codex:any=new Codex("fixture","fixture","fixture");
   codex.status=async()=>true;
-  codex.start=async()=>{const p=fake();p.stdin.on("finish",()=>{
-    p.stdout.write(JSON.stringify({type:"turn.failed",error:{message:"401 Unauthorized: private diagnostic secret-value"}})+"\n");
-    setTimeout(()=>p.emit("close",1),5);
+  codex.start=async()=>{const p=fake();p.stdin.on("data",()=>{
+    queueMicrotask(()=>p.stdout.write(JSON.stringify({id:1,error:{message:"401 Unauthorized: private diagnostic secret-value"}})+"\n"));
   });return p;};
   await assert.rejects(codex.run("failed","prompt",()=>{}),error=>{
     assert.match(codexFailureMessage(error),/Retry sign-in/);
@@ -145,4 +140,40 @@ test("Codex retains a terminal provider failure and exposes only curated text", 
   assert.match(codexFailureMessage(Error("429 rate limit")),/usage limit/);
   assert.match(codexFailureMessage(Error("Codex request timed out")),/too long/);
   assert.equal(codexFailureMessage(Error("Request cancelled")),"Request stopped.");
+});
+
+test("Codex streams prose before completion without exposing tool envelopes",async()=>{
+ const codex:any=new Codex("fixture","fixture","fixture");
+ const events:any[]=[];let completed=false;
+ codex.runOnce=async(_id:any,_input:any,emit:any)=>{
+   emit({type:"delta",text:"Hello"});
+   assert.equal(events[0].text,"Hello");assert.equal(completed,false);
+   emit({type:"delta",text:" there"});completed=true;
+ };
+ await codex.run("stream","hello",(e:any)=>events.push(e));
+ assert.equal(events.filter(e=>e.type==="delta").map(e=>e.text).join(""),"Hello there");
+ assert.equal(events.at(-1).type,"done");
+ let calls=0;events.length=0;
+ codex.runOnce=async(_id:any,_input:any,emit:any)=>{
+   if(calls++===0){emit({type:"delta",text:'{'});emit({type:"delta",text:'"kinetra":{"action":"bad"}}'});assert.equal(events.length,0);}
+   else emit({type:"delta",text:"Cannot run that tool."});
+ };
+ await codex.run("tools","test",(e:any)=>events.push(e));
+ assert.equal(events.filter(e=>e.type==="delta").map(e=>e.text).join(""),"Cannot run that tool.");
+});
+
+test("app-server deltas arrive before completion and final items are not duplicated",async()=>{
+ const p=fake(),chunks:string[]=[];let turnStarted=false;
+ p.stdin.on("data",(data:Buffer)=>{const req=JSON.parse(data.toString());
+  if(req.id===1)queueMicrotask(()=>p.stdout.write(JSON.stringify({id:1,result:{}})+"\n"));
+  if(req.id===2)queueMicrotask(()=>p.stdout.write(JSON.stringify({id:2,result:{thread:{id:"stream-thread"}}})+"\n"));
+  if(req.id===3){turnStarted=true;queueMicrotask(()=>{
+   p.stdout.write(JSON.stringify({method:"item/agentMessage/delta",params:{threadId:"stream-thread",itemId:"a",delta:"Hello"}})+"\n");
+   assert.deepEqual(chunks,["Hello"]);
+   p.stdout.write(JSON.stringify({method:"item/completed",params:{threadId:"stream-thread",item:{id:"a",type:"agentMessage",text:"Hello there"}}})+"\n");
+   p.stdout.write(JSON.stringify({method:"turn/completed",params:{threadId:"stream-thread",turn:{status:"completed"}}})+"\n");
+  });}
+ });
+ await streamCodex(p,"hello",{model:"a",reasoning:"low"},[],text=>chunks.push(text),()=>false);
+ assert.equal(turnStarted,true);assert.equal(chunks.join(""),"Hello there");
 });

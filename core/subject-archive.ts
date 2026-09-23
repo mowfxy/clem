@@ -55,6 +55,8 @@ export const archiveSchema = z.object({
         title: text,
         spaceId: id.nullable(),
         updated: z.number(),
+        model: z.string().max(200).optional(),
+        reasoning: z.string().max(40).optional(),
         messages: z
           .array(
             z.object({
