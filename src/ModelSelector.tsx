@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { createPortal } from "react-dom";
 import type { Model } from "../core/types";
 import { Icon } from "./Icons";
+import { ReasoningInk } from "./ReasoningInk";
 import "./model-selector.css";
 const effortName = (value: string) => value === "low" ? "Light" : value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1);
 export function ModelSelector({ models, value, onChange, onConnect, effort, onEffort, disabled = false }: {
@@ -67,7 +68,7 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
           <button type="button" className="effort-reset" aria-label="Reset reasoning to model default" title="Reset to model default" onClick={() => onEffort?.(selected?.defaultReasoningEffort || levels[0]?.reasoningEffort)}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/></svg></button>
         </div>
         <div className="effort-track" style={{ "--effort-progress": `${levels.length > 1 ? index / (levels.length - 1) * 100 : 0}%` } as CSSProperties}>
-          <div className="effort-rail" aria-hidden="true"><div className="effort-fill"><i/><i/><i/></div><div className="effort-stops">{levels.map((e, i) => <span key={e.reasoningEffort} data-reached={i <= index}/>)}</div></div>
+          <div className="effort-rail" aria-hidden="true"><div className="effort-fill"><ReasoningInk/></div><div className="effort-stops">{levels.map((e, i) => <span key={e.reasoningEffort} data-reached={i <= index}/>)}</div></div>
           <input aria-label="Reasoning effort level" aria-valuetext={level ? effortName(level) : "Default"} type="range" min="0" max={Math.max(0, levels.length - 1)} step="1" value={index} disabled={levels.length < 2} onChange={e => onEffort?.(levels[Number(e.target.value)].reasoningEffort)}/>
         </div>
         <div className="effort-scale"><span>Faster</span><span>Deeper</span></div>

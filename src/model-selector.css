@@ -23,10 +23,7 @@
 .effort-track{position:relative;height:32px}
 .effort-rail{position:absolute;inset:3px 0;background:#41423e;border:1px solid #ffffff09;border-radius:20px;overflow:hidden}
 .effort-fill{position:absolute;inset:0 auto 0 0;width:calc(14px + var(--effort-progress)*.88);border-radius:20px;overflow:hidden;isolation:isolate;background:#e9e8e2;transition:width .22s ease}
-/* Soft ink ripples remain clipped to the selected white fill. */
-.effort-fill i{position:absolute;left:24%;top:50%;width:36px;height:36px;border:1px solid #77786d33;border-radius:50%;animation:effort-ripple 4.8s ease-out infinite;pointer-events:none}
-.effort-fill i:nth-child(2){left:57%;animation-delay:-1.6s}
-.effort-fill i:nth-child(3){left:84%;animation-delay:-3.2s}
+.reasoning-ink{display:block;width:100%;height:24px;position:absolute;inset:0;pointer-events:none;fill:#72726b;opacity:.65}
 .effort-stops{position:absolute;inset:0 13px;display:flex;align-items:center;justify-content:space-between}
 .effort-stops span{height:3px;width:3px;border-radius:50%;background:#91938a;transition:background .2s}
 .effort-stops span[data-reached=true]{background:#797a73}
@@ -36,10 +33,7 @@
 .effort-track input:active::-webkit-slider-thumb{scale:1.08;box-shadow:0 2px 9px #0005}
 .effort-track input:focus-visible{outline:1px solid #d6d5cf;outline-offset:4px;border-radius:24px}
 .effort-scale{display:flex;justify-content:space-between;font-size:10px;color:#93958e;margin-top:7px}
-@keyframes effort-ripple{0%{transform:translate(-50%,-50%) scale(.2);opacity:0}18%{opacity:.8}85%,100%{transform:translate(-50%,-50%) scale(2.8);opacity:0}}
-.compact-picker-panel[data-paused=true] .effort-fill i{animation-play-state:paused}
-@media(prefers-reduced-motion:reduce){.effort-fill i{animation:none}.effort-fill,.effort-track input::-webkit-slider-thumb{transition:none}}
-[data-quiet=true] .effort-fill i{animation:none}
+@media(prefers-reduced-motion:reduce){.effort-fill,.effort-track input::-webkit-slider-thumb{transition:none}}
 .step-head h3{font:500 15px 'Mowafy Sans Text',sans-serif;margin:0;flex:1}
 .step-instructions{display:flex;gap:12px;align-items:flex-start;margin:14px 0}
 .step-instructions p{font-size:13px;line-height:1.65;margin:0;flex:1}
