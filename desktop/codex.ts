@@ -4,6 +4,20 @@ import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {runKinetraTurn} from "./kinetra-turn.ts";
 
+/** Provider output is never shown verbatim: it can include sensitive diagnostics. */
+export function codexFailureMessage(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error || "");
+  if (/cancelled/i.test(detail)) return "Request stopped.";
+  if (/401|unauthorized|authentication|token.*expired|connect your ChatGPT/i.test(detail)) return "Codex could not authenticate this request. Retry sign-in in Settings > Models.";
+  if (/429|usage.limit|rate.limit|quota/i.test(detail)) return "Your connected account has reached its usage limit. Check usage in Settings > Models, or choose another connected account.";
+  if (/reasoning level/i.test(detail)) return "This reasoning level is unavailable for the selected model. Choose another level.";
+  if (/model.*(?:unavailable|not found|not supported|no longer available|does not exist)/i.test(detail)) return "This model is unavailable for your account. Refresh models in Settings > Models.";
+  if (/timed out/i.test(detail)) return "The model took too long to respond. Try a lower reasoning level or a smaller request.";
+  if (/network|connect|fetch|socket|dns/i.test(detail)) return "The connection to Codex was interrupted. Check your connection and try again.";
+  if (/Kinetra.*limit/i.test(detail)) return "This task exceeded the document tool limit. Try a smaller document or split the request.";
+  return "Codex could not complete this request. Please try again.";
+}
+
 export class Codex {
   private turn: {id:string;cancelled:boolean} | null = null;
   private inspections = new Set<ChildProcessWithoutNullStreams>();
@@ -403,6 +417,11 @@ export class Codex {
       child = await this.start([
         "exec",
         "--ignore-user-config",
+        // exec's isolated config requires these overrides on the subcommand itself.
+        "-c",
+        'cli_auth_credentials_store="keyring"',
+        "-c",
+        'forced_login_method="chatgpt"',
         "--ignore-rules",
         "--ephemeral",
         "--skip-git-repo-check",
@@ -426,7 +445,8 @@ export class Codex {
     if(this.turn?.cancelled)child.kill();
     let completed = false,
       bytes = 0;
-    const timer = setTimeout(() => child.kill(), 180000);
+    let failure = "", stderr = "", timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 180000);
     const lines = createInterface({ input: child.stdout });
     lines.on("line", (line) => {
       bytes += line.length;
@@ -442,22 +462,25 @@ export class Codex {
         )
           emit({ id, type: "delta", text: event.item.text });
         if (event.type === "turn.completed") completed = true;
+        if (event.type === "turn.failed") failure = String(event.error?.message || "Codex rejected this request.");
+        else if (event.type === "error") failure = String(event.message || event.error?.message || "Codex request failed.");
       } catch {
         child.kill();
       }
     });
-    child.stderr.resume();
-    child.stdin.end(prompt);
+    child.stderr.on("data", part => { stderr = (stderr + String(part)).slice(-16000); });
     try {
       await new Promise<void>((resolve, reject) => {
         child.on("error", () => reject(Error("Codex could not start.")));
+        child.stdin.on("error", () => reject(Error("Codex connection closed.")));
         child.on("close", (code) =>
           code === 0 && completed
             ? resolve()
             : reject(
-                Error("Request interrupted, cancelled, or rejected by Codex."),
+                Error(this.turn?.cancelled ? "Request cancelled" : timedOut ? "Codex request timed out" : failure || stderr || "Codex rejected this request."),
               ),
         );
+        child.stdin.end(prompt);
       });
       emit({ id, type: "done" });
     } finally {

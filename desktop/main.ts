@@ -23,7 +23,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { requestSchema, type DesktopStatus } from "./contracts";
 import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
-import { Codex } from "./codex";
+import { Codex, codexFailureMessage } from "./codex";
 import { ProviderAccounts } from "./provider-accounts";
 import {
   inside,
@@ -674,7 +674,7 @@ void app.whenReady().then(async () => {
         .then(() =>
           vault.write(checkpoint, { status: "complete", scope: request.scope }),
         )
-        .catch(async () => {
+        .catch(async (error) => {
           await vault.write(checkpoint, {
             status: "interrupted",
             scope: request.scope,
@@ -684,7 +684,7 @@ void app.whenReady().then(async () => {
               id: request.id,
               type: "error",
               error:
-                "The request did not complete. Reconnect or retry; no automatic retry was made.",
+                codexFailureMessage(error),
             });
         });
       return { started: true };
