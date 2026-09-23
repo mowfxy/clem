@@ -157,8 +157,11 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [long, setLong] = useState(false);
   const [models, setModels] = useState<Model[]>(modelPlaceholders);
-  const [model, setModel] = useState("");
-  const [reasoning,setReasoning]=useState("");
+  const [defaultModel, setDefaultModel] = useState("");
+  const [defaultReasoning,setDefaultReasoning]=useState("");
+  const savedSelection=state.chats.find(c=>c.id===chatId);
+  const model=savedSelection?.model ?? defaultModel;
+  const reasoning=savedSelection?.reasoning ?? (savedSelection?.model ? models.find(m=>m.id===model)?.defaultReasoningEffort || "" : defaultReasoning);
   const [deleteChatId,setDeleteChatId]=useState<string|null>(null);
   const [modal, setModal] = useState<string | null>(null);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
@@ -255,14 +258,14 @@ export default function App() {
       if (!r.ok) throw Error();
       const list: Model[] = await r.json();
       setModels((desktop ? list : (list.length ? list : modelPlaceholders)).filter(m=>m.id!=='google').map(m=>m.id==='anthropic'?{...m,name:'Claude',connected:false}:m));
-      setModel((m) => list.some(x=>x.id===m&&x.connected)?m:list.find(x=>x.connected&&x.isDefault)?.id||list.find(x=>x.connected)?.id||"");
+      setDefaultModel((m) => list.some(x=>x.id===m&&x.connected)?m:list.find(x=>x.connected&&x.isDefault)?.id||list.find(x=>x.connected)?.id||"");
       setApiReady(true);
     } catch {
       setApiReady(false);
     }
   }
   useEffect(()=>{const sync=()=>{if(!document.hidden)void refreshModels();};window.addEventListener('focus',sync);const timer=setInterval(sync,60000);return()=>{window.removeEventListener('focus',sync);clearInterval(timer);};},[]);
-  useEffect(()=>{const selected=models.find(m=>m.id===model);if(selected&&!selected.reasoningEfforts?.some(e=>e.reasoningEffort===reasoning))setReasoning(selected.defaultReasoningEffort||"");},[models,model,reasoning]);
+  useEffect(()=>{const selected=models.find(m=>m.id===defaultModel);if(selected&&!selected.reasoningEfforts?.some(e=>e.reasoningEffort===defaultReasoning))setDefaultReasoning(selected.defaultReasoningEffort||"");},[models,defaultModel,defaultReasoning]);
   const patch = (fn: (s: State) => State) => {const next=fn(stateRef.current);stateRef.current=next;setState(next);};
   const activeChat = state.chats.find((c) => c.id === chatId);
   const activeSpace = state.spaces.find((s) => s.id === spaceId);
@@ -290,6 +293,15 @@ export default function App() {
       ...s,
       chats: s.chats.map((c) => (c.id === id ? fn(c) : c)),
     }));
+  }
+  function chooseModel(id:string) {
+    const nextEffort=models.find(m=>m.id===id)?.defaultReasoningEffort||"";
+    if(chatId) updateChat(chatId,c=>({...c,model:id,reasoning:nextEffort}));
+    else {setDefaultModel(id);setDefaultReasoning(nextEffort);}
+  }
+  function chooseReasoning(value:string) {
+    if(chatId) updateChat(chatId,c=>({...c,model,reasoning:value}));
+    else setDefaultReasoning(value);
   }
   function updatePlan(id: string, messageId: string, plan: Plan) {
     updateChat(id, (c) => ({
@@ -385,6 +397,7 @@ export default function App() {
     };
     const next = {
       ...chat,
+      model, reasoning,
       messages: [...chat.messages, user],
       updated: Date.now(),
     };
@@ -885,7 +898,7 @@ export default function App() {
           </button>
         </div>
         <div className="composer-tools">
-          <ModelSelector models={models} value={model} effort={reasoning} onEffort={setReasoning} onChange={id=>{setModel(id);setReasoning(models.find(m=>m.id===id)?.defaultReasoningEffort||"");}} onConnect={()=>openSettings("Models")}/>
+          <ModelSelector models={models} value={model} effort={reasoning} onEffort={chooseReasoning} onChange={chooseModel} onConnect={()=>openSettings("Models")}/>
           {running ? (
             <button
               type="button"
