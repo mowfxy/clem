@@ -6,6 +6,7 @@ export const scopeSchema = z
   .regex(/^(chat|project|subject):[a-zA-Z0-9_-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
+  z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000) }),
   z.object({action:z.literal("essentialSync"),skills:syncSchemas.skills,notes:syncSchemas.notes}),
   z.object({ action: z.literal("browserLogin") }),
   z.object({ action: z.literal("driveConnect") }),

@@ -6,6 +6,12 @@ const config={site_url:'https://mowrai.com',uri_allow_list:'https://mowrai.com/,
 if(env.GOOGLE_AUTH_CLIENT_ID&&env.GOOGLE_AUTH_CLIENT_SECRET)Object.assign(config,{external_google_enabled:true,external_google_client_id:env.GOOGLE_AUTH_CLIENT_ID,external_google_secret:env.GOOGLE_AUTH_CLIENT_SECRET});
 if(env.SMTP_PASSWORD)Object.assign(config,{smtp_host:env.SMTP_HOST,smtp_port:env.SMTP_PORT,smtp_user:env.SMTP_USER,smtp_pass:env.SMTP_PASSWORD,smtp_admin_email:'support@mowrai.com',smtp_sender_name:'Mowr'});
 for(const [key,file] of Object.entries({confirmation:'confirm-signup',recovery:'reset-password',magic_link:'magic-link',email_change:'change-email',invite:'invite',reauthentication:'reauthentication'})){config['mailer_templates_'+key+'_content']=fs.readFileSync('emails/'+file+'.html','utf8');}
+// Security notifications are emitted by Supabase after the action succeeds,
+// including actions performed by the desktop client.
+for(const [key,file] of Object.entries({password_changed:'password-changed',email_changed:'email-changed',identity_linked:'identity-linked',identity_unlinked:'identity-unlinked',mfa_factor_enrolled:'mfa-enabled',mfa_factor_unenrolled:'mfa-disabled'})) {
+ config['mailer_notifications_'+key+'_enabled']=true;
+ config['mailer_templates_'+key+'_notification_content']=fs.readFileSync('emails/'+file+'.html','utf8');
+}
 const response=await fetch('https://api.supabase.com/v1/projects/npdkvkikudvjrgnesuhc/config/auth',{method:'PATCH',headers:{Authorization:'Bearer '+env.SUPABASE_ACCESS_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(config)});
 if(!response.ok)throw Error('Supabase configuration failed with status '+response.status+'. Check management token permissions.');
 console.log('Supabase production auth and email templates configured. Credentials were not logged.');
