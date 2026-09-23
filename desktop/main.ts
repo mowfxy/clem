@@ -1,3 +1,4 @@
+import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import {boundedConversation,retrievalQuery} from "../core/chat-context";
 import {WorkspaceDisk} from "./workspace-disk";
@@ -454,6 +455,11 @@ void app.whenReady().then(async () => {
     }
     const user = await auth.user();
     if (!user) throw Error("Sign in first.");
+    if (request.action === "supportSend") {
+      const {data,error}=await auth.client!.auth.getSession();
+      if(error || !data.session) throw Error("Sign in again to contact support.");
+      return submitSupport(data.session.access_token, request);
+    }
     await selectProvider(user.id);
     if (request.action === "driveConnect") {
       await shell.openExternal("https://mowrai.com/#/drive-connect?account=" + encodeURIComponent(user.id));

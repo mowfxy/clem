@@ -121,3 +121,11 @@ Only the registered JSON-compatible pure APIs are executable: upstream CLI, arbi
 Chat turns use the bundled Codex app-server's incremental agent-message events in an ephemeral, read-only thread. Mowr supplies conversational instructions, disables shell execution and web search, and rejects tool approval requests; Kinetra remains the explicitly bounded document/calculation interface. Potential Kinetra JSON envelopes are held internally while ordinary prose streams immediately. The renderer receives one final completion, without duplicated full-text replies. Higher selected reasoning levels can still delay the provider's first token.
 
 Each local chat stores its selected model and reasoning level. Switching chats restores that selection; refreshing the account catalog does not silently replace it. Older chats without selection metadata adopt the current choice when next used. Subject archives preserve these optional fields.
+
+### Email delivery boundaries
+
+Desktop Contact us uses validated IPC and a main-process HTTPS request to the existing website support endpoint, with the current Supabase session and no credential access in the renderer. Redirects are rejected. Existing server email-MFA checks remain enforced; users requiring that browser verification receive a browser/direct-email fallback. Drafts remain after failure and uncertain timeouts are never retried automatically. SMTP acceptance is submission, not confirmed inbox delivery; the legacy support `delivered` database column records SMTP submission only.
+
+Signup, recovery and email-change messages come from Supabase. `scripts/configure-supabase.mjs` configures branded templates and enables password/email/identity/MFA security notifications after successful actions. Applying it requires a Supabase management token. The website support and email-code endpoints separately require SMTP_HOST, SMTP_USER and SMTP_PASSWORD in their deployed environment. A local missing secret does not establish whether production is configured.
+
+The automation, refund, support-acknowledgement and deletion HTML files are template assets, not proof of active notification flows. Do not advertise automatic emails for these without implementing the corresponding verified event and delivery flow. Live inbox delivery and bounce handling have not been verified by the mocked support tests.
