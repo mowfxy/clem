@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { Codex } from "../../desktop/codex.ts";
+import { Codex, codexFailureMessage } from "../../desktop/codex.ts";
 function fake() {
   const p: any = new EventEmitter();
   p.stdout = new PassThrough();
@@ -78,6 +78,9 @@ test("Codex execution passes selected model and effort and rejects unsupported e
   });
   assert.equal(args[args.indexOf("--model") + 1], "model-a");
   assert.ok(args.includes('model_reasoning_effort="high"'));
+  assert.ok(args.includes('--ignore-user-config'));
+  assert.ok(args.indexOf('cli_auth_credentials_store="keyring"') > args.indexOf('exec'));
+  assert.ok(args.includes('forced_login_method="chatgpt"'));
   await assert.rejects(
     () =>
       codex.run("id", "prompt", () => {}, [], {
@@ -125,4 +128,21 @@ test("a slow usage service does not discard a confirmed sign-in", async (t) => {
  assert.equal(account.connected,true);
  assert.equal(account.usage,null);
  assert.match(account.usageError,/timed out/);
+});
+
+test("Codex retains a terminal provider failure and exposes only curated text", async () => {
+  const codex:any=new Codex("fixture","fixture","fixture");
+  codex.status=async()=>true;
+  codex.start=async()=>{const p=fake();p.stdin.on("finish",()=>{
+    p.stdout.write(JSON.stringify({type:"turn.failed",error:{message:"401 Unauthorized: private diagnostic secret-value"}})+"\n");
+    setTimeout(()=>p.emit("close",1),5);
+  });return p;};
+  await assert.rejects(codex.run("failed","prompt",()=>{}),error=>{
+    assert.match(codexFailureMessage(error),/Retry sign-in/);
+    assert.ok(!codexFailureMessage(error).includes("secret-value"));return true;
+  });
+  assert.equal(codex.busy,false);
+  assert.match(codexFailureMessage(Error("429 rate limit")),/usage limit/);
+  assert.match(codexFailureMessage(Error("Codex request timed out")),/too long/);
+  assert.equal(codexFailureMessage(Error("Request cancelled")),"Request stopped.");
 });

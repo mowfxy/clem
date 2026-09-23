@@ -47,7 +47,7 @@ try {
               });
               fn({ id: r.id, type: "done" });
             }
-          }, 20);
+          }, 1300);
           return { started: true };
         }
         return {};
@@ -262,6 +262,13 @@ try {
   await page.setViewportSize({width:1440,height:960});
   await page.locator('.composer textarea').fill('Make a PDF about charged rods');
   await page.getByRole('button',{name:'Send message',exact:true}).click();
+  await page.locator('.thinking').waitFor();
+  const thinking=await page.locator('.thinking').boundingBox();
+  const mark=await page.locator('.message.assistant .message-mark').last().boundingBox();
+  assert.ok(Math.abs(thinking.y+thinking.height/2-mark.y-mark.height/2)<2);
+  assert.equal(await page.locator('.thinking').innerText(),'Thinking…');
+  assert.equal(await page.locator('.thinking').evaluate(el=>getComputedStyle(el).animationName),'thinking-light');
+  await page.screenshot({path:'artifacts/thinking-alignment.png'});
   await page.locator('.message.assistant .document-card').getByText('Charged rods.pdf',{exact:true}).waitFor();
   assert.equal(await page.locator('.message.assistant .document-card').count(),1);
   await page.getByText('Based on your local source.',{exact:true}).waitFor();

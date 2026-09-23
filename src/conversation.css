@@ -2,14 +2,19 @@
 .messages .message.user{display:flex;flex-direction:column;align-items:flex-end;padding:0;margin-bottom:40px}
 .messages .message.user .message-text{width:fit-content;max-width:80%;padding:13px 19px;border-radius:21px;background:#242424;white-space:pre-wrap;font-size:15px;line-height:1.65}
 .messages .message.assistant .message-text{font-family:'Soft Ink Serif',Georgia,serif;font-size:16px;line-height:1.7;background:none;padding:0}
-.message-mark{position:absolute;left:0;top:2px;color:#eeece4}
+.message-mark{position:absolute;left:0;top:-1.4px;line-height:0;color:#eeece4}
+.messages .message.assistant .message-text p{line-height:inherit}
+.messages .message.assistant .thinking{display:inline-block;font-size:16px;line-height:1.7;color:#b5b4ac;background:linear-gradient(105deg,#92918b 0%,#92918b 35%,#f4f2e9 48%,#92918b 61%,#92918b 100%);background-size:250% 100%;background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:thinking-light 2.6s ease-in-out infinite}
+@keyframes thinking-light{0%,12%{background-position:100% 0}88%,100%{background-position:0% 0}}
+@media(prefers-reduced-motion:reduce){.messages .message.assistant .thinking{animation:none;background:none;-webkit-text-fill-color:currentColor}}
+[data-quiet=true] .messages .message.assistant .thinking{animation:none;background:none;-webkit-text-fill-color:currentColor}
 .message-text p:last-child{margin-bottom:0}
 .history-more{flex-shrink:0;padding:4px 7px;letter-spacing:2px;font-size:20px;color:#aaa}
 .chat-options{position:fixed;inset:auto;margin:0;min-width:160px;padding:5px;background:#252525;color:#e8e6e0;border:1px solid #424242;border-radius:11px;box-shadow:0 12px 36px #0006}
 .chat-options:popover-open{display:grid}
 .chat-options button{justify-content:flex-start;font-size:13px;padding:10px 12px}
 .chat-options button:hover{background:#ffffff0d}
-@media(max-width:760px){.messages .message{padding-left:36px}.messages .message.assistant .message-text{font-size:16px}.messages .message.user .message-text{max-width:90%}.message-mark svg{width:25px;height:25px}}
+@media(max-width:760px){.messages .message{padding-left:36px}.messages .message.assistant .message-text{font-size:16px}.messages .message.user .message-text{max-width:90%}.message-mark{top:1.1px}.message-mark svg{width:25px;height:25px}}
 
 .history-row:has(.history-item.chosen){background:#292929;border-radius:7px}
 .history-row .history-item.chosen{background:transparent}
