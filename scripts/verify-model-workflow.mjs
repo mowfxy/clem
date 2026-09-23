@@ -226,16 +226,30 @@ try {
 
   await page.waitForTimeout(280);
   assert.ok(parseFloat(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).width))>100);
-  assert.equal(await page.locator('.effort-fill i').count(),3);
+  assert.equal(await page.locator('.reasoning-ink path').count(),4);
   assert.equal(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).overflow),'hidden');
   assert.equal(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(233, 232, 226)');
-  const ripple=page.locator('.effort-fill i').first();
-  const before=await ripple.evaluate(el=>getComputedStyle(el).transform);
-  await page.waitForTimeout(180);
-  assert.notEqual(await ripple.evaluate(el=>getComputedStyle(el).transform),before);
+  const ink=page.locator('.reasoning-ink path').first();
+  const before=await ink.getAttribute('d');
+  await page.waitForTimeout(750);
+  assert.notEqual(await ink.getAttribute('d'),before);
   await page.screenshot({path:'artifacts/reasoning-picker.png'});
+  const frames=[];
+  for (const phase of ['gathering','resolved','unfolding']) {
+    await page.waitForFunction(phase=>document.querySelector('.reasoning-ink')?.dataset.phase===phase,phase);
+    await page.waitForTimeout(550);
+    frames.push(await page.locator('.reasoning-ink').evaluate(el=>el.outerHTML));
+    await page.locator('.effort-panel').screenshot({path:`artifacts/reasoning-${phase}.png`});
+  }
+  const strip=await browser.newPage({viewport:{width:700,height:240}});
+  await strip.setContent(`<body style="background:#292927;color:#ddd;font:13px sans-serif;padding:20px;display:flex;gap:20px">${frames.map((svg,i)=>`<div><p>${['Gather','Resolve','Unfold'][i]}</p><div style="width:200px;height:24px;background:#e9e8e2;border-radius:12px;overflow:hidden">${svg}</div></div>`).join('')}<style>svg{width:200px;height:24px;fill:#72726b;opacity:.65}</style>`);
+  await strip.screenshot({path:'artifacts/reasoning-sequence.png'});
+  await strip.close();
   await page.emulateMedia({reducedMotion:'reduce'});
-  assert.equal(await page.locator('.effort-fill i').first().evaluate(el=>getComputedStyle(el).animationName),'none');
+  await page.waitForFunction(()=>document.querySelector('.reasoning-ink')?.dataset.motion==='still');
+  const poster=await ink.getAttribute('d');
+  await page.waitForTimeout(180);
+  assert.equal(await ink.getAttribute('d'),poster);
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.getByRole('button',{name:'Reset reasoning to model default'}).click();
   assert.equal(await page.getByRole('slider').getAttribute('aria-valuetext'),'Light');
