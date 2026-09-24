@@ -145,7 +145,7 @@ try {
   await page.locator(".greeting-row").waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
   await page.getByRole("button", { name: "Calculus", exact: true }).click();
-  await page.getByRole("button", { name: "Create quiz", exact: true }).click();
+  await page.getByRole("button", { name: "New quiz", exact: true }).click();
   await page
     .locator(".composer textarea")
     .fill("/quiz create a quiz on arithmetic");
@@ -161,13 +161,15 @@ try {
     .getByRole("button", { name: "Check answers", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Attempt saved", exact: true })
+    .getByRole("button", { name: "Try again", exact: true })
     .waitFor();
   await page.screenshot({ path: "artifacts/subject-study.png" });
   await page
-    .getByRole("button", { name: "Back to collection", exact: true })
+    .getByRole("button", { name: "Back to sets", exact: true })
     .click();
-  await page.getByText("Last score 1/1", { exact: false }).waitFor();
+  await page.getByText("last 1/1", { exact: false }).waitFor();
+  // The quiz answer joined the review schedule, so nothing is due or new today.
+  await page.getByRole("button", { name: "Nothing due", exact: false }).waitFor();
   const downloadPromise = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Export subject ZIP", exact: true })

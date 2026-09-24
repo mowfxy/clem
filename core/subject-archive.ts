@@ -35,6 +35,7 @@ export const archiveSchema = z.object({
     description: text,
     memory: text,
     sources: z.array(id),
+    examDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }),
   files: z
     .array(
@@ -63,7 +64,8 @@ export const archiveSchema = z.object({
               id,
               role: z.enum(["user", "assistant"]),
               content: text,
-              visual: z.boolean().optional(),
+              visual: z.union([z.boolean(), z.string().max(40)]).optional(),
+              visualParams: z.record(z.string().max(40), z.number().finite()).optional(),
               plan: plan.optional(),
               attachments: z.array(id).optional(),
             }),
@@ -89,6 +91,21 @@ export const archiveSchema = z.object({
             }),
           )
           .max(10000),
+        cards: z
+          .array(
+            z
+              .object({
+                due: z.number().finite(),
+                stability: z.number().positive().finite(),
+                difficulty: z.number().min(1).max(10),
+                reps: z.number().int().nonnegative(),
+                lapses: z.number().int().nonnegative(),
+                last: z.number().finite(),
+              })
+              .nullable(),
+          )
+          .max(30)
+          .optional(),
       }),
     )
     .max(1000),

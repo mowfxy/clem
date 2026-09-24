@@ -15,7 +15,7 @@ type Bucket = {
   secondary?: WindowUsage | null;
   credits?: { balance?: string | null; unlimited?: boolean } | null;
 };
-type Account = {
+export type Account = {
   id: string;
   connected: boolean;
   pending?:boolean;
@@ -31,6 +31,7 @@ type Account = {
     ordinaryUsageAllowed?: boolean | null;
   };
 };
+export type AccountsData = {active:string;accounts:Account[];resets?:{id:string;email?:string;windows:string[]}[];autoSwitch?:boolean};
 function Reconnect({id,onClose,onDone}:{id:string;onClose:()=>void;onDone:()=>void}){
  const ref=useRef<HTMLDialogElement>(null);
  useEffect(()=>{ref.current?.showModal();},[]);
@@ -138,19 +139,22 @@ export function ModelsSettings({
   onConnect,
   onRefresh,
   locked = false,
+  liveData,
 }: {
   models: Model[];
   onConnect: () => void;
   onRefresh: () => Promise<void>;
   locked?: boolean;
+  liveData?: AccountsData;
 }) {
-  const [data, setData] = useState<{ active: string; accounts: Account[] }>({
+  const [data, setData] = useState<AccountsData>({
       active: "",
       accounts: [],
     }),
     [retryId,setRetryId]=useState<string|null>(null),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [claude,setClaude]=useState<{installed?:boolean;connected?:boolean;email?:string;plan?:string}>({});
   async function refresh(force = false) {
     setBusy(true);
     setError("");
@@ -161,6 +165,7 @@ export function ModelsSettings({
           refresh: force,
         });
         if (result?.accounts) setData(result);
+        setClaude(await desktop.invoke({action:'claudeStatus'}));
       }
       await onRefresh();
     } catch (e) {
@@ -172,6 +177,7 @@ export function ModelsSettings({
   useEffect(() => {
     void refresh();
   }, []);
+  useEffect(()=>{if(liveData)setData(liveData);},[liveData]);
   useEffect(()=>{
     const onFocus=()=>{if(!busy)void refresh(true);};
     window.addEventListener("focus",onFocus);
@@ -235,6 +241,8 @@ export function ModelsSettings({
             : "Connect account"}
         </button>
       </div>
+      {desktop && <div className="model-provider-summary claude-provider-summary"><span className="model-provider-mark">C</span><div><h3>Claude subscription</h3><p>{claude.connected?`${claude.email||'Claude account'} · ${claude.plan||'Connected'} · usage percentages unavailable from Claude Code`:claude.installed?'Sign in with Claude Code to use your subscription in long-task handoffs.':'Install the official Claude Code CLI to connect a subscription.'}</p></div>{!claude.connected&&<button className="secondary" disabled={busy||locked} onClick={async()=>{try{await desktop!.invoke({action:claude.installed?'claudeLogin':'claudeInstall'});if(claude.installed)setError('Finish Claude sign-in in the terminal, then refresh models.');}catch(e){setError((e as Error).message);}}}>{claude.installed?'Sign in':'Install'}</button>}</div>}
+      {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>Before each request, use another connected ChatGPT account when this one falls below 10% in its short window or 5% weekly. A running response finishes on its current account.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
       {retryId&&<Reconnect id={retryId} onClose={()=>setRetryId(null)} onDone={()=>{setRetryId(null);void refresh(true);}}/>}
       {error && <p role="alert">{error}</p>}
       <div className="connected-accounts">
@@ -296,7 +304,7 @@ export function ModelsSettings({
       )}
       <p className="models-footnote">
         Usage covers the whole connected account, including other Codex apps.
-        Each account keeps its own limits. Mowr uses the account you select.
+        Each account keeps its own limits. Automatic switching applies to connected ChatGPT accounts only.
       </p>
     </section>
   );

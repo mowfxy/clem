@@ -3,41 +3,19 @@ import {
   normalizeUsername,
   validUsername,
   ownerEligible,
-  subscriptionActive,
   verifySignature,
 } from "./account-policy.js";
+import { corsHeaders, HttpError, json, lemon, limit } from "./lib/http.js";
+import {
+  complimentary,
+  hasActiveSubscription,
+  recordActivity,
+  subscriptions as subscriptionsFor,
+  suspension,
+} from "./lib/account-state.js";
+import { handleAdmin } from "./admin.js";
+import { handleSupport } from "./support.js";
 
-const json = (data, status = 200) =>
-  Response.json(data, {
-    status,
-    headers: {
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
-async function limit(env, key, max) {
-  const now = Math.floor(Date.now() / 60000);
-  const row = await env.DB.prepare(
-    "INSERT INTO desktop_rate_limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires<? THEN 1 ELSE count+1 END,expires=excluded.expires RETURNING count",
-  )
-    .bind(key, now, now)
-    .first();
-  return row.count <= max;
-}
-async function lemon(env, path, body) {
-  const r = await fetch("https://api.lemonsqueezy.com/v1/" + path, {
-    method: body ? "POST" : "GET",
-    headers: {
-      Authorization: "Bearer " + env.LEMON_API_KEY,
-      Accept: "application/vnd.api+json",
-      "Content-Type": "application/vnd.api+json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!r.ok) throw Error("Payment provider unavailable.");
-  return r.json();
-}
 async function webhook(request, env) {
   const raw = await request.text();
   if (raw.length > 256000) return json({ error: "Payload too large" }, 413);
@@ -87,6 +65,23 @@ async function webhook(request, env) {
 }
 export default {
   async fetch(request, env) {
+    if (request.method === "OPTIONS")
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
+    const response = await route(request, env);
+    const cors = corsHeaders(request);
+    if (!Object.keys(cors).length) return response;
+    const headers = new Headers(response.headers);
+    for (const [key, value] of Object.entries(cors)) headers.set(key, value);
+    return new Response(response.body, { status: response.status, headers });
+  },
+  async scheduled(_event, env) {
+    await env.DB.prepare("DELETE FROM desktop_rate_limits WHERE expires<?")
+      .bind(Math.floor(Date.now() / 60000) - 60)
+      .run();
+  },
+};
+
+async function route(request, env) {
     try {
       const path = new URL(request.url).pathname;
       if (path === "/webhooks/lemon" && request.method === "POST")
@@ -97,7 +92,7 @@ export default {
         !(await limit(
           env,
           "ip:" + (request.headers.get("CF-Connecting-IP") || "unknown"),
-          90,
+          path.startsWith("/admin/") ? 300 : 90,
         ))
       )
         return json({ error: "Try again shortly." }, 429);
@@ -128,8 +123,15 @@ export default {
         if (claims.sub !== user.id || claims.aal !== "aal2")
           return json({ error: "Authenticator verification required" }, 403);
       }
+      if (path.startsWith("/admin/")) {
+        if (!(await limit(env, "admin:" + user.id, 240)))
+          return json({ error: "Try again shortly." }, 429);
+        return await handleAdmin(request, env, user, path, authorization);
+      }
       if (!(await limit(env, "user:" + user.id, 60)))
         return json({ error: "Try again shortly." }, 429);
+      const supportResponse = await handleSupport(request, env, user, path);
+      if (supportResponse) return supportResponse;
       if (path.startsWith("/sync/")) {
         const kind = path.slice(6);
         if (!["skills", "memory", "notes"].includes(kind))
@@ -231,22 +233,30 @@ export default {
       )
         .bind(user.id)
         .first();
-      const subscriptions = await env.DB.prepare(
-        "SELECT * FROM desktop_subscriptions WHERE user_id=?",
-      )
-        .bind(user.id)
-        .all();
-      const active =
-        !!grant || subscriptions.results.some((s) => subscriptionActive(s));
-      if (path === "/entitlement")
+      const comp = !grant && (await complimentary(env, user.id));
+      const paid = hasActiveSubscription(await subscriptionsFor(env, user.id));
+      const suspended = grant ? null : await suspension(env, user.id);
+      const active = !suspended && (!!grant || comp || paid);
+      if (path === "/entitlement") {
+        await recordActivity(env, user);
+        if (suspended)
+          return json({
+            active: false,
+            reason: "suspended",
+            message: suspended.reason,
+            until: suspended.until,
+          });
         return json({
           active,
           reason: grant
             ? "owner"
-            : active
-              ? "subscription"
-              : "subscription_required",
+            : comp
+              ? "complimentary"
+              : active
+                ? "subscription"
+                : "subscription_required",
         });
+      }
       if (path === "/username") {
         if (!(await limit(env, "username:" + user.id, 30)))
           return json({ error: "Try again shortly." }, 429);
@@ -318,6 +328,8 @@ export default {
         return json({ ok: true });
       }
       if (path === "/checkout" && request.method === "POST") {
+        if (suspended)
+          return json({ error: "This account is suspended. Contact support@mowrai.com." }, 403);
         if (active) return json({ error: "You already have access." }, 409);
         if (!env.LEMON_API_KEY || !env.LEMON_STORE_ID || !env.LEMON_VARIANT_ID)
           return json(
@@ -387,7 +399,8 @@ export default {
         return json({ url });
       }
       return json({ error: "Not found" }, 404);
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpError) return json({ error: error.message }, error.status);
       return json(
         {
           error:
@@ -396,10 +409,4 @@ export default {
         503,
       );
     }
-  },
-  async scheduled(_event, env) {
-    await env.DB.prepare("DELETE FROM desktop_rate_limits WHERE expires<?")
-      .bind(Math.floor(Date.now() / 60000) - 60)
-      .run();
-  },
-};
+}

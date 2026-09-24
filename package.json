@@ -1,6 +1,6 @@
 {
   "name": "mowr",
-  "version": "0.2.0-preview.2",
+  "version": "0.2.0-preview.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,9 +17,17 @@
     "desktop:build": "npm run build && tsc -p desktop/tsconfig.json && node scripts/build-desktop.mjs",
     "desktop:dev": "npm run desktop:build && electron desktop-dist/main.cjs",
     "desktop:pack": "npm run desktop:build && electron-builder --config electron-builder.cjs --win --dir",
-    "desktop:installer": "npm run desktop:build && electron-builder --config electron-builder.cjs --win",
+    "desktop:installer": "npm run desktop:build && electron-builder --config electron-builder.cjs --win && node scripts/publish-installer.mjs",
     "test:desktop": "node scripts/build-kinetra.mjs && node --experimental-strip-types --test tests/desktop/*.test.ts",
-    "desktop:smoke": "node scripts/smoke-desktop.mjs"
+    "desktop:smoke": "node scripts/smoke-desktop.mjs",
+    "installer:publish": "node scripts/publish-installer.mjs",
+    "db:admin": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/admin-schema.sql",
+    "deploy:accounts": "npx wrangler deploy --config cloudflare/account.wrangler.jsonc",
+    "verify:ui": "node scripts/verify-settings.mjs && node scripts/verify-notices.mjs",
+    "installer:release": "node scripts/publish-installer.mjs --site",
+    "emails": "node scripts/build-emails.mjs",
+    "emails:art": "node scripts/build-email-art.mjs",
+    "emails:apply": "node scripts/apply-email-templates.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
@@ -34,6 +42,7 @@
     "idb-keyval": "^6.2.2",
     "ignore": "7.0.5",
     "jose": "^6.2.12",
+    "katex": "^0.16.47",
     "nodemailer": "10.0.9",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "^6.3.289",
@@ -41,7 +50,9 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "three": "^0.180.0",
     "zod": "^4.1.0"
   },
@@ -60,6 +71,7 @@
     "electron": "44.4.3",
     "electron-builder": "26.15.3",
     "esbuild": "^0.25.12",
+    "gifenc": "^1.0.3",
     "prettier": "3.6.2",
     "typescript": "^5.9.0",
     "vite": "^7.1.0"

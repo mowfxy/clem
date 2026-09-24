@@ -1,0 +1,56 @@
+/* Workspace motion. Short, interruptible and only on entry, so nothing loops for attention.
+   Turned off by reduced-motion and by Settings → General → "A quieter workspace". */
+:root{--ease-out:cubic-bezier(.2,.8,.2,1);--ease-spring:cubic-bezier(.2,1.25,.35,1)}
+
+/* Views arrive instead of popping in. */
+.workspace>.page,.workspace>.chat-view,.settings-content>*{animation:m-rise .38s var(--ease-out) both}
+.page-heading{animation:m-rise .42s var(--ease-out) both}
+
+/* New messages settle into the conversation. */
+.messages .message{animation:m-message .42s var(--ease-out) both}
+.messages .message.user{transform-origin:100% 100%}
+
+/* Sidebar history and suggestion cards cascade on first paint. */
+.history-row{animation:m-slide .34s var(--ease-out) both}
+.history-row:nth-child(2){animation-delay:30ms}.history-row:nth-child(3){animation-delay:60ms}.history-row:nth-child(4){animation-delay:90ms}.history-row:nth-child(5){animation-delay:120ms}.history-row:nth-child(n+6){animation-delay:150ms}
+.suggestions>*{animation:m-rise .45s var(--ease-out) both}
+.suggestions>*:nth-child(2){animation-delay:50ms}.suggestions>*:nth-child(3){animation-delay:100ms}.suggestions>*:nth-child(4){animation-delay:150ms}
+.suggestions>button{transition:transform .22s var(--ease-spring),border-color .2s,background .2s}
+.suggestions>button:hover{transform:translateY(-2px)}
+
+/* Tactile controls. */
+.primary{transition:background .16s,transform .16s var(--ease-spring),box-shadow .2s}
+.primary:hover:not(:disabled){box-shadow:0 6px 18px -6px #0009}
+.primary:active:not(:disabled),.suggestions>button:active,.history-item:active{transform:scale(.97)}
+.history-item{transition:background .16s,padding-left .22s var(--ease-out),color .16s}
+.history-item:hover{padding-left:16px}
+.history-dot{transition:transform .25s var(--ease-spring),background .2s}
+.history-item:hover .history-dot,.history-item.chosen .history-dot{transform:scale(1.5)}
+
+/* The account corner responds to the pointer. */
+.account-button .avatar{transition:transform .35s var(--ease-spring)}
+.account-button:hover .avatar{transform:translateY(-2px) rotate(-4deg)}
+.profile-settings svg{transition:transform .5s var(--ease-spring)}
+.profile-settings:hover svg{transform:rotate(35deg)}
+
+/* Dialogs and the toast rise with a little weight. */
+dialog[open]{animation:m-dialog .32s var(--ease-spring) both}
+dialog[open]::backdrop{animation:m-fade .25s ease-out both}
+.toast{animation:m-toast .45s var(--ease-spring) both}
+
+/* The composer glows softly while focused. */
+.composer{transition:border-color .2s,box-shadow .3s}
+.composer:focus-within{box-shadow:0 0 0 4px #ffffff08,0 18px 50px -20px #000}
+
+@keyframes m-rise{from{opacity:0;transform:translateY(10px)}}
+@keyframes m-slide{from{opacity:0;transform:translateX(-8px)}}
+@keyframes m-message{from{opacity:0;transform:translateY(12px) scale(.985)}}
+@keyframes m-dialog{from{opacity:0;transform:translateY(16px) scale(.97)}}
+@keyframes m-fade{from{opacity:0}}
+@keyframes m-toast{from{opacity:0;transform:translate(-50%,18px) scale(.94)}to{transform:translateX(-50%)}}
+
+@media (prefers-reduced-motion:reduce){
+  .workspace>.page,.workspace>.chat-view,.settings-content>*,.page-heading,.messages .message,.history-row,.suggestions>*,dialog[open],dialog[open]::backdrop,.toast{animation:none!important}
+  .account-button:hover .avatar,.profile-settings:hover svg,.suggestions>button:hover,.primary:active:not(:disabled){transform:none!important}
+}
+html[data-quiet=true] .workspace>.page,html[data-quiet=true] .workspace>.chat-view,html[data-quiet=true] .settings-content>*,html[data-quiet=true] .messages .message,html[data-quiet=true] .history-row,html[data-quiet=true] .suggestions>*,html[data-quiet=true] dialog[open]{animation:none!important}

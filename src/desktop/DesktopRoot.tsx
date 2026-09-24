@@ -41,12 +41,19 @@ function SetupContent() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [browserPending, setBrowserPending] = useState(false),
-    [pending, setPending] = useState(false);
+    [pending, setPending] = useState(false),
+    [readOnly, setReadOnly] = useState(false);
   const [username, setUsername] = useState(""),
     [name, setName] = useState(""),
     [memory, setMemory] = useState(true),
     [availability, setAvailability] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
+  // While reading offline, check quietly for the connection so sending comes back on its own.
+  useEffect(() => {
+    if (!readOnly) return;
+    const timer = setInterval(() => void refresh().catch(() => {}), 30000);
+    return () => clearInterval(timer);
+  }, [readOnly]);
   async function refresh() {
     const next = (await desktop!.invoke({ action: "status" })) as DesktopStatus;
     setState(next);
@@ -121,6 +128,13 @@ function SetupContent() {
     });
     await refresh();
   }
+  // Offline, the local workspace still opens to read; sending waits for a connection.
+  if (state?.user && state.setup.step >= 4 && state.entitlement.reason === "offline" && readOnly)
+    return (
+      <Suspense fallback={<main className="workspace-loading">Opening your workspace…</main>}>
+        <App offline />
+      </Suspense>
+    );
   if (state?.user && state.setup.step >= 4 && state.entitlement.active)
     return (
       <Suspense
@@ -147,16 +161,37 @@ function SetupContent() {
           aria-busy={busy}
         >
           <Illustration scene={state?.user ? (step===2?"sprout":step===3?"bridge":"pencil") : "kite"} ambient className="setup-idle-art"/>
-          {!state ? (
+          {state?.user && state.entitlement.reason === "suspended" ? (
             <>
-              <h1>Opening Mowr…</h1>
+              <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Your account is paused.</h1></div>
+              <p>{state.entitlement.message || "This account has been suspended."}</p>
+              {state.entitlement.until && <p className="fine">Access returns {new Date(state.entitlement.until).toLocaleDateString(undefined,{dateStyle:"long"})}.</p>}
+              <p className="fine">Your chats and files stay on this PC. If you think this is a mistake, email <a href="mailto:support@mowrai.com">support@mowrai.com</a>.</p>
+              <div className="setup-navigation">
+                <button disabled={busy} onClick={() => void run(refresh)}>Check again</button>
+                <button disabled={busy} onClick={() => void run(async () => { await desktop!.invoke({ action: "logout" }); await refresh(); })}>Sign out</button>
+              </div>
+            </>
+          ) : state?.user && state.entitlement.reason === "offline" && state.setup.step >= 3 ? (
+            <>
+              <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Can’t reach Mowr.</h1></div>
+              <p>Mowr checks your plan when it opens. Check your internet connection and try again — nothing on this PC has changed.</p>
+              {state.error && <p className="fine">{state.error}</p>}
+              <div className="setup-navigation">
+                <button className="primary" disabled={busy} onClick={() => void run(refresh)}>{busy ? "Checking…" : "Try again"}</button>
+                {state.setup.step >= 4 && <button disabled={busy} onClick={() => setReadOnly(true)}>Open my files offline</button>}
+              </div>
+            </>
+          ) : !state ? (
+            <>
+              <div className="setup-welcome-heading"><Logo size={36} thinking/><h1>Opening Mowr…</h1></div>
             </>
           ) : !state.user ? (
             <>
-              <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Welcome to Mowr.</h1></div>
+              <div className="setup-welcome-heading"><Logo size={36} thinking={browserPending}/><h1 ref={heading} tabIndex={-1}>Welcome to Mowr.</h1></div>
               <p>
                 {browserPending
-                  ? "Finish signing in in your browser."
+                  ? "Finish signing in in your browser. We’ll bring you back automatically."
                   : "Your workspace starts here."}
               </p>
               <button
@@ -170,7 +205,7 @@ function SetupContent() {
                 }
               >
                 {busy
-                  ? "Opening�"
+                  ? "Opening…"
                   : browserPending
                     ? "Open browser again"
                     : "Sign in with browser"}
@@ -270,7 +305,7 @@ function SetupContent() {
                     ) : (
                       <p>
                         {pending
-                          ? "Waiting for payment�"
+                          ? "Waiting for payment…"
                           : "Continue to Lemon Squeezy’s secure checkout in your browser. Your setup is saved if you cancel."}
                       </p>
                     )}

@@ -198,11 +198,12 @@ export class Codex {
   }
   private accountCache: { at: number; value: any } | null = null;
   private accountRequest: Promise<any> | null = null;
-  async account(force = false): Promise<any> {
+  /** `force` bypasses the cache; a number sets the maximum acceptable age in milliseconds. */
+  async account(force: boolean | number = false): Promise<any> {
+    const maxAge = force === true ? 0 : force === false ? 60000 : force;
     if (
-      !force &&
       this.accountCache &&
-      Date.now() - this.accountCache.at < 60000
+      Date.now() - this.accountCache.at < maxAge
     )
       return this.accountCache.value;
     if (this.accountRequest) return this.accountRequest;
@@ -386,8 +387,9 @@ export class Codex {
         if(!toolRequest(output)&&delivered<output.length)emit({id,type:"delta",text:output.slice(delivered)});
         return output;
       },request=>kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined),()=>turn.cancelled);
+      this.turn=null;
       emit({id,type:"done"});
-    }finally{this.turn=null;}
+    }finally{if(this.turn===turn)this.turn=null;}
   }
   private async runOnce(
     id: string,

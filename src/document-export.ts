@@ -109,10 +109,12 @@ export async function slidesBlob(content: string, title: string) {
   pptx.author = "Mowr";
   pptx.title = title;
   const sections: { title: string; lines: string[] }[] = [];
+  let listNumber = 0;
   for (const block of documentBlocks(content)) {
     if (block.kind === "heading" && block.level <= 2)
       sections.push({ title: block.text, lines: [] });
     else {
+      if (block.kind !== "number") listNumber = 0;
       if (!sections.length) sections.push({ title, lines: [] });
       sections
         .at(-1)!
@@ -120,9 +122,9 @@ export async function slidesBlob(content: string, title: string) {
           block.kind === "table"
             ? block.rows.map((row) => row.join("  |  ")).join("\n")
             : (block.kind === "bullet"
-                ? "� "
+                ? "• "
                 : block.kind === "number"
-                  ? "� "
+                  ? `${++listNumber}. `
                   : "") + block.text.replace(/\*\*/g, ""),
         );
     }
@@ -135,7 +137,7 @@ export async function slidesBlob(content: string, title: string) {
     ).entries()) {
       const slide = pptx.addSlide();
       slide.background = { color: "171717" };
-      slide.addText(section.title + (index ? " � continued" : ""), {
+      slide.addText(section.title + (index ? " · continued" : ""), {
         x: 0.7,
         y: 0.5,
         w: 11.9,

@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Codex } from "./codex.ts";
 import type { Vault } from "./vault";
+import { hasCapacity, isBelowSwitchThreshold, resetWindows } from "../core/account-usage.ts";
 type Registry = { active: string; ids: string[] };
+type AccountStatus = {id:string;connected:boolean;email?:string;usage?:any;checkedAt?:number;[key:string]:any};
 /** Each account has its own Codex home and OS-keyring credential namespace. */
 export class ProviderAccounts {
   private clients = new Map<string, Codex>();
   private registries = new Map<string, Registry>();
   private mutation = Promise.resolve();
+  private snapshots = new Map<string, AccountStatus>();
   private vault:Vault;
   private executable:string;
   private root:string;
@@ -64,7 +67,8 @@ export class ProviderAccounts {
     const accounts = await Promise.all(
       r.ids.map(async (id) => {
         try {
-          return { id, ...(await this.client(owner, id).account(refresh)), ...this.client(owner,id).loginState() };
+          // Live UI polling may ask every second; each account's app-server is read at most every 10 seconds.
+          return { id, ...(await this.client(owner, id).account(refresh ? 10000 : false)), ...this.client(owner,id).loginState() };
         } catch {
           return {
             id,
@@ -74,7 +78,50 @@ export class ProviderAccounts {
         }
       }),
     );
-    return { active: r.active, accounts };
+    const resets: {id:string;email?:string;windows:string[]}[] = [];
+    for (const account of accounts) {
+      const key = owner + ':' + account.id;
+      const prior = this.snapshots.get(key);
+      if (account.connected && account.usage) {
+        const windows = prior?.connected ? resetWindows(prior.usage, account.usage) : [];
+        if (windows.length) resets.push({id:account.id,email:account.email,windows});
+        this.snapshots.set(key, account as AccountStatus);
+      }
+    }
+    return { active: r.active, accounts, resets, autoSwitch: await this.autoSwitchEnabled(owner) };
+  }
+  async autoSwitchEnabled(owner:string) {
+    return this.vault.read<boolean>('provider-auto-switch-' + owner, false);
+  }
+  async setAutoSwitch(owner:string, enabled:boolean) {
+    await this.vault.write('provider-auto-switch-' + owner, enabled);
+    return {enabled};
+  }
+  async selectForTask(owner:string, selection?:{model?:string;reasoning?:string}) {
+    return this.exclusive(async () => {
+      const r = await this.registry(owner);
+      if (!await this.autoSwitchEnabled(owner)) return {active:r.active,switched:false};
+      const current = await this.client(owner,r.active).account(10000).catch(() => null);
+      if (!current?.connected || !current.usage || !isBelowSwitchThreshold(current.usage)) return {active:r.active,switched:false};
+      const candidates = await Promise.all(r.ids.filter(id=>id!==r.active).map(async id=>({id,account:await this.client(owner,id).account(10000).catch(()=>null)})));
+      let next: (typeof candidates)[number] | undefined;
+      for (const candidate of candidates) {
+        if (!candidate.account?.connected || !hasCapacity(candidate.account.usage)) continue;
+        if (selection?.model) {
+          const models = await this.client(owner,candidate.id).models().catch(()=>[]);
+          const model = models.find(model=>model.id===selection.model);
+          if (!model || (selection.reasoning && !model.reasoningEfforts.some((effort:any)=>effort.reasoningEffort===selection.reasoning))) continue;
+        }
+        next = candidate;
+        break;
+      }
+      if (!next) return {active:r.active,switched:false,exhausted:true};
+      this.assertIdle();
+      const updated = {...r,active:next.id};
+      await this.vault.write('providers-' + owner,updated);
+      this.registries.set(owner,updated);
+      return {active:next.id,switched:true,email:next.account.email,previous:r.active};
+    });
   }
   async add(owner: string) {
     return this.exclusive(async () => {
@@ -127,6 +174,7 @@ export class ProviderAccounts {
       await this.vault.write("providers-" + owner, next);
       this.registries.set(owner, next);
       this.clients.delete(owner + ":" + id);
+      this.snapshots.delete(owner + ':' + id);
       return { ok: true };
     });
   }

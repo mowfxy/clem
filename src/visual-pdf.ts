@@ -1,6 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import { downloadMade } from "./store";
-export async function exportDiagramPdf(svg: string) {
+export async function exportDiagramPdf(svg: string, name = "visual.pdf") {
   const image = new Image(),
     url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
   try {
@@ -10,12 +10,12 @@ export async function exportDiagramPdf(svg: string) {
       image.src = url;
     });
     const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth || 1200;
-    canvas.height = image.naturalHeight || 800;
+    canvas.width = (image.naturalWidth || 800) * 2;
+    canvas.height = (image.naturalHeight || 440) * 2;
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = "#161615";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(image, 0, 0);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     const pdf = await PDFDocument.create();
     const png = await pdf.embedPng(canvas.toDataURL("image/png"));
     const page = pdf.addPage([842, 595]);
@@ -28,7 +28,7 @@ export async function exportDiagramPdf(svg: string) {
     pdf.setCreator("Mowr");
     await downloadMade(
       new Blob([new Uint8Array(await pdf.save())], { type: "application/pdf" }),
-      "projectile.pdf",
+      name,
     );
   } finally {
     URL.revokeObjectURL(url);
