@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef } from "react";
+import { confirmDialog } from "./dialogs";
 import type { Model } from "../core/types";
 import { desktop } from "./desktop/bridge";
 import {LocalProvider} from "./desktop/LocalProvider";
 import { Icon } from "./Icons";
+import { OpenAILogo, ClaudeLogo } from "./BrandLogos";
 import "./models-settings.css";
 type WindowUsage = {
   usedPercent?: number | null;
@@ -35,7 +37,7 @@ export type AccountsData = {active:string;accounts:Account[];resets?:{id:string;
 function Reconnect({id,onClose,onDone}:{id:string;onClose:()=>void;onDone:()=>void}){
  const ref=useRef<HTMLDialogElement>(null);
  useEffect(()=>{ref.current?.showModal();},[]);
- return <dialog ref={ref} className="settings-dialog" onCancel={onClose}><div className="modal-heading"><h2>Connect ChatGPT</h2><button aria-label="Close connection" onClick={onClose}><Icon name="close"/></button></div><LocalProvider accountId={id} onDone={onDone}/></dialog>;
+ return <dialog ref={ref} className="settings-dialog" onCancel={onClose}><header><span className="dialog-logo"><OpenAILogo size={20}/></span><h2>Connect ChatGPT</h2><button className="dialog-close" aria-label="Close connection" onClick={onClose}><Icon name="close" size={16}/></button></header><div className="settings-dialog-body"><LocalProvider accountId={id} onDone={onDone}/></div></dialog>;
 }
 function duration(minutes?: number | null) {
   if (!minutes) return "Usage window";
@@ -186,11 +188,15 @@ export function ModelsSettings({
   },[busy,data.accounts]);
   async function change(id: string, remove = false) {
     if (locked) return;
+    const account = data.accounts.find((a) => a.id === id);
     if (
       remove &&
-      !window.confirm(
-        "Disconnect this account from Mowr? Your chats and files will stay.",
-      )
+      !(await confirmDialog({
+        title: "Disconnect " + (account?.email || "this account") + "?",
+        message: "Mowr will stop using this ChatGPT account. Your chats and files stay on this PC, and you can connect it again anytime.",
+        confirm: "Disconnect",
+        danger: true,
+      }))
     )
       return;
     setBusy(true);
@@ -223,25 +229,31 @@ export function ModelsSettings({
           <span>{busy ? "Refreshing…" : "Refresh"}</span>
         </button>
       </div>
-      <div className="model-provider-summary">
-        <span className="model-provider-mark">
-          <Icon name="visuals" size={25} />
-        </span>
-        <div>
-          <h3>Codex</h3>
-          <p>
-            Connect with ChatGPT. Available models sync from your active
-            account.
-          </p>
-        </div>
-        <button className="primary" disabled={locked} onClick={onConnect}>
-          <Icon name="plus" size={15} />
-          {data.accounts.some((a) => a.connected)
-            ? "Add account"
-            : "Connect account"}
-        </button>
+      <div className="provider-cards">
+        <article className={"provider-card provider-openai" + (data.accounts.some((a) => a.connected) ? " is-connected" : "")}>
+          <div className="provider-card-top">
+            <span className="provider-logo"><OpenAILogo size={24} title="OpenAI" /></span>
+            <span className={"provider-status" + (data.accounts.some((a) => a.connected) ? " on" : "")}>
+              {data.accounts.some((a) => a.connected) ? (data.accounts.filter((a) => a.connected).length > 1 ? data.accounts.filter((a) => a.connected).length + " accounts" : "Connected") : "Not connected"}
+            </span>
+          </div>
+          <h3>ChatGPT</h3>
+          <p>Use your ChatGPT plan through Codex. Models sync from the active account.</p>
+          <button className="provider-action primary" disabled={locked} onClick={onConnect}>
+            <Icon name="plus" size={15} />
+            {data.accounts.some((a) => a.connected) ? "Add another account" : "Connect ChatGPT"}
+          </button>
+        </article>
+        {desktop && <article className={"provider-card provider-claude" + (claude.connected ? " is-connected" : "")}>
+          <div className="provider-card-top">
+            <span className="provider-logo"><ClaudeLogo size={24} title="Claude" /></span>
+            <span className={"provider-status" + (claude.connected ? " on" : "")}>{claude.connected ? (claude.plan ? claude.plan.charAt(0).toUpperCase() + claude.plan.slice(1) : "Connected") : claude.installed ? "Sign-in needed" : "Not installed"}</span>
+          </div>
+          <h3>Claude</h3>
+          <p>{claude.connected ? `${claude.email || "Claude account"} · usage limits aren’t reported by Claude Code` : claude.installed ? "Sign in with Claude Code to use your Claude subscription." : "Install the official Claude Code CLI to use your Claude subscription."}</p>
+          {!claude.connected && <button className="provider-action" disabled={busy || locked} onClick={async () => { try { await desktop!.invoke({ action: claude.installed ? "claudeLogin" : "claudeInstall" }); if (claude.installed) setError("Finish Claude sign-in in the terminal, then refresh."); } catch (e) { setError((e as Error).message); } }}>{claude.installed ? "Sign in to Claude" : "Install Claude Code"}<Icon name="arrow" size={14} /></button>}
+        </article>}
       </div>
-      {desktop && <div className="model-provider-summary claude-provider-summary"><span className="model-provider-mark">C</span><div><h3>Claude subscription</h3><p>{claude.connected?`${claude.email||'Claude account'} · ${claude.plan||'Connected'} · usage percentages unavailable from Claude Code`:claude.installed?'Sign in with Claude Code to use your subscription in long-task handoffs.':'Install the official Claude Code CLI to connect a subscription.'}</p></div>{!claude.connected&&<button className="secondary" disabled={busy||locked} onClick={async()=>{try{await desktop!.invoke({action:claude.installed?'claudeLogin':'claudeInstall'});if(claude.installed)setError('Finish Claude sign-in in the terminal, then refresh models.');}catch(e){setError((e as Error).message);}}}>{claude.installed?'Sign in':'Install'}</button>}</div>}
       {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>Before each request, use another connected ChatGPT account when this one falls below 10% in its short window or 5% weekly. A running response finishes on its current account.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
       {retryId&&<Reconnect id={retryId} onClose={()=>setRetryId(null)} onDone={()=>{setRetryId(null);void refresh(true);}}/>}
       {error && <p role="alert">{error}</p>}

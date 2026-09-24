@@ -2,8 +2,20 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
-import {streamCodex} from "./codex-stream.ts";
+import {streamTurn,type TurnSession,type TurnControl} from "./codex-stream.ts";
+import {AppServer} from "./app-server.ts";
 import {toolRequest,runKinetraTurn} from "./kinetra-turn.ts";
+
+/** While a reply might still turn out to be a tool envelope, hold it instead of streaming it. */
+export function mayBeTool(text: string) {
+  const t = text.trimStart();
+  if (!t || t.startsWith("{")) return true;
+  if ("```json".startsWith(t)) return true;
+  if (!t.startsWith("```")) return false;
+  const body = t.replace(/^```(?:json)?/, "").replace(/\s/g, "");
+  return !body || '{"kinetra"'.startsWith(body.slice(0, 10)) || body.startsWith('{"kinetra"');
+}
+const IDLE_MS = 10 * 60_000;
 
 /** Provider output is never shown verbatim: it can include sensitive diagnostics. */
 export function codexFailureMessage(error: unknown): string {
@@ -24,6 +36,35 @@ export class Codex {
   private inspections = new Set<ChildProcessWithoutNullStreams>();
   get busy() {
     return this.turn !== null || this.starting || this.active.size > 0;
+  }
+  private server: AppServer | null = null;
+  private serverStart: Promise<AppServer> | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | undefined;
+  private controls = new Map<string, TurnControl>();
+  /** A warm, shared app-server. Starting the CLI is the slowest part of a request, so it is reused. */
+  private async connection(): Promise<AppServer> {
+    if (this.server && !this.server.dead) return this.server;
+    if (this.serverStart) return this.serverStart;
+    this.serverStart = (async () => {
+      const server = new AppServer(await this.start(["app-server", "-c", 'cli_auth_credentials_store="keyring"', "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", 'web_search="disabled"']));
+      this.server = server;
+      try { await server.ready; } catch (error) { server.close(); if (this.server === server) this.server = null; throw error; }
+      return server;
+    })().finally(() => { this.serverStart = null; });
+    return this.serverStart;
+  }
+  /** Starts the connection ahead of the first message, so the first reply is not slowed by startup. */
+  warm() {
+    void this.connection().then(() => this.scheduleIdle()).catch(() => {});
+    if (!this.catalog) void this.models().catch(() => {});
+  }
+  private scheduleIdle() {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      if (this.server?.idle && !this.busy && Date.now() - this.server.lastUsed >= IDLE_MS) { this.server.close(); this.server = null; }
+      else if (this.server && !this.server.dead) this.scheduleIdle();
+    }, IDLE_MS);
+    this.idleTimer.unref?.();
   }
   private loginError: string | null = null;
   private loginChallenge: {url:string;code:string} | null = null;
@@ -96,7 +137,7 @@ export class Codex {
   private catalog: { at: number; models: any[] } | null = null;
   private catalogRequest: Promise<any[]> | null = null;
   async models(): Promise<any[]> {
-    if (this.catalog && Date.now() - this.catalog.at < 60000)
+    if (this.catalog && Date.now() - this.catalog.at < 10 * 60_000)
       return this.catalog.models;
     if (this.catalogRequest) return this.catalogRequest;
     this.catalogRequest = this.readModels().finally(() => {
@@ -304,6 +345,7 @@ export class Codex {
     this.loginError = null;
     this.accountCache = null;
     this.catalog = null;
+    this.closeServer();
     this.loginProcess?.kill();
     const child = await this.start(["login", "--device-auth"]);
     this.loginProcess = child;
@@ -340,6 +382,7 @@ export class Codex {
       child.on("close", (code) => {
         this.accountCache = null;
         this.catalog = null;
+        this.closeServer();
         if(code !== 0 && !this.loginError)this.loginError = /keyring|credential store|credential manager/i.test(output)?"Windows could not save the Codex credentials. Please retry sign-in.":"Codex could not finish connecting on this device. Please retry sign-in.";
         if (this.loginProcess === child) this.loginProcess = null;
         clearTimeout(timer);
@@ -348,9 +391,14 @@ export class Codex {
       });
     });
   }
+  private closeServer() {
+    if (this.server && !this.busy) { this.server.close(); this.server = null; }
+  }
   async logout() {
     this.accountCache = null;
     this.catalog = null;
+    this.server?.close();
+    this.server = null;
     this.loginProcess?.kill();
     const child = await this.start(["logout"]);
     await new Promise<void>((resolve, reject) => {
@@ -362,34 +410,63 @@ export class Codex {
   }
   cancel(id: string) {
     if(this.turn?.id===id)this.turn.cancelled=true;
+    this.controls.get(id)?.interrupt?.();
     this.active.get(id)?.kill();
   }
   stop() {
     if(this.turn)this.turn.cancelled=true;
+    for (const control of this.controls.values()) control.interrupt?.();
     for (const child of this.inspections) child.kill();
     this.loginProcess?.kill();
     for (const child of this.active.values()) child.kill();
+    this.server?.close();
+    this.server = null;
   }
-  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>){
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions){
     if(this.busy)throw Error("Wait for the current request or cancel it.");
     const turn={id,cancelled:false};this.turn=turn;
+    const session:TurnSession={};
     try{
-      await runKinetraTurn(prompt,kinetraInstructions,async input=>{
+      await runKinetraTurn(prompt,instructions,async(input,followUp)=>{
         let output="",delivered=0;
         await this.runOnce(id,input,event=>{
           if(event.type!=="delta")return;
           output+=event.text||"";
           // Hold possible tool envelopes, but stream ordinary prose immediately.
-          if(output.trimStart()&&!output.trimStart().startsWith("{")){
+          if(!mayBeTool(output)){
             emit({id,type:"delta",text:output.slice(delivered)});delivered=output.length;
           }
-        },images,selection);
+        },followUp?[]:images,selection,session);
         if(!toolRequest(output)&&delivered<output.length)emit({id,type:"delta",text:output.slice(delivered)});
         return output;
-      },request=>kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined),()=>turn.cancelled);
+      },request=>kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined),()=>turn.cancelled,{stateful:true});
       this.turn=null;
       emit({id,type:"done"});
-    }finally{if(this.turn===turn)this.turn=null;}
+    }finally{if(this.turn===turn)this.turn=null;this.scheduleIdle();}
+  }
+  /** A short internal request (memory notes): never blocks the user's turn or streams to the screen. */
+  async quick(prompt:string,selection?:{model?:string;reasoning?:string},timeoutMs=45000){
+    const server=await this.connection();
+    let output="";
+    await streamTurn(server,{},prompt,selection,[],text=>{output+=text;},()=>false,{},timeoutMs);
+    this.scheduleIdle();
+    return output;
+  }
+  /** Lowest reasoning level the model offers, for internal requests. */
+  lightest(model?:string){
+    const efforts=this.catalog?.models.find((m:any)=>m.id===model)?.reasoningEfforts||[];
+    return efforts.find((e:any)=>e.reasoningEffort==="minimal")?.reasoningEffort||efforts.find((e:any)=>e.reasoningEffort==="low")?.reasoningEffort||efforts[0]?.reasoningEffort;
+  }
+  /** Checks the selection against the cached catalog without delaying the request on a refresh. */
+  private async validate(selection?:{model?:string;reasoning?:string}){
+    if(!selection?.model)return;
+    const available=this.catalog?this.catalog.models:await Promise.race([this.models().catch(()=>null),new Promise<null>(resolve=>setTimeout(()=>resolve(null),2500))]);
+    if(this.catalog&&Date.now()-this.catalog.at>=5*60_000)void this.models().catch(()=>{});
+    if(!available)return;
+    const chosen=available.find((m:any)=>m.id===selection.model);
+    if(!chosen)throw Error("That model is no longer available. Refresh your models.");
+    if(selection.reasoning&&!chosen.reasoningEfforts.some((e:any)=>e.reasoningEffort===selection.reasoning))
+      throw Error("That reasoning level is unavailable for this model.");
   }
   private async runOnce(
     id: string,
@@ -397,44 +474,24 @@ export class Codex {
     emit: (event: any) => void,
     images: string[] = [],
     selection?: { model?: string; reasoning?: string },
+    session: TurnSession = {},
   ) {
-    if (this.active.size || this.starting)
-      throw Error("Wait for the current request or cancel it.");
+    if (this.starting) throw Error("Wait for the current request or cancel it.");
     this.starting = true;
-    let child: ChildProcessWithoutNullStreams;
+    let server: AppServer;
     try {
-
-      if (selection?.model) {
-        const available = await this.models();
-        const chosen = available.find((m) => m.id === selection.model);
-        if (!chosen)
-          throw Error(
-            "That model is no longer available. Refresh your models.",
-          );
-
-        if (selection.reasoning) {
-          if (
-            !chosen.reasoningEfforts.some(
-              (e: any) => e.reasoningEffort === selection.reasoning,
-            )
-          )
-            throw Error("That reasoning level is unavailable for this model.");
-
-        }
-      }
+      const [connected] = await Promise.all([this.connection(), session.threadId ? undefined : this.validate(selection)]);
+      server = connected;
       if(this.turn?.cancelled)throw Error("Request cancelled");
-      child = await this.start(["app-server", "-c", 'cli_auth_credentials_store="keyring"',
-        "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false",
-        "-c", "features.unified_exec=false", "-c", 'web_search="disabled"']);
     } finally {
       this.starting = false;
     }
-    this.active.set(id, child);
-    if(this.turn?.cancelled)child.kill();
+    const control: TurnControl = {};
+    this.controls.set(id, control);
     try {
-      await streamCodex(child,prompt,selection,images,text=>emit({id,type:"delta",text}),()=>!!this.turn?.cancelled);
+      await streamTurn(server,session,prompt,selection,images,text=>emit({id,type:"delta",text}),()=>!!this.turn?.cancelled,control);
     } finally {
-      this.active.delete(id);
+      this.controls.delete(id);
       this.accountCache = null;
     }
   }

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Icon } from "./Icons";
+import "./dialogs.css";
 export function SettingsPopup({
   title,
   description,
@@ -61,10 +63,11 @@ export function SettingsPopup({
               <h2 id={id}>{title}</h2>
               <button
                 type="button"
+                className="dialog-close"
                 aria-label="Close"
                 onClick={() => setOpen(false)}
               >
-                ×
+                <Icon name="close" size={16} />
               </button>
             </header>
             <div className="settings-dialog-body">{children}</div>

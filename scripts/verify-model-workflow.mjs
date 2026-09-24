@@ -179,16 +179,16 @@ try {
   await page
     .locator(".plan-steps .model-selector")
     .first()
-    .getByRole("button", { name: "Reasoning effort", exact: true })
+    .getByRole("button", { name: "Choose model", exact: true })
     .click();
-  await page.getByRole("slider").press("ArrowRight");
-  await page.getByRole("slider").press("ArrowRight");
+  await page.getByRole("radiogroup", { name: "Reasoning effort" }).getByRole("radio").first().focus();
+  await page.keyboard.press("End");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(100);
   assert.ok(
     (await page.locator(".plan-steps .model-selector").first().innerText())
       .toLowerCase()
-      .includes("high"),
+      .includes("ultra"),
   );
   await page.screenshot({ path: "artifacts/plan-editor.png", fullPage: true });
   assert.equal(await page.locator('.message-author,.artifact-actions,.chat-actions').count(),0);
@@ -219,45 +219,20 @@ try {
   await page.getByRole("button", { name: "Choose model", exact: true }).click();
   await page.screenshot({ path: "artifacts/model-picker.png", fullPage: true });
   await page.getByRole('button',{name:'Astra',exact:true}).click();
-  assert.equal(await page.getByRole('dialog',{name:'Select model'}).count(),0);
-  await page.getByRole('button',{name:'Reasoning effort',exact:true}).click();
-  await page.getByRole('slider').press('End');
-  assert.equal(await page.getByRole('slider').getAttribute('aria-valuetext'),'Ultra');
-
-  await page.waitForTimeout(280);
-  assert.ok(parseFloat(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).width))>100);
-  assert.equal(await page.locator('.reasoning-ink path').count(),4);
-  assert.equal(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).overflow),'hidden');
-  assert.equal(await page.locator('.effort-fill').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(233, 232, 226)');
-  const ink=page.locator('.reasoning-ink path').first();
-  const before=await ink.getAttribute('d');
-  await page.waitForTimeout(750);
-  assert.notEqual(await ink.getAttribute('d'),before);
+  // Choosing a model keeps the panel open so its thinking level can be set in the same place.
+  const efforts=page.getByRole('radiogroup',{name:'Reasoning effort'});
+  await efforts.getByRole('radio').first().focus();
+  await page.keyboard.press('End');
+  assert.equal(await efforts.getByRole('radio',{checked:true}).innerText(),'Ultra');
   await page.screenshot({path:'artifacts/reasoning-picker.png'});
-  const frames=[];
-  for (const phase of ['flow','flow','flow']) {
-    await page.waitForFunction(phase=>document.querySelector('.reasoning-ink')?.dataset.phase===phase,phase);
-    await page.waitForTimeout(550);
-    frames.push(await page.locator('.reasoning-ink').evaluate(el=>el.outerHTML));
-    await page.locator('.effort-panel').screenshot({path:`artifacts/reasoning-${phase}.png`});
-  }
-  const strip=await browser.newPage({viewport:{width:700,height:240}});
-  await strip.setContent(`<body style="background:#292927;color:#ddd;font:13px sans-serif;padding:20px;display:flex;gap:20px">${frames.map((svg,i)=>`<div><p>${['Flow 1','Flow 2','Flow 3'][i]}</p><div style="width:200px;height:24px;background:#e9e8e2;border-radius:12px;overflow:hidden">${svg}</div></div>`).join('')}<style>svg{width:200px;height:24px;fill:#72726b;opacity:.65}</style>`);
-  await strip.screenshot({path:'artifacts/reasoning-sequence.png'});
-  await strip.close();
-  await page.emulateMedia({reducedMotion:'reduce'});
-  await page.waitForFunction(()=>document.querySelector('.reasoning-ink')?.dataset.motion==='still');
-  const poster=await ink.getAttribute('d');
-  await page.waitForTimeout(180);
-  assert.equal(await ink.getAttribute('d'),poster);
-  await page.emulateMedia({reducedMotion:'no-preference'});
-  await page.getByRole('button',{name:'Reset reasoning to model default'}).click();
-  assert.equal(await page.getByRole('slider').getAttribute('aria-valuetext'),'Light');
+  await page.getByRole('button',{name:'Reset',exact:true}).click();
+  assert.equal(await efforts.getByRole('radio',{checked:true}).innerText(),'Light');
   await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('dialog',{name:'Select model'}).count(),0);
   await page.setViewportSize({width:860,height:600});
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
   const bounds=await page.getByRole('dialog',{name:'Select model'}).boundingBox();
-  assert.ok(bounds.width<=264 && bounds.y>=0 && bounds.y+bounds.height<=600);
+  assert.ok(bounds.width<=320 && bounds.y>=0 && bounds.y+bounds.height<=600);
   await page.keyboard.press('Escape');
   await page.setViewportSize({width:1440,height:960});
   await page.locator('.composer textarea').fill('Make a PDF about charged rods');
@@ -272,14 +247,15 @@ try {
   await page.locator('.message.assistant .document-card').getByText('Charged rods.pdf',{exact:true}).waitFor();
   assert.equal(await page.locator('.message.assistant .document-card').count(),1);
   await page.getByText('Based on your local source.',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'Reasoning effort',exact:true}).click();
-  await page.getByRole('slider').press('End');await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Choose model',exact:true}).click();
+  await page.getByRole('radiogroup',{name:'Reasoning effort'}).getByRole('radio').first().focus();
+  await page.keyboard.press('End');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'New chat',exact:true}).click();
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
   await page.getByRole('button',{name:'Sol',exact:true}).click();
   await page.getByRole('button',{name:'Make a PDF about charged rods',exact:true}).click();
   assert.match(await page.getByRole('button',{name:'Choose model',exact:true}).innerText(),/Astra/);
-  assert.equal(await page.getByRole('button',{name:'Reasoning effort',exact:true}).innerText(), 'Ultra');
+  assert.equal(await page.locator('.picker-trigger-effort').innerText(), 'Ultra');
   await page.waitForFunction(async()=>{
     const store=await import('/src/store.ts');const saved=await store.loadState();
     return saved.chats.some(c=>c.title==='Make a PDF about charged rods'&&c.model==='gpt-6-astra'&&c.reasoning==='ultra');

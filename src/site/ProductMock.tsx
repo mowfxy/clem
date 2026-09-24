@@ -19,7 +19,7 @@ export function ProductMock(){
         <div className="sx-mock-user">Turn my notes into a revision pack with practice questions.</div>
         <div className="sx-mock-plan">
           <header><Icon name="long" size={15}/><strong>Task</strong><span className="sx-mock-progress"><i/></span></header>
-          {steps.map((title,i)=><div key={title} className="sx-mock-step" style={{animationDelay:`${i*1.6}s`}}><span className="sx-mock-check"/><strong>{title}</strong></div>)}
+          {steps.map((title,i)=><div key={title} className={`sx-mock-step sx-mock-step-${i}`}><span className="sx-mock-check"/><strong>{title}</strong></div>)}
         </div>
         <div className="sx-mock-file"><Icon name="files" size={16}/><div><strong>Revision pack.docx</strong><small>12 pages · editable</small></div></div>
         <div className="sx-mock-composer"><span>Ask anything…</span><b>↑</b></div>

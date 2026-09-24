@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const scopeSchema = z
   .string()
-  .regex(/^(chat|project|subject):[a-zA-Z0-9_-]{1,100}$/);
+  .regex(/^(chat|project|subject|user):[a-zA-Z0-9_-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000) }),
@@ -49,7 +49,15 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderEditApply"), scope: scopeSchema, path: z.string().min(1).max(400), find: z.string().max(200000).optional(), replace: z.string().max(200000).optional(), content: z.string().max(256000).optional(), summary: z.string().max(400).optional() }),
   z.object({ action: z.literal("folderChanges"), scope: scopeSchema.optional() }),
   z.object({ action: z.literal("folderChangeUndo"), id: z.string().uuid() }),
+  z.object({ action: z.literal("pdfRender"), spec: z.string().min(2).max(600_000) }),
+  z.object({ action: z.literal("shareSave"), name: z.string().min(1).max(160), data: z.instanceof(Uint8Array).refine((d) => d.length <= 105_000_000, "Share files are limited to 100 MB.") }),
+  z.object({ action: z.literal("shareReveal"), path: z.string().min(3).max(600) }),
+  z.object({ action: z.literal("foldersAll") }),
+  z.object({ action: z.literal("folderTree"), id: z.string().uuid() }),
+  z.object({ action: z.literal("folderSearch"), query: z.string().trim().min(1).max(200) }),
+  z.object({ action: z.literal("folderWatch"), enabled: z.boolean().optional() }),
   z.object({ action: z.literal("captureScreen") }),
+  z.object({ action: z.literal("documentPdf"), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(300000) }),
   z.object({
     action: z.literal("chat"),
     model:z.string().regex(/^[a-zA-Z0-9._:-]{1,100}$/).optional(),
@@ -81,12 +89,17 @@ export const requestSchema = z.discriminatedUnion("action", [
     source: z.string().max(300).optional(),
   }),
   z.object({ action: z.literal("memoryForget"), id: z.string().uuid() }),
+  z.object({ action: z.literal("memoryConfirm"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryToggle"), enabled: z.boolean() }),
   z.object({ action: z.literal("securityInfo") }),
   z.object({
     action: z.literal("passwordChange"),
     password: z.string().min(12).max(128),
+    currentPassword: z.string().min(1).max(128).optional(),
+    nonce: z.string().regex(/^[A-Za-z0-9]{6,10}$/).optional(),
+    code: z.string().regex(/^\d{6}$/).optional(),
   }),
+  z.object({ action: z.literal("passwordReauth") }),
   z.object({ action: z.literal("emailChange"), email: z.email() }),
   z.object({ action: z.literal("revokeOtherSessions") }),
   z.object({ action: z.literal("mfaEnroll") }),
@@ -139,6 +152,9 @@ export type DesktopBridge = {
   ) => () => void;
   invoke: (request: DesktopRequest) => Promise<any>;
   onCapture?: (listener: (event: { bytes: Uint8Array; name: string; mime: string }) => void) => () => void;
+  onFolder?: (listener: (event: import("./folder-watch").FolderEvent) => void) => () => void;
+  onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
+  startDrag?: (path: string) => void;
   onChat: (
     listener: (event: {
       id: string;

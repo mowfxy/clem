@@ -42,6 +42,7 @@ try {
             verified: true,
             factors: [],
             google: true,
+            password: true,
           };
         if (r.action === "telegramStatus") return { connected: false };
         if (r.action === "chat") {
@@ -186,13 +187,17 @@ try {
     })
     .getByRole("button")
     .click();
-  await page.getByLabel("New password").fill("fixture-only-password");
-  await page.getByRole("button", { name: "Save password" }).click();
-  await page
-    .getByRole("status")
-    .filter({ hasText: "Saved." })
-    .first()
-    .waitFor();
+  await page.locator("dialog input[name=current]").fill("fixture-old-password");
+  await page.locator("dialog input[name=password]").fill("fixture-only-password");
+  await page.locator("dialog input[name=confirm]").fill("fixture-only-password-typo");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await page.getByRole("status").filter({ hasText: "do not match" }).first().waitFor();
+  assert.equal(await page.evaluate(() => window.requests.filter((r) => r.action === "passwordChange").length), 0);
+  await page.locator("dialog input[name=confirm]").fill("fixture-only-password");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await page.getByRole("status").filter({ hasText: "Password changed" }).first().waitFor();
+  const change = await page.evaluate(() => window.requests.find((r) => r.action === "passwordChange"));
+  assert.equal(change.currentPassword, "fixture-old-password");
   await page.keyboard.press("Escape");
   await page.screenshot({
     path: "artifacts/settings-security.png",
@@ -241,14 +246,11 @@ try {
     .locator(".settings-tabs")
     .getByRole("button", { name: "Help & support", exact: true })
     .click();
-  // With no earlier requests, the support tab opens straight to the form.
-  const select = page.locator(".support-inbox select");
-  assert.equal(
-    await select.evaluate((el) => getComputedStyle(el).appearance),
-    "base-select",
-  );
-  await select.selectOption("Report a bug");
-  assert.equal(await select.inputValue(), "Report a bug");
+  // Three kinds of request, each in its own popup; nothing is sent inline.
+  const options = page.locator(".contact-options").getByRole("listitem");
+  assert.equal(await options.count(), 3);
+  await options.filter({ hasText: "Report a bug" }).click();
+  await page.locator("dialog.contact-dialog").getByRole("heading", { name: "Report a bug" }).waitFor();
   await page.screenshot({
     path: "artifacts/contact-dialog.png",
     fullPage: true,
@@ -261,7 +263,7 @@ try {
   await page.screenshot({path:'artifacts/settings-models.png'});
   await page.getByRole('button',{name:'Use account',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.activeAccount),'11111111-1111-4111-8111-111111111111');
-  await page.getByRole('button',{name:'Add account',exact:true}).click();
+  await page.getByRole('button',{name:'Add another account',exact:true}).click();
   await page.getByRole('button',{name:'Continue with ChatGPT',exact:true}).waitFor();
   await page.screenshot({path:'artifacts/connect-account.png'});
   await page.getByRole('button',{name:'Continue with ChatGPT',exact:true}).click();
@@ -284,7 +286,7 @@ try {
   await page.evaluate(()=>location.hash='/app/visuals');
   assert.equal(await page.locator('.kinetra-grid').count(),0);
   await page.evaluate(()=>location.hash='/app/subjects');
-  const importer=page.getByRole('button',{name:'Import subject ZIP',exact:true});
+  const importer=page.getByRole('button',{name:'Import a subject ZIP or study pack',exact:true});
   await importer.waitFor();
   assert.equal(await page.locator('.space-heading-actions').getByRole('button').count(),2);
   const chooser=page.waitForEvent('filechooser');await importer.click();await chooser;

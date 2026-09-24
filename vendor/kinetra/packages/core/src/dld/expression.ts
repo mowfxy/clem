@@ -4,9 +4,9 @@
  * Grammar (lowest to highest precedence):
  *   expr   := or-expr
  *   or     := xor ("+"|"or" xor)*
- *   xor    := and ("?" and)*
+ *   xor    := and ("⊕"|"^"|"xor" and)*
  *   and    := not (("*"|"·"|"and") not | implicit-AND)*
- *   not    := "!" | "~" | "not" not | primary
+ *   not    := "!" | "~" | "not" not | primary "'"*
  *   primary:= "(" expr ")" | VAR | "0" | "1"
  *
  * Variables are SINGLE UPPERCASE letters. This keeps the implicit-AND
@@ -117,7 +117,7 @@ class Parser {
     let left = this.parseAnd();
     while (true) {
       this.skipWs();
-      if (this.src[this.pos] === "?") {
+      if (this.src[this.pos] === "⊕" || this.src[this.pos] === "^" || this.src[this.pos] === "?") {
         this.pos += 1;
         const right = this.parseAnd();
         if (left.type === "xor") left.args.push(right);
@@ -186,7 +186,13 @@ class Parser {
       this.pos += 3;
       return not(this.parseNot());
     }
-    return this.parsePrimary();
+    // Textbook postfix complement: A' and (A + B)'.
+    let e = this.parsePrimary();
+    while (this.src[this.pos] === "'" || this.src[this.pos] === "’") {
+      this.pos += 1;
+      e = not(e);
+    }
+    return e;
   }
 
   private parsePrimary(): BoolExpr {

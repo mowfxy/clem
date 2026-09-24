@@ -351,7 +351,7 @@ export function formatExpr(e: BoolExpr, form: "sop" | "pos"): string {
     case "not": return "!" + formatExpr(e.arg, form);
     case "and": return e.args.map((a) => formatExpr(a, form)).join(form === "sop" ? "" : " + ");
     case "or": return "(" + e.args.map((a) => formatExpr(a, form)).join(" + ") + ")";
-    case "xor": return "(" + e.args.map((a) => formatExpr(a, form)).join(" ? ") + ")";
+    case "xor": return "(" + e.args.map((a) => formatExpr(a, form)).join(" ⊕ ") + ")";
   }
   return "?";
 }

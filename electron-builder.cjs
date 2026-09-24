@@ -17,6 +17,8 @@ module.exports = {
     signtoolOptions: { publisherName: "Mowr Ai" },
     artifactName: "Mowr-Setup-${version}.${ext}",
   },
+  // Double-clicking a shared study pack opens it in Mowr for review before anything is added.
+  fileAssociations: [{ ext: "mowrpack", name: "Mowr study pack", description: "Mowr study pack", icon: "desktop/icon.ico", role: "Viewer" }],
   nsis: {
     include: "desktop/installer.nsh",
     oneClick: false,

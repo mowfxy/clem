@@ -16,14 +16,16 @@ const AuthCallback=lazy(()=>import('./Login').then(m=>({default:m.AuthCallback})
 const AdminApp=lazy(()=>import('./admin/AdminApp'));
 const adminHost=location.hostname==='admin.mowrai.com';
 let authReady:Promise<unknown>|undefined;
+// Mowr is free, so the refund policy was retired; old links land on the Terms.
+if(location.hash==='#/refunds')history.replaceState(null,'',location.pathname+location.search+'#/terms');
 function Root(){
  const [route,setRoute]=useState(location.hash.slice(1)||'/'),[ready,setReady]=useState(false);
  // Arrivals from an email link (or its error) see a confirmation page until they navigate elsewhere.
  const [callback,setCallback]=useState(()=>(location.search.includes('code=')&&!location.search.includes('recovery='))||/^#\/?error=/.test(location.hash));
- const publicPage=(path:string)=>path==='/'?<Landing/>:['/privacy','/terms','/refunds'].includes(path)?<Legal route={path}/>:<Marketing route={path}/>;
+ const publicPage=(path:string)=>path==='/'?<Landing/>:['/privacy','/terms'].includes(path)?<Legal route={path}/>:<Marketing route={path}/>;
  useEffect(()=>{const change=()=>{setRoute(location.hash.slice(1)||'/');setCallback(false);};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
  useEffect(()=>{if(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect')||route.startsWith('/app')||location.search.includes('code=')||location.search.includes('recovery=')){authReady??=import('./supabase').then(module=>module.initSupabase());void authReady.finally(()=>{setReady(true);setRoute(location.hash.slice(1)||'/');});}},[route]);
- const isPublic=route==='/'||['/privacy','/terms','/refunds','/pricing','/support','/about'].includes(route)||route.startsWith('/features');
+ const isPublic=route==='/'||['/privacy','/terms','/pricing','/support','/about'].includes(route)||route.startsWith('/features');
  const loading=<main className="workspace-loading" role="status">Opening Mowr…</main>;
  if(callback)return <Suspense fallback={loading}><AuthCallback ready={ready||/^#\/?error=/.test(location.hash)}/></Suspense>;
  if(adminHost||route.startsWith('/admin'))return <Suspense fallback={loading}><AdminApp/></Suspense>;

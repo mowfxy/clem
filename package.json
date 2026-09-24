@@ -27,7 +27,11 @@
     "installer:release": "node scripts/publish-installer.mjs --site",
     "emails": "node scripts/build-emails.mjs",
     "emails:art": "node scripts/build-email-art.mjs",
-    "emails:apply": "node scripts/apply-email-templates.mjs"
+    "emails:apply": "node scripts/apply-email-templates.mjs",
+    "verify:local": "node scripts/verify-local-power.mjs",
+    "film:demo": "node scripts/film/capture.mjs && node scripts/film/render.mjs",
+    "film:live-setup": "node scripts/film/capture.mjs --live-setup",
+    "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

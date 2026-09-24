@@ -4,9 +4,12 @@ import type { Model } from "../core/types";
 type Fact = {
   id: string;
   text: string;
+  scope: string;
   confirmed: boolean;
   supersededBy?: string;
+  updatedAt?: string;
 };
+const PROFILE = "user:me";
 export function MemoryConversation({
   scope,
   summary,
@@ -20,10 +23,23 @@ export function MemoryConversation({
 }) {
   const pending = useRef<AbortController | null>(null);
   const [facts, setFacts] = useState<Fact[]>([]),
+    [known, setKnown] = useState<Fact[]>([]),
     [loaded, setLoaded] = useState(false),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [status, setStatus] = useState("");
+  const apply = (records: Fact[]) => {
+    setFacts(records.filter((x) => x.scope === scope && x.confirmed && !x.supersededBy));
+    setKnown(records.filter((x) => !x.supersededBy && (x.scope === PROFILE || !x.confirmed)).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
+  };
+  async function act(action: "memoryConfirm" | "memoryForget", id: string) {
+    setBusy(true);
+    try {
+      await desktop!.invoke({ action, id });
+      apply((await desktop!.invoke({ action: "memoryList", scope })).records);
+      setStatus(action === "memoryConfirm" ? "Kept." : "Forgotten.");
+    } catch (e) { setStatus((e as Error).message); } finally { setBusy(false); }
+  }
   useEffect(() => {
     let active = true;
     setLoaded(false);
@@ -35,9 +51,7 @@ export function MemoryConversation({
       .invoke({ action: "memoryList", scope })
       .then((r) => {
         if (active) {
-          setFacts(
-            (r.records as Fact[]).filter((x) => x.confirmed && !x.supersededBy),
-          );
+          apply(r.records as Fact[]);
           setLoaded(true);
         }
       })
@@ -56,16 +70,34 @@ export function MemoryConversation({
         Your written context and confirmed facts for this space. Relevant
         excerpts from linked sources may also be used.
       </p>
-      <article className="memory-summary">
+      {(summary || facts.length > 0 || !known.length) && <article className="memory-summary">
         {summary ||
-          (!facts.length ? "No memory yet. Tell Mowr what to remember." : "")}
+          (!facts.length ? (known.length ? "" : "No memory yet. Tell Mowr what to remember, or just chat: Mowr learns what you share about yourself.") : "")}
         {facts.length > 0 && (
           <>
             {summary ? "\n\n" : ""}
             {facts.map((f) => f.text).join("\n\n")}
           </>
         )}
-      </article>
+      </article>}
+      {known.length > 0 && (
+        <div className="memory-known">
+          <h4>What Mowr knows about you</h4>
+          <p className="fine">Learned from your chats and used in every conversation. Keep what’s right; forget anything that isn’t.</p>
+          <ul>
+            {known.map((m) => (
+              <li key={m.id}>
+                <span>{m.text}</span>
+                {!m.confirmed && <em>Learned</em>}
+                <span className="memory-known-actions">
+                  {!m.confirmed && <button type="button" disabled={busy} onClick={() => void act("memoryConfirm", m.id)}>Keep</button>}
+                  <button type="button" disabled={busy} aria-label={"Forget: " + m.text} onClick={() => void act("memoryForget", m.id)}>Forget</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -130,11 +162,7 @@ export function MemoryConversation({
             onSummary(result.summary.trim());
             const next = await desktop!.invoke({ action: "memoryList", scope });
             if (controller.signal.aborted) return;
-            setFacts(
-              (next.records as Fact[]).filter(
-                (x) => x.confirmed && !x.supersededBy,
-              ),
-            );
+            apply(next.records as Fact[]);
             setText("");
             setStatus("Memory updated.");
           } catch (e) {

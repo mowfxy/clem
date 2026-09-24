@@ -1,0 +1,124 @@
+/* In-app confirm dialog and Contact us popups. Palette follows settings dialogs. */
+.app-confirm,.contact-dialog{padding:0;border:1px solid #41413b;border-radius:16px;background:#1b1b19;color:#eeece5;box-shadow:0 30px 110px #000a,0 0 0 1px #ffffff05 inset;font-family:'Mowafy Sans Text',system-ui,sans-serif}
+.app-confirm::backdrop,.contact-dialog::backdrop{background:#000a;backdrop-filter:blur(3px)}
+.app-confirm[open],.contact-dialog[open]{animation:dialog-in .22s cubic-bezier(.2,.9,.3,1)}
+.app-confirm[open]::backdrop,.contact-dialog[open]::backdrop{animation:dialog-fade .2s ease-out}
+@keyframes dialog-in{from{opacity:0;transform:translateY(8px) scale(.985)}}
+@keyframes dialog-fade{from{opacity:0}}
+@media(prefers-reduced-motion:reduce){.app-confirm[open],.contact-dialog[open],.app-confirm[open]::backdrop,.contact-dialog[open]::backdrop{animation:none}}
+
+.app-confirm{width:min(400px,calc(100vw - 32px))}
+.app-confirm-body{padding:22px 22px 18px}
+.app-confirm h2{margin:0;font:500 17px/1.35 'Mowafy Sans Text',sans-serif;color:#f1f0ea}
+.app-confirm p{margin:8px 0 0;font-size:13px;line-height:1.6;color:#a9a8a0}
+.app-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
+.app-confirm-actions button,.contact-dialog footer button,.contact-sent button{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 15px;border-radius:9px;font:500 13px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:background .15s,border-color .15s,opacity .15s}
+.app-confirm-cancel,.contact-secondary{border:1px solid #44443d;background:#252522;color:#dddcd5}
+.app-confirm-cancel:hover,.contact-secondary:hover{background:#2d2d29}
+.app-confirm-ok,.contact-primary{border:1px solid #e8e7e0;background:#e8e7e0;color:#1b1b19}
+.app-confirm-ok:hover,.contact-primary:hover{background:#fff}
+.app-confirm-ok.danger{background:#d9644f;border-color:#d9644f;color:#fff}
+.app-confirm-ok.danger:hover{background:#e5705b}
+.app-confirm button:focus-visible,.contact-dialog button:focus-visible,.contact-option:focus-visible{outline:2px solid #d6d5cf;outline-offset:2px}
+.contact-primary:disabled,.contact-secondary:disabled{opacity:.55;cursor:default}
+
+/* The three request kinds */
+.contact-settings{display:grid;gap:4px}
+.contact-settings>p{margin:0 0 10px}
+.contact-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media(max-width:760px){.contact-options{grid-template-columns:1fr}}
+.contact-option{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-width:0;padding:16px;text-align:left;white-space:normal;border:1px solid #2f2f2c;border-radius:14px;background:#1c1c1b;color:#ecebe6;cursor:pointer;transition:border-color .2s,background .2s,transform .2s}
+.contact-option:hover{border-color:#4a4a44;background:#222220;transform:translateY(-1px)}
+.contact-option>svg{position:absolute;top:18px;right:16px;color:#6f6e68;transition:transform .2s,color .2s}
+.contact-option:hover>svg{color:#dddcd5;transform:translateX(2px)}
+.contact-option-text{display:grid;gap:4px;min-width:0}
+.contact-option-text strong{font-weight:500;font-size:13.5px;white-space:normal}
+.contact-option-text small{font-size:12px;line-height:1.45;color:#8f8e87;white-space:normal}
+.contact-option-mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex:none;background:#ffffff08;border:1px solid #ffffff10;color:#dcdbd4}
+.contact-bug .contact-option-mark{color:#f0a493;background:#ec8a7412;border-color:#ec8a7430}
+.contact-idea .contact-option-mark{color:#e9cf8a;background:#e6c46e12;border-color:#e6c46e30}
+.contact-help .contact-option-mark{color:#bfc6fa;background:#9aa5f512;border-color:#9aa5f530}
+
+/* Popup */
+.contact-dialog{width:min(540px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto}
+.contact-dialog>header{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start;padding:22px 22px 6px}
+.contact-dialog>header h2{margin:1px 0 0;font:400 22px/1.2 'Soft Ink Serif',Georgia,serif;color:#f3f2ec}
+.contact-dialog>header p{margin:6px 0 0;font-size:13px;line-height:1.55;color:#a3a29a}
+.contact-close{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:#9b9a93;cursor:pointer}
+.contact-close:hover{background:#ffffff0c;color:#eee}
+.contact-dialog form{display:grid;gap:14px;padding:14px 22px 20px}
+.contact-dialog label{display:grid;gap:7px;font-size:12.5px;color:#c9c8c0}
+.contact-dialog input:not([type=checkbox]),.contact-dialog textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #3d3d38;border-radius:10px;background:#141413;color:#eeede7;font:13.5px/1.5 'Mowafy Sans Text',sans-serif;resize:vertical;transition:border-color .15s,box-shadow .15s}
+.contact-dialog input::placeholder,.contact-dialog textarea::placeholder{color:#6f6e68}
+.contact-dialog input:focus,.contact-dialog textarea:focus{outline:none;border-color:#7a7a72;box-shadow:0 0 0 3px #ffffff0d}
+.contact-optional{font-size:11px;color:#7d7c75;margin-left:4px}
+.contact-check{display:flex!important;align-items:center;gap:9px!important;color:#a9a8a0!important}
+.contact-check input{width:15px;height:15px;accent-color:#e8e7e0}
+.contact-chips{display:flex;flex-wrap:wrap;gap:7px;margin:0;padding:0;border:0}
+.contact-chips legend{font-size:12.5px;color:#c9c8c0;margin-bottom:8px;padding:0}
+.contact-chips button{padding:6px 11px;border-radius:99px;border:1px solid #3d3d38;background:transparent;color:#bebdb5;font:12.5px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:all .15s}
+.contact-chips button:hover{border-color:#5a5a53;color:#eee}
+.contact-chips button[aria-pressed=true]{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
+.contact-error{margin:0;font-size:12.5px;color:#f0a493}
+.contact-dialog footer{display:flex;align-items:center;gap:8px;padding-top:6px;border-top:1px solid #2d2d2a;margin-top:2px}
+.contact-dialog footer small{flex:1;font-size:11.5px;line-height:1.4;color:#7f7e77;padding-top:10px}
+.contact-dialog footer button{margin-top:10px}
+.contact-sent{display:grid;justify-items:center;text-align:center;padding:18px 28px 28px;gap:6px}
+.contact-sent h3{margin:6px 0 0;font:400 20px 'Soft Ink Serif',Georgia,serif}
+.contact-sent p{margin:0 0 14px;font-size:13px;line-height:1.55;color:#a3a29a;max-width:340px}
+.contact-sent-mark{width:52px;height:52px;fill:none;stroke:#a8dcae;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.contact-sent-mark circle{stroke-dasharray:132;stroke-dashoffset:132;animation:sent-draw .5s ease-out forwards}
+.contact-sent-mark path{stroke-dasharray:30;stroke-dashoffset:30;animation:sent-draw .3s .4s ease-out forwards}
+@keyframes sent-draw{to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.contact-sent-mark circle,.contact-sent-mark path{animation:none;stroke-dashoffset:0}}
+
+/* Password change */
+.password-change{display:grid;gap:2px}
+.password-change small{font-size:11px;color:#7f7e77}
+.password-code{display:flex;align-items:flex-end;gap:8px}
+.password-code label{flex:1}
+.password-code button{margin-bottom:16px!important;white-space:nowrap}
+.password-change .primary{background:#e8e7e0!important;color:#1b1b19!important;border-color:#e8e7e0!important;justify-self:start}
+
+/* All popups share one design: settings popups, app modals and connection dialogs. */
+dialog.settings-dialog,dialog.app-modal{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:0;border:1px solid #3b3b36;border-radius:18px;background:#1c1c1a;color:#eeede7;box-shadow:0 30px 120px #000b,0 0 0 1px #ffffff06 inset;font-family:'Mowafy Sans Text',system-ui,sans-serif;overflow:auto;overscroll-behavior:contain}
+dialog.app-modal{padding:22px}
+dialog.settings-dialog[open],dialog.app-modal[open]{animation:dialog-in .22s cubic-bezier(.2,.9,.3,1)}
+dialog.settings-dialog::backdrop,dialog.app-modal::backdrop{background:#000a;backdrop-filter:blur(4px)}
+dialog.settings-dialog[open]::backdrop,dialog.app-modal[open]::backdrop{animation:dialog-fade .2s ease-out}
+@media(prefers-reduced-motion:reduce){dialog.settings-dialog[open],dialog.app-modal[open],dialog.settings-dialog[open]::backdrop,dialog.app-modal[open]::backdrop{animation:none}}
+dialog.settings-dialog>header{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;padding:20px 22px 14px;border-bottom:0;background:linear-gradient(#1c1c1a 80%,#1c1c1a00)}
+dialog.settings-dialog>header h2,dialog.app-modal .modal-heading h2{flex:1;margin:0;font:400 21px/1.2 'Soft Ink Serif',Georgia,serif;color:#f3f2ec;letter-spacing:-.1px}
+dialog.app-modal .modal-heading{margin-bottom:14px}
+.dialog-logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#0d0d0d;color:#fff;border:1px solid #ffffff14}
+dialog.settings-dialog .dialog-close,dialog.app-modal .modal-heading .icon-button{width:32px;height:32px;padding:0!important;display:grid;place-items:center;border-radius:9px;border:0!important;background:transparent!important;color:#9b9a93;font-size:0;cursor:pointer;margin:0!important;transition:background .15s,color .15s}
+dialog.settings-dialog .dialog-close:hover,dialog.app-modal .modal-heading .icon-button:hover{background:#ffffff0d!important;color:#f0efe9}
+dialog.settings-dialog .settings-dialog-body{padding:2px 22px 22px;font-size:13px}
+dialog.settings-dialog .settings-dialog-body>h3:first-child,dialog.settings-dialog .settings-dialog-body form>h3:first-child{display:none}
+dialog.settings-dialog .settings-dialog-body h3{margin:18px 0 6px;font:500 13.5px 'Mowafy Sans Text',sans-serif;color:#e6e5de}
+dialog.settings-dialog .settings-dialog-body p,dialog.app-modal p{margin:0 0 10px;font-size:13px;line-height:1.6;color:#a3a29a}
+dialog.settings-dialog .settings-dialog-body label,dialog.app-modal label{display:flex;flex-direction:column;gap:7px;margin:0 0 14px;font-size:12.5px;color:#c9c8c0}
+dialog.settings-dialog .settings-dialog-body label:has(input[type=checkbox]),dialog.app-modal label:has(input[type=checkbox]){flex-direction:row;align-items:center;gap:9px}
+dialog.settings-dialog .settings-dialog-body input:not([type=checkbox]):not([type=radio]),dialog.settings-dialog .settings-dialog-body textarea,dialog.settings-dialog .settings-dialog-body select,dialog.app-modal input:not([type=checkbox]):not([type=radio]),dialog.app-modal textarea,dialog.app-modal select{width:100%;box-sizing:border-box;min-height:40px;padding:9px 12px;border:1px solid #3d3d38;border-radius:10px;background:#141413;color:#eeede7;font:13.5px 'Mowafy Sans Text',sans-serif;transition:border-color .15s,box-shadow .15s}
+dialog.settings-dialog .settings-dialog-body input:focus,dialog.settings-dialog .settings-dialog-body textarea:focus,dialog.settings-dialog .settings-dialog-body select:focus,dialog.app-modal input:focus,dialog.app-modal textarea:focus{outline:none;border-color:#7a7a72;box-shadow:0 0 0 3px #ffffff0d}
+dialog.settings-dialog .settings-dialog-body input::placeholder,dialog.app-modal input::placeholder{color:#6f6e68}
+dialog.settings-dialog .settings-dialog-body button,dialog.app-modal .modal-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 15px;margin:4px 8px 4px 0;border-radius:9px;border:1px solid #44443d;background:#262623;color:#e3e2db;font:500 12.5px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:background .15s,border-color .15s}
+dialog.settings-dialog .settings-dialog-body button:hover,dialog.app-modal .modal-actions button:hover{background:#2e2e2a;border-color:#55554d}
+dialog.settings-dialog .settings-dialog-body form button:not([type=button]),dialog.settings-dialog .settings-dialog-body button.primary,dialog.app-modal .modal-actions button.primary{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
+dialog.settings-dialog .settings-dialog-body form button:not([type=button]):hover,dialog.settings-dialog .settings-dialog-body button.primary:hover,dialog.app-modal .modal-actions button.primary:hover{background:#fff}
+dialog.settings-dialog .settings-dialog-body button:disabled,dialog.app-modal button:disabled{opacity:.5;cursor:default}
+dialog.settings-dialog .settings-dialog-body [role=status]{margin-top:12px;padding:10px 12px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff0f;color:#d5d4cc;font-size:12.5px}
+dialog.settings-dialog .settings-dialog-body form+form{margin-top:10px;padding-top:14px;border-top:1px solid #2d2d2a}
+dialog.settings-dialog .settings-dialog-body small{font-size:11.5px;color:#7f7e77}
+dialog.app-modal .modal-actions{justify-content:flex-end;gap:8px;margin-top:18px}
+dialog.app-modal .modal-actions button{margin:0}
+/* Memory: what Mowr learned */
+.memory-known{margin:14px 0 6px;padding:14px;border:1px solid #2f2f2c;border-radius:12px;background:#171716}
+.memory-known h4{margin:0 0 4px;font:500 13px 'Mowafy Sans Text',sans-serif;color:#e6e5de}
+.memory-known ul{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.memory-known li{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;background:#ffffff06;font-size:12.5px;line-height:1.45;color:#dedcd5}
+.memory-known li>span:first-child{flex:1}
+.memory-known em{font-style:normal;font-size:10.5px;padding:2px 7px;border-radius:99px;background:#9aa5f51a;color:#c3c9fb;white-space:nowrap}
+.memory-known-actions{display:flex;gap:4px}
+dialog.settings-dialog .memory-known-actions button{min-height:26px!important;padding:0 9px!important;margin:0!important;font-size:11.5px!important;background:transparent!important;border-color:#3d3d38!important;color:#c9c8c0!important}
+dialog.settings-dialog .memory-known-actions button:hover{background:#ffffff0d!important}

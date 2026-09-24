@@ -68,20 +68,20 @@ class Parser {
   }
 
   private parseMul(): Expr {
-    let left = this.parsePow();
+    let left = this.parseUnary();
     while (true) {
       this.skip();
       const c = this.src[this.pos];
       const next = this.src[this.pos + 1] ?? " ";
-      if (c === "*" || c === "�" || c === "/") {
+      if (c === "*" || c === "×" || c === "·" || c === "/") {
         this.pos += 1;
-        const right = this.parsePow();
-        left = c === "*" ? { type: "mul", args: [left, right] } : { type: "div", left, right };
+        const right = this.parseUnary();
+        left = c === "/" ? { type: "div", left, right } : { type: "mul", args: [left, right] };
         continue;
       }
       // Implicit multiplication
       if ((/[A-Za-z0-9(]/.test(c ?? "") && /[A-Za-z0-9(]/.test(next) && left.type !== "num" && left.type !== "const") ||
-          (/[A-Za-z0-9)\]]|"/.test(c ?? "") && left.type === "num")) {
+          (/[A-Za-z(π]/.test(c ?? "") && left.type === "num")) {
         const right = this.parsePow();
         left = { type: "mul", args: [left, right] };
         continue;
@@ -91,12 +91,13 @@ class Parser {
     return left;
   }
 
+  // Unary minus binds looser than ^, so -x^2 is -(x^2); the exponent may be signed (2^-x).
   private parsePow(): Expr {
-    const left = this.parseUnary();
+    const left = this.parsePrimary();
     this.skip();
     if (this.src[this.pos] === "^") {
       this.pos += 1;
-      const right = this.parsePow(); // right-associative
+      const right = this.parseUnary(); // right-associative
       return { type: "pow", left, right };
     }
     return left;
@@ -112,7 +113,7 @@ class Parser {
       this.pos += 1;
       return this.parseUnary();
     }
-    return this.parsePrimary();
+    return this.parsePow();
   }
 
   private parsePrimary(): Expr {
@@ -178,11 +179,11 @@ class Parser {
       this.pos += 1;
       return { type: "piecewise", cases, otherwise };
     }
-    if (c === "S" || c === "?") {
+    if (c === "Σ" || c === "∑") {
       this.pos += 1;
       return this.parseSigmaBody("sum");
     }
-    if (c === "?" || c === "?") {
+    if (c === "∏") {
       this.pos += 1;
       return this.parseSigmaBody("prod");
     }
@@ -218,7 +219,7 @@ class Parser {
       this.pos = j;
       return num(Number(text));
     }
-    if (c === "p" || c === "p") { this.pos += 1; return pi(); }
+    if (c === "π") { this.pos += 1; return pi(); }
     if (c === "e" && !/[A-Za-z0-9_]/.test(this.src[this.pos + 1] ?? " ")) { this.pos += 1; return e(); }
     if (/[A-Za-z]/.test(c ?? "")) {
       const name = this.readIdent();
@@ -239,6 +240,7 @@ class Parser {
         this.pos += 1;
         return { type: "fn", name: name as FnName, args };
       }
+      if (name === "pi") return pi();
       return vr(name);
     }
     throw new KinetraError("parse", `Unexpected "${c}" at ${this.pos}`);

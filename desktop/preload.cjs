@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld(
       return () => ipcRenderer.removeListener("mowr:auth", handler);
     },
     invoke: (request) => ipcRenderer.invoke("mowr:request", request),
+    startDrag: (path) => ipcRenderer.send("mowr:drag", String(path)),
     onChat: (listener) => {
       const handler = (_event, payload) => listener(payload);
       ipcRenderer.on("mowr:chat", handler);
@@ -17,6 +18,16 @@ contextBridge.exposeInMainWorld(
       const handler = (_event, payload) => listener(payload);
       ipcRenderer.on("mowr:capture", handler);
       return () => ipcRenderer.removeListener("mowr:capture", handler);
+    },
+    onFolder: (listener) => {
+      const handler = (_event, payload) => listener(payload);
+      ipcRenderer.on("mowr:folder", handler);
+      return () => ipcRenderer.removeListener("mowr:folder", handler);
+    },
+    onPack: (listener) => {
+      const handler = (_event, payload) => listener(payload);
+      ipcRenderer.on("mowr:pack", handler);
+      return () => ipcRenderer.removeListener("mowr:pack", handler);
     },
     onAttachment: (listener) => {
       const handler = (_event, payload) => listener(payload);

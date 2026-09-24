@@ -145,6 +145,7 @@ try {
   await page.locator(".greeting-row").waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
   await page.getByRole("button", { name: "Calculus", exact: true }).click();
+  await page.getByRole("tab", { name: /^Quizzes/ }).click();
   await page.getByRole("button", { name: "New quiz", exact: true }).click();
   await page
     .locator(".composer textarea")
@@ -153,6 +154,7 @@ try {
   await page.getByText("Limits practice is ready:", { exact: false }).waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
   await page.getByRole("button", { name: "Calculus", exact: true }).click();
+  await page.getByRole("tab", { name: /^Quizzes/ }).click();
   await page
     .getByRole("button", { name: "Limits practice", exact: true })
     .click();
@@ -169,22 +171,25 @@ try {
     .click();
   await page.getByText("last 1/1", { exact: false }).waitFor();
   // The quiz answer joined the review schedule, so nothing is due or new today.
-  await page.getByRole("button", { name: "Nothing due", exact: false }).waitFor();
+  await page.locator(".sp-stat.due", { hasText: "All caught up" }).waitFor();
   const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "More", exact: true }).click();
   await page
-    .getByRole("button", { name: "Export subject ZIP", exact: true })
+    .getByRole("menuitem", { name: "Export subject ZIP", exact: true })
     .click();
   const zip = await downloadPromise;
   await zip.saveAs("artifacts/subject-transfer.mowr.zip");
   await page.keyboard.press("Escape");
   await page
-    .locator('input[accept=".zip"]')
+    .locator('input[accept=".zip,.mowrpack"]')
     .setInputFiles("artifacts/subject-transfer.mowr.zip");
   await page
     .getByText("Subject imported, including files and study history.", {
       exact: true,
     })
     .waitFor();
+  await page.evaluate(() => (location.hash = "/app/subjects"));
+  await page.locator(".space-card").nth(1).waitFor();
   assert.equal(
     await page.getByRole("button", { name: "Calculus", exact: true }).count(),
     2,
