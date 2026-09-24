@@ -5,5 +5,6 @@ fs.mkdirSync(path.join(out,'desktop'),{recursive:true});fs.copyFileSync('desktop
 for(const file of ['package.json','package-lock.json','index.html','tsconfig.json','vite.config.ts','vercel.json'])fs.copyFileSync(file,path.join(out,file));
 fs.mkdirSync(path.join(out,'api'),{recursive:true});fs.copyFileSync('.deploy/api/index.js',path.join(out,'api/index.js'));
 fs.mkdirSync(path.join(out,'.vercel'),{recursive:true});fs.copyFileSync('.vercel/project.json',path.join(out,'.vercel/project.json'));
-const config=JSON.parse(fs.readFileSync(path.join(out,'vercel.json'),'utf8'));config.buildCommand='npm run build';fs.writeFileSync(path.join(out,'vercel.json'),JSON.stringify(config,null,2));
+const config=JSON.parse(fs.readFileSync(path.join(out,'vercel.json'),'utf8'));// The site needs no Kinetra reference bundle (desktop-only), so skip scripts/build-kinetra.mjs.
+config.buildCommand='npx tsc -b && npx vite build';fs.writeFileSync(path.join(out,'vercel.json'),JSON.stringify(config,null,2));
 console.log('Prepared deployment allowlist: application, fonts, SVG assets and one unified API. No environment files.');

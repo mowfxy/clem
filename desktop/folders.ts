@@ -13,7 +13,7 @@ const ignored = new Set([
   "program files",
   "appdata",
 ]);
-const supported = new Set([
+export const supportedText = new Set([
   ".txt",
   ".md",
   ".csv",
@@ -108,7 +108,7 @@ export async function indexFolder(
       }
       if (
         !stat.isFile() ||
-        !supported.has(extname(path).toLowerCase()) ||
+        !supportedText.has(extname(path).toLowerCase()) ||
         stat.size > 256000
       )
         continue;

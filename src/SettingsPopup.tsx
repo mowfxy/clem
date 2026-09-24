@@ -4,9 +4,12 @@ export function SettingsPopup({
   title,
   description,
   action = "Manage",
+  bare = false,
   children,
 }: {
   title: string;
+  /** Only the button, for rows that already show their own title. */
+  bare?: boolean;
   description?: string;
   action?: string;
   children: ReactNode;
@@ -19,15 +22,21 @@ export function SettingsPopup({
   }, [open]);
   return (
     <>
-      <div className="settings-action">
-        <div>
-          <h3>{title}</h3>
-          {description && <p>{description}</p>}
-        </div>
-        <button type="button" onClick={() => setOpen(true)}>
+      {bare ? (
+        <button type="button" className="secondary" onClick={() => setOpen(true)}>
           {action}
         </button>
-      </div>
+      ) : (
+        <div className="settings-action">
+          <div>
+            <h3>{title}</h3>
+            {description && <p>{description}</p>}
+          </div>
+          <button type="button" onClick={() => setOpen(true)}>
+            {action}
+          </button>
+        </div>
+      )}
       {open &&
         createPortal(
           <dialog

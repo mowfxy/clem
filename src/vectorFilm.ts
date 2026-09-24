@@ -1,5 +1,5 @@
 /** Authored 24 fps vector cels. Geometry is redrawn, never moved as a rigid SVG group. */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'schedule'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'schedule'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'coin'|'box'|'portrait'|'jar'|'folder'|'plug'|'house'|'lifebuoy';
 type P=[number,number];
 const WHITE='#f3f2ec',BLUE='#8197e2',RED='#d87968';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
@@ -101,5 +101,204 @@ function schedule(t:number,_id:string){
  out+=shape(deform([[109,247],[135,270],[111,294],[85,271]],t),RED);
  return out;
 }
-const scenes={schedule,balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation};
+// ───── Situational scenes: one per moment (emails, sign-in, settings). Same ink, blue and coral as above. ─────
+const PAPER='#1a1a19';
+const arc=(cx:number,cy:number,r:number,a0:number,a1:number,steps=28,ry=r):P[]=>Array.from({length:steps+1},(_,i)=>{const a=a0+(a1-a0)*i/steps;return [cx+Math.cos(a)*r,cy+Math.sin(a)*ry] as P;});
+const quad=(x:number,y:number,w:number,h:number):P[]=>[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
+// Extra points along each edge keep the ink straight and its corners tight, as rect() does.
+const sharp=(pts:P[]):P[]=>pts.flatMap((p,i)=>i===pts.length-1?[p]:[.12,.5,.88].map(f=>[p[0]+(pts[i+1][0]-p[0])*f,p[1]+(pts[i+1][1]-p[1])*f] as P).reduce<P[]>((a,q)=>[...a,q],[p]));
+const faded=(svg:string,o:number)=>svg.replaceAll('<path ',`<path opacity="${n(clamp(o))}" `);
+const tint=(svg:string,color:string)=>svg.replaceAll(WHITE,color);
+/** Draws a line progressively, like a pen travelling along it. */
+function pen(points:P[],t:number,k:number,width=8,color=WHITE){if(k<=0)return '';const s=spline(points);const svg=ink(s.slice(0,Math.max(2,Math.ceil(s.length*clamp(k)))),width,t);return color===WHITE?svg:tint(svg,color);}
+const tickMark=(x:number,y:number,s:number,t:number,k:number,color=BLUE,w=10)=>pen([[x-s,y],[x-s*.3,y+s*.7],[x+s,y-s*.8]],t,k,w,color);
+/** Three short rays that burst out once something lands. */
+function burst(cx:number,cy:number,r:number,t:number,at:number,spread=.75){const k=phase(t,at,at+.45);if(k<=0)return '';let s='';for(let i=-1;i<=1;i++){const a=-Math.PI/2+i*spread,r1=r+16*k;s+=stroke([[cx+Math.cos(a)*r,cy+Math.sin(a)*r],[cx+Math.cos(a)*r1,cy+Math.sin(a)*r1]],t,5);}return s;}
+const idle=(t:number,speed=1.4,amp=1)=>t>6?Math.sin((t-6)*speed)*amp:0;
+const floor=(t:number,x0=70,x1=410,y=330)=>stroke([[x0,y],[(x0+x1)/2,y+1],[x1,y]],t,6);
+
+function envelope(t:number,_id:string){
+ const open=phase(t,.4,1.3),rise=phase(t,1.1,2.4),check=phase(t,2.5,3.2),x=140,y=200,w=200,h=120,tip=lerp(262,112,open),ly=lerp(214,92,rise)+idle(t,1.6,3);
+ let s=polygon(quad(x,y,w,h),PAPER)+rect(x,y,w,h,t);
+ const flap=polygon([[x,y],[x+w/2,tip],[x+w,y]],PAPER)+stroke(sharp([[x,y],[x+w/2,tip],[x+w,y]]),t,8)+blob(x+w/2,tip-6,13*(1-open*.35),t,RED);
+ if(open>.5)s+=flap;
+ s+=polygon(quad(x+20,ly,w-40,112),PAPER)+rect(x+20,ly,w-40,112,t,2);
+ if(rise>.3)s+=stroke([[x+46,ly+28],[x+110,ly+30]],t,5)+stroke([[x+46,ly+48],[x+146,ly+47]],t,5);
+ s+=tickMark(x+w/2,ly+80,20,t,check);
+ s+=polygon([[x,y+22],[x+w/2,y+74],[x+w,y+22],[x+w,y+h],[x,y+h]],PAPER)+stroke([[x,y+22],[x+w/2,y+74],[x+w,y+22]],t,7)+rect(x,y,w,h,t);
+ if(open<=.5)s+=flap;
+ return s+burst(x+w/2,ly-4,18,t,3.1)+floor(t,90,390,340);
+}
+function key(t:number,_id:string){
+ const slide=phase(t,.3,1.8),turn=phase(t,1.9,2.5),lift=26*phase(t,2.6,3)-6*phase(t,3,3.4)+idle(t,1.5,1.5),kx=lerp(10,160,slide);
+ let s=stroke([[222,202],[222,190-lift],...arc(260,190-lift,38,Math.PI,Math.PI*2,20),[298,190-lift],[298,204-lift]],t,11);
+ const ry=22*Math.max(.18,Math.abs(Math.cos(turn*Math.PI)));
+ s+=shape(arc(kx,240,22,0,Math.PI*2,30,ry),RED)+blob(kx,240,7*ry/22,t,PAPER)+stroke([[kx+22,240],[kx+104,240]],t,9);
+ const tooth=turn<.5?1:-1;s+=stroke([[kx+80,240],[kx+80,240+14*tooth],[kx+90,240+14*tooth],[kx+90,240+7*tooth],[kx+98,240+7*tooth]],t,7);
+ s+=polygon(quad(200,190,120,100),PAPER)+rect(200,190,120,100,t,3);
+ s+=blob(260,228,10,t,BLUE)+polygon([[254,232],[266,232],[269,258],[251,258]],BLUE);
+ return s+burst(260,150-lift,20,t,3)+floor(t,120,380,330);
+}
+function door(t:number,_id:string){
+ const a=phase(t,.4,1.8)*1.25,k=Math.sin(a),lx=180+120*Math.cos(a),glow=phase(t,.6,1.9)*(1+idle(t,1.2,.12));
+ let s=faded(polygon([[lx,320],[300,320],[360+40*k,388],[lx+20,388]],BLUE),.22*glow);
+ s+=faded(polygon([[180,100],[300,100],[300,320],[180,320]],BLUE),.55*glow);
+ s+=polygon([[180,100],[lx,100-22*k],[lx,322+8*k],[180,320]],PAPER)+stroke(sharp([[180,100],[lx,100-22*k],[lx,322+8*k],[180,320],[180,100]]),t,8);
+ s+=blob(lx-14*Math.cos(a)-4,214,6,t,RED);
+ s+=stroke(sharp([[180,322],[180,98],[300,98],[300,322]]),t,10)+floor(t,60,420,322);
+ const up=phase(t,2,3.4),dx=lerp(250,356,up),dy=lerp(270,82,up)+idle(t,1.3,4);
+ if(up>0)s+=blob(dx,dy,11,t,RED,.35*(1-up))+faded(blob(dx-18*up,dy+30*up,5,t,RED),.6*(1-up));
+ return s+burst(dx,dy,18,t,3.4);
+}
+function smallEnvelope(x:number,y:number,t:number,accent:string){return polygon(quad(x,y,110,72),PAPER)+rect(x,y,110,72,t)+stroke([[x+2,y+4],[x+55,y+40],[x+108,y+4]],t,6)+blob(x+55,y+46,7,t,accent);}
+function swap(t:number,_id:string){
+ const k=phase(t,.9,2.6),lift=Math.sin(k*Math.PI),b=idle(t,1.4,3);
+ let s=pen([[196,96],[262,86],[318,128]],t,phase(t,.2,.8),6)+pen([[318,128],[306,112]],t,phase(t,.7,.9),6)+pen([[318,128],[300,130]],t,phase(t,.7,.9),6);
+ s+=pen([[284,318],[218,328],[162,286]],t,phase(t,.4,1),6)+pen([[162,286],[174,302]],t,phase(t,.9,1.1),6)+pen([[162,286],[180,284]],t,phase(t,.9,1.1),6);
+ s+=smallEnvelope(lerp(80,290,k),lerp(118,212,k)-80*lift+b,t,BLUE)+smallEnvelope(lerp(290,80,k),lerp(212,118,k)+80*lift-b,t,RED);
+ return s+burst(345,200+b,40,t,2.7);
+}
+function invite(t:number,_id:string){
+ const o=140*(1-phase(t,.4,1.8)),cups=phase(t,1.8,2.3),lamp=phase(t,2.5,3.1);
+ let s=faded(blob(240,96,58*lamp,t,BLUE),.14)+pen([[240,0],[240,74]],t,lamp*1.6,5)+blob(240,92,20*lamp,t,BLUE);
+ s+=floor(t,50,430,332)+stroke([[160,232],[240,230],[320,232]],t,10)+stroke([[180,234],[176,332]],t,8)+stroke([[300,234],[304,332]],t,8);
+ s+=stroke([[90,264],[140,262]],t,8)+stroke([[92,264],[86,182]],t,8)+stroke([[96,266],[94,332]],t,7)+stroke([[136,266],[138,332]],t,7);
+ s+=stroke([[340+o,262],[390+o,264]],t,8)+stroke([[388+o,264],[394+o,182]],t,8)+stroke([[344+o,266],[342+o,332]],t,7)+stroke([[384+o,266],[386+o,332]],t,7);
+ s+=shape([[346+o,252],[384+o,252],[386+o,262],[344+o,262]],RED);
+ for(const x of [204,276]){const y=lerp(-30,0,cups);if(cups>0){s+=stroke([[x-13,206+y],[x-10,228+y],[x+10,228+y],[x+13,206+y]],t,6)+stroke([[x+13,212+y],[x+22,216+y],[x+12,224+y]],t,4);if(t>2.4)s+=stroke([[x,194],[x+5+Math.sin(t*3+x)*2,184],[x-2,172]],t,4);}}
+ return s;
+}
+function keypad(t:number,_id:string){
+ let s='';
+ for(let i=0;i<6;i++){const x=66+i*60,k=phase(t,.4+i*.3,.55+i*.3);s+=rect(x,140,50,66,t,i%2?2:-2);if(k>0)s+=blob(x+25,173,10*k*(1+idle(t+i,2,.08)),t,BLUE);else if(Math.floor(t*2.5)%2===0&&(i===0||phase(t,.4+(i-1)*.3,.55+(i-1)*.3)>=1))s+=stroke([[x+25,156],[x+25,190]],t,4);}
+ s+=tickMark(240,290,26,t,phase(t,2.4,3));
+ return s;
+}
+function shield(t:number,_id:string){
+ const pts:P[]=[[240,64],[322,96],[318,196],[292,262],[240,302],[188,262],[162,196],[158,96]],k=phase(t,.2,1.6),b=idle(t,1.2,2);
+ const moved=pts.map(([x,y])=>[x,y+b] as P);
+ let s=faded(shape(moved,BLUE),phase(t,1.3,2)*.95);
+ s+=k<1?pen([...moved,moved[0]],t,k,10):stroke(moved,t,10,0,true);
+ s+=tickMark(240,182+b,34,t,phase(t,2,2.7),WHITE,12);
+ return s+burst(240,64+b,16,t,2.7)+floor(t,140,340,338);
+}
+function padlock(t:number,closing:boolean){
+ const lift=closing?lerp(30,0,phase(t,1.9,2.3))+3*(phase(t,2.3,2.45)-phase(t,2.45,2.6)):lerp(0,30,phase(t,1.3,1.8))+idle(t,1.5,1.5);
+ let s=stroke([[208,196],[208,185-lift],...arc(240,185-lift,32,Math.PI,Math.PI*2,18),[272,185-lift],[272,198-(closing?0:lift)]],t,11);
+ s+=polygon(quad(186,185,108,100),PAPER)+rect(186,185,108,100,t,2);
+ for(let i=0;i<6;i++){const x=214+(i%3)*26,y=218+Math.floor(i/3)*30,on=closing?phase(t,.3+i*.22,.45+i*.22):1-phase(t,.3+(5-i)*.15,.45+(5-i)*.15);s+=on>.05?blob(x,y,7*on,t,BLUE):stroke(arc(x,y,6,0,Math.PI*2,10),t,3);}
+ if(closing)s+=burst(240,140,22,t,2.6);
+ else{const d=phase(t,1.9,2.6);s+=blob(318,lerp(120,150,d)+idle(t,1.8,3),11*d,t,RED);}
+ return s+floor(t,130,350,300);
+}
+function lock(t:number,_id:string){return padlock(t,true);}
+function unlock(t:number,_id:string){return padlock(t,false);}
+function chain(cx:number,cy:number,rot:number,t:number){const pts:P[]=[...arc(-40,0,24,Math.PI/2,Math.PI*1.5,12),...arc(40,0,24,-Math.PI/2,Math.PI/2,12)].map(([x,y])=>[cx+x*Math.cos(rot)-y*Math.sin(rot),cy+x*Math.sin(rot)+y*Math.cos(rot)] as P);return stroke(pts,t,12,0,true);}
+function links(t:number,joining:boolean){
+ const k=joining?phase(t,.4,2):1-phase(t,.8,2.2),b=idle(t,1.3,3);
+ let s=chain(lerp(118,212,k),200+b,-.35,t)+chain(lerp(362,268,k),200-b,.35,t);
+ if(joining)s+=blob(240,200,11*phase(t,2,2.4),t,RED)+burst(240,176,20,t,2.3);
+ else{const d=phase(t,1.2,2.2);s+=blob(240-50*d,200+30*d,6*(1-d*.3),t,RED)+blob(240+50*d,200-30*d,6*(1-d*.3),t,BLUE)+(d>0&&d<1?burst(240,190,12,t,1.2,1.1):'');}
+ return s+floor(t,110,370,300);
+}
+function link(t:number,_id:string){return links(t,true);}
+function unlink(t:number,_id:string){return links(t,false);}
+function plane(t:number,_id:string){
+ const path=spline([[40,320],[110,260],[140,160],[220,100],[300,130],[340,210],[378,262]]),u=phase(t,.3,2.8),at=(v:number)=>path[Math.min(path.length-1,Math.floor(clamp(v)*(path.length-1)))];
+ let s=stroke(sharp([[316,256],[328,312],[432,312],[444,256]]),t,9)+stroke(sharp([[322,282],[354,282],[364,296],[394,296],[404,282],[438,282]]),t,5);
+ for(let i=1;i<=9;i++){const v=u-i*.045;if(v>0)s+=faded(blob(...at(v),2.6,t,WHITE),.55-i*.05);}
+ const land=phase(t,2.6,3),[px,py]=at(u),[x2,y2]=at(u+.01),x=lerp(px,378,land),y=lerp(py,266,land)+idle(t,1.6,2),a=lerp(Math.atan2(y2-y,x2-x),-.18,land),sc=1.35-.3*land;
+ {const r=(p:P):P=>[x+(p[0]*Math.cos(a)-p[1]*Math.sin(a))*sc,y+(p[0]*Math.sin(a)+p[1]*Math.cos(a))*sc];s+=shape([[30,0],[-22,-18],[-8,0]].map(p=>r(p as P)),BLUE)+stroke(sharp([[30,0],[-22,18],[-8,0],[30,0],[-22,-18],[-8,0]].map(p=>r(p as P))),t,6);}
+ const badge=phase(t,2.9,3.3);s+=blob(444,248+idle(t,2,2),12*badge,t,RED);
+ return s+burst(444,240,14,t,3.2);
+}
+function hourglass(t:number,_id:string){
+ const L=1-phase(t,.3,3.2),half=(y:number)=>y<140?40:Math.max(2,40*(195-y)/55),y1=195-100*L,w=half(y1);
+ let s='';
+ if(L>.02)s+=shape([[240-w,y1],[240+w,y1],[240,196]],RED);
+ const pile=1-L;if(pile>.02)s+=shape([[240-46*Math.min(1,pile*1.6),316],[240+46*Math.min(1,pile*1.6),316],[240,316-78*pile]],RED);
+ if(L>.02&&L<.99)s+=tint(ink([[240,196],[240,(196+316-78*pile)/2],[240,316-78*pile]],4,t),RED);
+ s+=stroke([[180,70],[300,70]],t,11)+stroke([[180,320],[300,320]],t,11);
+ s+=stroke([[198,74],[200,140],[234,195],[200,250],[198,316]],t,8)+stroke([[282,74],[280,140],[246,195],[280,250],[282,316]],t,8);
+ s+=tickMark(340,110,20,t,phase(t,3.2,3.8));
+ if(t>6)for(let i=0;i<2;i++){const f=((t-6)*.6+i*.5)%1;s+=faded(blob(240,200+f*40,2.5,t,RED),1-f);}
+ return s;
+}
+function coin(t:number,_id:string){
+ const fall=phase(t,.4,1.8),bounce=Math.sin(phase(t,1.8,2.4)*Math.PI)*8,cx=lerp(400,245,fall),cy=lerp(40,212,fall)-Math.sin(fall*Math.PI)*60,spin=Math.abs(Math.cos(t*5))*(1-phase(t,1.6,1.8))+phase(t,1.6,1.8);
+ let s=polygon(quad(158,196,176,20),PAPER)+stroke([[160,198],[332,198]],t,6);
+ const cyy=fall<1?cy:206+idle(t,1.6,2);s+=shape(arc(cx,cyy,26*Math.max(.15,spin),0,Math.PI*2,28,26),BLUE)+stroke(arc(cx,cyy,16*Math.max(.15,spin),0,Math.PI*2,20,16),t,4);
+ s+=polygon(quad(146,210+bounce,200,108),PAPER)+rect(146,210+bounce,200,108,t,2)+stroke([[300,240+bounce],[356,240+bounce],[356,282+bounce],[300,282+bounce]],t,8)+blob(328,261+bounce,8,t,RED);
+ for(let i=0;i<7;i++)s+=stroke([[164+i*18,300+bounce],[174+i*18,300+bounce]],t,3);
+ return s+burst(245,170,20,t,2.2)+floor(t,110,390,334);
+}
+function box(t:number,_id:string){
+ const sink=phase(t,.2,1.1),l=1-phase(t,1.1,1.8),r=1-phase(t,1.5,2.2),tape=phase(t,2.4,3);
+ let s='';
+ if(sink<1)s+=blob(215,lerp(150,230,sink),16,t,BLUE)+rect(248,lerp(120,220,sink),36,46,t,4);
+ s+=polygon([[170,200],[240,200],[240-8*l,200-70*l],[170-34*l,200-60*l]],PAPER)+stroke([[170,200],[170-34*l,200-60*l],[240-8*l,200-70*l],[240,200]],t,8);
+ s+=polygon([[240,200],[310,200],[310+34*r,200-60*r],[240+8*r,200-70*r]],PAPER)+stroke([[240,200],[240+8*r,200-70*r],[310+34*r,200-60*r],[310,200]],t,8);
+ s+=polygon(quad(170,200,140,112),PAPER)+rect(170,200,140,112,t,2);
+ s+=pen([[240,200],[240,226],[240,252]],t,tape,11,RED)+rect(188,262,46,30,t,1)+stroke([[196,272],[222,272]],t,3);
+ return s+burst(240,176,14,t,3)+floor(t,110,370,318);
+}
+function portrait(t:number,_id:string){
+ const k=phase(t,.2,1.4),face=phase(t,1.1,1.9),blinkAt=(t%3.2),blink=blinkAt>2.9?.15:1;
+ let s=pen([[200,74],[240,34],[280,74]],t,k,5)+blob(240,32,6,t,RED);
+ s+=k<1?pen(sharp([[165,74],[315,74],[315,262],[165,262],[165,74]]),t,k,11):rect(165,74,150,188,t)+rect(178,88,124,160,t,1);
+ if(face>0){s+=faded(shape([[196,248],[206,212],[240,202],[274,212],[284,248]],BLUE),face);
+  s+=faded(stroke(arc(240,152,38,0,Math.PI*2,28),t,7),face);
+  for(const x of [226,254])s+=faded(stroke([[x,146-6*blink],[x,146+6*blink]],t,6),face);
+  s+=pen([[224,166],[240,176],[256,166]],t,phase(t,1.7,2.2),6)+faded(blob(214,164,6,t,RED),face*.9)+faded(blob(266,164,6,t,RED),face*.9);}
+ return s+burst(315,74,14,t,2.2,.6);
+}
+function jar(t:number,_id:string){
+ const lid=phase(t,2.6,3.1);let s=faded(blob(240,262,70,t,BLUE),.1*phase(t,2,3));
+ for(let i=0;i<3;i++){const k=phase(t,.2+i*.3,.9+i*.3);if(k>0&&k<1)s+=rect(214+i*18,lerp(-30,236,k),22,28,t,i-1);}
+ s+=droplets(Math.max(0,t-1.1),240,272,BLUE,_id,28);
+ s+=stroke([[180,124],[180,150],[168,172],[168,308],[182,322],[298,322],[312,308],[312,172],[300,150],[300,124]],t,9);
+ const ly=lerp(56,100,lid),tilt=(1-lid)*16;
+ s+=shape([[172,ly+tilt],[308,ly-tilt],[308,ly+22-tilt],[172,ly+22+tilt]],RED)+stroke([[172,ly+tilt],[308,ly-tilt],[308,ly+22-tilt],[172,ly+22+tilt],[172,ly+tilt]],t,6);
+ return s+burst(240,88,16,t,3.1)+floor(t,120,360,334);
+}
+function folder(t:number,_id:string){
+ let s=polygon([[140,132],[208,132],[226,152],[340,152],[340,300],[140,300]],PAPER)+stroke([[140,300],[140,132],[208,132],[226,152],[340,152],[340,300]],t,8);
+ for(const [i,x] of [[0,172],[1,232]] as const){const k=phase(t,.3+i*.35,1.3+i*.35),y=lerp(20,150,k)+idle(t+i,1.4,2);s+=polygon(quad(x,y,86,108),PAPER)+rect(x,y,86,108,t,i?3:-3)+stroke([[x+16,y+26],[x+60,y+28]],t,4)+stroke([[x+16,y+44],[x+70,y+43]],t,4);}
+ s+=polygon([[128,184],[352,184],[340,300],[140,300]],PAPER)+stroke([[128,184],[352,184],[340,300],[140,300],[128,184]],t,9);
+ s+=shape([[168,210],[222,210],[222,226],[168,226]],RED);
+ return s+burst(340,140,18,t,2)+floor(t,100,380,318);
+}
+function plug(t:number,_id:string){
+ const o=70*phase(t,.4,1.8),o2=20*phase(t,.4,1.8),spark=phase(t,1.8,2.2);
+ let s=stroke([[62+o,200],[30,214],[8,240]],t,8)+stroke([[418-o2,200],[450,188],[478,170]],t,8);
+ s+=polygon(quad(60+o,168,86,64),PAPER)+rect(60+o,168,86,64,t,2)+stroke([[146+o,184],[176+o,184]],t,8)+stroke([[146+o,216],[176+o,216]],t,8);
+ s+=polygon(quad(332-o2,164,86,72),PAPER)+rect(332-o2,164,86,72,t,-2)+blob(346-o2,184,6,t,BLUE)+blob(346-o2,216,6,t,BLUE);
+ if(spark>0)s+=blob(240,200,12*Math.sin(spark*Math.PI)+(spark>=1?5:0),t,RED)+burst(240,186,14,t,1.9,.9);
+ if(t>2.2){const f=((t-2.2)*.5)%1;s+=blob(lerp(8,62+o,f),lerp(240,200,f),4,t,BLUE);}
+ return s;
+}
+function house(t:number,_id:string){
+ const roof=phase(t,.2,1),walls=phase(t,.6,1.5),light=phase(t,1.6,2.3),light2=phase(t,2.2,2.9);
+ let s=faded(shape(quad(172,216,40,34),RED),light)+faded(shape(quad(268,216,40,34),BLUE),light2);
+ s+=pen(sharp([[126,192],[240,98],[354,192]]),t,roof,10)+pen(sharp([[152,184],[152,320],[328,320],[328,184]]),t,walls,9);
+ if(walls>=1)s+=rect(172,216,40,34,t)+rect(268,216,40,34,t)+rect(220,256,40,64,t)+blob(252,290,4,t,RED)+stroke(sharp([[290,142],[290,112],[310,112],[310,158]]),t,7);
+ if(t>1.5)for(let i=0;i<3;i++){const f=((t*.35)+i/3)%1;s+=faded(blob(300+12*f+Math.sin(f*6+i)*6,100-60*f,5+6*f,t,WHITE),.5*(1-f));}
+ return s+floor(t,80,400,322);
+}
+function lifebuoy(t:number,_id:string){
+ const drop=phase(t,.2,1.1),cy=lerp(-90,222,drop)+(drop>=1?Math.sin((t-1.1)*1.8)*5*Math.min(1,(t-1.1)):0),sp=phase(t,1.1,1.9);
+ let s='';
+ for(let q=0;q<4;q+=2){const a0=q*Math.PI/2+.4;s+=polygon([...arc(240,cy,68,a0,a0+Math.PI/2,10),...arc(240,cy,36,a0+Math.PI/2,a0,10)],RED);}
+ s+=stroke(arc(240,cy,68,0,Math.PI*2,36),t,9)+stroke(arc(240,cy,36,0,Math.PI*2,24),t,8);
+ s+=stroke([[296,cy-40],[340,cy-110],[420,cy-150]],t,5);
+ if(sp>0&&sp<1)for(const [dx,h] of [[-60,50],[-30,80],[30,76],[62,46]])s+=blob(240+dx*(1+sp*.5),cy+40-h*Math.sin(sp*Math.PI),5*(1-sp*.6),t,BLUE);
+ for(const [y,a] of [[300,0],[322,1.8]])s+=stroke(Array.from({length:21},(_,i)=>[60+i*18,y+Math.sin(i*.9+t*2.2+a)*6] as P),t,6);
+ return s;
+}
+
+// Atmosphere for the quieter originals: wind for the kite, stars for the telescope, water for the bridge.
+function kiteAir(t:number,id:string){let s=kite(t,id);for(let i=0;i<3;i++){const f=((t*.22)+i/3)%1,x=lerp(430,60,f),y=[70,120,190][i];s+=faded(stroke([[x,y],[x+34,y-3],[x+60,y+1]],t,4),Math.sin(f*Math.PI)*.8);}s+=faded(shape([[70,72],[88,58],[112,60],[124,48],[150,54],[160,72],[140,82],[82,84]],WHITE),.12);return s;}
+function telescopeNight(t:number,id:string){let s=telescope(t,id);for(const [x,y,p] of [[300,60,0],[380,130,1.3],[430,70,2.1],[250,110,.7]] as const){const k=.35+.65*Math.abs(Math.sin(t*1.4+p));s+=faded(stroke([[x-7*k,y],[x+7*k,y]],t,3)+stroke([[x,y-7*k],[x,y+7*k]],t,3),k);}return s+faded(blob(420,40,4,t,BLUE),.8);}
+function bridgeWater(t:number,id:string){let s=bridge(t,id);for(const [y,a,o] of [[356,.9,.5],[372,1.7,.3]] as const)s+=faded(stroke(Array.from({length:17},(_,i)=>[90+i*19,y+Math.sin(i*.8+t*1.6+a)*3] as P),t,4),o);const bx=lerp(60,420,(t*.08)%1);s+=shape([[bx-16,344],[bx+16,344],[bx+10,354],[bx-10,354]],BLUE)+stroke([[bx,344],[bx,328]],t,3)+shape([[bx,328],[bx+12,338],[bx,340]],WHITE);return s;}
+const scenes={schedule,balance,untangle,build,discover,learn,orchestrate,sprout,kite:kiteAir,telescope:telescopeNight,pencil,bridge:bridgeWater,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,coin,box,portrait,jar,folder,plug,house,lifebuoy};
 export function filmFrame(scene:Scene,seconds:number,id:string){const t=Math.max(0,seconds);return `<defs><filter id="${id}" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="4"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/></filter></defs>${scenes[scene](t,id)}`;}

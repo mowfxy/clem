@@ -22,3 +22,9 @@ desktop-package/
 release/
 
 desktop/generated/
+
+Installer/
+.shot.mjs
+
+# Marketing videos stay local
+ads/

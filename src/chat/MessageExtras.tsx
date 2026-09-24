@@ -1,0 +1,72 @@
+import { useEffect, useRef, useState } from 'react';
+import type { Model, Review, Verification } from '../../core/types';
+import type { Citation } from '../../core/citations';
+import { Icon } from '../Icons';
+import { MessageBody } from './MessageBody';
+
+/** Picks a reviewer: another provider first, then another model, then the same one. */
+export function reviewerFor(models: Model[], current: string) {
+  const connected = models.filter(m => m.connected), mine = connected.find(m => m.id === current);
+  const ranked = [...connected].sort((a, b) => Number(b.provider !== mine?.provider) - Number(a.provider !== mine?.provider) || Number(b.id !== current) - Number(a.id !== current) || Number(!!b.isDefault) - Number(!!a.isDefault));
+  return ranked;
+}
+
+export function MessageTools({ content, models, model, onReview, onVerify, canVerify, busy }: { content: string; models: Model[]; model?: string; onReview: (model: string) => void; onVerify?: () => void; canVerify: boolean; busy: boolean }) {
+  const [copied, setCopied] = useState(false), [menu, setMenu] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!menu) return; const close = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) setMenu(false); }; const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); }; addEventListener('mousedown', close); addEventListener('keydown', esc); return () => { removeEventListener('mousedown', close); removeEventListener('keydown', esc); }; }, [menu]);
+  const reviewers = reviewerFor(models, model || '');
+  const plain = content.replace(/```(?:visual|check|edit)[\s\S]*?(?:```|$)/g, '').trim();
+  return <div className="message-tools" ref={wrap}>
+    <button type="button" aria-label={copied ? 'Copied' : 'Copy answer'} title="Copy" onClick={() => void navigator.clipboard?.writeText(plain).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
+    {reviewers.length > 0 && <button type="button" aria-label="Second opinion" title="Second opinion" aria-expanded={menu} disabled={busy} onClick={() => setMenu(!menu)}><Icon name="compare" size={16} /><span>Second opinion</span></button>}
+    {canVerify && onVerify && <button type="button" aria-label="Check against sources" title="Check against your sources" disabled={busy} onClick={onVerify}><Icon name="verify" size={16} /><span>Check sources</span></button>}
+    {menu && <div className="review-menu" role="menu">
+      <p>Ask another model to review this answer</p>
+      {reviewers.slice(0, 6).map((m, i) => <button key={m.id} role="menuitem" onClick={() => { setMenu(false); onReview(m.id); }}><span>{m.name}</span>{i === 0 && <small>{m.provider !== models.find(x => x.id === model)?.provider ? 'Different provider' : m.id !== model ? 'Different model' : 'Fresh context'}</small>}</button>)}
+    </div>}
+  </div>;
+}
+
+const verdictOf = (text: string) => /^\W*disagree/i.test(text) ? 'disagree' : /^\W*mostly agree/i.test(text) ? 'mostly' : /^\W*agree/i.test(text) ? 'agree' : '';
+
+export function ReviewPanel({ review, models }: { review: Review; models: Model[] }) {
+  const name = models.find(m => m.id === review.model)?.name || review.model.replace(/^claude:/, 'Claude ');
+  const verdict = verdictOf(review.content);
+  return <aside className={`review-panel ${verdict}`} aria-label={`Second opinion from ${name}`}>
+    <header><Icon name="compare" size={15} /><span>Second opinion</span><small>{name}</small>{review.status === 'running' && <span className="review-live" aria-label="Reviewing" />}</header>
+    {review.content ? <MessageBody content={review.content} streaming={review.status === 'running'} /> : review.status === 'running' ? <p className="review-wait">Reading the answer…</p> : null}
+    {review.status === 'error' && !review.content && <p className="review-wait">The review could not finish.</p>}
+  </aside>;
+}
+
+export function VerifyPanel({ verify, onCite, canCite }: { verify: Verification; onCite: (c: Citation) => void; canCite: (c: Citation) => boolean }) {
+  if (verify.status === 'running') return <aside className="verify-panel"><header><Icon name="verify" size={15} /><span>Checking against your sources</span><span className="review-live" /></header></aside>;
+  if (verify.status === 'error') return <aside className="verify-panel"><header><Icon name="verify" size={15} /><span>Source check</span></header><p className="review-wait">{verify.error || 'The check could not finish.'}</p></aside>;
+  const claims = verify.claims || [], supported = claims.filter(c => c.status === 'supported').length;
+  return <aside className="verify-panel" aria-label="Source check">
+    <header><Icon name="verify" size={15} /><span>Source check</span><small>{supported} of {claims.length} claims supported</small></header>
+    <ul>{claims.map((c, i) => {
+      const cite = c.source ? { name: c.source, page: c.page ?? undefined } : null;
+      return <li key={i} className={c.status}>
+        <span className="verify-dot" aria-label={c.status} />
+        <div><p>{c.claim}</p>{c.quote && <q>{c.quote}</q>}{cite && <button type="button" className={`cite ${canCite(cite) ? '' : 'unavailable'}`} onClick={() => canCite(cite) && onCite(cite)}><Icon name="files" size={12} /><span>{cite.name}{cite.page ? ` · p. ${cite.page}` : ''}</span></button>}</div>
+        <small>{c.status === 'supported' ? 'Supported' : c.status === 'partial' ? 'Partly' : 'Not in sources'}</small>
+      </li>;
+    })}</ul>
+  </aside>;
+}
+
+export function parseClaims(raw: string) {
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  const data = JSON.parse(start >= 0 ? text.slice(start, end + 1) : text);
+  if (!Array.isArray(data.claims)) throw Error('The source check returned no claims.');
+  return data.claims.slice(0, 12).filter((c: any) => typeof c?.claim === 'string').map((c: any) => ({
+    claim: String(c.claim).slice(0, 300),
+    status: ['supported', 'partial', 'unsupported'].includes(c.status) ? c.status : 'unsupported',
+    source: typeof c.source === 'string' ? c.source.slice(0, 200) : '',
+    page: Number.isInteger(c.page) && c.page > 0 ? c.page : null,
+    quote: typeof c.quote === 'string' ? c.quote.slice(0, 240) : '',
+  }));
+}

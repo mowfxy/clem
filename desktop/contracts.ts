@@ -7,6 +7,10 @@ export const scopeSchema = z
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000) }),
+  z.object({ action: z.literal("supportCases") }),
+  z.object({ action: z.literal("supportReply"), id:z.string().regex(/^[\w-]{8,64}$/), body:z.string().trim().min(2).max(10000) }),
+  z.object({ action: z.literal("supportSeen"), id:z.string().regex(/^[\w-]{8,64}$/) }),
+  z.object({ action: z.literal("announcements") }),
   z.object({action:z.literal("essentialSync"),skills:syncSchemas.skills,notes:syncSchemas.notes}),
   z.object({ action: z.literal("browserLogin") }),
   z.object({ action: z.literal("driveConnect") }),
@@ -26,6 +30,10 @@ export const requestSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("checkout") }),
   z.object({ action: z.literal("providerAccounts"), refresh:z.boolean().optional() }),
+  z.object({ action: z.literal("providerAutoSwitch"), enabled:z.boolean() }),
+  z.object({ action: z.literal("claudeStatus") }),
+  z.object({ action: z.literal("claudeLogin") }),
+  z.object({ action: z.literal("claudeInstall") }),
   z.object({ action: z.literal("providerAccountAdd") }),
   z.object({ action: z.literal("providerAccountRetry"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
   z.object({ action: z.literal("providerAccountStatus"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
@@ -37,12 +45,18 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("linkFolder"), scope: scopeSchema }),
   z.object({ action: z.literal("folders"), scope: scopeSchema }),
   z.object({ action: z.literal("unlinkFolder"), id: z.string().uuid() }),
+  z.object({ action: z.literal("folderFileRead"), scope: scopeSchema, path: z.string().min(1).max(400) }),
+  z.object({ action: z.literal("folderEditApply"), scope: scopeSchema, path: z.string().min(1).max(400), find: z.string().max(200000).optional(), replace: z.string().max(200000).optional(), content: z.string().max(256000).optional(), summary: z.string().max(400).optional() }),
+  z.object({ action: z.literal("folderChanges"), scope: scopeSchema.optional() }),
+  z.object({ action: z.literal("folderChangeUndo"), id: z.string().uuid() }),
+  z.object({ action: z.literal("captureScreen") }),
   z.object({
     action: z.literal("chat"),
     model:z.string().regex(/^[a-zA-Z0-9._:-]{1,100}$/).optional(),
     reasoning:z.enum(["none","minimal","low","medium","high","xhigh","max","ultra"]).optional(),
     id: z.string().uuid(),
     scope: scopeSchema,
+    images: z.array(z.object({ name: z.string().max(200), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(4).optional(),
     messages: z
       .array(
         z.object({
@@ -109,7 +123,7 @@ export type DesktopStatus = {
     displayName: string;
     memory: boolean;
   };
-  entitlement: { active: boolean; reason: string };
+  entitlement: { active: boolean; reason: string; message?: string; until?: string | null };
   error?: string;
   mfaFactor?: string;
 };
@@ -124,6 +138,7 @@ export type DesktopBridge = {
     }) => void,
   ) => () => void;
   invoke: (request: DesktopRequest) => Promise<any>;
+  onCapture?: (listener: (event: { bytes: Uint8Array; name: string; mime: string }) => void) => () => void;
   onChat: (
     listener: (event: {
       id: string;

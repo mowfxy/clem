@@ -239,10 +239,10 @@ try {
   await page.evaluate(() => (location.hash = "/app/settings"));
   await page
     .locator(".settings-tabs")
-    .getByRole("button", { name: "Contact us", exact: true })
+    .getByRole("button", { name: "Help & support", exact: true })
     .click();
-  await page.getByRole("button", { name: "Write a message" }).click();
-  const select = page.locator(".settings-dialog select");
+  // With no earlier requests, the support tab opens straight to the form.
+  const select = page.locator(".support-inbox select");
   assert.equal(
     await select.evaluate((el) => getComputedStyle(el).appearance),
     "base-select",
