@@ -1,5 +1,5 @@
 import {SiteFooter,SiteHeader} from './SiteHeader';
-import {PricingPage} from './PricingPage';
+import {SupportPage} from './SupportPage';
 import {useEffect} from 'react';
 import {Illustration} from '../Illustrations';
 import type {Scene} from '../vectorFilm';
@@ -12,7 +12,7 @@ const scenes:Record<string,Scene>={'financial-analysis':'balance','physics-diagr
 const shown=features.filter(f=>f.id!=='multi-model-work');
 export function FeatureArt({kind}:{kind:string}){return <div className="sx-feature-art"><Illustration scene={scenes[kind]||'learn'} ambient/></div>;}
 
-export function Marketing({route}:{route:string}){if(route==='/pricing')return <PricingPage/>;return <MarketingPage route={route}/>;}
+export function Marketing({route}:{route:string}){if(route==='/support'||route==='/pricing')return <SupportPage/>;return <MarketingPage route={route}/>;}
 
 function MarketingPage({route}:{route:string}){
   const feature=shown.find(f=>route==='/features/'+f.id);

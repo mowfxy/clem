@@ -23,7 +23,7 @@ function Root(){
  const publicPage=(path:string)=>path==='/'?<Landing/>:['/privacy','/terms','/refunds'].includes(path)?<Legal route={path}/>:<Marketing route={path}/>;
  useEffect(()=>{const change=()=>{setRoute(location.hash.slice(1)||'/');setCallback(false);};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
  useEffect(()=>{if(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect')||route.startsWith('/app')||location.search.includes('code=')||location.search.includes('recovery=')){authReady??=import('./supabase').then(module=>module.initSupabase());void authReady.finally(()=>{setReady(true);setRoute(location.hash.slice(1)||'/');});}},[route]);
- const isPublic=route==='/'||['/privacy','/terms','/refunds','/pricing','/about'].includes(route)||route.startsWith('/features');
+ const isPublic=route==='/'||['/privacy','/terms','/refunds','/pricing','/support','/about'].includes(route)||route.startsWith('/features');
  const loading=<main className="workspace-loading" role="status">Opening Mowr…</main>;
  if(callback)return <Suspense fallback={loading}><AuthCallback ready={ready||/^#\/?error=/.test(location.hash)}/></Suspense>;
  if(adminHost||route.startsWith('/admin'))return <Suspense fallback={loading}><AdminApp/></Suspense>;

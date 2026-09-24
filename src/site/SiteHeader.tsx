@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import {Icon,Logo} from '../Icons';
 import './site.css';
 
-const links=[['#/features','Features'],['#/#visuals','Visuals'],['#/pricing','Pricing'],['#/download','Download']];
+const links=[['#/features','Features'],['#/#visuals','Visuals'],['#/support','Support'],['#/download','Download']];
 
 /** Shared site navigation: condenses on scroll and folds into a menu on phones. */
 export function SiteHeader(){
@@ -29,8 +29,8 @@ export function SiteFooter(){
     <div className="sx-footer-top">
       <a className="sx-brand" href="#/"><Logo size={24}/><span>mowr</span></a>
       <nav aria-label="Footer">
-        <a href="#/features">Features</a><a href="#/pricing">Pricing</a><a href="#/download">Download</a><a href="#/about">About</a>
-        <a href="mailto:support@mowrai.com">Support</a><a href="#/privacy">Privacy</a><a href="#/terms">Terms</a><a href="#/refunds">Refunds</a>
+        <a href="#/features">Features</a><a href="#/download">Download</a><a href="#/support">Support</a><a href="#/about">About</a>
+        <a href="mailto:support@mowrai.com">Contact</a><a href="#/privacy">Privacy</a><a href="#/terms">Terms</a><a href="#/refunds">Refunds</a>
       </nav>
     </div>
     <div className="sx-footer-bottom"><span>© {new Date().getFullYear()} Mowr</span><span>Your space to think.</span></div>
