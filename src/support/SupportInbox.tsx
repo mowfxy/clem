@@ -10,22 +10,18 @@ const when=(value:string)=>new Date(value).toLocaleString(undefined,{month:'shor
 
 export function SupportInbox({cases,onChanged}:{cases:SupportCase[];onChanged:()=>Promise<void>|void}){
   const [open,setOpen]=useState<string|null>(null);
-  const [composing,setComposing]=useState(false);
   const active=cases.find(c=>c.id===open);
   useEffect(()=>{if(active?.unread)void desktop?.invoke({action:'supportSeen',id:active.id}).then(()=>onChanged()).catch(()=>{});},[active?.id,active?.unread]);
   if(!desktop)return <ContactSettings/>;
-  if(composing||!cases.length)return <div className="support-inbox">
-    {cases.length>0&&<button className="support-back" onClick={()=>setComposing(false)}><Icon name="arrow" size={15}/>Your requests</button>}
-    <ContactSettings onSent={async()=>{await onChanged();setComposing(false);}}/>
-  </div>;
   if(active)return <SupportThread item={active} onBack={()=>setOpen(null)} onChanged={onChanged}/>;
   return <div className="support-inbox">
-    <header className="support-head"><div><h2>Help & support</h2><p className="muted">Replies from the Mowr team appear here and in a notice above your account.</p></div><button className="primary" onClick={()=>setComposing(true)}>New request<Icon name="plus" size={16}/></button></header>
-    <ul className="support-list">{cases.map((c,i)=><li key={c.id} style={{animationDelay:i*40+'ms'}}><button onClick={()=>setOpen(c.id)}>
+    <ContactSettings onSent={onChanged}/>
+    {cases.length>0&&<header className="support-head"><div><h3>Your requests</h3><p className="muted">Replies from the Mowr team appear here and in a notice above your account.</p></div></header>}
+    {cases.length>0&&<ul className="support-list">{cases.map((c,i)=><li key={c.id} style={{animationDelay:i*40+'ms'}}><button onClick={()=>setOpen(c.id)}>
       <span className={`support-status status-${c.status}`}>{statusLabel[c.status]}</span>
       <span className="support-subject">{c.unread&&<i className="support-unread" aria-label="New reply"/>}{c.subject}</span>
       <small>{c.category} · {when(c.updated_at||c.created_at)} · {c.messages.length} {c.messages.length===1?'reply':'replies'}</small>
-    </button></li>)}</ul>
+    </button></li>)}</ul>}
   </div>;
 }
 

@@ -1,7 +1,29 @@
 import { Worker } from "node:worker_threads";
 import { join } from "node:path";
 import reference from "./generated/kinetra.json" with { type: "json" };
-export const kinetraInstructions = `Built-in Kinetra tools are available to every model. Use them when relevant for verified calculations, technical learning, and figures INSIDE requested documents; never substitute a preset gallery. Skills: ${Object.keys(reference.skills).join(", ")}. To call a tool respond ONLY with a JSON object {"kinetra":{"action":"skill","name":"kinetra-diagrams"}}. Actions: skill(name) reads the FULL skill; api(module) reads its actual TypeScript API; call(module,fn,args[]) executes a pure function; pdf(title,sections[]) creates a real local PDF. Each PDF section is {heading?:string,text?:string,figure?:{module:string,fn:string,args:[]},caption?:string}. Figures are computed by Kinetra, not model-authored SVG. A call to a renderer validates a figure but does not save a file; only a successful pdf action creates an attachment. The api action can read supporting type modules such as graph/spec in addition to executable modules. Modules: ${reference.modules.join(", ")}. Read the relevant skill and API before using it. Prefer module mowr for JSON-friendly fields, numerical integration, retrieval and study schedules. Other APIs requiring functions, Map instances or classes cannot be called directly. JSON arguments only, no executable functions or code. Limits: 12 tool calls per response; calculations time out after 5 seconds. Source files in guides describe upstream capabilities; only these module APIs are callable here. Do not claim unavailable operations ran. Final response must answer the user in the originally requested format, without tool JSON. Never create a PDF unless the user requested a document. A tool error is not success. Use supported models and explicitly state assumptions.`;
+import { recipeText } from "./kinetra-recipes.ts";
+import { documentStandard, documentIntent } from "../core/document-standard.ts";
+
+export const kinetraInstructions = `KINETRA TOOLS: deterministic calculations and textbook figures that run on this PC.
+To use one, reply with ONLY a JSON object {"kinetra":{…}} and nothing else. Mowr runs it and replies with the result; then call another tool or write your final answer. Never put tool JSON in the final answer.
+Actions:
+- {"action":"call","module":M,"fn":F,"args":[…]} runs a pure function with JSON arguments (5 s limit). Use it for every number you state that a module can compute: projectile/optics/pulley analytics, circuit solutions, K-maps and simplification, integrals, grading.
+- {"action":"pdf","kind":K,"title":T,"subtitle"?:S,"summary"?:Markdown,"sections":[{"heading"?:H,"text"?:Markdown with $LaTeX$ math,"figure"?:{"module":M,"fn":F,"args":[…]},"caption"?:C}],"references"?:[strings]} creates ONE real PDF attachment. Only when the user asked for a PDF, report, handout, worksheet or other document file. K is one of report, paper, brief, notes, proposal, manual, handout, worksheet, letter, memo. Mowr typesets it professionally: title block with date, a summary box (give a 2–4 sentence summary for reports, papers, briefs and proposals), numbered sections and figures, contents for longer documents, professional tables, page numbers. Write headings without numbers; use ### inside a section for subsections; tables in Markdown; figure captions describe the figure and its assumptions without "Figure 1". Figures are drawn by Kinetra from the figure spec; never write SVG or images yourself. The text must follow the DOCUMENT STANDARD below: it is checked, and conversational or personal phrasing ("Here is your report", "you", "I") is rejected. All figures are checked first: on any error no PDF is made and you receive every problem at once; fix them and send pdf again. After the PDF is created, reply to the user in one or two plain sentences; do not repeat the document.
+- {"action":"recipes"} lists the verified figure recipes below; {"action":"api","module":M} returns a module's TypeScript declarations (exact argument shapes); {"action":"skill","name":N} returns a topic guide (${Object.keys(reference.skills).join(", ")}).
+Verified figure recipes (each renders as-is; adapt the values, keep the structure):
+${recipeText()}
+Callable modules: ${reference.modules.join(", ")}. Before using a module that has no recipe, read its api. Functions that need callbacks, Map instances or classes cannot be called; prefer module mowr (integrateExpression, plot, logicDiagram, vectorField, scalarField, retrieve, studySchedule).
+Accuracy rules: compute numbers with call before writing them, and use the same model for the figure so text and drawing agree. State assumptions (units, g = 9.81 m/s², ideal pulleys, thin lenses). A tool error is not success. Never claim a file exists unless pdf returned created:true. At most 12 tool calls per answer.
+${documentStandard}`;
+
+/** Everyday messages get a one-line pointer instead of the full catalog; the model can ask for it. */
+export const kinetraBrief = `Kinetra tools (verified calculations, physics/circuit/logic figures, illustrated PDF documents) are available. If this request needs them, reply with ONLY {"kinetra":{"action":"help"}}; otherwise answer normally.`;
+
+const kinetraIntent = /\b(pdf|handout|worksheet|document|report|diagram|figure|illustrat|draw|sketch|plot|graph|chart|circuit|resistor|capacitor|voltage|current|k-?map|karnaugh|truth table|boolean|logic gate|projectile|trajector|free[- ]?body|force|pulley|atwood|optic|lens|mirror|ray diagram|electrostat|charged rod|electric field|vector field|integral|integrate|derivative|differentiat|matrix|eigen|solve|equation|calculat|compute|simplif|quiz|exam|flashcard|grade|study (?:plan|schedule)|revision)/i;
+export function kinetraInstructionsFor(request: string) {
+  return /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) ? kinetraInstructions : kinetraBrief;
+}
+
 export async function kinetraCall(request: any) {
   if (JSON.stringify(request).length > 100000)
     throw Error("Kinetra input too large");
@@ -34,20 +56,24 @@ export async function kinetraCall(request: any) {
     });
   });
 }
+const skillNote = `[Mowr note: in Mowr, run the functions in this guide with {"kinetra":{"action":"call","module":"diagram/projectile","fn":"renderProjectile","args":[model]}} (module path without core/src and .js). Import paths, npm scripts and CLI commands below are not available here.]\n\n`;
 export async function kinetraTool(
   request: any,
   pdf?: (spec: any) => Promise<any>,
 ) {
   if (!request || typeof request !== "object")
     throw Error("Invalid Kinetra request");
+  if (request.action === "help") return kinetraInstructions;
+  if (request.action === "recipes") return recipeText();
   if (
     request.action === "skill" &&
     Object.hasOwn(reference.skills, request.name)
   )
-    return (reference.skills as Record<string, string>)[request.name];
+    return skillNote + (reference.skills as Record<string, string>)[request.name];
   if (request.action === "api" && Object.hasOwn(reference.api, request.module))
     return (reference.api as Record<string, string>)[request.module];
   if (request.action === "call") return kinetraCall(request);
   if (request.action === "pdf" && pdf) return pdf(request);
-  throw Error("Unsupported Kinetra operation");
+  if (request.action === "pdf") throw Error("PDF creation is not available in this conversation.");
+  throw Error(`Unsupported Kinetra action "${String(request.action)}". Use call, pdf, recipes, api, skill or help.`);
 }

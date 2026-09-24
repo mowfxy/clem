@@ -78,7 +78,8 @@ test("all six complete skill guides are available on demand", async () => {
     "kinetra-study-plan",
   ]) {
     const guide = await kinetraTool({ action: "skill", name });
-    assert.ok(guide.startsWith("---"));
+    assert.match(guide, /---\r?\nname: /);
+    assert.match(guide, /action":"call"/);
     assert.ok(guide.length > 1500);
   }
   await assert.rejects(

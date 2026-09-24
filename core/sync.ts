@@ -4,7 +4,7 @@ const id = z
   .min(1)
   .max(120)
   .regex(/^[\w:-]+$/);
-const scope = z.string().regex(/^(chat|project|subject):[\w-]{1,100}$/);
+const scope = z.string().regex(/^(chat|project|subject|user):[\w-]{1,100}$/);
 const source = z
   .object({
     id: z.string().max(200),

@@ -32,10 +32,29 @@ export class DesktopAuth {
     });
     await this.client.auth.getSession();
   }
-  async user(requireMfa = true) {
+  /** A throwaway client for step-up checks, so verifying a password never replaces the signed-in session. */
+  isolatedClient() {
+    if (!this.config.url || !this.config.key) throw Error("Sign-in is not configured in this build.");
+    return createClient(this.config.url, this.config.key, {
+      global:{fetch:(input,init)=>fetch(input,{...init,signal:AbortSignal.timeout(12000)})},
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+  }
+  private verified: { token: string; at: number; user: import("@supabase/supabase-js").User } | null = null;
+  /** Server-verified user. A verification is reused for 60 s for the same access token,
+   *  so a burst of requests (one chat message makes several) costs one network check. */
+  async user(requireMfa = true, fresh = false) {
     if (!this.client) return null;
-    const { data, error } = await this.client.auth.getUser();
-    if (error || !data.user) return null;
+    const token = (await this.client.auth.getSession()).data.session?.access_token;
+    if (!token) { this.verified = null; return null; }
+    let user = !fresh && this.verified && this.verified.token === token && Date.now() - this.verified.at < 60_000 ? this.verified.user : null;
+    if (!user) {
+      const { data, error } = await this.client.auth.getUser();
+      if (error || !data.user) { this.verified = null; return null; }
+      user = data.user;
+      this.verified = { token, at: Date.now(), user };
+    }
+    const data = { user };
     const assurance =
       await this.client.auth.mfa.getAuthenticatorAssuranceLevel();
     if (

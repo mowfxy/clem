@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmDialog } from "./dialogs";
 import type { Automation, Model } from "../core/types";
 export function nextAutomation(schedule: string, after = Date.now()) {
   const date = new Date(after);
@@ -116,11 +117,14 @@ export function LocalAutomations({
             {a.enabled ? "Pause" : "Resume"}
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               if (
-                confirm(
-                  "Delete this automation? Its result chats will be kept.",
-                )
+                await confirmDialog({
+                  title: "Delete this automation?",
+                  message: "It stops running. Chats it already created are kept.",
+                  confirm: "Delete",
+                  danger: true,
+                })
               )
                 onChange(items.filter((x) => x.id !== a.id));
             }}

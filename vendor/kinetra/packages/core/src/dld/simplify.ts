@@ -60,7 +60,7 @@ export function formatExprSimple(e: BoolExpr): string {
     case "not": return "!" + formatExprSimple(e.arg);
     case "and": return e.args.map(formatExprSimple).join("");
     case "or": return "(" + e.args.map(formatExprSimple).join(" + ") + ")";
-    case "xor": return "(" + e.args.map(formatExprSimple).join(" ? ") + ")";
+    case "xor": return "(" + e.args.map(formatExprSimple).join(" ⊕ ") + ")";
   }
   return "?";
 }

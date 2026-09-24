@@ -23,8 +23,6 @@ const templates={
  'support-received':['plane','We got your message','We’ll reply soon. Add details by replying to this email.','','','Never send passwords or keys.'],
  'automation-complete':['hourglass','Your routine is ready','Open Mowr to see the result.','Open Mowr',APP,''],
  'automation-failed':['untangle','A routine needs attention','Open Mowr to see what happened.','Open Mowr',APP,''],
- 'refund-approved':['coin','Your refund was approved','Your payment provider will credit it shortly.','','',''],
- 'refund-declined':['balance','About your refund request','Our reply explains the decision. Your consumer rights are unaffected.','','',''],
  'account-deletion':['box','We received your deletion request','We’ll verify it before anything is removed.','','','Didn’t ask for this? Contact support.'],
 };
 

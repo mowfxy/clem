@@ -36,6 +36,7 @@ export const archiveSchema = z.object({
     memory: text,
     sources: z.array(id),
     examDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    folders: z.array(z.object({ id, name: z.string().min(1).max(80), parentId: id.nullable(), created: z.number() })).max(500).optional(),
   }),
   files: z
     .array(
@@ -46,6 +47,7 @@ export const archiveSchema = z.object({
         size: z.number().nonnegative(),
         created: z.number(),
         spaceId: id.nullable(),
+        folderId: id.nullable().optional(),
       }),
     )
     .max(1000),

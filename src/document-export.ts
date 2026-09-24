@@ -11,7 +11,15 @@ export async function docxBlob(content: string, title: string) {
     TableCell,
     WidthType,
     LevelFormat,
+    BorderStyle,
+    ShadingType,
+    Footer,
+    PageNumber,
+    AlignmentType,
   } = await import("docx");
+  const rule = { style: BorderStyle.SINGLE, size: 8, color: "1B1D21" };
+  const hair = { style: BorderStyle.SINGLE, size: 2, color: "D9DCE0" };
+  const none = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
   const runs = (text: string) =>
     text
       .split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g)
@@ -22,13 +30,17 @@ export async function docxBlob(content: string, title: string) {
             text: part.replace(/^(\*\*|`|\*)|(?:\*\*|`|\*)$/g, ""),
             bold: part.startsWith("**"),
             italics: part.startsWith("*") && !part.startsWith("**"),
-            font: part.startsWith("`") ? "Consolas" : "Calibri",
+            font: part.startsWith("`") ? "Consolas" : undefined,
           }),
       );
-  const children = documentBlocks(content).map((block) => {
+  const blocks = documentBlocks(content);
+  // The title is set once at the top; a leading heading that repeats it is dropped.
+  if (blocks[0]?.kind === "heading" && blocks[0].text.trim().toLowerCase() === title.trim().toLowerCase()) blocks.shift();
+  const children = blocks.map((block) => {
     if (block.kind === "table")
       return new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: { top: rule, bottom: rule, left: none, right: none, insideHorizontal: hair, insideVertical: none },
         rows: block.rows.map(
           (row, i) =>
             new TableRow({
@@ -36,7 +48,10 @@ export async function docxBlob(content: string, title: string) {
               children: row.map(
                 (cell) =>
                   new TableCell({
-                    children: [new Paragraph({ children: runs(cell) })],
+                    margins: { top: 60, bottom: 60, left: 110, right: 110 },
+                    shading: i === 0 ? { type: ShadingType.CLEAR, fill: "F1F3F5", color: "auto" } : undefined,
+                    borders: i === 0 ? { bottom: rule } : undefined,
+                    children: [new Paragraph({ spacing: { after: 0 }, children: i === 0 ? runs(cell).map((r) => r) : runs(cell) })],
                   }),
               ),
             }),
@@ -75,9 +90,10 @@ export async function docxBlob(content: string, title: string) {
       ...(block.kind === "number"
         ? { numbering: { reference: "mowr-numbered", level: 0 } }
         : {}),
-      spacing: { after: 140, line: 280 },
+      spacing: block.kind === "heading" ? undefined : { after: 140, line: 288 },
     });
   });
+  const heading = (size: number, before: number, color = "101114") => ({ run: { font: "Calibri", size, bold: true, color }, paragraph: { spacing: { before, after: 100 }, keepNext: true } });
   return Packer.toBlob(
     new Document({
       title,
@@ -97,8 +113,35 @@ export async function docxBlob(content: string, title: string) {
           },
         ],
       },
-      styles: { default: { document: { run: { font: "Calibri", size: 23 } } } },
-      sections: [{ children }],
+      styles: {
+        default: {
+          document: { run: { font: "Cambria", size: 21, color: "1B1D21" } },
+          title: { run: { font: "Calibri", size: 44, bold: true, color: "101114" }, paragraph: { spacing: { after: 120 } } },
+          heading1: heading(30, 360, "1F4E79"),
+          heading2: heading(26, 300),
+          heading3: heading(23, 240),
+          heading4: heading(21, 200),
+        },
+      },
+      sections: [
+        {
+          properties: { page: { margin: { top: 1361, right: 1191, bottom: 1247, left: 1191 } } },
+          footers: {
+            default: new Footer({
+              children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ children: ["Page ", PageNumber.CURRENT, " of ", PageNumber.TOTAL_PAGES], size: 16, color: "80868E", font: "Calibri" })] })],
+            }),
+          },
+          children: [
+            new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun(title)] }),
+            new Paragraph({
+              border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: "1B1D21", space: 8 } },
+              spacing: { after: 320 },
+              children: [new TextRun({ text: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }), font: "Calibri", size: 17, color: "5C6169" })],
+            }),
+            ...children,
+          ],
+        },
+      ],
     }),
   );
 }

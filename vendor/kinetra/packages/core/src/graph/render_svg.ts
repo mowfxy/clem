@@ -53,6 +53,12 @@ export function renderPlotSvg(spec: PlotSpec, opts: RenderOptions = {}): string 
       }
     }
   }
+  // Measured points belong on the axes too, including their error bars.
+  if (!spec.yRange) for (const p of spec.data ?? []) {
+    if (!Number.isFinite(p.y)) continue;
+    const e = Number.isFinite(p.yerr) ? Math.abs(p.yerr!) : 0;
+    yMin = Math.min(yMin, p.y - e); yMax = Math.max(yMax, p.y + e);
+  }
   if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) { yMin = 0; yMax = 1; }
   if (yMin === yMax) { yMin -= 0.5; yMax += 0.5; }
   // Pad 5% top and bottom
@@ -109,7 +115,8 @@ export function renderPlotSvg(spec: PlotSpec, opts: RenderOptions = {}): string 
   }
 
   // Draw series.
-  const numSeries = rows[0]?.series.length ?? 0;
+  // Scatter data is drawn as markers below, never joined by lines.
+  const numSeries = spec.type === "scatter" ? 0 : rows[0]?.series.length ?? 0;
   for (let s = 0; s < numSeries; s++) {
     const color = DEFAULT_PALETTE[s % DEFAULT_PALETTE.length];
     const path: string[] = [];
@@ -117,7 +124,7 @@ export function renderPlotSvg(spec: PlotSpec, opts: RenderOptions = {}): string 
     for (const r of rows) {
       const yv = r.series[s]?.y;
       if (yv === undefined || !Number.isFinite(yv)) {
-        if (started) path.push("Z");
+        // A gap starts a new segment; "Z" would draw a false line back to the start.
         started = false;
         continue;
       }
@@ -126,20 +133,30 @@ export function renderPlotSvg(spec: PlotSpec, opts: RenderOptions = {}): string 
       path.push(`${started ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`);
       started = true;
     }
-    if (started) path.push("Z");
     if (path.length > 0) {
       elements.push(`<path d="${path.join(" ")}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"/>`);
     }
   }
 
-  if (showLegend && spec.functions && spec.functions.length > 1) {
-    const items = spec.functions.map((f, i) => ({ label: f.label, color: DEFAULT_PALETTE[i % DEFAULT_PALETTE.length] }));
+  const points = (spec.data ?? []).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= xMin && p.x <= xMax);
+  for (const p of points) {
+    const x = xScale(p.x), y = yScale(p.y);
+    if (Number.isFinite(p.yerr) && p.yerr) {
+      const top = yScale(p.y + Math.abs(p.yerr!)), bottom = yScale(p.y - Math.abs(p.yerr!));
+      elements.push(`<path d="M${x.toFixed(2)},${top.toFixed(2)} V${bottom.toFixed(2)} M${(x - 3).toFixed(2)},${top.toFixed(2)} H${(x + 3).toFixed(2)} M${(x - 3).toFixed(2)},${bottom.toFixed(2)} H${(x + 3).toFixed(2)}" stroke="#333" stroke-width="1" fill="none"/>`);
+    }
+    elements.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.4" fill="#fff" stroke="#222" stroke-width="1.4"/>`);
+  }
+  const functions = spec.type === "scatter" ? [] : spec.functions ?? [];
+  if (showLegend && (functions.length > 1 || (functions.length && points.length))) {
+    const items: { label: string; color: string; marker?: boolean }[] = functions.map((f, i) => ({ label: f.label, color: DEFAULT_PALETTE[i % DEFAULT_PALETTE.length] }));
+    if (points.length) items.push({ label: "Measured", color: "#222", marker: true });
     const lx = margin.left + innerW - 160;
     const ly = margin.top + 10;
     elements.push(`<rect x="${lx - 8}" y="${ly - 8}" width="160" height="${items.length * 18 + 12}" fill="rgba(255,255,255,0.85)" stroke="#ccc"/>`);
     items.forEach((it, i) => {
       const y = ly + i * 18;
-      elements.push(`<rect x="${lx}" y="${y}" width="12" height="3" y="${y + 4}" fill="${it.color}"/>`);
+      elements.push(it.marker ? `<circle cx="${lx + 6}" cy="${y + 5}" r="3.4" fill="#fff" stroke="${it.color}" stroke-width="1.4"/>` : `<rect x="${lx}" y="${y + 4}" width="12" height="3" fill="${it.color}"/>`);
       elements.push(`<text x="${lx + 20}" y="${y + 8}" font-size="${fontSize}" font-family="${font}" fill="#222">${escapeXml(it.label)}</text>`);
     });
   }

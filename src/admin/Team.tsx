@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import {confirmDialog} from '../dialogs';
 import {adminApi,type Staff} from './api';
 import {Avatar,Badge,ErrorNote,I,Skeleton,useLoad,useToast} from './ui';
 
@@ -20,6 +21,6 @@ export function Team({staff}:{staff:Staff}){
       <button className="adm-primary" disabled={busy}>Add to team</button>
       <p className="adm-muted">They need to have signed in to the Mowr app once. Owners are set in the account service code.</p>
     </form>}
-    {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:<section className="adm-card"><ul className="adm-list plain">{data!.team.map(m=><li key={m.id}><div className="adm-row"><div className="adm-person"><Avatar person={m}/><span><strong>{m.email}{m.id===staff.id&&' (you)'}</strong><small>{describe[m.role]}</small></span></div><div className="adm-row-actions"><Badge tone={tone(m.role)}>{m.role}</Badge>{owner&&m.role!=='owner'&&<button disabled={busy} onClick={()=>{if(confirm(`Remove ${m.email} from the team?`))void run(`/admin/team/${m.id}/remove`,{},'Removed from team');}}><I name="close" size={14}/>Remove</button>}</div></div></li>)}</ul></section>}
+    {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:<section className="adm-card"><ul className="adm-list plain">{data!.team.map(m=><li key={m.id}><div className="adm-row"><div className="adm-person"><Avatar person={m}/><span><strong>{m.email}{m.id===staff.id&&' (you)'}</strong><small>{describe[m.role]}</small></span></div><div className="adm-row-actions"><Badge tone={tone(m.role)}>{m.role}</Badge>{owner&&m.role!=='owner'&&<button disabled={busy} onClick={async()=>{if(await confirmDialog({title:`Remove ${m.email}?`,message:'They lose access to the admin portal.',confirm:'Remove',danger:true}))void run(`/admin/team/${m.id}/remove`,{},'Removed from team');}}><I name="close" size={14}/>Remove</button>}</div></div></li>)}</ul></section>}
   </div>;
 }

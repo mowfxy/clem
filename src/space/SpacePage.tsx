@@ -1,0 +1,247 @@
+import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode} from 'react';
+import {Icon} from '../Icons';
+import {SubjectStudy,weakConcepts} from '../SubjectStudy';
+import {isDue,examPace} from '../../core/srs';
+import {sizeLabel} from '../store';
+import {confirmDialog} from '../dialogs';
+import {desktop} from '../desktop/bridge';
+import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
+import './space.css';
+
+export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'about';
+type Linked={id:string;scope:string;path:string};
+export type SpaceActions={
+  onAsk:(prompt:string)=>void;
+  /** Opens a chat in this space with the message ready to review and send. */
+  onDraft:(prompt:string)=>void;
+  onOpenChat:(chat:Chat)=>void;
+  onOpenFile:(file:StoredFile)=>void;
+  onUpload:(files:FileList,folderId:string|null)=>void;
+  onMake:(kind:'flashcards'|'quiz'|'worksheet'|'summary',folderId?:string|null)=>void;
+  onShare:(folderId?:string)=>void;
+  onUpdateSpace:(next:Space)=>void;
+  onUpdateFiles:(fn:(files:StoredFile[])=>StoredFile[])=>void;
+  onDeleteFile:(file:StoredFile)=>Promise<void>;
+  onUpdateSet:(set:StudySet)=>void;
+  onDeleteSet:(id:string)=>void;
+  onExport:()=>void;
+  onDelete:()=>void;
+  onBrowseLinked:(folderId?:string)=>void;
+  onBack:()=>void;
+};
+
+const DAY=86_400_000;
+const dayKey=(t:number)=>new Date(t).toDateString();
+/** Days in a row, ending today or yesterday, on which at least one card was reviewed. */
+function streak(sets:StudySet[],now:number){
+  const days=new Set(sets.flatMap(s=>(s.cards||[]).flatMap(c=>c?.reps?[dayKey(c.last)]:[])).concat(sets.flatMap(s=>s.attempts.map(a=>dayKey(a.at)))));
+  let n=0,t=days.has(dayKey(now))?now:now-DAY;
+  while(days.has(dayKey(t))){n++;t-=DAY;}
+  return n;
+}
+const ago=(t:number)=>{const d=Math.floor((Date.now()-t)/DAY);return d<=0?'today':d===1?'yesterday':d<7?`${d} days ago`:new Date(t).toLocaleDateString([], {month:'short',day:'numeric'});};
+const fileKind=(f:StoredFile)=>/\.pdf$/i.test(f.name)?'pdf':/\.(docx?|odt)$/i.test(f.name)?'doc':/\.(pptx?)$/i.test(f.name)?'slides':/\.(xlsx?|csv)$/i.test(f.name)?'sheet':f.type.startsWith('image/')?'image':'text';
+const kindLabel:Record<string,string>={pdf:'PDF',doc:'DOC',slides:'PPT',sheet:'XLS',image:'IMG',text:'TXT'};
+
+function Ring({value,size=58}:{value:number;size?:number}){
+  const r=size/2-5,c=2*Math.PI*r;
+  return <svg className="sp-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={size/2} cy={size/2} r={r} className="track"/><circle cx={size/2} cy={size/2} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform={`rotate(-90 ${size/2} ${size/2})`}/></svg>;
+}
+
+function Menu({label,items}:{label:string;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[]}){
+  const [open,setOpen]=useState(false),root=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!open)return;const close=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close);},[open]);
+  return <div className="sp-menu" ref={root}><button type="button" className="icon-button" aria-label={label} aria-expanded={open} onClick={e=>{e.stopPropagation();setOpen(!open);}}><Icon name="menu" size={16}/></button>
+    {open&&<div className="sp-menu-list" role="menu">{items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={e=>{e.stopPropagation();setOpen(false);i.run();}}>{i.icon&&<Icon name={i.icon} size={15}/>}{i.label}</button>)}</div>}</div>;
+}
+
+export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions}){
+  const subject=space.kind==='subject';
+  const now=Date.now();
+  const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
+  const due=cards.filter(c=>c?.reps&&isDue(c,now)).length,fresh=cards.filter(c=>!c?.reps).length;
+  const mastery=cards.length?cards.filter(c=>c&&c.stability>=21).length/cards.length:0;
+  const seen=cards.length?cards.filter(c=>c?.reps).length/cards.length:0;
+  const pace=examPace(cards,space.examDate,now);
+  const days=streak(sets,now);
+  const weak=weakConcepts(sets);
+  const [ask,setAsk]=useState('');
+  const [review,setReview]=useState(0);
+  const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length],['about','About']]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length],['about','Instructions']];
+  const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
+  const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
+  const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
+
+  return <div className={`space-page ${subject?'is-subject':'is-project'}`}>
+    <header className="sp-hero">
+      <button className="sp-crumb" onClick={actions.onBack}><Icon name={subject?'subjects':'projects'} size={15}/>{subject?'Subjects':'Projects'}</button>
+      <div className="sp-title-row">
+        <div className="sp-title">
+          <Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/>
+          <Editable className="sp-desc" value={space.description} max={400} label="Description" placeholder={subject?'What are you learning, and why?':'What is this project about?'} onSave={description=>actions.onUpdateSpace({...space,description})}/>
+        </div>
+        <div className="sp-actions">
+          <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
+          <Menu label="More" items={[...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
+        </div>
+      </div>
+      {subject&&<div className="sp-stats">
+        <label className="sp-stat exam" title="Exam date">
+          <span className="sp-stat-icon"><Icon name="clock" size={16}/></span>
+          <span><b>{space.examDate&&pace.days!==null?pace.days===0?'Exam today':`${pace.days} day${pace.days===1?'':'s'}`:'Add exam'}</b><small>{space.examDate?new Date(space.examDate+'T12:00').toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}):'Mowr paces your cards'}</small></span>
+          <input type="date" aria-label="Exam date" value={space.examDate||''} min={new Date().toISOString().slice(0,10)} onChange={e=>actions.onUpdateSpace({...space,examDate:e.target.value||undefined})}/>
+        </label>
+        <button className={`sp-stat due ${due?'hot':''}`} onClick={startReview} disabled={!due&&!fresh}>
+          <span className="sp-stat-icon"><Icon name="subjects" size={16}/></span>
+          <span><b>{due?`${due} due`:fresh?`${fresh} new`:'All caught up'}</b><small>{due||fresh?'Review now':'Nothing to review'}</small></span>
+        </button>
+        <div className="sp-stat mastery"><Ring value={mastery} size={40}/><span><b>{Math.round(mastery*100)}% mastered</b><small>{Math.round(seen*100)}% seen · {cards.length} cards</small></span></div>
+        <div className="sp-stat streak"><span className={`sp-stat-icon flame ${days?'lit':''}`}><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.4 2.3 3.8 4 3.8 7.6A3.8 3.8 0 0 1 8 13a3.8 3.8 0 0 1-3.8-3.9c0-1.7 1-2.7 1.6-3.4.2 1.2.8 1.9 1.5 2.1C7 5.5 7.3 3.4 8 1.5Z" fill="currentColor"/></svg></span><span><b>{days} day streak</b><small>{days?'Keep it going today':'Review to start one'}</small></span></div>
+      </div>}
+      <form className="sp-ask" onSubmit={e=>{e.preventDefault();if(ask.trim()){actions.onAsk(ask.trim());setAsk('');}}}>
+        <Icon name="chat" size={18}/>
+        <input value={ask} onChange={e=>setAsk(e.target.value)} placeholder={subject?`Ask anything about ${space.name}…`:`Work on ${space.name}…`} aria-label={`Ask about ${space.name}`}/>
+        <button className="primary" disabled={!ask.trim()} aria-label="Start chat"><Icon name="arrow" size={16}/></button>
+      </form>
+      <nav className="sp-tabs" role="tablist" aria-label={`${space.name} sections`}>
+        {tabs.map(([id,label,count])=><button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}>{label}{count!==undefined&&count>0&&<span>{count}</span>}</button>)}
+      </nav>
+    </header>
+
+    <div className="sp-body" key={tab}>
+      {tab==='overview'&&<div className="sp-overview">
+        {subject&&<section className="sp-card today">
+          <div><span className="sp-eyebrow">Today</span><h3>{due?`${due} card${due===1?'':'s'} ready for review`:fresh?`${Math.min(fresh,pace.perDay??20)} new card${Math.min(fresh,pace.perDay??20)===1?'':'s'} to learn`:'You are all caught up'}</h3>
+            <p>{space.examDate&&pace.days!==null?`${pace.days} days to your exam. About ${pace.perDay} card${pace.perDay===1?'':'s'} a day keeps you on track.`:'Mowr brings each card back just before you would forget it.'}</p></div>
+          <button className="primary" disabled={!due&&!fresh} onClick={startReview}>Start review<Icon name="arrow" size={16}/></button>
+        </section>}
+        <section className="sp-card make">
+          <span className="sp-eyebrow">Make something</span>
+          <div className="sp-make">
+            {subject&&<button onClick={()=>actions.onMake('flashcards')}><span className="mk mk-cards"><Icon name="subjects" size={20}/></span><b>Flashcards</b><small>From your files and chats</small></button>}
+            {subject&&<button onClick={()=>actions.onMake('quiz')}><span className="mk mk-quiz"><Icon name="check" size={20}/></span><b>Quiz</b><small>Checked, then scheduled</small></button>}
+            <button onClick={()=>actions.onMake('worksheet')}><span className="mk mk-sheet"><Icon name="files" size={20}/></span><b>Worksheet</b><small>A PDF, saved to Worksheets</small></button>
+            <button onClick={()=>actions.onMake('summary')}><span className="mk mk-sum"><Icon name="long" size={20}/></span><b>Summary sheet</b><small>One page to revise from</small></button>
+          </div>
+        </section>
+        {subject&&weak.length>0&&<section className="sp-card weak">
+          <span className="sp-eyebrow">Keeps slipping</span>
+          <ul>{weak.slice(0,4).map(q=><li key={q}><span>{q}</span><button onClick={()=>actions.onAsk(`Explain this again in a different way, then check me with one question: ${q}`)}>Explain again</button></li>)}</ul>
+        </section>}
+        <section className="sp-card recent">
+          <div className="sp-card-head"><span className="sp-eyebrow">Recent chats</span><button onClick={()=>onTab('chats')}>All chats</button></div>
+          {recentChats.slice(0,4).map(c=><button className="sp-row" key={c.id} onClick={()=>actions.onOpenChat(c)}><Icon name="chat" size={16}/><span>{c.title}</span><small>{ago(c.updated)}</small></button>)}
+          {!chats.length&&<p className="sp-empty-line">Ask your first question above.</p>}
+        </section>
+        <section className="sp-card recent">
+          <div className="sp-card-head"><span className="sp-eyebrow">Recent files</span><button onClick={()=>onTab('files')}>All files</button></div>
+          {recentFiles.slice(0,4).map(f=><button className="sp-row" key={f.id} onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f}/><span>{f.name}</span><small>{ago(f.updated||f.created)}</small></button>)}
+          {!files.length&&<p className="sp-empty-line">Add notes, slides or worksheets in Files.</p>}
+        </section>
+      </div>}
+
+      {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onNew={()=>actions.onAsk('')}/>}
+      {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} examDate={space.examDate} onExamDate={examDate=>actions.onUpdateSpace({...space,examDate})} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
+      {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} examDate={space.examDate} onExamDate={examDate=>actions.onUpdateSpace({...space,examDate})} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
+      {tab==='files'&&<FilesView space={space} files={files} actions={actions}/>}
+      {tab==='about'&&<About space={space} actions={actions}/>}
+    </div>
+  </div>;
+}
+
+function Editable({value,onSave,className,max,label,placeholder}:{value:string;onSave:(v:string)=>void;className:string;max:number;label:string;placeholder?:string}){
+  const [editing,setEditing]=useState(false),[text,setText]=useState(value);
+  useEffect(()=>setText(value),[value]);
+  const commit=()=>{setEditing(false);const next=text.trim();if(next!==value&&(next||label!=='Name'))onSave(next);else setText(value);};
+  return editing?<input className={className+' editing'} autoFocus value={text} maxLength={max} aria-label={label} onChange={e=>setText(e.target.value)} onBlur={commit} onKeyDown={e=>{if(e.key==='Enter')commit();if(e.key==='Escape'){setText(value);setEditing(false);}}}/>
+    :<button className={className} title={`Edit ${label.toLowerCase()}`} onClick={()=>setEditing(true)}>{value||<span className="placeholder">{placeholder}</span>}</button>;
+}
+
+function FileGlyph({file}:{file:StoredFile}){const k=fileKind(file);return <span className={`sp-glyph g-${k}`}>{kindLabel[k]}</span>;}
+
+function ChatList({chats,onOpen,onNew}:{chats:Chat[];onOpen:(c:Chat)=>void;onNew:()=>void}){
+  const [q,setQ]=useState('');
+  const shown=chats.filter(c=>!q||(c.title+' '+c.messages.map(m=>m.content).join(' ')).toLowerCase().includes(q.toLowerCase()));
+  return <section className="sp-list">
+    <div className="sp-toolbar"><div className="sp-search"><Icon name="research" size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search these chats" aria-label="Search chats"/></div><button className="primary" onClick={onNew}><Icon name="plus" size={15}/>New chat</button></div>
+    {shown.map(c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant')?.content||c.messages[0]?.content||'';return <button key={c.id} className="sp-chat" onClick={()=>onOpen(c)}><strong>{c.title}</strong><span>{last.replace(/```[\s\S]*?```/g,'').replace(/\s+/g,' ').slice(0,160)}</span><small>{ago(c.updated)} · {c.messages.length} messages</small></button>;})}
+    {!shown.length&&<p className="sp-empty-line">{q?'No chat matches.':'No chats yet.'}</p>}
+  </section>;
+}
+
+function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions:SpaceActions}){
+  const folders=space.folders||[];
+  const [at,setAt]=useState<string|null>(null);
+  const [naming,setNaming]=useState<{id?:string;name:string}|null>(null);
+  const [over,setOver]=useState<string|null>(null);
+  const [linked,setLinked]=useState<Linked[]>([]);
+  const input=useRef<HTMLInputElement>(null);
+  useEffect(()=>{if(!desktop)return;void desktop.invoke({action:'folders',scope:`${space.kind}:${space.id}`}).then(setLinked).catch(()=>{});},[space.id]);
+  useEffect(()=>{if(at&&!folders.some(f=>f.id===at))setAt(null);},[folders,at]);
+  const path=useMemo(()=>{const out:SpaceFolder[]=[];let id=at;while(id){const f=folders.find(x=>x.id===id);if(!f)break;out.unshift(f);id=f.parentId;}return out;},[at,folders]);
+  const here=folders.filter(f=>(f.parentId||null)===at).sort((a,b)=>a.name.localeCompare(b.name));
+  const inHere=files.filter(f=>(f.folderId||null)===at).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
+  const countIn=(id:string):number=>files.filter(f=>f.folderId===id).length+folders.filter(f=>f.parentId===id).reduce((n,f)=>n+countIn(f.id),0);
+  const setFolders=(next:SpaceFolder[])=>actions.onUpdateSpace({...space,folders:next});
+  const saveName=()=>{if(!naming)return;const name=naming.name.trim().slice(0,80);if(!name){setNaming(null);return;}
+    if(folders.some(f=>f.id!==naming.id&&(f.parentId||null)===at&&f.name.toLowerCase()===name.toLowerCase())){setNaming(null);return;}
+    setFolders(naming.id?folders.map(f=>f.id===naming.id?{...f,name}:f):[...folders,{id:crypto.randomUUID(),name,parentId:at,created:Date.now()}]);setNaming(null);};
+  const move=(fileId:string,folderId:string|null)=>actions.onUpdateFiles(all=>all.map(f=>f.id===fileId?{...f,folderId}:f));
+  const removeFolder=async(folder:SpaceFolder)=>{
+    if(!await confirmDialog({title:`Remove “${folder.name}”?`,message:'Its files and folders move up one level. Nothing is deleted.',confirm:'Remove folder'}))return;
+    actions.onUpdateFiles(all=>all.map(f=>f.folderId===folder.id?{...f,folderId:folder.parentId}:f));
+    setFolders(folders.filter(f=>f.id!==folder.id).map(f=>f.parentId===folder.id?{...f,parentId:folder.parentId}:f));
+  };
+  const drop=(folderId:string|null)=>(e:DragEvent)=>{e.preventDefault();e.stopPropagation();setOver(null);const id=e.dataTransfer.getData('application/x-mowr-file');if(id)move(id,folderId);else if(e.dataTransfer.files.length)actions.onUpload(e.dataTransfer.files,folderId);};
+  const dragTarget=(id:string)=>({onDragOver:(e:DragEvent)=>{e.preventDefault();setOver(id);},onDragLeave:()=>setOver(o=>o===id?null:o)});
+  const destinations=(file:StoredFile)=>[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==(file.folderId||null));
+  const [moving,setMoving]=useState<StoredFile|null>(null);
+  return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
+    <div className="sp-toolbar">
+      <nav className="sp-path" aria-label="Folder path">
+        <button className={over==='crumb-root'?'over':''} onClick={()=>setAt(null)} onDrop={drop(null)} {...dragTarget('crumb-root')}><Icon name="files" size={15}/>Files</button>
+        {path.map(f=><span key={f.id}><i>/</i><button className={over==='crumb-'+f.id?'over':''} onClick={()=>setAt(f.id)} onDrop={drop(f.id)} {...dragTarget('crumb-'+f.id)}>{f.name}</button></span>)}
+      </nav>
+      <div className="sp-tool-actions">
+        <button onClick={()=>setNaming({name:''})}><Icon name="plus" size={15}/>New folder</button>
+        <button onClick={()=>input.current?.click()}><Icon name="attach" size={15}/>Upload</button>
+        {at&&<button onClick={()=>actions.onShare(at)}><Icon name="import" size={15}/>Share folder</button>}
+        <input ref={input} type="file" multiple hidden onChange={e=>{if(e.target.files?.length)actions.onUpload(e.target.files,at);e.target.value='';}}/>
+      </div>
+    </div>
+    {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
+      {here.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
+        :<div key={f.id} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
+          <FolderIcon/><div><strong>{f.name}</strong><small>{countIn(f.id)} item{countIn(f.id)===1?'':'s'}</small></div>
+          <Menu label={`${f.name} options`} items={[{label:'Rename',run:()=>setNaming({id:f.id,name:f.name})},{label:'Share folder',icon:'import',run:()=>actions.onShare(f.id)},{label:'Remove folder',icon:'trash',danger:true,run:()=>void removeFolder(f)}]}/>
+        </div>)}
+      {naming&&!naming.id&&<div className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} placeholder="Folder name" aria-label="New folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>}
+    </div>}
+    <div className="sp-file-list">
+      {inHere.map(f=><div key={f.id} className="sp-file" draggable onDragStart={e=>{e.dataTransfer.setData('application/x-mowr-file',f.id);e.dataTransfer.effectAllowed='move';}}>
+        <button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>
+        <label className="sp-source" title="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
+        <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Move to…',run:()=>setMoving(f)},{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+      </div>)}
+      {!inHere.length&&!here.length&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
+        <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}
+    </div>
+    {moving&&<div className="sp-move" role="dialog" aria-label={`Move ${moving.name}`}><strong>Move “{moving.name}” to</strong>{destinations(moving).map(d=><button key={d.id||'root'} onClick={()=>{move(moving.id,d.id);setMoving(null);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMoving(null)}>Cancel</button></div>}
+    {desktop&&<div className="sp-linked"><div className="sp-card-head"><span className="sp-eyebrow">On this PC</span><button onClick={()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{})}>Link a folder</button></div>
+      {linked.map(l=><button key={l.id} className="sp-row" onClick={()=>actions.onBrowseLinked(l.id)}><Icon name="projects" size={16}/><span>{l.path.split(/[\\/]/).pop()}</span><small>{l.path}</small></button>)}
+      {!linked.length&&<p className="sp-empty-line">Link a folder on your PC and Mowr can read and change its files, with your approval.</p>}</div>}
+  </section>;
+}
+
+export const folderPath=(folders:SpaceFolder[],id:string)=>{const names:string[]=[];let cur:string|null=id;while(cur){const f=folders.find(x=>x.id===cur);if(!f)break;names.unshift(f.name);cur=f.parentId;}return names.join(' / ');};
+function FolderIcon(){return <svg className="sp-folder-icon" width="34" height="28" viewBox="0 0 34 28" aria-hidden="true"><path d="M2 5.5A3.5 3.5 0 0 1 5.5 2h7.2l3.2 3.4H28.5A3.5 3.5 0 0 1 32 8.9v14.6A3.5 3.5 0 0 1 28.5 27h-23A3.5 3.5 0 0 1 2 23.5z" fill="currentColor" opacity=".9"/><path d="M2 10h30" stroke="#0003" strokeWidth="1.2"/></svg>;}
+
+function About({space,actions}:{space:Space;actions:SpaceActions}):ReactNode{
+  const [memory,setMemory]=useState(space.memory);
+  useEffect(()=>setMemory(space.memory),[space.id]);
+  return <section className="sp-about">
+    <label className="field">{space.kind==='subject'?'How Mowr should teach you here':'Instructions for this project'}
+      <textarea rows={7} value={memory} onChange={e=>setMemory(e.target.value)} onBlur={()=>memory!==space.memory&&actions.onUpdateSpace({...space,memory})} placeholder={space.kind==='subject'?'My level, the course, the exam board, how I like things explained…':'Goals, background and how Mowr should work here.'}/></label>
+    <p className="fine">Only this {space.kind} uses these notes. Files marked as Source are quoted when you ask a question here.</p>
+  </section>;
+}

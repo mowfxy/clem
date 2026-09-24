@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { confirmDialog } from "./dialogs";
 import type { CardState, StudySet } from "../core/types";
 import { review, previews, isDue, examPace, type Grade } from "../core/srs";
 import { Icon } from "./Icons";
@@ -29,8 +30,12 @@ function withCard(set: StudySet, index: number, state: CardState): StudySet {
 }
 
 export function SubjectStudy({
-  sets, examDate, onExamDate, onGenerate, onUpdate, onDelete,
+  sets, examDate, onExamDate, onGenerate, onUpdate, onDelete, kind, autoStart = 0,
 }: {
+  /** Shows one kind of set only (the subject page's Flashcards and Quizzes tabs). */
+  kind?: "quiz" | "flashcards";
+  /** Changing this number starts a review session, e.g. from the subject overview. */
+  autoStart?: number;
   sets: StudySet[];
   examDate?: string;
   onExamDate: (date: string | undefined) => void;
@@ -79,6 +84,7 @@ export function SubjectStudy({
     return () => removeEventListener("keydown", key);
   }, [card, revealed]);
 
+  useEffect(() => { if (autoStart && (due.length || fresh.length)) start(); }, [autoStart]);
   if (session) {
     const labels = previews(card?.state);
     return (
@@ -116,7 +122,7 @@ export function SubjectStudy({
 
   return (
     <section className="subject-study">
-      <div className="study-overview">
+      {kind !== "quiz" && <><div className="study-overview">
         <div className="study-numbers">
           <div><strong>{due.length}</strong><span>due</span></div>
           <div><strong>{fresh.length}</strong><span>new</span></div>
@@ -138,7 +144,8 @@ export function SubjectStudy({
             : "Add a date and Mowr paces new cards so everything is seen in time."}
         </p>
       </div>
-      {weak.length > 0 && (
+      </>}
+      {kind !== "quiz" && weak.length > 0 && (
         <div className="study-weak">
           <h4>Keeps slipping</h4>
           <ul>{weak.slice(0, 3).map((q) => <li key={q}>{q}</li>)}</ul>
@@ -146,10 +153,10 @@ export function SubjectStudy({
         </div>
       )}
       <div className="study-sets-head">
-        <h4>Sets</h4>
+        <h4>{kind === "quiz" ? "Quizzes" : kind === "flashcards" ? "Decks" : "Sets"}</h4>
         <div>
-          <button type="button" onClick={() => onGenerate("flashcards")}>New flashcards</button>
-          <button type="button" onClick={() => onGenerate("quiz")}>New quiz</button>
+          {kind !== "quiz" && <button type="button" onClick={() => onGenerate("flashcards")}>New flashcards</button>}
+          {kind !== "flashcards" && <button type="button" onClick={() => onGenerate("quiz")}>New quiz</button>}
         </div>
       </div>
       {current ? (
@@ -194,7 +201,7 @@ export function SubjectStudy({
                   {s.kind === "quiz" ? <button type="button" onClick={() => setSelected(s.id)}>{s.title}</button> : <strong>{s.title}</strong>}
                   <small>{s.items.length} {s.kind === "quiz" ? "questions" : "cards"}{last ? ` · last ${last.correct}/${last.total}` : ""}{mastered ? ` · ${mastered} solid` : ""}</small>
                 </div>
-                <button type="button" className="icon-button" aria-label={`Delete ${s.title}`} onClick={() => { if (confirm("Delete this study set and its review history?")) onDelete(s.id); }}><Icon name="trash" size={16} /></button>
+                <button type="button" className="icon-button" aria-label={`Delete ${s.title}`} onClick={async () => { if (await confirmDialog({ title: `Delete ${s.title}?`, message: "This study set and its review history are removed.", confirm: "Delete", danger: true })) onDelete(s.id); }}><Icon name="trash" size={16} /></button>
               </article>
             );
           })}

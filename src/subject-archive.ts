@@ -46,11 +46,13 @@ export async function importSubject(file: File, owner: string) {
   const newId = () => crypto.randomUUID(),
     spaceId = newId(),
     fileIds = new Map(manifest.files.map((f) => [f.id, newId()])),
+    folderIds = new Map((manifest.space.folders || []).map((f) => [f.id, newId()])),
     chatIds = new Map(manifest.chats.map((c) => [c.id, newId()]));
   const addedFiles = manifest.files.map((f) => ({
     ...f,
     id: fileIds.get(f.id)!,
     spaceId,
+    folderId: f.folderId ? folderIds.get(f.folderId) ?? null : null,
     remote: false,
   }));
   const written: string[] = [];
@@ -74,6 +76,7 @@ export async function importSubject(file: File, owner: string) {
     space: {
       ...manifest.space,
       id: spaceId,
+      folders: manifest.space.folders?.map((f) => ({ ...f, id: folderIds.get(f.id)!, parentId: f.parentId ? folderIds.get(f.parentId) ?? null : null })),
       sources: manifest.space.sources.flatMap((id) =>
         fileIds.has(id) ? [fileIds.get(id)!] : [],
       ),

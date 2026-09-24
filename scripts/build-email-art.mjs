@@ -45,7 +45,7 @@ function mark(ms){
 
 // Ink scenes: complete still → the authored action → a held ending, then loop.
 const W=360,H=292;
-for(const scene of process.argv.includes('--mark-only')?[]:['envelope','key','door','swap','invite','keypad','shield','link','unlink','lock','unlock','plane','hourglass','untangle','coin','balance','box']){
+for(const scene of process.argv.includes('--mark-only')?[]:['envelope','key','door','swap','invite','keypad','shield','link','unlink','lock','unlock','plane','hourglass','untangle','box']){
   const svg=t=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 390"><rect width="480" height="390" fill="${BG}"/>${filmFrame(scene,t,'f')}</svg>`;
   const frames=[[await raster(svg(6),W,H),1400]];
   for(let t=0;t<6;t+=1/10)frames.push([await raster(svg(t),W,H),100]);
@@ -53,5 +53,5 @@ for(const scene of process.argv.includes('--mark-only')?[]:['envelope','key','do
   encode(frames,W,H,`${scene}.gif`);
 }
 // Remove artwork no email uses any more, so the folder mirrors what is sent.
-if(!process.argv.includes('--mark-only'))for(const f of fs.readdirSync(OUT))if(f.endsWith('.gif')&&f!=='mowr-mark.gif'&&!['envelope','key','door','swap','invite','keypad','shield','link','unlink','lock','unlock','plane','hourglass','untangle','coin','balance','box'].includes(f.slice(0,-4)))fs.rmSync(`${OUT}/${f}`);
+if(!process.argv.includes('--mark-only'))for(const f of fs.readdirSync(OUT))if(f.endsWith('.gif')&&f!=='mowr-mark.gif'&&!['envelope','key','door','swap','invite','keypad','shield','link','unlink','lock','unlock','plane','hourglass','untangle','box'].includes(f.slice(0,-4)))fs.rmSync(`${OUT}/${f}`);
 await browser.close();

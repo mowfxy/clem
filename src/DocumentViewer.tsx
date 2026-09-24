@@ -1,50 +1,102 @@
-import {loadEdits,saveEdits} from './document-state';
-import {lazy,Suspense,useEffect,useRef,useState} from 'react';
-import type {PDFDocumentProxy} from 'pdfjs-dist';
-import type {StoredFile} from '../core/types';
-import {getBlob,download,downloadMade} from './store';
-import {Icon} from './Icons';
-import './documents.css';
-
-type ViewerProps={scope?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void;modelId?:string;page?:number};
-const OfficeEditor=lazy(()=>import('./OfficeEditor'));
-export default function DocumentViewer(props:ViewerProps){return /\.(docx|pptx|xlsx)$/i.test(props.file.name)?<Suspense fallback={<div className="toast">Opening document…</div>}><OfficeEditor {...props}/></Suspense>:<BasicDocumentViewer {...props}/>;}
-function BasicDocumentViewer({file,onClose,onAsk,modelId,scope,page:startPage}:{scope?:string;modelId?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void;page?:number}){
- const [blob,setBlob]=useState<Blob>(),[pdf,setPdf]=useState<PDFDocumentProxy>(),[page,setPage]=useState(startPage&&startPage>0?startPage:1),[zoom,setZoom]=useState(1),[text,setText]=useState(''),[error,setError]=useState(''),[selected,setSelected]=useState('');
- const [revision,setRevision]=useState(0),[notes,setNotes]=useState<{page:number;text:string}[]>([]),[note,setNote]=useState(''),[editing,setEditing]=useState(false),[status,setStatus]=useState(''),[saving,setSaving]=useState(false),[ready,setReady]=useState(false),[dirty,setDirty]=useState(false);
- const closeRef=useRef(onClose);closeRef.current=onClose;
- const requestClose=()=>{if(!dirty||window.confirm('Discard unsaved document changes?'))closeRef.current();};
- const [instruction,setInstruction]=useState(''),[proposal,setProposal]=useState(''),[revising,setRevising]=useState(false),[proposalReady,setProposalReady]=useState(false);
- const revisionAbort=useRef<AbortController|null>(null),revisionSource=useRef(''),revisionPage=useRef(1);
- useEffect(()=>()=>revisionAbort.current?.abort(),[]);
- async function revise(){if(!modelId||!selected||!instruction.trim())return;revisionAbort.current?.abort();const controller=new AbortController();revisionAbort.current=controller;revisionSource.current=selected;revisionPage.current=page;setRevising(true);setProposalReady(false);setProposal('');setStatus('');try{const {reviseSelection}=await import('./document-revision');await reviseSelection(modelId,selected,instruction,controller.signal,setProposal,scope);setProposalReady(true);}catch(e){if(!controller.signal.aborted)setStatus((e as Error).message);}finally{setRevising(false);}}
- function applyProposal(){const source=revisionSource.current;if(pdf){if(proposal.length>2000){setStatus('Shorten the note to 2,000 characters before applying.');return;}setNotes([...notes.filter(n=>n.page!==revisionPage.current),{page:revisionPage.current,text:proposal}]);}else{const start=text.indexOf(source);if(start<0||text.indexOf(source,start+1)!==-1){setStatus('Select a unique passage in the current document and try again.');return;}const next=text.slice(0,start)+proposal+text.slice(start+source.length);if(next.length>200000){setStatus('This replacement would exceed the document size limit.');return;}setText(next);}setDirty(true);setProposal('');setProposalReady(false);setStatus('Applied to the preview. Save changes to keep this edit.');}
- const textLayer=useRef<HTMLDivElement>(null);
- const canvas=useRef<HTMLCanvasElement>(null),surface=useRef<HTMLDivElement>(null);
- useEffect(()=>{let disposed=false;let destroy:(()=>Promise<void>)|undefined;void (async()=>{
-  const data=await getBlob(file.id);if(!data)throw Error('This file is unavailable.');if(disposed)return;setBlob(data);
-  if(/\.pdf$/i.test(file.name)){
-   const lib=await import('pdfjs-dist');lib.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).href;
-   const task=lib.getDocument({data:new Uint8Array(await data.arrayBuffer())});destroy=()=>task.destroy();const document=await task.promise;if(disposed){await task.destroy();return;}setPdf(document);if(startPage&&startPage>document.numPages)setPage(document.numPages);
-  }else if(/\.(docx|pptx|xlsx)$/i.test(file.name)){const content=await(await import('./office')).officeText(data,file.name);if(!disposed)setText(content);}
-  else if(data.type.startsWith('text/')||/\.(txt|md|csv|json|tex)$/i.test(file.name)){if(data.size>1_000_000)throw Error('Text preview is limited to 1 MB. Download the full file.');setText(await data.text());}
-  else throw Error('Preview is not available for this format. You can download the original file.');
- const saved=await loadEdits(file);if(!disposed){setRevision(saved.revision);setNotes(saved.content?.notes||[]);if(saved.content?.text!==undefined)setText(saved.content.text);setReady(true);}
- })().catch(e=>{if(!disposed)setError(e.message);});return()=>{disposed=true;void destroy?.();};},[file.id,file.name]);
- useEffect(()=>{if(!pdf||!canvas.current)return;let cancelled=false;let render:{cancel:()=>void}|undefined;let layer:{cancel:()=>void}|undefined;void(async()=>{const p=await pdf.getPage(page);if(cancelled)return;const viewport=p.getViewport({scale:zoom});const c=canvas.current!;const ratio=Math.min(window.devicePixelRatio||1,2);c.width=Math.floor(viewport.width*ratio);c.height=Math.floor(viewport.height*ratio);c.style.width=viewport.width+'px';c.style.height=viewport.height+'px';if(c.parentElement)c.parentElement.style.width=viewport.width+'px';render=p.render({canvas:c,viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]});await (render as unknown as {promise:Promise<void>}).promise;const content=await p.getTextContent();if(!cancelled){setText(content.items.map(i=>'str'in i?i.str:'').join(' '));if(textLayer.current){const container=textLayer.current;container.replaceChildren();container.style.setProperty('--total-scale-factor',String(zoom));const {TextLayer}=await import('pdfjs-dist');if(cancelled)return;const nextLayer=new TextLayer({textContentSource:content,container,viewport});layer=nextLayer;await nextLayer.render();}}})().catch(e=>{if(!cancelled&&e.name!=='RenderingCancelledException')setError(e.message);});return()=>{cancelled=true;render?.cancel();layer?.cancel();};},[pdf,page,zoom]);
- useEffect(()=>{const close=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();if(!dirty||window.confirm('Discard unsaved document changes?'))closeRef.current();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[dirty]);
- useEffect(()=>{if(!dirty)return;const warn=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
- async function save(){setSaving(true);setStatus('');try{const saved=await saveEdits(file,revision,pdf?{notes}:{text});setRevision(saved.revision);setStatus('Saved changes to this file.');setEditing(false);setDirty(false);}catch(e){setStatus((e as Error).message);}finally{setSaving(false);}}
- async function exportEdited(){try{if(!blob)return;if(pdf){const {annotatedPdf}=await import('./pdf-annotations');await downloadMade(await annotatedPdf(blob,notes),file.name.replace(/\.pdf$/i,'-annotated.pdf'));}else await downloadMade(new Blob([text],{type:'text/plain'}),file.name.replace(/\.[^.]+$/,'')+'-edited.txt');}catch(e){setStatus((e as Error).message);}}
- return <aside className="document-viewer" role="dialog" aria-label={'Document viewer: '+file.name} ref={surface} onMouseUp={()=>{const selection=window.getSelection();if(selection&&surface.current?.contains(selection.anchorNode))setSelected(selection.toString().slice(0,10000));}}>
-  <header><div><strong>{file.name}</strong><small>{pdf?'PDF':/\.(docx|pptx|xlsx)$/i.test(file.name)?'Office text preview':'Document'}</small></div><button className="icon-button" disabled={!blob} aria-label="Download original" onClick={()=>blob&&download(blob,file.name)}><Icon name="download" size={18}/></button><button className="icon-button" aria-label="Close document" onClick={requestClose}><Icon name="close" size={18}/></button></header>
-  {pdf&&<nav className="document-toolbar"><button disabled={page===1} onClick={()=>setPage(page-1)}>Previous</button><span>{page} / {pdf.numPages}</span><button disabled={page===pdf.numPages} onClick={()=>setPage(page+1)}>Next</button><button disabled={zoom<=.5} onClick={()=>setZoom(Math.max(.5,zoom-.25))}>−</button><span>{Math.round(zoom*100)}%</span><button disabled={zoom>=2} onClick={()=>setZoom(Math.min(2,zoom+.25))}>+</button></nav>}
-  <nav className="document-toolbar"><button disabled={!ready||!!error} onClick={()=>setEditing(!editing)}>{editing?'Preview':pdf?'Add note':'Edit text'}</button><button disabled={saving||!ready||!dirty||!!error} onClick={()=>void save()}>{saving?'Saving…':'Save changes'}</button><button disabled={!ready||!!error} onClick={()=>void exportEdited()}>Download edited</button></nav>
-  {editing&&<div className="document-edit-tools">{pdf?<><label>Note on page {page}<textarea value={note} maxLength={2000} onChange={e=>setNote(e.target.value)}/></label><button disabled={!note.trim()||(notes.length>=100&&!notes.some(n=>n.page===page))} onClick={()=>{setNotes([...notes.filter(n=>n.page!==page),{page,text:note}]);setNote('');setDirty(true);}}>Add note</button></>:<><p>{/\.(docx|pptx|xlsx)$/i.test(file.name)?'Changes are saved as text alongside your original Office file.':'Edit the text and save changes to this document.'}</p><textarea aria-label="Document text" value={text} maxLength={200000} onChange={e=>{setText(e.target.value);setDirty(true);}}/></>}</div>}
-  <div className="document-scroll">{error?<p role="alert">{error}</p>:!blob?<p>Opening document…</p>:pdf?<><div className="document-pdf-page"><canvas ref={canvas} aria-label={'PDF page '+page}/><div className="document-text-layer" ref={textLayer}/></div>{notes.filter(n=>n.page===page).map((n,i)=><div className="document-note" key={i}><p>{n.text}</p><button onClick={()=>{setNotes(notes.filter(item=>item.page!==n.page));setDirty(true);}}>Remove note</button></div>)}<details className="document-page-text"><summary>Select text from this page</summary><p>{text||'This page has no extractable text.'}</p></details></>:<article className="document-paper"><pre>{text}</pre></article>}</div>
-  {selected&&<section className="document-ai-edit"><label>Ask AI to revise this selection<input value={instruction} maxLength={2000} onChange={e=>setInstruction(e.target.value)} placeholder="Make this clearer and more concise"/></label><button disabled={!modelId||revising||!instruction.trim()} onClick={()=>void revise()}>{revising?'Revising…':'Preview edit'}</button>{!modelId&&<p>Connect a model in Settings to revise with AI.</p>}{revising&&<button onClick={()=>revisionAbort.current?.abort()}>Stop</button>}</section>}
-  {proposal&&<section className="document-ai-proposal"><strong>{pdf?'Proposed page note':'Proposed replacement'}</strong><pre>{proposal}</pre><button disabled={!proposalReady||revising} onClick={applyProposal}>{pdf?'Add as page note':'Apply to preview'}</button><button onClick={()=>{revisionAbort.current?.abort();setProposal('');setProposalReady(false);}}>Discard</button></section>}
-  {status&&<p role="status" className="document-save-status">{status}</p>}
-  <footer><span>{selected?`${selected.length} characters selected`:'Select document text to ask Mowr about it.'}</span><button className="secondary" disabled={!selected} onClick={()=>onAsk(`File: ${file.name}${pdf?`, page ${page}`:''}\nSelected text:\n${selected}`)}>Ask Mowr <Icon name="arrow" size={15}/></button></footer>
- </aside>;
-}
+import {loadEdits,saveEdits} from './document-state';
+import {confirmDialog} from './dialogs';
+
+import {lazy,Suspense,useEffect,useRef,useState} from 'react';
+
+import type {PDFDocumentProxy} from 'pdfjs-dist';
+
+import type {StoredFile} from '../core/types';
+
+import {getBlob,download,downloadMade} from './store';
+
+import {Icon} from './Icons';
+
+import './documents.css';
+
+
+
+type ViewerProps={scope?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void;modelId?:string;page?:number;selection?:{model?:string;reasoning?:string};onChange?:(file:StoredFile)=>void};
+
+const OfficeEditor=lazy(()=>import('./OfficeEditor'));
+const PdfStudio=lazy(()=>import('./pdf/PdfStudio'));
+
+export default function DocumentViewer(props:ViewerProps){if(/\.pdf$/i.test(props.file.name)&&props.onChange&&props.scope)return <Suspense fallback={<div className="toast">Opening PDF…</div>}><PdfStudio file={props.file} scope={props.scope} selection={props.selection} onClose={props.onClose} onAsk={props.onAsk} onChange={props.onChange}/></Suspense>;return /\.(docx|pptx|xlsx)$/i.test(props.file.name)?<Suspense fallback={<div className="toast">Opening document…</div>}><OfficeEditor {...props}/></Suspense>:<BasicDocumentViewer {...props}/>;}
+
+function BasicDocumentViewer({file,onClose,onAsk,modelId,scope,page:startPage}:{scope?:string;modelId?:string;file:StoredFile;onClose:()=>void;onAsk:(selection:string)=>void;page?:number}){
+
+ const [blob,setBlob]=useState<Blob>(),[pdf,setPdf]=useState<PDFDocumentProxy>(),[page,setPage]=useState(startPage&&startPage>0?startPage:1),[zoom,setZoom]=useState(1),[text,setText]=useState(''),[error,setError]=useState(''),[selected,setSelected]=useState('');
+
+ const [revision,setRevision]=useState(0),[notes,setNotes]=useState<{page:number;text:string}[]>([]),[note,setNote]=useState(''),[editing,setEditing]=useState(false),[status,setStatus]=useState(''),[saving,setSaving]=useState(false),[ready,setReady]=useState(false),[dirty,setDirty]=useState(false);
+
+ const closeRef=useRef(onClose);closeRef.current=onClose;
+
+ const requestClose=async()=>{if(!dirty||await confirmDialog({title:'Discard unsaved changes?',message:'Your edits to this document have not been saved.',confirm:'Discard',danger:true}))closeRef.current();};
+
+ const [instruction,setInstruction]=useState(''),[proposal,setProposal]=useState(''),[revising,setRevising]=useState(false),[proposalReady,setProposalReady]=useState(false);
+
+ const revisionAbort=useRef<AbortController|null>(null),revisionSource=useRef(''),revisionPage=useRef(1);
+
+ useEffect(()=>()=>revisionAbort.current?.abort(),[]);
+
+ async function revise(){if(!modelId||!selected||!instruction.trim())return;revisionAbort.current?.abort();const controller=new AbortController();revisionAbort.current=controller;revisionSource.current=selected;revisionPage.current=page;setRevising(true);setProposalReady(false);setProposal('');setStatus('');try{const {reviseSelection}=await import('./document-revision');await reviseSelection(modelId,selected,instruction,controller.signal,setProposal,scope);setProposalReady(true);}catch(e){if(!controller.signal.aborted)setStatus((e as Error).message);}finally{setRevising(false);}}
+
+ function applyProposal(){const source=revisionSource.current;if(pdf){if(proposal.length>2000){setStatus('Shorten the note to 2,000 characters before applying.');return;}setNotes([...notes.filter(n=>n.page!==revisionPage.current),{page:revisionPage.current,text:proposal}]);}else{const start=text.indexOf(source);if(start<0||text.indexOf(source,start+1)!==-1){setStatus('Select a unique passage in the current document and try again.');return;}const next=text.slice(0,start)+proposal+text.slice(start+source.length);if(next.length>200000){setStatus('This replacement would exceed the document size limit.');return;}setText(next);}setDirty(true);setProposal('');setProposalReady(false);setStatus('Applied to the preview. Save changes to keep this edit.');}
+
+ const textLayer=useRef<HTMLDivElement>(null);
+
+ const canvas=useRef<HTMLCanvasElement>(null),surface=useRef<HTMLDivElement>(null);
+
+ useEffect(()=>{let disposed=false;let destroy:(()=>Promise<void>)|undefined;void (async()=>{
+
+  const data=await getBlob(file.id);if(!data)throw Error('This file is unavailable.');if(disposed)return;setBlob(data);
+
+  if(/\.pdf$/i.test(file.name)){
+
+   const lib=await import('pdfjs-dist');lib.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).href;
+
+   const task=lib.getDocument({data:new Uint8Array(await data.arrayBuffer())});destroy=()=>task.destroy();const document=await task.promise;if(disposed){await task.destroy();return;}setPdf(document);if(startPage&&startPage>document.numPages)setPage(document.numPages);
+
+  }else if(/\.(docx|pptx|xlsx)$/i.test(file.name)){const content=await(await import('./office')).officeText(data,file.name);if(!disposed)setText(content);}
+
+  else if(data.type.startsWith('text/')||/\.(txt|md|csv|json|tex)$/i.test(file.name)){if(data.size>1_000_000)throw Error('Text preview is limited to 1 MB. Download the full file.');setText(await data.text());}
+
+  else throw Error('Preview is not available for this format. You can download the original file.');
+
+ const saved=await loadEdits(file);if(!disposed){setRevision(saved.revision);setNotes(saved.content?.notes||[]);if(saved.content?.text!==undefined)setText(saved.content.text);setReady(true);}
+
+ })().catch(e=>{if(!disposed)setError(e.message);});return()=>{disposed=true;void destroy?.();};},[file.id,file.name]);
+
+ useEffect(()=>{if(!pdf||!canvas.current)return;let cancelled=false;let render:{cancel:()=>void}|undefined;let layer:{cancel:()=>void}|undefined;void(async()=>{const p=await pdf.getPage(page);if(cancelled)return;const viewport=p.getViewport({scale:zoom});const c=canvas.current!;const ratio=Math.min(window.devicePixelRatio||1,2);c.width=Math.floor(viewport.width*ratio);c.height=Math.floor(viewport.height*ratio);c.style.width=viewport.width+'px';c.style.height=viewport.height+'px';if(c.parentElement)c.parentElement.style.width=viewport.width+'px';render=p.render({canvas:c,viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]});await (render as unknown as {promise:Promise<void>}).promise;const content=await p.getTextContent();if(!cancelled){setText(content.items.map(i=>'str'in i?i.str:'').join(' '));if(textLayer.current){const container=textLayer.current;container.replaceChildren();container.style.setProperty('--total-scale-factor',String(zoom));const {TextLayer}=await import('pdfjs-dist');if(cancelled)return;const nextLayer=new TextLayer({textContentSource:content,container,viewport});layer=nextLayer;await nextLayer.render();}}})().catch(e=>{if(!cancelled&&e.name!=='RenderingCancelledException')setError(e.message);});return()=>{cancelled=true;render?.cancel();layer?.cancel();};},[pdf,page,zoom]);
+
+ useEffect(()=>{const close=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!document.querySelector('dialog.app-confirm')){e.preventDefault();void (async()=>{if(!dirty||await confirmDialog({title:'Discard unsaved changes?',message:'Your edits to this document have not been saved.',confirm:'Discard',danger:true}))closeRef.current();})();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[dirty]);
+
+ useEffect(()=>{if(!dirty)return;const warn=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
+
+ async function save(){setSaving(true);setStatus('');try{const saved=await saveEdits(file,revision,pdf?{notes}:{text});setRevision(saved.revision);setStatus('Saved changes to this file.');setEditing(false);setDirty(false);}catch(e){setStatus((e as Error).message);}finally{setSaving(false);}}
+
+ async function exportEdited(){try{if(!blob)return;if(pdf){const {annotatedPdf}=await import('./pdf-annotations');await downloadMade(await annotatedPdf(blob,notes),file.name.replace(/\.pdf$/i,'-annotated.pdf'));}else await downloadMade(new Blob([text],{type:'text/plain'}),file.name.replace(/\.[^.]+$/,'')+'-edited.txt');}catch(e){setStatus((e as Error).message);}}
+
+ return <aside className="document-viewer" role="dialog" aria-label={'Document viewer: '+file.name} ref={surface} onMouseUp={()=>{const selection=window.getSelection();if(selection&&surface.current?.contains(selection.anchorNode))setSelected(selection.toString().slice(0,10000));}}>
+
+  <header><div><strong>{file.name}</strong><small>{pdf?'PDF':/\.(docx|pptx|xlsx)$/i.test(file.name)?'Office text preview':'Document'}</small></div><button className="icon-button" disabled={!blob} aria-label="Download original" onClick={()=>blob&&download(blob,file.name)}><Icon name="download" size={18}/></button><button className="icon-button" aria-label="Close document" onClick={requestClose}><Icon name="close" size={18}/></button></header>
+
+  {pdf&&<nav className="document-toolbar"><button disabled={page===1} onClick={()=>setPage(page-1)}>Previous</button><span>{page} / {pdf.numPages}</span><button disabled={page===pdf.numPages} onClick={()=>setPage(page+1)}>Next</button><button disabled={zoom<=.5} onClick={()=>setZoom(Math.max(.5,zoom-.25))}>−</button><span>{Math.round(zoom*100)}%</span><button disabled={zoom>=2} onClick={()=>setZoom(Math.min(2,zoom+.25))}>+</button></nav>}
+
+  <nav className="document-toolbar"><button disabled={!ready||!!error} onClick={()=>setEditing(!editing)}>{editing?'Preview':pdf?'Add note':'Edit text'}</button><button disabled={saving||!ready||!dirty||!!error} onClick={()=>void save()}>{saving?'Saving…':'Save changes'}</button><button disabled={!ready||!!error} onClick={()=>void exportEdited()}>Download edited</button></nav>
+
+  {editing&&<div className="document-edit-tools">{pdf?<><label>Note on page {page}<textarea value={note} maxLength={2000} onChange={e=>setNote(e.target.value)}/></label><button disabled={!note.trim()||(notes.length>=100&&!notes.some(n=>n.page===page))} onClick={()=>{setNotes([...notes.filter(n=>n.page!==page),{page,text:note}]);setNote('');setDirty(true);}}>Add note</button></>:<><p>{/\.(docx|pptx|xlsx)$/i.test(file.name)?'Changes are saved as text alongside your original Office file.':'Edit the text and save changes to this document.'}</p><textarea aria-label="Document text" value={text} maxLength={200000} onChange={e=>{setText(e.target.value);setDirty(true);}}/></>}</div>}
+
+  <div className="document-scroll">{error?<p role="alert">{error}</p>:!blob?<p>Opening document…</p>:pdf?<><div className="document-pdf-page"><canvas ref={canvas} aria-label={'PDF page '+page}/><div className="document-text-layer" ref={textLayer}/></div>{notes.filter(n=>n.page===page).map((n,i)=><div className="document-note" key={i}><p>{n.text}</p><button onClick={()=>{setNotes(notes.filter(item=>item.page!==n.page));setDirty(true);}}>Remove note</button></div>)}<details className="document-page-text"><summary>Select text from this page</summary><p>{text||'This page has no extractable text.'}</p></details></>:<article className="document-paper"><pre>{text}</pre></article>}</div>
+
+  {selected&&<section className="document-ai-edit"><label>Ask AI to revise this selection<input value={instruction} maxLength={2000} onChange={e=>setInstruction(e.target.value)} placeholder="Make this clearer and more concise"/></label><button disabled={!modelId||revising||!instruction.trim()} onClick={()=>void revise()}>{revising?'Revising…':'Preview edit'}</button>{!modelId&&<p>Connect a model in Settings to revise with AI.</p>}{revising&&<button onClick={()=>revisionAbort.current?.abort()}>Stop</button>}</section>}
+
+  {proposal&&<section className="document-ai-proposal"><strong>{pdf?'Proposed page note':'Proposed replacement'}</strong><pre>{proposal}</pre><button disabled={!proposalReady||revising} onClick={applyProposal}>{pdf?'Add as page note':'Apply to preview'}</button><button onClick={()=>{revisionAbort.current?.abort();setProposal('');setProposalReady(false);}}>Discard</button></section>}
+
+  {status&&<p role="status" className="document-save-status">{status}</p>}
+
+  <footer><span>{selected?`${selected.length} characters selected`:'Select document text to ask Mowr about it.'}</span><button className="secondary" disabled={!selected} onClick={()=>onAsk(`File: ${file.name}${pdf?`, page ${page}`:''}\nSelected text:\n${selected}`)}>Ask Mowr <Icon name="arrow" size={15}/></button></footer>
+
+ </aside>;
+
+}
+

@@ -64,9 +64,21 @@
 .sx-mock-plan header strong{color:#e8e7e1;font-weight:500}
 .sx-mock-progress{margin-left:auto;width:90px;height:3px;border-radius:9px;background:#2d2d2a;overflow:hidden}
 .sx-mock-progress i{display:block;height:100%;background:#f0efeb;animation:sx-progress 14s linear infinite}
-.sx-mock-step{display:flex;align-items:center;gap:9px;opacity:.4;animation:sx-step 14s linear infinite}
+.sx-mock-step{display:flex;align-items:center;gap:9px;opacity:.4;animation:sx-step-0 14s linear infinite}
 .sx-mock-step strong{font-weight:400;font-size:11.5px}
-.sx-mock-check{width:15px;height:15px;flex:none;border-radius:50%;border:1.5px solid #4a4a45;animation:inherit;animation-name:sx-check}
+.sx-mock-check{width:15px;height:15px;flex:none;border-radius:50%;border:1.5px solid #4a4a45;animation:sx-check-0 14s linear infinite}
+.sx-mock-step-0{animation-name:sx-step-0}.sx-mock-step-0 .sx-mock-check{animation-name:sx-check-0}
+@keyframes sx-step-0{0%,0%{opacity:.4}3%,88%{opacity:1}95%,100%{opacity:.4}}
+@keyframes sx-check-0{0%,1%{background:transparent;border-color:#4a4a45;box-shadow:none}4%,88%{background:#f0efeb;border-color:#f0efeb;box-shadow:inset 0 0 0 3px #1a1a18}95%,100%{background:transparent;border-color:#4a4a45;box-shadow:none}}
+.sx-mock-step-1{animation-name:sx-step-1}.sx-mock-step-1 .sx-mock-check{animation-name:sx-check-1}
+@keyframes sx-step-1{0%,16%{opacity:.4}19%,88%{opacity:1}95%,100%{opacity:.4}}
+@keyframes sx-check-1{0%,17%{background:transparent;border-color:#4a4a45;box-shadow:none}20%,88%{background:#f0efeb;border-color:#f0efeb;box-shadow:inset 0 0 0 3px #1a1a18}95%,100%{background:transparent;border-color:#4a4a45;box-shadow:none}}
+.sx-mock-step-2{animation-name:sx-step-2}.sx-mock-step-2 .sx-mock-check{animation-name:sx-check-2}
+@keyframes sx-step-2{0%,32%{opacity:.4}35%,88%{opacity:1}95%,100%{opacity:.4}}
+@keyframes sx-check-2{0%,33%{background:transparent;border-color:#4a4a45;box-shadow:none}36%,88%{background:#f0efeb;border-color:#f0efeb;box-shadow:inset 0 0 0 3px #1a1a18}95%,100%{background:transparent;border-color:#4a4a45;box-shadow:none}}
+.sx-mock-step-3{animation-name:sx-step-3}.sx-mock-step-3 .sx-mock-check{animation-name:sx-check-3}
+@keyframes sx-step-3{0%,48%{opacity:.4}51%,88%{opacity:1}95%,100%{opacity:.4}}
+@keyframes sx-check-3{0%,49%{background:transparent;border-color:#4a4a45;box-shadow:none}52%,88%{background:#f0efeb;border-color:#f0efeb;box-shadow:inset 0 0 0 3px #1a1a18}95%,100%{background:transparent;border-color:#4a4a45;box-shadow:none}}
 .sx-mock-file{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;border:1px solid #3a3a36;background:#1f1f1d;color:#e8e7e1;animation:sx-file 14s var(--sx-ease) infinite}
 .sx-mock-file strong{display:block;font-weight:500;font-size:11.5px}
 .sx-mock-file small{color:#85847e;font-size:10.5px}
@@ -201,10 +213,8 @@
 
 @keyframes sx-rise{from{opacity:0;transform:translateY(14px)}}
 @keyframes sx-breathe{from{opacity:.7;transform:translateY(0)}to{opacity:1;transform:translateY(30px)}}
-@keyframes sx-progress{0%{width:0}75%,100%{width:100%}}
-@keyframes sx-step{0%{opacity:.4}8%,100%{opacity:1}}
-@keyframes sx-check{0%,6%{background:transparent;border-color:#4a4a45}10%,100%{background:#f0efeb;border-color:#f0efeb;box-shadow:inset 0 0 0 3px #1a1a18}}
-@keyframes sx-file{0%,70%{opacity:0;transform:translateY(10px) scale(.97)}76%,100%{opacity:1;transform:none}}
+@keyframes sx-progress{0%{width:0;opacity:1}64%,88%{width:100%;opacity:1}94%{width:100%;opacity:0}95%,100%{width:0;opacity:0}}
+@keyframes sx-file{0%,66%{opacity:0;transform:translateY(10px) scale(.97)}72%,88%{opacity:1;transform:none}95%,100%{opacity:0;transform:translateY(6px) scale(.99)}}
 @keyframes sx-blink{0%,100%{box-shadow:0 0 0 0 #fff0}50%{box-shadow:0 0 0 4px #ffffff55}}
 
 @media (max-width:1020px){
