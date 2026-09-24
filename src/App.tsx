@@ -1076,7 +1076,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     };
   }
   // Folder changes made outside Mowr become a notice with one useful next step.
-  const folderEvent=useRef<(event:import('../desktop/folder-watch').FolderEvent)=>void>(()=>{});
+  const folderEvent=useRef<(event:import('../desktop/contracts').FolderEvent)=>void>(()=>{});
   folderEvent.current=event=>{
     const paths=[...event.changed,...event.added],removed=event.removed.length,count=paths.length+removed;
     const names=paths.map(p=>p.split(/[\\/]/).pop()!);

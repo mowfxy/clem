@@ -2,8 +2,8 @@ import { watch, type FSWatcher } from "node:fs";
 import { basename, extname } from "node:path";
 import { safeName, supportedText, type Folder, type IndexedFile } from "./folders.ts";
 
-export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
-export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };
+import type { FolderDelta, FolderEvent } from "./contracts.ts";
+export type { FolderDelta, FolderEvent };
 
 /** Compares two indexes by content hash; a touched file with identical text is not a change. */
 export function diffIndex(before: IndexedFile[], after: IndexedFile[]): FolderDelta {
