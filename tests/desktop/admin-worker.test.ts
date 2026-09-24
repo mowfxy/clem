@@ -74,7 +74,7 @@ test("staff portal enforces roles, moderates accounts and manages complimentary 
     current = people.owner;
     await call("/admin/users/member-id/unsuspend", {});
     current = people.member;
-    assert.equal((await (await call("/entitlement")).json()).reason, "subscription_required");
+    assert.equal((await (await call("/entitlement")).json()).reason, "free");
 
     // Support staff can answer cases but cannot grant access.
     current = people.owner;

@@ -1,6 +1,6 @@
 # Mowr
 
-A Windows desktop workspace for conversations, projects, subjects, local files and document drafts. The React interface ships inside the application; Codex connectivity and document tools run on the user's PC. https://mowrai.com is the marketing and account site. The planned subscription is **$2/month**; Lemon Squeezy payments are currently deferred.
+A Windows desktop workspace for conversations, projects, subjects, local files and document drafts. The React interface ships inside the application; Codex connectivity and document tools run on the user's PC. https://mowrai.com is the marketing and account site. Mowr is **free**; a PayPal support link (set `PAYPAL_URL` in `src/support-link.tsx`) keeps it that way. Until it is set, the link shows but does nothing.
 
 This is a **desktop preview**, not a fully verified production release. See [production status](docs/PRODUCTION-STATUS.md) and [desktop architecture and operations](docs/DESKTOP.md) for tested capabilities, security boundaries and remaining work.
 

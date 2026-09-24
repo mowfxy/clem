@@ -77,3 +77,10 @@ Final verification: 51 automated tests, frontend/server/desktop typechecks, pack
 - **Website:** “See it move” now shows what someone typed and mixes built-in and drawn visuals; feature copy updated; the last section on inner pages no longer touches the footer.
 - **Verification:** 41 unit tests (8 new) and 56 desktop tests (3 new) pass; typechecks pass; `verify-standout.mjs` drives streamed visuals, checks, citations, file apply/undo, second opinion, source check, capture attachment and offline reading in a browser fixture; existing UI verifications pass. Live model output quality for visual/check blocks has not been measured across providers; malformed blocks fall back to a readable error.
 - **Not done:** code signing (requires purchasing a certificate), Claude image input, and PDF text-layer highlighting of the cited quote (citations open the page).
+
+## September 24 preview 6: free
+
+- Mowr is free. The account Worker grants access to every signed-in, non-suspended account (`reason: "free"`; owner and complimentary reasons remain for records) and checkout answers "already have access". Deployed.
+- Desktop setup is three steps (username, name, memory) with no plan step; accounts parked on the old plan step open straight into the workspace.
+- A PayPal support link appears on the pricing card and in Settings → Help & support. `PAYPAL_URL` in `src/support-link.tsx` is empty, so the link looks normal but does nothing; set it and redeploy the site (and ship a new installer for the in-app link) to switch it on.
+- Website copy, FAQ and terms now describe a free product with voluntary donations.

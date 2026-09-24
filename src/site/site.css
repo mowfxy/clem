@@ -120,6 +120,8 @@
 .sx-price span{font:400 18px 'Mowafy Sans Text',sans-serif;color:var(--sx-muted);letter-spacing:0;margin-left:6px}
 .sx-price-card>div>p:not(.sx-price){font-size:18px;margin:0 0 26px}
 .sx-price-card small{display:block;margin-top:14px;color:var(--sx-muted);font-size:13px}
+.sx-price-card .sx-support{margin:18px 0 0;font-size:14.5px}
+.support-pending,.support-pending:hover,.support-pending:active{cursor:default;transform:none}
 .sx-price-card ul{list-style:none;margin:0;padding:0;display:grid;gap:14px;align-content:center}
 .sx-price-card li{display:flex;gap:11px;align-items:center;color:#e3e2dc;font-size:16px}
 .sx-price-card li svg{flex:none;color:var(--sx-muted)}

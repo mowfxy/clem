@@ -246,7 +246,7 @@ void app.whenReady().then(async () => {
   function entitlementMessage(entitlement: { reason?: string; message?: string }) {
     if (entitlement.reason === "suspended")
       return "Your account is suspended" + (entitlement.message ? ": " + entitlement.message : ".") + " Contact support@mowrai.com if this is a mistake.";
-    return "An active Mowr plan is required. Open Settings to check your subscription.";
+    return "Mowr could not confirm your account. Check your connection and try again.";
   }
   const setupDefault = { step: 0, username: "", displayName: "", memory: true };
   async function status(): Promise<DesktopStatus> {

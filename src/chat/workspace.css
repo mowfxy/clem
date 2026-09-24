@@ -84,3 +84,6 @@
 .quiz-actions{display:flex;justify-content:flex-end}
 .quiz-actions button{height:36px;padding:0 16px;border-radius:10px}
 @media(prefers-reduced-motion:reduce){.review-card,.review-answer{animation:none}}
+
+/* PayPal link waits for its URL: it looks normal but does nothing. */
+.support-pending,.support-pending:hover,.support-pending:active{cursor:default;transform:none}

@@ -236,7 +236,8 @@ async function route(request, env) {
       const comp = !grant && (await complimentary(env, user.id));
       const paid = hasActiveSubscription(await subscriptionsFor(env, user.id));
       const suspended = grant ? null : await suspension(env, user.id);
-      const active = !suspended && (!!grant || comp || paid);
+      // Mowr is free: every signed-in account that is not suspended has access.
+      const active = !suspended;
       if (path === "/entitlement") {
         await recordActivity(env, user);
         if (suspended)
@@ -248,13 +249,7 @@ async function route(request, env) {
           });
         return json({
           active,
-          reason: grant
-            ? "owner"
-            : comp
-              ? "complimentary"
-              : active
-                ? "subscription"
-                : "subscription_required",
+          reason: grant ? "owner" : comp ? "complimentary" : paid ? "subscription" : "free",
         });
       }
       if (path === "/username") {
