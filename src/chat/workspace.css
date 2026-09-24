@@ -87,3 +87,4 @@
 
 /* PayPal link waits for its URL: it looks normal but does nothing. */
 .support-pending,.support-pending:hover,.support-pending:active{cursor:default;transform:none}
+.support-paypal{display:inline-flex;align-items:center;gap:8px}

@@ -1,6 +1,6 @@
 import {Icon} from '../Icons';
 import {Reveal} from './Reveal';
-import {SupportLink} from '../support-link';
+import {PayPalMark,SupportLink} from '../support-link';
 
 export const faqs=[
   ['What do I need?','A Windows 10 or 11 PC and an AI subscription you already use. ChatGPT is supported today.'],
@@ -9,16 +9,14 @@ export const faqs=[
   ['Is my AI plan included?','No. Mowr is the workspace; you keep the plan you have.'],
 ];
 
-export function PriceCard(){
-  return <Reveal className="sx-price-card">
+export function PayPalCard(){
+  return <Reveal className="sx-paypal">
+    <div className="sx-paypal-mark"><PayPalMark size={40}/></div>
     <div>
-      <span className="sx-plan">Mowr</span>
-      <p className="sx-price">Free</p>
-      <p>Everything included.</p>
-      <a className="sx-btn sx-btn-primary sx-btn-lg" href="#/download?start">Download free<Icon name="download" size={18}/></a>
-      <p className="sx-support">Like it? <SupportLink className="sx-link">Support Mowr on PayPal</SupportLink></p>
+      <h2>PayPal</h2>
+      <p>Support Mowr to help keep this service totally free.</p>
     </div>
-    <ul>{['Unlimited projects and chats','Visuals for any idea','Spaced-repetition study','Word, PowerPoint and Excel files','Checked numbers and second opinions','Multi-step tasks','Support from the team'].map(x=><li key={x}><Icon name="check" size={16}/>{x}</li>)}</ul>
+    <SupportLink className="sx-btn sx-btn-primary sx-btn-lg"><PayPalMark size={18}/>Support with PayPal</SupportLink>
   </Reveal>;
 }
 

@@ -5,7 +5,7 @@ import {Illustration} from '../Illustrations';
 import type {Scene} from '../vectorFilm';
 import {ProductMock} from './ProductMock';
 import {Reveal} from './Reveal';
-import {Faq,PriceCard} from './sections';
+import {Faq,PayPalCard} from './sections';
 
 const Visual=lazy(()=>import('../Visual'));
 const SpecDemo=lazy(()=>import('./SpecDemo'));
@@ -87,9 +87,9 @@ export function Landing(){
         </Reveal>
       </section>
 
-      <section className="sx-section" id="pricing">
-        <Reveal className="sx-head"><h2>Free. Really.</h2></Reveal>
-        <PriceCard/>
+      <section className="sx-section" id="support">
+        <Reveal className="sx-head"><h2>Support</h2></Reveal>
+        <PayPalCard/>
       </section>
 
       <section className="sx-section" id="faq">

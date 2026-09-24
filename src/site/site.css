@@ -120,7 +120,15 @@
 .sx-price span{font:400 18px 'Mowafy Sans Text',sans-serif;color:var(--sx-muted);letter-spacing:0;margin-left:6px}
 .sx-price-card>div>p:not(.sx-price){font-size:18px;margin:0 0 26px}
 .sx-price-card small{display:block;margin-top:14px;color:var(--sx-muted);font-size:13px}
-.sx-price-card .sx-support{margin:18px 0 0;font-size:14.5px}
+.sx-price-card .sx-support{display:flex;width:fit-content;margin-top:22px;font-size:14.5px}
+.sx-paypal{display:grid;grid-template-columns:auto 1fr auto;gap:26px;align-items:center;max-width:860px;padding:34px 36px;border-radius:26px;border:1px solid var(--sx-line-2);background:radial-gradient(70% 120% at 0 0,#009cde12,transparent 60%),var(--sx-bg-2)}
+.sx-paypal-mark{width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:#f0efeb}
+.sx-paypal h2{font-size:30px;margin-bottom:6px}
+.sx-paypal p{margin:0;font-size:17px}
+.sx-paypal .sx-btn svg{margin-right:-2px}
+.sx-paypal+.sx-fine{margin-top:22px}
+.sx-paypal+.sx-fine a{color:var(--sx-ink)}
+@media (max-width:760px){.sx-paypal{grid-template-columns:1fr;padding:26px}.sx-paypal .sx-btn{width:100%}}
 .support-pending,.support-pending:hover,.support-pending:active{cursor:default;transform:none}
 .sx-price-card ul{list-style:none;margin:0;padding:0;display:grid;gap:14px;align-content:center}
 .sx-price-card li{display:flex;gap:11px;align-items:center;color:#e3e2dc;font-size:16px}
