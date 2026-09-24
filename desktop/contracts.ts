@@ -1,6 +1,9 @@
 import {syncSchemas} from "../core/sync.ts";
 import { z } from "zod";
 
+export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
+export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };
+
 export const scopeSchema = z
   .string()
   .regex(/^(chat|project|subject|user):[a-zA-Z0-9_-]{1,100}$/);
@@ -152,7 +155,7 @@ export type DesktopBridge = {
   ) => () => void;
   invoke: (request: DesktopRequest) => Promise<any>;
   onCapture?: (listener: (event: { bytes: Uint8Array; name: string; mime: string }) => void) => () => void;
-  onFolder?: (listener: (event: import("./folder-watch").FolderEvent) => void) => () => void;
+  onFolder?: (listener: (event: FolderEvent) => void) => () => void;
   onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
   startDrag?: (path: string) => void;
   onChat: (
