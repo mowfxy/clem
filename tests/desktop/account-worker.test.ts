@@ -88,10 +88,11 @@ test("account endpoints enforce identity, atomic username ownership and absent c
       available: false,
       valid: true,
     });
-    assert.equal((await call("/checkout", {})).status, 503);
+    // Mowr is free: every signed-in account has access and checkout is never needed.
+    assert.equal((await call("/checkout", {})).status, 409);
     assert.deepEqual(await (await call("/entitlement")).json(), {
-      active: false,
-      reason: "subscription_required",
+      active: true,
+      reason: "free",
     });
     user = {
       id: "owner-id",
@@ -110,7 +111,8 @@ test("account endpoints enforce identity, atomic username ownership and absent c
       reason: "owner",
     });
     user.id = "unrelated-id";
-    assert.equal((await (await call("/entitlement")).json()).active, false);
+    // The owner grant stays bound to the original id; others simply get free access.
+    assert.equal((await (await call("/entitlement")).json()).reason, "free");
   } finally {
     globalThis.fetch = original;
     database.close();

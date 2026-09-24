@@ -55,7 +55,7 @@ export function Landing(){
             <a className="sx-btn sx-btn-primary sx-btn-lg" href="#/download?start">Download for Windows<Icon name="download" size={18}/></a>
             <a className="sx-btn sx-btn-ghost sx-btn-lg" href="#/features">Explore</a>
           </div>
-          <p className="sx-fine">Free to download · $2 a month</p>
+          <p className="sx-fine">Free to download · Free to use</p>
         </div>
         <Reveal className="sx-hero-art"><ProductMock/></Reveal>
       </section>
@@ -88,7 +88,7 @@ export function Landing(){
       </section>
 
       <section className="sx-section" id="pricing">
-        <Reveal className="sx-head"><h2>One simple plan.</h2></Reveal>
+        <Reveal className="sx-head"><h2>Free. Really.</h2></Reveal>
         <PriceCard/>
       </section>
 

@@ -15,7 +15,7 @@ try {
       configured: true,
       user: { id: "fixture", email: "fixture@example.test", name: "" },
       setup: { step: 0, username: "", displayName: "", memory: true },
-      entitlement: { active: false, reason: "preview" },
+      entitlement: { active: true, reason: "free" },
     };
     window.mowrDesktop = {
       onAuth: () => () => {},
@@ -28,7 +28,7 @@ try {
           state.setup = { ...r };
           return state;
         }
-        if (r.action === "checkout") throw Error("Checkout is not configured.");
+        if (r.action === "checkout") throw Error("Mowr is free; setup must never open checkout.");
       },
     };
   });
@@ -42,14 +42,12 @@ try {
   await page.getByLabel("Display name").fill("Test Person");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Enable memory").uncheck();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Subscribe", exact: true }).click();
-  await page
-    .getByRole("alert")
-    .filter({ hasText: "Checkout is not configured." })
-    .waitFor();
+  await page.getByText("3 OF 3", { exact: false }).waitFor();
+  assert.equal(await page.getByText("$2").count(), 0, "no plan step");
   await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   assert.equal(await page.getByLabel("Enable memory").isChecked(), false);
+  await page.getByRole("button", { name: "Open workspace", exact: true }).waitFor();
   await page.emulateMedia({ reducedMotion: "reduce" });
   assert.equal(
     await page
@@ -62,7 +60,7 @@ try {
   const bounds = await page.locator(".setup-card").boundingBox();
   assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 420);
   console.log(
-    "Setup UI verified with mocked account: progression, saved choice, checkout error, Back, narrow layout and reduced motion.",
+    "Setup UI verified with mocked account: three free steps, no plan or checkout, saved choice, Back, narrow layout and reduced motion.",
   );
 } finally {
   await browser.close();

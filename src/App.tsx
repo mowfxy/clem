@@ -79,6 +79,7 @@ import { matchSource, type Citation } from "../core/citations";
 import { weakConcepts } from "./SubjectStudy";
 import "./chat/chat.css";
 import "./chat/workspace.css";
+import { SupportLink } from "./support-link";
 import "./conversation.css";
 import "./motion.css";
 const DocumentViewer = lazy(() => import("./DocumentViewer"));
@@ -1765,7 +1766,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                         <SettingsPopup title="Routines" description={`${state.automations.length} scheduled`} action="Manage automations">{desktop?<LocalAutomations items={state.automations} models={models} onChange={automations=>patch(s=>({...s,automations}))}/>:<AutomationPanel session={session} models={models}/>}</SettingsPopup>
                       </SettingsCard>
                     ) : settingsTab === "Help & support" ? (
-                      <SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard>
+                      <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary">Support on PayPal</SupportLink></SettingRow></SettingsCard></>
                     ) : (<>
                       <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>

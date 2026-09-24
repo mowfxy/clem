@@ -41,7 +41,6 @@ function SetupContent() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [browserPending, setBrowserPending] = useState(false),
-    [pending, setPending] = useState(false),
     [readOnly, setReadOnly] = useState(false);
   const [username, setUsername] = useState(""),
     [name, setName] = useState(""),
@@ -102,11 +101,6 @@ function SetupContent() {
       clearTimeout(timer);
     };
   }, [username, state?.user?.id, state?.setup.step]);
-  useEffect(() => {
-    if (!pending) return;
-    const timer = setInterval(() => void refresh().catch(() => {}), 5000);
-    return () => clearInterval(timer);
-  }, [pending]);
   async function run(work: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -129,13 +123,13 @@ function SetupContent() {
     await refresh();
   }
   // Offline, the local workspace still opens to read; sending waits for a connection.
-  if (state?.user && state.setup.step >= 4 && state.entitlement.reason === "offline" && readOnly)
+  if (state?.user && state.setup.step >= 3 && state.entitlement.reason === "offline" && readOnly)
     return (
       <Suspense fallback={<main className="workspace-loading">Opening your workspace…</main>}>
         <App offline />
       </Suspense>
     );
-  if (state?.user && state.setup.step >= 4 && state.entitlement.active)
+  if (state?.user && state.setup.step >= 3 && state.entitlement.active)
     return (
       <Suspense
         fallback={
@@ -150,7 +144,6 @@ function SetupContent() {
     "Your username.",
     "Your name.",
     "Remember what matters?",
-    "Make room.",
   ];
   return (
     <main className="desktop-setup">
@@ -175,11 +168,11 @@ function SetupContent() {
           ) : state?.user && state.entitlement.reason === "offline" && state.setup.step >= 3 ? (
             <>
               <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Can’t reach Mowr.</h1></div>
-              <p>Mowr checks your plan when it opens. Check your internet connection and try again — nothing on this PC has changed.</p>
+              <p>Mowr checks your account when it opens. Check your internet connection and try again — nothing on this PC has changed.</p>
               {state.error && <p className="fine">{state.error}</p>}
               <div className="setup-navigation">
                 <button className="primary" disabled={busy} onClick={() => void run(refresh)}>{busy ? "Checking…" : "Try again"}</button>
-                {state.setup.step >= 4 && <button disabled={busy} onClick={() => setReadOnly(true)}>Open my files offline</button>}
+                <button disabled={busy} onClick={() => setReadOnly(true)}>Open my files offline</button>
               </div>
             </>
           ) : !state ? (
@@ -217,21 +210,16 @@ function SetupContent() {
           ) : (
             <>
               <p className="eyebrow">
-                MAKE YOURSELF AT HOME · {Math.min(step + 1, 4)} OF 4
+                MAKE YOURSELF AT HOME · {Math.min(step + 1, 3)} OF 3
               </p>
               <h1 ref={heading} tabIndex={-1}>
-                {titles[Math.min(step, 3)]}
+                {titles[Math.min(step, 2)]}
               </h1>
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
                   void run(async () => {
-                    if (step < 3) await save(step + 1);
-                    else if (state.entitlement.active) await save(4);
-                    else {
-                      await desktop!.invoke({ action: "checkout" });
-                      setPending(true);
-                    }
+                    await save(step < 2 ? step + 1 : 4);
                   });
                 }}
               >
@@ -291,26 +279,10 @@ function SetupContent() {
                       Enable memory
                     </label>
                     <p className="fine">
-                      Memory syncs to your account. Files stay local.
+                      Memory syncs to your account. Files stay local. Mowr is free.
                     </p>
                   </>
-                ) : (
-                  <>
-                    <p className="setup-price">
-                      $2 <span>/ month</span>
-                    </p>
-                    <p>Requires your own ChatGPT subscription.</p>
-                    {state.entitlement.active ? (
-                      <p>Your access is ready.</p>
-                    ) : (
-                      <p>
-                        {pending
-                          ? "Waiting for payment…"
-                          : "Continue to Lemon Squeezy’s secure checkout in your browser. Your setup is saved if you cancel."}
-                      </p>
-                    )}
-                  </>
-                )}
+                ) : null}
                 <button
                   className="primary"
                   disabled={
@@ -319,15 +291,7 @@ function SetupContent() {
                     (step === 1 && !name.trim())
                   }
                 >
-                  {busy
-                    ? "Saving…"
-                    : step < 3
-                      ? "Continue"
-                      : state.entitlement.active
-                        ? "Open workspace"
-                        : pending
-                          ? "Return to checkout"
-                          : "Subscribe"}
+                  {busy ? "Saving…" : step < 2 ? "Continue" : "Open workspace"}
                 </button>
               </form>
               <div className="setup-navigation">
