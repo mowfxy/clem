@@ -12,6 +12,12 @@ Var removeMowrData
   keepMowrData:
 !macroend
 !macro customUnInstall
+  ; A real uninstall (not an update) also removes Mowr from Windows' startup list ("Start with Windows").
+  ${ifNot} ${isUpdated}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Mowr"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.mowrai.desktop"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.Mowr"
+  ${endIf}
   StrCmp $removeMowrData "yes" 0 doneMowrData
     SetShellVarContext current
     RMDir /r "$DOCUMENTS\Mowr"
