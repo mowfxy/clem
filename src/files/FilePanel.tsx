@@ -52,7 +52,9 @@ async function commitBlob(file: StoredFile, previous: Blob, next: Blob, summary:
 export const FilePanel = forwardRef<FilePanelHandle, {
   file: StoredFile; scope: string; selection?: { model?: string; reasoning?: string }; page?: number;
   onClose: () => void; onChange: (file: StoredFile) => void; onOpenExternally: (file: StoredFile) => void; onPoint: (pointer: FilePointer) => void;
-}>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onPoint }, ref) {
+  /** "modal": a centred viewer over the app (from Files pages); "panel" sits beside a chat. */
+  variant?: "panel" | "modal"; onEditInChat?: (file: StoredFile) => void;
+}>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onPoint, variant = "panel", onEditInChat }, ref) {
   const kind = kindOf(file.name);
   const [blob, setBlob] = useState<Blob>();
   const [view, setView] = useState<View>();
@@ -61,7 +63,14 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const [working, setWorking] = useState<string | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [compare, setCompare] = useState<"before" | "after">("after");
-  const [wide, setWide] = useState(false);
+  const [full, setFull] = useState(false);
+  // Escape leaves full screen first; in the popup viewer it then closes the viewer.
+  useEffect(() => {
+    if (!full && variant !== "modal") return;
+    const key = (e: KeyboardEvent) => { if (e.key !== "Escape" || document.querySelector("dialog[open]")) return; e.preventDefault(); if (full) setFull(false); else onClose(); };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [full, variant]);
   const [flash, setFlash] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; text?: string; page?: number; area?: boolean } | null>(null);
   const [area, setArea] = useState<Area | null>(null);
@@ -208,14 +217,15 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const shown = proposal && compare === "after" ? proposal.after : view;
   const pages = shown?.kind === "pdf" ? shown.pdf.numPages : 0;
   const detail = kind === "pdf" ? (pages ? `${pages} page${pages === 1 ? "" : "s"}` : "PDF") : kind === "office" ? (/\.pptx$/i.test(file.name) ? "Presentation" : /\.xlsx$/i.test(file.name) ? "Workbook" : "Document") : kind === "text" ? "Text" : kind === "image" ? "Image" : "File";
-  return <aside className={"file-panel" + (wide ? " wide" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name}>
+  const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (full ? " full" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
     <header className="fp-head">
       <div className="fp-title"><span className="fp-crumb">Files /</span><strong title={file.name}>{file.name}</strong></div>
       <small className="fp-meta">{detail}{current.versions?.length ? ` · edited ${current.versions.length}×` : ""}</small>
       {!!current.versions?.length && !proposal && !working && <button className="fp-icon" title="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}
+      {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Mowr</button>}
       <button className="fp-icon" title="Open in browser" aria-label="Open in browser" onClick={() => onOpenExternally(current)}><Icon name="arrow" size={16} /></button>
       <button className="fp-icon" title="Download" aria-label="Download" disabled={!blob} onClick={() => blob && download(blob, file.name)}><Icon name="download" size={16} /></button>
-      <button className="fp-icon" title={wide ? "Narrow" : "Expand"} aria-label={wide ? "Narrow panel" : "Expand panel"} onClick={() => setWide(!wide)}><Icon name={wide ? "compare" : "capture"} size={16} /></button>
+      <button className="fp-icon" title={full ? "Exit full screen" : "Full screen"} aria-label={full ? "Exit full screen" : "Full screen"} onClick={() => setFull(!full)}><Icon name={full ? "collapse" : "expand"} size={16} /></button>
       <button className="fp-icon" title="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
     </header>
     {proposal && <div className="fp-proposal" role="status">
@@ -273,6 +283,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     </div>}
     {flash && <div className="fp-flash" role="status"><Icon name="check" size={14} />{flash}</div>}
   </aside>;
+  return variant === "modal" && !full ? <div className="fp-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>{panel}</div> : panel;
 });
 
 /** Office files read as what they are: slides as slides, documents as a page, workbooks as cells. */

@@ -109,3 +109,31 @@
 .reply-pick:hover{background:#30302e}
 .pointer-chip.reply{border-left:2px solid #f2f1ec}
 .saved-picker .saved-search input{width:auto;height:auto;margin:0;display:block}
+
+/* Renaming a file in place */
+.rename-field{display:inline-flex;align-items:center;gap:0;min-width:min(320px,100%);flex:1;max-width:520px;box-sizing:border-box;height:30px;padding:0 10px;border-radius:8px;border:1px solid #6b6b63;background:#161615}
+.rename-field input{flex:1;min-width:40px;width:auto!important;height:auto!important;border:0!important;background:none!important;padding:0!important;margin:0!important;color:#f2f1ec;font:13.5px 'Mowafy Sans Text',sans-serif;outline:none!important;box-shadow:none!important}
+.rename-ext{color:#8f8e87;font-size:13px;flex:none}
+.sp-rename{opacity:.55}.sp-file:hover .sp-rename,.sp-rename:focus-visible{opacity:1}
+
+/* Full screen: the viewer takes the whole window */
+.file-panel.full{position:fixed;inset:0;top:0;width:auto!important;height:auto!important;max-height:none;margin:0;border:0;border-radius:0;z-index:950;animation:fp-grow .22s cubic-bezier(.2,.9,.3,1)}
+.desktop-content .file-panel.full{top:40px}
+.file-panel.full .fp-head{padding-left:22px}
+.file-panel.full .fp-body .ps-pages{padding-top:28px}
+@keyframes fp-grow{from{opacity:.6;transform:scale(.985)}}
+/* Popup viewer, opened from Files and space pages */
+.fp-backdrop{position:fixed;inset:0;z-index:940;display:grid;place-items:center;padding:28px;background:#0000008c;backdrop-filter:blur(6px);animation:fp-fade .18s ease-out}
+.desktop-content .fp-backdrop{top:40px}
+.file-panel.as-modal{position:relative;top:auto;align-self:auto;margin:0;width:min(1040px,100%);height:min(88vh,1100px);box-shadow:0 30px 80px -20px #000,0 0 0 1px #ffffff0d;animation:fp-pop .24s cubic-bezier(.2,1,.3,1)}
+@keyframes fp-fade{from{opacity:0}}
+@keyframes fp-pop{from{opacity:0;transform:translateY(10px) scale(.985)}}
+.fp-edit{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;margin-right:6px;border-radius:9px;border:0;background:#f2f1ec;color:#141413;font:500 12.5px 'Mowafy Sans Text',sans-serif;cursor:pointer;white-space:nowrap}
+.fp-edit:hover{background:#fff}
+@media(max-width:700px){.fp-backdrop{padding:10px}.file-panel.as-modal{height:92vh}.fp-edit{display:none}}
+@media(prefers-reduced-motion:reduce){.file-panel.full,.fp-backdrop,.file-panel.as-modal{animation:none}}
+/* Reply and file pointers sit inside the composer with room around them */
+.composer .pointer-chips{padding:10px 12px 0;margin:0}
+.composer .pointer-chip{padding:0 4px 0 10px}
+.composer .pointer-chip:has(img){padding-left:4px}
+.file-panel.as-modal.full,.file-panel.full.full{position:fixed;inset:0;margin:0;width:auto;height:auto;border-radius:0;box-shadow:none;animation:fp-grow .22s cubic-bezier(.2,.9,.3,1)}.desktop-content .file-panel.as-modal.full,.desktop-content .file-panel.full.full{top:40px}

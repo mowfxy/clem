@@ -1,5 +1,5 @@
 import { chromium } from "@playwright/test";
-import { browserLogin } from "../desktop/browser-login.ts";
+import { browserLogin } from "../../desktop/browser-login.ts";
 import assert from "node:assert/strict";
 const flow = await browserLogin(
   async (tokens) => assert.equal(tokens.access_token, "fixture-access"),

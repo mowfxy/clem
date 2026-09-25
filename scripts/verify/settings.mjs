@@ -151,8 +151,8 @@ try {
     0,
   );
   await page.getByRole("button", { name: "Edit profile", exact: true }).click();
-  await page.getByRole("group", { name: "Choose your character" }).waitFor();
-  await page.getByRole("button", { name: "Fold", exact: true }).click();
+  await page.getByRole("radiogroup", { name: "Choose your picture" }).waitFor();
+  await page.getByRole("radio", { name: "Tide", exact: true }).click();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.screenshot({
     path: "artifacts/settings-profile.png",
@@ -237,7 +237,7 @@ try {
   );
   await page.screenshot({ path: "artifacts/new-chat-fit.png", fullPage: true });
   await page.evaluate(() => (location.hash = "/app/connectors"));
-  await page.getByRole("button", { name: "Set up Drive" }).click();
+  await page.getByRole("button", { name: "Open Drive" }).click();
   await page.locator(".drive-picker").waitFor();
   await page.screenshot({ path: "artifacts/drive-dialog.png", fullPage: true });
   await page.keyboard.press("Escape");

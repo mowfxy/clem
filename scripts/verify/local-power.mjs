@@ -85,29 +85,33 @@ try {
   await page.evaluate(() => { location.hash = "/app/space/bio"; });
   await page.getByRole("tab", { name: /^Files/ }).click();
   await page.locator(".sp-folder", { hasText: "Worksheets" }).click();
-  await page.locator(".sp-file", { hasText: "Cell biology worksheet.pdf" }).locator(".sp-file-open").click();
-  await page.locator(".pdf-studio .ps-page canvas").first().waitFor();
-  await page.getByLabel("Describe the change to this PDF").fill("Make it harder and add an answer key");
-  await page.getByRole("button", { name: "Edit PDF" }).click();
-  await page.getByText("Made every question harder and added an answer key.").waitFor({ timeout: 30000 });
+  // Files open beside a chat in this space; a change request in the composer edits the file.
+  const editWithMowr = async (name) => {
+    await page.locator(".sp-file", { hasText: name }).getByRole("button", { name: `${name} options` }).click();
+    await page.getByRole("menuitem", { name: "Edit with Mowr" }).click();
+    await page.locator(".file-panel .ps-page canvas").first().waitFor();
+  };
+  const askFile = async (text) => { await page.getByLabel("Your message").fill(text); await page.getByLabel("Your message").press("Enter"); };
+  await editWithMowr("Cell biology worksheet.pdf");
+  await askFile("Make it harder and add an answer key");
+  await page.getByText("Made every question harder and added an answer key.").first().waitFor({ timeout: 30000 });
   assert.ok(await page.locator(".ps-mark").count() >= 3, "changed lines are highlighted");
   await page.screenshot({ path: "artifacts/pdf-made-proposal.png" });
   await page.getByRole("button", { name: "Before" }).click();
   await page.getByRole("button", { name: "After" }).click();
-  await page.getByRole("button", { name: "Keep changes" }).click();
+  await page.getByRole("button", { name: "Keep", exact: true }).click();
   await page.getByRole("button", { name: "Undo last edit" }).waitFor();
   assert.match(await pdfText("worksheet"), /Answer key/);
-  await page.getByRole("button", { name: "Close PDF" }).click();
+  await page.getByRole("button", { name: "Close file" }).click();
 
   // Edit someone else's PDF in place.
-  await page.locator(".sp-path button", { hasText: "Files" }).click();
-  await page.locator(".sp-file", { hasText: "Osmosis lab handout.pdf" }).locator(".sp-file-open").click();
-  await page.locator(".pdf-studio .ps-page canvas").first().waitFor();
-  await page.getByLabel("Describe the change to this PDF").fill("Move the due date to Monday and make question 2 more precise");
-  await page.getByRole("button", { name: "Edit PDF" }).click();
-  await page.getByText("Moved the due date to Monday").waitFor({ timeout: 30000 });
+  await page.evaluate(() => { location.hash = "/app/space/bio"; });
+  await page.getByRole("tab", { name: /^Files/ }).click();
+  await editWithMowr("Osmosis lab handout.pdf");
+  await askFile("Move the due date to Monday and make question 2 more precise");
+  await page.getByText("Moved the due date to Monday").first().waitFor({ timeout: 30000 });
   await page.screenshot({ path: "artifacts/pdf-handout-proposal.png" });
-  await page.getByRole("button", { name: "Keep changes" }).click();
+  await page.getByRole("button", { name: "Keep", exact: true }).click();
   await page.getByRole("button", { name: "Undo last edit" }).waitFor();
   const handout = await pdfText("handout");
   assert.match(handout, /Due Monday 29 September/);
@@ -116,7 +120,8 @@ try {
   await page.getByRole("button", { name: "Undo edit" }).click();
   await page.getByText("Previous version restored.").waitFor();
   assert.match(await pdfText("handout"), /Due Friday 26 September/);
-  await page.getByRole("button", { name: "Close PDF" }).click();
+  await page.getByRole("button", { name: "Close file" }).click();
+  await page.evaluate(() => { location.hash = "/app/space/bio"; });
 
   // Share in one step, then open the file as a friend would.
   await page.locator(".sp-share").click();

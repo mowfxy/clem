@@ -8,7 +8,7 @@ import './settings-v2.css';
 export const settingsGroups:{label:string;tabs:{name:string;icon:string;scene:Scene;line:string}[]}[]=[
  {label:'You',tabs:[
   {name:'General',icon:'account',scene:'portrait',line:'Your profile and how Mowr feels.'},
-  {name:'Security',icon:'check',scene:'shield',line:'Sign-in, password and verification.'},
+  {name:'Security',icon:'lock',scene:'shield',line:'Sign-in, password and verification.'},
  ]},
  {label:'Intelligence',tabs:[
   {name:'Models',icon:'connectors',scene:'plug',line:'Connected accounts and usage.'},

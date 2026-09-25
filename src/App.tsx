@@ -36,6 +36,8 @@ import {DriveLogo} from './BrandLogos';
 import {FilePanel,canEditInPanel,type FilePanelHandle,type FilePointer} from './files/FilePanel';
 import {isEditRequest} from './files/intent';
 import {SavedFilePicker} from './files/SavedFilePicker';
+import {Toast} from './Toast';
+import {RenameField,PencilIcon} from './files/RenameField';
 const REPLY_SOURCE = "reply";
 import {SecuritySettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
@@ -202,6 +204,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [modal, setModal] = useState<string | null>(null);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [toast, setToast] = useState("");
+  const [renamingFile, setRenamingFile] = useState<string | null>(null);
+  // A file opened from Files or a space page, shown in the popup viewer.
+  const [viewer, setViewer] = useState<StoredFile | null>(null);
+  const renameFile = (id: string, name: string) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === id ? { ...f, name, updated: Date.now() } : f)) })); setRenamingFile(null); };
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [sidebar, setSidebar] = useState(false);
@@ -289,7 +295,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   }, [state, ready]);
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(""), 6500);
+    const t = setTimeout(() => setToast(""), 4500);
     return () => clearTimeout(t);
   }, [toast]);
   useEffect(() => {
@@ -1162,8 +1168,9 @@ In this subject the learner keeps missing these questions in review; connect to 
       onAsk:ask,
       onDraft:prompt=>{newChat(space.id);setDraft(prompt);setTimeout(()=>composer.current?.focus(),80);},
       onOpenChat:chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');},
-      onOpenFile:file=>void openExternally(file),
+      onOpenFile:file=>setViewer(file),
       onEditFile:file=>{newChat(space.id);openInPanel(file);},
+      onRenameFile:(file,name)=>renameFile(file.id,name),
       onLinkDrive:()=>{setDriveFolderFor(space.id);setModal('drive-folder');},
       onSyncDrive:()=>void syncDrive(space.id,true),
       onUnlinkDrive:async()=>{if(!await confirmDialog({title:'Stop syncing with Drive?',message:`Files already brought in stay in ${space.name}. Nothing in your Drive changes.`,confirm:'Stop syncing'}))return;patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id?{...x,drive:undefined}:x)}));},
@@ -1934,7 +1941,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                       <div className="file-row" key={f.id}>
                         <Icon name="files" size={24} />
                         <div>
-                          <button className="file-open" onClick={()=>void openExternally(f)}>{f.name}</button>
+                          {renamingFile === f.id ? <RenameField name={f.name} onSave={(name) => renameFile(f.id, name)} onCancel={() => setRenamingFile(null)} /> : <button className="file-open" onClick={()=>setViewer(f)}>{f.name}</button>}
                           <small>
                             {state.spaces.find((s) => s.id === f.spaceId)
                               ?.name || "Personal workspace"}{" "}
@@ -1942,6 +1949,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                           </small>
                         </div>
                         <span>{sizeLabel(f.size)}</span>
+                        <button className="icon-button" aria-label={`Rename ${f.name}`} title="Rename" onClick={() => setRenamingFile(f.id)}><PencilIcon size={17} /></button>
                         <button
                           className="icon-button"
                           aria-label={`Download ${f.name}`}
@@ -2005,7 +2013,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     {settingsTab === "General" ? (<>
                       <SettingsCard title="Profile">
                         <div className="settings-profile"><span className="avatar large"><ProfileAvatar value={state.avatar} size={56}/></span><div><strong>{state.name}</strong><span>{session.user?.email || "Signed in on this PC"}</span></div>
-                          <SettingsPopup bare title="Profile" action="Edit profile"><div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h3>{state.name}</h3><p className="fine">A little character for your corner.</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/><label className="field">What should we call you?<input value={state.name} maxLength={50} onChange={(e) => patch((s) => ({ ...s, name: e.target.value }))}/></label></SettingsPopup>
+                          <SettingsPopup bare title="Profile" action="Edit profile"><div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h3>{state.name}</h3><p className="fine">Choose a picture.</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/><label className="field">What should we call you?<input value={state.name} maxLength={50} onChange={(e) => patch((s) => ({ ...s, name: e.target.value }))}/></label></SettingsPopup>
                         </div>
                       </SettingsCard>
                       <SettingsCard title="Appearance">
@@ -2445,23 +2453,16 @@ In this subject the learner keeps missing these questions in review; connect to 
         </Modal>
       )}
       {everything!==null&&<Suspense fallback={null}><SearchEverything initialQuery={everything} chats={state.chats} spaces={state.spaces} studySets={state.studySets} files={state.files} owner={ownerRef.current} scopeLabel={scopeLabel} onClose={()=>setEverything(null)}
-        onOpenChat={chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}} onOpenSpace={space=>openSpace(space.id)} onOpenFile={file=>void openExternally(file)} onOpenFolderFile={file=>setFolderView({file,folderId:file.folderId})}/></Suspense>}
+        onOpenChat={chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}} onOpenSpace={space=>openSpace(space.id)} onOpenFile={file=>setViewer(file)} onOpenFolderFile={file=>setFolderView({file,folderId:file.folderId})}/></Suspense>}
       {folderView&&<Suspense fallback={null}><FolderBrowser initial={folderView.file} folderId={folderView.folderId} key={(folderView.folderId||'')+(folderView.file?.path||'')} scopeLabel={scopeLabel} onAsk={askAboutFolderFile} onClose={()=>setFolderView(null)}/></Suspense>}
       {packShare&&<Suspense fallback={null}><ShareSheet space={packShare.space} folderId={packShare.folderId} sets={state.studySets.filter(x=>x.spaceId===packShare.space.id)} files={state.files.filter(f=>f.spaceId===packShare.space.id)} author={state.name} onClose={()=>setPackShare(null)} onDone={message=>setToast(message)}/></Suspense>}
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
       {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
-      {toast && (
-        <div className="toast" role="status">
-          {toast}
-          <button
-            className="icon-button"
-            aria-label="Dismiss notification"
-            onClick={() => setToast("")}
-          >
-            <Icon name="close" size={17} />
-          </button>
-        </div>
-      )}
+      {viewer && <FilePanel key={"viewer-" + viewer.id} variant="modal" file={viewer} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
+        onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
+        onChange={(next) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? next : f)) })); setViewer(next); }}
+        onEditInChat={(f) => { setViewer(null); newChat(f.spaceId); openInPanel(f); }} />}
+      {toast && <Toast message={toast} onDismiss={() => setToast("")} />}
     </>
   );
 }

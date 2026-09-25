@@ -132,10 +132,12 @@ try {
       console.log((await page.locator("body").innerText()).slice(-2500));
       throw e;
     });
-  assert.ok(await page.getByLabel("Use as memory source").isChecked());
-  await page.getByRole("button", { name: "Start a conversation" }).click();
-  await page.getByLabel("Your message").fill("What was the experiment result?");
-  await page.getByLabel("Your message").press("Enter");
+  // Files added to a project become its sources; the Files tab shows the toggle.
+  await page.getByRole("tab", { name: /^Files/ }).click();
+  assert.ok(await page.getByLabel("Source").first().isChecked());
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await page.getByLabel("Ask about Local research").fill("What was the experiment result?");
+  await page.getByLabel("Ask about Local research").press("Enter");
   await page
     .getByText("Based on your local source.", { exact: true })
     .waitFor();

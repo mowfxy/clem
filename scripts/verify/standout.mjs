@@ -94,7 +94,7 @@ try {
 
   await page.getByRole("button", { name: "Add attachment" }).click();
   await page.getByRole("button", { name: "Choose a saved file" }).click();
-  await page.getByRole("button", { name: "Hydrology.txt" }).click();
+  await page.getByRole("option", { name: /Hydrology\.txt/ }).click();
   await page.locator(".composer textarea").fill("Explain the water cycle");
   await page.locator(".composer textarea").press("Enter");
   await page.locator(".spec-visual").waitFor();

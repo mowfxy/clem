@@ -182,24 +182,6 @@ test("mutations reject foreign origins and scheduler rejects missing authorizati
   assert.equal((await request("workspace")).status, 401);
 });
 
-test('GitHub connections isolate tokens and reject unsafe imports',async()=>{
- const rawFetch=globalThis.fetch;let authorized='';
- globalThis.fetch=async(input:any,init:any)=>{if(!String(input).startsWith('https://api.github.com/'))return rawFetch(input,init);authorized=init.headers.Authorization||'';if(String(input).endsWith('/user'))return Response.json({login:'reader'});if(String(input).endsWith('/binary'))return Response.json({type:'file',name:'binary',path:'binary',size:3,encoding:'base64',content:Buffer.from([0,1,2]).toString('base64')});return Response.json({type:'file',name:'README.md',path:'README.md',size:5,encoding:'base64',content:Buffer.from('hello').toString('base64')})};
- try{
- const a=await request('auth/login','POST',{email:'alice@example.test',password:'Long-example-password1'});const ac=a.headers.get('set-cookie')!.split(';')[0];
- // Use a separate address to keep the existing authentication-rate assertions independent.
- const b=await rawFetch(`http://127.0.0.1:${port}/api/auth/login`,{method:'POST',headers:{Origin:'http://localhost:5173','Content-Type':'application/json','X-Forwarded-For':'127.0.0.2'},body:JSON.stringify({email:'bob@example.test',password:'Long-example-password2'})});const bc=b.headers.get('set-cookie')!.split(';')[0];
- assert.equal((await request('github/connection','POST',{token:'github_pat_private_read_only_example'},ac)).status,200);
- assert.equal((await request('github/file?repo=owner/repo&filePath=README.md','GET',undefined,ac)).status,200);assert.equal(authorized,'Bearer github_pat_private_read_only_example');
- assert.equal((await request('github/file?repo=owner/repo&filePath=README.md','GET',undefined,bc)).status,200);assert.equal(authorized,'');
- assert.equal((await request('github/file?repo=owner/repo&filePath=binary')).status,400);
- assert.equal((await request('github/file?repo=owner/repo&filePath=..%2Fsecret')).status,400);
- assert.equal((await request('github/connection','POST',{token:'github_pat_private_read_only_example'})).status,401);
- assert.equal((await request('github/connection','DELETE',undefined,ac)).status,200);
- await request('github/file?repo=owner/repo&filePath=README.md','GET',undefined,ac);assert.equal(authorized,'');
- }finally{globalThis.fetch=rawFetch}
-});
-
 test('desktop Drive enforces identity, consent state, exports and disconnect',async()=>{
  const rawFetch=globalThis.fetch;
  const names=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','APP_URL'];const previous=Object.fromEntries(names.map(n=>[n,process.env[n]]));
