@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState,type CSSProperties} from 'react';
+import {Illustration} from '../Illustrations';
 import './notices.css';
 
 export type NoticeKind='switch'|'reset'|'handoff'|'announcement'|'support'|'success'|'warning'|'info';
@@ -6,15 +7,10 @@ export type Notice={id:string;kind:NoticeKind;title:string;detail:string;action?
 
 const LIFETIME=9000;
 
-/** Small drawn scenes; each kind has its own motion so a glance tells you what happened. */
-export function NoticeArt({kind}:{kind:NoticeKind}){
-  if(kind==='switch')return <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="n-ring" cx="20" cy="20" r="15"/><path className="n-draw" d="M11 16h15l-4-4M29 24H14l4 4"/></svg>;
-  if(kind==='reset')return <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="n-ring" cx="20" cy="20" r="15"/><path className="n-sweep" d="M20 5a15 15 0 0 1 15 15"/><path className="n-draw" d="m13 20 5 5 9-10"/></svg>;
-  if(kind==='handoff')return <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="n-ring" cx="20" cy="20" r="15"/><circle className="n-orbit" cx="20" cy="5" r="2.4"/><path className="n-draw" d="M13 20h14m-5-5 5 5-5 5"/></svg>;
-  if(kind==='announcement')return <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="n-ring" cx="20" cy="20" r="15"/><path className="n-draw" d="M12 18v5h3l8 5V13l-8 5z"/><path className="n-wave" d="M27 16.5a5 5 0 0 1 0 8"/></svg>;
-  if(kind==='support')return <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="n-ring" cx="20" cy="20" r="15"/><path className="n-draw" d="M12 14h16v10h-8l-5 4v-4h-3z"/><circle className="n-dot d1" cx="16.5" cy="19" r="1.2"/><circle className="n-dot d2" cx="20" cy="19" r="1.2"/><circle className="n-dot d3" cx="23.5" cy="19" r="1.2"/></svg>;
-  if(kind==='warning')return <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="n-ring" cx="20" cy="20" r="15"/><path className="n-draw" d="M20 12v10M20 27v.5"/></svg>;
-  return <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="n-ring" cx="20" cy="20" r="15"/><path className="n-draw" d="m13 20 5 5 9-10"/><circle className="n-spark" cx="33" cy="8" r="1.8"/></svg>;
+/** Every notice arrives as a letter: the app's ink envelope opens, the note rises out and is ticked, then it idles.
+ *  `kind` only changes the card's tint (see notices.css). */
+export function NoticeArt(_:{kind:NoticeKind}){
+  return <Illustration scene="envelope" viewBox="92 40 296 296" className="notice-envelope"/>;
 }
 
 function NoticeCard({notice,depth,onDismiss,paused}:{notice:Notice;depth:number;onDismiss:()=>void;paused:boolean}){
