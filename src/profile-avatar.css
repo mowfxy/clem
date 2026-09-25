@@ -5,23 +5,20 @@
 .profile-picker button[aria-pressed="true"]{border-color:#e9e8e2;background:#262624;color:#f5f4ef;box-shadow:0 0 0 3px #ffffff12}
 .profile-picker button:focus-visible{outline:2px solid #d6d5cf;outline-offset:2px}
 .profile-character{display:block;flex-shrink:0;overflow:visible;border-radius:50%;transition:transform .25s cubic-bezier(.3,1.4,.5,1)}
-.character-body{transform-origin:50px 86px;animation:character-breathe 4.8s ease-in-out infinite}
-.character-eyes{transform-box:fill-box;transform-origin:center;animation:character-blink 6.7s infinite}
-.character-face{animation:character-look 11s infinite}
-.character-arm{transform-box:fill-box;transform-origin:0% 100%;animation:character-wave 9s infinite}
-.character-extra.sprout{transform-box:fill-box;transform-origin:50% 100%;animation:character-sway 5s ease-in-out infinite}
-.character-extra.antenna{transform-box:fill-box;transform-origin:50% 100%;animation:character-sway 3.6s ease-in-out infinite}
-.character-extra.twinkle{transform-box:fill-box;transform-origin:center;animation:character-twinkle 3.2s ease-in-out infinite}
-.character-moth .character-eyes,.character-sprig .character-eyes{animation-delay:-2s}
-.character-comet .character-arm,.character-noodle .character-arm{animation-delay:-4s}
-.character-finch .character-body,.character-pebble .character-body{animation-delay:-1.6s}
+.av-spin,.av-turn{transform-box:view-box;transform-origin:50px 50px}
+.av-spin{animation:av-spin 9s linear infinite}
+.av-turn{animation:av-spin 26s linear infinite}
+.av-turn.slow{animation-duration:40s}
+.av-drift{animation:av-drift 6s linear infinite}
+.av-slide{animation:av-slide 8s linear infinite}
+.av-pulse{transform-box:fill-box;transform-origin:center;animation:av-pulse 3s ease-in-out infinite}
+.av-breathe{transform-box:view-box;transform-origin:50px 50px;animation:av-breathe 4.5s ease-in-out infinite}
 .avatar-resting *{animation-play-state:paused!important}
-@keyframes character-blink{0%,43%,47%,100%{transform:scaleY(1)}45%{transform:scaleY(.1)}}
-@keyframes character-look{0%,60%,85%,100%{translate:0 0}66%,78%{translate:2px 0}}
-@keyframes character-wave{0%,72%,90%,100%{transform:rotate(0)}77%,85%{transform:rotate(-22deg)}81%{transform:rotate(6deg)}}
-@keyframes character-breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.015,.985)}}
-@keyframes character-sway{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
-@keyframes character-twinkle{0%,100%{opacity:.4;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
+@keyframes av-spin{to{transform:rotate(360deg)}}
+@keyframes av-drift{to{transform:translateX(50px)}}
+@keyframes av-slide{to{transform:translateX(36px)}}
+@keyframes av-pulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+@keyframes av-breathe{0%,100%{transform:scale(.94)}50%{transform:scale(1.04)}}
 [data-quiet="true"] .profile-character *{animation:none!important}
 @media (prefers-reduced-motion:reduce){.profile-character *{animation:none!important}}
 @media (max-width:760px){.profile-picker{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}}@media (max-width:480px){.profile-picker svg{width:44px;height:44px}}

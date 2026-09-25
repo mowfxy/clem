@@ -18,6 +18,9 @@ export type SpaceActions={
   onOpenFile:(file:StoredFile)=>void;
   /** Opens the file beside a new chat in this space, where messages edit it. */
   onEditFile:(file:StoredFile)=>void;
+  /** Google Drive folder sync for this space. */
+  onLinkDrive:()=>void; onSyncDrive:()=>void; onUnlinkDrive:()=>void; onDriveSaveBack:(on:boolean)=>void; onDriveSeen:()=>void;
+  onStudyNew:(kind:'flashcards'|'summary')=>void;
   onUpload:(files:FileList,folderId:string|null)=>void;
   onMake:(kind:'flashcards'|'quiz'|'worksheet'|'summary',folderId?:string|null)=>void;
   onShare:(folderId?:string)=>void;
@@ -50,10 +53,10 @@ function Ring({value,size=58}:{value:number;size?:number}){
   return <svg className="sp-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={size/2} cy={size/2} r={r} className="track"/><circle cx={size/2} cy={size/2} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform={`rotate(-90 ${size/2} ${size/2})`}/></svg>;
 }
 
-function Menu({label,items}:{label:string;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[]}){
+function Menu({label,items,trigger}:{label:string;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[];trigger?:ReactNode}){
   const [open,setOpen]=useState(false),root=useRef<HTMLDivElement>(null);
   useEffect(()=>{if(!open)return;const close=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close);},[open]);
-  return <div className="sp-menu" ref={root}><button type="button" className="icon-button" aria-label={label} aria-expanded={open} onClick={e=>{e.stopPropagation();setOpen(!open);}}><Icon name="menu" size={16}/></button>
+  return <div className="sp-menu" ref={root}><button type="button" className={trigger?'sp-menu-trigger':'icon-button'} aria-label={label} aria-expanded={open} onClick={e=>{e.stopPropagation();setOpen(!open);}}>{trigger||<Icon name="menu" size={16}/>}</button>
     {open&&<div className="sp-menu-list" role="menu">{items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={e=>{e.stopPropagation();setOpen(false);i.run();}}>{i.icon&&<Icon name={i.icon} size={15}/>}{i.label}</button>)}</div>}</div>;
 }
 
@@ -111,6 +114,13 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
     </header>
 
     <div className="sp-body" key={tab}>
+      {tab==='overview'&&!!space.drive?.newFiles?.length&&<div className="sp-drive-news" role="status">
+        <DriveGlyph/>
+        <div><b>{space.drive.newFiles.length} new from Drive</b><small>{files.filter(f=>space.drive!.newFiles!.includes(f.id)).slice(0,3).map(f=>f.name).join(' · ')}</small></div>
+        {subject&&<button onClick={()=>actions.onStudyNew('flashcards')}>Make flashcards</button>}
+        <button onClick={()=>actions.onStudyNew('summary')}>Update summary</button>
+        <button className="sp-drive-dismiss" aria-label="Dismiss" onClick={actions.onDriveSeen}><Icon name="close" size={14}/></button>
+      </div>}
       {tab==='overview'&&<div className="sp-overview">
         {subject&&<section className="sp-card today">
           <div><span className="sp-eyebrow">Today</span><h3>{due?`${due} card${due===1?'':'s'} ready for review`:fresh?`${Math.min(fresh,pace.perDay??20)} new card${Math.min(fresh,pace.perDay??20)===1?'':'s'} to learn`:'You are all caught up'}</h3>
@@ -205,6 +215,10 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
         {path.map(f=><span key={f.id}><i>/</i><button className={over==='crumb-'+f.id?'over':''} onClick={()=>setAt(f.id)} onDrop={drop(f.id)} {...dragTarget('crumb-'+f.id)}>{f.name}</button></span>)}
       </nav>
       <div className="sp-tool-actions">
+        {space.drive
+          ? <Menu label="Google Drive sync" trigger={<span className={'sp-drive-chip'+(space.drive.error?' error':'')} title={space.drive.error||undefined}><DriveGlyph/>{space.drive.folderName}<small>{space.drive.error?'Needs attention':space.drive.lastSync?'synced '+ago(space.drive.lastSync):'syncing…'}</small></span>}
+              items={[{label:'Sync now',run:actions.onSyncDrive},{label:space.drive.saveBack?'Stop saving Mowr files to Drive':'Save Mowr files to Drive',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)},{label:'Stop syncing',danger:true,run:actions.onUnlinkDrive}]}/>
+          : <button onClick={actions.onLinkDrive}><DriveGlyph/>Sync a Drive folder</button>}
         <button onClick={()=>setNaming({name:''})}><Icon name="plus" size={15}/>New folder</button>
         <button onClick={()=>input.current?.click()}><Icon name="attach" size={15}/>Upload</button>
         {at&&<button onClick={()=>actions.onShare(at)}><Icon name="import" size={15}/>Share folder</button>}
@@ -247,3 +261,5 @@ function About({space,actions}:{space:Space;actions:SpaceActions}):ReactNode{
     <p className="fine">Only this {space.kind} uses these notes. Files marked as Source are quoted when you ask a question here.</p>
   </section>;
 }
+
+function DriveGlyph(){return <svg className="drive-glyph" width="15" height="14" viewBox="0 0 87.3 78" aria-hidden="true"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>;}

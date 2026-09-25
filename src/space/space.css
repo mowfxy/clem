@@ -100,8 +100,14 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .sp-file-open span{min-width:0;display:flex;flex-direction:column}
 .sp-file-open strong{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-file-open small{font-size:11.5px;color:#8a8983}
-.sp-source{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8a8983;padding:4px 8px;border-radius:8px;flex-shrink:0}
-.sp-source:has(input:checked){color:#9fd3b0}
+.sp-source{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px 0 7px;border-radius:99px;border:1px solid #33332f;font:500 11.5px 'Mowafy Sans Text',sans-serif;color:#8a8983;cursor:pointer;flex-shrink:0;transition:border-color .15s,color .15s,background .15s}
+.sp-source:hover{border-color:#4a4a45;color:#cfcec7}
+.sp-source input{appearance:none;-webkit-appearance:none;margin:0;width:14px;height:14px;border-radius:50%;border:1.5px solid #5d5c57;display:grid;place-items:center;cursor:pointer;transition:border-color .15s,background .15s}
+.sp-source input::after{content:"";width:6px;height:3px;border-left:1.6px solid #141413;border-bottom:1.6px solid #141413;transform:translateY(-1px) rotate(-45deg);opacity:0;transition:opacity .15s}
+.sp-source input:checked{background:#f2f1ec;border-color:#f2f1ec}
+.sp-source input:checked::after{opacity:1}
+.sp-source input:focus-visible{outline:2px solid #d6d5cf;outline-offset:2px}
+.sp-source:has(input:checked){color:#f2f1ec;border-color:#5a5a55;background:#ffffff08}
 .sp-drop-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:40px 20px;text-align:center;color:#8f8e88}
 .sp-drop-empty strong{color:#e2e1db;font-weight:500}
 .sp-drop-empty p{margin:0;font-size:13px;max-width:420px;line-height:1.55}
@@ -132,3 +138,19 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 @media (max-width:900px){.space-page{padding:16px}.sp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-overview{grid-template-columns:1fr}.sp-card.today{flex-direction:column;align-items:flex-start}.sp-name{font-size:34px}}
 @media (prefers-reduced-motion:reduce){.sp-body,.sp-menu-list{animation:none}.sp-make button,.sp-folder{transition:none}}
 [data-quiet=true] .sp-body{animation:none}
+
+/* Google Drive folder sync */
+.sp-drive-chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#e9e8e2}
+.sp-drive-chip small{color:#8f8e87;font-size:11.5px}
+.sp-drive-chip.error small{color:#f0a594}
+.drive-glyph{flex:none}
+.sp-drive-news{display:flex;align-items:center;gap:12px;margin:18px 0 0;padding:12px 12px 12px 16px;border-radius:14px;border:1px solid #33332f;background:linear-gradient(90deg,#ffffff0a,#ffffff03);animation:ps-drop .3s ease-out both}
+.sp-drive-news>div{flex:1;min-width:0;display:grid;gap:2px}
+.sp-drive-news b{font-weight:500;font-size:13.5px}
+.sp-drive-news small{font-size:12px;color:#8f8e87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-drive-news button{height:30px;padding:0 12px;border-radius:9px;border:1px solid #3a3a37;background:#232322;color:#e9e8e2;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.sp-drive-news button:hover{background:#2c2c2a}
+.sp-drive-news .sp-drive-dismiss{width:30px;padding:0;display:grid;place-items:center;border-color:transparent;background:none;color:#8f8e87}
+@media(max-width:700px){.sp-drive-news{flex-wrap:wrap}}
+.sp-menu-trigger{display:inline-flex;align-items:center;height:32px;padding:0 10px;border-radius:9px;border:1px solid #3a3a37;background:none;cursor:pointer}.sp-menu-trigger:hover{background:#ffffff08}
+.sp-file .sp-source input{width:14px!important;height:14px!important;min-width:0!important;min-height:0!important;padding:0!important;flex:none;box-shadow:none}

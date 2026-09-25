@@ -497,7 +497,8 @@ app.get("/api/drive/connect", async (req, res) => {
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: process.env.APP_URL + "/api/drive/callback",
     response_type: "code",
-    scope: "https://www.googleapis.com/auth/drive.readonly",
+    // Read files people pick or sync; create new files (only) when Mowr saves its work back.
+    scope: "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file",
     access_type: "offline",
     prompt: "consent",
     state,
@@ -609,6 +610,26 @@ app.get("/api/drive/file/:id", async (req, res) => {
     res.write(chunk);
   }
   res.end();
+});
+app.post("/api/drive/upload", express.raw({ type: () => true, limit: "4mb" }), async (req, res) => {
+  const u = await requireDriveUser(req, res);
+  if (!u) return;
+  const folder = String(req.query.folder || ""), name = String(req.query.name || "").replace(/[\u0000-\u001f]/g, "").slice(0, 200);
+  if (!/^[\w-]{1,150}$/.test(folder) || !name) { res.status(400).json({ error: "Choose a Drive folder and a file name." }); return; }
+  const body = req.body as Buffer;
+  if (!Buffer.isBuffer(body) || !body.length) { res.status(400).json({ error: "The file is empty." }); return; }
+  const token = await driveToken(u.id);
+  const boundary = "mowr" + randomUUID().replace(/-/g, "");
+  const type = String(req.headers["content-type"] || "application/octet-stream").split(";")[0].replace(/[^\w.+/-]/g, "") || "application/octet-stream";
+  const payload = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [folder] })}\r\n--${boundary}\r\nContent-Type: ${type}\r\n\r\n`),
+    body,
+    Buffer.from(`\r\n--${boundary}--`),
+  ]);
+  const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` }, body: payload });
+  if (r.status === 403) { res.status(403).json({ error: "Reconnect Google Drive to let Mowr save files there." }); return; }
+  if (!r.ok) { res.status(502).json({ error: "Google Drive did not accept the file." }); return; }
+  res.json(await r.json());
 });
 app.get("/api/automations", async (req, res) => {
   const u = await requireUser(req, res);

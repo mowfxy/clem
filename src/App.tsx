@@ -29,12 +29,14 @@ import type {OpenedPack} from './local/StudyPack';
 import type {SpaceTab} from './space/SpacePage';
 import {PACK_EXTENSION} from '../core/study-pack';
 import {TelegramPanel} from './desktop/TelegramPanel';
-import {FileCard} from './FileCard';
+import {FileCard,DocumentCard} from './FileCard';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
 import {DriveLogo} from './BrandLogos';
 import {FilePanel,canEditInPanel,type FilePanelHandle,type FilePointer} from './files/FilePanel';
 import {isEditRequest} from './files/intent';
+import {SavedFilePicker} from './files/SavedFilePicker';
+const REPLY_SOURCE = "reply";
 import {SecuritySettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
 import {Legal} from './site/Legal';
@@ -209,6 +211,20 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [panelEdit, setPanelEdit] = useState(true);
   // Parts of the open file the person pointed at, sent with the next message.
   const [pointers, setPointers] = useState<FilePointer[]>([]);
+  // Text selected in an answer, offered as a quote for the next message.
+  const [replyPick, setReplyPick] = useState<{ text: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    const pick = () => setTimeout(() => {
+      const sel = window.getSelection(), text = sel?.toString().trim() || "";
+      const node = sel?.anchorNode instanceof Element ? sel.anchorNode : sel?.anchorNode?.parentElement;
+      if (!text || !sel?.rangeCount || !node?.closest(".message.assistant .message-text")) { setReplyPick(null); return; }
+      const box = sel.getRangeAt(0).getBoundingClientRect();
+      setReplyPick({ text: text.slice(0, 1500), x: Math.min(innerWidth - 90, Math.max(8, box.left + box.width / 2 - 40)), y: Math.max(8, box.top - 44) });
+    }, 0);
+    const hide = () => setReplyPick(null);
+    document.addEventListener("mouseup", pick); document.addEventListener("keyup", pick); window.addEventListener("scroll", hide, true);
+    return () => { document.removeEventListener("mouseup", pick); document.removeEventListener("keyup", pick); window.removeEventListener("scroll", hide, true); };
+  }, []);
   const panelRef = useRef<FilePanelHandle>(null);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
@@ -357,6 +373,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       const target=artifactTarget.current;let file=made;
       if(target&&Date.now()<target.until&&scope?.endsWith(':'+target.spaceId)){file={...made,spaceId:target.spaceId,folderId:target.folderId};artifactTarget.current=null;if(target.label)setToast(`${made.name} saved to ${target.label}.`);}
       patch(current=>({...current,files:current.files.some(f=>f.id===file.id)?current.files:[...current.files,file]}));
+      const linked=file.spaceId?stateRef.current.spaces.find(x=>x.id===file.spaceId)?.drive:undefined;
+      if(linked?.saveBack)void (async()=>{const blob=await getBlob(file.id);if(!blob)return;const {uploadToFolder}=await import('./space/drive-sync');await uploadToFolder(linked.folderId,blob,file.name);setToast(`${file.name} saved to Drive · ${linked.folderName}.`);})().catch(e=>setToast(cleanError(e)));
     };
     window.addEventListener('mowr:artifact',receive);return ()=>window.removeEventListener('mowr:artifact',receive);
   },[]);
@@ -481,7 +499,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const messageId = uid();
     const editing = !!panelFile && panelEdit && canEditInPanel(panelFile) && !isVisual && !long && isEditRequest(prompt);
     const pointed = pointers;
-    const pointerNote = pointed.length ? `\n\nThe user is pointing at these parts of ${panelFile?.name || "the file"}:\n` + pointed.map((p) => `- ${p.page ? "Page " + p.page + ": " : ""}${p.text ? "“" + p.text + "”" : ""}${p.image ? (p.text ? " " : "") + "(an area of the page, attached as an image)" : ""}`).join("\n") : "";
+    const pointerNote = pointed.length ? "\n\nThe user is pointing at these exact parts:\n" + pointed.map((p) => `- ${p.file === REPLY_SOURCE ? "From your earlier answer" : "In " + p.file}${p.page ? ", page " + p.page : ""}: ${p.text ? "“" + p.text + "”" : ""}${p.image ? (p.text ? " " : "") + "(an area of the page, attached as an image)" : ""}`).join("\n") : "";
     const user = {
       id: uid(),
       role: "user" as const,
@@ -775,6 +793,54 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   const sourceFiles=(chat?:Chat)=>{const ids=new Set([...(chat?.messages.flatMap(m=>m.attachments||[])||[]),...(state.spaces.find(s=>s.id===chat?.spaceId)?.sources||[])]);return state.files.filter(f=>ids.has(f.id)||f.spaceId===(chat?.spaceId??"__none"));};
   const canCite=(c:Citation)=>!!matchSource(stateRef.current.files,c.name);
+  const driveSyncing=useRef(new Set<string>());
+  const [driveFolderFor,setDriveFolderFor]=useState<string|null>(null);
+  /** Brings new and changed files from a space's linked Drive folder into its "Drive" folder. */
+  async function syncDrive(spaceId:string,manual=false){
+    const space=stateRef.current.spaces.find(x=>x.id===spaceId),drive=space?.drive;
+    if(!space||!drive||driveSyncing.current.has(spaceId))return;
+    driveSyncing.current.add(spaceId);
+    const owner=ownerRef.current;
+    const setDrive=(fn:(d:NonNullable<Space["drive"]>)=>NonNullable<Space["drive"]>)=>patch(s=>({...s,spaces:s.spaces.map(x=>x.id===spaceId&&x.drive?{...x,drive:fn(x.drive)}:x)}));
+    try{
+      const {listFolder,changes,downloadEntry}=await import('./space/drive-sync');
+      const entries=await listFolder(drive.folderId);
+      const known={...drive.files},{added,updated}=changes(entries,known);
+      let folders=space.folders||[],home=folders.find(f=>!f.parentId&&f.name==='Drive');
+      if(!home&&added.length){home={id:uid(),name:'Drive',parentId:null,created:Date.now()};folders=[...folders,home];}
+      const fresh:StoredFile[]=[],replaced:StoredFile[]=[];
+      for(const entry of added.slice(0,40)){
+        if(owner!==ownerRef.current)return;
+        const file=await downloadEntry(entry);
+        const name=/\.pdf$/i.test(file.name)?await (await import('./pdf/pdf-name')).readablePdfName(file):file.name;
+        const id=uid();await storeBlob(id,file);
+        fresh.push({id,name,size:file.size,type:file.type,created:Date.now(),spaceId,folderId:home!.id});
+        known[entry.id]={fileId:id,modified:entry.modifiedTime||''};
+      }
+      for(const entry of updated){
+        if(owner!==ownerRef.current)return;
+        const existing=stateRef.current.files.find(f=>f.id===known[entry.id].fileId);
+        if(!existing){delete known[entry.id];continue;}
+        const file=await downloadEntry(entry);await storeBlob(existing.id,file);
+        replaced.push({...existing,size:file.size,type:file.type||existing.type,updated:Date.now()});
+        known[entry.id]={fileId:existing.id,modified:entry.modifiedTime||''};
+      }
+      if(owner!==ownerRef.current)return;
+      const touched=[...fresh,...replaced].map(f=>f.id);
+      patch(s=>({...s,files:[...fresh,...s.files.map(f=>replaced.find(r=>r.id===f.id)||f)],spaces:s.spaces.map(x=>x.id!==spaceId||!x.drive?x:{...x,folders,sources:[...new Set([...x.sources,...fresh.map(f=>f.id)])],drive:{...x.drive,files:known,lastSync:Date.now(),error:undefined,newFiles:[...new Set([...(x.drive.newFiles||[]),...touched])]}})}));
+      if(manual)setToast(touched.length?`${touched.length} file${touched.length===1?'':'s'} from Drive · ${drive.folderName}.`:`${space.name} is up to date with Drive.`);
+    }catch(e){
+      const message=cleanError(e);setDrive(d=>({...d,lastSync:Date.now(),error:message}));if(manual)setToast(message);
+    }finally{driveSyncing.current.delete(spaceId);}
+  }
+  // Linked folders are checked when Mowr opens, when it comes back into focus, and every 15 minutes.
+  useEffect(()=>{
+    if(!ready||!session.user)return;
+    const due=()=>{for(const x of stateRef.current.spaces)if(x.drive&&Date.now()-(x.drive.lastSync||0)>10*60_000)void syncDrive(x.id);};
+    const first=setTimeout(due,4000),timer=setInterval(due,15*60_000);
+    window.addEventListener('focus',due);
+    return()=>{clearTimeout(first);clearInterval(timer);window.removeEventListener('focus',due);};
+  },[ready,session.user?.id]);
   /** Chat files open beside the conversation, ready to be edited by it. */
   const openInPanel=(file:StoredFile)=>{setPanelFile(file);setPanelEdit(canEditInPanel(file));if(route!=='/app')navigate('/app');};
   /** Files browsed outside a conversation open in the default browser (or their own app). */
@@ -1098,6 +1164,17 @@ In this subject the learner keeps missing these questions in review; connect to 
       onOpenChat:chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');},
       onOpenFile:file=>void openExternally(file),
       onEditFile:file=>{newChat(space.id);openInPanel(file);},
+      onLinkDrive:()=>{setDriveFolderFor(space.id);setModal('drive-folder');},
+      onSyncDrive:()=>void syncDrive(space.id,true),
+      onUnlinkDrive:async()=>{if(!await confirmDialog({title:'Stop syncing with Drive?',message:`Files already brought in stay in ${space.name}. Nothing in your Drive changes.`,confirm:'Stop syncing'}))return;patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id?{...x,drive:undefined}:x)}));},
+      onDriveSaveBack:(on:boolean)=>patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id&&x.drive?{...x,drive:{...x.drive,saveBack:on}}:x)})),
+      onDriveSeen:()=>patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id&&x.drive?{...x,drive:{...x.drive,newFiles:[]}}:x)})),
+      onStudyNew:(kind:'flashcards'|'summary')=>{
+        const ids=(stateRef.current.spaces.find(x=>x.id===space.id)?.drive?.newFiles||[]).filter(id=>stateRef.current.files.some(f=>f.id===id));
+        patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id&&x.drive?{...x,drive:{...x.drive,newFiles:[]}}:x)}));
+        newChat(space.id);setAttachments(ids);
+        setQueued(kind==='flashcards'?'/flashcards Create flashcards covering the new material in the attached files.':`Update my summary of ${space.name} with the new material in the attached files: create a complete, accurate summary PDF of the new topics, using as many pages as they need, with key ideas, definitions, formulas and a short worked example where it helps. Cite the source file and page for key facts.`);
+      },
       onUpload:(files,folderId)=>upload(files,false,{spaceId:space.id,folderId}),
       onMake:(kind,folderId)=>{
         if(kind==='flashcards')return ask('/flashcards Create a flashcard deck from this subject’s sources and recent chats.');
@@ -1490,7 +1567,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                               <span className="thinking">Thinking…</span>
                             )}
                           </div>
-                          {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=><FileCard key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>)}
+                          {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=>{const Card=m.role==='assistant'?DocumentCard:FileCard;return <Card key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>;})}
                           {m.visual && (
                             <Suspense fallback={<p className="fine">Opening the visual…</p>}>
                               {m.visual === "choose" ? (
@@ -2045,6 +2122,8 @@ In this subject the learner keeps missing these questions in review; connect to 
                             ? "A new subject"
                             : modal === "drive"
                                 ? "Google Drive"
+                                : modal === "drive-folder"
+                                ? "Choose a Drive folder"
                                 : modal === "attach-existing"
                                     ? "Choose a saved file"
                                     : "A thought for later"
@@ -2303,6 +2382,8 @@ In this subject the learner keeps missing these questions in review; connect to 
                 }}
               />
             </>
+          ) : modal === "drive-folder" ? (
+            <DrivePicker session={session} onFile={()=>{}} chooseFolder={(folder)=>{const id=driveFolderFor;setModal(null);if(!id)return;patch(s=>({...s,spaces:s.spaces.map(x=>x.id===id?{...x,drive:{folderId:folder.id,folderName:folder.name,files:{},saveBack:true}}:x)}));setToast(`Syncing with Drive · ${folder.name}…`);setTimeout(()=>void syncDrive(id,true),50);}}/>
           ) : modal === "drive" ? (
             <DrivePicker
               session={session}
@@ -2314,31 +2395,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               }}
             />
           ) : modal === "attach-existing" ? (
-            <>
-              {state.files.filter((f) => f.spaceId === spaceId).length ? (
-                state.files
-                  .filter((f) => f.spaceId === spaceId)
-                  .map((f) => (
-                    <button
-                      className="space-chat-link"
-                      key={f.id}
-                      onClick={() => {
-                        setAttachments((a) =>
-                          a.includes(f.id) ? a : [...a, f.id],
-                        );
-                        setModal(null);
-                      }}
-                    >
-                      <Icon name="files" size={18} />
-                      {f.name}
-                    </button>
-                  ))
-              ) : (
-                <p>
-                  No files in this context yet. Upload one using the + button.
-                </p>
-              )}
-            </>
+            <SavedFilePicker files={state.files} spaceId={spaceId} attached={attachments} onPick={(f) => { setAttachments((a) => (a.includes(f.id) ? a : [...a, f.id])); setModal(null); }} />
           ) : modal === "automation-create" ? (
             <form
               onSubmit={(e) => {
@@ -2392,6 +2449,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       {folderView&&<Suspense fallback={null}><FolderBrowser initial={folderView.file} folderId={folderView.folderId} key={(folderView.folderId||'')+(folderView.file?.path||'')} scopeLabel={scopeLabel} onAsk={askAboutFolderFile} onClose={()=>setFolderView(null)}/></Suspense>}
       {packShare&&<Suspense fallback={null}><ShareSheet space={packShare.space} folderId={packShare.folderId} sets={state.studySets.filter(x=>x.spaceId===packShare.space.id)} files={state.files.filter(f=>f.spaceId===packShare.space.id)} author={state.name} onClose={()=>setPackShare(null)} onDone={message=>setToast(message)}/></Suspense>}
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
+      {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
       {toast && (
         <div className="toast" role="status">
           {toast}

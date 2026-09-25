@@ -310,9 +310,12 @@ type DriveFile = { id: string; name: string; mimeType: string; size?: string; mo
 export function DrivePicker({
   session,
   onFile,
+  chooseFolder,
 }: {
   session: Session;
   onFile: (file: File) => void;
+  /** Folder mode: browse folders and pick one to sync instead of picking files. */
+  chooseFolder?: (folder: { id: string; name: string }) => void;
 }) {
   const [connected,setConnected]=useState(false);
   const [files, setFiles] = useState<DriveFile[]>([]);
@@ -326,7 +329,7 @@ export function DrivePicker({
     setBusy(true);
     try {
       const data = await api<{ files: DriveFile[]; nextPageToken?: string }>(
-        `drive/files?folder=${encodeURIComponent(folder)}${next ? "&page=" + encodeURIComponent(next) : ""}`,
+        `drive/files?folder=${encodeURIComponent(folder || (chooseFolder ? "root" : ""))}${next ? "&page=" + encodeURIComponent(next) : ""}`,
       );
       if(version!==loadVersion.current)return;
       setFiles((f) => (next ? [...f, ...data.files] : data.files));
@@ -347,7 +350,7 @@ export function DrivePicker({
   }, [folder, session.user?.id, session.drive]);
   const [trail, setTrail] = useState<{ id: string; name: string }[]>([]);
   const [started, setStarted] = useState(false);
-  const connect = () => { setStarted(true); if (desktop) void desktop.invoke({ action: "driveConnect" }).catch((e) => setError(e.message)); else window.location.href = "/api/drive/connect"; };
+  const connect = () => { setStarted(true); setError(""); if (desktop) void desktop.invoke({ action: "driveConnect" }).catch((e) => setError(e.message)); else window.location.href = "/api/drive/connect"; };
   const open = (f: DriveFile) => { setTrail((t) => [...t, { id: f.id, name: f.name }]); setFolder(f.id); };
   const up = (index: number) => { const next = trail.slice(0, index); setTrail(next); setFolder(next.at(-1)?.id || ""); };
   async function pick(f: DriveFile) {
@@ -374,7 +377,7 @@ export function DrivePicker({
       <li><Icon name="check" size={14} />Disconnect anytime from this window.</li>
     </ul>
     <button className="drive-go" disabled={busy} onClick={connect}><GoogleG />{busy ? "Checking…" : started ? "Continue in your browser, then come back" : "Continue with Google"}</button>
-    {error && started && <p className="inline-error">{error}</p>}
+    {error && started && !/connect google drive first/i.test(error) && <p className="inline-error">{error}</p>}
   </div>;
   return (
     <div className="drive-picker">
@@ -384,11 +387,14 @@ export function DrivePicker({
           {trail.map((t, i) => <span key={t.id}><span className="drive-sep">/</span><button className={i === trail.length - 1 ? "here" : ""} onClick={() => up(i + 1)}>{t.name}</button></span>)}
         </nav>
         <button className="drive-icon" title="Refresh" aria-label="Refresh" disabled={busy} onClick={() => void load()}><Icon name="undo" size={15} /></button>
+        {chooseFolder && trail.length > 0 && <button className="drive-use" onClick={() => chooseFolder(trail[trail.length - 1])}>Sync this folder</button>}
         <button className="drive-text" title="Disconnect Drive" aria-label="Disconnect Drive" disabled={busy} onClick={() => { setBusy(true); void api("drive/connection", "DELETE").then(() => { setConnected(false); setFiles([]); setPage(undefined); setTrail([]); setFolder(""); setError(""); setStarted(false); }).catch((e) => setError(e.message)).finally(() => setBusy(false)); }}>Disconnect</button>
       </div>
+      {chooseFolder && !trail.length && <p className="drive-hint">Open the folder you want this space to stay in step with, then choose Sync this folder.</p>}
       <div className={"drive-list" + (busy ? " loading" : "")}>
         {files.map((f) => {
           const folderRow = f.mimeType === "application/vnd.google-apps.folder";
+          if (chooseFolder && !folderRow) return <div key={f.id} className="drive-row-muted"><FileKind mime={f.mimeType} name={f.name} /><span className="drive-name">{f.name}</span></div>;
           return <button key={f.id} disabled={busy} onClick={() => (folderRow ? open(f) : void pick(f))}>
             <FileKind mime={f.mimeType} name={f.name} />
             <span className="drive-name">{f.name}</span>

@@ -5,7 +5,9 @@ export type Plan = { id: string; goal: string; lead: string; tasks: Subtask[]; a
 export type Skill = { id: string; name: string; description: string; category: string; icon: string; steps: string[]; builtin: boolean };
 /** A folder made inside Mowr to organise a space's files; `parentId` nests it. */
 export type SpaceFolder = { id: string; name: string; parentId: string | null; created: number };
-export type Space = { id: string; name: string; kind: 'project' | 'subject'; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[] };
+export type Space = { id: string; name: string; kind: 'project' | 'subject'; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[]; drive?: SpaceDrive };
+/** A Google Drive folder kept in step with a space: which Drive files became which Mowr files. */
+export type SpaceDrive = { folderId: string; folderName: string; lastSync?: number; error?: string; saveBack?: boolean; newFiles?: string[]; files: Record<string, { fileId: string; modified: string }> };
 export type Review = { model: string; content: string; status: 'running' | 'done' | 'error' };
 export type ClaimCheck = { claim: string; status: 'supported' | 'partial' | 'unsupported'; source?: string; page?: number | null; quote?: string };
 export type Verification = { status: 'running' | 'done' | 'error'; claims?: ClaimCheck[]; error?: string };

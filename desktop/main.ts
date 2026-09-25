@@ -35,7 +35,7 @@ import { Codex, codexFailureMessage } from "./codex";
 import { composePrompt } from "./prompt";
 import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
-import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
+import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeModels} from './claude';
 import {
   inside,
@@ -179,7 +179,10 @@ void app.whenReady().then(async () => {
       providerAccounts.stop();telegram?.stop();providerOwner=owner;
       // Sign-ins kept with the Mowr account come back before any Codex process starts.
       if(owner!=='signed-out')await Promise.race([
-        providerLink.restore(owner).then(r=>providerAccounts.adopt(owner,r.codex,r.written)),
+        providerLink.restore(owner).then(async r=>{
+          await providerAccounts.adopt(owner,r.codex,r.written);
+          for(const value of r.values)if(value.kind==='telegram'&&await telegram.adoptLinked(owner,value.data))telegram.start(owner);
+        }),
         new Promise(done=>setTimeout(done,8000)),
       ]).catch(linkFailed);
     }
@@ -418,13 +421,15 @@ void app.whenReady().then(async () => {
       const user = await auth.user();
       try{if(!user)return Response.json([]);const [codexModels,claudeStatus]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claudeFor(user.id).status()]);return Response.json([...codexModels,...(claudeStatus.connected?claudeModels:[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
     }
-    if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection")) {
+    if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection") || (request.method === "POST" && url.pathname === "/api/drive/upload")) {
       try {
         if (!await auth.user()) return Response.json({error:"Sign in first."},{status:401});
         const { data } = await auth.client!.auth.getSession();
+        const upload = request.method === "POST" ? await request.arrayBuffer() : undefined;
+        if (upload && upload.byteLength > 4_000_000) return Response.json({error:"Files saved to Drive must be under 4 MB."},{status:413});
         const response = await fetch("https://mowrai.com" + url.pathname + url.search, {
-          method:request.method, redirect:"error", signal:AbortSignal.timeout(60000),
-          headers:{Authorization:"Bearer " + data.session!.access_token, Origin:"https://mowrai.com"},
+          method:request.method, redirect:"error", signal:AbortSignal.timeout(60000), body:upload,
+          headers:{Authorization:"Bearer " + data.session!.access_token, Origin:"https://mowrai.com", ...(upload?{"Content-Type":request.headers.get("Content-Type")||"application/octet-stream"}:{})},
         });
         return new Response(response.body, {status:response.status, headers:{"Content-Type":response.headers.get("Content-Type") || "application/octet-stream", "X-Mowr-File-Name":response.headers.get("X-Mowr-File-Name") || "", "Cache-Control":"no-store"}});
       } catch { return Response.json({error:"Drive is unavailable. Check your connection and retry."},{status:502}); }
@@ -600,12 +605,15 @@ void app.whenReady().then(async () => {
     }
     if (request.action === "telegramStatus") {
       telegram.start(user.id);
+      const linked=await telegram.linkable(user.id);
+      if(linked)void providerLink.backupValue(user.id,TELEGRAM_LINK_ID,"telegram",linked,"Telegram").catch(linkFailed);
       return telegram.status(user.id);
     }
     if (request.action === "telegramConnect")
       return telegram.connect(user.id, request.token, request.scope);
     if (request.action === "telegramDisconnect") {
       await telegram.disconnect(user.id);
+      await providerLink.forget(user.id,TELEGRAM_LINK_ID).catch(linkFailed);
       return { ok: true };
     }
     if (securityActions.has(request.action))
