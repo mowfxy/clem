@@ -1478,7 +1478,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               </div>
               {state.chats.length ? (
                 [...state.chats].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||b.updated-a.updated).slice(0, 12).map((c) => (
-                  <div className="history-row" key={c.id}><button
+                  <div className={`history-row ${c.id === chatId && route === "/app" ? "chosen" : ""}`} key={c.id}><button
                     className={`history-item ${c.id === chatId && route === "/app" ? "chosen" : ""}`}
                     onClick={() => {
                       setChatId(c.id);
@@ -1486,8 +1486,10 @@ In this subject the learner keeps missing these questions in review; connect to 
                       navigate("/app");
                     }}
                   >
-                    <span className="history-dot" />
-                    {c.title}
+                    {(() => { const space = c.spaceId ? state.spaces.find((x) => x.id === c.spaceId) : undefined;
+                      // Chats that live in a subject or project carry its initial, so they read differently from loose chats.
+                      return space ? <span className={`history-space ${space.kind}`} title={`In ${space.kind}: ${space.name}`} aria-label={`In ${space.kind} ${space.name}`}>{(space.name.trim()[0] || "·").toUpperCase()}</span> : <span className="history-dot" />; })()}
+                    <span className="history-title">{c.title}</span>
                   </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={running} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
                 ))
               ) : (

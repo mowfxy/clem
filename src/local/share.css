@@ -58,3 +58,4 @@ dialog.share-sheet::backdrop{background:#0009;backdrop-filter:blur(5px)}
 @keyframes sh-fly{0%{opacity:1;transform:rotate(var(--a)) translateY(0) scale(.6)}100%{opacity:0;transform:rotate(var(--a)) translateY(-120px) scale(1)}}
 @media (prefers-reduced-motion:reduce){dialog.share-sheet[open],.sh-file,.sh-burst i,.po-sample div{animation:none}.sh-burst{display:none}}
 [data-quiet=true] .sh-burst{display:none}
+.sh-empty{margin:0;padding:14px 16px;border:1px dashed #3a3a36;border-radius:12px;color:#a9a8a0;font-size:13.5px;line-height:1.55}

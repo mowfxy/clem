@@ -2,7 +2,7 @@ import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode} from 'r
 import {Icon} from '../Icons';
 import {RenameField,PencilIcon} from '../files/RenameField';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
-import {isDue,examPace} from '../../core/srs';
+import {isDue} from '../../core/srs';
 import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
@@ -69,7 +69,6 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
   const due=cards.filter(c=>c?.reps&&isDue(c,now)).length,fresh=cards.filter(c=>!c?.reps).length;
   const mastery=cards.length?cards.filter(c=>c&&c.stability>=21).length/cards.length:0;
   const seen=cards.length?cards.filter(c=>c?.reps).length/cards.length:0;
-  const pace=examPace(cards,space.examDate,now);
   const days=streak(sets,now);
   const weak=weakConcepts(sets);
   const [ask,setAsk]=useState('');
@@ -93,11 +92,6 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
         </div>
       </div>
       {subject&&<div className="sp-stats">
-        <label className="sp-stat exam" title="Exam date">
-          <span className="sp-stat-icon"><Icon name="clock" size={16}/></span>
-          <span><b>{space.examDate&&pace.days!==null?pace.days===0?'Exam today':`${pace.days} day${pace.days===1?'':'s'}`:'Add exam'}</b><small>{space.examDate?new Date(space.examDate+'T12:00').toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}):'Mowr paces your cards'}</small></span>
-          <input type="date" aria-label="Exam date" value={space.examDate||''} min={new Date().toISOString().slice(0,10)} onChange={e=>actions.onUpdateSpace({...space,examDate:e.target.value||undefined})}/>
-        </label>
         <button className={`sp-stat due ${due?'hot':''}`} onClick={startReview} disabled={!due&&!fresh}>
           <span className="sp-stat-icon"><Icon name="subjects" size={16}/></span>
           <span><b>{due?`${due} due`:fresh?`${fresh} new`:'All caught up'}</b><small>{due||fresh?'Review now':'Nothing to review'}</small></span>
@@ -125,8 +119,8 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
       </div>}
       {tab==='overview'&&<div className="sp-overview">
         {subject&&<section className="sp-card today">
-          <div><span className="sp-eyebrow">Today</span><h3>{due?`${due} card${due===1?'':'s'} ready for review`:fresh?`${Math.min(fresh,pace.perDay??20)} new card${Math.min(fresh,pace.perDay??20)===1?'':'s'} to learn`:'You are all caught up'}</h3>
-            <p>{space.examDate&&pace.days!==null?`${pace.days} days to your exam. About ${pace.perDay} card${pace.perDay===1?'':'s'} a day keeps you on track.`:'Mowr brings each card back just before you would forget it.'}</p></div>
+          <div><span className="sp-eyebrow">Today</span><h3>{due?`${due} card${due===1?'':'s'} ready for review`:fresh?`${Math.min(fresh,20)} new card${Math.min(fresh,20)===1?'':'s'} to learn`:'You are all caught up'}</h3>
+            <p>Mowr brings each card back just before you would forget it.</p></div>
           <button className="primary" disabled={!due&&!fresh} onClick={startReview}>Start review<Icon name="arrow" size={16}/></button>
         </section>}
         <section className="sp-card make">
@@ -155,8 +149,8 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
       </div>}
 
       {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onNew={()=>actions.onAsk('')}/>}
-      {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} examDate={space.examDate} onExamDate={examDate=>actions.onUpdateSpace({...space,examDate})} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
-      {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} examDate={space.examDate} onExamDate={examDate=>actions.onUpdateSpace({...space,examDate})} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
+      {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
+      {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions}/>}
       {tab==='about'&&<About space={space} actions={actions}/>}
     </div>
