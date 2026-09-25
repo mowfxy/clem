@@ -112,8 +112,10 @@
 
 /* Renaming a file in place */
 .rename-field{display:inline-flex;align-items:center;gap:0;min-width:min(320px,100%);flex:1;max-width:520px;box-sizing:border-box;height:30px;padding:0 10px;border-radius:8px;border:1px solid #6b6b63;background:#161615}
-.rename-field input{flex:1;min-width:40px;width:auto!important;height:auto!important;border:0!important;background:none!important;padding:0!important;margin:0!important;color:#f2f1ec;font:13.5px 'Mowafy Sans Text',sans-serif;outline:none!important;box-shadow:none!important}
-.rename-ext{color:#8f8e87;font-size:13px;flex:none}
+.rename-field input{flex:1;min-width:40px;width:auto!important;height:auto!important;border:0!important;background:none!important;padding:0!important;margin:0!important;color:#f2f1ec;font:13.5px 'Mowafy Sans Text',sans-serif;text-align:left!important;outline:none!important;box-shadow:none!important}
+.rename-ext{color:#8f8e87;font-size:13px;flex:none;white-space:nowrap;padding-left:1px}
+.sp-file-open .rename-field{flex:1 1 auto;max-width:520px}
+.sp-glyph{flex:none}
 .sp-rename{opacity:.55}.sp-file:hover .sp-rename,.sp-rename:focus-visible{opacity:1}
 
 /* Full screen: the viewer takes the whole window */

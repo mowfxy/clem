@@ -21,18 +21,8 @@
 
 /* A slow light that crosses the card so it never sits completely still. */
 .notice-sheen{position:absolute;inset:-1px;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgb(var(--tint)/.16) 50%,transparent 65%);background-size:250% 100%;animation:notice-sheen 4.8s ease-in-out 1s infinite}
-.notice-art{flex:none;width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:rgb(var(--tint)/.12);color:rgb(var(--tint));animation:notice-art-in .6s .08s cubic-bezier(.3,1.5,.5,1) both}
-.notice-art svg{width:34px;height:34px;overflow:visible}
-.notice-art svg *{stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.notice-art .n-ring{stroke-opacity:.22;stroke-width:1.4}
-.notice-art .n-draw{stroke-dasharray:60;stroke-dashoffset:60;animation:notice-draw .7s .25s cubic-bezier(.4,0,.2,1) forwards}
-.notice-art .n-sweep{transform-origin:20px 20px;animation:notice-spin 1.1s cubic-bezier(.3,.7,.3,1) both}
-.notice-art .n-orbit{fill:currentColor;stroke:none;transform-origin:20px 20px;animation:notice-spin 3.2s linear infinite}
-.notice-art .n-wave{stroke-dasharray:14;stroke-dashoffset:14;animation:notice-wave 1.8s .6s ease-in-out infinite}
-.notice-art .n-dot{fill:currentColor;stroke:none;animation:notice-bob 1.2s ease-in-out infinite}
-.notice-art .d2{animation-delay:.15s}.notice-art .d3{animation-delay:.3s}
-.notice-art .n-spark{fill:currentColor;stroke:none;transform-origin:33px 8px;animation:notice-twinkle 2.6s .5s ease-in-out infinite}
-
+.notice-art{flex:none;width:52px;height:52px;margin:-4px -2px -4px -4px;display:grid;place-items:center;border-radius:13px;background:radial-gradient(circle at 50% 60%,rgb(var(--tint)/.16),transparent 70%);animation:notice-art-in .6s .08s cubic-bezier(.3,1.5,.5,1) both}
+.notice-envelope,.notice-envelope svg{display:block;width:52px;height:52px;overflow:visible}
 .notice-copy{min-width:0;flex:1;padding-top:1px}
 .notice-copy strong{display:block;font-size:12.5px;font-weight:500;letter-spacing:.01em}
 .notice-copy p{margin:3px 0 0;color:var(--n-soft);font-size:11.5px;line-height:1.42;overflow-wrap:anywhere}
@@ -49,12 +39,7 @@
 @keyframes notice-in{0%{opacity:0;transform:translateY(22px) scale(.92);filter:blur(6px)}60%{filter:blur(0)}100%{opacity:1}}
 @keyframes notice-out{to{opacity:0;transform:translateX(-24px) scale(.96);filter:blur(3px)}}
 @keyframes notice-pop{from{transform:scale(0)}}
-@keyframes notice-art-in{from{transform:scale(.4) rotate(-18deg);opacity:0}}
-@keyframes notice-draw{to{stroke-dashoffset:0}}
-@keyframes notice-spin{from{transform:rotate(-120deg)}to{transform:rotate(240deg)}}
-@keyframes notice-wave{0%,100%{stroke-dashoffset:14;opacity:.4}50%{stroke-dashoffset:0;opacity:1}}
-@keyframes notice-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-@keyframes notice-twinkle{0%,100%{transform:scale(.6);opacity:.4}50%{transform:scale(1.25);opacity:1}}
+@keyframes notice-art-in{from{transform:translateY(8px) scale(.6) rotate(-10deg);opacity:0}}
 @keyframes notice-sheen{0%{background-position:150% 0}55%,100%{background-position:-60% 0}}
 @keyframes notice-timer{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 
@@ -62,7 +47,7 @@
 .account-handoff{--tint:236 160 132;position:fixed;left:13px;bottom:78px;z-index:46;width:min(300px,calc(100vw - 26px));padding:15px;border-radius:16px;color:#f1f2ed;font-size:12px;font-family:'Mowafy Sans Text',system-ui,sans-serif;
   background:linear-gradient(160deg,rgb(var(--tint)/.14),transparent 50%),linear-gradient(180deg,#262523f5,#1c1b1af5);border:1px solid rgb(var(--tint)/.3);box-shadow:0 1px 0 #ffffff14 inset,0 24px 60px -10px #000d;backdrop-filter:blur(14px);animation:notice-in .6s cubic-bezier(.2,1.25,.35,1) both}
 .handoff-heading{display:flex;gap:11px;align-items:flex-start;margin-bottom:12px}
-.handoff-heading .notice-art{width:38px;height:38px}
+.handoff-heading .notice-art{width:52px;height:52px}
 .handoff-heading strong{display:block;font-size:13px;font-weight:500}
 .handoff-heading p{margin:4px 0 0;color:#b7bcb0;font-size:11.5px;line-height:1.4}
 .account-handoff label{display:grid;gap:5px;margin:9px 0;color:#b8bdb2;font-size:11px}
@@ -73,8 +58,8 @@
 .handoff-limit-note{margin:7px 0 0;color:#aeb5a8;font-size:10.5px;line-height:1.4}
 
 @media (max-width:600px){.notice-stack,.account-handoff{left:12px;bottom:74px}}
-@media (prefers-reduced-motion:reduce){.notice-stack *,.account-handoff{animation:none!important;transition:none!important}.notice-art .n-draw{stroke-dashoffset:0}.notice-sheen{display:none}}
-html[data-quiet=true] .notice-sheen,html[data-quiet=true] .notice-art *{animation:none!important;stroke-dashoffset:0!important}
+@media (prefers-reduced-motion:reduce){.notice-stack *,.account-handoff{animation:none!important;transition:none!important}.notice-sheen{display:none}}
+html[data-quiet=true] .notice-sheen,html[data-quiet=true] .notice-art{animation:none!important}
 
 /* Unread support replies on the settings button. */
 .profile-settings{position:relative}

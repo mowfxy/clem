@@ -4,10 +4,13 @@ export function Illustration({
   scene,
   className = "",
   ambient = false,
+  viewBox = "0 0 480 390",
 }: {
   scene: Scene;
   className?: string;
   ambient?: boolean;
+  /** Crops the 480×390 stage, e.g. to show one prop at a small size. */
+  viewBox?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = "film-" + useId().replace(/[^a-z0-9]/gi, "");
@@ -80,7 +83,7 @@ export function Illustration({
   }, [scene, id, ambient]);
   return (
     <div ref={ref} className={`ink-scene ink-${scene} ${className}`}>
-      <svg viewBox="0 0 480 390" aria-hidden="true" />
+      <svg viewBox={viewBox} aria-hidden="true" />
     </div>
   );
 }
