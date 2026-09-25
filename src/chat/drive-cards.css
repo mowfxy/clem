@@ -21,3 +21,16 @@ button.drive-chip{cursor:pointer;font:inherit}
 .drive-card-text strong{font:500 13px 'Mowafy Sans Text',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drive-card-text small{font-size:11.5px;color:#8f8e87}
 .drive-searching{display:inline-flex;align-items:center;gap:8px;color:#a9a8a0;font-size:13px}
+.drive-video{position:relative}
+.drive-video video{display:block;width:100%;height:100%;background:#000}
+.drive-video-status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px;text-align:center;background:#000c;color:#e9e7e0;font:13px 'Mowafy Sans Text',sans-serif;pointer-events:none}
+.drive-video-status.is-error{pointer-events:auto;gap:6px;background:#0d0d0ce6}
+.drive-video-status strong{font-weight:600;font-size:14px}
+.drive-video-status span{color:#b3b1aa}
+.drive-video-actions{display:flex;gap:8px;margin-top:8px}
+.drive-video-actions button{height:30px;padding:0 13px;border-radius:8px;border:1px solid #ffffff26;background:#ffffff12;color:#fff;cursor:pointer}
+.drive-video-actions button:hover{background:#fff;color:#111}
+.drive-spinner{width:26px;height:26px;border-radius:50%;border:2.5px solid #ffffff2a;border-top-color:#fff;animation:drive-spin .8s linear infinite}
+@keyframes drive-spin{to{transform:rotate(360deg)}}
+.drive-audio-wait{font-size:12px;color:#8f8d86}
+@media(prefers-reduced-motion:reduce){.drive-spinner{animation-duration:2.4s}}

@@ -311,63 +311,6 @@ select option {
     color: #c7cfb5;
   }
 }
-dialog:has(.drive-picker) {
-  width: min(520px, calc(100vw - 32px));
-  padding: 22px;
-  background: #1c1c1a;
-  border: 1px solid #41413a;
-  border-radius: 13px;
-}
-dialog:has(.drive-picker) .modal-heading {
-  margin-bottom: 16px;
-}
-dialog:has(.drive-picker) h2 {
-  font:
-    500 19px "Mowafy Sans Text",
-    sans-serif;
-  letter-spacing: -0.3px;
-}
-.drive-picker > p {
-  font-size: 13px;
-  line-height: 1.65;
-  margin: 0 0 20px;
-}
-.drive-picker .modal-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  margin: 16px 0;
-}
-.drive-picker .modal-actions button {
-  font-size: 12px;
-  padding: 9px 12px;
-  border: 1px solid #45453d;
-  border-radius: 7px;
-  background: #292925;
-}
-.drive-picker .modal-actions button:first-child {
-  background: #e5e5db;
-  color: #222;
-}
-.drive-picker .drive-list {
-  max-height: 320px;
-  overflow: auto;
-}
-.drive-picker .drive-list button {
-  padding: 12px;
-  font-size: 13px;
-}
-.drive-picker .inline-error {
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 14px;
-  background: #292925;
-  border-radius: 7px;
-}
-.drive-picker .inline-error:empty {
-  display: none;
-}
 .settings-dialog-body .primary,
 .settings-dialog-body button[type="submit"] {
   background: #e5e5db;
@@ -384,49 +327,4 @@ dialog:has(.drive-picker) h2 {
 .settings-dialog-body input[type="checkbox"] {
   accent-color: #aeb99a;
 }
-/* Google Drive: connect, then browse */
-dialog:has(.drive-picker){width:min(560px,calc(100vw - 32px));padding:22px;border-radius:18px;background:#1b1b1a;border-color:#34342f}
-.drive-intro{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 8px 4px}
-.drive-hero{display:flex;align-items:center;margin:4px 0 18px}
-.drive-tile{width:54px;height:54px;border-radius:15px;display:grid;place-items:center;background:#f7f6f2;border:1px solid #ffffff17}
-.drive-tile svg{width:28px;height:26px}
-.drive-tile.mowr{background:#0d0d0d;color:#f2f1ec}
-.drive-tile.mowr .mowr-mark{width:26px;height:26px;color:#f2f1ec}
-.drive-wire{position:relative;width:70px;height:2px;margin:0 8px;background:repeating-linear-gradient(90deg,#ffffff2e 0 4px,transparent 4px 8px)}
-.drive-wire i{position:absolute;top:-2px;left:0;width:6px;height:6px;border-radius:50%;background:#fff;opacity:0;animation:cx-flow 2.1s cubic-bezier(.45,0,.55,1) infinite}
-.drive-wire i:nth-child(2){animation-delay:.7s}.drive-wire i:nth-child(3){animation-delay:1.4s}
-.drive-intro h3{margin:0 0 6px;font:500 18px 'Mowafy Sans Text',sans-serif;color:#f3f2ec}
-.drive-picker.drive-intro>p{margin:0 0 18px;font-size:13px;color:#9d9c95;max-width:380px}
-.drive-points{list-style:none;margin:0 0 20px;padding:4px;width:100%;box-sizing:border-box;border:1px solid #ffffff10;border-radius:14px;background:#ffffff05;text-align:left}
-.drive-points li{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:13px;color:#d8d7d0}
-.drive-points svg{color:#8fd497;flex:none}
-.drive-go{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:44px;border-radius:12px;border:0;background:#f2f1ec;color:#141413;font:500 14px 'Mowafy Sans Text',sans-serif;cursor:pointer}
-.drive-go:hover{background:#fff}.drive-go:disabled{opacity:.6}
-.drive-bar{display:flex;align-items:center;gap:4px;margin:0 0 10px;padding:0 0 10px;border-bottom:1px solid #2c2c29}
-.drive-trail{flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-size:13px}
-.drive-trail button{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 8px;border:0;border-radius:7px;background:none;color:#9d9c95;cursor:pointer;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.drive-trail button:hover{background:#ffffff0b;color:#fff}.drive-trail button.here{color:#f3f2ec;font-weight:500}
-.drive-sep{color:#55544f;margin:0 1px}
-.drive-icon{width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:8px;background:none;color:#a9a8a0;cursor:pointer;padding:0}
-.drive-icon:hover{background:#ffffff0d;color:#fff}
-.drive-picker .drive-list{max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:1px}
-.drive-picker .drive-list button{display:flex;align-items:center;gap:12px;width:100%;height:44px;padding:0 10px;border:0;border-radius:10px;background:none;color:#e9e8e2;text-align:left;cursor:pointer}
-.drive-picker .drive-list button:hover{background:#ffffff09}
-.drive-list.loading{opacity:.6}
-.drive-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
-.drive-list small{color:#7f7e78;font-size:11.5px;white-space:nowrap}
-.drive-add{display:grid;place-items:center;min-width:44px;height:26px;padding:0 8px;border-radius:7px;border:1px solid #3a3a37;font-size:11.5px;color:#cfcec7;opacity:0;transition:opacity .15s}
-.drive-list button:hover .drive-add,.drive-list button:focus-visible .drive-add{opacity:1}
-.drive-kind{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:7px;font:700 9.5px 'Mowafy Sans Text',sans-serif;color:#fff;background:#3a3a37}
-.drive-kind.folder{background:#2d2b24;color:#e9c27a}.drive-kind.doc{background:#2b5fd9}.drive-kind.sheet{background:#1e8e4f}.drive-kind.slides{background:#e5a50a;color:#1b1b1a}.drive-kind.pdf{background:#d9453a}.drive-kind.image{background:#6c4fd1}
-.drive-skeleton{height:36px;margin:4px 10px;border-radius:8px;background:linear-gradient(90deg,#ffffff08,#ffffff12,#ffffff08);background-size:200% 100%;animation:drive-shimmer 1.2s linear infinite}
-@keyframes drive-shimmer{to{background-position:-200% 0}}
-.drive-empty{padding:28px;text-align:center;color:#8f8e87;font-size:13px}
-.drive-more{display:block;margin:10px auto 0;height:32px;padding:0 14px;border-radius:9px;border:1px solid #3a3a37;background:none;color:#cfcec7;font-size:12.5px;cursor:pointer}
-@media(prefers-reduced-motion:reduce){.drive-wire i,.drive-skeleton{animation:none}}
-@keyframes cx-flow{0%{transform:translateX(0);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(64px);opacity:0}}
-.drive-text{height:28px;padding:0 10px;border:1px solid #3a3a37;border-radius:8px;background:none;color:#a9a8a0;font-size:12px;cursor:pointer}.drive-text:hover{color:#f5b3a4;border-color:#6b3a31}
 
-.drive-use{height:28px;padding:0 12px;border:0;border-radius:8px;background:#f2f1ec;color:#141413;font:500 12px 'Mowafy Sans Text',sans-serif;cursor:pointer;margin-right:4px}
-.drive-row-muted{display:flex;align-items:center;gap:12px;height:40px;padding:0 10px;opacity:.45}
-.drive-hint{margin:0 0 8px;font-size:12.5px;color:#8f8e87}

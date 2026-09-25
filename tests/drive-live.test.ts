@@ -52,3 +52,52 @@ test('videos stream with byte ranges; Google Docs stream as PDF',async()=>{
   assert.equal(doc.headers.get('Content-Type'),'application/pdf');assert.equal(decodeURIComponent(doc.headers.get('X-Mowr-File-Name')!),'Chain rule notes.pdf');
   assert.equal(await doc.text(),'%PDF-1.7');
 });
+
+// Folders and subfolders, the way Drive's API answers `'id' in parents` queries.
+function fakeTree(){
+  const files:Record<string,any[]>={
+    rootFolder123:[{id:'sub1234567890',name:'Week 1',mimeType:'application/vnd.google-apps.folder',parents:['rootFolder123']},{id:'pdf1234567890',name:'Syllabus.pdf',mimeType:'application/pdf',parents:['rootFolder123'],modifiedTime:'2026-09-01T00:00:00Z'}],
+    sub1234567890:[{id:'vid1234567890',name:'Enzymes lecture.mp4',mimeType:'video/mp4',parents:['sub1234567890'],thumbnailLink:'https://thumb/x=s220'}],
+  };
+  const fetcher=(async(input:any)=>{
+    const url=new URL(String(input));
+    if(url.pathname.endsWith('/api/drive/token'))return Response.json({accessToken:'tok',expiresIn:3300});
+    const q=url.searchParams.get('q')||'';
+    if(/fullText/.test(q))return Response.json({files:[{id:'vid1234567890'}]});
+    const parents=[...q.matchAll(/'([\w-]+)' in parents/g)].map(m=>m[1]);
+    return Response.json({files:parents.flatMap(p=>files[p]||[])});
+  }) as typeof fetch;
+  return new DriveLive(async()=>'session',fetcher,'https://mowrai.example');
+}
+test('a linked folder is read live with its subfolders, and questions find the right files',async()=>{
+  const drive=fakeTree();
+  const list=await drive.list({folder:'rootFolder123'});
+  assert.deepEqual(list.files.map(f=>[f.name,!!f.folder]),[['Week 1',true],['Syllabus.pdf',false]]);
+  const found=await drive.folder('rootFolder123','the enzymes lecture');
+  assert.deepEqual(found.items.find(i=>i.id==='vid1234567890')?.path,'Week 1');
+  assert.equal(found.hits[0].id,'vid1234567890');
+  assert.equal(found.items.find(i=>i.id==='vid1234567890')?.thumbnail,true);
+});
+test('the connection state survives a network hiccup instead of asking to reconnect',async()=>{
+  let fail=false;
+  const drive=new DriveLive(async()=>'session',(async()=>{if(fail)throw Error('offline');return Response.json({accessToken:'tok',expiresIn:3300});}) as any,'https://mowrai.example');
+  assert.deepEqual(await drive.state(),{connected:true,checked:true});
+  fail=true;
+  const later=await drive.state(true);
+  assert.equal(later.connected,true);assert.ok(later.error);
+});
+test('Drive video streams through a private local server with byte ranges',async()=>{
+  const {DriveMediaServer,playableType}=await import('../desktop/drive-live.ts');
+  const {drive}=fakeGoogle();
+  await drive.search('drive lecture');
+  const server=new DriveMediaServer(drive,async()=>true);
+  try{
+    const url=await server.url('vid1234567890');
+    assert.match(url,/^http:\/\/127\.0\.0\.1:\d+\/drive\/vid1234567890\?k=[a-f0-9]{48}$/);
+    const r=await fetch(url,{headers:{Range:'bytes=100-103'}});
+    assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),'bytes 100-103/900000000');assert.equal(await r.text(),'part');
+    assert.equal((await fetch(url.replace(/k=\w+/,'k=wrong'))).status,404);
+  }finally{server.stop();}
+  assert.equal(playableType('application/octet-stream','clip.mov'),'video/mp4');
+  assert.equal(playableType('video/webm','x.webm'),'video/webm');
+});

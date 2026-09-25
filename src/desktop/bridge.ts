@@ -1,21 +1,32 @@
 import {boundedConversation} from "../../core/chat-context.ts";
 import type { DesktopBridge } from "../../desktop/contracts";
+import type { FileVersion, StoredFile } from "../../core/types";
 declare global {
   interface Window {
     mowrDesktop?: DesktopBridge;
   }
 }
 export const desktop = typeof window === "undefined" ? undefined : window.mowrDesktop;
+export type ChatOptions = {
+  model?: string;
+  reasoning?: string;
+  images?: { name: string; data: string }[];
+  /** Documents Mowr made in this conversation, so a change updates that same file. */
+  documents?: { id: string; name: string }[];
+  /** What Mowr is doing right now ("Searching the web…", "Typesetting the PDF…"). */
+  onStatus?: (text: string) => void;
+};
 export async function desktopChat(
   messages: { role: string; content: string }[],
   scope: string,
   signal: AbortSignal,
   onText: (text: string) => void,
-  selection?: {model?:string;reasoning?:string},
-  onArtifact?: (file:import("../../core/types").StoredFile)=>void,
+  selection?: ChatOptions,
+  onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
   messages=boundedConversation(messages);
   const id = crypto.randomUUID();
+  const { onStatus, ...options } = selection || {};
   let result = "";
   return new Promise<string>((resolve, reject) => {
     const cleanup = () => {
@@ -29,7 +40,8 @@ export async function desktopChat(
     };
     const unsubscribe = desktop!.onChat((event) => {
       if (event.id !== id) return;
-      if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file);}
+      if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
+      if (event.type === "status" && event.text) onStatus?.(event.text);
       if (event.type === "delta") {
         result += event.text || "";
         onText(result);
@@ -49,7 +61,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...selection as any })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);

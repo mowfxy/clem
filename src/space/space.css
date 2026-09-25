@@ -152,3 +152,6 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 @media(max-width:700px){.sp-drive-news{flex-wrap:wrap}}
 .sp-menu-trigger{display:inline-flex;align-items:center;height:32px;padding:0 10px;border-radius:9px;border:1px solid #3a3a37;background:none;cursor:pointer}.sp-menu-trigger:hover{background:#ffffff08}
 .sp-file .sp-source input{width:14px!important;height:14px!important;min-width:0!important;min-height:0!important;padding:0!important;flex:none;box-shadow:none}
+.sp-local-label{margin:20px 2px 8px}
+.sp-drive-chip small{display:inline-flex;align-items:center;gap:4px}
+.sp-drive-chip small::before{content:"";width:6px;height:6px;border-radius:50%;background:#7fd08a;box-shadow:0 0 0 2px #7fd08a2e}

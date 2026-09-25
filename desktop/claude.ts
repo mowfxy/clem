@@ -15,7 +15,7 @@ export function claudeSubscriptionStatus(raw:string,code:number|null) {
   catch{return {installed:true,connected:false};}
 }
 
-/** Claude Code is invoked in text-only mode with no tools, plugins, project settings or MCP. */
+/** Claude Code is invoked in text mode with web search as its only tool: no files, shell, plugins, project settings or MCP. */
 export class ClaudeProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
@@ -59,7 +59,8 @@ export class ClaudeProvider {
     if(!selected)throw Error('Choose a supported Claude model.');
     if(effort&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
     if(!(await this.status(true)).connected)throw Error('Sign in to a Claude subscription through Claude Code first.');
-    const args=['-p','--output-format','json','--model',model.slice(7),'--tools','','--disallowedTools','mcp__*','--max-turns','1','--permission-prompts','none','--safe-mode','--no-session-persistence'];
+    // Web search is the only tool: it lets Claude find real, current sources (such as YouTube videos) on the person's own plan.
+    const args=['-p','--output-format','json','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode','--no-session-persistence'];
     if(effort)args.push('--effort',effort);
     const child=await this.start(args);this.active.set(id,child);
     try{

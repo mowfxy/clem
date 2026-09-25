@@ -99,7 +99,7 @@ try {
   await page.screenshot({ path: "artifacts/pdf-made-proposal.png" });
   await page.getByRole("button", { name: "Before" }).click();
   await page.getByRole("button", { name: "After" }).click();
-  await page.getByRole("button", { name: "Keep", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click(); // edits are saved into the file at once
   await page.getByRole("button", { name: "Undo last edit" }).waitFor();
   assert.match(await pdfText("worksheet"), /Answer key/);
   await page.getByRole("button", { name: "Close file" }).click();
@@ -111,7 +111,7 @@ try {
   await askFile("Move the due date to Monday and make question 2 more precise");
   await page.getByText("Moved the due date to Monday").first().waitFor({ timeout: 30000 });
   await page.screenshot({ path: "artifacts/pdf-handout-proposal.png" });
-  await page.getByRole("button", { name: "Keep", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click(); // edits are saved into the file at once
   await page.getByRole("button", { name: "Undo last edit" }).waitFor();
   const handout = await pdfText("handout");
   assert.match(handout, /Due Monday 29 September/);

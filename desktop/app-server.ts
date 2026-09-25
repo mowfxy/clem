@@ -52,6 +52,8 @@ export class AppServer {
     return () => { if (this.threads.get(threadId) === listener) this.threads.delete(threadId); };
   }
   get idle() { return this.threads.size === 0 && this.pending.size === 0; }
+  /** Conversations currently streaming on this connection. */
+  get activeThreads() { return this.threads.size; }
   private receive(line: string) {
     if (this.dead) return;
     this.bytes += line.length;

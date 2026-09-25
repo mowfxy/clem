@@ -14,21 +14,23 @@ import { readOffice, exportOffice, applyOfficePatches, type OfficeBlock, type Of
 import "../pdf/pdf-studio.css";
 import "./file-panel.css";
 
-export type FilePanelHandle = { edit: (instruction: string) => Promise<string>; stop: () => void };
+export type FilePanelHandle = { edit: (instruction: string) => Promise<string>; stop: () => void; /** Resolves once the file is open and can be edited. */ ready: () => Promise<void> };
 /** A part of the open file the person pointed at: selected text, or an area cropped as an image. */
 export type FilePointer = { id: string; file: string; page?: number; text?: string; image?: string };
 type Area = { page: HTMLElement; n: number; x: number; y: number; w: number; h: number };
-type Kind = "pdf" | "office" | "text" | "image" | "other";
+type Kind = "pdf" | "office" | "text" | "image" | "video" | "audio" | "other";
 type Box = { page: number; x: number; y: number; w: number; h: number };
 type View =
   | { kind: "pdf"; pdf: PDFDocumentProxy; boxes: Box[] }
   | { kind: "office"; blocks: OfficeBlock[]; changed: Set<string> }
   | { kind: "text"; text: string; changed: Set<number> };
 type Proposal = { summary: string; after: View; commit: () => Promise<StoredFile> };
+/** An edit that is already saved into the file; `before` is kept on screen for comparison until dismissed. */
+type Saved = { summary: string; before: View; after: View };
 
-export const kindOf = (name: string): Kind =>
-  /\.pdf$/i.test(name) ? "pdf" : /\.(docx|pptx|xlsx)$/i.test(name) ? "office" : /\.(txt|md|markdown|csv|json|tex|html?|xml|ya?ml|log)$/i.test(name) ? "text" : /\.(png|jpe?g|gif|webp|svg)$/i.test(name) ? "image" : "other";
-export const canEditInPanel = (file: StoredFile) => !!desktop && ["pdf", "office", "text"].includes(kindOf(file.name));
+export const kindOf = (name: string, type = ""): Kind =>
+  /\.pdf$/i.test(name) || type === "application/pdf" ? "pdf" : /\.(docx|pptx|xlsx)$/i.test(name) ? "office" : /\.(txt|md|markdown|csv|json|tex|html?|xml|ya?ml|log)$/i.test(name) ? "text" : /\.(png|jpe?g|gif|webp|svg)$/i.test(name) || type.startsWith("image/") ? "image" : /\.(mp4|m4v|webm|mov|ogv)$/i.test(name) || type.startsWith("video/") ? "video" : /\.(mp3|m4a|wav|ogg|flac)$/i.test(name) || type.startsWith("audio/") ? "audio" : "other";
+export const canEditInPanel = (file: StoredFile) => !!desktop && !file.id.startsWith("drive_") && ["pdf", "office", "text"].includes(kindOf(file.name, file.type));
 const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 const JSON_ONLY = "Return only JSON, no code fences or commentary.";
 function parseJson(raw: string) {
@@ -55,13 +57,19 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   /** "modal": a centred viewer over the app (from Files pages); "panel" sits beside a chat. */
   variant?: "panel" | "modal"; onEditInChat?: (file: StoredFile) => void;
 }>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onPoint, variant = "panel", onEditInChat }, ref) {
-  const kind = kindOf(file.name);
+  const kind = kindOf(file.name, file.type);
   const [blob, setBlob] = useState<Blob>();
   const [view, setView] = useState<View>();
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
   const [working, setWorking] = useState<string | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [saved, setSaved] = useState<Saved | null>(null);
+  const [mediaSrc, setMediaSrc] = useState("");
+  // The version this panel saved itself, so its own save does not reload the file under the person.
+  const ownSave = useRef<number | undefined>(undefined);
+  const opened = useRef<{ promise: Promise<void>; resolve: () => void }>(undefined);
+  if (!opened.current) { let resolve = () => {}; const promise = new Promise<void>((r) => (resolve = r)); opened.current = { promise, resolve }; }
   const [compare, setCompare] = useState<"before" | "after">("after");
   // Escape closes the popup viewer.
   useEffect(() => {
@@ -103,6 +111,11 @@ export const FilePanel = forwardRef<FilePanelHandle, {
 
   async function load() {
     setError("");
+    if ((kind === "video" || kind === "audio") && file.id.startsWith("drive_")) {
+      const { mediaUrl } = await import("../drive/drive");
+      setMediaSrc(await mediaUrl(file.id.slice(6)));
+      return;
+    }
     const data = await getBlob(file.id);
     if (!data) throw Error("This file is missing from this PC.");
     setBlob(data);
@@ -110,8 +123,26 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     else if (kind === "office") setView({ kind: "office", blocks: await readOffice(data), changed: new Set() });
     else if (kind === "text") { if (data.size > 1_000_000) throw Error("Text preview is limited to 1 MB."); setView({ kind: "text", text: await data.text(), changed: new Set() }); }
     else if (kind === "image") setImageUrl(URL.createObjectURL(data));
+    else if (kind === "video" || kind === "audio") setMediaSrc(URL.createObjectURL(data));
+    opened.current!.resolve();
   }
-  useEffect(() => { setProposal(null); void load().catch((e) => setError(clean(e))); return () => abort.current?.abort(); }, [file.id]);
+  useEffect(() => { setProposal(null); setSaved(null); void load().catch((e) => setError(clean(e))); return () => abort.current?.abort(); }, [file.id]);
+  // Mowr revised this file from the chat: show the new version, highlighting what changed.
+  useEffect(() => {
+    if (!file.updated || file.updated === ownSave.current || !view || working) return;
+    setCurrent(file);
+    const before = view;
+    void (async () => {
+      const data = await getBlob(file.id); if (!data) return;
+      setBlob(data);
+      if (kind === "pdf" && before.kind === "pdf") {
+        const next = await openPdf(new Uint8Array(await data.arrayBuffer()));
+        const after: View = { kind: "pdf", pdf: next, boxes: await changedLines(before.pdf, next) };
+        setView(after); setSaved({ summary: file.versions?.[0]?.summary || "Updated by Mowr", before: { ...before, boxes: [] }, after }); setCompare("after");
+      } else await load();
+    })().catch((e) => setError(clean(e)));
+  }, [file.updated]);
+  useEffect(() => () => { if (mediaSrc.startsWith("blob:")) URL.revokeObjectURL(mediaSrc); }, [mediaSrc]);
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(""), 3800); return () => clearTimeout(t); }, [flash]);
 
@@ -164,8 +195,18 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       setWorking("Reading " + file.name + "…");
       setError("");
       try {
+        const before = view!;
         const next = await propose(instruction);
-        setProposal(next);
+        // Edits go straight into the same file (the earlier version is kept for Undo); Before/After stays on screen.
+        setWorking("Saving " + file.name + "…");
+        const stored = await next.commit();
+        ownSave.current = stored.updated;
+        setCurrent(stored);
+        onChange(stored);
+        setBlob(await getBlob(file.id));
+        const after = next.after;
+        setView(after);
+        setSaved({ summary: next.summary, before: before.kind === "pdf" ? { ...before, boxes: [] } : before, after });
         setCompare("after");
         return next.summary;
       } catch (e) {
@@ -178,6 +219,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       }
     },
     stop() { abort.current?.abort(); },
+    ready() { return opened.current!.promise; },
   }), [blob, view, proposal, current, scope, selection]);
 
   async function keep() {
@@ -206,14 +248,16 @@ export const FilePanel = forwardRef<FilePanelHandle, {
         await deleteBlob(last.blob).catch(() => {});
         restored = { ...current, size: previous.size, updated: Date.now(), versions: current.versions!.slice(1) };
       }
+      ownSave.current = restored.updated;
       setCurrent(restored);
       onChange(restored);
+      setSaved(null);
       await load();
       setFlash("Previous version restored.");
     } catch (e) { setError(clean(e)); }
   }
 
-  const shown = proposal && compare === "after" ? proposal.after : view;
+  const shown = saved ? (compare === "before" ? saved.before : saved.after) : proposal && compare === "after" ? proposal.after : view;
   const pages = shown?.kind === "pdf" ? shown.pdf.numPages : 0;
   const detail = kind === "pdf" ? (pages ? `${pages} page${pages === 1 ? "" : "s"}` : "PDF") : kind === "office" ? (/\.pptx$/i.test(file.name) ? "Presentation" : /\.xlsx$/i.test(file.name) ? "Workbook" : "Document") : kind === "text" ? "Text" : kind === "image" ? "Image" : "File";
   const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
@@ -226,6 +270,12 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       <button className="fp-icon" title="Download" aria-label="Download" disabled={!blob} onClick={() => blob && download(blob, file.name)}><Icon name="download" size={16} /></button>
       <button className="fp-icon" title="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
     </header>
+    {saved && !proposal && <div className="fp-proposal is-saved" role="status">
+      <div><strong>{saved.summary}</strong><small>Saved · earlier version kept</small></div>
+      <div className="fp-toggle" role="group" aria-label="Compare"><button aria-pressed={compare === "before"} onClick={() => setCompare("before")}>Before</button><button aria-pressed={compare === "after"} onClick={() => setCompare("after")}>After</button></div>
+      <button className="fp-ghost" onClick={() => void undo()}>Undo</button>
+      <button className="fp-keep" onClick={() => { setSaved(null); setCompare("after"); }}>Done</button>
+    </div>}
     {proposal && <div className="fp-proposal" role="status">
       <div><strong>{proposal.summary}</strong><small>Not saved yet · compare, then keep or discard</small></div>
       <div className="fp-toggle" role="group" aria-label="Compare"><button aria-pressed={compare === "before"} onClick={() => setCompare("before")}>Before</button><button aria-pressed={compare === "after"} onClick={() => setCompare("after")}>After</button></div>
@@ -260,10 +310,12 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       }}
       onPointerUp={() => { if (!drag.current) return; drag.current = null; setAreaMode(false); setArea((a) => (a && a.w > 12 && a.h > 12 ? a : null)); }}>
       {error && <p className="fp-error" role="alert">{error}</p>}
-      {!shown && !imageUrl && !error && kind !== "other" && <p className="fp-note">Opening…</p>}
+      {!shown && !imageUrl && !mediaSrc && !error && kind !== "other" && <p className="fp-note">Opening…</p>}
       {kind === "other" && <div className="fp-empty"><p>Mowr can’t show this format here.</p><button className="fp-ghost" onClick={() => onOpenExternally(current)}>Open with its app</button></div>}
       {imageUrl && <div className="fp-image"><img src={imageUrl} alt={file.name} /></div>}
-      {shown?.kind === "pdf" && <Pages key={proposal && compare === "after" ? "after" : "before"} pdf={shown.pdf} highlights={shown.boxes} />}
+      {mediaSrc && kind === "video" && <div className="fp-media"><video src={mediaSrc} controls autoPlay playsInline controlsList="nodownload" onError={() => setError("This video could not be played here. Open it in Drive instead.")} /></div>}
+      {mediaSrc && kind === "audio" && <div className="fp-media is-audio"><audio src={mediaSrc} controls autoPlay /></div>}
+      {shown?.kind === "pdf" && <Pages key={(saved || proposal) && compare === "after" ? "after" + (current.updated || "") : "before"} pdf={shown.pdf} highlights={shown.boxes} />}
       {shown?.kind === "office" && <OfficeView name={file.name} blocks={shown.blocks} changed={shown.changed} />}
       {shown?.kind === "text" && (/\.(md|markdown)$/i.test(file.name) && !shown.changed.size
         ? <article className="fp-paper fp-prose"><ReactMarkdown remarkPlugins={[remarkGfm]}>{shown.text}</ReactMarkdown></article>

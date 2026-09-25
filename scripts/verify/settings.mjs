@@ -238,7 +238,7 @@ try {
   await page.screenshot({ path: "artifacts/new-chat-fit.png", fullPage: true });
   await page.evaluate(() => (location.hash = "/app/connectors"));
   await page.getByRole("button", { name: "Open Drive" }).click();
-  await page.locator(".drive-picker").waitFor();
+  await page.locator(".gd-picker").waitFor();
   await page.screenshot({ path: "artifacts/drive-dialog.png", fullPage: true });
   await page.keyboard.press("Escape");
   await page.evaluate(() => (location.hash = "/app/settings"));

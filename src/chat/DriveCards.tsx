@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { mediaUrl } from "../drive/drive";
 import { DriveLogo } from "../BrandLogos";
 import { Icon } from "../Icons";
 import { driveKind, type DriveRef } from "../../core/drive-search";
@@ -11,10 +12,15 @@ const typeName = (m: string) => m.includes("google-apps.document") ? "Google Doc
  *  (seeking and full screen work), never saved. */
 export function DriveVideo({ file, onOpenWeb }: { file: DriveRef; onOpenWeb?: (file: DriveRef) => void }) {
   const [playing, setPlaying] = useState(false), [poster, setPoster] = useState(true);
-  const start = () => setPlaying(true);
+  const [src, setSrc] = useState(""), [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const start = () => { setPlaying(true); setState("loading"); void mediaUrl(file.id).then(setSrc).catch(() => setState("error")); };
+  // A stream that never starts is reported instead of spinning forever.
+  useEffect(() => { if (!playing || state !== "loading") return; const t = setTimeout(() => setState((s) => (s === "loading" ? "error" : s)), 45000); return () => clearTimeout(t); }, [playing, state, src]);
   return <span className="yt-embed drive-video" role="group" aria-label={"Video: " + file.name}>
     {playing
-      ? <video src={"/api/drive/live/" + file.id} controls autoPlay playsInline controlsList="nodownload" />
+      ? <>{src && <video src={src} controls autoPlay playsInline controlsList="nodownload" onCanPlay={() => setState("ready")} onPlaying={() => setState("ready")} onError={() => setState("error")} />}
+        {state === "loading" && <span className="drive-video-status" role="status"><span className="drive-spinner" aria-hidden="true" />Streaming from Google Drive…</span>}
+        {state === "error" && <span className="drive-video-status is-error" role="alert"><strong>This video didn’t start.</strong><span>Google may still be processing it, or the format can’t play here.</span><span className="drive-video-actions"><button type="button" onClick={start}>Try again</button>{onOpenWeb && <button type="button" onClick={() => onOpenWeb(file)}>Open in Drive</button>}</span></span>}</>
       : <span className="yt-poster" role="button" tabIndex={0} aria-label={"Play " + file.name} onClick={start} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); start(); } }}>
         {poster ? <img src={"/api/drive/thumb/" + file.id} alt="" onError={() => setPoster(false)} /> : <span className="drive-poster-art" aria-hidden="true" />}
         <span className="drive-head">
@@ -45,5 +51,7 @@ export function DriveCard({ file, label, onOpen }: { file: DriveRef; label?: str
 
 /** Audio plays inline, like a small player. */
 export function DriveAudio({ file }: { file: DriveRef }) {
-  return <figure className="drive-audio"><figcaption><DriveLogo size={13} /><span>{file.name}</span></figcaption><audio src={"/api/drive/live/" + file.id} controls preload="none" /></figure>;
+  const [src, setSrc] = useState("");
+  useEffect(() => { void mediaUrl(file.id).then(setSrc).catch(() => {}); }, [file.id]);
+  return <figure className="drive-audio"><figcaption><DriveLogo size={13} /><span>{file.name}</span></figcaption>{src ? <audio src={src} controls preload="none" /> : <span className="drive-audio-wait">Connecting to Drive…</span>}</figure>;
 }

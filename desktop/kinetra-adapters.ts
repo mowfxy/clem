@@ -18,6 +18,8 @@ import {
   addToHybridIndex,
   searchHybrid,
 } from "../vendor/kinetra/packages/core/src/retrieval/hybrid";
+/** Concept diagrams for documents (flowcharts, charts, timelines, cycles, mind maps, trees, Venn diagrams). */
+export { flowchart, chart, timeline, cycle, mindMap, tree, venn } from "./kinetra-diagrams";
 /** JSON-friendly adapters. Expressions use Kinetra's parser, never eval or new Function. */
 export function integrateExpression(
   expression: string,
