@@ -581,8 +581,11 @@ void app.whenReady().then(async () => {
   window.webContents.on("will-navigate", (event, url) => {
     if (new URL(url).origin !== "mowr://app") event.preventDefault();
   });
+  // Everything is refused except what Mowr's own page needs for video: full screen, and reaching the private
+  // 127.0.0.1 server that streams Drive video (Chromium's Local Network Access asks for it; without it the player is blocked).
+  const allowed = new Set(["fullscreen", "loopback-network", "local-network-access"]);
   window.webContents.session.setPermissionRequestHandler(
-    (_contents, _permission, callback) => callback(false),
+    (contents, permission, callback, details) => callback(allowed.has(permission) && contents === window.webContents && (permission === "fullscreen" || String(details?.requestingUrl || "").startsWith("mowr://app/"))),
   );
   Menu.setApplicationMenu(null);
   /** Captures a screen region and hands it to the workspace as an image attachment. */
