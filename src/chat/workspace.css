@@ -88,3 +88,10 @@
 /* PayPal link waits for its URL: it looks normal but does nothing. */
 .support-pending,.support-pending:hover,.support-pending:active{cursor:default;transform:none}
 .support-paypal{display:inline-flex;align-items:center;gap:8px}
+/* Attach menu: compact rows, real brand marks */
+.composer .popover{width:252px;padding:5px;border-radius:12px;background:#262625;border-color:#3f3f3c}
+.composer .popover button{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:8px;font-size:13px;white-space:nowrap;text-align:left}
+.composer .popover button:hover{background:#ffffff0b}
+.composer .popover button>svg{width:17px;height:17px;flex:none}
+.composer .popover .popover-hint{font-size:10.5px}
+.connector-emblem .brand-github{color:#f3f2ec}

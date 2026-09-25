@@ -10,3 +10,24 @@ export function ClaudeLogo({ size = 20, title }: { size?: number; title?: string
 export function ProviderLogo({ provider, size }: { provider?: string; size?: number }) {
   return provider === "Anthropic" ? <ClaudeLogo size={size} /> : <OpenAILogo size={size} />;
 }
+const GITHUB = "M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58l-.01-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3";
+/** GitHub's mark on a transparent background, in the surrounding text colour. */
+export function GitHubLogo({ size = 20, title }: { size?: number; title?: string }) {
+  return <svg className="brand-logo brand-github" width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true} fill="currentColor"><path d={GITHUB} /></svg>;
+}
+export function DriveLogo({ size = 20, title }: { size?: number; title?: string }) {
+  return <svg className="brand-logo brand-drive" width={size} height={size} viewBox="0 0 87.3 78" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
+    <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+    <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47" />
+    <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335" />
+    <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+    <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+    <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+  </svg>;
+}
+export function YouTubeLogo({ size = 20, title }: { size?: number; title?: string }) {
+  return <svg className="brand-logo brand-youtube" width={size} height={size} viewBox="0 0 28 28" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
+    <path d="M27.4 7.1a3.5 3.5 0 0 0-2.5-2.5C22.7 4 14 4 14 4s-8.7 0-10.9.6A3.5 3.5 0 0 0 .6 7.1C0 9.3 0 14 0 14s0 4.7.6 6.9a3.5 3.5 0 0 0 2.5 2.5C5.3 24 14 24 14 24s8.7 0 10.9-.6a3.5 3.5 0 0 0 2.5-2.5C28 18.7 28 14 28 14s0-4.7-.6-6.9Z" fill="#FF0000" />
+    <path d="m11.2 18.3 7.3-4.3-7.3-4.3v8.6Z" fill="#fff" />
+  </svg>;
+}

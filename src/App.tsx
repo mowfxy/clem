@@ -1,6 +1,6 @@
 import {ModelsSettings} from "./ModelsSettings";
 import {confirmDialog} from './dialogs';
-import {relevantSkills,skillText,documentGuidance,builtinSkills} from '../core/skills';
+import {relevantSkills,skillText,documentGuidance} from '../core/skills';
 import type {AccountsData} from "./ModelsSettings";
 import {NoticeStack,type Notice} from "./notices/NoticeStack";
 import {AccountHandoff} from "./notices/AccountHandoff";
@@ -32,6 +32,8 @@ import {TelegramPanel} from './desktop/TelegramPanel';
 import {FileCard} from './FileCard';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
+import {DriveLogo,GitHubLogo,YouTubeLogo} from './BrandLogos';
+import {FilePanel,canEditInPanel,type FilePanelHandle} from './files/FilePanel';
 import {SecuritySettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
 import {Legal} from './site/Legal';
@@ -88,7 +90,6 @@ import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
 import "./conversation.css";
 import "./motion.css";
-const DocumentViewer = lazy(() => import("./DocumentViewer"));
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -203,8 +204,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [filter, setFilter] = useState("All");
   const [sidebar, setSidebar] = useState(false);
   const [attach, setAttach] = useState(false);
-  const [viewFile, setViewFile] = useState<StoredFile | null>(null);
-  const [viewPage, setViewPage] = useState<number | undefined>(undefined);
+  // A file open beside the conversation; while `panelEdit` is on, messages edit it.
+  const [panelFile, setPanelFile] = useState<StoredFile | null>(null);
+  const [panelEdit, setPanelEdit] = useState(true);
+  const panelRef = useRef<FilePanelHandle>(null);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [apiReady, setApiReady] = useState(false);
@@ -366,7 +369,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   },[spaceId]);
   const conversationTarget=chatId||draftChatId.current;
   const desktopScope=activeSpace?`${activeSpace.kind}:${activeSpace.id}`:`chat:${chatId||draftChatId.current}`;
-  const skills = [...builtinSkills, ...state.skills.filter(s=>!s.builtin)];
+  // Built-in workflows apply automatically; the Skills page lists only the ones people make.
+  const skills = state.skills.filter(s=>!s.builtin);
   const bytes = state.files.reduce((n, f) => n + f.size, 0);
   function newChat(id: string | null = null) {
     setChatId(null);
@@ -473,11 +477,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     }
     const id = chatId || (desktop?draftChatId.current:uid());
     const messageId = uid();
+    const editing = !!panelFile && panelEdit && canEditInPanel(panelFile) && !isVisual && !long;
     const user = {
       id: uid(),
       role: "user" as const,
       content: prompt,
-      attachments: [...attachments],
+      attachments: [...new Set([...attachments, ...(panelFile ? [panelFile.id] : [])])],
     };
     const chat = activeChat || {
       id,
@@ -502,6 +507,24 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setDraft("");
     setAttachments([]);
     setAttach(false);
+    if (editing) {
+      const target = panelFile!;
+      const say = (content: string) => updateChat(id, (c) => ({ ...c, messages: c.messages.some((m) => m.id === messageId) ? c.messages.map((m) => (m.id === messageId ? { ...m, content } : m)) : [...c.messages, { id: messageId, role: "assistant", content, model: model || undefined }] }));
+      say(`Editing **${target.name}**…`);
+      setRunning(true);
+      const controller = new AbortController();
+      abort.current = controller;
+      controller.signal.addEventListener("abort", () => panelRef.current?.stop());
+      try {
+        const summary = await panelRef.current!.edit(prompt);
+        say(`${summary}\n\nThe changes are highlighted in **${target.name}**. Keep or discard them in the panel, or tell me what to adjust.`);
+      } catch (error) {
+        say(controller.signal.aborted ? `Stopped editing **${target.name}**.` : `I couldn’t edit **${target.name}**: ${(error as Error).message}`);
+      } finally {
+        setRunning(false);
+      }
+      return;
+    }
     const modelReady=models.some((m) => m.id === model && m.connected);
     // Built-in models answer instantly and offline; anything else is drawn by the connected model.
     if (isVisual && (matchVisual(prompt) || !modelReady)) {
@@ -743,7 +766,17 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   const sourceFiles=(chat?:Chat)=>{const ids=new Set([...(chat?.messages.flatMap(m=>m.attachments||[])||[]),...(state.spaces.find(s=>s.id===chat?.spaceId)?.sources||[])]);return state.files.filter(f=>ids.has(f.id)||f.spaceId===(chat?.spaceId??"__none"));};
   const canCite=(c:Citation)=>!!matchSource(stateRef.current.files,c.name);
-  const openCitation=(c:Citation)=>{const file=matchSource(stateRef.current.files,c.name);if(file){setViewPage(c.page);setViewFile(file);}};
+  /** Chat files open beside the conversation, ready to be edited by it. */
+  const openInPanel=(file:StoredFile)=>{setPanelFile(file);setPanelEdit(canEditInPanel(file));if(route!=='/app')navigate('/app');};
+  /** Files browsed outside a conversation open in the default browser (or their own app). */
+  async function openExternally(file:StoredFile){
+    try{
+      const blob=await getBlob(file.id);if(!blob)throw Error('This file is missing from this PC.');
+      if(desktop)await desktop.invoke({action:'openInBrowser',name:file.name,data:new Uint8Array(await blob.arrayBuffer())});
+      else{const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(url),60_000);}
+    }catch(e){setToast(cleanError(e));}
+  }
+  const openCitation=(c:Citation)=>{const file=matchSource(stateRef.current.files,c.name);if(file){openInPanel(file);}};
   function patchMessage(chat:string,message:string,fn:(m:Chat["messages"][number])=>Chat["messages"][number]){updateChat(chat,c=>({...c,messages:c.messages.map(m=>m.id===message?fn(m):m)}));}
   async function secondOpinion(chat:Chat,messageId:string,reviewer:string){
     if(running)return;
@@ -924,15 +957,18 @@ In this subject the learner keeps missing these questions in review; connect to 
     const owner=ownerRef.current;
     fileQueue.current = fileQueue.current.then(async () => {
       const added: StoredFile[] = [];
+      const renamed: string[] = [];
       for (const file of batch) {
         if(owner!==ownerRef.current)return;
         const id = uid();
         try {
           const remote = false;
+          const name = /\.pdf$/i.test(file.name) ? await (await import('./pdf/pdf-name')).readablePdfName(file) : file.name;
+          if (name !== file.name) renamed.push(name);
           await storeBlob(id, file);
           added.push({
             id,
-            name: file.name,
+            name,
             size: file.size,
             type: file.type,
             created: Date.now(),
@@ -951,7 +987,8 @@ In this subject the learner keeps missing these questions in review; connect to 
         patch((s) => ({ ...s, files: [...added, ...s.files],spaces:s.spaces.map(x=>x.id===destination?{...x,sources:[...x.sources,...added.map(f=>f.id)]}:x) }));
         if (!target && (route === "/app" || attachNow))
           setAttachments((a) => [...a, ...added.map((f) => f.id)]);
-        if (!attachNow) setToast(`${added.length} file${added.length === 1 ? "" : "s"} saved.`);
+        if (renamed.length) setToast(renamed.length === 1 ? `Saved as “${renamed[0]}”.` : `${added.length} files saved · ${renamed.length} renamed from their contents.`);
+        else if (!attachNow) setToast(`${added.length} file${added.length === 1 ? "" : "s"} saved.`);
       }
     });
   }
@@ -1050,7 +1087,8 @@ In this subject the learner keeps missing these questions in review; connect to 
       onAsk:ask,
       onDraft:prompt=>{newChat(space.id);setDraft(prompt);setTimeout(()=>composer.current?.focus(),80);},
       onOpenChat:chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');},
-      onOpenFile:file=>{setViewPage(undefined);setViewFile(file);},
+      onOpenFile:file=>void openExternally(file),
+      onEditFile:file=>{newChat(space.id);openInPanel(file);},
       onUpload:(files,folderId)=>upload(files,false,{spaceId:space.id,folderId}),
       onMake:(kind,folderId)=>{
         if(kind==='flashcards')return ask('/flashcards Create a flashcard deck from this subject’s sources and recent chats.');
@@ -1119,11 +1157,14 @@ In this subject the learner keeps missing these questions in review; connect to 
   ];
   const composerUI = (
     <form className="composer" onSubmit={send}>
+      {panelFile && canEditInPanel(panelFile) && <div className={"editing-chip" + (panelEdit ? "" : " off")}><span className="dot" />{panelEdit ? "Editing" : "Chatting about"} <b>{panelFile.name}</b><button type="button" onClick={() => setPanelEdit(!panelEdit)}>{panelEdit ? "Just chat" : "Edit it"}</button></div>}
       <textarea
         ref={composer}
         aria-label="Your message"
         placeholder={
-          long
+          panelFile && panelEdit && canEditInPanel(panelFile)
+            ? `Tell Mowr what to change in ${panelFile.name}…`
+            : long
             ? "Describe the whole task. Mowr plans the steps for you to review first…"
             : activeSpace
             ? `Think through ${activeSpace.name}…`
@@ -1167,7 +1208,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               aria-expanded={attach}
               onClick={() => setAttach(!attach)}
             >
-              <Icon name="plus" size={23} />
+              <Icon name="plus" size={19} />
             </button>
             {attach && (
               <div className="popover">
@@ -1188,7 +1229,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     setAttach(false);
                   }}
                 >
-                  <Icon name="drive" />
+                  <DriveLogo size={18} />
                   Add from Drive
                 </button>
                 <button
@@ -1198,10 +1239,10 @@ In this subject the learner keeps missing these questions in review; connect to 
                     setAttach(false);
                   }}
                 >
-                  <Icon name="play" />
+                  <YouTubeLogo size={18} />
                   Mention a YouTube video
                 </button>
-<button onClick={()=>{setModal('github');setAttach(false);}}><Icon name="github"/>Add from GitHub</button>
+<button onClick={()=>{setModal('github');setAttach(false);}}><GitHubLogo size={18}/>Add from GitHub</button>
                 {desktop&&<button type="button" onClick={()=>{setAttach(false);void desktop!.invoke({action:"captureScreen"}).catch(e=>setToast(cleanError(e)));}}><Icon name="capture"/>Capture screen<span className="popover-hint">Ctrl Shift Space</span></button>}
                 <button
                   type="button"
@@ -1380,6 +1421,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               </span>
             </header>
             {route === "/app" ? (
+              <div className="chat-split">
               <div
                 className={`chat-view ${activeChat?.messages.length ? "has-messages" : ""}`}
               >
@@ -1444,7 +1486,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                             )}
                           </div>
                           {m.content && <YouTubeReferences text={m.content}/> }
-                          {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=><FileCard key={f.id} file={f} onOpen={()=>{setViewPage(undefined);setViewFile(f);}} onError={setToast}/>)}
+                          {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=><FileCard key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>)}
                           {m.visual && (
                             <Suspense fallback={<p className="fine">Opening the visual…</p>}>
                               {m.visual === "choose" ? (
@@ -1484,6 +1526,11 @@ In this subject the learner keeps missing these questions in review; connect to 
                     </div>
                   </>
                 )}
+              </div>
+              {panelFile && <FilePanel ref={panelRef} key={panelFile.id} file={panelFile} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
+                onClose={() => setPanelFile(null)} onOpenExternally={(f) => void openExternally(f)}
+                onChange={(next) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? next : f)) })); setPanelFile(next); }}
+                onAsk={(text, edit) => { setPanelEdit(edit); setDraft(text); setTimeout(() => composer.current?.focus(), 30); }} />}
               </div>
             ) : pageSpace ? (
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
@@ -1624,7 +1671,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                       "Research",
                       "Writing",
                       "Work",
-                      "Your skills",
                     ].map((t) => (
                       <button
                         className={filter === t ? "active" : ""}
@@ -1644,9 +1690,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     .filter(
                       (s) =>
                         filter === "All" ||
-                        (filter === "Your skills"
-                          ? !s.builtin
-                          : s.category === filter),
+                        s.category === filter,
                     )
                     .map((s) => (
                       <button
@@ -1659,7 +1703,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                       >
                         <Icon name={s.icon} size={32} />
                         <span className="skill-category">
-                          {s.builtin ? "Built in · automatic" : "Your skill"}
+                          {s.category || "Your skill"}
                         </span>
                         <h2>{s.name}</h2>
                         <p>{s.description}</p>
@@ -1670,7 +1714,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                       </button>
                     ))}
                 </div>
-                {!state.skills.length && (
+                {!skills.length && (
                   <div className="empty-state">
                     <Illustration ambient scene="orchestrate" className="workspace-idle-art"/>
                     <h2>Your way of working belongs here.</h2>
@@ -1742,7 +1786,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                   ].map(([icon, title, desc, id]) => (
                     <article className="connector-row" key={id}>
                       <div className="connector-emblem">
-                        <Icon name={icon} size={32} />
+                        {icon === "drive" ? <DriveLogo size={30} /> : <GitHubLogo size={30} />}
                       </div>
                       <div>
                         <h2>{title}</h2>
@@ -1817,7 +1861,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                       <div className="file-row" key={f.id}>
                         <Icon name="files" size={24} />
                         <div>
-                          <button className="file-open" onClick={()=>{setViewPage(undefined);setViewFile(f);}}>{f.name}</button>
+                          <button className="file-open" onClick={()=>void openExternally(f)}>{f.name}</button>
                           <small>
                             {state.spaces.find((s) => s.id === f.spaceId)
                               ?.name || "Personal workspace"}{" "}
@@ -2398,11 +2442,10 @@ In this subject the learner keeps missing these questions in review; connect to 
         </Modal>
       )}
       {everything!==null&&<Suspense fallback={null}><SearchEverything initialQuery={everything} chats={state.chats} spaces={state.spaces} studySets={state.studySets} files={state.files} owner={ownerRef.current} scopeLabel={scopeLabel} onClose={()=>setEverything(null)}
-        onOpenChat={chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}} onOpenSpace={space=>openSpace(space.id)} onOpenFile={file=>{setViewPage(undefined);setViewFile(file);}} onOpenFolderFile={file=>setFolderView({file,folderId:file.folderId})}/></Suspense>}
+        onOpenChat={chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}} onOpenSpace={space=>openSpace(space.id)} onOpenFile={file=>void openExternally(file)} onOpenFolderFile={file=>setFolderView({file,folderId:file.folderId})}/></Suspense>}
       {folderView&&<Suspense fallback={null}><FolderBrowser initial={folderView.file} folderId={folderView.folderId} key={(folderView.folderId||'')+(folderView.file?.path||'')} scopeLabel={scopeLabel} onAsk={askAboutFolderFile} onClose={()=>setFolderView(null)}/></Suspense>}
       {packShare&&<Suspense fallback={null}><ShareSheet space={packShare.space} folderId={packShare.folderId} sets={state.studySets.filter(x=>x.spaceId===packShare.space.id)} files={state.files.filter(f=>f.spaceId===packShare.space.id)} author={state.name} onClose={()=>setPackShare(null)} onDone={message=>setToast(message)}/></Suspense>}
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
-      {viewFile&&<Suspense fallback={<div className="toast">Opening document…</div>}><DocumentViewer scope={desktopScope} modelId={models.find(m=>m.connected)?.id} selection={{model:model||undefined,reasoning:reasoning||undefined}} onChange={desktop?(next=>{patch(s=>({...s,files:s.files.map(f=>f.id===next.id?next:f)}));setViewFile(next);}):undefined} key={viewFile.id+(viewPage||'')} page={viewPage} file={viewFile} onClose={()=>setViewFile(null)} onAsk={selection=>{setDraft('Please help me revise this selection:\n\n'+selection);setAttachments(a=>[...new Set([...a,viewFile.id])]);navigate('/app');}}/></Suspense>}
       {toast && (
         <div className="toast" role="status">
           {toast}

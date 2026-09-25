@@ -60,6 +60,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderSearch"), query: z.string().trim().min(1).max(200) }),
   z.object({ action: z.literal("folderWatch"), enabled: z.boolean().optional() }),
   z.object({ action: z.literal("captureScreen") }),
+  z.object({ action: z.literal("openInBrowser"), name: z.string().min(1).max(200), data: z.instanceof(Uint8Array).refine((d) => d.length <= 300_000_000, "Files are limited to 300 MB.") }),
   z.object({ action: z.literal("documentPdf"), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(300000) }),
   z.object({
     action: z.literal("chat"),

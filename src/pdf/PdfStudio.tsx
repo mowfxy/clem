@@ -11,7 +11,7 @@ type Box={page:number;x:number;y:number;w:number;h:number};
 const clean=(e:unknown)=>(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/,'');
 
 /** Continuous pages, rendered sharp for the screen, with optional highlight boxes. */
-function Pages({pdf,highlights,onSelect}:{pdf:PDFDocumentProxy;highlights:Box[];onSelect?:(text:string)=>void}){
+export function Pages({pdf,highlights,onSelect}:{pdf:PDFDocumentProxy;highlights:Box[];onSelect?:(text:string)=>void}){
   const host=useRef<HTMLDivElement>(null);
   const [width,setWidth]=useState(0);
   useEffect(()=>{const el=host.current;if(!el)return;const ro=new ResizeObserver(()=>setWidth(Math.min(920,el.clientWidth-48)));ro.observe(el);return()=>ro.disconnect();},[]);
