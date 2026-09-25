@@ -92,6 +92,7 @@ import { weakConcepts } from "./SubjectStudy";
 import "./chat/chat.css";
 import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
+import { titleInstruction, takeTitle, hideTitleMarker } from "../core/chat-title";
 import "./conversation.css";
 import "./motion.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
@@ -686,10 +687,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     try {
       const memory = activeSpace ? activeSpace.memory : state.memory;
       const pictures = stateRef.current.files.filter((f) => user.attachments.includes(f.id) && f.type.startsWith("image/"));
-      if (pictures.length && model.startsWith("claude:")) throw Error("Image questions need a ChatGPT model. Choose one in the model menu, then send again.");
+      if (pictures.length && /^(claude|antigravity):/.test(model)) throw Error("Image questions need a ChatGPT model. Choose one in the model menu, then send again.");
       const images = desktop ? await Promise.all(pictures.slice(0, 4).map(async (f) => ({ name: f.name, data: await blobBase64(f.id) }))) : [];
       const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png`, data: p.image! }));
-      if (pointerImages.length && !model.startsWith("claude:")) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
+      if (pointerImages.length && !/^(claude|antigravity):/.test(model)) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
       const fileText = await attachmentText([
         ...user.attachments,
         ...(activeSpace?.sources || []),
@@ -711,7 +712,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
 
 ${answerInstructions}${memory ? `
 
-User-authorized memory for this scope: ${memory}` : ""}${struggling.length ? `
+User-authorized memory for this scope: ${memory}` : ""}
+
+${titleInstruction(chat.titled ? chat.title : null)}${struggling.length ? `
 
 In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : ""}`,
           },
@@ -733,12 +736,18 @@ In this subject the learner keeps missing these questions in review; connect to 
           updateChat(id, (c) => ({
             ...c,
             messages: c.messages.map((m) =>
-              m.id === messageId ? { ...m, content: text } : m,
+              m.id === messageId ? { ...m, content: isVisual ? text : hideTitleMarker(text) } : m,
             ),
           })),
         "chat", undefined, images,
       );
-      recordVisuals(id, reply);
+      const named = isVisual ? { content: reply } : takeTitle(reply);
+      updateChat(id, (c) => ({
+        ...c,
+        ...(named.title ? { title: named.title, titled: true } : {}),
+        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content } : m),
+      }));
+      recordVisuals(id, named.content);
     } catch (e) {
       updateChat(id, (c) => ({
         ...c,
