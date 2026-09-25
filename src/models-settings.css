@@ -350,3 +350,4 @@
 .cx-connect .provider-note{text-align:center;font-size:11px!important;color:#7f7e78!important}
 @media(prefers-reduced-motion:reduce){.cx-wire i,.cx-pulse{animation:none}.cx-wire i:first-child{opacity:1;left:34px}}
 .cx-mowr .mowr-mark{color:#141413}
+.setting-row button.secondary.danger,.settings-page button.secondary.danger{color:#f0a594;border-color:#6b3a31}.setting-row button.secondary.danger:hover:not(:disabled){background:#3a1f1d;color:#ffc3b5}

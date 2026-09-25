@@ -20,7 +20,7 @@ import {localSourceContext} from "./source-context";
 import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
-import {YouTubeReferences} from "./YouTubeReferences";
+import {LinkifiedText} from "./chat/Links";
 import {youtubeReference} from "./youtube";
 import {desktop,desktopChat} from './desktop/bridge';
 import {LinkedFolders} from './desktop/LinkedFolders';
@@ -32,8 +32,9 @@ import {TelegramPanel} from './desktop/TelegramPanel';
 import {FileCard} from './FileCard';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
-import {DriveLogo,GitHubLogo,YouTubeLogo} from './BrandLogos';
-import {FilePanel,canEditInPanel,type FilePanelHandle} from './files/FilePanel';
+import {DriveLogo} from './BrandLogos';
+import {FilePanel,canEditInPanel,type FilePanelHandle,type FilePointer} from './files/FilePanel';
+import {isEditRequest} from './files/intent';
 import {SecuritySettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
 import {Legal} from './site/Legal';
@@ -76,7 +77,6 @@ import {
 import type { Session } from "./Cloud";
 import { Landing } from "./site/Landing";
 import { Marketing } from "./site/Marketing";
-import { GitHubPicker } from "./GitHub";
 import { PlanEditor } from "./PlanEditor";
 import { ChatMenu } from "./ChatMenu";
 import { MessageBody, type BodyHandlers } from "./chat/MessageBody";
@@ -204,9 +204,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [filter, setFilter] = useState("All");
   const [sidebar, setSidebar] = useState(false);
   const [attach, setAttach] = useState(false);
-  // A file open beside the conversation; while `panelEdit` is on, messages edit it.
+  // A file open beside the conversation; requests to change it edit it in place.
   const [panelFile, setPanelFile] = useState<StoredFile | null>(null);
   const [panelEdit, setPanelEdit] = useState(true);
+  // Parts of the open file the person pointed at, sent with the next message.
+  const [pointers, setPointers] = useState<FilePointer[]>([]);
   const panelRef = useRef<FilePanelHandle>(null);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
@@ -477,12 +479,15 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     }
     const id = chatId || (desktop?draftChatId.current:uid());
     const messageId = uid();
-    const editing = !!panelFile && panelEdit && canEditInPanel(panelFile) && !isVisual && !long;
+    const editing = !!panelFile && panelEdit && canEditInPanel(panelFile) && !isVisual && !long && isEditRequest(prompt);
+    const pointed = pointers;
+    const pointerNote = pointed.length ? `\n\nThe user is pointing at these parts of ${panelFile?.name || "the file"}:\n` + pointed.map((p) => `- ${p.page ? "Page " + p.page + ": " : ""}${p.text ? "“" + p.text + "”" : ""}${p.image ? (p.text ? " " : "") + "(an area of the page, attached as an image)" : ""}`).join("\n") : "";
     const user = {
       id: uid(),
       role: "user" as const,
       content: prompt,
       attachments: [...new Set([...attachments, ...(panelFile ? [panelFile.id] : [])])],
+      ...(pointed.length ? { pointers: pointed.map((p) => ({ file: p.file, page: p.page, text: p.text?.slice(0, 600), area: !!p.image })) } : {}),
     };
     const chat = activeChat || {
       id,
@@ -507,6 +512,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setDraft("");
     setAttachments([]);
     setAttach(false);
+    setPointers([]);
+    setPanelEdit(true);
     if (editing) {
       const target = panelFile!;
       const say = (content: string) => updateChat(id, (c) => ({ ...c, messages: c.messages.some((m) => m.id === messageId) ? c.messages.map((m) => (m.id === messageId ? { ...m, content } : m)) : [...c.messages, { id: messageId, role: "assistant", content, model: model || undefined }] }));
@@ -516,7 +523,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       abort.current = controller;
       controller.signal.addEventListener("abort", () => panelRef.current?.stop());
       try {
-        const summary = await panelRef.current!.edit(prompt);
+        const summary = await panelRef.current!.edit(prompt + pointerNote);
         say(`${summary}\n\nThe changes are highlighted in **${target.name}**. Keep or discard them in the panel, or tell me what to adjust.`);
       } catch (error) {
         say(controller.signal.aborted ? `Stopped editing **${target.name}**.` : `I couldn’t edit **${target.name}**: ${(error as Error).message}`);
@@ -657,8 +664,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       const pictures = stateRef.current.files.filter((f) => user.attachments.includes(f.id) && f.type.startsWith("image/"));
       if (pictures.length && model.startsWith("claude:")) throw Error("Image questions need a ChatGPT model. Choose one in the model menu, then send again.");
       const images = desktop ? await Promise.all(pictures.slice(0, 4).map(async (f) => ({ name: f.name, data: await blobBase64(f.id) }))) : [];
+      const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png`, data: p.image! }));
+      if (pointerImages.length && !model.startsWith("claude:")) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
       const fileText = await attachmentText([
-        ...attachments,
+        ...user.attachments,
         ...(activeSpace?.sources || []),
       ],prompt);
       const studyKind=activeSpace?.kind==='subject'?studyRequest(prompt):null;
@@ -684,7 +693,7 @@ In this subject the learner keeps missing these questions in review; connect to 
           },
           ...next.messages
             .filter((m) => m.content)
-            .map((m) => ({ role: m.role, content: isVisual && m.id === user.id ? m.content.replace(/^\/visual\s*/i, "Visualize: ") : m.content })),
+            .map((m) => ({ role: m.role, content: (isVisual && m.id === user.id ? m.content.replace(/^\/visual\s*/i, "Visualize: ") : m.content) + (m.id === user.id ? pointerNote : "") })),
           ...(fileText
             ? [
                 {
@@ -988,7 +997,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         if (!target && (route === "/app" || attachNow))
           setAttachments((a) => [...a, ...added.map((f) => f.id)]);
         if (renamed.length) setToast(renamed.length === 1 ? `Saved as “${renamed[0]}”.` : `${added.length} files saved · ${renamed.length} renamed from their contents.`);
-        else if (!attachNow) setToast(`${added.length} file${added.length === 1 ? "" : "s"} saved.`);
+        // Saving is silent: the files appear where they were added, including whole folders.
       }
     });
   }
@@ -1095,7 +1104,14 @@ In this subject the learner keeps missing these questions in review; connect to 
         if(kind==='quiz')return ask('/quiz Create a quiz from this subject’s sources and recent chats.');
         const folder=folderId?(space.folders||[]).find(f=>f.id===folderId)||null:kind==='worksheet'?ensureFolder('Worksheets'):null;
         artifactTarget.current={spaceId:space.id,folderId:folder?.id||null,until:Date.now()+15*60_000,label:folder?.name||space.name};
-        ask(kind==='worksheet'?`Create a printable worksheet PDF for ${space.name}: 8 questions that rise in difficulty, built on my files and what I have studied here, with space to write answers.`:`Create a one-page summary sheet PDF of ${space.name} to revise from: the key ideas, definitions and formulas, clearly laid out.`);
+        if(kind==='summary'){
+          // A summary reads everything in the space, not only the files marked as sources.
+          const ids=stateRef.current.files.filter(f=>f.spaceId===space.id&&!f.type.startsWith('image/')).map(f=>f.id);
+          newChat(space.id);setAttachments(ids);
+          setQueued(`Create a complete, accurate summary PDF of ${space.name} from all of my files and what I have studied here. Use as many pages as the material needs; do not squeeze it onto one page. Follow the material's own structure: one section per topic in a logical order, each with the key ideas explained in plain words, precise definitions, every important formula with what its symbols mean, a short worked example where it helps, and common mistakes to avoid. End with a one-page recap of the most important points. Only state what the sources support, keep notation consistent with them, and cite the source file and page for key facts.`);
+          return;
+        }
+        ask(`Create a printable worksheet PDF for ${space.name}: 8 questions that rise in difficulty, built on my files and what I have studied here, with space to write answers.`);
       },
       onShare:folderId=>setPackShare({space:stateRef.current.spaces.find(x=>x.id===space.id)||space,folderId}),
       onUpdateSpace:next=>patch(s=>({...s,spaces:s.spaces.map(x=>x.id===next.id?next:x)})),
@@ -1157,13 +1173,13 @@ In this subject the learner keeps missing these questions in review; connect to 
   ];
   const composerUI = (
     <form className="composer" onSubmit={send}>
-      {panelFile && canEditInPanel(panelFile) && <div className={"editing-chip" + (panelEdit ? "" : " off")}><span className="dot" />{panelEdit ? "Editing" : "Chatting about"} <b>{panelFile.name}</b><button type="button" onClick={() => setPanelEdit(!panelEdit)}>{panelEdit ? "Just chat" : "Edit it"}</button></div>}
+      {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} title={p.text || "Selected area"}>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
       <textarea
         ref={composer}
         aria-label="Your message"
         placeholder={
-          panelFile && panelEdit && canEditInPanel(panelFile)
-            ? `Tell Mowr what to change in ${panelFile.name}…`
+          panelFile && canEditInPanel(panelFile)
+            ? pointers.length ? "What should Mowr do with this?" : "Ask about this file, or say what to change…"
             : long
             ? "Describe the whole task. Mowr plans the steps for you to review first…"
             : activeSpace
@@ -1232,17 +1248,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                   <DriveLogo size={18} />
                   Add from Drive
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModal("youtube");
-                    setAttach(false);
-                  }}
-                >
-                  <YouTubeLogo size={18} />
-                  Mention a YouTube video
-                </button>
-<button onClick={()=>{setModal('github');setAttach(false);}}><GitHubLogo size={18}/>Add from GitHub</button>
                 {desktop&&<button type="button" onClick={()=>{setAttach(false);void desktop!.invoke({action:"captureScreen"}).catch(e=>setToast(cleanError(e)));}}><Icon name="capture"/>Capture screen<span className="popover-hint">Ctrl Shift Space</span></button>}
                 <button
                   type="button"
@@ -1479,13 +1484,12 @@ In this subject the learner keeps missing these questions in review; connect to 
                               m.role === "assistant" ? (
                                 <MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} />
                               ) : (
-                                m.content
+                                <><LinkifiedText text={m.content} />{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
                               )
                             ) : (
                               <span className="thinking">Thinking…</span>
                             )}
                           </div>
-                          {m.content && <YouTubeReferences text={m.content}/> }
                           {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=><FileCard key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>)}
                           {m.visual && (
                             <Suspense fallback={<p className="fine">Opening the visual…</p>}>
@@ -1528,9 +1532,9 @@ In this subject the learner keeps missing these questions in review; connect to 
                 )}
               </div>
               {panelFile && <FilePanel ref={panelRef} key={panelFile.id} file={panelFile} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
-                onClose={() => setPanelFile(null)} onOpenExternally={(f) => void openExternally(f)}
+                onClose={() => { setPanelFile(null); setPointers([]); }} onOpenExternally={(f) => void openExternally(f)}
                 onChange={(next) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? next : f)) })); setPanelFile(next); }}
-                onAsk={(text, edit) => { setPanelEdit(edit); setDraft(text); setTimeout(() => composer.current?.focus(), 30); }} />}
+                onPoint={(p) => { setPointers((all) => [...all, p].slice(-6)); setTimeout(() => composer.current?.focus(), 30); }} />}
               </div>
             ) : pageSpace ? (
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
@@ -1777,28 +1781,20 @@ In this subject the learner keeps missing these questions in review; connect to 
                       "Reference the documents and folders you already work with.",
                       "drive",
                     ],
-                    [
-                      "github",
-                      "GitHub",
-                      "Bring selected repository files into your projects and conversations.",
-                      "github",
-                    ],
                   ].map(([icon, title, desc, id]) => (
                     <article className="connector-row" key={id}>
                       <div className="connector-emblem">
-                        {icon === "drive" ? <DriveLogo size={30} /> : <GitHubLogo size={30} />}
+                        <DriveLogo size={30} />
                       </div>
                       <div>
                         <h2>{title}</h2>
                         <p>{desc}</p>
                         <small>
-                          {id === "drive"
-                            ? "OAuth configuration required"
-                            : "Public repositories · private access with your read-only token"}
+                          Files you pick are added to your conversation
                         </small>
                       </div>
                       <button onClick={() => setModal(id)}>
-                        {id === "drive" ? "Set up Drive" : "Open GitHub"}
+                        Open Drive
                         <Icon name="arrow" size={18} />
                       </button>
                     </article>
@@ -1966,7 +1962,10 @@ In this subject the learner keeps missing these questions in review; connect to 
                     ) : (<>
                       <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
-                        <SettingsPopup title="Conversations" description={`${state.chats.length} saved on this PC`} action="Manage chats">{state.chats.map(c=><div className="settings-chat-row" key={c.id}><span>{c.title}</span><button onClick={async()=>{if(await confirmDialog({title:"Clear this chat?",message:`All messages in “${c.title}” are removed. The chat itself stays.`,confirm:"Clear messages",danger:true}))void clearChat(c);}}>Clear</button><button onClick={()=>setDeleteChatId(c.id)}>Delete</button></div>)}{!state.chats.length&&<p>No saved conversations.</p>}</SettingsPopup>
+                        <SettingRow title="Conversations" description={`${state.chats.length} saved on this PC`}><button className="secondary danger" disabled={!state.chats.length||running} onClick={async()=>{
+                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${state.chats.length} conversations are removed from this PC. Saved files, skills and memory are kept. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
+                          try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
+                        }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
                       <SettingsCard>
                         <SettingRow title="Privacy policy" description="How Mowr handles your information."><a className="secondary" href="https://mowrai.com/#/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
@@ -2044,11 +2043,9 @@ In this subject the learner keeps missing these questions in review; connect to 
                           ? "A new project"
                           : modal === "subject-create"
                             ? "A new subject"
-                            : modal === "github" ? "Bring in GitHub" : modal === "drive"
-                                ? "Bring in Google Drive"
-                                : modal === "youtube"
-                                  ? "A video to think with"
-                                  : modal === "attach-existing"
+                            : modal === "drive"
+                                ? "Google Drive"
+                                : modal === "attach-existing"
                                     ? "Choose a saved file"
                                     : "A thought for later"
           }
@@ -2306,8 +2303,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                 }}
               />
             </>
-          ) : modal === "github" ? (
-            <GitHubPicker session={session} onFile={(file)=>{const dt=new DataTransfer();dt.items.add(file);upload(dt.files);setModal(null);}}/>
           ) : modal === "drive" ? (
             <DrivePicker
               session={session}
@@ -2318,55 +2313,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                 setModal(null);
               }}
             />
-          ) : modal === "youtube" ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                let url: URL;
-                try {
-                  url = new URL(String(fd.get("url")));
-                  if (
-                    !youtubeReference(url.href)
-                  )
-                    throw Error();
-                } catch {
-                  setToast("Use a YouTube video link, such as youtube.com/watch?v=…");
-                  return;
-                }
-                setDraft(
-                  (d) =>
-                    `${d}${d ? "\n" : ""}Video reference: ${url.href}\n${String(fd.get("notes"))}\n`,
-                );
-                navigate("/app");
-                setModal(null);
-                setToast(
-                  "Video reference added. Attach a transcript for analysis; the link alone is not video access.",
-                );
-              }}
-            >
-              <label className="field">
-                YouTube link
-                <input
-                  name="url"
-                  type="url"
-                  required
-                  autoFocus
-                  placeholder="https://www.youtube.com/watch?v=…"
-                />
-              </label>
-              <label className="field">
-                What would you like to understand?
-                <textarea name="notes" rows={3} />
-              </label>
-              <p className="fine">
-                Mowr adds the link as a reference. Upload a transcript to give
-                the model the actual video content.
-              </p>
-              <button className="primary">
-                Add reference <Icon name="arrow" size={18} />
-              </button>
-            </form>
           ) : modal === "attach-existing" ? (
             <>
               {state.files.filter((f) => f.spaceId === spaceId).length ? (

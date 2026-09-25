@@ -35,6 +35,7 @@ import { Codex, codexFailureMessage } from "./codex";
 import { composePrompt } from "./prompt";
 import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
+import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeModels} from './claude';
 import {
   inside,
@@ -171,8 +172,17 @@ void app.whenReady().then(async () => {
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
   const claudeFor=(owner:string)=>{let value=claudeProviders.get(owner);if(!value){value=new ClaudeProvider(claudeExecutable,join(local,owner,'claude'));claudeProviders.set(owner,value);}return value;};
   let providerOwner = "";
+  const providerLink=new ProviderLink(auth,vault,local);
+  const linkFailed=(error:unknown)=>console.warn('Account linking:',(error as Error)?.message||error);
   async function selectProvider(owner: string) {
-    if(providerOwner!==owner){providerAccounts.stop();telegram?.stop();providerOwner=owner;}
+    if(providerOwner!==owner){
+      providerAccounts.stop();telegram?.stop();providerOwner=owner;
+      // Sign-ins kept with the Mowr account come back before any Codex process starts.
+      if(owner!=='signed-out')await Promise.race([
+        providerLink.restore(owner).then(r=>providerAccounts.adopt(owner,r.codex,r.written)),
+        new Promise(done=>setTimeout(done,8000)),
+      ]).catch(linkFailed);
+    }
     codex=await providerAccounts.selected(owner);
     return codex;
   }
@@ -436,7 +446,7 @@ void app.whenReady().then(async () => {
     const response = await net.fetch(pathToFileURL(path).toString());
     response.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src https://www.youtube-nocookie.com; object-src 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src https://www.youtube-nocookie.com; object-src 'none'",
     );
     return response;
   });
@@ -625,16 +635,28 @@ void app.whenReady().then(async () => {
       await shell.openExternal(url.href);
       return { pending: true };
     }
-    if (request.action === "providerAccounts") return providerAccounts.list(user.id,request.refresh);
+    if (request.action === "providerAccounts") {
+      const listed=await providerAccounts.list(user.id,request.refresh);
+      for(const account of listed.accounts)if(account.connected)void providerLink.backup(user.id,account.id,"codex",(account as {email?:string}).email||"").catch(linkFailed);
+      return listed;
+    }
     if (request.action === "providerAutoSwitch") return providerAccounts.setAutoSwitch(user.id,request.enabled);
-    if (request.action === "claudeStatus") return claudeFor(user.id).status(true);
+    if (request.action === "claudeStatus") {
+      const status=await claudeFor(user.id).status(true);
+      if(status.connected)void providerLink.backup(user.id,CLAUDE_LINK_ID,"claude",(status as {email?:string}).email||"").catch(linkFailed);
+      return status;
+    }
     if (request.action === "claudeLogin") return claudeFor(user.id).login();
     if (request.action === "claudeInstall") {await shell.openExternal('https://code.claude.com/docs/en/setup');return {opened:true};}
     if (request.action === "providerAccountRetry") return providerAccounts.retry(user.id,request.id);
     if (request.action === "providerAccountAdd") return providerAccounts.add(user.id);
-    if (request.action === "providerAccountStatus") return providerAccounts.status(user.id,request.id);
+    if (request.action === "providerAccountStatus") {
+      const status=await providerAccounts.status(user.id,request.id);
+      if(status.connected)void providerLink.backup(user.id,request.id,"codex",(status as {email?:string}).email||"").catch(linkFailed);
+      return status;
+    }
     if (request.action === "providerAccountSelect") {const result=await providerAccounts.activate(user.id,request.id);await selectProvider(user.id);return result;}
-    if (request.action === "providerAccountRemove") {const result=await providerAccounts.remove(user.id,request.id);await selectProvider(user.id);return result;}
+    if (request.action === "providerAccountRemove") {const result=await providerAccounts.remove(user.id,request.id);await providerLink.forget(user.id,request.id).catch(linkFailed);await selectProvider(user.id);return result;}
     if (request.action === "providerStatus")
       return { connected: await codex.status() };
     if (request.action === "providerLogin") return codex.login();

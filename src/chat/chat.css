@@ -178,3 +178,13 @@
 
 @media(prefers-reduced-motion:reduce){.visual-drafting,.drafting-dot,.review-live,.plan-step.running .plan-check,.plan-step.running .plan-check::after{animation:none}.plan-card,.review-panel,.verify-panel,.review-menu{animation:none}}
 html[data-quiet=true] .visual-drafting,html[data-quiet=true] .drafting-dot,html[data-quiet=true] .review-live,html[data-quiet=true] .plan-step.running .plan-check,html[data-quiet=true] .plan-step.running .plan-check::after{animation:none}
+/* Source check folds to one line */
+.verify-panel.folded{padding-bottom:10px}
+.verify-panel.folded header{margin-bottom:0}
+.verify-toggle{width:22px;height:22px;display:grid;place-items:center;flex:none;margin-left:-4px;padding:0;border:0;border-radius:6px;background:none;color:var(--c-muted);cursor:pointer}
+.verify-toggle:hover{background:#ffffff0f;color:#fff}
+.verify-toggle svg{transition:transform .2s;transform:rotate(-90deg)}
+.verify-toggle[aria-expanded=true] svg{transform:none}
+.verify-dots{display:inline-flex;gap:3px;margin-left:4px}
+.verify-dots .verify-dot{margin:0}
+.verify-dots .verify-dot.supported{background:var(--c-green)}.verify-dots .verify-dot.partial{background:var(--c-amber)}.verify-dots .verify-dot.unsupported{background:var(--c-coral)}.verify-dots .verify-dot{width:7px;height:7px}

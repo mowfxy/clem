@@ -1,8 +1,8 @@
 /* A file open beside the conversation, edited by the chat */
 .workspace.has-panel .chat-view{min-width:0}
-.chat-split{display:flex;min-height:0;flex:1;height:100%}
+.chat-split{display:flex;min-height:0;flex:1}
 .chat-split>.chat-view{flex:1;min-width:0}
-.file-panel{position:relative;flex:none;width:clamp(380px,46%,820px);height:100%;display:flex;flex-direction:column;margin:10px 10px 10px 0;border:1px solid #2f2f2c;border-radius:16px;background:#1a1a19;color:#eeede7;font-family:'Mowafy Sans Text',system-ui,sans-serif;overflow:hidden;box-sizing:border-box;max-height:calc(100% - 20px);animation:fp-in .28s cubic-bezier(.2,.9,.3,1)}
+.file-panel{position:relative;flex:none;width:clamp(380px,46%,820px);position:sticky;top:10px;align-self:flex-start;height:calc(100vh - 20px);display:flex;flex-direction:column;margin:10px 10px 10px 0;border:1px solid #2f2f2c;border-radius:16px;background:#1a1a19;color:#eeede7;font-family:'Mowafy Sans Text',system-ui,sans-serif;overflow:hidden;box-sizing:border-box;animation:fp-in .28s cubic-bezier(.2,.9,.3,1)}
 .file-panel.wide{width:min(72%,1200px)}
 @keyframes fp-in{from{opacity:0;transform:translateX(18px)}}
 .fp-head{display:flex;align-items:center;gap:4px;padding:10px 10px 10px 18px;border-bottom:1px solid #2a2a28;min-height:52px;box-sizing:border-box}
@@ -68,12 +68,26 @@
 .fp-picked button{padding:5px 10px;border-radius:99px;border:1px solid #3a3a37;background:#232322;color:#cfcec7;font-size:12px;cursor:pointer}
 .fp-picked button:hover{color:#fff;border-color:#55544f}
 .fp-flash{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:99px;background:#f2f1ec;color:#141413;font-size:12.5px;white-space:nowrap;box-shadow:0 10px 30px #0008;animation:ps-drop .3s ease-out both}
-/* The composer names the file it is editing */
-.editing-chip{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:5px 6px 5px 10px;width:max-content;max-width:100%;box-sizing:border-box;border-radius:10px;border:1px solid #3a3a37;background:#ffffff08;font:12.5px 'Mowafy Sans Text',sans-serif;color:#d8d7d0}
-.editing-chip b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
-.editing-chip .dot{width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px #ffffff22;flex:none}
-.editing-chip.off .dot{background:#6b6a64;box-shadow:none}
-.editing-chip button{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;border:0;background:#ffffff0d;color:#b5b4ad;font-size:11.5px;cursor:pointer}
-.editing-chip button:hover{color:#fff;background:#ffffff17}
-@media(max-width:900px){.chat-split{flex-direction:column}.file-panel,.file-panel.wide{width:auto;height:55%;margin:0 8px 8px}}
+@media(max-width:900px){.chat-split{flex-direction:column}.file-panel,.file-panel.wide{position:relative;top:0;width:auto;height:60vh;margin:0 8px 8px;align-self:stretch}}
 @media(prefers-reduced-motion:reduce){.file-panel,.fp-changed,.fp-flash{animation:none}.is-working .fp-body::before{animation:none}}
+
+.desktop-content .file-panel{top:46px;height:calc(100vh - 56px)}
+
+/* Pointing at part of a file: selections and areas go to the chat */
+.fp-body.area-mode .ps-page,.fp-body.area-mode .ps-text span{cursor:crosshair!important}
+.fp-area{position:absolute;z-index:4;border:1.5px solid #fff;border-radius:4px;background:#ffffff1f;box-shadow:0 0 0 9999px #0000002e;pointer-events:none}
+.fp-area.drawing{border-style:dashed}
+.fp-area button{position:absolute;right:0;bottom:-38px;pointer-events:auto;height:30px;padding:0 12px;border-radius:8px;border:0;background:#f2f1ec;color:#141413;font:500 12.5px 'Mowafy Sans Text',sans-serif;white-space:nowrap;box-shadow:0 8px 24px #0007;cursor:pointer}
+.fp-menu{position:fixed;z-index:600;min-width:200px;padding:5px;border-radius:12px;border:1px solid #3f3f3c;background:#262625;box-shadow:0 18px 50px #0009;font:13px 'Mowafy Sans Text',sans-serif;animation:ps-drop .14s ease-out}
+.fp-menu button{display:flex;align-items:center;gap:9px;width:100%;height:32px;padding:0 10px;border:0;border-radius:8px;background:none;color:#e9e8e2;cursor:pointer;text-align:left}
+.fp-menu button:hover{background:#ffffff0f}
+.fp-menu p{margin:6px 10px;color:#8f8e87;font-size:12px}
+/* Pointers waiting to go with the next message */
+.pointer-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+.pointer-chip{display:inline-flex;align-items:center;gap:7px;max-width:280px;height:30px;padding:0 4px 0 4px;border-radius:9px;border:1px solid #3a3a37;background:#ffffff08;font:12px 'Mowafy Sans Text',sans-serif;color:#d8d7d0}
+.pointer-chip img{width:34px;height:22px;object-fit:cover;border-radius:5px;background:#fff}
+.pointer-chip .pc-quote{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic;padding-left:4px}
+.pointer-chip small{color:#8f8e87;flex:none}
+.pointer-chip button{width:22px;height:22px;display:grid;place-items:center;border:0;border-radius:6px;background:none;color:#8f8e87;cursor:pointer;padding:0}
+.pointer-chip button:hover{background:#ffffff12;color:#fff}
+.message-pointers{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin-top:6px}

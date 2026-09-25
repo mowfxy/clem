@@ -10,7 +10,7 @@ export type Review = { model: string; content: string; status: 'running' | 'done
 export type ClaimCheck = { claim: string; status: 'supported' | 'partial' | 'unsupported'; source?: string; page?: number | null; quote?: string };
 export type Verification = { status: 'running' | 'done' | 'error'; claims?: ClaimCheck[]; error?: string };
 export type EditOutcome = { status: 'applied' | 'dismissed' | 'undone' | 'failed'; changeId?: string; error?: string };
-export type Message = { id: string; role: 'user' | 'assistant'; content: string; visual?: boolean | string; visualParams?: Record<string, number>; plan?: Plan; attachments?: string[]; model?: string; review?: Review; verify?: Verification; edits?: Record<string, EditOutcome> };
+export type Message = { id: string; role: 'user' | 'assistant'; content: string; visual?: boolean | string; visualParams?: Record<string, number>; plan?: Plan; attachments?: string[]; pointers?: { file: string; page?: number; text?: string; area?: boolean }[]; model?: string; review?: Review; verify?: Verification; edits?: Record<string, EditOutcome> };
 export type Chat = { model?: string; reasoning?: string; pinned?: boolean; id: string; title: string; spaceId: string | null; messages: Message[]; updated: number };
 /** An earlier version of an edited file, kept on this PC so the edit can be undone. */
 export type FileVersion = { blob: string; at: number; summary: string; size: number };

@@ -1,7 +1,7 @@
 import {signOutSupabase} from './supabase';
 import {desktop} from './desktop/bridge';
 import { useEffect, useState, useRef } from "react";
-import { Icon } from "./Icons";
+import { Icon, Logo } from "./Icons";
 export type Session = {
   user: { id: string; name: string; email?: string } | null;
   database: boolean;
@@ -306,7 +306,7 @@ export function ConnectModel({
     </form>
   );
 }
-type DriveFile = { id: string; name: string; mimeType: string; size?: string };
+type DriveFile = { id: string; name: string; mimeType: string; size?: string; modifiedTime?: string };
 export function DrivePicker({
   session,
   onFile,
@@ -345,80 +345,79 @@ export function DrivePicker({
     window.addEventListener("focus", refresh);
     return () => {loadVersion.current++;window.removeEventListener("focus", refresh);};
   }, [folder, session.user?.id, session.drive]);
+  const [trail, setTrail] = useState<{ id: string; name: string }[]>([]);
+  const [started, setStarted] = useState(false);
+  const connect = () => { setStarted(true); if (desktop) void desktop.invoke({ action: "driveConnect" }).catch((e) => setError(e.message)); else window.location.href = "/api/drive/connect"; };
+  const open = (f: DriveFile) => { setTrail((t) => [...t, { id: f.id, name: f.name }]); setFolder(f.id); };
+  const up = (index: number) => { const next = trail.slice(0, index); setTrail(next); setFolder(next.at(-1)?.id || ""); };
+  async function pick(f: DriveFile) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/drive/file/${f.id}`);
+      if (!r.ok) throw new Error((await r.json()).error);
+      const blob = await r.blob();
+      onFile(new File([blob], decodeURIComponent(r.headers.get("X-Mowr-File-Name") || encodeURIComponent(f.name)), { type: blob.type }));
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  if (!session.user || !session.drive) return <div className="drive-picker drive-intro">
+    <DriveHero />
+    <h3>Google Drive</h3>
+    <p>Sign in to Mowr to bring files in from your Drive.</p>
+  </div>;
+  if (!connected) return <div className="drive-picker drive-intro">
+    <DriveHero />
+    <h3>Connect Google Drive</h3>
+    <p>Bring documents, slides and PDFs from your Drive into a conversation.</p>
+    <ul className="drive-points">
+      <li><Icon name="check" size={14} />You pick each file. Nothing else is read.</li>
+      <li><Icon name="check" size={14} />Picked files are copied into Mowr and stay on this PC.</li>
+      <li><Icon name="check" size={14} />Disconnect anytime from this window.</li>
+    </ul>
+    <button className="drive-go" disabled={busy} onClick={connect}><GoogleG />{busy ? "Checking…" : started ? "Continue in your browser, then come back" : "Continue with Google"}</button>
+    {error && started && <p className="inline-error">{error}</p>}
+  </div>;
   return (
     <div className="drive-picker">
-      <p className="muted">
-        Choose files to add to this conversation.
-      </p>
-      {session.user && session.drive ? (
-        <>
-          <div className="modal-actions">
-            <button
-              onClick={() => {
-                if (desktop) void desktop.invoke({action:"driveConnect"}).catch(e=>setError(e.message));
-                else window.location.href = "/api/drive/connect";
-              }}
-            >
-              Connect Drive
-            </button>
-            <button disabled={busy} onClick={()=>void load()}>Refresh</button>
-            {connected&&<button disabled={busy} onClick={()=>{setBusy(true);void api("drive/connection","DELETE").then(()=>{setConnected(false);setFiles([]);setPage(undefined);setError("");}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>Disconnect</button>}
-            {folder && <button onClick={() => setFolder("")}>All files</button>}
-          </div>
-          {busy && <p className="fine">Loading Drive…</p>}
-          {!busy&&!error&&connected&&!files.length&&<p className="fine">No files in this folder.</p>}
-          <div className="drive-list">
-            {files.map((f) => (
-              <button
-                key={f.id}
-                disabled={busy}
-                onClick={async () => {
-                  if (f.mimeType === "application/vnd.google-apps.folder") {
-                    setFolder(f.id);
-                    return;
-                  }
-                  setBusy(true);
-                  try {
-                    const r = await fetch(`/api/drive/file/${f.id}`);
-                    if (!r.ok) throw new Error((await r.json()).error);
-                    const blob = await r.blob();
-                    onFile(
-                      new File(
-                        [blob],
-                        decodeURIComponent(r.headers.get("X-Mowr-File-Name") || encodeURIComponent(f.name)),
-                        { type: blob.type },
-                      ),
-                    );
-                  } catch (e) {
-                    setError((e as Error).message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                <Icon
-                  name={
-                    f.mimeType === "application/vnd.google-apps.folder"
-                      ? "projects"
-                      : "files"
-                  }
-                  size={19}
-                />
-                <span>{f.name}</span>
-                <Icon name="arrow" size={16} />
-              </button>
-            ))}
-          </div>
-          {page && <button onClick={() => void load(page)}>Load more</button>}
-        </>
-      ) : (
-        <p className="setup-note">
-          Google Drive is not available yet. Sign in to Mowr and try again.
-        </p>
-      )}
+      <div className="drive-bar">
+        <nav className="drive-trail" aria-label="Folder">
+          <button className={trail.length ? "" : "here"} onClick={() => up(0)}><DriveMark />My Drive</button>
+          {trail.map((t, i) => <span key={t.id}><span className="drive-sep">/</span><button className={i === trail.length - 1 ? "here" : ""} onClick={() => up(i + 1)}>{t.name}</button></span>)}
+        </nav>
+        <button className="drive-icon" title="Refresh" aria-label="Refresh" disabled={busy} onClick={() => void load()}><Icon name="undo" size={15} /></button>
+        <button className="drive-text" title="Disconnect Drive" aria-label="Disconnect Drive" disabled={busy} onClick={() => { setBusy(true); void api("drive/connection", "DELETE").then(() => { setConnected(false); setFiles([]); setPage(undefined); setTrail([]); setFolder(""); setError(""); setStarted(false); }).catch((e) => setError(e.message)).finally(() => setBusy(false)); }}>Disconnect</button>
+      </div>
+      <div className={"drive-list" + (busy ? " loading" : "")}>
+        {files.map((f) => {
+          const folderRow = f.mimeType === "application/vnd.google-apps.folder";
+          return <button key={f.id} disabled={busy} onClick={() => (folderRow ? open(f) : void pick(f))}>
+            <FileKind mime={f.mimeType} name={f.name} />
+            <span className="drive-name">{f.name}</span>
+            <small>{f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString([], { month: "short", day: "numeric", year: new Date(f.modifiedTime).getFullYear() === new Date().getFullYear() ? undefined : "numeric" }) : ""}</small>
+            <span className="drive-add">{folderRow ? <Icon name="arrow" size={14} /> : "Add"}</span>
+          </button>;
+        })}
+        {busy && !files.length && Array.from({ length: 5 }, (_, i) => <div key={i} className="drive-skeleton" />)}
+        {!busy && !error && !files.length && <p className="drive-empty">This folder is empty.</p>}
+      </div>
+      {page && <button className="drive-more" disabled={busy} onClick={() => void load(page)}>Show more</button>}
       {error && <p className="inline-error">{error}</p>}
     </div>
   );
+}
+
+function DriveMark() {
+  return <svg width="15" height="15" viewBox="0 0 87.3 78" aria-hidden="true"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" /><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47" /><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335" /><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" /><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" /><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" /></svg>;
+}
+function DriveHero() {
+  return <div className="drive-hero" aria-hidden="true"><span className="drive-tile mowr"><Logo size={26} /></span><span className="drive-wire"><i /><i /><i /></span><span className="drive-tile"><DriveMark /></span></div>;
+}
+function GoogleG() {
+  return <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.4 13.7 17.7 9.5 24 9.5z" /><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z" /><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l8-6.1z" /><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.2-13.5-10l-8 6.1C6.6 42.6 14.6 48 24 48z" /></svg>;
+}
+function FileKind({ mime, name }: { mime: string; name: string }) {
+  const kind = mime.endsWith(".folder") ? "folder" : /document|msword|wordprocessing/.test(mime) ? "doc" : /spreadsheet|excel|csv/.test(mime) ? "sheet" : /presentation|powerpoint/.test(mime) ? "slides" : /pdf/.test(mime) || /\.pdf$/i.test(name) ? "pdf" : mime.startsWith("image/") ? "image" : "file";
+  const label = { folder: "", doc: "W", sheet: "X", slides: "P", pdf: "PDF", image: "", file: "" }[kind];
+  return <span className={"drive-kind " + kind} aria-hidden="true">{kind === "folder" ? <Icon name="projects" size={15} /> : kind === "image" ? <Icon name="capture" size={14} /> : label || <Icon name="files" size={14} />}</span>;
 }
 
 type Scheduled = {

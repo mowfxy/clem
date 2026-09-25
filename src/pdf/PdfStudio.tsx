@@ -42,7 +42,7 @@ function Page({pdf,n,w,h,scale,boxes}:{pdf:PDFDocumentProxy;n:number;w:number;h:
     })().catch(()=>{});
     return()=>{cancelled=true;task?.cancel();};
   },[pdf,n,scale]);
-  return <div className="ps-page" style={{width:w,height:viewportH}}>
+  return <div className="ps-page" data-page={n} style={{width:w,height:viewportH}}>
     <canvas ref={canvas} style={{width:w,height:viewportH}} aria-label={`Page ${n}`}/>
     <div className="ps-text textLayer" ref={text}/>
     {boxes.map((b,i)=><span key={i} className="ps-mark" style={{left:b.x*scale,top:viewportH-(b.y+b.h)*scale,width:b.w*scale,height:b.h*scale,animationDelay:`${i*70}ms`}}/>)}

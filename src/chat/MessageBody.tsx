@@ -1,4 +1,5 @@
 import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from 'react';
+import { LinkChip, YouTubeEmbed, videosIn } from './Links';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -7,7 +8,6 @@ import 'katex/dist/katex.min.css';
 import { linkCitations, readCitation, type Citation } from '../../core/citations';
 import { parseVisual } from '../../core/visual-spec';
 import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
-import { youtubeReference } from '../youtube';
 import { Icon } from '../Icons';
 import { EditProposal, type EditBlock } from './EditProposal';
 import type { EditOutcome } from '../../core/types';
@@ -82,8 +82,11 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
             const usable = handlers.canCite?.(cite) ?? false;
             return <button type="button" className={`cite ${usable ? '' : 'unavailable'}`} title={usable ? `Open ${cite.name}${cite.page ? ', page ' + cite.page : ''}` : `${cite.name} is not in your files`} onClick={() => usable && handlers.onCite?.(cite)}><Icon name="files" size={12} /><span>{children}</span></button>;
           }
-          return <a href={href} className={href && youtubeReference(href) ? 'youtube-citation' : undefined} target="_blank" rel="noopener">{children}</a>;
+          return href ? <LinkChip href={href}>{children}</LinkChip> : <>{children}</>;
         },
+        // A paragraph that mentions a YouTube video is followed by the video, ready to play.
+        p: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <>{<p>{children}</p>}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}</>; },
+        li: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <li>{children}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}</li>; },
         table: ({ children }) => <div className="table-wrap"><table>{children}</table></div>,
         pre: ({ children }) => {
           const child = (Array.isArray(children) ? children[0] : children) as { props?: { className?: string; children?: ReactNode } } | undefined;

@@ -5,7 +5,7 @@ import type { Vault } from "./vault";
 import { hasCapacity, isBelowSwitchThreshold, resetWindows } from "../core/account-usage.ts";
 type Registry = { active: string; ids: string[] };
 type AccountStatus = {id:string;connected:boolean;email?:string;usage?:any;checkedAt?:number;[key:string]:any};
-/** Each account has its own Codex home and OS-keyring credential namespace. */
+/** Each account has its own Codex home and credential file, which ProviderLink keeps with the Mowr account. */
 export class ProviderAccounts {
   private clients = new Map<string, Codex>();
   private registries = new Map<string, Registry>();
@@ -176,6 +176,24 @@ export class ProviderAccounts {
       this.clients.delete(owner + ":" + id);
       this.snapshots.delete(owner + ':' + id);
       return { ok: true };
+    });
+  }
+  /** Adds ChatGPT connections restored from the Mowr account, and restarts the Codex processes
+   *  whose credentials were just written so they pick them up. */
+  async adopt(owner: string, linked: { id: string }[], written: string[]) {
+    return this.exclusive(async () => {
+      for (const id of written) { const key = owner + ":" + id; this.clients.get(key)?.stop(); this.clients.delete(key); this.snapshots.delete(key); }
+      const r = await this.registry(owner);
+      const missing = linked.map((l) => l.id).filter((id) => !r.ids.includes(id));
+      if (!missing.length) return r;
+      let ids = [...r.ids, ...missing].slice(0, 10);
+      // A fresh install starts with an empty "default" slot; drop it when linked accounts arrive.
+      const defaultEmpty = ids.includes("default") && !linked.some((l) => l.id === "default") && !(await this.client(owner, "default").account(false).catch(() => null))?.connected;
+      if (defaultEmpty) ids = ids.filter((id) => id !== "default");
+      const next = { ids, active: ids.includes(r.active) ? r.active : ids[0] };
+      await this.vault.write("providers-" + owner, next);
+      this.registries.set(owner, next);
+      return next;
     });
   }
   stop() {

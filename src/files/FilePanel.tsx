@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,6 +15,9 @@ import "../pdf/pdf-studio.css";
 import "./file-panel.css";
 
 export type FilePanelHandle = { edit: (instruction: string) => Promise<string>; stop: () => void };
+/** A part of the open file the person pointed at: selected text, or an area cropped as an image. */
+export type FilePointer = { id: string; file: string; page?: number; text?: string; image?: string };
+type Area = { page: HTMLElement; n: number; x: number; y: number; w: number; h: number };
 type Kind = "pdf" | "office" | "text" | "image" | "other";
 type Box = { page: number; x: number; y: number; w: number; h: number };
 type View =
@@ -47,8 +51,8 @@ async function commitBlob(file: StoredFile, previous: Blob, next: Blob, summary:
  *  view, highlighted, and are kept or discarded here. */
 export const FilePanel = forwardRef<FilePanelHandle, {
   file: StoredFile; scope: string; selection?: { model?: string; reasoning?: string }; page?: number;
-  onClose: () => void; onChange: (file: StoredFile) => void; onOpenExternally: (file: StoredFile) => void; onAsk: (text: string, edit: boolean) => void;
-}>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onAsk }, ref) {
+  onClose: () => void; onChange: (file: StoredFile) => void; onOpenExternally: (file: StoredFile) => void; onPoint: (pointer: FilePointer) => void;
+}>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onPoint }, ref) {
   const kind = kindOf(file.name);
   const [blob, setBlob] = useState<Blob>();
   const [view, setView] = useState<View>();
@@ -59,7 +63,32 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const [compare, setCompare] = useState<"before" | "after">("after");
   const [wide, setWide] = useState(false);
   const [flash, setFlash] = useState("");
-  const [picked, setPicked] = useState("");
+  const [menu, setMenu] = useState<{ x: number; y: number; text?: string; page?: number; area?: boolean } | null>(null);
+  const [area, setArea] = useState<Area | null>(null);
+  const [areaMode, setAreaMode] = useState(false);
+  const drag = useRef<{ page: HTMLElement; n: number; x0: number; y0: number } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    addEventListener("pointerdown", close); addEventListener("keydown", key); addEventListener("wheel", close, { passive: true });
+    return () => { removeEventListener("pointerdown", close); removeEventListener("keydown", key); removeEventListener("wheel", close); };
+  }, [menu]);
+  const point = (pointer: Omit<FilePointer, "id" | "file">) => { onPoint({ id: crypto.randomUUID(), file: file.name, ...pointer }); setMenu(null); window.getSelection()?.removeAllRanges(); setFlash("Added to chat"); };
+  function crop(a: Area) {
+    const canvas = a.page.querySelector("canvas");
+    if (!canvas) return undefined;
+    const ratio = canvas.width / canvas.clientWidth, scale = Math.min(1, 1400 / (a.w * ratio));
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, Math.round(a.w * ratio * scale)); out.height = Math.max(1, Math.round(a.h * ratio * scale));
+    out.getContext("2d")!.drawImage(canvas, a.x * ratio, a.y * ratio, a.w * ratio, a.h * ratio, 0, 0, out.width, out.height);
+    return out.toDataURL("image/png").split(",")[1];
+  }
+  function areaText(a: Area) {
+    const box = a.page.getBoundingClientRect(), words: string[] = [];
+    a.page.querySelectorAll<HTMLElement>(".ps-text span").forEach((span) => { const r = span.getBoundingClientRect(), cx = r.left + r.width / 2 - box.left, cy = r.top + r.height / 2 - box.top; if (cx >= a.x && cx <= a.x + a.w && cy >= a.y && cy <= a.y + a.h && span.textContent?.trim()) words.push(span.textContent.trim()); });
+    return words.join(" ").slice(0, 2000);
+  }
   const [current, setCurrent] = useState(file);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => { setCurrent(file); }, [file.id]);
@@ -195,7 +224,33 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       <button className="fp-ghost" onClick={() => setProposal(null)}>Discard</button>
       <button className="fp-keep" onClick={() => void keep()}>Keep</button>
     </div>}
-    <div className="fp-body" onMouseUp={() => { const s = window.getSelection()?.toString().trim(); setPicked(s ? s.slice(0, 4000) : ""); }}>
+    <div className={"fp-body" + (areaMode ? " area-mode" : "")}
+      onContextMenu={(e) => {
+        const sel = window.getSelection(), text = sel?.toString().trim();
+        const inside = !!sel?.anchorNode && e.currentTarget.contains(sel.anchorNode);
+        const target = (e.target as Element).closest<HTMLElement>(".ps-page");
+        e.preventDefault();
+        if (text && inside) { const pageEl = (sel!.anchorNode!.parentElement as Element | null)?.closest<HTMLElement>(".ps-page"); setMenu({ x: e.clientX, y: e.clientY, text: text.slice(0, 4000), page: pageEl ? Number(pageEl.dataset.page) : undefined }); }
+        else if (area && target === area.page) setMenu({ x: e.clientX, y: e.clientY, area: true, page: area.n });
+        else setMenu({ x: e.clientX, y: e.clientY, page: target ? Number(target.dataset.page) : undefined });
+      }}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        const target = e.target as Element, pageEl = target.closest<HTMLElement>(".ps-page");
+        if (!pageEl || (!areaMode && target.closest(".ps-text span"))) { if (!target.closest(".fp-area")) setArea(null); return; }
+        e.preventDefault();
+        const box = pageEl.getBoundingClientRect();
+        drag.current = { page: pageEl, n: Number(pageEl.dataset.page), x0: e.clientX - box.left, y0: e.clientY - box.top };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        window.getSelection()?.removeAllRanges();
+        setArea(null);
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current; if (!d) return;
+        const box = d.page.getBoundingClientRect(), x = Math.max(0, Math.min(box.width, e.clientX - box.left)), y = Math.max(0, Math.min(box.height, e.clientY - box.top));
+        setArea({ page: d.page, n: d.n, x: Math.min(x, d.x0), y: Math.min(y, d.y0), w: Math.abs(x - d.x0), h: Math.abs(y - d.y0) });
+      }}
+      onPointerUp={() => { if (!drag.current) return; drag.current = null; setAreaMode(false); setArea((a) => (a && a.w > 12 && a.h > 12 ? a : null)); }}>
       {error && <p className="fp-error" role="alert">{error}</p>}
       {!shown && !imageUrl && !error && kind !== "other" && <p className="fp-note">Opening…</p>}
       {kind === "other" && <div className="fp-empty"><p>Mowr can’t show this format here.</p><button className="fp-ghost" onClick={() => onOpenExternally(current)}>Open with its app</button></div>}
@@ -207,7 +262,15 @@ export const FilePanel = forwardRef<FilePanelHandle, {
         : <article className="fp-paper fp-code">{shown.text.split("\n").map((line, i) => <div key={i} className={shown.changed.has(i) ? "fp-changed" : undefined}>{line || " "}</div>)}</article>)}
     </div>
     {working && <div className="fp-working" role="status"><Logo size={18} thinking /><div><strong>{working}</strong><small>Editing live · you can keep reading</small></div><button className="fp-ghost" onClick={() => abort.current?.abort()}>Stop</button></div>}
-    {picked && !working && <div className="fp-picked"><span>“{picked.slice(0, 80)}{picked.length > 80 ? "…" : ""}”</span><button onClick={() => { onAsk(`Change “${picked.slice(0, 300)}” to `, true); setPicked(""); }}>Change this</button><button onClick={() => { onAsk(`About this part of ${file.name}:\n“${picked}”\n\n`, false); setPicked(""); }}>Ask about it</button></div>}
+    {area && !drag.current && createPortal(<div className="fp-area" style={{ left: area.x, top: area.y, width: area.w, height: area.h }}><button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => { const image = crop(area); point({ page: area.n, image, text: areaText(area) || undefined }); setArea(null); }}>Add to chat</button></div>, area.page)}
+    {area && drag.current && createPortal(<div className="fp-area drawing" style={{ left: area.x, top: area.y, width: area.w, height: area.h }} />, area.page)}
+    {menu && <div className="fp-menu" role="menu" style={{ left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 140) }} onPointerDown={(e) => e.stopPropagation()}>
+      {menu.text && <button role="menuitem" onClick={() => point({ page: menu.page, text: menu.text })}><Icon name="chat" size={15} />Add selection to chat</button>}
+      {menu.text && <button role="menuitem" onClick={() => { void navigator.clipboard?.writeText(menu.text!); setMenu(null); }}><Icon name="copy" size={15} />Copy</button>}
+      {menu.area && area && <button role="menuitem" onClick={() => { point({ page: area.n, image: crop(area), text: areaText(area) || undefined }); setArea(null); }}><Icon name="chat" size={15} />Add this area to chat</button>}
+      {shown?.kind === "pdf" && <button role="menuitem" onClick={() => { setAreaMode(true); setArea(null); setMenu(null); }}><Icon name="capture" size={15} />Select an area…</button>}
+      {!menu.text && !menu.area && shown?.kind !== "pdf" && <p>Select text first, then right-click to add it.</p>}
+    </div>}
     {flash && <div className="fp-flash" role="status"><Icon name="check" size={14} />{flash}</div>}
   </aside>;
 });

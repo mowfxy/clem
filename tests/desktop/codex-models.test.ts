@@ -76,7 +76,7 @@ test("Codex execution passes selected model and effort and rejects unsupported e
   assert.equal(turn.model,"model-a");assert.equal(turn.effort,"high");
   assert.equal(thread.ephemeral,true);assert.equal(thread.sandbox,"read-only");
   assert.equal(thread.config["features.shell_tool"],false);
-  assert.ok(args.includes('cli_auth_credentials_store="keyring"'));
+  assert.ok(args.includes('cli_auth_credentials_store="file"'));
   await assert.rejects(
     () =>
       codex.run("id", "prompt", () => {}, [], {
