@@ -2,7 +2,8 @@ module.exports = {
   appId: "com.mowrai.desktop",
   productName: "Mowr",
   copyright: "Copyright © Mowr Ai",
-  directories: { output: "release", app: "desktop-package" },
+  // MOWR_RELEASE_DIR lets a release build while a copy from release/win-unpacked is still open (Windows locks it).
+  directories: { output: process.env.MOWR_RELEASE_DIR || "release", app: "desktop-package" },
   asar: true,
   electronVersion: "44.4.3",
   // Copy the Electron runtime npm already installed instead of re-extracting the zip; Windows antivirus
