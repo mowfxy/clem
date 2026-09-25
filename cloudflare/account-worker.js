@@ -1,4 +1,5 @@
 import { handleProviders } from "./provider-vault.js";
+import { pack, unpack } from "./lib/pack.js";
 import { validateSync } from "../core/sync.ts";
 import {
   normalizeUsername,
@@ -147,7 +148,7 @@ async function route(request, env) {
             .first();
           return json(
             row
-              ? { revision: row.revision, data: JSON.parse(row.payload) }
+              ? { revision: row.revision, data: JSON.parse(await unpack(row.payload)) }
               : { revision: 0, data: [] },
           );
         }
@@ -190,13 +191,15 @@ async function route(request, env) {
             400,
           );
         }
+        // Stored deflated: skills and memory are text-heavy and compress several times over.
+        const packed = await pack(JSON.stringify(data));
         const row = await env.DB.prepare(
           "INSERT INTO desktop_sync(user_id,kind,revision,payload,updated_at) SELECT ?,?,1,?,? WHERE ?=0 ON CONFLICT(user_id,kind) DO UPDATE SET revision=desktop_sync.revision+1,payload=excluded.payload,updated_at=excluded.updated_at WHERE desktop_sync.revision=? RETURNING revision",
         )
           .bind(
             user.id,
             kind,
-            JSON.stringify(data),
+            packed,
             new Date().toISOString(),
             body.revision,
             body.revision,
@@ -210,7 +213,7 @@ async function route(request, env) {
                 "UPDATE desktop_sync SET revision=revision+1,payload=?,updated_at=? WHERE user_id=? AND kind=? AND revision=? RETURNING revision",
               )
                 .bind(
-                  JSON.stringify(data),
+                  packed,
                   new Date().toISOString(),
                   user.id,
                   kind,

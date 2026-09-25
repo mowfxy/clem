@@ -5,9 +5,12 @@ import type { DesktopAuth } from "./auth";
 import type { Vault } from "./vault";
 
 type Kind = "codex" | "claude";
+/** Connections kept as a value rather than a file (for example the Telegram bot and its chats). */
+export type LinkedValue = { id: string; kind: "telegram"; data: string };
 type Linked = { id: string; kind: Kind; label: string; hash: string; data: string };
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 export const CLAUDE_LINK_ID = "claude";
+export const TELEGRAM_LINK_ID = "telegram";
 
 /** Keeps ChatGPT (Codex) and Claude sign-ins with the Mowr account: each credential file is backed
  *  up (encrypted by the account service) when it changes, and written back after a reinstall or on
@@ -61,6 +64,17 @@ export class ProviderLink {
     });
   }
 
+  /** Uploads a connection kept as a value when it differs from the last upload. */
+  backupValue(owner: string, id: string, kind: "telegram", data: string, label = "") {
+    return this.serial(async () => {
+      if (!(await this.signedIn(owner))) return;
+      const hash = sha(data), uploaded = await this.uploaded(owner);
+      if (uploaded[id] === hash) return;
+      await this.auth.cloud("/providers/put", { id, kind, label, hash, data });
+      await this.vault.write("provider-link-" + owner, { ...uploaded, [id]: hash });
+    });
+  }
+
   /** Removes a connection from the account, so other PCs stop restoring it. */
   forget(owner: string, id: string) {
     return this.serial(async () => {
@@ -77,11 +91,12 @@ export class ProviderLink {
    *  the ids whose credentials were written, so their Codex processes can restart. */
   restore(owner: string) {
     return this.serial(async () => {
-      const result = { codex: [] as { id: string; label: string }[], written: [] as string[] };
+      const result = { codex: [] as { id: string; label: string }[], written: [] as string[], values: [] as LinkedValue[] };
       if (!(await this.signedIn(owner))) return result;
       const { items } = (await this.auth.cloud("/providers")) as { items: Linked[] };
       const uploaded = await this.uploaded(owner);
-      for (const item of items) {
+      for (const item of items as (Linked | (LinkedValue & { hash: string }))[]) {
+        if (item.kind === "telegram") { result.values.push({ id: item.id, kind: item.kind, data: item.data }); uploaded[item.id] = item.hash; continue; }
         if (item.kind === "codex") result.codex.push({ id: item.id, label: item.label });
         const file = this.fileFor(owner, item);
         const local = await readFile(file, "utf8").catch(() => "");

@@ -245,8 +245,8 @@ try {
   assert.equal(await page.locator('.thinking').innerText(),'Thinking…');
   assert.equal(await page.locator('.thinking').evaluate(el=>getComputedStyle(el).animationName),'thinking-light');
   await page.screenshot({path:'artifacts/thinking-alignment.png'});
-  await page.locator('.message.assistant .file-slip').getByText('Charged rods.pdf',{exact:true}).waitFor();
-  assert.equal(await page.locator('.message.assistant .file-slip').count(),1);
+  await page.locator('.message.assistant .document-card').getByText('Charged rods.pdf',{exact:true}).waitFor();
+  assert.equal(await page.locator('.message.assistant .document-card').count(),1);
   await page.getByText('Based on your local source.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Thinking level',exact:true}).click();
   await page.getByRole('slider',{name:'Reasoning effort'}).focus();

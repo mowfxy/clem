@@ -426,3 +426,7 @@ dialog:has(.drive-picker){width:min(560px,calc(100vw - 32px));padding:22px;borde
 @media(prefers-reduced-motion:reduce){.drive-wire i,.drive-skeleton{animation:none}}
 @keyframes cx-flow{0%{transform:translateX(0);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(64px);opacity:0}}
 .drive-text{height:28px;padding:0 10px;border:1px solid #3a3a37;border-radius:8px;background:none;color:#a9a8a0;font-size:12px;cursor:pointer}.drive-text:hover{color:#f5b3a4;border-color:#6b3a31}
+
+.drive-use{height:28px;padding:0 12px;border:0;border-radius:8px;background:#f2f1ec;color:#141413;font:500 12px 'Mowafy Sans Text',sans-serif;cursor:pointer;margin-right:4px}
+.drive-row-muted{display:flex;align-items:center;gap:12px;height:40px;padding:0 10px;opacity:.45}
+.drive-hint{margin:0 0 8px;font-size:12.5px;color:#8f8e87}

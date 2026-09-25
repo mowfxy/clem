@@ -63,6 +63,19 @@ export class TelegramService {
     this.start(owner);
     return { code: p.code };
   }
+  /** The part of the connection worth keeping with the Mowr account: the bot and its paired chats. */
+  async linkable(owner: string) {
+    const config = await this.vault.read<Config | null>("telegram-" + owner, null);
+    return config?.enabled && config.routes.length ? JSON.stringify({ token: config.token, routes: config.routes }) : null;
+  }
+  /** Restores a connection kept with the Mowr account when this PC has none. */
+  async adoptLinked(owner: string, data: string) {
+    if (await this.vault.read<Config | null>("telegram-" + owner, null)) return false;
+    const linked = JSON.parse(data) as { token?: unknown; routes?: unknown };
+    if (typeof linked.token !== "string" || !Array.isArray(linked.routes)) return false;
+    await this.vault.write("telegram-" + owner, { token: linked.token, offset: 0, routes: linked.routes as TelegramRoute[], enabled: true, seen: [] } satisfies Config);
+    return true;
+  }
   async disconnect(owner: string) {
     this.stop();
     await this.vault.write("telegram-" + owner, null);

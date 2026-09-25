@@ -91,3 +91,21 @@
 .pointer-chip button{width:22px;height:22px;display:grid;place-items:center;border:0;border-radius:6px;background:none;color:#8f8e87;cursor:pointer;padding:0}
 .pointer-chip button:hover{background:#ffffff12;color:#fff}
 .message-pointers{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin-top:6px}
+/* Choosing a saved file */
+.saved-picker{display:flex;flex-direction:column;gap:10px;min-width:min(460px,80vw)}
+.saved-search{display:flex;align-items:center;gap:9px;height:38px;padding:0 12px;border-radius:11px;border:1px solid #3a3a37;background:#161615;color:#8f8e87}
+.saved-search:focus-within{border-color:#6b6b63}
+.saved-search input{flex:1;min-width:0;border:0!important;background:none!important;padding:0!important;color:#eeede7;font:13.5px 'Mowafy Sans Text',sans-serif;outline:none!important;box-shadow:none!important}
+.saved-list{max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:1px}
+.saved-list button{display:flex;align-items:center;gap:11px;width:100%;height:40px;padding:0 10px;border:0;border-radius:9px;background:none;color:#e9e8e2;text-align:left;cursor:pointer}
+.saved-list button:hover,.saved-list button:focus-visible{background:#ffffff0a}
+.saved-ext{width:34px;flex:none;text-align:center;padding:3px 0;border-radius:5px;background:#ffffff0f;font:600 9.5px 'Mowafy Sans Text',sans-serif;color:#b5b4ad}
+.saved-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
+.saved-list small{color:#7f7e78;font-size:11.5px}
+.saved-empty{padding:22px;text-align:center;color:#8f8e87;font-size:13px}
+
+/* Reply to part of an answer */
+.reply-pick{position:fixed;z-index:700;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:10px;border:1px solid #44443f;background:#262625;color:#f2f1ec;font:500 12.5px 'Mowafy Sans Text',sans-serif;box-shadow:0 10px 30px #0009;cursor:pointer;animation:ps-drop .14s ease-out}
+.reply-pick:hover{background:#30302e}
+.pointer-chip.reply{border-left:2px solid #f2f1ec}
+.saved-picker .saved-search input{width:auto;height:auto;margin:0;display:block}
