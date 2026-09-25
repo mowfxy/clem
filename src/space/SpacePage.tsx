@@ -16,6 +16,8 @@ export type SpaceActions={
   onDraft:(prompt:string)=>void;
   onOpenChat:(chat:Chat)=>void;
   onOpenFile:(file:StoredFile)=>void;
+  /** Opens the file beside a new chat in this space, where messages edit it. */
+  onEditFile:(file:StoredFile)=>void;
   onUpload:(files:FileList,folderId:string|null)=>void;
   onMake:(kind:'flashcards'|'quiz'|'worksheet'|'summary',folderId?:string|null)=>void;
   onShare:(folderId?:string)=>void;
@@ -221,7 +223,7 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
       {inHere.map(f=><div key={f.id} className="sp-file" draggable onDragStart={e=>{e.dataTransfer.setData('application/x-mowr-file',f.id);e.dataTransfer.effectAllowed='move';}}>
         <button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>
         <label className="sp-source" title="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
-        <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Move to…',run:()=>setMoving(f)},{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+        <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
       </div>)}
       {!inHere.length&&!here.length&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
         <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}

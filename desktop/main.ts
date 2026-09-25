@@ -20,6 +20,7 @@ import {
   nativeImage,
 } from "electron";
 import { captureRegion } from "./capture";
+import { spawn } from "node:child_process";
 import { applyChange, undoChange, locate, readText, type Change } from "./folder-edits";
 import { editLanguage } from "../core/answer-format";
 import { join, resolve, basename } from "node:path";
@@ -825,6 +826,21 @@ void app.whenReady().then(async () => {
       await vault.write(changesKey, history.map((c) => (c.id === change.id ? { ...c, undone: true } : c)));
       return { ok: true };
     }
+    if (request.action === "openInBrowser") {
+      // A read-only copy in a temp folder, opened in the default web browser (or the default app for
+      // formats browsers cannot show, such as Word or PowerPoint files).
+      const folder = join(app.getPath("temp"), "Mowr", "view", randomUUID().slice(0, 8));
+      await mkdir(folder, { recursive: true });
+      const path = join(folder, request.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim() || "file");
+      await writeFile(path, request.data);
+      if (/\.(pdf|png|jpe?g|gif|webp|svg|txt|md|csv|json|html?|xml|mp4|webm|mp3|wav)$/i.test(path)) {
+        const browser = await defaultBrowser().catch(() => undefined);
+        if (browser) { spawn(browser, [pathToFileURL(path).href], { detached: true, stdio: "ignore" }).unref(); return { opened: "browser" }; }
+      }
+      const failed = await shell.openPath(path);
+      if (failed) throw Error(failed);
+      return { opened: "app" };
+    }
     if (request.action === "captureScreen") {
       await capture(true);
       return { ok: true };
@@ -928,3 +944,16 @@ void app.whenReady().then(async () => {
   await window.loadURL("mowr://app/");
   if (pendingPack) { const path = pendingPack; pendingPack = undefined; setTimeout(() => void deliverPack(path), 1500); }
 });
+
+/** The executable of the user's default web browser, from Windows' https handler. */
+async function defaultBrowser() {
+  const { execFile } = await import("node:child_process");
+  const reg = (args: string[]) => new Promise<string>((done, fail) => execFile("reg", args, { windowsHide: true }, (error, out) => (error ? fail(error) : done(out))));
+  const choice = await reg(["query", "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice", "/v", "ProgId"]);
+  const progId = choice.match(/ProgId\s+REG_SZ\s+(\S+)/)?.[1];
+  if (!progId) return undefined;
+  const command = await reg(["query", `HKCR\\${progId}\\shell\\open\\command`, "/ve"]);
+  const line = command.match(/REG_SZ\s+(.+)/)?.[1]?.trim();
+  const exe = line?.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : line?.split(/\s+/)[0];
+  return exe && existsSync(exe) ? exe : undefined;
+}
