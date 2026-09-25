@@ -112,6 +112,12 @@ export async function storeBlob(id: string, file: Blob, owner = namespace) {
   else await set(blobKey(id), file);
 }
 export async function getBlob(id: string) {
+  // Google Drive files shown in chat are streamed into memory for viewing and never written to this PC.
+  if (desktop && id.startsWith("drive_")) {
+    const response = await fetch("/api/drive/live/" + id.slice(6));
+    if (!response.ok) throw Error((await response.json().catch(() => ({}))).error || "This Drive file could not be opened.");
+    return response.blob();
+  }
   if (desktop) {
     const response = await fetch("/api/local/files/" + id, {
       headers: { "X-Mowr-Owner": namespace },

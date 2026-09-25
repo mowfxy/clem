@@ -555,6 +555,13 @@ async function driveToken(userId: string) {
   if (!r.ok) throw new Error("Drive access expired. Reconnect.");
   return (await r.json()).access_token;
 }
+// A short-lived access token for the person's own Drive, so the desktop app can search it and stream files (including
+// long videos with seeking) straight from Google instead of through this server. Never stored by the app.
+app.get("/api/drive/token", async (req, res) => {
+  const u = await requireDriveUser(req, res);
+  if (!u) return;
+  res.json({ accessToken: await driveToken(u.id), expiresIn: 3300 });
+});
 app.get("/api/drive/files", async (req, res) => {
   const u = await requireDriveUser(req, res);
   if (!u) return;

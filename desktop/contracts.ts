@@ -38,6 +38,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claudeLogin") }),
   z.object({ action: z.literal("claudeInstall") }),
   z.object({ action: z.literal("grokStatus") }),
+  z.object({ action: z.literal("driveSearch"), query: z.string().min(1).max(2000) }),
+  z.object({ action: z.literal("driveOpenWeb"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("grokLogin") }),
   z.object({ action: z.literal("grokInstall") }),
   z.object({ action: z.literal("providerAccountAdd") }),
@@ -162,8 +164,10 @@ export type DesktopBridge = {
   onFolder?: (listener: (event: FolderEvent) => void) => () => void;
   onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
   startDrag?: (path: string) => void;
-  /** Recolours the Windows caption buttons to sit in the page: normal, dimmed behind a pop-up, or a full-screen viewer. */
-  setWindowTone?: (tone: "normal" | "dim" | "full") => void;
+  /** Recolours the Windows caption buttons to sit in the page: normal, or dimmed behind a pop-up. */
+  setWindowTone?: (tone: "normal" | "dim") => void;
+  /** Reads, or changes, whether closing keeps Mowr running in the tray and whether it starts with Windows. */
+  background?: (next?: { keepRunning?: boolean; startWithWindows?: boolean }) => Promise<{ keepRunning: boolean; startWithWindows: boolean }>;
   onChat: (
     listener: (event: {
       id: string;

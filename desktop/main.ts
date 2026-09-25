@@ -20,6 +20,7 @@ import {
   globalShortcut,
   nativeImage,
   session,
+  Tray,
 } from "electron";
 import { captureRegion } from "./capture";
 import { spawn } from "node:child_process";
@@ -40,6 +41,7 @@ import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeModels} from './claude';
 import {GrokProvider,grokModels,GROK_PREFIX} from './grok';
+import {DriveLive} from './drive-live';
 import {installCli} from './cli-install';
 import {
   inside,
@@ -107,7 +109,12 @@ app.on("second-instance", (_event, argv) => {
   if (path && window && !window.webContents.isLoading()) void deliverPack(path);
 });
 app.on("window-all-closed", () => app.quit());
+// Closing the window keeps Mowr running in the tray (Telegram replies and routines keep working); Quit ends it.
+let quitting = false;
+let tray: Tray | undefined;
+const startedInBackground = process.argv.includes("--background");
 app.on("before-quit", () => {
+  quitting = true;
   globalShortcut.unregisterAll();
   codex?.stop();
   providerAccounts?.stop();
@@ -180,6 +187,7 @@ void app.whenReady().then(async () => {
   providerAccounts = new ProviderAccounts(vault,codexExecutable,local);
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
   const claudeFor=(owner:string)=>{let value=claudeProviders.get(owner);if(!value){value=new ClaudeProvider(claudeExecutable,join(local,owner,'claude'));claudeProviders.set(owner,value);}return value;};
+  const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   const grokFor=(owner:string)=>{let value=grokProviders.get(owner);if(!value){value=new GrokProvider(join(local,owner,'grok'));grokProviders.set(owner,value);}return value;};
   let providerOwner = "";
   const providerLink=new ProviderLink(auth,vault,local);
@@ -460,6 +468,14 @@ void app.whenReady().then(async () => {
         return new Response(response.body, {status:response.status, headers:{"Content-Type":response.headers.get("Content-Type") || "application/octet-stream", "X-Mowr-File-Name":response.headers.get("X-Mowr-File-Name") || "", "Cache-Control":"no-store"}});
       } catch { return Response.json({error:"Drive is unavailable. Check your connection and retry."},{status:502}); }
     }
+    // Drive files streamed for viewing (videos seek via Range); nothing is saved.
+    const driveMatch=/^\/api\/drive\/(live|thumb)\/([\w-]{10,150})$/.exec(url.pathname);
+    if (request.method === "GET" && driveMatch) {
+      try {
+        if (!await auth.user()) return Response.json({error:"Sign in first."},{status:401});
+        return driveMatch[1]==="live" ? await driveLive.media(driveMatch[2], request.headers.get("Range")) : await driveLive.thumbnail(driveMatch[2]);
+      } catch (error) { return Response.json({error:(error as Error).message||"Google Drive is unavailable."},{status:(error as {code?:string}).code==="not_connected"?409:502}); }
+    }
     if (url.pathname.startsWith("/api/"))
       return Response.json(
         {
@@ -482,6 +498,7 @@ void app.whenReady().then(async () => {
     return response;
   });
   window = new BrowserWindow({
+    show: !startedInBackground,
     width: 1440,
     height: 960,
     minWidth: 800,
@@ -499,6 +516,38 @@ void app.whenReady().then(async () => {
       sandbox: true,
       webSecurity: true,
     },
+  });
+  type Background = { keepRunning: boolean; startWithWindows: boolean; told?: boolean };
+  const backgroundKey = "background-settings";
+  let background = await vault.read<Background>(backgroundKey, { keepRunning: true, startWithWindows: true }).catch(() => ({ keepRunning: true, startWithWindows: true }) as Background);
+  const applyLogin = () => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: background.keepRunning && background.startWithWindows, args: ["--background"] }); };
+  applyLogin();
+  const showWindow = () => { if (window.isDestroyed()) return; if (window.isMinimized()) window.restore(); window.show(); window.focus(); };
+  tray = new Tray(nativeImage.createFromPath(join(__dirname, "../desktop/icon.ico")));
+  tray.setToolTip("Mowr");
+  tray.setContextMenu(Menu.buildFromTemplate([{ label: "Open Mowr", click: showWindow }, { type: "separator" }, { label: "Quit Mowr", click: () => { quitting = true; app.quit(); } }]));
+  tray.on("click", showWindow);
+  // Signing out or shutting down Windows must never be held up by hiding to the tray.
+  window.on("query-session-end", () => { quitting = true; });
+  window.on("session-end", () => { quitting = true; });
+  window.on("close", (event) => {
+    if (quitting || !background.keepRunning) return;
+    event.preventDefault();
+    window.hide();
+    if (!background.told) {
+      background = { ...background, told: true };
+      void vault.write(backgroundKey, background).catch(() => {});
+      tray?.displayBalloon({ title: "Mowr is still running", content: "Telegram replies and routines keep working. Quit from the Mowr icon in the tray.", iconType: "info" });
+    }
+  });
+  ipcMain.handle("mowr:background", async (event, next?: Partial<Background>) => {
+    if (event.sender !== window.webContents) throw Error("Not allowed.");
+    if (next && typeof next === "object") {
+      background = { ...background, ...(typeof next.keepRunning === "boolean" ? { keepRunning: next.keepRunning } : {}), ...(typeof next.startWithWindows === "boolean" ? { startWithWindows: next.startWithWindows } : {}) };
+      await vault.write(backgroundKey, background);
+      applyLogin();
+    }
+    return { keepRunning: background.keepRunning, startWithWindows: background.startWithWindows };
   });
   window.webContents.session.webRequest.onBeforeSendHeaders(
     {urls:["https://www.youtube-nocookie.com/embed/*"]},
@@ -545,7 +594,6 @@ void app.whenReady().then(async () => {
   const tones: Record<string, { color: string; symbolColor: string }> = {
     normal: { color: "#141414", symbolColor: "#eeece4" },
     dim: { color: "#080808", symbolColor: "#6f6e69" },
-    full: { color: "#1a1a19", symbolColor: "#eeece4" },
   };
   ipcMain.on("mowr:tone", (event, tone) => {
     if (event.sender !== window.webContents || !tones[tone]) return;
@@ -692,6 +740,8 @@ void app.whenReady().then(async () => {
       return status;
     }
     if (request.action === "claudeLogin") return claudeFor(user.id).login();
+    if (request.action === "driveSearch") return driveLive.search(request.query);
+    if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
     if (request.action === "grokStatus") return grokFor(user.id).status(true);
     if (request.action === "grokLogin") return grokFor(user.id).login(url=>{if(/^https:\/\/([a-z0-9-]+\.)*(x\.ai|grok\.com)\//.test(url))void shell.openExternal(url);});
     if (request.action === "grokInstall") {await installCli("grok");const provider=grokFor(user.id);provider.forget();return provider.status(true);}
