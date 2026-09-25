@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld(
     },
     invoke: (request) => ipcRenderer.invoke("mowr:request", request),
     startDrag: (path) => ipcRenderer.send("mowr:drag", String(path)),
+    setWindowTone: (tone) => ipcRenderer.send("mowr:tone", String(tone)),
     onChat: (listener) => {
       const handler = (_event, payload) => listener(payload);
       ipcRenderer.on("mowr:chat", handler);

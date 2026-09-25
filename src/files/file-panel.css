@@ -119,8 +119,13 @@
 .sp-rename{opacity:.55}.sp-file:hover .sp-rename,.sp-rename:focus-visible{opacity:1}
 
 /* Full screen: the viewer takes the whole window */
-.file-panel.full{position:fixed;inset:0;top:0;width:auto!important;height:auto!important;max-height:none;margin:0;border:0;border-radius:0;z-index:950;animation:fp-grow .22s cubic-bezier(.2,.9,.3,1)}
-.desktop-content .file-panel.full{top:40px}
+.file-panel.full{position:fixed;inset:0;top:0;width:auto!important;height:auto!important;max-height:none;margin:0;border:0;border-radius:0;z-index:10001;animation:fp-grow .22s cubic-bezier(.2,.9,.3,1);
+  /* The side panel is align-self:flex-start; on a fixed box that would size it to its content (every page) instead of the window. */
+  align-self:stretch;justify-self:stretch}
+/* In the desktop app, full screen covers the title strip too: the header becomes the window's title bar, kept clear of
+   Windows' minimise/maximise/close buttons and draggable like one. */
+.desktop-content .file-panel.full .fp-head{padding-right:150px;-webkit-app-region:drag;app-region:drag}
+.desktop-content .file-panel.full .fp-head :is(button,a,input,select,label){-webkit-app-region:no-drag;app-region:no-drag}
 .file-panel.full .fp-head{padding-left:22px}
 .file-panel.full .fp-body .ps-pages{padding-top:28px}
 @keyframes fp-grow{from{opacity:.6;transform:scale(.985)}}
@@ -138,7 +143,7 @@
 .composer .pointer-chips{padding:10px 12px 0;margin:0}
 .composer .pointer-chip{padding:0 4px 0 10px}
 .composer .pointer-chip:has(img){padding-left:4px}
-.file-panel.as-modal.full,.file-panel.full.full{position:fixed;inset:0;margin:0;width:auto;height:auto;border-radius:0;box-shadow:none;animation:fp-grow .22s cubic-bezier(.2,.9,.3,1)}.desktop-content .file-panel.as-modal.full,.desktop-content .file-panel.full.full{top:40px}
+.file-panel.as-modal.full,.file-panel.full.full{position:fixed;inset:0;margin:0;width:auto;height:auto;border-radius:0;box-shadow:none;animation:fp-grow .22s cubic-bezier(.2,.9,.3,1)}
 
 /* The popup viewer as a native dialog: backdrop over the whole window */
 dialog.fp-dialog{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:28px;border:0;background:transparent;display:grid;place-items:center;overflow:hidden;box-sizing:border-box;color:inherit}
