@@ -12,6 +12,8 @@ const source=join('release',name);
 const info=await stat(source).catch(()=>{throw Error(`${source} not found. Run npm run desktop:installer first.`);});
 const sha256=await new Promise((resolve,reject)=>{const hash=createHash('sha256');createReadStream(source).on('data',d=>hash.update(d)).on('end',()=>resolve(hash.digest('hex'))).on('error',reject);});
 
+// Older builds in release/ are ~200 MB each and never needed again once a newer one exists.
+for(const old of await readdir('release'))if(/^Mowr-Setup-.*\.exe(\.blockmap)?$/.test(old)&&!old.startsWith(name))await rm(join('release',old));
 await mkdir('Installer',{recursive:true});
 for(const old of await readdir('Installer'))if(/^Mowr-Setup-.*\.exe$/.test(old)&&old!==name)await rm(join('Installer',old));
 await copyFile(source,join('Installer',name));

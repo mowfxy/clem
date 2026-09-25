@@ -302,6 +302,10 @@
 .provider-logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;border:1px solid #ffffff12}
 .provider-openai .provider-logo{background:#0d0d0d;color:#fff}
 .provider-claude .provider-logo{background:#f5f0e8;border-color:#f5f0e8}
+.provider-gemini::before{background:radial-gradient(#6d8ff02a,transparent 70%)}
+.provider-gemini .provider-logo{font:600 17px 'Mowafy Sans Text',sans-serif;color:#dfe6fb}
+.provider-risk{margin:0;font-size:12px;line-height:1.5;color:#d9a86a}
+.provider-card .provider-off{background:none;border-color:transparent;color:#8a8983;padding-left:0;padding-right:0}
 .provider-status{display:inline-flex;align-items:center;gap:6px;font:12px 'Mowafy Sans Text',sans-serif;color:#8f8e87;padding:4px 9px;border-radius:99px;border:1px solid #ffffff12}
 .provider-status::before{content:"";width:6px;height:6px;border-radius:50%;background:#6b6a64}
 .provider-status.on{color:#b4dcb8;border-color:#a8dcae33;background:#a8dcae0d}

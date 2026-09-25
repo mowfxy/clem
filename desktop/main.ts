@@ -3,6 +3,7 @@ import {illustratedPdf} from "./illustrated-pdf";
 import {markdownDocument} from "./pdf-document";
 import {boundedConversation,retrievalQuery} from "../core/chat-context";
 import {WorkspaceDisk} from "./workspace-disk";
+import {afterUpdate} from "./update-care";
 import {cp,access,stat as statFile,readFile as readDiskFile} from "node:fs/promises";
 import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
@@ -18,6 +19,7 @@ import {
   Menu,
   globalShortcut,
   nativeImage,
+  session,
 } from "electron";
 import { captureRegion } from "./capture";
 import { spawn } from "node:child_process";
@@ -25,7 +27,7 @@ import { applyChange, undoChange, locate, readText, type Change } from "./folder
 import { editLanguage } from "../core/answer-format";
 import { join, resolve, basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import { mkdir, writeFile, unlink } from "node:fs/promises";
+import { mkdir, writeFile, unlink, rm } from "node:fs/promises";
 import { browserLogin } from "./browser-login";
 import { randomBytes, randomUUID } from "node:crypto";
 import { requestSchema, type DesktopStatus } from "./contracts";
@@ -37,6 +39,7 @@ import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeModels} from './claude';
+import {AntigravityProvider,antigravityModels,antigravityInstallUrl,ANTIGRAVITY_PREFIX} from './antigravity';
 import {
   inside,
   link,
@@ -82,6 +85,7 @@ let window: BrowserWindow;
 let codex: Codex;
 let providerAccounts: ProviderAccounts;
 const claudeProviders=new Map<string,ClaudeProvider>();
+const antigravityProviders=new Map<string,AntigravityProvider>();
 let telegram: TelegramService;
 let folderWatcher: FolderWatcher | undefined;
 /** A .mowrpack opened from Explorer, handed to the workspace once it is ready to receive it. */
@@ -107,6 +111,7 @@ app.on("before-quit", () => {
   codex?.stop();
   providerAccounts?.stop();
   for(const provider of claudeProviders.values())provider.stop();
+  for(const provider of antigravityProviders.values())provider.stop();
   telegram?.stop();
   folderWatcher?.stop();
 });
@@ -133,6 +138,9 @@ void app.whenReady().then(async () => {
   const migrationMarker=join(durableSession,'.migration-complete');
   try{await access(migrationMarker);}catch{for(const name of ['IndexedDB','Local Storage','Session Storage']){const source=join(previousSession,name);try{await access(source);}catch{continue;}await cp(source,join(durableSession,name),{recursive:true,force:false,errorOnExist:false});}await writeFile(migrationMarker,'1');}
   app.setAppUserModelId("com.mowrai.desktop");
+  await afterUpdate(workspaceRoot,app.getVersion(),async()=>{await session.defaultSession.clearCache();await session.defaultSession.clearCodeCaches({});}).catch(()=>{});
+  // Copies of files opened in the browser from earlier runs.
+  void rm(join(app.getPath("temp"),"Mowr","view"),{recursive:true,force:true}).catch(()=>{});
   const vault = new Vault(join(app.getPath("userData"), "protected"));
   const auth = new DesktopAuth(vault, config);
   // Restoring a session can require the network. Always open the window first.
@@ -171,6 +179,11 @@ void app.whenReady().then(async () => {
   providerAccounts = new ProviderAccounts(vault,codexExecutable,local);
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
   const claudeFor=(owner:string)=>{let value=claudeProviders.get(owner);if(!value){value=new ClaudeProvider(claudeExecutable,join(local,owner,'claude'));claudeProviders.set(owner,value);}return value;};
+  const antigravityFor=(owner:string)=>{let value=antigravityProviders.get(owner);if(!value){value=new AntigravityProvider(join(local,owner,'antigravity'));antigravityProviders.set(owner,value);}return value;};
+  // Gemini via Antigravity CLI stays off until this person has read and accepted that Google may treat it as
+  // third-party access and restrict their account. Checked here, not only in the settings screen.
+  const antigravityConsentKey=(owner:string)=>"antigravity-consent-"+owner;
+  const antigravityConsented=async(owner:string)=>(await vault.read<{accepted?:boolean}>(antigravityConsentKey(owner),{})).accepted===true;
   let providerOwner = "";
   const providerLink=new ProviderLink(auth,vault,local);
   const linkFailed=(error:unknown)=>console.warn('Account linking:',(error as Error)?.message||error);
@@ -339,6 +352,21 @@ void app.whenReady().then(async () => {
     }).catch(() => {});
   }
 
+  // Asks mowrai.com for the welcome email once per account on this PC; the server also sends it at most once per account.
+  let welcomeAsked = false;
+  async function welcomeOnce() {
+    if (welcomeAsked) return;
+    welcomeAsked = true;
+    try {
+      const user = await auth.user();
+      if (!user || !/^[\w-]{1,100}$/.test(user.id) || await vault.read("welcome-" + user.id, false)) return;
+      const { data } = await auth.client!.auth.getSession();
+      const response = await fetch("https://mowrai.com/api/email/welcome", { method: "POST", redirect: "error", signal: AbortSignal.timeout(20000),
+        headers: { Authorization: "Bearer " + data.session!.access_token, Origin: "https://mowrai.com", "Content-Type": "application/json" }, body: "{}" });
+      if (response.ok) await vault.write("welcome-" + user.id, true);
+      else setTimeout(() => { welcomeAsked = false; }, 600_000);
+    } catch { setTimeout(() => { welcomeAsked = false; }, 600_000); }
+  }
   async function status(): Promise<DesktopStatus> {
     const user = await auth.user(false);
     if (!user)
@@ -402,6 +430,7 @@ void app.whenReady().then(async () => {
     }
     if (url.pathname === "/api/auth/session") {
       const state = await status();
+      if (state.user) void welcomeOnce();
       return Response.json({
         user: state.user,
         database: false,
@@ -419,7 +448,7 @@ void app.whenReady().then(async () => {
     }
     if (url.pathname === "/api/models") {
       const user = await auth.user();
-      try{if(!user)return Response.json([]);const [codexModels,claudeStatus]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claudeFor(user.id).status()]);return Response.json([...codexModels,...(claudeStatus.connected?claudeModels:[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
+      try{if(!user)return Response.json([]);const [codexModels,claudeStatus,gemini]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claudeFor(user.id).status(),antigravityConsented(user.id).then(ok=>ok?antigravityFor(user.id).status():null).catch(()=>null)]);return Response.json([...codexModels,...(claudeStatus.connected?claudeModels:[]),...(gemini?.connected?antigravityModels(gemini.models):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
     }
     if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection") || (request.method === "POST" && url.pathname === "/api/drive/upload")) {
       try {
@@ -577,6 +606,7 @@ void app.whenReady().then(async () => {
       loginAttempt?.stop();
       codex.stop();
       for(const provider of claudeProviders.values())provider.stop();
+      for(const provider of antigravityProviders.values())provider.stop();
       await selectProvider("signed-out");
       await auth.client?.auth.signOut();
       return status();
@@ -655,6 +685,17 @@ void app.whenReady().then(async () => {
       return status;
     }
     if (request.action === "claudeLogin") return claudeFor(user.id).login();
+    if (request.action === "antigravityStatus") {
+      const consented=await antigravityConsented(user.id);
+      return {consented,...(consented?await antigravityFor(user.id).status(true):{installed:false,connected:false,models:[]})};
+    }
+    if (request.action === "antigravityConsent") {
+      if(request.accepted)await vault.write(antigravityConsentKey(user.id),{accepted:true,at:new Date().toISOString()});
+      else{antigravityFor(user.id).stop();await vault.write(antigravityConsentKey(user.id),{accepted:false,at:new Date().toISOString()});}
+      return {consented:request.accepted};
+    }
+    if (request.action === "antigravityLogin") {if(!await antigravityConsented(user.id))throw Error("Accept the Antigravity notice first.");return antigravityFor(user.id).login();}
+    if (request.action === "antigravityInstall") {await shell.openExternal(antigravityInstallUrl);return {opened:true};}
     if (request.action === "claudeInstall") {await shell.openExternal('https://code.claude.com/docs/en/setup');return {opened:true};}
     if (request.action === "providerAccountRetry") return providerAccounts.retry(user.id,request.id);
     if (request.action === "providerAccountAdd") return providerAccounts.add(user.id);
@@ -675,6 +716,7 @@ void app.whenReady().then(async () => {
     if (request.action === "cancel") {
       codex.cancel(request.id);
       claudeFor(user.id).cancel(request.id);
+      antigravityFor(user.id).cancel(request.id);
       return { ok: true };
     }
     const memoryKey = "memory-" + user.id;
@@ -880,8 +922,10 @@ void app.whenReady().then(async () => {
       return illustratedPdf(markdownDocument(request.markdown, request.title), { checkVoice: false });
     if (request.action === "chat") {
       const query = retrievalQuery(request.messages);
-      const claude = !!request.model?.startsWith("claude:");
+      const gemini = !!request.model?.startsWith(ANTIGRAVITY_PREFIX);
+      const claude = !!request.model?.startsWith("claude:") || gemini;
       if (request.images?.length && claude) throw Error("Image questions need a ChatGPT model.");
+      if (gemini && !await antigravityConsented(user.id)) throw Error("Turn on Gemini in Settings → Models first.");
       const messages = boundedConversation(request.messages);
       if (JSON.stringify(messages).length > 64000)
         throw Error(
@@ -934,7 +978,9 @@ void app.whenReady().then(async () => {
         scope: request.scope,
         startedAt: new Date().toISOString(),
       });
-      const run=request.model?.startsWith('claude:')
+      const run=gemini
+        ? antigravityFor(user.id).run(request.id,prompt,request.model!,(event)=>window.webContents.send('mowr:chat',event))
+        : request.model?.startsWith('claude:')
         ? claudeFor(user.id).run(request.id,prompt,request.model,request.reasoning,(event)=>window.webContents.send('mowr:chat',event))
         : codex.run(request.id, prompt, (event) =>
           window.webContents.send("mowr:chat", event),
@@ -963,8 +1009,8 @@ void app.whenReady().then(async () => {
             window.webContents.send("mowr:chat", {
               id: request.id,
               type: "error",
-              error:request.model?.startsWith('claude:')
-                ? (error instanceof Error ? error.message : 'Claude could not complete this request.')
+              error:claude
+                ? (error instanceof Error ? error.message : 'This model could not complete this request.')
                 : codexFailureMessage(error),
             });
         });

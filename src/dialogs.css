@@ -10,7 +10,7 @@
 .app-confirm{width:min(400px,calc(100vw - 32px))}
 .app-confirm-body{padding:22px 22px 18px}
 .app-confirm h2{margin:0;font:500 17px/1.35 'Mowafy Sans Text',sans-serif;color:#f1f0ea}
-.app-confirm p{margin:8px 0 0;font-size:13px;line-height:1.6;color:#a9a8a0}
+.app-confirm p{white-space:pre-line;margin:8px 0 0;font-size:13px;line-height:1.6;color:#a9a8a0}
 .app-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
 .app-confirm-actions button,.contact-dialog footer button,.contact-sent button{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 15px;border-radius:9px;font:500 13px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:background .15s,border-color .15s,opacity .15s}
 .app-confirm-cancel,.contact-secondary{border:1px solid #44443d;background:#252522;color:#dddcd5}
