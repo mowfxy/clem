@@ -179,7 +179,7 @@ try {
   await page
     .locator(".plan-steps .model-selector")
     .first()
-    .getByRole("button", { name: "Choose model", exact: true })
+    .getByRole("button", { name: "Thinking level", exact: true })
     .click();
   await page.getByRole("slider", { name: "Reasoning effort" }).focus();
   await page.keyboard.press("End");
@@ -218,8 +218,9 @@ try {
   await page.locator(".greeting-row").waitFor();
   await page.getByRole("button", { name: "Choose model", exact: true }).click();
   await page.screenshot({ path: "artifacts/model-picker.png", fullPage: true });
-  await page.getByRole('button',{name:'Astra',exact:true}).click();
-  // Choosing a model keeps the panel open so its thinking level can be set in the same place.
+  await page.getByRole('menuitemradio',{name:'Astra',exact:true}).click();
+  // The thinking level has its own small popover next to the model.
+  await page.getByRole('button',{name:'Thinking level',exact:true}).click();
   const efforts=page.getByRole('slider',{name:'Reasoning effort'});
   await efforts.focus();
   await page.keyboard.press('End');
@@ -228,10 +229,10 @@ try {
   await page.getByRole('button',{name:'Reset thinking level',exact:true}).click();
   assert.equal(await efforts.getAttribute('aria-valuetext'),'Light');
   await page.keyboard.press('Escape');
-  assert.equal(await page.getByRole('dialog',{name:'Select model'}).count(),0);
+  assert.equal(await page.getByRole('dialog',{name:'Thinking level'}).count(),0);
   await page.setViewportSize({width:860,height:600});
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
-  const bounds=await page.getByRole('dialog',{name:'Select model'}).boundingBox();
+  const bounds=await page.getByRole('menu',{name:'Select model'}).boundingBox();
   assert.ok(bounds.width<=320 && bounds.y>=0 && bounds.y+bounds.height<=600);
   await page.keyboard.press('Escape');
   await page.setViewportSize({width:1440,height:960});
@@ -244,15 +245,15 @@ try {
   assert.equal(await page.locator('.thinking').innerText(),'Thinking…');
   assert.equal(await page.locator('.thinking').evaluate(el=>getComputedStyle(el).animationName),'thinking-light');
   await page.screenshot({path:'artifacts/thinking-alignment.png'});
-  await page.locator('.message.assistant .document-card').getByText('Charged rods.pdf',{exact:true}).waitFor();
-  assert.equal(await page.locator('.message.assistant .document-card').count(),1);
+  await page.locator('.message.assistant .file-slip').getByText('Charged rods.pdf',{exact:true}).waitFor();
+  assert.equal(await page.locator('.message.assistant .file-slip').count(),1);
   await page.getByText('Based on your local source.',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'Choose model',exact:true}).click();
+  await page.getByRole('button',{name:'Thinking level',exact:true}).click();
   await page.getByRole('slider',{name:'Reasoning effort'}).focus();
   await page.keyboard.press('End');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'New chat',exact:true}).click();
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
-  await page.getByRole('button',{name:'Sol',exact:true}).click();
+  await page.getByRole('menuitemradio',{name:'Sol',exact:true}).click();
   await page.getByRole('button',{name:'Make a PDF about charged rods',exact:true}).click();
   assert.match(await page.getByRole('button',{name:'Choose model',exact:true}).innerText(),/Astra/);
   assert.equal(await page.locator('.picker-trigger-effort').innerText(), 'Ultra');

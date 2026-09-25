@@ -1,109 +1,27 @@
-.profile-picker {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 22px 0 32px;
-  max-width: 500px;
-}
-.profile-picker button {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 12px 6px;
-  border: 1px solid #343434;
-  border-radius: 14px;
-  background: #1b1b1b;
-  color: #aba9a2;
-  font-size: 12px;
-}
-.profile-picker button:hover {
-  background: #242424;
-}
-.profile-picker button[aria-pressed="true"] {
-  border-color: #aaa99b;
-  background: #292a27;
-  color: #f0efeb;
-}
-.profile-character {
-  display: block;
-  flex-shrink: 0;
-  overflow: visible;
-}
-.character-eyes {
-  transform-origin: 49px 52px;
-  animation: character-blink 6.7s infinite;
-}
-.character-face {
-  animation: character-look 11s infinite;
-}
-.character-arm {
-  transform-origin: 69px 61px;
-  animation: character-wave 9s infinite;
-}
-.character-moth .character-eyes,
-.character-sprig .character-eyes {
-  animation-delay: -2s;
-}
-.character-comet .character-arm,
-.character-noodle .character-arm {
-  animation-delay: -4s;
-}
-.avatar-resting * {
-  animation-play-state: paused !important;
-}
-@keyframes character-blink {
-  0%,
-  43%,
-  47%,
-  100% {
-    transform: scaleY(1);
-  }
-  45% {
-    transform: scaleY(0.08);
-  }
-}
-@keyframes character-look {
-  0%,
-  60%,
-  85%,
-  100% {
-    transform: translateX(0);
-  }
-  66%,
-  78% {
-    transform: translateX(2px);
-  }
-}
-@keyframes character-wave {
-  0%,
-  72%,
-  90%,
-  100% {
-    transform: rotate(0);
-  }
-  77%,
-  85% {
-    transform: rotate(-18deg);
-  }
-  81% {
-    transform: rotate(5deg);
-  }
-}
-[data-quiet="true"] .profile-character * {
-  animation: none !important;
-}
-@media (prefers-reduced-motion: reduce) {
-  .profile-character * {
-    animation: none !important;
-  }
-}
-@media (max-width: 480px) {
-  .profile-picker {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-  }
-  .profile-picker svg {
-    width: 45px;
-    height: 45px;
-  }
-}
+.profile-picker{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;width:100%;max-width:none;margin:20px 0 30px;box-sizing:border-box}
+.profile-picker button{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0;padding:14px 6px 11px;border:1px solid #2f2f2c;border-radius:14px;background:#1b1b1a;color:#a9a8a0;font:12.5px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:background .15s,border-color .15s,color .15s,transform .15s}
+.profile-picker button:hover{background:#222220;border-color:#44443f;color:#e9e8e2}
+.profile-picker button:hover .profile-character{transform:translateY(-2px)}
+.profile-picker button[aria-pressed="true"]{border-color:#e9e8e2;background:#262624;color:#f5f4ef;box-shadow:0 0 0 3px #ffffff12}
+.profile-picker button:focus-visible{outline:2px solid #d6d5cf;outline-offset:2px}
+.profile-character{display:block;flex-shrink:0;overflow:visible;border-radius:50%;transition:transform .25s cubic-bezier(.3,1.4,.5,1)}
+.character-body{transform-origin:50px 86px;animation:character-breathe 4.8s ease-in-out infinite}
+.character-eyes{transform-box:fill-box;transform-origin:center;animation:character-blink 6.7s infinite}
+.character-face{animation:character-look 11s infinite}
+.character-arm{transform-box:fill-box;transform-origin:0% 100%;animation:character-wave 9s infinite}
+.character-extra.sprout{transform-box:fill-box;transform-origin:50% 100%;animation:character-sway 5s ease-in-out infinite}
+.character-extra.antenna{transform-box:fill-box;transform-origin:50% 100%;animation:character-sway 3.6s ease-in-out infinite}
+.character-extra.twinkle{transform-box:fill-box;transform-origin:center;animation:character-twinkle 3.2s ease-in-out infinite}
+.character-moth .character-eyes,.character-sprig .character-eyes{animation-delay:-2s}
+.character-comet .character-arm,.character-noodle .character-arm{animation-delay:-4s}
+.character-finch .character-body,.character-pebble .character-body{animation-delay:-1.6s}
+.avatar-resting *{animation-play-state:paused!important}
+@keyframes character-blink{0%,43%,47%,100%{transform:scaleY(1)}45%{transform:scaleY(.1)}}
+@keyframes character-look{0%,60%,85%,100%{translate:0 0}66%,78%{translate:2px 0}}
+@keyframes character-wave{0%,72%,90%,100%{transform:rotate(0)}77%,85%{transform:rotate(-22deg)}81%{transform:rotate(6deg)}}
+@keyframes character-breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.015,.985)}}
+@keyframes character-sway{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+@keyframes character-twinkle{0%,100%{opacity:.4;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
+[data-quiet="true"] .profile-character *{animation:none!important}
+@media (prefers-reduced-motion:reduce){.profile-character *{animation:none!important}}
+@media (max-width:760px){.profile-picker{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}}@media (max-width:480px){.profile-picker svg{width:44px;height:44px}}

@@ -57,17 +57,23 @@ export function ReviewPanel({ review, models }: { review: Review; models: Model[
 export function VerifyPanel({ verify, onCite, canCite }: { verify: Verification; onCite: (c: Citation) => void; canCite: (c: Citation) => boolean }) {
   if (verify.status === 'running') return <aside className="verify-panel"><header><Icon name="verify" size={15} /><span>Checking against your sources</span><span className="review-live" /></header></aside>;
   if (verify.status === 'error') return <aside className="verify-panel"><header><Icon name="verify" size={15} /><span>Source check</span></header><p className="review-wait">{verify.error || 'The check could not finish.'}</p></aside>;
+  return <VerifyResult verify={verify} onCite={onCite} canCite={canCite} />;
+}
+
+/** Folded by default to one line with a dot per claim; the chevron at top left opens the details. */
+function VerifyResult({ verify, onCite, canCite }: { verify: Verification; onCite: (c: Citation) => void; canCite: (c: Citation) => boolean }) {
+  const [open, setOpen] = useState(false);
   const claims = verify.claims || [], supported = claims.filter(c => c.status === 'supported').length;
-  return <aside className="verify-panel" aria-label="Source check">
-    <header><Icon name="verify" size={15} /><span>Source check</span><small>{supported} of {claims.length} claims supported</small></header>
-    <ul>{claims.map((c, i) => {
+  return <aside className={`verify-panel ${open ? 'open' : 'folded'}`} aria-label="Source check">
+    <header><button type="button" className="verify-toggle" aria-expanded={open} aria-label={open ? 'Collapse source check' : 'Expand source check'} onClick={() => setOpen(!open)}><Icon name="down" size={14} /></button><Icon name="verify" size={15} /><span>Source check</span>{!open && <span className="verify-dots" aria-hidden="true">{claims.map((c, i) => <span key={i} className={'verify-dot ' + c.status} />)}</span>}<small>{supported} of {claims.length} claims supported</small></header>
+    {open && <ul>{claims.map((c, i) => {
       const cite = c.source ? { name: c.source, page: c.page ?? undefined } : null;
       return <li key={i} className={c.status}>
         <span className="verify-dot" aria-label={c.status} />
         <div><p>{c.claim}</p>{c.quote && <q>{c.quote}</q>}{cite && <button type="button" className={`cite ${canCite(cite) ? '' : 'unavailable'}`} onClick={() => canCite(cite) && onCite(cite)}><Icon name="files" size={12} /><span>{cite.name}{cite.page ? ` · p. ${cite.page}` : ''}</span></button>}</div>
         <small>{c.status === 'supported' ? 'Supported' : c.status === 'partial' ? 'Partly' : 'Not in sources'}</small>
       </li>;
-    })}</ul>
+    })}</ul>}
   </aside>;
 }
 

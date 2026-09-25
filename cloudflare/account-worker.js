@@ -1,3 +1,4 @@
+import { handleProviders } from "./provider-vault.js";
 import { validateSync } from "../core/sync.ts";
 import {
   normalizeUsername,
@@ -132,6 +133,8 @@ async function route(request, env) {
         return json({ error: "Try again shortly." }, 429);
       const supportResponse = await handleSupport(request, env, user, path);
       if (supportResponse) return supportResponse;
+      const providerResponse = await handleProviders(request, env, user, path);
+      if (providerResponse) return providerResponse;
       if (path.startsWith("/sync/")) {
         const kind = path.slice(6);
         if (!["skills", "memory", "notes"].includes(kind))

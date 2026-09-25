@@ -123,7 +123,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
             {subject&&<button onClick={()=>actions.onMake('flashcards')}><span className="mk mk-cards"><Icon name="subjects" size={20}/></span><b>Flashcards</b><small>From your files and chats</small></button>}
             {subject&&<button onClick={()=>actions.onMake('quiz')}><span className="mk mk-quiz"><Icon name="check" size={20}/></span><b>Quiz</b><small>Checked, then scheduled</small></button>}
             <button onClick={()=>actions.onMake('worksheet')}><span className="mk mk-sheet"><Icon name="files" size={20}/></span><b>Worksheet</b><small>A PDF, saved to Worksheets</small></button>
-            <button onClick={()=>actions.onMake('summary')}><span className="mk mk-sum"><Icon name="long" size={20}/></span><b>Summary sheet</b><small>One page to revise from</small></button>
+            <button onClick={()=>actions.onMake('summary')}><span className="mk mk-sum"><Icon name="long" size={20}/></span><b>Summary</b><small>Every topic, complete and accurate</small></button>
           </div>
         </section>
         {subject&&weak.length>0&&<section className="sp-card weak">

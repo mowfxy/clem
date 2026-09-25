@@ -46,7 +46,7 @@ export class Codex {
     if (this.server && !this.server.dead) return this.server;
     if (this.serverStart) return this.serverStart;
     this.serverStart = (async () => {
-      const server = new AppServer(await this.start(["app-server", "-c", 'cli_auth_credentials_store="keyring"', "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", 'web_search="disabled"']));
+      const server = new AppServer(await this.start(["app-server", "-c", 'cli_auth_credentials_store="file"', "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", 'web_search="disabled"']));
       this.server = server;
       try { await server.ready; } catch (error) { server.close(); if (this.server === server) this.server = null; throw error; }
       return server;
@@ -100,7 +100,7 @@ export class Codex {
       this.executable,
       [
         "-c",
-        'cli_auth_credentials_store="keyring"',
+        'cli_auth_credentials_store="file"',
         "-c",
         'forced_login_method="chatgpt"',
         ...args,

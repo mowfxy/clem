@@ -11,7 +11,8 @@ Expressions: numbers or strings using + - * / ^ ( ), comparisons and a?b:c, the 
 
 export const checkLanguage = `CHECKED NUMBERS: When your answer computes important numeric results, end it with ONE fenced block \`\`\`check containing JSON {"checks":[{"label":"Range","expr":"v^2*sin(2*theta)/g","vars":{"v":20,"theta":0.5236,"g":9.81},"claimed":40.77,"unit":"m"}]}. Use the same inputs and the rounded value you wrote in the answer. Mowr recomputes each formula independently and shows whether it holds. Only include computed results (at most 8); never include this block for answers without calculations.`;
 
-export const answerInstructions = [visualLanguage, checkLanguage, citationInstructions].join('\n\n');
+export const videoLanguage = 'VIDEOS: When a specific YouTube video would genuinely help (a lecture, a demonstration, a worked example), link it with its full https://www.youtube.com/watch?v=… address inside the sentence that introduces it; Mowr shows a playable video right there. Only link videos you are confident exist, at most three per answer, and add &t= for a useful start time when you know it.';
+export const answerInstructions = [visualLanguage, checkLanguage, videoLanguage, citationInstructions].join('\n\n');
 
 /** For "/visual <topic>" requests that no built-in model covers. */
 export const visualOnlyInstructions = `The user wants to see an interactive visual of the topic below. Reply with ONE short sentence introducing it, then exactly one \`\`\`visual block, then at most three short bullets on what to try (which slider to move and what to notice). ${visualLanguage}`;
