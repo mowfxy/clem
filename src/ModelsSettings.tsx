@@ -1,10 +1,10 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { confirmDialog } from "./dialogs";
 import type { Model } from "../core/types";
 import { desktop } from "./desktop/bridge";
 import {LocalProvider} from "./desktop/LocalProvider";
 import { Icon } from "./Icons";
-import { OpenAILogo, ClaudeLogo } from "./BrandLogos";
+import { OpenAILogo, ClaudeLogo, GrokLogo } from "./BrandLogos";
 import "./models-settings.css";
 type WindowUsage = {
   usedPercent?: number | null;
@@ -157,7 +157,40 @@ export function ModelsSettings({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [claude,setClaude]=useState<{installed?:boolean;connected?:boolean;email?:string;plan?:string}>({}),
-    [gemini,setGemini]=useState<{consented?:boolean;installed?:boolean;connected?:boolean;models?:string[];error?:string}>({});
+    [grok,setGrok]=useState<{installed?:boolean;connected?:boolean;models?:string[];usage?:{percentUsed?:number;periodEnd?:string;plan?:string};error?:string}>({}),
+    [setup,setSetup]=useState<{kind:CliKind;step:"installing"|"signing"}|null>(null),
+    [tab,setTab]=useState<Service|null>(()=>{try{const saved=localStorage.getItem("mowr-provider-tab");return saved==="chatgpt"||saved==="claude"||saved==="grok"?saved:null;}catch{return null;}});
+  // While someone signs in through the browser, check every few seconds so the card turns Connected on its own.
+  useEffect(()=>{
+    if(setup?.step!=="signing")return;
+    const started=Date.now();
+    const timer=setInterval(async()=>{
+      try{
+        const status=await desktop!.invoke({action:CLI[setup.kind].status});
+        store(setup.kind,status);
+        if(status.connected){setSetup(null);setError("");await onRefresh();}
+      }catch{}
+      if(Date.now()-started>15*60_000)setSetup(null);
+    },4000);
+    return()=>clearInterval(timer);
+  },[setup]);
+  const store=(kind:CliKind,status:any)=>kind==="claude"?setClaude(status):setGrok(status);
+  /** Installs the vendor's CLI from inside Mowr when needed, then opens its sign-in. */
+  async function connectCli(kind:CliKind,installed:boolean|undefined){
+    const vendor=CLI[kind];
+    setError("");
+    try{
+      if(!installed){
+        if(!await confirmDialog({title:`Install ${vendor.name}?`,confirm:"Install",message:`Mowr will download ${vendor.name} from ${vendor.owner} and install it for your Windows account. It takes about a minute and doesn’t need administrator rights.\n\nBy installing, you agree to ${vendor.owner}’s terms (${vendor.terms}).`}))return;
+        setSetup({kind,step:"installing"});
+        const status=await desktop!.invoke({action:vendor.install});
+        store(kind,status);
+        if(status.connected){setSetup(null);await onRefresh();return;}
+      }
+      await desktop!.invoke({action:vendor.login});
+      setSetup({kind,step:"signing"});
+    }catch(e){setSetup(null);setError((e as Error).message);}
+  }
   async function refresh(force = false) {
     setBusy(true);
     setError("");
@@ -168,8 +201,8 @@ export function ModelsSettings({
           refresh: force,
         });
         if (result?.accounts) setData(result);
-        const [claudeStatus,geminiStatus]=await Promise.all([desktop.invoke({action:'claudeStatus'}),desktop.invoke({action:'antigravityStatus'})]);
-        setClaude(claudeStatus);setGemini(geminiStatus);
+        const [claudeStatus,grokStatus]=await Promise.all([desktop.invoke({action:'claudeStatus'}),desktop.invoke({action:'grokStatus'})]);
+        setClaude(claudeStatus);setGrok(grokStatus);
       }
       await onRefresh();
     } catch (e) {
@@ -231,46 +264,57 @@ export function ModelsSettings({
           <span>{busy ? "Refreshing…" : "Refresh"}</span>
         </button>
       </div>
-      <div className="provider-cards">
-        <article className={"provider-card provider-openai" + (data.accounts.some((a) => a.connected) ? " is-connected" : "")}>
-          <div className="provider-card-top">
-            <span className="provider-logo"><OpenAILogo size={24} title="OpenAI" /></span>
-            <span className={"provider-status" + (data.accounts.some((a) => a.connected) ? " on" : "")}>
-              {data.accounts.some((a) => a.connected) ? (data.accounts.filter((a) => a.connected).length > 1 ? data.accounts.filter((a) => a.connected).length + " accounts" : "Connected") : "Not connected"}
-            </span>
-          </div>
-          <h3>ChatGPT</h3>
-          <p>Use your ChatGPT plan through Codex. Models sync from the active account.</p>
-          <button className="provider-action primary" disabled={locked} onClick={onConnect}>
-            <Icon name="plus" size={15} />
-            {data.accounts.some((a) => a.connected) ? "Add another account" : "Connect ChatGPT"}
-          </button>
-        </article>
-        {desktop && <article className={"provider-card provider-claude" + (claude.connected ? " is-connected" : "")}>
-          <div className="provider-card-top">
-            <span className="provider-logo"><ClaudeLogo size={24} title="Claude" /></span>
-            <span className={"provider-status" + (claude.connected ? " on" : "")}>{claude.connected ? (claude.plan ? claude.plan.charAt(0).toUpperCase() + claude.plan.slice(1) : "Connected") : claude.installed ? "Sign-in needed" : "Not installed"}</span>
-          </div>
-          <h3>Claude</h3>
-          <p>{claude.connected ? `${claude.email || "Claude account"} · usage limits aren’t reported by Claude Code` : claude.installed ? "Sign in with Claude Code to use your Claude subscription." : "Install the official Claude Code CLI to use your Claude subscription."}</p>
-          {!claude.connected && <button className="provider-action" disabled={busy || locked} onClick={async () => { try { await desktop!.invoke({ action: claude.installed ? "claudeLogin" : "claudeInstall" }); if (claude.installed) setError("Finish Claude sign-in in the terminal, then refresh."); } catch (e) { setError((e as Error).message); } }}>{claude.installed ? "Sign in to Claude" : "Install Claude Code"}<Icon name="arrow" size={14} /></button>}
-        </article>}
-        {desktop && <article className={"provider-card provider-gemini" + (gemini.connected ? " is-connected" : "")}>
-          <div className="provider-card-top">
-            <span className="provider-logo" aria-hidden="true">G</span>
-            <span className={"provider-status" + (gemini.connected ? " on" : "")}>{!gemini.consented ? "Off" : gemini.connected ? `${gemini.models?.length} models` : gemini.installed ? "Sign-in needed" : "Not installed"}</span>
-          </div>
-          <h3>Gemini</h3>
-          <p>{!gemini.consented ? "Use your Google AI Pro or Ultra plan through Google’s Antigravity CLI." : gemini.connected ? "Signed in through Antigravity CLI · usage limits aren’t reported" : gemini.installed ? (gemini.error || "Sign in to Antigravity CLI with your Google account.") : "Install Google’s Antigravity CLI, then sign in."}</p>
-          {gemini.consented && <p className="provider-risk">Google hasn’t confirmed that apps like Mowr may use Antigravity. Your account could be restricted.</p>}
-          {!gemini.consented && <button className="provider-action" disabled={busy || locked} onClick={async () => {
-            if (!await confirmDialog({ title: "Use Gemini through Antigravity CLI?", confirm: "I understand, turn on", danger: true,
-              message: "Mowr will run Google’s official Antigravity CLI on this PC, signed in to your own Google account, and use your Google AI plan’s quota. Mowr never sees your Google password or sign-in tokens, and nothing goes through Mowr’s servers.\n\nGoogle’s Antigravity terms say that using third-party software to access the service is a breach, and Google has suspended accounts for it. Google has not said whether running its own CLI from an app like Mowr is allowed. You could lose access to Antigravity or Gemini CLI on this Google account.\n\nMowr isn’t affiliated with or endorsed by Google. You can turn this off anytime." })) return;
-            try { await desktop!.invoke({ action: "antigravityConsent", accepted: true }); await refresh(true); } catch (e) { setError((e as Error).message); } }}>Turn on Gemini<Icon name="arrow" size={14} /></button>}
-          {gemini.consented && !gemini.connected && <button className="provider-action" disabled={busy || locked} onClick={async () => { try { await desktop!.invoke({ action: gemini.installed ? "antigravityLogin" : "antigravityInstall" }); setError(gemini.installed ? "Finish Google sign-in in the Antigravity window, then refresh." : "Install Antigravity CLI with the command on Google’s page, then refresh."); } catch (e) { setError((e as Error).message); } }}>{gemini.installed ? "Sign in to Antigravity" : "Install Antigravity CLI"}<Icon name="arrow" size={14} /></button>}
-          {gemini.consented && <button className="provider-action provider-off" disabled={busy || locked} onClick={async () => { try { await desktop!.invoke({ action: "antigravityConsent", accepted: false }); await refresh(true); } catch (e) { setError((e as Error).message); } }}>Turn off</button>}
-        </article>}
-      </div>
+      {(() => {
+        const chatgptAccounts = data.accounts.filter((a) => a.connected).length;
+        const services: { id: Service; name: string; logo: ReactNode; connected: boolean }[] = [
+          { id: "chatgpt", name: "ChatGPT", logo: <OpenAILogo size={16} />, connected: chatgptAccounts > 0 },
+          ...(desktop ? [
+            { id: "claude" as const, name: "Claude", logo: <ClaudeLogo size={16} />, connected: !!claude.connected },
+            { id: "grok" as const, name: "Grok", logo: <GrokLogo size={16} />, connected: !!grok.connected },
+          ] : []),
+        ];
+        // Until someone picks a tab, open on the first connected service.
+        const current = services.find((x) => x.id === tab) || services.find((x) => x.connected) || services[0];
+        const pick = (id: Service) => { setTab(id); try { localStorage.setItem("mowr-provider-tab", id); } catch {} };
+        return <section className="provider-panel">
+          {services.length > 1 && <div className="provider-switch" role="tablist" aria-label="AI services">
+            {services.map((x) => <button key={x.id} type="button" role="tab" aria-selected={x.id === current.id} className={"provider-switch-tab provider-" + x.id + (x.id === current.id ? " on" : "")} onClick={() => pick(x.id)}>
+              <span className="provider-switch-logo">{x.logo}</span>{x.name}{x.connected && <span className="provider-dot" aria-label="connected" />}
+            </button>)}
+          </div>}
+          <article key={current.id} className={"provider-card provider-" + current.id + (current.connected ? " is-connected" : "")} role="tabpanel">
+            {current.id === "chatgpt" && <>
+              <div className="provider-card-top">
+                <span className="provider-logo"><OpenAILogo size={24} title="OpenAI" /></span>
+                <div className="provider-title"><h3>ChatGPT</h3></div>
+                <span className={"provider-status" + (chatgptAccounts ? " on" : "")}>{chatgptAccounts ? (chatgptAccounts > 1 ? chatgptAccounts + " accounts" : "Connected") : "Not connected"}</span>
+              </div>
+              <button className="provider-action" disabled={locked} onClick={onConnect}>{chatgptAccounts ? "Add another account" : "Connect ChatGPT"}<Icon name="arrow" size={14} /></button>
+            </>}
+            {current.id === "claude" && <>
+              <div className="provider-card-top">
+                <span className="provider-logo"><ClaudeLogo size={24} title="Claude" /></span>
+                <div className="provider-title"><h3>Claude</h3>{claude.connected && claude.email && <small>{claude.email}</small>}</div>
+                <span className={"provider-status" + (claude.connected ? " on" : "")}>{claude.connected ? (claude.plan ? claude.plan.charAt(0).toUpperCase() + claude.plan.slice(1) : "Connected") : claude.installed ? "Sign-in needed" : "Not installed"}</span>
+              </div>
+              {!claude.connected && <SetupButton kind="claude" setup={setup} disabled={busy || locked} label={claude.installed ? "Sign in to Claude" : "Install Claude Code"} account="Claude" onClick={() => void connectCli("claude", claude.installed)} />}
+            </>}
+            {current.id === "grok" && <>
+              <div className="provider-card-top">
+                <span className="provider-logo"><GrokLogo size={24} title="Grok" /></span>
+                <div className="provider-title"><h3>Grok</h3>{grok.connected && <small>{grok.models?.length} models</small>}</div>
+                <span className={"provider-status" + (grok.connected ? " on" : "")}>{grok.connected ? (grok.usage?.plan ? planName(grok.usage.plan) : "Connected") : grok.installed ? "Sign-in needed" : "Not installed"}</span>
+              </div>
+              {grok.connected && grok.usage?.percentUsed !== undefined && <div className="provider-usage" aria-label={`${Math.round(grok.usage.percentUsed)}% of this period's usage used`}>
+                <div className="provider-usage-bar"><span style={{ width: `${Math.max(2, grok.usage.percentUsed)}%` }} /></div>
+                <small>{Math.round(grok.usage.percentUsed)}% used{grok.usage.periodEnd && !Number.isNaN(Date.parse(grok.usage.periodEnd)) ? ` · resets ${new Date(grok.usage.periodEnd).toLocaleDateString([], { month: "short", day: "numeric" })}` : ""}</small>
+              </div>}
+              {!grok.connected && grok.installed && grok.error && <p className="provider-hint">{grok.error}</p>}
+              {!grok.connected && <SetupButton kind="grok" setup={setup} disabled={busy || locked} label={grok.installed ? "Sign in to Grok" : "Install Grok"} account="X or xAI" onClick={() => void connectCli("grok", grok.installed)} />}
+            </>}
+          </article>
+        </section>;
+      })()}
       {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>Before each request, use another connected ChatGPT account when this one falls below 10% in its short window or 5% weekly. A running response finishes on its current account.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
       {retryId&&<Reconnect id={retryId} onClose={()=>setRetryId(null)} onDone={()=>{setRetryId(null);void refresh(true);}}/>}
       {error && <p role="alert">{error}</p>}
@@ -337,4 +381,28 @@ export function ModelsSettings({
       </p>
     </section>
   );
+}
+
+type CliKind = "claude" | "grok";
+type Service = "chatgpt" | CliKind;
+const CLI = {
+  claude: { name: "Claude Code", owner: "Anthropic", terms: "anthropic.com/legal/consumer-terms", status: "claudeStatus", install: "claudeInstall", login: "claudeLogin" },
+  grok: { name: "Grok", owner: "xAI", terms: "x.ai/legal/terms-of-service", status: "grokStatus", install: "grokInstall", login: "grokLogin" },
+} as const;
+/** SUPERGROK_PRO → SuperGrok Pro, X_PREMIUM_PLUS → X Premium+ */
+function planName(tier: string) {
+  const t = tier.replace(/^SUBSCRIPTION_TIER_/i, "").toLowerCase();
+  if (/premium.?plus|premium\+/.test(t)) return "X Premium+";
+  return t.split(/[_\s-]+/).filter(Boolean).map(w => w === "supergrok" ? "SuperGrok" : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+/** One button that walks through install → sign-in, showing where it's up to. */
+function SetupButton({ kind, setup, disabled, label, account, onClick }: { kind: CliKind; setup: { kind: CliKind; step: "installing" | "signing" } | null; disabled: boolean; label: string; account: string; onClick: () => void }) {
+  const mine = setup?.kind === kind ? setup.step : null;
+  return <>
+    <button className={"provider-action" + (mine ? " is-working" : "")} disabled={disabled || !!setup} onClick={onClick} aria-busy={mine === "installing" || undefined}>
+      {mine === "installing" ? <><span className="provider-spinner" aria-hidden="true" />Installing…</> : mine === "signing" ? <><span className="provider-spinner" aria-hidden="true" />Waiting for sign-in…</> : <>{label}<Icon name="arrow" size={14} /></>}
+    </button>
+    {mine === "installing" && <p className="provider-hint">Downloading and installing. This takes about a minute.</p>}
+    {mine === "signing" && <p className="provider-hint">Sign in with your {account} account in the browser. Mowr connects automatically when you’re done.</p>}
+  </>;
 }

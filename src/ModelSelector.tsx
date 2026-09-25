@@ -53,7 +53,7 @@ function EffortSlider({ levels, level, onChange, onReset }: {
 }
 
 function ProviderMark({ provider }: { provider?: string }) {
-  return <span className={"picker-mark " + (provider === "Anthropic" ? "picker-mark-anthropic" : provider === "Google" ? "picker-mark-gemini" : "picker-mark-openai")} aria-hidden="true"><ProviderLogo provider={provider} size={12} /></span>;
+  return <span className={"picker-mark " + (provider === "Anthropic" ? "picker-mark-anthropic" : provider === "xAI" ? "picker-mark-grok" : "picker-mark-openai")} aria-hidden="true"><ProviderLogo provider={provider} size={12} /></span>;
 }
 
 /** A small popover anchored above (or below) its trigger. */
@@ -116,14 +116,14 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
     </button>}
     {open === "model" && createPortal(<div ref={modelPop.panel} className="unified-picker-panel model-pop" role="menu" aria-label="Select model" style={modelPop.position} onKeyDown={(e) => { if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) { e.preventDefault(); moveRow(e.key); } }}>
       {available.map((m, i) => <div key={m.id}>
-        {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "Google" ? "Gemini" : m.provider}</div>}
+        {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "xAI" ? "Grok" : m.provider}</div>}
         <button className="picker-model-row" type="button" role="menuitemradio" aria-checked={value === m.id} aria-label={m.name} onClick={() => { onChange(m.id); close(); modelButton.current?.focus(); }}>
           <ProviderMark provider={m.provider} />
           <span className="picker-model-name">{m.name}</span>
           {value === m.id && <Icon name="check" size={13} />}
         </button>
       </div>)}
-      {!available.length && <p className="picker-empty">Connect ChatGPT, Claude or Gemini to see your models.</p>}
+      {!available.length && <p className="picker-empty">Connect ChatGPT, Claude or Grok to see your models.</p>}
       <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>
     </div>, document.body)}
     {open === "effort" && onEffort && level && createPortal(<div ref={effortPop.panel} className="unified-picker-panel effort-pop" role="dialog" aria-label="Thinking level" style={effortPop.position}>

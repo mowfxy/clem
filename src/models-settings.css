@@ -292,20 +292,39 @@
 .connected-account>header p{text-transform:none!important}
 @media(max-width:760px){.account-recovery{align-items:flex-start;flex-direction:column}}
 /* Provider cards with the providers' own marks */
-.provider-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:4px 0 18px}
+.provider-panel{display:grid;gap:10px;margin:4px 0 18px}
+.provider-switch{display:flex;gap:4px;padding:4px;border:1px solid #2f2f2c;border-radius:13px;background:#181817;width:max-content;max-width:100%;overflow-x:auto}
+.provider-switch-tab{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px 0 10px;border:0;border-radius:9px;background:none;color:#a3a29b;font:500 13px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:background .15s,color .15s;white-space:nowrap}
+.provider-switch-tab:hover{color:#e6e5de;background:#ffffff08}
+.provider-switch-tab.on{background:#2a2a27;color:#f1f0ea;box-shadow:0 1px 0 #ffffff0f inset,0 2px 8px #0005}
+.provider-switch-logo{width:22px;height:22px;border-radius:6px;display:grid;place-items:center}
+.provider-chatgpt .provider-switch-logo{background:#0d0d0d;color:#fff}
+.provider-claude .provider-switch-logo{background:#f5f0e8}
+.provider-grok .provider-switch-logo{background:#000;color:#fff}
+.provider-dot{width:6px;height:6px;border-radius:50%;background:#8fd497;box-shadow:0 0 0 3px #8fd49722}
+.provider-panel .provider-card{animation:provider-in .25s ease both}
+@keyframes provider-in{from{opacity:0;transform:translateY(4px)}}
+.provider-title{flex:1;min-width:0;display:grid;gap:2px}
+.provider-title small{font-size:12px;color:#8f8e87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.provider-panel .provider-card{animation:none}}
 .provider-card{position:relative;display:flex;flex-direction:column;gap:6px;padding:18px;border:1px solid #2f2f2c;border-radius:16px;background:linear-gradient(180deg,#1f1f1d,#1a1a19);overflow:hidden;transition:border-color .2s}
 .provider-card:hover{border-color:#3d3d39}
 .provider-card::before{content:"";position:absolute;inset:-60% -30% auto auto;width:220px;height:220px;border-radius:50%;opacity:.5;pointer-events:none;filter:blur(40px)}
-.provider-openai::before{background:radial-gradient(#ffffff14,transparent 70%)}
+.provider-chatgpt::before{background:radial-gradient(#ffffff14,transparent 70%)}
 .provider-claude::before{background:radial-gradient(#d977572a,transparent 70%)}
-.provider-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.provider-card-top{display:flex;align-items:center;gap:14px;margin-bottom:14px}
 .provider-logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;border:1px solid #ffffff12}
-.provider-openai .provider-logo{background:#0d0d0d;color:#fff}
+.provider-chatgpt .provider-logo{background:#0d0d0d;color:#fff}
 .provider-claude .provider-logo{background:#f5f0e8;border-color:#f5f0e8}
-.provider-gemini::before{background:radial-gradient(#6d8ff02a,transparent 70%)}
-.provider-gemini .provider-logo{font:600 17px 'Mowafy Sans Text',sans-serif;color:#dfe6fb}
-.provider-risk{margin:0;font-size:12px;line-height:1.5;color:#d9a86a}
-.provider-card .provider-off{background:none;border-color:transparent;color:#8a8983;padding-left:0;padding-right:0}
+.provider-grok::before{background:radial-gradient(#ffffff1c,transparent 70%)}
+.provider-grok .provider-logo{background:#000;border-color:#ffffff24;color:#fff}
+.provider-usage{display:grid;gap:5px;margin-top:2px}
+.provider-usage-bar{height:6px;border-radius:99px;background:#ffffff12;overflow:hidden}
+.provider-usage-bar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#9fd6a4,#e8c07a)}
+.provider-usage small{font-size:11.5px;color:#a9a8a0}
+.provider-hint{margin:0;font-size:12px;line-height:1.5;color:#a9a8a0}
+.provider-spinner{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:provider-spin .8s linear infinite}
+@keyframes provider-spin{to{transform:rotate(360deg)}}
 .provider-status{display:inline-flex;align-items:center;gap:6px;font:12px 'Mowafy Sans Text',sans-serif;color:#8f8e87;padding:4px 9px;border-radius:99px;border:1px solid #ffffff12}
 .provider-status::before{content:"";width:6px;height:6px;border-radius:50%;background:#6b6a64}
 .provider-status.on{color:#b4dcb8;border-color:#a8dcae33;background:#a8dcae0d}

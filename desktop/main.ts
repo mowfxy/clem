@@ -39,7 +39,8 @@ import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeModels} from './claude';
-import {AntigravityProvider,antigravityModels,antigravityInstallUrl,ANTIGRAVITY_PREFIX} from './antigravity';
+import {GrokProvider,grokModels,GROK_PREFIX} from './grok';
+import {installCli} from './cli-install';
 import {
   inside,
   link,
@@ -85,7 +86,7 @@ let window: BrowserWindow;
 let codex: Codex;
 let providerAccounts: ProviderAccounts;
 const claudeProviders=new Map<string,ClaudeProvider>();
-const antigravityProviders=new Map<string,AntigravityProvider>();
+const grokProviders=new Map<string,GrokProvider>();
 let telegram: TelegramService;
 let folderWatcher: FolderWatcher | undefined;
 /** A .mowrpack opened from Explorer, handed to the workspace once it is ready to receive it. */
@@ -111,7 +112,7 @@ app.on("before-quit", () => {
   codex?.stop();
   providerAccounts?.stop();
   for(const provider of claudeProviders.values())provider.stop();
-  for(const provider of antigravityProviders.values())provider.stop();
+  for(const provider of grokProviders.values())provider.stop();
   telegram?.stop();
   folderWatcher?.stop();
 });
@@ -179,11 +180,7 @@ void app.whenReady().then(async () => {
   providerAccounts = new ProviderAccounts(vault,codexExecutable,local);
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
   const claudeFor=(owner:string)=>{let value=claudeProviders.get(owner);if(!value){value=new ClaudeProvider(claudeExecutable,join(local,owner,'claude'));claudeProviders.set(owner,value);}return value;};
-  const antigravityFor=(owner:string)=>{let value=antigravityProviders.get(owner);if(!value){value=new AntigravityProvider(join(local,owner,'antigravity'));antigravityProviders.set(owner,value);}return value;};
-  // Gemini via Antigravity CLI stays off until this person has read and accepted that Google may treat it as
-  // third-party access and restrict their account. Checked here, not only in the settings screen.
-  const antigravityConsentKey=(owner:string)=>"antigravity-consent-"+owner;
-  const antigravityConsented=async(owner:string)=>(await vault.read<{accepted?:boolean}>(antigravityConsentKey(owner),{})).accepted===true;
+  const grokFor=(owner:string)=>{let value=grokProviders.get(owner);if(!value){value=new GrokProvider(join(local,owner,'grok'));grokProviders.set(owner,value);}return value;};
   let providerOwner = "";
   const providerLink=new ProviderLink(auth,vault,local);
   const linkFailed=(error:unknown)=>console.warn('Account linking:',(error as Error)?.message||error);
@@ -448,7 +445,7 @@ void app.whenReady().then(async () => {
     }
     if (url.pathname === "/api/models") {
       const user = await auth.user();
-      try{if(!user)return Response.json([]);const [codexModels,claudeStatus,gemini]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claudeFor(user.id).status(),antigravityConsented(user.id).then(ok=>ok?antigravityFor(user.id).status():null).catch(()=>null)]);return Response.json([...codexModels,...(claudeStatus.connected?claudeModels:[]),...(gemini?.connected?antigravityModels(gemini.models):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
+      try{if(!user)return Response.json([]);const [codexModels,claudeStatus,grok]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claudeFor(user.id).status(),grokFor(user.id).status().catch(()=>null)]);return Response.json([...codexModels,...(claudeStatus.connected?claudeModels:[]),...(grok?.connected?grokModels(grok):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
     }
     if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection") || (request.method === "POST" && url.pathname === "/api/drive/upload")) {
       try {
@@ -544,6 +541,16 @@ void app.whenReady().then(async () => {
   let usernameRequest: AbortController | undefined;
   const sharedFiles = new Set<string>();
   const dragIcon = nativeImage.createFromPath(join(__dirname, "../dist/logo.png")).resize({ width: 56, height: 56 });
+  // The caption buttons are drawn by Windows, not the page, so they're recoloured to match what the page shows.
+  const tones: Record<string, { color: string; symbolColor: string }> = {
+    normal: { color: "#141414", symbolColor: "#eeece4" },
+    dim: { color: "#080808", symbolColor: "#6f6e69" },
+    full: { color: "#1a1a19", symbolColor: "#eeece4" },
+  };
+  ipcMain.on("mowr:tone", (event, tone) => {
+    if (event.sender !== window.webContents || !tones[tone]) return;
+    try { window.setTitleBarOverlay({ ...tones[tone], height: 40 }); } catch {}
+  });
   ipcMain.on("mowr:drag", (event, path) => {
     if (event.sender !== window.webContents || typeof path !== "string" || !sharedFiles.has(path)) return;
     event.sender.startDrag({ file: path, icon: dragIcon.isEmpty() ? nativeImage.createFromPath(join(__dirname, "../desktop/icon.ico")) : dragIcon });
@@ -606,7 +613,7 @@ void app.whenReady().then(async () => {
       loginAttempt?.stop();
       codex.stop();
       for(const provider of claudeProviders.values())provider.stop();
-      for(const provider of antigravityProviders.values())provider.stop();
+      for(const provider of grokProviders.values())provider.stop();
       await selectProvider("signed-out");
       await auth.client?.auth.signOut();
       return status();
@@ -685,18 +692,10 @@ void app.whenReady().then(async () => {
       return status;
     }
     if (request.action === "claudeLogin") return claudeFor(user.id).login();
-    if (request.action === "antigravityStatus") {
-      const consented=await antigravityConsented(user.id);
-      return {consented,...(consented?await antigravityFor(user.id).status(true):{installed:false,connected:false,models:[]})};
-    }
-    if (request.action === "antigravityConsent") {
-      if(request.accepted)await vault.write(antigravityConsentKey(user.id),{accepted:true,at:new Date().toISOString()});
-      else{antigravityFor(user.id).stop();await vault.write(antigravityConsentKey(user.id),{accepted:false,at:new Date().toISOString()});}
-      return {consented:request.accepted};
-    }
-    if (request.action === "antigravityLogin") {if(!await antigravityConsented(user.id))throw Error("Accept the Antigravity notice first.");return antigravityFor(user.id).login();}
-    if (request.action === "antigravityInstall") {await shell.openExternal(antigravityInstallUrl);return {opened:true};}
-    if (request.action === "claudeInstall") {await shell.openExternal('https://code.claude.com/docs/en/setup');return {opened:true};}
+    if (request.action === "grokStatus") return grokFor(user.id).status(true);
+    if (request.action === "grokLogin") return grokFor(user.id).login(url=>{if(/^https:\/\/([a-z0-9-]+\.)*(x\.ai|grok\.com)\//.test(url))void shell.openExternal(url);});
+    if (request.action === "grokInstall") {await installCli("grok");const provider=grokFor(user.id);provider.forget();return provider.status(true);}
+    if (request.action === "claudeInstall") {await installCli("claude");const provider=claudeFor(user.id);provider.forget();return provider.status(true);}
     if (request.action === "providerAccountRetry") return providerAccounts.retry(user.id,request.id);
     if (request.action === "providerAccountAdd") return providerAccounts.add(user.id);
     if (request.action === "providerAccountStatus") {
@@ -716,7 +715,7 @@ void app.whenReady().then(async () => {
     if (request.action === "cancel") {
       codex.cancel(request.id);
       claudeFor(user.id).cancel(request.id);
-      antigravityFor(user.id).cancel(request.id);
+      grokFor(user.id).cancel(request.id);
       return { ok: true };
     }
     const memoryKey = "memory-" + user.id;
@@ -922,10 +921,9 @@ void app.whenReady().then(async () => {
       return illustratedPdf(markdownDocument(request.markdown, request.title), { checkVoice: false });
     if (request.action === "chat") {
       const query = retrievalQuery(request.messages);
-      const gemini = !!request.model?.startsWith(ANTIGRAVITY_PREFIX);
-      const claude = !!request.model?.startsWith("claude:") || gemini;
+      const grok = !!request.model?.startsWith(GROK_PREFIX);
+      const claude = !!request.model?.startsWith("claude:") || grok;
       if (request.images?.length && claude) throw Error("Image questions need a ChatGPT model.");
-      if (gemini && !await antigravityConsented(user.id)) throw Error("Turn on Gemini in Settings → Models first.");
       const messages = boundedConversation(request.messages);
       if (JSON.stringify(messages).length > 64000)
         throw Error(
@@ -978,8 +976,8 @@ void app.whenReady().then(async () => {
         scope: request.scope,
         startedAt: new Date().toISOString(),
       });
-      const run=gemini
-        ? antigravityFor(user.id).run(request.id,prompt,request.model!,(event)=>window.webContents.send('mowr:chat',event))
+      const run=grok
+        ? grokFor(user.id).run(request.id,prompt,request.model!,(event)=>window.webContents.send('mowr:chat',event))
         : request.model?.startsWith('claude:')
         ? claudeFor(user.id).run(request.id,prompt,request.model,request.reasoning,(event)=>window.webContents.send('mowr:chat',event))
         : codex.run(request.id, prompt, (event) =>

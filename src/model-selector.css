@@ -12,7 +12,7 @@
 .picker-mark{width:18px;height:18px;flex:none;display:grid;place-items:center;border-radius:5px;background:#ffffff0d;color:#dddcd5}
 .picker-mark-openai{background:#0d0d0d;border:1px solid #ffffff1a;color:#fff}
 .picker-mark-anthropic{background:#f5f0e8}
-.picker-mark-gemini{background:#1d2436;color:#dfe6fb}
+.picker-mark-grok{background:#000;border:1px solid #ffffff1a;color:#fff}
 .unified-picker-panel{position:fixed;z-index:500;width:320px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);display:flex;flex-direction:column;box-sizing:border-box;padding:6px;border:1px solid #42423d;border-radius:16px;background:#232321;color:#e9e8e2;box-shadow:0 18px 50px #0007,0 0 0 1px #ffffff05 inset;font:13px/1.4 'Mowafy Sans Text',sans-serif;animation:picker-in .16s cubic-bezier(.2,.9,.3,1)}
 @keyframes picker-in{from{opacity:0;transform:translateY(4px) scale(.99)}}
 @media(prefers-reduced-motion:reduce){.unified-picker-panel{animation:none}}

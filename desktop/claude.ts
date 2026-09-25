@@ -1,6 +1,7 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
+import {installedPath,signInWindow} from './cli-install.ts';
 
 export const claudeModels = [
   {id:'claude:sonnet',name:'Claude Sonnet',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Sonnet on your Claude subscription',reasoningEfforts:[{reasoningEffort:'low',description:'Low'},{reasoningEffort:'medium',description:'Medium'},{reasoningEffort:'high',description:'High'}],defaultReasoningEffort:'medium'},
@@ -18,9 +19,11 @@ export function claudeSubscriptionStatus(raw:string,code:number|null) {
 export class ClaudeProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
-  private executable:string;
+  private configured:string;
+  /** Re-resolved each time so a Claude Code that Mowr just installed is found without restarting. */
+  private get executable(){return this.configured==='claude'?installedPath('claude','claude'):this.configured;}
   private root:string;
-  constructor(executable:string,root:string){this.executable=executable;this.root=root;}
+  constructor(executable:string,root:string){this.configured=executable;this.root=root;}
   private env():NodeJS.ProcessEnv {
     const env:NodeJS.ProcessEnv={};
     for(const key of ['PATH','SystemRoot','WINDIR','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','HOMEDRIVE','HOMEPATH'])if(process.env[key])env[key]=process.env[key];
@@ -43,12 +46,13 @@ export class ClaudeProvider {
     });
     this.statusCache={at:Date.now(),value};return value;
   }
+  forget(){this.statusCache=null;}
   async login(){
     await mkdir(this.root,{recursive:true});
-    const command=`$env:CLAUDE_CONFIG_DIR='${this.root.replace(/'/g,"''")}'; & '${this.executable.replace(/'/g,"''")}' auth login`;
-    const child=spawn('powershell.exe',['-NoProfile','-NoExit','-Command',command],{env:this.env(),detached:true,stdio:'ignore',windowsHide:false});
-    child.unref();this.statusCache=null;
-    return {started:true};
+    this.statusCache=null;
+    return signInWindow({title:'Sign in to Claude · Mowr',message:'Sign in with your Claude account in the browser that opens.',env:this.env(),
+      command:`$env:CLAUDE_CONFIG_DIR='${this.root.replace(/'/g,"''")}'; & '${this.executable.replace(/'/g,"''")}' auth login`,
+      signedIn:async()=>(await this.status(true)).connected});
   }
   async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void){
     const selected=claudeModels.find(item=>item.id===model);
