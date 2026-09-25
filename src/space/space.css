@@ -17,7 +17,7 @@ input.sp-desc{width:100%;background:none!important;border:0!important;border-bot
 .sp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:22px}
 .sp-stat{position:relative;display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:14px;background:#ffffff07;border:1px solid #ffffff0f;text-align:left;color:inherit;font:inherit;min-width:0}
 button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;border-color:#ffffff1c}
-.sp-stat>span:last-child{display:flex;flex-direction:column;min-width:0}
+.sp-stat>span:not(.sp-stat-icon){display:flex;flex-direction:column;min-width:0}
 .sp-stat b{font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sp-stat small{font-size:11.5px;color:#8f8e88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sp-stat-icon{flex-shrink:0;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#ffffff0b;color:#c9c8c1}

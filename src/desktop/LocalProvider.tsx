@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { desktop } from "./bridge";
-import { Icon } from "../Icons";
+import { Icon, Logo } from "../Icons";
+import { OpenAILogo } from "../BrandLogos";
 import "../models-settings.css";
 export function LocalProvider({ onDone, accountId }: { onDone: () => void; accountId?:string }) {
   const [error, setError] = useState(""),
@@ -55,62 +56,48 @@ export function LocalProvider({ onDone, accountId }: { onDone: () => void; accou
     }
   }
   useEffect(()=>{if(accountId)void start();},[accountId]);
+  const [copied, setCopied] = useState(false);
   return (
-    <div className="desktop-provider">
-      <div className="provider-intro">
-        <span className="model-provider-mark">
-          <Icon name="visuals" size={26} />
-        </span>
-        <div>
-          <h3>Codex, with ChatGPT</h3>
-          <p>Your models and subscription, together in Mowr.</p>
-        </div>
+    <div className="desktop-provider cx-connect">
+      <div className="cx-link" aria-hidden="true">
+        <span className="cx-tile cx-mowr"><Logo size={26} /></span>
+        <span className="cx-wire"><i /><i /><i /></span>
+        <span className="cx-tile cx-openai"><OpenAILogo size={26} /></span>
+      </div>
+      <div className="cx-title">
+        <h3>Connect ChatGPT</h3>
+        <p>Use your ChatGPT plan in Mowr through Codex.</p>
       </div>
       {!challenge ? (
         <>
-          <ol className="provider-steps">
-            <li>
-              <span>01</span>Sign in securely with your ChatGPT account.
-            </li>
-            <li>
-              <span>02</span>Your available models and usage sync automatically.
-            </li>
-            <li>
-              <span>03</span>Add another account or switch anytime in Settings.
-            </li>
+          <ol className="cx-steps">
+            <li><span>1</span><div><b>Sign in with OpenAI</b><small>In your browser, with a one-time code.</small></div></li>
+            <li><span>2</span><div><b>Models sync automatically</b><small>Along with your plan’s usage limits.</small></div></li>
+            <li><span>3</span><div><b>Add more accounts anytime</b><small>Switch between them in Settings.</small></div></li>
           </ol>
-          <button
-            className="primary"
-            disabled={busy}
-            onClick={() => void start()}
-          >
+          <button className="primary cx-go" disabled={busy} onClick={() => void start()}>
+            <OpenAILogo size={16} />
             {busy ? "Preparing sign-in…" : "Continue with ChatGPT"}
-            <Icon name="arrow" size={16} />
           </button>
         </>
       ) : (
-        <div className="provider-challenge">
-          <p>Enter this code on the ChatGPT sign-in page.</p>
-          <code>{challenge.code}</code>
-          <a
-            className="primary"
-            href={challenge.url}
-            target="_blank"
-            rel="noreferrer"
-          >
+        <div className="provider-challenge cx-challenge">
+          <p>Enter this code on the OpenAI sign-in page</p>
+          <button type="button" className="cx-code" title="Copy code" onClick={() => { void navigator.clipboard?.writeText(challenge.code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); }); }}>
+            <code>{challenge.code}</code>
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+          <a className="primary cx-go" href={challenge.url} target="_blank" rel="noreferrer">
             Open sign-in page
             <Icon name="arrow" size={15} />
           </a>
-          <p className="provider-wait">Waiting for your account…</p>
-          <p>
-            Enable device-code login in ChatGPT security settings if prompted.
-          </p>
+          <p className="provider-wait"><span className="cx-pulse" />Waiting for your account…</p>
+          <p className="cx-hint">If asked, turn on device-code sign-in in ChatGPT’s security settings.</p>
         </div>
       )}
       {error && <div className="provider-recovery"><p role="alert">{error}</p><button className="secondary" disabled={busy} onClick={()=>void start()}>Try again</button></div>}
       <p className="provider-note">
-        No API key needed. Credentials stay in Windows’ protected credential
-        store. Usage and model access follow your account’s plan.
+        No API key or password is shared with Mowr. Credentials stay in Windows’ protected credential store.
       </p>
     </div>
   );

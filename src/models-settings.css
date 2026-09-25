@@ -313,3 +313,40 @@
 .provider-card .provider-action.primary{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
 .provider-card .provider-action.primary:hover{background:#fff}
 .provider-card .provider-action:disabled{opacity:.5;cursor:default}
+.connected-accounts{margin-top:18px}
+/* Connect ChatGPT: Mowr and OpenAI, linked */
+.cx-connect{display:flex;flex-direction:column;gap:18px!important}
+.cx-link{display:flex;align-items:center;justify-content:center;gap:0;padding:6px 0 2px}
+.cx-tile{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;flex:none;border:1px solid #ffffff17}
+.cx-mowr{background:#f2f1ec;color:#141413;border-color:#f2f1ec}
+.cx-openai{background:#0b0b0b;color:#fff}
+.cx-wire{position:relative;width:74px;height:2px;margin:0 8px;background:repeating-linear-gradient(90deg,#ffffff2e 0 4px,transparent 4px 8px)}
+.cx-wire i{position:absolute;top:-2px;left:0;width:6px;height:6px;border-radius:50%;background:#fff;opacity:0;animation:cx-flow 2.1s cubic-bezier(.45,0,.55,1) infinite}
+.cx-wire i:nth-child(2){animation-delay:.7s}.cx-wire i:nth-child(3){animation-delay:1.4s}
+@keyframes cx-flow{0%{transform:translateX(0);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(68px);opacity:0}}
+.cx-title{text-align:center}
+.cx-connect .cx-title h3{font:500 18px 'Mowafy Sans Text',sans-serif!important;margin:0 0 6px!important;color:#f3f2ec}
+.cx-connect .cx-title p{margin:0!important;font-size:13px!important;color:#9d9c95}
+.cx-steps{list-style:none;margin:0;padding:4px;display:grid;gap:2px;border:1px solid #ffffff10;border-radius:14px;background:#ffffff05}
+.cx-steps li{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px}
+.cx-steps li>span{width:24px;height:24px;flex:none;display:grid;place-items:center;border-radius:50%;border:1px solid #ffffff22;font:500 11px 'Mowafy Sans Text',sans-serif;color:#d8d7d0}
+.cx-steps b{display:block;font-weight:500;font-size:13px;color:#eeede7}
+.cx-steps small{display:block;font-size:11.5px;color:#8f8e87;margin-top:1px}
+.cx-connect .cx-go{display:flex;align-items:center;justify-content:center;gap:9px;height:42px;padding:0 16px!important;border-radius:11px;background:#f2f1ec;color:#141413;border:0;font:500 13.5px 'Mowafy Sans Text',sans-serif!important;text-decoration:none;transition:background .15s,transform .15s}
+.cx-connect .cx-go:hover{background:#fff}
+.cx-connect .cx-go:active{transform:scale(.99)}
+.cx-connect .cx-go:disabled{opacity:.6}
+.cx-challenge{background:#ffffff05!important;border:1px solid #ffffff12!important;border-radius:14px!important;padding:18px!important}
+.cx-challenge>p:first-child{margin:0!important;color:#a9a8a0;font-size:12.5px!important}
+.cx-code{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;margin:12px 0 14px;padding:12px;border-radius:12px;border:1px dashed #ffffff26;background:#0f0f0e;color:#f5f4ee;cursor:pointer;font:inherit}
+.cx-code:hover{border-color:#ffffff45}
+.cx-code code{margin:0!important;font:500 24px ui-monospace,'Cascadia Mono',monospace!important;letter-spacing:.14em}
+.cx-code span{font-size:11px;color:#8f8e87;padding:3px 8px;border-radius:99px;border:1px solid #ffffff17}
+.cx-challenge .cx-go{width:100%}
+.cx-challenge .provider-wait{display:flex;align-items:center;justify-content:center;gap:8px;color:#b9b8b0!important}
+.cx-pulse{width:7px;height:7px;border-radius:50%;background:#fff;animation:cx-pulse 1.4s ease-in-out infinite}
+@keyframes cx-pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+.cx-hint{font-size:11.5px!important;color:#85847d;margin:6px 0 0!important}
+.cx-connect .provider-note{text-align:center;font-size:11px!important;color:#7f7e78!important}
+@media(prefers-reduced-motion:reduce){.cx-wire i,.cx-pulse{animation:none}.cx-wire i:first-child{opacity:1;left:34px}}
+.cx-mowr .mowr-mark{color:#141413}
