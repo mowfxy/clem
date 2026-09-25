@@ -37,10 +37,9 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claudeStatus") }),
   z.object({ action: z.literal("claudeLogin") }),
   z.object({ action: z.literal("claudeInstall") }),
-  z.object({ action: z.literal("antigravityStatus") }),
-  z.object({ action: z.literal("antigravityConsent"), accepted: z.boolean() }),
-  z.object({ action: z.literal("antigravityLogin") }),
-  z.object({ action: z.literal("antigravityInstall") }),
+  z.object({ action: z.literal("grokStatus") }),
+  z.object({ action: z.literal("grokLogin") }),
+  z.object({ action: z.literal("grokInstall") }),
   z.object({ action: z.literal("providerAccountAdd") }),
   z.object({ action: z.literal("providerAccountRetry"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
   z.object({ action: z.literal("providerAccountStatus"), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
@@ -163,6 +162,8 @@ export type DesktopBridge = {
   onFolder?: (listener: (event: FolderEvent) => void) => () => void;
   onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
   startDrag?: (path: string) => void;
+  /** Recolours the Windows caption buttons to sit in the page: normal, dimmed behind a pop-up, or a full-screen viewer. */
+  setWindowTone?: (tone: "normal" | "dim" | "full") => void;
   onChat: (
     listener: (event: {
       id: string;

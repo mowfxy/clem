@@ -687,10 +687,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     try {
       const memory = activeSpace ? activeSpace.memory : state.memory;
       const pictures = stateRef.current.files.filter((f) => user.attachments.includes(f.id) && f.type.startsWith("image/"));
-      if (pictures.length && /^(claude|antigravity):/.test(model)) throw Error("Image questions need a ChatGPT model. Choose one in the model menu, then send again.");
+      if (pictures.length && /^(claude|grok):/.test(model)) throw Error("Image questions need a ChatGPT model. Choose one in the model menu, then send again.");
       const images = desktop ? await Promise.all(pictures.slice(0, 4).map(async (f) => ({ name: f.name, data: await blobBase64(f.id) }))) : [];
       const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png`, data: p.image! }));
-      if (pointerImages.length && !/^(claude|antigravity):/.test(model)) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
+      if (pointerImages.length && !/^(claude|grok):/.test(model)) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
       const fileText = await attachmentText([
         ...user.attachments,
         ...(activeSpace?.sources || []),

@@ -7,9 +7,12 @@ export function OpenAILogo({ size = 20, title }: { size?: number; title?: string
 export function ClaudeLogo({ size = 20, title }: { size?: number; title?: string }) {
   return <svg className="brand-logo brand-claude" width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true} fill="#D97757"><path d={CLAUDE} /></svg>;
 }
+const GROK = "M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815";
+export function GrokLogo({ size = 20, title }: { size?: number; title?: string }) {
+  return <svg className="brand-logo brand-grok" width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true} fill="currentColor" fillRule="evenodd"><path d={GROK} /></svg>;
+}
 export function ProviderLogo({ provider, size }: { provider?: string; size?: number }) {
-  // Gemini gets a plain letter mark: Google's logos are trademarks and Mowr isn't endorsed by Google.
-  if (provider === "Google") return <span className="brand-logo brand-gemini" style={{ fontSize: size ? size * 0.8 : 14, fontWeight: 600, lineHeight: 1 }}>G</span>;
+  if (provider === "xAI") return <GrokLogo size={size} />;
   return provider === "Anthropic" ? <ClaudeLogo size={size} /> : <OpenAILogo size={size} />;
 }
 const GITHUB = "M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58l-.01-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3";
