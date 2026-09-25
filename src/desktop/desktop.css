@@ -387,3 +387,47 @@ body:has(.desktop-content) {
 .desktop-content .sidebar>.brand{-webkit-app-region:drag;app-region:drag}
 
 @media(max-width:760px){.desktop-titlebar:has(+.desktop-content .sidebar){left:0}}
+/* The last setup step holds a provider picker, so it gets a little more room. */
+.setup-layout:has(.first-provider) {
+  width: min(100%, 500px);
+}
+.first-provider {
+  display: grid;
+  gap: 14px;
+  margin: 22px 0 18px;
+  text-align: left;
+}
+.first-provider .provider-switch {
+  margin: 0 auto;
+}
+.first-provider-body {
+  animation: setup-enter 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.first-provider-body .desktop-provider {
+  margin: 0;
+}
+.first-provider-done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 22px;
+  margin: 0;
+  border: 1px solid #2f2f2c;
+  border-radius: 16px;
+  background: #1a1a19;
+  color: #dcdbd4;
+  font-size: 14px;
+}
+.first-provider-done svg {
+  color: #8fc79a;
+}
+.setup-finish {
+  width: 100%;
+  margin-bottom: 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .first-provider-body {
+    animation: none;
+  }
+}

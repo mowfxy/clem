@@ -193,6 +193,19 @@ export class DriveLive {
     for(const h of ["Content-Length","Content-Range"]){const v=r.headers.get(h);if(v)headers.set(h,v);}
     return new Response(r.body,{status:r.status,headers});
   }
+  /** Size and playable type of a file that can be read in byte ranges; null for Google formats, which are exported whole. */
+  async stat(id:string):Promise<{size:number;type:string}|null>{
+    const m=await this.info(id);
+    return viewFormat(m.mimeType).export||!Number(m.size)?null:{size:Number(m.size),type:playableType(m.mimeType,m.name)};
+  }
+  /** Bytes start..end of a file, straight from Google. Errors carry the HTTP status the player should get. */
+  async bytes(id:string,start:number,end:number):Promise<ReadableStream<Uint8Array>>{
+    const r=await this.google(`${API}/${id}?alt=media&supportsAllDrives=true&acknowledgeAbuse=false`,{headers:{Range:`bytes=${start}-${end}`}});
+    // A plain 200 is the whole file, which is only the right bytes when the range starts at 0.
+    if(r.body&&(r.status===206||(r.status===200&&start===0)))return r.body;
+    void r.body?.cancel();
+    throw Object.assign(Error(r.status===403?"Google blocks downloads for this Drive file.":"This Drive file is unavailable."),{status:r.status===403||r.status===404?r.status:502});
+  }
   /** Drive's thumbnail (needs the same sign-in), or 404 so the card falls back to its own poster. */
   async thumbnail(id:string,size=640):Promise<Response>{
     const m=await this.info(id).catch(()=>null);
@@ -211,10 +224,22 @@ export function playableType(mime:string,name:string){
   return ({mp4:"video/mp4",m4v:"video/mp4",mov:"video/mp4",webm:"video/webm",ogv:"video/ogg",mp3:"audio/mpeg",m4a:"audio/mp4",wav:"audio/wav",ogg:"audio/ogg"} as Record<string,string>)[ext]||mime||"application/octet-stream";
 }
 
+const BLOCK = 1 << 20, RUN = 8, KEEP = 64;
+type Pending = {promise: Promise<Uint8Array>; resolve: (b: Uint8Array) => void; reject: (e: unknown) => void};
+const pending = (): Pending => { let resolve!: Pending["resolve"], reject!: Pending["reject"]; const promise = new Promise<Uint8Array>((y, n) => { resolve = y; reject = n; }); promise.catch(() => {}); return {promise, resolve, reject}; };
+
 /**
  * Video and audio from Drive play through a private server on 127.0.0.1. Chromium's media player needs real HTTP
  * range responses to start and seek long files; a custom protocol can stall on them. Every URL carries a random
  * key made for this run, so no other program on the PC can use it.
+ *
+ * Before a long video shows its first frame Chromium opens dozens of range requests a few hundred KB apart, and each
+ * one sent straight to Google waits half a second or more, so a lecture took minutes to start. Instead the file is
+ * read from Google in 8 MiB runs into 1 MiB blocks held in memory (the last 64 MiB, never on disk), those nearby
+ * requests are answered from memory, and the next run starts while the current one plays.
+ *
+ * Some recorders also write a video as thousands of small mdat boxes, and Chromium reads the header of every top-level
+ * box of an MP4 before its first frame: hundreds of range requests across the whole file. See `layout`.
  */
 export class DriveMediaServer {
   private server?: Server;
@@ -222,7 +247,104 @@ export class DriveMediaServer {
   private key = randomBytes(24).toString("hex");
   private drive: DriveLive;
   private allowed: () => Promise<boolean>;
+  private blocks = new Map<string, Promise<Uint8Array>>();
+  private layouts = new Map<string, Promise<{at: number; bytes: Uint8Array} | null>>();
   constructor(drive: DriveLive, allowed: () => Promise<boolean>) { this.drive = drive; this.allowed = allowed; }
+  /** Block i of a file; a missing block starts a run from it up to the next block already held. */
+  private block(id: string, size: number, i: number) {
+    const key = id + ":" + i, held = this.blocks.get(key);
+    if (held) { this.blocks.delete(key); this.blocks.set(key, held); return held; }
+    // The opening run is short: a player that jumps straight to an index at the end shouldn't wait behind 8 MiB.
+    const last = Math.ceil(size / BLOCK) - 1, run: Pending[] = [], most = i === 0 ? 2 : RUN;
+    for (let j = i; j <= last && run.length < most && (j === i || !this.blocks.has(id + ":" + j)); j++) { const p = pending(); run.push(p); this.blocks.set(id + ":" + j, p.promise); }
+    void this.fill(id, size, i, run);
+    for (const old of this.blocks.keys()) { if (this.blocks.size <= KEEP) break; this.blocks.delete(old); }
+    return run[0].promise;
+  }
+  private async fill(id: string, size: number, first: number, run: Pending[]) {
+    const length = (k: number) => Math.min(BLOCK, size - (first + k) * BLOCK);
+    let k = 0;
+    try {
+      const reader = (await this.drive.bytes(id, first * BLOCK, Math.min(size, (first + run.length) * BLOCK) - 1)).getReader();
+      let buffer = new Uint8Array(length(0)), at = 0;
+      while (k < run.length) {
+        const {done, value} = await reader.read();
+        if (done) throw Error("Drive stopped sending this file.");
+        for (let off = 0; off < value.length && k < run.length;) {
+          const take = Math.min(value.length - off, buffer.length - at);
+          buffer.set(value.subarray(off, off + take), at); at += take; off += take;
+          if (at === buffer.length) { run[k++].resolve(buffer); if (k < run.length) { buffer = new Uint8Array(length(k)); at = 0; } }
+        }
+      }
+      void reader.cancel().catch(() => {});
+    } catch (error) {
+      for (; k < run.length; k++) { run[k].reject(error); if (this.blocks.get(id + ":" + (first + k)) === run[k].promise) this.blocks.delete(id + ":" + (first + k)); }
+    }
+  }
+  private async read(id: string, size: number, at: number, length: number) {
+    const out = new Uint8Array(length);
+    for (let i = 0; i < length;) { const p = at + i, data = await this.block(id, size, Math.floor(p / BLOCK)), o = p % BLOCK, n = Math.min(length - i, data.length - o); out.set(data.subarray(o, o + n), i); i += n; }
+    return out;
+  }
+  /**
+   * When an MP4's index (moov) comes before its media and the file isn't fragmented, the first mdat is presented as
+   * running to the end of the file. Every byte stays where the index says it is; the later mdat headers become unread
+   * bytes inside the first one, so Chromium stops after one box instead of walking the whole file. Returns the bytes
+   * to overwrite, or null to serve the file unchanged.
+   */
+  private layout(id: string, size: number) {
+    let known = this.layouts.get(id);
+    if (!known) this.layouts.set(id, known = (async () => {
+      const header = async (at: number) => {
+        const h = await this.read(id, size, at, Math.min(16, size - at)), v = new DataView(h.buffer);
+        const type = String.fromCharCode(...h.subarray(4, 8)), large = v.getUint32(0) === 1;
+        return {type, head: large ? 16 : 8, box: large ? Number(v.getBigUint64(8)) : v.getUint32(0)};
+      };
+      let moov = false;
+      for (let at = 0, n = 0; at + 8 <= size && n < 16; n++) {
+        const {type, head, box} = await header(at);
+        if (box < head || at + box > size) return null;
+        if (type === "moov") {
+          for (let c = at + head, k = 0; c + 8 <= at + box && k < 64; k++) { const child = await header(c); if (child.type === "mvex") return null; if (child.box < child.head) return null; c += child.box; }
+          moov = true;
+        }
+        if (type === "mdat") {
+          if (!moov || at + box >= size) return null;
+          const bytes = new Uint8Array(head === 16 ? 8 : 4), v = new DataView(bytes.buffer);
+          if (head === 16) v.setBigUint64(0, BigInt(size - at)); else v.setUint32(0, size - at > 0xffffffff ? 0 : size - at);
+          return {at: head === 16 ? at + 8 : at, bytes};
+        }
+        at += box;
+      }
+      return null;
+    })().catch(() => { this.layouts.delete(id); return null; }));
+    return known;
+  }
+  /** Answers one range request from the blocks, keeping the next run loading while the player reads. */
+  private async stream(id: string, file: {size: number; type: string}, range: string | undefined, head: boolean, res: import("node:http").ServerResponse) {
+    const {size} = file, m = /^bytes=(\d*)-(\d*)$/.exec(range || "");
+    let start = 0, end = size - 1;
+    if (m && m[1]) { start = Number(m[1]); if (m[2]) end = Math.min(end, Number(m[2])); }
+    else if (m && m[2]) start = Math.max(0, size - Number(m[2]));
+    if (start >= size || start > end) { res.writeHead(416, {"Content-Range": `bytes */${size}`}).end(); return; }
+    const from = Math.floor(start / BLOCK), to = Math.floor(end / BLOCK);
+    // The first block is awaited before answering, so a file Google refuses gets a real error status.
+    await this.block(id, size, from);
+    const fix = /mp4|quicktime/.test(file.type) ? await this.layout(id, size) : null;
+    res.writeHead(m ? 206 : 200, {"Content-Type": file.type, "Content-Length": String(end - start + 1), "Accept-Ranges": "bytes", "Cache-Control": "no-store", ...(m ? {"Content-Range": `bytes ${start}-${end}/${size}`} : {})});
+    if (head) { res.end(); return; }
+    let closed = false; res.on("close", () => { closed = true; });
+    for (let i = from; i <= to && !closed; i++) {
+      const data = await this.block(id, size, i);
+      // One Google connection gives 1-3 MB/s, so up to three runs load side by side ahead of the player.
+      for (let ahead = i + RUN / 2; ahead <= Math.min(to, i + RUN / 2 + 2 * RUN); ahead += RUN) void this.block(id, size, ahead).catch(() => {});
+      let chunk = data.subarray(i === from ? start - i * BLOCK : 0, i === to ? end - i * BLOCK + 1 : data.length);
+      const at = i === from ? start : i * BLOCK;
+      if (fix && fix.at < at + chunk.length && fix.at + fix.bytes.length > at) { chunk = chunk.slice(); fix.bytes.forEach((b, j) => { if (fix.at + j >= at && fix.at + j < at + chunk.length) chunk[fix.at + j - at] = b; }); }
+      if (!res.write(chunk) && !closed) await new Promise<void>((go) => { const done = () => { res.off("drain", done); res.off("close", done); go(); }; res.on("drain", done); res.on("close", done); });
+    }
+    res.end();
+  }
   private start() {
     if (this.ready) return this.ready;
     this.ready = new Promise<number>((resolve, reject) => {
@@ -231,6 +353,8 @@ export class DriveMediaServer {
           const url = new URL(req.url || "/", "http://127.0.0.1");
           const match = /^\/drive\/([\w-]{10,150})$/.exec(url.pathname);
           if (req.method !== "GET" && req.method !== "HEAD" || !match || url.searchParams.get("k") !== this.key || !await this.allowed()) { res.writeHead(404).end(); return; }
+          const file = await this.drive.stat(match[1]);
+          if (file) { await this.stream(match[1], file, typeof req.headers.range === "string" ? req.headers.range : undefined, req.method === "HEAD", res); return; }
           const upstream = await this.drive.media(match[1], typeof req.headers.range === "string" ? req.headers.range : null);
           const headers: Record<string, string> = {};
           upstream.headers.forEach((value, name) => { if (name !== "x-mowr-file-name") headers[name] = value; });
@@ -240,7 +364,7 @@ export class DriveMediaServer {
           req.on("close", () => body.destroy());
           body.on("error", () => res.destroy());
           body.pipe(res);
-        } catch { if (!res.headersSent) res.writeHead(502); res.end(); }
+        } catch (error) { if (res.headersSent) res.destroy(); else res.writeHead((error as {status?: number}).status || 502).end(); }
       });
       server.on("error", reject);
       server.listen(0, "127.0.0.1", () => { this.server = server; resolve((server.address() as {port:number}).port); });
@@ -248,5 +372,5 @@ export class DriveMediaServer {
     return this.ready;
   }
   async url(id: string) { return `http://127.0.0.1:${await this.start()}/drive/${id}?k=${this.key}`; }
-  stop() { this.server?.close(); }
+  stop() { this.server?.close(); this.blocks.clear(); this.layouts.clear(); }
 }

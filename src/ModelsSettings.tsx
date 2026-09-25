@@ -158,39 +158,9 @@ export function ModelsSettings({
     [error, setError] = useState(""),
     [claude,setClaude]=useState<{installed?:boolean;connected?:boolean;email?:string;plan?:string}>({}),
     [grok,setGrok]=useState<{installed?:boolean;connected?:boolean;models?:string[];usage?:{percentUsed?:number;periodEnd?:string;plan?:string};error?:string}>({}),
-    [setup,setSetup]=useState<{kind:CliKind;step:"installing"|"signing"}|null>(null),
     [tab,setTab]=useState<Service|null>(()=>{try{const saved=localStorage.getItem("mowr-provider-tab");return saved==="chatgpt"||saved==="claude"||saved==="grok"?saved:null;}catch{return null;}});
-  // While someone signs in through the browser, check every few seconds so the card turns Connected on its own.
-  useEffect(()=>{
-    if(setup?.step!=="signing")return;
-    const started=Date.now();
-    const timer=setInterval(async()=>{
-      try{
-        const status=await desktop!.invoke({action:CLI[setup.kind].status});
-        store(setup.kind,status);
-        if(status.connected){setSetup(null);setError("");await onRefresh();}
-      }catch{}
-      if(Date.now()-started>15*60_000)setSetup(null);
-    },4000);
-    return()=>clearInterval(timer);
-  },[setup]);
   const store=(kind:CliKind,status:any)=>kind==="claude"?setClaude(status):setGrok(status);
-  /** Installs the vendor's CLI from inside Mowr when needed, then opens its sign-in. */
-  async function connectCli(kind:CliKind,installed:boolean|undefined){
-    const vendor=CLI[kind];
-    setError("");
-    try{
-      if(!installed){
-        if(!await confirmDialog({title:`Install ${vendor.name}?`,confirm:"Install",message:`Mowr will download ${vendor.name} from ${vendor.owner} and install it for your Windows account. It takes about a minute and doesn’t need administrator rights.\n\nBy installing, you agree to ${vendor.owner}’s terms (${vendor.terms}).`}))return;
-        setSetup({kind,step:"installing"});
-        const status=await desktop!.invoke({action:vendor.install});
-        store(kind,status);
-        if(status.connected){setSetup(null);await onRefresh();return;}
-      }
-      await desktop!.invoke({action:vendor.login});
-      setSetup({kind,step:"signing"});
-    }catch(e){setSetup(null);setError((e as Error).message);}
-  }
+  const {setup,connect:connectCli}=useCliConnect(store,onRefresh,setError);
   async function refresh(force = false) {
     setBusy(true);
     setError("");
@@ -383,7 +353,7 @@ export function ModelsSettings({
   );
 }
 
-type CliKind = "claude" | "grok";
+export type CliKind = "claude" | "grok";
 type Service = "chatgpt" | CliKind;
 const CLI = {
   claude: { name: "Claude Code", owner: "Anthropic", terms: "anthropic.com/legal/consumer-terms", status: "claudeStatus", install: "claudeInstall", login: "claudeLogin" },
@@ -396,7 +366,7 @@ function planName(tier: string) {
   return t.split(/[_\s-]+/).filter(Boolean).map(w => w === "supergrok" ? "SuperGrok" : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 /** One button that walks through install → sign-in, showing where it's up to. */
-function SetupButton({ kind, setup, disabled, label, account, onClick }: { kind: CliKind; setup: { kind: CliKind; step: "installing" | "signing" } | null; disabled: boolean; label: string; account: string; onClick: () => void }) {
+export function SetupButton({ kind, setup, disabled, label, account, onClick }: { kind: CliKind; setup: { kind: CliKind; step: "installing" | "signing" } | null; disabled: boolean; label: string; account: string; onClick: () => void }) {
   const mine = setup?.kind === kind ? setup.step : null;
   return <>
     <button className={"provider-action" + (mine ? " is-working" : "")} disabled={disabled || !!setup} onClick={onClick} aria-busy={mine === "installing" || undefined}>
@@ -405,4 +375,40 @@ function SetupButton({ kind, setup, disabled, label, account, onClick }: { kind:
     {mine === "installing" && <p className="provider-hint">Downloading and installing. This takes about a minute.</p>}
     {mine === "signing" && <p className="provider-hint">Sign in with your {account} account in the browser. Mowr connects automatically when you’re done.</p>}
   </>;
+}
+
+/** Installs Claude Code or Grok from inside Mowr when needed, opens its sign-in, then checks every few seconds until
+ *  the account is connected. Shared by Settings → Models and the last setup step. */
+export function useCliConnect(onStatus:(kind:CliKind,status:any)=>void,onConnected:()=>Promise<void>|void,onError:(message:string)=>void){
+  const [setup,setSetup]=useState<{kind:CliKind;step:"installing"|"signing"}|null>(null);
+  const latest=useRef({onStatus,onConnected});latest.current={onStatus,onConnected};
+  useEffect(()=>{
+    if(setup?.step!=="signing")return;
+    const started=Date.now();
+    const timer=setInterval(async()=>{
+      try{
+        const status=await desktop!.invoke({action:CLI[setup.kind].status});
+        latest.current.onStatus(setup.kind,status);
+        if(status.connected){setSetup(null);onError("");await latest.current.onConnected();}
+      }catch{}
+      if(Date.now()-started>15*60_000)setSetup(null);
+    },4000);
+    return()=>clearInterval(timer);
+  },[setup]);
+  async function connect(kind:CliKind,installed:boolean|undefined){
+    const vendor=CLI[kind];
+    onError("");
+    try{
+      if(!installed){
+        if(!await confirmDialog({title:`Install ${vendor.name}?`,confirm:"Install",message:`Mowr will download ${vendor.name} from ${vendor.owner} and install it for your Windows account. It takes about a minute and doesn’t need administrator rights.\n\nBy installing, you agree to ${vendor.owner}’s terms (${vendor.terms}).`}))return;
+        setSetup({kind,step:"installing"});
+        const status=await desktop!.invoke({action:vendor.install});
+        latest.current.onStatus(kind,status);
+        if(status.connected){setSetup(null);await latest.current.onConnected();return;}
+      }
+      await desktop!.invoke({action:vendor.login});
+      setSetup({kind,step:"signing"});
+    }catch(e){setSetup(null);onError((e as Error).message);}
+  }
+  return {setup,connect};
 }

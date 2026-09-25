@@ -21,7 +21,7 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-crumb.here{color:#f5f4ee;cursor:default;background:none}
 .gd-chev{flex:none;color:#6f6d67}
 .gd-list{position:relative;display:flex;flex-direction:column;gap:2px;height:min(430px,56vh);overflow:auto;padding:4px;margin:0 -4px;scrollbar-width:thin;scrollbar-color:#ffffff22 transparent;transition:opacity .2s}
-.gd-list.is-loading{opacity:.55}
+.gd-list.is-loading{opacity:.55;pointer-events:none}
 .gd-row{position:relative;display:flex;align-items:center;border-radius:11px;transition:background .12s}
 .gd-row:hover{background:#ffffff08}
 .gd-row.is-picked{background:#9fb4ff14;box-shadow:inset 0 0 0 1px #9fb4ff40}

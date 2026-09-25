@@ -2,6 +2,8 @@ import {Illustration} from "../Illustrations";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Logo } from "../Icons";
 import { desktop } from "./bridge";
+import { FirstProvider } from "./FirstProvider";
+import { bootDone } from "../boot";
 import type { DesktopStatus } from "../../desktop/contracts";
 import "./desktop.css";
 
@@ -45,7 +47,8 @@ function SetupContent() {
   const [username, setUsername] = useState(""),
     [name, setName] = useState(""),
     [memory, setMemory] = useState(true),
-    [availability, setAvailability] = useState("");
+    [availability, setAvailability] = useState(""),
+    [aiConnected, setAiConnected] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   // While reading offline, check quietly for the connection so sending comes back on its own.
   useEffect(() => {
@@ -122,6 +125,9 @@ function SetupContent() {
     });
     await refresh();
   }
+  const toWorkspace = !!state?.user && ((state.setup.step >= 4 && state.entitlement.active) || (state.setup.step >= 3 && state.entitlement.reason === "offline" && readOnly));
+  // The opening screen stays until there's something to show: a setup or sign-in screen here, or the loaded workspace.
+  useEffect(() => { if ((state && !toWorkspace) || error) bootDone(); }, [state, toWorkspace, error]);
   // Offline, the local workspace still opens to read; sending waits for a connection.
   if (state?.user && state.setup.step >= 3 && state.entitlement.reason === "offline" && readOnly)
     return (
@@ -129,7 +135,7 @@ function SetupContent() {
         <App offline />
       </Suspense>
     );
-  if (state?.user && state.setup.step >= 3 && state.entitlement.active)
+  if (state?.user && state.setup.step >= 4 && state.entitlement.active)
     return (
       <Suspense
         fallback={
@@ -144,6 +150,7 @@ function SetupContent() {
     "Your username.",
     "Your name.",
     "Remember what matters?",
+    "Connect your AI.",
   ];
   return (
     <main className="desktop-setup">
@@ -210,16 +217,25 @@ function SetupContent() {
           ) : (
             <>
               <p className="eyebrow">
-                MAKE YOURSELF AT HOME · {Math.min(step + 1, 3)} OF 3
+                MAKE YOURSELF AT HOME · {Math.min(step + 1, 4)} OF 4
               </p>
               <h1 ref={heading} tabIndex={-1}>
-                {titles[Math.min(step, 2)]}
+                {titles[Math.min(step, 3)]}
               </h1>
+              {step >= 3 ? (
+                <>
+                  <p>Use the subscription you already have. You can add more in Settings → Models.</p>
+                  <FirstProvider onConnected={setAiConnected} />
+                  <button className="primary setup-finish" disabled={busy || !aiConnected} onClick={() => void run(() => save(4))}>
+                    {busy ? "Saving…" : "Open workspace"}
+                  </button>
+                </>
+              ) : (
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
                   void run(async () => {
-                    await save(step < 2 ? step + 1 : 4);
+                    await save(step + 1);
                   });
                 }}
               >
@@ -291,9 +307,10 @@ function SetupContent() {
                     (step === 1 && !name.trim())
                   }
                 >
-                  {busy ? "Saving…" : step < 2 ? "Continue" : "Open workspace"}
+                  {busy ? "Saving…" : "Continue"}
                 </button>
               </form>
+              )}
               <div className="setup-navigation">
                 {step > 0 && (
                   <button
@@ -320,6 +337,11 @@ function SetupContent() {
                       })
                     }
                   >
+                    Skip for now
+                  </button>
+                )}
+                {step === 3 && (
+                  <button disabled={busy} onClick={() => void run(() => save(4))}>
                     Skip for now
                   </button>
                 )}

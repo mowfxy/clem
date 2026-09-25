@@ -42,7 +42,8 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
   }
   useEffect(() => { if (connected !== false) void load(); }, [folder, search, connected]);
   useEffect(() => { if (connected) setWaiting(false); }, [connected]);
-  const open = (f: DriveItem) => { setQuery(""); setSearch(""); setTrail((t) => [...t, { id: f.id, name: f.name }]); };
+  // One click opens a folder, so a double-click's second click must not open it again inside itself.
+  const open = (f: DriveItem) => { setQuery(""); setSearch(""); setTrail((t) => t.at(-1)?.id === f.id ? t : [...t, { id: f.id, name: f.name }]); };
   const up = (index: number) => { setTrail((t) => t.slice(0, index)); setQuery(""); setSearch(""); };
   const toggle = (f: DriveItem) => setPicked((all) => { const copy = new Map(all); if (copy.has(f.id)) copy.delete(f.id); else if (copy.size < 10) copy.set(f.id, f); return copy; });
   const shown = useMemo(() => mode === "folder" ? [...items].sort((a, b) => Number(b.mimeType === FOLDER) - Number(a.mimeType === FOLDER)) : items, [items, mode]);
