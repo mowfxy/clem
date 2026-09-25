@@ -101,3 +101,13 @@ test('Drive video streams through a private local server with byte ranges',async
   assert.equal(playableType('application/octet-stream','clip.mov'),'video/mp4');
   assert.equal(playableType('video/webm','x.webm'),'video/webm');
 });
+test('Drive shortcuts open what they point to: a shortcut to a folder is a folder',async()=>{
+  const S='application/vnd.google-apps.shortcut',F='application/vnd.google-apps.folder';
+  const files:Record<string,any[]>={root:[{id:'short1234567',name:'Physics',mimeType:S,shortcutDetails:{targetId:'target123456',targetMimeType:F},parents:['root']},{id:'short7654321',name:'Notes link',mimeType:S,shortcutDetails:{targetId:'doc987654321',targetMimeType:'application/pdf'},parents:['root']}],
+    target123456:[{id:'inner1234567',name:'Week 1.pdf',mimeType:'application/pdf',parents:['target123456']}]};
+  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=new URL(String(input));if(url.pathname.endsWith('/token'))return Response.json({accessToken:'t',expiresIn:3300});const q=url.searchParams.get('q')||'';return Response.json({files:[...q.matchAll(/'([\w-]+)' in parents/g)].flatMap(m=>files[m[1]]||[])});}) as any,'https://x.example');
+  const list=await drive.list({folder:'root'});
+  assert.deepEqual(list.files.map(f=>[f.id,f.name,!!f.folder]),[['target123456','Physics',true],['doc987654321','Notes link',false]]);
+  const tree=await drive.tree('root');
+  assert.equal(tree.items.find(i=>i.id==='inner1234567')?.path,'Physics','files inside a shortcut folder are reached');
+});

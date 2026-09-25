@@ -9,10 +9,15 @@ import {driveQuery, driveTerms, viewFormat, type DriveHit} from "../core/drive-s
 
 const API = "https://www.googleapis.com/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
-type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string;modifiedTime?:string;iconLink?:string;videoMediaMetadata?:{durationMillis?:string}};
+type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string;modifiedTime?:string;iconLink?:string;videoMediaMetadata?:{durationMillis?:string};shortcutDetails?:{targetId?:string;targetMimeType?:string}};
+const SHORTCUT = "application/vnd.google-apps.shortcut";
+/** A Drive shortcut stands for what it points to: a shortcut to a folder opens that folder, one to a file opens the file. */
+const resolve = <T extends Meta>(f: T): T => f.mimeType === SHORTCUT && f.shortcutDetails?.targetId && f.shortcutDetails.targetMimeType
+  ? { ...f, id: f.shortcutDetails.targetId, mimeType: f.shortcutDetails.targetMimeType, size: undefined, thumbnailLink: f.shortcutDetails.targetMimeType === FOLDER ? undefined : f.thumbnailLink }
+  : f;
 /** A file or folder as the app shows it. `path` is the subfolder it sits in, inside a linked folder. */
 export type DriveItem = {id:string;name:string;mimeType:string;size?:number;modified?:string;thumbnail?:boolean;durationMs?:number;path?:string;folder?:boolean};
-const FIELDS = "id,name,mimeType,size,modifiedTime,thumbnailLink,hasThumbnail,webViewLink,iconLink,videoMediaMetadata(durationMillis)";
+const FIELDS = "id,name,mimeType,size,modifiedTime,thumbnailLink,hasThumbnail,webViewLink,iconLink,videoMediaMetadata(durationMillis),shortcutDetails(targetId,targetMimeType)";
 const quote = (s: string) => "'" + s.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
 const item = (f: Meta & {hasThumbnail?:boolean}, path?: string): DriveItem => ({
   id: f.id, name: f.name, mimeType: f.mimeType, size: f.size ? Number(f.size) : undefined, modified: f.modifiedTime,
@@ -64,7 +69,7 @@ export class DriveLive {
       fields:`files(${FIELDS})`}).toString();
     const r=await this.google(url.href,{signal:AbortSignal.timeout(20000)});
     if(!r.ok)throw Error("Google Drive search failed. Try again.");
-    const files=((await r.json()).files||[]) as Meta[];
+    const files=(((await r.json()).files||[]) as Meta[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&f.mimeType!==FOLDER);
     for(const f of files)this.meta.set(f.id,f);
     const hits:DriveHit[]=files.map(f=>({id:f.id,name:f.name,mimeType:f.mimeType,modified:f.modifiedTime,size:f.size?Number(f.size):undefined,durationMs:f.videoMediaMetadata?.durationMillis?Number(f.videoMediaMetadata.durationMillis):undefined}));
     // A short excerpt of the best text matches helps the model pick the right file.
@@ -80,15 +85,16 @@ export class DriveLive {
     if(words)clauses.push(`name contains ${quote(words.slice(0,100))}`);
     else if(folder==="shared")clauses.push("sharedWithMe = true");
     else clauses.push(`${quote(folder)} in parents`);
-    if(kind==="folders")clauses.push(`mimeType = '${FOLDER}'`);
+    if(kind==="folders")clauses.push(`(mimeType = '${FOLDER}' or mimeType = '${SHORTCUT}')`);
     const url=new URL(API);
     url.search=new URLSearchParams({q:clauses.join(" and "),pageSize:"100",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
       ...(words?{}:{orderBy:"folder,name_natural"}),fields:`nextPageToken,files(${FIELDS})`,...(page?{pageToken:page}:{})}).toString();
     const r=await this.google(url.href,{signal:AbortSignal.timeout(20000)});
     if(!r.ok)throw Error(r.status===404?"This Drive folder is no longer available.":"Google Drive could not list these files.");
     const body=await r.json() as {files?:Meta[];nextPageToken?:string};
-    for(const f of body.files||[])this.meta.set(f.id,f);
-    const files=(body.files||[]).map(f=>item(f)).sort((a,b)=>Number(!!b.folder)-Number(!!a.folder));
+    const resolved=(body.files||[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&(kind!=="folders"||f.mimeType===FOLDER));
+    for(const f of resolved)this.meta.set(f.id,f);
+    const files=resolved.map(f=>item(f)).sort((a,b)=>Number(!!b.folder)-Number(!!a.folder));
     return {connected:true,files,next:body.nextPageToken};
   }
 
@@ -97,7 +103,7 @@ export class DriveLive {
     const cached=this.trees.get(folderId);
     if(!refresh&&cached&&Date.now()-cached.at<120_000)return cached;
     if(!await this.token())throw Object.assign(Error("Connect Google Drive in Connectors first."),{code:"not_connected"});
-    const items:DriveItem[]=[],folders=[folderId],paths=new Map<string,string>([[folderId,""]]);
+    const items:DriveItem[]=[],folders=[folderId],paths=new Map<string,string>([[folderId,""]]),seen=new Set([folderId]);
     let level=[folderId];
     for(let depth=0;depth<5&&level.length&&items.length<1500;depth++){
       const next:string[]=[];
@@ -112,9 +118,12 @@ export class DriveLive {
           const r=await this.google(url.href,{signal:AbortSignal.timeout(25000)});
           if(!r.ok)throw Error(r.status===404?"The linked Drive folder is no longer available.":"Google Drive could not list the linked folder.");
           const body=await r.json() as {files?:(Meta&{parents?:string[]})[];nextPageToken?:string};
-          for(const f of body.files||[]){
+          for(const raw of body.files||[]){
+            const parent=raw.parents?.find(p=>paths.has(p))||group[0],path=paths.get(parent)||"";
+            const f=resolve(raw);
+            if(f.mimeType===SHORTCUT||seen.has(f.id))continue;
+            seen.add(f.id);
             this.meta.set(f.id,f);
-            const parent=f.parents?.find(p=>paths.has(p))||group[0],path=paths.get(parent)||"";
             if(f.mimeType===FOLDER){paths.set(f.id,path?path+" / "+f.name:f.name);next.push(f.id);folders.push(f.id);}
             items.push(item(f,path));
           }
