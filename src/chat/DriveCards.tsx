@@ -12,14 +12,14 @@ const typeName = (m: string) => m.includes("google-apps.document") ? "Google Doc
  *  (seeking and full screen work), never saved. */
 export function DriveVideo({ file, onOpenWeb }: { file: DriveRef; onOpenWeb?: (file: DriveRef) => void }) {
   const [playing, setPlaying] = useState(false), [poster, setPoster] = useState(true);
-  const [src, setSrc] = useState(""), [state, setState] = useState<"loading" | "ready" | "error">("loading"), [attempt, setAttempt] = useState(0);
+  const [src, setSrc] = useState(""), [state, setState] = useState<"loading" | "ready" | "error">("loading"), [attempt, setAttempt] = useState(0), [arrived, setArrived] = useState(0);
   // Each attempt gets a fresh <video>, so "Try again" really asks Drive again.
   const start = () => { setPlaying(true); setState("loading"); setAttempt((n) => n + 1); void mediaUrl(file.id).then(setSrc).catch(() => setState("error")); };
-  // A stream that never starts is reported instead of spinning forever.
-  useEffect(() => { if (!playing || state !== "loading") return; const t = setTimeout(() => setState((s) => (s === "loading" ? "error" : s)), 45000); return () => clearTimeout(t); }, [playing, state, src]);
+  // A stream that never starts is reported instead of spinning forever; one still receiving data on a slow connection isn't.
+  useEffect(() => { if (!playing || state !== "loading") return; const t = setTimeout(() => setState((s) => (s === "loading" ? "error" : s)), 45000); return () => clearTimeout(t); }, [playing, state, src, arrived]);
   return <span className="yt-embed drive-video" role="group" aria-label={"Video: " + file.name}>
     {playing
-      ? <>{src && <video key={attempt} src={src} controls autoPlay playsInline controlsList="nodownload" onCanPlay={() => setState("ready")} onPlaying={() => setState("ready")} onError={() => setState("error")} />}
+      ? <>{src && <video key={attempt} src={src} controls autoPlay playsInline controlsList="nodownload" onProgress={() => { if (state === "loading") setArrived(Date.now()); }} onCanPlay={() => setState("ready")} onPlaying={() => setState("ready")} onError={() => setState("error")} />}
         {state === "loading" && <span className="drive-video-status" role="status"><span className="drive-spinner" aria-hidden="true" />Streaming from Google Drive…</span>}
         {state === "error" && <span className="drive-video-status is-error" role="alert"><strong>This video didn’t start.</strong><span>Google may still be processing it, or the format can’t play here.</span><span className="drive-video-actions"><button type="button" onClick={start}>Try again</button>{onOpenWeb && <button type="button" onClick={() => onOpenWeb(file)}>Open in Drive</button>}</span></span>}</>
       : <span className="yt-poster" role="button" tabIndex={0} aria-label={"Play " + file.name} onClick={start} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); start(); } }}>

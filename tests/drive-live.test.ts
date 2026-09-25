@@ -15,6 +15,8 @@ test('Drive questions are recognised and turned into a Drive search',()=>{
   assert.match(driveContext([{id:'1AbCdEfGhIjK',name:'Chain rule.pdf',mimeType:'application/pdf'}],'q'),/\[File name\]\(drive:ID\)[\s\S]*id=1AbCdEfGhIjK · Chain rule\.pdf/);
 });
 
+// The fake 900 MB video's bytes: byte n is n % 251, so any range can be checked.
+const pattern=(a:number,b:number)=>Uint8Array.from({length:b-a+1},(_,i)=>(a+i)%251);
 // A fake of mowrai.com's token endpoint and Google's Drive API.
 function fakeGoogle(opts:{connected?:boolean}={}){
   const calls:{url:string;headers:Record<string,string>}[]=[];
@@ -25,7 +27,7 @@ function fakeGoogle(opts:{connected?:boolean}={}){
     const u=new URL(url);
     if(u.pathname==='/drive/v3/files')return Response.json({files:[{id:'doc1234567890',name:'Chain rule notes',mimeType:'application/vnd.google-apps.document',modifiedTime:'2026-09-01T00:00:00Z'},{id:'vid1234567890',name:'Lecture 4.mp4',mimeType:'video/mp4',size:'900000000',videoMediaMetadata:{durationMillis:'3600000'}}]});
     if(u.pathname==='/drive/v3/files/doc1234567890/export')return new Response(u.searchParams.get('mimeType')==='text/plain'?'The chain rule for partial derivatives says…':'%PDF-1.7',{headers:{'Content-Type':'text/plain'}});
-    if(u.pathname==='/drive/v3/files/vid1234567890'&&u.searchParams.get('alt')==='media')return new Response('part',{status:206,headers:{'Content-Type':'video/mp4','Content-Range':'bytes 100-103/900000000','Content-Length':'4'}});
+    if(u.pathname==='/drive/v3/files/vid1234567890'&&u.searchParams.get('alt')==='media'){const [,a,b]=/bytes=(\d+)-(\d+)/.exec(headers.Range)!;return new Response(pattern(Number(a),Number(b)),{status:206,headers:{'Content-Type':'video/mp4','Content-Range':`bytes ${a}-${b}/900000000`,'Content-Length':String(Number(b)-Number(a)+1)}});}
     return new Response('nope',{status:404});
   }) as typeof fetch;
   return {calls,drive:new DriveLive(async()=>'session',fetcher,'https://mowrai.example')};
@@ -95,7 +97,10 @@ test('Drive video streams through a private local server with byte ranges',async
     const url=await server.url('vid1234567890');
     assert.match(url,/^http:\/\/127\.0\.0\.1:\d+\/drive\/vid1234567890\?k=[a-f0-9]{48}$/);
     const r=await fetch(url,{headers:{Range:'bytes=100-103'}});
-    assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),'bytes 100-103/900000000');assert.equal(await r.text(),'part');
+    assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),'bytes 100-103/900000000');assert.deepEqual(new Uint8Array(await r.arrayBuffer()),pattern(100,103));
+    // A range across block boundaries, far into the file, comes back byte for byte.
+    const far=await fetch(url,{headers:{Range:'bytes=500000000-503000000'}});
+    assert.equal(far.headers.get('content-length'),'3000001');assert.deepEqual(new Uint8Array(await far.arrayBuffer()),pattern(500000000,503000000));
     assert.equal((await fetch(url.replace(/k=\w+/,'k=wrong'))).status,404);
   }finally{server.stop();}
   assert.equal(playableType('application/octet-stream','clip.mov'),'video/mp4');
@@ -110,4 +115,25 @@ test('Drive shortcuts open what they point to: a shortcut to a folder is a folde
   assert.deepEqual(list.files.map(f=>[f.id,f.name,!!f.folder]),[['target123456','Physics',true],['doc987654321','Notes link',false]]);
   const tree=await drive.tree('root');
   assert.equal(tree.items.find(i=>i.id==='inner1234567')?.path,'Physics','files inside a shortcut folder are reached');
+});
+test('an MP4 written as many small mdat boxes is served as one, so Chromium starts it without walking the file',async()=>{
+  const {DriveMediaServer}=await import('../desktop/drive-live.ts');
+  const box=(type:string,body:Uint8Array)=>{const b=new Uint8Array(8+body.length);new DataView(b.buffer).setUint32(0,b.length);b.set(new TextEncoder().encode(type),4);b.set(body,8);return b;};
+  const join=(...parts:Uint8Array[])=>{const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){out.set(p,at);at+=p.length;}return out;};
+  const video=(fragmented:boolean)=>join(box('ftyp',new Uint8Array(8)),box('moov',join(box('mvhd',new Uint8Array(100)),...(fragmented?[box('mvex',new Uint8Array(0))]:[]))),box('mdat',new Uint8Array(3000).fill(7)),box('mdat',new Uint8Array(2_000_000).fill(9)));
+  const files:Record<string,Uint8Array>={many12345678:video(false),frag12345678:video(true)};
+  const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const u=new URL(String(input));if(u.pathname.endsWith('/token'))return Response.json({accessToken:'t',expiresIn:3300});const id=u.pathname.split('/').pop()!,f=files[id];
+    if(u.searchParams.get('alt')!=='media')return Response.json({id,name:id+'.mp4',mimeType:'video/mp4',size:String(f.length)});
+    const [,a,b]=/bytes=(\d+)-(\d+)/.exec(init.headers.Range)!;return new Response(f.slice(Number(a),Number(b)+1),{status:206});}) as any,'https://x.example');
+  const server=new DriveMediaServer(drive,async()=>true);
+  try{
+    const mdat=16+8+108,size=new Uint8Array(4);new DataView(size.buffer).setUint32(0,files.many12345678.length-mdat);
+    const plain=new Uint8Array(await (await fetch(await server.url('many12345678'))).arrayBuffer());
+    assert.deepEqual(plain.subarray(mdat,mdat+4),size,'the first mdat runs to the end of the file');
+    assert.deepEqual(plain.subarray(mdat+4),files.many12345678.subarray(mdat+4),'every other byte is unchanged');
+    const part=new Uint8Array(await (await fetch(await server.url('many12345678'),{headers:{Range:`bytes=${mdat+2}-${mdat+9}`}})).arrayBuffer());
+    assert.deepEqual(part,Uint8Array.from([...size.subarray(2),...files.many12345678.subarray(mdat+4,mdat+10)]),'a range starting inside the header gets the rewritten bytes too');
+    const frag=new Uint8Array(await (await fetch(await server.url('frag12345678'))).arrayBuffer());
+    assert.deepEqual(frag,files.frag12345678,'fragmented MP4s are served untouched');
+  }finally{server.stop();}
 });

@@ -1,3 +1,4 @@
+import {bootDone} from "./boot";
 import {ModelsSettings} from "./ModelsSettings";
 import {confirmDialog} from './dialogs';
 import {relevantSkills,skillText,documentGuidance} from '../core/skills';
@@ -349,11 +350,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     ownerRef.current = data.user?.id || "guest";
     setStorageNamespace(ownerRef.current);
     let local:State;
-    try { local=await loadState(); } catch { setLoadError("Your workspace could not be opened. Check disk space and permissions, then restart Mowr. Your saved data has not been replaced."); return; }
+    try { local=await loadState(); } catch { setLoadError("Your workspace could not be opened. Check disk space and permissions, then restart Mowr. Your saved data has not been replaced."); bootDone(); return; }
     if (version !== sessionVersion.current) return;
     setState(local);
     setReady(true);
-    void refreshModels();
+    // The desktop opening screen lifts once models are in, or after a few seconds if a provider is slow to answer.
+    void Promise.race([refreshModels(),new Promise(resolve=>setTimeout(resolve,6000))]).finally(bootDone);
   }
   const essentialData=JSON.stringify(essentials(state));
   useEffect(()=>{
