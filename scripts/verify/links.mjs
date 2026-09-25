@@ -21,35 +21,25 @@ try {
       "/node_modules/.vite/deps/react-dom_client.js"
     );
     const createRoot = ReactDOM.createRoot || ReactDOM.default.createRoot;
-    const { YouTubeReferences } = await import("/src/YouTubeReferences.tsx");
+    const { LinkifiedText } = await import("/src/chat/Links.tsx");
     const host = document.createElement("div");
     document.body.replaceChildren(host);
     createRoot(host).render(
-      (React.createElement || React.default.createElement)(YouTubeReferences, {
-        text: "Watch https://youtu.be/abcdefghijk?t=90",
+      (React.createElement || React.default.createElement)(LinkifiedText, {
+        text: "Watch https://youtu.be/abcdefghijk?t=90 and read https://github.com/openai/codex/blob/main/docs/getting-started.md",
       }),
     );
   });
-  await page
-    .getByRole("button", { name: "Load YouTube video player" })
-    .waitFor();
+  // Links read as chips with a short label; the video waits for Play before loading anything.
+  await page.getByRole("button", { name: "Play video" }).waitFor();
   assert.equal(await page.locator("iframe").count(), 0);
-  await page.getByRole("button", { name: "Load YouTube video player" }).click();
+  assert.equal(await page.locator(".link-chip").nth(1).innerText(), "github.com/openai/codex/…/getting-started.md");
+  assert.equal(await page.getByRole("link", { name: /Watch on/ }).getAttribute("href"), "https://www.youtube.com/watch?v=abcdefghijk&t=90");
+  await page.getByRole("button", { name: "Play video" }).click();
   await page.locator("iframe").waitFor();
-  assert.match(
-    await page.locator("iframe").getAttribute("src"),
-    /embed\/abcdefghijk\?start=90/,
-  );
-  assert.equal(
-    await page
-      .getByRole("link", { name: "Watch on YouTube" })
-      .getAttribute("href"),
-    "https://www.youtube.com/watch?v=abcdefghijk&t=90",
-  );
-  await page.getByRole("button", { name: "Close player" }).click();
-  assert.equal(await page.locator("iframe").count(), 0);
+  assert.match(await page.locator("iframe").getAttribute("src"), /embed\/abcdefghijk\?autoplay=1&start=90/);
   console.log(
-    "YouTube component passed: click-to-load, timestamp, fallback and unload. Player response mocked; real streaming not asserted.",
+    "Links passed: chips with short labels, YouTube plays in place from its timestamp only after Play. Player response mocked.",
   );
 } finally {
   await browser.close();

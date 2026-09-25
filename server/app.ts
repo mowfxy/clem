@@ -4,7 +4,6 @@ import {securityRouter,supportRouter,emailAllowed} from './security.ts';
 import {databaseReady} from './db.ts';
 import {supabaseConfig,supabaseIdentity} from './auth.ts';
 import { runChat } from './skill-runtime.ts';
-import { githubRouter } from './github.ts';
 import { nextRun, runDue } from "./automations.ts";
 import "./config.ts";
 import express from "express";
@@ -67,7 +66,6 @@ app.use((req,res,next)=>{
   }
   next();
 });
-app.use('/api/github',githubRouter);
 app.use('/api/subscriptions',subscriptionsRouter);
 app.use('/api/security',securityRouter);
 app.use('/api/support',supportRouter);

@@ -1,9 +1,12 @@
-.profile-picker{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;width:100%;max-width:none;margin:20px 0 30px;box-sizing:border-box}
-.profile-picker button{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0;padding:14px 6px 11px;border:1px solid #2f2f2c;border-radius:14px;background:#1b1b1a;color:#a9a8a0;font:12.5px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:background .15s,border-color .15s,color .15s,transform .15s}
-.profile-picker button:hover{background:#222220;border-color:#44443f;color:#e9e8e2}
+.profile-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:14px 8px;width:100%;max-width:none;margin:20px 0 28px;box-sizing:border-box}
+.profile-picker button{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0;padding:0;border:0;background:none;color:#8f8e87;font:12px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:color .15s}
+.profile-picker button .profile-character{border-radius:50%;box-shadow:0 0 0 2px transparent;transition:box-shadow .2s,transform .25s cubic-bezier(.3,1.4,.5,1)}
+.profile-picker button:hover{color:#e9e8e2}
 .profile-picker button:hover .profile-character{transform:translateY(-2px)}
-.profile-picker button[aria-pressed="true"]{border-color:#e9e8e2;background:#262624;color:#f5f4ef;box-shadow:0 0 0 3px #ffffff12}
-.profile-picker button:focus-visible{outline:2px solid #d6d5cf;outline-offset:2px}
+.profile-picker button[aria-pressed="true"]{color:#f5f4ef}
+.profile-picker button[aria-pressed="true"] .profile-character{box-shadow:0 0 0 2px #141413,0 0 0 4px #f2f1ec}
+.profile-picker button:focus-visible{outline:none}
+.profile-picker button:focus-visible .profile-character{box-shadow:0 0 0 2px #141413,0 0 0 4px #9d9c95}
 .profile-character{display:block;flex-shrink:0;overflow:visible;border-radius:50%;transition:transform .25s cubic-bezier(.3,1.4,.5,1)}
 .av-spin,.av-turn{transform-box:view-box;transform-origin:50px 50px}
 .av-spin{animation:av-spin 9s linear infinite}
@@ -22,3 +25,4 @@
 [data-quiet="true"] .profile-character *{animation:none!important}
 @media (prefers-reduced-motion:reduce){.profile-character *{animation:none!important}}
 @media (max-width:760px){.profile-picker{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}}@media (max-width:480px){.profile-picker svg{width:44px;height:44px}}
+.profile-picker.profile-picker button,.settings-dialog-body .profile-picker button{border:0!important;background:none!important;padding:0!important;box-shadow:none!important;min-height:0!important;height:auto!important;width:auto!important;border-radius:0!important}

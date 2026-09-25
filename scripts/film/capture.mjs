@@ -5,8 +5,8 @@
 import { chromium, _electron as electron } from "@playwright/test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { openFixture, workspace, notes } from "../local-power-fixture.mjs";
-import { handoutPdf } from "../fixture-docs.mjs";
+import { openFixture, workspace, notes } from "../verify/local-power-fixture.mjs";
+import { handoutPdf } from "../verify/fixture-docs.mjs";
 
 export const VIEW = { width: 1600, height: 900 };
 const setup = process.argv.includes("--live-setup"), live = setup || process.argv.includes("--live");

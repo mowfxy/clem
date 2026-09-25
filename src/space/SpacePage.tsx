@@ -1,5 +1,6 @@
 import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode} from 'react';
 import {Icon} from '../Icons';
+import {RenameField,PencilIcon} from '../files/RenameField';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue,examPace} from '../../core/srs';
 import {sizeLabel} from '../store';
@@ -18,6 +19,7 @@ export type SpaceActions={
   onOpenFile:(file:StoredFile)=>void;
   /** Opens the file beside a new chat in this space, where messages edit it. */
   onEditFile:(file:StoredFile)=>void;
+  onRenameFile:(file:StoredFile,name:string)=>void;
   /** Google Drive folder sync for this space. */
   onLinkDrive:()=>void; onSyncDrive:()=>void; onUnlinkDrive:()=>void; onDriveSaveBack:(on:boolean)=>void; onDriveSeen:()=>void;
   onStudyNew:(kind:'flashcards'|'summary')=>void;
@@ -208,6 +210,7 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
   const dragTarget=(id:string)=>({onDragOver:(e:DragEvent)=>{e.preventDefault();setOver(id);},onDragLeave:()=>setOver(o=>o===id?null:o)});
   const destinations=(file:StoredFile)=>[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==(file.folderId||null));
   const [moving,setMoving]=useState<StoredFile|null>(null);
+  const [renaming,setRenaming]=useState<string|null>(null);
   return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
     <div className="sp-toolbar">
       <nav className="sp-path" aria-label="Folder path">
@@ -235,7 +238,8 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
     </div>}
     <div className="sp-file-list">
       {inHere.map(f=><div key={f.id} className="sp-file" draggable onDragStart={e=>{e.dataTransfer.setData('application/x-mowr-file',f.id);e.dataTransfer.effectAllowed='move';}}>
-        <button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>
+        {renaming===f.id?<div className="sp-file-open"><FileGlyph file={f}/><RenameField name={f.name} onSave={name=>{actions.onRenameFile(f,name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>:<button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>}
+        <button className="icon-button sp-rename" aria-label={`Rename ${f.name}`} title="Rename" onClick={()=>setRenaming(f.id)}><PencilIcon size={15}/></button>
         <label className="sp-source" title="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
         <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
       </div>)}
