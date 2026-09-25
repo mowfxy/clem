@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { confirmDialog } from "./dialogs";
 import type { CardState, StudySet } from "../core/types";
-import { review, previews, isDue, examPace, type Grade } from "../core/srs";
+import { review, previews, isDue, type Grade } from "../core/srs";
 import { Icon } from "./Icons";
 
 type Card = { set: StudySet; index: number; question: string; answer: string; state?: CardState };
@@ -30,15 +30,13 @@ function withCard(set: StudySet, index: number, state: CardState): StudySet {
 }
 
 export function SubjectStudy({
-  sets, examDate, onExamDate, onGenerate, onUpdate, onDelete, kind, autoStart = 0,
+  sets, onGenerate, onUpdate, onDelete, kind, autoStart = 0,
 }: {
   /** Shows one kind of set only (the subject page's Flashcards and Quizzes tabs). */
   kind?: "quiz" | "flashcards";
   /** Changing this number starts a review session, e.g. from the subject overview. */
   autoStart?: number;
   sets: StudySet[];
-  examDate?: string;
-  onExamDate: (date: string | undefined) => void;
   onGenerate: (kind: "quiz" | "flashcards") => void;
   onUpdate: (set: StudySet) => void;
   onDelete: (id: string) => void;
@@ -53,14 +51,13 @@ export function SubjectStudy({
   const all = useMemo(() => cardsOf(sets), [sets]);
   const due = all.filter((c) => c.state?.reps && isDue(c.state, now));
   const fresh = all.filter((c) => !c.state?.reps);
-  const pace = examPace(all.map((c) => c.state), examDate, now);
   const weak = weakConcepts(sets);
   const current = sets.find((s) => s.id === selected);
   const card = session?.[0];
 
   function start() {
     setNow(Date.now());
-    const queue = [...due.sort((a, b) => a.state!.due - b.state!.due), ...fresh.slice(0, Math.max(NEW_PER_SESSION, pace.perDay ?? 0))];
+    const queue = [...due.sort((a, b) => a.state!.due - b.state!.due), ...fresh.slice(0, NEW_PER_SESSION)];
     setSession(queue); setRevealed(false); setReviewed(0);
   }
   function grade(g: Grade) {
@@ -129,20 +126,9 @@ export function SubjectStudy({
           <div><strong>{all.length}</strong><span>cards</span></div>
         </div>
         <button type="button" className="primary" disabled={!due.length && !fresh.length} onClick={start}>
-          {due.length || fresh.length ? `Review ${Math.min(due.length + fresh.length, due.length + Math.max(NEW_PER_SESSION, pace.perDay ?? 0))}` : "Nothing due"}
+          {due.length || fresh.length ? `Review ${Math.min(due.length + fresh.length, due.length + NEW_PER_SESSION)}` : "Nothing due"}
           <Icon name="arrow" size={16} />
         </button>
-      </div>
-      <div className="study-exam">
-        <label>
-          Exam date
-          <input type="date" value={examDate || ""} min={new Date().toISOString().slice(0, 10)} onChange={(e) => onExamDate(e.target.value || undefined)} />
-        </label>
-        <p>
-          {examDate && pace.days !== null
-            ? pace.days === 0 ? "Exam day. Review what is due and rest." : `${pace.days} ${pace.days === 1 ? "day" : "days"} to go · about ${pace.perDay} ${pace.perDay === 1 ? "card" : "cards"} a day`
-            : "Add a date and Mowr paces new cards so everything is seen in time."}
-        </p>
       </div>
       </>}
       {kind !== "quiz" && weak.length > 0 && (

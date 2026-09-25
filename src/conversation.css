@@ -16,7 +16,18 @@
 .chat-options button:hover{background:#ffffff0d}
 @media(max-width:760px){.messages .message{padding-left:36px}.messages .message.assistant .message-text{font-size:16px}.messages .message.user .message-text{max-width:90%}.message-mark{top:1.1px}.message-mark svg{width:25px;height:25px}}
 
-.history-row:has(.history-item.chosen){background:#292929;border-radius:7px}
-.history-row .history-item.chosen{background:transparent}
+/* A sidebar chat is one row: the whole row highlights, and its ··· sits inside it on hover. */
+.history-row{position:relative;border-radius:8px;transition:background .16s}
+.history-row:hover,.history-row:focus-within{background:#ffffff0b}
+.history-row.chosen{background:#292929}
+.history-row .history-item,.history-row .history-item:hover,.history-row .history-item.chosen{background:transparent!important;padding-right:34px}
+.history-row .history-more{position:absolute;right:4px;top:50%;transform:translateY(-50%);height:28px;padding:0 7px;border-radius:6px;background:transparent!important;color:#8f8e87;opacity:0;transition:opacity .15s,color .15s}
+.history-row:hover .history-more,.history-row:focus-within .history-more,.history-row.chosen .history-more{opacity:1}
+.history-row .history-more:hover{color:#f0efeb}
 .history-row .history-more:focus-visible{outline-offset:-3px}
+.history-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-space{flex:none;width:17px;height:17px;border-radius:5px;display:grid;place-items:center;margin-right:2px;font:600 10px/1 'Mowafy Sans Text',sans-serif;transition:transform .25s}
+.history-space.subject{background:#a9b3f726;color:#c7cdfb;box-shadow:inset 0 0 0 1px #a9b3f740}
+.history-space.project{background:#e9c27a24;color:#efd49f;box-shadow:inset 0 0 0 1px #e9c27a40}
+.history-item:hover .history-space{transform:scale(1.08)}
 .space-heading-actions{display:flex;align-items:center;gap:10px}.space-heading-actions .subject-import{margin:0;padding:10px;border:1px solid #393939;border-radius:8px;width:40px;height:40px}

@@ -14,15 +14,13 @@ input.sp-desc{width:100%;background:none!important;border:0!important;border-bot
 .sp-share{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:11px;background:#ecebe5;color:#1b1b1a;font-weight:500;font-size:13.5px;border:0;box-shadow:0 6px 22px -8px #ecebe5aa}
 .sp-share:hover{background:#fff}
 .sp-share svg{transform:rotate(180deg)}
-.sp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:22px}
+.sp-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:22px}
 .sp-stat{position:relative;display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:14px;background:#ffffff07;border:1px solid #ffffff0f;text-align:left;color:inherit;font:inherit;min-width:0}
 button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;border-color:#ffffff1c}
 .sp-stat>span:not(.sp-stat-icon){display:flex;flex-direction:column;min-width:0}
 .sp-stat b{font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sp-stat small{font-size:11.5px;color:#8f8e88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sp-stat-icon{flex-shrink:0;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#ffffff0b;color:#c9c8c1}
-.sp-stat.exam input{position:absolute;inset:0;opacity:0;cursor:pointer}
-.sp-stat.exam .sp-stat-icon{color:#a9b3f7;background:#a9b3f714}
 .sp-stat.due.hot .sp-stat-icon{color:#e9c27a;background:#e9c27a17}
 .sp-stat.due.hot b{color:#f6dca6}
 .sp-stat.due:disabled{opacity:.7;cursor:default}
@@ -135,7 +133,7 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .sp-about{max-width:720px}
 .sp-about textarea{min-height:160px}
 @keyframes sp-in{from{opacity:0;transform:translateY(6px)}}
-@media (max-width:900px){.space-page{padding:16px}.sp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-overview{grid-template-columns:1fr}.sp-card.today{flex-direction:column;align-items:flex-start}.sp-name{font-size:34px}}
+@media (max-width:900px){.space-page{padding:16px}.sp-stats{grid-template-columns:1fr}.sp-overview{grid-template-columns:1fr}.sp-card.today{flex-direction:column;align-items:flex-start}.sp-name{font-size:34px}}
 @media (prefers-reduced-motion:reduce){.sp-body,.sp-menu-list{animation:none}.sp-make button,.sp-folder{transition:none}}
 [data-quiet=true] .sp-body{animation:none}
 

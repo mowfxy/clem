@@ -32,6 +32,7 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
   const toggle=(k:string)=>setPick(p=>{const n=new Set(p);if(n.has(k))n.delete(k);else n.add(k);return n;});
   const shareFolder=folderId?folders.find(f=>f.id===folderId):undefined;
   const title=shareFolder?`${space.name} — ${shareFolder.name}`:space.name;
+  const nothing=shareFolder?!files.some(x=>x.folderId&&within(folders,shareFolder.id).has(x.folderId)):!files.length&&!sets.length;
   const chosen=useMemo(()=>{
     const chosenSets=[...(pick.has('cards')?cards:[]),...(pick.has('quizzes')?quizzes:[])];
     const ids=new Set<string>();
@@ -67,13 +68,14 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
           {!shareFolder&&cards.length>0&&<Option on={pick.has('cards')} onToggle={()=>toggle('cards')} icon="subjects" tone="cards" title="Flashcards" detail={`${cards.reduce((n,s)=>n+s.items.length,0)} cards in ${cards.length} deck${cards.length===1?'':'s'}`}/>}
           {!shareFolder&&quizzes.length>0&&<Option on={pick.has('quizzes')} onToggle={()=>toggle('quizzes')} icon="check" tone="quiz" title="Quizzes" detail={`${quizzes.length} quiz${quizzes.length===1?'':'zes'}`}/>}
           {(shareFolder?[shareFolder]:top).map(f=>{const n=files.filter(x=>x.folderId&&within(folders,f.id).has(x.folderId)).length;return n?<Option key={f.id} on={pick.has('folder:'+f.id)} onToggle={()=>toggle('folder:'+f.id)} icon="projects" tone="folder" title={f.name} detail={`Folder · ${n} file${n===1?'':'s'}`}/>:null;})}
+          {nothing&&<p className="sh-empty">{shareFolder?`“${shareFolder.name}” has no files yet. Add some, then share it.`:`${title} has nothing to share yet. Make flashcards or quizzes, or add files, and they’ll show up here.`}</p>}
           {!shareFolder&&loose.length>0&&<Option on={pick.has('loose')} onToggle={()=>toggle('loose')} icon="files" tone="files" title="Other files" detail={`${loose.length} file${loose.length===1?'':'s'} · ${sizeLabel(loose.reduce((n,f)=>n+f.size,0))}`}/>}
         </div>
         <label className="sh-name"><input type="checkbox" checked={showName} onChange={e=>setShowName(e.target.checked)}/>Show “{author||'my name'}” as the sender</label>
         <p className="sh-private"><Icon name="check" size={14}/>Your chats, memory and review progress always stay on this PC.</p>
         {error&&<p className="sh-error" role="alert">{error}</p>}
       </div>
-      <footer className="sh-foot"><span>{empty?'Nothing selected':[count?`${count} card${count===1?'':'s'}`:'',chosen.files.length?`${chosen.files.length} file${chosen.files.length===1?'':'s'} · ${sizeLabel(bytes)}`:''].filter(Boolean).join(' · ')}</span><button className="primary" disabled={empty||busy} onClick={()=>void create()}>{busy?'Packing…':'Share'}<Icon name="arrow" size={16}/></button></footer>
+      <footer className="sh-foot"><span>{empty?(nothing?'Nothing to share yet':'Nothing selected'):[count?`${count} card${count===1?'':'s'}`:'',chosen.files.length?`${chosen.files.length} file${chosen.files.length===1?'':'s'} · ${sizeLabel(bytes)}`:''].filter(Boolean).join(' · ')}</span><button className="primary" disabled={empty||busy} onClick={()=>void create()}>{busy?'Packing…':'Share'}<Icon name="arrow" size={16}/></button></footer>
     </>:<div className="sh-done">
       <div className="sh-burst" aria-hidden="true">{Array.from({length:14},(_,i)=><i key={i} style={{'--a':`${i*360/14}deg`,'--d':`${i%3*40}ms`} as CSSProperties}/>)}</div>
       <span className="sh-eyebrow">Ready to send</span>
