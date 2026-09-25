@@ -31,4 +31,5 @@ function Root(){
  if(adminHost||route.startsWith('/admin'))return <Suspense fallback={loading}><AdminApp/></Suspense>;
  return <Suspense fallback={loading}>{location.hostname==="check.mowrai.com"||route==="/check"?<ProvenanceChecker/>:isPublic?publicPage(route):(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect'))?(ready?<Login key={route}/>:loading):<Download account={route.startsWith('/app')&&ready} returning={route==='/desktop-return'}/>}</Suspense>;
 }
+if(desktop)void import('./desktop/window-tone').then(m=>m.followWindowTone());
 createRoot(document.getElementById('root')!).render(<React.StrictMode>{desktop?<Suspense fallback={<main className="workspace-loading">Opening Mowr…</main>}><DesktopRoot/></Suspense>:<Root/>}</React.StrictMode>);
