@@ -1,6 +1,7 @@
 import {subscriptionsRouter,subscriptionReady,cleanExpiredSubscriptionSessions} from './subscriptions.ts';
 import {filesRouter} from './files.ts';
 import {securityRouter,supportRouter,emailAllowed} from './security.ts';
+import {emailRouter} from './emails.ts';
 import {databaseReady} from './db.ts';
 import {supabaseConfig,supabaseIdentity} from './auth.ts';
 import { runChat } from './skill-runtime.ts';
@@ -36,6 +37,8 @@ app.use((req, res, next) => {
   }
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cache-Control", "no-store");
+  // Opt-out links are signed per address and posted by mail clients (one-click unsubscribe), so no Origin.
+  if (req.path === "/api/email/unsubscribe") { next(); return; }
   const origin = req.get("origin");
   const allowed = new Set([
     "http://127.0.0.1:5173",
@@ -69,6 +72,7 @@ app.use((req,res,next)=>{
 app.use('/api/subscriptions',subscriptionsRouter);
 app.use('/api/security',securityRouter);
 app.use('/api/support',supportRouter);
+app.use('/api/email',emailRouter);
 if(supabaseConfig())app.use('/api/files',filesRouter);
 const localLimits = new Map<string, { count: number; until: number }>();
 async function rate(key: string, limit = 30) {

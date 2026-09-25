@@ -32,7 +32,9 @@
     "verify:local": "node scripts/verify/local-power.mjs",
     "film:demo": "node scripts/film/capture.mjs && node scripts/film/render.mjs",
     "film:live-setup": "node scripts/film/capture.mjs --live-setup",
-    "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live"
+    "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live",
+    "db:email": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/email-schema.sql",
+    "emails:announce": "node scripts/announce-release.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
