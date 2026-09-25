@@ -137,3 +137,12 @@
 .composer .pointer-chip{padding:0 4px 0 10px}
 .composer .pointer-chip:has(img){padding-left:4px}
 .file-panel.as-modal.full,.file-panel.full.full{position:fixed;inset:0;margin:0;width:auto;height:auto;border-radius:0;box-shadow:none;animation:fp-grow .22s cubic-bezier(.2,.9,.3,1)}.desktop-content .file-panel.as-modal.full,.desktop-content .file-panel.full.full{top:40px}
+
+/* The popup viewer as a native dialog: backdrop over the whole window */
+dialog.fp-dialog{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:28px;border:0;background:transparent;display:grid;place-items:center;overflow:hidden;box-sizing:border-box;color:inherit}
+dialog.fp-dialog::backdrop{background:#0000008c;backdrop-filter:blur(6px);animation:fp-fade .18s ease-out}
+.desktop-content dialog.fp-dialog{padding-top:52px}
+dialog.fp-dialog.is-full{padding:0;pointer-events:none}
+dialog.fp-dialog.is-full::backdrop{background:transparent;backdrop-filter:none}
+dialog.fp-dialog.is-full .file-panel{pointer-events:auto}
+@media(max-width:700px){dialog.fp-dialog{padding:10px}}
