@@ -63,14 +63,13 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const [working, setWorking] = useState<string | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [compare, setCompare] = useState<"before" | "after">("after");
-  const [full, setFull] = useState(false);
-  // Escape leaves full screen first; in the popup viewer it then closes the viewer.
+  // Escape closes the popup viewer.
   useEffect(() => {
-    if (!full && variant !== "modal") return;
-    const key = (e: KeyboardEvent) => { if (e.key !== "Escape" || document.querySelector("dialog[open]:not(.fp-dialog)")) return; e.preventDefault(); if (full) setFull(false); else onClose(); };
+    if (variant !== "modal") return;
+    const key = (e: KeyboardEvent) => { if (e.key !== "Escape" || document.querySelector("dialog[open]:not(.fp-dialog)")) return; e.preventDefault(); onClose(); };
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
-  }, [full, variant]);
+  }, [variant]);
   const [flash, setFlash] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; text?: string; page?: number; area?: boolean } | null>(null);
   const [area, setArea] = useState<Area | null>(null);
@@ -217,7 +216,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const shown = proposal && compare === "after" ? proposal.after : view;
   const pages = shown?.kind === "pdf" ? shown.pdf.numPages : 0;
   const detail = kind === "pdf" ? (pages ? `${pages} page${pages === 1 ? "" : "s"}` : "PDF") : kind === "office" ? (/\.pptx$/i.test(file.name) ? "Presentation" : /\.xlsx$/i.test(file.name) ? "Workbook" : "Document") : kind === "text" ? "Text" : kind === "image" ? "Image" : "File";
-  const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (full ? " full" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
+  const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
     <header className="fp-head">
       <div className="fp-title"><span className="fp-crumb">Files /</span><strong title={file.name}>{file.name}</strong></div>
       <small className="fp-meta">{detail}{current.versions?.length ? ` · edited ${current.versions.length}×` : ""}</small>
@@ -225,7 +224,6 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Mowr</button>}
       <button className="fp-icon" title="Open in browser" aria-label="Open in browser" onClick={() => onOpenExternally(current)}><Icon name="arrow" size={16} /></button>
       <button className="fp-icon" title="Download" aria-label="Download" disabled={!blob} onClick={() => blob && download(blob, file.name)}><Icon name="download" size={16} /></button>
-      <button className="fp-icon" title={full ? "Exit full screen" : "Full screen"} aria-label={full ? "Exit full screen" : "Full screen"} onClick={() => setFull(!full)}><Icon name={full ? "collapse" : "expand"} size={16} /></button>
       <button className="fp-icon" title="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
     </header>
     {proposal && <div className="fp-proposal" role="status">
@@ -283,16 +281,16 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     </div>}
     {flash && <div className="fp-flash" role="status"><Icon name="check" size={14} />{flash}</div>}
   </aside>;
-  return variant === "modal" ? <ViewerDialog full={full} onClose={onClose}>{panel}</ViewerDialog> : panel;
+  return variant === "modal" ? <ViewerDialog onClose={onClose}>{panel}</ViewerDialog> : panel;
 });
 
 /** The popup viewer lives in a native modal dialog, like every other popup, so its backdrop
  *  covers the whole window (title bar included) and focus stays inside it. */
-function ViewerDialog({ full, onClose, children }: { full: boolean; onClose: () => void; children: ReactNode }) {
+function ViewerDialog({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { const d = dialog.current; if (d && !d.open) d.showModal(); return () => d?.close(); }, []);
-  return <dialog ref={dialog} className={"fp-dialog" + (full ? " is-full" : "")} onCancel={(e) => e.preventDefault()}
-    onPointerDown={(e) => { if (e.target === e.currentTarget && !full) onClose(); }}>{children}</dialog>;
+  return <dialog ref={dialog} className="fp-dialog" onCancel={(e) => e.preventDefault()}
+    onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>{children}</dialog>;
 }
 
 /** Office files read as what they are: slides as slides, documents as a page, workbooks as cells. */
