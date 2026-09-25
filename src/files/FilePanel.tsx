@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
@@ -67,7 +67,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   // Escape leaves full screen first; in the popup viewer it then closes the viewer.
   useEffect(() => {
     if (!full && variant !== "modal") return;
-    const key = (e: KeyboardEvent) => { if (e.key !== "Escape" || document.querySelector("dialog[open]")) return; e.preventDefault(); if (full) setFull(false); else onClose(); };
+    const key = (e: KeyboardEvent) => { if (e.key !== "Escape" || document.querySelector("dialog[open]:not(.fp-dialog)")) return; e.preventDefault(); if (full) setFull(false); else onClose(); };
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, [full, variant]);
@@ -283,8 +283,17 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     </div>}
     {flash && <div className="fp-flash" role="status"><Icon name="check" size={14} />{flash}</div>}
   </aside>;
-  return variant === "modal" && !full ? <div className="fp-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>{panel}</div> : panel;
+  return variant === "modal" ? <ViewerDialog full={full} onClose={onClose}>{panel}</ViewerDialog> : panel;
 });
+
+/** The popup viewer lives in a native modal dialog, like every other popup, so its backdrop
+ *  covers the whole window (title bar included) and focus stays inside it. */
+function ViewerDialog({ full, onClose, children }: { full: boolean; onClose: () => void; children: ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const d = dialog.current; if (d && !d.open) d.showModal(); return () => d?.close(); }, []);
+  return <dialog ref={dialog} className={"fp-dialog" + (full ? " is-full" : "")} onCancel={(e) => e.preventDefault()}
+    onPointerDown={(e) => { if (e.target === e.currentTarget && !full) onClose(); }}>{children}</dialog>;
+}
 
 /** Office files read as what they are: slides as slides, documents as a page, workbooks as cells. */
 function OfficeView({ name, blocks, changed }: { name: string; blocks: OfficeBlock[]; changed: Set<string> }) {
