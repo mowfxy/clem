@@ -14,6 +14,7 @@ import {MemoryConversation} from "./MemoryConversation";
 import {LocalAutomations,nextAutomation} from "./LocalAutomations";
 import {SettingsPopup} from "./SettingsPopup";
 import {SettingsNav,SettingsHead,SettingsCard,SettingRow,Switch,Keys} from "./settings/SettingsParts";
+import {BackgroundSettings} from "./settings/BackgroundSettings";
 import {ProfileAvatar, ProfilePicker} from "./ProfileAvatar";
 import "./settings.css";
 import {localSourceContext} from "./source-context";
@@ -93,6 +94,7 @@ import "./chat/chat.css";
 import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
 import { titleInstruction, takeTitle, hideTitleMarker } from "../core/chat-title";
+import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
 import "./motion.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
@@ -695,6 +697,19 @@ export default function App({offline=false}:{offline?:boolean}={}) {
         ...user.attachments,
         ...(activeSpace?.sources || []),
       ],prompt);
+      // Asking about Google Drive searches it live; the model links matches as [name](drive:ID) cards that stream when opened.
+      let driveNote = "";
+      if (desktop && !isVisual && driveIntent(prompt)) {
+        try {
+          const found = await desktop.invoke({ action: "driveSearch", query: prompt.slice(0, 2000) });
+          if (!found.connected) driveNote = "The user asked about their Google Drive, but Drive isn't connected in Mowr. Tell them to connect it in Connectors → Google Drive, then ask again.";
+          else {
+            driveNote = driveContext(found.files, prompt);
+            const refs: DriveRef[] = found.files.map(({ excerpt, ...ref }: DriveRef & { excerpt?: string }) => ref);
+            updateChat(id, (c) => ({ ...c, messages: c.messages.map((m) => m.id === messageId ? { ...m, drive: refs } : m) }));
+          }
+        } catch (e) { driveNote = `Searching the user's Google Drive failed (${cleanError(e)}). Tell them briefly and suggest trying again.`; }
+      }
       const studyKind=activeSpace?.kind==='subject'?studyRequest(prompt):null;
       if(studyKind){
         const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText,conversation:next.messages.slice(-8).map(m=>({role:m.role,content:m.content}))})}],model,abort.current.signal,()=>{});
@@ -729,6 +744,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                 },
               ]
             : []),
+          ...(driveNote ? [{ role: "user", content: driveNote }] : []),
         ],
         model,
         abort.current.signal,
@@ -745,7 +761,8 @@ In this subject the learner keeps missing these questions in review; connect to 
       updateChat(id, (c) => ({
         ...c,
         ...(named.title ? { title: named.title, titled: true } : {}),
-        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content } : m),
+        // Only the Drive files the reply links are kept (names and ids; contents are never stored).
+        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
       recordVisuals(id, named.content);
     } catch (e) {
@@ -859,7 +876,13 @@ In this subject the learner keeps missing these questions in review; connect to 
   /** Chat files open beside the conversation, ready to be edited by it. */
   const openInPanel=(file:StoredFile)=>{setPanelFile(file);setPanelEdit(canEditInPanel(file));if(route!=='/app')navigate('/app');};
   /** Files browsed outside a conversation open in the default browser (or their own app). */
+  /** Opens a Drive file from chat in the viewer, streamed into memory; Google formats are shown as PDF. */
+  function openDrive(ref:DriveRef){
+    const name=ref.name+(viewFormat(ref.mimeType).extension&&!ref.name.toLowerCase().endsWith('.pdf')?viewFormat(ref.mimeType).extension:'');
+    setViewer({id:'drive_'+ref.id,name,type:viewFormat(ref.mimeType).export||ref.mimeType,size:ref.size||0,created:Date.now(),spaceId:null,remote:true});
+  }
   async function openExternally(file:StoredFile){
+    if(file.id.startsWith('drive_')){try{await desktop?.invoke({action:'driveOpenWeb',id:file.id.slice(6)});}catch(e){setToast(cleanError(e));}return;}
     try{
       const blob=await getBlob(file.id);if(!blob)throw Error('This file is missing from this PC.');
       if(desktop)await desktop.invoke({action:'openInBrowser',name:file.name,data:new Uint8Array(await blob.arrayBuffer())});
@@ -904,6 +927,8 @@ In this subject the learner keeps missing these questions in review; connect to 
   function bodyHandlers(chat:Chat,message:Chat["messages"][number]):BodyHandlers{
     return {
       scope:desktopScope,edits:message.edits,canCite,onCite:openCitation,
+      driveFile:(driveId)=>message.drive?.find((d)=>d.id===driveId),onOpenDrive:openDrive,
+      onOpenDriveWeb:(ref)=>void desktop?.invoke({action:"driveOpenWeb",id:ref.id}).catch((e)=>setToast(cleanError(e))),
       onEdit:async(key:string,block:EditBlock,approve:boolean)=>{
         if(!approve){patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"dismissed"}}}));return;}
         try{
@@ -2029,6 +2054,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                         <SettingRow title="Quiet mode" description="Keep drawings still and reduce motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
                         <SettingRow title="Theme" description="Mowr is made for a dark, calm room."><span className="settings-pill">Dark</span></SettingRow>
                       </SettingsCard>
+                      <BackgroundSettings/>
                       <SettingsCard title="Shortcuts">
                         <SettingRow title="Search everything"><Keys keys={["Ctrl","K"]}/></SettingRow>
                         <SettingRow title="New chat"><Keys keys={["Ctrl","N"]}/></SettingRow>
@@ -2468,9 +2494,9 @@ In this subject the learner keeps missing these questions in review; connect to 
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
       {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
       {viewer && <FilePanel key={"viewer-" + viewer.id} variant="modal" file={viewer} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
-        onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
-        onChange={(next) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? next : f)) })); setViewer(next); }}
-        onEditInChat={(f) => { setViewer(null); newChat(f.spaceId); openInPanel(f); }} />}
+        onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); if (f.id.startsWith("drive_")) { setPointers([p]); return; } newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
+        onChange={(next) => { if (next.id.startsWith("drive_")) return; patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? next : f)) })); setViewer(next); }}
+        onEditInChat={viewer.id.startsWith("drive_") ? undefined : (f) => { setViewer(null); newChat(f.spaceId); openInPanel(f); }} />}
       {toast && <Toast message={toast} onDismiss={() => setToast("")} />}
     </>
   );

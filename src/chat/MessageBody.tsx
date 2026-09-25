@@ -1,5 +1,7 @@
 import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { LinkChip, YouTubeEmbed, videosIn } from './Links';
+import { DriveAudio, DriveCard, DriveChip, DriveVideo } from './DriveCards';
+import { driveKind, type DriveRef } from '../../core/drive-search';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -30,7 +32,22 @@ export type BodyHandlers = {
   onEdit?: (key: string, block: EditBlock, approve: boolean) => Promise<void>;
   onUndo?: (key: string, outcome: EditOutcome) => Promise<void>;
   scope?: string;
+  /** Drive files found for this reply, looked up by id for [name](drive:ID) links. */
+  driveFile?: (id: string) => DriveRef | undefined;
+  onOpenDrive?: (file: DriveRef) => void;
+  onOpenDriveWeb?: (file: DriveRef) => void;
 };
+
+/** Drive ids linked inside a block of rendered markdown, in order and without repeats. */
+function driveIdsIn(node: unknown): string[] {
+  const found: string[] = [];
+  const walk = (n: { tagName?: string; properties?: { href?: unknown }; children?: unknown[] }) => {
+    if (n?.tagName === 'a' && typeof n.properties?.href === 'string' && n.properties.href.startsWith('drive:')) { const id = n.properties.href.slice(6); if (!found.includes(id)) found.push(id); }
+    for (const child of n?.children || []) walk(child as typeof n);
+  };
+  walk(node as never);
+  return found;
+}
 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
@@ -70,13 +87,23 @@ function CheckBlock({ body, streaming }: { body: string; streaming: boolean }) {
 function MessageBodyImpl({ content, streaming = false, handlers = {} }: { content: string; streaming?: boolean; handlers?: BodyHandlers }) {
   const prepared = useMemo(() => prepareMarkdown(content), [content]);
   let editIndex = 0;
+  // Drive files linked in a paragraph follow it, like YouTube links: videos and audio play, documents open as cards.
+  const drivePlayers = (node: unknown) => driveIdsIn(node).map((id) => handlers.driveFile?.(id)).filter((f): f is DriveRef => !!f)
+    .map((f) => driveKind(f.mimeType) === 'video' ? <DriveVideo key={f.id} file={f} onOpenWeb={handlers.onOpenDriveWeb} /> : driveKind(f.mimeType) === 'audio' ? <DriveAudio key={f.id} file={f} /> : <DriveCard key={f.id} file={f} onOpen={(x) => handlers.onOpenDrive?.(x)} />);
   return <div className="md">
     <ReactMarkdown
       remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
       rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore', output: 'html' }]]}
-      urlTransform={url => (url.startsWith('source:') ? url : defaultUrlTransform(url))}
+      urlTransform={url => (url.startsWith('source:') || /^drive:[\w-]{10,150}$/.test(url) ? url : defaultUrlTransform(url))}
       components={{
         a: ({ href, children }) => {
+          if (href?.startsWith('drive:')) {
+            const file = handlers.driveFile?.(href.slice(6));
+            if (!file) return <>{children}</>;
+            // In the sentence a Drive link is a chip; its player or card follows the paragraph.
+            const media = driveKind(file.mimeType) === 'video' || driveKind(file.mimeType) === 'audio';
+            return <DriveChip onClick={media ? undefined : () => handlers.onOpenDrive?.(file)}>{children}</DriveChip>;
+          }
           const cite = href ? readCitation(href) : null;
           if (cite) {
             const usable = handlers.canCite?.(cite) ?? false;
@@ -85,8 +112,8 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
           return href ? <LinkChip href={href}>{children}</LinkChip> : <>{children}</>;
         },
         // A paragraph that mentions a YouTube video is followed by the video, ready to play.
-        p: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <>{<p>{children}</p>}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}</>; },
-        li: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <li>{children}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}</li>; },
+        p: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <>{<p>{children}</p>}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</>; },
+        li: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <li>{children}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</li>; },
         table: ({ children }) => <div className="table-wrap"><table>{children}</table></div>,
         pre: ({ children }) => {
           const child = (Array.isArray(children) ? children[0] : children) as { props?: { className?: string; children?: ReactNode } } | undefined;

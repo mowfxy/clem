@@ -1,0 +1,23 @@
+/* Drive files linked in replies: videos look like the in-app YouTube player, documents are compact cards. */
+.drive-video>video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;outline:none}
+.drive-poster-art{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,#2c2c29,#0f0f0e 72%)}
+.drive-head{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:12px;padding:14px 16px 34px;background:linear-gradient(#000000c0,#0000);pointer-events:none}
+.drive-avatar{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#fff;box-shadow:0 2px 8px #0006}
+.drive-head-text{min-width:0;display:grid;gap:2px}
+.drive-head-text strong{color:#fff;font:600 16px 'Mowafy Sans Text',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #0008}
+.drive-head-text small{color:#e8e8e8;font:13px 'Mowafy Sans Text',sans-serif}
+.drive-play{position:absolute;left:50%;top:50%;width:68px;height:48px;border-radius:14px;display:grid;place-items:center;transform:translate(-50%,-50%);background:#e52d32;color:#fff;box-shadow:0 6px 18px #0009;transition:transform .2s,filter .2s}
+.yt-poster:hover .drive-play{transform:translate(-50%,-50%) scale(1.08);filter:brightness(1.08)}
+.drive-video .yt-open{border:0;cursor:pointer}
+.drive-chip{vertical-align:baseline}
+button.drive-chip{cursor:pointer;font:inherit}
+.drive-audio figcaption{display:flex;align-items:center;gap:6px;margin-top:8px;font:12px 'Mowafy Sans Text',sans-serif;color:#a9a8a0}
+.drive-audio figcaption span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drive-audio{margin:12px 0;max-width:520px}.drive-audio audio{width:100%;margin-top:6px}
+.drive-card{display:flex;align-items:center;gap:10px;width:min(100%,420px);margin:4px 0 16px;padding:9px 12px 9px 9px;border:1px solid #33332f;border-radius:12px;background:#1d1d1b;color:#eeede7;text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
+.drive-card:hover{background:#242422;border-color:#44443d}
+.drive-card-mark{flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#fff}
+.drive-card-text{flex:1;min-width:0;display:grid;gap:1px}
+.drive-card-text strong{font:500 13px 'Mowafy Sans Text',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drive-card-text small{font-size:11.5px;color:#8f8e87}
+.drive-searching{display:inline-flex;align-items:center;gap:8px;color:#a9a8a0;font-size:13px}
