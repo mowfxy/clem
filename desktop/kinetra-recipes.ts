@@ -62,5 +62,58 @@ export const kinetraRecipes: KinetraRecipe[] = [
   },
 ];
 
+
+/** Concept diagrams: processes, data, sequences and structures that any subject needs, not only physics. */
+export const diagramRecipes: KinetraRecipe[] = [
+  {
+    name: "flowchart",
+    use: "processes, algorithms, procedures, decision paths, pathways (biology, chemistry, business, computing)",
+    figure: { module: "mowr", fn: "flowchart", args: [{ title: "Enzyme-catalysed reaction", direction: "down", nodes: [{ id: "s", label: "Substrate meets enzyme", shape: "start" }, { id: "b", label: "Substrate binds the active site" }, { id: "d", label: "Correct shape and conditions?", shape: "decision" }, { id: "c", label: "Enzyme–substrate complex forms" }, { id: "p", label: "Products released; enzyme unchanged", shape: "end" }, { id: "n", label: "No reaction", shape: "end" }], edges: [{ from: "s", to: "b" }, { from: "b", to: "d" }, { from: "d", to: "c", label: "Yes" }, { from: "d", to: "n", label: "No" }, { from: "c", to: "p" }] }] },
+    notes: "shape: process (default), decision (diamond, label the out-edges Yes/No), start, end, io (input/output), note. direction \"right\" for wide, short processes. Loops (an edge back to an earlier node) are drawn around the side. Up to 40 nodes.",
+  },
+  {
+    name: "bar chart",
+    use: "comparing quantities across categories; grouped series; type hbar for long labels, stacked for parts of a whole",
+    figure: { module: "mowr", fn: "chart", args: [{ title: "Energy use by sector", type: "bar", labels: ["Industry", "Transport", "Homes", "Services"], series: [{ name: "2015", values: [34, 29, 22, 15] }, { name: "2025", values: [31, 30, 21, 18] }], yLabel: "Share of total", unit: "%" }] },
+    notes: "Every series has exactly one number per label. type: bar | hbar | stacked | line | pie (pie uses the first series). Use real or computed values only.",
+  },
+  {
+    name: "line chart",
+    use: "trends over time or any ordered variable",
+    figure: { module: "mowr", fn: "chart", args: [{ title: "Population growth", type: "line", labels: ["1990", "2000", "2010", "2020"], series: [{ name: "Population", values: [5.3, 6.1, 6.9, 7.8] }], yLabel: "People", unit: "bn" }] },
+    notes: "For y = f(x) curves use the function plot recipe instead.",
+  },
+  {
+    name: "timeline",
+    use: "historical events, project phases, schedules, life cycles in order",
+    figure: { module: "mowr", fn: "timeline", args: [{ title: "Key steps in the French Revolution", events: [{ date: "1789", label: "Storming of the Bastille", detail: "14 July" }, { date: "1791", label: "Constitution adopted" }, { date: "1793", label: "Reign of Terror begins" }, { date: "1799", label: "Napoleon takes power" }] }] },
+    notes: "Up to 30 events in order; more than 8 are drawn as a vertical list with details.",
+  },
+  {
+    name: "cycle",
+    use: "repeating processes: water cycle, cell cycle, Krebs cycle, product life cycle, feedback loops",
+    figure: { module: "mowr", fn: "cycle", args: [{ title: "The water cycle", center: "Water cycle", steps: [{ label: "Evaporation", detail: "Sun heats surface water" }, { label: "Condensation", detail: "Vapour forms clouds" }, { label: "Precipitation" }, { label: "Collection", detail: "Rivers, lakes, oceans" }] }] },
+    notes: "3–12 steps in order; the arrow from the last step returns to the first.",
+  },
+  {
+    name: "mind map",
+    use: "a topic overview, revision summary or brainstorm: a central idea with branches and sub-points",
+    figure: { module: "mowr", fn: "mindMap", args: [{ title: "Cell biology overview", center: "The cell", branches: [{ label: "Organelles", children: ["Nucleus", "Mitochondria", "Ribosomes"] }, { label: "Transport", children: ["Diffusion", "Osmosis", "Active transport"] }, { label: "Division", children: ["Mitosis", "Meiosis"] }, { label: "Types", children: ["Prokaryotic", "Eukaryotic"] }] }] },
+    notes: "Up to 10 branches with up to 8 short children each.",
+  },
+  {
+    name: "tree / hierarchy",
+    use: "classification, taxonomy, organisation chart, decision tree, family of concepts",
+    figure: { module: "mowr", fn: "tree", args: [{ title: "Classification of matter", root: { label: "Matter", children: [{ label: "Pure substances", children: [{ label: "Elements" }, { label: "Compounds" }] }, { label: "Mixtures", children: [{ label: "Homogeneous", detail: "e.g. salt water" }, { label: "Heterogeneous", detail: "e.g. sand in water" }] }] } }] },
+    notes: "Up to 60 nodes and 6 levels; detail is an optional short second line.",
+  },
+  {
+    name: "Venn diagram",
+    use: "similarities and differences between two or three things",
+    figure: { module: "mowr", fn: "venn", args: [{ title: "Mitosis and meiosis", sets: [{ label: "Mitosis", items: ["2 daughter cells", "Identical", "Growth and repair"] }, { label: "Meiosis", items: ["4 daughter cells", "Genetically different", "Gametes"] }], overlap: ["DNA replicates first", "Spindle fibres", "Nuclear division"] }] },
+    notes: "2 or 3 sets; for 3 sets, overlaps: {AB:[…],AC:[…],BC:[…],all:[…]}. Keep items to a few words.",
+  },
+];
+
 export const recipeText = () =>
-  kinetraRecipes.map((r) => `- ${r.name} (${r.use}): {"figure":${JSON.stringify(r.figure)}} — ${r.notes}`).join("\n");
+  [...kinetraRecipes, ...diagramRecipes].map((r) => `- ${r.name} (${r.use}): {"figure":${JSON.stringify(r.figure)}} — ${r.notes}`).join("\n");

@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
-import {streamTurn,type TurnSession,type TurnControl} from "./codex-stream.ts";
+import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
 import {toolRequest,runKinetraTurn} from "./kinetra-turn.ts";
 
@@ -16,6 +16,15 @@ export function mayBeTool(text: string) {
   return !body || '{"kinetra"'.startsWith(body.slice(0, 10)) || body.startsWith('{"kinetra"');
 }
 const IDLE_MS = 10 * 60_000;
+
+/** What the person sees while a tool runs, instead of a silent pause. */
+export function toolStatus(request: any) {
+  if (request?.action === "pdf") return request.revise ? "Updating the document…" : "Typesetting the PDF…";
+  if (request?.action === "open") return "Reading the document…";
+  if (request?.action === "call" && typeof request.module === "string" && /^diagram\/|^mowr$/.test(request.module) && /^render|plot|flowchart|chart|timeline|cycle|mindmap|diagram|table|venn/i.test(String(request.fn))) return "Drawing the figure…";
+  if (request?.action === "call") return "Calculating…";
+  return "Checking Mowr's tools…";
+}
 
 /** Provider output is never shown verbatim: it can include sensitive diagnostics. */
 export function codexFailureMessage(error: unknown): string {
@@ -32,10 +41,11 @@ export function codexFailureMessage(error: unknown): string {
 }
 
 export class Codex {
-  private turn: {id:string;cancelled:boolean} | null = null;
+  /** Every chat that is answering right now. Chats run side by side on the shared connection. */
+  private turns = new Map<string, {cancelled:boolean}>();
   private inspections = new Set<ChildProcessWithoutNullStreams>();
   get busy() {
-    return this.turn !== null || this.starting || this.active.size > 0;
+    return this.turns.size > 0 || !!this.starting || this.active.size > 0;
   }
   private server: AppServer | null = null;
   private serverStart: Promise<AppServer> | null = null;
@@ -46,7 +56,7 @@ export class Codex {
     if (this.server && !this.server.dead) return this.server;
     if (this.serverStart) return this.serverStart;
     this.serverStart = (async () => {
-      const server = new AppServer(await this.start(["app-server", "-c", 'cli_auth_credentials_store="file"', "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", 'web_search="disabled"']));
+      const server = new AppServer(await this.start(["app-server", "-c", 'cli_auth_credentials_store="file"', "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", `web_search="${WEB_SEARCH}"`]));
       this.server = server;
       try { await server.ready; } catch (error) { server.close(); if (this.server === server) this.server = null; throw error; }
       return server;
@@ -70,7 +80,7 @@ export class Codex {
   private loginChallenge: {url:string;code:string} | null = null;
   loginState(){return {pending:!!this.loginProcess,loginError:this.loginError,challenge:this.loginProcess?this.loginChallenge:null};}
   private loginProcess: ChildProcessWithoutNullStreams | null = null;
-  private starting = false;
+  private starting: number | boolean = 0;
   private active = new Map<string, ChildProcessWithoutNullStreams>();
   private executable: string;
   private home: string;
@@ -408,13 +418,15 @@ export class Codex {
       );
     });
   }
+  /** Stops one chat only; other chats on the same connection keep answering. */
   cancel(id: string) {
-    if(this.turn?.id===id)this.turn.cancelled=true;
+    const turn=this.turns.get(id);
+    if(turn)turn.cancelled=true;
     this.controls.get(id)?.interrupt?.();
     this.active.get(id)?.kill();
   }
   stop() {
-    if(this.turn)this.turn.cancelled=true;
+    for(const turn of this.turns.values())turn.cancelled=true;
     for (const control of this.controls.values()) control.interrupt?.();
     for (const child of this.inspections) child.kill();
     this.loginProcess?.kill();
@@ -422,27 +434,30 @@ export class Codex {
     this.server?.close();
     this.server = null;
   }
-  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions){
-    if(this.busy)throw Error("Wait for the current request or cancel it.");
-    const turn={id,cancelled:false};this.turn=turn;
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>){
+    if(this.turns.has(id))throw Error("This chat is already answering.");
+    const turn={cancelled:false};this.turns.set(id,turn);
     const session:TurnSession={};
     try{
       await runKinetraTurn(prompt,instructions,async(input,followUp)=>{
         let output="",delivered=0;
         await this.runOnce(id,input,event=>{
+          if(event.type==="status"){emit({id,...event});return;}
           if(event.type!=="delta")return;
           output+=event.text||"";
           // Hold possible tool envelopes, but stream ordinary prose immediately.
           if(!mayBeTool(output)){
             emit({id,type:"delta",text:output.slice(delivered)});delivered=output.length;
           }
-        },followUp?[]:images,selection,session);
+        },followUp?[]:images,selection,session,turn);
         if(!toolRequest(output)&&delivered<output.length)emit({id,type:"delta",text:output.slice(delivered)});
         return output;
-      },request=>kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined),()=>turn.cancelled,{stateful:true});
-      this.turn=null;
+      },async request=>{
+        emit({id,type:"status",text:toolStatus(request)});
+        return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
+      },()=>turn.cancelled,{stateful:true});
       emit({id,type:"done"});
-    }finally{if(this.turn===turn)this.turn=null;this.scheduleIdle();}
+    }finally{if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
   }
   /** A short internal request (memory notes): never blocks the user's turn or streams to the screen. */
   async quick(prompt:string,selection?:{model?:string;reasoning?:string},timeoutMs=45000){
@@ -475,21 +490,21 @@ export class Codex {
     images: string[] = [],
     selection?: { model?: string; reasoning?: string },
     session: TurnSession = {},
+    turn: {cancelled:boolean} = {cancelled:false},
   ) {
-    if (this.starting) throw Error("Wait for the current request or cancel it.");
-    this.starting = true;
+    this.starting = Number(this.starting) + 1;
     let server: AppServer;
     try {
       const [connected] = await Promise.all([this.connection(), session.threadId ? undefined : this.validate(selection)]);
       server = connected;
-      if(this.turn?.cancelled)throw Error("Request cancelled");
+      if(turn.cancelled)throw Error("Request cancelled");
     } finally {
-      this.starting = false;
+      this.starting = Math.max(0, Number(this.starting) - 1);
     }
     const control: TurnControl = {};
     this.controls.set(id, control);
     try {
-      await streamTurn(server,session,prompt,selection,images,text=>emit({id,type:"delta",text}),()=>!!this.turn?.cancelled,control);
+      await streamTurn(server,session,prompt,selection,images,text=>emit({id,type:"delta",text}),()=>turn.cancelled,control,undefined,status=>emit({id,type:"status",text:status}));
     } finally {
       this.controls.delete(id);
       this.accountCache = null;

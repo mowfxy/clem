@@ -20,22 +20,25 @@ export function exportTitle(content: string, fallback: string) {
 export function MessageTools({ content, models, model, onReview, onVerify, canVerify, busy, title = '', onExport }: { content: string; models: Model[]; model?: string; onReview: (model: string) => void; onVerify?: () => void; canVerify: boolean; busy: boolean; title?: string; onExport?: (format: 'pdf' | 'docx' | 'pptx', content: string, title: string) => Promise<void> }) {
   const [copied, setCopied] = useState(false), [menu, setMenu] = useState(false), [exporting, setExporting] = useState<'menu' | 'pdf' | 'docx' | 'pptx' | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
+  // Menus open upward when the answer sits low in the window, so they are never hidden under the composer.
+  const [up, setUp] = useState(false);
+  const place = () => { const r = wrap.current?.getBoundingClientRect(); setUp(!!r && r.bottom > innerHeight - 320 && r.top > 300); };
   useEffect(() => { if (!menu && exporting !== 'menu') return; const close = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) { setMenu(false); setExporting(x => x === 'menu' ? null : x); } }; const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMenu(false); setExporting(x => x === 'menu' ? null : x); } }; addEventListener('mousedown', close); addEventListener('keydown', esc); return () => { removeEventListener('mousedown', close); removeEventListener('keydown', esc); }; }, [menu, exporting]);
   const exportAs = async (format: 'pdf' | 'docx' | 'pptx') => { setExporting(format); try { await onExport?.(format, content, exportTitle(content, title)); } finally { setExporting(null); } };
   const reviewers = reviewerFor(models, model || '');
   const plain = content.replace(/```(?:visual|check|edit)[\s\S]*?(?:```|$)/g, '').trim();
   return <div className="message-tools" ref={wrap}>
     <button type="button" aria-label={copied ? 'Copied' : 'Copy answer'} title="Copy" onClick={() => void navigator.clipboard?.writeText(plain).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
-    {reviewers.length > 0 && <button type="button" aria-label="Second opinion" title="Second opinion" aria-expanded={menu} disabled={busy} onClick={() => setMenu(!menu)}><Icon name="compare" size={16} /><span>Second opinion</span></button>}
+    {reviewers.length > 0 && <button type="button" aria-label="Second opinion" title="Second opinion" aria-expanded={menu} disabled={busy} onClick={() => { place(); setMenu(!menu); }}><Icon name="compare" size={16} /><span>Second opinion</span></button>}
     {canVerify && onVerify && <button type="button" aria-label="Check against sources" title="Check against your sources" disabled={busy} onClick={onVerify}><Icon name="verify" size={16} /><span>Check sources</span></button>}
-    {onExport && <button type="button" aria-label="Export" title="Export as a document" aria-expanded={exporting === 'menu'} disabled={busy || (!!exporting && exporting !== 'menu')} onClick={() => { setMenu(false); setExporting(exporting === 'menu' ? null : 'menu'); }}><Icon name="download" size={16} /><span>{exporting && exporting !== 'menu' ? 'Exporting…' : 'Export'}</span></button>}
-    {exporting === 'menu' && <div className="review-menu export-menu" role="menu">
+    {onExport && <button type="button" aria-label="Export" title="Export as a document" aria-expanded={exporting === 'menu'} disabled={busy || (!!exporting && exporting !== 'menu')} onClick={() => { place(); setMenu(false); setExporting(exporting === 'menu' ? null : 'menu'); }}><Icon name="download" size={16} /><span>{exporting && exporting !== 'menu' ? 'Exporting…' : 'Export'}</span></button>}
+    {exporting === 'menu' && <div className={'review-menu export-menu' + (up ? ' up' : '')} role="menu">
       <p>Save this answer as a formatted document</p>
       <button role="menuitem" onClick={() => void exportAs('pdf')}><span>PDF document</span><small>Typeset, A4</small></button>
       <button role="menuitem" onClick={() => void exportAs('docx')}><span>Word document</span><small>Editable .docx</small></button>
       <button role="menuitem" onClick={() => void exportAs('pptx')}><span>PowerPoint</span><small>One slide per ## heading</small></button>
     </div>}
-    {menu && <div className="review-menu" role="menu">
+    {menu && <div className={'review-menu' + (up ? ' up' : '')} role="menu">
       <p>Ask another model to review this answer</p>
       {reviewers.slice(0, 6).map((m, i) => <button key={m.id} role="menuitem" onClick={() => { setMenu(false); onReview(m.id); }}><span>{m.name}</span>{i === 0 && <small>{m.provider !== models.find(x => x.id === model)?.provider ? 'Different provider' : m.id !== model ? 'Different model' : 'Fresh context'}</small>}</button>)}
     </div>}

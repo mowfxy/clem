@@ -105,6 +105,50 @@ test("cancelling interrupts the turn instead of waiting for it", async () => {
   codex.stop();
 });
 
+test("two chats answer side by side, and stopping one leaves the other running", async () => {
+  const codex: any = new Codex("fixture", "fixture", "fixture");
+  codex.models = async () => [];
+  let server: any, thread = 0;
+  const turns = new Map<string, string>();
+  codex.start = async () => {
+    server = fakeServer((req, write) => {
+      if (req.method === "initialize") write({ id: req.id, result: {} });
+      if (req.method === "thread/start") write({ id: req.id, result: { thread: { id: "t" + ++thread } } });
+      if (req.method === "turn/start") { turns.set(req.params.threadId, "u" + req.params.threadId); write({ id: req.id, result: { turn: { id: "u" + req.params.threadId } } }); }
+      // The provider never acknowledges the interrupt, which used to recycle the shared connection.
+      if (req.method === "turn/interrupt") write({ id: req.id, result: {} });
+    });
+    return server;
+  };
+  const a = codex.run("a", "first chat", () => {});
+  const bEvents: any[] = [];
+  const b = codex.run("b", "second chat", (e: any) => bEvents.push(e));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(turns.size, 2, "both chats started a turn at once");
+  codex.cancel("a");
+  await assert.rejects(a, /cancelled/);
+  assert.equal(server.killed, undefined);
+  assert.ok(codex.busy, "chat b is still answering");
+  const threadB = [...turns.keys()].find((t) => server.sent.some((r: any) => r.method === "turn/start" && r.params.threadId === t && r.params.input[0].text.includes("second chat")))!;
+  server.stdout.write(JSON.stringify({ method: "item/agentMessage/delta", params: { threadId: threadB, itemId: "x", delta: "Still here." } }) + "\n");
+  server.stdout.write(JSON.stringify({ method: "turn/completed", params: { threadId: threadB, turn: { status: "completed" } } }) + "\n");
+  await b;
+  assert.equal(bEvents.filter((e) => e.type === "delta").map((e) => e.text).join(""), "Still here.");
+  assert.equal(codex.busy, false);
+  codex.stop();
+});
+
+test("every concept diagram recipe renders, and bad diagrams explain what to fix", async () => {
+  const { diagramRecipes } = await import("../../desktop/kinetra-recipes.ts");
+  for (const recipe of diagramRecipes) assert.match(await kinetraCall(recipe.figure), /^<svg[\s\S]*<\/svg>$/, recipe.name);
+  await assert.rejects(kinetraCall({ module: "mowr", fn: "flowchart", args: [{ nodes: [{ id: "a", label: "A" }], edges: [{ from: "a", to: "zz" }] }] }), /missing node/);
+  await assert.rejects(kinetraCall({ module: "mowr", fn: "chart", args: [{ labels: ["a", "b"], series: [{ name: "s", values: [1] }] }] }), /exactly 2 values/);
+  const svg = await kinetraCall({ module: "mowr", fn: "flowchart", args: [{ nodes: [{ id: "a", label: "<script>" }, { id: "b", label: "B" }], edges: [{ from: "a", to: "b" }, { from: "b", to: "a", label: "again" }] }] });
+  assert.ok(!svg.includes("<script>") && svg.includes("&lt;script&gt;"), "labels are escaped");
+  assert.match(svg, /stroke-dasharray="5 3"/, "loops are drawn around the side");
+  assert.ok(kinetraInstructions.includes('"fn":"flowchart"') && kinetraInstructions.includes('"revise"'));
+});
+
 test("tool envelopes are held even when fenced; prose streams at once", () => {
   for (const partial of ["", "{", "`", "```", "```json", "```json\n{", '```json\n{"kin']) assert.equal(mayBeTool(partial), true, partial);
   for (const prose of ["Hello", "```python\nprint(1)", "The answer", "```\nplain"]) assert.equal(mayBeTool(prose), false, prose);
@@ -275,6 +319,6 @@ test("built-in skills: specific triggers win and every skill is well formed", as
   assert.match(documentGuidance("I want a report on solar power"), /DOCUMENT STANDARD/);
   assert.equal(documentGuidance("hi"), "");
   assert.equal(new Set(builtinSkills.map((s) => s.id)).size, builtinSkills.length);
-  for (const s of builtinSkills) assert.ok(s.steps.length >= 4 && s.steps.length <= 8 && s.builtin, s.id);
+  for (const s of builtinSkills) assert.ok(s.steps.length >= 5 && s.steps.length <= 12 && s.builtin, s.id);
   assert.ok(builtinSkills.length >= 20);
 });

@@ -116,7 +116,8 @@ export class ProviderAccounts {
         break;
       }
       if (!next) return {active:r.active,switched:false,exhausted:true};
-      this.assertIdle();
+      // Another chat is still answering on this account; it is never moved mid-reply, so this one stays too.
+      if ([...this.clients.values()].some((c) => c.busy)) return {active:r.active,switched:false};
       const updated = {...r,active:next.id};
       await this.vault.write('providers-' + owner,updated);
       this.registries.set(owner,updated);

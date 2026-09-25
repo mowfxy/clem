@@ -6,8 +6,10 @@ export type Skill = { id: string; name: string; description: string; category: s
 /** A folder made inside Mowr to organise a space's files; `parentId` nests it. */
 export type SpaceFolder = { id: string; name: string; parentId: string | null; created: number };
 export type Space = { id: string; name: string; kind: 'project' | 'subject'; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[]; drive?: SpaceDrive };
-/** A Google Drive folder kept in step with a space: which Drive files became which Mowr files. */
-export type SpaceDrive = { folderId: string; folderName: string; lastSync?: number; error?: string; saveBack?: boolean; newFiles?: string[]; files: Record<string, { fileId: string; modified: string }> };
+/** A Google Drive folder linked to a space. It is read live from Drive whenever it is shown or asked about; nothing is
+ *  downloaded. `seen` remembers each file's last modified time so new and changed files can be pointed out; `fresh`
+ *  lists them until the person looks. `files`, `lastSync` and `newFiles` are from the older copy-based sync. */
+export type SpaceDrive = { folderId: string; folderName: string; saveBack?: boolean; seen?: Record<string, string>; fresh?: import('./drive-search').DriveRef[]; lastSync?: number; error?: string; newFiles?: string[]; files?: Record<string, { fileId: string; modified: string }> };
 export type Review = { model: string; content: string; status: 'running' | 'done' | 'error' };
 export type ClaimCheck = { claim: string; status: 'supported' | 'partial' | 'unsupported'; source?: string; page?: number | null; quote?: string };
 export type Verification = { status: 'running' | 'done' | 'error'; claims?: ClaimCheck[]; error?: string };

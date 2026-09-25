@@ -32,7 +32,7 @@ async function references(folder, prefix = "") {
   }
 }
 await references("vendor/kinetra/packages/core/src");
-api.mowr = declarations(await readFile("desktop/kinetra-adapters.ts", "utf8"));
+api.mowr = declarations(await readFile("desktop/kinetra-adapters.ts", "utf8")) + "\n" + declarations(await readFile("desktop/kinetra-diagrams.ts", "utf8"));
 await mkdir("desktop/generated", { recursive: true });
 await writeFile(
   "desktop/generated/kinetra.json",

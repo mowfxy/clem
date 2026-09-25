@@ -40,6 +40,11 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("grokStatus") }),
   z.object({ action: z.literal("driveSearch"), query: z.string().min(1).max(2000) }),
   z.object({ action: z.literal("driveOpenWeb"), id: z.string().regex(/^[\w-]{10,150}$/) }),
+  z.object({ action: z.literal("driveStatus"), refresh: z.boolean().optional() }),
+  z.object({ action: z.literal("driveList"), folder: z.string().regex(/^(root|shared|[\w-]{10,150})$/).optional(), page: z.string().max(2000).optional(), query: z.string().max(200).optional(), kind: z.enum(["all", "folders"]).optional() }),
+  z.object({ action: z.literal("driveFolder"), folder: z.string().regex(/^[\w-]{10,150}$/), query: z.string().max(4000).optional(), refresh: z.boolean().optional() }),
+  z.object({ action: z.literal("driveMediaUrl"), id: z.string().regex(/^[\w-]{10,150}$/) }),
+  z.object({ action: z.literal("driveText"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("grokLogin") }),
   z.object({ action: z.literal("grokInstall") }),
   z.object({ action: z.literal("providerAccountAdd") }),
@@ -73,6 +78,8 @@ export const requestSchema = z.discriminatedUnion("action", [
     reasoning:z.enum(["none","minimal","low","medium","high","xhigh","max","ultra"]).optional(),
     id: z.string().uuid(),
     scope: scopeSchema,
+    /** Documents Mowr made in this conversation; a change to one updates that same file. */
+    documents: z.array(z.object({ id: z.string().uuid(), name: z.string().max(200) })).max(20).optional(),
     images: z.array(z.object({ name: z.string().max(200), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(4).optional(),
     messages: z
       .array(
@@ -176,6 +183,8 @@ export type DesktopBridge = {
       file?: import("../core/types").StoredFile;
       scope?: string;
       error?: string;
+      /** An artifact that replaced an existing file's contents (a revised document) rather than a new file. */
+      revised?: { version: import("../core/types").FileVersion };
     }) => void,
   ) => () => void;
 };

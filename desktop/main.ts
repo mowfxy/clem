@@ -41,7 +41,11 @@ import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeModels} from './claude';
 import {GrokProvider,grokModels,GROK_PREFIX} from './grok';
-import {DriveLive} from './drive-live';
+import {DriveLive,DriveMediaServer} from './drive-live';
+import {runKinetraTurn} from './kinetra-turn';
+import {kinetraTool} from './kinetra-runtime';
+import {toolStatus} from './codex';
+import {documentsNote} from '../core/mowr-skills';
 import {installCli} from './cli-install';
 import {
   inside,
@@ -188,6 +192,8 @@ void app.whenReady().then(async () => {
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
   const claudeFor=(owner:string)=>{let value=claudeProviders.get(owner);if(!value){value=new ClaudeProvider(claudeExecutable,join(local,owner,'claude'));claudeProviders.set(owner,value);}return value;};
   const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
+  const driveMedia=new DriveMediaServer(driveLive,async()=>!!await auth.user());
+  app.on("before-quit",()=>driveMedia.stop());
   const grokFor=(owner:string)=>{let value=grokProviders.get(owner);if(!value){value=new GrokProvider(join(local,owner,'grok'));grokProviders.set(owner,value);}return value;};
   let providerOwner = "";
   const providerLink=new ProviderLink(auth,vault,local);
@@ -207,6 +213,8 @@ void app.whenReady().then(async () => {
     codex=await providerAccounts.selected(owner);
     return codex;
   }
+  /** Chats the person stopped; a Claude or Grok tool loop checks this between steps. */
+  const cancelledRuns = new Set<string>();
   const pendingAttachments = new Map<
     string,
     { resolve: (text: string) => void; reject: () => void }
@@ -435,7 +443,12 @@ void app.whenReady().then(async () => {
     }
     if (url.pathname === "/api/auth/session") {
       const state = await status();
-      if (state.user) void welcomeOnce();
+      if (state.user) {
+        void welcomeOnce();
+        // Everything a first message needs is started in the background as soon as the workspace opens.
+        void selectProvider(state.user.id).then((provider) => provider.warm()).catch(() => {});
+        void driveLive.state().catch(() => {});
+      }
       return Response.json({
         user: state.user,
         database: false,
@@ -493,7 +506,7 @@ void app.whenReady().then(async () => {
     const response = await net.fetch(pathToFileURL(path).toString());
     response.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src https://www.youtube-nocookie.com; object-src 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; media-src 'self' blob: http://127.0.0.1:*; frame-src https://www.youtube-nocookie.com; object-src 'none'",
     );
     return response;
   });
@@ -681,6 +694,7 @@ void app.whenReady().then(async () => {
     if (request.action === "announcements") return auth.cloud("/announcements");
     await selectProvider(user.id);
     if (request.action === "driveConnect") {
+      driveLive.forget();
       await shell.openExternal("https://mowrai.com/#/drive-connect?account=" + encodeURIComponent(user.id));
       return {ok:true};
     }
@@ -741,6 +755,11 @@ void app.whenReady().then(async () => {
     }
     if (request.action === "claudeLogin") return claudeFor(user.id).login();
     if (request.action === "driveSearch") return driveLive.search(request.query);
+    if (request.action === "driveStatus") return driveLive.state(request.refresh);
+    if (request.action === "driveList") return driveLive.list({folder:request.folder,page:request.page,query:request.query,kind:request.kind});
+    if (request.action === "driveFolder") return driveLive.folder(request.folder,request.query||"",request.refresh);
+    if (request.action === "driveMediaUrl") return {url:await driveMedia.url(request.id)};
+    if (request.action === "driveText") return {text:await driveLive.text(request.id)};
     if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
     if (request.action === "grokStatus") return grokFor(user.id).status(true);
     if (request.action === "grokLogin") return grokFor(user.id).login(url=>{if(/^https:\/\/([a-z0-9-]+\.)*(x\.ai|grok\.com)\//.test(url))void shell.openExternal(url);});
@@ -763,6 +782,7 @@ void app.whenReady().then(async () => {
       return { ok: true };
     }
     if (request.action === "cancel") {
+      cancelledRuns.add(request.id);
       codex.cancel(request.id);
       claudeFor(user.id).cancel(request.id);
       grokFor(user.id).cancel(request.id);
@@ -1026,23 +1046,63 @@ void app.whenReady().then(async () => {
         scope: request.scope,
         startedAt: new Date().toISOString(),
       });
+      const emit = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
+      // Documents Mowr made earlier in this conversation. Asking to change one revises that same file.
+      const documents = new Map<string, string>();
+      for (const doc of request.documents || []) if (await disk.readFile(user.id, "spec-" + doc.id)) documents.set(doc.id, doc.name);
+      const pdf = async (spec: any, cancelled: () => boolean) => {
+        const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
+        if (revise && !documents.has(revise)) throw Error(`No document with id "${revise}" in this conversation. Use an id from the documents list, or leave out "revise" to make a new document.`);
+        const { revise: _revise, change, action: _action, ...clean } = spec || {};
+        const data = await illustratedPdf(clean);
+        if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
+        const specBytes = new TextEncoder().encode(JSON.stringify(clean));
+        if (revise) {
+          const previous = await disk.readFile(user.id, revise);
+          const version = { blob: "v-" + randomUUID(), at: Date.now(), summary: String(change || "Revised by Mowr").slice(0, 200), size: previous?.length || 0 };
+          if (previous) {
+            await disk.writeFile(user.id, version.blob, new Uint8Array(previous));
+            const oldSpec = await disk.readFile(user.id, "spec-" + revise);
+            if (oldSpec) await disk.writeFile(user.id, "spec-" + version.blob, new Uint8Array(oldSpec));
+          }
+          await disk.writeFile(user.id, revise, data);
+          await disk.writeFile(user.id, "spec-" + revise, specBytes);
+          const file = { id: revise, name: documents.get(revise)!, size: data.byteLength, type: "application/pdf", created: Date.now(), updated: Date.now(), spaceId: null, made: true };
+          emit({ id: request.id, type: "artifact", file, scope: request.scope, revised: { version } });
+          return { created: true, revised: true, file: { name: file.name, size: file.size }, note: "The same file was updated; the earlier version is kept for undo." };
+        }
+        const id = randomUUID();
+        const file = { id, name: String(clean.title).replace(/[<>:"/\\|?*\x00-\x1f]/g, "").slice(0, 100) + ".pdf", size: data.byteLength, type: "application/pdf", created: Date.now(), spaceId: /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined, made: true };
+        await disk.writeFile(user.id, id, data);
+        await disk.writeFile(user.id, "spec-" + id, specBytes);
+        documents.set(id, file.name);
+        emit({ id: request.id, type: "artifact", file, scope: request.scope });
+        return { created: true, file: { id, name: file.name, size: file.size } };
+      };
+      /** Reading a document's current source, so a change keeps everything the person did not ask to change. */
+      const tools = async (tool: any) => {
+        if (tool?.action !== "open") return undefined;
+        if (!documents.has(tool.id)) return { error: `No Mowr-made document with id "${tool.id}" in this conversation.` };
+        const spec = await disk.readFile(user.id, "spec-" + tool.id);
+        return spec ? { id: tool.id, name: documents.get(tool.id), specification: JSON.parse(spec.toString("utf8")) } : { error: "That document's source is missing, so it can only be edited in the file panel." };
+      };
+      const instructions = kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name })));
+      /** Claude and Grok answer in one piece, so Kinetra runs as a loop around them: each tool result is sent back until the answer is final. */
+      const loop = (ask: (input: string) => Promise<string>) => runKinetraTurn(prompt, instructions, ask, async (tool) => {
+        emit({ id: request.id, type: "status", text: toolStatus(tool) });
+        return (await tools(tool)) ?? kinetraTool(tool, (spec) => pdf(spec, () => cancelledRuns.has(request.id)));
+      }, () => cancelledRuns.has(request.id)).then((answer) => { emit({ id: request.id, type: "delta", text: answer }); emit({ id: request.id, type: "done" }); });
+      const collect = async (start: (emit: (event: any) => void) => Promise<void>) => {
+        let text = "";
+        await start((event) => { if (event.type === "delta") text += event.text || ""; else if (event.type === "status") emit({ ...event, id: request.id }); });
+        return text;
+      };
       const run=grok
-        ? grokFor(user.id).run(request.id,prompt,request.model!,(event)=>window.webContents.send('mowr:chat',event))
+        ? loop((input) => collect((e) => grokFor(user.id).run(request.id, input, request.model!, e)))
         : request.model?.startsWith('claude:')
-        ? claudeFor(user.id).run(request.id,prompt,request.model,request.reasoning,(event)=>window.webContents.send('mowr:chat',event))
-        : codex.run(request.id, prompt, (event) =>
-          window.webContents.send("mowr:chat", event),
-          imagePaths, {model:request.model,reasoning:request.reasoning}, async (spec,cancelled)=>{
-            const data=await illustratedPdf(spec),id=randomUUID();
-            const file={id,name:spec.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'').slice(0,100)+'.pdf',size:data.byteLength,type:'application/pdf',created:Date.now(),spaceId:/^(subject|project):/.test(request.scope)?request.scope.split(':')[1]:undefined,made:true};
-            if(window.isDestroyed()||cancelled())throw Error('Request cancelled');
-            await disk.writeFile(user.id,id,data);
-            await disk.writeFile(user.id,'spec-'+id,new TextEncoder().encode(JSON.stringify(spec)));
-            window.webContents.send('mowr:chat',{id:request.id,type:'artifact',file,scope:request.scope});
-            return {created:true,file:{name:file.name,size:file.size}};
-          },
-          kinetraInstructionsFor(query),
-        );
+        ? loop((input) => collect((e) => claudeFor(user.id).run(request.id, input, request.model!, request.reasoning, e)))
+        : codex.run(request.id, prompt, emit, imagePaths, {model:request.model,reasoning:request.reasoning}, pdf, instructions, (tool) => tools(tool));
+      void run.finally(() => cancelledRuns.delete(request.id)).catch(() => {});
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
           if (!claude) learnFromTurn(user.id, request.scope, request.id, query, request.model);

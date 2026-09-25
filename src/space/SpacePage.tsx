@@ -7,6 +7,8 @@ import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
+import {DriveFolderView} from '../drive/DriveFolderView';
+import type {DriveItem} from '../drive/drive';
 import './space.css';
 
 export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'about';
@@ -20,8 +22,9 @@ export type SpaceActions={
   /** Opens the file beside a new chat in this space, where messages edit it. */
   onEditFile:(file:StoredFile)=>void;
   onRenameFile:(file:StoredFile,name:string)=>void;
-  /** Google Drive folder sync for this space. */
-  onLinkDrive:()=>void; onSyncDrive:()=>void; onUnlinkDrive:()=>void; onDriveSaveBack:(on:boolean)=>void; onDriveSeen:()=>void;
+  /** A Google Drive folder linked to this space, read live (never downloaded). */
+  onLinkDrive:()=>void; onUnlinkDrive:()=>void; onDriveSaveBack:(on:boolean)=>void; onDriveSeen:()=>void;
+  onOpenDrive:(file:DriveItem)=>void; onAskDrive:(files:DriveItem[])=>void; onDriveItems:(items:DriveItem[])=>void;
   onStudyNew:(kind:'flashcards'|'summary')=>void;
   onUpload:(files:FileList,folderId:string|null)=>void;
   onMake:(kind:'flashcards'|'quiz'|'worksheet'|'summary',folderId?:string|null)=>void;
@@ -110,9 +113,9 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
     </header>
 
     <div className="sp-body" key={tab}>
-      {tab==='overview'&&!!space.drive?.newFiles?.length&&<div className="sp-drive-news" role="status">
+      {tab==='overview'&&!!space.drive?.fresh?.length&&<div className="sp-drive-news" role="status">
         <DriveGlyph/>
-        <div><b>{space.drive.newFiles.length} new from Drive</b><small>{files.filter(f=>space.drive!.newFiles!.includes(f.id)).slice(0,3).map(f=>f.name).join(' · ')}</small></div>
+        <div><b>{space.drive.fresh.length} new in Drive · {space.drive.folderName}</b><small>{space.drive.fresh.slice(0,3).map(f=>f.name).join(' · ')}</small></div>
         {subject&&<button onClick={()=>actions.onStudyNew('flashcards')}>Make flashcards</button>}
         <button onClick={()=>actions.onStudyNew('summary')}>Update summary</button>
         <button className="sp-drive-dismiss" aria-label="Dismiss" onClick={actions.onDriveSeen}><Icon name="close" size={14}/></button>
@@ -213,15 +216,17 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
       </nav>
       <div className="sp-tool-actions">
         {space.drive
-          ? <Menu label="Google Drive sync" trigger={<span className={'sp-drive-chip'+(space.drive.error?' error':'')} title={space.drive.error||undefined}><DriveGlyph/>{space.drive.folderName}<small>{space.drive.error?'Needs attention':space.drive.lastSync?'synced '+ago(space.drive.lastSync):'syncing…'}</small></span>}
-              items={[{label:'Sync now',run:actions.onSyncDrive},{label:space.drive.saveBack?'Stop saving Mowr files to Drive':'Save Mowr files to Drive',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)},{label:'Stop syncing',danger:true,run:actions.onUnlinkDrive}]}/>
-          : <button onClick={actions.onLinkDrive}><DriveGlyph/>Sync a Drive folder</button>}
+          ? <Menu label="Google Drive folder" trigger={<span className="sp-drive-chip"><DriveGlyph/>{space.drive.folderName}<small>live</small></span>}
+              items={[{label:space.drive.saveBack?'Stop saving Mowr’s files to Drive':'Save Mowr’s files to this Drive folder',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)},{label:'Link another folder',run:actions.onLinkDrive},{label:'Unlink folder',danger:true,run:actions.onUnlinkDrive}]}/>
+          : <button onClick={actions.onLinkDrive}><DriveGlyph/>Link a Drive folder</button>}
         <button onClick={()=>setNaming({name:''})}><Icon name="plus" size={15}/>New folder</button>
         <button onClick={()=>input.current?.click()}><Icon name="attach" size={15}/>Upload</button>
         {at&&<button onClick={()=>actions.onShare(at)}><Icon name="import" size={15}/>Share folder</button>}
         <input ref={input} type="file" multiple hidden onChange={e=>{if(e.target.files?.length)actions.onUpload(e.target.files,at);e.target.value='';}}/>
       </div>
     </div>
+    {space.drive&&!at&&<DriveFolderView folderId={space.drive.folderId} folderName={space.drive.folderName} onOpen={actions.onOpenDrive} onAsk={actions.onAskDrive} onChangeFolder={actions.onLinkDrive} onUnlink={actions.onUnlinkDrive} onItems={actions.onDriveItems}/>}
+    {space.drive&&!at&&(inHere.length>0||here.length>0)&&<div className="sp-local-label"><span className="sp-eyebrow">On this PC</span></div>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
       {here.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
         :<div key={f.id} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
@@ -237,7 +242,7 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
         <label className="sp-source" title="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
         <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
       </div>)}
-      {!inHere.length&&!here.length&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
+      {!inHere.length&&!here.length&&!(space.drive&&!at)&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
         <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}
     </div>
     {moving&&<div className="sp-move" role="dialog" aria-label={`Move ${moving.name}`}><strong>Move “{moving.name}” to</strong>{destinations(moving).map(d=><button key={d.id||'root'} onClick={()=>{move(moving.id,d.id);setMoving(null);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMoving(null)}>Cancel</button></div>}

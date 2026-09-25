@@ -1,10 +1,24 @@
-import {driveQuery, viewFormat, type DriveHit} from "../core/drive-search.ts";
+import {createServer, type Server} from "node:http";
+import {randomBytes} from "node:crypto";
+import {Readable} from "node:stream";
+import {driveQuery, driveTerms, viewFormat, type DriveHit} from "../core/drive-search.ts";
 
-// Searches the person's Google Drive and streams files for viewing straight from Google, with byte ranges so long
-// videos seek instantly. Nothing is written to disk; the short-lived access token stays in the main process.
+// Google Drive, live: search, browse folders (with subfolders and thumbnails), read text and stream files straight from
+// Google with byte ranges so long videos seek instantly. Nothing is written to disk; the short-lived access token stays
+// in the main process.
 
 const API = "https://www.googleapis.com/drive/v3/files";
-type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string};
+const FOLDER = "application/vnd.google-apps.folder";
+type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string;modifiedTime?:string;iconLink?:string;videoMediaMetadata?:{durationMillis?:string}};
+/** A file or folder as the app shows it. `path` is the subfolder it sits in, inside a linked folder. */
+export type DriveItem = {id:string;name:string;mimeType:string;size?:number;modified?:string;thumbnail?:boolean;durationMs?:number;path?:string;folder?:boolean};
+const FIELDS = "id,name,mimeType,size,modifiedTime,thumbnailLink,hasThumbnail,webViewLink,iconLink,videoMediaMetadata(durationMillis)";
+const quote = (s: string) => "'" + s.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
+const item = (f: Meta & {hasThumbnail?:boolean}, path?: string): DriveItem => ({
+  id: f.id, name: f.name, mimeType: f.mimeType, size: f.size ? Number(f.size) : undefined, modified: f.modifiedTime,
+  thumbnail: !!f.thumbnailLink || !!f.hasThumbnail, durationMs: f.videoMediaMetadata?.durationMillis ? Number(f.videoMediaMetadata.durationMillis) : undefined,
+  ...(path ? {path} : {}), ...(f.mimeType === FOLDER ? {folder: true} : {}),
+});
 
 export class DriveLive {
   private cached: {token:string;until:number}|null = null;
@@ -12,6 +26,8 @@ export class DriveLive {
   private session:()=>Promise<string|null>;
   private fetcher:typeof fetch;
   private service:string;
+  private known: {connected:boolean;at:number}|null = null;
+  private trees = new Map<string, {at:number;items:DriveItem[];folders:string[]}>();
   constructor(session:()=>Promise<string|null>,fetcher:typeof fetch=fetch,service="https://mowrai.com"){this.session=session;this.fetcher=fetcher;this.service=service;}
 
   /** null means Drive isn't connected for this account. */
@@ -19,10 +35,11 @@ export class DriveLive {
     if(!force&&this.cached&&Date.now()<this.cached.until)return this.cached.token;
     const session=await this.session();if(!session)return null;
     const r=await this.fetcher(this.service+"/api/drive/token",{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",signal:AbortSignal.timeout(20000)});
-    if(r.status===400||r.status===404||r.status===401||r.status===500){const body=await r.json().catch(()=>({}));if(/connect google drive|reconnect|expired/i.test(body.error||"")){this.cached=null;return null;}throw Error(body.error||"Google Drive is unavailable right now.");}
+    if(r.status===400||r.status===404||r.status===401||r.status===500){const body=await r.json().catch(()=>({}));if(/connect google drive|reconnect|expired/i.test(body.error||"")){this.cached=null;this.known={connected:false,at:Date.now()};return null;}throw Error(body.error||"Google Drive is unavailable right now.");}
     if(!r.ok)throw Error("Google Drive is unavailable right now.");
     const {accessToken,expiresIn}=await r.json();
     this.cached={token:accessToken,until:Date.now()+Math.max(60,Number(expiresIn)-120)*1000};
+    this.known={connected:true,at:Date.now()};
     return accessToken;
   }
   private async google(url:string,init:RequestInit={},retry=true):Promise<Response>{
@@ -32,51 +49,195 @@ export class DriveLive {
     return r;
   }
   async connected(){try{return !!await this.token();}catch{return false;}}
+  /** The connection as last confirmed. A network hiccup keeps the last answer instead of asking to reconnect. */
+  async state(refresh=false):Promise<{connected:boolean;checked:boolean;error?:string}>{
+    if(!refresh&&this.known&&Date.now()-this.known.at<5*60_000)return {connected:this.known.connected,checked:true};
+    try{const connected=!!await this.token(refresh);return {connected,checked:true};}
+    catch(error){return this.known?{connected:this.known.connected,checked:true,error:(error as Error).message}:{connected:false,checked:false,error:(error as Error).message};}
+  }
+  forget(){this.cached=null;this.known=null;this.trees.clear();this.meta.clear();}
 
   async search(question:string):Promise<{connected:boolean;files:DriveHit[]}>{
     if(!await this.token())return {connected:false,files:[]};
     const url=new URL(API);
     url.search=new URLSearchParams({q:driveQuery(question),pageSize:"12",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
-      fields:"files(id,name,mimeType,modifiedTime,size,thumbnailLink,webViewLink,videoMediaMetadata(durationMillis))"}).toString();
+      fields:`files(${FIELDS})`}).toString();
     const r=await this.google(url.href,{signal:AbortSignal.timeout(20000)});
     if(!r.ok)throw Error("Google Drive search failed. Try again.");
-    const files=((await r.json()).files||[]) as (Meta&{modifiedTime?:string;videoMediaMetadata?:{durationMillis?:string}})[];
+    const files=((await r.json()).files||[]) as Meta[];
     for(const f of files)this.meta.set(f.id,f);
     const hits:DriveHit[]=files.map(f=>({id:f.id,name:f.name,mimeType:f.mimeType,modified:f.modifiedTime,size:f.size?Number(f.size):undefined,durationMs:f.videoMediaMetadata?.durationMillis?Number(f.videoMediaMetadata.durationMillis):undefined}));
     // A short excerpt of the best text matches helps the model pick the right file.
     await Promise.all(hits.slice(0,4).map(async h=>{h.excerpt=await this.excerpt(h).catch(()=>undefined);}));
     return {connected:true,files:hits};
   }
+
+  /** One page of a folder ("root" is My Drive, "shared" is Shared with me), folders first; or a search across Drive. */
+  async list({folder="root",page,query,kind="all"}:{folder?:string;page?:string;query?:string;kind?:"all"|"folders"}={}){
+    if(!await this.token())return {connected:false,files:[] as DriveItem[]};
+    const clauses=["trashed = false"];
+    const words=(query||"").trim();
+    if(words)clauses.push(`name contains ${quote(words.slice(0,100))}`);
+    else if(folder==="shared")clauses.push("sharedWithMe = true");
+    else clauses.push(`${quote(folder)} in parents`);
+    if(kind==="folders")clauses.push(`mimeType = '${FOLDER}'`);
+    const url=new URL(API);
+    url.search=new URLSearchParams({q:clauses.join(" and "),pageSize:"100",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
+      ...(words?{}:{orderBy:"folder,name_natural"}),fields:`nextPageToken,files(${FIELDS})`,...(page?{pageToken:page}:{})}).toString();
+    const r=await this.google(url.href,{signal:AbortSignal.timeout(20000)});
+    if(!r.ok)throw Error(r.status===404?"This Drive folder is no longer available.":"Google Drive could not list these files.");
+    const body=await r.json() as {files?:Meta[];nextPageToken?:string};
+    for(const f of body.files||[])this.meta.set(f.id,f);
+    const files=(body.files||[]).map(f=>item(f)).sort((a,b)=>Number(!!b.folder)-Number(!!a.folder));
+    return {connected:true,files,next:body.nextPageToken};
+  }
+
+  /** Everything inside a linked folder and its subfolders (5 levels, 1500 items), read live and kept for two minutes. */
+  async tree(folderId:string,refresh=false){
+    const cached=this.trees.get(folderId);
+    if(!refresh&&cached&&Date.now()-cached.at<120_000)return cached;
+    if(!await this.token())throw Object.assign(Error("Connect Google Drive in Connectors first."),{code:"not_connected"});
+    const items:DriveItem[]=[],folders=[folderId],paths=new Map<string,string>([[folderId,""]]);
+    let level=[folderId];
+    for(let depth=0;depth<5&&level.length&&items.length<1500;depth++){
+      const next:string[]=[];
+      // Drive accepts several parents in one query, so a whole level is listed in a few requests.
+      for(let i=0;i<level.length&&items.length<1500;i+=15){
+        const group=level.slice(i,i+15);
+        let page:string|undefined;
+        do{
+          const url=new URL(API);
+          url.search=new URLSearchParams({q:`trashed = false and (${group.map(id=>`${quote(id)} in parents`).join(" or ")})`,pageSize:"200",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
+            fields:`nextPageToken,files(${FIELDS},parents)`,...(page?{pageToken:page}:{})}).toString();
+          const r=await this.google(url.href,{signal:AbortSignal.timeout(25000)});
+          if(!r.ok)throw Error(r.status===404?"The linked Drive folder is no longer available.":"Google Drive could not list the linked folder.");
+          const body=await r.json() as {files?:(Meta&{parents?:string[]})[];nextPageToken?:string};
+          for(const f of body.files||[]){
+            this.meta.set(f.id,f);
+            const parent=f.parents?.find(p=>paths.has(p))||group[0],path=paths.get(parent)||"";
+            if(f.mimeType===FOLDER){paths.set(f.id,path?path+" / "+f.name:f.name);next.push(f.id);folders.push(f.id);}
+            items.push(item(f,path));
+          }
+          page=body.nextPageToken;
+        }while(page&&items.length<1500);
+      }
+      level=next;
+    }
+    const value={at:Date.now(),items,folders};
+    this.trees.set(folderId,value);
+    return value;
+  }
+
+  /**
+   * What a question needs from a linked folder: every item (for browsing), plus the files that best match the
+   * question, ranked by name and by Drive's own full-text index, with a short excerpt where Drive can give text.
+   */
+  async folder(folderId:string,question="",refresh=false){
+    const tree=await this.tree(folderId,refresh);
+    const files=tree.items.filter(i=>!i.folder);
+    const terms=driveTerms(question);
+    const score=new Map<string,number>();
+    for(const f of files){const name=(f.path+" "+f.name).toLowerCase();const n=terms.reduce((s,t)=>s+(name.includes(t)?3:0),0);if(n)score.set(f.id,n);}
+    if(terms.length){
+      const text=terms.map(t=>`fullText contains ${quote(t)}`).join(" or ");
+      for(let i=0;i<tree.folders.length&&i<60;i+=20){
+        const url=new URL(API);
+        url.search=new URLSearchParams({q:`trashed = false and (${text}) and (${tree.folders.slice(i,i+20).map(id=>`${quote(id)} in parents`).join(" or ")})`,pageSize:"30",supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"files(id)"}).toString();
+        const r=await this.google(url.href,{signal:AbortSignal.timeout(15000)}).catch(()=>null);
+        if(!r?.ok)continue;
+        for(const f of ((await r.json()).files||[]) as {id:string}[])score.set(f.id,(score.get(f.id)||0)+2);
+      }
+    }
+    const hits:DriveHit[]=[...score.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([id])=>files.find(f=>f.id===id)!).filter(Boolean)
+      .map(f=>({id:f.id,name:f.name,mimeType:f.mimeType,modified:f.modified,size:f.size,durationMs:f.durationMs}));
+    await Promise.all(hits.slice(0,4).map(async h=>{h.excerpt=await this.excerpt(h).catch(()=>undefined);}));
+    return {items:tree.items,hits,checked:tree.at};
+  }
+
   private async excerpt(h:DriveHit){
-    const google=/^application\/vnd\.google-apps\.(document|presentation)$/.test(h.mimeType);
-    const plain=/^text\//.test(h.mimeType)&&(h.size??0)<500_000;
+    const text=await this.text(h.id,4000).catch(()=>undefined);
+    return text?.slice(0,1500);
+  }
+  /** Text Drive can give directly: Google Docs, Slides and Sheets, and plain text files. Others return undefined. */
+  async text(id:string,limit=60000):Promise<string|undefined>{
+    const m=await this.info(id);
+    const google=/^application\/vnd\.google-apps\.(document|presentation|spreadsheet)$/.test(m.mimeType);
+    const plain=/^text\/|json|csv|markdown/.test(m.mimeType)&&Number(m.size||0)<2_000_000;
     if(!google&&!plain)return undefined;
-    const r=await this.google(google?`${API}/${h.id}/export?mimeType=text/plain`:`${API}/${h.id}?alt=media`,{headers:plain?{Range:"bytes=0-4000"}:{},signal:AbortSignal.timeout(8000)});
-    if(!r.ok)return undefined;
-    return (await r.text()).slice(0,1500);
+    const as=m.mimeType.endsWith("spreadsheet")?"text/csv":"text/plain";
+    const r=await this.google(google?`${API}/${id}/export?mimeType=${encodeURIComponent(as)}`:`${API}/${id}?alt=media&supportsAllDrives=true`,{headers:plain?{Range:`bytes=0-${limit}`}:{},signal:AbortSignal.timeout(20000)});
+    if(!r.ok&&r.status!==206)return undefined;
+    return (await r.text()).slice(0,limit);
   }
   private async info(id:string){
     const known=this.meta.get(id);if(known)return known;
-    const r=await this.google(`${API}/${id}?fields=id,name,mimeType,size,thumbnailLink,webViewLink&supportsAllDrives=true`,{signal:AbortSignal.timeout(15000)});
+    const r=await this.google(`${API}/${id}?fields=${FIELDS}&supportsAllDrives=true`,{signal:AbortSignal.timeout(15000)});
     if(!r.ok)throw Error("This Drive file is unavailable.");
     const m=await r.json() as Meta;this.meta.set(id,m);return m;
   }
   /** Streams a file (or Google Docs/Slides/Sheets as PDF), passing Range through so video can seek. */
   async media(id:string,range:string|null):Promise<Response>{
     const m=await this.info(id),format=viewFormat(m.mimeType);
-    const r=await this.google(format.export?`${API}/${id}/export?mimeType=${encodeURIComponent(format.export)}`:`${API}/${id}?alt=media&supportsAllDrives=true`,{headers:range&&!format.export?{Range:range}:{}});
+    const r=await this.google(format.export?`${API}/${id}/export?mimeType=${encodeURIComponent(format.export)}`:`${API}/${id}?alt=media&supportsAllDrives=true&acknowledgeAbuse=false`,{headers:range&&!format.export?{Range:range}:{}});
     if(!r.ok&&r.status!==206)return Response.json({error:r.status===403?"This Drive file can't be opened here. Google may block downloads for it.":"This Drive file is unavailable."},{status:r.status===404?404:502});
-    const headers=new Headers({"Content-Type":format.export||m.mimeType||r.headers.get("Content-Type")||"application/octet-stream","Cache-Control":"no-store","Accept-Ranges":format.export?"none":"bytes","X-Mowr-File-Name":encodeURIComponent(m.name+format.extension)});
+    const headers=new Headers({"Content-Type":playableType(format.export||m.mimeType||r.headers.get("Content-Type")||"application/octet-stream",m.name),"Cache-Control":"no-store","Accept-Ranges":format.export?"none":"bytes","X-Mowr-File-Name":encodeURIComponent(m.name+format.extension)});
     for(const h of ["Content-Length","Content-Range"]){const v=r.headers.get(h);if(v)headers.set(h,v);}
     return new Response(r.body,{status:r.status,headers});
   }
   /** Drive's thumbnail (needs the same sign-in), or 404 so the card falls back to its own poster. */
-  async thumbnail(id:string):Promise<Response>{
+  async thumbnail(id:string,size=640):Promise<Response>{
     const m=await this.info(id).catch(()=>null);
     if(!m?.thumbnailLink)return new Response(null,{status:404});
-    const r=await this.google(m.thumbnailLink.replace(/=s\d+$/,"=s640"),{signal:AbortSignal.timeout(15000)}).catch(()=>null);
+    const r=await this.google(m.thumbnailLink.replace(/=s\d+$/,"=s"+size),{signal:AbortSignal.timeout(15000)}).catch(()=>null);
     if(!r?.ok)return new Response(null,{status:404});
-    return new Response(r.body,{headers:{"Content-Type":r.headers.get("Content-Type")||"image/jpeg","Cache-Control":"no-store"}});
+    return new Response(r.body,{headers:{"Content-Type":r.headers.get("Content-Type")||"image/jpeg","Cache-Control":"private, max-age=600"}});
   }
   async webLink(id:string){return (await this.info(id)).webViewLink||`https://drive.google.com/file/d/${id}/view`;}
+}
+
+/** Chromium plays MP4/WebM/Ogg. Drive sometimes labels them generically, which makes <video> refuse to start. */
+export function playableType(mime:string,name:string){
+  if(mime&&mime!=="application/octet-stream"&&mime!=="video/*")return mime==="video/quicktime"&&/\.mp4$/i.test(name)?"video/mp4":mime;
+  const ext=name.toLowerCase().split(".").pop()||"";
+  return ({mp4:"video/mp4",m4v:"video/mp4",mov:"video/mp4",webm:"video/webm",ogv:"video/ogg",mp3:"audio/mpeg",m4a:"audio/mp4",wav:"audio/wav",ogg:"audio/ogg"} as Record<string,string>)[ext]||mime||"application/octet-stream";
+}
+
+/**
+ * Video and audio from Drive play through a private server on 127.0.0.1. Chromium's media player needs real HTTP
+ * range responses to start and seek long files; a custom protocol can stall on them. Every URL carries a random
+ * key made for this run, so no other program on the PC can use it.
+ */
+export class DriveMediaServer {
+  private server?: Server;
+  private ready?: Promise<number>;
+  private key = randomBytes(24).toString("hex");
+  private drive: DriveLive;
+  private allowed: () => Promise<boolean>;
+  constructor(drive: DriveLive, allowed: () => Promise<boolean>) { this.drive = drive; this.allowed = allowed; }
+  private start() {
+    if (this.ready) return this.ready;
+    this.ready = new Promise<number>((resolve, reject) => {
+      const server = createServer(async (req, res) => {
+        try {
+          const url = new URL(req.url || "/", "http://127.0.0.1");
+          const match = /^\/drive\/([\w-]{10,150})$/.exec(url.pathname);
+          if (req.method !== "GET" && req.method !== "HEAD" || !match || url.searchParams.get("k") !== this.key || !await this.allowed()) { res.writeHead(404).end(); return; }
+          const upstream = await this.drive.media(match[1], typeof req.headers.range === "string" ? req.headers.range : null);
+          const headers: Record<string, string> = {};
+          upstream.headers.forEach((value, name) => { if (name !== "x-mowr-file-name") headers[name] = value; });
+          res.writeHead(upstream.status, headers);
+          if (req.method === "HEAD" || !upstream.body) { res.end(); return; }
+          const body = Readable.fromWeb(upstream.body as never);
+          req.on("close", () => body.destroy());
+          body.on("error", () => res.destroy());
+          body.pipe(res);
+        } catch { if (!res.headersSent) res.writeHead(502); res.end(); }
+      });
+      server.on("error", reject);
+      server.listen(0, "127.0.0.1", () => { this.server = server; resolve((server.address() as {port:number}).port); });
+    });
+    return this.ready;
+  }
+  async url(id: string) { return `http://127.0.0.1:${await this.start()}/drive/${id}?k=${this.key}`; }
+  stop() { this.server?.close(); }
 }

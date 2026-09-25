@@ -9,6 +9,8 @@ To use one, reply with ONLY a JSON object {"kinetra":{…}} and nothing else. Mo
 Actions:
 - {"action":"call","module":M,"fn":F,"args":[…]} runs a pure function with JSON arguments (5 s limit). Use it for every number you state that a module can compute: projectile/optics/pulley analytics, circuit solutions, K-maps and simplification, integrals, grading.
 - {"action":"pdf","kind":K,"title":T,"subtitle"?:S,"summary"?:Markdown,"sections":[{"heading"?:H,"text"?:Markdown with $LaTeX$ math,"figure"?:{"module":M,"fn":F,"args":[…]},"caption"?:C}],"references"?:[strings]} creates ONE real PDF attachment. Only when the user asked for a PDF, report, handout, worksheet or other document file. K is one of report, paper, brief, notes, proposal, manual, handout, worksheet, letter, memo. Mowr typesets it professionally: title block with date, a summary box (give a 2–4 sentence summary for reports, papers, briefs and proposals), numbered sections and figures, contents for longer documents, professional tables, page numbers. Write headings without numbers; use ### inside a section for subsections; tables in Markdown; figure captions describe the figure and its assumptions without "Figure 1". Figures are drawn by Kinetra from the figure spec; never write SVG or images yourself. The text must follow the DOCUMENT STANDARD below: it is checked, and conversational or personal phrasing ("Here is your report", "you", "I") is rejected. All figures are checked first: on any error no PDF is made and you receive every problem at once; fix them and send pdf again. After the PDF is created, reply to the user in one or two plain sentences; do not repeat the document.
+- {"action":"pdf","revise":ID,"change":"one short sentence",…the complete revised specification…} updates a document Mowr already made in this conversation (IDs are listed under DOCUMENTS IN THIS CONVERSATION when there are any). Use it for every change to an existing document; never make a second file for a change. {"action":"open","id":ID} returns that document's current specification first, so everything the user did not ask to change stays the same.
+- Figures in PDFs: every diagram, chart or picture in a document is a Kinetra figure (one per section; use several sections for several figures). Match the recipe to the content: flowchart for processes and algorithms, cycle for repeating processes, timeline for dated sequences, mind map for overviews, tree for classifications and hierarchies, Venn for comparisons, bar/line/pie chart for data, and the science recipes for physics, circuits and logic. A good study document or report usually has at least one figure where a picture explains faster than text.
 - {"action":"recipes"} lists the verified figure recipes below; {"action":"api","module":M} returns a module's TypeScript declarations (exact argument shapes); {"action":"skill","name":N} returns a topic guide (${Object.keys(reference.skills).join(", ")}).
 Verified figure recipes (each renders as-is; adapt the values, keep the structure):
 ${recipeText()}
@@ -19,9 +21,10 @@ ${documentStandard}`;
 /** Everyday messages get a one-line pointer instead of the full catalog; the model can ask for it. */
 export const kinetraBrief = `Kinetra tools (verified calculations, physics/circuit/logic figures, illustrated PDF documents) are available. If this request needs them, reply with ONLY {"kinetra":{"action":"help"}}; otherwise answer normally.`;
 
-const kinetraIntent = /\b(pdf|handout|worksheet|document|report|diagram|figure|illustrat|draw|sketch|plot|graph|chart|circuit|resistor|capacitor|voltage|current|k-?map|karnaugh|truth table|boolean|logic gate|projectile|trajector|free[- ]?body|force|pulley|atwood|optic|lens|mirror|ray diagram|electrostat|charged rod|electric field|vector field|integral|integrate|derivative|differentiat|matrix|eigen|solve|equation|calculat|compute|simplif|quiz|exam|flashcard|grade|study (?:plan|schedule)|revision)/i;
-export function kinetraInstructionsFor(request: string) {
-  return /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) ? kinetraInstructions : kinetraBrief;
+const kinetraIntent = /\b(pdf|handout|worksheet|document|report|summary sheet|study guide|diagram|figure|illustrat|draw|sketch|plot|graph|chart|flow ?chart|timeline|mind ?map|venn|hierarchy|circuit|resistor|capacitor|voltage|current|k-?map|karnaugh|truth table|boolean|logic gate|projectile|trajector|free[- ]?body|force|pulley|atwood|optic|lens|mirror|ray diagram|electrostat|charged rod|electric field|vector field|integral|integrate|derivative|differentiat|matrix|eigen|solve|equation|calculat|compute|simplif|quiz|exam|flashcard|grade|study (?:plan|schedule)|revision)/i;
+/** The full tool guide when the request may need it (or a document it could change exists); otherwise one line. */
+export function kinetraInstructionsFor(request: string, hasDocuments = false) {
+  return hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) ? kinetraInstructions : kinetraBrief;
 }
 
 export async function kinetraCall(request: any) {
@@ -75,5 +78,6 @@ export async function kinetraTool(
   if (request.action === "call") return kinetraCall(request);
   if (request.action === "pdf" && pdf) return pdf(request);
   if (request.action === "pdf") throw Error("PDF creation is not available in this conversation.");
-  throw Error(`Unsupported Kinetra action "${String(request.action)}". Use call, pdf, recipes, api, skill or help.`);
+  if (request.action === "open") throw Error("There are no Mowr-made documents to open in this conversation.");
+  throw Error(`Unsupported Kinetra action "${String(request.action)}". Use call, pdf, open, recipes, api, skill or help.`);
 }

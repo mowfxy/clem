@@ -24,14 +24,8 @@
 .primary:active:not(:disabled),.suggestions>button:active,.history-item:active{transform:scale(.97)}
 .history-item{transition:background .16s,padding-left .22s var(--ease-out),color .16s}
 .history-item:hover{padding-left:16px}
-.history-dot{transition:transform .25s var(--ease-spring),background .2s}
-.history-item:hover .history-dot,.history-item.chosen .history-dot{transform:scale(1.5)}
 
 /* The account corner responds to the pointer. */
-.account-button .avatar{transition:transform .35s var(--ease-spring)}
-.account-button:hover .avatar{transform:translateY(-2px) rotate(-4deg)}
-.profile-settings svg{transition:transform .5s var(--ease-spring)}
-.profile-settings:hover svg{transform:rotate(35deg)}
 
 /* Dialogs and the toast rise with a little weight. */
 dialog[open]{animation:m-dialog .32s var(--ease-spring) both}
@@ -51,6 +45,6 @@ dialog[open]::backdrop{animation:m-fade .25s ease-out both}
 
 @media (prefers-reduced-motion:reduce){
   .workspace>.page,.workspace>.chat-view,.settings-content>*,.page-heading,.messages .message,.history-row,.suggestions>*,dialog[open],dialog[open]::backdrop,.toast{animation:none!important}
-  .account-button:hover .avatar,.profile-settings:hover svg,.suggestions>button:hover,.primary:active:not(:disabled){transform:none!important}
+  .suggestions>button:hover,.primary:active:not(:disabled){transform:none!important}
 }
 html[data-quiet=true] .workspace>.page,html[data-quiet=true] .workspace>.chat-view,html[data-quiet=true] .settings-content>*,html[data-quiet=true] .messages .message,html[data-quiet=true] .history-row,html[data-quiet=true] .suggestions>*,html[data-quiet=true] dialog[open]{animation:none!important}
