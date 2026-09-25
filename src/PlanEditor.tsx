@@ -41,7 +41,7 @@ export function PlanEditor({
   const reviewing = !plan.approved && !plan.tasks.some((t) => t.status === "complete");
   const finished = done === plan.tasks.length;
   const progress = plan.tasks.length ? (done + (plan.tasks.some((t) => t.status === "running") ? 0.5 : 0)) / plan.tasks.length : 0;
-  const modelName = (id: string) => models.find((m) => m.id === id)?.name || id.replace(/^claude:/, "Claude ");
+  const modelName = (id: string) => models.find((m) => m.id === id)?.name || id.replace(/^claude:/, "Claude ").replace(/^antigravity:/, "");
   return (
     <section className={`plan-card ${reviewing ? "reviewing" : ""} ${active ? "active" : ""} ${finished ? "finished" : ""}`} aria-label="Long task">
       <header className="plan-card-head">

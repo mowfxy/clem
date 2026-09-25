@@ -156,7 +156,8 @@ export function ModelsSettings({
     [retryId,setRetryId]=useState<string|null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [claude,setClaude]=useState<{installed?:boolean;connected?:boolean;email?:string;plan?:string}>({});
+    [claude,setClaude]=useState<{installed?:boolean;connected?:boolean;email?:string;plan?:string}>({}),
+    [gemini,setGemini]=useState<{consented?:boolean;installed?:boolean;connected?:boolean;models?:string[];error?:string}>({});
   async function refresh(force = false) {
     setBusy(true);
     setError("");
@@ -167,7 +168,8 @@ export function ModelsSettings({
           refresh: force,
         });
         if (result?.accounts) setData(result);
-        setClaude(await desktop.invoke({action:'claudeStatus'}));
+        const [claudeStatus,geminiStatus]=await Promise.all([desktop.invoke({action:'claudeStatus'}),desktop.invoke({action:'antigravityStatus'})]);
+        setClaude(claudeStatus);setGemini(geminiStatus);
       }
       await onRefresh();
     } catch (e) {
@@ -252,6 +254,21 @@ export function ModelsSettings({
           <h3>Claude</h3>
           <p>{claude.connected ? `${claude.email || "Claude account"} · usage limits aren’t reported by Claude Code` : claude.installed ? "Sign in with Claude Code to use your Claude subscription." : "Install the official Claude Code CLI to use your Claude subscription."}</p>
           {!claude.connected && <button className="provider-action" disabled={busy || locked} onClick={async () => { try { await desktop!.invoke({ action: claude.installed ? "claudeLogin" : "claudeInstall" }); if (claude.installed) setError("Finish Claude sign-in in the terminal, then refresh."); } catch (e) { setError((e as Error).message); } }}>{claude.installed ? "Sign in to Claude" : "Install Claude Code"}<Icon name="arrow" size={14} /></button>}
+        </article>}
+        {desktop && <article className={"provider-card provider-gemini" + (gemini.connected ? " is-connected" : "")}>
+          <div className="provider-card-top">
+            <span className="provider-logo" aria-hidden="true">G</span>
+            <span className={"provider-status" + (gemini.connected ? " on" : "")}>{!gemini.consented ? "Off" : gemini.connected ? `${gemini.models?.length} models` : gemini.installed ? "Sign-in needed" : "Not installed"}</span>
+          </div>
+          <h3>Gemini</h3>
+          <p>{!gemini.consented ? "Use your Google AI Pro or Ultra plan through Google’s Antigravity CLI." : gemini.connected ? "Signed in through Antigravity CLI · usage limits aren’t reported" : gemini.installed ? (gemini.error || "Sign in to Antigravity CLI with your Google account.") : "Install Google’s Antigravity CLI, then sign in."}</p>
+          {gemini.consented && <p className="provider-risk">Google hasn’t confirmed that apps like Mowr may use Antigravity. Your account could be restricted.</p>}
+          {!gemini.consented && <button className="provider-action" disabled={busy || locked} onClick={async () => {
+            if (!await confirmDialog({ title: "Use Gemini through Antigravity CLI?", confirm: "I understand, turn on", danger: true,
+              message: "Mowr will run Google’s official Antigravity CLI on this PC, signed in to your own Google account, and use your Google AI plan’s quota. Mowr never sees your Google password or sign-in tokens, and nothing goes through Mowr’s servers.\n\nGoogle’s Antigravity terms say that using third-party software to access the service is a breach, and Google has suspended accounts for it. Google has not said whether running its own CLI from an app like Mowr is allowed. You could lose access to Antigravity or Gemini CLI on this Google account.\n\nMowr isn’t affiliated with or endorsed by Google. You can turn this off anytime." })) return;
+            try { await desktop!.invoke({ action: "antigravityConsent", accepted: true }); await refresh(true); } catch (e) { setError((e as Error).message); } }}>Turn on Gemini<Icon name="arrow" size={14} /></button>}
+          {gemini.consented && !gemini.connected && <button className="provider-action" disabled={busy || locked} onClick={async () => { try { await desktop!.invoke({ action: gemini.installed ? "antigravityLogin" : "antigravityInstall" }); setError(gemini.installed ? "Finish Google sign-in in the Antigravity window, then refresh." : "Install Antigravity CLI with the command on Google’s page, then refresh."); } catch (e) { setError((e as Error).message); } }}>{gemini.installed ? "Sign in to Antigravity" : "Install Antigravity CLI"}<Icon name="arrow" size={14} /></button>}
+          {gemini.consented && <button className="provider-action provider-off" disabled={busy || locked} onClick={async () => { try { await desktop!.invoke({ action: "antigravityConsent", accepted: false }); await refresh(true); } catch (e) { setError((e as Error).message); } }}>Turn off</button>}
         </article>}
       </div>
       {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>Before each request, use another connected ChatGPT account when this one falls below 10% in its short window or 5% weekly. A running response finishes on its current account.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}

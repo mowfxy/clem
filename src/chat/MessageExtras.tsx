@@ -45,7 +45,7 @@ export function MessageTools({ content, models, model, onReview, onVerify, canVe
 const verdictOf = (text: string) => /^\W*disagree/i.test(text) ? 'disagree' : /^\W*mostly agree/i.test(text) ? 'mostly' : /^\W*agree/i.test(text) ? 'agree' : '';
 
 export function ReviewPanel({ review, models }: { review: Review; models: Model[] }) {
-  const name = models.find(m => m.id === review.model)?.name || review.model.replace(/^claude:/, 'Claude ');
+  const name = models.find(m => m.id === review.model)?.name || review.model.replace(/^claude:/, 'Claude ').replace(/^antigravity:/, '');
   const verdict = verdictOf(review.content);
   return <aside className={`review-panel ${verdict}`} aria-label={`Second opinion from ${name}`}>
     <header><Icon name="compare" size={15} /><span>Second opinion</span><small>{name}</small>{review.status === 'running' && <span className="review-live" aria-label="Reviewing" />}</header>
