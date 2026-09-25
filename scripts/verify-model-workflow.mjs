@@ -181,7 +181,7 @@ try {
     .first()
     .getByRole("button", { name: "Choose model", exact: true })
     .click();
-  await page.getByRole("radiogroup", { name: "Reasoning effort" }).getByRole("radio").first().focus();
+  await page.getByRole("slider", { name: "Reasoning effort" }).focus();
   await page.keyboard.press("End");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(100);
@@ -220,13 +220,13 @@ try {
   await page.screenshot({ path: "artifacts/model-picker.png", fullPage: true });
   await page.getByRole('button',{name:'Astra',exact:true}).click();
   // Choosing a model keeps the panel open so its thinking level can be set in the same place.
-  const efforts=page.getByRole('radiogroup',{name:'Reasoning effort'});
-  await efforts.getByRole('radio').first().focus();
+  const efforts=page.getByRole('slider',{name:'Reasoning effort'});
+  await efforts.focus();
   await page.keyboard.press('End');
-  assert.equal(await efforts.getByRole('radio',{checked:true}).innerText(),'Ultra');
+  assert.equal(await efforts.getAttribute('aria-valuetext'),'Ultra');
   await page.screenshot({path:'artifacts/reasoning-picker.png'});
-  await page.getByRole('button',{name:'Reset',exact:true}).click();
-  assert.equal(await efforts.getByRole('radio',{checked:true}).innerText(),'Light');
+  await page.getByRole('button',{name:'Reset thinking level',exact:true}).click();
+  assert.equal(await efforts.getAttribute('aria-valuetext'),'Light');
   await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('dialog',{name:'Select model'}).count(),0);
   await page.setViewportSize({width:860,height:600});
@@ -248,7 +248,7 @@ try {
   assert.equal(await page.locator('.message.assistant .document-card').count(),1);
   await page.getByText('Based on your local source.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
-  await page.getByRole('radiogroup',{name:'Reasoning effort'}).getByRole('radio').first().focus();
+  await page.getByRole('slider',{name:'Reasoning effort'}).focus();
   await page.keyboard.press('End');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'New chat',exact:true}).click();
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
