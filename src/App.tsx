@@ -288,6 +288,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const artifactTarget=useRef<{spaceId:string;folderId:string|null;until:number;label?:string}|null>(null);
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
   const [queued,setQueued]=useState<string|null>(null);
+  // Messages typed while a chat is still answering, sent together as its next message once it finishes.
+  const [waiting,setWaiting]=useState<Record<string,string[]>>({});
   const handoffResolve=useRef<((choice:{model:string;reasoning?:string}|null)=>void)|null>(null);
   const accountDataRef=useRef(accountData);accountDataRef.current=accountData;
   const observedActiveAccount=useRef<string|null>(null);
@@ -542,7 +544,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   async function send(e?: FormEvent, override?: string) {
     e?.preventDefault();
     const prompt = (override ?? draft).trim();
-    if (!prompt || running) return;
+    if (!prompt) return;
+    if (running) {
+      if (override === undefined) { setWaiting((w) => ({ ...w, [conversationTarget]: [...(w[conversationTarget] || []), prompt] })); setDraft(""); }
+      return;
+    }
     const pickedDrive = driveRefs.map(({ id, name, mimeType, modified, size, durationMs }) => ({ id, name, mimeType, modified, size, durationMs }));
     if (offline) { setToast("You’re offline. Your chats and files are here to read; sending needs a connection."); return; }
     const isVisual = /^\/visual\b/i.test(prompt);
@@ -1198,6 +1204,12 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   // A queued message is sent after the destination conversation has rendered.
   useEffect(()=>{if(queued&&!running){const prompt=queued;setQueued(null);void send(undefined,prompt);}},[queued,running]);
+  useEffect(()=>{
+    const next=waiting[conversationTarget];
+    if(!next?.length||running||queued)return;
+    setWaiting(({[conversationTarget]:_,...rest})=>rest);
+    void send(undefined,next.join("\n\n"));
+  },[waiting,running,queued,conversationTarget]);
   async function openPackBytes(bytes:Uint8Array,name:string){
     try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast((e as Error).message);}
   }
@@ -1336,6 +1348,7 @@ In this subject the learner keeps missing these questions in review; connect to 
   ];
   const composerUI = (
     <form className="composer" onSubmit={send}>
+      {!!waiting[conversationTarget]?.length && <div className="waiting-chips" role="status">{waiting[conversationTarget].map((text, i) => <span className="waiting-chip" key={i} title={text}><Icon name="up" size={12} /><span>{text}</span><button type="button" aria-label="Don’t send this" onClick={() => setWaiting((w) => ({ ...w, [conversationTarget]: w[conversationTarget].filter((_, j) => j !== i) }))}><Icon name="close" size={12} /></button></span>)}<small>Sends when Mowr finishes</small></div>}
       {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} title={p.text || "Selected area"}>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
       <textarea
         ref={composer}
@@ -1446,15 +1459,18 @@ In this subject the learner keeps missing these questions in review; connect to 
         <div className="composer-tools">
           <ModelSelector models={models} value={model} effort={reasoning} onEffort={chooseReasoning} onChange={chooseModel} onConnect={()=>openSettings("Models")}/>
           {running ? (
-            <button
-              type="button"
-              className="send-button"
-              aria-label="Stop response"
-              title="Stop this chat (other chats keep going)"
-              onClick={() => stopChat(conversationTarget)}
-            >
-              <span className="stop-square" />
-            </button>
+            <>
+              {!!draft.trim() && <button className="send-button" aria-label="Send when Mowr finishes" title="Sends as soon as Mowr finishes this answer"><Icon name="up" size={22} /></button>}
+              <button
+                type="button"
+                className="send-button"
+                aria-label="Stop response"
+                title="Stop this chat (other chats keep going)"
+                onClick={() => stopChat(conversationTarget)}
+              >
+                <span className="stop-square" />
+              </button>
+            </>
           ) : (
             <button
               className="send-button"

@@ -8,6 +8,17 @@ export const baseInstructions =
 export const WEB_SEARCH = "live";
 
 export type TurnSession = { threadId?: string };
+
+/**
+ * A few words on what the model is doing, taken from the bold headline that opens each reasoning
+ * summary ("**Checking the formula**" → "Checking the formula…"). Null until a headline is complete.
+ */
+export function reasoningHeadline(summary: string): string | null {
+  const bold = summary.match(/^\s*\*\*([^*\n]{2,80})\*\*/);
+  if (!bold) return null;
+  const words = bold[1].trim().replace(/[.:…]+$/, "").split(/\s+/);
+  return words.slice(0, 6).join(" ") + "…";
+}
 export type TurnControl = { interrupt?: () => void };
 
 /**
@@ -48,6 +59,7 @@ export async function streamTurn(
   const threadId = session.threadId!;
   let bytes = 0, turnId = "";
   const received = new Map<string, string>();
+  const summaries = new Map<string, string>();
   await new Promise<void>((resolve, reject) => {
     let ended = false;
     const finish = (error?: Error) => {
@@ -75,6 +87,19 @@ export async function streamTurn(
             if (bytes > 8_000_000) throw Error("Codex response exceeded the limit.");
             received.set(p.itemId, (received.get(p.itemId) || "") + p.delta);
             onText(p.delta);
+          } else if (method === "item/started" && p.item?.type === "reasoning") {
+            onStatus("Thinking it through…");
+          } else if (method === "item/reasoning/summaryPartAdded") {
+            summaries.set(p.itemId, "");
+          } else if (method === "item/reasoning/summaryTextDelta") {
+            const before = summaries.get(p.itemId) || "", summary = before + String(p.delta || "");
+            summaries.set(p.itemId, summary.slice(0, 400));
+            const headline = reasoningHeadline(summary);
+            if (headline && headline !== reasoningHeadline(before)) onStatus(headline);
+          } else if (method === "item/started" && p.item?.type === "agentMessage") {
+            onStatus("Writing the answer…");
+          } else if (method === "item/started" && (p.item?.type === "mcpToolCall" || p.item?.type === "dynamicToolCall")) {
+            onStatus("Using a tool…");
           } else if (method === "item/started" && p.item?.type === "webSearch") {
             const query = String(p.item.query || p.item.action?.query || "").trim();
             onStatus(query ? `Searching the web for “${query.slice(0, 80)}”…` : "Searching the web…");
@@ -101,6 +126,7 @@ export async function streamTurn(
         threadId,
         model: selection?.model,
         effort: selection?.reasoning,
+        summary: "auto",
         input: [
           { type: "text", text: prompt, text_elements: [] },
           ...images.map((path) => ({ type: "localImage", path })),
