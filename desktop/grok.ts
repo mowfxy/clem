@@ -1,6 +1,6 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import {mkdir, rm, writeFile} from 'node:fs/promises';
-import {join} from 'node:path';
+import {copyFile, mkdir, rm, writeFile} from 'node:fs/promises';
+import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
 
@@ -139,7 +139,8 @@ export class GrokProvider {
     this.statusCache=null;
     return {started:true};
   }
-  async run(id:string,prompt:string,model:string,emit:(event:any)=>void){
+  /** Pictures are copied into Grok's own workspace and named in the prompt, so Grok opens them with its file tool. */
+  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[]){
     const slug=model.slice(GROK_PREFIX.length);
     let status=await this.status();
     if(!status.connected||!status.models.includes(slug))status=await this.status(true);
@@ -148,10 +149,17 @@ export class GrokProvider {
     if(!status.models.includes(slug))throw Error('This Grok model is not available on your plan. Pick another one.');
     // The prompt goes in a file so long conversations don't hit Windows' command-line length limit.
     const file=join(this.workspace(),'.prompt-'+randomUUID()+'.txt');
-    await mkdir(this.workspace(),{recursive:true});await writeFile(file,prompt);
+    const pictures=join(this.workspace(),'.images-'+randomUUID());
+    await mkdir(this.workspace(),{recursive:true});
+    const named:string[]=[];
+    if(images.length){
+      await mkdir(pictures,{recursive:true});
+      for(const [index,path] of images.entries()){const name=basename(pictures)+'/'+(index+1)+extname(path);await copyFile(path,join(this.workspace(),name));named.push(name);}
+    }
+    await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering.':prompt);
     try{
       let child:ChildProcessWithoutNullStreams;
-      try{child=await this.start(['--prompt-file',file,'-m',slug,'--output-format','json','--permission-mode','dontAsk','--no-subagents','--disable-web-search','--no-auto-update','--cwd',this.workspace()]);}
+      try{child=await this.start(['--prompt-file',file,'-m',slug,'--output-format','json','--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace()]);}
       catch{throw Error('Grok could not start. Install it in Settings → Models.');}
       this.active.set(id,child);
       const result=await new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
@@ -168,7 +176,7 @@ export class GrokProvider {
       if(reply.error||!reply.text)throw Error(friendly(reply.error||result.err||String(result.code)));
       this.statusCache=null; // usage changed
       emit({id,type:'delta',text:reply.text});emit({id,type:'done'});
-    }finally{await rm(file,{force:true}).catch(()=>{});}
+    }finally{await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
   }
   cancel(id:string){this.active.get(id)?.kill();}
   stop(){for(const child of this.active.values())child.kill();}

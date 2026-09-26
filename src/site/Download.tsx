@@ -66,7 +66,7 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
 
         <section className="sx-section sx-reqs">
           <Reveal className="sx-req-grid">
-            <div><h3>You’ll need</h3><ul><li>Windows 10 or 11, 64-bit</li><li>About 1 GB of free disk space</li><li>An AI subscription (ChatGPT supported)</li><li>An internet connection to sign in and chat</li></ul></div>
+            <div><h3>You’ll need</h3><ul><li>Windows 10 or 11, 64-bit</li><li>About 1 GB of free disk space</li><li>An AI subscription: ChatGPT, Claude or SuperGrok / X Premium+</li><li>An internet connection to sign in and chat</li></ul></div>
             <div><h3>What gets installed</h3><ul><li>The Mowr app, in your user profile</li><li>The AI connector, bundled</li><li>Your workspace in Documents\Mowr</li><li>No background services or drivers</li></ul></div>
             <div><h3>Release</h3><ul><li>Version {release?.version||'—'}</li>{release?.released&&<li>Published {new Date(release.released).toLocaleDateString(undefined,{dateStyle:'long'})}</li>}<li>{release?.signed?'Signed installer':'Unsigned preview'}</li>{release?.notes&&<li><a className="sx-link" href={release.notes}>Release notes<Icon name="arrow" size={14}/></a></li>}</ul></div>
           </Reveal>

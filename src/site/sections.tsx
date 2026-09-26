@@ -3,7 +3,7 @@ import {Reveal} from './Reveal';
 import {PayPalMark,SupportLink} from '../support-link';
 
 export const faqs=[
-  ['What do I need?','A Windows 10 or 11 PC and an AI subscription you already use. ChatGPT is supported today.'],
+  ['What do I need?','A Windows 10 or 11 PC and an AI subscription you already use: ChatGPT, Claude or Grok (SuperGrok or X Premium+).'],
   ['Where is my work stored?','On your PC, in Documents\\Mowr. Plain files you can open, move or back up.'],
   ['Is it really free?','Yes. No plan, no trial, no card. Donations keep it that way.'],
   ['Is my AI plan included?','No. Mowr is the workspace; you keep the plan you have.'],

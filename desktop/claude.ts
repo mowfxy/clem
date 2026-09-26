@@ -3,6 +3,19 @@ import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {installedPath,signInWindow} from './cli-install.ts';
 
+export type ClaudeImage = { mime: string; data: string };
+/** A few words on what Claude is doing, from one stream-json event (null when the event says nothing new). */
+export function claudeStatus(event:any):string|null{
+  const block=event?.type==='stream_event'&&event.event?.type==='content_block_start'?event.event.content_block:null;
+  if(block?.type==='thinking')return 'Thinking it through…';
+  if(block?.type==='text')return 'Writing the answer…';
+  if(block?.type==='server_tool_use'||block?.type==='tool_use')return block.name==='web_search'||block.name==='WebSearch'?'Searching the web…':'Using a tool…';
+  if(event?.type==='assistant')for(const part of event.message?.content||[])if((part.type==='tool_use'||part.type==='server_tool_use')&&/web_?search/i.test(part.name||'')){
+    const query=String(part.input?.query||'').trim();return query?`Searching the web for “${query.slice(0,80)}”…`:'Searching the web…';
+  }
+  if(event?.type==='user'&&(event.message?.content||[]).some((part:any)=>part.type==='tool_result'))return 'Reading what it found…';
+  return null;
+}
 export const claudeModels = [
   {id:'claude:sonnet',name:'Claude Sonnet',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Sonnet on your Claude subscription',reasoningEfforts:[{reasoningEffort:'low',description:'Low'},{reasoningEffort:'medium',description:'Medium'},{reasoningEffort:'high',description:'High'}],defaultReasoningEffort:'medium'},
   {id:'claude:opus',name:'Claude Opus',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:[{reasoningEffort:'low',description:'Low'},{reasoningEffort:'medium',description:'Medium'},{reasoningEffort:'high',description:'High'}],defaultReasoningEffort:'high'},
@@ -54,28 +67,47 @@ export class ClaudeProvider {
       command:`$env:CLAUDE_CONFIG_DIR='${this.root.replace(/'/g,"''")}'; & '${this.executable.replace(/'/g,"''")}' auth login`,
       signedIn:async()=>(await this.status(true)).connected});
   }
-  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void){
+  /**
+   * One answer on the person's Claude plan. Input and output are Claude Code's stream-json, so pictures go in as
+   * image blocks and the person sees what Claude is doing (thinking, searching, writing) while it works.
+   */
+  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[]){
     const selected=claudeModels.find(item=>item.id===model);
     if(!selected)throw Error('Choose a supported Claude model.');
     if(effort&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
     if(!(await this.status(true)).connected)throw Error('Sign in to a Claude subscription through Claude Code first.');
     // Web search is the only tool: it lets Claude find real, current sources (such as YouTube videos) on the person's own plan.
-    const args=['-p','--output-format','json','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode','--no-session-persistence'];
+    const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode','--no-session-persistence'];
     if(effort)args.push('--effort',effort);
     const child=await this.start(args);this.active.set(id,child);
     try{
       const answer=await new Promise<string>((resolve,reject)=>{
-        let output='',error='',done=false;
+        let buffer='',bytes=0,error='',done=false,result:any=null;
         const finish=(value?:string,failure?:Error)=>{if(done)return;done=true;clearTimeout(timer);failure?reject(failure):resolve(value||'');};
         const timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},180000);
-        child.stdout.on('data',(part:Buffer)=>{output+=part.toString();if(output.length>2_000_000){child.kill();finish(undefined,Error('Claude response exceeded the safe limit.'));}});
+        let last='';
+        const read=(line:string)=>{
+          if(!line.trim())return;
+          let event:any;try{event=JSON.parse(line);}catch{return;}
+          if(event.type==='result'){result=event;return;}
+          const status=claudeStatus(event);
+          if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
+        };
+        child.stdout.on('data',(part:Buffer)=>{
+          bytes+=part.length;if(bytes>8_000_000){child.kill();finish(undefined,Error('Claude response exceeded the safe limit.'));return;}
+          buffer+=part.toString();let newline;
+          while((newline=buffer.indexOf('\n'))>=0){read(buffer.slice(0,newline));buffer=buffer.slice(newline+1);}
+        });
         child.stderr.on('data',(part:Buffer)=>{error=(error+part.toString()).slice(-5000);});
         child.on('error',()=>finish(undefined,Error('Claude Code could not start. Install its native CLI.')));
         child.on('close',code=>{
-          if(code!==0){finish(undefined,Error(/limit|quota|429/i.test(error)?'Claude subscription usage is unavailable right now.':'Claude could not complete this request. Check its sign-in and model access.'));return;}
-          try{const result=JSON.parse(output);if(result.is_error){finish(undefined,Error(/limit|quota|429/i.test(result.result||'')?'Claude subscription usage is unavailable right now.':'Claude could not complete this request.'));return;}if(typeof result.result!=='string')throw Error();finish(result.result);}catch{finish(undefined,Error('Claude returned an unreadable response.'));}
+          read(buffer);
+          const usage=(text:string)=>/limit|quota|429/i.test(text);
+          if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&code===0){finish(result.result);return;}
+          const detail=String(result?.result||'')+' '+error;
+          finish(undefined,Error(usage(detail)?'Claude subscription usage is unavailable right now.':/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
         });
-        child.stdin.end(prompt);
+        child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
       });
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
     }finally{this.active.delete(id);}
