@@ -21,10 +21,11 @@ if(location.hash==='#/refunds')history.replaceState(null,'',location.pathname+lo
 function Root(){
  const [route,setRoute]=useState(location.hash.slice(1)||'/'),[ready,setReady]=useState(false);
  // Arrivals from an email link (or its error) see a confirmation page until they navigate elsewhere.
- const [callback,setCallback]=useState(()=>(location.search.includes('code=')&&!location.search.includes('recovery='))||/^#\/?error=/.test(location.hash));
+ const [callback,setCallback]=useState(()=>!adminHost&&((location.search.includes('code=')&&!location.search.includes('recovery='))||/^#\/?error=/.test(location.hash)));
  const publicPage=(path:string)=>path==='/'?<Landing/>:['/privacy','/terms'].includes(path)?<Legal route={path}/>:<Marketing route={path}/>;
  useEffect(()=>{const change=()=>{setRoute(location.hash.slice(1)||'/');setCallback(false);};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
- useEffect(()=>{if(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect')||route.startsWith('/app')||location.search.includes('code=')||location.search.includes('recovery=')){authReady??=import('./supabase').then(module=>module.initSupabase());void authReady.finally(()=>{setReady(true);setRoute(location.hash.slice(1)||'/');});}},[route]);
+ // admin.mowrai.com signs in with its own client; the app client must not consume its OAuth code.
+ useEffect(()=>{if(adminHost)return;if(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect')||route.startsWith('/app')||location.search.includes('code=')||location.search.includes('recovery=')){authReady??=import('./supabase').then(module=>module.initSupabase());void authReady.finally(()=>{setReady(true);setRoute(location.hash.slice(1)||'/');});}},[route]);
  const isPublic=route==='/'||['/privacy','/terms','/pricing','/support','/about'].includes(route)||route.startsWith('/features');
  const loading=<main className="workspace-loading" role="status">Opening Mowr…</main>;
  if(callback)return <Suspense fallback={loading}><AuthCallback ready={ready||/^#\/?error=/.test(location.hash)}/></Suspense>;
