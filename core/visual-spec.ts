@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { compile, numeric, safeEval, type Compiled, type Vars } from './expr.ts';
+import { camera3dSchema, compile3d, drawProjected, object3dSchema, type Compiled3D } from './visual-3d.ts';
 
 /** Model-authored visuals. A model describes *what* to draw in a small JSON language;
  *  Mowr validates it, compiles every expression safely and draws it with the same pen
@@ -32,12 +33,16 @@ const layer = z.discriminatedUnion('type', [
   z.object({ type: z.literal('circle'), x: num, y: num, r: num, color, fill: z.boolean().optional() }),
   z.object({ type: z.literal('polygon'), points: z.array(z.tuple([num, num])).min(2).max(60), color, fill: z.boolean().optional(), closed: z.boolean().optional() }),
   z.object({ type: z.literal('text'), x: num, y: num, text: text(120), color, size: z.number().min(8).max(26).optional() }),
+  z.object({ type: z.literal('polar'), r: z.string().max(600), from: num.optional(), to: num.optional(), color, label: text(40).optional(), dash: z.boolean().optional(), width: z.number().min(0.5).max(5).optional() }),
+  z.object({ type: z.literal('field'), dx: z.string().max(600), dy: z.string().max(600), density: z.number().int().min(6).max(32).optional(), color, label: text(40).optional() }),
+  z.object({ type: z.literal('implicit'), expr: z.string().max(600), levels: z.array(num).min(1).max(12).optional(), color, label: text(40).optional(), dash: z.boolean().optional() }),
+  z.object({ type: z.literal('points'), points: z.array(z.tuple([num, num])).min(1).max(400), color, label: text(40).optional(), size: z.number().min(1).max(10).optional(), line: z.boolean().optional() }),
 ]);
 const axis = z.object({ min: num, max: num, label: text(40).optional() });
 const node = z.object({ id: z.string().max(40), label: text(60), x: z.number().min(0).max(100).optional(), y: z.number().min(0).max(100).optional(), shape: z.enum(['box', 'pill', 'circle']).optional(), color, detail: text(160).optional() });
 const edge = z.object({ from: z.string().max(40), to: z.string().max(40), label: text(40).optional(), dashed: z.boolean().optional(), flow: z.boolean().optional() });
 export const visualSpecSchema = z.object({
-  kind: z.enum(['plot', 'diagram', 'chart']),
+  kind: z.enum(['plot', 'diagram', 'chart', '3d']),
   title: text(80).min(1),
   subject: text(40).optional(),
   caption: text(240).optional(),
@@ -45,11 +50,12 @@ export const visualSpecSchema = z.object({
   params: z.array(param).max(6).optional(),
   animate: z.object({ duration: z.number().min(0.5).max(120), loop: z.boolean().optional() }).optional(),
   readouts: z.array(z.object({ label: text(40), expr: z.string().max(600), unit: text(12).optional(), digits: z.number().int().min(0).max(6).optional() })).max(6).optional(),
-  x: axis.optional(), y: axis.optional(), grid: z.boolean().optional(), equal: z.boolean().optional(),
+  x: axis.optional(), y: axis.optional(), z: axis.optional(), grid: z.boolean().optional(), equal: z.boolean().optional(),
+  objects: z.array(object3dSchema).max(60).optional(), camera: camera3dSchema.optional(), autoRotate: z.boolean().optional(), axes: z.boolean().optional(),
   layers: z.array(layer).max(40).optional(),
   nodes: z.array(node).max(24).optional(), edges: z.array(edge).max(40).optional(), direction: z.enum(['right', 'down']).optional(),
   steps: z.array(z.object({ title: text(80), text: text(400).optional(), focus: z.array(z.string().max(40)).max(24).optional() })).max(12).optional(),
-  chart: z.object({ type: z.enum(['bar', 'line']), labels: z.array(text(30)).min(1).max(24), series: z.array(z.object({ name: text(40), values: z.array(num).max(24), color })).min(1).max(5), yLabel: text(40).optional(), xLabel: text(40).optional(), unit: text(12).optional() }).optional(),
+  chart: z.object({ type: z.enum(['bar', 'line', 'area', 'pie']), labels: z.array(text(30)).min(1).max(24), series: z.array(z.object({ name: text(40), values: z.array(num).max(24), color })).min(1).max(5), yLabel: text(40).optional(), xLabel: text(40).optional(), unit: text(12).optional() }).optional(),
 });
 export type VisualSpec = z.infer<typeof visualSpecSchema>;
 
@@ -61,6 +67,8 @@ export type CompiledVisual = {
   period: number;
   moving: boolean;
   steps: NonNullable<VisualSpec['steps']>;
+  /** Present for kind "3d": the scene the Three.js view draws; `draw` is its projected still. */
+  scene3d?: Compiled3D;
   draw(pen: Pen, values: Vars, t: number, step?: number): void;
   readouts(values: Vars, t: number): [string, string][];
   describe(): string;
@@ -110,8 +118,13 @@ export function compileVisual(raw: unknown): CompiledVisual {
   const readouts = (spec.readouts || []).map(r => ({ ...r, fn: c(r.expr) }));
   let draw: CompiledVisual['draw'];
   let hasFlow = false;
+  let scene3d: Compiled3D | undefined;
 
-  if (spec.kind === 'plot') {
+  if (spec.kind === '3d') {
+    const scene = compile3d(spec, c, (value, fallback) => tone(value, fallback as Tone), Object.fromEntries(params.map(p => [p.key, p.value])));
+    scene3d = scene;
+    draw = (pen, values, t, step) => drawProjected(pen, scene, values, t, step, palette);
+  } else if (spec.kind === 'plot') {
     if (!spec.x || !spec.y) throw Error('A plot needs x and y ranges.');
     const xmin = c(spec.x.min), xmax = c(spec.x.max), ymin = c(spec.y.min), ymax = c(spec.y.max);
     const layers = (spec.layers || []).map(l => {
@@ -125,6 +138,10 @@ export function compileVisual(raw: unknown): CompiledVisual {
         case 'circle': return { l, x: c(l.x), y: c(l.y), r: c(l.r) };
         case 'polygon': return { l, pts: l.points.map(([x, y]) => [c(x), c(y)] as const) };
         case 'text': return { l, x: c(l.x), y: c(l.y) };
+        case 'polar': return { l, r: c(l.r, ['theta', 's']), from: l.from !== undefined ? c(l.from) : null, to: l.to !== undefined ? c(l.to) : null };
+        case 'field': return { l, dx: c(l.dx, ['x', 'y']), dy: c(l.dy, ['x', 'y']) };
+        case 'implicit': return { l, f: c(l.expr, ['x', 'y']), levels: (l.levels || [0]).map(v2 => c(v2)) };
+        case 'points': return { l, pts: l.points.map(([x, y]) => [c(x), c(y)] as const) };
       }
     });
     draw = (pen, values, t) => {
@@ -158,7 +175,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
       let legend = 0;
       const tag = (label: string | undefined, px: number, py: number, col: string) => { if (label) pen.text(Math.min(px + 8, b.r - 4), Math.max(b.t + 12, Math.min(b.b - 6, py - 8)), label, { size: 12, color: col, align: px + 8 > b.r - 60 ? 'end' : 'start' }); };
       for (const item of layers) {
-        const l = item.l, col = tone(l.color, l.type === 'function' || l.type === 'parametric' ? series[legend % series.length] as Tone : 'ink');
+        const l = item.l, col = tone(l.color, l.type === 'function' || l.type === 'parametric' || l.type === 'polar' || l.type === 'implicit' || l.type === 'points' ? series[legend % series.length] as Tone : 'ink');
         if (item.l.type === 'function' && 'f' in item && item.f) {
           legend++;
           const fl = item as { f: Compiled; from: Compiled | null; to: Compiled | null; l: Extract<typeof l, { type: 'function' }> };
@@ -217,6 +234,60 @@ export function compileVisual(raw: unknown): CompiledVisual {
           const cc = tone(l.color, 'soft');
           if (l.fill) pen.path(pts, { fill: cc, alpha: 0.18 }, true);
           pen.path(pts, { stroke: cc, width: 1.6 }, l.closed ?? !!l.fill);
+        } else if (l.type === 'polar') {
+          legend++;
+          const pl = item as { r: Compiled; from: Compiled | null; to: Compiled | null };
+          const a = pl.from ? safeEval(pl.from, v) : 0, z1 = pl.to ? safeEval(pl.to, v) : Math.PI * 2, pts: P[] = [];
+          for (let i = 0; i <= 720 && Number.isFinite(a) && Number.isFinite(z1); i++) {
+            const th = a + (z1 - a) * i / 720, r = safeEval(pl.r, { ...v, theta: th, s: th }), x = r * Math.cos(th), y = r * Math.sin(th);
+            if (Number.isFinite(x) && Number.isFinite(y) && inside(Y(y))) pts.push([X(x), clipY(Y(y))]);
+          }
+          pen.path(pts, { stroke: col, width: l.width ?? 2.2, dash: l.dash ? [5, 6] : undefined });
+          if (pts.length) tag(l.label, pts[Math.floor(pts.length * 0.12)][0], pts[Math.floor(pts.length * 0.12)][1], col);
+        } else if (l.type === 'field') {
+          // Arrows on a grid; length and brightness follow the magnitude, so strong and weak regions read at a glance.
+          const fl = item as { dx: Compiled; dy: Compiled }, n = l.density ?? 16, cols = n, rows = Math.max(4, Math.round(n * (b.b - b.t) / (b.r - b.l)));
+          const cw = (b.r - b.l) / cols, ch = (b.b - b.t) / rows, cells: [number, number, number, number, number][] = [];
+          let most = 0;
+          for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+            const px = b.l + cw * (i + 0.5), py = b.t + ch * (j + 0.5), x = x0 + (px - b.l) / sx, y = y0 + (b.b - py) / sy;
+            const dx = safeEval(fl.dx, { ...v, x, y }), dy = safeEval(fl.dy, { ...v, x, y }), m = Math.hypot(dx * sx, dy * sy);
+            if (Number.isFinite(m) && m > 1e-12) { cells.push([px, py, dx * sx / m, -dy * sy / m, m]); most = Math.max(most, m); }
+          }
+          const cc = tone(l.color, 'blue'), size = Math.min(cw, ch) * 0.82;
+          for (const [px, py, ux, uy, m] of cells) { const k = 0.35 + 0.65 * Math.min(1, m / most), len = size * k; arrow(pen, px - ux * len / 2, py - uy * len / 2, px + ux * len / 2, py + uy * len / 2, { stroke: cc, width: 1.4, alpha: 0.35 + 0.65 * k }, 6.5); }
+          if (l.label) pen.text(b.r - 6, b.t + 14, l.label, { size: 12, color: cc, align: 'end' });
+        } else if (l.type === 'implicit') {
+          // Marching squares: every level of f(x, y) becomes a contour line.
+          legend++;
+          const il = item as { f: Compiled; levels: Compiled[] }, nx = 160, ny = Math.max(40, Math.round(nx * (b.b - b.t) / (b.r - b.l))), grid = new Float64Array((nx + 1) * (ny + 1));
+          for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) grid[j * (nx + 1) + i] = safeEval(il.f, { ...v, x: x0 + (x1 - x0) * i / nx, y: y0 + (y1 - y0) * j / ny });
+          const px = (i: number) => b.l + (b.r - b.l) * i / nx, py = (j: number) => b.b - (b.b - b.t) * j / ny;
+          il.levels.forEach((lv, li) => {
+            const level = safeEval(lv, v);
+            if (!Number.isFinite(level)) return;
+            const cc = il.levels.length > 1 ? tone(l.color, series[li % series.length] as Tone) : col;
+            let labelled = false;
+            for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+              const a = grid[j * (nx + 1) + i] - level, b2 = grid[j * (nx + 1) + i + 1] - level, c2 = grid[(j + 1) * (nx + 1) + i + 1] - level, d = grid[(j + 1) * (nx + 1) + i] - level;
+              if (![a, b2, c2, d].every(Number.isFinite)) continue;
+              const cross: P[] = [];
+              const edge = (p: number, q: number, e: (f: number) => P) => { if ((p < 0) !== (q < 0)) cross.push(e(p / (p - q))); };
+              edge(a, b2, f => [px(i + f), py(j)]); edge(b2, c2, f => [px(i + 1), py(j + f)]); edge(c2, d, f => [px(i + 1 - f), py(j + 1)]); edge(d, a, f => [px(i), py(j + 1 - f)]);
+              // A jump of sign across a pole (1/x) is not a contour.
+              if (cross.length >= 2 && Math.max(Math.abs(a), Math.abs(b2), Math.abs(c2), Math.abs(d)) < 1e6) {
+                pen.path([cross[0], cross[1]], { stroke: cc, width: 2, dash: l.dash ? [4, 5] : undefined });
+                if (cross.length === 4) pen.path([cross[2], cross[3]], { stroke: cc, width: 2 });
+                if (!labelled && l.label && i > nx * 0.55) { labelled = true; tag(il.levels.length > 1 ? `${l.label} = ${fmt(level, Math.abs(level) < 10 ? 2 : 0)}` : l.label, cross[0][0], cross[0][1], cc); }
+              }
+            }
+          });
+        } else if (l.type === 'points') {
+          legend++;
+          const gl = item as { pts: (readonly [Compiled, Compiled])[] }, pts = gl.pts.map(([a, bb]) => [safeEval(a, v), safeEval(bb, v)]).filter(p => p.every(Number.isFinite)).map(([a, bb]) => [X(a), Y(bb)] as P).filter(p => inside(p[1]));
+          if (l.line) pen.path(pts, { stroke: col, width: 1.8 });
+          for (const p of pts) { pen.circle(p[0], p[1], (l.size ?? 4) + 2.5, { fill: col, alpha: 0.14 }); pen.circle(p[0], p[1], l.size ?? 4, { fill: col, alpha: 0.95 }); }
+          if (l.label && pts.length) tag(l.label, pts[pts.length - 1][0], pts[pts.length - 1][1], col);
         } else if (l.type === 'text') {
           const tl = item as { x: Compiled; y: Compiled }, px = safeEval(tl.x, v), py = safeEval(tl.y, v);
           if (Number.isFinite(px) && Number.isFinite(py)) pen.text(X(px), Y(py), l.text, { size: l.size ?? 12.5, color: tone(l.color, 'soft') });
@@ -265,6 +336,29 @@ export function compileVisual(raw: unknown): CompiledVisual {
     draw = (pen, vals, t) => {
       const v = { ...vals, t }, grow = Math.min(1, t / 0.7), ease = 1 - Math.pow(1 - grow, 3);
       const data = values.map(s => s.fns.map(f => (f ? safeEval(f, v) : NaN)));
+      if (chart.type === 'pie') {
+        // A donut of the first series: slices grow in clockwise from the top, with a legend of values and shares.
+        const vals = data[0].map(x => (Number.isFinite(x) ? Math.max(0, x) : 0)), sum = vals.reduce((a, x) => a + x, 0) || 1;
+        const cx = W * 0.33, cy = H / 2 + 4, R = 150, r0 = 84, colors = ['blue', 'coral', 'green', 'amber', 'violet', 'soft'] as Tone[];
+        let a = -Math.PI / 2;
+        vals.forEach((x, i) => {
+          const sweep = Math.PI * 2 * x / sum * ease, pts: P[] = [], steps2 = Math.max(2, Math.ceil(sweep / 0.04));
+          for (let k = 0; k <= steps2; k++) { const q = a + sweep * k / steps2; pts.push([cx + R * Math.cos(q), cy + R * Math.sin(q)]); }
+          for (let k = steps2; k >= 0; k--) { const q = a + sweep * k / steps2; pts.push([cx + r0 * Math.cos(q), cy + r0 * Math.sin(q)]); }
+          if (sweep > 0.001) pen.path(pts, { fill: palette[colors[i % colors.length]], alpha: i < colors.length ? 0.92 : 0.6, stroke: palette.bg, width: 2 }, true);
+          a += sweep;
+        });
+        pen.text(cx, cy - 2, fmt(sum, sum < 10 && sum !== Math.round(sum) ? 2 : 0) + (chart.unit ? ' ' + chart.unit : ''), { size: 20, color: palette.ink, align: 'middle', weight: 500 });
+        pen.text(cx, cy + 18, chart.series[0].name, { size: 11.5, color: palette.faint, align: 'middle' });
+        const rowH = Math.min(30, (H - 60) / Math.max(1, vals.length)), top = cy - rowH * vals.length / 2 + rowH / 2;
+        vals.forEach((x, i) => {
+          const y = top + rowH * i, lx = W * 0.62;
+          pen.circle(lx, y - 4, 5, { fill: palette[colors[i % colors.length]] });
+          pen.text(lx + 14, y, chart.labels[i] ?? '', { size: 12.5, color: palette.ink });
+          pen.text(W - 30, y, `${fmt(x, x < 10 && x !== Math.round(x) ? 2 : 0)}  ·  ${(x / sum * 100).toFixed(x / sum < 0.1 ? 1 : 0)}%`, { size: 12, color: palette.soft, align: 'end' });
+        });
+        return;
+      }
       const flat = data.flat().filter(Number.isFinite);
       let lo = Math.min(0, ...flat), hi = Math.max(0, ...flat);
       if (hi === lo) hi = lo + 1;
@@ -291,6 +385,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
           const col = tone(chart.series[s].color, series[s % series.length]), pts: P[] = [];
           row.forEach((y, i) => { if (Number.isFinite(y)) pts.push([b.l + slot * (i + 0.5), Y(y)]); });
           const shown = Math.max(2, Math.ceil(pts.length * ease));
+          if (chart.type === 'area' && pts.length > 1) { const run = pts.slice(0, shown); pen.path([...run, [run[run.length - 1][0], Y(0)], [run[0][0], Y(0)]], { fill: col, alpha: 0.16 }, true); }
           pen.path(pts.slice(0, shown), { stroke: col, width: 2.2 });
           pts.slice(0, shown).forEach(p => pen.circle(p[0], p[1], 3.4, { fill: col }));
         });
@@ -303,7 +398,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
   const period = spec.animate ? spec.animate.duration : Infinity;
   return {
     spec, params, period, moving: usesTime || !!spec.animate, steps: spec.steps || [],
-    draw,
+    draw, scene3d,
     readouts(values, t) { return readouts.map(r => { const v = safeEval(r.fn, { ...values, t }); return [r.label, `${fmt(v, r.digits ?? 2)}${r.unit ? ' ' + r.unit : ''}`]; }); },
     describe() { return `${spec.title}. ${spec.caption || ''}`.trim(); },
   };

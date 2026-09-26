@@ -7,6 +7,9 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import 'katex/contrib/mhchem';
+import 'katex/contrib/copy-tex';
+import { mathMacros, normalizeMath } from '../../core/math-markdown';
 import { linkCitations, readCitation, type Citation } from '../../core/citations';
 import { parseVisual } from '../../core/visual-spec';
 import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
@@ -17,13 +20,9 @@ import type { EditOutcome } from '../../core/types';
 
 const SpecVisual = lazy(() => import('../visuals/SpecVisual'));
 
-/** Pandoc-style inline math: $x$ only when the dollars hug non-space text and no digit follows,
- *  so prices like “$2 and $5” stay prose. \( \) and \[ \] are normalised too. */
+/** Every maths dialect becomes remark-math's $$…$$ (see core/math-markdown), then citations become links. */
 export function prepareMarkdown(text: string) {
-  return linkCitations(text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g).map((part, i) => i % 2 ? part : part
-    .replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => `\n$$\n${m.trim()}\n$$\n`)
-    .replace(/\\\((.+?)\\\)/g, (_, m) => `$$${m}$$`)
-    .replace(/(^|[^\\$\w])\$(?!\s)([^$\n]{1,300}?[^\s\\$])\$(?![\d$])/g, (_, pre, m) => `${pre}$$${m}$$`)).join(''));
+  return linkCitations(normalizeMath(text));
 }
 
 export type BodyHandlers = {
@@ -94,7 +93,7 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
   return <div className="md">
     <ReactMarkdown
       remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
-      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore', output: 'html' }]]}
+      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore', output: 'html', macros: mathMacros }]]}
       urlTransform={url => (url.startsWith('source:') || /^drive:[\w-]{10,150}$/.test(url) ? url : defaultUrlTransform(url))}
       components={{
         a: ({ href, children }) => {

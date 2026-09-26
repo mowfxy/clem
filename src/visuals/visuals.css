@@ -93,3 +93,7 @@
 .visuals-section-title,.page h2.visuals-section-title{font:500 12px/1 'Mowafy Sans Text',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#8b8a83;margin:10px 0 14px}
 .visual-record .visual-thumb{margin-bottom:16px}
 @media(prefers-reduced-motion:reduce){.visual-engine.v2{animation:none}.visual-picker button,.visual-gallery button{transition:none}}
+.v2 .scene-tick{font-size:10.5px;color:var(--v-faint);font-variant-numeric:tabular-nums}
+.v2 .scene-axis{font-size:12px;color:var(--v-soft,#a3a3a0);font-style:italic}
+.v2 .visual-3d canvas{display:block;touch-action:none;cursor:grab}.v2 .visual-3d canvas:active{cursor:grabbing}
+.v2 .visual-hint-3d{position:absolute;left:12px;bottom:10px;font-size:11.5px;color:var(--v-faint);pointer-events:none;opacity:.85}

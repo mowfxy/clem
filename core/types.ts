@@ -16,7 +16,7 @@ export type Verification = { status: 'running' | 'done' | 'error'; claims?: Clai
 export type EditOutcome = { status: 'applied' | 'dismissed' | 'undone' | 'failed'; changeId?: string; error?: string };
 export type Message = { id: string; role: 'user' | 'assistant'; content: string; /** Google Drive files found for this reply (names and ids only; contents are streamed, never stored). */ drive?: import('./drive-search').DriveRef[]; visual?: boolean | string; visualParams?: Record<string, number>; plan?: Plan; attachments?: string[]; pointers?: { file: string; page?: number; text?: string; area?: boolean }[]; model?: string; review?: Review; verify?: Verification; edits?: Record<string, EditOutcome> };
 /** `titled`: the title was chosen by the model from the conversation (see core/chat-title.ts), not cut from the first message. */
-export type Chat = { titled?: boolean; model?: string; reasoning?: string; pinned?: boolean; id: string; title: string; spaceId: string | null; messages: Message[]; updated: number };
+export type Chat = { titled?: boolean; /** One sentence on what the whole chat covers, from the model (see core/chat-title.ts). */ summary?: string; model?: string; reasoning?: string; pinned?: boolean; id: string; title: string; spaceId: string | null; messages: Message[]; updated: number };
 /** An earlier version of an edited file, kept on this PC so the edit can be undone. */
 export type FileVersion = { blob: string; at: number; summary: string; size: number };
 /** `made` marks PDFs Mowr generated; their source is kept beside them so edits re-typeset the page. */

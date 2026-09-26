@@ -21,7 +21,9 @@ const features:[Scene,string,string][]=[
 // Each demo is the words someone typed; some use a ready-made model, others are drawn on request.
 const demos:{ask:string;scene?:string;spec?:string}[]=[
   {ask:'a thrown ball',scene:'projectile'},
+  {ask:'partial derivatives in 3D',spec:'partials'},
   {ask:'photosynthesis',spec:'photosynthesis'},
+  {ask:'a methane molecule',spec:'methane'},
   {ask:'supply and demand',spec:'market'},
   {ask:'a standing wave',spec:'wave'},
   {ask:'compound interest',spec:'savings'},
