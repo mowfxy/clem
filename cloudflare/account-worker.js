@@ -141,6 +141,16 @@ async function route(request, env) {
         if (!["skills", "memory", "notes"].includes(kind))
           return json({ error: "Only skills and memory can be synced." }, 400);
         if (request.method === "GET") {
+          // A device that already has this revision gets a short answer instead of the whole payload again.
+          const since = Number(new URL(request.url).searchParams.get("since"));
+          if (Number.isSafeInteger(since) && since > 0) {
+            const current = await env.DB.prepare(
+              "SELECT revision FROM desktop_sync WHERE user_id=? AND kind=?",
+            )
+              .bind(user.id, kind)
+              .first();
+            if (current?.revision === since) return json({ revision: since, unchanged: true });
+          }
           const row = await env.DB.prepare(
             "SELECT revision,payload FROM desktop_sync WHERE user_id=? AND kind=?",
           )

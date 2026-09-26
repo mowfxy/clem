@@ -41,6 +41,7 @@ import {DrivePicker} from './drive/DrivePicker';
 import {DriveIcon} from './drive/DriveIcon';
 import {refreshDrive,driveSources,driveFolder,driveList as driveListText,useDrive,type DriveItem} from './drive/drive';
 import {mowrSkillText} from '../core/mowr-skills';
+import {boundedConversation,compressReply} from '../core/chat-context';
 import {SavedFilePicker} from './files/SavedFilePicker';
 import {Toast} from './Toast';
 import {RenameField,PencilIcon} from './files/RenameField';
@@ -288,8 +289,6 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const artifactTarget=useRef<{spaceId:string;folderId:string|null;until:number;label?:string}|null>(null);
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
   const [queued,setQueued]=useState<string|null>(null);
-  // Messages typed while a chat is still answering, sent together as its next message once it finishes.
-  const [waiting,setWaiting]=useState<Record<string,string[]>>({});
   const handoffResolve=useRef<((choice:{model:string;reasoning?:string}|null)=>void)|null>(null);
   const accountDataRef=useRef(accountData);accountDataRef.current=accountData;
   const observedActiveAccount=useRef<string|null>(null);
@@ -505,7 +504,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, model: selectedModel, mode }),
+      body: JSON.stringify({ messages: boundedConversation(messages), model: selectedModel, mode }),
       signal,
     });
     if (!response.ok) {
@@ -545,8 +544,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     e?.preventDefault();
     const prompt = (override ?? draft).trim();
     if (!prompt) return;
+    // Sending while Mowr answers interrupts it: the partial answer stays, then the new message goes.
     if (running) {
-      if (override === undefined) { setWaiting((w) => ({ ...w, [conversationTarget]: [...(w[conversationTarget] || []), prompt] })); setDraft(""); }
+      if (override === undefined) { setQueued(prompt); setDraft(""); stopChat(conversationTarget); }
       return;
     }
     const pickedDrive = driveRefs.map(({ id, name, mimeType, modified, size, durationMs }) => ({ id, name, mimeType, modified, size, durationMs }));
@@ -679,6 +679,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
                 goal: prompt,
                 sources,
                 memory: activeSpace ? activeSpace.memory : state.memory,
+                conversation: boundedConversation(next.messages.filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })), 20000).slice(0, -1),
               }),
             },
           ],
@@ -794,7 +795,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       const studyKind=activeSpace?.kind==='subject'?studyRequest(prompt):null;
       if(studyKind){
         status(id)(studyKind==='quiz'?'Writing the quiz…':'Writing the flashcards…');
-        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:next.messages.slice(-8).map(m=>({role:m.role,content:m.content}))})}],model,controller.signal,()=>{},'chat',undefined,undefined,{chat:id});
+        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:boundedConversation(next.messages.filter(m=>m.content).map(m=>({role:m.role,content:m.content})),24000)})}],model,controller.signal,()=>{},'chat',undefined,undefined,{chat:id});
         const parsed=(await import('../core/study')).parseStudy(raw,studyKind);
         patch(s=>({...s,studySets:[...s.studySets,{...parsed,id:uid(),spaceId:activeSpace!.id,chatId:id,kind:studyKind,created:Date.now(),attempts:[]}]}));
         updateChat(id,c=>({...c,messages:c.messages.map(m=>m.id===messageId?{...m,content:`${parsed.title} is ready: ${parsed.items.length} ${studyKind==='quiz'?'questions':'flashcards'}. Open ${activeSpace!.name} in Subjects to study and track your progress.`}:m)}));
@@ -855,10 +856,9 @@ In this subject the learner keeps missing these questions in review; connect to 
             ? {
                 ...m,
                 content:
-                  m.content ||
-                  ((e as Error).name === "AbortError"
-                    ? "Stopped. Your request is saved."
-                    : (e as Error).message),
+                  (e as Error).name === "AbortError"
+                    ? m.content ? m.content + "\n\n*Interrupted.*" : "Stopped. Your request is saved."
+                    : m.content || (e as Error).message,
               }
             : m,
         ),
@@ -1067,7 +1067,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                   goal: plan.goal.slice(0,4000),
                   instructions: task.instructions.slice(0,8000),
                   expectedOutput: task.output.slice(0,2000),
-                  inputs: Object.fromEntries(Object.entries(inputs).map(([key,value])=>[key,value.length>Math.floor(18000/Math.max(1,Object.keys(inputs).length))?value.slice(0,Math.floor(18000/Math.max(1,Object.keys(inputs).length)))+"\n[Earlier output excerpted to fit context]":value])),
+                  inputs: Object.fromEntries(Object.entries(inputs).map(([key,value])=>{const room=Math.floor(18000/Math.max(1,Object.keys(inputs).length));return [key,value.length>room?compressReply(value,room-60)+"\n[Earlier output condensed to fit context]":value];})),
                   sources: sources.length>18000?sources.slice(0,18000)+"\n[Sources excerpted to fit context; disclose missing evidence]":sources,
                   scopeMemory:
                     (activeSpace?.memory || (!spaceId ? state.memory : "")).slice(0,3000),
@@ -1204,12 +1204,6 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   // A queued message is sent after the destination conversation has rendered.
   useEffect(()=>{if(queued&&!running){const prompt=queued;setQueued(null);void send(undefined,prompt);}},[queued,running]);
-  useEffect(()=>{
-    const next=waiting[conversationTarget];
-    if(!next?.length||running||queued)return;
-    setWaiting(({[conversationTarget]:_,...rest})=>rest);
-    void send(undefined,next.join("\n\n"));
-  },[waiting,running,queued,conversationTarget]);
   async function openPackBytes(bytes:Uint8Array,name:string){
     try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast((e as Error).message);}
   }
@@ -1348,7 +1342,6 @@ In this subject the learner keeps missing these questions in review; connect to 
   ];
   const composerUI = (
     <form className="composer" onSubmit={send}>
-      {!!waiting[conversationTarget]?.length && <div className="waiting-chips" role="status">{waiting[conversationTarget].map((text, i) => <span className="waiting-chip" key={i} title={text}><Icon name="up" size={12} /><span>{text}</span><button type="button" aria-label="Don’t send this" onClick={() => setWaiting((w) => ({ ...w, [conversationTarget]: w[conversationTarget].filter((_, j) => j !== i) }))}><Icon name="close" size={12} /></button></span>)}<small>Sends when Mowr finishes</small></div>}
       {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} title={p.text || "Selected area"}>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
       <textarea
         ref={composer}
@@ -1458,23 +1451,21 @@ In this subject the learner keeps missing these questions in review; connect to 
         </div>
         <div className="composer-tools">
           <ModelSelector models={models} value={model} effort={reasoning} onEffort={chooseReasoning} onChange={chooseModel} onConnect={()=>openSettings("Models")}/>
-          {running ? (
-            <>
-              {!!draft.trim() && <button className="send-button" aria-label="Send when Mowr finishes" title="Sends as soon as Mowr finishes this answer"><Icon name="up" size={22} /></button>}
-              <button
-                type="button"
-                className="send-button"
-                aria-label="Stop response"
-                title="Stop this chat (other chats keep going)"
-                onClick={() => stopChat(conversationTarget)}
-              >
-                <span className="stop-square" />
-              </button>
-            </>
+          {running && !draft.trim() ? (
+            <button
+              type="button"
+              className="send-button"
+              aria-label="Stop response"
+              title="Stop this chat (other chats keep going)"
+              onClick={() => stopChat(conversationTarget)}
+            >
+              <span className="stop-square" />
+            </button>
           ) : (
             <button
               className="send-button"
-              aria-label="Send message"
+              aria-label={running ? "Interrupt and send" : "Send message"}
+              title={running ? "Stops this answer and sends your message" : undefined}
               disabled={!draft.trim()}
             >
               <Icon name="up" size={22} />

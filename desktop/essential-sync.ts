@@ -27,11 +27,13 @@ export class EssentialSync {
         try {
           if ((await this.auth.user())?.id !== owner)
             throw Error("Account changed.");
-          const remote = (await this.auth.cloud("/sync/" + kind)) as Baseline;
+          // Nothing changed locally or in the cloud: no download, no upload.
+          const answer = (await this.auth.cloud("/sync/" + kind + (base.revision ? "?since=" + base.revision : ""))) as Baseline & { unchanged?: boolean };
+          const remote: Baseline = answer.unchanged ? base : answer;
           const merged = mergeSync(
             base.data,
             data,
-            validateSync(kind, remote.data),
+            answer.unchanged ? remote.data : validateSync(kind, remote.data),
           );
           let revision = remote.revision;
           if (JSON.stringify(merged) !== JSON.stringify(remote.data)) {
