@@ -1,0 +1,43 @@
+.space-mark{flex:none;display:grid;place-items:center;margin:0 1px 0 -3px;border-radius:6px;color:#a9a9a9;background:#ffffff0a;box-shadow:inset 0 0 0 1px #ffffff14;transition:color .2s,background .2s}
+.space-mark .drawn-icon{transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.history-item.chosen .space-mark,.history-item:is(:hover,:focus-visible) .space-mark{color:#dcdcdc;background:#ffffff10}
+/* On cards the glyph stands alone, the size and colour of the icon it replaces. */
+.space-mark.bare,.space-card .space-mark.bare{margin:0 0 23px;background:none;box-shadow:none;color:#e5e5df;place-items:start}
+@keyframes mark-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes mark-rise{0%,100%{transform:scaleY(1)}45%{transform:scaleY(.55)}}
+@keyframes mark-spin{0%,100%{transform:scaleX(1)}50%{transform:scaleX(-1)}}
+@keyframes mark-slosh{0%,100%{transform:translateY(0) rotate(0)}35%{transform:translateY(-1px) rotate(-7deg)}70%{transform:translateY(.5px) rotate(5deg)}}
+@keyframes mark-hop{0%,100%{transform:translateY(0) rotate(0)}40%{transform:translateY(-2.5px) rotate(-7deg)}70%{transform:translateY(.5px) rotate(3deg)}}
+@keyframes mark-twist{0%,100%{transform:rotate(0)}45%{transform:rotate(-28deg)}}
+@keyframes mark-scribble{0%,100%{transform:translate(0,0)}25%{transform:translate(-1.5px,1px)}50%{transform:translate(1px,-.5px)}75%{transform:translate(-.5px,1px)}}
+/* Each discipline moves its own way while its chat is hovered or focused. */
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-maths .stroke{stroke-dasharray:1;animation:mark-draw .6s cubic-bezier(.4,0,.2,1)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-physics .drawn-icon{transform:rotate(60deg)}
+.m-chemistry .stroke-2{transform-origin:center}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-chemistry .stroke-2{animation:mark-slosh .9s ease-in-out}
+.m-chemistry .drawn-icon{transform-origin:50% 90%}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-chemistry .drawn-icon{transform:rotate(-8deg)}
+.m-biology .drawn-icon{transform-origin:20% 80%}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-biology .drawn-icon{transform:rotate(-13deg)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-medicine .stroke{stroke-dasharray:1;animation:mark-draw 1.1s linear infinite}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-code .stroke-0{transform:translateX(-2px)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-code .stroke-1{transform:translateX(2px)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-code .stroke-2{transform:rotate(14deg)}
+.m-economics .stroke{transform-origin:center bottom}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-economics .stroke-1{animation:mark-rise .7s ease-in-out}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-economics .stroke-2{animation:mark-rise .7s .08s ease-in-out}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-economics .stroke-3{animation:mark-rise .7s .16s ease-in-out}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-economics .stroke-4{animation:mark-rise .7s .24s ease-in-out}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-history .stroke-1{transform:translateY(-2.5px)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-language .stroke-0{animation:mark-scribble .7s ease-in-out}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-language .stroke-2{stroke-dasharray:1;animation:mark-draw .7s ease-out}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-earth .stroke-2{animation:mark-spin 1.4s ease-in-out infinite}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-music .drawn-icon{animation:mark-hop .7s cubic-bezier(.3,.7,.3,1)}
+.m-art .drawn-icon{transform-origin:40% 60%}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-art .drawn-icon{transform:rotate(-16deg)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-engineering .drawn-icon{animation:mark-twist .7s cubic-bezier(.3,.7,.3,1)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-mind .stroke-1{transform:rotate(180deg);transition-duration:.6s}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-other .stroke-0{transform:translateY(-2px)}
+:is(.history-item:is(:hover,:focus-visible),.space-card:hover) .m-other .stroke-1{stroke-dasharray:1;animation:mark-draw .5s .1s ease-out backwards}
+@media(prefers-reduced-motion:reduce){.space-mark .drawn-icon,.space-mark .stroke{animation:none!important;transform:none!important;transition:none}}
+[data-quiet=true] .space-mark .drawn-icon,[data-quiet=true] .space-mark .stroke{animation:none!important;transform:none!important}

@@ -17,3 +17,9 @@ test('the model is only asked to rename when the subject has moved on',()=>{
   assert.match(titleInstruction(null),/End your reply with/);
   assert.match(titleInstruction('Partial Derivatives'),/Only if the conversation as a whole has clearly moved on/);
 });
+test('the model can pick the mark of the chat\'s subject or project',()=>{
+  assert.deepEqual(takeTitle('Answer.\n<!--title: Limits-->\n<!--summary: How limits describe approach.-->\n<!--mark: Maths-->'),{content:'Answer.',title:'Limits',summary:'How limits describe approach.',mark:'maths'});
+  assert.equal(hideTitleMarker('Answer.\n<!--ma'),'Answer.');
+  assert.match(titleInstruction(null,{kind:'subject',name:'Unit 4',description:'',keys:['maths','other']}),/<!--mark: key-->[\s\S]*maths, other/);
+  assert.doesNotMatch(titleInstruction(null),/mark: key/);
+});

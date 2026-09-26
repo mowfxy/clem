@@ -41,9 +41,9 @@
 .composer .mode-button.long-toggle:focus-visible{outline:2px solid #d6d5cf;outline-offset:1px}
 .long-toggle .long-switch{position:relative;width:24px;height:14px;border-radius:99px;background:#3b3b37;flex:none;transition:background .2s}
 .long-toggle .long-switch::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#9d9c95;transition:transform .2s cubic-bezier(.2,.9,.3,1),background .2s}
-.composer .mode-button.long-toggle.selected{background:#9aa5f514;border-color:#9aa5f555;color:#dfe2fd}
-.long-toggle.selected .long-switch{background:#9aa5f5}
-.long-toggle.selected .long-switch::after{transform:translateX(10px);background:#fff}
+.composer .mode-button.long-toggle.selected{background:#ffffff0d;border-color:#6b6b66;color:#f4f4f2}
+.long-toggle.selected .long-switch{background:#f4f4f2}
+.long-toggle.selected .long-switch::after{transform:translateX(10px);background:#171717}
 @media(prefers-reduced-motion:reduce){.long-toggle .long-switch,.long-toggle .long-switch::after{transition:none}}
 @media(max-width:760px){.picker-trigger-name{max-width:110px}}
 .step-head h3{font:500 15px 'Mowafy Sans Text',sans-serif;margin:0;flex:1}
