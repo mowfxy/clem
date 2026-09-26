@@ -98,6 +98,7 @@ import { weakConcepts } from "./SubjectStudy";
 import "./chat/chat.css";
 import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
+import { StorageSummary } from './files/StorageSummary';
 import { titleInstruction, takeTitle, hideTitleMarker } from "../core/chat-title";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
@@ -188,12 +189,6 @@ function Modal({
       {children}
     </dialog>
   );
-}
-/** The mark a chat carries when it lives in a subject or project: a small drawn book or stack, not a letter. */
-function SpaceMark({kind}:{kind:"subject"|"project"}){
-  return kind==="subject"
-    ? <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.2c1.9-.9 3.8-.9 5.5.3v9.6c-1.7-1.1-3.6-1.1-5.5-.2zM13.5 3.2c-1.9-.9-3.8-.9-5.5.3v9.6c1.7-1.1 3.6-1.1 5.5-.2z" fill="currentColor" opacity=".92"/></svg>
-    : <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 14.2 5 8 8.2 1.8 5z" fill="currentColor"/><path d="M1.8 8 8 11.2 14.2 8M1.8 11 8 14.2 14.2 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" opacity=".75"/></svg>;
 }
 function workspaceRoute(){const route=location.hash.slice(1)||"/";return desktop&&!route.startsWith("/app")?"/app":route;}
 export default function App({offline=false}:{offline?:boolean}={}) {
@@ -843,6 +838,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       updateChat(id, (c) => ({
         ...c,
         ...(named.title ? { title: named.title, titled: true } : {}),
+        ...("summary" in named && named.summary ? { summary: named.summary } : {}),
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
         messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
@@ -1543,9 +1539,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                       navigate("/app");
                     }}
                   >
-                    {(() => { const space = c.spaceId ? state.spaces.find((x) => x.id === c.spaceId) : undefined;
-                      // Chats in a subject or project carry its mark and name, so they read differently from loose chats.
-                      return space ? <span className={`history-space ${space.kind}`} title={`In ${space.kind}: ${space.name}`} aria-label={`In ${space.kind} ${space.name}`}><SpaceMark kind={space.kind} /></span> : null; })()}
                     <span className="history-title">{c.title}</span>
                     {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" title={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" aria-label="New reply" title="New reply" /> : null}
                   </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={c.id in runs} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
@@ -2009,15 +2002,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     Upload files
                   </button>
                 </div>
-                <div className="storage-summary">
-                  <div>
-                    <span>
-                      {sizeLabel(bytes)}{" "}
-                      <span className="muted">used</span>
-                    </span>
-                    <span className="fine">Stored on this device</span>
-                  </div>
-                </div>
+                <StorageSummary files={state.files} />
                 <div className="search-field">
                   <Icon name="research" size={19} />
                   <input

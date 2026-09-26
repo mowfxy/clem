@@ -3,6 +3,7 @@ import {Icon} from '../Icons';
 import {RenameField,PencilIcon} from '../files/RenameField';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
+import {chatPreview} from '../../core/chat-title';
 import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
@@ -172,10 +173,10 @@ function FileGlyph({file}:{file:StoredFile}){const k=fileKind(file);return <span
 
 function ChatList({chats,onOpen,onNew}:{chats:Chat[];onOpen:(c:Chat)=>void;onNew:()=>void}){
   const [q,setQ]=useState('');
-  const shown=chats.filter(c=>!q||(c.title+' '+c.messages.map(m=>m.content).join(' ')).toLowerCase().includes(q.toLowerCase()));
+  const shown=chats.filter(c=>!q||(c.title+' '+(c.summary||'')+' '+c.messages.map(m=>m.content).join(' ')).toLowerCase().includes(q.toLowerCase()));
   return <section className="sp-list">
     <div className="sp-toolbar"><div className="sp-search"><Icon name="research" size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search these chats" aria-label="Search chats"/></div><button className="primary" onClick={onNew}><Icon name="plus" size={15}/>New chat</button></div>
-    {shown.map(c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant')?.content||c.messages[0]?.content||'';return <button key={c.id} className="sp-chat" onClick={()=>onOpen(c)}><strong>{c.title}</strong><span>{last.replace(/```[\s\S]*?```/g,'').replace(/\s+/g,' ').slice(0,160)}</span><small>{ago(c.updated)} · {c.messages.length} messages</small></button>;})}
+    {shown.map(c=>{const last=chatPreview(c);return <button key={c.id} className="sp-chat" onClick={()=>onOpen(c)}><strong>{c.title}</strong>{last&&<span>{last}</span>}<small>{ago(c.updated)} · {c.messages.length} messages</small></button>;})}
     {!shown.length&&<p className="sp-empty-line">{q?'No chat matches.':'No chats yet.'}</p>}
   </section>;
 }

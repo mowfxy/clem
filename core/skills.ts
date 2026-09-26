@@ -49,7 +49,7 @@ export const builtinSkills: Skill[] = [
  ],builtin:true},
  {id:'visual',name:'Visual understanding',description:'Turn an abstract idea into something you can move, explore and understand.',category:'Learning',icon:'visuals',steps:[
   'Name the concept precisely, the one relationship the learner should see, the quantities they would want to change, and the assumptions of the model.',
-  'Pick the right form: plot for functions and motion, diagram (with steps) for processes, cycles and systems, chart for data and comparisons.',
+  'Pick the right form: plot for functions and motion (polar, implicit curves, vector fields and data points included), diagram (with steps) for processes, cycles and systems, chart for data and comparisons (bar, line, area, pie), and 3d when depth carries the idea: surfaces z=f(x,y), 3D vectors and curves, solids, fields, molecules and structural models someone can orbit.',
   'Draw it with exactly one ```visual block of strict JSON; never write SVG, HTML, Mermaid, ASCII art or code for it.',
   'Give sliders for the quantities that matter, with realistic ranges, sensible steps and units; animate with t only when motion is the point.',
   'Keep the physics and maths correct: equal axes for geometry, SI units, angles in radians inside expressions (use rad(deg)), labelled axes with units.',

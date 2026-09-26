@@ -94,11 +94,42 @@ export const mowrSkills: MowrSkill[] = [
     when: /\b(visuali[sz]e|visual|diagram|draw|plot|graph|chart|animate|simulate|show me how|illustrate|map out|flow ?chart|mind ?map)\b/i,
     steps: [
       "In a chat answer, draw with ONE ```visual block (plot, diagram or chart) as described under VISUALS. Never write SVG, HTML, Mermaid, ASCII art or plotting code for it: Mowr draws the block and the person can export it as PNG, SVG or PDF.",
-      "Choose the form from the idea: plot for functions, fields and motion (with sliders and animation over t); diagram with steps for processes, cycles, systems and concept maps; chart for data and comparisons.",
+      "Choose the form from the idea: plot for functions, motion and anything flat (with sliders and animation over t); diagram with steps for processes, cycles, systems and concept maps; chart for data and comparisons; 3d when depth is the point (surfaces, 3D vectors, solids, molecules; see 3D MODELS).",
+      "Pick the plot layer that matches the maths: function for y=f(x); parametric for paths and orbits; polar for r(θ) (cardioids, roses, orbits); implicit for relations and contours f(x,y)=c (circles, ellipses, hyperbolas, level sets, equipotentials, phase curves; several levels draw a contour map); field for vector, force, velocity and slope fields (differential equations, electric and magnetic fields, fluid flow); points for measured data and scatter plots (add a function layer for the fit); area for integrals and probability.",
+      "Charts: bar for comparing categories, line for change over time, area for cumulative or stacked-looking totals, pie only for shares of one whole with at most seven parts.",
+      "Make the visual teach one relationship. Good examples: projectile with angle and speed sliders; a travelling wave animated over t; the electric field of a dipole as a field layer with a slider for charge; a conic drawn with implicit and a slider for eccentricity; the Krebs cycle as a diagram with steps; population growth data as points with a logistic curve.",
       "Add sliders for the quantities a learner would change, with realistic ranges and units, and readouts for derived values; write a one-line caption with the assumptions.",
       "Keep the maths correct: equal axes for geometry, angles in radians inside expressions, labelled axes with units.",
       "Introduce the visual in one sentence and follow it with at most three short prompts on what to try and notice.",
       "In a PDF, use a Kinetra figure instead of a ```visual block.",
+    ],
+  },
+  {
+    id: "3d", name: "3D models in chat", description: "Orbitable 3D scenes: surfaces, curves, vectors, solids, fields and molecules.",
+    when: /\b(3d|3-d|three[- ]dimension\w*|surface|surfaces|z ?= ?f\(x|multivariable|partial derivatives?|gradient|tangent plane|saddle|paraboloid|helix|sphere|cylinder|cone|cube|prism|pyramid|torus|volume of|solid of revolution|cross[- ]section|vector field|flux|curl|divergence|orbitals?|molecule|molecular|bond angle|vsepr|tetrahedral|trigonal|crystal|lattice|unit cell|protein|dna|double helix|cell structure|organelles?|magnetic field|electric field|orbit|rotate|rotating|spin|isometric|perspective)\b/i,
+    steps: [
+      "Use kind \"3d\" when seeing depth is what makes the idea click: a function of two variables z=f(x,y) and its partial derivatives or gradient; tangent planes; parametric curves in space (helix, trajectories, field lines); 3D vectors, dot and cross products; solids, volumes, cross-sections and solids of revolution; vector fields; molecular shape and bond angles (VSEPR); crystal lattices; orbitals; the double helix. If the idea reads fine flat (a single curve, a 2D field), use a plot instead: it is clearer.",
+      "Set x, y and z ranges with axis labels and units for mathematical scenes; omit them for molecules and models, and Mowr fits the camera to the scene and hides the axes.",
+      "Surfaces: {\"type\":\"surface\",\"expr\":\"…in x and y…\"} uses the axis ranges; colormap colours by height and is the default without a colour. Closed shapes (spheres, tori, orbitals, cones) are parametricSurface objects over u and v with opacity 0.5–0.8 so what is inside stays visible.",
+      "Show the teaching moment on top of the surface: a point at the place being discussed, vectors for the gradient or partial slopes (for example dx along x and dz equal to ∂f/∂x there), curves for the slices y=b or x=a (a curve with x=\"s\", y=\"b\", z=\"f(s,b)\"), and labels. Give sliders for the point's coordinates so the person can move it and watch the slopes change.",
+      "Molecules: give real 3D coordinates in ångströms from known geometry (bond lengths and angles), with the central atom at the origin; set bonds with orders for double and triple bonds, or omit bonds to connect atoms by distance; labels:true names the atoms. Keep hydrogens. For large biomolecules, draw a simplified model (a double helix from two curves and rungs as segments) and say so in the caption.",
+      "Biology and physical models (a cell, the heart, a leaf, the Earth's magnetic field): build them from spheres, boxes, cylinders, cones, curves and labels, give every part an id and a label, and add steps that focus each part in turn with one or two sentences about it.",
+      "Animate with t only when motion is the idea (an orbit, a rotating field line, a wave on a surface); otherwise keep it still. autoRotate:true suits a showcase model with no sliders. Choose a camera azimuth and elevation that shows the key feature at first sight.",
+      "Keep scenes light: at most about 30 objects, field density 3–6, surface resolution left at the default.",
+      "Introduce the model in one sentence, tell the person they can drag to orbit and scroll to zoom, then give at most three things to try.",
+    ],
+  },
+  {
+    id: "notation", name: "Maths, physics, chemistry and biology notation", description: "LaTeX that always renders: symbols, units, equations and reactions.",
+    when: /\b(math|maths|equation|formula|derivative|integral|limit|matrix|vector|proof|solve|physics|force|energy|momentum|velocity|acceleration|field|circuit|quantum|wave|chemistry|chemical|reaction|equilibrium|mol|molar|ph|acid|base|redox|oxidation|compound|ion|biology|enzyme|photosynthesis|respiration|atp|dna|rna|gene|protein|cell|metabolism|genetics|allele|punnett|statistics|probability|calculus|algebra|geometry|trigonometry)\b/i,
+    steps: [
+      "Every symbol, variable and formula goes in LaTeX between dollars, even a single letter in a sentence ($x$, $\\theta$, $F_{net}$). Display equations get their own $$ … $$ lines. Never write maths in backticks, as plain text like x^2, or with a bare \\frac outside dollars.",
+      "Physics: vectors bold or arrowed ($\\vb{F}$, $\\vec{v}$), units upright with a thin space ($9.81\\,\\mathrm{m\\,s^{-2}}$, $\\SI{3.0e8}{m/s}$), derivatives with \\dv and \\pdv, and one consistent symbol set for the whole answer.",
+      "Chemistry: formulas and equations with \\ce so subscripts, charges and arrows are right: $\\ce{2H2 + O2 -> 2H2O}$, equilibria with <=>, conditions over the arrow ->[heat], states with (aq), (s), (g), (l). Balance every equation.",
+      "Biology: reactions with \\ce (respiration $\\ce{C6H12O6 + 6O2 -> 6CO2 + 6H2O}$), gene names italic ($\\textit{BRCA1}$) and proteins upright, genotypes like $Aa \\times Aa$, ratios as $3:1$, and Punnett squares as Markdown tables.",
+      "Statistics: $\\bar{x}$, $\\sigma$, $\\hat{p}$, $P(A \\mid B)$, $\\binom{n}{k}$, $\\sum_{i=1}^{n}$, $\\mathbb{E}[X]$ and $\\operatorname{Var}(X)$.",
+      "Multi-step derivations use one $$ block with \\begin{aligned} … \\end{aligned} and & aligned at the equals signs, so each step reads under the last.",
+      "Money is written \\$5 or USD 5 so it never turns into maths.",
     ],
   },
   {
@@ -160,13 +191,14 @@ export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them i
 - Videos: a full https://www.youtube.com/watch?v=… link becomes a playable video under its line; a Drive video linked as [name](drive:ID) plays in the chat.
 - Google Drive: when Drive results are supplied, link files as [name](drive:ID); documents open in Mowr's viewer.
 - Documents: Kinetra makes typeset PDFs with computed figures, flowcharts, charts, timelines and mind maps. Changing a document Mowr made updates that same file.
-- Visuals: one \`\`\`visual block draws an interactive plot, diagram or chart in the chat.
+- Visuals: one \`\`\`visual block draws an interactive plot, diagram, chart or orbitable 3D model (surfaces, vectors, solids, molecules) in the chat.
+- Maths and science: LaTeX in $…$ and $$…$$ renders, including chemistry with \\ce{…} and units.
 - Checks and citations: \`\`\`check recomputes numbers; [[file, p. N]] opens the source at that page.
 - Files: attached files and a space's sources arrive as excerpts to cite; a file open beside the chat is edited in place.
 - The person can export any answer as PDF, Word or PowerPoint from the Export button under it.`;
 
 /** The full playbooks that fit this request, as numbered steps. */
-export function mowrSkillsFor(request: string, context: SkillContext = {}, limit = 5) {
+export function mowrSkillsFor(request: string, context: SkillContext = {}, limit = 6) {
   const chosen = mowrSkills.filter((skill) => {
     if (skill.id === "revise") return !!context.documents && skill.when.test(request);
     if (skill.id === "drive") return (context.drive || /\bdrive\b/i.test(request)) && skill.when.test(request);
