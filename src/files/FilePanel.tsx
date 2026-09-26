@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { FileVersion, StoredFile } from "../../core/types";
 import { Icon, Logo } from "../Icons";
+import { copyText } from "../clipboard";
 import { getBlob, storeBlob, deleteBlob, download } from "../store";
 import { desktop, desktopChat } from "../desktop/bridge";
 import { confirmDialog } from "../dialogs";
@@ -326,7 +327,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     {area && drag.current && createPortal(<div className="fp-area drawing" style={{ left: area.x, top: area.y, width: area.w, height: area.h }} />, area.page)}
     {menu && <div className="fp-menu" role="menu" style={{ left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 140) }} onPointerDown={(e) => e.stopPropagation()}>
       {menu.text && <button role="menuitem" onClick={() => point({ page: menu.page, text: menu.text })}><Icon name="chat" size={15} />Add selection to chat</button>}
-      {menu.text && <button role="menuitem" onClick={() => { void navigator.clipboard?.writeText(menu.text!); setMenu(null); }}><Icon name="copy" size={15} />Copy</button>}
+      {menu.text && <button role="menuitem" onClick={() => { void copyText(menu.text!); setMenu(null); }}><Icon name="copy" size={15} />Copy</button>}
       {menu.area && area && <button role="menuitem" onClick={() => { point({ page: area.n, image: crop(area), text: areaText(area) || undefined }); setArea(null); }}><Icon name="chat" size={15} />Add this area to chat</button>}
       {shown?.kind === "pdf" && <button role="menuitem" onClick={() => { setAreaMode(true); setArea(null); setMenu(null); }}><Icon name="capture" size={15} />Select an area…</button>}
       {!menu.text && !menu.area && shown?.kind !== "pdf" && <p>Select text first, then right-click to add it.</p>}

@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {SiteFooter,SiteHeader} from './SiteHeader';
 import {Icon,Logo} from '../Icons';
+import {copyText} from '../clipboard';
 import {SecuritySettings} from '../AccountSettings';
 import {Reveal} from './Reveal';
 
@@ -60,7 +61,7 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
           </ol>
           {!release?.signed&&<Reveal className="sx-smartscreen" delay={120}>
             <div className="sx-ss-window" aria-hidden="true"><div className="sx-ss-top">Windows protected your PC</div><p>Microsoft Defender SmartScreen prevented an unrecognised app from starting.</p><p className="sx-ss-link">More info</p><div className="sx-ss-actions"><span className="run">Run anyway</span><span>Don’t run</span></div></div>
-            <div><h3>Seeing this screen?</h3><p>It’s normal for an unsigned preview. Click <strong>More info</strong>, check the app name says Mowr-Setup, then click <strong>Run anyway</strong>.</p>{release?.sha256&&<div className="sx-hash"><span>SHA-256</span><code>{release.sha256}</code><button onClick={()=>void navigator.clipboard.writeText(release.sha256!)} className="sx-btn sx-btn-ghost">Copy</button></div>}</div>
+            <div><h3>Seeing this screen?</h3><p>It’s normal for an unsigned preview. Click <strong>More info</strong>, check the app name says Mowr-Setup, then click <strong>Run anyway</strong>.</p>{release?.sha256&&<div className="sx-hash"><span>SHA-256</span><code>{release.sha256}</code><button onClick={()=>void copyText(release.sha256!)} className="sx-btn sx-btn-ghost">Copy</button></div>}</div>
           </Reveal>}
         </section>
 
