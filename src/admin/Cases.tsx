@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {adminApi,type CaseRow} from './api';
-import {Avatar,Badge,Empty,ErrorNote,I,PlanBadge,Skeleton,ago,date,useLoad,useToast,who} from './ui';
+import {Avatar,Badge,Empty,ErrorNote,I,PageHead,Skeleton,ago,date,useLoad,useToast,who} from './ui';
 import type {Go} from './AdminApp';
 
 const statuses=[['active','Active'],['open','Open'],['pending','Waiting on person'],['resolved','Resolved'],['closed','Closed'],['all','All']] as const;
@@ -12,7 +12,7 @@ export function Cases({go,selected}:{go:Go;selected?:string}){
   useEffect(()=>{const t=setTimeout(()=>setQuery(q.trim()),250);return()=>clearTimeout(t);},[q]);
   const list=useLoad(()=>adminApi<{cases:CaseRow[]}>(`/admin/cases?status=${status}&q=${encodeURIComponent(query)}`),[status,query]);
   return <div className="adm-page adm-inbox-page">
-    <header className="adm-page-head"><div><h1>Support cases</h1><p>Questions, bug reports and ideas from people using Mowr.</p></div><button className="adm-ghost" onClick={list.reload}><I name="refresh"/>Refresh</button></header>
+    <PageHead scene="lifebuoy" title="Support cases" line="Questions, bug reports and ideas from people using Mowr."><button className="adm-ghost" onClick={list.reload}><I name="refresh"/>Refresh</button></PageHead>
     <div className="adm-inbox">
       <section className="adm-inbox-list">
         <div className="adm-inbox-tools"><label className="adm-search"><I name="search"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search cases" aria-label="Search cases"/></label>
@@ -21,15 +21,15 @@ export function Cases({go,selected}:{go:Go;selected?:string}){
           <span className="adm-inbox-row-top"><strong>{c.email||c.username||'Unknown person'}</strong><small>{ago(c.updated_at)}</small></span>
           <span className="adm-inbox-subject">{c.awaiting_staff&&<i className="adm-unread" aria-label="Awaiting reply"/>}{c.subject}</span>
           <span className="adm-chips"><Badge tone={priorityTone[c.priority]}>{c.priority}</Badge><Badge>{c.category.replace('Contact support','Help').replace('Report a bug','Bug').replace('Suggest a feature','Idea')}</Badge>{c.status!=='open'&&<Badge tone="quiet">{c.status}</Badge>}</span>
-        </button></li>)}</ul>:<Empty icon="inbox" title="Nothing here">{status==='active'?'Every case has been handled.':'No cases match this filter.'}</Empty>}
+        </button></li>)}</ul>:<Empty scene="lifebuoy" title="Nothing here">{status==='active'?'Every case has been handled.':'No cases match this filter.'}</Empty>}
       </section>
-      <section className="adm-inbox-detail">{selected?<CaseDetail key={selected} id={selected} go={go} onChanged={list.reload}/>:<Empty icon="inbox" title="Choose a case">Pick a conversation to read and reply.</Empty>}</section>
+      <section className="adm-inbox-detail">{selected?<CaseDetail key={selected} id={selected} go={go} onChanged={list.reload}/>:<Empty scene="conversation" title="Choose a case">Pick a conversation to read and reply.</Empty>}</section>
     </div>
   </div>;
 }
 
 type Message={id:string;author:'user'|'staff'|'note';author_name:string;body:string;created_at:string};
-type Detail={case:CaseRow&{message:string;display_name?:string;last_seen_at?:string;plan:any;user_seen_at?:string};messages:Message[];otherCases:{id:string;subject:string;status:string;created_at:string}[];team:{id:string;email:string;role:string}[]};
+type Detail={case:CaseRow&{message:string;display_name?:string;last_seen_at?:string;user_seen_at?:string};messages:Message[];otherCases:{id:string;subject:string;status:string;created_at:string}[];team:{id:string;email:string;role:string}[]};
 
 function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
   const toast=useToast();
@@ -62,7 +62,7 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
       <aside className="adm-case-side">
         <h3>Requester</h3>
         <button className="adm-person link" onClick={()=>go('users',c.owner_id)}><Avatar person={{id:c.owner_id,email:c.email,username:c.username}}/><span><strong>{who({email:c.email,username:c.username,display_name:c.display_name})}</strong><small>{c.email}</small></span></button>
-        <dl className="adm-facts single"><div><dt>Plan</dt><dd><PlanBadge plan={c.plan}/></dd></div><div><dt>Last seen</dt><dd>{ago(c.last_seen_at)}</dd></div></dl>
+        <dl className="adm-facts single"><div><dt>Last seen</dt><dd>{ago(c.last_seen_at)}</dd></div><div><dt>Cases</dt><dd>{otherCases.length+1}</dd></div></dl>
         {!!otherCases.length&&<><h3>Other cases</h3>{otherCases.map(o=><button key={o.id} className="adm-row link" onClick={()=>go('cases',o.id)}><div><strong>{o.subject}</strong><small>{o.status} · {date(o.created_at)}</small></div></button>)}</>}
         {c.email&&<a className="adm-ghost" href={`mailto:${c.email}?subject=${encodeURIComponent('Re: '+c.subject)}`}><I name="external"/>Email instead</a>}
       </aside>

@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {adminApi,type Staff} from './api';
-import {Badge,Empty,ErrorNote,I,Skeleton,ago,date,useLoad,useToast} from './ui';
+import {Badge,Empty,ErrorNote,I,Skeleton,ago,date,useLoad,useToast,PageHead} from './ui';
 
 type Announcement={id:string;title:string;body:string;tone:'info'|'success'|'warning';link:string|null;starts_at:string;ends_at:string|null;archived:number;created_at:string};
 const blank={title:'',body:'',tone:'info',link:'',days:'7'};
@@ -15,7 +15,7 @@ export function Announcements({staff}:{staff:Staff}){
   async function publish(){setBusy(true);try{await adminApi('/admin/announcements',{title:draft.title,body:draft.body,tone:draft.tone,link:draft.link||undefined,days:draft.days==='none'?null:Number(draft.days)});toast('Published to the app');setDraft(blank);await reload();}catch(e){toast((e as Error).message,'error');}finally{setBusy(false);}}
   async function archive(id:string){try{await adminApi(`/admin/announcements/${id}/archive`,{});toast('Announcement taken down');await reload();}catch(e){toast((e as Error).message,'error');}}
   return <div className="adm-page">
-    <header className="adm-page-head"><div><h1>Announcements</h1><p>Short notes shown in everyone’s Mowr app, such as maintenance or a new release.</p></div></header>
+    <PageHead scene="envelope" title="Announcements" line="Short notes shown in everyone’s Mowr app, such as maintenance or a new release."/>
     {canEdit&&<div className="adm-grid-2 compose">
       <form className="adm-card adm-form" onSubmit={e=>{e.preventDefault();void publish();}}>
         <header><h2>New announcement</h2></header>
@@ -31,7 +31,7 @@ export function Announcements({staff}:{staff:Staff}){
       </div>
     </div>}
     <section className="adm-card"><header><h2>History</h2></header>
-      {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:data!.announcements.length?<ul className="adm-list plain">{data!.announcements.map(a=><li key={a.id}><div className="adm-row"><div><strong>{a.title} {live(a)?<Badge tone="ok">Live</Badge>:<Badge tone="quiet">Ended</Badge>}</strong><small>{a.body}</small><small>Published {ago(a.created_at)} · {a.ends_at?`ends ${date(a.ends_at)}`:'no end date'}</small></div>{canEdit&&live(a)&&<button onClick={()=>void archive(a.id)}>Take down</button>}</div></li>)}</ul>:<Empty icon="megaphone" title="No announcements yet"/>}
+      {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:data!.announcements.length?<ul className="adm-list plain">{data!.announcements.map(a=><li key={a.id}><div className="adm-row"><div><strong>{a.title} {live(a)?<Badge tone="ok">Live</Badge>:<Badge tone="quiet">Ended</Badge>}</strong><small>{a.body}</small><small>Published {ago(a.created_at)} · {a.ends_at?`ends ${date(a.ends_at)}`:'no end date'}</small></div>{canEdit&&live(a)&&<button onClick={()=>void archive(a.id)}>Take down</button>}</div></li>)}</ul>:<Empty scene="envelope" title="No announcements yet">Publish one above and it shows in everyone’s app.</Empty>}
     </section>
   </div>;
 }

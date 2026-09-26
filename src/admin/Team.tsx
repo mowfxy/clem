@@ -1,10 +1,10 @@
 import {useState} from 'react';
 import {confirmDialog} from '../dialogs';
 import {adminApi,type Staff} from './api';
-import {Avatar,Badge,ErrorNote,I,Skeleton,useLoad,useToast} from './ui';
+import {Avatar,Badge,ErrorNote,I,Skeleton,useLoad,useToast,PageHead} from './ui';
 
 const describe={owner:'Everything, including the team.',admin:'People, access, moderation and announcements.',support:'Read people and answer support cases.'};
-const tone=(role:string)=>role==='owner'?'accent':role==='admin'?'ok':'neutral';
+const tone=(role:string)=>role==='owner'?'ink':role==='admin'?'ok':'neutral';
 
 export function Team({staff}:{staff:Staff}){
   const toast=useToast();
@@ -13,7 +13,7 @@ export function Team({staff}:{staff:Staff}){
   const owner=staff.role==='owner';
   async function run(path:string,body:unknown,done:string){setBusy(true);try{await adminApi(path,body);toast(done);await reload();return true;}catch(e){toast((e as Error).message,'error');return false;}finally{setBusy(false);}}
   return <div className="adm-page">
-    <header className="adm-page-head"><div><h1>Team</h1><p>Who can use this portal, and what they can do.</p></div></header>
+    <PageHead scene="key" title="Team" line="Who can use this portal, and what they can do."/>
     <div className="adm-roles">{Object.entries(describe).map(([role,text])=><div key={role}><Badge tone={tone(role)}>{role}</Badge><p>{text}</p></div>)}</div>
     {owner&&<form className="adm-card adm-form inline" onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const f=new FormData(form);void run('/admin/team',{email:String(f.get('email')),role:String(f.get('role'))},'Team member added').then(ok=>{if(ok)form.reset();});}}>
       <label>Email<input name="email" type="email" required placeholder="teammate@example.com"/></label>

@@ -160,22 +160,21 @@ export async function handleAdmin(request, env, user, path, authorization) {
     const everyone = await people(env, { limit: 5000 });
     const since = (n) => new Date(Date.now() - n * day).toISOString();
     const count = (fn) => everyone.filter(fn).length;
-    const plans = {};
-    for (const p of everyone) plans[p.plan] = (plans[p.plan] || 0) + 1;
+    // Mowr is free: report how far people got through the app's four-step welcome instead of plans.
+    const setup = {};
+    for (const p of everyone) setup[p.setup_step || 0] = (setup[p.setup_step || 0] || 0) + 1;
     const signups = Array.from({ length: 14 }, (_, i) => {
       const date = new Date(Date.now() - (13 - i) * day).toISOString().slice(0, 10);
       return { date, count: count((p) => (p.first_seen_at || "").startsWith(date)) };
     });
     const cases = await caseList(env, { status: "active", limit: 500 });
-    const paid = (plans.subscribed || 0) + (plans.cancelling || 0);
     return json({
       users: everyone.length,
       newThisWeek: count((p) => p.first_seen_at && p.first_seen_at > since(7)),
       activeThisWeek: count((p) => p.last_seen_at && p.last_seen_at > since(7)),
       activeToday: count((p) => p.last_seen_at && p.last_seen_at > since(1)),
       suspended: count((p) => p.suspended),
-      plans,
-      mrrCents: paid * PRICE_CENTS,
+      setup,
       openCases: cases.length,
       awaitingReply: cases.filter((c) => c.awaiting_staff).length,
       urgentCases: cases.filter((c) => c.priority === "urgent" || c.priority === "high").length,
@@ -188,8 +187,11 @@ export async function handleAdmin(request, env, user, path, authorization) {
   if (path === "/admin/users" && get) {
     const plan = params.get("plan") || "all";
     let rows = await people(env, { q: (params.get("q") || "").trim().slice(0, 120) });
+    const week = new Date(Date.now() - 7 * day).toISOString();
     if (plan === "suspended") rows = rows.filter((r) => r.suspended);
-    else if (plan === "paying") rows = rows.filter((r) => r.plan === "subscribed" || r.plan === "cancelling");
+    else if (plan === "active") rows = rows.filter((r) => r.last_seen_at && r.last_seen_at > week);
+    else if (plan === "new") rows = rows.filter((r) => r.first_seen_at && r.first_seen_at > week);
+    else if (plan === "setup") rows = rows.filter((r) => (r.setup_step || 0) < 4);
     else if (plan !== "all") rows = rows.filter((r) => r.plan === plan);
     return json({ users: rows.slice(0, 500), total: rows.length });
   }
