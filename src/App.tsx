@@ -99,7 +99,7 @@ import "./chat/chat.css";
 import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
 import { StorageSummary } from './files/StorageSummary';
-import { SpaceMark } from './space/SpaceMark';
+import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker } from "../core/chat-title";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
@@ -807,7 +807,7 @@ ${answerInstructions}${memory ? `
 
 User-authorized memory for this scope: ${memory}` : ""}
 
-${titleInstruction(chat.titled ? chat.title : null)}${struggling.length ? `
+${titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined)}${struggling.length ? `
 
 In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : ""}`,
           },
@@ -843,6 +843,8 @@ In this subject the learner keeps missing these questions in review; connect to 
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
         messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
+      const markSpace = chat.spaceId, picked = "mark" in named ? named.mark : undefined;
+      if (markSpace && picked && markKeys.includes(picked)) patch((s) => ({ ...s, spaces: s.spaces.map((x) => x.id === markSpace ? { ...x, mark: { key: picked, for: x.name } } : x) }));
       recordVisuals(id, named.content);
     } catch (e) {
       updateChat(id, (c) => ({
@@ -1767,10 +1769,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     )
                     .map((s) => (
                       <article className="space-card" key={s.id}>
-                        <Icon
-                          name={s.kind === "project" ? "projects" : "subjects"}
-                          size={32}
-                        />
+                        <SpaceMark space={s} size={32} bare />
                         <h2>
                           <button
                             onClick={() => {
@@ -1918,13 +1917,12 @@ In this subject the learner keeps missing these questions in review; connect to 
                   </form>
                   {state.visuals.some((v) => state.chats.some((c) => c.id === v.chatId)) && <>
                     <h2 className="visuals-section-title">Recent</h2>
-                    <div className="space-grid">
-                      {state.visuals.filter((v) => state.chats.some((c) => c.id === v.chatId)).slice(0, 6).map((v) => (
-                        <button className="visual-record" key={v.id} onClick={() => { const c = state.chats.find((c) => c.id === v.chatId)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); }}>
+                    <div className="visual-gallery visual-recent">
+                      {state.visuals.filter((v) => state.chats.some((c) => c.id === v.chatId)).slice(0, 8).map((v) => (
+                        <button key={v.id} onClick={() => { const c = state.chats.find((c) => c.id === v.chatId)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); }}>
                           {v.spec ? <SpecThumb spec={v.spec} /> : <VisualThumb scene={v.scene || "projectile"} params={v.params} />}
-                          <h2>{v.title}</h2>
-                          <p>{new Date(v.created).toLocaleDateString()}</p>
-                          <Icon name="arrow" />
+                          <strong>{v.title}</strong>
+                          <small>{new Date(v.created).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
                         </button>
                       ))}
                     </div>

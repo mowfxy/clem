@@ -92,6 +92,9 @@
 .visual-gallery .visual-subject{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#6f6e68;padding:0 4px}
 .visuals-section-title,.page h2.visuals-section-title{font:500 12px/1 'Mowafy Sans Text',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#8b8a83;margin:10px 0 14px}
 .visual-record .visual-thumb{margin-bottom:16px}
+.visual-recent{margin-bottom:30px}
+.visual-recent .visual-thumb{aspect-ratio:16/10;display:flex;align-items:center}
+.visual-recent strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(prefers-reduced-motion:reduce){.visual-engine.v2{animation:none}.visual-picker button,.visual-gallery button{transition:none}}
 .v2 .scene-tick{font-size:10.5px;color:var(--v-faint);font-variant-numeric:tabular-nums}
 .v2 .scene-axis{font-size:12px;color:var(--v-soft,#a3a3a0);font-style:italic}

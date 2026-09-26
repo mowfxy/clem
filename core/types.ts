@@ -5,7 +5,7 @@ export type Plan = { id: string; goal: string; lead: string; tasks: Subtask[]; a
 export type Skill = { id: string; name: string; description: string; category: string; icon: string; steps: string[]; builtin: boolean };
 /** A folder made inside Mowr to organise a space's files; `parentId` nests it. */
 export type SpaceFolder = { id: string; name: string; parentId: string | null; created: number };
-export type Space = { id: string; name: string; kind: 'project' | 'subject'; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[]; drive?: SpaceDrive };
+export type Space = { id: string; name: string; kind: 'project' | 'subject'; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[]; drive?: SpaceDrive; /** Sidebar mark the model picked for this name (see src/space/SpaceMark.tsx); asked again once the name changes. */ mark?: { key: string; for: string } };
 /** A Google Drive folder linked to a space. It is read live from Drive whenever it is shown or asked about; nothing is
  *  downloaded. `seen` remembers each file's last modified time so new and changed files can be pointed out; `fresh`
  *  lists them until the person looks. `files`, `lastSync` and `newFiles` are from the older copy-based sync. */
