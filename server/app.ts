@@ -5,6 +5,7 @@ import {emailRouter} from './emails.ts';
 import {databaseReady} from './db.ts';
 import {supabaseConfig,supabaseIdentity} from './auth.ts';
 import { runChat } from './skill-runtime.ts';
+import { boundedConversation } from '../core/chat-context.ts';
 import { nextRun, runDue } from "./automations.ts";
 import "./config.ts";
 import express from "express";
@@ -304,7 +305,8 @@ app.post("/api/chat", async (req, res) => {
     return;
   }
   const b = chatInput.parse(req.body);
-  if(b.messages.reduce((n,m)=>n+m.content.length,0)>700000)throw new Error("This conversation exceeds the context budget. Start a new scoped conversation with a summary.");
+  // Long chats keep every request in a brief and older answers as outlines instead of failing.
+  const messages = boundedConversation(b.messages, 600000) as typeof b.messages;
   const controller = new AbortController();
   const timeout=setTimeout(()=>controller.abort(),270000);
   res.on("close",()=>clearTimeout(timeout));
@@ -314,7 +316,7 @@ app.post("/api/chat", async (req, res) => {
     const c = u ? await credential(u.id, b.model) : undefined;
     for await (const chunk of runChat(
       b.model,
-      b.messages,
+      messages,
       controller.signal,
       c, b.mode
     )) {

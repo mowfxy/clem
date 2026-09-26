@@ -93,3 +93,31 @@ test('preferences apply without repeating keywords and sharing changes replace p
  state=putMemory(state,{...input(),sharedWith:[]});
  assert.equal(retrieveMemory(state,'project:b','anything').length,0);
 });
+
+test("learned answer preferences apply everywhere, come first, and merge instead of piling up", async () => {
+  const { learnMemories, retrieveMemory, memoryLines, correctsStyle, parseExtraction } = await import("../../desktop/memory.ts");
+  let state = { enabled: true, records: [] as any[] };
+  const ctx = { scope: "chat:a", sourceId: "chat:1", explicit: false, now: "2026-09-01T00:00:00.000Z" };
+  state = learnMemories(state, [{ key: "answer-length", text: "The user wants short answers without bullet points.", kind: "preference", about: "user" }], ctx);
+  state = learnMemories(state, [{ key: "role", text: "The user is a nurse.", kind: "fact", about: "user" }], ctx);
+  const found = retrieveMemory(state, "project:x", "Explain the Krebs cycle", { now: Date.parse("2026-09-02") });
+  assert.equal(found.length, 2);
+  assert.match(memoryLines(found), /^How the user wants answers[\s\S]*short answers[\s\S]*About the user[\s\S]*nurse/);
+  // Same wish said differently under another key: the old one is superseded (kept, not deleted).
+  state = learnMemories(state, [{ key: "brevity", text: "The user wants short answers, no bullet points.", kind: "preference", about: "user" }], { ...ctx, now: "2026-09-03T00:00:00.000Z" });
+  assert.equal(state.records.length, 3);
+  assert.equal(retrieveMemory(state, "chat:a", "anything", { now: Date.parse("2026-09-04") }).filter((m) => /short answers/.test(m.text)).length, 1);
+  assert.equal(correctsStyle("way too long, shorter answers please"), true);
+  assert.equal(correctsStyle("stop using bullet points"), true);
+  assert.equal(correctsStyle("What is 2+2?"), false);
+  assert.equal(parseExtraction('{"memories":[{"key":"exam","text":"The user has a biology exam on 12 October.","kind":"fact","about":"user","until":"2026-10-13"}]}')[0].until, "2026-10-13");
+});
+
+test("time-bound memories stop applying after their date", async () => {
+  const { learnMemories, retrieveMemory } = await import("../../desktop/memory.ts");
+  const state = learnMemories({ enabled: true, records: [] }, [{ key: "exam", text: "The user has a biology exam on 12 October.", kind: "fact", about: "user", until: "2026-10-13" }], { scope: "chat:a", sourceId: "chat:1", explicit: false, now: "2026-09-01T00:00:00.000Z" });
+  assert.equal(state.records[0].kind, "temporary");
+  assert.equal(retrieveMemory(state, "chat:a", "biology exam", { now: Date.parse("2026-10-01") }).length, 1);
+  assert.equal(retrieveMemory(state, "chat:a", "biology exam", { now: Date.parse("2026-10-20") }).length, 0);
+  assert.equal(state.records.length, 1, "expired memories stay stored");
+});

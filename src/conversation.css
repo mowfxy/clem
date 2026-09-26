@@ -51,11 +51,3 @@
 .drive-attached span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drive-attached:hover{background:#ffffff12}
 @media(prefers-reduced-motion:reduce){.history-live{animation-duration:2.4s}.work-dot{animation:none;opacity:.8}}
-/* Messages typed while Mowr is answering: they wait here and send when it finishes */
-.waiting-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:12px 14px 0}
-.waiting-chip{display:inline-flex;align-items:center;gap:6px;max-width:320px;height:28px;padding:0 3px 0 9px;border-radius:9px;border:1px solid #ffffff14;background:#ffffff08;color:#d8d7d0;font:12px 'Mowafy Sans Text',system-ui,sans-serif}
-.waiting-chip>svg{flex:none;color:#8f8e87}
-.waiting-chip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.waiting-chip button{width:22px;height:22px;display:grid;place-items:center;flex:none;border:0;border-radius:6px;background:none;color:#8f8e87;cursor:pointer;padding:0}
-.waiting-chip button:hover{background:#ffffff10;color:#e8e7e0}
-.waiting-chips small{color:#8f8e87;font:11.5px 'Mowafy Sans Text',system-ui,sans-serif}

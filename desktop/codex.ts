@@ -467,6 +467,8 @@ export class Codex {
     this.scheduleIdle();
     return output;
   }
+  /** Whether the model is one of this ChatGPT account's models (as last listed). */
+  catalogHas(model:string){return !!this.catalog?.models.some((m:any)=>m.id===model);}
   /** Lowest reasoning level the model offers, for internal requests. */
   lightest(model?:string){
     const efforts=this.catalog?.models.find((m:any)=>m.id===model)?.reasoningEfforts||[];
