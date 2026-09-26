@@ -47,3 +47,7 @@
 .drive-attached span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drive-attached:hover{background:#ffffff12}
 @media(prefers-reduced-motion:reduce){.history-live{animation-duration:2.4s}.work-dot{animation:none;opacity:.8}}
+.space-mark{flex:none;display:grid;place-items:center;margin:0 1px 0 -3px;border-radius:7px;color:var(--mark);background:color-mix(in srgb,var(--mark) 17%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mark) 30%,transparent);transition:transform .25s var(--ease-out,ease)}
+.space-mark.project{border-radius:50%}
+.space-mark-letters{font-size:9.5px;font-weight:600;letter-spacing:-.02em;line-height:1;font-family:'Mowafy Sans Text',system-ui,sans-serif}
+.history-item:hover .space-mark{transform:translateY(-1px)}

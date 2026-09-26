@@ -99,6 +99,7 @@ import "./chat/chat.css";
 import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
 import { StorageSummary } from './files/StorageSummary';
+import { SpaceMark } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker } from "../core/chat-title";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
@@ -1539,6 +1540,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                       navigate("/app");
                     }}
                   >
+                    {(() => { const space = c.spaceId ? state.spaces.find((x) => x.id === c.spaceId) : undefined; return space ? <SpaceMark space={space} /> : null; })()}
                     <span className="history-title">{c.title}</span>
                     {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" title={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" aria-label="New reply" title="New reply" /> : null}
                   </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={c.id in runs} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
