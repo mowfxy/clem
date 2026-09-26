@@ -115,6 +115,11 @@ test("staff portal enforces roles, moderates accounts and manages complimentary 
     const overview = await (await call("/admin/overview")).json();
     assert.equal(overview.users, 3);
     assert.equal(overview.openCases, 1);
+    // Mowr is free: the overview reports welcome progress, not plans or revenue.
+    assert.equal(Object.values(overview.setup as Record<string, number>).reduce((a, b) => a + b, 0), 3);
+    assert.equal(overview.mrrCents, undefined);
+    const settingUp = await (await call("/admin/users?plan=setup")).json();
+    assert.equal(settingUp.total, 3);
     const audit = await (await call("/admin/audit")).json();
     assert.ok(audit.entries.some((e: any) => e.action === "user.suspend"));
   } finally {

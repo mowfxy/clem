@@ -1,6 +1,8 @@
 # Admin portal — admin.mowrai.com
 
-Staff use the portal to moderate accounts, manage subscriptions and complimentary access, answer support cases, publish in-app announcements and review an audit log.
+Staff use the portal to see how Mowr is doing, moderate accounts, answer support cases, publish in-app announcements and review an audit log. Mowr is free, so the portal has no billing screens: the overview tracks people, activity and progress through the app's four-step welcome.
+
+The portal uses the app's own look — the same near-black surfaces, Soft Ink Serif headings, drawn icons (`src/Icons.tsx`) and an ink illustration (`src/Illustrations.tsx`) at the top of each page, like the app's settings tabs.
 
 ## How it fits together
 
@@ -16,16 +18,16 @@ Entitlement keeps working if the Worker is deployed before the migration: missin
 | Role | Can |
 | --- | --- |
 | owner | Everything, including adding and removing staff. Owners are the verified emails in `cloudflare/account-policy.js`. |
-| admin | People, complimentary access, suspensions, Lemon Squeezy cancel/sync, announcements, audit log. |
-| support | Read people and subscriptions; answer, note and triage support cases; add staff notes. |
+| admin | People, suspensions, announcements, audit log. |
+| support | Read people; answer, note and triage support cases; add staff notes. |
 
 Every mutation writes to `desktop_audit_log`. Owner accounts cannot be suspended, and staff cannot suspend themselves.
 
 ## Moderation and access
 
-- **Suspend** closes the workspace at the next entitlement check (app start, focus, or the next chat request) and blocks checkout. The person sees the reason and the end date; their local files are never touched.
-- **Complimentary access** grants the plan for a fixed period or with no expiry, independent of Lemon Squeezy. Use it for preview testers while payments are being configured.
-- **Cancel / sync subscription** calls Lemon Squeezy and needs `LEMON_API_KEY` on the Worker.
+- **Suspend** closes the workspace at the next entitlement check (app start, focus, or the next chat request). The person sees the reason and the end date; their local files are never touched.
+- **People filters**: everyone, active this week, new this week, still setting up (fewer than four welcome steps) and suspended.
+- Legacy subscription and complimentary-grant records and their Worker routes remain for history, but the portal no longer shows them.
 
 ## Support cases
 

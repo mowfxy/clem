@@ -1,5 +1,7 @@
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type CSSProperties,type ReactNode} from 'react';
-import type {Plan} from './api';
+import type {Person} from './api';
+import type {Scene} from '../vectorFilm';
+import {Illustration} from '../Illustrations';
 import {copyText} from '../clipboard';
 
 const paths:Record<string,string>={
@@ -30,9 +32,13 @@ export function I({name,size=17}:{name:keyof typeof paths|string;size?:number}){
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]||''}/></svg>;
 }
 
-const planLabels:Record<Plan,string>={owner:'Owner',complimentary:'Complimentary',subscribed:'Subscribed',cancelling:'Cancelling',past_due:'Past due',lapsed:'Lapsed',free:'No plan'};
-export const planLabel=(plan:Plan)=>planLabels[plan]||plan;
-export function PlanBadge({plan}:{plan:Plan}){return <span className={`adm-badge plan-${plan}`}>{planLabel(plan)}</span>;}
+/** Mowr is free, so a person's standing is about access and progress, never billing. */
+export function PersonStatus({person}:{person:Pick<Person,'plan'|'suspended'|'setup_step'>}){
+  if(person.suspended)return <Badge tone="danger">Suspended</Badge>;
+  if(person.plan==='owner')return <Badge tone="ink">Owner</Badge>;
+  if((person.setup_step??0)<4)return <Badge tone="quiet">Setup {person.setup_step??0}/4</Badge>;
+  return <Badge tone="ok">Active</Badge>;
+}
 export function Badge({tone='neutral',children}:{tone?:string;children:ReactNode}){return <span className={`adm-badge tone-${tone}`}>{children}</span>;}
 
 const rtf=new Intl.RelativeTimeFormat('en',{numeric:'auto'});
@@ -44,7 +50,6 @@ export function ago(value?:string|null){
   return 'just now';
 }
 export const date=(value?:string|null)=>value?new Date(value).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'—';
-export const money=(cents:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:cents%100?2:0}).format(cents/100);
 export const who=(p:{email?:string|null;username?:string|null;display_name?:string|null;id?:string})=>p.display_name||p.username||p.email||p.id?.slice(0,8)||'Unknown';
 export function initials(p:{email?:string|null;username?:string|null;display_name?:string|null}){const s=(p.display_name||p.username||p.email||'?').replace(/[^\p{L}\p{N} ]/gu,' ').trim();const parts=s.split(/\s+/);return ((parts[0]?.[0]||'?')+(parts[1]?.[0]||'')).toUpperCase();}
 export function Avatar({person,size=32}:{person:{id?:string;email?:string|null;username?:string|null;display_name?:string|null};size?:number}){
@@ -52,8 +57,13 @@ export function Avatar({person,size=32}:{person:{id?:string;email?:string|null;u
   return <span className="adm-avatar" style={{width:size,height:size,fontSize:size*.38,'--hue':String(seed*47%360)} as CSSProperties}>{initials(person)}</span>;
 }
 
-export function Empty({icon='spark',title,children}:{icon?:string;title:string;children?:ReactNode}){
-  return <div className="adm-empty"><span className="adm-empty-mark"><I name={icon} size={22}/></span><h3>{title}</h3>{children&&<p>{children}</p>}</div>;
+export function Empty({icon='spark',scene,title,children}:{icon?:string;scene?:Scene;title:string;children?:ReactNode}){
+  return <div className="adm-empty">{scene?<div className="adm-empty-art"><Illustration scene={scene} ambient/></div>:<span className="adm-empty-mark"><I name={icon} size={20}/></span>}<h3>{title}</h3>{children&&<p>{children}</p>}</div>;
+}
+
+/** The illustrated page header, matching the one at the top of each settings tab in the app. */
+export function PageHead({scene,title,line,children}:{scene:Scene;title:string;line:ReactNode;children?:ReactNode}){
+  return <header className="adm-page-head"><Illustration scene={scene} ambient className="adm-head-art"/><div className="adm-head-text"><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
 }
 export function Skeleton({rows=5}:{rows?:number}){return <div className="adm-skeleton" aria-busy="true" aria-label="Loading">{Array.from({length:rows},(_,i)=><span key={i} style={{animationDelay:i*80+'ms'}}/>)}</div>;}
 
