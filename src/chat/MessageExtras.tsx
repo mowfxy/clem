@@ -3,6 +3,7 @@ import type { Model, Review, Verification } from '../../core/types';
 import type { Citation } from '../../core/citations';
 import { Icon } from '../Icons';
 import { MessageBody } from './MessageBody';
+import { copyText } from '../clipboard';
 
 /** Picks a reviewer: another provider first, then another model, then the same one. */
 export function reviewerFor(models: Model[], current: string) {
@@ -28,7 +29,7 @@ export function MessageTools({ content, models, model, onReview, onVerify, canVe
   const reviewers = reviewerFor(models, model || '');
   const plain = content.replace(/```(?:visual|check|edit)[\s\S]*?(?:```|$)/g, '').trim();
   return <div className="message-tools" ref={wrap}>
-    <button type="button" aria-label={copied ? 'Copied' : 'Copy answer'} title="Copy" onClick={() => void navigator.clipboard?.writeText(plain).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
+    <button type="button" aria-label={copied ? 'Copied' : 'Copy answer'} title="Copy" onClick={() => void copyText(plain).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
     {reviewers.length > 0 && <button type="button" aria-label="Second opinion" title="Second opinion" aria-expanded={menu} disabled={busy} onClick={() => { place(); setMenu(!menu); }}><Icon name="compare" size={16} /><span>Second opinion</span></button>}
     {canVerify && onVerify && <button type="button" aria-label="Check against sources" title="Check against your sources" disabled={busy} onClick={onVerify}><Icon name="verify" size={16} /><span>Check sources</span></button>}
     {onExport && <button type="button" aria-label="Export" title="Export as a document" aria-expanded={exporting === 'menu'} disabled={busy || (!!exporting && exporting !== 'menu')} onClick={() => { place(); setMenu(false); setExporting(exporting === 'menu' ? null : 'menu'); }}><Icon name="download" size={16} /><span>{exporting && exporting !== 'menu' ? 'Exporting…' : 'Export'}</span></button>}

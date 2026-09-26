@@ -11,6 +11,7 @@ import { linkCitations, readCitation, type Citation } from '../../core/citations
 import { parseVisual } from '../../core/visual-spec';
 import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
 import { Icon } from '../Icons';
+import { copyText } from '../clipboard';
 import { EditProposal, type EditBlock } from './EditProposal';
 import type { EditOutcome } from '../../core/types';
 
@@ -52,7 +53,7 @@ function driveIdsIn(node: unknown): string[] {
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
   return <div className="code-block">
-    <div className="code-head"><span>{lang || 'text'}</span><button type="button" aria-label="Copy code" onClick={() => { void navigator.clipboard?.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); }); }}>{copied ? <><Icon name="check" size={14} />Copied</> : <><Icon name="copy" size={14} />Copy</>}</button></div>
+    <div className="code-head"><span>{lang || 'text'}</span><button type="button" aria-label="Copy code" onClick={() => { void copyText(code).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); }); }}>{copied ? <><Icon name="check" size={14} />Copied</> : <><Icon name="copy" size={14} />Copy</>}</button></div>
     <pre><code>{code}</code></pre>
   </div>;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { desktop } from "./bridge";
 import { Icon, Logo } from "../Icons";
+import { copyText } from "../clipboard";
 import { OpenAILogo } from "../BrandLogos";
 import "../models-settings.css";
 export function LocalProvider({ onDone, accountId }: { onDone: () => void; accountId?:string }) {
@@ -83,7 +84,7 @@ export function LocalProvider({ onDone, accountId }: { onDone: () => void; accou
       ) : (
         <div className="provider-challenge cx-challenge">
           <p>Enter this code on the OpenAI sign-in page</p>
-          <button type="button" className="cx-code" title="Copy code" onClick={() => { void navigator.clipboard?.writeText(challenge.code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); }); }}>
+          <button type="button" className="cx-code" title="Copy code" onClick={() => { void copyText(challenge.code).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1600); }); }}>
             <code>{challenge.code}</code>
             <span>{copied ? "Copied" : "Copy"}</span>
           </button>

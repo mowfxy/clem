@@ -1,5 +1,6 @@
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type CSSProperties,type ReactNode} from 'react';
 import type {Plan} from './api';
+import {copyText} from '../clipboard';
 
 const paths:Record<string,string>={
   overview:'M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-3H4zM14 7h6V4h-6z',
@@ -89,4 +90,4 @@ export function Sparkbars({values,label}:{values:{date:string;count:number}[];la
   return <div className="adm-sparkbars" role="img" aria-label={label}>{values.map((v,i)=><span key={v.date} title={`${date(v.date)}: ${v.count}`} style={{height:`${Math.max(4,v.count/max*100)}%`,animationDelay:i*28+'ms'}} className={v.count?'':'zero'}/>)}</div>;
 }
 
-export function copy(text:string,toast:(t:string)=>void){void navigator.clipboard.writeText(text).then(()=>toast('Copied'));}
+export function copy(text:string,toast:(t:string)=>void){void copyText(text).then(ok=>ok&&toast('Copied'));}
