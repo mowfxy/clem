@@ -9,7 +9,8 @@ export async function adminClient(){
   if(client)return client;
   let config=fallback;
   try{const r=await fetch('/api/supabase/config',{signal:AbortSignal.timeout(5000)});const data=await r.json();if(data.url&&data.key)config=data;}catch{/* Static preview: use the public fallback. */}
-  client=createClient(config.url,config.key,{auth:{storageKey:'mowr-admin-auth',persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+  // PKCE returns Google sign-ins as ?code=, leaving the hash free for portal routes.
+  client=createClient(config.url,config.key,{auth:{storageKey:'mowr-admin-auth',persistSession:true,autoRefreshToken:true,flowType:'pkce',detectSessionInUrl:true}});
   return client;
 }
 

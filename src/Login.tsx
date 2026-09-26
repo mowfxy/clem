@@ -2,11 +2,10 @@ import {returnToDrive} from "./drive-signin";
 import {returnToDesktop} from './desktop-signin';
 import {useEffect,useState,type ReactNode} from 'react';
 import {getSupabase,bridgeSession} from './supabase';
-import {Logo,Icon} from './Icons';
+import {Logo,Icon,GoogleLogo} from './Icons';
 import {Illustration} from './Illustrations';
 import type {Scene} from './vectorFilm';
 import './auth.css';
-export function GoogleLogo(){return <svg width="21" height="21" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M44 24.5c0-1.5-.1-3-.4-4.5H24v8.5h11.2c-.5 2.7-2 5-4.2 6.5v5.4h6.8C41.8 36.7 44 31.1 44 24.5Z"/><path fill="#34A853" d="M24 45c5.6 0 10.3-1.8 13.8-5.1L31 34.5c-1.9 1.3-4.3 2-7 2-5.4 0-10-3.6-11.6-8.5h-7v5.6A21 21 0 0 0 24 45Z"/><path fill="#FBBC05" d="M12.4 28a12.7 12.7 0 0 1 0-8v-5.6h-7a21 21 0 0 0 0 19.2Z"/><path fill="#EA4335" d="M24 11.5c3 0 5.6 1 7.7 3l5.8-5.8A20 20 0 0 0 24 3 21 21 0 0 0 5.4 14.4l7 5.6C14 15.1 18.6 11.5 24 11.5Z"/></svg>}
 
 /** Webmail shortcuts; the provider matching the address is offered first. */
 const inboxes:[string,string,RegExp][]=[

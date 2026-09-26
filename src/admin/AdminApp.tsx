@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useState} from 'react';
-import {Logo} from '../Icons';
+import {GoogleLogo,Logo} from '../Icons';
 import {AdminError,adminApi,adminClient,demo,type Staff} from './api';
 import {I,ToastHost} from './ui';
 import {Overview} from './Overview';
@@ -39,7 +39,7 @@ export default function AdminApp(){
     try{setStaff(await adminApi<Staff>('/admin/me'));setPhase('ready');}
     catch(e){if(e instanceof AdminError&&e.status===401){setPhase('signin');return;}setDenied((e as Error).message);setPhase('denied');}
   },[]);
-  useEffect(()=>{void (async()=>{if(demo){await check();return;}const client=await adminClient();const {data}=await client.auth.getSession();if(!data.session){setPhase('signin');return;}const level=await client.auth.mfa.getAuthenticatorAssuranceLevel();if(level.data?.nextLevel==='aal2'&&level.data.currentLevel!=='aal2'){setPhase('signin');return;}await check();})();},[check]);
+  useEffect(()=>{void (async()=>{if(demo){await check();return;}const client=await adminClient();const {data}=await client.auth.getSession();if(location.search){const q=new URLSearchParams(location.search);if(q.has('code')||q.has('error'))history.replaceState(null,'',location.pathname+location.hash);}if(!data.session){setPhase('signin');return;}const level=await client.auth.mfa.getAuthenticatorAssuranceLevel();if(level.data?.nextLevel==='aal2'&&level.data.currentLevel!=='aal2'){setPhase('signin');return;}await check();})();},[check]);
   async function signOut(){if(demo)return;const client=await adminClient();await client.auth.signOut();setStaff(null);setPhase('signin');}
   if(phase==='loading')return <div className="adm-root adm-center"><Logo size={44} thinking/></div>;
   if(phase==='signin')return <ToastHost><SignIn onDone={check}/></ToastHost>;
@@ -69,7 +69,7 @@ export default function AdminApp(){
 }
 
 function SignIn({onDone}:{onDone:()=>Promise<void>}){
-  const [factor,setFactor]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
+  const [factor,setFactor]=useState('');const [error,setError]=useState(()=>new URLSearchParams(location.search).get('error_description')||'');const [busy,setBusy]=useState(false);
   useEffect(()=>{void adminClient().then(async client=>{const {data}=await client.auth.getSession();if(data.session){const f=await client.auth.mfa.listFactors();if(f.data?.totp[0])setFactor(f.data.totp[0].id);}});},[]);
   async function submit(form:FormData){
     setBusy(true);setError('');
@@ -84,12 +84,19 @@ function SignIn({onDone}:{onDone:()=>Promise<void>}){
       await onDone();
     }catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
+  async function google(){
+    setBusy(true);setError('');
+    const client=await adminClient();
+    const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+'/',queryParams:{prompt:'select_account'}}});
+    if(error){setError(error.message);setBusy(false);}
+  }
   return <div className="adm-root adm-center adm-signin">
     <div className="adm-signin-glow" aria-hidden="true"/>
     <form className="adm-auth-card" onSubmit={e=>{e.preventDefault();void submit(new FormData(e.currentTarget));}}>
       <Logo size={40}/>
       <h1>{factor?'Verify it’s you':'Mowr Admin'}</h1>
       <p>{factor?'Enter the 6-digit code from your authenticator app.':'Staff sign-in. Use your Mowr account.'}</p>
+      {!factor&&<><button type="button" className="adm-google" disabled={busy} onClick={()=>void google()}><GoogleLogo/>Continue with Google</button><div className="adm-or"><span>or</span></div></>}
       {factor?<label>Code<input name="code" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" required autoFocus/></label>:<>
         <label>Email<input name="email" type="email" autoComplete="username" required autoFocus/></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required/></label></>}

@@ -7,7 +7,7 @@ const port=Number(env.SMTP_PORT);
 if(!Number.isInteger(port)||port<1||port>65535)throw Error('SMTP_PORT must be a valid TCP port.');
 const sender=/^(?:[^<>]*<)?([^<>\s@]+@[^<>\s@]+)\s*>?$/.exec(env.SMTP_FROM.trim());
 if(!sender)throw Error('SMTP_FROM must contain a valid sender email address.');
-const config={site_url:'https://mowrai.com',uri_allow_list:'https://mowrai.com/,https://mowrai.com/?recovery=1',security_manual_linking_enabled:true,mfa_totp_enroll_enabled:true,mfa_totp_verify_enabled:true,mailer_secure_email_change_enabled:true,security_update_password_require_reauthentication:true,password_min_length:12};
+const config={site_url:'https://mowrai.com',uri_allow_list:'https://mowrai.com/,https://mowrai.com/?recovery=1,https://admin.mowrai.com/,https://admin.mowrai.com/**',security_manual_linking_enabled:true,mfa_totp_enroll_enabled:true,mfa_totp_verify_enabled:true,mailer_secure_email_change_enabled:true,security_update_password_require_reauthentication:true,password_min_length:12};
 if(env.GOOGLE_AUTH_CLIENT_ID&&env.GOOGLE_AUTH_CLIENT_SECRET)Object.assign(config,{external_google_enabled:true,external_google_client_id:env.GOOGLE_AUTH_CLIENT_ID,external_google_secret:env.GOOGLE_AUTH_CLIENT_SECRET});
 Object.assign(config,{external_email_enabled:true,mailer_autoconfirm:false,smtp_host:env.SMTP_HOST,smtp_port:port,smtp_user:env.SMTP_USER,smtp_pass:env.SMTP_PASSWORD,smtp_admin_email:sender[1],smtp_sender_name:'Mowr'});
 for(const [key,file] of Object.entries({confirmation:'confirm-signup',recovery:'reset-password',magic_link:'magic-link',email_change:'change-email',invite:'invite',reauthentication:'reauthentication'})){config['mailer_templates_'+key+'_content']=fs.readFileSync('emails/'+file+'.html','utf8');}
