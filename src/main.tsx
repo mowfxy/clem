@@ -33,4 +33,8 @@ function Root(){
  return <Suspense fallback={loading}>{location.hostname==="check.mowrai.com"||route==="/check"?<ProvenanceChecker/>:isPublic?publicPage(route):(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect'))?(ready?<Login key={route}/>:loading):<Download account={route.startsWith('/app')&&ready} returning={route==='/desktop-return'}/>}</Suspense>;
 }
 if(desktop)void import('./desktop/window-tone').then(m=>m.followWindowTone());
-createRoot(document.getElementById('root')!).render(<React.StrictMode>{desktop?<Suspense fallback={<main className="workspace-loading">Opening Mowr…</main>}><DesktopRoot/></Suspense>:<Root/>}</React.StrictMode>);
+// Supabase sends OAuth returns it doesn't recognise to mowrai.com. If admin.mowrai.com started this sign-in
+// (it sets a short-lived cookie), hand the code back there: only the admin origin holds the PKCE verifier.
+const adminReturn=!desktop&&!adminHost&&location.hostname.endsWith('mowrai.com')&&/(?:^|;\s*)mowr_admin_oauth=1/.test(document.cookie)&&/[?&](code|error)=/.test(location.search);
+if(adminReturn){document.cookie='mowr_admin_oauth=; domain=mowrai.com; path=/; max-age=0; secure; samesite=lax';location.replace('https://admin.mowrai.com/'+location.search);}
+else createRoot(document.getElementById('root')!).render(<React.StrictMode>{desktop?<Suspense fallback={<main className="workspace-loading">Opening Mowr…</main>}><DesktopRoot/></Suspense>:<Root/>}</React.StrictMode>);
