@@ -748,7 +748,6 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     try {
       const memory = activeSpace ? activeSpace.memory : state.memory;
       const pictures = stateRef.current.files.filter((f) => user.attachments.includes(f.id) && f.type.startsWith("image/"));
-      if (pictures.length && /^(claude|grok):/.test(model)) throw Error("Image questions need a ChatGPT model. Choose one in the model menu, then send again.");
       const images = desktop ? await Promise.all(pictures.slice(0, 4).map(async (f) => ({ name: f.name, data: await blobBase64(f.id) }))) : [];
       const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png`, data: p.image! }));
       if (pointerImages.length && !/^(claude|grok):/.test(model)) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
@@ -1038,7 +1037,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         async (task, inputs, signal) => {
           const live=accountDataRef.current,active=live?.accounts.find(account=>account.id===live.active);
           const alternate=live?.accounts.some(account=>account.id!==live.active&&account.connected&&hasCapacity(account.usage));
-          if(!handoffDecided&&live?.autoSwitch&&active?.usage&&isBelowSwitchThreshold(active.usage)&&!alternate&&!task.model.startsWith('claude:')&&models.some(model=>model.provider==='Anthropic'&&model.connected)){
+          if(!handoffDecided&&live?.autoSwitch&&active?.usage&&isBelowSwitchThreshold(active.usage)&&!alternate&&!/^(claude|grok):/.test(task.model)&&models.some(model=>(model.provider==='Anthropic'||model.provider==='xAI')&&model.connected)){
             handoffDecided=true;
             handoffChoice=await new Promise<{model:string;reasoning?:string}|null>((resolve,reject)=>{
               const onAbort=()=>{handoffResolve.current=null;setHandoffTask(null);reject(new DOMException('Cancelled','AbortError'));};
@@ -1051,7 +1050,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               for(const remaining of executionPlan.tasks.slice(index)){if(remaining.status!=='complete'){remaining.model=handoffChoice.model;remaining.reasoning=handoffChoice.reasoning;}}
               current={...current,tasks:current.tasks.map(item=>executionPlan.tasks.find(next=>next.id===item.id)?.status!=='complete'?{...item,model:handoffChoice!.model,reasoning:handoffChoice!.reasoning}:item)};
               await workflow.save(current);updatePlan(id,messageId,current);
-              notify({kind:'handoff',title:'Task handed to Claude',detail:'Completed steps and their outputs are preserved.'});
+              notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':'Claude'),detail:'Completed steps and their outputs are preserved.'});
             }
           }
           return streamChat(
