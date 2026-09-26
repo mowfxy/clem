@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { streamCodex } from "../../desktop/codex-stream.ts";
+import { reasoningHeadline, streamCodex } from "../../desktop/codex-stream.ts";
 import { Codex, codexFailureMessage } from "../../desktop/codex.ts";
 function fake() {
   const p: any = new EventEmitter();
@@ -176,4 +176,11 @@ test("app-server deltas arrive before completion and final items are not duplica
  });
  await streamCodex(p,"hello",{model:"a",reasoning:"low"},[],text=>chunks.push(text),()=>false);
  assert.equal(turnStarted,true);assert.equal(chunks.join(""),"Hello there");
+});
+
+test("reasoning summaries become a few words on what the model is doing", () => {
+  assert.equal(reasoningHeadline("**Checking the formula**\n\nI need to"), "Checking the formula…");
+  assert.equal(reasoningHeadline("**Comparing the two sources and deciding which one fits best.**"), "Comparing the two sources and deciding…");
+  assert.equal(reasoningHeadline("**Still typing"), null);
+  assert.equal(reasoningHeadline("No headline here"), null);
 });

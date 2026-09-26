@@ -530,7 +530,7 @@ void app.whenReady().then(async () => {
       webSecurity: true,
     },
   });
-  type Background = { keepRunning: boolean; startWithWindows: boolean; told?: boolean };
+  type Background = { keepRunning: boolean; startWithWindows: boolean };
   const backgroundKey = "background-settings";
   let background = await vault.read<Background>(backgroundKey, { keepRunning: true, startWithWindows: true }).catch(() => ({ keepRunning: true, startWithWindows: true }) as Background);
   const applyLogin = () => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: background.keepRunning && background.startWithWindows, args: ["--background"] }); };
@@ -547,11 +547,6 @@ void app.whenReady().then(async () => {
     if (quitting || !background.keepRunning) return;
     event.preventDefault();
     window.hide();
-    if (!background.told) {
-      background = { ...background, told: true };
-      void vault.write(backgroundKey, background).catch(() => {});
-      tray?.displayBalloon({ title: "Mowr is still running", content: "Telegram replies and routines keep working. Quit from the Mowr icon in the tray.", iconType: "info" });
-    }
   });
   ipcMain.handle("mowr:background", async (event, next?: Partial<Background>) => {
     if (event.sender !== window.webContents) throw Error("Not allowed.");
@@ -1100,6 +1095,7 @@ void app.whenReady().then(async () => {
         await start((event) => { if (event.type === "delta") text += event.text || ""; else if (event.type === "status") emit({ ...event, id: request.id }); });
         return text;
       };
+      if (claude) emit({ id: request.id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
       const run=grok
         ? loop((input) => collect((e) => grokFor(user.id).run(request.id, input, request.model!, e)))
         : request.model?.startsWith('claude:')
