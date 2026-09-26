@@ -266,6 +266,11 @@ button.adm-row.link:hover{background:#ffffff08}
 .adm-auth-card p{margin:0;color:var(--a-soft)}
 .adm-auth-card label{display:grid;gap:6px;width:100%;font-size:12.5px;color:var(--a-soft)}
 .adm-auth-card .adm-primary{width:100%;justify-content:center;padding:10px;margin-top:4px}
+.adm-root .adm-google{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;border-radius:10px;border:1px solid var(--a-line-2);background:#141413;color:var(--a-ink);font-size:14px}
+.adm-root .adm-google:hover{background:#1f1f1d}
+.adm-root .adm-google svg{width:18px;height:18px}
+.adm-or{width:100%;display:flex;align-items:center;gap:10px;color:var(--a-soft);font-size:12px}
+.adm-or::before,.adm-or::after{content:'';flex:1;border-top:1px solid var(--a-line-2)}
 
 @keyframes adm-page-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes adm-fade{from{opacity:0}}
