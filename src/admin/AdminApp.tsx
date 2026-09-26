@@ -39,7 +39,7 @@ export default function AdminApp(){
     try{setStaff(await adminApi<Staff>('/admin/me'));setPhase('ready');}
     catch(e){if(e instanceof AdminError&&e.status===401){setPhase('signin');return;}setDenied((e as Error).message);setPhase('denied');}
   },[]);
-  useEffect(()=>{void (async()=>{if(demo){await check();return;}const client=await adminClient();const {data}=await client.auth.getSession();if(location.search){const q=new URLSearchParams(location.search);if(q.has('code')||q.has('error'))history.replaceState(null,'',location.pathname+location.hash);}if(!data.session){setPhase('signin');return;}const level=await client.auth.mfa.getAuthenticatorAssuranceLevel();if(level.data?.nextLevel==='aal2'&&level.data.currentLevel!=='aal2'){setPhase('signin');return;}await check();})();},[check]);
+  useEffect(()=>{void (async()=>{if(demo){await check();return;}const client=await adminClient();const {data}=await client.auth.getSession();if(location.search){const q=new URLSearchParams(location.search);if(q.has('code')||q.has('error')){history.replaceState(null,'',location.pathname+location.hash);if(location.hostname==='admin.mowrai.com')document.cookie='mowr_admin_oauth=; domain=mowrai.com; path=/; max-age=0; secure; samesite=lax';}}if(!data.session){setPhase('signin');return;}const level=await client.auth.mfa.getAuthenticatorAssuranceLevel();if(level.data?.nextLevel==='aal2'&&level.data.currentLevel!=='aal2'){setPhase('signin');return;}await check();})();},[check]);
   async function signOut(){if(demo)return;const client=await adminClient();await client.auth.signOut();setStaff(null);setPhase('signin');}
   if(phase==='loading')return <div className="adm-root adm-center"><Logo size={44} thinking/></div>;
   if(phase==='signin')return <ToastHost><SignIn onDone={check}/></ToastHost>;
@@ -87,6 +87,8 @@ function SignIn({onDone}:{onDone:()=>Promise<void>}){
   async function google(){
     setBusy(true);setError('');
     const client=await adminClient();
+    // Lets mowrai.com forward the return here if Supabase falls back to the main site.
+    if(location.hostname==='admin.mowrai.com')document.cookie='mowr_admin_oauth=1; domain=mowrai.com; path=/; max-age=600; secure; samesite=lax';
     const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+'/',queryParams:{prompt:'select_account'}}});
     if(error){setError(error.message);setBusy(false);}
   }
