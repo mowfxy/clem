@@ -12,7 +12,7 @@ export interface Pen {
 
 export const W = 800, H = 440;
 export const C = { bg: '#161615', panel: '#1b1b19', grid: '#242422', axis: '#4a4a45', ink: '#f0efeb', soft: '#a3a3a0', faint: '#6f6e68', blue: '#8197e2', coral: '#d87968' };
-const SANS = "'Mowafy Sans Text',system-ui,sans-serif", SERIF = "'Soft Ink Serif',Georgia,serif";
+const SANS = "'Mowafy Sans',system-ui,sans-serif", SERIF = "'Mowafy Serif',Georgia,serif";
 
 export function arrow(pen: Pen, x1: number, y1: number, x2: number, y2: number, style: Style, head = 9) {
   const len = Math.hypot(x2 - x1, y2 - y1);
@@ -91,7 +91,7 @@ export class SvgPen implements Pen {
     this.parts.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${n(Math.max(0, r))}" ${this.attrs(s)}/>`);
   }
   text(x: number, y: number, value: string, s: TextStyle = {}) {
-    this.parts.push(`<text x="${n(x)}" y="${n(y)}" font-family="${s.serif ? 'Soft Ink Serif, Georgia, serif' : 'Mowafy Sans Text, Arial, sans-serif'}" font-size="${s.size ?? 12}" font-weight="${s.weight ?? 400}" fill="${s.color ?? C.soft}" text-anchor="${s.align ?? 'start'}"${s.alpha !== undefined ? ` opacity="${s.alpha}"` : ''}>${esc(value)}</text>`);
+    this.parts.push(`<text x="${n(x)}" y="${n(y)}" font-family="${s.serif ? 'Mowafy Serif, Georgia, serif' : 'Mowafy Sans, Arial, sans-serif'}" font-size="${s.size ?? 12}" font-weight="${s.weight ?? 400}" fill="${s.color ?? C.soft}" text-anchor="${s.align ?? 'start'}"${s.alpha !== undefined ? ` opacity="${s.alpha}"` : ''}>${esc(value)}</text>`);
   }
   toString(title = '') {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${title ? `<title>${esc(title)}</title>` : ''}<rect width="${W}" height="${H}" fill="${C.bg}"/>${this.parts.join('')}</svg>`;

@@ -1,4 +1,4 @@
-.notice-stack{--n-ink:#f1f1ec;--n-soft:#b5b6ae;--n-accent:#a9b3f7;position:fixed;left:13px;bottom:78px;z-index:45;width:min(254px,calc(100vw - 26px));font-family:'Mowafy Sans Text',system-ui,sans-serif}
+.notice-stack{--n-ink:#f1f1ec;--n-soft:#b5b6ae;--n-accent:#a9b3f7;position:fixed;left:13px;bottom:78px;z-index:45;width:min(254px,calc(100vw - 26px));font-family:'Mowafy Sans',system-ui,sans-serif}
 /* Cards behind the front one take its exact size, so they peek out as tidy layers. */
 .notice-stack:not(.expanded) .notice-card.behind{position:absolute;inset:0}
 .notice-card.behind>:not(.notice-sheen){visibility:hidden}
@@ -44,7 +44,7 @@
 @keyframes notice-timer{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 
 /* The long-task handoff shares the same material. */
-.account-handoff{--tint:236 160 132;position:fixed;left:13px;bottom:78px;z-index:46;width:min(300px,calc(100vw - 26px));padding:15px;border-radius:16px;color:#f1f2ed;font-size:12px;font-family:'Mowafy Sans Text',system-ui,sans-serif;
+.account-handoff{--tint:236 160 132;position:fixed;left:13px;bottom:78px;z-index:46;width:min(300px,calc(100vw - 26px));padding:15px;border-radius:16px;color:#f1f2ed;font-size:12px;font-family:'Mowafy Sans',system-ui,sans-serif;
   background:linear-gradient(160deg,rgb(var(--tint)/.14),transparent 50%),linear-gradient(180deg,#262523f5,#1c1b1af5);border:1px solid rgb(var(--tint)/.3);box-shadow:0 1px 0 #ffffff14 inset,0 24px 60px -10px #000d;backdrop-filter:blur(14px);animation:notice-in .6s cubic-bezier(.2,1.25,.35,1) both}
 .handoff-heading{display:flex;gap:11px;align-items:flex-start;margin-bottom:12px}
 .handoff-heading .notice-art{width:52px;height:52px}
@@ -63,4 +63,4 @@ html[data-quiet=true] .notice-sheen,html[data-quiet=true] .notice-art{animation:
 
 /* Unread support replies on the settings button. */
 .profile-settings{position:relative}
-.settings-badge{position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:99px;display:grid;place-items:center;font:500 10px/1 'Mowafy Sans Text',system-ui,sans-serif;background:#ec8a74;color:#2a120c;box-shadow:0 0 0 2px #111;animation:notice-pop .45s cubic-bezier(.3,1.6,.5,1) both}
+.settings-badge{position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:99px;display:grid;place-items:center;font:500 10px/1 'Mowafy Sans',system-ui,sans-serif;background:#ec8a74;color:#2a120c;box-shadow:0 0 0 2px #111;animation:notice-pop .45s cubic-bezier(.3,1.6,.5,1) both}

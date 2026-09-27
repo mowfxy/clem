@@ -1,22 +1,22 @@
 /* Google Drive, live: the picker used for chats and for linking folders */
 dialog.app-modal:has(.gd-picker){width:min(780px,calc(100vw - 32px));max-width:none;padding:20px 20px 16px;background:#1b1b1a;border-color:#34342f}
-.gd-picker{display:flex;flex-direction:column;gap:10px;min-height:0;font-family:'Mowafy Sans Text',system-ui,sans-serif;color:#eceae3}
+.gd-picker{display:flex;flex-direction:column;gap:10px;min-height:0;font-family:'Mowafy Sans',system-ui,sans-serif;color:#eceae3}
 .gd-top{display:flex;align-items:center;gap:10px}
 .gd-tabs{display:flex;padding:3px;border-radius:11px;background:#ffffff08;border:1px solid #ffffff0d}
-.gd-tabs button{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border:0;border-radius:8px;background:none;color:#a7a59d;font:500 12.5px 'Mowafy Sans Text',sans-serif;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
+.gd-tabs button{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border:0;border-radius:8px;background:none;color:#a7a59d;font:500 12.5px 'Mowafy Sans',sans-serif;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 .gd-tabs button:hover{color:#eceae3}
 .gd-tabs button[aria-selected=true]{background:#2e2e2b;color:#f5f4ee;box-shadow:0 1px 0 #ffffff12 inset,0 2px 8px -4px #000}
 .gd-search{flex:1;display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:11px;border:1px solid #ffffff12;background:#121211;color:#8f8d86;transition:border-color .15s,box-shadow .15s}
 .gd-search:focus-within{border-color:#ffffff30;box-shadow:0 0 0 3px #ffffff0a}
 dialog.app-modal .gd-search{flex-direction:row;margin:0;gap:8px;font-size:13px}
-dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:auto;min-height:0;height:100%;padding:0;border:0;border-radius:0;outline:0;background:none;box-shadow:none;color:#eceae3;font:13px 'Mowafy Sans Text',sans-serif}
+dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:auto;min-height:0;height:100%;padding:0;border:0;border-radius:0;outline:0;background:none;box-shadow:none;color:#eceae3;font:13px 'Mowafy Sans',sans-serif}
 .gd-search button{display:grid;place-items:center;width:20px;height:20px;border:0;border-radius:50%;background:#ffffff14;color:#cfcdc6;cursor:pointer}
 .gd-view,.gd-refresh{display:grid;place-items:center;width:38px;height:38px;border:1px solid #ffffff12;border-radius:11px;background:#ffffff06;color:#b8b6ae;cursor:pointer}
 .gd-view:hover,.gd-refresh:hover{color:#f4f3ed;background:#ffffff0e}
 .gd-refresh{width:28px;height:28px;border-radius:8px;margin-left:auto;border-color:transparent;background:none}
 .gd-trail{display:flex;align-items:center;flex-wrap:wrap;gap:2px;min-height:30px;padding:0 2px}
 .gd-crumb-wrap{display:flex;align-items:center;gap:2px}
-.gd-crumb{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 8px;border:0;border-radius:7px;background:none;color:#98968f;font:500 13px 'Mowafy Sans Text',sans-serif;cursor:pointer}
+.gd-crumb{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 8px;border:0;border-radius:7px;background:none;color:#98968f;font:500 13px 'Mowafy Sans',sans-serif;cursor:pointer}
 .gd-crumb:hover{background:#ffffff0b;color:#eceae3}
 .gd-crumb.here{color:#f5f4ee;cursor:default;background:none}
 .gd-chev{flex:none;color:#6f6d67}
@@ -36,7 +36,7 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:#8c8a83}
 .gd-check{flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;border:1.5px solid #ffffff38;color:#101010;transition:all .15s}
 .gd-check.on{background:#dfe6ff;border-color:#dfe6ff}
-.gd-link-folder{flex:none;margin-right:8px;height:28px;padding:0 13px;border-radius:8px;border:1px solid #ffffff1c;background:#ffffff0a;color:#e9e7e0;font:500 12px 'Mowafy Sans Text',sans-serif;cursor:pointer;opacity:0;transition:opacity .15s,background .15s}
+.gd-link-folder{flex:none;margin-right:8px;height:28px;padding:0 13px;border-radius:8px;border:1px solid #ffffff1c;background:#ffffff0a;color:#e9e7e0;font:500 12px 'Mowafy Sans',sans-serif;cursor:pointer;opacity:0;transition:opacity .15s,background .15s}
 .gd-row:hover .gd-link-folder,.gd-link-folder:focus-visible{opacity:1}
 .gd-link-folder:hover{background:#f1f0ea;color:#141414;border-color:#f1f0ea}
 .gd-skeleton{height:48px;margin:2px 0;border-radius:11px;background:linear-gradient(90deg,#ffffff06,#ffffff10,#ffffff06);background-size:200% 100%;animation:gd-shimmer 1.2s ease-in-out infinite}
@@ -50,7 +50,7 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-count{flex:1;font-size:12.5px;color:#9a988f}
 .gd-count b{font-weight:600;color:#d9d7cf}
 .gd-foot .primary{height:36px;padding:0 16px;border-radius:10px;white-space:nowrap}
-.gd-disconnect{border:0;background:none;padding:6px 4px;color:#7f7d76;font:12px 'Mowafy Sans Text',sans-serif;cursor:pointer}
+.gd-disconnect{border:0;background:none;padding:6px 4px;color:#7f7d76;font:12px 'Mowafy Sans',sans-serif;cursor:pointer}
 .gd-disconnect:hover{color:#ffb4a8}
 /* Grid view: thumbnails first */
 .gd-picker.is-grid .gd-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));grid-auto-rows:min-content;gap:10px;align-content:start}
@@ -65,12 +65,12 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 /* Not connected yet */
 .gd-connect{align-items:center;text-align:center;padding:10px 12px 6px}
 .gd-hero-tile{display:grid;place-items:center;width:68px;height:68px;border-radius:20px;background:linear-gradient(160deg,#fbfaf6,#e9e7df);box-shadow:0 18px 40px -18px #000,0 0 0 1px #ffffff20 inset}
-.gd-connect h3{margin:14px 0 4px;font:500 19px 'Mowafy Sans Text',sans-serif;color:#f4f3ed}
+.gd-connect h3{margin:14px 0 4px;font:500 19px 'Mowafy Sans',sans-serif;color:#f4f3ed}
 .gd-connect>p{max-width:430px;margin:0 0 14px;font-size:13px;line-height:1.5;color:#9f9d96}
 .gd-connect ul{list-style:none;display:flex;flex-direction:column;gap:7px;margin:0 0 18px;padding:12px 16px;border-radius:13px;background:#ffffff05;border:1px solid #ffffff0d;text-align:left;font-size:12.5px;color:#cfcdc6}
 .gd-connect li{display:flex;align-items:center;gap:9px}
 .gd-connect li svg{color:#9bd0a0}
-.gd-google{display:flex;align-items:center;gap:10px;height:42px;padding:0 20px;border-radius:12px;border:0;background:#f4f3ee;color:#161616;font:600 13.5px 'Mowafy Sans Text',sans-serif;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.gd-google{display:flex;align-items:center;gap:10px;height:42px;padding:0 20px;border-radius:12px;border:0;background:#f4f3ee;color:#161616;font:600 13.5px 'Mowafy Sans',sans-serif;cursor:pointer;transition:transform .15s,box-shadow .15s}
 .gd-google:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 26px -12px #fff6}
 .gd-google:disabled{opacity:.75;cursor:progress}
 .gd-link{margin-top:10px;border:0;background:none;color:#a9b8ff;font-size:12.5px;cursor:pointer}

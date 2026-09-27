@@ -11,13 +11,13 @@ const live = process.argv.includes("--live"), preview = process.argv.includes("-
 const dir = resolve(".work/film", live ? "live" : "demo");
 const FPS = 30;
 const font = async (name) => "data:font/woff2;base64," + (await readFile(resolve("public/fonts", name))).toString("base64");
-const [serif, sans, medium] = await Promise.all([font("SoftInkSerif-Book.woff2"), font("MowafySansText-Regular.woff2"), font("MowafySansText-Medium.woff2")]);
+const [serif, sans, medium] = await Promise.all([font("MowafySerif-Regular.woff2"), font("MowafySans-Regular.woff2"), font("MowafySans-Bold.woff2")]);
 const log = JSON.parse(await readFile(join(dir, "log.json"), "utf8"));
 
 const css = `
 @font-face{font-family:MowrSerif;src:url(${serif})}
 @font-face{font-family:MowrSans;src:url(${sans})}
-@font-face{font-family:MowrSans;font-weight:500;src:url(${medium})}
+@font-face{font-family:MowrSans;font-weight:600 800;src:url(${medium})}
 *{box-sizing:border-box;margin:0}
 html,body{width:1920px;height:1080px;overflow:hidden;background:#f3eee3;font-family:MowrSans;-webkit-font-smoothing:antialiased}
 #stage{position:relative;width:1920px;height:1080px;overflow:hidden}
