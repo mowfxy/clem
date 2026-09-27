@@ -1,5 +1,5 @@
 // Stands in for xAI's `grok` (Grok Build) in tests, matching its source: `grok models` text, ACP over
-// `grok agent stdio`, and the `--output-format json` result object. FAKE_GROK=signed-out | limit | ok (default)
+// `grok agent stdio`, and the `--output-format json` result object. FAKE_GROK=signed-out | limit | split | ok (default)
 import {argv,stdin,stdout,stderr,exit,env} from 'node:process';
 import {readFileSync} from 'node:fs';
 const args=argv.slice(2),mode=env.FAKE_GROK||'ok';
@@ -21,5 +21,8 @@ else {
   if(mode2!=='dontAsk'){stderr.write('expected dontAsk, got '+mode2+'\n');exit(2);}
   const prompt=readFileSync(args[args.indexOf('--prompt-file')+1],'utf8'),model=args[args.indexOf('-m')+1];
   if(mode==='limit'){stdout.write(JSON.stringify({type:'error',message:'Rate limit exceeded for your plan'})+'\n');exit(1);}
-  stdout.write(JSON.stringify({text:`[${model}] ${prompt}`,stopReason:'end_turn',sessionId:'s1',requestId:'r1'},null,2)+'\n');exit(0);
+  // A reply written in two pipe chunks that cut through a multi-byte character.
+  if(mode==='split'){const bytes=Buffer.from(JSON.stringify({text:'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627'})+'\n'),cut=bytes.indexOf(0xc3)+1;stdout.write(bytes.subarray(0,cut),()=>setTimeout(()=>stdout.write(bytes.subarray(cut),()=>exit(0)),50));}
+  else{
+  stdout.write(JSON.stringify({text:`[${model}] ${prompt}`,stopReason:'end_turn',sessionId:'s1',requestId:'r1'},null,2)+'\n');exit(0);}
 }

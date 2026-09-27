@@ -46,3 +46,22 @@ test('Claude execution confines tools, streams progress, sends pictures and retu
   assert.ok(args.includes('--no-session-persistence'));
   assert.deepEqual(args.slice(-2),['--effort','high']);
 });
+
+test('Claude output split inside a multi-byte character is decoded intact',async()=>{
+  const provider:any=new ClaudeProvider('fixture','C:/fixture');
+  provider.status=async()=>({connected:true});
+  provider.start=async()=>{
+    const child:any=new EventEmitter();
+    child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+    child.stdin.on('finish',()=>queueMicrotask(()=>{
+      const bytes=Buffer.from(JSON.stringify({type:'result',subtype:'success',result:'Café — مرحبا',is_error:false})+'\n');
+      const cut=bytes.indexOf(Buffer.from('é'))+1;
+      child.stdout.write(bytes.subarray(0,cut));child.stdout.write(bytes.subarray(cut));
+      child.stdout.end();child.stdout.on('end',()=>child.emit('close',0));
+    }));
+    return child;
+  };
+  const events:any[]=[];
+  await provider.run('one','hi','claude:sonnet',undefined,(event:any)=>events.push(event));
+  assert.equal(events.find(event=>event.type==='delta').text,'Café — مرحبا');
+});

@@ -60,6 +60,17 @@ export async function streamTurn(
   let bytes = 0, turnId = "";
   const received = new Map<string, string>();
   const summaries = new Map<string, string>();
+  // Newer models send interim "commentary" messages ("I'll look that up.") before the final answer. They are
+  // progress, not the answer: shown as status only, so they never merge into the reply or hide a Kinetra envelope.
+  const commentary = new Set<string>();
+  let lastItem = "";
+  const answer = (itemId: string, text: string) => {
+    if (!text) return;
+    // Separate answer messages are paragraphs, never glued together mid-sentence.
+    if (lastItem && lastItem !== itemId) onText("\n\n");
+    lastItem = itemId;
+    onText(text);
+  };
   await new Promise<void>((resolve, reject) => {
     let ended = false;
     const finish = (error?: Error) => {
@@ -90,7 +101,7 @@ export async function streamTurn(
             bytes += String(p.delta || "").length;
             if (bytes > 8_000_000) throw Error("Codex response exceeded the limit.");
             received.set(p.itemId, (received.get(p.itemId) || "") + p.delta);
-            onText(p.delta);
+            if (!commentary.has(p.itemId)) answer(p.itemId, String(p.delta || ""));
           } else if (method === "item/started" && p.item?.type === "reasoning") {
             onStatus("Thinking it through…");
           } else if (method === "item/reasoning/summaryPartAdded") {
@@ -101,7 +112,8 @@ export async function streamTurn(
             const headline = reasoningHeadline(summary);
             if (headline && headline !== reasoningHeadline(before)) onStatus(headline);
           } else if (method === "item/started" && p.item?.type === "agentMessage") {
-            onStatus("Writing the answer…");
+            if (p.item.phase === "commentary") commentary.add(p.item.id);
+            else onStatus("Writing the answer…");
           } else if (method === "item/started" && (p.item?.type === "mcpToolCall" || p.item?.type === "dynamicToolCall")) {
             onStatus("Using a tool…");
           } else if (method === "item/started" && p.item?.type === "webSearch") {
@@ -111,7 +123,10 @@ export async function streamTurn(
             onStatus("Reading what it found…");
           } else if (method === "item/completed" && p.item?.type === "agentMessage") {
             const previous = received.get(p.item.id) || "", text = p.item.text || "";
-            if (text.startsWith(previous) && text.length > previous.length) onText(text.slice(previous.length));
+            if (commentary.has(p.item.id) || p.item.phase === "commentary") {
+              const line = text.trim().split("\n")[0].slice(0, 90).replace(/[.:…\s]+$/, "");
+              if (line) onStatus(line + "…");
+            } else if (text.startsWith(previous) && text.length > previous.length) answer(p.item.id, text.slice(previous.length));
             received.set(p.item.id, text);
           } else if (method === "turn/completed") {
             if (p.turn?.status === "completed") finish();

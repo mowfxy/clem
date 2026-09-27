@@ -54,7 +54,7 @@ export class ClaudeProvider {
       let output='';let done=false;
       const finish=(result:ReturnType<typeof claudeSubscriptionStatus>)=>{if(done)return;done=true;clearTimeout(timer);child.kill();resolve(result);};
       const timer=setTimeout(()=>finish({installed:true,connected:false}),10000);
-      child.stdout.on('data',(part:Buffer)=>{output+=part.toString();if(output.length>16000)finish({installed:true,connected:false});});
+      child.stdout.setEncoding('utf8');child.stdout.on('data',(part:string)=>{output+=part;if(output.length>16000)finish({installed:true,connected:false});});
       child.stderr.resume();child.on('error',()=>finish({installed:false,connected:false}));child.on('close',code=>finish(claudeSubscriptionStatus(output,code)));
     });
     this.statusCache={at:Date.now(),value};return value;
@@ -96,13 +96,15 @@ export class ClaudeProvider {
           const status=claudeStatus(event);
           if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
         };
-        child.stdout.on('data',(part:Buffer)=>{
+        // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data',(part:string)=>{
           if(!done)touch();
           bytes+=part.length;if(bytes>8_000_000){child.kill();finish(undefined,Error('Claude response exceeded the safe limit.'));return;}
-          buffer+=part.toString();let newline;
+          buffer+=part;let newline;
           while((newline=buffer.indexOf('\n'))>=0){read(buffer.slice(0,newline));buffer=buffer.slice(newline+1);}
         });
-        child.stderr.on('data',(part:Buffer)=>{error=(error+part.toString()).slice(-5000);});
+        child.stderr.setEncoding('utf8');child.stderr.on('data',(part:string)=>{error=(error+part).slice(-5000);});
         child.on('error',()=>finish(undefined,Error('Claude Code could not start. Install its native CLI.')));
         child.on('close',code=>{
           read(buffer);

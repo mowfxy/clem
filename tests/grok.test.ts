@@ -44,3 +44,7 @@ test('failures turn into clear messages',async()=>{
   await assert.rejects(run(new FakeGrok('signed-out'),'Hi'),/Sign in/);
   await assert.rejects(run(new FakeGrok('ok'),'Hi','grok:grok-9'),/not available on your plan/);
 });
+test('a reply split inside a multi-byte character arrives intact',async()=>{
+  const events=await run(new FakeGrok('split'),'hi');
+  assert.equal(events[0].text,'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627');
+});

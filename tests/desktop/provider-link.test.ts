@@ -45,3 +45,15 @@ test("a copy this PC uploaded is replaced when the account holds a newer one", a
   assert.deepEqual(result.written, ["a"]);
   assert.equal(await readFile(link.codexFile("owner", "a"), "utf8"), newer);
 });
+
+test("a linked entry whose id is not a plain name is never written to disk", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mowr-link-"));
+  const data = JSON.stringify({ tokens: "x" });
+  const env = setup([{ id: "../../escape", kind: "codex", label: "", hash: sha(data), data }, { id: "b", kind: "other" as any, label: "", hash: sha(data), data }]);
+  const link = new ProviderLink(env.auth as any, env.vault as any, root);
+  const result = await link.restore("owner");
+  assert.deepEqual(result.written, []);
+  assert.deepEqual(result.codex, []);
+  await assert.rejects(readFile(join(root, "escape", "auth.json"), "utf8"));
+  await assert.rejects(readFile(link.claudeFile("owner"), "utf8"));
+});

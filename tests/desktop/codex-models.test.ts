@@ -210,3 +210,35 @@ test("the Codex turn limit counts inactivity, not total time", async () => {
   // With nothing arriving, the same limit ends the turn.
   await assert.rejects(streamTurn(server, { threadId: "th" }, "hi", undefined, [], () => {}, () => false, {}, 50), /timed out/);
 });
+
+test("interim commentary becomes status, and separate answer messages never run together", async () => {
+  const { streamTurn } = await import("../../desktop/codex-stream.ts");
+  let listener: any;
+  const server: any = {
+    ready: Promise.resolve(), activeThreads: 1, close() {},
+    subscribe(_id: string, l: any) { listener = l; return () => {}; },
+    async request(method: string) { return method === "turn/start" ? { turn: { id: "t" } } : {}; },
+  };
+  let text = "";const statuses: string[] = [];
+  const turn = streamTurn(server, { threadId: "th" }, "hi", undefined, [], (t) => { text += t; }, () => false, {}, 1000, (s) => statuses.push(s));
+  await new Promise((r) => setTimeout(r, 0));
+  listener.onMessage("item/started", { item: { id: "c", type: "agentMessage", phase: "commentary", text: "" } });
+  listener.onMessage("item/agentMessage/delta", { itemId: "c", delta: "I'll check the latest figures." });
+  listener.onMessage("item/completed", { item: { id: "c", type: "agentMessage", phase: "commentary", text: "I'll check the latest figures." } });
+  listener.onMessage("item/started", { item: { id: "f", type: "agentMessage", phase: "final_answer", text: "" } });
+  listener.onMessage("item/agentMessage/delta", { itemId: "f", delta: '{"kinetra":{"action":"recipes"}}' });
+  listener.onMessage("item/completed", { item: { id: "f", type: "agentMessage", phase: "final_answer", text: '{"kinetra":{"action":"recipes"}}' } });
+  listener.onMessage("turn/completed", { turn: { status: "completed" } });
+  await turn;
+  assert.equal(text, '{"kinetra":{"action":"recipes"}}');
+  assert.ok(statuses.includes("I'll check the latest figures…"));
+  // Older models give no phase: two messages still read as two paragraphs.
+  text = "";
+  const legacy = streamTurn(server, { threadId: "th" }, "hi", undefined, [], (t) => { text += t; }, () => false, {}, 1000);
+  await new Promise((r) => setTimeout(r, 0));
+  listener.onMessage("item/agentMessage/delta", { itemId: "a", delta: "First." });
+  listener.onMessage("item/agentMessage/delta", { itemId: "b", delta: "Second." });
+  listener.onMessage("turn/completed", { turn: { status: "completed" } });
+  await legacy;
+  assert.equal(text, "First.\n\nSecond.");
+});
