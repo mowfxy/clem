@@ -110,6 +110,8 @@ export async function storeBlob(id: string, file: Blob, owner = namespace) {
   if (owner !== namespace) throw Error("Account changed. Try again.");
   if (desktop) await local("files/" + id, "PUT", file, owner);
   else await set(blobKey(id), file);
+  // The file's text changed: drop its cached extracted text.
+  await del(`mowr-source:${owner}:${id}`);
 }
 export async function getBlob(id: string) {
   // Google Drive files shown in chat are streamed into memory for viewing and never written to this PC.

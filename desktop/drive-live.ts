@@ -39,10 +39,13 @@ export class DriveLive {
   private async token(force=false):Promise<string|null>{
     if(!force&&this.cached&&Date.now()<this.cached.until)return this.cached.token;
     const session=await this.session();if(!session)return null;
+    // A sign-out or account switch during this request must not leave the previous person's token behind.
+    const generation=this.generation;
     const r=await this.fetcher(this.service+"/api/drive/token",{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",signal:AbortSignal.timeout(20000)});
-    if(r.status===400||r.status===404||r.status===401||r.status===500){const body=await r.json().catch(()=>({}));if(/connect google drive|reconnect|expired/i.test(body.error||"")){this.cached=null;this.known={connected:false,at:Date.now()};return null;}throw Error(body.error||"Google Drive is unavailable right now.");}
+    if(r.status===400||r.status===404||r.status===401||r.status===500){const body=await r.json().catch(()=>({}));if(/connect google drive|reconnect|expired/i.test(body.error||"")){if(generation===this.generation){this.cached=null;this.known={connected:false,at:Date.now()};}return null;}throw Error(body.error||"Google Drive is unavailable right now.");}
     if(!r.ok)throw Error("Google Drive is unavailable right now.");
     const {accessToken,expiresIn}=await r.json();
+    if(generation!==this.generation)throw Error("The account changed. Try again.");
     this.cached={token:accessToken,until:Date.now()+Math.max(60,Number(expiresIn)-120)*1000};
     this.known={connected:true,at:Date.now()};
     return accessToken;
@@ -60,7 +63,9 @@ export class DriveLive {
     try{const connected=!!await this.token(refresh);return {connected,checked:true};}
     catch(error){return this.known?{connected:this.known.connected,checked:true,error:(error as Error).message}:{connected:false,checked:false,error:(error as Error).message};}
   }
-  forget(){this.cached=null;this.known=null;this.trees.clear();this.meta.clear();}
+  private generation=0;
+  /** Drops everything held for the signed-in person (token, connection state, folder trees, file details). */
+  forget(){this.generation++;this.cached=null;this.known=null;this.trees.clear();this.meta.clear();}
 
   async search(question:string):Promise<{connected:boolean;files:DriveHit[]}>{
     if(!await this.token())return {connected:false,files:[]};
@@ -102,6 +107,7 @@ export class DriveLive {
   async tree(folderId:string,refresh=false){
     const cached=this.trees.get(folderId);
     if(!refresh&&cached&&Date.now()-cached.at<120_000)return cached;
+    const generation=this.generation;
     if(!await this.token())throw Object.assign(Error("Connect Google Drive in Settings → Connectors first."),{code:"not_connected"});
     const items:DriveItem[]=[],folders=[folderId],paths=new Map<string,string>([[folderId,""]]),seen=new Set([folderId]);
     let level=[folderId];
@@ -133,7 +139,7 @@ export class DriveLive {
       level=next;
     }
     const value={at:Date.now(),items,folders};
-    this.trees.set(folderId,value);
+    if(generation===this.generation)this.trees.set(folderId,value);
     return value;
   }
 
@@ -372,5 +378,7 @@ export class DriveMediaServer {
     return this.ready;
   }
   async url(id: string) { return `http://127.0.0.1:${await this.start()}/drive/${id}?k=${this.key}`; }
-  stop() { this.server?.close(); this.blocks.clear(); this.layouts.clear(); }
+  /** Drops media read for the previous account; the server keeps running. */
+  forget() { this.blocks.clear(); this.layouts.clear(); }
+  stop() { this.server?.close(); this.forget(); }
 }

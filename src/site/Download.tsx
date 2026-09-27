@@ -15,20 +15,34 @@ const troubles=[
   ['Where are my files?','Everything lives in Documents\\Mowr. Uninstalling keeps it unless you explicitly choose to remove your data.'],
 ];
 
+/** A date-only "2026-09-27" is the calendar day it names, not UTC midnight (which is the day before in the Americas). */
+function publishedDate(value:string){
+  const day=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date=day?new Date(+day[1],+day[2]-1,+day[3]):new Date(value);
+  return Number.isNaN(date.getTime())?value:date.toLocaleDateString(undefined,{dateStyle:'long'});
+}
+
 export function Download({account=false,returning=false}:{account?:boolean;returning?:boolean}){
   const [release,setRelease]=useState<Release|null>(null);
   const [failed,setFailed]=useState(false);
   const [started,setStarted]=useState(false);
-  const autostart=useRef(location.hash.includes('start'));
+  const wantsStart=()=>/[?&]start\b/.test(location.hash);
+  const autostart=useRef(wantsStart()),releaseRef=useRef<Release|null>(null);
+  // Arriving from a "Download" button starts the file right away and keeps the guide on screen.
+  // `?start` is dropped from the address (without a hashchange) so the next click on a Download button changes the hash again.
+  const begin=(url:string)=>{autostart.current=false;setStarted(true);history.replaceState(history.state,'',location.pathname+location.search+location.hash.replace(/[?&]start\b.*$/,''));location.href=url;};
   useEffect(()=>{document.title='Download Mowr for Windows';window.scrollTo(0,0);},[]);
   useEffect(()=>{
     const abort=new AbortController();
     void fetch('/desktop-release.json',{signal:abort.signal}).then(r=>r.ok?r.json():Promise.reject()).then((value:Release)=>{
+      releaseRef.current=value;
       setRelease(value);
-      // Arriving from a "Download" button starts the file right away and keeps the guide on screen.
-      if(autostart.current&&value.url){autostart.current=false;setStarted(true);location.href=value.url;}
+      if(autostart.current&&value.url)begin(value.url);
     }).catch(()=>{if(!abort.signal.aborted)setFailed(true);});
-    return()=>abort.abort();
+    // The page stays mounted across hash changes, e.g. the header's Download button while already here.
+    const onHash=()=>{if(!wantsStart())return;const url=releaseRef.current?.url;if(url)begin(url);else autostart.current=true;};
+    addEventListener('hashchange',onHash);
+    return()=>{abort.abort();removeEventListener('hashchange',onHash);};
   },[]);
   const size=release?.size?`${Math.round(release.size/1048576)} MB`:'';
   return <div className="sx-site">
@@ -69,7 +83,7 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
           <Reveal className="sx-req-grid">
             <div><h3>You’ll need</h3><ul><li>Windows 10 or 11, 64-bit</li><li>About 1 GB of free disk space</li><li>An AI subscription: ChatGPT, Claude or SuperGrok / X Premium+</li><li>An internet connection to sign in and chat</li></ul></div>
             <div><h3>What gets installed</h3><ul><li>The Mowr app, in your user profile</li><li>The AI connector, bundled</li><li>Your workspace in Documents\Mowr</li><li>No background services or drivers</li></ul></div>
-            <div><h3>Release</h3><ul><li>Version {release?.version||'—'}</li>{release?.released&&<li>Published {new Date(release.released).toLocaleDateString(undefined,{dateStyle:'long'})}</li>}<li>{release?.signed?'Signed installer':'Unsigned preview'}</li>{release?.notes&&<li><a className="sx-link" href={release.notes}>Release notes<Icon name="arrow" size={14}/></a></li>}</ul></div>
+            <div><h3>Release</h3><ul><li>Version {release?.version||'—'}</li>{release?.released&&<li>Published {publishedDate(release.released)}</li>}<li>{release?.signed?'Signed installer':'Unsigned preview'}</li>{release?.notes&&<li><a className="sx-link" href={release.notes}>Release notes<Icon name="arrow" size={14}/></a></li>}</ul></div>
           </Reveal>
         </section>
 

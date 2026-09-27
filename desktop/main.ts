@@ -29,7 +29,7 @@ import { applyChange, undoChange, locate, readText, type Change } from "./folder
 import { editLanguage } from "../core/answer-format";
 import { join, resolve, basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import { mkdir, writeFile, unlink, rm } from "node:fs/promises";
+import { mkdir, writeFile, unlink, rm, readdir } from "node:fs/promises";
 import { browserLogin } from "./browser-login";
 import { randomBytes, randomUUID } from "node:crypto";
 import { requestSchema, type DesktopStatus } from "./contracts";
@@ -75,6 +75,7 @@ import {
   learnMemories,
   rememberedWords,
   confirmMemory,
+  pruneMemory,
   type Learned,
   type MemoryState,
 } from "./memory";
@@ -157,9 +158,11 @@ void app.whenReady().then(async () => {
   // Copies of files opened in the browser from earlier runs.
   void rm(join(app.getPath("temp"),"Mowr","view"),{recursive:true,force:true}).catch(()=>{});
   const vault = new Vault(join(app.getPath("userData"), "protected"));
+  // Earlier versions kept a progress file per chat and Telegram request that nothing read; they are removed.
+  void readdir(join(app.getPath("userData"), "protected")).then((names) => Promise.all(names.filter((name) => /^(?:task|telegram-job)-.+\.bin$/.test(name)).map((name) => unlink(join(app.getPath("userData"), "protected", name)).catch(() => {})))).catch(() => {});
   const auth = new DesktopAuth(vault, config);
   // Restoring a session can require the network. Always open the window first.
-  void auth.initialize().catch(()=>{});
+  const authReady = auth.initialize().catch(()=>{});
   const essentialSync=new EssentialSync(vault,auth);
   const usageTally=new UsageTally(vault,auth);
   let watchOwner = "";
@@ -205,6 +208,9 @@ void app.whenReady().then(async () => {
   async function selectProvider(owner: string) {
     if(providerOwner!==owner){
       providerAccounts.stop();telegram?.stop();providerOwner=owner;
+      // Nothing from the previous person carries over: Drive's token and caches, and the folders being watched.
+      driveLive.forget();driveMedia.forget();
+      if(owner==='signed-out'){folderWatcher?.stop();watchOwner='';}else void watchFolders(owner).catch(()=>{});
       // Sign-ins kept with the Mowr account come back before any Codex process starts.
       if(owner!=='signed-out')await Promise.race([
         providerLink.restore(owner).then(async r=>{
@@ -213,6 +219,8 @@ void app.whenReady().then(async () => {
         }),
         new Promise(done=>setTimeout(done,8000)),
       ]).catch(linkFailed);
+      // The Telegram bot answers whenever this person is signed in, including after a restart in the tray.
+      if(owner!=='signed-out'&&providerOwner===owner)telegram.start(owner);
     }
     codex=await providerAccounts.selected(owner);
     return codex;
@@ -228,6 +236,8 @@ void app.whenReady().then(async () => {
   async function answerWith(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
     { images = [], pdf, instructions = kinetraInstructions, tools }: { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any> } = {}) {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:");
+    // Stop pressed while the request was being prepared (folders, memory, account choice): nothing starts.
+    if (cancelledRuns.has(id)) throw Error("Request cancelled");
     if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions, tools);
     const cancelled = () => cancelledRuns.has(id);
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
@@ -383,6 +393,9 @@ void app.whenReady().then(async () => {
       if (imagePath) await unlink(imagePath).catch(() => {});
     }
   });
+  // A launch in the tray (--background) has no workspace asking for the session, so the signed-in person's
+  // services (Telegram, folder watching, provider sign-ins) start here once the saved session is restored.
+  void authReady.then(async () => { const user = await auth.user(false); if (user) await selectProvider(user.id); }).catch(() => {});
   /** Explains why the workspace is locked in the person's terms. */
   function entitlementMessage(entitlement: { reason?: string; message?: string }) {
     if (entitlement.reason === "suspended")
@@ -399,6 +412,13 @@ void app.whenReady().then(async () => {
     return value;
   }
   let memoryWrites = Promise.resolve();
+  /** Every change to a person's memory reads and writes it inside this queue, so no change overwrites another. */
+  const memoryLocks = new Map<string, Promise<unknown>>();
+  function withMemory<T>(owner: string, task: () => Promise<T>): Promise<T> {
+    const next = (memoryLocks.get(owner) || Promise.resolve()).catch(() => {}).then(task);
+    memoryLocks.set(owner, next.catch(() => {}));
+    return next;
+  }
   /**
    * After a reply, a short low-effort pass notes durable facts the person shared about themselves.
    * It runs only when the message talks about them, never blocks the chat, and stores learned
@@ -424,8 +444,10 @@ void app.whenReady().then(async () => {
       // "Remember that…" is the person's own instruction: keep their words even when extraction found nothing.
       if (!learned.length) learned = rememberedWords(message);
       if (!learned.length) return;
-      const latest = await vault.read<MemoryState>(key, state);
-      await vault.write(key, learnMemories(latest, learned, { scope, sourceId: "chat:" + sourceId, explicit: explicitRemember(message) }));
+      await withMemory(owner, async () => {
+        const latest = await vault.read<MemoryState>(key, state);
+        await vault.write(key, learnMemories(latest, learned, { scope, sourceId: "chat:" + sourceId, explicit: explicitRemember(message) }));
+      });
       if (!window.isDestroyed()) window.webContents.send("mowr:chat", { id: sourceId, type: "memory", text: learned.map((m) => m.text).join("\n") });
     }).catch((error) => console.warn("[memory] could not save what was learned:", (error as Error).message));
   }
@@ -543,6 +565,7 @@ void app.whenReady().then(async () => {
           method:request.method, redirect:"error", signal:AbortSignal.timeout(60000), body:upload,
           headers:{Authorization:"Bearer " + data.session!.access_token, Origin:"https://mowrai.com", ...(upload?{"Content-Type":request.headers.get("Content-Type")||"application/octet-stream"}:{})},
         });
+        if (request.method === "DELETE" && response.ok) { driveLive.forget(); driveMedia.forget(); }
         return new Response(response.body, {status:response.status, headers:{"Content-Type":response.headers.get("Content-Type") || "application/octet-stream", "X-Mowr-File-Name":response.headers.get("X-Mowr-File-Name") || "", "Cache-Control":"no-store"}});
       } catch { return Response.json({error:"Drive is unavailable. Check your connection and retry."},{status:502}); }
     }
@@ -740,7 +763,9 @@ void app.whenReady().then(async () => {
       for(const provider of claudeProviders.values())provider.stop();
       for(const provider of grokProviders.values())provider.stop();
       await selectProvider("signed-out");
-      await auth.client?.auth.signOut();
+      driveLive.forget();driveMedia.forget();
+      await auth.client?.auth.signOut().catch(() => {});
+      await auth.forget();
       return status();
     }
     const user = await auth.user(true, securityActions.has(request.action));
@@ -859,12 +884,26 @@ void app.whenReady().then(async () => {
         enabled: (await vault.read("setup-" + user.id, setupDefault)).memory,
         records: [],
       });
+    /** Reads, changes and writes memory inside the person's memory queue. */
+    const changeMemory = (change: (state: MemoryState) => MemoryState | Promise<MemoryState>) =>
+      withMemory(user.id, async () => { await vault.write(memoryKey, await change(await loadMemory())); });
     const syncedMemory = async () => {
-      const state = await loadMemory();
+      const state = pruneMemory(await loadMemory());
       const synced=await essentialSync.exchange(user.id,"memory",state.records.map(({embedding,...record})=>record));
-      const next={...state,records:synced.data as unknown as MemoryState["records"]};
-      await vault.write(memoryKey,next);
-      return {state:next,syncError:synced.error};
+      // Changes made on this PC while the sync was on the network are kept on top of what it returned.
+      return withMemory(user.id, async () => {
+        const latest = await loadMemory();
+        const sent = new Map(state.records.map((m) => [m.id, JSON.stringify(m)]));
+        const now = new Map(latest.records.map((m) => [m.id, m]));
+        const records = (synced.data as unknown as MemoryState["records"])
+          .filter((m) => !sent.has(m.id) || now.has(m.id)) // forgotten meanwhile
+          .map((m) => { const local = now.get(m.id); return local && sent.get(m.id) !== JSON.stringify(local) ? local : m; }); // changed meanwhile
+        const returned = new Set(records.map((m) => m.id));
+        for (const m of latest.records) if (!sent.has(m.id) && !returned.has(m.id)) records.push(m);
+        const next = pruneMemory({ ...latest, records });
+        await vault.write(memoryKey, next);
+        return { state: next, syncError: synced.error };
+      });
     };
     if (request.action === "memoryList") {
       const {state,syncError}=await syncedMemory();
@@ -885,41 +924,34 @@ void app.whenReady().then(async () => {
       };
     }
     if (request.action === "memoryConfirm") {
-      await vault.write(memoryKey, confirmMemory(await loadMemory(), request.id));
+      await changeMemory((state) => confirmMemory(state, request.id));
       return { ok: true };
     }
     if(request.action==='memoryEdit'){
-      let state=await loadMemory();
+      await changeMemory((state)=>{
       const current=state.records.filter(m=>m.scope===request.scope&&m.confirmed&&!m.supersededBy);
       const expected=new Map(request.expected.map(m=>[m.id,m.text]));
       if(current.length!==expected.size||current.some(m=>expected.get(m.id)!==m.text))throw Error('Memory changed. Reopen it before trying again.');
       if(new Set(request.records.map(m=>m.id)).size!==request.records.length||request.records.some(m=>!expected.has(m.id)))throw Error('Invalid memory update.');
       state=forgetMemory(state,current.filter(m=>!request.records.some(x=>x.id===m.id)).map(m=>m.id));
       for(const edited of request.records){const before=current.find(m=>m.id===edited.id)!;if(before.text!==edited.text)state=putMemory(state,{...before,text:edited.text,source:{id:'user:'+randomBytes(16).toString('hex'),locator:'Updated by you in memory chat',at:new Date().toISOString()}});}
-      await vault.write(memoryKey,state);return {ok:true};
+      return state;});return {ok:true};
     }
     if (request.action === "memoryClear") {
-      const state = await loadMemory();
-      await vault.write(memoryKey, forgetMemory(state,state.records.filter(m=>m.scope===request.scope).map(m=>m.id)));
+      await changeMemory((state) => forgetMemory(state,state.records.filter(m=>m.scope===request.scope).map(m=>m.id)));
       return {ok:true};
     }
     if (request.action === "memoryToggle") {
-      await vault.write(memoryKey, {
-        ...(await loadMemory()),
-        enabled: request.enabled,
-      });
+      await changeMemory((state) => ({ ...state, enabled: request.enabled }));
       return { ok: true };
     }
     if (request.action === "memoryForget") {
-      await vault.write(
-        memoryKey,
-        forgetMemory(await loadMemory(), [request.id]),
-      );
+      await changeMemory((state) => forgetMemory(state, [request.id]));
       return { ok: true };
     }
     if (request.action === "memorySave") {
       const now = new Date().toISOString();
-      const state = putMemory(await loadMemory(), {
+      await changeMemory((state) => putMemory(state, {
         scope: request.scope,
         key: request.key,
         text: request.text,
@@ -933,8 +965,7 @@ void app.whenReady().then(async () => {
         },
         derivedFrom: [],
         sharedWith: request.sharedWith,
-      });
-      await vault.write(memoryKey, state);
+      }));
       return { ok: true };
     }
     if (request.action === "pdfRender") {
@@ -1081,15 +1112,15 @@ void app.whenReady().then(async () => {
       const folders = (await vault.read<Folder[]>(key, [])).filter(
         (f) => f.scope === request.scope,
       );
+      const unavailable: string[] = [];
       // Everything a request needs is prepared together, not one network call after another.
       const [entitlement, , sources, memoryState, setup] = await Promise.all([
         cachedEntitlement(user.id),
         claude ? undefined : providerAccounts.selectForTask(user.id,{model:request.model,reasoning:request.reasoning}).then(async (selection) => { if (selection.switched) await selectProvider(user.id); }),
+        // A folder that is missing, moved or unreadable is left out; the others still answer.
         Promise.all(folders.map(async (folder) => {
-          const cache = "index-" + user.id + "-" + folder.id;
-          const files = await indexFolder(folder, await vault.read<IndexedFile[]>(cache, []));
-          await vault.write(cache, files);
-          return retrieveFiles(files, query, Math.floor(16000 / Math.max(1, folders.length)));
+          try { return retrieveFiles(await freshIndex(folder), query, Math.floor(16000 / Math.max(1, folders.length))); }
+          catch { unavailable.push(basename(folder.path)); return []; }
         })).then((lists) => lists.flat()),
         loadMemory(),
         vault.read("setup-" + user.id, setupDefault),
@@ -1118,13 +1149,7 @@ void app.whenReady().then(async () => {
         sources,
         memories,
         name: memoryState.enabled ? setup.displayName : undefined,
-        extra: folders.length ? editLanguage : "",
-      });
-      const checkpoint = "task-" + user.id + "-" + request.id;
-      await vault.write(checkpoint, {
-        status: "running",
-        scope: request.scope,
-        startedAt: new Date().toISOString(),
+        extra: (folders.length ? editLanguage : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : ""),
       });
       const emit = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
       // Documents Mowr made earlier in this conversation. Asking to change one revises that same file.
@@ -1169,17 +1194,12 @@ void app.whenReady().then(async () => {
       const instructions = kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name })));
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, { images: pictures, pdf, instructions, tools: (tool) => tools(tool) });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
-      void run.finally(() => cancelledRuns.delete(request.id)).catch(() => {});
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
-          learnFromTurn(user.id, request.scope, request.id, query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
-          return vault.write(checkpoint, { status: "complete", scope: request.scope });
+          // A stopped answer teaches nothing.
+          if (!cancelledRuns.has(request.id)) learnFromTurn(user.id, request.scope, request.id, query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
         })
         .catch(async (error) => {
-          await vault.write(checkpoint, {
-            status: "interrupted",
-            scope: request.scope,
-          });
           if (!window.isDestroyed())
             window.webContents.send("mowr:chat", {
               id: request.id,
@@ -1188,7 +1208,8 @@ void app.whenReady().then(async () => {
                 ? (error instanceof Error ? error.message : 'This model could not complete this request.')
                 : codexFailureMessage(error),
             });
-        });
+        })
+        .finally(() => cancelledRuns.delete(request.id));
       return { started: true };
     }
   });
