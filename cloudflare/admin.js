@@ -184,6 +184,57 @@ export async function handleAdmin(request, env, user, path, authorization) {
     });
   }
 
+  if (path === "/admin/stats" && get) {
+    const range = [7, 30, 90].includes(Number(params.get("days"))) ? Number(params.get("days")) : 30;
+    const from = new Date(Date.now() - (range - 1) * day).toISOString().slice(0, 10);
+    const [models, daily, hours, perPerson, links, sync] = await Promise.all([
+      all(env, "SELECT provider,model,SUM(turns) AS turns,SUM(images) AS images,COUNT(DISTINCT user_id) AS people FROM desktop_usage WHERE day>=? GROUP BY provider,model ORDER BY turns DESC", from),
+      all(env, "SELECT day,SUM(turns) AS turns,COUNT(DISTINCT user_id) AS people FROM desktop_usage WHERE day>=? GROUP BY day ORDER BY day", from),
+      all(env, "SELECT day,hours FROM desktop_usage_hours WHERE day>=?", from),
+      all(env, "SELECT user_id,SUM(turns) AS turns,COUNT(DISTINCT provider) AS providers,COUNT(DISTINCT day) AS days FROM desktop_usage WHERE day>=? GROUP BY user_id ORDER BY turns DESC", from),
+      all(env, "SELECT kind,COUNT(DISTINCT user_id) AS people FROM provider_links GROUP BY kind"),
+      all(env, "SELECT kind,COUNT(*) AS people FROM desktop_sync GROUP BY kind"),
+    ]);
+    const reasoning = await all(env, "SELECT reasoning,SUM(turns) AS turns FROM desktop_usage WHERE day>=? AND reasoning<>'' GROUP BY reasoning ORDER BY turns DESC", from);
+    const providers = {};
+    for (const m of models) {
+      const p = (providers[m.provider] ||= { provider: m.provider, turns: 0, images: 0 });
+      p.turns += m.turns;
+      p.images += m.images;
+    }
+    const providerPeople = await all(env, "SELECT provider,COUNT(DISTINCT user_id) AS people FROM desktop_usage WHERE day>=? GROUP BY provider", from);
+    for (const row of providerPeople) if (providers[row.provider]) providers[row.provider].people = row.people;
+    const byHour = Array(24).fill(0), byWeekday = Array(7).fill(0);
+    for (const row of hours) String(row.hours).split(",").forEach((n, h) => { byHour[h] += Number(n) || 0; });
+    for (const row of daily) byWeekday[new Date(row.day + "T12:00:00Z").getUTCDay()] += row.turns;
+    const series = Array.from({ length: range }, (_, i) => {
+      const date = new Date(Date.now() - (range - 1 - i) * day).toISOString().slice(0, 10);
+      const found = daily.find((d) => d.day === date);
+      return { date, count: found?.turns || 0, people: found?.people || 0 };
+    });
+    const turns = models.reduce((sum, m) => sum + m.turns, 0);
+    const busiest = series.reduce((best, d) => (d.count > best.count ? d : best), { date: null, count: 0 });
+    return json({
+      range,
+      turns,
+      images: models.reduce((sum, m) => sum + m.images, 0),
+      people: perPerson.length,
+      perPerson: perPerson.length ? Math.round(turns / perPerson.length) : 0,
+      topPerson: perPerson[0]?.turns || 0,
+      multiProvider: perPerson.filter((p) => p.providers > 1).length,
+      everyDay: perPerson.filter((p) => p.days >= Math.min(range, 7)).length,
+      busiest,
+      providers: Object.values(providers).sort((a, b) => b.turns - a.turns),
+      models: models.slice(0, 12),
+      reasoning,
+      byHour,
+      byWeekday,
+      series,
+      links,
+      sync,
+    });
+  }
+
   if (path === "/admin/users" && get) {
     const plan = params.get("plan") || "all";
     let rows = await people(env, { q: (params.get("q") || "").trim().slice(0, 120) });

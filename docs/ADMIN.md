@@ -51,3 +51,8 @@ The Worker allows browser requests from `https://admin.mowrai.com` and local Vit
 ## Tests
 
 `tests/desktop/admin-worker.test.ts` covers roles, CORS, grants, suspension, case replies and visibility of internal notes, announcements and the audit log against an in-memory SQLite database.
+
+## Stats
+
+`#/stats` shows which AI providers and models people use, messages per day, busiest hours and weekdays, and a few fun facts. The desktop app counts messages per local day (`desktop/usage-tally.ts`) and sends the running totals to `POST /usage` (`cloudflare/usage.js`) at most every 30 minutes and on start. Only provider, model, thinking level, message and image counts and a 24-hour histogram are sent, never content. Totals are stored in `desktop_usage` and `desktop_usage_hours`; a resend keeps the larger count, so retries never double count. Linked accounts and sync adoption come from `provider_links` and `desktop_sync`.
+

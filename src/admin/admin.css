@@ -60,6 +60,24 @@
 .adm-topbar,.adm-scrim.nav{display:none}
 .adm-main{min-width:0;padding:30px 44px 64px;animation:adm-in .45s var(--a-ease) both}
 
+/* Dropdowns: field-style trigger, menu in the top layer */
+.adm-root button.adm-select,.adm-modal button.adm-select{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:13.5px;background:var(--a-field);border:1px solid var(--a-line-2);border-radius:10px;padding:9px 10px 9px 12px;color:var(--a-ink);text-align:left;cursor:pointer}
+.adm-select>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-select>span.placeholder{color:var(--a-soft)}
+.adm-select>svg{flex:none;color:var(--a-muted);transition:transform .2s var(--a-ease),color .18s}
+.adm-root button.adm-select:hover:not(:disabled),.adm-modal button.adm-select:hover:not(:disabled){background:#1c1c1a;border-color:#4a4a45}
+.adm-select[aria-expanded=true]{border-color:#8b8a83!important;box-shadow:0 0 0 4px #f0efeb10}
+.adm-select[aria-expanded=true]>svg{transform:rotate(180deg);color:var(--a-ink)}
+.adm-select:disabled{opacity:.55;cursor:default}
+.adm-select-menu{position:fixed;inset:auto;margin:0;max-width:min(360px,calc(100vw - 16px));max-height:min(320px,60vh);overflow:auto;padding:5px;background:#252523;color:#e8e6e0;border:1px solid #3e3e3a;border-radius:12px;box-shadow:0 18px 48px #0008,0 2px 6px #0005;font:400 13px/1.3 'Mowafy Sans Text',sans-serif;scrollbar-width:thin;scrollbar-color:#454540 transparent}
+.adm-select-menu:popover-open{display:grid;gap:1px;animation:adm-menu .16s var(--a-ease) both}
+@keyframes adm-menu{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.adm-select-menu button{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 10px;border-radius:8px;cursor:pointer;color:#d8d6cf;white-space:nowrap}
+.adm-select-menu button>span{overflow:hidden;text-overflow:ellipsis}
+.adm-select-menu button.active{background:#ffffff0f;color:var(--a-ink,#f0efeb)}
+.adm-select-menu button[aria-selected=true]{color:#f0efeb}
+.adm-select-menu button svg{flex:none;color:#f0efeb}
+
 /* Page header with its ink illustration */
 .adm-page{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .adm-page-head{display:flex;align-items:center;gap:20px;min-height:104px;margin-bottom:6px}
@@ -211,13 +229,31 @@
 .adm-note p{margin:0 0 6px;font-size:13px;white-space:pre-wrap}
 .adm-note small{font-size:11.5px;color:var(--a-muted)}
 
+/* Stats */
+.adm-share li{grid-template-columns:150px minmax(0,1fr) 40px}
+.adm-share li>span{display:grid;gap:2px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--a-ink)}
+.adm-share li>span small{font-size:11px;color:var(--a-muted)}
+.adm-share li:nth-child(n+2) b{background:var(--a-soft)}
+.adm-facts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.adm-facts-grid>div{display:grid;gap:5px;align-content:start;padding:14px 16px;border:1px solid var(--a-line);border-radius:14px;background:radial-gradient(120% 100% at 0 0,#232321,#1b1b19);animation:adm-in .5s var(--a-ease) both}
+.adm-facts-grid span{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--a-muted)}
+.adm-facts-grid strong{font:360 24px/1.15 'Soft Ink Serif',Georgia,serif;letter-spacing:-.4px;color:var(--a-ink);overflow-wrap:anywhere}
+.adm-facts-grid small{font-size:12px;color:var(--a-muted);line-height:1.45}
+@media (max-width:520px){.adm-share li{grid-template-columns:104px minmax(0,1fr) 34px}}
+
 /* Support inbox */
-.adm-inbox-page{max-width:1400px}
-.adm-inbox{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);border:1px solid var(--a-line);border-radius:16px;overflow:hidden;background:var(--a-card);height:calc(100vh - 210px);min-height:540px;animation:adm-in .5s var(--a-ease) both}
+.adm-main:has(>.adm-inbox-page){height:100vh;height:100dvh;padding-bottom:30px;overflow:auto;display:flex;flex-direction:column}
+.adm-inbox-page{max-width:1400px;width:100%;flex:1;min-height:0;grid-template-rows:auto minmax(0,1fr)}
+.adm-inbox{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);border:1px solid var(--a-line);border-radius:16px;overflow:hidden;background:var(--a-card);height:100%;min-height:480px;animation:adm-in .5s var(--a-ease) both}
 .adm-inbox-list{border-right:1px solid var(--a-line);overflow:auto;display:flex;flex-direction:column;min-width:0}
+@supports not selector(::-webkit-scrollbar){.adm-inbox :is(.adm-inbox-list,.adm-thread,.adm-case-side,.adm-composer textarea){scrollbar-width:thin;scrollbar-color:#3a3a36 transparent}}
+.adm-inbox :is(.adm-inbox-list,.adm-thread,.adm-case-side,.adm-composer textarea)::-webkit-scrollbar{width:10px;height:10px}
+.adm-inbox :is(.adm-inbox-list,.adm-thread,.adm-case-side,.adm-composer textarea)::-webkit-scrollbar-track{background:transparent}
+.adm-inbox :is(.adm-inbox-list,.adm-thread,.adm-case-side,.adm-composer textarea)::-webkit-scrollbar-thumb{background:#3a3a36;border:3px solid transparent;background-clip:padding-box;border-radius:10px}
+.adm-inbox :is(.adm-inbox-list,.adm-thread,.adm-case-side,.adm-composer textarea)::-webkit-scrollbar-thumb:hover{background-color:#55554f}
 .adm-inbox-tools{display:flex;gap:8px;padding:12px;border-bottom:1px solid var(--a-line);position:sticky;top:0;background:var(--a-card);z-index:1}
 .adm-inbox-tools .adm-search{min-width:0}
-.adm-inbox-tools select{width:112px;flex:none}
+.adm-inbox-tools .adm-select{width:112px;flex:none}
 .adm-inbox-list ul{list-style:none;margin:0;padding:6px}
 .adm-inbox-list li>button{all:unset;box-sizing:border-box;width:100%;display:grid;gap:6px;padding:12px;border-radius:11px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s}
 .adm-inbox-list li>button:hover{background:#ffffff06}
@@ -235,7 +271,7 @@
 .adm-case-head>div:first-child{min-width:0}
 .adm-case-head h2{margin:4px 0 0;font-size:23px;overflow-wrap:anywhere}
 .adm-case-controls{display:flex;gap:6px;flex-wrap:wrap}
-.adm-case-controls select{font-size:12.5px;padding:6px 9px;max-width:170px}
+.adm-case-controls .adm-select{font-size:12.5px;padding:6px 9px 6px 11px;max-width:180px}
 .adm-case-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 230px}
 .adm-thread{overflow:auto;padding:20px;display:grid;align-content:start;gap:16px}
 .adm-msg{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;animation:adm-in .35s var(--a-ease) both}
@@ -259,7 +295,7 @@
 .adm-root .adm-composer-tabs button{border:0;background:none;color:var(--a-muted);padding:6px 10px;font-size:12.5px}
 .adm-root .adm-composer-tabs button:hover:not(:disabled){border:0;color:var(--a-ink)}
 .adm-root .adm-composer-tabs button.on{color:var(--a-ink);background:#ffffff0d}
-.adm-composer-tabs select{margin-left:auto;font-size:12px;padding:5px 8px;max-width:190px}
+.adm-composer-tabs .adm-select{margin-left:auto;font-size:12px;padding:5px 8px 5px 10px;max-width:190px}
 .adm-composer textarea{resize:vertical;min-height:72px;line-height:1.5;width:100%}
 .adm-composer footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .adm-composer footer>div{display:flex;gap:6px}
@@ -267,17 +303,27 @@
 /* Forms and modals */
 .adm-form{display:grid;gap:14px}
 .adm-form label{display:grid;gap:7px;font-size:12.5px;color:var(--a-soft)}
-.adm-form label>input,.adm-form label>select,.adm-form label>textarea{width:100%}
+.adm-form label>input,.adm-form label>.adm-select,.adm-form label>textarea{width:100%}
 .adm-form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .adm-form footer{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.adm-modal .adm-form footer{justify-content:flex-end}
 .adm-form.inline{grid-template-columns:minmax(0,1fr) 160px auto;align-items:end}
 .adm-form.inline .adm-muted{grid-column:1/-1;margin:0}
-.adm-modal{border:1px solid var(--a-line-2);border-radius:18px;background:#1a1a19;color:var(--a-ink);padding:20px 22px 22px;width:min(440px,calc(100vw - 32px));box-shadow:0 30px 90px #000c;font-family:'Mowafy Sans Text',system-ui,sans-serif}
+.adm-modal{border:1px solid var(--a-line-2);border-radius:18px;background:linear-gradient(180deg,#1e1e1c,#1a1a19 120px);max-height:calc(100dvh - 32px);overflow:auto;color:var(--a-ink);padding:20px 22px 22px;width:min(440px,calc(100vw - 32px));box-shadow:0 30px 90px #000c;font-family:'Mowafy Sans Text',system-ui,sans-serif}
 .adm-modal[open]{animation:adm-pop .28s var(--a-ease)}
 .adm-modal::backdrop{background:#000a;backdrop-filter:blur(3px)}
-.adm-modal>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-.adm-modal>header h2{margin:0;font-size:23px}
+.adm-modal>header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:0 -22px 18px;padding:0 22px 16px;border-bottom:1px solid var(--a-line)}
+.adm-modal>header h2{margin:0;font-size:25px}
+.adm-modal>header .adm-icon{margin:-2px -6px 0 0}
+.adm-modal .adm-modal-line{margin:6px 0 0;font-size:12.5px;line-height:1.5;color:var(--a-muted);max-width:52ch}
+.adm-modal.wide{width:min(860px,calc(100vw - 32px))}
+.adm-modal .adm-form footer{justify-content:flex-end;margin:4px -22px -22px;padding:14px 22px;border-top:1px solid var(--a-line);background:#171716;border-radius:0 0 18px 18px}
+.adm-modal .adm-form footer>div{display:flex;gap:8px;margin-left:auto}
+.adm-modal .adm-form footer .adm-muted{margin-right:auto}
+.adm-compose{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:22px}
+.adm-compose-fields{display:grid;gap:14px;align-content:start}
+.adm-compose-preview{display:grid;align-content:start;gap:0;padding:16px;border-radius:14px;background:radial-gradient(120% 90% at 0 0,#262624,#191918);border:1px solid var(--a-line)}
+.adm-compose footer{grid-column:1/-1}
+@media (max-width:720px){.adm-compose{grid-template-columns:1fr}}
 .adm-modal p{margin:0}
 
 /* Announcements */
@@ -341,6 +387,7 @@
   .adm-head-art{width:84px;margin:-10px 0 -12px -10px}
   .adm-page-head h1{font-size:28px}
   .adm-head-text{min-width:180px}
+  .adm-main:has(>.adm-inbox-page){height:auto;overflow:visible;display:block;padding-bottom:48px}
   .adm-inbox{grid-template-columns:1fr;height:auto;min-height:0}
   .adm-inbox-list{max-height:340px;border-right:0;border-bottom:1px solid var(--a-line)}
   .adm-inbox-detail{min-height:560px}

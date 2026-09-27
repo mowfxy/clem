@@ -31,6 +31,18 @@ export async function demoApi(path:string,body?:any):Promise<any>{
   if(url.pathname==='/admin/cases'){const s=url.searchParams.get('status')||'active';return {cases:cases.filter(c=>s==='all'||(s==='active'?['open','pending'].includes(c.status):c.status===s))};}
   const one=/^\/admin\/cases\/(.+)$/.exec(url.pathname);
   if(one){const c=cases.find(x=>x.id===one[1])||cases[0];const p=people.find(x=>x.id===c.owner_id)!;return {case:{...c,display_name:p.display_name,last_seen_at:p.last_seen_at,plan:p.plan,user_seen_at:iso(0)},messages:messages[c.id]||[],otherCases:cases.filter(x=>x.owner_id===c.owner_id&&x.id!==c.id),team:[{id:people[5].id,email:'m@mohamedmowafy.com',role:'owner'}]};}
+  if(url.pathname==='/admin/stats'){
+    const range=Number(url.searchParams.get('days'))||30,k=range/30;
+    const models=[['claude','sonnet',1840,62,5],['chatgpt','gpt-5.5',1310,40,6],['chatgpt','default',620,11,3],['claude','opus',410,25,2],['grok','grok-4',180,3,1],['claude','haiku',95,0,2]].map(([provider,model,turns,images,people])=>({provider,model,turns:Math.round(Number(turns)*k),images:Math.round(Number(images)*k),people}));
+    const turns=models.reduce((a,m)=>a+m.turns,0);
+    const series=Array.from({length:range},(_,i)=>({date:new Date(Date.now()-(range-1-i)*day).toISOString().slice(0,10),count:Math.round(turns/range*(0.55+0.9*Math.abs(Math.sin(i*1.7)))),people:5}));
+    const busiest=series.reduce((b,s)=>s.count>b.count?s:b,{date:null as string|null,count:0});
+    return {range,turns,images:models.reduce((a,m)=>a+m.images,0),people:7,perPerson:Math.round(turns/7),topPerson:Math.round(1520*k),multiProvider:3,everyDay:4,busiest,
+      providers:[{provider:'claude',turns:models.filter(m=>m.provider==='claude').reduce((a,m)=>a+m.turns,0),images:0,people:5},{provider:'chatgpt',turns:models.filter(m=>m.provider==='chatgpt').reduce((a,m)=>a+m.turns,0),images:0,people:6},{provider:'grok',turns:models[4].turns,images:0,people:1}].sort((a,b)=>b.turns-a.turns),
+      models,reasoning:[{reasoning:'medium',turns:1900},{reasoning:'high',turns:1100},{reasoning:'low',turns:400}],
+      byHour:[40,22,14,8,5,4,9,30,70,120,160,170,150,180,210,230,220,190,160,175,210,240,180,90],byWeekday:[380,720,760,700,690,560,420],series,
+      links:[{kind:'codex',people:6},{kind:'claude',people:5},{kind:'telegram',people:2}],sync:[{kind:'memory',people:6},{kind:'skills',people:4},{kind:'notes',people:3}]};
+  }
   if(path==='/admin/announcements')return {announcements};
   if(path==='/admin/team')return {team:[{id:people[5].id,email:'m@mohamedmowafy.com',role:'owner'},{id:people[6].id,email:'priya@college.edu',role:'support'}]};
   if(url.pathname==='/admin/audit')return {entries:audit};

@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {adminApi,type Person,type Staff} from './api';
-import {Avatar,Badge,Empty,ErrorNote,I,Modal,PageHead,PersonStatus,Skeleton,ago,copy,date,useLoad,useToast,who} from './ui';
+import {Avatar,Badge,Empty,ErrorNote,I,Modal,PageHead,PersonStatus,Skeleton,ago,copy,date,useLoad,useToast,who,Select} from './ui';
 import type {Go} from './AdminApp';
 
 const filters=[['all','Everyone'],['active','Active this week'],['new','New this week'],['setup','Setting up'],['suspended','Suspended']] as const;
@@ -75,7 +75,7 @@ function PersonDrawer({id,staff,onClose,onChanged,go}:{id:string;staff:Staff;onC
   </aside>
   {dialog==='suspend'&&<Modal title="Suspend this account" onClose={()=>setDialog(null)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);const days=String(f.get('days'));void act('suspend',{reason:String(f.get('reason')),days:days==='forever'?null:Number(days)},'Account suspended');}}>
     <label>Reason shown to the person<textarea name="reason" required minLength={3} maxLength={500} rows={3} placeholder="Explain what happened and how to appeal."/></label>
-    <label>Length<select name="days" defaultValue="7"><option value="1">1 day</option><option value="7">1 week</option><option value="30">1 month</option><option value="forever">Until lifted</option></select></label>
+    <label>Length<Select name="days" defaultValue="7" options={[{value:'1',label:'1 day'},{value:'7',label:'1 week'},{value:'30',label:'1 month'},{value:'forever',label:'Until lifted'}]}/></label>
     <p className="adm-muted">Their workspace closes the next time the app checks access. Local files on their PC are never touched.</p>
     <footer><button type="button" onClick={()=>setDialog(null)}>Cancel</button><button className="adm-primary danger" disabled={busy}>Suspend</button></footer></form></Modal>}
   </>;

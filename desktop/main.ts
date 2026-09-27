@@ -7,6 +7,7 @@ import {afterUpdate} from "./update-care";
 import {cp,access,stat as statFile,readFile as readDiskFile} from "node:fs/promises";
 import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
+import {UsageTally} from "./usage-tally";
 import { securityActions, handleSecurity } from "./security";
 import {
   app,
@@ -160,6 +161,7 @@ void app.whenReady().then(async () => {
   // Restoring a session can require the network. Always open the window first.
   void auth.initialize().catch(()=>{});
   const essentialSync=new EssentialSync(vault,auth);
+  const usageTally=new UsageTally(vault,auth);
   let watchOwner = "";
   folderWatcher = new FolderWatcher(
     async (folder, previous) => {
@@ -761,6 +763,7 @@ void app.whenReady().then(async () => {
       return {ok:true};
     }
     if(request.action==="essentialSync") {
+      void usageTally.flush(user.id);
       const [skills,notes]=await Promise.all([essentialSync.exchange(user.id,"skills",request.skills),essentialSync.exchange(user.id,"notes",request.notes)]);
       return {skills:skills.data,notes:notes.data,error:skills.error||notes.error};
     }
@@ -1165,6 +1168,7 @@ void app.whenReady().then(async () => {
       };
       const instructions = kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name })));
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, { images: pictures, pdf, instructions, tools: (tool) => tools(tool) });
+      usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => cancelledRuns.delete(request.id)).catch(() => {});
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
