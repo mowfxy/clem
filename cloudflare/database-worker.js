@@ -1,6 +1,8 @@
 export default {
  async fetch(request,env){
   const headers={'Cache-Control':'no-store','Content-Type':'application/json'};
+  // Without a configured secret nothing is accepted (never compare against "Bearer undefined").
+  if(typeof env.DATABASE_SECRET!=='string'||!env.DATABASE_SECRET.trim())return new Response('{"error":"Unauthorized"}',{status:401,headers});
   const expected=new TextEncoder().encode('Bearer '+env.DATABASE_SECRET),actual=new TextEncoder().encode(request.headers.get('Authorization')||'');
   if(expected.length!==actual.length||!crypto.subtle.timingSafeEqual(expected,actual))return new Response('{"error":"Unauthorized"}',{status:401,headers});
   if(request.method!=='POST')return new Response('{}',{status:405,headers});

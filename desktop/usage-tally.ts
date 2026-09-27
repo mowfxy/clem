@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Vault } from "./vault";
 import type { DesktopAuth } from "./auth";
 import { GROK_PREFIX } from "./grok";
@@ -49,7 +50,10 @@ export class UsageTally {
   private async send(owner: string, tally: Tally) {
     try {
       if ((await this.auth.user())?.id !== owner) return;
-      await this.auth.cloud("/usage", { days: tally.days });
+      // One id per PC, so usage from several PCs adds up instead of overwriting.
+      let device = await this.vault.read<string>("usage-device", "");
+      if (!device) { device = randomUUID(); await this.vault.write("usage-device", device); }
+      await this.auth.cloud("/usage", { days: tally.days, device });
       // Keep only today once older days are safely stored.
       const today = localDay(new Date());
       await this.vault.write(this.key(owner), { days: tally.days.filter((d) => d.day === today), sentAt: Date.now() });

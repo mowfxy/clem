@@ -18,7 +18,8 @@ export function review(card: CardState | undefined, grade: Grade, now = Date.now
     const stability = w[grade - 1], difficulty = initialDifficulty(grade);
     // Again/Hard on a new card come back today; Good/Easy follow the model.
     const due = grade === 1 ? now + 60_000 * 5 : grade === 2 ? now + 60_000 * 30 : now + interval(stability) * DAY;
-    return { due, stability, difficulty, reps: 1, lapses: grade === 1 ? 1 : 0, last: now };
+    // Per FSRS, failing a card you are seeing for the first time is not a lapse.
+    return { due, stability, difficulty, reps: 1, lapses: 0, last: now };
   }
   const elapsed = Math.max(0, (now - card.last) / DAY), r = retrievability(elapsed, card.stability);
   const nextD = clampD(w[7] * initialDifficulty(3) + (1 - w[7]) * (card.difficulty - w[6] * (grade - 3)));
@@ -27,7 +28,21 @@ export function review(card: CardState | undefined, grade: Grade, now = Date.now
   else stability = card.stability * (1 + Math.exp(w[8]) * (11 - nextD) * Math.pow(card.stability, -w[9]) * (Math.exp(w[10] * (1 - r)) - 1) * (grade === 2 ? w[15] : 1) * (grade === 4 ? w[16] : 1));
   stability = Math.max(0.1, stability);
   const due = grade === 1 ? now + 60_000 * 10 : now + interval(stability) * DAY;
-  return { due, stability, difficulty: nextD, reps: card.reps + 1, lapses: card.lapses + (grade === 1 ? 1 : 0), last: now };
+  // Only forgetting a card in the review state (scheduled a day or more out) is a lapse; misses while (re)learning are not.
+  const lapsed = grade === 1 && inReview(card);
+  return { due, stability, difficulty: nextD, reps: card.reps + 1, lapses: card.lapses + (lapsed ? 1 : 0), last: now };
+}
+
+/** Review state: the last answer scheduled the card a day or more out. Learning steps are minutes. */
+const inReview = (card: CardState) => card.due - card.last >= DAY;
+/** Stability (days) a lapsed card must regain before it stops counting as weak. */
+const RECOVERED = 7;
+/** Weak = struggling now: the last answer was a miss (after the first sighting), or it lapsed and hasn't re-stabilised.
+ *  Recent correct reviews grow stability, so cards leave the weak list once they're recalled reliably again. */
+export function isWeak(card: CardState | null | undefined) {
+  if (!card || !card.reps) return false;
+  if (card.reps > 1 && !inReview(card)) return true;
+  return card.lapses >= 1 && card.stability < RECOVERED;
 }
 
 /** Preview intervals for each button, for labels like “4d”. */

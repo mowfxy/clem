@@ -14,11 +14,22 @@ import {updateEmail} from '../server/email-layout.ts';
 const env=parse(fs.readFileSync('.env.local'));
 const arg=name=>{const hit=process.argv.find(a=>a.startsWith(`--${name}=`));if(hit)return hit.slice(name.length+3);const i=process.argv.indexOf('--'+name);return i>0?process.argv[i+1]:undefined;};
 const send=process.argv.includes('--send');
-const version=arg('version')||JSON.parse(fs.readFileSync('package.json','utf8')).version;
+// The version the website offers, not the one being developed in package.json.
+const version=arg('version')||JSON.parse(fs.readFileSync('public/desktop-release.json','utf8')).version;
 const notes=(arg('notes-file')?fs.readFileSync(arg('notes-file'),'utf8'):(arg('notes')||'').replace(/\|/g,'\n')).trim();
 const limit=Number(arg('limit')||250),gap=Number(arg('gap')||3)*1000;
 for(const name of ['SUPABASE_URL','SUPABASE_ACCESS_TOKEN','SESSION_SECRET','CLOUDFLARE_DATABASE_URL','CLOUDFLARE_DATABASE_SECRET','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASSWORD','SMTP_FROM'])if(!env[name])throw Error(`${name} is missing from .env.local.`);
 if(!notes)throw Error('Add what changed with --notes "first change|second change" or --notes-file path.');
+
+// Never announce a version people can't download: the live /download/windows must point at this version's installer, and it must respond.
+{
+  const page='https://mowrai.com/download/windows',file=`Mowr-Setup-${version}.exe`;
+  const hop=await fetch(page,{method:'HEAD',redirect:'manual'}).catch(e=>{throw Error(`Could not reach ${page}: ${e.message}. Nothing was sent.`);});
+  const target=hop.headers.get('location')||'';
+  if(!target.endsWith('/'+file))throw Error(`${page} points at ${target||'nothing ('+hop.status+')'}, not ${file}. Deploy the website for ${version} first. Nothing was sent.`);
+  const asset=await fetch(new URL(target,page),{method:'HEAD',redirect:'follow'}).catch(e=>({ok:false,status:e.message}));
+  if(!asset.ok)throw Error(`The installer at ${target} is not live (${asset.status}). Nothing was sent.`);
+}
 
 async function d1(sql,...params){
   const r=await fetch(env.CLOUDFLARE_DATABASE_URL,{method:'POST',headers:{Authorization:'Bearer '+env.CLOUDFLARE_DATABASE_SECRET,'Content-Type':'application/json'},body:JSON.stringify({queries:[{sql,params}]})});
