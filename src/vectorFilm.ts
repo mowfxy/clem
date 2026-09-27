@@ -1,5 +1,5 @@
 /** Authored 24 fps vector cels. Geometry is redrawn, never moved as a rigid SVG group. */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'schedule'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'coin'|'box'|'portrait'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'schedule'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'coin'|'box'|'portrait'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired';
 type P=[number,number];
 const WHITE='#f3f2ec',BLUE='#8197e2',RED='#d87968';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
@@ -332,6 +332,24 @@ function profile(t:number,_id:string){
  s+=shape(card([[230,98],[250,98],[250,148],[230,148]]),RED)+stroke(card(sharp([[230,98],[250,98],[250,148],[230,148],[230,98]])),t,7);
  return s;
 }
+// Time's up: an alarm clock with both hands on twelve rings every few seconds beside a chain link that has come apart.
+function expired(t:number,_id:string){
+ const g=cycle(t,4),env=t>6&&g<.32?swell(g/.32):0,buzz=Math.sin((t-6)*56),a=env*.075*buzz;
+ const clock=(pts:P[])=>turnAbout(pts,300,322,a);
+ let s=floor(t,60,420,330);
+ // The broken link: two open halves lying apart.
+ s+=stroke(arc(116,298,34,Math.PI*.35,Math.PI*1.65,20,22).map(([x,y])=>[x,y+Math.sin(x*.03)*2] as P),t,10);
+ s+=stroke(turnAbout(arc(184,304,34,-Math.PI*.65,Math.PI*.65,20,22),184,304,.18),t,11);
+ s+=blob(150,320,6,t,RED);
+ s+=stroke(clock([[268,268],[252,322]]),t,9)+stroke(clock([[332,268],[348,322]]),t,9);
+ for(const side of [-1,1]){const bx=300+side*44,by=160;s+=shape(clock(turnAbout(arc(bx,by,22,Math.PI,Math.PI*2,14,18),bx,by,side*.5)),RED);}
+ s+=stroke(clock([[300,158],[300+9*buzz*env,140]]),t,6)+blob(...clock([[300+9*buzz*env,138]])[0],5,t,WHITE);
+ const face=clock(arc(300,222,62,0,Math.PI*2,36));s+=polygon(face,PAPER)+stroke(clock(arc(300,222,62,-2.4,Math.PI*2-1.9,40)),t,10);
+ for(let i=0;i<4;i++){const b=i*Math.PI/2;s+=stroke(clock([[300+Math.cos(b)*46,222+Math.sin(b)*46],[300+Math.cos(b)*53,222+Math.sin(b)*53]]),t,6);}
+ s+=stroke(clock([[300,222],[300,184]]),t,8)+stroke(clock([[300,222],[278,209]]),t,10)+blob(...clock([[300,222]])[0],8,t,BLUE);
+ if(env>0)for(const side of [-1,1])for(let i=0;i<3;i++){const b=-Math.PI/2+side*(.55+i*.32),r0=96,r1=96+14*env;s+=faded(stroke([[300+Math.cos(b)*r0,210+Math.sin(b)*r0],[300+Math.cos(b)*r1,210+Math.sin(b)*r1]],t,5),env);}
+ return s;
+}
 // A safe whose combination dial turns through a code and clicks at each number; the light answers each click.
 function safe(t:number,_id:string){
  const keys:[number,number][]=[[0,0],[.08,0],[.26,140],[.36,140],[.52,-70],[.62,-70],[.74,30],[.86,30],[1,0]];
@@ -355,5 +373,5 @@ function safe(t:number,_id:string){
 function kiteAir(t:number,id:string){let s=kite(t,id);for(let i=0;i<3;i++){const f=((t*.22)+i/3)%1,x=lerp(430,60,f),y=[70,120,190][i];s+=faded(stroke([[x,y],[x+34,y-3],[x+60,y+1]],t,4),Math.sin(f*Math.PI)*.8);}s+=faded(shape([[70,72],[88,58],[112,60],[124,48],[150,54],[160,72],[140,82],[82,84]],WHITE),.12);return s;}
 function telescopeNight(t:number,id:string){let s=telescope(t,id);for(const [x,y,p] of [[300,60,0],[380,130,1.3],[430,70,2.1],[250,110,.7]] as const){const k=.35+.65*Math.abs(Math.sin(t*1.4+p));s+=faded(stroke([[x-7*k,y],[x+7*k,y]],t,3)+stroke([[x,y-7*k],[x,y+7*k]],t,3),k);}{const f=cycle(t,6.5,.62),k=f/.16;if(t>6&&k<1){const hx=lerp(250,420,ease(k)),hy=lerp(22,78,ease(k)),len=34*swell(k);s+=faded(stroke([[hx-len*.95,hy-len*.31],[hx,hy]],t,4),swell(k));}}return s+faded(blob(420,40,4,t,BLUE),.8);}
 function bridgeWater(t:number,id:string){let s=bridge(t,id);for(const [y,a,o] of [[356,.9,.5],[372,1.7,.3]] as const)s+=faded(stroke(Array.from({length:17},(_,i)=>[90+i*19,y+Math.sin(i*.8+t*1.6+a)*3] as P),t,4),o);const f=(t*.06+.3)%1,bx=lerp(70,410,f),by=Math.sin(bx*.08-t*1.6)*1.5;s+=faded(shape([[bx-16,344+by],[bx+16,344+by],[bx+10,354+by],[bx-10,354+by]],BLUE)+stroke([[bx,344+by],[bx,328+by]],t,3)+shape([[bx,328+by],[bx+12,338+by],[bx,340+by]],WHITE),Math.min(1,swell(f)*4));return s;}
-const scenes={schedule,balance,untangle,build,discover,learn,orchestrate,sprout,kite:kiteAir,telescope:telescopeNight,pencil,bridge:bridgeWater,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,coin,box,portrait,jar,folder,plug,house,lifebuoy,profile,safe};
+const scenes={schedule,balance,untangle,build,discover,learn,orchestrate,sprout,kite:kiteAir,telescope:telescopeNight,pencil,bridge:bridgeWater,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,coin,box,portrait,jar,folder,plug,house,lifebuoy,profile,safe,expired};
 export function filmFrame(scene:Scene,seconds:number,id:string){const t=Math.max(0,seconds);return `<defs><filter id="${id}" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="4"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/></filter></defs>${scenes[scene](t,id)}`;}
