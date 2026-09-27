@@ -2,7 +2,7 @@ import {useId,useMemo,useRef,useState} from 'react';
 import type {Chat,StoredFile,StudySet} from '../../core/types';
 
 const DAY=86_400_000, DAYS=30;
-const W=272, H=84, PAD_X=8, PAD_TOP=12, PAD_BOTTOM=12, GRID=8;
+const W=240, H=56, PAD_X=8, PAD_TOP=8, PAD_BOTTOM=8, GRID=8;
 
 /** The grid's dots, each with a start offset: a slow wave that sweeps left to right, with a little
  * scatter so it shimmers instead of marching. Negative offsets start it mid-cycle on first paint. */
