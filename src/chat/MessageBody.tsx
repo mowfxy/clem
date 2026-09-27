@@ -16,6 +16,8 @@ import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
 import { Icon } from '../Icons';
 import { copyText } from '../clipboard';
 import { EditProposal, type EditBlock } from './EditProposal';
+import { AutomationProposal } from './AutomationProposal';
+import { readAutomationBlock, type AutomationBlock } from '../LocalAutomations';
 import type { EditOutcome } from '../../core/types';
 
 const SpecVisual = lazy(() => import('../visuals/SpecVisual'));
@@ -31,6 +33,8 @@ export type BodyHandlers = {
   edits?: Record<string, EditOutcome>;
   onEdit?: (key: string, block: EditBlock, approve: boolean) => Promise<void>;
   onUndo?: (key: string, outcome: EditOutcome) => Promise<void>;
+  /** A routine proposed with an ```automation block; outcomes share `edits`. */
+  onSchedule?: (key: string, block: AutomationBlock, approve: boolean) => Promise<void>;
   scope?: string;
   /** Drive files found for this reply, looked up by id for [name](drive:ID) links. */
   driveFile?: (id: string) => DriveRef | undefined;
@@ -86,7 +90,7 @@ function CheckBlock({ body, streaming }: { body: string; streaming: boolean }) {
 
 function MessageBodyImpl({ content, streaming = false, handlers = {} }: { content: string; streaming?: boolean; handlers?: BodyHandlers }) {
   const prepared = useMemo(() => prepareMarkdown(content), [content]);
-  let editIndex = 0;
+  let editIndex = 0, automationIndex = 0;
   // Drive files linked in a paragraph follow it, like YouTube links: videos and audio play, documents open as cards.
   const drivePlayers = (node: unknown) => driveIdsIn(node).map((id) => handlers.driveFile?.(id)).filter((f): f is DriveRef => !!f)
     .map((f) => driveKind(f.mimeType) === 'video' ? <DriveVideo key={f.id} file={f} onOpenWeb={handlers.onOpenDriveWeb} /> : driveKind(f.mimeType) === 'audio' ? <DriveAudio key={f.id} file={f} /> : <DriveCard key={f.id} file={f} onOpen={(x) => handlers.onOpenDrive?.(x)} />);
@@ -127,6 +131,11 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
             try { block = JSON.parse(code); } catch { /* still streaming or malformed */ }
             if (!block || typeof block.path !== 'string') return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Preparing a file change…</div> : <details className="block-error"><summary>A proposed file change could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             return <EditProposal block={block} streaming={streaming} scope={handlers.scope} outcome={handlers.edits?.[key]} onDecide={approve => handlers.onEdit?.(key, block!, approve) ?? Promise.resolve()} onUndo={outcome => handlers.onUndo?.(key, outcome) ?? Promise.resolve()} />;
+          }
+          if (lang === 'automation') {
+            const key = 'automation-' + automationIndex++, block = readAutomationBlock(code);
+            if (!block) return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Preparing a routine…</div> : <details className="block-error"><summary>A proposed routine could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
+            return <AutomationProposal block={block} streaming={streaming} outcome={handlers.edits?.[key]} onDecide={approve => handlers.onSchedule?.(key, block, approve) ?? Promise.resolve()} />;
           }
           return <CodeBlock lang={lang} code={code} />;
         },

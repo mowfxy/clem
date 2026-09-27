@@ -47,7 +47,7 @@ export function DriveFolderView({ folderId, folderName, onOpen, onAsk, onChangeF
       {parts.map((p, i) => <span className="gd-crumb-wrap" key={i}><svg className="gd-chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg><button className={"gd-crumb" + (i === parts.length - 1 ? " here" : "")} onClick={() => setAt(parts.slice(0, i + 1).join(" / "))}>{p}</button></span>)}
     </nav>}
     <div className="gd-space-list">
-      {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Connectors to see this folder.</p>}
+      {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Settings → Connectors to see this folder.</p>}
       {error && <p className="gd-error">{error}</p>}
       {!items && !error && connected !== false && Array.from({ length: 4 }, (_, i) => <div key={i} className="gd-skeleton" />)}
       {here.map((i) => <div key={i.id} className={"gd-row" + (i.folder ? " is-folder" : "")}>

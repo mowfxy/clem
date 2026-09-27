@@ -189,3 +189,4 @@ html[data-quiet=true] .visual-drafting,html[data-quiet=true] .drafting-dot,html[
 .verify-dots .verify-dot{margin:0}
 .verify-dots .verify-dot.supported{background:var(--c-green)}.verify-dots .verify-dot.partial{background:var(--c-amber)}.verify-dots .verify-dot.unsupported{background:var(--c-coral)}.verify-dots .verify-dot{width:7px;height:7px}
 .review-menu.up{top:auto;bottom:36px;transform-origin:bottom left}
+.automation-proposal .automation-prompt{margin:0;padding:0 14px 12px 40px;font-size:13px;line-height:1.55;color:var(--c-muted)}

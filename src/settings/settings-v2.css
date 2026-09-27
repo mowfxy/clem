@@ -81,3 +81,21 @@
 .settings-page.v2 .models-heading{margin-top:-66px}
 .settings-head .ink-scene.ink-plug{margin-left:-24px}
 .settings-page.v2 .support-inbox form,.settings-page.v2 .support-inbox .field{max-width:none}.settings-page.v2 .support-inbox select{max-width:none!important}
+
+/* A plain line of text in a card (an empty state) gets the same breathing room as a row. */
+.settings-page.v2 .settings-card-body>p{margin:0!important;padding:4px 0 16px;font-size:12.5px;line-height:1.55;color:var(--s-muted)}
+.settings-page.v2 .settings-card-title+.settings-card-body>p{padding-top:6px}
+/* Contact: title, one line, then the options, evenly spaced. */
+.settings-page.v2 .contact-settings{gap:0}
+.settings-page.v2 .contact-settings>h2{margin:0!important;font-size:20px;line-height:1.2}
+.settings-page.v2 .contact-settings>p{margin:6px 0 16px!important;font-size:12.5px;line-height:1.5;color:var(--s-muted)}
+.settings-page.v2 .contact-settings>p a{color:var(--s-soft)}
+/* A leading mark in a row (a connector's logo). */
+.settings-page.v2 .setting-row.v2 .setting-row-text{flex:1;min-width:0}
+.connector-tile{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:11px;background:#262624;border:1px solid var(--s-line)}
+.settings-page.v2 .setting-row.v2:has(.connector-tile){gap:14px}
+/* Automations: routines listed in the card; created from chats. */
+.automation-empty{display:flex;align-items:center;gap:12px;padding:18px 0;color:var(--s-muted);font-size:12.5px}
+.automation-empty p{margin:0}
+.automation-error{color:#e6a58f}
+.settings-page.v2 button.secondary.icon-only{padding:8px 9px}

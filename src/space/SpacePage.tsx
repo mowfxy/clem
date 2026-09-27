@@ -7,6 +7,7 @@ import {chatPreview} from '../../core/chat-title';
 import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
+import {MemoryConversation} from '../MemoryConversation';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
 import {DriveFolderView} from '../drive/DriveFolderView';
 import type {DriveItem} from '../drive/drive';
@@ -263,6 +264,7 @@ function About({space,actions}:{space:Space;actions:SpaceActions}):ReactNode{
     <label className="field">{space.kind==='subject'?'How Mowr should teach you here':'Instructions for this project'}
       <textarea rows={7} value={memory} onChange={e=>setMemory(e.target.value)} onBlur={()=>memory!==space.memory&&actions.onUpdateSpace({...space,memory})} placeholder={space.kind==='subject'?'My level, the course, the exam board, how I like things explained…':'Goals, background and how Mowr should work here.'}/></label>
     <p className="fine">Only this {space.kind} uses these notes. Files marked as Source are quoted when you ask a question here.</p>
+    {desktop&&<div className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></div>}
   </section>;
 }
 

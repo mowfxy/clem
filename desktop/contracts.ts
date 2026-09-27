@@ -93,6 +93,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("cancel"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryList"), scope: scopeSchema }),
+  z.object({ action: z.literal("memoryAll") }),
   z.object({ action: z.literal("memoryClear"), scope: scopeSchema }),
   z.object({action:z.literal("memoryEdit"),scope:scopeSchema,expected:z.array(z.object({id:z.string().uuid(),text:z.string().max(2000)})).max(500),records:z.array(z.object({id:z.string().uuid(),text:z.string().min(1).max(2000)})).max(500)}),
   z.object({

@@ -12,7 +12,7 @@ import {hasCapacity,isBelowSwitchThreshold} from '../core/account-usage';
 import {SubjectStudy} from './SubjectStudy';
 import {studyRequest,studyInstructions} from '../core/study-request';
 import {MemoryConversation} from "./MemoryConversation";
-import {LocalAutomations,nextAutomation} from "./LocalAutomations";
+import {LocalAutomations,nextAutomation,firstAutomationRun} from "./LocalAutomations";
 import {SettingsPopup} from "./SettingsPopup";
 import {SettingsNav,SettingsHead,SettingsCard,SettingRow,Switch,Keys} from "./settings/SettingsParts";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
@@ -41,7 +41,7 @@ import {DrivePicker} from './drive/DrivePicker';
 import {DriveIcon} from './drive/DriveIcon';
 import {refreshDrive,driveSources,driveFolder,driveList as driveListText,useDrive,type DriveItem} from './drive/drive';
 import {mowrSkillText} from '../core/mowr-skills';
-import {boundedConversation,compressReply} from '../core/chat-context';
+import {boundedConversation,compressReply,SOURCE_PREFIX} from '../core/chat-context';
 import {SavedFilePicker} from './files/SavedFilePicker';
 import {Toast} from './Toast';
 import {RenameField,PencilIcon} from './files/RenameField';
@@ -78,7 +78,6 @@ import type { State } from "./store";
 import { Icon, Logo } from "./Icons";
 import { matchVisual, sceneById } from "./visuals/scenes";
 import {
-  AutomationPanel,
   AuthPanel,
   ConnectModel,
   api,
@@ -149,7 +148,6 @@ const nav = [
   ["visuals", "Visuals"],
   ["projects", "Projects"],
   ["subjects", "Subjects"],
-  ["connectors", "Connectors"],
   ["skills", "Skills"],
   ["files", "Files"],
 ];
@@ -777,7 +775,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
         status(id)("Searching your Google Drive…");
         try {
           const found = await desktop.invoke({ action: "driveSearch", query: prompt.slice(0, 2000) });
-          if (!found.connected) driveNotes.push("The user asked about their Google Drive, but Drive isn't connected in Mowr. Tell them to connect it in Connectors → Google Drive, then ask again.");
+          if (!found.connected) driveNotes.push("The user asked about their Google Drive, but Drive isn't connected in Mowr. Tell them to connect it in Settings → Connectors → Google Drive, then ask again.");
           else {
             driveNotes.push(driveContext(found.files, prompt));
             found.files.forEach(({ excerpt, ...ref }: DriveRef & { excerpt?: string }) => linkable.set(ref.id, ref));
@@ -822,7 +820,8 @@ In this subject the learner keeps missing these questions in review; connect to 
                 },
               ]
             : []),
-          ...(driveNote ? [{ role: "user", content: driveNote }] : []),
+          // Marked as source material so the person's own message stays the latest request (for context trimming and memory).
+          ...(driveNote ? [{ role: "user", content: `${SOURCE_PREFIX}\n${driveNote}` }] : []),
         ],
         model,
         controller.signal,
@@ -878,7 +877,7 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   /** Answers leave Mowr as properly formatted documents, not screenshots of a chat. */
   async function exportAnswer(format:'pdf'|'docx'|'pptx',content:string,title:string){
-    const clean=content.replace(/```(?:visual|check|edit)[\s\S]*?(?:```|$)/g,'').trim();
+    const clean=content.replace(/```(?:visual|check|edit|automation)[\s\S]*?(?:```|$)/g,'').trim();
     const name=title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').slice(0,80)||'Mowr document';
     try{
       if(format==='pdf'){
@@ -955,12 +954,20 @@ In this subject the learner keeps missing these questions in review; connect to 
     try{
       const sources=await attachmentText(sourceFiles(chat).map(f=>f.id),answer.content,controller.signal);
       if(!sources.trim())throw Error("This conversation has no readable sources to check against.");
-      const raw=await streamChat([{role:"system",content:verifyInstructions},{role:"user",content:JSON.stringify({answer:answer.content.replace(/```(?:visual|check|edit)[\s\S]*?```/g,"").slice(0,20000),sources:sources.slice(0,20000)})}],connected.id,controller.signal,()=>{},"step",undefined,undefined,{chat:chat.id});
+      const raw=await streamChat([{role:"system",content:verifyInstructions},{role:"user",content:JSON.stringify({answer:answer.content.replace(/```(?:visual|check|edit|automation)[\s\S]*?```/g,"").slice(0,20000),sources:sources.slice(0,20000)})}],connected.id,controller.signal,()=>{},"step",undefined,undefined,{chat:chat.id});
       const claims=parseClaims(raw);
       patchMessage(chat.id,messageId,m=>({...m,verify:{status:"done",claims}}));
     }catch(e){
       patchMessage(chat.id,messageId,m=>({...m,verify:(e as Error).name==="AbortError"?undefined:{status:"error",error:(e as Error).message}}));
     }finally{end(chat.id,controller);}
+  }
+  /** Where a memory applies, in words: the person, a space by name, or the chat it came from. */
+  function memoryLabel(scope:string){
+    if(scope==="user:me")return "About you";
+    const [kind,id]=scope.split(":");
+    if(kind==="project"||kind==="subject")return state.spaces.find(x=>x.id===id)?.name||(kind==="project"?"A project":"A subject");
+    if(kind==="chat")return state.chats.find(x=>x.id===id)?.title||"A past chat";
+    return "Other";
   }
   function bodyHandlers(chat:Chat,message:Chat["messages"][number]):BodyHandlers{
     return {
@@ -974,6 +981,15 @@ In this subject the learner keeps missing these questions in review; connect to 
           patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"applied",changeId:result.id}}}));
           setToast("Change applied. You can undo it from the chat or Settings → Linked folders.");
         }catch(e){setToast(cleanError(e));}
+      },
+      onSchedule:async(key,block,approve)=>{
+        if(!approve){patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"dismissed"}}}));return;}
+        const model=models.find(m=>m.connected&&m.id===message.model)||models.find(m=>m.connected);
+        if(!model){setToast("Connect a model in Settings → Models first.");return;}
+        const id=uid();
+        patch(s=>({...s,automations:[...s.automations,{id,name:block.name,prompt:block.prompt,model:model.id,schedule:block.repeat,nextRun:firstAutomationRun(block),enabled:true,spaceId:chat.spaceId}]}));
+        patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"applied",changeId:id}}}));
+        setToast("Routine scheduled. Manage it in Settings → Automations.");
       },
       onUndo:async(key,outcome)=>{
         try{await desktop!.invoke({action:"folderChangeUndo",id:outcome.changeId!});patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"undone",changeId:outcome.changeId}}}));setToast("Change undone.");}
@@ -1179,6 +1195,8 @@ In this subject the learner keeps missing these questions in review; connect to 
     setSettingsTab(tab);
     navigate("/app/settings");
   };
+  // Connectors moved into Settings; older links still land there.
+  useEffect(()=>{if(route==="/app/connectors")openSettings("Connectors");},[route]);
   const signals=useWorkspaceSignals(!!desktop&&ready&&!!session.user,
     announcement=>notify({kind:announcement.tone==='warning'?'warning':announcement.tone==='success'?'success':'announcement',title:announcement.title,detail:announcement.body,sticky:true,action:announcement.link?{label:'Learn more',run:()=>window.open(announcement.link!,'_blank','noopener')}:undefined}),
     reply=>notify({kind:'support',title:'Mowr support replied',detail:reply.subject,sticky:true,action:{label:'Read reply',run:()=>openSettings('Help & support')}}));
@@ -1334,7 +1352,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     ...(desktop?[{id:'browse-folders',group:'Actions',label:'Browse folders on this PC',icon:'projects',keywords:'files local linked read change',run:()=>setFolderView({})}]:[]),
     {id:'open-pack',group:'Actions',label:'Open a study pack',icon:'import',keywords:'import share mowrpack flashcards',run:()=>archiveUploader.current?.click()},
     ...nav.filter(([icon])=>icon!=='new').map(([icon,label])=>({id:'go-'+icon,group:'Go to',label,icon,run:()=>navigate(`/app/${icon}`)})),
-    ...["General","Security","Models","Linked folders","Telegram","Memory","Automations","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
+    ...["General","Security","Models","Memory","Automations","Connectors","Linked folders","Telegram","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
     ...state.spaces.map(space=>({id:'space-'+space.id,group:space.kind==='project'?'Projects':'Subjects',label:space.name,icon:space.kind==='project'?'projects':'subjects',keywords:space.description,run:()=>newChat(space.id)})),
     ...[...state.chats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
   ];
@@ -1932,58 +1950,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                   <p className="fine">Tip: type <span className="command">/visual</span> and anything in a chat. Mowr uses a ready-made model when one fits and draws a new one when it doesn’t.</p>
                 </Suspense>
               </div>
-            ) : route === "/app/connectors" ? (
-              <div className="page">
-                <div className="page-heading">
-                  <div>
-                    <span className="eyebrow">
-                      Bring your world into the conversation
-                    </span>
-                    <h1>Good thinking has sources.</h1>
-                    <p>
-                      Your files, folders, and videos. In context, when you need
-                      them.
-                    </p>
-                  </div>
-                </div>
-                <div className="connector-list">
-                  {[
-                    [
-                      "drive",
-                      "Google Drive",
-                      "Reference the documents and folders you already work with.",
-                      "drive",
-                    ],
-                  ].map(([icon, title, desc, id]) => (
-                    <article className="connector-row" key={id}>
-                      <div className="connector-emblem">
-                        <DriveLogo size={30} />
-                      </div>
-                      <div>
-                        <h2>{title}</h2>
-                        <p>{desc}</p>
-                        <small>
-                          Read live from Drive · nothing is copied to this PC
-                        </small>
-                      </div>
-                      <button onClick={() => setModal(id)}>
-                        Open Drive
-                        <Icon name="arrow" size={18} />
-                      </button>
-                    </article>
-                  ))}
-                </div>
-                <div className="connector-note">
-                  <Icon name="subjects" size={28} />
-                  <div>
-                    <h3>Only the context you choose.</h3>
-                    <p>
-                      Sources added to a project or subject belong to that
-                      space. Mowr does not silently mix knowledge between them.
-                    </p>
-                  </div>
-                </div>
-              </div>
             ) : route === "/app/files" ? (
               <div className="page">
                 <div className="page-heading">
@@ -2099,7 +2065,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                       </SettingsCard>
                       <SettingsCard title="Appearance">
                         <SettingRow title="Quiet mode" description="Keep drawings still and reduce motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
-                        <SettingRow title="Theme" description="Mowr is made for a dark, calm room."><span className="settings-pill">Dark</span></SettingRow>
                       </SettingsCard>
                       <BackgroundSettings/>
                       <SettingsCard title="Shortcuts">
@@ -2112,17 +2077,21 @@ In this subject the learner keeps missing these questions in review; connect to 
                       <SettingsCard><SecuritySettings/></SettingsCard>
                     ) : settingsTab === "Models" ? (
                       <ModelsSettings key={accountRevision} locked={anyRunning} liveData={accountData} models={models} onConnect={()=>setModal("connect-model")} onRefresh={refreshModels}/>
+                    ) : settingsTab === "Connectors" ? (
+                      <SettingsCard note="Sources you add to a project or subject stay in that space.">
+                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Docs, Slides and videos, read live. Nothing is copied to this PC."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
+                      </SettingsCard>
                     ) : settingsTab === "Linked folders" ? (
                       <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for this conversation or project." action="Manage folders"><LinkedFolders scope={desktopScope}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
                     ) : settingsTab === "Telegram" ? (
                       <SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect"><TelegramPanel scope={desktopScope}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>
                     ) : settingsTab === "Memory" ? (
-                      <SettingsCard note="Each project and subject keeps its own memory. Nothing is saved without you.">
-                        <SettingsPopup title="Memory summary" description={activeSpace ? `For ${activeSpace.name}` : "For your general workspace"} action="Open memory"><MemoryConversation scope={desktopScope} models={models} summary={activeSpace ? activeSpace.memory : state.memory} onSummary={text=>patch(s=>activeSpace?{...s,spaces:s.spaces.map(x=>x.id===activeSpace.id?{...x,memory:text}:x)}:{...s,memory:text})}/></SettingsPopup>
+                      <SettingsCard note="Projects and subjects keep their own memory.">
+                        {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation home={activeSpace?`${activeSpace.kind}:${activeSpace.id}`:undefined} labelFor={memoryLabel} summary={activeSpace ? activeSpace.memory : state.memory} summaryLabel={activeSpace ? `${activeSpace.name} instructions` : "Your notes"} onSummary={text=>patch(s=>activeSpace?{...s,spaces:s.spaces.map(x=>x.id===activeSpace.id?{...x,memory:text}:x)}:{...s,memory:text})}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Automations" ? (
-                      <SettingsCard note="Routines run while this PC is awake with Mowr open.">
-                        <SettingsPopup title="Routines" description={`${state.automations.length} scheduled`} action="Manage automations">{desktop?<LocalAutomations items={state.automations} models={models} onChange={automations=>patch(s=>({...s,automations}))}/>:<AutomationPanel session={session} models={models}/>}</SettingsPopup>
+                      <SettingsCard note="New routines start in a chat. They run while Mowr is open.">
+                        {desktop?<LocalAutomations items={state.automations} onChange={automations=>patch(s=>({...s,automations}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Help & support" ? (
                       <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary support-paypal"><PayPalMark size={16}/>Support with PayPal</SupportLink></SettingRow></SettingsCard></>
@@ -2483,51 +2452,6 @@ In this subject the learner keeps missing these questions in review; connect to 
             }} />
           ) : modal === "attach-existing" ? (
             <SavedFilePicker files={state.files} spaceId={spaceId} attached={attachments} onPick={(f) => { setAttachments((a) => (a.includes(f.id) ? a : [...a, f.id])); setModal(null); }} />
-          ) : modal === "automation-create" ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                patch((s) => ({
-                  ...s,
-                  automations: [
-                    ...s.automations,
-                    {
-                      id: uid(),
-                      name: String(fd.get("name")),
-                      prompt: String(fd.get("prompt")),
-                      schedule: String(fd.get("schedule")),
-                      enabled: false,
-                      spaceId: null,
-                    },
-                  ],
-                }));
-                setModal(null);
-                setToast("Automation saved as a draft. No schedule is active.");
-              }}
-            >
-              <label className="field">
-                Name
-                <input name="name" required />
-              </label>
-              <label className="field">
-                What should happen?
-                <textarea name="prompt" required rows={4} />
-              </label>
-              <label className="field">
-                Desired schedule
-                <select name="schedule">
-                  <option>Every weekday at 09:00</option>
-                  <option>Every Monday at 09:00</option>
-                  <option>Every day at 18:00</option>
-                </select>
-              </label>
-              <p className="fine">
-                Draft only. Timezone and execution will be configured when the
-                scheduler is connected.
-              </p>
-              <button className="primary">Save draft</button>
-            </form>
           ) : null}
         </Modal>
       )}
