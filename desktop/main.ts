@@ -43,6 +43,7 @@ import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link"
 import {ClaudeProvider,claudeModels} from './claude';
 import {GrokProvider,grokModels,GROK_PREFIX} from './grok';
 import {DriveLive,DriveMediaServer} from './drive-live';
+import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn} from './kinetra-turn';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
@@ -850,6 +851,12 @@ void app.whenReady().then(async () => {
     if (request.action === "driveFolder") return driveLive.folder(request.folder,request.query||"",request.refresh);
     if (request.action === "driveMediaUrl") return {url:await driveMedia.url(request.id)};
     if (request.action === "driveText") return {text:await driveLive.text(request.id)};
+    if (request.action === "videoCaptions") {
+      const languages=request.languages?.length?request.languages:[app.getLocale()];
+      if(request.source==="youtube")return youtubeCaptions(request.id,{languages});
+      if(!await driveLive.connected())return {source:"drive",id:request.id,transcript:"",error:"Google Drive isn't connected. Connect it in Settings → Connectors → Google Drive."};
+      return driveLive.captions(request.id,languages);
+    }
     if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
     if (request.action === "grokStatus") return grokFor(user.id).status(true);
     if (request.action === "grokLogin") return grokFor(user.id).login(url=>{if(/^https:\/\/([a-z0-9-]+\.)*(x\.ai|grok\.com)\//.test(url))void shell.openExternal(url);});

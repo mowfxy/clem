@@ -74,7 +74,7 @@ export const builtinSkills: Skill[] = [
   'Link each one as [Title — Channel](https://www.youtube.com/watch?v=ID) inside the line that introduces it, so Mowr shows a playable video under it; add &t=<seconds>s when a specific moment answers the question.',
   'Give 2–4 videos with one line each on why it fits (what it covers, level, style). If the learner asked for “the links”, also print each full URL as visible text.',
   'If web search is unavailable or nothing reliable turns up, say so and give a YouTube search link: https://www.youtube.com/results?search_query=<words+joined+with+plus>.',
-  'Mowr cannot watch or transcribe a video. To work through one, use a transcript or notes the learner pastes or attaches, and ask for one when the question depends on what the video says.',
+  'To work through a video, use the transcript Mowr supplies from its captions (VIDEO TRANSCRIPTS); when captions are unavailable, say so and use a transcript or notes the learner pastes or attaches.',
   'From a transcript, organise notes by timestamp (mm:ss) using the transcript’s own times, with the key idea of each part in one or two sentences.',
   'Explain the key ideas against the learner’s actual question, quoting only short phrases, and mark clearly what the video says versus your own explanation.',
   'Finish with three questions that check understanding of the video’s main points.',
