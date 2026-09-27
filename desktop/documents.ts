@@ -47,3 +47,15 @@ export async function textPdf(text: string) {
   document.setCreator("Mowr");
   return new Uint8Array(await (await markContent(new Blob([new Uint8Array(await document.save())]),"document.pdf")).arrayBuffer());
 }
+
+/** Formats a copy may be opened in: the browser, or the app Windows associates with it. Anything else (programs,
+ *  scripts, shortcuts, macro-enabled Office files) is refused, since a file's name can come from someone else's
+ *  study pack and opening it would run it. */
+export const browserViewable = /\.(pdf|png|jpe?g|gif|webp|svg|txt|md|csv|json|html?|xml|mp4|webm|mp3|wav)$/i;
+const openable = /\.(pdf|png|jpe?g|gif|webp|svg|bmp|tiff?|heic|avif|txt|md|csv|json|xml|html?|log|mp4|webm|mov|m4v|mkv|avi|mp3|wav|m4a|aac|ogg|flac|docx?|xlsx?|pptx?|odt|ods|odp|rtf|epub)$/i;
+/** The file name for a local read-only copy, or null when Mowr must not hand the file to Windows to open. */
+export function viewCopyName(name: string) {
+  // Windows drops trailing dots and spaces, so "setup.exe." would still be saved, and run, as "setup.exe".
+  const clean = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim().replace(/[. ]+$/, "") || "file";
+  return openable.test(clean) ? clean : null;
+}

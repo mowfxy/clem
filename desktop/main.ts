@@ -63,7 +63,7 @@ import { PACK_EXTENSION } from "../core/study-pack";
 import config from "./public-config.json";
 import { diagram } from "../server/diagram";
 import { TelegramService } from "./messaging/service";
-import { textPdf } from "./documents";
+import { textPdf, viewCopyName, browserViewable } from "./documents";
 import {
   putMemory,
   forgetMemory,
@@ -92,7 +92,10 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-if (!app.requestSingleInstanceLock()) app.quit();
+// A second launch only hands its arguments to the running Mowr: app.quit() doesn't stop 'ready' from firing, so
+// nothing below may migrate data, clear files or open a window in it.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
 let window: BrowserWindow;
 let codex: Codex;
 let providerAccounts: ProviderAccounts;
@@ -139,7 +142,7 @@ const durableSession=join(workspaceRoot,'Local data');
 // otherwise DPAPI-protected vault entries remain encrypted with an unavailable key.
 mkdirSync(durableSession,{recursive:true});
 const cryptoMigration=join(durableSession,'.crypto-migration-v1');
-if(!existsSync(cryptoMigration)){
+if(primaryInstance&&!existsSync(cryptoMigration)){
   const source=join(previousSession,'Local State'),target=join(durableSession,'Local State');
   if(existsSync(source)&&source!==target){
     const backup=join(durableSession,'.pre-migration-local-state');
@@ -151,6 +154,7 @@ if(!existsSync(cryptoMigration)){
 app.setPath('sessionData',durableSession);
 const disk=new WorkspaceDisk(workspaceRoot);
 void app.whenReady().then(async () => {
+  if (!primaryInstance) return;
   await mkdir(durableSession,{recursive:true});
   const migrationMarker=join(durableSession,'.migration-complete');
   try{await access(migrationMarker);}catch{for(const name of ['IndexedDB','Local Storage','Session Storage']){const source=join(previousSession,name);try{await access(source);}catch{continue;}await cp(source,join(durableSession,name),{recursive:true,force:false,errorOnExist:false});}await writeFile(migrationMarker,'1');}
@@ -657,12 +661,12 @@ void app.whenReady().then(async () => {
     },
   );
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (
-      /^https:\/\/(mowrai\.com|auth\.openai\.com|developers\.openai\.com|learn\.chatgpt\.com|www\.youtube\.com)\//.test(
-        url,
-      )
-    )
-      void shell.openExternal(url);
+    // Links in answers (search results, sources, videos) open in the default browser: https only, never file:, other
+    // schemes or addresses carrying a user name and password.
+    try {
+      const target = new URL(url);
+      if (target.protocol === "https:" && target.hostname.includes(".") && !target.username && !target.password) void shell.openExternal(target.href);
+    } catch { /* not a URL */ }
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event, url) => {
@@ -1090,11 +1094,13 @@ void app.whenReady().then(async () => {
     if (request.action === "openInBrowser") {
       // A read-only copy in a temp folder, opened in the default web browser (or the default app for
       // formats browsers cannot show, such as Word or PowerPoint files).
+      const name = viewCopyName(request.name);
+      if (!name) throw Error("Mowr opens only documents, pictures, audio and video, so this file was not opened.");
       const folder = join(app.getPath("temp"), "Mowr", "view", randomUUID().slice(0, 8));
       await mkdir(folder, { recursive: true });
-      const path = join(folder, request.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim() || "file");
+      const path = join(folder, name);
       await writeFile(path, request.data);
-      if (/\.(pdf|png|jpe?g|gif|webp|svg|txt|md|csv|json|html?|xml|mp4|webm|mp3|wav)$/i.test(path)) {
+      if (browserViewable.test(path)) {
         const browser = await defaultBrowser().catch(() => undefined);
         if (browser) { spawn(browser, [pathToFileURL(path).href], { detached: true, stdio: "ignore" }).unref(); return { opened: "browser" }; }
       }
