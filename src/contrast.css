@@ -1,0 +1,47 @@
+/* Brighter text and icons across the app. Loaded last; "body" raises specificity over the layered older sheets. */
+:root{--muted:#cfcec8;--ink:#f3f2ee}
+body .messages{--c-soft:#dcdbd5;--c-muted:#b9b8b1;--c-faint:#8f8e88}
+
+/* Sidebar: options and their icons in white. */
+body .nav-item,body .nav-item.active{color:#f3f2ee}
+body .nav-item .drawn-icon,body .nav-item.active .drawn-icon{color:#f3f2ee}
+body .history-label,body .history-label span{color:#cfcec8}
+body .history-label .icon-button{color:#e6e5df}
+body .history-item{color:#e6e5df}
+body .history-item.chosen{color:#fff}
+body .history-row .history-more{color:#d6d5cf}
+body .account-button,body .account-button strong{color:#f3f2ee}
+body .account-button small{color:#bdbcb5}
+body .profile-settings,body .sidebar .icon-button{color:#f3f2ee}
+
+/* Icons in general are white; muted states keep a light grey, never dim. */
+body .drawn-icon{color:#f3f2ee}
+body .icon-button{color:#f0efeb}
+
+/* Secondary text is lighter. */
+body .muted,body .fine{color:#cfcec8}
+body .eyebrow{color:#dedcd6}
+body .page-heading p{color:#d9d8d2}
+body .space-card p{color:#d9d8d2}
+body .space-meta{color:#c4c3bc}
+body .suggestions button{color:#f0efeb}
+body .suggestions button .drawn-icon{color:#f3f2ee}
+body .composer textarea::placeholder{color:#a9a8a1}
+body .breadcrumb,body .breadcrumb button{color:#e6e5df}
+
+/* Subject and project cards: the description, or a quiet way to add one. */
+body .space-card .space-desc{color:#d9d8d2;cursor:text}
+.space-desc-add{display:inline-flex;align-items:center;gap:7px;margin:4px 0 14px;padding:6px 10px 6px 8px;border:1px dashed #4a4a45;border-radius:9px;background:none;color:#e6e5df;font:14px 'Mowafy Sans',system-ui,sans-serif;cursor:pointer}
+.space-desc-add:hover{border-color:#6b6a64;color:#fff}
+.space-desc-add .drawn-icon{color:#f3f2ee}
+.space-desc-edit{width:100%;margin:2px 0 12px;padding:9px 11px;border:1px solid #55544f;border-radius:10px;background:#161615;color:#f3f2ee;font:15px/1.5 'Mowafy Sans',system-ui,sans-serif;resize:none}
+
+/* Icons on light buttons follow the button's dark text, not the white icon colour above. */
+body .primary .drawn-icon,body .send-button .drawn-icon,body button.primary .drawn-icon{color:inherit}
+body .send-button{color:#1b1b19}
+body .send-button:disabled{color:#6f6e68}
+
+/* Settings menu and tabs. */
+body .settings-tabs button,body .filter-tabs button{color:#e6e5df}
+body .settings-tabs button.active,body .filter-tabs button.active{color:#fff}
+body .settings-group-label{color:#bdbcb5}

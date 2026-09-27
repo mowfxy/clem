@@ -1,4 +1,5 @@
-import { lazy, memo, Suspense, useMemo, useState, type ReactNode } from 'react';
+import { lazy, memo, Suspense, useContext, useMemo, useState, type ReactNode } from 'react';
+import { VisualSaveContext } from './visual-save';
 import { LinkChip, YouTubeEmbed, videosIn } from './Links';
 import { DriveAudio, DriveCard, DriveChip, DriveVideo } from './DriveCards';
 import { driveKind, type DriveRef } from '../../core/drive-search';
@@ -62,8 +63,17 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
 }
 
 function VisualBlock({ body, streaming }: { body: string; streaming: boolean }) {
-  const result = useMemo(() => { try { return { visual: parseVisual(body) }; } catch (e) { return { error: (e as Error).message }; } }, [body]);
-  if (result.visual) return <Suspense fallback={<div className="visual-drafting">Drawing…</div>}><SpecVisual visual={result.visual} /></Suspense>;
+  const result = useMemo(() => { try { return { visual: parseVisual(body), spec: JSON.parse(body) as unknown }; } catch (e) { return { error: (e as Error).message }; } }, [body]);
+  const saves = useContext(VisualSaveContext);
+  if (result.visual) {
+    const saved = !!saves?.saved(result.spec);
+    return <div className="visual-frame">
+      <Suspense fallback={<div className="visual-drafting">Drawing…</div>}><SpecVisual visual={result.visual} /></Suspense>
+      {saves && !streaming && <button type="button" className={`visual-save ${saved ? "saved" : ""}`} aria-pressed={saved} title={saved ? "Saved to Visuals · click to remove" : "Save to Visuals"} onClick={() => saves.toggle(result.spec)}>
+        <Icon name={saved ? "check" : "pin"} size={16} /><span>{saved ? "Saved" : "Save"}</span>
+      </button>}
+    </div>;
+  }
   if (streaming) return <div className="visual-drafting" role="status"><span className="drafting-dot" />Drawing the visual…</div>;
   return <details className="block-error"><summary><Icon name="visuals" size={15} />This visual could not be drawn. {result.error}</summary><pre>{body.slice(0, 4000)}</pre></details>;
 }

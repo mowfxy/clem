@@ -1,7 +1,8 @@
 import {bootDone} from "./boot";
 import {ModelsSettings} from "./ModelsSettings";
 import {confirmDialog} from './dialogs';
-import {relevantSkills,skillText,documentGuidance} from '../core/skills';
+import {relevantSkills,skillText,documentGuidance,builtinSkills} from '../core/skills';
+import {readCommand,expandCommand} from '../core/commands';
 import type {AccountsData} from "./ModelsSettings";
 import {NoticeStack,type Notice} from "./notices/NoticeStack";
 import {AccountHandoff} from "./notices/AccountHandoff";
@@ -77,7 +78,6 @@ import {
 } from "./store";
 import type { State } from "./store";
 import { Icon, Logo } from "./Icons";
-import { matchVisual, sceneById } from "./visuals/scenes";
 import {
   AuthPanel,
   ConnectModel,
@@ -102,9 +102,13 @@ import { StorageSummary } from './files/StorageSummary';
 import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf } from "../core/chat-title";
 import { Chapters } from "./chat/Chapters";
+import { SlashField, CommandChip } from "./chat/SlashField";
+import { VisualSaveContext } from "./chat/visual-save";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
 import "./motion.css";
+import "./visuals/visuals-page.css";
+import "./contrast.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -113,7 +117,6 @@ const ShareSheet = lazy(() => import("./local/StudyPack").then(m => ({ default: 
 const PackPreview = lazy(() => import("./local/StudyPack").then(m => ({ default: m.PackPreview })));
 const SpacePage = lazy(() => import("./space/SpacePage").then(m => ({ default: m.SpacePage })));
 const Visual = lazy(() => import("./Visual"));
-const VisualGallery = lazy(() => import("./Visual").then(m => ({ default: m.VisualGallery })));
 const VisualThumb = lazy(() => import("./Visual").then(m => ({ default: m.VisualThumb })));
 const modelPlaceholders: Model[] = [
   {
@@ -630,19 +633,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       return;
     }
     const modelReady=models.some((m) => m.id === model && m.connected);
-    // Built-in models answer instantly and offline; anything else is drawn by the connected model.
-    if (isVisual && (matchVisual(prompt) || !modelReady)) {
-      const match = matchVisual(prompt);
-      updateChat(id, (c) => ({
-        ...c,
-        messages: [
-          ...c.messages,
-          match
-            ? { id: messageId, role: "assistant", content: `**${match.scene.title}.** ${match.scene.summary}`, visual: match.scene.id, visualParams: match.params }
-            : { id: messageId, role: "assistant", content: "Pick a visual to explore:", visual: "choose" },
-        ],
-      }));
-      if (match) patch((s) => ({ ...s, visuals: [{ id: uid(), chatId: id, title: match.scene.title, created: Date.now(), scene: match.scene.id, params: match.params }, ...s.visuals] }));
+    // Every visual is drawn by the connected model; it stays in the chat until the person saves it.
+    if (isVisual && !modelReady) {
+      updateChat(id, (c) => ({ ...c, messages: [...c.messages, { id: messageId, role: "assistant", content: "Connect an AI in **Settings → Models** and Mowr will draw this visual for you." }] }));
       return;
     }
     if (long) {
@@ -845,7 +838,7 @@ In this subject the learner keeps missing these questions in review; connect to 
           },
           ...next.messages
             .filter((m) => m.content)
-            .map((m) => ({ role: m.role, content: (isVisual && m.id === user.id ? m.content.replace(/^\/visual\s*/i, "Visualize: ") : m.content) + (m.id === user.id ? pointerNote : "") })),
+            .map((m) => ({ role: m.role, content: (isVisual && m.id === user.id ? m.content.replace(/^\/visual\s*/i, "Visualize: ") : m.role === "user" ? expandCommand(m.content) : m.content) + (m.id === user.id ? pointerNote : "") })),
           ...(fileText
             ? [
                 {
@@ -878,7 +871,6 @@ In this subject the learner keeps missing these questions in review; connect to 
       }));
       const markSpace = chat.spaceId, picked = "mark" in named ? named.mark : undefined;
       if (markSpace && picked && markKeys.includes(picked)) patch((s) => ({ ...s, spaces: s.spaces.map((x) => x.id === markSpace ? { ...x, mark: { key: picked, for: x.name } } : x) }));
-      recordVisuals(id, named.content);
     } catch (e) {
       updateChat(id, (c) => ({
         ...c,
@@ -905,8 +897,11 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   /** How to use Mowr itself, plus only the workflows that fit this request, as short numbered lists. */
   function workflowText(prompt:string,context:import('../core/mowr-skills').SkillContext={}){
-    const own=state.skills.filter(s=>!s.builtin),matched=relevantSkills(prompt);
-    const parts=[mowrSkillText(prompt,context),documentGuidance(prompt),matched.length?`Workflow for this request (follow when it fits):\n${skillText(matched)}`:"",own.length?`The user's own workflows (apply when relevant, subordinate to the rules above):\n${skillText(own)}`:""].filter(Boolean);
+    // A slash command becomes plain words for matching and brings its own playbooks and workflow first.
+    const command=readCommand(prompt)?.command;prompt=expandCommand(prompt);
+    const forced=builtinSkills.filter(s=>s.id===command?.workflow);
+    const own=state.skills.filter(s=>!s.builtin),matched=[...forced,...relevantSkills(prompt).filter(s=>!forced.includes(s))].slice(0,2);
+    const parts=[mowrSkillText(prompt,{...context,force:command?.skills}),documentGuidance(prompt),matched.length?`Workflow for this request (follow when it fits):\n${skillText(matched)}`:"",own.length?`The user's own workflows (apply when relevant, subordinate to the rules above):\n${skillText(own)}`:""].filter(Boolean);
     return parts.length?"\n\n"+parts.join("\n\n"):"";
   }
   /** Answers leave Mowr as properly formatted documents, not screenshots of a chat. */
@@ -937,10 +932,14 @@ In this subject the learner keeps missing these questions in review; connect to 
     return btoa(binary);
   }
   /** Model-drawn visuals join the Visuals page history, like the built-in ones. */
-  function recordVisuals(chat:string,text:string){
-    const found=[...text.matchAll(/```visual\s*\n([\s\S]*?)```/g)].flatMap(m=>{try{const spec=JSON.parse(m[1]);return typeof spec?.title==="string"?[spec]:[];}catch{return [];}});
-    if(found.length)patch(s=>({...s,visuals:[...found.map(spec=>({id:uid(),chatId:chat,title:String(spec.title).slice(0,80),created:Date.now(),spec})),...s.visuals].slice(0,200)}));
-  }
+  /** A drawn visual stays in its chat; the Save button on it adds it to the Visuals page, or takes it off again. */
+  const sameSpec=(a:unknown,b:unknown)=>a!==undefined&&JSON.stringify(a)===JSON.stringify(b);
+  const visualSaves=(chat:string)=>({
+    saved:(spec:unknown)=>state.visuals.some(v=>v.chatId===chat&&sameSpec(v.spec,spec)),
+    toggle:(spec:unknown)=>patch(s=>s.visuals.some(v=>v.chatId===chat&&sameSpec(v.spec,spec))
+      ?{...s,visuals:s.visuals.filter(v=>!(v.chatId===chat&&sameSpec(v.spec,spec)))}
+      :{...s,visuals:[{id:uid(),chatId:chat,title:String((spec as {title?:unknown})?.title||"Visual").slice(0,80),created:Date.now(),spec},...s.visuals].slice(0,200)}),
+  });
   const sourceFiles=(chat?:Chat)=>{const ids=new Set([...(chat?.messages.flatMap(m=>m.attachments||[])||[]),...(state.spaces.find(s=>s.id===chat?.spaceId)?.sources||[])]);return state.files.filter(f=>ids.has(f.id)||f.spaceId===(chat?.spaceId??"__none"));};
   const canCite=(c:Citation)=>!!matchSource(stateRef.current.files,c.name);
   const [driveFolderFor,setDriveFolderFor]=useState<string|null>(null);
@@ -1424,9 +1423,10 @@ In this subject the learner keeps missing these questions in review; connect to 
   const composerUI = (
     <form className="composer" onSubmit={send}>
       {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} title={p.text || "Selected area"}>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
-      <textarea
-        ref={composer}
-        aria-label="Your message"
+      <SlashField
+        inputRef={composer}
+        inSubject={activeSpace?.kind === "subject"}
+        onEnter={() => void send()}
         placeholder={
           panelFile && canEditInPanel(panelFile)
             ? pointers.length ? "What should Mowr do with this?" : "Ask about this file, or say what to change…"
@@ -1437,13 +1437,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             : "How can I help you today?"
         }
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            void send();
-          }
-        }}
+        onChange={setDraft}
       />
       {driveRefs.length > 0 && (
         <div className="attachment-chips drive-chips">
@@ -1730,6 +1724,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                 ) : (
                   <>
                     <Chapters chapters={chaptersOf(activeChat)} />
+                    <VisualSaveContext.Provider value={visualSaves(activeChat.id)}>
                     <div className="messages">
                       {activeChat.messages.map((m, index) => {
                         const streaming = activeChat.id in runs && m.id === activeChat.messages.at(-1)?.id && m.role === "assistant";
@@ -1743,7 +1738,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                               m.role === "assistant" ? (
                                 <MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} />
                               ) : (
-                                <><LinkifiedText text={m.content} />{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
+                                <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
                               )
                             ) : (
                               <span className="thinking">{(streaming && runs[activeChat.id]) || "Thinking…"}</span>
@@ -1752,13 +1747,10 @@ In this subject the learner keeps missing these questions in review; connect to 
                           </div>
                           {m.role === "user" && !!m.drive?.length && <div className="message-drive">{m.drive.map((d) => <button type="button" key={d.id} className="drive-attached" onClick={() => openDrive(d)} title={"Open " + d.name}><DriveIcon mime={d.mimeType} name={d.name} size={18} /><span>{d.name}</span></button>)}</div>}
                           {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=>{const Card=m.role==='assistant'?DocumentCard:FileCard;return <Card key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>;})}
-                          {m.visual && (
+                          {/* Visuals from older chats, drawn by the ready-made models Mowr used to have. */}
+                          {typeof m.visual === "string" && m.visual !== "choose" && (
                             <Suspense fallback={<p className="fine">Opening the visual…</p>}>
-                              {m.visual === "choose" ? (
-                                <VisualGallery picker onPick={(scene) => { const def = sceneById(scene)!; updateChat(activeChat.id, (c) => ({ ...c, messages: c.messages.map((x) => x.id === m.id ? { ...x, content: `**${def.title}.** ${def.summary}`, visual: scene } : x) })); patch((s) => ({ ...s, visuals: [{ id: uid(), chatId: activeChat.id, title: def.title, created: Date.now(), scene }, ...s.visuals] })); }} />
-                              ) : (
-                                <Visual scene={m.visual} params={m.visualParams} />
-                              )}
+                              <Visual scene={m.visual} params={m.visualParams} />
                             </Suspense>
                           )}
                           {m.plan && (
@@ -1783,6 +1775,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                       })}
 
                     </div>
+                    </VisualSaveContext.Provider>
                     <div className="chat-composer">
                       {composerUI}
                       <p className="composer-note">
@@ -1863,17 +1856,14 @@ In this subject the learner keeps missing these questions in review; connect to 
                             {s.name}
                           </button>
                         </h2>
-                        <p>
-                          {s.description ||
-                            "A space for your sources, ideas, and conversations."}
-                        </p>
+                        <SpaceDescription
+                          value={s.description}
+                          kind={s.kind}
+                          onSave={(description) => patch((st) => ({ ...st, spaces: st.spaces.map((x) => (x.id === s.id ? { ...x, description } : x)) }))}
+                        />
                         <div className="space-meta">
                           <span>
-                            {
-                              state.chats.filter((c) => c.spaceId === s.id)
-                                .length
-                            }{" "}
-                            conversations · Independent memory
+                            {(() => { const n = state.chats.filter((c) => c.spaceId === s.id).length; return `${n} ${n === 1 ? "conversation" : "conversations"}`; })()}
                           </span>
                           <button
                             className="icon-button"
@@ -1985,36 +1975,42 @@ In this subject the learner keeps missing these questions in review; connect to 
                 )}
               </div>
             ) : route === "/app/visuals" ? (
-              <div className="page">
-                <div className="page-heading">
-                  <div>
-                    <span className="eyebrow">Visuals</span>
-                    <h1>See it move.</h1>
-                    <p>Ask for any idea. Get a visual you can play with.</p>
-                  </div>
-                </div>
-                <Suspense fallback={<p className="fine">Loading visuals…</p>}>
-                  <form className="visual-ask" onSubmit={(e) => { e.preventDefault(); const topic = String(new FormData(e.currentTarget).get("topic") || "").trim(); if (!topic) return; newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + topic), 60); }}>
-                    <Icon name="visuals" size={20} />
+              <div className="page visuals-page">
+                <header className="vp-hero">
+                  <span className="eyebrow">Visuals</span>
+                  <h1>See it move.</h1>
+                  <p>Describe any idea and Mowr draws a visual you can play with. Save the ones worth keeping and they live here.</p>
+                  <form className="vp-ask" onSubmit={(e) => { e.preventDefault(); const topic = String(new FormData(e.currentTarget).get("topic") || "").trim(); if (!topic) return; newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + topic), 60); }}>
+                    <span className="vp-ask-icon"><Icon name="visuals" size={22} /></span>
                     <input name="topic" aria-label="What would you like to see?" placeholder="Photosynthesis, supply and demand, a Fourier series…" autoComplete="off" />
-                    <button className="primary" aria-label="Draw it"><Icon name="up" size={18} /></button>
+                    <button className="primary" aria-label="Draw it">Draw<Icon name="arrow" size={17} /></button>
                   </form>
-                  {state.visuals.some((v) => state.chats.some((c) => c.id === v.chatId)) && <>
-                    <h2 className="visuals-section-title">Recent</h2>
-                    <div className="visual-gallery visual-recent">
-                      {state.visuals.filter((v) => state.chats.some((c) => c.id === v.chatId)).slice(0, 8).map((v) => (
-                        <button key={v.id} onClick={() => { const c = state.chats.find((c) => c.id === v.chatId)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); }}>
-                          {v.spec ? <SpecThumb spec={v.spec} /> : <VisualThumb scene={v.scene || "projectile"} params={v.params} />}
-                          <strong>{v.title}</strong>
-                          <small>{new Date(v.created).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
-                        </button>
+                </header>
+                {(() => {
+                  const saved = state.visuals.filter((v) => state.chats.some((c) => c.id === v.chatId));
+                  const open = (chat: string) => { const c = state.chats.find((x) => x.id === chat)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); };
+                  return saved.length ? <section className="vp-saved" aria-label="Saved visuals">
+                    <div className="vp-section-head"><h2>Saved</h2><span>{saved.length}</span></div>
+                    <div className="vp-grid">
+                      {saved.map((v) => (
+                        <article className="vp-card" key={v.id}>
+                          <button type="button" className="vp-open" onClick={() => open(v.chatId)} aria-label={`Open ${v.title} in its chat`}>
+                            <Suspense fallback={<div className="visual-thumb" />}>{v.spec ? <SpecThumb spec={v.spec} /> : <VisualThumb scene={v.scene || "projectile"} params={v.params} />}</Suspense>
+                          </button>
+                          <div className="vp-card-foot">
+                            <div><strong>{v.title}</strong><small>{new Date(v.created).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</small></div>
+                            <button type="button" className="icon-button" aria-label={`Remove ${v.title} from Visuals`} title="Remove from Visuals (it stays in its chat)" onClick={() => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== v.id) }))}><Icon name="close" size={16} /></button>
+                          </div>
+                        </article>
                       ))}
                     </div>
-                  </>}
-                  <h2 className="visuals-section-title">Ready-made models</h2>
-                  <VisualGallery onPick={(scene) => { newChat(); setDraft("/visual " + sceneById(scene)!.title.toLowerCase()); setTimeout(() => composer.current?.focus(), 0); }} />
-                  <p className="fine">Tip: type <span className="command">/visual</span> and anything in a chat. Mowr uses a ready-made model when one fits and draws a new one when it doesn’t.</p>
-                </Suspense>
+                  </section> : <section className="vp-empty">
+                    <Icon name="visuals" size={30} />
+                    <h2>Nothing saved yet</h2>
+                    <p>Visuals stay in their chat. Press <b>Save</b> on the top right of one to keep it here.</p>
+                    <div className="vp-ideas">{["The water cycle", "How a transistor switches", "Compound interest over 30 years", "Orbits and Kepler’s laws"].map((idea) => <button type="button" key={idea} onClick={() => { newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + idea), 60); }}><Icon name="visuals" size={15} />{idea}</button>)}</div>
+                  </section>;
+                })()}
               </div>
             ) : route === "/app/files" ? (
               <div className="page">
@@ -2339,16 +2335,14 @@ In this subject the learner keeps missing these questions in review; connect to 
                 />
               </label>
               <label className="field">
-                What is this space for?
+                Description <small className="optional">optional</small>
                 <textarea
                   name="description"
                   rows={3}
-                  placeholder="A little context for the work ahead."
+                  maxLength={400}
+                  placeholder={modal === "project-create" ? "What is this project about?" : "What are you learning, and why?"}
                 />
               </label>
-              <p className="fine">
-                Memory in this space is independent of all other spaces.
-              </p>
               <button className="primary">
                 Create space <Icon name="arrow" size={18} />
               </button>
@@ -2559,3 +2553,18 @@ function FolderChanges({onError}:{onError:(message:string)=>void}){
 }
 
 function SkillIconField(){const [icon,setIcon]=useState("skills");return <fieldset className="icon-field"><legend>Skill icon</legend><input type="hidden" name="icon" value={icon}/><IconPicker value={icon} onChange={setIcon}/></fieldset>;}
+
+/** A subject or project card's description, or a quiet "Add a description" that edits in place. */
+function SpaceDescription({value,kind,onSave}:{value:string;kind:Space["kind"];onSave:(description:string)=>void}){
+  const [editing,setEditing]=useState(false);
+  const [text,setText]=useState(value);
+  useEffect(()=>{if(!editing)setText(value);},[value,editing]);
+  const save=()=>{setEditing(false);const next=text.trim().slice(0,400);if(next!==value)onSave(next);};
+  if(editing)return <textarea className="space-desc-edit" autoFocus rows={2} maxLength={400} aria-label="Description"
+    placeholder={kind==="subject"?"What are you learning, and why?":"What is this project about?"}
+    value={text} onChange={e=>setText(e.target.value)} onBlur={save}
+    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();save();}if(e.key==="Escape"){setText(value);setEditing(false);}}}/>;
+  return value
+    ? <p className="space-desc" onDoubleClick={()=>setEditing(true)} title="Double-click to edit">{value}</p>
+    : <button type="button" className="space-desc-add" onClick={()=>setEditing(true)}><Icon name="plus" size={15}/>Add a description</button>;
+}
