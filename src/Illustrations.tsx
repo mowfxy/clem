@@ -10,7 +10,7 @@ export function Illustration({
   scene: Scene;
   className?: string;
   ambient?: boolean;
-  /** Shows the finished drawing as a single still frame, with no motion. */
+  /** Holds the finished drawing in place; only its lines keep boiling. */
   still?: boolean;
   /** Crops the 480×390 stage, e.g. to show one prop at a small size. */
   viewBox?: string;
@@ -30,8 +30,9 @@ export function Illustration({
       media.matches || document.documentElement.dataset.quiet === "true";
     const paint = (seconds: number) => {
       // Ambient scenes open on the finished drawing and run its idle loop forward from there.
-      const time = ambient ? 6 + seconds : seconds;
-      svg.innerHTML = filmFrame(scene, time, id);
+      // A still scene stays on that drawing, and only its line boil advances.
+      const time = still ? 6 : ambient ? 6 + seconds : seconds;
+      svg.innerHTML = filmFrame(scene, time, id, still ? seconds : null);
       svg.dataset.frame = seconds.toFixed(2);
       svg.dataset.phase = seconds < 6 ? "action" : "idle";
     };
@@ -43,18 +44,18 @@ export function Illustration({
     const tick = (now: number) => {
       if (last) elapsed += Math.min(now - last, 100) / 1000;
       last = now;
-      const cel = Math.floor(elapsed * 24);
+      // Drawn on twos: 12 cels a second gives the stepped, hand-animated feel.
+      const cel = Math.floor(elapsed * 12);
       if (cel !== lastCel) {
-        paint(cel / 24);
+        paint(cel / 12);
         lastCel = cel;
       }
       raf = requestAnimationFrame(tick);
     };
     const sync = () => {
       stop();
-      if (still || quiet()) {
-        if (media.matches || document.documentElement.dataset.quiet === "true")
-          paint(6);
+      if (quiet()) {
+        paint(6);
         return;
       }
       if (visible && !document.hidden) raf = requestAnimationFrame(tick);
