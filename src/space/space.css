@@ -170,8 +170,8 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 @media(max-width:560px){.sp-instructions{padding:9px 11px}.contact-dialog.instructions-dialog footer{flex-wrap:wrap}.contact-dialog.instructions-dialog footer small{flex-basis:100%}.contact-dialog.instructions-dialog footer .contact-secondary{margin-left:auto}}
 
 /* Activity graph, top right of the hero: a thin line over a dotted grid ending in a glowing dot. */
-.sp-side{display:flex;flex-direction:column;align-items:flex-end;gap:14px;flex-shrink:0}
-.sp-activity{--ink:#eeede7;--glow:#ffffff;position:relative;margin:0 -8px 0 0;padding:0;cursor:crosshair}
+.sp-top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:28px}
+.sp-activity{--ink:#eeede7;--glow:#ffffff;position:relative;margin:0;padding:0;cursor:crosshair}
 .sp-activity.tone-green{--ink:#8fe0a1;--glow:#6fdc8c}
 .sp-activity figcaption{font-size:10.5px;font-weight:500;letter-spacing:.9px;text-transform:uppercase;color:#8f8e88;margin:0 0 2px 8px;user-select:none}
 .sp-activity svg{display:block;overflow:visible}
@@ -192,6 +192,6 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 @keyframes sp-draw{to{stroke-dashoffset:0}}
 @keyframes sp-fade{to{opacity:1}}
 @keyframes sp-pulse{0%,100%{transform:scale(.8);opacity:.28}50%{transform:scale(1.35);opacity:.1}}
-@media (max-width:760px){.sp-title-row{flex-wrap:wrap}.sp-side{align-items:flex-start;width:100%}}
+@media (max-width:1180px){.sp-top{grid-template-columns:1fr;gap:12px}.sp-top .sp-activity{order:-1;justify-self:end}}
 @media (prefers-reduced-motion:reduce){.sp-activity .line{animation:none;stroke-dashoffset:0}.sp-activity .area,.sp-activity .end{animation:none;opacity:1}.sp-activity .halo,.sp-activity .grid .dot{animation:none}}
 html[data-quiet=true] .sp-activity .line{animation:none;stroke-dashoffset:0}html[data-quiet=true] .sp-activity .area,html[data-quiet=true] .sp-activity .end{animation:none;opacity:1}html[data-quiet=true] .sp-activity .halo,html[data-quiet=true] .sp-activity .grid .dot{animation:none}

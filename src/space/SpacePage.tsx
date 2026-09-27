@@ -88,6 +88,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
 
   return <div className={`space-page ${subject?'is-subject':'is-project'}`}>
+    <div className="sp-top">
     <header className="sp-hero">
       <button className="sp-crumb" onClick={actions.onBack}><Icon name={subject?'subjects':'projects'} size={15}/>{subject?'Subjects':'Projects'}</button>
       <div className="sp-title-row">
@@ -95,13 +96,10 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
           <Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/>
           <Editable className="sp-desc" value={space.description} max={400} label="Description" placeholder={subject?'What are you learning, and why?':'What is this project about?'} onSave={description=>actions.onUpdateSpace({...space,description})}/>
         </div>
-        <div className="sp-side">
         <div className="sp-actions">
           <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} title={space.memory.trim()?'Edit the instructions Mowr follows here':'Tell Mowr how to work here'}><InstructionsGlyph/>Instructions</button>
           <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
           <Menu label="More" items={[...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
-        </div>
-        <ActivityGraph chats={chats} files={files} sets={sets} tone={subject?'white':'green'}/>
         </div>
       </div>
       {subject&&<div className="sp-stats">
@@ -121,6 +119,8 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
         {tabs.map(([id,label,count])=><button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}>{label}{count!==undefined&&count>0&&<span>{count}</span>}</button>)}
       </nav>
     </header>
+    <ActivityGraph chats={chats} files={files} sets={sets} tone={subject?'white':'green'}/>
+    </div>
 
     <div className="sp-body" key={tab}>
       {tab==='overview'&&!!space.drive?.fresh?.length&&<div className="sp-drive-news" role="status">
