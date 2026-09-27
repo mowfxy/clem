@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { compile, safeEval } from '../core/expr.ts';
 import { compileVisual, defaultValues, parseVisual, type Pen } from '../core/visual-spec.ts';
 import { runChecks, parseChecks } from '../core/checks.ts';
-import { review, interval, examPace, isDue } from '../core/srs.ts';
+import { review, interval, examPace, isDue, isWeak } from '../core/srs.ts';
 import { linkCitations, readCitation, matchSource } from '../core/citations.ts';
 import { lineDiff, diffStats, applyEdit, hunks } from '../core/diff.ts';
 
@@ -27,6 +27,11 @@ test('expressions follow arithmetic precedence and never evaluate code', () => {
   assert.throws(() => compile('x; y', ['x', 'y']), /Unexpected/);
   assert.ok(Number.isNaN(safeEval(compile('1/0 - 1/0'), {})));
   assert.equal(compile('e', ['e'])({ e: 0.5 }), 0.5, 'a slider may shadow a constant');
+  assert.equal(compile('k(x-1)', ['k', 'x'])({ k: 2, x: 4 }), 6, 'a variable before ( multiplies');
+  assert.equal(compile('A(1-x)^2', ['A', 'x'])({ A: 3, x: -1 }), 12);
+  assert.ok(Math.abs(compile('pi(r^2)', ['r'])({ r: 2 }) - 4 * Math.PI) < 1e-12, 'a constant before ( multiplies');
+  assert.equal(compile('2sin(x)', ['x', 'sin'])({ x: 0, sin: 5 }), 0, 'known functions still call');
+  assert.throws(() => compile('f(x)', ['x']), /Unknown function/);
 });
 
 test('model-authored plots compile, animate and draw finite geometry', () => {
@@ -77,6 +82,18 @@ test('checked numbers recompute formulas and flag differences', () => {
   assert.equal(runChecks([{ label: 'unknown', expr: 'a+b', vars: { a: 1 }, claimed: 1 }])[0].status, 'error');
 });
 
+test('checked numbers allow for the rounding of the claim as written', () => {
+  const status = (expr: string, claimed: number) => runChecks([{ label: 'x', expr, claimed }])[0].status;
+  assert.equal(status('40.77', 41), 'ok', 'rounded to an integer');
+  assert.equal(status('40.77', 40.8), 'ok');
+  assert.equal(status('40.77', 42), 'differs');
+  assert.equal(status('0.4', 0), 'differs', 'a claimed zero gets no rounding allowance');
+  assert.equal(status('1234', 1200), 'ok', 'trailing zeros read as rounding');
+  assert.equal(status('1400', 1000), 'differs', 'but at least two significant digits');
+  assert.equal(status('1.54e-7', 1.5e-7), 'ok', 'exponent notation');
+  assert.equal(status('1.9e-7', 1.5e-7), 'differs');
+});
+
 test('FSRS schedules longer gaps after successful reviews and resets lapses', () => {
   const day = 86_400_000, t0 = Date.UTC(2026, 0, 1);
   const first = review(undefined, 3, t0);
@@ -97,6 +114,27 @@ test('FSRS schedules longer gaps after successful reviews and resets lapses', ()
   assert.equal(pace.perDay, 1);
 });
 
+test('FSRS: first-time misses are not lapses and weakness follows recent reviews', () => {
+  const t0 = Date.UTC(2026, 0, 1);
+  let card = review(undefined, 1, t0);
+  assert.equal(card.lapses, 0, 'a new card graded Again is not a lapse');
+  assert.equal(isWeak(card), false, 'one first-time miss is not "keeps slipping"');
+  card = review(card, 1, card.due);
+  assert.equal(card.lapses, 0, 'misses during learning steps are not lapses');
+  assert.equal(isWeak(card), true, 'missing it again is slipping');
+  card = review(card, 3, card.due);
+  assert.equal(isWeak(card), false, 'recalled now, never lapsed');
+  card = review(card, 3, card.due);
+  card = review(card, 1, card.due);
+  assert.equal(card.lapses, 1, 'forgetting a review card is a lapse');
+  assert.equal(isWeak(card), true);
+  let reviews = 0;
+  while (isWeak(card) && reviews < 10) { card = review(card, 3, card.due); reviews++; }
+  assert.ok(reviews <= 5, `recovers after a few correct reviews (took ${reviews})`);
+  assert.equal(card.lapses, 1);
+  assert.equal(isWeak(undefined), false);
+});
+
 test('citations link outside code and resolve to stored files', () => {
   const md = linkCitations('Entropy rises [[Lecture 4 notes.pdf, p. 12]] and [[data.csv]].\n```\n[[not a citation]]\n```');
   assert.match(md, /\[Lecture 4 notes\.pdf · p\. 12\]\(source:Lecture%204%20notes\.pdf#p=12\)/);
@@ -115,4 +153,8 @@ test('file changes diff by line and require a unique match', () => {
   assert.throws(() => applyEdit('a a', { find: 'a', replace: 'b' }), /more than once/);
   assert.throws(() => applyEdit('abc', { find: 'zzz', replace: 'b' }), /no longer/);
   assert.equal(applyEdit('old', { content: 'new' }), 'new');
+  assert.deepEqual(lineDiff('a\nb\nc', 'a\nB\nc').map(l => l.kind), ['same', 'remove', 'add', 'same'], 'removals before additions');
+  assert.deepEqual(lineDiff('', 'x\ny'), [{ kind: 'add', text: 'x', b: 1 }, { kind: 'add', text: 'y', b: 2 }], 'a new file has no phantom removed line');
+  assert.deepEqual(diffStats(lineDiff('x', '')), { added: 0, removed: 1 });
+  assert.deepEqual(lineDiff('', ''), []);
 });

@@ -203,6 +203,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [draft, setDraft] = useState("");
   const [long, setLong] = useState(false);
   const [models, setModels] = useState<Model[]>(modelPlaceholders);
+  // Memoized message handlers read the latest models through this.
+  const modelsRef = useRef(models);
+  modelsRef.current = models;
   const [defaultModel, setDefaultModel] = useState("");
   const [defaultReasoning,setDefaultReasoning]=useState("");
   const savedSelection=state.chats.find(c=>c.id===chatId);
@@ -267,12 +270,15 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const stopAll = () => { for (const c of controllers.current.values()) c.abort(); };
   const [apiReady, setApiReady] = useState(false);
   const [settingsTab, setSettingsTab] = useState("General");
+  // Which project, subject or chat Settings → Linked folders / Telegram acts on: always one the person chose.
+  const [settingsScope, setSettingsScope] = useState("");
   const [accountRevision,setAccountRevision]=useState(0);
   const [accountData,setAccountData]=useState<AccountsData|undefined>();
   const [accountNotices,setAccountNotices]=useState<Notice[]>([]);
   // Newest notice goes to the front of the stack above the account button.
   const notify=(notice:Omit<Notice,'id'>)=>setAccountNotices(items=>[{id:crypto.randomUUID(),...notice},...items].slice(0,8));
-  const [handoffTask,setHandoffTask]=useState<string|null>(null);
+  // Long tasks waiting on the person to choose whether to hand off to another model; shown one at a time, oldest first.
+  const [handoffs,setHandoffs]=useState<{key:string;task:string;resolve:(choice:{model:string;reasoning?:string}|null)=>void}[]>([]);
   const [palette,setPalette]=useState(false);
   // Search everything (query to start with), folder browser (file to open), study packs.
   const [everything,setEverything]=useState<string|null>(null);
@@ -282,8 +288,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // Where the next generated file from a space should land (e.g. "Make a worksheet" → Worksheets).
   const artifactTarget=useRef<{spaceId:string;folderId:string|null;until:number;label?:string}|null>(null);
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
-  const [queued,setQueued]=useState<string|null>(null);
-  const handoffResolve=useRef<((choice:{model:string;reasoning?:string}|null)=>void)|null>(null);
+  // A message waiting to be sent, bound to the chat it was written in (none: the chat on screen).
+  const [queued,setQueued]=useState<{prompt:string;chat?:string}|null>(null);
   const accountDataRef=useRef(accountData);accountDataRef.current=accountData;
   const observedActiveAccount=useRef<string|null>(null);
   const stateRef = useRef(state);
@@ -451,6 +457,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setSpaceId(id);
     setDraft("");
     setAttachments([]);
+    // A new chat starts clean: no file from the previous chat stays open, pointed at or attached.
+    setPanelFile(null);
+    setPanelEdit(true);
+    setPointers([]);
+    setDriveRefs([]);
+    setAttach(false);
     setLong(false);
     navigate("/app");
     setTimeout(() => composer.current?.focus(), 50);
@@ -540,7 +552,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!prompt) return;
     // Sending while Mowr answers interrupts it: the partial answer stays, then the new message goes.
     if (running) {
-      if (override === undefined) { setQueued(prompt); setDraft(""); stopChat(conversationTarget); }
+      if (override === undefined) { setQueued({ prompt, chat: conversationTarget }); setDraft(""); stopChat(conversationTarget); }
       return;
     }
     const pickedDrive = driveRefs.map(({ id, name, mimeType, modified, size, durationMs }) => ({ id, name, mimeType, modified, size, durationMs }));
@@ -603,7 +615,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       status(id)("Editing " + target.name + "…");
       controller.signal.addEventListener("abort", () => panelRef.current?.stop());
       try {
-        await panelRef.current!.ready();
+        // Waits for the file to open; fails if it cannot be opened, and Stop wakes it.
+        await Promise.race([panelRef.current!.ready(), new Promise<never>((_, reject) => { if (controller.signal.aborted) reject(Error("Stopped.")); controller.signal.addEventListener("abort", () => reject(Error("Stopped."))); })]);
         const summary = await panelRef.current!.edit(prompt + pointerNote);
         say(`${summary}\n\nSaved to **${target.name}**; the changes are highlighted beside the chat. Use Before/After to compare, or Undo to go back.`);
       } catch (error) {
@@ -855,7 +868,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                 content:
                   (e as Error).name === "AbortError"
                     ? m.content ? m.content + "\n\n*Interrupted.*" : "Stopped. Your request is saved."
-                    : m.content || (e as Error).message,
+                    : m.content ? m.content + "\n\n*The reply was cut off: " + (e as Error).message + "*" : (e as Error).message,
               }
             : m,
         ),
@@ -984,7 +997,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       },
       onSchedule:async(key,block,approve)=>{
         if(!approve){patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"dismissed"}}}));return;}
-        const model=models.find(m=>m.connected&&m.id===message.model)||models.find(m=>m.connected);
+        const models=modelsRef.current,model=models.find(m=>m.connected&&m.id===message.model)||models.find(m=>m.connected);
         if(!model){setToast("Connect a model in Settings → Models first.");return;}
         const id=uid();
         patch(s=>({...s,automations:[...s.automations,{id,name:block.name,prompt:block.prompt,model:model.id,schedule:block.repeat,nextRun:firstAutomationRun(block),enabled:true,spaceId:chat.spaceId}]}));
@@ -1008,7 +1021,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       if(!task)return;
       automationBusy.current=true;
       const owner=ownerRef.current,controller=new AbortController();automationAbort.current=controller;
-      patch(s=>({...s,automations:s.automations.map(a=>a.id===task.id?{...a,nextRun:nextAutomation(a.schedule),lastRun:Date.now(),lastError:undefined}:a)}));
+      patch(s=>({...s,automations:s.automations.map(a=>a.id===task.id?{...a,nextRun:nextAutomation(a.schedule,a.nextRun),lastRun:Date.now(),lastError:undefined}:a)}));
       const claimed=stateRef.current;
       try{
         const persistence=saveQueue.current.then(()=>saveState(claimed,owner));saveQueue.current=persistence.catch(()=>{});await persistence;
@@ -1055,10 +1068,10 @@ In this subject the learner keeps missing these questions in review; connect to 
           if(!handoffDecided&&live?.autoSwitch&&active?.usage&&isBelowSwitchThreshold(active.usage)&&!alternate&&!/^(claude|grok):/.test(task.model)&&models.some(model=>(model.provider==='Anthropic'||model.provider==='xAI')&&model.connected)){
             handoffDecided=true;
             handoffChoice=await new Promise<{model:string;reasoning?:string}|null>((resolve,reject)=>{
-              const onAbort=()=>{handoffResolve.current=null;setHandoffTask(null);reject(new DOMException('Cancelled','AbortError'));};
+              const key=crypto.randomUUID(),drop=()=>setHandoffs(items=>items.filter(item=>item.key!==key));
+              const onAbort=()=>{drop();reject(new DOMException('Cancelled','AbortError'));};
               signal.addEventListener('abort',onAbort,{once:true});
-              handoffResolve.current=choice=>{signal.removeEventListener('abort',onAbort);setHandoffTask(null);resolve(choice);};
-              setHandoffTask(task.title);
+              setHandoffs(items=>[...items,{key,task:task.title,resolve:choice=>{signal.removeEventListener('abort',onAbort);drop();resolve(choice);}}]);
             });
             if(handoffChoice){
               const index=executionPlan.tasks.findIndex(item=>item.id===task.id);
@@ -1207,6 +1220,25 @@ In this subject the learner keeps missing these questions in review; connect to 
     if(kind==='chat'){const chat=state.chats.find(x=>x.id===id);return chat?`Chat: ${chat.title}`:'A chat';}
     return 'Workspace';
   };
+  /** Deletes a file everywhere it is used, after asking: its bytes, earlier versions and specs, and its place as a source. */
+  async function deleteStoredFile(file:StoredFile){
+    if(!await confirmDialog({title:`Delete ${file.name}?`,message:'The file and its earlier versions are removed from this PC.',confirm:'Delete',danger:true}))return false;
+    try{if(file.remote)await api("files/"+file.id,"DELETE");}catch{setToast("File could not be deleted. Try again.");return false;}
+    await Promise.allSettled([deleteBlob(file.id),deleteBlob('spec-'+file.id),...(file.versions||[]).flatMap(v=>[deleteBlob(v.blob),deleteBlob('spec-'+v.blob)])]);
+    patch(s=>({...s,files:s.files.filter(f=>f.id!==file.id),spaces:s.spaces.map(x=>({...x,sources:x.sources.filter(id=>id!==file.id)}))}));
+    setAttachments(a=>a.filter(x=>x!==file.id));
+    if(panelFile?.id===file.id)setPanelFile(null);
+    return true;
+  }
+  /** Settings acts on a scope the person picks (never a throwaway draft chat): the whole workspace (Telegram only),
+   *  the open chat when it is a real one outside a space, or a project or subject. */
+  function settingsScopes(workspace:boolean){
+    const options=[...(workspace?[{value:'user:me',label:'Your whole workspace'}]:[]),...(chatId&&activeChat&&!activeSpace?[{value:`chat:${chatId}`,label:scopeLabel(`chat:${chatId}`)}]:[]),...state.spaces.map(x=>({value:`${x.kind}:${x.id}`,label:scopeLabel(`${x.kind}:${x.id}`)}))];
+    const fallback=activeSpace?`${activeSpace.kind}:${activeSpace.id}`:options[0]?.value||'';
+    const value=options.some(o=>o.value===settingsScope)?settingsScope:fallback;
+    const picker=options.length>1?<label>For<select value={value} onChange={e=>setSettingsScope(e.target.value)}>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>:null;
+    return {value,picker};
+  }
   /** Opens the conversation a linked folder belongs to, so its files are in reach of the model. */
   function goToScope(scope:string){
     const [kind,id]=scope.split(':');
@@ -1215,11 +1247,22 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   function askAboutFolderFile(file:OpenFolderFile,instruction:string){
     goToScope(file.scope);
-    if(instruction)setQueued(`In \`${file.path}\` (in ${file.folder}): ${instruction}`);
+    if(instruction)setQueued({prompt:`In \`${file.path}\` (in ${file.folder}): ${instruction}`});
     else{setDraft(`About \`${file.path}\` in ${file.folder}: `);setTimeout(()=>composer.current?.focus(),80);}
   }
   // A queued message is sent after the destination conversation has rendered.
-  useEffect(()=>{if(queued&&!running){const prompt=queued;setQueued(null);void send(undefined,prompt);}},[queued,running]);
+  useEffect(()=>{
+    if(!queued)return;
+    // Interrupted in another chat: wait for that answer to stop, then go back so the message goes where it was written.
+    if(queued.chat&&queued.chat!==conversationTarget){
+      if(queued.chat in runs)return;
+      const chat=stateRef.current.chats.find(c=>c.id===queued.chat);
+      if(chat){setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}
+      else{setQueued(null);setDraft(queued.prompt);}
+      return;
+    }
+    if(!running){const prompt=queued.prompt;setQueued(null);void send(undefined,prompt);}
+  },[queued,running,conversationTarget,runs]);
   async function openPackBytes(bytes:Uint8Array,name:string){
     try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast((e as Error).message);}
   }
@@ -1254,7 +1297,7 @@ In this subject the learner keeps missing these questions in review; connect to 
   function spaceActions(space:Space):import('./space/SpacePage').SpaceActions{
     const scope=`${space.kind}:${space.id}`;
     const ensureFolder=(name:string)=>{const current=stateRef.current.spaces.find(x=>x.id===space.id)||space;const found=(current.folders||[]).find(f=>!f.parentId&&f.name.toLowerCase()===name.toLowerCase());if(found)return found;const folder={id:crypto.randomUUID(),name,parentId:null,created:Date.now()};patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id?{...x,folders:[...(x.folders||[]),folder]}:x)}));return folder;};
-    const ask=(prompt:string)=>{newChat(space.id);if(prompt)setQueued(prompt);};
+    const ask=(prompt:string)=>{newChat(space.id);if(prompt)setQueued({prompt});};
     return {
       onAsk:ask,
       onDraft:prompt=>{newChat(space.id);setDraft(prompt);setTimeout(()=>composer.current?.focus(),80);},
@@ -1281,7 +1324,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         const refs=stateRef.current.spaces.find(x=>x.id===space.id)?.drive?.fresh||[];
         patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id&&x.drive?{...x,drive:{...x.drive,fresh:[]}}:x)}));
         newChat(space.id);setDriveRefs(refs.slice(0,10));
-        setQueued(kind==='flashcards'?'/flashcards Create flashcards covering the new material in the Drive files I added.':`Update my summary of ${space.name} with the new material in the Drive files I added: create a complete, accurate summary PDF of the new topics, using as many pages as they need, with key ideas, definitions, formulas and a short worked example where it helps. Cite the source file for key facts.`);
+        setQueued({prompt:kind==='flashcards'?'/flashcards Create flashcards covering the new material in the Drive files I added.':`Update my summary of ${space.name} with the new material in the Drive files I added: create a complete, accurate summary PDF of the new topics, using as many pages as they need, with key ideas, definitions, formulas and a short worked example where it helps. Cite the source file for key facts.`});
       },
       onUpload:(files,folderId)=>upload(files,false,{spaceId:space.id,folderId}),
       onMake:(kind,folderId)=>{
@@ -1293,7 +1336,7 @@ In this subject the learner keeps missing these questions in review; connect to 
           // A summary reads everything in the space, not only the files marked as sources.
           const ids=stateRef.current.files.filter(f=>f.spaceId===space.id&&!f.type.startsWith('image/')).map(f=>f.id);
           newChat(space.id);setAttachments(ids);
-          setQueued(`Create a complete, accurate summary PDF of ${space.name} from all of my files and what I have studied here. Use as many pages as the material needs; do not squeeze it onto one page. Follow the material's own structure: one section per topic in a logical order, each with the key ideas explained in plain words, precise definitions, every important formula with what its symbols mean, a short worked example where it helps, and common mistakes to avoid. End with a one-page recap of the most important points. Only state what the sources support, keep notation consistent with them, and cite the source file and page for key facts.`);
+          setQueued({prompt:`Create a complete, accurate summary PDF of ${space.name} from all of my files and what I have studied here. Use as many pages as the material needs; do not squeeze it onto one page. Follow the material's own structure: one section per topic in a logical order, each with the key ideas explained in plain words, precise definitions, every important formula with what its symbols mean, a short worked example where it helps, and common mistakes to avoid. End with a one-page recap of the most important points. Only state what the sources support, keep notation consistent with them, and cite the source file and page for key facts.`});
           return;
         }
         ask(`Create a printable worksheet PDF for ${space.name}: 8 questions that rise in difficulty, built on my files and what I have studied here, with space to write answers.`);
@@ -1301,11 +1344,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       onShare:folderId=>setPackShare({space:stateRef.current.spaces.find(x=>x.id===space.id)||space,folderId}),
       onUpdateSpace:next=>patch(s=>({...s,spaces:s.spaces.map(x=>x.id===next.id?next:x)})),
       onUpdateFiles:fn=>patch(s=>({...s,files:fn(s.files)})),
-      onDeleteFile:async file=>{
-        if(!await confirmDialog({title:`Delete ${file.name}?`,message:'The file and its earlier versions are removed from this PC.',confirm:'Delete',danger:true}))return;
-        await Promise.allSettled([deleteBlob(file.id),deleteBlob('spec-'+file.id),...(file.versions||[]).flatMap(v=>[deleteBlob(v.blob),deleteBlob('spec-'+v.blob)])]);
-        patch(s=>({...s,files:s.files.filter(f=>f.id!==file.id),spaces:s.spaces.map(x=>({...x,sources:x.sources.filter(id=>id!==file.id)}))}));
-      },
+      onDeleteFile:async file=>{await deleteStoredFile(file);},
       onUpdateSet:set=>patch(s=>({...s,studySets:s.studySets.map(x=>x.id===set.id?set:x)})),
       onDeleteSet:id=>patch(s=>({...s,studySets:s.studySets.filter(x=>x.id!==id)})),
       onExport:()=>void archiveCourse(space),
@@ -1575,8 +1614,8 @@ In this subject the learner keeps missing these questions in review; connect to 
             </div>
 
             {palette&&<CommandPalette commands={commands} onClose={()=>setPalette(false)}/>}
-            {!handoffTask&&<NoticeStack notices={accountNotices} onDismiss={id=>setAccountNotices(items=>items.filter(n=>n.id!==id))}/>}
-            {handoffTask&&<AccountHandoff task={handoffTask} models={models} onChoose={(model,reasoning)=>handoffResolve.current?.({model,reasoning})} onStay={()=>handoffResolve.current?.(null)}/>}
+            {!handoffs.length&&<NoticeStack notices={accountNotices} onDismiss={id=>setAccountNotices(items=>items.filter(n=>n.id!==id))}/>}
+            {handoffs[0]&&<AccountHandoff key={handoffs[0].key} task={handoffs[0].task} models={models} onChoose={(model,reasoning)=>handoffs[0].resolve({model,reasoning})} onStay={()=>handoffs[0].resolve(null)}/>}
             <div className="sidebar-bottom">
               <button
                 className="account-button"
@@ -2001,12 +2040,16 @@ In this subject the learner keeps missing these questions in review; connect to 
                           className="icon-button"
                           aria-label={`Download ${f.name}`}
                           onClick={async () => {
-                            const blob = await getBlob(f.id);
-                            if (blob) download(blob, f.name);
-                            else
-                              setToast(
-                                "This file is no longer available on this device.",
-                              );
+                            try {
+                              const blob = await getBlob(f.id);
+                              if (blob) download(blob, f.name);
+                              else
+                                setToast(
+                                  "This file is no longer available on this device.",
+                                );
+                            } catch (e) {
+                              setToast(cleanError(e) || "This file could not be downloaded. Try again.");
+                            }
                           }}
                         >
                           <Icon name="download" size={19} />
@@ -2014,23 +2057,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                         <button
                           className="icon-button"
                           aria-label={`Delete ${f.name}`}
-                          onClick={async () => {
-                            try {
-                              if (f.remote)
-                                await api("files/" + f.id, "DELETE");
-                              await deleteBlob(f.id);
-                              patch((s) => ({
-                                ...s,
-                                files: s.files.filter((x) => x.id !== f.id),
-                              }));
-                              setAttachments((a) =>
-                                a.filter((x) => x !== f.id),
-                              );
-                              setToast("File deleted.");
-                            } catch {
-                              setToast("File could not be deleted. Try again.");
-                            }
-                          }}
+                          onClick={() => void deleteStoredFile(f).then((done) => { if (done) setToast("File deleted."); })}
                         >
                           <Icon name="trash" size={18} />
                         </button>
@@ -2082,16 +2109,16 @@ In this subject the learner keeps missing these questions in review; connect to 
                         <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Docs, Slides and videos, read live. Nothing is copied to this PC."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
                       </SettingsCard>
                     ) : settingsTab === "Linked folders" ? (
-                      <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for this conversation or project." action="Manage folders"><LinkedFolders scope={desktopScope}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
+                      <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes(false))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
                     ) : settingsTab === "Telegram" ? (
-                      <SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect"><TelegramPanel scope={desktopScope}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>
+                      <SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect">{(({value,picker})=><>{picker}<TelegramPanel scope={value} labelFor={scope=>scope==='user:me'?'your whole workspace':scopeLabel(scope)}/></>)(settingsScopes(true))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>
                     ) : settingsTab === "Memory" ? (
                       <SettingsCard note="Projects and subjects keep their own memory.">
-                        {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation home={activeSpace?`${activeSpace.kind}:${activeSpace.id}`:undefined} labelFor={memoryLabel} summary={activeSpace ? activeSpace.memory : state.memory} summaryLabel={activeSpace ? `${activeSpace.name} instructions` : "Your notes"} onSummary={text=>patch(s=>activeSpace?{...s,spaces:s.spaces.map(x=>x.id===activeSpace.id?{...x,memory:text}:x)}:{...s,memory:text})}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
+                        {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Automations" ? (
                       <SettingsCard note="New routines start in a chat. They run while Mowr is open.">
-                        {desktop?<LocalAutomations items={state.automations} onChange={automations=>patch(s=>({...s,automations}))}/>:<p className="muted">Available in the desktop app.</p>}
+                        {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Help & support" ? (
                       <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary support-paypal"><PayPalMark size={16}/>Support with PayPal</SupportLink></SettingRow></SettingsCard></>

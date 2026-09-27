@@ -86,7 +86,8 @@ export class TelegramService {
     this.owner = owner;
     const controller = new AbortController();
     this.controller = controller;
-    void this.loop(owner, controller.signal).catch(() => {});
+    // When the loop ends by itself (no bot connected yet), a later start() for the same person runs it again.
+    void this.loop(owner, controller.signal).catch(() => {}).finally(() => { if (this.controller === controller) { this.controller = null; this.owner = ""; } });
   }
   private async loop(owner: string, signal: AbortSignal) {
     const key = "telegram-" + owner;
@@ -139,12 +140,6 @@ export class TelegramService {
             config.seen = [...config.seen.slice(-499), envelope.id];
             config.offset = update.update_id + 1;
             await this.vault.write(key, config);
-            const job = "telegram-job-" + owner + "-" + update.update_id;
-            await this.vault.write(job, {
-              status: "running",
-              scope: envelope.scope,
-              source: envelope.id,
-            });
             try {
               const bytes = envelope.attachment
                 ? await client.download(envelope.attachment)
@@ -163,15 +158,9 @@ export class TelegramService {
                   result.document.bytes,
                   result.document.mime,
                 );
-              await this.vault.write(job, {
-                status: "complete",
-                scope: envelope.scope,
-              });
+              // A later request that completes clears the note about an earlier interrupted one.
+              delete config.error;
             } catch {
-              await this.vault.write(job, {
-                status: "interrupted",
-                scope: envelope.scope,
-              });
               if(signal.aborted)return;
               config.error =
                 "A Telegram request was interrupted. It was not automatically retried.";
