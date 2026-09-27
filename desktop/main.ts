@@ -764,7 +764,8 @@ void app.whenReady().then(async () => {
       for(const provider of grokProviders.values())provider.stop();
       await selectProvider("signed-out");
       driveLive.forget();driveMedia.forget();
-      await auth.client?.auth.signOut();
+      await auth.client?.auth.signOut().catch(() => {});
+      await auth.forget();
       return status();
     }
     const user = await auth.user(true, securityActions.has(request.action));

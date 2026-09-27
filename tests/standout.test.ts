@@ -87,6 +87,7 @@ test('checked numbers allow for the rounding of the claim as written', () => {
   assert.equal(status('40.77', 41), 'ok', 'rounded to an integer');
   assert.equal(status('40.77', 40.8), 'ok');
   assert.equal(status('40.77', 42), 'differs');
+  assert.equal(status('0.4', 0), 'differs', 'a claimed zero gets no rounding allowance');
   assert.equal(status('1234', 1200), 'ok', 'trailing zeros read as rounding');
   assert.equal(status('1400', 1000), 'differs', 'but at least two significant digits');
   assert.equal(status('1.54e-7', 1.5e-7), 'ok', 'exponent notation');
