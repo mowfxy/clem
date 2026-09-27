@@ -370,11 +370,14 @@ export function mowrSkillsFor(request: string, context: SkillContext = {}, limit
   return mowrSkills.filter((skill) => fits(skill, request, context)).slice(0, limit);
 }
 
+const guide = (s: MowrSkill) => `${s.name.toUpperCase()}:\n${s.steps.map((step, i) => `${i + 1}. ${step}`).join("\n")}`;
+
 export function mowrSkillText(request: string, context: SkillContext = {}) {
-  const chosen = mowrSkillsFor(request, context);
-  const guides = chosen.map((s) => `${s.name.toUpperCase()}:\n${s.steps.map((step, i) => `${i + 1}. ${step}`).join("\n")}`);
-  return [capabilityIndex, ...guides].join("\n\n");
+  return [capabilityIndex, ...mowrSkillsFor(request, context).map(guide)].join("\n\n");
 }
+
+/** The linked-folders playbook. The desktop adds it with FILE CHANGES, since only it knows whether a folder is linked. */
+export const foldersPlaybook = guide(mowrSkills.find((s) => s.id === "folders")!);
 
 /** Tells the model which documents it made in this conversation and how to change them in place. */
 export function documentsNote(documents: { id: string; name: string }[]) {
