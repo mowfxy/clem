@@ -14,11 +14,12 @@ export async function activeAnnouncements(env, at = now()) {
   ).results;
 }
 
+// Older cases were stored as "supabase:<id>"; newer ones under the bare id the account service uses.
 async function ownCase(env, userId, id) {
   const row = await env.DB.prepare(
-    `SELECT ${caseColumns} FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE s.id=? AND s.owner_id=?`,
+    `SELECT ${caseColumns} FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE s.id=? AND s.owner_id IN (?,'supabase:'||?)`,
   )
-    .bind(id, userId)
+    .bind(id, userId, userId)
     .first();
   if (!row) throw new HttpError(404, "Case not found.");
   return row;
@@ -30,9 +31,9 @@ export async function handleSupport(request, env, user, path) {
   if (path === "/support/cases" && request.method === "GET") {
     const cases = (
       await env.DB.prepare(
-        `SELECT ${caseColumns} FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE s.owner_id=? ORDER BY COALESCE(t.updated_at,s.created_at) DESC LIMIT 50`,
+        `SELECT ${caseColumns} FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE s.owner_id IN (?,'supabase:'||?) ORDER BY COALESCE(t.updated_at,s.created_at) DESC LIMIT 50`,
       )
-        .bind(user.id)
+        .bind(user.id, user.id)
         .all()
     ).results;
     const messages = cases.length

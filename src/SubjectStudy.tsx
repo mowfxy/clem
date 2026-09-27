@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { confirmDialog } from "./dialogs";
 import type { CardState, StudySet } from "../core/types";
-import { review, previews, isDue, type Grade } from "../core/srs";
+import { review, previews, isDue, isWeak, type Grade } from "../core/srs";
 import { Icon } from "./Icons";
 
 type Card = { set: StudySet; index: number; question: string; answer: string; state?: CardState };
@@ -17,7 +17,7 @@ const cardsOf = (sets: StudySet[]): Card[] =>
 /** Questions the learner keeps getting wrong, used to steer explanations in subject chats. */
 export function weakConcepts(sets: StudySet[]) {
   return cardsOf(sets)
-    .filter((c) => c.state && (c.state.lapses >= 2 || (c.state.lapses >= 1 && c.state.difficulty > 7)))
+    .filter((c) => c.state && isWeak(c.state))
     .sort((a, b) => b.state!.lapses - a.state!.lapses || b.state!.difficulty - a.state!.difficulty)
     .slice(0, 6)
     .map((c) => c.question.slice(0, 160));
@@ -55,8 +55,13 @@ export function SubjectStudy({
   const current = sets.find((s) => s.id === selected);
   const card = session?.[0];
 
+  // Cards fall due as time passes (missed ones come back within minutes), so the count keeps up while the page is open.
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
+  useEffect(() => { if (session && !card) setNow(Date.now()); }, [session, card]);
   function start() {
-    setNow(Date.now());
+    const at = Date.now();
+    setNow(at);
+    const due = all.filter((c) => c.state?.reps && isDue(c.state, at));
     const queue = [...due.sort((a, b) => a.state!.due - b.state!.due), ...fresh.slice(0, NEW_PER_SESSION)];
     setSession(queue); setRevealed(false); setReviewed(0);
   }

@@ -136,27 +136,54 @@ export const archiveSchema = z.object({
   ),
 });
 export type SubjectArchive = z.infer<typeof archiveSchema>;
+/** Shared by export and import, so anything packSubject writes unpackSubject accepts. */
+export const archiveLimits = {
+  manifest: 20_000_000,
+  file: 250_000_000,
+  total: 500_000_000,
+  // Total contents plus ZIP headers and worst-case deflate growth.
+  archive: 510_000_000,
+};
+const mb = (bytes: number) => Math.round(bytes / 1_000_000) + " MB";
 export async function packSubject(
   manifest: SubjectArchive,
   files: Record<string, Uint8Array>,
 ) {
   archiveSchema.parse(manifest);
-  const entries: AsyncZippable = {
-    "subject.json": strToU8(JSON.stringify(manifest)),
-  };
+  const json = strToU8(JSON.stringify(manifest));
+  if (json.length > archiveLimits.manifest)
+    throw Error(
+      `This subject's chats and study data are larger than ${mb(archiveLimits.manifest)}, so it can't be archived.`,
+    );
+  const entries: AsyncZippable = { "subject.json": json };
+  let total = json.length;
   for (const file of manifest.files) {
     if (!files[file.id]) throw Error("Missing file: " + file.name);
+    if (files[file.id].length > archiveLimits.file)
+      throw Error(
+        `${file.name} is larger than ${mb(archiveLimits.file)}, so this subject can't be archived. Remove it from the subject first.`,
+      );
+    total += files[file.id].length;
     entries["files/" + file.id] = files[file.id];
   }
-  return new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) =>
+  if (total > archiveLimits.total)
+    throw Error(
+      `This subject holds more than ${mb(archiveLimits.total)} of files, so it can't be archived in one ZIP. Remove some files first.`,
+    );
+  const packed = await new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) =>
     zip(entries, { level: 1 }, (error, data) =>
       error ? reject(error) : resolve(new Uint8Array(data)),
     ),
   );
+  if (packed.length > archiveLimits.archive)
+    throw Error(
+      `This subject's archive would be larger than ${mb(archiveLimits.archive)}. Remove some files first.`,
+    );
+  return packed;
 }
 export async function unpackSubject(bytes: Uint8Array) {
-  if (bytes.length > 250_000_000)
-    throw Error("Use a subject archive smaller than 250 MB.");
+  if (bytes.length > archiveLimits.archive)
+    throw Error(`Use a subject archive smaller than ${mb(archiveLimits.archive)}.`);
   let total = 0,
     rejected = false;
   const entries = await new Promise<Record<string, Uint8Array>>(
@@ -167,8 +194,11 @@ export async function unpackSubject(bytes: Uint8Array) {
           filter: (info) => {
             total += info.originalSize;
             if (
-              total > 500_000_000 ||
-              info.originalSize > 250_000_000 ||
+              total > archiveLimits.total ||
+              info.originalSize >
+                (info.name === "subject.json"
+                  ? archiveLimits.manifest
+                  : archiveLimits.file) ||
               (!/^files\/[a-zA-Z0-9_-]{1,100}$/.test(info.name) &&
                 info.name !== "subject.json")
             ) {
@@ -184,7 +214,7 @@ export async function unpackSubject(bytes: Uint8Array) {
   if (
     rejected ||
     !entries["subject.json"] ||
-    entries["subject.json"].length > 20_000_000
+    entries["subject.json"].length > archiveLimits.manifest
   )
     throw Error("This subject archive is unsupported or too large.");
   const manifest = archiveSchema.parse(

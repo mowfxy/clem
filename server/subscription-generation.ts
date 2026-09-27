@@ -2,7 +2,7 @@ import {Sandbox} from '@vercel/sandbox';
 import {randomUUID} from 'node:crypto';
 import {db} from './db.ts';
 import {encrypt} from './vault.ts';
-import {reserveRuntime,subscriptionReady,cleanExpiredSubscriptionSessions} from './subscriptions.ts';
+import {reserveRuntime,refundRuntime,removed,subscriptionReady,cleanExpiredSubscriptionSessions,type RuntimeReservation} from './subscriptions.ts';
 import type {ChatInput} from './providers.ts';
 
 export async function* generateSubscription(provider:string,messages:ChatInput[],signal:AbortSignal,credential:{key:string;owner:string}){
@@ -13,9 +13,9 @@ export async function* generateSubscription(provider:string,messages:ChatInput[]
  const owner=credential.owner,session=randomUUID(),name='mowr-'+session;
  const lock=await db()`INSERT INTO mowr_subscription_sessions(owner_id,provider,session_id,expires_at) VALUES(${owner},${provider},${session},${Date.now()+210000}) ON CONFLICT(owner_id,provider) DO UPDATE SET session_id=excluded.session_id,sandbox_id=NULL,expires_at=excluded.expires_at WHERE mowr_subscription_sessions.expires_at<${Date.now()} RETURNING session_id`;
  if(!lock.length)throw Error('This subscription is already working on another request. Wait for it to finish.');
- let sandbox:Sandbox|undefined;
+ let sandbox:Sandbox|undefined,reservation:RuntimeReservation|undefined;
  try{
-  signal.throwIfAborted();await reserveRuntime(180);
+  signal.throwIfAborted();reservation=await reserveRuntime(owner,180);
   sandbox=await Sandbox.create({name,source:{type:'snapshot',snapshotId:process.env.SUBSCRIPTION_RUNTIME_SNAPSHOT_ID!},timeout:180000,resources:{vcpus:1},networkPolicy:{allow:provider==='openai'?['*.openai.com','chatgpt.com','*.chatgpt.com']:['*.x.ai','grok.com','*.grok.com']}});
   const stored=await db()`UPDATE mowr_subscription_sessions SET sandbox_id=${name} WHERE owner_id=${owner} AND provider=${provider} AND session_id=${session} RETURNING session_id`;
   if(!stored.length)throw Error('The subscription request was cancelled.');
@@ -46,8 +46,9 @@ export async function* generateSubscription(provider:string,messages:ChatInput[]
  }finally{
   if(sandbox){
    try{if(!signal.aborted&&Date.now()-started<170000){const auth=await sandbox.readFileToBuffer({path:'/vercel/sandbox/mowr/'+(provider==='openai'?'.codex':'.grok')+'/auth.json'});if(auth&&auth.length<100000){JSON.parse(auth.toString());const value=encrypt(auth.toString(),owner);await db()`UPDATE mowr_credentials SET ciphertext=${value.ciphertext},nonce=${value.nonce},updated_at=now() WHERE owner_id=${owner} AND provider=${provider} AND EXISTS(SELECT 1 FROM mowr_subscription_sessions WHERE owner_id=${owner} AND provider=${provider} AND session_id=${session})`;}}}catch{/* Reconnecting restores credentials if refresh could not be persisted. */}
-   await sandbox.delete().catch(()=>{});
   }
+  // Time is given back only once the VM is confirmed gone (it otherwise runs to its 180 s timeout).
+  if(await removed(sandbox))await refundRuntime(reservation).catch(()=>{});
   await db()`DELETE FROM mowr_subscription_sessions WHERE owner_id=${owner} AND provider=${provider} AND session_id=${session}`;
  }
 }

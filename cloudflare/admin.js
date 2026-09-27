@@ -68,31 +68,60 @@ function planFor(userId, { owners, subs, grants }) {
 }
 
 async function planContext(env, ids) {
-  if (!ids.length) return { owners: new Set(), subs: [], grants: [] };
-  const list = placeholders(ids);
-  const [owners, subs, grants] = await Promise.all([
-    all(env, `SELECT user_id FROM desktop_owner_grants WHERE user_id IN (${list})`, ...ids),
-    all(env, `SELECT * FROM desktop_subscriptions WHERE user_id IN (${list})`, ...ids),
-    all(env, `SELECT * FROM desktop_comp_grants WHERE user_id IN (${list})`, ...ids),
-  ]);
-  return { owners: new Set(owners.map((o) => o.user_id)), subs, grants };
+  const context = { owners: new Set(), subs: [], grants: [] };
+  // D1 binds at most 100 parameters per query, so look people up in chunks.
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90), list = placeholders(chunk);
+    const [owners, subs, grants] = await Promise.all([
+      all(env, `SELECT user_id FROM desktop_owner_grants WHERE user_id IN (${list})`, ...chunk),
+      all(env, `SELECT * FROM desktop_subscriptions WHERE user_id IN (${list})`, ...chunk),
+      all(env, `SELECT * FROM desktop_comp_grants WHERE user_id IN (${list})`, ...chunk),
+    ]);
+    for (const o of owners) context.owners.add(o.user_id);
+    context.subs.push(...subs);
+    context.grants.push(...grants);
+  }
+  return context;
 }
 
-const peopleSql = `WITH ids AS (SELECT user_id FROM desktop_profiles UNION SELECT user_id FROM desktop_activity UNION SELECT user_id FROM desktop_subscriptions UNION SELECT user_id FROM desktop_comp_grants UNION SELECT owner_id FROM mowr_support)
+// Support cases were once stored under "supabase:<id>"; everything else uses the bare Supabase id.
+const caseOwner = "(CASE WHEN s.owner_id LIKE 'supabase:%' THEN substr(s.owner_id,10) ELSE s.owner_id END)";
+const ownsCase = "s.owner_id IN (?,'supabase:'||?)";
+
+const peopleSql = `WITH ids AS (SELECT user_id FROM desktop_profiles UNION SELECT user_id FROM desktop_activity UNION SELECT user_id FROM desktop_subscriptions UNION SELECT user_id FROM desktop_comp_grants UNION SELECT ${caseOwner} FROM mowr_support s)
 SELECT ids.user_id AS id, a.email, a.first_seen_at, a.last_seen_at, p.username, p.display_name, p.setup_step,
  CASE WHEN m.status='suspended' AND (m.until IS NULL OR m.until>?) THEN 1 ELSE 0 END AS suspended, m.until AS suspended_until,
- (SELECT COUNT(*) FROM mowr_support s WHERE s.owner_id=ids.user_id) AS cases
+ (SELECT COUNT(*) FROM mowr_support s WHERE s.owner_id IN (ids.user_id,'supabase:'||ids.user_id)) AS cases
 FROM ids LEFT JOIN desktop_activity a ON a.user_id=ids.user_id LEFT JOIN desktop_profiles p ON p.user_id=ids.user_id LEFT JOIN desktop_moderation m ON m.user_id=ids.user_id`;
 
-async function people(env, { q = "", limit = 1000 } = {}) {
+// Filters that SQL can apply before the list is cut, so totals and results are exact.
+const peopleFilters = {
+  suspended: ["suspended=1", false],
+  active: ["last_seen_at>?", true],
+  new: ["first_seen_at>?", true],
+  setup: ["COALESCE(setup_step,0)<4", false],
+};
+
+async function people(env, { q = "", filter = "all", limit = 500 } = {}) {
   const like = "%" + q.toLowerCase() + "%";
-  const rows = await all(
-    env,
-    `${peopleSql} WHERE (?='' OR lower(COALESCE(a.email,'')) LIKE ? OR lower(COALESCE(p.username,'')) LIKE ? OR lower(COALESCE(p.display_name,'')) LIKE ? OR ids.user_id=?) ORDER BY COALESCE(a.last_seen_at,a.first_seen_at,'') DESC LIMIT ?`,
-    now(), q, like, like, like, q, limit,
-  );
+  const where = ["(?='' OR lower(COALESCE(email,'')) LIKE ? OR lower(COALESCE(username,'')) LIKE ? OR lower(COALESCE(display_name,'')) LIKE ? OR id=?)"];
+  const values = [now(), q, like, like, like, q];
+  const sqlFilter = peopleFilters[filter];
+  if (sqlFilter) {
+    where.push(sqlFilter[0]);
+    if (sqlFilter[1]) values.push(new Date(Date.now() - 7 * day).toISOString());
+  }
+  // Plan labels depend on subscriptions and grants, so those filters run over every match.
+  const byPlan = filter !== "all" && !sqlFilter;
+  const base = `SELECT * FROM (${peopleSql}) WHERE ${where.join(" AND ")}`;
+  const [rows, counted] = await Promise.all([
+    all(env, `${base} ORDER BY COALESCE(last_seen_at,first_seen_at,'') DESC LIMIT ?`, ...values, byPlan ? -1 : limit),
+    byPlan ? null : first(env, `SELECT COUNT(*) AS n FROM (${base})`, ...values),
+  ]);
   const context = await planContext(env, rows.map((r) => r.id));
-  return rows.map((row) => ({ ...row, suspended: !!row.suspended, ...planFor(row.id, context) }));
+  let list = rows.map((row) => ({ ...row, suspended: !!row.suspended, ...planFor(row.id, context) }));
+  if (byPlan) list = list.filter((r) => r.plan === filter);
+  return { users: list.slice(0, limit), total: byPlan ? list.length : counted.n };
 }
 
 async function supabaseUser(env, userId) {
@@ -112,9 +141,9 @@ async function caseList(env, { status = "active", q = "", limit = 200 }) {
   const values = [...(status !== "all" && status !== "active" ? [status] : []), q, like, like, like, limit];
   const rows = await all(
     env,
-    `SELECT s.id,s.owner_id,s.category,s.subject,s.created_at,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority,t.assignee_id,COALESCE(t.updated_at,s.created_at) AS updated_at,t.staff_replied_at,t.user_replied_at,a.email,p.username,
+    `SELECT s.id,${caseOwner} AS owner_id,s.category,s.subject,s.created_at,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority,t.assignee_id,COALESCE(t.updated_at,s.created_at) AS updated_at,t.staff_replied_at,t.user_replied_at,a.email,p.username,
      (SELECT COUNT(*) FROM mowr_support_messages x WHERE x.case_id=s.id AND x.author!='note') AS replies
-     FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=s.owner_id LEFT JOIN desktop_profiles p ON p.user_id=s.owner_id
+     FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=${caseOwner} LEFT JOIN desktop_profiles p ON p.user_id=${caseOwner}
      WHERE 1=1 ${statusFilter} AND (?='' OR lower(s.subject) LIKE ? OR lower(COALESCE(a.email,'')) LIKE ? OR lower(s.message) LIKE ?)
      ORDER BY CASE COALESCE(t.priority,'normal') WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, COALESCE(t.updated_at,s.created_at) DESC LIMIT ?`,
     ...values,
@@ -157,30 +186,35 @@ export async function handleAdmin(request, env, user, path, authorization) {
   if (path === "/admin/me") return json({ ...staff, lemon: !!env.LEMON_API_KEY, directory: !!env.SUPABASE_SERVICE_ROLE_KEY, requireMfa: env.ADMIN_REQUIRE_MFA === "true" });
 
   if (path === "/admin/overview" && get) {
-    const everyone = await people(env, { limit: 5000 });
     const since = (n) => new Date(Date.now() - n * day).toISOString();
-    const count = (fn) => everyone.filter(fn).length;
+    // Counted in SQL so totals stay exact however many people use Mowr.
+    const [totals, steps, joined, caseTotals, recentCases] = await Promise.all([
+      first(env, `SELECT COUNT(*) AS users, SUM(first_seen_at>?) AS newThisWeek, SUM(last_seen_at>?) AS activeThisWeek, SUM(last_seen_at>?) AS activeToday, SUM(suspended) AS suspended FROM (${peopleSql})`, since(7), since(7), since(1), now()),
+      all(env, `SELECT COALESCE(setup_step,0) AS step, COUNT(*) AS n FROM (${peopleSql}) GROUP BY COALESCE(setup_step,0)`, now()),
+      all(env, `SELECT substr(first_seen_at,1,10) AS date, COUNT(*) AS n FROM (${peopleSql}) WHERE first_seen_at>=? GROUP BY substr(first_seen_at,1,10)`, now(), since(14).slice(0, 10)),
+      first(env, "SELECT COUNT(*) AS open, SUM(CASE WHEN COALESCE(t.status,'open')='open' AND (t.staff_replied_at IS NULL OR (t.user_replied_at IS NOT NULL AND t.user_replied_at>t.staff_replied_at)) THEN 1 ELSE 0 END) AS awaiting, SUM(CASE WHEN COALESCE(t.priority,'normal') IN ('urgent','high') THEN 1 ELSE 0 END) AS urgent FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE COALESCE(t.status,'open') IN ('open','pending')"),
+      caseList(env, { status: "active", limit: 6 }),
+    ]);
     // Mowr is free: report how far people got through the app's four-step welcome instead of plans.
-    const setup = {};
-    for (const p of everyone) setup[p.setup_step || 0] = (setup[p.setup_step || 0] || 0) + 1;
+    const setup = Object.fromEntries(steps.map((r) => [r.step, r.n]));
     const signups = Array.from({ length: 14 }, (_, i) => {
       const date = new Date(Date.now() - (13 - i) * day).toISOString().slice(0, 10);
-      return { date, count: count((p) => (p.first_seen_at || "").startsWith(date)) };
+      return { date, count: joined.find((r) => r.date === date)?.n || 0 };
     });
-    const cases = await caseList(env, { status: "active", limit: 500 });
     return json({
-      users: everyone.length,
-      newThisWeek: count((p) => p.first_seen_at && p.first_seen_at > since(7)),
-      activeThisWeek: count((p) => p.last_seen_at && p.last_seen_at > since(7)),
-      activeToday: count((p) => p.last_seen_at && p.last_seen_at > since(1)),
-      suspended: count((p) => p.suspended),
+      users: totals.users,
+      newThisWeek: totals.newThisWeek || 0,
+      activeThisWeek: totals.activeThisWeek || 0,
+      activeToday: totals.activeToday || 0,
+      suspended: totals.suspended || 0,
       setup,
-      openCases: cases.length,
-      awaitingReply: cases.filter((c) => c.awaiting_staff).length,
-      urgentCases: cases.filter((c) => c.priority === "urgent" || c.priority === "high").length,
+      openCases: caseTotals.open,
+      awaitingReply: caseTotals.awaiting || 0,
+      urgentCases: caseTotals.urgent || 0,
       signups,
-      recentCases: cases.slice(0, 6),
-      recentAudit: await all(env, "SELECT * FROM desktop_audit_log ORDER BY created_at DESC LIMIT 8"),
+      recentCases,
+      // The audit log is admin-only (see /admin/audit); support staff do not see it here either.
+      recentAudit: ROLE_RANK[staff.role] >= ROLE_RANK.admin ? await all(env, "SELECT * FROM desktop_audit_log ORDER BY created_at DESC LIMIT 8") : [],
     });
   }
 
@@ -236,15 +270,8 @@ export async function handleAdmin(request, env, user, path, authorization) {
   }
 
   if (path === "/admin/users" && get) {
-    const plan = params.get("plan") || "all";
-    let rows = await people(env, { q: (params.get("q") || "").trim().slice(0, 120) });
-    const week = new Date(Date.now() - 7 * day).toISOString();
-    if (plan === "suspended") rows = rows.filter((r) => r.suspended);
-    else if (plan === "active") rows = rows.filter((r) => r.last_seen_at && r.last_seen_at > week);
-    else if (plan === "new") rows = rows.filter((r) => r.first_seen_at && r.first_seen_at > week);
-    else if (plan === "setup") rows = rows.filter((r) => (r.setup_step || 0) < 4);
-    else if (plan !== "all") rows = rows.filter((r) => r.plan === plan);
-    return json({ users: rows.slice(0, 500), total: rows.length });
+    const found = await people(env, { q: (params.get("q") || "").trim().slice(0, 120), filter: params.get("plan") || "all" });
+    return json(found);
   }
 
   if ((m = /^\/admin\/users\/([\w-]{3,64})$/.exec(path)) && get) {
@@ -255,7 +282,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
     const [moderation, notes, cases, directory] = await Promise.all([
       first(env, "SELECT * FROM desktop_moderation WHERE user_id=?", userId),
       all(env, "SELECT * FROM desktop_staff_notes WHERE user_id=? ORDER BY created_at DESC", userId),
-      all(env, "SELECT s.id,s.subject,s.category,s.created_at,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE s.owner_id=? ORDER BY s.created_at DESC", userId),
+      all(env, `SELECT s.id,s.subject,s.category,s.created_at,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE ${ownsCase} ORDER BY s.created_at DESC`, userId, userId),
       supabaseUser(env, userId).catch(() => null),
     ]);
     return json({
@@ -267,7 +294,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
       notes,
       cases,
       directory,
-      history: await all(env, "SELECT * FROM desktop_audit_log WHERE target=? ORDER BY created_at DESC LIMIT 40", userId),
+      history: ROLE_RANK[staff.role] >= ROLE_RANK.admin ? await all(env, "SELECT * FROM desktop_audit_log WHERE target=? ORDER BY created_at DESC LIMIT 40", userId) : [],
     });
   }
 
@@ -306,6 +333,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
       return json({ ok: true });
     }
     if (action === "unsuspend") {
+      if (userId === staff.id) throw new HttpError(409, "Another admin must lift your suspension.");
       await run(env, "INSERT INTO desktop_moderation(user_id,status,reason,until,updated_by,updated_at) VALUES(?,'active','',NULL,?,?) ON CONFLICT(user_id) DO UPDATE SET status='active',reason='',until=NULL,updated_by=excluded.updated_by,updated_at=excluded.updated_at", userId, staff.id, now());
       await audit(env, staff, "user.unsuspend", userId);
       return json({ ok: true });
@@ -340,20 +368,20 @@ export async function handleAdmin(request, env, user, path, authorization) {
     return json({ cases: await caseList(env, { status: params.get("status") || "active", q: (params.get("q") || "").trim().slice(0, 120) }) });
 
   if ((m = /^\/admin\/cases\/([\w-]{8,64})$/.exec(path)) && get) {
-    const found = await first(env, "SELECT s.*,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority,t.assignee_id,t.staff_replied_at,t.user_seen_at,t.user_replied_at,a.email,a.last_seen_at,p.username,p.display_name FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=s.owner_id LEFT JOIN desktop_profiles p ON p.user_id=s.owner_id WHERE s.id=?", m[1]);
+    const found = await first(env, `SELECT s.*,${caseOwner} AS owner_id,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority,t.assignee_id,t.staff_replied_at,t.user_seen_at,t.user_replied_at,a.email,a.last_seen_at,p.username,p.display_name FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=${caseOwner} LEFT JOIN desktop_profiles p ON p.user_id=${caseOwner} WHERE s.id=?`, m[1]);
     if (!found) throw new HttpError(404, "Case not found.");
     const context = await planContext(env, [found.owner_id]);
     return json({
       case: { ...found, ...planFor(found.owner_id, context) },
       messages: await all(env, "SELECT * FROM mowr_support_messages WHERE case_id=? ORDER BY created_at", found.id),
-      otherCases: await all(env, "SELECT s.id,s.subject,s.created_at,COALESCE(t.status,'open') AS status FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE s.owner_id=? AND s.id!=? ORDER BY s.created_at DESC LIMIT 10", found.owner_id, found.id),
+      otherCases: await all(env, `SELECT s.id,s.subject,s.created_at,COALESCE(t.status,'open') AS status FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE ${ownsCase} AND s.id!=? ORDER BY s.created_at DESC LIMIT 10`, found.owner_id, found.owner_id, found.id),
       team: await team(env),
     });
   }
 
   if ((m = /^\/admin\/cases\/([\w-]{8,64})\/(reply|update)$/.exec(path)) && !get) {
     need(staff, "support");
-    const found = await first(env, "SELECT id,owner_id FROM mowr_support WHERE id=?", m[1]);
+    const found = await first(env, `SELECT s.id,${caseOwner} AS owner_id FROM mowr_support s WHERE s.id=?`, m[1]);
     if (!found) throw new HttpError(404, "Case not found.");
     if (m[2] === "reply") {
       const internal = body.internal === true;

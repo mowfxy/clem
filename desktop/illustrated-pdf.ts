@@ -1,6 +1,10 @@
 import { BrowserWindow } from "electron";
 import { markContent } from "../core/provenance";
 import { renderFigures, documentHtml } from "./pdf-document";
+import { writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 /** Prints a document specification to a tagged A4 PDF. `checkVoice` is off only for exports of text the person already has. */
 export async function illustratedPdf(spec: any, { checkVoice = true }: { checkVoice?: boolean } = {}) {
@@ -14,8 +18,11 @@ export async function illustratedPdf(spec: any, { checkVoice = true }: { checkVo
       javascript: false,
     },
   });
+  // Loaded from a temporary file: a data: URL is limited to 2 MB, which a long document or one with many figures exceeds.
+  const file = join(tmpdir(), "mowr-print-" + randomUUID() + ".html");
   try {
-    await page.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(documentHtml(spec, figures)));
+    await writeFile(file, documentHtml(spec, figures), "utf8");
+    await page.loadFile(file);
     const bytes = await page.webContents.printToPDF({
       printBackground: true,
       preferCSSPageSize: true,
@@ -31,5 +38,6 @@ export async function illustratedPdf(spec: any, { checkVoice = true }: { checkVo
     );
   } finally {
     page.destroy();
+    await rm(file, { force: true }).catch(() => {});
   }
 }

@@ -69,7 +69,27 @@ export function putMemory(
       ? { ...m, supersededBy: record.id, updatedAt: now }
       : m,
   );
-  return { ...state, records: [...records, record] };
+  return pruneMemory({ ...state, records: [...records, record] }, Date.parse(now));
+}
+/** Memory syncs as one collection of at most 1000 records; staying well under it keeps sync working. */
+export const MEMORY_LIMIT = 800;
+const DAY = 86_400_000;
+/**
+ * Drops what Mowr no longer uses: replaced records after 30 days (at most 100 kept for history) and records that expired
+ * over 30 days ago. If still over the limit, the oldest go first: replaced, then learned, then confirmed.
+ */
+export function pruneMemory(state: MemoryState, now = Date.now()): MemoryState {
+  const old = (at: string | undefined) => !!at && now - Date.parse(at) > 30 * DAY;
+  const replaced = state.records.filter((m) => m.supersededBy).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const drop = new Set(replaced.filter((m, i) => i >= 100 || old(m.updatedAt)).map((m) => m.id));
+  for (const m of state.records) if (old(m.expiresAt)) drop.add(m.id);
+  let records = drop.size ? state.records.filter((m) => !drop.has(m.id)) : state.records;
+  if (records.length > MEMORY_LIMIT) {
+    const rank = (m: Memory) => (m.supersededBy ? 0 : m.confirmed ? 2 : 1);
+    const keep = new Set([...records].sort((a, b) => rank(b) - rank(a) || b.updatedAt.localeCompare(a.updatedAt)).slice(0, MEMORY_LIMIT).map((m) => m.id));
+    records = records.filter((m) => keep.has(m.id));
+  }
+  return records === state.records ? state : { ...state, records };
 }
 /** Deletion propagates through derived records. Retrieval uses the same canonical store, with no stale cache. */
 export function forgetMemory(state: MemoryState, ids: string[]) {
