@@ -2,6 +2,7 @@ import {createServer, type Server} from "node:http";
 import {randomBytes} from "node:crypto";
 import {Readable} from "node:stream";
 import {driveQuery, driveTerms, viewFormat, type DriveHit} from "../core/drive-search.ts";
+import {decodeEntities, isMediaType, parseCaptions, pickTrack, transcriptText, type CaptionTrack, type VideoCaptions} from "../core/captions.ts";
 
 // Google Drive, live: search, browse folders (with subfolders and thumbnails), read text and stream files straight from
 // Google with byte ranges so long videos seek instantly. Nothing is written to disk; the short-lived access token stays
@@ -11,6 +12,12 @@ const API = "https://www.googleapis.com/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
 type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string;modifiedTime?:string;iconLink?:string;videoMediaMetadata?:{durationMillis?:string};shortcutDetails?:{targetId?:string;targetMimeType?:string}};
 const SHORTCUT = "application/vnd.google-apps.shortcut";
+// Drive's own video player reads playback details (including its caption tracks) from this service, with this public
+// browser key. It is not a documented API, so every step below falls back quietly.
+const PLAYBACK = "https://content-workspacevideo-pa.googleapis.com/v1/drive/media";
+const PLAYER_KEY = "AIzaSyDVQw45DwoYh632gvsP5vPDqEKvb-Ywnb8";
+const CAPTION_FILE = /\.(srt|vtt|sbv|ttml|dfxp|xml|txt)$/i;
+const untimed = (f: Meta) => /\.txt$/i.test(f.name) || f.mimeType.startsWith("application/vnd.google-apps.");
 /** A Drive shortcut stands for what it points to: a shortcut to a folder opens that folder, one to a file opens the file. */
 const resolve = <T extends Meta>(f: T): T => f.mimeType === SHORTCUT && f.shortcutDetails?.targetId && f.shortcutDetails.targetMimeType
   ? { ...f, id: f.shortcutDetails.targetId, mimeType: f.shortcutDetails.targetMimeType, size: undefined, thumbnailLink: f.shortcutDetails.targetMimeType === FOLDER ? undefined : f.thumbnailLink }
@@ -220,7 +227,94 @@ export class DriveLive {
     if(!r?.ok)return new Response(null,{status:404});
     return new Response(r.body,{headers:{"Content-Type":r.headers.get("Content-Type")||"image/jpeg","Cache-Control":"private, max-age=600"}});
   }
+  /**
+   * The captions of a Drive video or recording as a timestamped transcript: Drive's own caption tracks (uploaded or
+   * automatic), else a caption or transcript file beside the video (same name, .srt/.vtt/.sbv/.txt or a Google Doc).
+   * Never throws for a missing transcript: the reason comes back as `error`.
+   */
+  async captions(id:string,languages:string[]=["en"]):Promise<VideoCaptions>{
+    const result:VideoCaptions={source:"drive",id,transcript:""};
+    const r=await this.google(`${API}/${id}?fields=id,name,mimeType,parents,videoMediaMetadata(durationMillis)&supportsAllDrives=true`,{signal:AbortSignal.timeout(15000)});
+    if(!r.ok)return {...result,error:r.status===404?"This Drive file is no longer available.":"This Drive file couldn't be read."};
+    const m=await r.json() as Meta&{parents?:string[]};
+    Object.assign(result,{title:m.name,durationSec:m.videoMediaMetadata?.durationMillis?Math.round(Number(m.videoMediaMetadata.durationMillis)/1000):undefined});
+    if(!isMediaType(m.mimeType))return {...result,error:"This Drive file isn't a video or a recording."};
+    const own=await this.ownCaptions(id,languages).catch(()=>null);
+    if(own)return {...result,...own};
+    const beside=await this.captionFile(m.name,m.parents||[]).catch(()=>null);
+    if(beside)return {...result,...beside};
+    return {...result,error:"Google Drive has no captions for this video yet. Drive makes automatic captions for many videos a while after upload; you can also add a caption file (.srt or .vtt) in Drive with Manage caption tracks, or put one with the same name next to the video."};
+  }
+  /** Drive's own caption tracks, found the way Drive's player finds them. */
+  private async ownCaptions(id:string,languages:string[]){
+    const headers={Referer:"https://drive.google.com/"};
+    // Signed in first (the person's own private videos), then as the public player (videos shared by link).
+    const attempts=[()=>this.google(`${PLAYBACK}/${id}/playback`,{headers,signal:AbortSignal.timeout(15000)}),()=>this.fetcher(`${PLAYBACK}/${id}/playback?key=${PLAYER_KEY}`,{headers,signal:AbortSignal.timeout(15000)})];
+    let base="";
+    for(const attempt of attempts){
+      const r=await attempt().catch(()=>null);
+      if(!r?.ok)continue;
+      base=findUrl(await r.json().catch(()=>null))||"";
+      if(base)break;
+    }
+    if(!base)return null;
+    const get=async(url:string)=>{
+      for(const signed of [false,true]){
+        const r=await (signed?this.google(url,{headers,signal:AbortSignal.timeout(15000)}):this.fetcher(url,{headers,signal:AbortSignal.timeout(15000)})).catch(()=>null);
+        if(r?.ok)return r.text();
+      }
+      return "";
+    };
+    const withQuery=(extra:Record<string,string>)=>{const u=new URL(base);for(const [k,v] of Object.entries(extra))u.searchParams.set(k,v);if(!u.searchParams.get("v"))u.searchParams.set("v",id);return u.href;};
+    const list=await get(withQuery({type:"list",hl:"en"}));
+    const tracks:CaptionTrack[]=[...list.matchAll(/<track\b([^>]*)\/?>/g)].map(t=>{
+      const a=(k:string)=>decodeEntities(new RegExp(`\\b${k}="([^"]*)"`).exec(t[1])?.[1]||"");
+      const kind=a("kind"),name=a("name"),lang=a("lang_code");
+      return {lang,name:a("lang_translated")||a("lang_original")||name||undefined,auto:kind==="asr",url:withQuery({type:"track",lang,name,...(kind?{kind}:{}),fmt:"vtt"})};
+    }).filter(t=>t.lang);
+    // No list (or an empty one): ask for the automatic track in the wanted languages directly.
+    const tries:CaptionTrack[]=tracks.length?pickTrack(tracks,languages):[...new Set([...languages.map(l=>l.split(/[-_]/)[0]),"en"])].map(lang=>({lang,auto:true,url:withQuery({type:"track",lang,kind:"asr",fmt:"vtt"})}));
+    for(const track of tries.slice(0,4)){
+      const cues=parseCaptions(await get(track.url));
+      if(cues.length)return {transcript:transcriptText(cues),language:track.name||track.lang,auto:track.auto};
+    }
+    return null;
+  }
+  /** A caption or transcript file next to the video: "Lecture 4.srt", "Lecture 4 transcript", "Lecture 4.en.vtt"… */
+  private async captionFile(videoName:string,parents:string[]){
+    const stem=videoName.replace(/\.[^.]+$/,"");
+    if(!parents.length||stem.length<2)return null;
+    const url=new URL(API);
+    url.search=new URLSearchParams({q:`trashed = false and name contains ${quote(stem.slice(0,100))} and (${parents.slice(0,5).map(p=>`${quote(p)} in parents`).join(" or ")})`,pageSize:"30",supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"files(id,name,mimeType,size)"}).toString();
+    const r=await this.google(url.href,{signal:AbortSignal.timeout(15000)});
+    if(!r.ok)return null;
+    const lower=stem.toLowerCase();
+    const files=(((await r.json()).files||[]) as Meta[]).filter(f=>f.name.toLowerCase().startsWith(lower)&&!isMediaType(f.mimeType)&&Number(f.size||0)<5_000_000&&(CAPTION_FILE.test(f.name)||(f.mimeType==="application/vnd.google-apps.document"&&/transcript|captions?|subtitles?/i.test(f.name))))
+      // Timed caption files before plain transcripts.
+      .sort((a,b)=>Number(untimed(a))-Number(untimed(b)));
+    for(const f of files.slice(0,3)){
+      const doc=f.mimeType==="application/vnd.google-apps.document";
+      const got=await this.google(doc?`${API}/${f.id}/export?mimeType=text%2Fplain`:`${API}/${f.id}?alt=media&supportsAllDrives=true`,{signal:AbortSignal.timeout(20000)}).catch(()=>null);
+      if(!got?.ok)continue;
+      const raw=(await got.text()).slice(0,2_000_000);
+      const cues=parseCaptions(raw);
+      // A plain transcript has no times; it is still the words of the video.
+      const transcript=cues.length?transcriptText(cues):/\.txt$/i.test(f.name)||doc?raw.replace(/\s+\n/g,"\n").trim():"";
+      if(transcript)return {transcript,from:f.name};
+    }
+    return null;
+  }
   async webLink(id:string){return (await this.info(id)).webViewLink||`https://drive.google.com/file/d/${id}/view`;}
+}
+
+/** The caption base URL anywhere in Drive's playback details (its field names have changed over time). */
+export function findUrl(value:unknown,depth=0):string|undefined{
+  if(!value||typeof value!=="object"||depth>8)return undefined;
+  for(const [k,v] of Object.entries(value as Record<string,unknown>)){
+    if(typeof v==="string"&&/^(timedText\w*Url|ttsurl)$/i.test(k)&&/^https:\/\//.test(v))return v;
+    const inner=findUrl(v,depth+1);if(inner)return inner;
+  }
+  return undefined;
 }
 
 /** Chromium plays MP4/WebM/Ogg. Drive sometimes labels them generically, which makes <video> refuse to start. */
