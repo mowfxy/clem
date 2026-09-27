@@ -77,10 +77,14 @@ export async function streamTurn(
       setTimeout(() => { if (!ended) { if (server.activeThreads <= 1) server.close(); finish(Error("Request cancelled")); } }, 1500);
     };
     control.interrupt = interrupt;
-    const timer = setTimeout(() => { interrupt(); finish(Error("Codex request timed out")); }, timeoutMs);
+    // An inactivity limit: every event from the provider (text, reasoning, tool use) restarts it, so long answers that keep streaming are never cut off.
+    let timer: ReturnType<typeof setTimeout>;
+    const touch = () => { clearTimeout(timer); timer = setTimeout(() => { interrupt(); finish(Error("Codex request timed out")); }, timeoutMs); };
+    touch();
     const unsubscribe = server.subscribe(threadId, {
       onFail: (error) => finish(cancelled() ? Error("Request cancelled") : error),
       onMessage: (method, p) => {
+        if (!ended) touch();
         try {
           if (method === "item/agentMessage/delta") {
             bytes += String(p.delta || "").length;

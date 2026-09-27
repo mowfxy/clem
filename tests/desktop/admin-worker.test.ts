@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
 import worker from "../../cloudflare/account-worker.js";
 
 function setup() {
@@ -165,4 +166,143 @@ test("the app reports anonymous usage counts and staff see them as stats", async
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("suspension, legacy support ids, audit visibility and exact people totals", async () => {
+  const { database, env } = setup(), original = globalThis.fetch;
+  const uuid = "5f0c7a52-3d4e-4b1a-9c6e-2a7b8d9e0f11";
+  const people: Record<string, any> = {
+    owner: { id: "owner-id", email: "m@mohamedmowafy.com", email_confirmed_at: "2026-09-19" },
+    admin: { id: "admin-id", email: "admin@example.com", email_confirmed_at: "2026-09-19" },
+    helper: { id: "helper-id", email: "helper@example.com", email_confirmed_at: "2026-09-19" },
+    member: { id: uuid, email: "member@example.com", email_confirmed_at: "2026-09-19" },
+  };
+  let current = people.member;
+  globalThis.fetch = (async () => Response.json(current)) as any;
+  const call = (path: string, body?: unknown, raw?: string) =>
+    worker.fetch(new Request("https://account.example" + path, {
+      method: body !== undefined || raw !== undefined ? "POST" : "GET",
+      headers: { Authorization: "Bearer x.e30.y", "Content-Type": "application/json" },
+      body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined),
+    }), env);
+  try {
+    for (const key of ["member", "admin", "helper", "owner"]) { current = people[key]; await call("/entitlement"); }
+    // A case filed on mowrai.com before owner ids were unified still reaches its owner and staff.
+    database.prepare("INSERT INTO mowr_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-legacy1", "supabase:" + uuid, "Report a bug", "Old case", "Filed with the prefixed id.");
+    database.prepare("INSERT INTO mowr_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-current", uuid, "Report a bug", "New case", "Filed with the bare id.");
+    current = people.member;
+    assert.equal((await (await call("/support/cases")).json()).cases.length, 2);
+    assert.equal((await call("/profile", undefined, "{not json")).status, 400);
+
+    current = people.owner;
+    await call("/admin/team", { email: "admin@example.com", role: "admin" });
+    await call("/admin/team", { email: "helper@example.com", role: "support" });
+    const detail = await (await call("/admin/users/" + uuid)).json();
+    assert.equal(detail.user.cases, 2);
+    assert.equal(detail.cases.length, 2);
+    assert.equal(detail.user.email, "member@example.com");
+    const opened = await (await call("/admin/cases/case-legacy1")).json();
+    assert.equal(opened.case.owner_id, uuid);
+    assert.equal(opened.case.email, "member@example.com");
+    assert.equal(opened.otherCases.length, 1);
+    const inbox = await (await call("/admin/cases")).json();
+    assert.ok(inbox.cases.every((c: any) => c.owner_id === uuid && c.email === "member@example.com"));
+    const all = await (await call("/admin/users")).json();
+    assert.equal(all.total, 4);
+    assert.equal(all.users.filter((u: any) => u.id.startsWith("supabase:")).length, 0);
+
+    // A suspended person keeps support (to appeal) but loses every other feature.
+    assert.equal((await call(`/admin/users/${uuid}/suspend`, { reason: "Abuse" })).status, 200);
+    assert.equal((await (await call("/admin/users?plan=suspended")).json()).total, 1);
+    assert.equal((await (await call("/admin/overview")).json()).suspended, 1);
+    current = people.member;
+    assert.equal((await call("/support/cases")).status, 200);
+    assert.equal((await (await call("/entitlement")).json()).reason, "suspended");
+    for (const path of ["/sync/notes", "/providers"]) assert.equal((await call(path)).status, 403);
+    assert.equal((await call("/usage", { days: [] })).status, 403);
+    assert.equal((await call("/profile", { username: "member1", displayName: "M", step: 1, memory: true })).status, 403);
+
+    // Support staff do not see the admin-only audit log through the overview or a person's history.
+    current = people.helper;
+    const overview = await (await call("/admin/overview")).json();
+    assert.deepEqual(overview.recentAudit, []);
+    assert.equal(overview.users, 4);
+    assert.deepEqual((await (await call("/admin/users/" + uuid)).json()).history, []);
+    current = people.admin;
+    assert.ok((await (await call("/admin/users/" + uuid)).json()).history.length > 0);
+
+    // A suspended admin loses the portal and cannot lift their own suspension.
+    current = people.owner;
+    assert.equal((await call("/admin/users/admin-id/suspend", { reason: "Compromised" })).status, 200);
+    current = people.admin;
+    assert.equal((await call("/admin/me")).status, 403);
+    assert.equal((await call("/admin/users/admin-id/unsuspend", {})).status, 403);
+    current = people.owner;
+    assert.equal((await call("/admin/users/owner-id/unsuspend", {})).status, 409);
+    assert.equal((await call("/admin/users/admin-id/unsuspend", {})).status, 200);
+    current = people.admin;
+    assert.equal((await call("/admin/me")).status, 200);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("usage from several PCs adds up without double counting resends", async () => {
+  const { env } = setup(), original = globalThis.fetch;
+  let current: any = { id: "member-id", email: "member@example.com", email_confirmed_at: "2026-09-19" };
+  globalThis.fetch = (async () => Response.json(current)) as any;
+  const session = (id: string) => "Bearer x." + Buffer.from(JSON.stringify({ session_id: id })).toString("base64url") + ".y";
+  const call = (path: string, body?: unknown, auth = "Bearer x.e30.y") =>
+    worker.fetch(new Request("https://account.example" + path, {
+      method: body ? "POST" : "GET",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    }), env);
+  const today = new Date().toISOString().slice(0, 10);
+  const report = (turns: number, hour: number) => {
+    const hours = Array(24).fill(0); hours[hour] = turns;
+    return { days: [{ day: today, hours, rows: [{ provider: "claude", model: "sonnet", reasoning: "", turns, images: 0 }] }] };
+  };
+  try {
+    assert.equal((await call("/usage", report(3, 9), session("laptop"))).status, 200);
+    assert.equal((await call("/usage", report(3, 9), session("laptop"))).status, 200);
+    assert.equal((await call("/usage", report(5, 20), session("desktop"))).status, 200);
+    assert.equal((await call("/usage", { ...report(2, 20), device: "named-device-1" })).status, 200);
+    current = { id: "owner-id", email: "m@mohamedmowafy.com", email_confirmed_at: "2026-09-19" };
+    const stats = await (await call("/admin/stats?days=7")).json();
+    assert.equal(stats.turns, 10);
+    assert.equal(stats.people, 1);
+    assert.equal(stats.byHour[9], 3);
+    assert.equal(stats.byHour[20], 7);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("sync accepts collections above 1 MB that core/sync allows", async () => {
+  const { env } = setup(), original = globalThis.fetch;
+  globalThis.fetch = (async () => Response.json({ id: "sync-big", email: "a@example.test", email_confirmed_at: "2026-09-20" })) as any;
+  try {
+    const data = Array.from({ length: 60 }, (_, i) => ({ id: "n" + i, text: ("note " + i + " ").repeat(3000).slice(0, 30000) }));
+    const body = JSON.stringify({ revision: 0, data });
+    assert.ok(body.length > 1_000_000);
+    const r = await worker.fetch(new Request("https://account.example/sync/notes", { method: "POST", headers: { Authorization: "Bearer fixture", "Content-Type": "application/json" }, body }), env);
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).revision, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("database worker refuses every request when its secret is missing", async () => {
+  const { default: database } = await import("../../cloudflare/database-worker.js");
+  const request = () => new Request("https://db.example", { method: "POST", headers: { Authorization: "Bearer undefined" }, body: JSON.stringify({ queries: [{ sql: "SELECT 1", params: [] }] }) });
+  const env: any = { DB: { prepare: () => ({ bind: () => ({}) }), batch: async () => [{ results: [] }] } };
+  assert.equal((await database.fetch(request(), env)).status, 401);
+  assert.equal((await database.fetch(request(), { ...env, DATABASE_SECRET: "" })).status, 401);
+  // Workers provide crypto.subtle.timingSafeEqual; Node does not.
+  const subtle: any = crypto.subtle, had = subtle.timingSafeEqual;
+  subtle.timingSafeEqual ??= (a: Uint8Array, b: Uint8Array) => timingSafeEqual(a, b);
+  try { assert.equal((await database.fetch(request(), { ...env, DATABASE_SECRET: "undefined" })).status, 200); }
+  finally { if (!had) delete subtle.timingSafeEqual; }
 });

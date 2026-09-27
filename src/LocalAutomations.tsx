@@ -1,12 +1,8 @@
 import { confirmDialog } from "./dialogs";
 import { Icon } from "./Icons";
 import type { Automation } from "../core/types";
-export function nextAutomation(schedule: string, after = Date.now()) {
-  const date = new Date(after);
-  date.setDate(date.getDate() + (schedule === "weekly" ? 7 : 1));
-  return date.getTime();
-}
-const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+import { DAYS, nextAutomation, firstAutomationRun } from "./automation-schedule";
+export { nextAutomation, firstAutomationRun };
 /** A routine proposed in a chat by an ```automation block. */
 export type AutomationBlock = { name: string; prompt: string; repeat: "daily" | "weekly"; time: string; day?: string };
 export function readAutomationBlock(code: string): AutomationBlock | null {
@@ -18,15 +14,6 @@ export function readAutomationBlock(code: string): AutomationBlock | null {
     const day = repeat === "weekly" && DAYS.includes(String(b.day).toLowerCase()) ? String(b.day).toLowerCase() : undefined;
     return { name: b.name.trim().slice(0, 100), prompt: b.prompt.trim().slice(0, 8000), repeat, time, ...(day ? { day } : {}) };
   } catch { return null; }
-}
-/** The first time a new routine runs: the next matching time (and weekday) from now. */
-export function firstAutomationRun(block: AutomationBlock, now = Date.now()) {
-  const [h, m] = block.time.split(":").map(Number), date = new Date(now);
-  date.setHours(h, m, 0, 0);
-  const day = block.day ? DAYS.indexOf(block.day) : -1;
-  if (day >= 0) date.setDate(date.getDate() + ((day - date.getDay() + 7) % 7));
-  if (date.getTime() <= now) date.setDate(date.getDate() + (day >= 0 ? 7 : 1));
-  return date.getTime();
 }
 /** “Every day at 8:00” / “Every Monday at 8:00”. */
 export function describeSchedule(block: Pick<AutomationBlock, "repeat" | "time" | "day">) {
@@ -41,7 +28,8 @@ export function LocalAutomations({
   onChange,
 }: {
   items: Automation[];
-  onChange: (items: Automation[]) => void;
+  /** Receives an update of the latest list, so a change never overwrites a run that happened meanwhile. */
+  onChange: (update: (items: Automation[]) => Automation[]) => void;
 }) {
   if (!items.length)
     return <div className="automation-empty"><Icon name="clock" size={20} /><p>No routines yet. Ask in any chat, like “every morning at 8, summarise the news”.</p></div>;
@@ -54,10 +42,10 @@ export function LocalAutomations({
             <p>{a.lastError ? <span className="automation-error">{a.lastError}</span> : a.enabled ? `${a.schedule === "weekly" ? "Weekly" : "Daily"} · next ${when(a.nextRun)}` : "Paused"}</p>
           </div>
           <div className="setting-row-control">
-            <button className="secondary" onClick={() => onChange(items.map((x) => x.id === a.id ? { ...x, enabled: !x.enabled, nextRun: Math.max(x.nextRun || 0, Date.now()) } : x))}>{a.enabled ? "Pause" : "Resume"}</button>
+            <button className="secondary" onClick={() => onChange((items) => items.map((x) => x.id === a.id ? { ...x, enabled: !x.enabled, nextRun: x.nextRun && x.nextRun <= Date.now() ? nextAutomation(x.schedule, x.nextRun) : x.nextRun || Date.now() } : x))}>{a.enabled ? "Pause" : "Resume"}</button>
             <button className="secondary icon-only" aria-label={`Delete ${a.name}`} title="Delete" onClick={async () => {
               if (await confirmDialog({ title: "Delete this routine?", message: "It stops running. Chats it already created are kept.", confirm: "Delete", danger: true }))
-                onChange(items.filter((x) => x.id !== a.id));
+                onChange((items) => items.filter((x) => x.id !== a.id));
             }}><Icon name="trash" size={15} /></button>
           </div>
         </div>
