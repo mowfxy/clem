@@ -15,6 +15,8 @@ export type SkillContext = {
   openFile?: string;
   /** The chat is inside a subject (study sets are available). */
   subject?: boolean;
+  /** Video transcripts (captions Mowr read from YouTube or Drive) are attached to this request. */
+  videos?: boolean;
   /** A PC folder is linked to this chat or space (```edit proposals are available). */
   folders?: boolean;
 };
@@ -31,8 +33,21 @@ export const mowrSkills: MowrSkill[] = [
       "Give 2–4 videos unless asked otherwise, most useful first. For each, one line on why it fits: what it covers, its level, its length if known, and which part to watch. Add &t=<seconds>s when a specific moment answers the question.",
       "If the person asks for “the link”, “the URL”, to “send” or “give me the links”, also write each full URL as visible text on its own line (for example `https://www.youtube.com/watch?v=ID`) so it can be copied, in addition to the linked title. Never answer a video request with titles or headings alone.",
       "If web search is unavailable or finds nothing reliable, say so in one line and give a YouTube search link instead: [Search YouTube for <topic>](https://www.youtube.com/results?search_query=<words+joined+with+plus>). That link always works.",
-      "A video the person pastes plays in the chat too. Mowr cannot watch or transcribe it: work from a transcript or notes they paste, and ask for one when the question depends on the video's contents.",
+      "A video the person pastes plays in the chat too, and Mowr reads its captions: when the question is about what a video says, its transcript arrives under VIDEO TRANSCRIPTS (see Notes from videos).",
       "For videos in the person's own Google Drive, use the Drive results instead (see Google Drive in chat).",
+    ],
+  },
+  {
+    id: "video-notes", name: "Notes from videos", description: "Notes, summaries and study material from the captions of YouTube and Drive videos.",
+    when: /\b(notes?|summar\w*|transcri\w*|captions?|subtitles?|key points|takeaways)\b[\s\S]*\b(videos?|lectures?|recordings?|youtube|youtu\.be|clip)\b|\b(videos?|lectures?|recordings?|youtube|youtu\.be)\b[\s\S]*\b(notes?|summar\w*|transcri\w*|captions?|key points|takeaways)\b/i,
+    steps: [
+      "Mowr reads the captions of the YouTube links and Google Drive videos a request is about and supplies them under VIDEO TRANSCRIPTS as “[mm:ss] text” paragraphs. Work from those words: never guess what a video says from its title, and never say you cannot watch or transcribe it when a transcript is supplied.",
+      "Notes: open with the video's title (linked) and one or two sentences on what it covers. Then sections that follow the video's own structure, each headed with its start time, with the key ideas, definitions, formulas (in LaTeX), worked examples and any steps in order. Finish with the main takeaways.",
+      "Cite moments as [mm:ss]. For YouTube, make them links that jump there: [12:05](https://www.youtube.com/watch?v=ID&t=725s). For a Drive video, link the video once as [name](drive:ID) and give times as plain [mm:ss].",
+      "Automatic captions mishear names, terms and numbers. Correct obvious slips from context (and the subject), and say when a formula or figure in the transcript looks unreliable rather than repeating it as fact.",
+      "Keep what the video says apart from your own additions: add a short explanation or a missing step only when it helps, and mark it as yours.",
+      "When a transcript was shortened to fit, say which part was left out; offer to cover it next. When captions weren't available, say why in one line (the reason is supplied) and offer what still works: the person can paste a transcript, or you can find another video on the topic.",
+      "If the person asks for the notes as a file (PDF, handout, study guide), make a Kinetra notes document from the transcript instead of answering in the chat. In a subject, flashcards or a quiz “from this video” come from the transcript too.",
     ],
   },
   {
@@ -198,7 +213,7 @@ export const mowrSkills: MowrSkill[] = [
 /** Always sent: one line per feature, so a model knows what exists and never tells the person it “can't” do these. */
 export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them instead of describing workarounds):
 - Web search: find current facts and real links, including YouTube videos. Cite what you use as links.
-- Videos: a full https://www.youtube.com/watch?v=… link becomes a playable video under its line; a Drive video linked as [name](drive:ID) plays in the chat.
+- Videos: a full https://www.youtube.com/watch?v=… link becomes a playable video under its line; a Drive video linked as [name](drive:ID) plays in the chat. Mowr reads the captions of videos the person asks about (VIDEO TRANSCRIPTS).
 - Google Drive: when Drive results are supplied, link files as [name](drive:ID); documents open in Mowr's viewer.
 - Documents: Kinetra makes typeset PDFs with computed figures, flowcharts, charts, timelines and mind maps. Changing a document Mowr made updates that same file.
 - Visuals: one \`\`\`visual block draws an interactive plot, diagram, chart or orbitable 3D model (surfaces, vectors, solids, molecules) in the chat.
@@ -211,6 +226,7 @@ export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them i
 /** The full playbooks that fit this request, as numbered steps. */
 export function mowrSkillsFor(request: string, context: SkillContext = {}, limit = 6) {
   const chosen = mowrSkills.filter((skill) => {
+    if (skill.id === "video-notes") return !!context.videos || skill.when.test(request);
     if (skill.id === "revise") return !!context.documents && skill.when.test(request);
     if (skill.id === "drive") return (context.drive || /\bdrive\b/i.test(request)) && skill.when.test(request);
     if (skill.id === "folders") return !!context.folders && skill.when.test(request);
