@@ -1,5 +1,6 @@
 import { kinetraCall } from "./kinetra-runtime.ts";
 import { markdownHtml } from "./pdf-markdown.ts";
+import { brandFontFaces } from "./brand-fonts.ts";
 import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
 const escape = (text: unknown) =>
   String(text ?? "").replace(
@@ -89,26 +90,26 @@ export const documentCss = `
 @page{size:A4;margin:24mm 21mm 22mm 21mm}
 *{box-sizing:border-box}
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-body{margin:0;font:10.4pt/1.55 Cambria,'Charter','Georgia','Times New Roman',serif;color:#1b1d21;font-variant-numeric:lining-nums proportional-nums;hyphens:auto;text-rendering:optimizeLegibility;font-kerning:normal}
+body{margin:0;font:10.4pt/1.55 'Mowafy Serif',Cambria,'Charter','Georgia','Times New Roman',serif;color:#1b1d21;font-variant-numeric:lining-nums proportional-nums;hyphens:auto;text-rendering:optimizeLegibility;font-kerning:normal}
 .doc-head{padding-bottom:14pt;margin-bottom:18pt;border-bottom:.9pt solid #1b1d21}
-.doc-kind{margin:0 0 9pt;font:600 7.6pt/1 'Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#1f4e79}
-h1{margin:0;font:600 22.5pt/1.16 'Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:-.25pt;color:#101114;hyphens:none}
-.doc-subtitle{margin:7pt 0 0;font:400 12pt/1.35 'Segoe UI',Calibri,Arial,sans-serif;color:#4a4f57;hyphens:none}
-.doc-meta{display:flex;gap:18pt;margin-top:12pt;font:8.6pt 'Segoe UI',Calibri,Arial,sans-serif;color:#5c6169}
+.doc-kind{margin:0 0 9pt;font:600 7.6pt/1 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#1f4e79}
+h1{margin:0;font:600 22.5pt/1.16 'Mowafy Sans','Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:-.25pt;color:#101114;hyphens:none}
+.doc-subtitle{margin:7pt 0 0;font:400 12pt/1.35 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#4a4f57;hyphens:none}
+.doc-meta{display:flex;gap:18pt;margin-top:12pt;font:8.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#5c6169}
 .doc-meta span+span::before{content:"";display:inline-block;width:3pt;height:3pt;border-radius:50%;background:#9aa0a8;margin:0 18pt 1.5pt -11pt;vertical-align:middle}
 .doc-summary{margin:0 0 18pt;padding:10pt 13pt 4pt;border-left:2.2pt solid #1f4e79;background:#f3f6f9;break-inside:avoid}
-.doc-summary h2{margin:0 0 5pt;font:600 8pt 'Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#1f4e79}
+.doc-summary h2{margin:0 0 5pt;font:600 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#1f4e79}
 .doc-summary h2::before{content:none}
 .doc-summary p{text-align:left}
-.doc-toc{margin:0 0 20pt;break-inside:avoid;font:9.4pt/1.7 'Segoe UI',Calibri,Arial,sans-serif}
-.doc-toc h2{margin:0 0 4pt;font:600 8pt 'Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
+.doc-toc{margin:0 0 20pt;break-inside:avoid;font:9.4pt/1.7 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif}
+.doc-toc h2{margin:0 0 4pt;font:600 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
 .doc-toc h2::before{content:none}
 .doc-toc ol{margin:0;padding:0;list-style:none;counter-reset:toc}
 .doc-toc li{counter-increment:toc;display:flex;gap:10pt;border-bottom:.4pt dotted #c4c8cd}
 .doc-toc li::before{content:counter(toc);min-width:16pt;color:#1f4e79;font-weight:600}
 main{counter-reset:h2 figure table}
 section{counter-reset:h3}
-h2,h3,h4{font-family:'Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;color:#101114;break-after:avoid;hyphens:none;text-align:left}
+h2,h3,h4{font-family:'Mowafy Sans','Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;color:#101114;break-after:avoid;hyphens:none;text-align:left}
 h2{margin:20pt 0 7pt;font-size:13.6pt;font-weight:600;line-height:1.25;counter-increment:h2}
 h2::before{content:counter(h2);display:inline-block;min-width:22pt;color:#1f4e79}
 h3{margin:14pt 0 5pt;font-size:11.2pt;font-weight:600;line-height:1.3;counter-increment:h3}
@@ -120,7 +121,7 @@ ul,ol{margin:0 0 8pt;padding-left:17pt}
 li{margin:2.5pt 0;text-align:left}
 li>p{margin:0}
 strong{font-weight:700;color:#101114}
-table{counter-increment:table;border-collapse:collapse;width:100%;margin:10pt 0 13pt;font:9pt/1.4 'Segoe UI',Calibri,Arial,sans-serif;font-variant-numeric:lining-nums tabular-nums;border-top:1pt solid #1b1d21;border-bottom:1pt solid #1b1d21;break-inside:avoid}
+table{counter-increment:table;border-collapse:collapse;width:100%;margin:10pt 0 13pt;font:9pt/1.4 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;font-variant-numeric:lining-nums tabular-nums;border-top:1pt solid #1b1d21;border-bottom:1pt solid #1b1d21;break-inside:avoid}
 th{padding:5pt 8pt;text-align:left;font-weight:600;border-bottom:.6pt solid #1b1d21;vertical-align:bottom}
 td{padding:4pt 8pt;text-align:left;vertical-align:top;border-bottom:.3pt solid #d9dce0}
 tr:last-child td{border-bottom:0}
@@ -137,14 +138,14 @@ math{font-size:1.06em}
 .katex-error{color:#b00020}
 figure{counter-increment:figure;margin:13pt 0 15pt;break-inside:avoid;text-align:center}
 figure img{display:block;margin:0 auto;max-width:100%;max-height:118mm;object-fit:contain}
-figcaption{margin:7pt auto 0;max-width:92%;font:8.6pt/1.45 'Segoe UI',Calibri,Arial,sans-serif;color:#30343a;text-align:left}
+figcaption{margin:7pt auto 0;max-width:92%;font:8.6pt/1.45 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#30343a;text-align:left}
 figcaption::before{content:"Figure " counter(figure) ". ";font-weight:600;color:#101114}
 .source{color:#80868e}
 .doc-references{margin-top:22pt}
 .doc-references h2::before{content:none}
 .doc-references ol{padding-left:22pt;font-size:9.2pt;line-height:1.45}
 .doc-references li{padding-left:3pt;margin:3pt 0}
-.doc-end{margin-top:22pt;padding-top:6pt;border-top:.5pt solid #c4c8cd;font:7.6pt 'Segoe UI',Calibri,Arial,sans-serif;color:#80868e}
+.doc-end{margin-top:22pt;padding-top:6pt;border-top:.5pt solid #c4c8cd;font:7.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#80868e}
 `;
 
 export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]) {
@@ -177,8 +178,8 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
   body += "</main>";
   if (spec.references?.length) body += '<section class="doc-references"><h2>References</h2><ol>' + spec.references.map((r) => "<li>" + markdownHtml(r, { inline: true }) + "</li>").join("") + "</ol></section>";
   return (
-    '<!doctype html><html lang="en-GB"><meta charset="utf-8"><title>' + escape(spec.title) + '</title><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'"><style>' +
-    documentCss + '</style><body class="' + (numbered ? "numbered" : "plain") + '">' + body + "</body></html>"
+    '<!doctype html><html lang="en-GB"><meta charset="utf-8"><title>' + escape(spec.title) + '</title><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; font-src data:; style-src \'unsafe-inline\'"><style>' +
+    brandFontFaces() + documentCss + '</style><body class="' + (numbered ? "numbered" : "plain") + '">' + body + "</body></html>"
   );
 }
 

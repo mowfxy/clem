@@ -1,10 +1,11 @@
 import { BrowserWindow, desktopCapturer, ipcMain, screen } from "electron";
+import { brandFontFaces } from "./brand-fonts.ts";
 
 /** Quick capture: freeze the screen under the cursor, let the person drag a region, return PNG bytes.
  *  The overlay is a local page with no network access and a preload that exposes two calls. */
-const page = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<style>
-html,body{margin:0;height:100%;overflow:hidden;background:#000;cursor:crosshair;user-select:none;font-family:'Segoe UI',system-ui,sans-serif}
+const page = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>${brandFontFaces()}
+html,body{margin:0;height:100%;overflow:hidden;background:#000;cursor:crosshair;user-select:none;font-family:'Mowafy Sans',system-ui,sans-serif}
 #shot{position:fixed;inset:0;width:100%;height:100%;object-fit:fill}
 #dim{position:fixed;inset:0;background:#0000006b}
 #sel{position:fixed;display:none;border:1.5px solid #f0efeb;border-radius:3px;box-shadow:0 0 0 9999px #0000006b}

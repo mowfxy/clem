@@ -553,8 +553,8 @@ app.get("/api/drive/callback", async (req, res) => {
   const enc = encrypt(token.refresh_token, u.id);
   await db()`INSERT INTO mowr_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,'{}') ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce`;
   if (state.desktop) {
-    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
-    res.type("html").send('<!doctype html><title>Drive connected</title><body style="background:#141414;color:#eeece4;font:18px system-ui;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>Drive is connected.</h1><p>Return to Mowr to choose your files.</p></body>');
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'");
+    res.type("html").send('<!doctype html><title>Drive connected</title><style>@font-face{font-family:"Mowafy Sans";src:url(/fonts/MowafySans-Regular.woff2) format("woff2")}@font-face{font-family:"Mowafy Serif";src:url(/fonts/MowafySerif-Regular.woff2) format("woff2")}</style><body style="background:#141414;color:#eeece4;font:18px Mowafy Sans,system-ui,sans-serif;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>Drive is connected.</h1><p>Return to Mowr to choose your files.</p></body>');
   } else res.redirect(process.env.APP_URL + "/#/app/connectors");
 });
 async function driveToken(userId: string) {

@@ -20,6 +20,10 @@ desktop-dist/
 desktop-package/
 .maintainer/
 release/
+release-store/
+# Local MSIX test-signing certificate; never commit it.
+*.pfx
+.store-cert/
 
 desktop/generated/
 

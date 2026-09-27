@@ -7,7 +7,7 @@ const ACCENT = "#1f4e79", INK = "#1b1d21", MUTED = "#5c6169", LINE = "#8a9098", 
 const FILLS = ["#e8f0f8", "#fbeee6", "#e9f4e6", "#fbf3e0", "#efe9f6", "#e4f3f2"];
 const STROKES = ["#1f4e79", "#b4532a", "#3f7a31", "#b7801a", "#6b4c9a", "#237b7b"];
 const SERIES = ["#1f4e79", "#c0504d", "#4f8a3c", "#d08c1f", "#6b4c9a", "#2a8c8c", "#7a7f87", "#a33d6b"];
-const FONT = "'Segoe UI',Calibri,Arial,sans-serif";
+const FONT = "'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif";
 
 const esc = (text: unknown) => String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const num = (n: number) => (Math.round(n * 10) / 10).toString();

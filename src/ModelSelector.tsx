@@ -53,7 +53,7 @@ function EffortSlider({ levels, level, onChange, onReset }: {
 }
 
 function ProviderMark({ provider }: { provider?: string }) {
-  return <span className={"picker-mark " + (provider === "Anthropic" ? "picker-mark-anthropic" : provider === "xAI" ? "picker-mark-grok" : "picker-mark-openai")} aria-hidden="true"><ProviderLogo provider={provider} size={12} /></span>;
+  return <span className={"picker-mark " + (provider === "Anthropic" ? "picker-mark-anthropic" : provider === "xAI" ? "picker-mark-grok" : "picker-mark-openai")} aria-hidden="true"><ProviderLogo provider={provider} size={16} /></span>;
 }
 
 /** A small popover anchored above (or below) its trigger. */
