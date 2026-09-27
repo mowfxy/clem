@@ -154,7 +154,8 @@ void app.whenReady().then(async () => {
   await mkdir(durableSession,{recursive:true});
   const migrationMarker=join(durableSession,'.migration-complete');
   try{await access(migrationMarker);}catch{for(const name of ['IndexedDB','Local Storage','Session Storage']){const source=join(previousSession,name);try{await access(source);}catch{continue;}await cp(source,join(durableSession,name),{recursive:true,force:false,errorOnExist:false});}await writeFile(migrationMarker,'1');}
-  app.setAppUserModelId("com.mowrai.desktop");
+  // A Store (MSIX) install already has the package's own ID; overriding it splits the window from its Start and taskbar pin.
+  if (!process.windowsStore) app.setAppUserModelId("com.mowrai.desktop");
   await afterUpdate(workspaceRoot,app.getVersion(),async()=>{await session.defaultSession.clearCache();await session.defaultSession.clearCodeCaches({});}).catch(()=>{});
   // Copies of files opened in the browser from earlier runs.
   void rm(join(app.getPath("temp"),"Mowr","view"),{recursive:true,force:true}).catch(()=>{});
