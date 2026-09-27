@@ -91,7 +91,8 @@ export function compile(src: string, allowed?: Iterable<string>): Compiled {
     if (t.k === 'op' && t.v === '(') { const inner = ternary(); eat(')'); return inner; }
     if (t.k === 'id') {
       const name = t.v as string;
-      if (isOp('(')) {
+      // A known variable or constant before '(' multiplies: k(x-1), A(1-x), pi(r^2). mul() handles the '('.
+      if (isOp('(') && (fns[name] || !(allow?.has(name) || name in consts))) {
         const fn = fns[name];
         if (!fn) throw Error(`Unknown function ${name}()`);
         eat('(');

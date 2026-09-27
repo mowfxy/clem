@@ -15,6 +15,19 @@ const checkSchema = z.object({
 export const checksSchema = z.object({ checks: z.array(checkSchema).min(1).max(12) });
 export type CheckResult = { label: string; expr: string; unit: string; claimed: number; computed: number; status: 'ok' | 'differs' | 'error'; error?: string };
 
+/** Power of ten of the last significant digit of a number as written: 40.77 → -2, 41 → 0, 1.5e-7 → -8.
+ *  Trailing zeros of an integer (1200) are read as rounding, but at least two significant digits are assumed. */
+function lastDigitPlace(value: number) {
+  // A claimed 0 says nothing about precision, so it gets no rounding allowance.
+  if (value === 0) return -Infinity;
+  const [mantissa, exp] = String(Math.abs(value)).toLowerCase().split('e');
+  const [whole, fraction = ''] = mantissa.split('.');
+  if (exp !== undefined) return Number(exp) - fraction.length;
+  if (fraction) return -fraction.length;
+  const zeros = whole.length - whole.replace(/0+$/, '').length;
+  return Math.max(0, Math.min(zeros, whole.length - 2));
+}
+
 export function runChecks(raw: unknown): CheckResult[] {
   const parsed = checksSchema.safeParse(Array.isArray(raw) ? { checks: raw } : raw);
   if (!parsed.success) throw Error('The calculation check is incomplete.');
@@ -29,8 +42,7 @@ export function runChecks(raw: unknown): CheckResult[] {
       const scale = Math.max(Math.abs(computed), Math.abs(check.claimed), 1e-12);
       // Reported values are usually rounded: accept a relative tolerance, or a difference within
       // half a unit of the precision the claim was written with.
-      const decimals = (String(check.claimed).split('.')[1] || '').replace(/e.*$/i, '').length;
-      const rounding = decimals ? 0.5 * 10 ** -decimals : 0;
+      const rounding = 0.5 * 10 ** lastDigitPlace(check.claimed);
       const ok = Math.abs(computed - check.claimed) <= Math.max(tolerance * scale, rounding + 1e-12);
       return { label: check.label, expr: check.expr, unit, claimed: check.claimed, computed, status: ok ? 'ok' as const : 'differs' as const };
     } catch (e) {

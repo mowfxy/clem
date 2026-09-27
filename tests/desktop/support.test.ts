@@ -7,7 +7,8 @@ test('desktop support sends only the intended fields to the fixed authenticated 
   const result=await submitSupport('test-token',payload,async(input,init)=>{
     assert.equal(input,'https://mowrai.com/api/support');
     assert.equal(init?.redirect,'error');
-    assert.equal(new Headers(init?.headers).get('Cookie'),'mowr_supabase=test-token');
+    assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer test-token');
+    assert.equal(new Headers(init?.headers).get('Cookie'),null);
     assert.equal(new Headers(init?.headers).get('Origin'),'https://mowrai.com');
     assert.deepEqual(JSON.parse(String(init?.body)),payload);
     return Response.json({ok:true,id:'receipt'});

@@ -79,4 +79,7 @@ test("pdf edits find text on one line and re-set only the items they touch", () 
   assert.throws(() => planEdits([page], [{ page: 1, find: "at", replace: "x" }]), /appears 2 times/);
   assert.throws(() => planEdits([page], [{ page: 2, find: "a", replace: "b" }]), /Page 2 is not/);
   assert.equal(planEdits([page], [{ page: 1, find: "Find  the range", replace: "Find the maximum height" }])[0].text, "2. Find the maximum height.");
+  // Runs that share an item would be drawn twice over each other, even when they start on different items.
+  assert.throws(() => planEdits([page], [{ page: 1, find: "thrown at 20", replace: "kicked at 25" }, { page: 1, find: "m/s at", replace: "km/h at" }]), /same line/);
+  assert.equal(planEdits([page], [{ page: 1, find: "A ball", replace: "One ball" }, { page: 1, find: "at 30", replace: "at 45" }]).length, 2, "separate runs on one line are fine");
 });

@@ -57,7 +57,8 @@ function locate(page: Line[], find: string) {
 export function planEdits(pages: TextItem[][], edits: PdfTextEdit[]): Placement[] {
   const byPage = new Map<number, Line[]>();
   const out: Placement[] = [];
-  const used = new Set<string>();
+  // Item ranges already re-set on each line; two edits whose runs overlap would draw over each other.
+  const used = new Map<Line, [number, number][]>();
   for (const edit of edits) {
     if (!edit.find.trim()) throw Error("An edit is missing the text to replace.");
     if (edit.find.includes("\n")) throw Error(`“${edit.find.slice(0, 40)}” spans more than one line. Change one line at a time.`);
@@ -69,9 +70,9 @@ export function planEdits(pages: TextItem[][], edits: PdfTextEdit[]): Placement[
     if (hits.length > 1) throw Error(`“${edit.find.slice(0, 60)}” appears ${hits.length} times on page ${edit.page}. Quote more of the line.`);
     const { line, start, end } = hits[0];
     const first = line.owners[start], last = line.owners[end - 1];
-    const key = edit.page + ":" + line.items[first].y + ":" + first;
-    if (used.has(key)) throw Error(`Two edits change the same line on page ${edit.page}. Combine them into one.`);
-    used.add(key);
+    const taken = used.get(line) || [];
+    if (taken.some(([a, b]) => first <= b && a <= last)) throw Error(`Two edits change the same line on page ${edit.page}. Combine them into one.`);
+    used.set(line, [...taken, [first, last]]);
     // Re-set the whole run of items the match touches, keeping their untouched text.
     const runStart = line.owners.indexOf(first), runEnd = line.owners.lastIndexOf(last) + 1;
     const before = line.text.slice(runStart, runEnd);

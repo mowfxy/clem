@@ -19,6 +19,16 @@ function cleanRelative(path: string) {
   return parts;
 }
 
+/** The real location of the nearest folder on the way to `path` that already exists, so a new file never lands
+ *  outside the linked folder through a symbolic link or junction inside it. */
+async function existingAncestor(path: string): Promise<string> {
+  for (let at = path; ; at = dirname(at)) {
+    const real = await realpath(at).catch(() => null);
+    if (real) return real;
+    if (dirname(at) === at) return at;
+  }
+}
+
 /** Finds the one linked folder that holds `path`. New files are allowed only when a single folder is linked. */
 export async function locate(folders: Folder[], path: string, create = false) {
   let parts = cleanRelative(path);
@@ -36,7 +46,7 @@ export async function locate(folders: Folder[], path: string, create = false) {
       if (stat.isSymbolicLink() || !stat.isFile()) continue;
       if (!inside(root, await realpath(absolute))) continue;
       matches.push({ folder, absolute, exists: true });
-    } else if (create) matches.push({ folder, absolute, exists: false });
+    } else if (create && inside(root, await existingAncestor(dirname(absolute)))) matches.push({ folder, absolute, exists: false });
   }
   const existing = matches.filter((m) => m.exists);
   if (existing.length === 1) return existing[0];

@@ -165,9 +165,12 @@ export class GrokProvider {
       const result=await new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
         let out='',err='',done=false;
         const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);f?reject(f):resolve(v!);};
-        const timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},330000);
-        child.stdout.on('data',(p:Buffer)=>{out+=p.toString();if(out.length>2_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));}});
-        child.stderr.on('data',(p:Buffer)=>{err=(err+p.toString()).slice(-5000);});
+        // An inactivity limit: any output from Grok restarts it, so a long answer that is still arriving is never cut off.
+        let timer:ReturnType<typeof setTimeout>;
+        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},330000);};
+        touch();
+        child.stdout.on('data',(p:Buffer)=>{if(!done)touch();out+=p.toString();if(out.length>2_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));}});
+        child.stderr.on('data',(p:Buffer)=>{if(!done)touch();err=(err+p.toString()).slice(-5000);});
         child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
         child.on('close',code=>finish({code,out,err}));
         child.stdin.end();
