@@ -62,7 +62,7 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
         <Logo size={64} thinking={started}/>
         {returning?<><h1>Welcome back.</h1><p className="sx-lede">Return to the Mowr app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></>:<>
           <span className="sx-eyebrow">Mowr for Windows</span>
-          <h1>{started?'Your download has started.':'Download Mowr'}</h1>
+          <h1>{started?(store?'The Microsoft Store is opening.':'Your download has started.'):'Download Mowr'}</h1>
           <p className="sx-lede">{started?(store?'Choose Get in the Microsoft Store. The steps are below.':'Open the file when it finishes. The steps are below.'):'Free to download. Set up in about three minutes.'}</p>
           {link?<div className="sx-download-cta">
             <a className="sx-btn sx-btn-primary sx-btn-lg" href={link} onClick={()=>setStarted(true)}><Icon name="download" size={19}/>{store?(started?'Open the Microsoft Store again':'Get it from Microsoft Store'):started?'Download again':'Download for Windows'}</a>

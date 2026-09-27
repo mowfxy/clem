@@ -18,7 +18,7 @@ export async function browserLogin(
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+      "default-src 'none'; style-src 'unsafe-inline'; font-src data:; frame-ancestors 'none'",
     );
     if (req.url !== path) {
       res.writeHead(404).end("Not found.");
