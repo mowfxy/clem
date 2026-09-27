@@ -168,3 +168,30 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .instructions-dialog textarea{min-height:190px;max-height:46vh;padding:13px 14px!important;font-size:14px!important;line-height:1.6!important}
 .instructions-count{position:absolute;right:12px;bottom:10px;font-size:11px;color:#7d7c75;pointer-events:none}
 @media(max-width:560px){.sp-instructions{padding:9px 11px}.contact-dialog.instructions-dialog footer{flex-wrap:wrap}.contact-dialog.instructions-dialog footer small{flex-basis:100%}.contact-dialog.instructions-dialog footer .contact-secondary{margin-left:auto}}
+
+/* Activity graph, top right of the hero: a thin line over a dotted grid ending in a glowing dot. */
+.sp-side{display:flex;flex-direction:column;align-items:flex-end;gap:14px;flex-shrink:0}
+.sp-activity{--ink:#eeede7;--glow:#ffffff;position:relative;margin:0 -8px 0 0;padding:0;cursor:crosshair}
+.sp-activity.tone-green{--ink:#8fe0a1;--glow:#6fdc8c}
+.sp-activity figcaption{font-size:10.5px;font-weight:500;letter-spacing:.9px;text-transform:uppercase;color:#8f8e88;margin:0 0 2px 8px;user-select:none}
+.sp-activity svg{display:block;overflow:visible}
+.sp-activity .dot{fill:#ffffff}
+.sp-activity .grid .dot{opacity:.12;transform-box:fill-box;transform-origin:center;animation:sp-twinkle 7s cubic-bezier(.45,0,.55,1) infinite}
+.sp-activity .grid-lit{opacity:.5}
+.sp-activity .fill-top{stop-color:var(--glow);stop-opacity:.14}
+.sp-activity .fill-bottom{stop-color:var(--glow);stop-opacity:0}
+.sp-activity .line{fill:none;stroke:var(--ink);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round;filter:drop-shadow(0 0 3px color-mix(in srgb,var(--glow) 55%,transparent));stroke-dasharray:1;stroke-dashoffset:1;animation:sp-draw 1.1s cubic-bezier(.65,0,.35,1) .1s forwards}
+.sp-activity .area{opacity:0;animation:sp-fade .8s ease .7s forwards}
+.sp-activity .guide{stroke:var(--ink);stroke-width:1;stroke-dasharray:1.5 3;opacity:.35}
+.sp-activity .end{transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.sp-activity.scrubbing .end{transition:transform .08s linear}
+.sp-activity .core{fill:var(--ink);filter:drop-shadow(0 0 4px var(--glow))}
+.sp-activity .halo{fill:var(--glow);opacity:.18;transform-origin:center;transform-box:fill-box;animation:sp-pulse 2.6s ease-in-out infinite}
+.sp-activity .end{opacity:0;animation:sp-fade .4s ease 1.05s forwards}
+@keyframes sp-twinkle{0%,100%{opacity:.11;transform:scale(1)}32%{opacity:0;transform:scale(.4)}58%{opacity:.36;transform:scale(1.3)}78%{opacity:.14;transform:scale(1)}}
+@keyframes sp-draw{to{stroke-dashoffset:0}}
+@keyframes sp-fade{to{opacity:1}}
+@keyframes sp-pulse{0%,100%{transform:scale(.8);opacity:.28}50%{transform:scale(1.35);opacity:.1}}
+@media (max-width:760px){.sp-title-row{flex-wrap:wrap}.sp-side{align-items:flex-start;width:100%}}
+@media (prefers-reduced-motion:reduce){.sp-activity .line{animation:none;stroke-dashoffset:0}.sp-activity .area,.sp-activity .end{animation:none;opacity:1}.sp-activity .halo,.sp-activity .grid .dot{animation:none}}
+html[data-quiet=true] .sp-activity .line{animation:none;stroke-dashoffset:0}html[data-quiet=true] .sp-activity .area,html[data-quiet=true] .sp-activity .end{animation:none;opacity:1}html[data-quiet=true] .sp-activity .halo,html[data-quiet=true] .sp-activity .grid .dot{animation:none}
