@@ -19,6 +19,9 @@ export function markdownHtml(text: string, { top = 0, inline = false }: { top?: 
       Markdown,
       {
         remarkPlugins: [remarkGfm, remarkMath],
+        // Footnotes get a small label, not the default hidden <h2>: the page styles every h2 as a numbered
+        // section, so "Footnotes" would print as a section of its own and shift the numbers after it.
+        remarkRehypeOptions: { footnoteLabelTagName: "p", footnoteLabelProperties: { className: ["footnote-label"] }, footnoteBackContent: () => [] },
         rehypePlugins: [[rehypeKatex, { output: "mathml", throwOnError: false, strict: "ignore" }]],
         components: {
           a: ({ children }: { children?: unknown }) => createElement("span", null, children as never),

@@ -149,6 +149,20 @@ test("every concept diagram recipe renders, and bad diagrams explain what to fix
   assert.ok(kinetraInstructions.includes('"fn":"flowchart"') && kinetraInstructions.includes('"revise"'));
 });
 
+test("concept diagrams with a non-numeric size fall back to the default instead of drawing at NaN", async () => {
+  const d = await import("../../desktop/kinetra-diagrams.ts");
+  const width = "wide" as unknown as number;
+  const svgs = [
+    d.chart({ labels: ["a", "b"], series: [{ name: "s", values: [1, 2] }], width, height: width }),
+    d.timeline({ events: [{ date: "1", label: "a" }, { date: "2", label: "b" }], width }),
+    d.cycle({ steps: [{ label: "a" }, { label: "b" }], width }),
+    d.mindMap({ center: "c", branches: [{ label: "a" }], width }),
+    d.venn({ sets: [{ label: "a" }, { label: "b" }], width }),
+  ];
+  for (const svg of svgs) assert.ok(!svg.includes("NaN"), svg.slice(0, 120));
+  assert.match(d.chart({ labels: ["a"], series: [{ name: "s", values: [1] }], width: 5000 }), /^<svg[^>]* width="1000"/);
+});
+
 test("tool envelopes are held even when fenced; prose streams at once", () => {
   for (const partial of ["", "{", "`", "```", "```json", "```json\n{", '```json\n{"kin']) assert.equal(mayBeTool(partial), true, partial);
   for (const prose of ["Hello", "```python\nprint(1)", "The answer", "```\nplain"]) assert.equal(mayBeTool(prose), false, prose);
@@ -209,6 +223,17 @@ test("PDF text never carries links, images or raw HTML", () => {
   const html = markdownHtml("[x](https://evil.test) ![i](http://evil.test/a.png)\n\n<img src=x onerror=alert(1)>");
   assert.ok(!/href=|<img/.test(html));
   assert.match(html, /&lt;img/);
+});
+
+test("a PDF section whose heading is not text is refused with a reason, not a crash", async () => {
+  await assert.rejects(renderFigures({ title: "T", sections: [{ heading: 5, text: "x" }] }), /Section 1 "heading", "text" and "caption" must be strings/);
+});
+
+test("PDF footnotes do not print as an extra numbered section", () => {
+  const html = markdownHtml("A claim.[^1]\n\n[^1]: The source.", { top: 3 });
+  assert.ok(!/<h[1-6][\s>]/.test(html), "the page numbers every h2, so the footnote label must not be a heading");
+  assert.match(html, /<p class="footnote-label"[^>]*>Footnotes<\/p>/);
+  assert.match(html, /The source\./);
 });
 
 test("prompt sections: attachments become sources and untrusted text cannot close a section", () => {
