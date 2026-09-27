@@ -2,7 +2,7 @@ import {useId,useMemo,useRef,useState} from 'react';
 import type {Chat,StoredFile,StudySet} from '../../core/types';
 
 const DAY=86_400_000, DAYS=30;
-const W=232, H=78, PAD_X=8, PAD_TOP=12, PAD_BOTTOM=12, GRID=8;
+const W=272, H=84, PAD_X=8, PAD_TOP=12, PAD_BOTTOM=12, GRID=8;
 
 /** The grid's dots, each with a start offset: a slow wave that sweeps left to right, with a little
  * scatter so it shimmers instead of marching. Negative offsets start it mid-cycle on first paint. */
@@ -71,9 +71,13 @@ export function ActivityGraph({chats,files,sets,tone}:{chats:Chat[];files:Stored
         <radialGradient id={`lens-${id}`}>
           <stop offset="0" stopColor="#fff"/><stop offset="1" stopColor="#fff" stopOpacity="0"/>
         </radialGradient>
+        <radialGradient id={`feather-${id}`} cx=".5" cy=".5" r=".62" gradientTransform="translate(.5 .5) scale(1 1.6) translate(-.5 -.5)">
+          <stop offset=".55" stopColor="#fff"/><stop offset="1" stopColor="#fff" stopOpacity="0"/>
+        </radialGradient>
+        <mask id={`edge-${id}`}><rect width={W} height={H} fill={`url(#feather-${id})`}/></mask>
         <mask id={`near-${id}`}><rect width={W} height={H} fill="#000"/>{at&&<circle cx={at.x} cy={H/2} r="46" fill={`url(#lens-${id})`}/>}</mask>
       </defs>
-      <g className="grid">{DOTS.map(([x,y,d],i)=><circle key={i} cx={x} cy={y} r=".7" className="dot" style={{animationDelay:`${d}s`}}/>)}</g>
+      <g className="grid" mask={`url(#edge-${id})`}>{DOTS.map(([x,y,d],i)=><circle key={i} cx={x} cy={y} r=".7" className="dot" style={{animationDelay:`${d}s`}}/>)}</g>
       <rect width={W} height={H} fill={`url(#grid-${id})`} className="grid-lit" mask={`url(#near-${id})`}/>
       <path d={area} fill={`url(#fill-${id})`} className="area"/>
       <path ref={curve} d={line} className="line" pathLength={1}/>
