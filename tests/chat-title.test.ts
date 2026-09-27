@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {takeTitle,hideTitleMarker,titleInstruction} from '../core/chat-title.ts';
+import {takeTitle,hideTitleMarker,titleInstruction,chaptersOf} from '../core/chat-title.ts';
 test('a reply marker becomes the chat title and is removed from the answer',()=>{
   assert.deepEqual(takeTitle('The chain rule says…\n\n<!--title: Chain Rule for Partial Derivatives-->'),{content:'The chain rule says…',title:'Chain Rule for Partial Derivatives'});
   assert.deepEqual(takeTitle('Plain answer.'),{content:'Plain answer.',title:undefined});
@@ -22,4 +22,19 @@ test('the model can pick the mark of the chat\'s subject or project',()=>{
   assert.equal(hideTitleMarker('Answer.\n<!--ma'),'Answer.');
   assert.match(titleInstruction(null,{kind:'subject',name:'Unit 4',description:'',keys:['maths','other']}),/<!--mark: key-->[\s\S]*maths, other/);
   assert.doesNotMatch(titleInstruction(null),/mark: key/);
+});
+
+test('a reply that starts a new topic names its chapter, hidden while streaming',()=>{
+  assert.deepEqual(takeTitle('Answer.\n<!--chapter: Integration by Parts-->\n<!--summary: Derivatives, then integration by parts.-->'),{content:'Answer.',title:undefined,summary:'Derivatives, then integration by parts.',chapter:'Integration by Parts'});
+  for(const tail of ['<!--c','<!--chap','<!--chapter: Integr']) assert.equal(hideTitleMarker('Answer.\n'+tail),'Answer.');
+  assert.match(titleInstruction(null),/<!--chapter: Name-->/);
+  assert.match(titleInstruction('Calculus',undefined,['Derivatives','Limits']),/current chapter “Limits”/);
+});
+
+test('chapters start at the question whose reply named them',()=>{
+  const m=(id:string,role:'user'|'assistant',chapter?:string)=>({id,role,content:id,...(chapter?{chapter}:{})});
+  const chat={title:'Calculus help',messages:[m('q1','user'),m('a1','assistant','Derivatives'),m('q2','user'),m('a2','assistant'),m('q3','user'),m('a3','assistant','Integration'),m('q4','user'),m('a4','assistant','integration')]};
+  assert.deepEqual(chaptersOf(chat),[{id:'q1',title:'Derivatives'},{id:'q3',title:'Integration'}]);
+  assert.deepEqual(chaptersOf({title:'Old chat',messages:[m('q1','user'),m('a1','assistant'),m('q2','user'),m('a2','assistant','Vectors')]}),[{id:'q1',title:'Old chat'},{id:'q2',title:'Vectors'}]);
+  assert.deepEqual(chaptersOf({title:'Short',messages:[m('q1','user'),m('a1','assistant')]}),[{id:'q1',title:'Short'}]);
 });

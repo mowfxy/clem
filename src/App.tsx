@@ -100,7 +100,8 @@ import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
 import { StorageSummary } from './files/StorageSummary';
 import { SpaceMark, markKeys } from './space/SpaceMark';
-import { titleInstruction, takeTitle, hideTitleMarker } from "../core/chat-title";
+import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf } from "../core/chat-title";
+import { Chapters } from "./chat/Chapters";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
 import "./motion.css";
@@ -837,7 +838,7 @@ ${answerInstructions}${memory ? `
 
 User-authorized memory for this scope: ${memory}` : ""}
 
-${titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined)}${struggling.length ? `
+${titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined, chat.messages.some((m) => m.chapter) ? chaptersOf(chat).map((c) => c.title).slice(-12) : [])}${struggling.length ? `
 
 In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : ""}`,
           },
@@ -872,7 +873,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         ...(named.title ? { title: named.title, titled: true } : {}),
         ...("summary" in named && named.summary ? { summary: named.summary } : {}),
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
-        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
+        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
       const markSpace = chat.spaceId, picked = "mark" in named ? named.mark : undefined;
       if (markSpace && picked && markKeys.includes(picked)) patch((s) => ({ ...s, spaces: s.spaces.map((x) => x.id === markSpace ? { ...x, mark: { key: picked, for: x.name } } : x) }));
@@ -1722,13 +1723,14 @@ In this subject the learner keeps missing these questions in review; connect to 
                   </div>
                 ) : (
                   <>
+                    <Chapters chapters={chaptersOf(activeChat)} />
                     <div className="messages">
                       {activeChat.messages.map((m, index) => {
                         const streaming = activeChat.id in runs && m.id === activeChat.messages.at(-1)?.id && m.role === "assistant";
                         const latest = m.role === "assistant" && index === activeChat.messages.length - 1;
                         const sources = m.role === "assistant" ? sourceFiles(activeChat) : [];
                         return (
-                        <article key={m.id} className={`message ${m.role} ${latest ? "latest" : ""}`}>
+                        <article key={m.id} data-message-id={m.id} className={`message ${m.role} ${latest ? "latest" : ""}`}>
                           {m.role === "assistant" && <div className="message-mark"><Logo size={30} thinking={streaming}/></div>}
                           <div className="message-text">
                             {m.content ? (
