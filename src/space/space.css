@@ -171,10 +171,9 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 
 /* Activity graph, top right of the hero: a thin line over a dotted grid ending in a glowing dot. */
 .sp-side{display:flex;flex-direction:column;align-items:flex-end;gap:14px;flex-shrink:0}
-.sp-activity{--ink:#eeede7;--glow:#ffffff;position:relative;margin:0;padding:10px 12px 6px;border-radius:16px;background:linear-gradient(180deg,#ffffff06,#ffffff02);border:1px solid #ffffff0f;box-shadow:inset 0 1px 0 #ffffff08;cursor:crosshair;transition:border-color .2s,background .2s}
+.sp-activity{--ink:#eeede7;--glow:#ffffff;position:relative;margin:0 -8px 0 0;padding:0;cursor:crosshair}
 .sp-activity.tone-green{--ink:#8fe0a1;--glow:#6fdc8c}
-.sp-activity:hover{border-color:#ffffff1c;background:linear-gradient(180deg,#ffffff09,#ffffff03)}
-.sp-activity figcaption{font-size:10.5px;font-weight:500;letter-spacing:.9px;text-transform:uppercase;color:#8f8e88;margin:0 0 4px 2px;user-select:none}
+.sp-activity figcaption{font-size:10.5px;font-weight:500;letter-spacing:.9px;text-transform:uppercase;color:#8f8e88;margin:0 0 2px 8px;user-select:none}
 .sp-activity svg{display:block;overflow:visible}
 .sp-activity .dot{fill:#ffffff}
 .sp-activity .grid .dot{opacity:.12;transform-box:fill-box;transform-origin:center;animation:sp-twinkle 7s cubic-bezier(.45,0,.55,1) infinite}
