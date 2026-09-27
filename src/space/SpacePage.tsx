@@ -9,6 +9,7 @@ import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
 import {MemoryConversation} from '../MemoryConversation';
 import {InstructionsDialog,InstructionsGlyph} from './InstructionsDialog';
+import {ActivityGraph} from './ActivityGraph';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
 import {DriveFolderView} from '../drive/DriveFolderView';
 import type {DriveItem} from '../drive/drive';
@@ -94,10 +95,13 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
           <Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/>
           <Editable className="sp-desc" value={space.description} max={400} label="Description" placeholder={subject?'What are you learning, and why?':'What is this project about?'} onSave={description=>actions.onUpdateSpace({...space,description})}/>
         </div>
+        <div className="sp-side">
         <div className="sp-actions">
           <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} title={space.memory.trim()?'Edit the instructions Mowr follows here':'Tell Mowr how to work here'}><InstructionsGlyph/>Instructions</button>
           <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
           <Menu label="More" items={[...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
+        </div>
+        <ActivityGraph chats={chats} files={files} sets={sets} tone={subject?'white':'green'}/>
         </div>
       </div>
       {subject&&<div className="sp-stats">
