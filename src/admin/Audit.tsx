@@ -4,7 +4,7 @@ import {Empty,ErrorNote,I,Skeleton,date,useLoad,PageHead} from './ui';
 import type {Go} from './AdminApp';
 
 type Entry={id:string;actor_email:string;action:string;target:string;detail:string;created_at:string};
-const personAction=(action:string)=>/^(user|subscription|case)\./.test(action);
+const personAction=(action:string)=>/^(user|subscription|case|email)\./.test(action);
 
 export function Audit({go}:{go:Go}){
   const [q,setQ]=useState('');const [query,setQuery]=useState('');

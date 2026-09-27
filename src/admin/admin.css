@@ -316,6 +316,8 @@
 .adm-modal>header .adm-icon{margin:-2px -6px 0 0}
 .adm-modal .adm-modal-line{margin:6px 0 0;font-size:12.5px;line-height:1.5;color:var(--a-muted);max-width:52ch}
 .adm-modal.wide{width:min(860px,calc(100vw - 32px))}
+/* The app's own dialog rule caps width at 560px; portal modals size themselves. */
+.adm-root .adm-modal,.adm-modal{max-width:calc(100vw - 32px)}
 .adm-modal .adm-form footer{justify-content:flex-end;margin:4px -22px -22px;padding:14px 22px;border-top:1px solid var(--a-line);background:#171716;border-radius:0 0 18px 18px}
 .adm-modal .adm-form footer>div{display:flex;gap:8px;margin-left:auto}
 .adm-modal .adm-form footer .adm-muted{margin-right:auto}
@@ -396,3 +398,33 @@
 }
 @media (max-width:520px){.adm-stats{grid-template-columns:1fr 1fr;gap:8px}.adm-stat{padding:14px}.adm-stat strong{font-size:28px}.adm-facts{grid-template-columns:1fr}.adm-form-row{grid-template-columns:1fr}.adm-funnel li{grid-template-columns:104px minmax(0,1fr) 28px}.adm-drawer{padding:14px 18px 40px}}
 @media (prefers-reduced-motion:reduce){.adm-root *,.adm-root *::before,.adm-modal{animation:none!important;transition:none!important}}
+/* Send an email: pick a preset on the left, the exact email on the right. */
+.adm-modal.wide:has(.adm-mail){width:min(1000px,calc(100vw - 32px))}
+.adm-mail{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:22px;align-items:stretch}
+.adm-mail>footer{grid-column:1/-1}
+.adm-mail-fields{display:grid;gap:10px;align-content:start}
+.adm-mail-label{font-size:12.5px;color:var(--a-soft);margin-top:4px}
+.adm-mail-to{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--a-line-2);border-radius:12px;background:var(--a-field);min-width:0}
+.adm-mail-to>.adm-mail-who{display:grid;gap:2px;min-width:0;flex:1}
+.adm-mail-to strong{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-mail-to small{font-size:12px;color:var(--a-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-mail-picker{display:grid;gap:6px}
+.adm-mail-picker .adm-search{width:100%}
+.adm-mail-results{display:grid;gap:2px;padding:4px 8px;border:1px solid var(--a-line);border-radius:12px;background:#171716}
+.adm-mail-results .adm-muted{padding:8px 0;font-size:12.5px}
+.adm-root .adm-mail-results button.adm-person.link{margin:0;padding:7px 8px}
+.adm-root .adm-mail-results button.adm-person.link:disabled{opacity:.45;cursor:not-allowed}
+.adm-mail-presets{display:grid;gap:6px}
+.adm-root .adm-mail-presets button{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;justify-items:start;gap:3px;width:100%;text-align:left;white-space:normal;padding:11px 13px 11px 36px;border-radius:12px;background:var(--a-field);border-color:var(--a-line);position:relative}
+.adm-mail-presets button::before{content:'';position:absolute;left:13px;top:13px;width:12px;height:12px;border-radius:50%;border:1.5px solid var(--a-line-2);transition:border-color .18s,box-shadow .18s,background .18s}
+.adm-root .adm-mail-presets button.on{border-color:#6a6a64;background:#1f1f1d}
+.adm-mail-presets button.on::before{border-color:var(--a-ink);background:var(--a-ink);box-shadow:inset 0 0 0 2.5px #1f1f1d}
+.adm-mail-presets strong{font-weight:500;font-size:13.5px}
+.adm-mail-presets small{font-size:12px;line-height:1.45;color:var(--a-muted)}
+.adm-mail-preview{align-self:stretch;display:grid;grid-template-rows:auto 1fr;border:1px solid var(--a-line-2);border-radius:14px;overflow:hidden;background:#121211;min-height:460px}
+.adm-mail-subject{display:grid;gap:2px;padding:10px 14px;border-bottom:1px solid var(--a-line);background:#171716}
+.adm-mail-subject small{font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--a-faint)}
+.adm-mail-subject strong{font-weight:500;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-mail-preview iframe{width:100%;height:100%;min-height:420px;border:0;display:block;background:#121211;animation:adm-pop .28s var(--a-ease)}
+.adm-mail-frame-wait{padding:18px}
+@media (max-width:760px){.adm-mail{grid-template-columns:1fr}.adm-mail-preview{min-height:380px}.adm-mail-preview iframe{min-height:360px}}

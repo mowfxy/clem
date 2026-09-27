@@ -48,3 +48,16 @@ export async function demoApi(path:string,body?:any):Promise<any>{
   if(url.pathname==='/admin/audit')return {entries:audit};
   throw Error('Not in demo data');
 }
+
+export async function demoMail(path:string,body?:any):Promise<any>{
+  const {staffEmail,staffPresets}=await import('../../server/email-layout.ts');
+  await new Promise(r=>setTimeout(r,200));
+  if(path==='/presets')return {presets:staffPresets,ready:true};
+  const person=people.find(p=>p.id===body?.userId);
+  const mail=staffEmail(body.kind,{name:person?.display_name||'',version:body.version||'0.0.0',notes:body.notes||'',unsubscribe:'https://mowrai.com/api/email/unsubscribe'});
+  if(path==='/preview')return {subject:mail.subject,html:mail.html,to:person?.email||null};
+  // Nothing leaves the browser in demo mode; the send only lands in the local audit list.
+  const entry={id:'audit'+Date.now(),actor_email:'m@mohamedmowafy.com',action:'email.send',target:person!.id,detail:`${body.kind} · ${mail.subject} → ${person!.email}`,created_at:iso(0)};
+  audit.unshift(entry);
+  return {ok:true,to:person!.email,subject:mail.subject};
+}
