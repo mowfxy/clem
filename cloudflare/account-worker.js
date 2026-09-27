@@ -7,7 +7,7 @@ import {
   ownerEligible,
   verifySignature,
 } from "./account-policy.js";
-import { corsHeaders, HttpError, json, lemon, limit } from "./lib/http.js";
+import { corsHeaders, HttpError, json, lemon, limit, readJson } from "./lib/http.js";
 import {
   complimentary,
   hasActiveSubscription,
@@ -18,6 +18,10 @@ import {
 import { handleAdmin } from "./admin.js";
 import { handleSupport } from "./support.js";
 import { handleUsage } from "./usage.js";
+
+// core/sync.ts allows notes up to 200 x 30,000 characters (about 6 MB as plain JSON); allow that with headroom.
+// Stored compressed, a collection must still fit D1's 2 MB value limit, checked after packing.
+const SYNC_MAX_BYTES = 8_000_000, SYNC_MAX_STORED = 1_900_000;
 
 async function webhook(request, env) {
   const raw = await request.text();
@@ -126,13 +130,34 @@ async function route(request, env) {
         if (claims.sub !== user.id || claims.aal !== "aal2")
           return json({ error: "Authenticator verification required" }, 403);
       }
+      if (ownerEligible(user))
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO desktop_owner_grants(user_id,granted_at) VALUES(?,?)",
+        )
+          .bind(user.id, new Date().toISOString())
+          .run();
+      const grant = await env.DB.prepare(
+        "SELECT user_id FROM desktop_owner_grants WHERE user_id=?",
+      )
+        .bind(user.id)
+        .first();
+      const suspended = grant ? null : await suspension(env, user.id);
       if (path.startsWith("/admin/")) {
         if (!(await limit(env, "admin:" + user.id, 240)))
           return json({ error: "Try again shortly." }, 429);
+        // A suspended staff member loses the portal too (and so cannot lift their own suspension).
+        if (suspended) return json({ error: "This account is suspended. Contact support@mowrai.com." }, 403);
         return await handleAdmin(request, env, user, path, authorization);
       }
       if (!(await limit(env, "user:" + user.id, 60)))
         return json({ error: "Try again shortly." }, 429);
+      // Suspended people keep support (to read replies and appeal), announcements, their profile and the
+      // entitlement answer that explains the suspension. Everything else is blocked.
+      if (
+        suspended &&
+        !(path === "/entitlement" || path === "/announcements" || path.startsWith("/support/") || (path === "/profile" && request.method === "GET"))
+      )
+        return json({ error: "This account is suspended. Contact support@mowrai.com.", reason: "suspended" }, 403);
       const supportResponse = await handleSupport(request, env, user, path);
       if (supportResponse) return supportResponse;
       const usageResponse = await handleUsage(request, env, user, path);
@@ -175,9 +200,9 @@ async function route(request, env) {
             const part = await reader.read();
             if (part.done) break;
             bytes += part.value.length;
-            if (bytes > 1000000) {
+            if (bytes > SYNC_MAX_BYTES) {
               await reader.cancel();
-              return json({ error: "Sync data exceeds 1 MB." }, 413);
+              return json({ error: "Sync data exceeds 8 MB." }, 413);
             }
             raw += decoder.decode(part.value, { stream: true });
           }
@@ -206,6 +231,9 @@ async function route(request, env) {
         }
         // Stored deflated: skills and memory are text-heavy and compress several times over.
         const packed = await pack(JSON.stringify(data));
+        // The whole collection is one D1 value, and D1 caps a value at 2 MB.
+        if (packed.length > SYNC_MAX_STORED)
+          return json({ error: "This collection is too large to sync. Remove some items and try again." }, 413);
         const row = await env.DB.prepare(
           "INSERT INTO desktop_sync(user_id,kind,revision,payload,updated_at) SELECT ?,?,1,?,? WHERE ?=0 ON CONFLICT(user_id,kind) DO UPDATE SET revision=desktop_sync.revision+1,payload=excluded.payload,updated_at=excluded.updated_at WHERE desktop_sync.revision=? RETURNING revision",
         )
@@ -241,20 +269,8 @@ async function route(request, env) {
               409,
             );
       }
-      if (ownerEligible(user))
-        await env.DB.prepare(
-          "INSERT OR IGNORE INTO desktop_owner_grants(user_id,granted_at) VALUES(?,?)",
-        )
-          .bind(user.id, new Date().toISOString())
-          .run();
-      const grant = await env.DB.prepare(
-        "SELECT user_id FROM desktop_owner_grants WHERE user_id=?",
-      )
-        .bind(user.id)
-        .first();
       const comp = !grant && (await complimentary(env, user.id));
       const paid = hasActiveSubscription(await subscriptionsFor(env, user.id));
-      const suspended = grant ? null : await suspension(env, user.id);
       // Mowr is free: every signed-in account that is not suspended has access.
       const active = !suspended;
       if (path === "/entitlement") {
@@ -307,7 +323,7 @@ async function route(request, env) {
               : { step: 0, username: "", displayName: "", memory: true },
           );
         }
-        const body = await request.json(),
+        const body = await readJson(request),
           username = normalizeUsername(body.username);
         if (
           !validUsername(username) ||

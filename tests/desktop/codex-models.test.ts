@@ -192,3 +192,21 @@ test("Claude's stream-json events become the same short progress labels as ChatG
   assert.equal(claudeStatus({ type: "assistant", message: { content: [{ type: "server_tool_use", name: "web_search", input: { query: "krebs cycle video" } }] } }), "Searching the web for “krebs cycle video”…");
   assert.equal(claudeStatus({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hi" } } }), null);
 });
+test("the Codex turn limit counts inactivity, not total time", async () => {
+  const { streamTurn } = await import("../../desktop/codex-stream.ts");
+  let listener: any;
+  const server: any = {
+    ready: Promise.resolve(), activeThreads: 1, close() {},
+    subscribe(_id: string, l: any) { listener = l; return () => {}; },
+    async request(method: string) { return method === "turn/start" ? { turn: { id: "t" } } : {}; },
+  };
+  let text = "";
+  const turn = streamTurn(server, { threadId: "th" }, "hi", undefined, [], (t) => { text += t; }, () => false, {}, 80);
+  // Output keeps arriving for well past the 80 ms limit, so the turn must not time out.
+  for (let i = 0; i < 6; i++) { await new Promise((r) => setTimeout(r, 40)); listener.onMessage("item/agentMessage/delta", { itemId: "a", delta: "x" }); }
+  listener.onMessage("turn/completed", { turn: { status: "completed" } });
+  await turn;
+  assert.equal(text, "xxxxxx");
+  // With nothing arriving, the same limit ends the turn.
+  await assert.rejects(streamTurn(server, { threadId: "th" }, "hi", undefined, [], () => {}, () => false, {}, 50), /timed out/);
+});

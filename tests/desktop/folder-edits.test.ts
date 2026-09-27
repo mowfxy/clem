@@ -58,3 +58,15 @@ test("undo refuses to overwrite newer work and new files are removed on undo", a
     await assert.rejects(() => applyChange(folders, "chat:a", { path: "src/app.py", find: "not there", replace: "x" }), /no longer in the file/);
   } finally { await rm(base, { recursive: true, force: true }); }
 });
+
+test("a new file cannot be created through a linked subfolder that points outside", async () => {
+  const { base, root, other, folders } = await workspace();
+  try {
+    const { symlink } = await import("node:fs/promises");
+    await symlink(other, join(root, "escape"), "junction");
+    await assert.rejects(() => applyChange(folders, "chat:a", { path: "escape/new/notes.txt", content: "leak" }), /not in a linked folder/);
+    assert.equal(existsSync(join(other, "new")), false);
+    await applyChange(folders, "chat:a", { path: "src/new/notes.txt", content: "ok" });
+    assert.equal(await readFile(join(root, "src", "new", "notes.txt"), "utf8"), "ok");
+  } finally { await rm(base, { recursive: true, force: true }); }
+});

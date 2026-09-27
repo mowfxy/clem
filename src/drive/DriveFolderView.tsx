@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icons";
 import { DriveLogo } from "../BrandLogos";
 import { DriveIcon, kindName } from "./DriveIcon";
@@ -18,12 +18,17 @@ export function DriveFolderView({ folderId, folderName, onOpen, onAsk, onChangeF
   const { connected } = useDrive();
   const [items, setItems] = useState<DriveItem[] | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [at, setAt] = useState("");
+  // Only the newest request may update the view, so a slow answer for a previous folder never shows here.
+  const request = useRef(0);
   async function load(refresh = false) {
+    const mine = ++request.current;
     setBusy(true);
-    try { const r = await driveFolder(folderId, "", refresh); setItems(r.items); setError(""); onItems?.(r.items); }
-    catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "")); }
-    finally { setBusy(false); }
+    try { const r = await driveFolder(folderId, "", refresh); if (mine !== request.current) return; setItems(r.items); setError(""); onItems?.(r.items); }
+    catch (e) { if (mine === request.current) setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "")); }
+    finally { if (mine === request.current) setBusy(false); }
   }
+  // A different folder starts fresh: its own items, from its top level.
+  useEffect(() => { request.current++; setItems(null); setAt(""); setError(""); setBusy(false); }, [folderId]);
   useEffect(() => { if (connected !== false) void load(); const t = setInterval(() => { if (!document.hidden) void load(true); }, 5 * 60_000); return () => clearInterval(t); }, [folderId, connected]);
   const full = (i: DriveItem) => (i.path ? i.path + " / " : "") + i.name;
   const here = (items || []).filter((i) => (i.path || "") === at).sort((a, b) => Number(!!b.folder) - Number(!!a.folder) || a.name.localeCompare(b.name));
