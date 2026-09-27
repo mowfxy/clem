@@ -5,7 +5,7 @@ import "./slash.css";
 
 /** A command as it appears in the composer and in a sent message: its icon and name in a small box. */
 export function CommandChip({ command, onRemove }: { command: SlashCommand; onRemove?: () => void }) {
-  const inner = <><Icon name={command.icon} size={15} /><span>{command.label}</span></>;
+  const inner = <><Icon name={command.icon} size={16} /><span>{command.label}</span></>;
   return onRemove
     ? <button type="button" className="command-chip" title={`${command.description} · click to remove`} aria-label={`${command.label} command, remove`} onClick={onRemove}>{inner}</button>
     : <span className="command-chip" title={command.description}>{inner}</span>;
@@ -42,7 +42,7 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
           {options.map((c, i) => (
             <button type="button" role="option" key={c.id} aria-selected={i === at} className={i === at ? "on" : ""}
               onMouseDown={(e) => { e.preventDefault(); choose(c); }} onMouseEnter={() => setIndex(i)}>
-              <span className="slash-icon"><Icon name={c.icon} size={17} /></span>
+              <span className="slash-icon"><Icon name={c.icon} size={19} /></span>
               <span className="slash-name">/{c.id}</span>
               <span className="slash-desc">{c.description}</span>
             </button>
