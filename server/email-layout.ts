@@ -33,6 +33,26 @@ ${token}${button}${fallback}${small}
 const escape=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 export type Email={subject:string;text:string;html:string};
 
+/** Supabase's templates plus a few notices, as file: [art, title, body, button label, button url, note, code]. */
+export const templates:Record<string,[string,string,string,string,string,string,string?]>={
+ 'confirm-signup':['envelope','Confirm your email','One click and your workspace is ready.','Confirm email',LINK,'Didn’t sign up? You can ignore this email.'],
+ 'reset-password':['key','Reset your password','Choose a new password with the link below.','Reset password',LINK,'Didn’t ask for this? Ignore it and nothing changes.'],
+ 'magic-link':['door','Your sign-in link','Open it in the browser where you asked for it.','Sign in',LINK,'Never forward this email.'],
+ 'change-email':['swap','Confirm your new email','Confirm the change to {{ .NewEmail }}.','Confirm change',LINK,'Didn’t ask for this? Contact support.'],
+ 'invite':['invite','You’re invited to Mowr','Your space to think is waiting.','Accept invitation',LINK,''],
+ 'reauthentication':['keypad','Confirm it’s you','Enter this code in Mowr.','','','Never share this code.','{{ .Token }}'],
+ 'password-changed':['shield','Your password was changed','If this was you, you’re all set.','Security settings',APP,'Wasn’t you? Reset your password now.'],
+ 'email-changed':['swap','Your email was changed','Your account now uses a new email address.','','','Wasn’t you? Contact support right away.'],
+ 'identity-linked':['link','A sign-in method was added','A new way to sign in was linked to your account.','','','Wasn’t you? Review your security settings.'],
+ 'identity-unlinked':['unlink','A sign-in method was removed','A linked sign-in method was removed from your account.','','','Wasn’t you? Contact support.'],
+ 'mfa-enabled':['lock','Two-step verification is on','Your account is now better protected.','','',''],
+ 'mfa-disabled':['unlock','Two-step verification is off','A verification method was removed from your account.','','','Wasn’t you? Secure your account now.'],
+ 'support-received':['plane','We got your message','We’ll reply soon. Add details by replying to this email.','','','Never send passwords or keys.'],
+ 'automation-complete':['hourglass','Your routine is ready','Open Mowr to see the result.','Open Mowr',APP,''],
+ 'automation-failed':['untangle','A routine needs attention','Open Mowr to see what happened.','Open Mowr',APP,''],
+ 'account-deletion':['box','We received your deletion request','We’ll verify it before anything is removed.','','','Didn’t ask for this? Contact support.'],
+};
+
 export function welcomeEmail(name:string):Email{
  const first=name.trim().split(/\s+/)[0]||'there';
  const body='Your space to think is ready. Bring your notes, slides and questions, and Mowr turns them into answers, flashcards and worksheets.';
@@ -53,3 +73,28 @@ export function updateEmail(version:string,notes:string,unsubscribe:string):Emai
    footer:`<a href="${escape(unsubscribe)}" style="color:#6f6e68;text-decoration:underline">Stop update emails</a>`})};
 }
 
+
+/** A fixed template sent as is (no Supabase link or code), e.g. the routine notices. */
+export function templateEmail(file:string):Email{
+ const [art,title,body,label,url,note]=templates[file];
+ return {subject:title,text:[title,body,label&&`${label}: ${url}`,note].filter(Boolean).join('\n\n'),html:layout({art,title,body,label,url,note})};
+}
+
+/**
+ * Presets staff can send one person from the admin portal. Sign-in, reset and security emails are left out on purpose:
+ * Supabase sends those when the person acts, and their links only work in the browser that asked.
+ */
+export const staffPresets=[
+ {id:'welcome',label:'Welcome to Mowr',about:'The welcome email new accounts get.'},
+ {id:'update',label:'New version',about:'A new desktop version is out, with what changed.'},
+ {id:'automation-complete',label:'Routine ready',about:'A routine finished and its result is in Mowr.'},
+ {id:'automation-failed',label:'Routine needs attention',about:'A routine stopped and needs a look.'},
+ {id:'support-received',label:'We got your message',about:'Confirms a support message arrived.'},
+] as const;
+export type StaffPreset=typeof staffPresets[number]['id'];
+
+export function staffEmail(kind:StaffPreset,{name='',version='',notes='',unsubscribe=''}:{name?:string;version?:string;notes?:string;unsubscribe?:string}):Email{
+ if(kind==='welcome')return welcomeEmail(name);
+ if(kind==='update')return updateEmail(version,notes,unsubscribe);
+ return templateEmail(kind);
+}
