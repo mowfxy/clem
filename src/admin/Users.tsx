@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {adminApi,type Person,type Staff} from './api';
 import {Avatar,Badge,Empty,ErrorNote,I,Modal,PageHead,PersonStatus,Skeleton,ago,copy,date,useLoad,useToast,who,Select} from './ui';
 import type {Go} from './AdminApp';
+import {SendEmail} from './Emails';
 
 const filters=[['all','Everyone'],['active','Active this week'],['new','New this week'],['setup','Setting up'],['suspended','Suspended']] as const;
 
@@ -40,7 +41,7 @@ type Detail={user:Person;owner:boolean;moderation:{status:string;reason:string;u
 function PersonDrawer({id,staff,onClose,onChanged,go}:{id:string;staff:Staff;onClose:()=>void;onChanged:()=>void;go:Go}){
   const toast=useToast();
   const {data,error,loading,reload}=useLoad(()=>adminApi<Detail>('/admin/users/'+id),[id]);
-  const [dialog,setDialog]=useState<null|'suspend'>(null);
+  const [dialog,setDialog]=useState<null|'suspend'|'email'>(null);
   const [busy,setBusy]=useState(false);
   const [note,setNote]=useState('');
   const admin=staff.role!=='support';
@@ -60,8 +61,9 @@ function PersonDrawer({id,staff,onClose,onChanged,go}:{id:string;staff:Staff;onC
         <div className="wide"><dt>User ID</dt><dd><button className="adm-mono" onClick={()=>copy(d.user.id,toast)} title="Copy ID">{d.user.id}<I name="copy" size={13}/></button></dd></div>
       </dl>
       {d.user.suspended&&d.moderation&&<div className="adm-alert danger"><I name="ban"/><div><strong>Suspended{d.moderation.until?` until ${date(d.moderation.until)}`:''}</strong><p>{d.moderation.reason}</p></div></div>}
-      {admin&&!d.owner&&<div className="adm-actions">
-        {d.user.suspended?<button disabled={busy} onClick={()=>act('unsuspend',{},'Suspension lifted')}><I name="check"/>Lift suspension</button>:<button className="danger" onClick={()=>setDialog('suspend')}><I name="ban"/>Suspend</button>}
+      {admin&&<div className="adm-actions">
+        <button disabled={!d.user.email} title={d.user.email?undefined:'No email on record'} onClick={()=>setDialog('email')}><I name="send"/>Send email</button>
+        {!d.owner&&(d.user.suspended?<button disabled={busy} onClick={()=>act('unsuspend',{},'Suspension lifted')}><I name="check"/>Lift suspension</button>:<button className="danger" onClick={()=>setDialog('suspend')}><I name="ban"/>Suspend</button>)}
       </div>}
       <section className="adm-drawer-section"><h3>Support cases</h3>
         {d.cases.length?d.cases.map(c=><button className="adm-row link" key={c.id} onClick={()=>go('cases',c.id)}><div><strong>{c.subject}</strong><small>{c.status} · {date(c.created_at)}</small></div><I name="arrow" size={15}/></button>):<p className="adm-muted">No cases.</p>}
@@ -73,6 +75,7 @@ function PersonDrawer({id,staff,onClose,onChanged,go}:{id:string;staff:Staff;onC
       {!!d.history.length&&<section className="adm-drawer-section"><h3>History</h3><ul className="adm-timeline compact">{d.history.map(h=><li key={h.id}><span className="dot"/><div><strong>{h.action.replace(/[._]/g,' ')}</strong><small>{h.actor_email} · {ago(h.created_at)}</small>{h.detail&&<p>{h.detail}</p>}</div></li>)}</ul></section>}
     </>}
   </aside>
+  {dialog==='email'&&data&&<SendEmail person={data.user} onClose={()=>setDialog(null)} onSent={()=>void reload()}/>}
   {dialog==='suspend'&&<Modal title="Suspend this account" onClose={()=>setDialog(null)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);const days=String(f.get('days'));void act('suspend',{reason:String(f.get('reason')),days:days==='forever'?null:Number(days)},'Account suspended');}}>
     <label>Reason shown to the person<textarea name="reason" required minLength={3} maxLength={500} rows={3} placeholder="Explain what happened and how to appeal."/></label>
     <label>Length<Select name="days" defaultValue="7" options={[{value:'1',label:'1 day'},{value:'7',label:'1 week'},{value:'30',label:'1 month'},{value:'forever',label:'Until lifted'}]}/></label>

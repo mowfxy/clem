@@ -2,6 +2,7 @@ import {subscriptionsRouter,subscriptionReady,cleanExpiredSubscriptionSessions} 
 import {filesRouter} from './files.ts';
 import {securityRouter,supportRouter,emailAllowed} from './security.ts';
 import {emailRouter} from './emails.ts';
+import {staffEmailRouter} from './staff-emails.ts';
 import {databaseReady} from './db.ts';
 import {DatabaseError} from './d1.ts';
 import {NeonDbError} from '@neondatabase/serverless';
@@ -81,6 +82,7 @@ app.use((req,res,next)=>{
 app.use('/api/subscriptions',subscriptionsRouter);
 app.use('/api/security',securityRouter);
 app.use('/api/support',supportRouter);
+app.use('/api/email/staff',staffEmailRouter());
 app.use('/api/email',emailRouter);
 if(supabaseConfig())app.use('/api/files',filesRouter);
 const localLimits = new Map<string, { count: number; until: number }>();
