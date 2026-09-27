@@ -173,8 +173,6 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .sp-top{display:flex;flex-direction:column}
 .sp-top>.sp-activity{order:-1;align-self:flex-end;display:flex;align-items:center;gap:14px;margin:-10px 4px 10px 0}
 .sp-top>.sp-activity figcaption{margin:0}
-/* When the window leaves room beside the 1080px page (sidebar is 244px), the graph moves into the empty space right of the card. */
-@media (min-width:1720px){.sp-top{position:relative}.sp-top>.sp-activity{position:absolute;left:calc(100% + 34px);top:34px;margin:0;flex-direction:column;align-items:flex-start;gap:8px}.sp-top>.sp-activity figcaption{margin-left:8px}.sp-top>.sp-activity svg{width:200px;height:auto}}
 .sp-activity{--ink:#eeede7;--glow:#ffffff;position:relative;margin:0;padding:0;cursor:crosshair}
 .sp-activity.tone-green{--ink:#8fe0a1;--glow:#6fdc8c}
 .sp-activity figcaption{font-size:10.5px;font-weight:500;letter-spacing:.9px;text-transform:uppercase;color:#8f8e88;margin:0 0 2px 8px;user-select:none}
