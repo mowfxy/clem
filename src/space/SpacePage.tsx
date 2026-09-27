@@ -7,13 +7,14 @@ import {chatPreview} from '../../core/chat-title';
 import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
+import {MemoryConversation} from '../MemoryConversation';
 import {InstructionsDialog,InstructionsGlyph} from './InstructionsDialog';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
 import {DriveFolderView} from '../drive/DriveFolderView';
 import type {DriveItem} from '../drive/drive';
 import './space.css';
 
-export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files';
+export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'memory';
 type Linked={id:string;scope:string;path:string};
 export type SpaceActions={
   onAsk:(prompt:string)=>void;
@@ -80,6 +81,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
   const [review,setReview]=useState(0);
   const [instructions,setInstructions]=useState(false);
   const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length]]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length]];
+  if(desktop)tabs.push(['memory','Memory']);
   const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
@@ -159,6 +161,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions}/>}
+      {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
   </div>;

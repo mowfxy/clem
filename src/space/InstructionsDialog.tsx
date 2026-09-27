@@ -1,8 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Icon} from '../Icons';
-import {desktop} from '../desktop/bridge';
-import {MemoryConversation} from '../MemoryConversation';
 import type {Space} from '../../core/types';
 import '../dialogs.css';
 
@@ -45,10 +43,6 @@ export function InstructionsDialog({space,onSave,onClose}:{space:Space;onSave:(m
           <button className="contact-primary" disabled={!dirty}>Save</button>
         </footer>
       </form>
-      {desktop&&<section className="instructions-memory">
-        <span className="sp-eyebrow">What Mowr remembers here</span>
-        <div className="sp-memory"><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></div>
-      </section>}
     </dialog>,
     document.body,
   );
