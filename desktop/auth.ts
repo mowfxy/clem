@@ -56,6 +56,12 @@ export class DesktopAuth {
       return user.factors?.some((f) => f.status === "verified") && aal !== "aal2" ? null : user;
     } catch { return null; }
   }
+  /** Signing out always ends the session on this PC, even when the server could not be told (offline). */
+  async forget() {
+    this.verified = null; this.known = null;
+    const key = (this.client?.auth as unknown as { storageKey?: string })?.storageKey;
+    if (key) await this.vault.write("auth-" + Buffer.from(key).toString("hex"), null).catch(() => {});
+  }
   /** Server-verified user. A verification is reused for 60 s for the same access token,
    *  so a burst of requests (one chat message makes several) costs one network check.
    *  When the auth server cannot be reached (offline, timeout, 5xx), the last verified user is kept so local work

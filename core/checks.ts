@@ -18,6 +18,8 @@ export type CheckResult = { label: string; expr: string; unit: string; claimed: 
 /** Power of ten of the last significant digit of a number as written: 40.77 → -2, 41 → 0, 1.5e-7 → -8.
  *  Trailing zeros of an integer (1200) are read as rounding, but at least two significant digits are assumed. */
 function lastDigitPlace(value: number) {
+  // A claimed 0 says nothing about precision, so it gets no rounding allowance.
+  if (value === 0) return -Infinity;
   const [mantissa, exp] = String(Math.abs(value)).toLowerCase().split('e');
   const [whole, fraction = ''] = mantissa.split('.');
   if (exp !== undefined) return Number(exp) - fraction.length;

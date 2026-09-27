@@ -469,11 +469,15 @@ app.post("/api/scopes", async (req, res) => {
 async function requireDriveUser(req: express.Request, res: express.Response) {
   if (!req.headers.authorization) return requireUser(req, res);
   const token = req.headers.authorization.match(/^Bearer ([^ ]+)$/)?.[1];
-  // The emailed code is a second factor for web cookie sessions. A bearer token comes from the desktop app's own
-  // Supabase sign-in (authenticator users still need aal2, checked in supabaseIdentity) and is never sent ambiently.
   const user = token ? await supabaseIdentity(token) : null;
   if (!user) {
     res.status(401).json({error: "Complete account verification before using Drive."}); return null;
+  }
+  // A bearer token proves only the password (and authenticator, if any). With email two-step on, the emailed code
+  // is the second factor, and the desktop has no way to present it yet, so Drive stays closed rather than bypassing it.
+  const [security] = await db()`SELECT email_mfa FROM mowr_security WHERE owner_id=${user.id}`;
+  if (security?.email_mfa) {
+    res.status(401).json({error: "Google Drive in the app is not available yet for accounts with email two-step verification."}); return null;
   }
   const rows = await db()`SELECT disabled FROM mowr_users WHERE id=${user.id}`;
   if (!rows.length || rows[0].disabled) { res.status(401).json({error: "Sign in again."}); return null; }

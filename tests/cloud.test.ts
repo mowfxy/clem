@@ -221,10 +221,10 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
   assert.equal((await rawFetch(base+'connection',{method:'DELETE',headers})).status,200);assert.ok(revoked);
   assert.equal((await pg.query("SELECT * FROM mowr_credentials WHERE owner_id=$1 AND provider='drive'",['supabase:'+uid])).rows.length,0);
   await pg.query('INSERT INTO mowr_security(owner_id,email_mfa) VALUES($1,true)',['supabase:'+uid]);
-  // The emailed code guards web cookie sessions; the desktop's own bearer sign-in is not subject to it.
+  // With email two-step on, neither a cookie session without the code nor a bearer token (which cannot carry it) reaches Drive.
   assert.equal((await rawFetch(base+'files',{headers:{Cookie:cookie}})).status,401);
-  assert.equal((await rawFetch(base+'files',{headers})).status,400);
-  assert.match((await (await rawFetch(base+'files',{headers})).json()).error,/Connect Google Drive/);
+  assert.equal((await rawFetch(base+'files',{headers})).status,401);
+  assert.match((await (await rawFetch(base+'files',{headers})).json()).error,/email two-step/);
  }finally{globalThis.fetch=rawFetch;for(const name of names){if(previous[name]===undefined)delete process.env[name];else process.env[name]=previous[name];}}
 });
 
