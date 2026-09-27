@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mowrSkillsFor,mowrSkillText,documentsNote,capabilityIndex} from '../core/mowr-skills.ts';
+import {mowrSkills,mowrSkillsFor,mowrSkillText,documentsNote,capabilityIndex,telegramInstructions,type SkillContext} from '../core/mowr-skills.ts';
+import {parseChecks} from '../core/checks.ts';
 import {relevantSkills,builtinSkills} from '../core/skills.ts';
 import {isEditRequest,isDocumentChange} from '../src/files/intent.ts';
 import {validatePlan,parseLeadPlan,plannerInstructions,MIN_STEPS,MAX_STEPS} from '../core/orchestration.ts';
@@ -22,7 +23,7 @@ test('document revision is taught only when the conversation has documents',()=>
 });
 test('the capability index is always present and short',()=>{
   assert.ok(mowrSkillText('hello').startsWith(capabilityIndex));
-  assert.ok(capabilityIndex.length<1600);
+  assert.ok(capabilityIndex.length<2000);
 });
 test('every built-in skill is detailed',()=>{
   for(const s of builtinSkills){assert.ok(s.steps.length>=5,s.id);assert.ok(s.steps.every(x=>x.length>20),s.id);}
@@ -43,4 +44,82 @@ test('long tasks have as many steps as the work needs',()=>{
   assert.equal(MIN_STEPS,2);
   assert.match(plannerInstructions,/Decide how many steps/);
   void validatePlan;
+});
+test('each request gets the playbooks it needs and not the ones it does not',()=>{
+  const ids=(q:string,c:SkillContext={})=>mowrSkillsFor(q,c).map(s=>s.id);
+  const cases:[string,SkillContext,string[],string[]][]=[
+    ['give me youtube videos explaining this',{},['videos'],['visuals','study']],
+    ['every morning at 8, summarise the latest AI news',{},['automations','web'],['documents']],
+    ['can you do flashcards on the krebs cycle',{subject:true},['study'],[]],
+    ['what does week 3 say?',{drive:true},['drive'],[]],
+    ['fix the bug in utils.ts',{folders:true},['folders'],[]],
+    ['fix the bug in utils.ts',{},[],['folders']],
+    ['remember that I am a second-year physics student',{},['memory'],['automations']],
+    ['what files can you see?',{},['files','context'],[]],
+    ['share my flashcards with my classmates',{},['study-packs'],[]],
+    ['What is the difference between a subject and a project in Mowr?',{},['spaces'],[]],
+    ['how do I use Mowr on telegram',{},['telegram'],[]],
+    ['create a skill for grading essays',{},['own-skills'],[]],
+    ['this is too big, can you run it as a long task',{},['long-tasks'],[]],
+    ['make a pdf study guide on cell biology with a mind map',{},['documents','visuals'],[]],
+    ['export this as a powerpoint',{},['export'],['documents']],
+    ['make it longer',{documents:true},['revise'],[]],
+    ['what is an ion channel',{},[],['videos']],
+    ['explain these notes',{},[],['documents']],
+    ['what is my daily routine',{},[],['automations']],
+    ['what is the cube root of 27',{},[],['3d']],
+    ['help me with my project',{},[],['spaces']],
+    ['hello',{},[],['videos','documents','files','web','memory']],
+  ];
+  for(const [q,c,yes,no] of cases){
+    const got=ids(q,c);
+    for(const id of yes) assert.ok(got.includes(id),`${q} should bring ${id}, got ${got}`);
+    for(const id of no) assert.ok(!got.includes(id),`${q} should not bring ${id}, got ${got}`);
+  }
+  assert.deepEqual(ids('hello'),[]);
+});
+test('explicit feature requests survive the per-request limit',()=>{
+  const busy='Every Monday at 7, look up the latest papers and news on the physics of 3d magnetic field visuals, make a pdf report with a chart and cite sources from my attached files';
+  const all=mowrSkillsFor(busy,{},99).map(s=>s.id);
+  assert.ok(all.length>6,'the request matches more playbooks than the limit');
+  const chosen=mowrSkillsFor(busy).map(s=>s.id);
+  assert.equal(chosen.length,6);
+  assert.equal(chosen[0],'automations');
+  assert.ok(chosen.includes('documents'));
+  assert.ok(!chosen.includes('notation'),'general helpers give way to the features asked for');
+});
+test('playbooks are complete, distinct and listed in the capability index',()=>{
+  assert.equal(new Set(mowrSkills.map(s=>s.id)).size,mowrSkills.length);
+  for(const s of mowrSkills){assert.ok(s.steps.length>=3,s.id);assert.ok(s.steps.every(x=>x.length>30),s.id);}
+  for(const word of ['Web search','Videos','Google Drive','Documents','Visuals','Checks','Files','Subjects','Memory','Routines','Long tasks','Export','```edit']) assert.ok(capabilityIndex.includes(word),word);
+  assert.ok(capabilityIndex.length<2000);
+});
+test('playbook formats match the parsers that read them',()=>{
+  const numbers=mowrSkills.find(s=>s.id==='numbers')!.steps.join('\n');
+  const example=/(\{"checks":\[.*?\]\})/.exec(numbers)![1];
+  assert.deepEqual(parseChecks(example).map(r=>r.status),['ok']);
+  const automations=mowrSkills.find(s=>s.id==='automations')!.steps.join('\n');
+  for(const key of ['"name"','"prompt"','"repeat"','"time"','"day"','09:00']) assert.ok(automations.includes(key),key);
+  const folders=mowrSkills.find(s=>s.id==='folders')!.steps.join('\n');
+  for(const key of ['"path"','"find"','"replace"','"summary"','"content"','256 KB','exactly once']) assert.ok(folders.includes(key),key);
+  const visuals=mowrSkills.find(s=>s.id==='visuals')!.steps.join('\n');
+  for(const key of ['"title"','6 sliders','24 nodes']) assert.ok(visuals.includes(key),key);
+  const study=mowrSkills.find(s=>s.id==='study')!.steps.join('\n');
+  assert.match(study,/no set was saved/);assert.match(study,/\/flashcards/);
+  assert.match(telegramInstructions,/plain text/);assert.match(telegramInstructions,/```visual/);
+});
+test('built-in workflows are not triggered by passing words',()=>{
+  const ids=(q:string)=>relevantSkills(q).map(s=>s.id);
+  assert.ok(!ids('find a video under 20 minutes on entropy').includes('meeting-notes'));
+  assert.ok(ids('write up the minutes of the meeting').includes('meeting-notes'));
+  assert.ok(!ids('explain page 3 of the pdf').includes('report'));
+  assert.ok(ids('turn this into a pdf report').includes('report'));
+  assert.ok(!ids('explain subject-verb agreement and relative clauses').includes('legal'));
+  assert.ok(ids('draft an employment agreement for a freelancer').includes('legal'));
+  assert.ok(ids('help me with statistics homework').includes('analysis'));
+  assert.ok(!ids('show me videos on photosynthesis').includes('visual'));
+  assert.ok(!ids('find the video about entropy').includes('problem-solving'));
+  assert.ok(ids('find the derivative of x^2 sin x').includes('problem-solving'));
+  assert.ok(!ids('revise the document with a new intro').includes('tutor'));
+  assert.equal(ids('make a pdf study guide on cell biology')[0],'study-guide');
 });
