@@ -4,11 +4,14 @@ export function Illustration({
   scene,
   className = "",
   ambient = false,
+  still = false,
   viewBox = "0 0 480 390",
 }: {
   scene: Scene;
   className?: string;
   ambient?: boolean;
+  /** Shows the finished drawing as a single still frame, with no motion. */
+  still?: boolean;
   /** Crops the 480×390 stage, e.g. to show one prop at a small size. */
   viewBox?: string;
 }) {
@@ -26,9 +29,8 @@ export function Illustration({
     const quiet = () =>
       media.matches || document.documentElement.dataset.quiet === "true";
     const paint = (seconds: number) => {
-      const time = ambient
-        ? 6 + (1 - Math.cos((seconds * Math.PI) / 5)) * 2
-        : seconds;
+      // Ambient scenes open on the finished drawing and run its idle loop forward from there.
+      const time = ambient ? 6 + seconds : seconds;
       svg.innerHTML = filmFrame(scene, time, id);
       svg.dataset.frame = seconds.toFixed(2);
       svg.dataset.phase = seconds < 6 ? "action" : "idle";
@@ -41,16 +43,16 @@ export function Illustration({
     const tick = (now: number) => {
       if (last) elapsed += Math.min(now - last, 100) / 1000;
       last = now;
-      const cel = Math.floor(elapsed * 12);
+      const cel = Math.floor(elapsed * 24);
       if (cel !== lastCel) {
-        paint(cel / 12);
+        paint(cel / 24);
         lastCel = cel;
       }
       raf = requestAnimationFrame(tick);
     };
     const sync = () => {
       stop();
-      if (quiet()) {
+      if (still || quiet()) {
         if (media.matches || document.documentElement.dataset.quiet === "true")
           paint(6);
         return;
@@ -80,7 +82,7 @@ export function Illustration({
       document.removeEventListener("visibilitychange", sync);
       media.removeEventListener("change", sync);
     };
-  }, [scene, id, ambient]);
+  }, [scene, id, ambient, still]);
   return (
     <div ref={ref} className={`ink-scene ink-${scene} ${className}`}>
       <svg viewBox={viewBox} aria-hidden="true" />

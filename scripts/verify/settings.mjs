@@ -276,7 +276,13 @@ try {
   await page.getByRole('button',{name:'Retry sign-in',exact:true}).click();
   await page.getByText('RETRY-CODE',{exact:true}).waitFor();
   await page.keyboard.press('Escape');
-  for(const [tab,scene] of [['Memory','orchestrate'],['Automations','schedule']]){
+  // General, Security, Data and Help move; the other tabs keep a still drawing.
+  {
+   await page.locator('.settings-tabs').getByRole('button',{name:'Memory',exact:true}).click();
+   const art=page.locator('.settings-feature-art svg');await art.waitFor();
+   const before=await art.innerHTML();await page.waitForTimeout(600);assert.equal(await art.innerHTML(),before);
+  }
+  for(const tab of ['General','Security']){
    await page.locator('.settings-tabs').getByRole('button',{name:tab,exact:true}).click();
    const art=page.locator('.settings-feature-art svg');await art.waitFor();
    const before=await art.innerHTML();await page.waitForTimeout(600);assert.notEqual(await art.innerHTML(),before);

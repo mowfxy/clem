@@ -5,20 +5,20 @@ import type {Scene} from '../vectorFilm';
 import './settings-v2.css';
 
 /** Settings tabs, grouped. Names are stable: other screens open a tab by name. */
-export const settingsGroups:{label:string;tabs:{name:string;icon:string;scene:Scene;line:string}[]}[]=[
+export const settingsGroups:{label:string;tabs:{name:string;icon:string;scene:Scene;line:string;still?:boolean}[]}[]=[
  {label:'You',tabs:[
-  {name:'General',icon:'account',scene:'portrait',line:'Your profile and how Mowr feels.'},
-  {name:'Security',icon:'lock',scene:'shield',line:'Sign-in, password and verification.'},
+  {name:'General',icon:'account',scene:'profile',line:'Your profile and how Mowr feels.'},
+  {name:'Security',icon:'lock',scene:'safe',line:'Sign-in, password and verification.'},
  ]},
  {label:'Intelligence',tabs:[
-  {name:'Models',icon:'models',scene:'plug',line:'Connected accounts and usage.'},
-  {name:'Memory',icon:'subjects',scene:'jar',line:'What Mowr keeps in mind for you.'},
-  {name:'Automations',icon:'clock',scene:'hourglass',line:'Routines you set up in a chat.'},
+  {name:'Models',icon:'models',scene:'plug',still:true,line:'Connected accounts and usage.'},
+  {name:'Memory',icon:'subjects',scene:'jar',still:true,line:'What Mowr keeps in mind for you.'},
+  {name:'Automations',icon:'clock',scene:'hourglass',still:true,line:'Routines you set up in a chat.'},
  ]},
  {label:'Connections',tabs:[
-  {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Mowr can read from.'},
-  {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Mowr can read.'},
-  {name:'Telegram',icon:'chat',scene:'plane',line:'Message Mowr from your phone.'},
+  {name:'Connectors',icon:'connectors',scene:'link',still:true,line:'Apps Mowr can read from.'},
+  {name:'Linked folders',icon:'projects',scene:'folder',still:true,line:'Folders on this PC that Mowr can read.'},
+  {name:'Telegram',icon:'chat',scene:'plane',still:true,line:'Message Mowr from your phone.'},
  ]},
  {label:'Data',tabs:[
   {name:'Data & privacy',icon:'files',scene:'house',line:'Your work stays on this device.'},
@@ -38,7 +38,7 @@ export function SettingsNav({active,onSelect}:{active:string;onSelect:(name:stri
 export function SettingsHead({name}:{name:string}){
  const t=settingsTab(name);
  return <header className="settings-head" key={t.name}>
-  <Illustration scene={t.scene} ambient className="settings-feature-art"/>
+  <Illustration scene={t.scene} ambient still={t.still} className="settings-feature-art"/>
   <div><h2>{t.name}</h2><p>{t.line}</p></div>
  </header>;
 }
