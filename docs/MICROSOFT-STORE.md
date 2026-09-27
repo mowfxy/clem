@@ -5,7 +5,7 @@ The Store build is a separate MSIX package; the website keeps shipping the NSIS 
 | File | What it is |
 | --- | --- |
 | `electron-builder.store.cjs` | Store config: Partner Center identity, `appx` target, package version (default `1.0.0.0`, or `MOWR_STORE_VERSION`) |
-| `build/appx/` | Store logos and tiles, made by `python scripts/store-assets.py` from `public/logo.png` |
+| `build/appx/`, `desktop/icon.ico` | Icons and tiles: `node scripts/render-icons.mjs` (draws the app's mark from `public/logo.svg` at every size), then `python scripts/store-assets.py` (tiles) |
 | `scripts/store-test-sign.ps1` | Signs a *copy* of the package with a self-signed test certificate, for installing on your own PC |
 
 ## Build
