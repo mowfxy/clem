@@ -367,7 +367,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const timer=setTimeout(()=>{void desktop!.invoke({action:"essentialSync",...JSON.parse(essentialData)}).then(result=>{
       if(!active)return;
       if(result.error)setToast(result.error);
-      setState(current=>JSON.stringify(essentials(current))===essentialData?applyEssentials(current,result):current);
+      // Through patch, so stateRef stays current and a streaming chat's next patch cannot overwrite the synced notes.
+      patch(current=>JSON.stringify(essentials(current))===essentialData?applyEssentials(current,result):current);
     }).catch(e=>{if(active)setToast("Saved locally. "+e.message);});},2000);
     return()=>{active=false;clearTimeout(timer);};
   },[essentialData,ready,session.user?.id]);
@@ -1203,6 +1204,10 @@ In this subject the learner keeps missing these questions in review; connect to 
   async function deleteCourse(space:Space){
     if(!await confirmDialog({title:`Delete ${space.name}?`,message:'Its chats, study sets and files are removed from this device. Export a ZIP first if you want to keep or share it.',confirm:'Delete',danger:true}))return;
     const owner=ownerRef.current,current=stateRef.current,ids=new Set(current.files.filter(f=>f.spaceId===space.id).map(f=>f.id));
+    // Earlier versions and saved specs go with their files.
+    const blobs=current.files.filter(f=>ids.has(f.id)).flatMap(f=>[f.id,'spec-'+f.id,...(f.versions||[]).flatMap(v=>[v.blob,'spec-'+v.blob])]);
+    // Answers still streaming into this space's chats stop; their updates would land on nothing.
+    for(const c of current.chats)if(c.spaceId===space.id)stopChat(c.id);
     try{
       await deleteWorkflowCheckpoints(owner,current.chats.filter(c=>c.spaceId===space.id).flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));
       const next={...current,essentialNotes:current.essentialNotes?.filter(n=>n.id!==space.id),spaces:current.spaces.filter(s=>s.id!==space.id).map(s=>({...s,sources:s.sources.filter(id=>!ids.has(id))})),chats:current.chats.filter(c=>c.spaceId!==space.id).map(c=>({...c,messages:c.messages.map(m=>({...m,attachments:m.attachments?.filter(id=>!ids.has(id))}))})),files:current.files.filter(f=>!ids.has(f.id)),studySets:current.studySets.filter(s=>s.spaceId!==space.id),automations:current.automations.filter(a=>a.spaceId!==space.id),visuals:current.visuals.filter(v=>!current.chats.some(c=>c.spaceId===space.id&&c.id===v.chatId))};
@@ -1210,8 +1215,9 @@ In this subject the learner keeps missing these questions in review; connect to 
       if(owner!==ownerRef.current)return;stateRef.current=next;setState(next);
       const persistence=saveQueue.current.then(()=>saveState(next,owner));saveQueue.current=persistence.catch(()=>{});await persistence;
       if(owner!==ownerRef.current)return;setModal(null);newChat();
-      const removed=await Promise.allSettled([...ids].map(id=>deleteBlob(id,owner)));
-      if(desktop){await desktop.invoke({action:'memoryClear',scope:`subject:${space.id}`});const folders=await desktop.invoke({action:'folders',scope:`subject:${space.id}`});for(const folder of folders)await desktop.invoke({action:'unlinkFolder',id:folder.id});}
+      const removed=await Promise.allSettled(blobs.map(id=>deleteBlob(id,owner)));
+      // Projects and subjects each keep memory and linked folders under their own scope.
+      if(desktop){const scope=`${space.kind}:${space.id}`;await desktop.invoke({action:'memoryClear',scope});const folders=await desktop.invoke({action:'folders',scope});for(const folder of folders)await desktop.invoke({action:'unlinkFolder',id:folder.id});}
       setToast(removed.some(x=>x.status==='rejected')?'Subject removed. Some unused files could not be deleted; check disk permissions.':'Subject and its local data removed.');
     }catch(e){setToast((e as Error).message);}
   }
@@ -2207,7 +2213,7 @@ In this subject the learner keeps missing these questions in review; connect to 
           e.target.value = "";
         }}
       />
-      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device. Saved files and memory are kept.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id)newChat();setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
+      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device. Saved files and memory are kept.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id)newChat();setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
       {modal && (
         <Modal
           title={
@@ -2390,6 +2396,11 @@ In this subject the learner keeps missing these questions in review; connect to 
                   setToast("A skill needs at least two meaningful steps.");
                   return;
                 }
+                // The sync schema allows 30 steps of 12 000 characters; a larger skill would stop skills and memory syncing.
+                if (steps.length > 30 || steps.some((x) => x.length > 12000)) {
+                  setToast("A skill can have up to 30 steps, each under 12,000 characters.");
+                  return;
+                }
                 patch((s) => ({
                   ...s,
                   skills: [
@@ -2475,7 +2486,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                       id: uid(),
                       name: s.name.slice(0, 100),
                       description: s.description.slice(0, 500),
-                      steps: s.steps.slice(0, 30),
+                      steps: s.steps.slice(0, 30).map((x: string) => x.slice(0, 12000)),
                       builtin: false,
                       category: "Workflow",
                       icon: "skills",

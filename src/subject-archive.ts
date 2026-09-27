@@ -76,6 +76,8 @@ export async function importSubject(file: File, owner: string) {
     space: {
       ...manifest.space,
       id: spaceId,
+      // Within the instructions editor's limit, which also keeps the note inside the sync schema (30 000 characters).
+      memory: manifest.space.memory.slice(0, 8000),
       folders: manifest.space.folders?.map((f) => ({ ...f, id: folderIds.get(f.id)!, parentId: f.parentId ? folderIds.get(f.parentId) ?? null : null })),
       sources: manifest.space.sources.flatMap((id) =>
         fileIds.has(id) ? [fileIds.get(id)!] : [],
