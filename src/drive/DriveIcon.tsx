@@ -37,7 +37,7 @@ function Glyph({ kind }: { kind: DriveKind }) {
     case "gslides": case "powerpoint": return <g><rect x="6" y="7.4" width="12" height="9.2" rx="1.3" fill="none" stroke={W} strokeWidth="1.6" /><rect x="8.6" y="10" width="6.8" height="4" rx=".6" fill={W} /></g>;
     case "gform": return <g fill={W}><circle cx="8.4" cy="8.6" r="1.1" /><circle cx="8.4" cy="12" r="1.1" /><circle cx="8.4" cy="15.4" r="1.1" /><rect x="10.6" y="7.9" width="6" height="1.5" rx=".6" /><rect x="10.6" y="11.3" width="6" height="1.5" rx=".6" /><rect x="10.6" y="14.7" width="6" height="1.5" rx=".6" /></g>;
     case "gdraw": return <path d="M7 16.5l1-3.4 6.8-6.8a1.7 1.7 0 012.4 2.4l-6.8 6.8z" fill={W} />;
-    case "pdf": return <text x="12" y="14.8" textAnchor="middle" fontFamily="'Segoe UI',Arial,sans-serif" fontWeight="800" fontSize="7.4" fill={W} letterSpacing=".2">PDF</text>;
+    case "pdf": return <text x="12" y="14.8" textAnchor="middle" fontFamily="'Mowafy Sans',Arial,sans-serif" fontWeight="800" fontSize="7.4" fill={W} letterSpacing=".2">PDF</text>;
     case "image": return <g><rect x="6" y="6.6" width="12" height="10.8" rx="1.6" fill="none" stroke={W} strokeWidth="1.6" /><circle cx="9.6" cy="10" r="1.3" fill={W} /><path d="M6.8 16.2l3.6-3.6 2.3 2.2 1.9-1.9 3 3.3z" fill={W} /></g>;
     case "video": return <path d="M9.4 7.6v8.8l7.2-4.4z" fill={W} />;
     case "audio": return <path d="M14.8 6.2v7.6a2.3 2.3 0 11-1.6-2.2V8.3l-4 1v5.9a2.3 2.3 0 11-1.6-2.2V8.1z" fill={W} />;
@@ -55,7 +55,7 @@ export function DriveIcon({ mime, name = "", size = 28 }: { mime: string; name?:
   return <svg className={"gd-icon gd-" + kind} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
     <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill={TILE[kind]} />
     <rect x="1.5" y="1.5" width="21" height="10.5" rx="6" fill="#fff" opacity=".09" />
-    {letter ? <text x="12" y="16.4" textAnchor="middle" fontFamily="'Segoe UI',Arial,sans-serif" fontWeight="800" fontSize="11.5" fill={W}>{letter}</text> : <Glyph kind={kind} />}
+    {letter ? <text x="12" y="16.4" textAnchor="middle" fontFamily="'Mowafy Sans',Arial,sans-serif" fontWeight="800" fontSize="11.5" fill={W}>{letter}</text> : <Glyph kind={kind} />}
   </svg>;
 }
 

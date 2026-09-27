@@ -1,7 +1,9 @@
 // Shared by scripts/build-emails.mjs (templates handed to Supabase) and server/emails.ts (mail the server sends itself).
 export const BASE='https://mowrai.com',APP='https://mowrai.com/#/app';
 const LINK='{{ .ConfirmationURL }}';
-const sans='Arial,Helvetica,sans-serif',serif="Georgia,'Times New Roman',serif";
+const sans="'Mowafy Sans',Arial,Helvetica,sans-serif",serif="'Mowafy Serif',Georgia,'Times New Roman',serif";
+// Clients that load web fonts (Apple Mail, iOS, Outlook for Mac) use Mowr's own; the rest fall back to Arial and Georgia.
+const faces="@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Regular.woff2) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Bold.woff2) format('woff2');font-weight:700}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Regular.woff2) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Bold.woff2) format('woff2');font-weight:700}";
 export type EmailParts={art?:string;title:string;body:string;label?:string;url?:string;note?:string;code?:string;preheader?:string;footer?:string};
 /** The one layout every Mowr email uses: animated ink art, rising text, a glowing button. `footer` adds a line (e.g. unsubscribe) under the card. */
 export function layout({art,title,body,label,url,note,code,preheader=body,footer}:EmailParts){
@@ -9,7 +11,7 @@ export function layout({art,title,body,label,url,note,code,preheader=body,footer
  const fallback=url===LINK?`<p style="margin:22px auto 0;max-width:400px;font-family:${sans};font-size:11.5px;line-height:1.6;color:#6f6e68">Button not working? Paste this into your browser:<br><a href="${url}" style="color:#85847e;word-break:break-all">${url}</a></p>`:'';
  const token=code?`<div class="mw-rise mw-d3" style="margin:28px auto 0;display:inline-block;padding:16px 24px;border:1px solid #373733;border-radius:14px;background:#141413;font-family:'Courier New',monospace;font-size:30px;letter-spacing:8px;color:#f0efeb">${code}</div>`:'';
  const small=note?`<p style="margin:26px 0 0;padding-top:20px;border-top:1px solid #2a2a27;font-family:${sans};font-size:12.5px;line-height:1.6;color:#85847e">${note}</p>`:'';
- return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${title}</title><style>
+ return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${title}</title><style>${faces}
 @keyframes mw-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes mw-glow{0%,100%{box-shadow:0 0 0 0 rgba(240,239,235,0)}50%{box-shadow:0 0 0 6px rgba(240,239,235,.1)}}
 .mw-rise{animation:mw-rise .8s cubic-bezier(.2,.8,.2,1) both}.mw-d1{animation-delay:.12s}.mw-d2{animation-delay:.24s}.mw-d3{animation-delay:.36s}

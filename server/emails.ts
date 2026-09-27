@@ -28,7 +28,7 @@ emailRouter.post('/welcome',async(req,res)=>{
   catch(error){await db()`DELETE FROM mowr_email_log WHERE owner_id=${user.id} AND kind='welcome'`;throw error;}
 });
 
-const page=(title:string,body:string,form='')=>`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="margin:0;min-height:100vh;display:grid;place-content:center;background:#121211;color:#f0efeb;font:16px/1.6 Arial,sans-serif;text-align:center;padding:24px"><h1 style="font:400 28px Georgia,serif;margin:0 0 10px">${title}</h1><p style="color:#b5b4ad;margin:0">${body}</p>${form}</body>`;
+const page=(title:string,body:string,form='')=>`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>@font-face{font-family:'Mowafy Sans';src:url(/fonts/MowafySans-Regular.woff2) format('woff2')}@font-face{font-family:'Mowafy Serif';src:url(/fonts/MowafySerif-Regular.woff2) format('woff2')}</style><body style="margin:0;min-height:100vh;display:grid;place-content:center;background:#121211;color:#f0efeb;font:16px/1.6 'Mowafy Sans',Arial,sans-serif;text-align:center;padding:24px"><h1 style="font:400 28px 'Mowafy Serif',Georgia,serif;margin:0 0 10px">${title}</h1><p style="color:#b5b4ad;margin:0">${body}</p>${form}</body>`;
 
 // GET shows a button (mail scanners open links, so a GET must not unsubscribe); POST does it, including one-click
 // unsubscribe from Gmail and Outlook via the List-Unsubscribe-Post header.

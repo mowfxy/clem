@@ -622,7 +622,9 @@ void app.whenReady().then(async () => {
   type Background = { keepRunning: boolean; startWithWindows: boolean };
   const backgroundKey = "background-settings";
   let background = await vault.read<Background>(backgroundKey, { keepRunning: true, startWithWindows: true }).catch(() => ({ keepRunning: true, startWithWindows: true }) as Background);
-  const applyLogin = () => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: background.keepRunning && background.startWithWindows, args: ["--background"] }); };
+  // A Store (MSIX) install can't register itself to start with Windows this way (Windows ignores it), so the option is hidden there.
+  const startupSupported = !process.windowsStore;
+  const applyLogin = () => { if (app.isPackaged && startupSupported) app.setLoginItemSettings({ openAtLogin: background.keepRunning && background.startWithWindows, args: ["--background"] }); };
   applyLogin();
   const showWindow = () => { if (window.isDestroyed()) return; if (window.isMinimized()) window.restore(); window.show(); window.focus(); };
   tray = new Tray(nativeImage.createFromPath(join(__dirname, "../desktop/icon.ico")));
@@ -644,7 +646,7 @@ void app.whenReady().then(async () => {
       await vault.write(backgroundKey, background);
       applyLogin();
     }
-    return { keepRunning: background.keepRunning, startWithWindows: background.startWithWindows };
+    return { keepRunning: background.keepRunning, startWithWindows: background.startWithWindows, startupSupported };
   });
   window.webContents.session.webRequest.onBeforeSendHeaders(
     {urls:["https://www.youtube-nocookie.com/embed/*"]},

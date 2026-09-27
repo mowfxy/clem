@@ -17,6 +17,7 @@
     "desktop:build": "npm run build && tsc -p desktop/tsconfig.json && node scripts/build-desktop.mjs",
     "desktop:dev": "npm run desktop:build && electron desktop-dist/main.cjs",
     "desktop:pack": "npm run desktop:build && electron-builder --config electron-builder.cjs --win --dir",
+    "desktop:store": "npm run desktop:build && electron-builder --config electron-builder.store.cjs --win",
     "desktop:installer": "npm run desktop:build && electron-builder --config electron-builder.cjs --win && node scripts/publish-installer.mjs",
     "test:desktop": "node scripts/build-kinetra.mjs && node --experimental-strip-types --test tests/desktop/*.test.ts",
     "desktop:smoke": "node scripts/smoke-desktop.mjs",
