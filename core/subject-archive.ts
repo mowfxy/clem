@@ -70,6 +70,7 @@ export const archiveSchema = z.object({
               visualParams: z.record(z.string().max(40), z.number().finite()).optional(),
               plan: plan.optional(),
               attachments: z.array(id).optional(),
+              chapter: z.string().max(60).optional(),
             }),
           )
           .max(10000),
