@@ -84,7 +84,10 @@ export class ClaudeProvider {
       const answer=await new Promise<string>((resolve,reject)=>{
         let buffer='',bytes=0,error='',done=false,result:any=null;
         const finish=(value?:string,failure?:Error)=>{if(done)return;done=true;clearTimeout(timer);failure?reject(failure):resolve(value||'');};
-        const timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},180000);
+        // An inactivity limit: any output from Claude Code restarts it, so a long answer that keeps streaming is never cut off.
+        let timer:ReturnType<typeof setTimeout>;
+        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},180000);};
+        touch();
         let last='';
         const read=(line:string)=>{
           if(!line.trim())return;
@@ -94,6 +97,7 @@ export class ClaudeProvider {
           if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
         };
         child.stdout.on('data',(part:Buffer)=>{
+          if(!done)touch();
           bytes+=part.length;if(bytes>8_000_000){child.kill();finish(undefined,Error('Claude response exceeded the safe limit.'));return;}
           buffer+=part.toString();let newline;
           while((newline=buffer.indexOf('\n'))>=0){read(buffer.slice(0,newline));buffer=buffer.slice(newline+1);}

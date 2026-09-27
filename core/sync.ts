@@ -59,7 +59,15 @@ export function validateSync(kind: SyncKind, data: unknown): SyncItem[] {
     throw Error("Duplicate sync record.");
   return parsed as SyncItem[];
 }
-/** Three-way comparison includes deletions. Divergent edits are never silently overwritten. */
+/** Newer `updatedAt` wins when both copies carry one; otherwise remote wins (deterministic across devices). */
+function resolveConflict(local: SyncItem, remote: SyncItem) {
+  const time = (x: SyncItem) =>
+    typeof x.updatedAt === "string" ? Date.parse(x.updatedAt) : NaN;
+  const [l, r] = [time(local), time(remote)];
+  return Number.isFinite(l) && Number.isFinite(r) && l > r ? local : remote;
+}
+/** Three-way comparison includes deletions. Conflicts resolve per record so one never blocks the collection:
+ * both edited → newest update wins (ties go to remote); edited on one side and deleted on the other → the edit wins. */
 export function mergeSync(
   base: SyncItem[],
   local: SyncItem[],
@@ -73,11 +81,10 @@ export function mergeSync(
     const [b, l, r] = maps.map((m) => m.get(id)),
       equal = (a: unknown, b: unknown) =>
         JSON.stringify(a) === JSON.stringify(b);
-    if (!equal(l, b) && !equal(r, b) && !equal(l, r))
-      throw Error(
-        "Sync conflict: this record changed on another device. Your local copy is safe.",
-      );
-    const chosen = equal(l, b) ? r : l;
+    let chosen: SyncItem | undefined;
+    if (equal(l, b) || equal(l, r)) chosen = r;
+    else if (equal(r, b)) chosen = l;
+    else chosen = l && r ? resolveConflict(l, r) : l || r;
     if (chosen) result.push(chosen);
   }
   return result.sort((a, b) => a.id.localeCompare(b.id));

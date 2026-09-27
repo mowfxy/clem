@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { desktop } from "./desktop/bridge";
 import { Icon } from "./Icons";
+import { confirmDialog } from "./dialogs";
 type Fact = {
   id: string;
   text: string;
@@ -71,7 +72,7 @@ export function MemoryConversation({
       {summary.trim() && onSummary && (
         <div className="memory-group">
           <h4>{summaryLabel}</h4>
-          <ul><li><span className="memory-text">{summary.trim()}</span><span className="memory-actions"><button type="button" className="memory-icon" disabled={busy} aria-label="Forget your notes" title="Forget" onClick={() => onSummary("")}><Icon name="close" size={13} /></button></span></li></ul>
+          <ul><li><span className="memory-text">{summary.trim()}</span><span className="memory-actions"><button type="button" className="memory-icon" disabled={busy} aria-label="Forget your notes" title="Forget" onClick={async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Mowr stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); }}><Icon name="close" size={13} /></button></span></li></ul>
         </div>
       )}
       {groups.map(({ scope, items }) => (

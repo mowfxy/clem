@@ -3,6 +3,8 @@ import {filesRouter} from './files.ts';
 import {securityRouter,supportRouter,emailAllowed} from './security.ts';
 import {emailRouter} from './emails.ts';
 import {databaseReady} from './db.ts';
+import {DatabaseError} from './d1.ts';
+import {NeonDbError} from '@neondatabase/serverless';
 import {supabaseConfig,supabaseIdentity} from './auth.ts';
 import { runChat } from './skill-runtime.ts';
 import { boundedConversation } from '../core/chat-context.ts';
@@ -51,18 +53,24 @@ app.use((req, res, next) => {
     process.env.VERCEL_PROJECT_PRODUCTION_URL &&
       `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`,
   ]);
+  // CSRF rides on ambient cookies. A cookieless bearer request (the desktop main process) cannot be forged by a
+  // browser: a cross-site page cannot attach Authorization without a CORS preflight this API never grants.
+  const bearer = /^Bearer \S+$/.test(req.get("authorization") || "") && !req.headers.cookie;
   if (
-    ["POST", "PUT", "DELETE", "PATCH"].includes(req.method) &&
+    ["POST", "PUT", "DELETE", "PATCH"].includes(req.method) && !bearer &&
     (!origin ||
       !allowed.has(origin) ||
-      (!req.is("application/json") && req.method !== "DELETE"))
+      // Drive uploads carry the file's own type; the Origin check above still guards them.
+      (!req.is("application/json") && req.method !== "DELETE" && req.path !== "/api/drive/upload"))
   ) {
     res.status(403).json({ error: "Use Mowr from its configured APP_URL." });
     return;
   }
   next();
 });
-app.use(express.json({ limit: "3mb" }));
+const jsonBody = express.json({ limit: "3mb" });
+// Drive uploads read their raw bytes, even when the file itself is JSON.
+app.use((req, res, next) => req.path === "/api/drive/upload" ? next() : jsonBody(req, res, next));
 // Retained legacy readers support migration, but desktop-owned content cannot be uploaded.
 app.use((req,res,next)=>{
   if(process.env.MOWR_LEGACY_WORKSPACE!=="true" && ["POST","PUT","PATCH"].includes(req.method) && /^\/api\/(workspace|scopes|files)(\/|$)/.test(req.path)) {
@@ -461,8 +469,10 @@ app.post("/api/scopes", async (req, res) => {
 async function requireDriveUser(req: express.Request, res: express.Response) {
   if (!req.headers.authorization) return requireUser(req, res);
   const token = req.headers.authorization.match(/^Bearer ([^ ]+)$/)?.[1];
+  // The emailed code is a second factor for web cookie sessions. A bearer token comes from the desktop app's own
+  // Supabase sign-in (authenticator users still need aal2, checked in supabaseIdentity) and is never sent ambiently.
   const user = token ? await supabaseIdentity(token) : null;
-  if (!user || !await emailAllowed(req, user.id)) {
+  if (!user) {
     res.status(401).json({error: "Complete account verification before using Drive."}); return null;
   }
   const rows = await db()`SELECT disabled FROM mowr_users WHERE id=${user.id}`;
@@ -714,11 +724,8 @@ app.use(
       error instanceof z.ZodError
         ? "Check the required fields and try again."
         : error.message;
-    if (
-      /password_hash|connection|relation|constraint|syntax|neon|fetch failed/i.test(
-        message,
-      )
-    )
+    // Only failures of the database itself are an outage; app errors keep their own message.
+    if (error instanceof DatabaseError || error instanceof NeonDbError)
       res.status(503).json({
         error:
           "Database setup is incomplete or unavailable. Check DATABASE_URL and run npm run db:migrate.",

@@ -145,3 +145,22 @@ test("“remember that…” keeps the person's words when extraction finds noth
   assert.equal(state.records[0].confirmed, true);
   assert.deepEqual(rememberedWords("remember"), []);
 });
+test("memory stays well under the sync limit: old replaced and expired records are dropped", async () => {
+  const { pruneMemory, MEMORY_LIMIT } = await import("../../desktop/memory.ts");
+  const now = Date.parse("2026-09-27T00:00:00Z"), day = 86_400_000;
+  const record = (i: number, extra: Partial<Memory> = {}): Memory => ({ ...input(), id: "m" + i, key: "k" + i, text: "Fact " + i, createdAt: new Date(now - i * 1000).toISOString(), updatedAt: new Date(now - i * 1000).toISOString(), ...extra });
+  const records = [
+    ...Array.from({ length: 700 }, (_, i) => record(i)),
+    ...Array.from({ length: 300 }, (_, i) => record(1000 + i, { supersededBy: "m0", updatedAt: new Date(now - (i < 50 ? 1 : 40) * day).toISOString() })),
+    record(2000, { expiresAt: new Date(now - 40 * day).toISOString(), kind: "temporary" }),
+    record(2001, { expiresAt: new Date(now - 2 * day).toISOString(), kind: "temporary" }),
+  ];
+  const pruned = pruneMemory({ enabled: true, records }, now);
+  assert.ok(pruned.records.length <= MEMORY_LIMIT && MEMORY_LIMIT < 1000);
+  assert.equal(pruned.records.filter((m) => !m.supersededBy && m.id.length < 5).length, 700);
+  assert.ok(!pruned.records.some((m) => m.id === "m2000"));
+  assert.ok(pruned.records.some((m) => m.id === "m2001"));
+  const many = pruneMemory({ enabled: true, records: Array.from({ length: 1200 }, (_, i) => record(i, { confirmed: i % 2 === 0 })) }, now);
+  assert.equal(many.records.length, MEMORY_LIMIT);
+  assert.equal(many.records.filter((m) => m.confirmed).length, 600, "learned records go before confirmed ones");
+});
