@@ -97,6 +97,8 @@ export class ProviderLink {
       const uploaded = await this.uploaded(owner);
       for (const item of items as (Linked | (LinkedValue & { hash: string }))[]) {
         if (item.kind === "telegram") { result.values.push({ id: item.id, kind: item.kind, data: item.data }); uploaded[item.id] = item.hash; continue; }
+        // The id becomes a folder name: never let a stored entry write outside this account's folders.
+        if ((item.kind !== "codex" && item.kind !== "claude") || typeof item.id !== "string" || !/^[\w-]{1,64}$/.test(item.id) || typeof item.data !== "string") continue;
         if (item.kind === "codex") result.codex.push({ id: item.id, label: item.label });
         const file = this.fileFor(owner, item);
         const local = await readFile(file, "utf8").catch(() => "");

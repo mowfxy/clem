@@ -83,8 +83,10 @@ export class GrokProvider {
       let out='',err='',done=false;
       const finish=(v:{code:number|null;out:string;err:string}|null)=>{if(done)return;done=true;clearTimeout(timer);child.kill();resolve(v);};
       const timer=setTimeout(()=>finish({code:null,out,err:err+' timed out'}),timeout);
-      child.stdout.on('data',(p:Buffer)=>{out+=p.toString();if(out.length>2_000_000)finish({code:null,out,err});});
-      child.stderr.on('data',(p:Buffer)=>{err=(err+p.toString()).slice(-5000);});
+      // Decoded as a stream, so a character split between two chunks is not garbled.
+      child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
+      child.stdout.on('data',(p:string)=>{out+=p;if(out.length>2_000_000)finish({code:null,out,err});});
+      child.stderr.on('data',(p:string)=>{err=(err+p).slice(-5000);});
       child.on('error',(e:NodeJS.ErrnoException)=>finish(e.code==='ENOENT'?null:{code:null,out,err:e.message}));
       child.on('close',code=>finish({code,out,err}));
       child.stdin.end(input);
@@ -99,8 +101,9 @@ export class GrokProvider {
       const finish=(v?:GrokUsage)=>{if(done)return;done=true;clearTimeout(timer);child.kill();resolve(v);};
       const timer=setTimeout(()=>finish(),20000);
       const send=(msg:object)=>child.stdin.write(JSON.stringify({jsonrpc:'2.0',...msg})+'\n');
-      child.stdout.on('data',(p:Buffer)=>{
-        buffer+=p.toString();let nl;
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data',(p:string)=>{
+        buffer+=p;let nl;
         while((nl=buffer.indexOf('\n'))>=0){
           const line=buffer.slice(0,nl).trim();buffer=buffer.slice(nl+1);if(!line)continue;
           let msg:any;try{msg=JSON.parse(line);}catch{continue;}
@@ -169,8 +172,10 @@ export class GrokProvider {
         let timer:ReturnType<typeof setTimeout>;
         const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},330000);};
         touch();
-        child.stdout.on('data',(p:Buffer)=>{if(!done)touch();out+=p.toString();if(out.length>2_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));}});
-        child.stderr.on('data',(p:Buffer)=>{if(!done)touch();err=(err+p.toString()).slice(-5000);});
+        // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
+        child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
+        child.stdout.on('data',(p:string)=>{if(!done)touch();out+=p;if(out.length>2_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));}});
+        child.stderr.on('data',(p:string)=>{if(!done)touch();err=(err+p).slice(-5000);});
         child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
         child.on('close',code=>finish({code,out,err}));
         child.stdin.end();

@@ -38,3 +38,9 @@ test('chapters start at the question whose reply named them',()=>{
   assert.deepEqual(chaptersOf({title:'Old chat',messages:[m('q1','user'),m('a1','assistant'),m('q2','user'),m('a2','assistant','Vectors')]}),[{id:'q1',title:'Old chat'},{id:'q2',title:'Vectors'}]);
   assert.deepEqual(chaptersOf({title:'Short',messages:[m('q1','user'),m('a1','assistant')]}),[{id:'q1',title:'Short'}]);
 });
+
+test('a marker still arriving stays hidden when it has a space before its name or a ">" in its text',()=>{
+  for(const tail of ['<!-- ','<!-- ti','<!--summary: Forces -> acceleration','<!--title: A -> B --']) assert.equal(hideTitleMarker('Answer.\n\n'+tail),'Answer.',tail);
+  assert.equal(hideTitleMarker('If a -> b then c.'),'If a -> b then c.');
+  assert.equal(hideTitleMarker('Answer.<!--summary: A -> B.-->'),'Answer.');
+});
