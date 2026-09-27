@@ -7,13 +7,13 @@ import {chatPreview} from '../../core/chat-title';
 import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
-import {MemoryConversation} from '../MemoryConversation';
+import {InstructionsDialog,InstructionsGlyph} from './InstructionsDialog';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
 import {DriveFolderView} from '../drive/DriveFolderView';
 import type {DriveItem} from '../drive/drive';
 import './space.css';
 
-export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'about';
+export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files';
 type Linked={id:string;scope:string;path:string};
 export type SpaceActions={
   onAsk:(prompt:string)=>void;
@@ -78,7 +78,8 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
   const weak=weakConcepts(sets);
   const [ask,setAsk]=useState('');
   const [review,setReview]=useState(0);
-  const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length],['about','About']]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length],['about','Instructions']];
+  const [instructions,setInstructions]=useState(false);
+  const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length]]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length]];
   const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
@@ -92,6 +93,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
           <Editable className="sp-desc" value={space.description} max={400} label="Description" placeholder={subject?'What are you learning, and why?':'What is this project about?'} onSave={description=>actions.onUpdateSpace({...space,description})}/>
         </div>
         <div className="sp-actions">
+          <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} title={space.memory.trim()?'Edit the instructions Mowr follows here':'Tell Mowr how to work here'}><InstructionsGlyph/>Instructions</button>
           <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
           <Menu label="More" items={[...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
@@ -157,8 +159,8 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions}/>}
-      {tab==='about'&&<About space={space} actions={actions}/>}
     </div>
+    {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
   </div>;
 }
 
@@ -256,16 +258,5 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
 
 export const folderPath=(folders:SpaceFolder[],id:string)=>{const names:string[]=[];let cur:string|null=id;while(cur){const f=folders.find(x=>x.id===cur);if(!f)break;names.unshift(f.name);cur=f.parentId;}return names.join(' / ');};
 function FolderIcon(){return <svg className="sp-folder-icon" width="34" height="28" viewBox="0 0 34 28" aria-hidden="true"><path d="M2 5.5A3.5 3.5 0 0 1 5.5 2h7.2l3.2 3.4H28.5A3.5 3.5 0 0 1 32 8.9v14.6A3.5 3.5 0 0 1 28.5 27h-23A3.5 3.5 0 0 1 2 23.5z" fill="currentColor" opacity=".9"/><path d="M2 10h30" stroke="#0003" strokeWidth="1.2"/></svg>;}
-
-function About({space,actions}:{space:Space;actions:SpaceActions}):ReactNode{
-  const [memory,setMemory]=useState(space.memory);
-  useEffect(()=>setMemory(space.memory),[space.id]);
-  return <section className="sp-about">
-    <label className="field">{space.kind==='subject'?'How Mowr should teach you here':'Instructions for this project'}
-      <textarea rows={7} value={memory} onChange={e=>setMemory(e.target.value)} onBlur={()=>memory!==space.memory&&actions.onUpdateSpace({...space,memory})} placeholder={space.kind==='subject'?'My level, the course, the exam board, how I like things explained…':'Goals, background and how Mowr should work here.'}/></label>
-    <p className="fine">Only this {space.kind} uses these notes. Files marked as Source are quoted when you ask a question here.</p>
-    {desktop&&<div className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></div>}
-  </section>;
-}
 
 function DriveGlyph(){return <svg className="drive-glyph" width="15" height="14" viewBox="0 0 87.3 78" aria-hidden="true"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>;}
