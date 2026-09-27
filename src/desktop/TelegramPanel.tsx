@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { desktop } from "./bridge";
-export function TelegramPanel({ scope }: { scope: string }) {
+export function TelegramPanel({ scope, labelFor }: { scope: string; /** A pairing's scope in the person's own words. */ labelFor: (scope: string) => string }) {
   const [state, setState] = useState<{
       enabled: boolean;
       routes: { scope: string }[];
@@ -28,7 +28,7 @@ export function TelegramPanel({ scope }: { scope: string }) {
         <>
           <p>
             {state.routes.length
-              ? "Paired with " + state.routes[0].scope
+              ? "Paired with " + labelFor(state.routes[0].scope)
               : "Waiting for pairing."}
           </p>
           {code && (
@@ -77,7 +77,7 @@ export function TelegramPanel({ scope }: { scope: string }) {
             Bot token
             <input name="token" type="password" autoComplete="off" required />
           </label>
-          <button disabled={busy}>Connect to this space</button>
+          <button disabled={busy}>Connect to {labelFor(scope)}</button>
         </form>
       )}
       <p>

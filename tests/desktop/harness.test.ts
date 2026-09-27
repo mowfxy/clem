@@ -322,3 +322,12 @@ test("built-in skills: specific triggers win and every skill is well formed", as
   for (const s of builtinSkills) assert.ok(s.steps.length >= 5 && s.steps.length <= 12 && s.builtin, s.id);
   assert.ok(builtinSkills.length >= 20);
 });
+test("a long answer with more than 60 parts exports with every part kept", async () => {
+  const { markdownDocument, renderFigures } = await import("../../desktop/pdf-document.ts");
+  const markdown = "# Long\n\n" + Array.from({ length: 150 }, (_, i) => `## Part ${i}\n\n${"Text \"quoted\"\n".repeat(120)}`).join("\n");
+  const doc = markdownDocument(markdown, "Chat");
+  assert.ok(doc.sections.length <= 60);
+  for (const i of [0, 75, 149]) assert.ok(doc.sections.some((s) => s.heading === `Part ${i}` || s.text?.includes(`## Part ${i}\n`)));
+  assert.ok(markdown.length < 300000 && JSON.stringify(doc).length > 300000);
+  await renderFigures(doc, { checkVoice: false });
+});
