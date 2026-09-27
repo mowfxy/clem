@@ -66,7 +66,7 @@
   font-size: 0.85em;
 }
 /* Links as chips: the site's mark and a short label */
-.link-chip{display:inline-flex;align-items:center;gap:5px;max-width:100%;vertical-align:baseline;padding:1px 8px 1px 6px;margin:0 1px;border-radius:99px;background:#ffffff0f;border:1px solid #ffffff14;color:#e9e8e2!important;text-decoration:none!important;font:500 .86em/1.6 'Mowafy Sans Text',sans-serif;white-space:nowrap;transition:background .15s,border-color .15s}
+.link-chip{display:inline-flex;align-items:center;gap:5px;max-width:100%;vertical-align:baseline;padding:1px 8px 1px 6px;margin:0 1px;border-radius:99px;background:#ffffff0f;border:1px solid #ffffff14;color:#e9e8e2!important;text-decoration:none!important;font:500 .86em/1.6 'Kindred Sans',sans-serif;white-space:nowrap;transition:background .15s,border-color .15s}
 .link-chip:hover{background:#ffffff1a;border-color:#ffffff2a}
 .link-mark{display:inline-grid;place-items:center;flex:none;color:#cfcec7}
 .link-mark .brand-github{color:#f2f1ec}
@@ -80,6 +80,6 @@
 .yt-poster:focus-visible{box-shadow:inset 0 0 0 3px #fff}
 .yt-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;filter:drop-shadow(0 6px 18px #0009);transition:transform .2s}
 .yt-poster:hover .yt-play{transform:translate(-50%,-50%) scale(1.08)}
-.yt-open{position:absolute;right:12px;bottom:12px;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#000000b0;color:#fff!important;text-decoration:none!important;font:500 12.5px 'Mowafy Sans Text',sans-serif;backdrop-filter:blur(6px)}
+.yt-open{position:absolute;right:12px;bottom:12px;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#000000b0;color:#fff!important;text-decoration:none!important;font:500 12.5px 'Kindred Sans',sans-serif;backdrop-filter:blur(6px)}
 .inline-videos{display:block}
 .message.user .yt-embed{max-width:420px}

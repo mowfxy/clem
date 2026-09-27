@@ -11,7 +11,7 @@ const live = process.argv.includes("--live"), preview = process.argv.includes("-
 const dir = resolve(".work/film", live ? "live" : "demo");
 const FPS = 30;
 const font = async (name) => "data:font/woff2;base64," + (await readFile(resolve("public/fonts", name))).toString("base64");
-const [serif, sans, medium] = await Promise.all([font("SoftInkSerif-Book.woff2"), font("MowafySansText-Regular.woff2"), font("MowafySansText-Medium.woff2")]);
+const [serif, sans, medium] = await Promise.all([font("KindredSerif-Regular.woff2"), font("KindredSans-Regular.woff2"), font("KindredSans-Bold.woff2")]);
 const log = JSON.parse(await readFile(join(dir, "log.json"), "utf8"));
 
 const css = `
