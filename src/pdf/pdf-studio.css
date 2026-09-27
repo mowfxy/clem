@@ -1,4 +1,4 @@
-.pdf-studio{position:fixed;inset:0;top:0;z-index:46;display:flex;flex-direction:column;background:#161615;color:#eeede7;font-family:'Mowafy Sans Text',system-ui,sans-serif}
+.pdf-studio{position:fixed;inset:0;top:0;z-index:46;display:flex;flex-direction:column;background:#161615;color:#eeede7;font-family:'Mowafy Sans',system-ui,sans-serif}
 .ps-head{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #2c2c2a;background:#1a1a19}
 .ps-file{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:#3a1f1d;color:#f1a595}
 .ps-head>div{flex:1;min-width:0}

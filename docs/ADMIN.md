@@ -2,7 +2,7 @@
 
 Staff use the portal to see how Mowr is doing, moderate accounts, answer support cases, publish in-app announcements and review an audit log. Mowr is free, so the portal has no billing screens: the overview tracks people, activity and progress through the app's four-step welcome.
 
-The portal uses the app's own look — the same near-black surfaces, Soft Ink Serif headings, drawn icons (`src/Icons.tsx`) and an ink illustration (`src/Illustrations.tsx`) at the top of each page, like the app's settings tabs.
+The portal uses the app's own look — the same near-black surfaces, Mowafy Serif headings, drawn icons (`src/Icons.tsx`) and an ink illustration (`src/Illustrations.tsx`) at the top of each page, like the app's settings tabs.
 
 ## How it fits together
 

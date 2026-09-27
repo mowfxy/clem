@@ -1,9 +1,9 @@
-dialog.share-sheet.share-sheet{width:min(520px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 48px);padding:0;border-radius:22px;border:1px solid #3c3c39;background:linear-gradient(180deg,#232322,#1b1b1a);color:#eeede7;box-shadow:0 1px 0 #ffffff12 inset,0 40px 120px -20px #000e;overflow:hidden;font-family:'Mowafy Sans Text',system-ui,sans-serif}
+dialog.share-sheet.share-sheet{width:min(520px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 48px);padding:0;border-radius:22px;border:1px solid #3c3c39;background:linear-gradient(180deg,#232322,#1b1b1a);color:#eeede7;box-shadow:0 1px 0 #ffffff12 inset,0 40px 120px -20px #000e;overflow:hidden;font-family:'Mowafy Sans',system-ui,sans-serif}
 dialog.share-sheet[open]{display:flex;flex-direction:column;animation:sh-in .32s cubic-bezier(.2,1.2,.35,1) both}
 dialog.share-sheet::backdrop{background:#0009;backdrop-filter:blur(5px)}
 .sh-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 4px}
-.sh-head h2{margin:4px 0 0;font:360 26px/1.15 'Soft Ink Serif',Georgia,serif;color:#f5f3ec}
-.sh-eyebrow{font:500 11px/1 'Mowafy Sans Text',system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#8a8983}
+.sh-head h2{margin:4px 0 0;font:400 26px/1.15 'Mowafy Serif',Georgia,serif;color:#f5f3ec}
+.sh-eyebrow{font:500 11px/1 'Mowafy Sans',system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#8a8983}
 .sh-body{padding:8px 22px 6px;overflow:auto}
 .sh-lead{margin:4px 0 14px;font-size:13.5px;color:#a9a8a1;line-height:1.5}
 .sh-options{display:flex;flex-direction:column;gap:8px}
@@ -25,7 +25,7 @@ dialog.share-sheet::backdrop{background:#0009;backdrop-filter:blur(5px)}
 .sh-foot .primary{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:12px;font-size:14px}
 .sh-ghost{padding:10px 14px;border-radius:11px;border:1px solid #3a3a37;color:#cfcec7}
 .sh-done{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding:34px 26px 24px}
-.sh-done h2{margin:8px 0 4px;font:360 30px/1.15 'Soft Ink Serif',Georgia,serif;color:#f5f3ec}
+.sh-done h2{margin:8px 0 4px;font:400 30px/1.15 'Mowafy Serif',Georgia,serif;color:#f5f3ec}
 .sh-done>p{margin:0 0 20px;font-size:13.5px;color:#a9a8a1}
 .sh-file{position:relative;display:flex;align-items:center;gap:12px;width:100%;max-width:380px;padding:14px 16px;border-radius:16px;background:linear-gradient(135deg,#27305a,#1d1f33);border:1px solid #3d4775;box-shadow:0 18px 40px -16px #1d2a6bcc;text-align:left;cursor:grab;animation:sh-pop .5s .08s cubic-bezier(.2,1.4,.35,1) both}
 .sh-file:active{cursor:grabbing;transform:scale(.98)}
@@ -42,7 +42,7 @@ dialog.share-sheet::backdrop{background:#0009;backdrop-filter:blur(5px)}
 .sh-burst i{position:absolute;width:7px;height:7px;border-radius:2px;background:#e9c27a;transform:rotate(var(--a)) translateY(0);opacity:0;animation:sh-fly .9s var(--d) cubic-bezier(.15,.8,.3,1) both}
 .sh-burst i:nth-child(3n){background:#e2574c;border-radius:50%}.sh-burst i:nth-child(3n+1){background:#a9b3f7;width:9px;height:4px}
 .po-cover{padding:26px 24px 20px;background:radial-gradient(420px 200px at 90% 0,#2b3a78,transparent 70%),linear-gradient(135deg,#1e2547,#1b1b1a);border-bottom:1px solid #2f3659}
-.po-cover h2{margin:8px 0 6px;font:360 32px/1.1 'Soft Ink Serif',Georgia,serif;color:#f5f3ec}
+.po-cover h2{margin:8px 0 6px;font:400 32px/1.1 'Mowafy Serif',Georgia,serif;color:#f5f3ec}
 .po-cover p{margin:0;font-size:13.5px;color:#b7bfdf;line-height:1.5}
 .po-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
 .po-chips span{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:#ffffff12;font-size:12px;color:#dfe3f3}

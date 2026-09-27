@@ -1,12 +1,12 @@
 /* Sign-in, inbox and link-confirmation pages. */
-.au-page{position:relative;min-height:100dvh;display:grid;place-items:center;padding:56px 20px;background:#121211;color:#f0efeb;overflow:hidden;font-family:'Mowafy Sans Text',system-ui,sans-serif}
+.au-page{position:relative;min-height:100dvh;display:grid;place-items:center;padding:56px 20px;background:#121211;color:#f0efeb;overflow:hidden;font-family:'Mowafy Sans',system-ui,sans-serif}
 .au-glow{position:absolute;inset:-20% -10% auto;height:80%;pointer-events:none;background:radial-gradient(40% 45% at 50% 30%,#f0efeb0c,transparent 70%),radial-gradient(25% 30% at 70% 60%,#d879680d,transparent 70%);animation:au-breathe 12s ease-in-out infinite alternate}
 .au-card{position:relative;width:min(100%,400px);display:grid;gap:0;text-align:center}
 .au-card>*{animation:au-in .6s cubic-bezier(.2,.8,.2,1) both}
 .au-card>*:nth-child(2){animation-delay:.06s}.au-card>*:nth-child(3){animation-delay:.12s}.au-card>*:nth-child(4){animation-delay:.18s}.au-card>*:nth-child(5){animation-delay:.24s}.au-card>*:nth-child(n+6){animation-delay:.3s}
 .au-art{width:170px;height:138px;margin:0 auto 8px}
 .au-art .ink-scene{width:100%}
-.au-card h1{font:360 38px/1.1 'Soft Ink Serif',Georgia,serif;letter-spacing:-.03em;margin:0 0 10px}
+.au-card h1{font:400 38px/1.1 'Mowafy Serif',Georgia,serif;letter-spacing:-.03em;margin:0 0 10px}
 .au-card>p{color:#a3a3a0;line-height:1.6;margin:0 0 24px;font-size:15px}
 .au-card>p strong{color:#f0efeb;font-weight:500;overflow-wrap:anywhere}
 .au-card form{display:grid;gap:14px;text-align:left}
@@ -14,7 +14,7 @@
 .au-card input{width:100%;font-size:15px;padding:13px 14px;border-radius:11px;border:1px solid #373733;background:#1a1a18;color:#f0efeb;transition:border-color .2s,box-shadow .2s,background .2s}
 .au-card input:focus{outline:0;border-color:#8b8a83;background:#1d1d1b;box-shadow:0 0 0 4px #f0efeb10}
 .au-card .au-code{font-size:26px;letter-spacing:.5em;text-align:center;padding:14px;font-variant-numeric:tabular-nums}
-.au-submit{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:4px;padding:14px 18px;border-radius:12px;background:#f0efeb;color:#141413!important;font:500 15px/1 'Mowafy Sans Text',sans-serif;border:0;text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),background .2s,box-shadow .25s;box-shadow:0 12px 30px -16px #f0efeb88}
+.au-submit{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:4px;padding:14px 18px;border-radius:12px;background:#f0efeb;color:#141413!important;font:500 15px/1 'Mowafy Sans',sans-serif;border:0;text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),background .2s,box-shadow .25s;box-shadow:0 12px 30px -16px #f0efeb88}
 .au-submit:hover{background:#fff;transform:translateY(-1px)}
 .au-submit:active{transform:scale(.98)}
 .au-submit:disabled{opacity:.75;cursor:progress}
@@ -31,7 +31,7 @@
 .au-card .login-terms a{color:#a3a3a0;text-decoration:underline;text-underline-offset:3px}
 .au-status{margin:16px 0 0;font-size:13.5px;color:#cfcec7;padding:10px 12px;border-radius:10px;background:#1b1b19;border:1px solid #2e2e2b}
 .au-error{margin:16px 0 0!important;color:#eda699!important;font-size:13.5px}
-.au-home{position:absolute;top:22px;left:24px;display:flex;align-items:center;gap:8px;font:360 19px 'Soft Ink Serif',Georgia,serif;color:#f0efeb;text-decoration:none;opacity:.85}
+.au-home{position:absolute;top:22px;left:24px;display:flex;align-items:center;gap:8px;font:400 19px 'Mowafy Serif',Georgia,serif;color:#f0efeb;text-decoration:none;opacity:.85}
 .au-home:hover{opacity:1;color:#fff}
 .au-inbox{display:grid;gap:10px}
 .au-inbox-main{text-decoration:none}
