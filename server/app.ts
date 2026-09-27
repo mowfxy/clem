@@ -625,6 +625,9 @@ app.get("/api/drive/file/:id", async (req, res) => {
   if (!r.ok || !r.body)
     throw new Error("This Drive file cannot be downloaded.");
   res.setHeader("Content-Type", format?.mime || m.mimeType);
+  // The type comes from Drive (anyone can share an HTML file), so a browser opening this URL must never render it on this origin.
+  res.setHeader("Content-Disposition", "attachment");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   res.setHeader("X-Mowr-File-Name", encodeURIComponent(m.name + (format?.extension || "")));
   let bytes = 0;
   for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) {

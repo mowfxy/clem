@@ -8,7 +8,8 @@ const filters=[['all','Everyone'],['active','Active this week'],['new','New this
 
 function toCsv(rows:Person[]){
   const cols=['id','email','username','display_name','setup_step','suspended','first_seen_at','last_seen_at','cases'] as const;
-  const cell=(v:unknown)=>`"${String(v??'').replace(/"/g,'""')}"`;
+  // Names are typed by people themselves; a leading = + - @ would run as a formula when staff open the file in a spreadsheet.
+  const cell=(v:unknown)=>`"${String(v??'').replace(/^[=+\-@\t\r]/,"'$&").replace(/"/g,'""')}"`;
   return [cols.join(','),...rows.map(r=>cols.map(c=>cell(r[c])).join(','))].join('\n');
 }
 

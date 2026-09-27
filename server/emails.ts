@@ -12,7 +12,7 @@ export const emailRouter=express.Router();
 
 /** A link only this server can mint, so nobody can unsubscribe someone else. */
 export function unsubscribeToken(email:string){return createHmac('sha256',process.env.SESSION_SECRET||'').update('unsubscribe:'+email.toLowerCase()).digest('base64url');}
-function validToken(email:string,token:string){const a=Buffer.from(unsubscribeToken(email)),b=Buffer.from(token);return a.length===b.length&&timingSafeEqual(a,b);}
+function validToken(email:string,token:string){if(!process.env.SESSION_SECRET)return false;const a=Buffer.from(unsubscribeToken(email)),b=Buffer.from(token);return a.length===b.length&&timingSafeEqual(a,b);}
 
 emailRouter.post('/welcome',async(req,res)=>{
   const token=req.get('authorization')?.match(/^Bearer ([^ ]+)$/)?.[1]||cookies(req).mowr_supabase;

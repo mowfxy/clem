@@ -213,6 +213,8 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
   const callback=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie+'; '+oauthCookie},redirect:'manual'});assert.equal(callback.status,200);assert.match(await callback.text(),/Drive is connected/);
   assert.equal((await rawFetch(base+'files',{headers})).status,200);
   const download=await rawFetch(base+'file/doc123',{headers});assert.equal(download.status,200);assert.equal(decodeURIComponent(download.headers.get('X-Mowr-File-Name')!),'Research.docx');assert.match(exportUrl,/wordprocessingml/);
+  // Drive decides the type, so a shared HTML file opened by URL must download, not run on this origin.
+  assert.equal(download.headers.get('Content-Disposition'),'attachment');assert.match(download.headers.get('Content-Security-Policy')!,/sandbox/);
   // Uploads carry raw file bytes of any type (JSON included), from the desktop's bearer token or a same-origin page.
   const upload=await rawFetch(base+'upload?folder=fold123&name=data.json',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{"a":1}'});
   assert.equal(upload.status,200);assert.equal((await upload.json()).id,'up123');assert.match(uploaded,/\{"a":1\}/);
