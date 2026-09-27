@@ -47,7 +47,7 @@ import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn} from './kinetra-turn';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
-import {documentsNote,telegramInstructions} from '../core/mowr-skills';
+import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
 import {installCli} from './cli-install';
 import {
   inside,
@@ -1159,7 +1159,7 @@ void app.whenReady().then(async () => {
         sources,
         memories,
         name: memoryState.enabled ? setup.displayName : undefined,
-        extra: (folders.length ? editLanguage : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : ""),
+        extra: (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : ""),
       });
       const emit = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
       // Documents Mowr made earlier in this conversation. Asking to change one revises that same file.
