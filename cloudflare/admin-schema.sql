@@ -48,12 +48,14 @@ CREATE TABLE IF NOT EXISTS desktop_audit_log (
 CREATE INDEX IF NOT EXISTS desktop_audit_log_time ON desktop_audit_log(created_at);
 -- Anonymous usage counts sent by the desktop app once in a while: which provider and model a person chose and how many
 -- messages per day. Never message content. `hours` is 24 comma-separated counts by the person's local hour.
+-- `device` is a short hash naming the reporting PC, so each PC's running totals are kept apart and summed.
+-- Databases created before it existed: run usage-devices.sql once.
 CREATE TABLE IF NOT EXISTS desktop_usage (
- user_id TEXT NOT NULL, day TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, reasoning TEXT NOT NULL DEFAULT '',
+ user_id TEXT NOT NULL, day TEXT NOT NULL, device TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL, model TEXT NOT NULL, reasoning TEXT NOT NULL DEFAULT '',
  turns INTEGER NOT NULL DEFAULT 0, images INTEGER NOT NULL DEFAULT 0,
- PRIMARY KEY(user_id,day,provider,model,reasoning)
+ PRIMARY KEY(user_id,day,device,provider,model,reasoning)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS desktop_usage_day ON desktop_usage(day);
 CREATE TABLE IF NOT EXISTS desktop_usage_hours (
- user_id TEXT NOT NULL, day TEXT NOT NULL, hours TEXT NOT NULL, PRIMARY KEY(user_id,day)
+ user_id TEXT NOT NULL, day TEXT NOT NULL, device TEXT NOT NULL DEFAULT '', hours TEXT NOT NULL, PRIMARY KEY(user_id,day,device)
 ) WITHOUT ROWID;

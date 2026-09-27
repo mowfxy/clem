@@ -34,7 +34,8 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
   if (
     !spec || typeof spec.title !== "string" || !spec.title.trim() ||
     !Array.isArray(spec.sections) || spec.sections.length < 1 || spec.sections.length > 60 ||
-    JSON.stringify(spec).length > 300000
+    // An export of the person's own answer (no voice check) may be any answer the app accepts (300k characters of Markdown, larger once encoded).
+    JSON.stringify(spec).length > (checkVoice ? 300000 : 2_000_000)
   )
     throw Error('Invalid PDF specification: expected {"title":string,"sections":[1-60 sections]}.');
   if (spec.kind !== undefined && !kinds.has(spec.kind)) throw Error(`Unknown document kind "${spec.kind}". Use one of: ${[...kinds].join(", ")}.`);
@@ -198,5 +199,11 @@ export function markdownDocument(markdown: string, fallbackTitle = "Document"): 
     else current.text = (current.text || "") + line + "\n";
   }
   if (current.heading || current.text?.trim()) sections.push(current);
-  return { title: title.slice(0, 160), kind: "document", sections: sections.length ? sections.map((s) => ({ ...s, text: s.text?.trim() })) : [{ text: text || " " }] };
+  // A document holds at most 60 sections: a longer answer keeps every part, with neighbouring "##" parts sharing one section.
+  const per = Math.ceil(sections.length / 60), merged: Section[] = [];
+  for (let i = 0; i < sections.length; i += per) {
+    const group = sections.slice(i, i + per);
+    merged.push({ ...group[0], text: [group[0].text, ...group.slice(1).map((s) => (s.heading ? "## " + s.heading + "\n\n" : "") + (s.text || ""))].join("\n\n") });
+  }
+  return { title: title.slice(0, 160), kind: "document", sections: merged.length ? merged.map((s) => ({ ...s, text: s.text?.trim() })) : [{ text: text || " " }] };
 }

@@ -1,5 +1,4 @@
 import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
-import {get,set} from 'idb-keyval';
 import {Icon} from '../Icons';
 import {desktop} from '../desktop/bridge';
 import {searchDocs,type SearchDoc,type SearchHit,type Snippet} from '../../core/search';
@@ -20,15 +19,9 @@ const filters:{id:Filter;label:string;icon:string}[]=[
 const kindIcon:Record<string,string>={chat:'chat',file:'files',folder:'projects',card:'subjects',space:'skills'};
 const TEXT_FILE=15_000_000;
 
-/** Reads a stored file's text once, then reuses it until the document is edited. */
+/** Reads a stored file's text once, then reuses it until the file changes. */
 async function fileText(file:StoredFile,owner:string,signal:AbortSignal){
-  const [{loadEdits},{extractFiles}]=await Promise.all([import('../document-state'),import('../documents')]);
-  const revision=(await loadEdits(file)).revision,key=`mowr-source:${owner}:${file.id}`;
-  const cached=await get<{revision:number;text:string}>(key);
-  if(cached?.revision===revision)return cached.text;
-  const text=await extractFiles([file],signal);
-  await set(key,{revision,text});
-  return text;
+  return (await import('../source-context')).cachedFileText(file,owner,signal);
 }
 
 export function Marked({snippet}:{snippet:Snippet}){

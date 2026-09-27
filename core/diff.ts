@@ -3,7 +3,9 @@
 export type DiffLine = { kind: 'same' | 'add' | 'remove'; text: string; a?: number; b?: number };
 
 export function lineDiff(before: string, after: string): DiffLine[] {
-  const a = before.split(/\r?\n/), b = after.split(/\r?\n/);
+  // Empty text has no lines (a new or emptied file), not one blank line.
+  const split = (text: string) => (text === '' ? [] : text.split(/\r?\n/));
+  const a = split(before), b = split(after);
   let start = 0;
   while (start < a.length && start < b.length && a[start] === b[start]) start++;
   let endA = a.length, endB = b.length;
@@ -16,8 +18,9 @@ export function lineDiff(before: string, after: string): DiffLine[] {
     let i = 0, j = 0;
     while (i < n || j < m) {
       if (i < n && j < m && midA[i] === midB[j]) { out.push({ kind: 'same', text: midA[i], a: start + i + 1, b: start + j + 1 }); i++; j++; }
-      else if (j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j])) { out.push({ kind: 'add', text: midB[j], b: start + j + 1 }); j++; }
-      else { out.push({ kind: 'remove', text: midA[i], a: start + i + 1 }); i++; }
+      // On ties, removals come before additions, as in unified diffs.
+      else if (i < n && (j >= m || dp[i + 1][j] >= dp[i][j + 1])) { out.push({ kind: 'remove', text: midA[i], a: start + i + 1 }); i++; }
+      else { out.push({ kind: 'add', text: midB[j], b: start + j + 1 }); j++; }
     }
   } else {
     midA.forEach((text, i) => out.push({ kind: 'remove', text, a: start + i + 1 }));

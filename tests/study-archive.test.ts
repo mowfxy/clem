@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseStudy, studyRequest } from "../core/study.ts";
 import {
+  archiveLimits,
   packSubject,
   unpackSubject,
   type SubjectArchive,
@@ -56,5 +57,15 @@ test("subject archive includes source bytes and rejects missing files and unsafe
         "subject.json": strToU8(JSON.stringify(manifest)),
       }),
     ),
-  );
+  );  // Export refuses what import would reject, with the same limits.
+  const saved = { ...archiveLimits };
+  try {
+    archiveLimits.file = 4;
+    await assert.rejects(packSubject(manifest, { file: strToU8("hello") }), /larger than/);
+    Object.assign(archiveLimits, saved, { total: 100 });
+    await assert.rejects(packSubject(manifest, { file: strToU8("hello") }), /more than/);
+    await assert.rejects(unpackSubject(packed), /damaged|unsupported|too large/);
+  } finally {
+    Object.assign(archiveLimits, saved);
+  }
 });

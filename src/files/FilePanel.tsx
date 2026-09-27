@@ -69,8 +69,10 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const [mediaSrc, setMediaSrc] = useState("");
   // The version this panel saved itself, so its own save does not reload the file under the person.
   const ownSave = useRef<number | undefined>(undefined);
-  const opened = useRef<{ promise: Promise<void>; resolve: () => void }>(undefined);
-  if (!opened.current) { let resolve = () => {}; const promise = new Promise<void>((r) => (resolve = r)); opened.current = { promise, resolve }; }
+  // Settles once the file has opened: resolves when it loads, rejects when it cannot be opened, so a waiting edit never hangs.
+  const opened = useRef<{ promise: Promise<void>; resolve: () => void; reject: (e: unknown) => void; failed?: boolean }>(undefined);
+  const openWait = () => { let resolve = () => {}, reject: (e: unknown) => void = () => {}; const promise = new Promise<void>((r, j) => { resolve = r; reject = j; }); promise.catch(() => {}); opened.current = { promise, resolve, reject }; };
+  if (!opened.current) openWait();
   const [compare, setCompare] = useState<"before" | "after">("after");
   // Escape closes the popup viewer.
   useEffect(() => {
@@ -112,9 +114,11 @@ export const FilePanel = forwardRef<FilePanelHandle, {
 
   async function load() {
     setError("");
+    if (opened.current!.failed) openWait();
     if ((kind === "video" || kind === "audio") && file.id.startsWith("drive_")) {
       const { mediaUrl } = await import("../drive/drive");
       setMediaSrc(await mediaUrl(file.id.slice(6)));
+      opened.current!.resolve();
       return;
     }
     const data = await getBlob(file.id);
@@ -127,7 +131,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     else if (kind === "video" || kind === "audio") setMediaSrc(URL.createObjectURL(data));
     opened.current!.resolve();
   }
-  useEffect(() => { setProposal(null); setSaved(null); void load().catch((e) => setError(clean(e))); return () => abort.current?.abort(); }, [file.id]);
+  useEffect(() => { setProposal(null); setSaved(null); void load().catch((e) => { setError(clean(e)); opened.current!.failed = true; opened.current!.reject(Error(clean(e))); }); return () => abort.current?.abort(); }, [file.id]);
   // Mowr revised this file from the chat: show the new version, highlighting what changed.
   useEffect(() => {
     if (!file.updated || file.updated === ownSave.current || !view || working) return;
@@ -141,7 +145,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
         const after: View = { kind: "pdf", pdf: next, boxes: await changedLines(before.pdf, next) };
         setView(after); setSaved({ summary: file.versions?.[0]?.summary || "Updated by Mowr", before: { ...before, boxes: [] }, after }); setCompare("after");
       } else await load();
-    })().catch((e) => setError(clean(e)));
+    })().catch((e) => { setError(clean(e)); opened.current!.failed = true; opened.current!.reject(Error(clean(e))); });
   }, [file.updated]);
   useEffect(() => () => { if (mediaSrc.startsWith("blob:")) URL.revokeObjectURL(mediaSrc); }, [mediaSrc]);
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
