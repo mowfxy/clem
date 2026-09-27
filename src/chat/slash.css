@@ -1,0 +1,21 @@
+/* Slash commands: the menu above the composer and the chip a chosen command becomes. */
+.slash-field{position:relative;display:flex;align-items:flex-start;gap:8px;width:100%}
+.slash-field textarea{flex:1;min-width:0}
+.command-chip{flex:none;display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 9px;margin:0;border:1px solid #4a4a45;border-radius:9px;background:linear-gradient(180deg,#34342f,#2a2a26);box-shadow:inset 0 1px 0 #ffffff14,0 2px 8px -4px #000;color:#f5f4f0;font:500 14px/1 'Mowafy Sans',system-ui,sans-serif;letter-spacing:.01em;white-space:nowrap;cursor:default}
+.command-chip .drawn-icon{color:#f5f4f0;flex:none}
+button.command-chip{cursor:pointer;transition:border-color .15s,background .15s}
+button.command-chip:hover{border-color:#6b6a64;background:linear-gradient(180deg,#3a3a35,#2e2e2a)}
+.slash-field.has-command .command-chip{margin:16px 0 0 18px}
+.slash-field.has-command textarea{padding-left:4px!important}
+.slash-menu{position:absolute;left:-10px;right:-10px;bottom:calc(100% + 18px);z-index:30;max-height:min(52vh,420px);overflow:auto;padding:6px;border:1px solid #3a3a36;border-radius:14px;background:#1d1d1b;box-shadow:0 24px 60px -18px #000,0 0 0 1px #00000040;animation:slash-in .14s cubic-bezier(.2,.8,.2,1)}
+.slash-menu button{display:grid;grid-template-columns:30px auto 1fr;align-items:center;gap:12px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:none;color:#f0efeb;text-align:left;cursor:pointer}
+.slash-menu button.on{background:#ffffff10}
+.slash-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:#2c2c28;border:1px solid #3d3d38}
+.slash-icon .drawn-icon{color:#f5f4f0}
+.slash-name{font:500 15px/1.2 'Mowafy Sans',system-ui,sans-serif;color:#f5f4f0}
+.slash-desc{font:14px/1.3 'Mowafy Sans',system-ui,sans-serif;color:#c9c8c1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes slash-in{from{opacity:0;transform:translateY(4px)}}
+@media (prefers-reduced-motion:reduce){.slash-menu{animation:none}}
+html[data-quiet=true] .slash-menu{animation:none}
+/* In a sent message the chip sits on its own line above the words. */
+.message.user .message-text .command-chip{display:flex;width:fit-content;margin:0 0 8px;height:28px;font-size:13px}

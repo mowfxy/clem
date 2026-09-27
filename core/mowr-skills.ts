@@ -11,6 +11,8 @@ import { driveIntent } from "./drive-search.ts";
 export type MowrSkill = { id: string; name: string; description: string; when: RegExp; steps: string[] };
 
 export type SkillContext = {
+  /** Playbooks a slash command asked for (core/commands.ts): always included, first. */
+  force?: string[];
   /** Google Drive files are attached to this request (picked for the chat, from a linked Drive folder or a Drive search). */
   drive?: boolean;
   /** Documents Mowr made earlier in this conversation. */
@@ -332,6 +334,7 @@ export const mowrSkills: MowrSkill[] = [
 
 /** Always sent: one line per feature, so a model knows what exists and never tells the person it “can't” do these. */
 export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them instead of describing workarounds):
+- Commands the person can type: /visual /pdf /research /explain /solve /summarize /notes /videos /slides /flashcards /quiz /routine /remember /skill. Suggest one when it fits.
 - Web search: current facts and real links, including YouTube videos. Cite what you use as links.
 - Videos: a full https://www.youtube.com/watch?v=… link in a sentence or bullet becomes a player under it; a Drive video linked as [name](drive:ID) plays too. Mowr reads the captions of videos asked about (VIDEO TRANSCRIPTS).
 - Google Drive: when Drive files are supplied, link them as [name](drive:ID) with their listed id; documents open in Mowr's viewer.
@@ -367,7 +370,8 @@ function fits(skill: MowrSkill, request: string, context: SkillContext) {
 
 /** The full playbooks that fit this request, most specific first, at most `limit` of them. */
 export function mowrSkillsFor(request: string, context: SkillContext = {}, limit = 6) {
-  return mowrSkills.filter((skill) => fits(skill, request, context)).slice(0, limit);
+  const forced = mowrSkills.filter((skill) => context.force?.includes(skill.id));
+  return [...forced, ...mowrSkills.filter((skill) => !forced.includes(skill) && fits(skill, request, context))].slice(0, limit);
 }
 
 const guide = (s: MowrSkill) => `${s.name.toUpperCase()}:\n${s.steps.map((step, i) => `${i + 1}. ${step}`).join("\n")}`;
