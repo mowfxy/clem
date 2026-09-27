@@ -37,6 +37,8 @@ function svg(width: number, height: number, body: string, title?: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="${PAPER}"/>` +
     (title ? textBlock([title], w / 2, 18, 15, { weight: 600, color: INK }) : "") + `<g transform="translate(0 ${head})">${body}</g></svg>`;
 }
+/** A requested size in pixels, clamped; anything that is not a number (such as "wide") falls back to the default instead of drawing at NaN. */
+const bounded = (value: unknown, fallback: number, min: number, max: number) => { const n = Number(value); return Math.min(Math.max(Number.isFinite(n) && n ? n : fallback, min), max); };
 const list = <T,>(value: unknown, name: string, max: number): T[] => {
   if (!Array.isArray(value) || !value.length) throw Error(`${name} must be a non-empty list`);
   if (value.length > max) throw Error(`${name} can have at most ${max} entries`);
@@ -162,7 +164,7 @@ export function chart(spec: { title?: string; type?: "bar" | "hbar" | "stacked" 
     if (!Array.isArray(s?.values) || s.values.length !== labels.length) throw Error(`series "${s?.name}" needs exactly ${labels.length} values, one per label`);
     if (s.values.some((v) => typeof v !== "number" || !Number.isFinite(v))) throw Error(`series "${s?.name}" has a value that is not a number`);
   }
-  const type = spec.type || "bar", W = Math.min(Math.max(spec.width || 640, 320), 1000), H = Math.min(Math.max(spec.height || 380, 220), 800);
+  const type = spec.type || "bar", W = bounded(spec.width, 640, 320, 1000), H = bounded(spec.height, 380, 220, 800);
   const unit = spec.unit ? " " + spec.unit : "";
   const legend = series.length > 1 || type === "pie";
   if (type === "pie") {
@@ -236,7 +238,7 @@ export function chart(spec: { title?: string; type?: "bar" | "hbar" | "stacked" 
 export function timeline(spec: { title?: string; events: { date: string; label: string; detail?: string }[]; width?: number }) {
   const events = list<{ date: string; label: string; detail?: string }>(spec?.events, "events", 30);
   if (events.length > 8) {
-    const W = Math.min(Math.max(spec.width || 640, 420), 1000), rowH = (e: typeof events[number]) => 22 + wrap(e.label, W - 190, 12.5, 2).length * 16 + (e.detail ? wrap(e.detail, W - 190, 11.5, 3).length * 15 : 0);
+    const W = bounded(spec.width, 640, 420, 1000), rowH = (e: typeof events[number]) => 22 + wrap(e.label, W - 190, 12.5, 2).length * 16 + (e.detail ? wrap(e.detail, W - 190, 11.5, 3).length * 15 : 0);
     let y = 18, body = "";
     const heights = events.map(rowH), H = heights.reduce((a, b) => a + b, 0) + 30;
     body += `<line x1="130" y1="10" x2="130" y2="${H - 14}" stroke="${ACCENT}" stroke-width="2"/>`;
@@ -249,7 +251,7 @@ export function timeline(spec: { title?: string; events: { date: string; label: 
     });
     return svg(W, H, body, spec.title);
   }
-  const W = Math.min(Math.max(spec.width || 680, 360), 1000), box = Math.min(150, (W - 40) / Math.max(1, events.length) * 1.7), pad = box / 2 + 10;
+  const W = bounded(spec.width, 680, 360, 1000), box = Math.min(150, (W - 40) / Math.max(1, events.length) * 1.7), pad = box / 2 + 10;
   const step = (W - pad * 2) / Math.max(1, events.length - 1), mid = 150;
   let body = `<line x1="16" y1="${mid}" x2="${W - 16}" y2="${mid}" stroke="${ACCENT}" stroke-width="2.4" marker-end="url(#tl)"/>`;
   events.forEach((e, i) => {
@@ -270,7 +272,7 @@ export function timeline(spec: { title?: string; events: { date: string; label: 
 export function cycle(spec: { title?: string; steps: { label: string; detail?: string }[]; center?: string; width?: number }) {
   const steps = list<{ label: string; detail?: string } | string>(spec?.steps, "steps", 12).map((s) => (typeof s === "string" ? { label: s } : s));
   const detailed = steps.some((s) => s.detail);
-  const W = Math.min(Math.max(spec.width || (detailed ? 720 : 560), 360), 1000), H = Math.min(W * 0.8, 640), cx = W / 2, cy = H / 2 + 6;
+  const W = bounded(spec.width, (detailed ? 720 : 560), 360, 1000), H = Math.min(W * 0.8, 640), cx = W / 2, cy = H / 2 + 6;
   const n = steps.length, at = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
   const room = detailed ? 150 : 16, R = Math.max(90, Math.min(W / 2 - 62 - room, H / 2 - 62 - (detailed ? 34 : 8)));
   let body = spec.center ? `<circle cx="${cx}" cy="${cy}" r="${num(R * 0.42)}" fill="#f3f6f9" stroke="#c9d6e3"/>` + textBlock(wrap(spec.center, R * 0.72, 13.5, 3), cx, cy, 13.5, { weight: 600, color: ACCENT }) : "";
@@ -297,7 +299,7 @@ type Branch = { label: string; children?: (string | Branch)[] };
 export function mindMap(spec: { title?: string; center: string; branches: Branch[]; width?: number }) {
   if (typeof spec?.center !== "string") throw Error('mindMap needs "center"');
   const branches = list<Branch | string>(spec.branches, "branches", 10).map((b) => (typeof b === "string" ? { label: b } : b));
-  const W = Math.min(Math.max(spec.width || 760, 480), 1100), H = Math.max(420, Math.min(900, 120 + branches.reduce((s, b) => s + Math.max(1, (b.children || []).length), 0) * 24));
+  const W = bounded(spec.width, 760, 480, 1100), H = Math.max(420, Math.min(900, 120 + branches.reduce((s, b) => s + Math.max(1, (b.children || []).length), 0) * 24));
   const cx = W / 2, cy = H / 2, n = branches.length;
   let body = "";
   const centerLines = wrap(spec.center, 150, 15, 3);
@@ -353,7 +355,7 @@ export function tree(spec: { title?: string; root: TreeNode; width?: number }) {
 export function venn(spec: { title?: string; sets: { label: string; items?: string[] }[]; overlap?: string[]; overlaps?: Record<string, string[]>; width?: number }) {
   const sets = list<{ label: string; items?: string[] }>(spec?.sets, "sets", 3);
   if (sets.length < 2) throw Error("venn needs 2 or 3 sets");
-  const W = Math.min(Math.max(spec.width || 620, 420), 900), three = sets.length === 3, H = three ? W * 0.82 : W * 0.6;
+  const W = bounded(spec.width, 620, 420, 900), three = sets.length === 3, H = three ? W * 0.82 : W * 0.6;
   const r = three ? W * 0.24 : W * 0.27, cx = W / 2, cy = three ? H * 0.46 : H / 2;
   const centers = three ? [{ x: cx - r * 0.62, y: cy - r * 0.32 }, { x: cx + r * 0.62, y: cy - r * 0.32 }, { x: cx, y: cy + r * 0.62 }] : [{ x: cx - r * 0.62, y: cy }, { x: cx + r * 0.62, y: cy }];
   let body = centers.map((c, i) => `<circle cx="${num(c.x)}" cy="${num(c.y)}" r="${num(r)}" fill="${STROKES[i]}" fill-opacity=".13" stroke="${STROKES[i]}" stroke-width="1.6"/>`).join("");

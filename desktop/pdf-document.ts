@@ -46,6 +46,8 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
   const problems: string[] = [];
   sections.forEach((s, i) => {
     if (!s || typeof s !== "object" || (!s.heading && !s.text && !s.figure)) problems.push(`Section ${i + 1} is empty.`);
+    else if ([s.heading, s.text, s.caption].some((v) => v !== undefined && v !== null && typeof v !== "string"))
+      problems.push(`Section ${i + 1} "heading", "text" and "caption" must be strings.`);
     else if (s.figure && (typeof s.figure.module !== "string" || typeof s.figure.fn !== "string" || !Array.isArray(s.figure.args)))
       problems.push(`Section ${i + 1} figure must be {"module":string,"fn":string,"args":[…]}.`);
   });
@@ -141,6 +143,9 @@ figure img{display:block;margin:0 auto;max-width:100%;max-height:118mm;object-fi
 figcaption{margin:7pt auto 0;max-width:92%;font:8.6pt/1.45 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#30343a;text-align:left}
 figcaption::before{content:"Figure " counter(figure) ". ";font-weight:600;color:#101114}
 .source{color:#80868e}
+.footnotes{margin:12pt 0 8pt;padding-top:5pt;border-top:.5pt solid #c4c8cd;font-size:8.8pt;line-height:1.45}
+.footnote-label{margin:0 0 3pt;font:600 7.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
+.footnotes ol{padding-left:15pt}
 .doc-references{margin-top:22pt}
 .doc-references h2::before{content:none}
 .doc-references ol{padding-left:22pt;font-size:9.2pt;line-height:1.45}

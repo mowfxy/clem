@@ -45,6 +45,14 @@ test('model-authored plots compile, animate and draw finite geometry', () => {
   assert.deepEqual(v.readouts(defaultValues(v), 0), [['Wavelength', '6.28 m']]);
 });
 
+test('a plot range too narrow for its magnitude draws a bounded grid instead of freezing', () => {
+  // At 2e18 a tick step of 100 is below the numbers' precision, so `x += step` never moves.
+  const v = compileVisual({ kind: 'plot', title: 'Far from zero', x: { min: 2e18, max: 2e18 + 1024 }, y: { min: 2e18, max: 2e18 + 1024 }, layers: [] });
+  const pen = new CountPen();
+  v.draw(pen, {}, 0);
+  assert.ok(pen.paths < 500);
+});
+
 test('diagrams auto-layout, survive cycles and validate step focus', () => {
   const v = compileVisual({ kind: 'diagram', title: 'Water cycle', nodes: [{ id: 'sea', label: 'Ocean' }, { id: 'cloud', label: 'Clouds' }, { id: 'rain', label: 'Rain', shape: 'pill' }, { id: 'river', label: 'Rivers', shape: 'circle' }], edges: [{ from: 'sea', to: 'cloud', label: 'evaporation', flow: true }, { from: 'cloud', to: 'rain' }, { from: 'rain', to: 'river' }, { from: 'river', to: 'sea' }], steps: [{ title: 'Evaporation', focus: ['sea', 'cloud'] }] });
   assert.equal(v.moving, true);

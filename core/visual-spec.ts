@@ -158,11 +158,13 @@ export function compileVisual(raw: unknown): CompiledVisual {
       const inside = (y: number) => y > b.t - 400 && y < b.b + 400;
       // Grid and axes
       const stepX = niceStep(x1 - x0, 8), stepY = niceStep(y1 - y0, 6), dX = Math.max(0, -Math.floor(Math.log10(stepX))), dY = Math.max(0, -Math.floor(Math.log10(stepY)));
-      for (let x = Math.ceil(x0 / stepX) * stepX; x <= x1 + stepX * 1e-6; x += stepX) {
+      // Tick loops are capped: on a narrow range far from zero (2e18 to 2e18+1024) the step is below the
+      // numbers' precision, so `x += step` never moves and an uncapped loop would freeze the page.
+      for (let i = 0, x = Math.ceil(x0 / stepX) * stepX; i < 100 && x <= x1 + stepX * 1e-6; i++, x += stepX) {
         if (spec.grid !== false) pen.path([[X(x), b.t], [X(x), b.b]], { stroke: palette.grid, width: 1 });
         pen.text(X(x), b.b + 18, fmt(x, dX), { size: 10.5, color: palette.faint, align: 'middle' });
       }
-      for (let y = Math.ceil(y0 / stepY) * stepY; y <= y1 + stepY * 1e-6; y += stepY) {
+      for (let i = 0, y = Math.ceil(y0 / stepY) * stepY; i < 100 && y <= y1 + stepY * 1e-6; i++, y += stepY) {
         if (spec.grid !== false) pen.path([[b.l, Y(y)], [b.r, Y(y)]], { stroke: palette.grid, width: 1 });
         pen.text(b.l - 9, Y(y) + 4, fmt(y, dY), { size: 10.5, color: palette.faint, align: 'end' });
       }
