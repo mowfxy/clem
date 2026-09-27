@@ -177,8 +177,8 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .sp-activity figcaption{font-size:10.5px;font-weight:500;letter-spacing:.9px;text-transform:uppercase;color:#8f8e88;margin:0 0 4px 2px;user-select:none}
 .sp-activity svg{display:block;overflow:visible}
 .sp-activity .dot{fill:#ffffff}
-.sp-activity .grid{opacity:.11}
-.sp-activity .grid-lit{opacity:.5;fill-opacity:1}
+.sp-activity .grid .dot{opacity:.12;transform-box:fill-box;transform-origin:center;animation:sp-twinkle 7s cubic-bezier(.45,0,.55,1) infinite}
+.sp-activity .grid-lit{opacity:.5}
 .sp-activity .fill-top{stop-color:var(--glow);stop-opacity:.14}
 .sp-activity .fill-bottom{stop-color:var(--glow);stop-opacity:0}
 .sp-activity .line{fill:none;stroke:var(--ink);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round;filter:drop-shadow(0 0 3px color-mix(in srgb,var(--glow) 55%,transparent));stroke-dasharray:1;stroke-dashoffset:1;animation:sp-draw 1.1s cubic-bezier(.65,0,.35,1) .1s forwards}
@@ -189,9 +189,10 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .sp-activity .core{fill:var(--ink);filter:drop-shadow(0 0 4px var(--glow))}
 .sp-activity .halo{fill:var(--glow);opacity:.18;transform-origin:center;transform-box:fill-box;animation:sp-pulse 2.6s ease-in-out infinite}
 .sp-activity .end{opacity:0;animation:sp-fade .4s ease 1.05s forwards}
+@keyframes sp-twinkle{0%,100%{opacity:.11;transform:scale(1)}32%{opacity:0;transform:scale(.4)}58%{opacity:.36;transform:scale(1.3)}78%{opacity:.14;transform:scale(1)}}
 @keyframes sp-draw{to{stroke-dashoffset:0}}
 @keyframes sp-fade{to{opacity:1}}
 @keyframes sp-pulse{0%,100%{transform:scale(.8);opacity:.28}50%{transform:scale(1.35);opacity:.1}}
 @media (max-width:760px){.sp-title-row{flex-wrap:wrap}.sp-side{align-items:flex-start;width:100%}}
-@media (prefers-reduced-motion:reduce){.sp-activity .line{animation:none;stroke-dashoffset:0}.sp-activity .area,.sp-activity .end{animation:none;opacity:1}.sp-activity .halo{animation:none}}
-html[data-quiet=true] .sp-activity .line{animation:none;stroke-dashoffset:0}html[data-quiet=true] .sp-activity .area,html[data-quiet=true] .sp-activity .end{animation:none;opacity:1}html[data-quiet=true] .sp-activity .halo{animation:none}
+@media (prefers-reduced-motion:reduce){.sp-activity .line{animation:none;stroke-dashoffset:0}.sp-activity .area,.sp-activity .end{animation:none;opacity:1}.sp-activity .halo,.sp-activity .grid .dot{animation:none}}
+html[data-quiet=true] .sp-activity .line{animation:none;stroke-dashoffset:0}html[data-quiet=true] .sp-activity .area,html[data-quiet=true] .sp-activity .end{animation:none;opacity:1}html[data-quiet=true] .sp-activity .halo,html[data-quiet=true] .sp-activity .grid .dot{animation:none}
