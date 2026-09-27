@@ -10,9 +10,10 @@ import {Cases} from './Cases';
 import {Announcements} from './Announcements';
 import {Team} from './Team';
 import {Audit} from './Audit';
+import {Emails} from './Emails';
 import './admin.css';
 
-export type Section='overview'|'stats'|'users'|'cases'|'announcements'|'team'|'audit';
+export type Section='overview'|'stats'|'users'|'cases'|'announcements'|'emails'|'team'|'audit';
 export type Go=(section:Section,id?:string)=>void;
 
 // Icons are the app's drawn set so the portal reads as part of Mowr.
@@ -25,6 +26,7 @@ const groups:{label:string;items:{id:Section;label:string;icon:string;min?:'admi
   ]},
   {label:'Staff',items:[
     {id:'announcements',label:'Announcements',icon:'globe'},
+    {id:'emails',label:'Emails',icon:'mail',min:'admin'},
     {id:'team',label:'Team',icon:'lock'},
     {id:'audit',label:'Audit log',icon:'clock',min:'admin'},
   ]},
@@ -75,6 +77,7 @@ export default function AdminApp(){
       case 'users':return <Users go={go} selected={where.id} staff={s}/>;
       case 'cases':return <Cases go={go} selected={where.id}/>;
       case 'announcements':return <Announcements staff={s}/>;
+      case 'emails':return s.role==='support'?<Overview go={go}/>:<Emails go={go}/>;
       case 'team':return <Team staff={s}/>;
       case 'audit':return <Audit go={go}/>;
       default:return <Overview go={go}/>;

@@ -39,3 +39,22 @@ export type Plan='owner'|'complimentary'|'subscribed'|'cancelling'|'past_due'|'l
 export type Person={id:string;email?:string|null;username?:string|null;display_name?:string|null;first_seen_at?:string|null;last_seen_at?:string|null;setup_step?:number|null;suspended:boolean;suspended_until?:string|null;cases:number;plan:Plan;until?:string|null};
 export type CaseRow={id:string;owner_id:string;category:string;subject:string;created_at:string;status:'open'|'pending'|'resolved'|'closed';priority:'low'|'normal'|'high'|'urgent';assignee_id?:string|null;updated_at:string;email?:string|null;username?:string|null;replies:number;awaiting_staff:boolean};
 export type Staff={id:string;email:string;role:'owner'|'admin'|'support';mfa:boolean;lemon:boolean;directory:boolean;requireMfa:boolean};
+
+/** Preset emails are sent by the website's own server (it holds the mail account), not the account service. */
+export async function mailApi<T=any>(path:string,body?:unknown):Promise<T>{
+  if(demo)return (await import('./demo')).demoMail(path,body) as T;
+  const supabase=await adminClient();
+  const {data}=await supabase.auth.getSession();
+  if(!data.session)throw new AdminError('Your session ended. Sign in again.',401);
+  // No cookies: the server treats a cookieless bearer call as the portal, never as a signed-in page.
+  const response=await fetch('/api/email/staff'+path,{
+    method:body===undefined?'GET':'POST',credentials:'omit',
+    headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},
+    body:body===undefined?undefined:JSON.stringify(body),
+    signal:AbortSignal.timeout(30000),
+  }).catch(()=>{throw new AdminError('The Mowr website could not be reached. Check your connection.',0);});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw new AdminError(result.error||`Request failed (${response.status}).`,response.status);
+  return result as T;
+}
+export type MailPreset={id:string;label:string;about:string};
