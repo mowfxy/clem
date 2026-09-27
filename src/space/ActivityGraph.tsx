@@ -4,6 +4,14 @@ import type {Chat,StoredFile,StudySet} from '../../core/types';
 const DAY=86_400_000, DAYS=30;
 const W=232, H=78, PAD_X=8, PAD_TOP=12, PAD_BOTTOM=12, GRID=8;
 
+/** The grid's dots, each with a start offset: a slow wave that sweeps left to right, with a little
+ * scatter so it shimmers instead of marching. Negative offsets start it mid-cycle on first paint. */
+const DOTS:[number,number,number][]=[];
+for(let y=3;y<H;y+=GRID)for(let x=PAD_X%GRID+1;x<W;x+=GRID){
+  const scatter=Math.abs(Math.sin(x*12.9898+y*78.233)*43758.5453)%1;
+  DOTS.push([x,y,-(7-(x/W)*4.2-(y/H)*1.1-scatter*1.2)]);
+}
+
 /** Every moment something happened in a space: chats, file edits, study sets, quiz attempts and card reviews. */
 export function activityTimes(chats:Chat[],files:StoredFile[],sets:StudySet[]):number[]{
   return [
@@ -65,7 +73,7 @@ export function ActivityGraph({chats,files,sets,tone}:{chats:Chat[];files:Stored
         </radialGradient>
         <mask id={`near-${id}`}><rect width={W} height={H} fill="#000"/>{at&&<circle cx={at.x} cy={H/2} r="46" fill={`url(#lens-${id})`}/>}</mask>
       </defs>
-      <rect width={W} height={H} fill={`url(#grid-${id})`} className="grid"/>
+      <g className="grid">{DOTS.map(([x,y,d],i)=><circle key={i} cx={x} cy={y} r=".7" className="dot" style={{animationDelay:`${d}s`}}/>)}</g>
       <rect width={W} height={H} fill={`url(#grid-${id})`} className="grid-lit" mask={`url(#near-${id})`}/>
       <path d={area} fill={`url(#fill-${id})`} className="area"/>
       <path ref={curve} d={line} className="line" pathLength={1}/>
