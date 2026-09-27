@@ -11,7 +11,7 @@
   margin-bottom: 0;
 }
 .settings-page .page-heading h1 {
-  font-family: "Kindred Serif", Georgia, serif;
+  font-family: "Mowafy Serif", Georgia, serif;
   font-size: 30px;
   font-weight: 400;
 }
@@ -59,7 +59,7 @@
 }
 .settings-page .settings-content h2 {
   font:
-    500 18px "Kindred Sans",
+    500 18px "Mowafy Sans",
     sans-serif;
   letter-spacing: -0.3px;
   margin: 4px 0 20px;
@@ -67,7 +67,7 @@
 .settings-page .settings-content h3,
 .settings-action h3 {
   font:
-    500 13px "Kindred Sans",
+    500 13px "Mowafy Sans",
     sans-serif;
   margin: 0 0 5px;
 }
@@ -133,7 +133,7 @@
 }
 .settings-dialog > header h2 {
   font:
-    500 17px "Kindred Sans",
+    500 17px "Mowafy Sans",
     sans-serif;
   margin: 0;
 }
@@ -148,7 +148,7 @@
 }
 .settings-dialog-body h2 {
   font:
-    500 18px "Kindred Sans",
+    500 18px "Mowafy Sans",
     sans-serif;
 }
 .settings-dialog-body h3 {
@@ -179,7 +179,7 @@
   border-radius: 7px;
   background: #22221f;
   font:
-    13px "Kindred Sans",
+    13px "Mowafy Sans",
     sans-serif;
   color: #eee;
 }
@@ -263,7 +263,7 @@ select {
   border: 1px solid #41413b;
   border-radius: 7px;
   font:
-    13px "Kindred Sans",
+    13px "Mowafy Sans",
     sans-serif;
   padding: 9px 12px;
 }
@@ -291,7 +291,7 @@ select option {
     box-shadow: 0 10px 32px #0007;
     color: #eee;
     font:
-      13px "Kindred Sans",
+      13px "Mowafy Sans",
       sans-serif;
     max-height: 280px;
   }

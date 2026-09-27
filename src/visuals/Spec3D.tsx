@@ -224,7 +224,7 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
           v.setFromMatrixPosition(o.matrixWorld).project(camera);
           if (v.z > 1) return;
           const x = (v.x + 1) / 2 * src.width, y = (1 - v.y) / 2 * src.height, text = o.element.textContent, size = parseFloat(o.element.style.fontSize || '12') * scale;
-          ctx.font = `${size}px 'Kindred Sans',system-ui,sans-serif`;
+          ctx.font = `${size}px 'Mowafy Sans',system-ui,sans-serif`;
           if (o.element.className === 'scene-label') { const w = ctx.measureText(text).width + 12 * scale; ctx.fillStyle = '#161615dd'; ctx.fillRect(x - w / 2, y - size * 0.85, w, size * 1.7); }
           ctx.fillStyle = o.element.style.color || (o.element.className === 'scene-label' ? '#f0efeb' : '#8f8e89'); ctx.fillText(text, x, y);
         });

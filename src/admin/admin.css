@@ -1,21 +1,21 @@
-/* Mowr Admin — the app's own look: warm near-black surfaces, ivory ink, Kindred Serif headings,
+/* Mowr Admin — the app's own look: warm near-black surfaces, ivory ink, Mowafy Serif headings,
    drawn icons and an ink illustration at the top of every page. No brand hue beyond the illustrations. */
 .adm-root,.adm-modal{--a-bg:#141414;--a-side:#111;--a-card:#1b1b19;--a-raised:#232321;--a-field:#161615;--a-line:#2c2c29;--a-line-2:#3a3a36;--a-ink:#f0efeb;--a-soft:#b5b4ad;--a-muted:#85847e;--a-faint:#6f6e68;
   --a-ok:#a9c9a2;--a-warn:#e3c07e;--a-danger:#e08a7e;--a-blue:#8197e2;--a-ease:cubic-bezier(.2,.8,.2,1)}
-.adm-root{min-height:100vh;background:var(--a-bg);color:var(--a-ink);font:400 14px/1.45 'Kindred Sans',system-ui,sans-serif;letter-spacing:0}
-.adm-root h1,.adm-root h2,.adm-modal h2{font-family:'Kindred Serif',Georgia,serif;font-weight:360;letter-spacing:-.5px;color:var(--a-ink)}
-.adm-root h3{font:500 11px/1 'Kindred Sans',sans-serif;text-transform:uppercase;letter-spacing:.12em;color:var(--a-muted);margin:0 0 12px}
+.adm-root{min-height:100vh;background:var(--a-bg);color:var(--a-ink);font:400 14px/1.45 'Mowafy Sans',system-ui,sans-serif;letter-spacing:0}
+.adm-root h1,.adm-root h2,.adm-modal h2{font-family:'Mowafy Serif',Georgia,serif;font-weight:360;letter-spacing:-.5px;color:var(--a-ink)}
+.adm-root h3{font:500 11px/1 'Mowafy Sans',sans-serif;text-transform:uppercase;letter-spacing:.12em;color:var(--a-muted);margin:0 0 12px}
 .adm-root p{line-height:1.55}
 .adm-root .ink-scene{position:relative;color:#f4f3ed}
 .adm-root .ink-scene>svg{width:100%;height:auto;display:block;overflow:visible}
 
 /* Controls */
-.adm-root button,.adm-modal button{font:400 13px/1.2 'Kindred Sans',sans-serif;border:1px solid var(--a-line-2);background:var(--a-raised);color:var(--a-ink);padding:8px 13px;border-radius:9px;gap:7px;white-space:nowrap;transition:background .18s,border-color .18s,color .18s,transform .18s var(--a-ease)}
+.adm-root button,.adm-modal button{font:400 13px/1.2 'Mowafy Sans',sans-serif;border:1px solid var(--a-line-2);background:var(--a-raised);color:var(--a-ink);padding:8px 13px;border-radius:9px;gap:7px;white-space:nowrap;transition:background .18s,border-color .18s,color .18s,transform .18s var(--a-ease)}
 .adm-root button:hover:not(:disabled),.adm-modal button:hover:not(:disabled){background:#2a2a28;border-color:#4a4a45}
 .adm-root button:active:not(:disabled),.adm-modal button:active:not(:disabled){transform:scale(.97)}
 .adm-root button:focus-visible,.adm-root a:focus-visible,.adm-modal button:focus-visible{outline:2px solid var(--a-ink);outline-offset:2px}
 .adm-root button.danger,.adm-modal button.danger{color:var(--a-danger);border-color:#5b3a35}
-.adm-root input,.adm-root select,.adm-root textarea,.adm-modal input,.adm-modal select,.adm-modal textarea{font:400 13.5px/1.4 'Kindred Sans',sans-serif;background:var(--a-field);border:1px solid var(--a-line-2);border-radius:10px;padding:9px 11px;color:var(--a-ink);transition:border-color .18s,box-shadow .18s}
+.adm-root input,.adm-root select,.adm-root textarea,.adm-modal input,.adm-modal select,.adm-modal textarea{font:400 13.5px/1.4 'Mowafy Sans',sans-serif;background:var(--a-field);border:1px solid var(--a-line-2);border-radius:10px;padding:9px 11px;color:var(--a-ink);transition:border-color .18s,box-shadow .18s}
 .adm-root input::placeholder,.adm-root textarea::placeholder,.adm-modal input::placeholder,.adm-modal textarea::placeholder{color:var(--a-faint)}
 .adm-root input:focus,.adm-root select:focus,.adm-root textarea:focus,.adm-modal input:focus,.adm-modal select:focus,.adm-modal textarea:focus{outline:0;border-color:#8b8a83;box-shadow:0 0 0 4px #f0efeb10}
 .adm-root .adm-primary,.adm-modal .adm-primary{background:var(--a-ink);color:#141413;border-color:var(--a-ink);font-weight:500}
@@ -36,9 +36,9 @@
 /* Shell: the app's sidebar, grouped like its settings navigation */
 .adm-shell{display:grid;grid-template-columns:260px minmax(0,1fr)}
 .adm-nav{position:sticky;top:0;height:100vh;height:100dvh;display:flex;flex-direction:column;min-height:0;padding:22px 12px 12px;background:var(--a-side);border-right:1px solid #222;z-index:30}
-.adm-brand{display:flex;align-items:center;gap:9px;padding:0 10px 26px;font:360 30px/1 'Kindred Serif',Georgia,serif;letter-spacing:-.5px;color:var(--a-ink);flex:none}
+.adm-brand{display:flex;align-items:center;gap:9px;padding:0 10px 26px;font:360 30px/1 'Mowafy Serif',Georgia,serif;letter-spacing:-.5px;color:var(--a-ink);flex:none}
 .adm-brand .mowr-mark{color:#f5f4f0}
-.adm-brand em{font:500 10.5px/1 'Kindred Sans',sans-serif;font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:var(--a-muted);border:1px solid var(--a-line-2);border-radius:99px;padding:5px 8px 4px;margin-left:4px;align-self:center}
+.adm-brand em{font:500 10.5px/1 'Mowafy Sans',sans-serif;font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:var(--a-muted);border:1px solid var(--a-line-2);border-radius:99px;padding:5px 8px 4px;margin-left:4px;align-self:center}
 .adm-brand.small{font-size:22px;padding:0;gap:7px}
 .adm-nav nav{flex:1;min-height:0;overflow-y:auto;display:grid;align-content:start;gap:22px;margin:0 -4px;padding:0 4px}
 .adm-nav-group{display:grid;gap:2px}
@@ -69,7 +69,7 @@
 .adm-select[aria-expanded=true]{border-color:#8b8a83!important;box-shadow:0 0 0 4px #f0efeb10}
 .adm-select[aria-expanded=true]>svg{transform:rotate(180deg);color:var(--a-ink)}
 .adm-select:disabled{opacity:.55;cursor:default}
-.adm-select-menu{position:fixed;inset:auto;margin:0;max-width:min(360px,calc(100vw - 16px));max-height:min(320px,60vh);overflow:auto;padding:5px;background:#252523;color:#e8e6e0;border:1px solid #3e3e3a;border-radius:12px;box-shadow:0 18px 48px #0008,0 2px 6px #0005;font:400 13px/1.3 'Kindred Sans',sans-serif;scrollbar-width:thin;scrollbar-color:#454540 transparent}
+.adm-select-menu{position:fixed;inset:auto;margin:0;max-width:min(360px,calc(100vw - 16px));max-height:min(320px,60vh);overflow:auto;padding:5px;background:#252523;color:#e8e6e0;border:1px solid #3e3e3a;border-radius:12px;box-shadow:0 18px 48px #0008,0 2px 6px #0005;font:400 13px/1.3 'Mowafy Sans',sans-serif;scrollbar-width:thin;scrollbar-color:#454540 transparent}
 .adm-select-menu:popover-open{display:grid;gap:1px;animation:adm-menu .16s var(--a-ease) both}
 @keyframes adm-menu{from{opacity:0;transform:translateY(-4px) scale(.98)}}
 .adm-select-menu button{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 10px;border-radius:8px;cursor:pointer;color:#d8d6cf;white-space:nowrap}
@@ -95,7 +95,7 @@
 .adm-root button.adm-stat:focus-visible{outline:2px solid var(--a-ink);outline-offset:2px}
 .adm-stat:nth-child(2){animation-delay:.04s}.adm-stat:nth-child(3){animation-delay:.08s}.adm-stat:nth-child(4){animation-delay:.12s}
 .adm-stat>span{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--a-muted)}
-.adm-stat strong{font:360 36px/1.05 'Kindred Serif',Georgia,serif;letter-spacing:-.8px;color:var(--a-ink)}
+.adm-stat strong{font:360 36px/1.05 'Mowafy Serif',Georgia,serif;letter-spacing:-.8px;color:var(--a-ink)}
 .adm-stat small{font-size:12px;color:var(--a-muted)}
 .adm-stat.warn{border-color:#4f4331}
 .adm-stat.warn small{color:var(--a-warn)}
@@ -183,7 +183,7 @@
 .adm-empty{display:grid;justify-items:center;text-align:center;gap:4px;padding:26px 16px}
 .adm-empty-art{width:120px;margin:-10px 0 -6px}
 .adm-empty-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:1px dashed var(--a-line-2);color:var(--a-muted);margin-bottom:8px}
-.adm-empty h3{font:360 19px/1.2 'Kindred Serif',Georgia,serif;text-transform:none;letter-spacing:-.3px;color:var(--a-ink);margin:6px 0 0}
+.adm-empty h3{font:360 19px/1.2 'Mowafy Serif',Georgia,serif;text-transform:none;letter-spacing:-.3px;color:var(--a-ink);margin:6px 0 0}
 .adm-empty p{margin:0;color:var(--a-muted);font-size:12.5px;max-width:300px}
 .adm-skeleton{display:grid;gap:10px;max-width:1180px;margin:0 auto;padding-top:130px}
 .adm-skeleton span{height:44px;border-radius:12px;background:linear-gradient(90deg,#1b1b19 0%,#232321 50%,#1b1b19 100%);background-size:200% 100%;animation:adm-shimmer 1.4s linear infinite}
@@ -237,7 +237,7 @@
 .adm-facts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
 .adm-facts-grid>div{display:grid;gap:5px;align-content:start;padding:14px 16px;border:1px solid var(--a-line);border-radius:14px;background:radial-gradient(120% 100% at 0 0,#232321,#1b1b19);animation:adm-in .5s var(--a-ease) both}
 .adm-facts-grid span{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--a-muted)}
-.adm-facts-grid strong{font:360 24px/1.15 'Kindred Serif',Georgia,serif;letter-spacing:-.4px;color:var(--a-ink);overflow-wrap:anywhere}
+.adm-facts-grid strong{font:360 24px/1.15 'Mowafy Serif',Georgia,serif;letter-spacing:-.4px;color:var(--a-ink);overflow-wrap:anywhere}
 .adm-facts-grid small{font-size:12px;color:var(--a-muted);line-height:1.45}
 @media (max-width:520px){.adm-share li{grid-template-columns:104px minmax(0,1fr) 34px}}
 
@@ -283,7 +283,7 @@
 .adm-msg.staff>div{background:#f0efeb0d;border-color:#46463f}
 .adm-msg.note>div{background:#e3c07e0a;border:1px dashed #5d5138}
 .adm-msg.note header strong{color:var(--a-warn)}
-.adm-msg-mark{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--a-ink);color:#141413;font:360 15px/1 'Kindred Serif',Georgia,serif}
+.adm-msg-mark{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--a-ink);color:#141413;font:360 15px/1 'Mowafy Serif',Georgia,serif}
 .adm-msg.note .adm-msg-mark{background:#2d2a22;color:var(--a-warn)}
 .adm-seen{display:flex;align-items:center;gap:5px;justify-content:flex-end;margin:-6px 0 0;font-size:11.5px;color:var(--a-muted)}
 .adm-case-side{border-left:1px solid var(--a-line);padding:16px;overflow:auto;display:grid;align-content:start;gap:12px}
@@ -308,7 +308,7 @@
 .adm-form footer{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .adm-form.inline{grid-template-columns:minmax(0,1fr) 160px auto;align-items:end}
 .adm-form.inline .adm-muted{grid-column:1/-1;margin:0}
-.adm-modal{border:1px solid var(--a-line-2);border-radius:18px;background:linear-gradient(180deg,#1e1e1c,#1a1a19 120px);max-height:calc(100dvh - 32px);overflow:auto;color:var(--a-ink);padding:20px 22px 22px;width:min(440px,calc(100vw - 32px));box-shadow:0 30px 90px #000c;font-family:'Kindred Sans',system-ui,sans-serif}
+.adm-modal{border:1px solid var(--a-line-2);border-radius:18px;background:linear-gradient(180deg,#1e1e1c,#1a1a19 120px);max-height:calc(100dvh - 32px);overflow:auto;color:var(--a-ink);padding:20px 22px 22px;width:min(440px,calc(100vw - 32px));box-shadow:0 30px 90px #000c;font-family:'Mowafy Sans',system-ui,sans-serif}
 .adm-modal[open]{animation:adm-pop .28s var(--a-ease)}
 .adm-modal::backdrop{background:#000a;backdrop-filter:blur(3px)}
 .adm-modal>header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:0 -22px 18px;padding:0 22px 16px;border-bottom:1px solid var(--a-line)}
@@ -342,7 +342,7 @@
 
 /* Toasts */
 .adm-toasts{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:grid;gap:8px;z-index:60;pointer-events:none}
-.adm-toast{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:#f0efeb;color:#141413;font:500 13px/1.2 'Kindred Sans',sans-serif;box-shadow:0 16px 40px #000a;animation:adm-pop .3s var(--a-ease)}
+.adm-toast{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:#f0efeb;color:#141413;font:500 13px/1.2 'Mowafy Sans',sans-serif;box-shadow:0 16px 40px #000a;animation:adm-pop .3s var(--a-ease)}
 .adm-toast.error{background:#3a2522;color:#f5d3cd;border:1px solid #5b3a35}
 
 /* Sign-in and access pages, like the app's own */
@@ -364,7 +364,7 @@
 .adm-auth .adm-error-text{text-align:left}
 .adm-quiet-link{justify-self:center;font-size:13px;color:var(--a-muted);padding:4px 8px}
 .adm-quiet-link:hover{color:var(--a-ink)}
-.adm-auth-home{position:absolute;top:24px;left:28px;display:flex;align-items:center;gap:8px;font:360 22px/1 'Kindred Serif',Georgia,serif;color:var(--a-ink)}
+.adm-auth-home{position:absolute;top:24px;left:28px;display:flex;align-items:center;gap:8px;font:360 22px/1 'Mowafy Serif',Georgia,serif;color:var(--a-ink)}
 
 @keyframes adm-in{from{opacity:0;transform:translateY(8px)}}
 @keyframes adm-fade{from{opacity:0}}
