@@ -121,3 +121,27 @@ test("time-bound memories stop applying after their date", async () => {
   assert.equal(retrieveMemory(state, "chat:a", "biology exam", { now: Date.parse("2026-10-20") }).length, 0);
   assert.equal(state.records.length, 1, "expired memories stay stored");
 });
+
+test("the learner reads the person's message, not a Drive note sent after it", async () => {
+  const { retrievalQuery, boundedConversation, SOURCE_PREFIX } = await import("../../core/chat-context.ts");
+  const { mentionsSelf } = await import("../../desktop/memory.ts");
+  const messages = boundedConversation([{ role: "system", content: "You are Mowr." }, { role: "user", content: "I'm writing my thesis on muon decay." }, { role: "user", content: `${SOURCE_PREFIX}\nThis project is linked to the Google Drive folder "Thesis".` }]);
+  assert.equal(retrievalQuery(messages), "I'm writing my thesis on muon decay.");
+  assert.ok(mentionsSelf(retrievalQuery(messages)));
+});
+
+test("everyday self-descriptions start a memory pass; plain questions do not", async () => {
+  const { mentionsSelf } = await import("../../desktop/memory.ts");
+  for (const m of ["I have an exam on Friday", "I need this for my thesis", "My professor wants APA", "I'd like shorter answers"]) assert.ok(mentionsSelf(m), m);
+  for (const m of ["What is the derivative of sin x?", "How do I use numpy?", "Explain photosynthesis"]) assert.ok(!mentionsSelf(m), m);
+});
+
+test("“remember that…” keeps the person's words when extraction finds nothing", async () => {
+  const { rememberedWords, learnMemories } = await import("../../desktop/memory.ts");
+  const learned = rememberedWords("Remember that I prefer metric units.");
+  assert.deepEqual(learned.map((l) => [l.text, l.kind, l.about]), [["I prefer metric units.", "preference", "user"]]);
+  const state = learnMemories(base, learned, { scope: "chat:a", sourceId: "chat:1", explicit: true });
+  assert.equal(state.records[0].scope, "user:me");
+  assert.equal(state.records[0].confirmed, true);
+  assert.deepEqual(rememberedWords("remember"), []);
+});

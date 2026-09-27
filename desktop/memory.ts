@@ -178,11 +178,22 @@ export function memoryLines(records: Omit<Memory, "embedding">[]) {
 }
 /** Cheap gate: only messages where the person says something about themselves are worth a memory pass. */
 export function mentionsSelf(text: string) {
-  return correctsStyle(text) || /\b(i am|i'm|im|i work|i study|i teach|i live|i moved|my (?:name|job|role|major|degree|course|class|exam|goal|level|company|team|field|background|school|university)|i prefer|i like|i love|i hate|i dislike|i don'?t like|i usually|i always|i never|i struggle|call me|remember|from now on|going forward|i'?ve been|i'?m (?:a|an|studying|learning|preparing|working))\b/i.test(text);
+  return correctsStyle(text) || /\b(i am|i'm|im|i work|i study|i teach|i live|i moved|my (?:name|job|role|major|degree|course|class|classes|exams?|goal|goals|level|company|team|field|background|school|university|college|teacher|professor|boss|thesis|project|research|students?|kids?|business|startup|native language|first language)|i have (?:a|an|my|to)|i need (?:this|it) for|i'?m (?:from|based in|in (?:year|grade|my))|i speak|i'?d (?:like|rather|prefer)|i would (?:like|rather|prefer)|i want (?:you|answers|replies)|i run|i own|i graduated|i'?m (?:taking|doing|writing|building|applying)|i prefer|i like|i love|i hate|i dislike|i don'?t like|i usually|i always|i never|i struggle|call me|remember|from now on|going forward|i'?ve been|i'?m (?:a|an|studying|learning|preparing|working))\b/i.test(text);
 }
 /** Corrections and standing instructions about answers ("shorter please", "stop using bullet points", "answer in Arabic"). */
 export function correctsStyle(text: string) {
   return /\b(?:(?:too|way too|much too) (?:long|short|wordy|vague|technical|simple|basic|formal|casual)|(?:shorter|longer|simpler|briefer|more concise|more detailed?|less detail|more examples|fewer (?:words|bullets|emojis)) (?:please|next time|answers?|replies|responses)|(?:stop|don'?t|do not|never|avoid) (?:using|use|saying|say|adding|add|writing|write|including|include|giving|give)\b|(?:always|please always|from now on) (?:use|answer|reply|write|respond|include|give|explain|show|cite|keep)|(?:answer|reply|respond|write|explain) (?:in|using) (?:arabic|english|french|german|spanish|italian|turkish|urdu|hindi|chinese|japanese|korean|portuguese|russian|dutch|british english|american english|simple english|plain english|metric|imperial|si units|latex|markdown|bullet points|tables?|steps)|i (?:only )?(?:want|need|like) (?:short|long|detailed|brief|simple|step[- ]by[- ]step|concise)|my (?:deadline|exam|test|thesis|dissertation|assignment|teacher|professor|supervisor|boss|manager|client|interview|presentation|course|curriculum|syllabus) (?:is|are|was|will|on|in|at)|(?:due|deadline) (?:on|by|is)\b)/i.test(text);
+}
+/**
+ * The person's own "remember that…" as a memory, used when extraction returns nothing: their words,
+ * lightly cleaned, about them. Preferences ("I prefer…", "always…") keep answering in that style.
+ */
+export function rememberedWords(text: string): Learned[] {
+  const words = text.replace(/^\s*(?:please\s+)?(?:remember|note|keep in mind)(?:\s+that)?[\s:,-]*/i, "").replace(/\s+/g, " ").trim().replace(/[.!]*$/, "");
+  if (words.length < 3 || words.length > 400) return [];
+  const preference = /\b(prefer|like|want|always|never|don'?t|please|answer|reply|explain|write|use)\b/i.test(words);
+  const key = (preference ? "pref:" : "note:") + (words.toLowerCase().match(/[a-z0-9]+/g) || ["note"]).slice(0, 5).join("-");
+  return [{ key: key.slice(0, 60), text: words[0].toUpperCase() + words.slice(1) + ".", kind: preference ? "preference" : "fact", about: "user" }];
 }
 export function explicitRemember(text: string) {
   return /^\s*(?:please\s+)?(?:remember|note|keep in mind)(?: that)?\b/i.test(text) || /\bfrom now on\b/i.test(text);

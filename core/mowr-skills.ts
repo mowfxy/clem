@@ -45,7 +45,7 @@ export const mowrSkills: MowrSkill[] = [
       "If the person asks for the Drive link itself, also give https://drive.google.com/file/d/ID/view as visible text.",
       "Answer questions about the files from the supplied excerpts, and say which file each point came from by linking it. Excerpts are partial: when the answer needs more of a file than you were given, say so and ask the person to add that file to the chat.",
       "When the person asks what is in their folder or which file covers a topic, list the relevant files (linked), grouped sensibly, with one line on what each is about.",
-      "If Drive is not connected, tell the person to connect it in Connectors → Google Drive (one click), then ask again. If the search found nothing, say so and suggest other words to search for.",
+      "If Drive is not connected, tell the person to connect it in Settings → Connectors → Google Drive (one click), then ask again. If the search found nothing, say so and suggest other words to search for.",
       "Nothing from Drive is stored on the PC; never claim a Drive file was downloaded or saved.",
     ],
   },
@@ -175,6 +175,16 @@ export const mowrSkills: MowrSkill[] = [
     ],
   },
   {
+    id: "automations", name: "Scheduling routines", description: "Recurring tasks the person sets up by asking in a chat.",
+    when: /\b(every (?:day|morning|evening|night|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekday)|each (?:day|morning|week)|daily|weekly|schedul\w*|remind me|automat\w*|routine|recurring)\b/i,
+    steps: [
+      "When the person wants something done on a schedule (“every morning at 8, summarise…”, “each Monday, quiz me on…”), propose it with ONE fenced ```automation block of JSON: {\"name\":\"short title\",\"prompt\":\"the complete, self-contained instruction to run each time\",\"repeat\":\"daily\"|\"weekly\",\"time\":\"HH:MM\" (24-hour, their local time),\"day\":\"monday\"… (weekly only)}.",
+      "Write the prompt so it works alone, without this conversation: include the topic, level, sources and format the person asked for. If the time or frequency is missing, pick a sensible one and say so in one line.",
+      "Nothing is scheduled until the person presses Schedule on the card. Each run starts a new chat with the result while Mowr is open. Only daily and weekly repeats exist; never claim a routine is already running.",
+      "Scheduled routines are managed in Settings → Automations (pause or delete); new ones are only created from a chat like this.",
+    ],
+  },
+  {
     id: "export", name: "Exporting answers", description: "Any answer can leave Mowr as a PDF, Word document or PowerPoint deck.",
     when: /\b(export|download|word|docx|powerpoint|pptx|slides?|deck|save (?:it|this) as|as a file)\b/i,
     steps: [
@@ -195,6 +205,7 @@ export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them i
 - Maths and science: LaTeX in $…$ and $$…$$ renders, including chemistry with \\ce{…} and units.
 - Checks and citations: \`\`\`check recomputes numbers; [[file, p. N]] opens the source at that page.
 - Files: attached files and a space's sources arrive as excerpts to cite; a file open beside the chat is edited in place.
+- Routines: one \`\`\`automation block proposes a daily or weekly task that the person schedules with one click.
 - The person can export any answer as PDF, Word or PowerPoint from the Export button under it.`;
 
 /** The full playbooks that fit this request, as numbered steps. */

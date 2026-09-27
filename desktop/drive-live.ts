@@ -48,7 +48,7 @@ export class DriveLive {
     return accessToken;
   }
   private async google(url:string,init:RequestInit={},retry=true):Promise<Response>{
-    const token=await this.token();if(!token)throw Object.assign(Error("Connect Google Drive in Connectors first."),{code:"not_connected"});
+    const token=await this.token();if(!token)throw Object.assign(Error("Connect Google Drive in Settings → Connectors first."),{code:"not_connected"});
     const r=await this.fetcher(url,{...init,headers:{...(init.headers as Record<string,string>||{}),Authorization:"Bearer "+token}});
     if(r.status===401&&retry){this.cached=null;return this.google(url,init,false);}
     return r;
@@ -102,7 +102,7 @@ export class DriveLive {
   async tree(folderId:string,refresh=false){
     const cached=this.trees.get(folderId);
     if(!refresh&&cached&&Date.now()-cached.at<120_000)return cached;
-    if(!await this.token())throw Object.assign(Error("Connect Google Drive in Connectors first."),{code:"not_connected"});
+    if(!await this.token())throw Object.assign(Error("Connect Google Drive in Settings → Connectors first."),{code:"not_connected"});
     const items:DriveItem[]=[],folders=[folderId],paths=new Map<string,string>([[folderId,""]]),seen=new Set([folderId]);
     let level=[folderId];
     for(let depth=0;depth<5&&level.length&&items.length<1500;depth++){

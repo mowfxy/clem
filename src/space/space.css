@@ -15,7 +15,7 @@ input.sp-desc{width:100%;background:none!important;border:0!important;border-bot
 .sp-share:hover{background:#fff}
 .sp-share svg{transform:rotate(180deg)}
 .sp-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:22px}
-.sp-stat{position:relative;display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:14px;background:#ffffff07;border:1px solid #ffffff0f;text-align:left;color:inherit;font:inherit;min-width:0}
+.sp-stat{position:relative;display:flex;align-items:center;justify-content:center;gap:11px;padding:11px 13px;border-radius:14px;background:#ffffff07;border:1px solid #ffffff0f;text-align:left;color:inherit;font:inherit;min-width:0}
 button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;border-color:#ffffff1c}
 .sp-stat>span:not(.sp-stat-icon){display:flex;flex-direction:column;min-width:0}
 .sp-stat b{font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -155,3 +155,7 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .sp-local-label{margin:20px 2px 8px}
 .sp-drive-chip small{display:inline-flex;align-items:center;gap:4px}
 .sp-drive-chip small::before{content:"";width:6px;height:6px;border-radius:50%;background:#7fd08a;box-shadow:0 0 0 2px #7fd08a2e}
+.sp-memory{display:grid;gap:12px;margin-top:26px}
+.sp-memory .memory-panel{gap:14px}
+.sp-memory .memory-add input{width:100%;box-sizing:border-box;border:1px solid #3d3d38;color:#eeede7;font:13.5px 'Mowafy Sans Text',sans-serif}
+.sp-memory .memory-add input:focus{outline:none;border-color:#7a7a72}

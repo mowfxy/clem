@@ -11,11 +11,12 @@ export const settingsGroups:{label:string;tabs:{name:string;icon:string;scene:Sc
   {name:'Security',icon:'lock',scene:'shield',line:'Sign-in, password and verification.'},
  ]},
  {label:'Intelligence',tabs:[
-  {name:'Models',icon:'connectors',scene:'plug',line:'Connected accounts and usage.'},
+  {name:'Models',icon:'models',scene:'plug',line:'Connected accounts and usage.'},
   {name:'Memory',icon:'subjects',scene:'jar',line:'What Mowr keeps in mind for you.'},
-  {name:'Automations',icon:'clock',scene:'hourglass',line:'Prompts that run on a schedule.'},
+  {name:'Automations',icon:'clock',scene:'hourglass',line:'Routines you set up in a chat.'},
  ]},
  {label:'Connections',tabs:[
+  {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Mowr can read from.'},
   {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Mowr can read.'},
   {name:'Telegram',icon:'chat',scene:'plane',line:'Message Mowr from your phone.'},
  ]},
@@ -46,8 +47,8 @@ export function SettingsCard({title,children,note}:{title?:string;children:React
  return <section className="settings-card">{title&&<h3 className="settings-card-title">{title}</h3>}<div className="settings-card-body">{children}</div>{note&&<p className="settings-card-note">{note}</p>}</section>;
 }
 
-export function SettingRow({title,description,children}:{title:ReactNode;description?:ReactNode;children?:ReactNode}){
- return <div className="setting-row v2"><div className="setting-row-text"><h3>{title}</h3>{description&&<p>{description}</p>}</div>{children&&<div className="setting-row-control">{children}</div>}</div>;
+export function SettingRow({title,description,children,lead}:{title:ReactNode;description?:ReactNode;children?:ReactNode;lead?:ReactNode}){
+ return <div className="setting-row v2">{lead}<div className="setting-row-text"><h3>{title}</h3>{description&&<p>{description}</p>}</div>{children&&<div className="setting-row-control">{children}</div>}</div>;
 }
 
 export function Switch({checked,onChange,label}:{checked:boolean;onChange:(value:boolean)=>void;label:string}){
