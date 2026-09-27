@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {adminApi,type CaseRow} from './api';
-import {Avatar,Badge,Empty,ErrorNote,I,PageHead,Skeleton,ago,date,useLoad,useToast,who} from './ui';
+import {Avatar,Badge,Empty,ErrorNote,I,PageHead,Skeleton,ago,date,useLoad,useToast,who,Select} from './ui';
 import type {Go} from './AdminApp';
 
 const statuses=[['active','Active'],['open','Open'],['pending','Waiting on person'],['resolved','Resolved'],['closed','Closed'],['all','All']] as const;
@@ -16,7 +16,7 @@ export function Cases({go,selected}:{go:Go;selected?:string}){
     <div className="adm-inbox">
       <section className="adm-inbox-list">
         <div className="adm-inbox-tools"><label className="adm-search"><I name="search"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search cases" aria-label="Search cases"/></label>
-        <select value={status} onChange={e=>setStatus(e.target.value)} aria-label="Filter by status">{statuses.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+        <Select value={status} onChange={setStatus} aria-label="Filter by status" options={statuses.map(([value,label])=>({value,label}))}/></div>
         {list.error?<ErrorNote error={list.error} onRetry={list.reload}/>:list.loading&&!list.data?<Skeleton rows={7}/>:list.data!.cases.length?<ul>{list.data!.cases.map(c=><li key={c.id}><button className={selected===c.id?'on':''} onClick={()=>go('cases',c.id)}>
           <span className="adm-inbox-row-top"><strong>{c.email||c.username||'Unknown person'}</strong><small>{ago(c.updated_at)}</small></span>
           <span className="adm-inbox-subject">{c.awaiting_staff&&<i className="adm-unread" aria-label="Awaiting reply"/>}{c.subject}</span>
@@ -47,9 +47,9 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
     <header className="adm-case-head">
       <div><span className="adm-muted">{c.category} · opened {date(c.created_at)}</span><h2>{c.subject}</h2></div>
       <div className="adm-case-controls">
-        <select value={c.status} disabled={busy} onChange={e=>void update({status:e.target.value},'Status updated')} aria-label="Status"><option value="open">Open</option><option value="pending">Waiting on person</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select>
-        <select value={c.priority} disabled={busy} onChange={e=>void update({priority:e.target.value},'Priority updated')} aria-label="Priority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select>
-        <select value={c.assignee_id||''} disabled={busy} onChange={e=>void update({assigneeId:e.target.value||null},'Assignment updated')} aria-label="Assignee"><option value="">Unassigned</option>{team.map(t=><option key={t.id} value={t.id}>{t.email}</option>)}</select>
+        <Select value={c.status} disabled={busy} onChange={v=>void update({status:v},'Status updated')} aria-label="Status" options={[{value:'open',label:'Open'},{value:'pending',label:'Waiting on person'},{value:'resolved',label:'Resolved'},{value:'closed',label:'Closed'}]}/>
+        <Select value={c.priority} disabled={busy} onChange={v=>void update({priority:v},'Priority updated')} aria-label="Priority" options={[{value:'low',label:'Low'},{value:'normal',label:'Normal'},{value:'high',label:'High'},{value:'urgent',label:'Urgent'}]}/>
+        <Select value={c.assignee_id||''} disabled={busy} onChange={v=>void update({assigneeId:v||null},'Assignment updated')} aria-label="Assignee" options={[{value:'',label:'Unassigned'},...team.map(t=>({value:t.id,label:t.email}))]}/>
       </div>
     </header>
     <div className="adm-case-body">
@@ -69,7 +69,7 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
     </div>
     <form className={`adm-composer ${internal?'internal':''}`} onSubmit={e=>{e.preventDefault();void send();}}>
       <div className="adm-composer-tabs"><button type="button" className={!internal?'on':''} onClick={()=>setInternal(false)}>Reply</button><button type="button" className={internal?'on':''} onClick={()=>setInternal(true)}>Internal note</button>
-        {!internal&&<select aria-label="Insert a saved reply" value="" onChange={e=>{if(e.target.value)setBody(b=>(b?b+'\n\n':'')+e.target.value);}}><option value="">Saved replies…</option>{replies.map(r=><option key={r} value={r}>{r.slice(0,60)}…</option>)}</select>}</div>
+        {!internal&&<Select aria-label="Insert a saved reply" className="saved" value="" placeholder="Saved replies…" onChange={v=>setBody(b=>(b?b+'\n\n':'')+v)} options={replies.map(r=>({value:r,label:r.slice(0,60)+'…'}))}/>}</div>
       <textarea value={body} onChange={e=>setBody(e.target.value)} rows={4} maxLength={10000} placeholder={internal?'Only the team can see this.':'Write a reply. It appears in the person\'s Mowr app under Support.'} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))void send();}}/>
       <footer><small className="adm-muted">Ctrl + Enter to send</small><div>{!internal&&<button type="button" disabled={busy||body.trim().length<2} onClick={()=>void send('resolved')}>Send & resolve</button>}<button className="adm-primary" disabled={busy||body.trim().length<2}><I name="send" size={15}/>{internal?'Add note':'Send reply'}</button></div></footer>
     </form>

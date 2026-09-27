@@ -17,6 +17,7 @@ import {
 } from "./lib/account-state.js";
 import { handleAdmin } from "./admin.js";
 import { handleSupport } from "./support.js";
+import { handleUsage } from "./usage.js";
 
 async function webhook(request, env) {
   const raw = await request.text();
@@ -134,6 +135,8 @@ async function route(request, env) {
         return json({ error: "Try again shortly." }, 429);
       const supportResponse = await handleSupport(request, env, user, path);
       if (supportResponse) return supportResponse;
+      const usageResponse = await handleUsage(request, env, user, path);
+      if (usageResponse) return usageResponse;
       const providerResponse = await handleProviders(request, env, user, path);
       if (providerResponse) return providerResponse;
       if (path.startsWith("/sync/")) {

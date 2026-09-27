@@ -6,9 +6,10 @@ import worker from "../../cloudflare/account-worker.js";
 
 function setup() {
   const database = new DatabaseSync(":memory:");
-  for (const file of ["account-schema.sql", "sync-schema.sql", "admin-schema.sql"])
+  for (const file of ["account-schema.sql", "sync-schema.sql", "admin-schema.sql", "provider-links.sql"])
     database.exec(readFileSync(new URL("../../cloudflare/" + file, import.meta.url), "utf8"));
   const DB = {
+    async batch(statements: any[]) { for (const statement of statements) await statement.run(); },
     prepare(sql: string) {
       return {
         bind(...values: any[]) {
@@ -122,6 +123,45 @@ test("staff portal enforces roles, moderates accounts and manages complimentary 
     assert.equal(settingUp.total, 3);
     const audit = await (await call("/admin/audit")).json();
     assert.ok(audit.entries.some((e: any) => e.action === "user.suspend"));
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("the app reports anonymous usage counts and staff see them as stats", async () => {
+  const { env } = setup(), original = globalThis.fetch;
+  const people: Record<string, any> = {
+    owner: { id: "owner-id", email: "m@mohamedmowafy.com", email_confirmed_at: "2026-09-19" },
+    member: { id: "member-id", email: "member@example.com", email_confirmed_at: "2026-09-19" },
+  };
+  let current = people.member;
+  globalThis.fetch = (async () => Response.json(current)) as any;
+  const call = (path: string, body?: unknown) =>
+    worker.fetch(new Request("https://account.example" + path, {
+      method: body ? "POST" : "GET",
+      headers: { Authorization: "Bearer x.e30.y", "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    }), env);
+  const today = new Date().toISOString().slice(0, 10);
+  const hours = Array(24).fill(0); hours[22] = 5;
+  try {
+    const report = { days: [{ day: today, hours, rows: [{ provider: "claude", model: "sonnet", reasoning: "high", turns: 4, images: 1 }, { provider: "chatgpt", model: "gpt-5.5", reasoning: "", turns: 2, images: 0 }] }] };
+    assert.equal((await call("/usage", report)).status, 200);
+    // Resending the same running totals does not double count.
+    assert.equal((await call("/usage", report)).status, 200);
+    assert.equal((await call("/usage", { days: [{ day: today, rows: [{ provider: "other", model: "x", turns: 1, images: 0 }] }] })).status, 400);
+    assert.equal((await call("/usage", { days: [{ day: "2020-01-01", rows: [] }] })).status, 400);
+    assert.equal((await call("/admin/stats")).status, 403);
+    current = people.owner;
+    const stats = await (await call("/admin/stats?days=7")).json();
+    assert.equal(stats.turns, 6);
+    assert.equal(stats.people, 1);
+    assert.equal(stats.images, 1);
+    assert.equal(stats.providers[0].provider, "claude");
+    assert.equal(stats.models[0].model, "sonnet");
+    assert.equal(stats.byHour[22], 5);
+    assert.equal(stats.series.length, 7);
+    assert.equal(stats.multiProvider, 1);
   } finally {
     globalThis.fetch = original;
   }

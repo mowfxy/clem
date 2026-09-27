@@ -4,6 +4,7 @@ import {Illustration} from '../Illustrations';
 import {AdminError,adminApi,adminClient,demo,type Staff} from './api';
 import {Avatar,I,ToastHost} from './ui';
 import {Overview} from './Overview';
+import {Stats} from './Stats';
 import {Users} from './Users';
 import {Cases} from './Cases';
 import {Announcements} from './Announcements';
@@ -11,13 +12,14 @@ import {Team} from './Team';
 import {Audit} from './Audit';
 import './admin.css';
 
-export type Section='overview'|'users'|'cases'|'announcements'|'team'|'audit';
+export type Section='overview'|'stats'|'users'|'cases'|'announcements'|'team'|'audit';
 export type Go=(section:Section,id?:string)=>void;
 
 // Icons are the app's drawn set so the portal reads as part of Mowr.
 const groups:{label:string;items:{id:Section;label:string;icon:string;min?:'admin'}[]}[]=[
   {label:'Workspace',items:[
     {id:'overview',label:'Overview',icon:'analysis'},
+    {id:'stats',label:'Stats',icon:'diagram'},
     {id:'cases',label:'Support cases',icon:'chat'},
     {id:'users',label:'People',icon:'account'},
   ]},
@@ -69,6 +71,7 @@ export default function AdminApp(){
       </div>
     </aside>
     <main className="adm-main" key={where.section}>{(()=>{switch(where.section){
+      case 'stats':return <Stats/>;
       case 'users':return <Users go={go} selected={where.id} staff={s}/>;
       case 'cases':return <Cases go={go} selected={where.id}/>;
       case 'announcements':return <Announcements staff={s}/>;

@@ -1,4 +1,4 @@
-import {createContext,useCallback,useContext,useEffect,useRef,useState,type CSSProperties,type ReactNode} from 'react';
+import {createContext,useCallback,useContext,useEffect,useId,useRef,useState,type CSSProperties,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import type {Person} from './api';
 import type {Scene} from '../vectorFilm';
 import {Illustration} from '../Illustrations';
@@ -23,6 +23,7 @@ const paths:Record<string,string>={
   gift:'M4 11h16v9H4zM3 7h18v4H3zM12 7v13M12 7c-1.5-3-5-3.5-5-1.5S10 7 12 7c2 0 5 .5 5-1.5S13.5 4 12 7',
   ban:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M5.6 5.6l12.8 12.8',
   check:'M5 12.5 10 17 19 7',
+  chevron:'M7 10l5 5 5-5',
   spark:'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6',
   clock:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 7v5l3 2',
   external:'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
@@ -77,12 +78,13 @@ export function ToastHost({children}:{children:ReactNode}){
 }
 
 /** Modal built on <dialog> so focus trapping and Escape come from the browser. */
-export function Modal({title,children,onClose,wide}:{title:string;children:ReactNode;onClose:()=>void;wide?:boolean}){
+export function Modal({title,line,children,onClose,wide}:{title:string;line?:ReactNode;children:ReactNode;onClose:()=>void;wide?:boolean}){
   const ref=useRef<HTMLDialogElement>(null);
   useEffect(()=>{ref.current?.showModal();},[]);
-  return <dialog ref={ref} className={`adm-modal ${wide?'wide':''}`} onClose={onClose} onClick={e=>{if(e.target===ref.current)onClose();}}><header><h2>{title}</h2><button className="adm-icon" aria-label="Close" onClick={onClose}><I name="close"/></button></header>{children}</dialog>;
+  return <dialog ref={ref} className={`adm-modal ${wide?'wide':''}`} onClose={onClose} onClick={e=>{if(e.target===ref.current)onClose();}}><header><div><h2>{title}</h2>{line&&<p className="adm-modal-line">{line}</p>}</div><button className="adm-icon" aria-label="Close" onClick={onClose}><I name="close"/></button></header>{children}</dialog>;
 }
 
+const SYNC_MS=30_000;
 export function useLoad<T>(load:()=>Promise<T>,deps:unknown[]){
   const [data,setData]=useState<T|undefined>();
   const [error,setError]=useState('');
@@ -90,7 +92,49 @@ export function useLoad<T>(load:()=>Promise<T>,deps:unknown[]){
   const version=useRef(0);
   const reload=useCallback(async()=>{const v=++version.current;setLoading(true);setError('');try{const value=await load();if(v===version.current)setData(value);}catch(e){if(v===version.current)setError((e as Error).message);}finally{if(v===version.current)setLoading(false);}},deps);
   useEffect(()=>{void reload();},[reload]);
+  // Background sync: refresh quietly on a timer (browsers slow it to about once a minute in hidden tabs)
+  // and catch up at once when the tab is shown, focused or back online. Failures keep the last good data.
+  const sync=useCallback(async()=>{const v=version.current;try{const value=await load();if(v===version.current){setData(value);setError('');}}catch{/* Keep what is on screen. */}},deps);
+  useEffect(()=>{
+    let last=Date.now();
+    const run=()=>{last=Date.now();void sync();};
+    const timer=setInterval(run,SYNC_MS);
+    const wake=()=>{if(document.visibilityState==='visible'&&Date.now()-last>3000)run();};
+    document.addEventListener('visibilitychange',wake);addEventListener('focus',wake);addEventListener('online',wake);
+    return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',wake);removeEventListener('focus',wake);removeEventListener('online',wake);};
+  },[sync]);
   return {data,error,loading,reload};
+}
+
+type Option={value:string;label:ReactNode};
+/** The app's dropdown: a field-style trigger with a menu in the top layer, so it works inside dialogs and
+ *  scrolling panes. Controlled with value/onChange, or uncontrolled with defaultValue plus name for forms. */
+export function Select({options,value,defaultValue,onChange,name,disabled,placeholder,className,'aria-label':ariaLabel}:{options:Option[];value?:string;defaultValue?:string;onChange?:(value:string)=>void;name?:string;disabled?:boolean;placeholder?:string;className?:string;'aria-label'?:string}){
+  const [inner,setInner]=useState(defaultValue??options[0]?.value??'');
+  const current=value??inner;
+  const [open,setOpen]=useState(false);const [active,setActive]=useState(0);
+  const id=useId(),trigger=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null);
+  const selected=options.find(o=>o.value===current);
+  const place=()=>{const t=trigger.current,m=menu.current;if(!t||!m)return;const r=t.getBoundingClientRect();m.style.minWidth=`${r.width}px`;const h=m.offsetHeight,w=m.offsetWidth;const below=r.bottom+6+h<=innerHeight-8;m.style.top=`${below?r.bottom+6:Math.max(8,r.top-6-h)}px`;m.style.left=`${Math.max(8,Math.min(r.left,innerWidth-w-8))}px`;};
+  const show=()=>{if(disabled)return;setActive(Math.max(0,options.findIndex(o=>o.value===current)));menu.current?.showPopover();place();};
+  const hide=()=>menu.current?.hidePopover();
+  const pick=(v:string)=>{hide();trigger.current?.focus();if(v===current&&value!==undefined)return;if(value===undefined)setInner(v);onChange?.(v);};
+  useEffect(()=>{if(!open)return;const move=()=>place();addEventListener('resize',move);addEventListener('scroll',move,true);menu.current?.querySelectorAll('button')[active]?.scrollIntoView({block:'nearest'});return()=>{removeEventListener('resize',move);removeEventListener('scroll',move,true);};},[open,active]);
+  const key=(e:ReactKeyboardEvent)=>{
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!open)return show();setActive(a=>(a+(e.key==='ArrowDown'?1:-1)+options.length)%options.length);}
+    else if(e.key==='Home'||e.key==='End'){if(open){e.preventDefault();setActive(e.key==='Home'?0:options.length-1);}}
+    else if((e.key==='Enter'||e.key===' ')&&open){e.preventDefault();const o=options[active];if(o)pick(o.value);}
+    else if(e.key==='Tab'&&open)hide();
+  };
+  return <>
+    {name&&<input type="hidden" name={name} value={current}/>}
+    <button ref={trigger} type="button" className={`adm-select ${className||''}`} disabled={disabled} aria-label={ariaLabel} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={()=>open?hide():show()} onKeyDown={key}>
+      <span className={selected?'':'placeholder'}>{selected?.label??placeholder??''}</span><I name="chevron" size={15}/>
+    </button>
+    <div ref={menu} id={id} popover="auto" role="listbox" className="adm-select-menu" onToggle={e=>setOpen((e as unknown as ToggleEvent).newState==='open')}>
+      {options.map((o,i)=><button key={o.value} type="button" role="option" tabIndex={-1} aria-selected={o.value===current} className={i===active?'active':''} onMouseEnter={()=>setActive(i)} onClick={()=>pick(o.value)}><span>{o.label}</span>{o.value===current&&<I name="check" size={14}/>}</button>)}
+    </div>
+  </>;
 }
 
 export function ErrorNote({error,onRetry}:{error:string;onRetry?:()=>void}){return <div className="adm-error" role="alert"><span>{error}</span>{onRetry&&<button onClick={onRetry}>Try again</button>}</div>;}
