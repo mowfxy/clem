@@ -1,5 +1,5 @@
 /** Authored 24 fps vector cels. Geometry is redrawn, never moved as a rigid SVG group. */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'schedule'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'coin'|'box'|'portrait'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave';
 type P=[number,number];
 const WHITE='#f3f2ec',BLUE='#8197e2',RED='#d87968';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
@@ -46,14 +46,15 @@ function untangle(t:number,id:string){
 function build(t:number,id:string){
  const form=phase(t,1.6,3.7),press=phase(t,3.4,4)-phase(t,4,4.8);let out=stroke([[69,328],[155,329],[250,327],[403,329]],t,7);
  out+=rect(99,245,91,82,t,4)+rect(192,280,91,47,t,-4)+rect(129,166,83,79,t,-5);
- const cx=296,cy=221,drop=phase(t,.5,2.8);const top=179+press*7;let fill='';
+ const cx=296;const top=179+press*7;let fill='';
  const diamond:P[]=[[cx-53,top],[cx,top-33],[cx+54,top],[cx,top+34]];
  const circle:P[]=diamond.map(([x,y])=>{const a=Math.atan2(y-221,x-cx);return [cx+Math.cos(a)*34,221+Math.sin(a)*34]});
  const pts=diamond.map((p,i)=>[lerp(circle[i][0],p[0],form),lerp(circle[i][1],p[1],form)] as P);
  if(t<2.8)fill=droplets(t,cx,221,BLUE,id);else fill=shape(pts,BLUE);
  out+=fill;{const g=cycle(t,3.4,.55),k=g/.3;if(t>6&&k<1){const x=lerp(cx-38,cx+38,ease(k)),h=13*(1-Math.abs(x-cx)/53);out+=faded(stroke([[x-.6*h,top+h],[x+.6*h,top-h]],t,5),swell(k)*.85);}}const h=69*form;out+=stroke([[cx-53,top],[cx-52,top+h],[cx,top+34+h],[cx+54,top+h],[cx+54,top]],t,8)+stroke([[cx,top+34],[cx,top+34+h]],t,7);
  const reach=phase(t,2.5,3.5)-phase(t,4,5.2),y=-46+reach*70-110*phase(t,4.4,5.4);
- out+=stroke([[373,57+y],[355,75+y],[339,95+y],[328,122+y],[331,133+y],[341,129+y],[351,112+y],[346,141+y],[350,148+y],[361,138+y],[371,115+y],[371,138+y],[379,143+y],[388,128+y],[403,91+y]],t,8);
+ // The hand that pressed the lid leaves upward; once it is off the stage it is not drawn at all.
+ if(y>-148)out+=stroke([[373,57+y],[355,75+y],[339,95+y],[328,122+y],[331,133+y],[341,129+y],[351,112+y],[346,141+y],[350,148+y],[361,138+y],[371,115+y],[371,138+y],[379,143+y],[388,128+y],[403,91+y]],t,8);
  return out;
 }
 function discover(t:number,id:string){
@@ -97,21 +98,6 @@ function telescope(t:number,_id:string){const focus=phase(t,.7,2.5),blink=phase(
 function pencil(t:number,_id:string){const write=phase(t,.6,3.6),x=147+write*168,y=206+Math.sin(write*Math.PI*2)*17-(t>6?Math.abs(Math.sin((t-6)*2.4))*7:0);let out=stroke([[79,103],[284,92],[312,319],[99,333],[79,103]],t,9);out+=stroke([[110,139],[181,133]],t,6);const line:P[]=[];for(let i=0;i<=35*write;i++){line.push([128+i*4.7,254+Math.sin(i*.4)*13]);}if(line.length>1)out+=stroke(line,t,8);out+=shape([[x,y],[x+23,y-59],[x+84,y-137],[x+107,y-115],[x+47,y-34]],BLUE)+stroke([[x,y],[x+23,y-59],[x+47,y-34],[x,y]],t,7)+stroke([[x+71,y-121],[x+94,y-101]],t,7);return out;}
 function bridge(t:number,_id:string){const join=phase(t,.7,3),spring=phase(t,3,3.25)-phase(t,3.25,4);let out=stroke([[61,303],[150,303],[161,272],[162,222]],t,11)+stroke([[416,303],[329,303],[319,273],[318,222]],t,11);out+=stroke([[162,224],[189,183+spring*12],[239,168+spring*18],[289,184+spring*12],[318,224]],t,12);out+=stroke([[187,192],[188,279],[164,280]],t,7)+stroke([[291,192],[291,279],[318,280]],t,7);out+=blob(123+join*228,166-Math.sin(join*Math.PI)*71,29,t,RED,.22*spring);out+=stroke([[64,337],[123,332],[175,339],[245,333],[306,339],[369,332],[416,337]],t,5);return out;}
 function conversation(t:number,_id:string){const reply=phase(t,1,2.8),squash=phase(t,2.8,3.1)-phase(t,3.1,3.8);let out=stroke([[66,94],[160,73],[239,100],[245,168],[214,196],[171,191],[140,221],[142,189],[77,181],[66,94]],t,10);out+=stroke([[255,183],[323,163],[398,186],[405,253],[379,281],[353,279],[361,311],[320,284],[258,268],[255,183]],t,10);for(let i=0;i<3;i++){const k=clamp((cycle(t,1.5)-i*.14)/.36);out+=blob(111+i*44,135-(t>6?Math.sin(k*Math.PI)*7:0),10,t,WHITE);}const tick:P[]=[[285,226],[307,245+8*squash],[366,202]];if(reply>0)out+=ink(spline(tick).slice(0,Math.max(2,Math.floor(21*reply))),10,t).replaceAll(WHITE,BLUE);return out;}
-// The completed recurring task holds, with quietly redrawn ink contours.
-function schedule(t:number,_id:string){
- let out=stroke([[113,123],[172,121],[209,148],[244,185],[292,218],[352,235]],t,7);
- out+=stroke([[351,297],[299,325],[223,315],[174,277]],t,7);
- out+=stroke([[174,277],[176,299]],t,7)+stroke([[174,277],[197,277]],t,7);
- out+=rect(64,73,79,91,t,-3);
- out+=stroke([[81,99],[119,97]],t,5)+stroke([[80,117],[116,116]],t,5);
- const ring:P[]=[];for(let i=0;i<=40;i++){const a=i/40*Math.PI*2;ring.push([267+Math.cos(a)*54,113+Math.sin(a)*54]);}
- out+=blob(267,113,53,t,BLUE)+stroke(ring,t,7);
- out+=stroke([[266,80],[266,114],[292,129]],t,7);
- out+=rect(323,211,83,101,t,3);
- out+=stroke([[341,260],[356,276],[388,241]],t,8);
- out+=shape(deform([[109,247],[135,270],[111,294],[85,271]],t),RED);
- return out;
-}
 // ───── Situational scenes: one per moment (emails, sign-in, settings). Same ink, blue and coral as above. ─────
 const PAPER='#1a1a19';
 const arc=(cx:number,cy:number,r:number,a0:number,a1:number,steps=28,ry=r):P[]=>Array.from({length:steps+1},(_,i)=>{const a=a0+(a1-a0)*i/steps;return [cx+Math.cos(a)*r,cy+Math.sin(a)*ry] as P;});
@@ -243,14 +229,6 @@ function hourglass(t:number,_id:string){
  if(t>6)for(let i=0;i<3;i++){const f=cycle(t,1.2,i/3),top=316-78*pile;s+=faded(blob(240,lerp(200,top-2,f*f),2.6,t,RED),Math.min(1,f*6)*(1-f*f)*Math.min(1,t-6));}
  return s;
 }
-function coin(t:number,_id:string){
- const fall=phase(t,.4,1.8),bounce=Math.sin(phase(t,1.8,2.4)*Math.PI)*8,cx=lerp(400,245,fall),cy=lerp(40,212,fall)-Math.sin(fall*Math.PI)*60,spin=Math.abs(Math.cos(t*5))*(1-phase(t,1.6,1.8))+phase(t,1.6,1.8);
- let s=polygon(quad(158,196,176,20),PAPER)+stroke([[160,198],[332,198]],t,6);
- const cyy=fall<1?cy:206+idle(t,1.6,2);s+=shape(arc(cx,cyy,26*Math.max(.15,spin),0,Math.PI*2,28,26),BLUE)+stroke(arc(cx,cyy,16*Math.max(.15,spin),0,Math.PI*2,20,16),t,4);
- s+=polygon(quad(146,210+bounce,200,108),PAPER)+rect(146,210+bounce,200,108,t,2)+stroke([[300,240+bounce],[356,240+bounce],[356,282+bounce],[300,282+bounce]],t,8)+blob(328,261+bounce,8,t,RED);
- for(let i=0;i<7;i++)s+=stroke([[164+i*18,300+bounce],[174+i*18,300+bounce]],t,3);
- return s+burst(245,170,20,t,2.2)+floor(t,110,390,334);
-}
 function box(t:number,_id:string){
  const sink=phase(t,.2,1.1),l=1-phase(t,1.1,1.8),r=1-phase(t,1.5,2.2),tape=phase(t,2.4,3);
  let s='';
@@ -260,16 +238,6 @@ function box(t:number,_id:string){
  s+=polygon(quad(170,200,140,112),PAPER)+rect(170,200,140,112,t,2);
  s+=pen([[240,200],[240,226],[240,252]],t,tape,11,RED)+rect(188,262,46,30,t,1)+stroke([[196,272],[222,272]],t,3);
  return s+burst(240,176,14,t,3)+floor(t,110,370,318);
-}
-function portrait(t:number,_id:string){
- const k=phase(t,.2,1.4),face=phase(t,1.1,1.9),blinkAt=(t%3.2),blink=blinkAt>2.9?.15:1;
- let s=pen([[200,74],[240,34],[280,74]],t,k,5)+blob(240,32,6,t,RED);
- s+=k<1?pen(sharp([[165,74],[315,74],[315,262],[165,262],[165,74]]),t,k,11):rect(165,74,150,188,t)+rect(178,88,124,160,t,1);
- if(face>0){s+=faded(shape([[196,248],[206,212],[240,202],[274,212],[284,248]],BLUE),face);
-  s+=faded(stroke(arc(240,152,38,0,Math.PI*2,28),t,7),face);
-  for(const x of [226,254])s+=faded(stroke([[x,146-6*blink],[x,146+6*blink]],t,6),face);
-  s+=pen([[224,166],[240,176],[256,166]],t,phase(t,1.7,2.2),6)+faded(blob(214,164,6,t,RED),face*.9)+faded(blob(266,164,6,t,RED),face*.9);}
- return s+burst(315,74,14,t,2.2,.6);
 }
 function jar(t:number,_id:string){
  const lid=phase(t,2.6,3.1);let s=faded(blob(240,262,70,t,BLUE),.1*phase(t,2,3));
@@ -376,5 +344,20 @@ function safe(t:number,_id:string){
 function kiteAir(t:number,id:string){let s=kite(t,id);for(let i=0;i<3;i++){const f=((t*.22)+i/3)%1,x=lerp(430,60,f),y=[70,120,190][i];s+=faded(stroke([[x,y],[x+34,y-3],[x+60,y+1]],t,4),Math.sin(f*Math.PI)*.8);}s+=faded(shape([[70,72],[88,58],[112,60],[124,48],[150,54],[160,72],[140,82],[82,84]],WHITE),.12);return s;}
 function telescopeNight(t:number,id:string){let s=telescope(t,id);for(const [x,y,p] of [[300,60,0],[380,130,1.3],[430,70,2.1],[250,110,.7]] as const){const k=.35+.65*Math.abs(Math.sin(t*1.4+p));s+=faded(stroke([[x-7*k,y],[x+7*k,y]],t,3)+stroke([[x,y-7*k],[x,y+7*k]],t,3),k);}{const f=cycle(t,6.5,.62),k=f/.16;if(t>6&&k<1){const hx=lerp(250,420,ease(k)),hy=lerp(22,78,ease(k)),len=34*swell(k);s+=faded(stroke([[hx-len*.95,hy-len*.31],[hx,hy]],t,4),swell(k));}}return s+faded(blob(420,40,4,t,BLUE),.8);}
 function bridgeWater(t:number,id:string){let s=bridge(t,id);for(const [y,a,o] of [[356,.9,.5],[372,1.7,.3]] as const)s+=faded(stroke(Array.from({length:17},(_,i)=>[90+i*19,y+Math.sin(i*.8+t*1.6+a)*3] as P),t,4),o);const f=(t*.06+.3)%1,bx=lerp(70,410,f),by=Math.sin(bx*.08-t*1.6)*1.5;s+=faded(shape([[bx-16,344+by],[bx+16,344+by],[bx+10,354+by],[bx-10,354+by]],BLUE)+stroke([[bx,344+by],[bx,328+by]],t,3)+shape([[bx,328+by],[bx+12,338+by],[bx,340+by]],WHITE),Math.min(1,swell(f)*4));return s;}
-const scenes={schedule,balance,untangle,build,discover,learn,orchestrate,sprout,kite:kiteAir,telescope:telescopeNight,pencil,bridge:bridgeWater,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,coin,box,portrait,jar,folder,plug,house,lifebuoy,profile,safe,expired};
+/** Hello: a hand rises into view and waves, the fingertips trailing short motion marks; at rest it keeps a small wave going. */
+function wave(t:number,_id:string){
+ const rise=lerp(190,0,phase(t,0,1.1)),k=clamp((t-1.1)/3.3);
+ // Three waves that fade to a gentle tilt; after t=6 the idle loop keeps a slower, smaller wave.
+ const a=(t<6?.26*Math.sin(k*Math.PI*6)*(1-.7*k)+.06*phase(t,4,4.6):.06)+idle(t,2.2,.1);
+ const at=(pts:P[])=>turnAbout(pts.map(([x,y])=>[240+x*1.3,272+y*1.3+rise] as P),240,440+rise,a);
+ const hand:P[]=[[-30,0],[-34,-44],[-48,-58],[-64,-78],[-60,-91],[-47,-83],[-35,-67],[-33,-86],[-33,-130],[-25,-141],[-17,-131],[-16,-95],[-14,-141],[-6,-152],[2,-142],[3,-96],[5,-134],[13,-144],[21,-134],[20,-90],[23,-114],[30,-124],[37,-114],[35,-70],[30,-34],[28,0]];
+ let out=stroke(at(hand),t,9)+stroke(at([[-37,4],[0,6],[37,3]]),t,9)+stroke(at([[-33,8],[-35,70],[-37,170]]),t,9)+stroke(at([[33,8],[35,70],[38,170]]),t,9);
+ out+=stroke(at([[-12,-42],[4,-34],[18,-44]]),t,5);
+ // Motion marks beside the fingertips, on the side the hand is swinging towards.
+ const swing=t<6?Math.cos(k*Math.PI*6)*(1-k):Math.cos((t-6)*2.2),side=swing>0?1:-1,show=t<6?Math.abs(swing)*phase(t,1.2,1.6):Math.abs(swing)*.7;
+ if(show>.05)for(let i=0;i<2;i++){const r=182+i*22;out+=faded(stroke(at([[side*48,-r+120],[side*(64+i*10),-r+88],[side*(62+i*14),-r+56]]),t,5),show*(.9-i*.3));}
+ out+=blob(352,98,15*phase(t,3.9,4.4),t,BLUE)+burst(352,98,24,t,4.2)+blob(126,300,8*phase(t,4.3,4.7),t,RED);
+ return out;
+}
+const scenes={balance,untangle,build,discover,learn,orchestrate,sprout,kite:kiteAir,telescope:telescopeNight,pencil,bridge:bridgeWater,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave};
 export function filmFrame(scene:Scene,seconds:number,id:string,boil:number|null=null){const t=Math.max(0,seconds);boilClock=boil;try{return `<defs><filter id="${id}" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="4"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/></filter></defs>${scenes[scene](t,id)}`;}finally{boilClock=null}}

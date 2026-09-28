@@ -19,10 +19,10 @@ function MarketingPage({route}:{route:string}){
   useEffect(()=>{window.scrollTo(0,0);document.title=feature?`${feature.title} — Mowr`:route==='/about'?'About Mowr':'Mowr features';},[route,feature]);
   return <div className="sx-site"><SiteHeader/><main>
     {route==='/about'?<section className="sx-page-hero">
-      <Reveal><h1>A place for<br/>serious curiosity.</h1><p className="sx-lede">Mowr is a calm desktop workspace for learning, research and professional work. Your files stay yours.</p><a className="sx-btn sx-btn-primary sx-btn-lg" href="#/download?start">Download for Windows<Icon name="download" size={18}/></a></Reveal>
+      <Reveal><h1>A place for<br/>serious curiosity.</h1><p className="sx-lede">Mowr is a calm desktop workspace for learning, research and professional work. Your files stay yours.</p><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
     </section>:feature?<>
       <section className="sx-feature-hero">
-        <Reveal><a className="sx-back" href="#/features"><Icon name="arrow" size={14}/>Features</a><h1>{feature.line}</h1><p className="sx-lede">{feature.intro}</p><a className="sx-btn sx-btn-primary sx-btn-lg" href="#/download?start">Download for Windows<Icon name="download" size={18}/></a></Reveal>
+        <Reveal><a className="sx-back" href="#/features"><Icon name="arrow" size={14}/>Features</a><h1>{feature.line}</h1><p className="sx-lede">{feature.intro}</p><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
         <Reveal delay={120}><FeatureArt kind={feature.id}/></Reveal>
       </section>
       <section className="sx-section sx-feature-detail">
