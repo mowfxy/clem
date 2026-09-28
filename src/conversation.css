@@ -26,7 +26,6 @@
 .history-row .history-more:hover{color:#f0efeb}
 .history-row .history-more:focus-visible{outline-offset:-3px}
 .history-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.space-heading-actions{display:flex;align-items:center;gap:10px}.space-heading-actions .subject-import{margin:0;padding:10px;border:1px solid #393939;border-radius:8px;width:40px;height:40px}
 
 /* A chat that lives in a subject or project wears a small drawn mark in the space's colour */
 /* Mowr is working in this chat: three breathing dots; a finished reply you haven't seen: one soft dot */
