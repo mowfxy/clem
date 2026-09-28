@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { Icon } from "../Icons";
 
 /** A pencil drawn to match the app's line icons. */
 export function PencilIcon({ size = 16 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" /><path d="M14.5 6.5l3 3" /></svg>;
+  return <Icon name="rename" size={size} />;
 }
 
 /** Keeps the original extension when a new name is typed without one. */

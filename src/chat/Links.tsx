@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { youtubeReference } from "../youtube";
 import { DriveLogo, GitHubLogo, YouTubeLogo } from "../BrandLogos";
+import { Icon } from "../Icons";
 import "../youtube.css";
 
 type Brand = { name: string; mark: ReactNode };
-const globe = <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.3" /><path d="M1.8 8h12.4M8 1.7c1.8 1.8 2.6 3.9 2.6 6.3S9.8 12.5 8 14.3M8 1.7C6.2 3.5 5.4 5.6 5.4 8s.8 4.5 2.6 6.3" /></svg>;
+const globe = <Icon name="globe" size={13} />;
 
 function brandOf(url: URL): Brand | null {
   const host = url.hostname.replace(/^www\./, "");

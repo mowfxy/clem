@@ -7,7 +7,7 @@ import '../dialogs.css';
 const MAX=8000;
 
 export function InstructionsGlyph(){
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5h9l3.5 3.5v13.5H6z"/><path d="M14.5 3.5V7.5h4"/><path d="M9 11.5h6M9 14.5h6M9 17.5h3.5"/></svg>;
+  return <Icon name="note" size={18}/>;
 }
 
 /** The notes Mowr follows in one project or subject, edited in a popup. */

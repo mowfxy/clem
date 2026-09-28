@@ -68,8 +68,8 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
       <div className="visual-transport">
         {scene.id === 'projectile' && !compact && <div className="segmented" role="group" aria-label="View"><button aria-pressed={view === '2d'} onClick={() => setView('2d')}>Diagram</button><button aria-pressed={view === '3d'} onClick={() => setView('3d')}>3D</button></div>}
         {view === '2d' && <>
-          <button className="visual-icon" aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(!playing)}>{playing ? <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/><rect x="9.5" y="2.5" width="3" height="11" rx="1" fill="currentColor"/></svg> : <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.4-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z" fill="currentColor"/></svg>}</button>
-          <button className="visual-icon" aria-label="Restart" title="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.6-3.7M3 2.5v2.8h2.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+          <button className="visual-icon" aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(!playing)}>{playing ? <Icon name="pause" size={16} /> : <Icon name="playhead" size={16} />}</button>
+          <button className="visual-icon" aria-label="Restart" title="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><Icon name="restart" size={16} /></button>
           <button className="visual-rate" aria-label={`Playback speed ${rate}×`} title="Playback speed" onClick={() => setRate(rate === 1 ? 2 : rate === 2 ? 0.5 : 1)}>{rate}×</button>
         </>}
       </div>
