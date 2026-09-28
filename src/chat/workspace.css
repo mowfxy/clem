@@ -6,12 +6,12 @@
 .offline-banner{position:sticky;top:0;z-index:15;display:flex;align-items:center;justify-content:center;gap:9px;padding:8px 16px;background:#1d1b17;border-bottom:1px solid #3a342a;color:#e3d6bf;font:400 13px 'Mowafy Sans',system-ui,sans-serif}
 .offline-dot{width:7px;height:7px;border-radius:50%;background:#d9b36c}
 
-.visual-ask{display:flex;align-items:center;gap:12px;max-width:720px;margin:4px 0 34px;padding:8px 8px 8px 16px;border:1px solid #33332f;border-radius:16px;background:#1b1b19;transition:border-color .2s,box-shadow .3s}
-.visual-ask:focus-within{border-color:#4a4a45;box-shadow:0 0 0 4px #ffffff08}
-.visual-ask>svg{flex:none;color:#85847e}
-.visual-ask input{flex:1;min-width:0;height:40px;border:0;background:none;color:#f0efeb;font:400 15.5px 'Mowafy Sans',system-ui,sans-serif;outline:0;padding:0}
-.visual-ask input::placeholder{color:#6f6e68}
-.visual-ask button{width:40px;height:40px;padding:0;border-radius:11px;display:grid;place-items:center}
+
+
+
+
+
+
 
 .change-list{display:grid}
 .change-row{display:grid;grid-template-columns:18px 1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid #ffffff0a;font:400 13px 'Mowafy Sans',system-ui,sans-serif}
@@ -90,4 +90,4 @@
 .composer .popover button:hover{background:#ffffff0b}
 .composer .popover button>svg{width:17px;height:17px;flex:none}
 .composer .popover .popover-hint{font-size:10.5px}
-.connector-emblem .brand-github{color:#f3f2ec}
+

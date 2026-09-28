@@ -100,16 +100,6 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
   </section>;
 }
 
-/** Every available scene as a card. `picker` is the compact in-chat variant. */
-export function VisualGallery({ onPick, picker = false }: { onPick: (scene: string) => void; picker?: boolean }) {
-  return <div className={picker ? 'visual-picker' : 'visual-gallery'}>{scenes.map(s => <button key={s.id} onClick={() => onPick(s.id)}>
-    <VisualThumb scene={s.id} />
-    {!picker && <span className="visual-subject">{s.subject}</span>}
-    <strong>{s.title}</strong>
-    {!picker && <small>{s.summary}</small>}
-  </button>)}</div>;
-}
-
 /** Static miniature of any scene, used by the gallery and saved-visual cards. */
 export function VisualThumb({ scene, params }: { scene: string | boolean | undefined; params?: Values }) {
   const def = sceneById(scene) || scenes[0];

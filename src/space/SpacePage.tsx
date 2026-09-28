@@ -7,8 +7,8 @@ import {chatPreview} from '../../core/chat-title';
 import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
-import {MemoryConversation} from '../MemoryConversation';
-import {InstructionsDialog,InstructionsGlyph} from './InstructionsDialog';
+import {MemoryConversation,warmMemory} from '../MemoryConversation';
+import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './InstructionsDialog';
 import {ActivityGraph} from './ActivityGraph';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
 import {DriveFolderView} from '../drive/DriveFolderView';
@@ -80,12 +80,13 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
   const weak=weakConcepts(sets);
   const [ask,setAsk]=useState('');
   const [review,setReview]=useState(0);
-  const [instructions,setInstructions]=useState(false);
+  const [instructions,setInstructions]=useState(false),[describing,setDescribing]=useState(false);
   const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length]]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length]];
   if(desktop)tabs.push(['memory','Memory']);
   const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
+  useEffect(()=>warmMemory(),[]);
 
   return <div className={`space-page ${subject?'is-subject':'is-project'}`}>
     <div className="sp-top">
@@ -94,12 +95,12 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
       <div className="sp-title-row">
         <div className="sp-title">
           <Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/>
-          <Editable className="sp-desc" value={space.description} max={400} label="Description" placeholder={subject?'What are you learning, and why?':'What is this project about?'} onSave={description=>actions.onUpdateSpace({...space,description})}/>
+          {space.description&&<p className="sp-desc">{space.description}</p>}
         </div>
         <div className="sp-actions">
           <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} title={space.memory.trim()?'Edit the instructions Mowr follows here':'Tell Mowr how to work here'}><InstructionsGlyph/>Instructions</button>
           <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
-          <Menu label="More" items={[...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
+          <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
       </div>
       {subject&&<div className="sp-stats">
@@ -168,6 +169,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
       {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
+    {describing&&<DescriptionDialog space={space} onSave={description=>actions.onUpdateSpace({...space,description})} onClose={()=>setDescribing(false)}/>}
   </div>;
 }
 

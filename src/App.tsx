@@ -2,7 +2,7 @@ import {bootDone} from "./boot";
 import {ModelsSettings} from "./ModelsSettings";
 import {confirmDialog} from './dialogs';
 import {relevantSkills,skillText,documentGuidance,builtinSkills} from '../core/skills';
-import {readCommand,expandCommand} from '../core/commands';
+import {readCommand,expandCommand,leadingCommand} from '../core/commands';
 import type {AccountsData} from "./ModelsSettings";
 import {NoticeStack,type Notice} from "./notices/NoticeStack";
 import {AccountHandoff} from "./notices/AccountHandoff";
@@ -10,7 +10,6 @@ import {useWorkspaceSignals} from "./notices/useWorkspaceSignals";
 import {SupportInbox} from "./support/SupportInbox";
 import {CommandPalette,type Command} from "./command/CommandPalette";
 import {hasCapacity,isBelowSwitchThreshold} from '../core/account-usage';
-import {SubjectStudy} from './SubjectStudy';
 import {studyRequest,studyInstructions} from '../core/study-request';
 import {MemoryConversation} from "./MemoryConversation";
 import {LocalAutomations,nextAutomation,firstAutomationRun} from "./LocalAutomations";
@@ -24,7 +23,7 @@ import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
-import {youtubeReference, youtubeReferences} from "./youtube";
+import {youtubeReferences} from "./youtube";
 import {isMediaType, videoContentIntent, videoContext, type VideoCaptions} from "../core/captions";
 import {desktop,desktopChat} from './desktop/bridge';
 import {LinkedFolders} from './desktop/LinkedFolders';
@@ -41,7 +40,7 @@ import {FilePanel,canEditInPanel,type FilePanelHandle,type FilePointer} from './
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {DriveIcon} from './drive/DriveIcon';
-import {refreshDrive,driveSources,driveFolder,driveList as driveListText,useDrive,type DriveItem} from './drive/drive';
+import {refreshDrive,driveSources,driveFolder,driveList as driveListText,type DriveItem} from './drive/drive';
 import {mowrSkillText} from '../core/mowr-skills';
 import {boundedConversation,compressReply,SOURCE_PREFIX} from '../core/chat-context';
 import {SavedFilePicker} from './files/SavedFilePicker';
@@ -79,8 +78,6 @@ import {
 import type { State } from "./store";
 import { Icon, Logo } from "./Icons";
 import {
-  AuthPanel,
-  ConnectModel,
   api,
   defaultSession,
 } from "./Cloud";
@@ -551,10 +548,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!doneEvent) throw new Error("The response was interrupted. Try again.");
     return result;
   }
-  async function clearChat(chat:Chat){try{await deleteWorkflowCheckpoints(ownerRef.current,chat.messages.flatMap(m=>m.plan?[m.plan]:[]));patch(s=>({...s,chats:s.chats.map(c=>c.id===chat.id?{...c,messages:[]}:c),visuals:s.visuals.filter(v=>v.chatId!==chat.id)}));}catch{setToast("Could not clear this conversation. Please try again.");}}
   async function send(e?: FormEvent, override?: string) {
     e?.preventDefault();
-    const prompt = (override ?? draft).trim();
+    // A command typed mid-message is read as if it came first (see core/commands.ts).
+    const prompt = leadingCommand((override ?? draft).trim()).trim();
     if (!prompt) return;
     // Sending while Mowr answers interrupts it: the partial answer stays, then the new message goes.
     if (running) {
@@ -836,7 +833,8 @@ ${titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.m
 
 In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : ""}`,
           },
-          ...next.messages
+          // After a /compact brief, only the brief and what followed it are sent.
+          ...next.messages.slice(Math.max(0, next.messages.map((m) => "compact" in m && !!m.compact).lastIndexOf(true)))
             .filter((m) => m.content)
             .map((m) => ({ role: m.role, content: (isVisual && m.id === user.id ? m.content.replace(/^\/visual\s*/i, "Visualize: ") : m.role === "user" ? expandCommand(m.content) : m.content) + (m.id === user.id ? pointerNote : "") })),
           ...(fileText
@@ -869,6 +867,15 @@ In this subject the learner keeps missing these questions in review; connect to 
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
         messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
+      const run = readCommand(prompt)?.command.id;
+      if (run === "compact") updateChat(id, (c) => ({ ...c, messages: c.messages.map((m) => m.id === messageId ? { ...m, compact: true } : m) }));
+      if (run === "handoff" && named.content.trim()) {
+        // The brief opens a fresh chat in the same place, so the work carries on with a clean context.
+        const fresh = uid();
+        patch((s) => ({ ...s, chats: [{ id: fresh, title: ("Continued: " + (s.chats.find((c) => c.id === id)?.title || "chat")).slice(0, 70), spaceId: chat.spaceId, messages: [{ id: uid(), role: "assistant", content: named.content, model: model || undefined, compact: true }], updated: Date.now() }, ...s.chats] }));
+        if (viewing.current === id) setChatId(fresh);
+        setToast("Continued in a new chat, starting from the handoff brief.");
+      }
       const markSpace = chat.spaceId, picked = "mark" in named ? named.mark : undefined;
       if (markSpace && picked && markKeys.includes(picked)) patch((s) => ({ ...s, spaces: s.spaces.map((x) => x.id === markSpace ? { ...x, mark: { key: picked, for: x.name } } : x) }));
     } catch (e) {
@@ -1320,7 +1327,6 @@ In this subject the learner keeps missing these questions in review; connect to 
   const pageSpace=spaceRoute?state.spaces.find(x=>x.id===spaceRoute):undefined;
   useEffect(()=>{if(spaceRoute&&spaceRoute!==spaceId){setSpaceId(spaceRoute);setChatId(null);}},[spaceRoute]);
   function spaceActions(space:Space):import('./space/SpacePage').SpaceActions{
-    const scope=`${space.kind}:${space.id}`;
     const ensureFolder=(name:string)=>{const current=stateRef.current.spaces.find(x=>x.id===space.id)||space;const found=(current.folders||[]).find(f=>!f.parentId&&f.name.toLowerCase()===name.toLowerCase());if(found)return found;const folder={id:crypto.randomUUID(),name,parentId:null,created:Date.now()};patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id?{...x,folders:[...(x.folders||[]),folder]}:x)}));return folder;};
     const ask=(prompt:string)=>{newChat(space.id);if(prompt)setQueued({prompt});};
     return {
@@ -1736,7 +1742,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                           <div className="message-text">
                             {m.content ? (
                               m.role === "assistant" ? (
-                                <MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} />
+                                <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Mowr continues from this brief</p>}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} /></>
                               ) : (
                                 <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
                               )
@@ -1856,11 +1862,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                             {s.name}
                           </button>
                         </h2>
-                        <SpaceDescription
-                          value={s.description}
-                          kind={s.kind}
-                          onSave={(description) => patch((st) => ({ ...st, spaces: st.spaces.map((x) => (x.id === s.id ? { ...x, description } : x)) }))}
-                        />
+                        {s.description && <p className="space-desc">{s.description}</p>}
                         <div className="space-meta">
                           <span>
                             {(() => { const n = state.chats.filter((c) => c.spaceId === s.id).length; return `${n} ${n === 1 ? "conversation" : "conversations"}`; })()}
@@ -2554,17 +2556,3 @@ function FolderChanges({onError}:{onError:(message:string)=>void}){
 
 function SkillIconField(){const [icon,setIcon]=useState("skills");return <fieldset className="icon-field"><legend>Skill icon</legend><input type="hidden" name="icon" value={icon}/><IconPicker value={icon} onChange={setIcon}/></fieldset>;}
 
-/** A subject or project card's description, or a quiet "Add a description" that edits in place. */
-function SpaceDescription({value,kind,onSave}:{value:string;kind:Space["kind"];onSave:(description:string)=>void}){
-  const [editing,setEditing]=useState(false);
-  const [text,setText]=useState(value);
-  useEffect(()=>{if(!editing)setText(value);},[value,editing]);
-  const save=()=>{setEditing(false);const next=text.trim().slice(0,400);if(next!==value)onSave(next);};
-  if(editing)return <textarea className="space-desc-edit" autoFocus rows={2} maxLength={400} aria-label="Description"
-    placeholder={kind==="subject"?"What are you learning, and why?":"What is this project about?"}
-    value={text} onChange={e=>setText(e.target.value)} onBlur={save}
-    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();save();}if(e.key==="Escape"){setText(value);setEditing(false);}}}/>;
-  return value
-    ? <p className="space-desc" onDoubleClick={()=>setEditing(true)} title="Double-click to edit">{value}</p>
-    : <button type="button" className="space-desc-add" onClick={()=>setEditing(true)}><Icon name="plus" size={15}/>Add a description</button>;
-}

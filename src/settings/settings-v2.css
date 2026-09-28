@@ -15,16 +15,18 @@
 .settings-page.v2 .settings-content{max-width:680px;display:grid;gap:14px;animation:set-in .45s var(--s-ease) both}
 
 /* Header */
-.settings-head{display:flex;align-items:center;gap:20px;padding:4px 0 10px}
-.settings-head .ink-scene{width:136px;flex:none;margin:-14px 0 -18px -14px}
+.settings-head{display:flex;align-items:center;gap:18px;padding:0 0 8px}
+.settings-head .ink-scene{flex:none;width:96px;height:80px;margin:0}
+.settings-head .ink-scene svg{display:block;width:100%;height:100%}
 .settings-head h2{font:400 32px/1.1 'Mowafy Serif',Georgia,serif!important;letter-spacing:-.6px!important;margin:0 0 6px!important;color:var(--s-ink)}
 .settings-head p{margin:0;color:var(--s-muted);font-size:13.5px}
 
 /* Cards and rows */
 .settings-card{border:1px solid var(--s-line);background:var(--s-card);border-radius:16px;padding:6px 20px;animation:set-in .5s var(--s-ease) both}
-.settings-card:nth-of-type(2){animation-delay:.05s}.settings-card:nth-of-type(3){animation-delay:.1s}
+.settings-card-wrap:nth-of-type(2)>.settings-card{animation-delay:.05s}.settings-card-wrap:nth-of-type(3)>.settings-card{animation-delay:.1s}
 .settings-card-title{font:500 11px/1 'Mowafy Sans',sans-serif!important;letter-spacing:.12em;text-transform:uppercase;color:var(--s-muted);margin:14px 0 4px!important}
-.settings-card-note{margin:0 0 14px;padding-top:12px;border-top:1px solid var(--s-line);font-size:12px;line-height:1.6;color:var(--s-muted)}
+.settings-card-wrap{display:grid;gap:8px}
+.settings-card-note{margin:0;padding:0 20px;font-size:12.5px;line-height:1.55;color:var(--s-muted)}
 .settings-card-body>*:last-child{border-bottom:0!important}
 .settings-page.v2 .setting-row.v2,.settings-page.v2 .settings-action{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 0;border:0;border-bottom:1px solid var(--s-line);margin:0}
 .settings-page.v2 .setting-row.v2 h3,.settings-page.v2 .settings-action h3{font:500 13.5px/1.3 'Mowafy Sans',sans-serif;margin:0 0 3px;color:var(--s-ink)}
@@ -66,8 +68,8 @@
 @media(prefers-reduced-motion:reduce){.settings-page.v2 .settings-content,.settings-card,.settings-page.v2 .settings-tabs button.active::before{animation:none}}
 
 /* Models: neutral surfaces instead of the old green tint, ivory usage bars. */
-.settings-page.v2 .model-provider-summary,.settings-page.v2 .connected-account,.settings-page.v2 .provider-challenge{background:var(--s-card);border-color:var(--s-line);border-radius:16px}
-.settings-page.v2 .model-provider-mark{background:#262624}
+.settings-page.v2 .connected-account,.settings-page.v2 .provider-challenge{background:var(--s-card);border-color:var(--s-line);border-radius:16px}
+
 .settings-page.v2 .synced-models>div span{background:#262624}
 .settings-page.v2 .usage-window progress::-webkit-progress-bar{background:#2e2e2b}
 .settings-page.v2 .usage-window progress::-webkit-progress-value{background:#f0efeb}
@@ -79,7 +81,6 @@
 .settings-page.v2 input[type=checkbox]:not(.mw-switch input):checked{background:#f0efeb;border-color:#f0efeb}
 .settings-page.v2 input[type=checkbox]:not(.mw-switch input):checked::after{transform:translateX(17px);background:#141413}
 .settings-page.v2 .models-heading{margin-top:-66px}
-.settings-head .ink-scene.ink-plug{margin-left:-24px}
 .settings-page.v2 .support-inbox form,.settings-page.v2 .support-inbox .field{max-width:none}.settings-page.v2 .support-inbox select{max-width:none!important}
 
 /* A plain line of text in a card (an empty state) gets the same breathing room as a row. */

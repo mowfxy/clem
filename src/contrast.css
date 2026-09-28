@@ -29,15 +29,12 @@ body .suggestions button .drawn-icon{color:#f3f2ee}
 body .composer textarea::placeholder{color:#a9a8a1}
 body .breadcrumb,body .breadcrumb button{color:#e6e5df}
 
-/* Subject and project cards: the description, or a quiet way to add one. */
-body .space-card .space-desc{color:#d9d8d2;cursor:text}
-.space-desc-add{display:inline-flex;align-items:center;gap:7px;margin:4px 0 14px;padding:6px 10px 6px 8px;border:1px dashed #4a4a45;border-radius:9px;background:none;color:#e6e5df;font:14px 'Mowafy Sans',system-ui,sans-serif;cursor:pointer}
-.space-desc-add:hover{border-color:#6b6a64;color:#fff}
-.space-desc-add .drawn-icon{color:#f3f2ee}
-.space-desc-edit{width:100%;margin:2px 0 12px;padding:9px 11px;border:1px solid #55544f;border-radius:10px;background:#161615;color:#f3f2ee;font:15px/1.5 'Mowafy Sans',system-ui,sans-serif;resize:none}
+/* Subject and project cards: the description set when the space was made. */
+body .space-card .space-desc{color:#d9d8d2}
 
-/* Icons on light buttons follow the button's dark text, not the white icon colour above. */
-body .primary .drawn-icon,body .send-button .drawn-icon,body button.primary .drawn-icon{color:inherit}
+/* An icon always takes its control's colour where that colour means something: dark on light buttons, red on
+   delete and other danger actions. Only plain controls get the white icon colour above. */
+body :is(.primary,.send-button,.danger,.sp-share,.visual-save.saved,.app-confirm-ok,.contact-primary,.contact-chips button[aria-pressed=true],.fp-toggle button[aria-pressed=true],.ps-toggle button[aria-pressed=true],.se-filters button.active,.fp-keep,.fp-flash,.fp-area button,.fp-edit,.sh-option.on,.sh-file-icon,.cx-mowr,.cx-go,.gd-google,.gd-link-folder:hover,.drive-video-actions button:hover,.au-submit,.adm-primary,.adm-toast,.toast-mark,.support-team-mark,.provider-action.primary,.account-handoff button.primary,.tg-badge,.sx-btn-primary,.memory-send) .drawn-icon{color:inherit}
 body .send-button{color:#1b1b19}
 body .send-button:disabled{color:#6f6e68}
 

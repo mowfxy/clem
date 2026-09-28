@@ -1,4 +1,4 @@
-// Slash commands: typed as "/name what you want", shown as a chip in the composer and in the sent message. Each one
+// Slash commands: typed anywhere in a message as "/name", shown as a chip in the composer and in the sent message. Each one
 // becomes an explicit instruction for the model and pulls in the playbooks that do the job (see mowr-skills.ts and
 // skills.ts), so a command never depends on the model guessing what "/pdf" means. /visual, /flashcards, /quiz and
 // /skill keep their own handling in the app; for those the text reaches the model as before.
@@ -43,16 +43,45 @@ export const slashCommands: SlashCommand[] = [
     instruction: () => "Set this up as a Mowr routine: propose it in one ```automation block with a clear name, the time and repeat, and the exact prompt it should run." },
   { id: "remember", label: "Remember", icon: "cmd-remember", description: "Save something to memory", placeholder: "What should Mowr remember?", skills: ["memory"],
     instruction: () => "Remember that" },
+  { id: "outline", label: "Outline", icon: "cmd-outline", description: "Plan an essay, report or talk", placeholder: "What are you writing?", workflow: "essay",
+    instruction: () => "Write an outline for this, not the full text: a one-line thesis or aim, then numbered sections with two or three points each and the evidence each point needs. End with what I still need to find out." },
+  { id: "feedback", label: "Feedback", icon: "cmd-feedback", description: "Honest feedback on your work", placeholder: "Paste or attach your work…", workflow: "editing",
+    instruction: () => "Give honest, specific feedback on this work: what works, the three changes that would improve it most (quote the passage each one is about), then smaller fixes. Keep my voice; don't rewrite it all." },
+  { id: "compare", label: "Compare", icon: "compare", description: "Compare options side by side", placeholder: "What should Mowr compare?", skills: ["web"], workflow: "decision",
+    instruction: () => "Compare these side by side: a table with the criteria that matter as rows, a short note on each real difference, then a clear recommendation and when the other option would win." },
+  { id: "plan", label: "Plan", icon: "cmd-plan", description: "A schedule that gets it done", placeholder: "What, and by when?", workflow: "proposal",
+    instruction: () => "Make a realistic plan for this: work back from the deadline, break it into dated steps small enough to start today, and mark the one to do first. Ask if the deadline or time I have is missing." },
+  { id: "mnemonic", label: "Mnemonic", icon: "cmd-mnemonic", description: "A memory trick that sticks", placeholder: "What do you need to remember?", skills: ["notation"],
+    instruction: () => "Make this easy to remember: two or three different memory tricks (an acronym, a vivid image or story, a rhyme), then say which one fits best and why. Keep every fact correct." },
+  { id: "debate", label: "Debate", icon: "cmd-debate", description: "The strongest case on each side", placeholder: "Which question or claim?", skills: ["web"],
+    instruction: () => "Argue both sides of this: the strongest case for, the strongest case against, the evidence each relies on, where they really disagree, and a fair verdict on which is better supported." },
+  { id: "translate", label: "Translate", icon: "cmd-translate", description: "Translate and keep the tone", placeholder: "What, and into which language?",
+    instruction: () => "Translate this faithfully, keeping its tone and formatting. If no language is named, ask which one. After the translation, note any phrase that has no exact equivalent." },
+  { id: "compact", label: "Compact", icon: "cmd-compact", description: "Shrink this chat to a brief and keep going", placeholder: "Anything to keep in focus? (optional)",
+    instruction: (rest) => `Compact this conversation into a brief I can continue from: the goal, decisions made, key facts, numbers and sources, what is still open, and where we stopped.${rest.trim() ? " Keep this in focus: " + rest.trim() + "." : ""} Use short headed lists. No preamble.` },
+  { id: "handoff", label: "Handoff", icon: "cmd-handoff", description: "Continue in a fresh chat with a brief", placeholder: "What should the next chat do? (optional)",
+    instruction: (rest) => `Write a handoff brief so a fresh chat can pick this up with no other context: the goal, what has been done and decided, key facts and sources, open questions, and the next steps.${rest.trim() ? " The next chat will: " + rest.trim() + "." : ""} Address it to the next chat. No preamble.` },
   { id: "skill", label: "Skill", icon: "skills", description: "Create a reusable skill", placeholder: "Opens the skill editor", skills: ["own-skills"] },
 ];
 
 const byId = new Map(slashCommands.map((c) => [c.id, c]));
 
-/** The command a message starts with and the words after it, or null. */
+/** The first command in a message ("/name" at the start or after a space) and the message without it, or null. */
 export function readCommand(text: string): { command: SlashCommand; rest: string } | null {
-  const m = /^\/([a-z]+)(?=\s|$)\s*([\s\S]*)$/i.exec(text);
-  const command = m ? byId.get(m[1].toLowerCase()) : undefined;
-  return command ? { command, rest: m![2] } : null;
+  for (const m of text.matchAll(/(^|\s)\/([a-z]+)(?=\s|$)/gi)) {
+    const command = byId.get(m[2].toLowerCase());
+    if (!command) continue;
+    const start = m.index + m[1].length, end = start + m[2].length + 1;
+    const before = text.slice(0, start).replace(/[ \t]+$/, ""), after = text.slice(end).replace(/^[ \t]+/, "");
+    return { command, rest: (before && after && !before.endsWith("\n") ? before + " " + after : before + after).replace(/^\s+/, "") };
+  }
+  return null;
+}
+
+/** A message with its command moved to the front, as "/name rest", so the chip always sits before the words. */
+export function leadingCommand(text: string) {
+  const found = readCommand(text);
+  return found ? `/${found.command.id} ${found.rest}` : text;
 }
 
 /** Commands matching what has been typed after "/" (before any space), best matches first. */

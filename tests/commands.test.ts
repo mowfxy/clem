@@ -1,15 +1,24 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readCommand,expandCommand,commandsFor,slashCommands} from '../core/commands.ts';
+import {readCommand,expandCommand,commandsFor,slashCommands,leadingCommand} from '../core/commands.ts';
 import {mowrSkills,mowrSkillsFor} from '../core/mowr-skills.ts';
 import {builtinSkills} from '../core/skills.ts';
 
-test('a command is read from the start of a message only',()=>{
+test('a command is read at the start of a message or after a space, and moves to the front',()=>{
   assert.equal(readCommand('/pdf photosynthesis')?.command.id,'pdf');
   assert.equal(readCommand('/pdf')?.rest,'');
-  assert.equal(readCommand('make a /pdf'),null);
+  assert.equal(readCommand('make a /pdf about cells')?.command.id,'pdf');
+  assert.equal(readCommand('make a /pdf about cells')?.rest,'make a about cells');
+  assert.equal(leadingCommand('explain gravity /research'),'/research explain gravity');
+  assert.equal(readCommand('see /usr/bin now'),null);
+  assert.equal(readCommand('a/pdf b'),null);
   assert.equal(readCommand('/nothing here'),null);
   assert.equal(readCommand('/pdfs please'),null);
+});
+
+test('/compact and /handoff work on the conversation with no words after them',()=>{
+  assert.match(expandCommand('/compact'),/^Compact this conversation/);
+  assert.match(expandCommand('/handoff write the report'),/The next chat will: write the report\./);
 });
 
 test('commands become explicit instructions; app-handled ones pass through unchanged',()=>{
