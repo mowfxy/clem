@@ -50,7 +50,7 @@ export function Landing(){
         <div className="sx-hero-glow" aria-hidden="true"/>
         <div className="sx-hero-copy">
           <Logo size={44} thinking/>
-          <h1>Your space<br/>to think.</h1>
+          <h1>Your space <br className="sx-narrow-break"/>to think.</h1>
           <p className="sx-lede">One calm place for your projects, study and documents.</p>
           <div className="sx-cta-row">
             <a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a>
