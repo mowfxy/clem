@@ -43,10 +43,10 @@
 .long-toggle.selected .long-switch::after{transform:translateX(10px);background:#171717}
 @media(prefers-reduced-motion:reduce){.long-toggle .long-switch,.long-toggle .long-switch::after{transition:none}}
 @media(max-width:760px){.picker-trigger-name{max-width:110px}}
-.step-head h3{font:400 15px var(--sans);margin:0;flex:1}
-.step-instructions{display:flex;gap:12px;align-items:flex-start;margin:14px 0}
-.step-instructions p{font-size:13px;line-height:1.65;margin:0;flex:1}
-.step-instructions button{flex-shrink:0}
+
+
+
+
 
 .history-row{display:flex;align-items:center}.history-row .history-item{min-width:0;flex:1}
 

@@ -94,37 +94,37 @@ export const documentCss = `
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{margin:0;font:10.4pt/1.55 'Mowafy Serif',Cambria,'Charter','Georgia','Times New Roman',serif;color:#1b1d21;font-variant-numeric:lining-nums proportional-nums;hyphens:auto;text-rendering:optimizeLegibility;font-kerning:normal}
 .doc-head{padding-bottom:14pt;margin-bottom:18pt;border-bottom:.9pt solid #1b1d21}
-.doc-kind{margin:0 0 9pt;font:600 7.6pt/1 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#1f4e79}
-h1{margin:0;font:600 22.5pt/1.16 'Mowafy Sans','Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:-.25pt;color:#101114;hyphens:none}
+.doc-kind{margin:0 0 9pt;font:700 7.6pt/1 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#1f4e79}
+h1{margin:0;font:700 22.5pt/1.16 'Mowafy Sans','Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:-.25pt;color:#101114;hyphens:none}
 .doc-subtitle{margin:7pt 0 0;font:400 12pt/1.35 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#4a4f57;hyphens:none}
 .doc-meta{display:flex;gap:18pt;margin-top:12pt;font:8.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#5c6169}
 .doc-meta span+span::before{content:"";display:inline-block;width:3pt;height:3pt;border-radius:50%;background:#9aa0a8;margin:0 18pt 1.5pt -11pt;vertical-align:middle}
 .doc-summary{margin:0 0 18pt;padding:10pt 13pt 4pt;border-left:2.2pt solid #1f4e79;background:#f3f6f9;break-inside:avoid}
-.doc-summary h2{margin:0 0 5pt;font:600 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#1f4e79}
+.doc-summary h2{margin:0 0 5pt;font:700 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#1f4e79}
 .doc-summary h2::before{content:none}
 .doc-summary p{text-align:left}
 .doc-toc{margin:0 0 20pt;break-inside:avoid;font:9.4pt/1.7 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif}
-.doc-toc h2{margin:0 0 4pt;font:600 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
+.doc-toc h2{margin:0 0 4pt;font:700 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
 .doc-toc h2::before{content:none}
 .doc-toc ol{margin:0;padding:0;list-style:none;counter-reset:toc}
 .doc-toc li{counter-increment:toc;display:flex;gap:10pt;border-bottom:.4pt dotted #c4c8cd}
-.doc-toc li::before{content:counter(toc);min-width:16pt;color:#1f4e79;font-weight:600}
+.doc-toc li::before{content:counter(toc);min-width:16pt;color:#1f4e79;font-weight:700}
 main{counter-reset:h2 figure table}
 section{counter-reset:h3}
 h2,h3,h4{font-family:'Mowafy Sans','Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;color:#101114;break-after:avoid;hyphens:none;text-align:left}
-h2{margin:20pt 0 7pt;font-size:13.6pt;font-weight:600;line-height:1.25;counter-increment:h2}
+h2{margin:20pt 0 7pt;font-size:13.6pt;font-weight:700;line-height:1.25;counter-increment:h2}
 h2::before{content:counter(h2);display:inline-block;min-width:22pt;color:#1f4e79}
-h3{margin:14pt 0 5pt;font-size:11.2pt;font-weight:600;line-height:1.3;counter-increment:h3}
-section h3::before{content:counter(h2) "." counter(h3);display:inline-block;min-width:30pt;color:#1f4e79;font-weight:600}
+h3{margin:14pt 0 5pt;font-size:11.2pt;font-weight:700;line-height:1.3;counter-increment:h3}
+section h3::before{content:counter(h2) "." counter(h3);display:inline-block;min-width:30pt;color:#1f4e79;font-weight:700}
 body.plain h2::before,body.plain h3::before,section.unnumbered h3::before{content:none}
-h4{margin:11pt 0 4pt;font-size:10.4pt;font-weight:600}
+h4{margin:11pt 0 4pt;font-size:10.4pt;font-weight:700}
 p{margin:0 0 7.5pt;text-align:justify;orphans:3;widows:3}
 ul,ol{margin:0 0 8pt;padding-left:17pt}
 li{margin:2.5pt 0;text-align:left}
 li>p{margin:0}
 strong{font-weight:700;color:#101114}
 table{counter-increment:table;border-collapse:collapse;width:100%;margin:10pt 0 13pt;font:9pt/1.4 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;font-variant-numeric:lining-nums tabular-nums;border-top:1pt solid #1b1d21;border-bottom:1pt solid #1b1d21;break-inside:avoid}
-th{padding:5pt 8pt;text-align:left;font-weight:600;border-bottom:.6pt solid #1b1d21;vertical-align:bottom}
+th{padding:5pt 8pt;text-align:left;font-weight:700;border-bottom:.6pt solid #1b1d21;vertical-align:bottom}
 td{padding:4pt 8pt;text-align:left;vertical-align:top;border-bottom:.3pt solid #d9dce0}
 tr:last-child td{border-bottom:0}
 td[align=right],th[align=right]{text-align:right}td[align=center],th[align=center]{text-align:center}
@@ -141,10 +141,10 @@ math{font-size:1.06em}
 figure{counter-increment:figure;margin:13pt 0 15pt;break-inside:avoid;text-align:center}
 figure img{display:block;margin:0 auto;max-width:100%;max-height:118mm;object-fit:contain}
 figcaption{margin:7pt auto 0;max-width:92%;font:8.6pt/1.45 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#30343a;text-align:left}
-figcaption::before{content:"Figure " counter(figure) ". ";font-weight:600;color:#101114}
+figcaption::before{content:"Figure " counter(figure) ". ";font-weight:700;color:#101114}
 .source{color:#80868e}
 .footnotes{margin:12pt 0 8pt;padding-top:5pt;border-top:.5pt solid #c4c8cd;font-size:8.8pt;line-height:1.45}
-.footnote-label{margin:0 0 3pt;font:600 7.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
+.footnote-label{margin:0 0 3pt;font:700 7.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
 .footnotes ol{padding-left:15pt}
 .doc-references{margin-top:22pt}
 .doc-references h2::before{content:none}

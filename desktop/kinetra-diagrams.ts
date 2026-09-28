@@ -35,7 +35,7 @@ function svg(width: number, height: number, body: string, title?: string) {
   const head = title ? 34 : 0;
   const w = Math.ceil(width), h = Math.ceil(height + head);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="${PAPER}"/>` +
-    (title ? textBlock([title], w / 2, 18, 15, { weight: 600, color: INK }) : "") + `<g transform="translate(0 ${head})">${body}</g></svg>`;
+    (title ? textBlock([title], w / 2, 18, 15, { weight: 700, color: INK }) : "") + `<g transform="translate(0 ${head})">${body}</g></svg>`;
 }
 /** A requested size in pixels, clamped; anything that is not a number (such as "wide") falls back to the default instead of drawing at NaN. */
 const bounded = (value: unknown, fallback: number, min: number, max: number) => { const n = Number(value); return Math.min(Math.max(Number.isFinite(n) && n ? n : fallback, min), max); };
@@ -124,7 +124,7 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
   const label = (text: string | undefined, x: number, y: number) => {
     if (!text) return "";
     const lines = wrap(text, 110, 11, 2), w = Math.max(...lines.map((l) => textWidth(l, 11))) + 10, h = lines.length * 14 + 4;
-    return `<rect x="${num(x - w / 2)}" y="${num(y - h / 2)}" width="${num(w)}" height="${num(h)}" rx="3" fill="${PAPER}"/>` + textBlock(lines, x, y, 11, { color: MUTED, weight: 600 });
+    return `<rect x="${num(x - w / 2)}" y="${num(y - h / 2)}" width="${num(w)}" height="${num(h)}" rx="3" fill="${PAPER}"/>` + textBlock(lines, x, y, 11, { color: MUTED, weight: 700 });
   };
   let drawn = "";
   for (const e of edges) {
@@ -176,7 +176,7 @@ export function chart(spec: { title?: string; type?: "bar" | "hbar" | "stacked" 
       const a = (Math.max(0, v) / total) * Math.PI * 2, end = angle + a, large = a > Math.PI ? 1 : 0;
       const p = (t: number, rr = r) => `${num(cx + rr * Math.cos(t))} ${num(cy + rr * Math.sin(t))}`;
       body += a >= Math.PI * 2 - 1e-6 ? `<circle cx="${cx}" cy="${cy}" r="${num(r)}" fill="${SERIES[i % SERIES.length]}"/>` : `<path d="M${cx} ${cy} L${p(angle)} A${num(r)} ${num(r)} 0 ${large} 1 ${p(end)} Z" fill="${SERIES[i % SERIES.length]}" stroke="${PAPER}" stroke-width="1.5"/>`;
-      if (a > 0.25) body += textBlock([Math.round((v / total) * 100) + "%"], cx + r * 0.62 * Math.cos(angle + a / 2), cy + r * 0.62 * Math.sin(angle + a / 2), 12, { weight: 600, color: PAPER });
+      if (a > 0.25) body += textBlock([Math.round((v / total) * 100) + "%"], cx + r * 0.62 * Math.cos(angle + a / 2), cy + r * 0.62 * Math.sin(angle + a / 2), 12, { weight: 700, color: PAPER });
       angle = end;
     });
     const lx = cx + r + 40;
@@ -243,9 +243,9 @@ export function timeline(spec: { title?: string; events: { date: string; label: 
     const heights = events.map(rowH), H = heights.reduce((a, b) => a + b, 0) + 30;
     body += `<line x1="130" y1="10" x2="130" y2="${H - 14}" stroke="${ACCENT}" stroke-width="2"/>`;
     events.forEach((e, i) => {
-      body += `<circle cx="130" cy="${y + 8}" r="6" fill="${PAPER}" stroke="${ACCENT}" stroke-width="2.4"/>` + textBlock(wrap(e.date, 110, 12, 2), 116, y + 8, 12, { anchor: "end", weight: 600, color: ACCENT });
+      body += `<circle cx="130" cy="${y + 8}" r="6" fill="${PAPER}" stroke="${ACCENT}" stroke-width="2.4"/>` + textBlock(wrap(e.date, 110, 12, 2), 116, y + 8, 12, { anchor: "end", weight: 700, color: ACCENT });
       const title = wrap(e.label, W - 190, 12.5, 2);
-      body += textBlock(title, 150, y + 8 + ((title.length - 1) * 16) / 2, 12.5, { anchor: "start", weight: 600 });
+      body += textBlock(title, 150, y + 8 + ((title.length - 1) * 16) / 2, 12.5, { anchor: "start", weight: 700 });
       if (e.detail) { const d = wrap(e.detail, W - 190, 11.5, 3); body += textBlock(d, 150, y + 8 + title.length * 16 + ((d.length - 1) * 15) / 2 + 2, 11.5, { anchor: "start", color: MUTED }); }
       y += heights[i];
     });
@@ -261,7 +261,7 @@ export function timeline(spec: { title?: string; events: { date: string; label: 
     const cy = up ? mid - 28 - block / 2 - 14 : mid + 28 + block / 2 + 14;
     body += `<line x1="${num(x)}" y1="${mid}" x2="${num(x)}" y2="${num(up ? mid - 22 : mid + 22)}" stroke="${LINE}" stroke-width="1"/><circle cx="${num(x)}" cy="${mid}" r="6.5" fill="${PAPER}" stroke="${ACCENT}" stroke-width="2.6"/>`;
     body += textBlock([e.date], x, up ? mid - 30 - block - 6 : mid + 30, 12, { weight: 700, color: ACCENT });
-    body += textBlock(lines, x, up ? mid - 22 - detail.length * 14 - (lines.length * 15) / 2 : mid + 46 + ((lines.length - 1) * 15) / 2, 12, { weight: 600 });
+    body += textBlock(lines, x, up ? mid - 22 - detail.length * 14 - (lines.length * 15) / 2 : mid + 46 + ((lines.length - 1) * 15) / 2, 12, { weight: 700 });
     if (detail.length) body += textBlock(detail, x, up ? mid - 20 - (detail.length * 14) / 2 : mid + 46 + lines.length * 15 + ((detail.length - 1) * 14) / 2, 11, { color: MUTED });
     void cy;
   });
@@ -275,7 +275,7 @@ export function cycle(spec: { title?: string; steps: { label: string; detail?: s
   const W = bounded(spec.width, (detailed ? 720 : 560), 360, 1000), H = Math.min(W * 0.8, 640), cx = W / 2, cy = H / 2 + 6;
   const n = steps.length, at = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
   const room = detailed ? 150 : 16, R = Math.max(90, Math.min(W / 2 - 62 - room, H / 2 - 62 - (detailed ? 34 : 8)));
-  let body = spec.center ? `<circle cx="${cx}" cy="${cy}" r="${num(R * 0.42)}" fill="#f3f6f9" stroke="#c9d6e3"/>` + textBlock(wrap(spec.center, R * 0.72, 13.5, 3), cx, cy, 13.5, { weight: 600, color: ACCENT }) : "";
+  let body = spec.center ? `<circle cx="${cx}" cy="${cy}" r="${num(R * 0.42)}" fill="#f3f6f9" stroke="#c9d6e3"/>` + textBlock(wrap(spec.center, R * 0.72, 13.5, 3), cx, cy, 13.5, { weight: 700, color: ACCENT }) : "";
   const nodeR = Math.min(62, (Math.PI * R) / n - 8);
   steps.forEach((s, i) => {
     const a = at(i), b = at(i + 1), gap = (nodeR + 6) / R;
@@ -284,7 +284,7 @@ export function cycle(spec: { title?: string; steps: { label: string; detail?: s
   });
   steps.forEach((s, i) => {
     const a = at(i), x = cx + R * Math.cos(a), y = cy + R * Math.sin(a), k = i % FILLS.length;
-    body += `<circle cx="${num(x)}" cy="${num(y)}" r="${num(nodeR)}" fill="${FILLS[k]}" stroke="${STROKES[k]}" stroke-width="1.6"/>` + textBlock(wrap(s.label, nodeR * 1.6, 12, 3), x, y, 12, { weight: 600 });
+    body += `<circle cx="${num(x)}" cy="${num(y)}" r="${num(nodeR)}" fill="${FILLS[k]}" stroke="${STROKES[k]}" stroke-width="1.6"/>` + textBlock(wrap(s.label, nodeR * 1.6, 12, 3), x, y, 12, { weight: 700 });
     if (s.detail) {
       const vertical = Math.abs(Math.cos(a)) < 0.3, anchor = vertical ? "middle" : Math.cos(a) > 0 ? "start" : "end";
       const lines = wrap(s.detail, vertical ? 170 : 132, 11, 3), reach = nodeR + (vertical ? 10 + lines.length * 7 : 12);
@@ -315,10 +315,10 @@ export function mindMap(spec: { title?: string; center: string; branches: Branch
       body += `<path d="M${num(bx + (right ? bw / 2 : -bw / 2))} ${num(by)} C${num(kx - (right ? 14 : -14))} ${num(by)} ${num(kx - (right ? 14 : -14))} ${num(ky)} ${num(kx)} ${num(ky)}" fill="none" stroke="${STROKES[k]}" stroke-width="1.2" opacity=".6"/>` +
         textBlock(wrap(c, 150, 11.5, 1), kx + (right ? 4 : -4), ky, 11.5, { anchor: right ? "start" : "end" });
     });
-    body += `<rect x="${num(bx - bw / 2)}" y="${num(by - bh / 2)}" width="${num(bw)}" height="${num(bh)}" rx="${num(bh / 2)}" fill="${FILLS[k % FILLS.length]}" stroke="${STROKES[k]}" stroke-width="1.5"/>` + textBlock(lines, bx, by, 12.5, { weight: 600 });
+    body += `<rect x="${num(bx - bw / 2)}" y="${num(by - bh / 2)}" width="${num(bw)}" height="${num(bh)}" rx="${num(bh / 2)}" fill="${FILLS[k % FILLS.length]}" stroke="${STROKES[k]}" stroke-width="1.5"/>` + textBlock(lines, bx, by, 12.5, { weight: 700 });
   });
   const cw = Math.max(...centerLines.map((l) => textWidth(l, 15))) + 36, ch = centerLines.length * 19 + 22;
-  body += `<rect x="${num(cx - cw / 2)}" y="${num(cy - ch / 2)}" width="${num(cw)}" height="${num(ch)}" rx="12" fill="${ACCENT}"/>` + textBlock(centerLines, cx, cy, 15, { weight: 600, color: PAPER });
+  body += `<rect x="${num(cx - cw / 2)}" y="${num(cy - ch / 2)}" width="${num(cw)}" height="${num(ch)}" rx="12" fill="${ACCENT}"/>` + textBlock(centerLines, cx, cy, 15, { weight: 700, color: PAPER });
   return svg(W, H, body, spec.title);
 }
 
@@ -341,7 +341,7 @@ export function tree(spec: { title?: string; root: TreeNode; width?: number }) {
     const h = lines.length * 15 + detail.length * 13 + 16, k = depth % STROKES.length;
     for (const p of placed) body += `<path d="M${num(x)} ${num(y + h)} L${num(x)} ${num(y + h + (p.y - y - h) / 2)} L${num(p.x)} ${num(y + h + (p.y - y - h) / 2)} L${num(p.x)} ${num(p.y)}" fill="none" stroke="${LINE}" stroke-width="1.2"/>`;
     body += `<rect x="${num(x - boxW / 2)}" y="${y}" width="${boxW}" height="${num(h)}" rx="6" fill="${depth ? FILLS[k] : ACCENT}" stroke="${STROKES[k]}" stroke-width="1.3"/>` +
-      textBlock(lines, x, y + 8 + (lines.length * 15) / 2, 12, { weight: 600, color: depth ? INK : PAPER }) +
+      textBlock(lines, x, y + 8 + (lines.length * 15) / 2, 12, { weight: 700, color: depth ? INK : PAPER }) +
       (detail.length ? textBlock(detail, x, y + 10 + lines.length * 15 + (detail.length * 13) / 2, 10.5, { color: depth ? MUTED : "#dbe6f1" }) : "");
     return { x, y, w: boxW, h };
   };
@@ -366,7 +366,7 @@ export function venn(spec: { title?: string; sets: { label: string; items?: stri
     body += textBlock((sets[i].items || []).slice(0, 6).flatMap((t) => wrap(t, r * 0.72, 11.5, 2)), away.x, away.y, 11.5);
   });
   const shared = spec.overlap || spec.overlaps?.all || spec.overlaps?.[sets.map((_, i) => "ABC"[i]).join("")] || [];
-  body += textBlock(shared.slice(0, 5).flatMap((t) => wrap(t, r * (three ? 0.5 : 0.62), 11.5, 2)), cx, three ? cy + r * 0.02 : cy, 11.5, { weight: 600 });
+  body += textBlock(shared.slice(0, 5).flatMap((t) => wrap(t, r * (three ? 0.5 : 0.62), 11.5, 2)), cx, three ? cy + r * 0.02 : cy, 11.5, { weight: 700 });
   if (three && spec.overlaps) {
     const pairs: [string, number, number][] = [["AB", 0, 1], ["AC", 0, 2], ["BC", 1, 2]];
     for (const [key, a, b] of pairs) {

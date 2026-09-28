@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const faces: [family: string, file: string, weight: string][] = [
-  ["Mowafy Sans", "MowafySans-Regular", "300 500"],
-  ["Mowafy Sans", "MowafySans-Bold", "600 800"],
-  ["Mowafy Serif", "MowafySerif-Regular", "300 500"],
-  ["Mowafy Serif", "MowafySerif-Bold", "600 800"],
+  ["Mowafy Sans", "MowafySans-Regular", "400"],
+  ["Mowafy Sans", "MowafySans-Bold", "700"],
+  ["Mowafy Serif", "MowafySerif-Regular", "400"],
+  ["Mowafy Serif", "MowafySerif-Bold", "700"],
 ];
 let css: string | undefined;
 

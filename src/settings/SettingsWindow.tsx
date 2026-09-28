@@ -46,7 +46,7 @@ export function SettingsWindow({tab,onTab,onClose,me,unread=0,children}:{tab:str
       <h1 id="st-title">{t.name}</h1>
       <p>{t.line}</p>
      </div>
-     <Illustration scene={t.scene} ambient viewBox={crop} className="st-art"/>
+     <Illustration scene={t.scene} viewBox={crop} className="st-art"/>
     </header>
     <button type="button" className="st-close" aria-label="Close settings" onClick={onClose}><Icon name="close" size={17}/></button>
     <div className="st-body" ref={body} key={'b'+t.name}>{children}</div>

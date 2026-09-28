@@ -160,7 +160,7 @@ function SetupContent() {
           className="setup-card"
           aria-busy={busy}
         >
-          <Illustration scene={state?.user ? (step===2?"sprout":step===3?"bridge":"pencil") : "kite"} ambient className="setup-idle-art"/>
+          <Illustration scene={state?.user ? (step===2?"sprout":step===3?"bridge":"pencil") : "kite"} className="setup-idle-art"/>
           {state?.user && state.entitlement.reason === "suspended" ? (
             <>
               <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Your account is paused.</h1></div>

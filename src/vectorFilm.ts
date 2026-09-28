@@ -13,8 +13,8 @@ const ease=(x:number)=>{x=clamp(x);return x*x*(3-2*x)};
 const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
 const n=(v:number)=>v.toFixed(1);
 
-// Frame state: the scene's time and the boil clock (a still drawing passes its own).
-let T=0,boil:number|null=null,seed=0;
+// Frame state: the scene's time and a counter that gives each line its own boil.
+let T=0,seed=0;
 
 // ---------- timing ----------
 /** Eased 0→1 between two moments of the entrance. */
@@ -42,7 +42,7 @@ const breathe=(speed=1,amp=1,phase=0)=>T>6?Math.sin((T-6)*speed+phase)*amp-Math.
 function spline(pts:P[],closed:boolean):P[]{const out:P[]=[],N=pts.length;if(N<3)return pts;for(let i=0;i<(closed?N:N-1);i++){const a=pts[closed?(i-1+N)%N:Math.max(0,i-1)],b=pts[i],c=pts[(i+1)%N],d=pts[closed?(i+2)%N:Math.min(N-1,i+2)];for(let j=0;j<8;j++){const t=j/8,t2=t*t,t3=t2*t;out.push([0,1].map(k=>.5*(2*b[k]+(-a[k]+c[k])*t+(2*a[k]-5*b[k]+4*c[k]-d[k])*t2+(-a[k]+3*b[k]-3*c[k]+d[k])*t3)) as P);}}if(!closed)out.push(pts[N-1]);return out;}
 function densify(pts:P[],closed:boolean):P[]{const out:P[]=[];const N=pts.length;for(let i=0;i<(closed?N:N-1);i++){const a=pts[i],b=pts[(i+1)%N],steps=Math.max(1,Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/24));for(let j=0;j<steps;j++)out.push([a[0]+(b[0]-a[0])*j/steps,a[1]+(b[1]-a[1])*j/steps]);}if(!closed)out.push(pts[N-1]);return out;}
 // The boil: a smooth, low field that shifts every point by under a pixel, stepping through four cels four times a second.
-function wobble(pts:P[],s:number):P[]{const cel=Math.floor((boil??T)*4)%4;return pts.map(([x,y])=>[x+.9*Math.sin(y*.043+cel*1.9+s),y+.8*Math.sin(x*.039+cel*1.4+s*1.3)]);}
+function wobble(pts:P[],s:number):P[]{const cel=Math.floor(T*4)%4;return pts.map(([x,y])=>[x+.9*Math.sin(y*.043+cel*1.9+s),y+.8*Math.sin(x*.039+cel*1.4+s*1.3)]);}
 /** One element. `k` below 1 draws the line on partway; `opacity` fades it. */
 function draw(pts:P[],{fill='none',w=LINE,smooth=false,closed=false,dash,offset=0,opacity=1,k=1}:Style={}):string{
  if(k<=0||opacity<=.01||pts.length<2)return '';
@@ -562,5 +562,5 @@ function cards(){
  return s+glint(348,150,10,spring(2.4))+dot(132,182,5*spring(2.6))+burst(240,122-lift*.84,u<0?0:clamp((u-2)/.7),5,20,40,-Math.PI/2,1.6);
 }
 const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards};
-/** One frame of a scene as SVG markup for a 480×390 stage. `boilSeconds` drives only the line boil, for still drawings. */
-export function filmFrame(scene:Scene,seconds:number,_id:string,boilSeconds:number|null=null){T=Math.max(0,seconds);boil=boilSeconds;seed=0;try{return scenes[scene]();}finally{boil=null}}
+/** One frame of a scene as SVG markup for a 480×390 stage. */
+export function filmFrame(scene:Scene,seconds:number,_id:string){T=Math.max(0,seconds);seed=0;return scenes[scene]();}

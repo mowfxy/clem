@@ -53,7 +53,7 @@ export default function AdminApp(){
   async function signOut(){if(demo)return;const client=await adminClient();await client.auth.signOut();setStaff(null);setPhase('signin');}
   if(phase==='loading')return <div className="adm-root adm-center"><Logo size={44} thinking/></div>;
   if(phase==='signin')return <ToastHost><SignIn onDone={check}/></ToastHost>;
-  if(phase==='denied')return <div className="adm-root adm-center adm-auth"><div className="adm-auth-card"><div className="adm-auth-art"><Illustration scene="lock" ambient/></div><h1>No staff access</h1><p>{denied}</p><button className="adm-primary wide" onClick={()=>void signOut()}>Use another account</button></div></div>;
+  if(phase==='denied')return <div className="adm-root adm-center adm-auth"><div className="adm-auth-card"><div className="adm-auth-art"><Illustration scene="lock"/></div><h1>No staff access</h1><p>{denied}</p><button className="adm-primary wide" onClick={()=>void signOut()}>Use another account</button></div></div>;
   const s=staff!;
   return <ToastHost><div className={`adm-root adm-shell ${menu?'menu-open':''}`}>
     <header className="adm-topbar">
@@ -112,7 +112,7 @@ function SignIn({onDone}:{onDone:()=>Promise<void>}){
   return <div className="adm-root adm-center adm-auth">
     <div className="adm-auth-glow" aria-hidden="true"/>
     <form className="adm-auth-card" onSubmit={e=>{e.preventDefault();void submit(new FormData(e.currentTarget));}}>
-      <div className="adm-auth-art"><Illustration scene={factor?'keypad':'door'} ambient/></div>
+      <div className="adm-auth-art"><Illustration scene={factor?'keypad':'door'}/></div>
       <h1>{factor?'Verify it’s you':'Mowr Admin'}</h1>
       <p>{factor?'Enter the 6-digit code from your authenticator app.':'Staff sign-in. Use your Mowr account.'}</p>
       {!factor&&<><button type="button" className="adm-google" disabled={busy} onClick={()=>void google()}><GoogleLogo/>Continue with Google</button><div className="adm-or"><span>or</span></div></>}

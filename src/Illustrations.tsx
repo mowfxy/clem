@@ -3,16 +3,10 @@ import { filmFrame, type Scene } from "./vectorFilm";
 export function Illustration({
   scene,
   className = "",
-  ambient = false,
-  still = false,
   viewBox = "0 0 480 390",
 }: {
   scene: Scene;
   className?: string;
-  /** Kept for callers; every scene now plays its entrance on first view and then loops. */
-  ambient?: boolean;
-  /** Holds the finished drawing in place; only its lines keep boiling. */
-  still?: boolean;
   /** Crops the 480×390 stage, e.g. to show one prop at a small size. */
   viewBox?: string;
 }) {
@@ -31,9 +25,7 @@ export function Illustration({
       media.matches || document.documentElement.dataset.quiet === "true";
     const paint = (seconds: number) => {
       // Each scene is a short film: its entrance plays the first time it is seen, then its loop runs.
-      // A still scene stays on the finished drawing; only its line boil advances.
-      const time = still ? 6 : seconds;
-      svg.innerHTML = filmFrame(scene, time, id, still ? seconds : null);
+      svg.innerHTML = filmFrame(scene, seconds, id);
       svg.dataset.frame = seconds.toFixed(2);
       svg.dataset.phase = seconds < 6 ? "action" : "idle";
     };
@@ -62,7 +54,7 @@ export function Illustration({
       if (visible && !document.hidden) raf = requestAnimationFrame(tick);
     };
     // Motion allowed: start on the film's first frame, so its entrance plays from the beginning when seen.
-    paint(quiet() || still ? 6 : 0);
+    paint(quiet() ? 6 : 0);
     const observer = new IntersectionObserver(
       (entries) => {
         visible = entries[0].isIntersecting;
@@ -85,7 +77,7 @@ export function Illustration({
       document.removeEventListener("visibilitychange", sync);
       media.removeEventListener("change", sync);
     };
-  }, [scene, id, ambient, still]);
+  }, [scene, id]);
   return (
     <div ref={ref} className={`ink-scene ink-${scene} ${className}`}>
       <svg viewBox={viewBox} aria-hidden="true" />

@@ -10,7 +10,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;cursor:crosshair;
 #dim{position:fixed;inset:0;background:#0000006b}
 #sel{position:fixed;display:none;border:1.5px solid #f0efeb;border-radius:3px;box-shadow:0 0 0 9999px #0000006b}
 #hint{position:fixed;top:22px;left:50%;transform:translateX(-50%);padding:9px 16px;border-radius:99px;background:#1b1b19ee;color:#f0efeb;font-size:13px;border:1px solid #3a3a36;box-shadow:0 12px 40px -10px #000}
-#hint b{font-weight:600}
+#hint b{font-weight:700}
 #size{position:fixed;display:none;padding:3px 7px;border-radius:5px;background:#1b1b19ee;color:#b5b4ad;font-size:11px}
 </style></head><body><img id="shot" alt=""><div id="dim"></div><div id="sel"></div><div id="size"></div><div id="hint"><b>Drag</b> to capture · click for the whole screen · <b>Esc</b> to cancel</div>
 <script>

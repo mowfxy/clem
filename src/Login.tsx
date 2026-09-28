@@ -19,7 +19,7 @@ const inboxes:[string,string,RegExp][]=[
 /** Shared frame for every sign-in state: ambient ink art, a card, and a soft transition between steps. */
 export function AuthShell({scene,stepKey,children}:{scene:Scene;stepKey:string;children:ReactNode}){
  return <main className="auth-page au-page"><div className="au-glow" aria-hidden="true"/><section className="au-card" key={stepKey}>
-  <div className="au-art"><Illustration scene={scene} ambient/></div>
+  <div className="au-art"><Illustration scene={scene}/></div>
   {children}
  </section><a className="au-home" href="#/"><Logo size={18}/>mowr</a></main>;
 }
