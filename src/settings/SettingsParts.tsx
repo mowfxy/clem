@@ -21,6 +21,7 @@ export const settingsGroups:{label:string;tabs:{name:string;icon:string;scene:Sc
   {name:'Telegram',icon:'chat',scene:'plane',still:true,line:'Message Mowr from your phone.'},
  ]},
  {label:'Data',tabs:[
+  {name:'Usage',icon:'analysis',scene:'telescope',still:true,line:'Your threads, tokens and habits.'},
   {name:'Data & privacy',icon:'files',scene:'house',line:'Your work stays on this device.'},
   {name:'Help & support',icon:'research',scene:'lifebuoy',line:'Questions, bugs and ideas.'},
  ]},
