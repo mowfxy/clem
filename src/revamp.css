@@ -16,4 +16,5 @@
 
 .is-thinking .mark-petal{animation:none!important;transform:none!important}
 
-.workspace-idle-art{width:128px;height:104px;margin:0 auto 16px}.workspace-idle-art svg{width:100%;height:100%;display:block}
+(The rules above sit inside an unclosed comment and have never applied; the comment ends here.) */
+.workspace-idle-art{width:176px;height:143px;margin:0 auto 14px}.workspace-idle-art svg{width:100%;height:100%;display:block}
