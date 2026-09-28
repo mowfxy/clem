@@ -156,7 +156,7 @@
 }
 .st-profile{display:grid;gap:30px}
 /* Rows built by other panels (setting-row) read exactly like SettingRow. */
-.st .setting-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 0;margin:0;border:0;border-bottom:1px solid var(--st-line)}
+.st .setting-row,.st .st-card .setting-row:first-child{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 0;margin:0;border:0;border-bottom:1px solid var(--st-line)}
 .st .setting-row:last-child{border-bottom:0}
 .st .setting-row .setting-row-text{flex:1;min-width:0}
 .st .setting-row h3,.st .setting-row h4{margin:0;font:400 var(--t-body)/1.35 var(--sans);letter-spacing:0;color:var(--st-ink)}
