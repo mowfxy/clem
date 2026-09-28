@@ -1,5 +1,6 @@
 import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode} from 'react';
 import {Icon} from '../Icons';
+import {Illustration} from '../Illustrations';
 import {RenameField,PencilIcon} from '../files/RenameField';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
@@ -90,17 +91,18 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
   return <div className={`space-page ${subject?'is-subject':'is-project'}`}>
     <div className="sp-top">
     <header className="sp-hero">
-      <button className="sp-crumb" onClick={actions.onBack}><Icon name={subject?'subjects':'projects'} size={15}/>{subject?'Subjects':'Projects'}</button>
+      <button className="sp-crumb" onClick={actions.onBack}><Icon name="arrow" size={13}/>{subject?'Subjects':'Projects'}</button>
       <div className="sp-title-row">
         <div className="sp-title">
           <Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/>
           {space.description&&<p className="sp-desc">{space.description}</p>}
-        </div>
         <div className="sp-actions">
           <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} title={space.memory.trim()?'Edit the instructions Mowr follows here':'Tell Mowr how to work here'}><InstructionsGlyph/>Instructions</button>
           <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
           <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
+        </div>
+        <Illustration scene={subject?'learn':'build'} viewBox="60 30 360 300" className="sp-art"/>
       </div>
       {subject&&<div className="sp-stats">
         <button className={`sp-stat due ${due?'hot':''}`} onClick={startReview} disabled={!due&&!fresh}>
