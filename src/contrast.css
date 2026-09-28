@@ -38,7 +38,3 @@ body :is(.primary,.send-button,.danger,.sp-share,.visual-save.saved,.app-confirm
 body .send-button{color:#1b1b19}
 body .send-button:disabled{color:#6f6e68}
 
-/* Settings menu and tabs. */
-body .settings-tabs button,body .filter-tabs button{color:#e6e5df}
-body .settings-tabs button.active,body .filter-tabs button.active{color:#fff}
-body .settings-group-label{color:#bdbcb5}

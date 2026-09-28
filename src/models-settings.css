@@ -5,14 +5,8 @@
   gap: 16px;
   margin-bottom: 25px;
 }
-.settings-content .models-heading h2 {
-  margin-bottom: 8px;
-}
-.settings-content .models-heading p {
-  margin: 0;
-  font-size: 13px;
-  color: #93958d;
-}
+
+
 .model-refresh {
   display: flex;
   align-items: center;
@@ -39,13 +33,7 @@
   gap: 12px;
   padding: 17px 19px;
 }
-.settings-content .connected-account h3 {
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.5;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
+
 .connected-account header p {
   font-size: 11px !important;
   margin: 5px 0 0;
@@ -288,8 +276,8 @@
 .provider-status::before{content:"";width:6px;height:6px;border-radius:50%;background:#6b6a64}
 .provider-status.on{color:#b4dcb8;border-color:#a8dcae33;background:#a8dcae0d}
 .provider-status.on::before{background:#8fd497;box-shadow:0 0 0 3px #8fd49722}
-.settings-content .provider-card h3,.provider-card h3{margin:0;font:400 16px var(--sans);color:#f1f0ea}
-.settings-content .provider-card p,.provider-card p{margin:0 0 10px;font-size:12px;line-height:1.55;color:#9d9c95;flex:1}
+.provider-card h3 {margin:0;font:400 16px var(--sans);color:#f1f0ea}
+.provider-card p {margin:0 0 10px;font-size:12px;line-height:1.55;color:#9d9c95;flex:1}
 .provider-card .provider-action{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:9px;border:1px solid #44443d;background:#262623;color:#e6e5de;font:400 12px var(--sans);cursor:pointer;margin:0}
 .provider-card .provider-action:hover{background:#2e2e2a}
 .provider-card .provider-action.primary{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
