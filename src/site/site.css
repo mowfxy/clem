@@ -31,14 +31,15 @@
 .sx-menu{display:none!important;background:none;border:0;color:#f0efeb;padding:8px}
 
 /* Hero */
-.sx-hero{position:relative;max-width:1200px;margin:0 auto;padding:84px 20px 30px;display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:64px;align-items:center}
-.sx-hero-glow{position:absolute;inset:-160px -20% auto;height:760px;pointer-events:none;background:radial-gradient(38% 46% at 72% 42%,#f0efeb0f,transparent 70%),radial-gradient(26% 32% at 16% 18%,#d8796810,transparent 70%);animation:sx-breathe 14s ease-in-out infinite alternate}
-.sx-hero-copy{position:relative;animation:sx-rise .9s var(--sx-ease) both}
+.sx-hero{position:relative;max-width:1200px;margin:0 auto;padding:120px 20px 40px;display:grid;justify-items:center;text-align:center}
+.sx-hero-glow{position:absolute;inset:-160px -20% auto;height:760px;pointer-events:none;background:radial-gradient(38% 46% at 50% 42%,#f0efeb0f,transparent 70%),radial-gradient(26% 32% at 16% 18%,#d8796810,transparent 70%);animation:sx-breathe 14s ease-in-out infinite alternate}
+.sx-hero-copy{position:relative;display:grid;justify-items:center;animation:sx-rise .9s var(--sx-ease) both}
+.sx-hero .sx-lede{margin-inline:auto}
+.sx-hero .sx-cta-row{justify-content:center}
 .sx-hero-copy .mowr-mark{color:var(--sx-ink);margin-bottom:28px}
 .sx-hero h1{font-size:clamp(52px,6.4vw,92px);line-height:.98;letter-spacing:-.045em}
 .sx-lede{font-size:clamp(18px,1.6vw,20px);margin:24px 0 34px;max-width:440px}
 .sx-cta-row{display:flex;gap:12px;flex-wrap:wrap}
-.sx-hero-art{position:relative;perspective:1600px}
 
 
 
@@ -217,7 +218,7 @@
 
 
 @media (max-width:1020px){
-  .sx-hero{grid-template-columns:1fr;gap:50px;padding-top:50px}
+  .sx-hero{padding-top:64px}
   
   .sx-bento,.sx-feature-grid{grid-template-columns:repeat(2,1fr)}
   .sx-feature-hero,.sx-feature-detail{grid-template-columns:1fr}
@@ -255,23 +256,3 @@
 .sx-download-cta{display:grid;justify-items:center;gap:14px}
 .sx-download-meta{color:var(--sx-muted)!important;font-size:14px;margin:0}
 .sx-account{max-width:760px}
-/* Hero: the page Mowr gives back. The question and the proof are Sans; the answer is set in Serif. */
-.sx-page{position:relative;margin:0;display:grid;gap:14px}
-.sx-page-tabs{display:flex;gap:4px;padding:4px;width:max-content;max-width:100%;border:1px solid var(--sx-line);border-radius:99px;background:var(--sx-bg-2)}
-.sx-page-tabs button{position:relative;overflow:hidden;padding:7px 14px;border-radius:99px;font:400 13px/1 var(--sans);color:var(--sx-muted);transition:color .2s,background .2s}
-.sx-page-tabs button:hover{color:var(--sx-ink)}
-.sx-page-tabs button.on{background:#ffffff12;color:var(--sx-ink);font-weight:700}
-.sx-page-timer{position:absolute;left:14px;right:14px;bottom:3px;height:1.5px;border-radius:2px;background:#f0efeb66;transform-origin:left;animation:sx-page-timer 9s linear both}
-.sx-page-sheet{position:relative;display:grid;align-content:start;gap:18px;min-height:430px;padding:40px 44px 34px;border:1px solid var(--sx-line-2);border-radius:24px;background:linear-gradient(180deg,#1d1d1b,#171716);box-shadow:0 1px 0 #ffffff0d inset,0 50px 110px -45px #000}
-.sx-page-sheet::before{content:'';position:absolute;left:44px;right:44px;top:0;height:1px;background:linear-gradient(90deg,transparent,#f0efeb40,transparent)}
-.sx-page-where{font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--sx-muted);animation:sx-page-in .5s var(--sx-ease) both}
-.sx-page-ask{margin:0;max-width:38ch;font:700 18px/1.35 var(--sans);letter-spacing:-.01em;color:var(--sx-soft);animation:sx-page-in .5s .08s var(--sx-ease) both}
-.sx-page-answer{margin:4px 0 0;font:400 30px/1.3 var(--serif);letter-spacing:-.02em;color:var(--sx-ink);text-wrap:pretty}
-.sx-page-answer span{display:inline;animation:sx-page-word .6s var(--sx-ease) both}
-.sx-page-foot{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:22px;border-top:1px solid var(--sx-line);animation:sx-page-in .5s var(--sx-ease) both}
-.sx-page-foot span{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:99px;border:1px solid var(--sx-line-2);background:#ffffff06;font:400 13px/1 var(--sans);color:var(--sx-soft)}
-.sx-page-foot .drawn-icon{color:var(--sx-ink)}
-@keyframes sx-page-in{from{opacity:0;transform:translateY(6px)}}
-@keyframes sx-page-word{from{opacity:0;filter:blur(4px)}}
-@keyframes sx-page-timer{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-@media(max-width:640px){.sx-page-sheet{min-height:0;padding:28px 24px 24px;border-radius:20px}.sx-page-sheet::before{left:24px;right:24px}.sx-page-answer{font-size:24px}}
