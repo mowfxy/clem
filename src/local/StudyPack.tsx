@@ -100,7 +100,7 @@ function Option({on,onToggle,icon,tone,title,detail}:{on:boolean;onToggle:()=>vo
   return <button type="button" role="checkbox" aria-checked={on} className={`sh-option t-${tone} ${on?'on':''}`} onClick={onToggle}>
     <span className="sh-option-icon"><Icon name={icon} size={18}/></span>
     <span><strong>{title}</strong><small>{detail}</small></span>
-    <span className="sh-check" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+    <span className="sh-check" aria-hidden="true"><Icon name="check" size={13}/></span>
   </button>;
 }
 

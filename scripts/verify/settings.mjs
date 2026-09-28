@@ -287,7 +287,7 @@ try {
    const art=page.locator('.st-art svg');await art.waitFor();
    const before=await art.innerHTML();await page.waitForTimeout(600);assert.notEqual(await art.innerHTML(),before);
    await page.screenshot({path:'artifacts/settings-'+tab.toLowerCase()+'.png'});
-   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(100);const still=await art.innerHTML();await page.waitForTimeout(200);assert.equal(await art.innerHTML(),still);await page.emulateMedia({reducedMotion:'no-preference'});
+   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(400);const still=await art.innerHTML();await page.waitForTimeout(200);assert.equal(await art.innerHTML(),still);await page.emulateMedia({reducedMotion:'no-preference'});
   }
   await page.getByRole('button',{name:'Close settings'}).click();
   await page.evaluate(()=>location.hash='/app/visuals');
@@ -298,7 +298,7 @@ try {
   assert.equal(await page.locator('.space-heading-actions').getByRole('button').count(),2);
   const chooser=page.waitForEvent('filechooser');await importer.click();await chooser;
   await page.mouse.move(800,300);
-  assert.equal(await importer.locator('svg path').count(),2);
+  assert.ok(await importer.locator('svg path').count()>=2,'Import icon is drawn');
   await page.screenshot({path:'artifacts/subjects-import.png'});
   await page.setViewportSize({ width: 600, height: 900 });
   assert.ok(

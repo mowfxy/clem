@@ -3,11 +3,10 @@ import {createPortal} from 'react-dom';
 import {Icon} from '../Icons';
 import {Illustration} from '../Illustrations';
 import {ProfileAvatar} from '../ProfileAvatar';
-import type {Scene} from '../vectorFilm';
 import {settingsGroups, settingsGroupOf, settingsTab} from './SettingsParts';
 
-/** Each header drawing cropped to its prop on the 480×390 stage, so every one sits at the same size. */
-const crops:Partial<Record<Scene,string>>={folder:'79 82 318 265',hourglass:'91 45 360 300',house:'45 24 387 323',jar:'45 37 386 321',lifebuoy:'33 29 415 346',cards:'76 34 328 300',link:'92 100 295 246',plane:'217 89 293 244',plug:'-27 -37 537 447',profile:'-6 -58 499 416',safe:'57 60 363 302'};
+/** The drawings share one centred frame; the header shows the middle of the 480×390 stage. */
+const crop='60 30 360 300';
 
 /** Settings, as a large window over the workspace (the same frame as the file viewer). A rail on the left
  *  holds who you are, a finder and the sections; the section fills the rest. */
@@ -47,7 +46,7 @@ export function SettingsWindow({tab,onTab,onClose,me,unread=0,children}:{tab:str
       <h1 id="st-title">{t.name}</h1>
       <p>{t.line}</p>
      </div>
-     <Illustration scene={t.scene} ambient still={t.still} viewBox={crops[t.scene]} className="st-art"/>
+     <Illustration scene={t.scene} ambient viewBox={crop} className="st-art"/>
     </header>
     <button type="button" className="st-close" aria-label="Close settings" onClick={onClose}><Icon name="close" size={17}/></button>
     <div className="st-body" ref={body} key={'b'+t.name}>{children}</div>

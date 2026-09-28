@@ -2,7 +2,7 @@ import type {ReactNode} from 'react';
 import type {Scene} from '../vectorFilm';
 import './settings-window.css';
 
-export type SettingsTab={name:string;icon:string;scene:Scene;line:string;keywords:string;still?:boolean};
+export type SettingsTab={name:string;icon:string;scene:Scene;line:string;keywords:string};
 /** Settings sections, grouped. Names are stable: other screens open a section by name. */
 export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
  {label:'You',tabs:[
@@ -11,15 +11,15 @@ export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
   {name:'Security',icon:'lock',scene:'safe',line:'Sign-in, password and verification.',keywords:'password email google two-factor authenticator sessions sign in'},
  ]},
  {label:'Intelligence',tabs:[
-  {name:'Models',icon:'models',scene:'plug',still:true,line:'Connected accounts and how much is left.',keywords:'chatgpt claude codex usage limits accounts subscription'},
-  {name:'Memory',icon:'subjects',scene:'jar',still:true,line:'What Mowr keeps in mind for you.',keywords:'remember notes'},
+  {name:'Models',icon:'models',scene:'plug',line:'Connected accounts and how much is left.',keywords:'chatgpt claude codex usage limits accounts subscription'},
+  {name:'Memory',icon:'subjects',scene:'jar',line:'What Mowr keeps in mind for you.',keywords:'remember notes'},
   {name:'Skills',icon:'skills',scene:'cards',line:'Ways of working Mowr brings to every chat.',keywords:'skills workflows steps playbook create import practice'},
-  {name:'Automations',icon:'clock',scene:'hourglass',still:true,line:'Routines you set up in a chat.',keywords:'routines schedule recurring'},
+  {name:'Automations',icon:'clock',scene:'hourglass',line:'Routines you set up in a chat.',keywords:'routines schedule recurring'},
  ]},
  {label:'Connections',tabs:[
-  {name:'Connectors',icon:'connectors',scene:'link',still:true,line:'Apps Mowr can read from.',keywords:'google drive apps'},
-  {name:'Linked folders',icon:'projects',scene:'folder',still:true,line:'Folders on this PC that Mowr can read.',keywords:'folders files changes undo watch'},
-  {name:'Telegram',icon:'chat',scene:'plane',still:true,line:'Message Mowr from your phone.',keywords:'phone bot messages'},
+  {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Mowr can read from.',keywords:'google drive apps'},
+  {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Mowr can read.',keywords:'folders files changes undo watch'},
+  {name:'Telegram',icon:'chat',scene:'plane',line:'Message Mowr from your phone.',keywords:'phone bot messages'},
  ]},
  {label:'Data',tabs:[
   {name:'Data & privacy',icon:'files',scene:'house',line:'Your work stays on this device.',keywords:'export delete chats privacy policy'},

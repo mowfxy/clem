@@ -66,7 +66,8 @@
 .contact-sent{display:grid;justify-items:center;text-align:center;padding:18px 28px 28px;gap:6px}
 .contact-sent h3{margin:6px 0 0;font:400 20px var(--serif)}
 .contact-sent p{margin:0 0 14px;font-size:13px;line-height:1.55;color:#a3a29a;max-width:340px}
-.contact-sent-mark{width:52px;height:52px;fill:none;stroke:#a8dcae;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.contact-sent-mark{width:52px;height:52px;fill:none;stroke:#f3f2ec;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.contact-sent-mark circle{fill:#63635e;fill-opacity:.35}
 .contact-sent-mark circle{stroke-dasharray:132;stroke-dashoffset:132;animation:sent-draw .5s ease-out forwards}
 .contact-sent-mark path{stroke-dasharray:30;stroke-dashoffset:30;animation:sent-draw .3s .4s ease-out forwards}
 @keyframes sent-draw{to{stroke-dashoffset:0}}

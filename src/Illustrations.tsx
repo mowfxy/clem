@@ -9,6 +9,7 @@ export function Illustration({
 }: {
   scene: Scene;
   className?: string;
+  /** Kept for callers; every scene now plays its entrance on first view and then loops. */
   ambient?: boolean;
   /** Holds the finished drawing in place; only its lines keep boiling. */
   still?: boolean;
@@ -29,9 +30,9 @@ export function Illustration({
     const quiet = () =>
       media.matches || document.documentElement.dataset.quiet === "true";
     const paint = (seconds: number) => {
-      // Ambient scenes open on the finished drawing and run its idle loop forward from there.
-      // A still scene stays on that drawing, and only its line boil advances.
-      const time = still ? 6 : ambient ? 6 + seconds : seconds;
+      // Each scene is a short film: its entrance plays the first time it is seen, then its loop runs.
+      // A still scene stays on the finished drawing; only its line boil advances.
+      const time = still ? 6 : seconds;
       svg.innerHTML = filmFrame(scene, time, id, still ? seconds : null);
       svg.dataset.frame = seconds.toFixed(2);
       svg.dataset.phase = seconds < 6 ? "action" : "idle";
@@ -44,10 +45,10 @@ export function Illustration({
     const tick = (now: number) => {
       if (last) elapsed += Math.min(now - last, 100) / 1000;
       last = now;
-      // Drawn on twos: 12 cels a second gives the stepped, hand-animated feel.
-      const cel = Math.floor(elapsed * 12);
+      // 24 frames a second, like film.
+      const cel = Math.floor(elapsed * 24);
       if (cel !== lastCel) {
-        paint(cel / 12);
+        paint(cel / 24);
         lastCel = cel;
       }
       raf = requestAnimationFrame(tick);
@@ -60,7 +61,8 @@ export function Illustration({
       }
       if (visible && !document.hidden) raf = requestAnimationFrame(tick);
     };
-    paint(6);
+    // Motion allowed: start on the film's first frame, so its entrance plays from the beginning when seen.
+    paint(quiet() || still ? 6 : 0);
     const observer = new IntersectionObserver(
       (entries) => {
         visible = entries[0].isIntersecting;

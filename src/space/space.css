@@ -89,7 +89,7 @@ button.sp-stat:not(:disabled):hover,label.sp-stat:hover{background:#ffffff0d;bor
 .sp-folder strong{display:block;font-weight:400;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-folder small{font-size:11px;color:#8a8983}
 .sp-folder.naming input{flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid #6a6a64;background:#141413;color:#fff;font-size:14px}
-.sp-folder-icon{flex-shrink:0;color:#e9c27a}
+.sp-folder-icon{flex-shrink:0;display:inline-grid;color:#eceae3}
 .sp-file-list{display:flex;flex-direction:column;border-radius:16px;border:1px solid #2d2d2b;background:#1a1a19;overflow:visible}
 .sp-file-list:empty{display:none}
 .sp-file{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 8px;border-bottom:1px solid #262624}
