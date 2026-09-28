@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import {parse} from 'dotenv';
 
-const env=parse(fs.readFileSync('.env.local'));
-if(!env.SUPABASE_ACCESS_TOKEN)throw Error('Add SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) to .env.local.');
+const env={...(fs.existsSync('.env.local')?parse(fs.readFileSync('.env.local')):{}),...(process.env.SUPABASE_ACCESS_TOKEN?{SUPABASE_ACCESS_TOKEN:process.env.SUPABASE_ACCESS_TOKEN}:{})};
+if(!env.SUPABASE_ACCESS_TOKEN)throw Error('Set SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) in .env.local or the environment.');
 const config={};
 for(const [key,file] of Object.entries({confirmation:'confirm-signup',recovery:'reset-password',magic_link:'magic-link',email_change:'change-email',invite:'invite',reauthentication:'reauthentication'}))config['mailer_templates_'+key+'_content']=fs.readFileSync('emails/'+file+'.html','utf8');
 for(const [key,file] of Object.entries({password_changed:'password-changed',email_changed:'email-changed',identity_linked:'identity-linked',identity_unlinked:'identity-unlinked',mfa_factor_enrolled:'mfa-enabled',mfa_factor_unenrolled:'mfa-disabled'}))config['mailer_templates_'+key+'_notification_content']=fs.readFileSync('emails/'+file+'.html','utf8');
