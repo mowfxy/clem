@@ -7,7 +7,7 @@ import type {Scene} from '../vectorFilm';
 import {settingsGroups, settingsGroupOf, settingsTab} from './SettingsParts';
 
 /** Each header drawing cropped to its prop on the 480×390 stage, so every one sits at the same size. */
-const crops:Partial<Record<Scene,string>>={folder:'79 82 318 265',hourglass:'91 45 360 300',house:'45 24 387 323',jar:'45 37 386 321',lifebuoy:'33 29 415 346',link:'92 100 295 246',plane:'217 89 293 244',plug:'-27 -37 537 447',profile:'-6 -58 499 416',safe:'57 60 363 302'};
+const crops:Partial<Record<Scene,string>>={folder:'79 82 318 265',hourglass:'91 45 360 300',house:'45 24 387 323',jar:'45 37 386 321',lifebuoy:'33 29 415 346',cards:'76 34 328 300',link:'92 100 295 246',plane:'217 89 293 244',plug:'-27 -37 537 447',profile:'-6 -58 499 416',safe:'57 60 363 302'};
 
 /** Settings, as a large window over the workspace (the same frame as the file viewer). A rail on the left
  *  holds who you are, a finder and the sections; the section fills the rest. */

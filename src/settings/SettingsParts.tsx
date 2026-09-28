@@ -13,6 +13,7 @@ export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
  {label:'Intelligence',tabs:[
   {name:'Models',icon:'models',scene:'plug',still:true,line:'Connected accounts and how much is left.',keywords:'chatgpt claude codex usage limits accounts subscription'},
   {name:'Memory',icon:'subjects',scene:'jar',still:true,line:'What Mowr keeps in mind for you.',keywords:'remember notes'},
+  {name:'Skills',icon:'skills',scene:'cards',line:'Ways of working Mowr brings to every chat.',keywords:'skills workflows steps playbook create import practice'},
   {name:'Automations',icon:'clock',scene:'hourglass',still:true,line:'Routines you set up in a chat.',keywords:'routines schedule recurring'},
  ]},
  {label:'Connections',tabs:[
