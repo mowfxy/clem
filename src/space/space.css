@@ -79,13 +79,10 @@
 .space-page .sp-row{width:100%;display:flex;align-items:center;gap:12px;justify-content:flex-start;padding:10px 8px;margin:0 -8px;width:calc(100% + 16px);border:0;border-radius:10px;background:none;font-size:var(--t-body);color:var(--sp-ink);text-align:left}
 .space-page .sp-row:hover{background:#ffffff08}
 .sp-row>.drawn-icon{color:var(--sp-muted)}
-.sp-row>span:not(.sp-glyph){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-row>span:not(.file-glyph){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-row small{font-size:12px;color:var(--sp-muted);flex-shrink:0;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-empty-line{font-size:var(--t-small);color:var(--sp-muted);margin:8px 0}
-.sp-glyph{flex-shrink:0;display:grid;place-items:center;width:34px;height:40px;border-radius:6px;font:700 9.5px/1 var(--sans);letter-spacing:.04em;color:var(--sp-ink);background:#262624;border:1px solid var(--sp-line-2)}
-.g-pdf{color:#f0a594}.g-doc{color:#a9bff5}.g-slides{color:#f0bf8c}.g-sheet{color:#9fd3b0}.g-image{color:#c4b1f0}
-.sp-row .sp-glyph{width:24px;height:28px;font-size:7.5px;border-radius:4px}
-
+.sp-row 
 /* Chats and files */
 .sp-toolbar{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap}
 .sp-tool-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -118,7 +115,7 @@
 .sp-file:last-child{border-bottom:0}
 .sp-file[draggable=true]{cursor:grab}
 .space-page .sp-file-open{flex:1;min-width:0;display:flex;align-items:center;gap:12px;justify-content:flex-start;padding:2px;border:0;background:none;text-align:left;color:inherit}
-.sp-file-open>span:not(.sp-glyph):not(.rename-field){min-width:0;display:flex;flex-direction:column;gap:2px}
+.sp-file-open>span:not(.file-glyph):not(.rename-field){min-width:0;display:flex;flex-direction:column;gap:2px}
 .sp-file-open strong{font:400 var(--t-body)/1.35 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-file-open:hover strong{text-decoration:underline;text-decoration-color:#ffffff40;text-underline-offset:3px}
 .sp-file-open small{font-size:12px;color:var(--sp-muted)}

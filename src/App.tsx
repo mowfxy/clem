@@ -25,6 +25,7 @@ import "./settings.css";
 import {localSourceContext} from "./source-context";
 import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
+import {FileGlyph} from "./files/FileGlyph";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
 import {youtubeReferences} from "./youtube";
@@ -1993,7 +1994,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     )
                     .map((f) => (
                       <div className="file-row" key={f.id}>
-                        <Icon name="files" size={24} />
+                        <FileGlyph file={f} size={32} />
                         <div>
                           {renamingFile === f.id ? <RenameField name={f.name} onSave={(name) => renameFile(f.id, name)} onCancel={() => setRenamingFile(null)} /> : <button className="file-open" onClick={()=>setViewer(f)}>{f.name}</button>}
                           <small>
