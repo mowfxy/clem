@@ -60,21 +60,29 @@ export function welcomeEmail(name:string):Email{
  const body='Your space to think is ready. Bring your notes, slides and questions, and Mowr turns them into answers, flashcards and worksheets.';
  const note='Tip: make a subject for each course and drop your files in. Mowr answers from them.';
  return {subject:'Welcome to Mowr',text:`Welcome to Mowr, ${first}.\n\n${body}\n\nOpen Mowr: ${APP}\n\n${note}`,
-  html:layout({art:'sprout',title:`Welcome to Mowr, ${escape(first)}`,body,label:'Open Mowr',url:APP,note})};
+  html:layout({art:'wave',title:`Welcome to Mowr, ${escape(first)}`,body,label:'Open Mowr',url:APP,note})};
 }
 
 /** `notes` is one change per line. `unsubscribe` is this person's signed opt-out link. */
 export function updateEmail(version:string,notes:string,unsubscribe:string):Email{
  const lines=notes.split(/\r?\n/).map(l=>l.replace(/^[-*•]\s*/,'').trim()).filter(Boolean).slice(0,8);
  const download=BASE+'/download/windows';
- const note='Run the installer and it replaces your current version. Your chats, files and subjects stay exactly as they are.';
+ const note='The Microsoft Store updates Mowr for you, or open its page to update now. Your chats, files and subjects stay exactly as they are.';
  const intro='A new version of Mowr is ready.';
  return {subject:`Mowr ${version} is here`,
-  text:`Mowr ${version} is here.\n\n${lines.map(l=>'- '+l).join('\n')||intro}\n\nDownload the update: ${download}\n\n${note}\n\nStop update emails: ${unsubscribe}`,
-  html:layout({art:'build',title:`Mowr ${escape(version)} is here`,body:lines.length?`<span style="display:inline-block;text-align:left">${lines.map(l=>'•&nbsp; '+escape(l)).join('\n')}</span>`:intro,preheader:escape(lines[0]||intro),label:'Download the update',url:download,note,
+  text:`Mowr ${version} is here.\n\n${lines.map(l=>'- '+l).join('\n')||intro}\n\nGet the update: ${download}\n\n${note}\n\nStop update emails: ${unsubscribe}`,
+  html:layout({art:'build',title:`Mowr ${escape(version)} is here`,body:lines.length?`<span style="display:inline-block;text-align:left">${lines.map(l=>'•&nbsp; '+escape(l)).join('\n')}</span>`:intro,preheader:escape(lines[0]||intro),label:'Get the update',url:download,note,
    footer:`<a href="${escape(unsubscribe)}" style="color:#6f6e68;text-decoration:underline">Stop update emails</a>`})};
 }
 
+
+/** The one-time code Mowr's own server sends to confirm a sensitive change. */
+export function codeEmail(code:string):Email{
+ const title='Your Mowr verification code',body='Enter this code in Mowr. It expires in 10 minutes.',note='Never share this code. Didn’t ask for it? Secure your account and contact support@mowrai.com.';
+ return {subject:title,text:`Your verification code is ${code}.
+
+It expires in 10 minutes. ${note}`,html:layout({art:'keypad',title,body,note,code})};
+}
 
 /** A fixed template sent as is (no Supabase link or code), e.g. the routine notices. */
 export function templateEmail(file:string):Email{

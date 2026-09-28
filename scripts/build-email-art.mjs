@@ -45,8 +45,8 @@ function mark(ms){
 
 // Ink scenes: complete still → the authored action → a held ending, then loop.
 const W=360,H=292;
-const SCENES=['envelope','key','door','swap','invite','keypad','shield','link','unlink','lock','unlock','plane','hourglass','untangle','box','sprout','build'];
-// --only=sprout,build re-renders just those scenes and leaves the rest untouched.
+const SCENES=['envelope','key','door','swap','invite','keypad','shield','link','unlink','lock','unlock','plane','hourglass','untangle','box','wave','build'];
+// --only=wave,build re-renders just those scenes and leaves the rest untouched.
 const only=process.argv.find(a=>a.startsWith('--only='))?.slice(7).split(',');
 for(const scene of process.argv.includes('--mark-only')?[]:SCENES.filter(s=>!only||only.includes(s))){
   const svg=t=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 390"><rect width="480" height="390" fill="${BG}"/>${filmFrame(scene,t,'f')}</svg>`;
