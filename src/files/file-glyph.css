@@ -1,0 +1,15 @@
+/* File glyphs: one pen, one ink; the kind only tints the tab. */
+.file-glyph{flex:none;display:inline-grid;place-items:center;color:#d9d8d2}
+.file-glyph svg{display:block;overflow:visible}
+.fg-paper{fill:#ffffff08}
+.fg-mark{color:#8a8983}
+.fg-tab{stroke:none;fill:var(--fg-tint,#b8b7b0)}
+.fg-label{stroke:none;fill:#141413;font:700 5.4px/1 var(--sans);letter-spacing:.04em}
+.fg-pdf{--fg-tint:#f0a594}.fg-doc{--fg-tint:#a9bff5}.fg-slides{--fg-tint:#f0bf8c}.fg-sheet{--fg-tint:#9fd3b0}.fg-image{--fg-tint:#c4b1f0}.fg-archive{--fg-tint:#d9cf9a}
+.fg-page{transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+:is(.sp-file,.sp-row,.file-row):hover .fg-page{transform:translateY(-1.5px)}
+:is(.sp-file,.sp-row,.file-row):hover .fg-fold{stroke-dasharray:1;animation:fg-draw .5s cubic-bezier(.4,0,.2,1)}
+:is(.sp-file,.sp-row,.file-row):hover .fg-mark{stroke-dasharray:1;animation:fg-draw .5s .1s cubic-bezier(.4,0,.2,1) backwards}
+@keyframes fg-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.fg-page{transition:none}:is(.sp-file,.sp-row,.file-row):hover :is(.fg-page,.fg-fold,.fg-mark){transform:none;animation:none}}
+[data-quiet=true] :is(.fg-page,.fg-fold,.fg-mark){transition:none;animation:none!important;transform:none!important}

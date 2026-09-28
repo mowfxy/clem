@@ -2,6 +2,7 @@ import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode} from 'r
 import {Icon} from '../Icons';
 import {SpaceMark} from './SpaceMark';
 import {RenameField,PencilIcon} from '../files/RenameField';
+import {FileGlyph} from '../files/FileGlyph';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
 import {chatPreview} from '../../core/chat-title';
@@ -54,8 +55,6 @@ function streak(sets:StudySet[],now:number){
   return n;
 }
 const ago=(t:number)=>{const d=Math.floor((Date.now()-t)/DAY);return d<=0?'today':d===1?'yesterday':d<7?`${d} days ago`:new Date(t).toLocaleDateString([], {month:'short',day:'numeric'});};
-const fileKind=(f:StoredFile)=>/\.pdf$/i.test(f.name)?'pdf':/\.(docx?|odt)$/i.test(f.name)?'doc':/\.(pptx?)$/i.test(f.name)?'slides':/\.(xlsx?|csv)$/i.test(f.name)?'sheet':f.type.startsWith('image/')?'image':'text';
-const kindLabel:Record<string,string>={pdf:'PDF',doc:'DOC',slides:'PPT',sheet:'XLS',image:'IMG',text:'TXT'};
 
 function Ring({value,size=58}:{value:number;size?:number}){
   const r=size/2-5,c=2*Math.PI*r;
@@ -157,7 +156,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
         </section>
         <section className="sp-card recent">
           <div className="sp-card-head"><span className="sp-eyebrow">Recent files</span><button onClick={()=>onTab('files')}>All files</button></div>
-          {recentFiles.slice(0,4).map(f=><button className="sp-row" key={f.id} onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f}/><span>{f.name}</span><small>{ago(f.updated||f.created)}</small></button>)}
+          {recentFiles.slice(0,4).map(f=><button className="sp-row" key={f.id} onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f} size={26}/><span>{f.name}</span><small>{ago(f.updated||f.created)}</small></button>)}
           {!files.length&&<p className="sp-empty-line">Add notes, slides or worksheets in Files.</p>}
         </section>
       </div>}
@@ -181,7 +180,6 @@ function Editable({value,onSave,className,max,label,placeholder}:{value:string;o
     :<button className={className} title={`Edit ${label.toLowerCase()}`} onClick={()=>setEditing(true)}>{value||<span className="placeholder">{placeholder}</span>}</button>;
 }
 
-function FileGlyph({file}:{file:StoredFile}){const k=fileKind(file);return <span className={`sp-glyph g-${k}`}>{kindLabel[k]}</span>;}
 
 function ChatList({chats,onOpen,onNew}:{chats:Chat[];onOpen:(c:Chat)=>void;onNew:()=>void}){
   const [q,setQ]=useState('');
@@ -250,7 +248,7 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
     </div>}
     <div className="sp-file-list">
       {inHere.map(f=><div key={f.id} className="sp-file" draggable onDragStart={e=>{e.dataTransfer.setData('application/x-mowr-file',f.id);e.dataTransfer.effectAllowed='move';}}>
-        {renaming===f.id?<div className="sp-file-open"><FileGlyph file={f}/><RenameField name={f.name} onSave={name=>{actions.onRenameFile(f,name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>:<button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>}
+        {renaming===f.id?<div className="sp-file-open"><FileGlyph file={f}/><RenameField name={f.name} onSave={name=>{actions.onRenameFile(f,name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>:<button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f} size={36}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>}
         <button className="icon-button sp-rename" aria-label={`Rename ${f.name}`} title="Rename" onClick={()=>setRenaming(f.id)}><PencilIcon size={15}/></button>
         <label className="sp-source" title="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
         <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
