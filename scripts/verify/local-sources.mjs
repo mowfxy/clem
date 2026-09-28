@@ -49,7 +49,7 @@ try {
   await page.route("**/fixture", (r) =>
     r.fulfill({
       contentType: "text/html",
-      body: '<!doctype html><div id="root"></div><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css">',
+      body: '<!doctype html><div id="root"></div><link rel="stylesheet" href="/src/type.css"><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css">',
     }),
   );
   await page.route("**/api/**", (r) => {

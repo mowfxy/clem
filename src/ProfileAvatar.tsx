@@ -40,13 +40,14 @@ export function ProfileAvatar({ value, size = 56 }: { value?: string; size?: num
   );
 }
 
+/** The pictures to choose from, as tiles: the mark, its name, and a tick on the one in use. */
 export function ProfilePicker({ value, onChange }: { value?: string; onChange: (id: string) => void }) {
   const selected = marks.some((m) => m.id === value) ? value : "pip";
   return (
     <div className="profile-picker" role="radiogroup" aria-label="Choose your picture">
       {marks.map((m) => (
-        <button type="button" role="radio" key={m.id} aria-checked={selected === m.id} aria-pressed={selected === m.id} onClick={() => onChange(m.id)}>
-          <ProfileAvatar value={m.id} size={52} />
+        <button type="button" role="radio" key={m.id} aria-checked={selected === m.id} onClick={() => onChange(m.id)}>
+          <ProfileAvatar value={m.id} size={56} />
           <span>{m.name}</span>
         </button>
       ))}

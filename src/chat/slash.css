@@ -1,7 +1,7 @@
 /* Slash commands: the menu above the composer and the chip a chosen command becomes. */
 .slash-field{position:relative;display:flex;align-items:flex-start;gap:8px;width:100%}
 .slash-field textarea{flex:1;min-width:0}
-.command-chip{flex:none;display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 9px;margin:0;border:1px solid #4a4a45;border-radius:9px;background:linear-gradient(180deg,#34342f,#2a2a26);box-shadow:inset 0 1px 0 #ffffff14,0 2px 8px -4px #000;color:#f5f4f0;font:500 14px/1 'Mowafy Sans',system-ui,sans-serif;letter-spacing:.01em;white-space:nowrap;cursor:default}
+.command-chip{flex:none;display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 9px;margin:0;border:1px solid #4a4a45;border-radius:9px;background:linear-gradient(180deg,#34342f,#2a2a26);box-shadow:inset 0 1px 0 #ffffff14,0 2px 8px -4px #000;color:#f5f4f0;font:400 14px/1 var(--sans);letter-spacing:.01em;white-space:nowrap;cursor:default}
 .command-chip .drawn-icon{color:#f5f4f0;flex:none}
 button.command-chip{cursor:pointer;transition:border-color .15s,background .15s}
 button.command-chip:hover{border-color:#6b6a64;background:linear-gradient(180deg,#3a3a35,#2e2e2a)}
@@ -12,12 +12,12 @@ button.command-chip:hover{border-color:#6b6a64;background:linear-gradient(180deg
 .slash-menu button.on{background:#ffffff0f}
 .slash-menu .drawn-icon{flex:none;color:#d9d8d2}
 .slash-menu button.on .drawn-icon{color:#fff}
-.slash-name{flex:none;font:500 14px/1 'Mowafy Sans',system-ui,sans-serif;color:#f5f4f0}
-.slash-desc{min-width:0;font:13px/1 'Mowafy Sans',system-ui,sans-serif;color:#a9a8a1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slash-name{flex:none;font:400 14px/1 var(--sans);color:#f5f4f0}
+.slash-desc{min-width:0;font:13px/1 var(--sans);color:#a9a8a1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes slash-in{from{opacity:0;transform:translateY(4px)}}
 @media (prefers-reduced-motion:reduce){.slash-menu{animation:none}}
 html[data-quiet=true] .slash-menu{animation:none}
 /* In a sent message the chip sits on its own line above the words. */
 .message.user .message-text .command-chip{display:flex;width:fit-content;margin:0 0 8px;height:28px;font-size:13px}
 /* A /compact or /handoff brief: later requests start from it. */
-.compact-note{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:3px 9px 3px 7px;border:1px solid #3a3a36;border-radius:999px;color:#b9b8b1;font:500 12px/1.4 'Mowafy Sans',system-ui,sans-serif}
+.compact-note{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:3px 9px 3px 7px;border:1px solid #3a3a36;border-radius:999px;color:#b9b8b1;font:400 12px/1.4 var(--sans)}

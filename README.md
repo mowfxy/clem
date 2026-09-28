@@ -42,6 +42,8 @@ Staff moderate accounts, manage subscriptions and complimentary access, answer s
 - **Search everything**: **Ctrl Shift F** (or Ctrl K → Search everything) searches chats, uploaded file contents, linked folders, flashcards and spaces on this PC with one ranking (`core/search.ts`).
 - **Sharing**: **Share** on a subject (or Share folder) picks sensible contents, saves a `.mowrpack` to Downloads\Mowr and lets you drag it straight into WhatsApp, Discord, Teams or an email. Packs carry flashcards, quizzes and chosen folders — never chats, memory or review history (`core/study-pack.ts`). Dropping a pack on the window, double-clicking it or importing it from Subjects opens a one-click preview.
 - **Offline reading**: when Mowr cannot reach the account service, “Open my files offline” opens the local workspace read-only; sending returns when the connection does.
+- **Typography** (`src/type.css`): Mowafy Serif is Mowr's voice and what you read (one headline per screen, answers, documents, study cards); Mowafy Sans is names and interface (every sub-heading, dialog title, label and control). Both ship Regular (400) and Bold (700) only, sizes come from one scale, and stylesheets name fonts only through `--sans`, `--serif` and `--mono`.
+- **Settings** (`src/settings/`) is a large window over the workspace, like the file viewer: you, a finder and the sections on the left; Profile holds your name, picture and account.
 - **Ctrl K** opens the command palette (chats, projects, subjects, settings); **Ctrl N** starts a new chat; **Ctrl ,** opens Settings.
 
 ## Verify changes

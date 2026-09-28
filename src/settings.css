@@ -1,85 +1,25 @@
-/* Compact settings; the surrounding workspace owns scrolling. */
-.settings-page {
-  width: 100%;
-  max-width: 1040px !important;
-  margin: 28px auto 0 !important;
-  padding: 0 36px 48px !important;
-}
-.settings-page .page-heading {
-  border-bottom: 1px solid #303030;
-  padding-bottom: 22px;
-  margin-bottom: 0;
-}
-.settings-page .page-heading h1 {
-  font-family: "Mowafy Serif", Georgia, serif;
-  font-size: 30px;
-  font-weight: 400;
-}
-.settings-page .page-heading p {
-  font-size: 13px;
-  color: #999;
-}
-.settings-page .settings-layout {
-  display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  gap: 34px;
-  margin-top: 24px;
-  align-items: start;
-}
-.settings-page .settings-tabs {
-  position: sticky;
-  top: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: calc(100dvh - 110px);
-  overflow: auto;
-  border: 0;
-  padding: 0 12px 0 0;
-}
-.settings-page .settings-tabs button {
-  font-size: 12px;
-  padding: 10px 12px;
-  text-align: left;
-  justify-content: flex-start;
-  background: none;
-  border: 0;
-  border-radius: 7px;
-  color: #aaa;
-}
-.settings-page .settings-tabs button.active {
-  background: #292925;
-  color: #eee;
-}
-.settings-page .settings-content {
-  min-width: 0;
-  max-width: 620px;
-  padding: 0;
-  font-size: 13px;
-}
-.settings-page .settings-content h2 {
-  font:
-    500 18px "Mowafy Sans",
-    sans-serif;
-  letter-spacing: -0.3px;
-  margin: 4px 0 20px;
-}
-.settings-page .settings-content h3,
+
+
+
+
+
+
+
+
+
+
 .settings-action h3 {
   font:
-    500 13px "Mowafy Sans",
-    sans-serif;
+    400 13px var(--sans);
   margin: 0 0 5px;
 }
-.settings-page .settings-content p,
 .settings-action p {
   font-size: 12px;
   line-height: 1.6;
   color: #999;
   margin: 0;
 }
-.settings-action,
-.settings-page .setting-row {
+.settings-action {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -90,8 +30,7 @@
 .settings-action > div {
   min-width: 0;
 }
-.settings-action button,
-.settings-page .settings-content button {
+.settings-action button {
   font-size: 12px;
   padding: 8px 12px;
   border: 1px solid #3d3d39;
@@ -99,14 +38,8 @@
   background: #242422;
   white-space: nowrap;
 }
-.settings-page .settings-content .primary {
-  background: #e8e7e0;
-  color: #222;
-  margin-bottom: 14px;
-}
-.settings-page .security-settings > p {
-  margin-bottom: 12px;
-}
+
+
 .settings-dialog {
   width: min(480px, calc(100vw - 32px));
   max-height: calc(100dvh - 80px);
@@ -133,12 +66,11 @@
 }
 .settings-dialog > header h2 {
   font:
-    500 17px "Mowafy Sans",
-    sans-serif;
+    400 18px var(--sans);
   margin: 0;
 }
 .settings-dialog > header button {
-  font-size: 23px;
+  font-size: 24px;
   padding: 0 5px;
   color: #aaa;
 }
@@ -148,8 +80,7 @@
 }
 .settings-dialog-body h2 {
   font:
-    500 18px "Mowafy Sans",
-    sans-serif;
+    400 18px var(--sans);
 }
 .settings-dialog-body h3 {
   font-size: 14px;
@@ -179,8 +110,7 @@
   border-radius: 7px;
   background: #22221f;
   font:
-    13px "Mowafy Sans",
-    sans-serif;
+    13px var(--sans);
   color: #eee;
 }
 .settings-dialog-body button {
@@ -229,28 +159,13 @@
   border: 0;
 }
 @media (max-width: 760px) {
-  .settings-page {
-    padding: 0 20px 32px !important;
-  }
-  .settings-page .settings-layout {
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
-  .settings-page .settings-tabs {
-    top: 0;
-    flex-direction: row;
-    flex-wrap: wrap;
-    max-height: none;
-    background: #141414;
-    padding: 10px 0;
-    z-index: 2;
-  }
+  
+  
+  
   .settings-action {
     gap: 12px;
   }
-  .settings-page .settings-tabs button {
-    padding: 8px;
-  }
+  
   .new-chat-content .greeting-row h1 {
     font-size: 28px;
   }
@@ -263,8 +178,7 @@ select {
   border: 1px solid #41413b;
   border-radius: 7px;
   font:
-    13px "Mowafy Sans",
-    sans-serif;
+    13px var(--sans);
   padding: 9px 12px;
 }
 select option {
@@ -291,8 +205,7 @@ select option {
     box-shadow: 0 10px 32px #0007;
     color: #eee;
     font:
-      13px "Mowafy Sans",
-      sans-serif;
+      13px var(--sans);
     max-height: 280px;
   }
   option {

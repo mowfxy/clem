@@ -49,9 +49,9 @@
 
 
 .setup-card h1 {
-  font-family: "Mowafy Serif", Georgia, serif;
-  font-size: 38px;
-  font-weight: 500;
+  font-family: var(--serif);
+  font-size: 40px;
+  font-weight: 400;
   line-height: 1.25;
   letter-spacing: -0.7px;
   margin: 0 0 12px;
@@ -205,7 +205,7 @@
     padding: 28px 24px;
   }
   .setup-card h1 {
-    font-size: 25px;
+    font-size: 26px;
   }
 }
 @media (max-height: 600px) {
@@ -271,7 +271,7 @@
     gap: 9px;
   }
   .setup-welcome-heading h1 {
-    font-size: 29px;
+    font-size: 30px;
   }
   .setup-welcome-heading .mowr-mark {
     width: 29px;

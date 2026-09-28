@@ -75,7 +75,7 @@ try {
   await page.route("**/fixture", (r) =>
     r.fulfill({
       contentType: "text/html",
-      body: '<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/desktop/desktop.css">',
+      body: '<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/type.css"><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/desktop/desktop.css">',
     }),
   );
   await page.route("**/api/**", (r) => {
@@ -196,7 +196,7 @@ try {
   );
   await page.evaluate(() => (location.hash = "/app/settings"));
   await page
-    .locator(".settings-tabs")
+    .locator(".st-nav")
     .getByRole("button", { name: "Memory", exact: true })
     .click();
   await page.screenshot({ path: "artifacts/settings-memory.png" });
@@ -213,7 +213,7 @@ try {
   );
   await page.keyboard.press("Escape");
   await page
-    .locator(".settings-tabs")
+    .locator(".st-nav")
     .getByRole("button", { name: "Automations", exact: true })
     .click();
   await page.screenshot({ path: "artifacts/settings-automations.png" });
