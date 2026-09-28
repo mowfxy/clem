@@ -5,8 +5,9 @@ import {Illustration} from '../Illustrations';
 import {ProfileAvatar} from '../ProfileAvatar';
 import {settingsGroups, settingsGroupOf, settingsTab} from './SettingsParts';
 
-/** The drawings share one centred frame; the header shows the middle of the 480×390 stage. */
-const crop='60 30 360 300';
+/** The drawings share one centred frame; the header shows the middle of the 480×390 stage. The plug's socket sits
+ *  higher on the stage, so its frame starts higher to keep the socket in. */
+const crop='60 30 360 300',crops:Record<string,string>={plug:'60 14 360 300'};
 
 /** Settings, as a large window over the workspace (the same frame as the file viewer). A rail on the left
  *  holds who you are, a finder and the sections; the section fills the rest. */
@@ -46,7 +47,7 @@ export function SettingsWindow({tab,onTab,onClose,me,unread=0,children}:{tab:str
       <h1 id="st-title">{t.name}</h1>
       <p>{t.line}</p>
      </div>
-     <Illustration scene={t.scene} viewBox={crop} className="st-art"/>
+     <Illustration scene={t.scene} viewBox={crops[t.scene]||crop} className="st-art"/>
     </header>
     <button type="button" className="st-close" aria-label="Close settings" onClick={onClose}><Icon name="close" size={17}/></button>
     <div className="st-body" ref={body} key={'b'+t.name}>{children}</div>
