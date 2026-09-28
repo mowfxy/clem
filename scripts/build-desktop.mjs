@@ -17,6 +17,10 @@ const publicConfig = {
     process.env.MOWR_ACCOUNT_SERVICE ||
     "https://mowr-accounts.mohamed-khaled011008.workers.dev",
 };
+// Without these the app says "Sign-in is unavailable in this build", so a missing .env.local must fail loudly
+// (a git worktree has none unless it is copied in). MOWR_ALLOW_NO_SIGNIN=1 is for local experiments only.
+if ((!publicConfig.url || !publicConfig.key) && process.env.MOWR_ALLOW_NO_SIGNIN !== "1")
+  throw Error("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are missing from .env.local, so sign-in would not work in this build.");
 await mkdir("desktop-dist", { recursive: true });
 await build({
   entryPoints: ["desktop/main.ts"],
