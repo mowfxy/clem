@@ -9,7 +9,6 @@ import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
 import {MemoryConversation,warmMemory} from '../MemoryConversation';
 import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './InstructionsDialog';
-import {ActivityGraph} from './ActivityGraph';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
 import {DriveFolderView} from '../drive/DriveFolderView';
 import type {DriveItem} from '../drive/drive';
@@ -120,7 +119,6 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
         {tabs.map(([id,label,count])=><button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}>{label}{count!==undefined&&count>0&&<span>{count}</span>}</button>)}
       </nav>
     </header>
-    <ActivityGraph chats={chats} files={files} sets={sets} tone={subject?'white':'green'}/>
     </div>
 
     <div className="sp-body" key={tab}>

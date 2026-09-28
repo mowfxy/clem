@@ -1,0 +1,23 @@
+/* Activity graph: a thin line over a dotted grid ending in a glowing dot. */
+.activity-graph{--ink:#eeede7;--glow:#ffffff;position:relative;margin:0;padding:0;cursor:crosshair}
+.activity-graph figcaption{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase;color:#8f8e88;margin:0 0 2px 8px;user-select:none}
+.activity-graph svg{display:block;overflow:visible}
+.activity-graph .dot{fill:#ffffff}
+.activity-graph .grid .dot{opacity:.12;transform-box:fill-box;transform-origin:center;animation:ag-twinkle 7s cubic-bezier(.45,0,.55,1) infinite}
+.activity-graph .grid-lit{opacity:.5}
+.activity-graph .fill-top{stop-color:var(--glow);stop-opacity:.14}
+.activity-graph .fill-bottom{stop-color:var(--glow);stop-opacity:0}
+.activity-graph .line{fill:none;stroke:var(--ink);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round;filter:drop-shadow(0 0 3px color-mix(in srgb,var(--glow) 55%,transparent));stroke-dasharray:1;stroke-dashoffset:1;animation:ag-draw 1.1s cubic-bezier(.65,0,.35,1) .1s forwards}
+.activity-graph .area{opacity:0;animation:ag-fade .8s ease .7s forwards}
+.activity-graph .guide{stroke:var(--ink);stroke-width:1;stroke-dasharray:1.5 3;opacity:.35}
+.activity-graph .end{transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.activity-graph.scrubbing .end{transition:transform .08s linear}
+.activity-graph .core{fill:var(--ink);filter:drop-shadow(0 0 4px var(--glow))}
+.activity-graph .halo{fill:var(--glow);opacity:.18;transform-origin:center;transform-box:fill-box;animation:ag-pulse 2.6s ease-in-out infinite}
+.activity-graph .end{opacity:0;animation:ag-fade .4s ease 1.05s forwards}
+@keyframes ag-twinkle{0%,100%{opacity:.11;transform:scale(1)}32%{opacity:0;transform:scale(.4)}58%{opacity:.36;transform:scale(1.3)}78%{opacity:.14;transform:scale(1)}}
+@keyframes ag-draw{to{stroke-dashoffset:0}}
+@keyframes ag-fade{to{opacity:1}}
+@keyframes ag-pulse{0%,100%{transform:scale(.8);opacity:.28}50%{transform:scale(1.35);opacity:.1}}
+@media (prefers-reduced-motion:reduce){.activity-graph .line{animation:none;stroke-dashoffset:0}.activity-graph .area,.activity-graph .end{animation:none;opacity:1}.activity-graph .halo,.activity-graph .grid .dot{animation:none}}
+html[data-quiet=true] .activity-graph .line{animation:none;stroke-dashoffset:0}html[data-quiet=true] .activity-graph .area,html[data-quiet=true] .activity-graph .end{animation:none;opacity:1}html[data-quiet=true] .activity-graph .halo,html[data-quiet=true] .activity-graph .grid .dot{animation:none}
