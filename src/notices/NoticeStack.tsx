@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState,type CSSProperties} from 'react';
 import {Illustration} from '../Illustrations';
+import {Icon} from '../Icons';
 import './notices.css';
 
 export type NoticeKind='switch'|'reset'|'handoff'|'announcement'|'support'|'success'|'warning'|'info';
@@ -32,9 +33,9 @@ function NoticeCard({notice,depth,onDismiss,paused}:{notice:Notice;depth:number;
     <div className="notice-copy">
       <strong>{notice.title}</strong>
       <p>{notice.detail}</p>
-      {notice.action&&<button type="button" className="notice-action" tabIndex={depth?-1:0} onClick={()=>{notice.action!.run();close.current();}}>{notice.action.label}<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8h9m-3.5-3.5L12 8l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
+      {notice.action&&<button type="button" className="notice-action" tabIndex={depth?-1:0} onClick={()=>{notice.action!.run();close.current();}}>{notice.action.label}<Icon name="arrow" size={14}/></button>}
     </div>
-    <button type="button" className="notice-close" tabIndex={depth?-1:0} aria-label={`Dismiss: ${notice.title}`} onClick={()=>close.current()}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></button>
+    <button type="button" className="notice-close" tabIndex={depth?-1:0} aria-label={`Dismiss: ${notice.title}`} onClick={()=>close.current()}><Icon name="close" size={15}/></button>
     {!notice.sticky&&depth===0&&<span className={`notice-timer ${running?'':'paused'}`} style={{animationDuration:LIFETIME+'ms'}} aria-hidden="true"/>}
   </aside>;
 }

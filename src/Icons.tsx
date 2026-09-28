@@ -36,7 +36,8 @@ pin:['F M12 4h8l-1.5 7.5L23 16v3H9v-3l4.5-4.5Z','M16 19v9'],
 unpin:['F M12 4h8l-1.5 7.5L23 16v3H9v-3l4.5-4.5Z','M16 19v9','M4 4l24 24'],
 new:['M26 17v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h8','F M24 3.8a2.4 2.4 0 0 1 3.4 3.4L17 17.6l-4.6 1 1-4.6Z'],
 chat:['F '+bubble,'M11 13h10M11 18h6'],
-visuals:['M4 16c0-3.3 5.4-6 12-6s12 2.7 12 6-5.4 6-12 6-12-2.7-12-6Z','M10 5.6c2.9-1.7 7.9 1.6 11.2 7.4s3.8 11.6.8 13.3-7.9-1.6-11.2-7.4S7 7.3 10 5.6Z','M22 5.6c2.9 1.7 2.6 7.6-.7 13.4s-8.3 9.1-11.2 7.4-2.6-7.6.7-13.4S19 3.9 22 5.6Z','F '+c(16,16,2.5)],
+// Visuals: a circle, a triangle and a square, the parts every figure is made of. The triangle turns on hover.
+visuals:['F '+c(22.5,9.5,5.5),'M10 4.5l6.5 11h-13Z',box(9,18.5,14,9.5)],
 projects:['F M4 9a2 2 0 0 1 2-2h6l3 3h11a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z','M4 15h24'],
 subjects:['F M16 8c-3-2.5-7-3-12-2v19c5-1 9-.5 12 2Z','M16 8c3-2.5 7-3 12-2v19c-5-1-9-.5-12 2','M16 8v19'],
 connectors:['F M11 4v6M17 4v6M8 10h12v5a6 6 0 0 1-12 0Z','M14 21v2a4 4 0 0 0 4 4h5a4 4 0 0 0 4-4v-2'],
@@ -81,7 +82,21 @@ log:['F '+c(6,8,1.6)+c(6,16,1.6)+c(6,24,1.6),'M11 8h16M11 16h16M11 24h16'],
 logout:['M20 5h5a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2h-5','M13 9l7 7-7 7','M20 16H4'],
 note:['F '+page,'M19 4v7h7','M11 17h10M11 22h7'],
 gift:['M7 16v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V16','F '+box(5,11,22,5,1.5),'M16 11v17','M16 11c-2-4-7-5-7-2s5 2 7 2c2 0 7 1 7-2s-5-2-7 2'],
-ban:[c(16,16,12),'M7.5 7.5l17 17']};
+ban:[c(16,16,12),'M7.5 7.5l17 17'],
+// Small glyphs that screens used to draw for themselves.
+bug:['F M11 11a5 5 0 0 1 10 0v7a5 5 0 0 1-10 0Z','M16 13v10','M5 15h6M21 15h6M7 8l4 3M25 8l-4 3M7 25l4-3M25 25l-4-3','M13 6l-1.5-2.5M19 6l1.5-2.5'],
+idea:['F M16 4a8 8 0 0 0-4.8 14.4c1 .8 1.8 2 1.8 3.3V23h6v-1.3c0-1.3.8-2.5 1.8-3.3A8 8 0 0 0 16 4Z','M13 27h6'],
+question:['F M6 6h20a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H13l-7 5v-5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z','M10 12.5h12M10 17h7'],
+rename:['F M6 26l1.5-6L21 6.5a2.8 2.8 0 0 1 4 4L11.5 24Z','M18.5 9l4.5 4.5'],
+flame:['F M16 3.5c.8 4.5 7.5 7.8 7.5 15A7.5 7.5 0 0 1 16 26a7.5 7.5 0 0 1-7.5-7.7c0-3.4 2-5.4 3.2-6.8.4 2.4 1.6 3.8 3 4.2C14 10.8 14.6 6.8 16 3.5Z'],
+folder:['F M4 9a2 2 0 0 1 2-2h6l3 3h11a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z','M4 15h24'],
+grid:[box(5,5,9,9),'F '+box(18,5,9,9),box(5,18,9,9),box(18,18,9,9)],
+list:['F '+c(6,8,1.6)+c(6,16,1.6)+c(6,24,1.6),'M11 8h16M11 16h16M11 24h16'],
+right:['M12.5 8l8 8-8 8'],
+playhead:['F M11 7l14.5 9L11 25Z'],
+pause:['F '+box(8,6,5.5,20,2)+box(18.5,6,5.5,20,2)],
+restart:['M6.5 16a9.5 9.5 0 1 0 3-6.9','M6 4.5v6h6'],
+cube:['F M16 4l11 6v12L16 28 5 22V10Z','M5 10l11 6 11-6','M16 16v12']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
 export function Icon({name,size=22}:{name:string;size?:number}){return <svg className={`drawn-icon ink-icon icon-${name}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}

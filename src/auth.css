@@ -46,7 +46,7 @@
 .au-progress i{display:block;height:100%;width:40%;border-radius:3px;background:#f0efeb;animation:au-slide 1.4s cubic-bezier(.4,0,.2,1) infinite}
 .au-done{display:grid;place-items:center;margin:0 0 16px}
 .au-done svg{fill:none;stroke:#f0efeb;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.au-done circle{stroke:#3a3a36;stroke-dasharray:151;stroke-dashoffset:151;animation:au-draw .8s .1s cubic-bezier(.2,.8,.2,1) forwards}
+.au-done circle{stroke:#f0efeb;fill:#63635e;fill-opacity:.35;stroke-dasharray:151;stroke-dashoffset:151;animation:au-draw .8s .1s cubic-bezier(.2,.8,.2,1) forwards}
 .au-done path{stroke-dasharray:36;stroke-dashoffset:36;animation:au-draw .5s .6s cubic-bezier(.2,.8,.2,1) forwards}
 .au-actions{display:grid;gap:6px}
 .au-actions .login-text{text-decoration:none}
