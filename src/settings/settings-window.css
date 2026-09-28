@@ -8,15 +8,15 @@
 
 /* Rail: one sidebar the full height of the window. Search on top, the sections in the middle, you at the bottom. */
 .st-rail{display:flex;flex-direction:column;min-height:0;padding:18px 16px 10px;background:var(--st-bg);border-right:1px solid var(--st-line)}
-.st-find{flex:none;display:flex;align-items:center;gap:12px;height:48px;padding:0 16px;border:1px solid var(--st-line-2);border-radius:12px;background:#ffffff05;color:var(--st-muted);transition:border-color .16s,background .16s}
+.st-find{flex:none;display:flex;align-items:center;gap:12px;height:42px;padding:0 14px;border:1px solid var(--st-line-2);border-radius:12px;background:#ffffff05;color:var(--st-muted);transition:border-color .16s,background .16s}
 .st-find:focus-within{border-color:#66665f;background:#ffffff08;color:var(--st-soft)}
-.st .st-find-input{flex:1;min-width:0;height:100%;padding:0;border:0;background:none;color:var(--st-ink);font:400 var(--t-subhead) var(--sans);outline:none;box-shadow:none}
+.st .st-find-input{flex:1;min-width:0;height:100%;padding:0;border:0;background:none;color:var(--st-ink);font:400 var(--t-body) var(--sans);outline:none;box-shadow:none}
 .st-find input::placeholder{color:var(--st-muted)}
 .st .st-find .st-find-input:focus,.st .st-find .st-find-input:focus-visible{outline:none;border:0;box-shadow:none}
 .st-nav{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:grid;align-content:start;gap:2px;margin:4px -6px 0;padding:0 6px 12px;scrollbar-width:thin}
 .st-group{display:grid;gap:2px}
-.st-group-label{padding:10px 14px 5px;font:400 var(--t-body)/1.2 var(--sans);letter-spacing:0;color:var(--st-muted)}
-.st-nav button{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:16px;width:100%;min-height:36px;padding:6px 14px;border-radius:10px;font:400 16px/1.25 var(--sans);letter-spacing:-.005em;color:var(--st-soft);text-align:left;transition:background .16s,color .16s}
+.st-group-label{padding:10px 14px 5px;font:400 12px/1.2 var(--sans);letter-spacing:0;color:var(--st-muted)}
+.st-nav button{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:14px;width:100%;min-height:34px;padding:6px 14px;border-radius:10px;font:400 var(--t-body)/1.25 var(--sans);letter-spacing:-.005em;color:var(--st-soft);text-align:left;transition:background .16s,color .16s}
 .st-nav button .drawn-icon{flex:none;color:var(--st-soft);transition:color .16s}
 .st-nav button:hover{background:#ffffff08;color:var(--st-ink)}
 .st-nav button.active{background:#ffffff12;color:var(--st-ink)}
@@ -30,7 +30,7 @@
 .st-me.active{background:#ffffff12}
 .st-me .avatar{flex:none;display:grid;place-items:center;width:36px;height:36px;border:0;background:none}
 .st-me-text{display:grid;gap:2px;min-width:0}
-.st-me-text strong{font:700 var(--t-body)/1.25 var(--sans);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-me-text strong{font:700 var(--t-small)/1.25 var(--sans);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .st-me-text small{font-size:12px;color:var(--st-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .st kbd,.mw-keys kbd{display:inline-block;min-width:24px;padding:4px 7px;border-radius:7px;border:1px solid var(--st-line-2,#3c3c37);border-bottom-width:2px;background:#222220;font:400 var(--t-label)/1 var(--sans);color:var(--st-soft,#b8b7b0);text-align:center}
 .mw-keys{display:inline-flex;gap:4px}
@@ -43,7 +43,7 @@
 .st-head h1{margin:10px 0 8px;font:400 44px/1.05 var(--serif);letter-spacing:var(--track-display);color:var(--st-ink)}
 .st-head p{margin:0;font-size:var(--t-body);line-height:1.5;color:var(--st-soft)}
 .st-head .st-art{flex:none;width:118px;height:96px;margin:0 36px -6px 0}
-.st-head .st-art svg{display:block;width:100%;height:100%}
+.st-head .st-art svg{display:block;width:100%;height:100%;overflow:hidden}
 .st-close{position:absolute;top:16px;right:16px;display:grid;place-items:center;width:36px;height:36px;padding:0;border-radius:10px;color:var(--st-muted)}
 .st-close:hover{background:#ffffff0d;color:var(--st-ink)}
 .st-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:grid;align-content:start;gap:30px;padding:30px 56px 64px;animation:st-in .45s var(--st-ease) both}
@@ -65,12 +65,12 @@
 .st-pad{padding:16px 0}
 
 /* Controls inside settings: one button, one field. */
-.st button.secondary,.st a.secondary,.st .settings-action>button{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;border-radius:9px;border:1px solid var(--st-line-2);background:#242422;color:var(--st-ink);font:400 var(--t-small)/1.2 var(--sans);white-space:nowrap;text-decoration:none;transition:background .16s,border-color .16s,transform .16s}
+.st button.secondary,.st a.secondary,.st .settings-action>button{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;border-radius:9px;border:1px solid var(--st-line-2);background:#242422;color:var(--st-ink);font:400 12px/1.2 var(--sans);white-space:nowrap;text-decoration:none;transition:background .16s,border-color .16s,transform .16s}
 .st button.secondary:hover,.st a.secondary:hover,.st .settings-action>button:hover{background:#2b2b28;border-color:#4d4d47}
 .st button.secondary:active,.st .settings-action>button:active{transform:scale(.97)}
 .st button.secondary.danger{color:#f0a594;border-color:#6b3a31}
 .st button.secondary.icon-only{padding:8px 9px}
-.st .primary{font:700 var(--t-small)/1.2 var(--sans)}
+.st .primary{font:700 12px/1.2 var(--sans)}
 .st input:not([type=checkbox]):not([type=radio]):not([type=range]):not(.st-find-input),.st textarea,.st select{width:100%;max-width:none;box-sizing:border-box;min-height:40px;padding:9px 12px;border:1px solid var(--st-line-2);border-radius:10px;background:#121211;color:var(--st-ink);font:400 var(--t-body) var(--sans);transition:border-color .16s,box-shadow .16s}
 .st input:focus,.st textarea:focus,.st select:focus{outline:none;border-color:#76766f;box-shadow:0 0 0 3px #ffffff0d}
 .st label.field,.st .security-block,.st .support-inbox label{display:grid;gap:8px;margin:0 0 14px;font-size:var(--t-small);color:var(--st-soft)}
@@ -143,7 +143,7 @@
   .st-me-text,.st-find,.st-group-label,.st-rail-foot::before{display:none}
   .st-me{order:-1;width:auto;margin:0;padding:4px}
   .st-nav{display:flex;flex-direction:row;gap:2px;margin:0;padding:0;overflow:visible}
-  .st-nav button{min-height:0;padding:8px 12px;font-size:var(--t-body);gap:10px}
+  .st-nav button{min-height:0;padding:8px 12px;font-size:var(--t-small);gap:10px}
   .st-group{display:contents}
   .st-nav button{width:auto;white-space:nowrap}
   .st-head{padding:22px 22px 18px}
@@ -165,7 +165,7 @@
 /* Skills */
 .st-skills-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .st-chips{display:flex;gap:4px;padding:4px;border:1px solid var(--st-line);border-radius:99px;background:#ffffff04}
-.st-chips button{padding:6px 13px;border-radius:99px;font:400 var(--t-small)/1.2 var(--sans);color:var(--st-muted);transition:background .16s,color .16s}
+.st-chips button{padding:6px 13px;border-radius:99px;font:400 12px/1.2 var(--sans);color:var(--st-muted);transition:background .16s,color .16s}
 .st-chips button:hover{color:var(--st-ink)}
 .st-chips button.on{background:#ffffff12;color:var(--st-ink);font-weight:700}
 .st-skills-actions{display:flex;gap:8px}
