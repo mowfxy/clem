@@ -31,9 +31,7 @@
 }
 .provenance-page h1 {
   font:
-    400 clamp(36px, 4.3vw, 56px) / 1.08 "Mowafy Serif",
-    Georgia,
-    serif;
+    400 clamp(36px, 4.3vw, 56px) / 1.08 var(--serif);
   margin: 14px 0 20px;
   letter-spacing: -1.5px;
 }
@@ -66,9 +64,7 @@
 }
 .checker-drop h2 {
   font:
-    400 25px/1.2 "Mowafy Serif",
-    Georgia,
-    serif;
+    700 20px/1.25 var(--sans);letter-spacing:var(--track-title);
   margin: 0 0 12px;
 }
 .checker-drop p {

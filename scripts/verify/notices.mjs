@@ -29,7 +29,7 @@ try{
       },
     };
   });
-  await page.route('**/fixture',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/desktop/desktop.css">'}));
+  await page.route('**/fixture',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/type.css"><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/desktop/desktop.css">'}));
   await page.route('**/api/**',r=>{const path=new URL(r.request().url()).pathname;return r.fulfill({json:path.endsWith('auth/session')?{user:{id:'fixture-owner',name:'Test'},auth:true}:path.endsWith('models')?[{id:'openai',name:'Codex',provider:'OpenAI',connected:true,context:32000,specialties:[],tools:[]}]:{}});});
   await mockLocalStorage(page);
   await page.goto('http://127.0.0.1:5199/fixture');
@@ -67,6 +67,8 @@ try{
   await page.getByRole('button',{name:'Send reply'}).click();
   await page.getByText('Updated and it works now.').waitFor();
   await page.screenshot({path:'artifacts/support-thread.png'});
+  // Settings is a window over the workspace; close it to reach the notices again.
+  await page.getByRole('button',{name:'Close settings'}).click();
   // Dismissing leaves the remaining notice in front.
   const close=page.locator('.notice-stack .notice-close').first();
   if(await close.count()){await close.click();await page.waitForTimeout(400);}
@@ -76,7 +78,7 @@ try{
   await page.keyboard.type('models');
   await page.screenshot({path:'artifacts/command-palette.png'});
   await page.keyboard.press('Enter');
-  await page.locator('.settings-tabs button.active',{hasText:'Models'}).waitFor();
+  await page.locator('.st-nav button.active',{hasText:'Models'}).waitFor();
   await page.keyboard.press('Control+n');
   await page.locator('.greeting-row').waitFor();
   console.log('PASS notice stack order, placement, expansion, support reply notice, seen receipt, in-app reply, command palette and shortcuts');

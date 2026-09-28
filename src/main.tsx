@@ -1,6 +1,7 @@
 import React,{lazy,Suspense,useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {desktop} from './desktop/bridge';
+import './type.css';
 import './style.css';
 import './revamp.css';
 import './marketing.css';

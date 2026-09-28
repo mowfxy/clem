@@ -65,7 +65,7 @@ try {
   await page.route("**/fixture", (r) =>
     r.fulfill({
       contentType: "text/html",
-      body: '<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/desktop/desktop.css">',
+      body: '<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/type.css"><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/desktop/desktop.css">',
     }),
   );
   await page.route("**/api/**", (r) => {
@@ -146,14 +146,16 @@ try {
   assert.ok(Math.abs(bounds[0] - bounds[1]) < 2, "Greeting aligns with logo");
   assert.equal(await page.locator(".sidebar .desktop-folder-panel").count(), 0);
   await page.evaluate(() => (location.hash = "/app/settings"));
-  assert.equal(
-    await page.locator(".settings-content input:not([type=checkbox])").count(),
-    0,
-  );
-  await page.getByRole("button", { name: "Edit profile", exact: true }).click();
+  // Settings opens as a window over the page; General has no text fields.
+  await page.locator("dialog.st-dialog[open]").waitFor();
+  assert.equal(await page.locator(".st-body input:not([type=checkbox])").count(), 0);
+  await page.locator(".st-nav").getByRole("button", { name: "Profile", exact: true }).click();
   await page.getByRole("radiogroup", { name: "Choose your picture" }).waitFor();
   await page.getByRole("radio", { name: "Tide", exact: true }).click();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  assert.equal(await page.getByRole("radio", { name: "Tide", exact: true }).getAttribute("aria-checked"), "true");
+  await page.locator(".st-input input").fill("Sam Rivera");
+  await page.locator(".st-id-greeting").filter({ hasText: "Sam Rivera." }).waitFor();
+  await page.locator(".st-input input").fill("Sam");
   await page.screenshot({
     path: "artifacts/settings-profile.png",
     fullPage: true,
@@ -164,22 +166,22 @@ try {
     ["Memory", "Open memory"],
   ]) {
     await page
-      .locator(".settings-tabs")
+      .locator(".st-nav")
       .getByRole("button", { name, exact: true })
       .click();
     assert.equal(await page.getByLabel("Space", { exact: true }).count(), 0);
     await page
-      .locator(".settings-content")
+      .locator(".st-body")
       .getByRole("button", { name: button, exact: true })
       .click();
-    await page.locator(name==="Memory"?".settings-dialog .memory-conversation":".settings-dialog .desktop-folder-panel").waitFor();
+    await page.locator(name==="Memory"?".settings-dialog .memory-panel":name==="Telegram"?".settings-dialog .tg":".settings-dialog .desktop-folder-panel").waitFor();
     await page.keyboard.press("Escape");
   }
   await page
-    .locator(".settings-tabs")
+    .locator(".st-nav")
     .getByRole("button", { name: "Security", exact: true })
     .click();
-  assert.equal(await page.locator(".settings-content input").count(), 0);
+  assert.equal(await page.locator(".st-body input").count(), 0);
   await page
     .locator(".settings-action")
     .filter({
@@ -203,21 +205,20 @@ try {
     path: "artifacts/settings-security.png",
     fullPage: true,
   });
-  await page.locator(".settings-content").evaluate((el) => {
+  // The section scrolls inside the window; the rail and headline stay put.
+  await page.locator(".st-body").evaluate((el) => {
     const spacer = document.createElement("div");
     spacer.id = "scroll-fixture";
     spacer.style.height = "1200px";
     el.appendChild(spacer);
+    el.scrollTop = 400;
   });
-  await page.locator(".workspace").evaluate((el) => (el.scrollTop = 250));
   await page.waitForTimeout(100);
-  const tabs = await page.locator(".settings-tabs").boundingBox();
-  assert.ok(
-    tabs.y >= 40 && tabs.y < 100,
-    "Settings navigation stays visible while scrolling",
-  );
+  const rail = await page.locator(".st-nav").boundingBox(), head = await page.locator(".st-head h1").boundingBox();
+  assert.ok(rail.y > 0 && rail.y < 300 && head.y > 0 && head.y < 200, "Settings navigation stays visible while scrolling");
   await page.evaluate(() => document.getElementById("scroll-fixture").remove());
-  await page.locator(".workspace").evaluate((el) => (el.scrollTop = 0));
+  await page.getByRole("button", { name: "Close settings" }).click();
+  assert.equal(await page.locator("dialog.st-dialog").count(), 0);
   const brand = await page.locator(".sidebar>.brand").boundingBox();
   assert.ok(brand.y >= 0 && brand.y < 40, "Brand blends into window top");
   for (const width of [800, 1000, 1140, 1440, 1700]) {
@@ -237,13 +238,13 @@ try {
   );
   await page.screenshot({ path: "artifacts/new-chat-fit.png", fullPage: true });
   await page.evaluate(() => (location.hash = "/app/connectors"));
-  await page.getByRole("button", { name: "Open Drive" }).click();
+  await page.locator(".st-row", { hasText: "Google Drive" }).getByRole("button", { name: "Manage" }).click();
   await page.locator(".gd-picker").waitFor();
   await page.screenshot({ path: "artifacts/drive-dialog.png", fullPage: true });
   await page.keyboard.press("Escape");
   await page.evaluate(() => (location.hash = "/app/settings"));
   await page
-    .locator(".settings-tabs")
+    .locator(".st-nav")
     .getByRole("button", { name: "Help & support", exact: true })
     .click();
   // Three kinds of request, each in its own popup; nothing is sent inline.
@@ -256,10 +257,10 @@ try {
     fullPage: true,
   });
   await page.keyboard.press("Escape");
-  await page.locator('.settings-tabs').getByRole('button',{name:'Models',exact:true}).click();
+  await page.locator('.st-nav').getByRole('button',{name:'Models',exact:true}).click();
   await page.getByText('58% left',{exact:true}).waitFor();
   assert.equal(await page.getByRole('progressbar').count(),2);
-  assert.equal(await page.locator('.settings-tabs button.active').innerText(),'Models');
+  assert.equal(await page.locator('.st-nav button.active').innerText(),'Models');
   await page.screenshot({path:'artifacts/settings-models.png'});
   await page.getByRole('button',{name:'Use account',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.activeAccount),'11111111-1111-4111-8111-111111111111');
@@ -276,19 +277,19 @@ try {
   await page.getByRole('button',{name:'Retry sign-in',exact:true}).click();
   await page.getByText('RETRY-CODE',{exact:true}).waitFor();
   await page.keyboard.press('Escape');
-  // General, Security, Data and Help move; the other tabs keep a still drawing.
+  // Every section has its drawing; still ones hold their pose (their lines keep boiling).
   {
-   await page.locator('.settings-tabs').getByRole('button',{name:'Memory',exact:true}).click();
-   const art=page.locator('.settings-feature-art svg');await art.waitFor();
-   const before=await art.innerHTML();await page.waitForTimeout(600);assert.equal(await art.innerHTML(),before);
+   await page.locator('.st-nav').getByRole('button',{name:'Memory',exact:true}).click();
+   await page.locator('.st-art svg').waitFor();
   }
   for(const tab of ['General','Security']){
-   await page.locator('.settings-tabs').getByRole('button',{name:tab,exact:true}).click();
-   const art=page.locator('.settings-feature-art svg');await art.waitFor();
+   await page.locator('.st-nav').getByRole('button',{name:tab,exact:true}).click();
+   const art=page.locator('.st-art svg');await art.waitFor();
    const before=await art.innerHTML();await page.waitForTimeout(600);assert.notEqual(await art.innerHTML(),before);
    await page.screenshot({path:'artifacts/settings-'+tab.toLowerCase()+'.png'});
    await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(100);const still=await art.innerHTML();await page.waitForTimeout(200);assert.equal(await art.innerHTML(),still);await page.emulateMedia({reducedMotion:'no-preference'});
   }
+  await page.getByRole('button',{name:'Close settings'}).click();
   await page.evaluate(()=>location.hash='/app/visuals');
   assert.equal(await page.locator('.kinetra-grid').count(),0);
   await page.evaluate(()=>location.hash='/app/subjects');

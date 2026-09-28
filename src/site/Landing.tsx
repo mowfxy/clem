@@ -3,7 +3,7 @@ import {SiteFooter,SiteHeader} from './SiteHeader';
 import {Icon,Logo} from '../Icons';
 import {Illustration} from '../Illustrations';
 import type {Scene} from '../vectorFilm';
-import {ProductMock} from './ProductMock';
+import {HeroPage} from './HeroPage';
 import {Reveal} from './Reveal';
 import {Faq,PayPalCard} from './sections';
 
@@ -59,7 +59,7 @@ export function Landing(){
           </div>
           <p className="sx-fine">Free to download · Free to use</p>
         </div>
-        <Reveal className="sx-hero-art"><ProductMock/></Reveal>
+        <Reveal className="sx-hero-art"><HeroPage/></Reveal>
       </section>
 
       <section className="sx-section" id="features">

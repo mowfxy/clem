@@ -1,0 +1,52 @@
+/* Mowr typography.
+   Two families, two weights each (Regular 400, Bold 700), one size scale.
+   Serif is Mowr's voice and what you read: one headline per page, answers, documents, study cards.
+   Sans is names and interface: every sub-heading, title of a thing, label, control and caption.
+   Stylesheets name families only through --sans, --serif and --mono. */
+
+@font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'Mowafy Serif';src:url('/fonts/MowafySerif-Regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Mowafy Serif';src:url('/fonts/MowafySerif-Bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
+
+:root{
+  --sans:'Mowafy Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --serif:'Mowafy Serif',Georgia,'Times New Roman',serif;
+  --mono:'Cascadia Code','Cascadia Mono',ui-monospace,Consolas,monospace;
+  /* The scale. Every font size in the app is one of these. */
+  --t-display:48px;  /* serif: page headline, greeting */
+  --t-title:30px;    /* serif: dialog-sized headline */
+  --t-heading:20px;  /* sans bold: section and card titles */
+  --t-subhead:15px;  /* sans bold: row titles */
+  --t-read:16px;     /* serif: answers, documents */
+  --t-body:14px;     /* sans: interface text */
+  --t-small:13px;    /* sans: captions, secondary text */
+  --t-label:11px;    /* sans bold, capitals: eyebrows and group labels */
+  --track-display:-.025em;
+  --track-title:-.02em;
+  --track-label:.08em;
+  font-family:var(--sans);
+  font-weight:400;
+  /* Both families ship Regular and Bold only: never fake a weight. Italic may slant the upright. */
+  font-synthesis:style;
+  font-kerning:normal;
+  font-optical-sizing:auto;
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+body{font-family:var(--sans)}
+button,input,textarea,select,option{font-family:var(--sans)}
+b,strong{font-weight:700}
+code,kbd,pre,samp{font-family:var(--mono)}
+
+/* Voice: the one serif headline a screen gets, and Mowr talking in an empty or finished state. */
+.voice,
+.empty-state h2,.upload-empty h2,.vp-empty h2,.sh-done h2,.contact-sent h3,.adm-empty h3,
+.new-chat-content .greeting-row h1{font-family:var(--serif);font-weight:400;letter-spacing:var(--track-display)}
+
+/* Numbers that are read as values line up. */
+.tabular,.adm-stat strong,.study-numbers strong,.sp-stat strong{font-variant-numeric:tabular-nums}
+
+/* Eyebrows: the small capital labels above a title or group. */
+.eyebrow,.type-label{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase}

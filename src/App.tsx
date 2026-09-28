@@ -14,9 +14,11 @@ import {studyRequest,studyInstructions} from '../core/study-request';
 import {MemoryConversation} from "./MemoryConversation";
 import {LocalAutomations,nextAutomation,firstAutomationRun} from "./LocalAutomations";
 import {SettingsPopup} from "./SettingsPopup";
-import {SettingsNav,SettingsHead,SettingsCard,SettingRow,Switch,Keys} from "./settings/SettingsParts";
+import {SettingsCard,SettingRow,Switch,Keys} from "./settings/SettingsParts";
+import {SettingsWindow} from "./settings/SettingsWindow";
+import {ProfileSettings} from "./settings/ProfileSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
-import {ProfileAvatar, ProfilePicker} from "./ProfileAvatar";
+import {ProfileAvatar} from "./ProfileAvatar";
 import "./settings.css";
 import {localSourceContext} from "./source-context";
 import {essentials,applyEssentials} from "./essential-state";
@@ -272,6 +274,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const stopAll = () => { for (const c of controllers.current.values()) c.abort(); };
   const [apiReady, setApiReady] = useState(false);
   const [settingsTab, setSettingsTab] = useState("General");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // Which project, subject or chat Settings → Linked folders / Telegram acts on: always one the person chose.
   const [settingsScope, setSettingsScope] = useState("");
   const [accountRevision,setAccountRevision]=useState(0);
@@ -1238,10 +1241,19 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   const openSettings = (tab = "General") => {
     setSettingsTab(tab);
-    navigate("/app/settings");
+    setSettingsOpen(true);
+    setSidebar(false);
   };
-  // Connectors moved into Settings; older links still land there.
-  useEffect(()=>{if(route==="/app/connectors")openSettings("Connectors");},[route]);
+  // Settings is a window over the workspace, not a page. Links to the old settings, account and connectors
+  // pages open it over the page you were on.
+  const lastRoute=useRef("/app");
+  useEffect(()=>{
+    const tab=route==="/app/settings"?"General":route==="/app/account"?"Profile":route==="/app/connectors"?"Connectors":"";
+    if(!tab){lastRoute.current=route;return;}
+    history.replaceState(null,"",location.pathname+location.search+"#"+lastRoute.current);
+    setRoute(lastRoute.current);
+    openSettings(tab);
+  },[route]);
   const signals=useWorkspaceSignals(!!desktop&&ready&&!!session.user,
     announcement=>notify({kind:announcement.tone==='warning'?'warning':announcement.tone==='success'?'success':'announcement',title:announcement.title,detail:announcement.body,sticky:true,action:announcement.link?{label:'Learn more',run:()=>window.open(announcement.link!,'_blank','noopener')}:undefined}),
     reply=>notify({kind:'support',title:'Mowr support replied',detail:reply.subject,sticky:true,action:{label:'Read reply',run:()=>openSettings('Help & support')}}));
@@ -1404,9 +1416,9 @@ In this subject the learner keeps missing these questions in review; connect to 
     const onKey=(e:KeyboardEvent)=>{
       if(!(e.ctrlKey||e.metaKey)||e.altKey||!route.startsWith('/app'))return;
       const key=e.key.toLowerCase();
-      if(key==='k'){e.preventDefault();setPalette(open=>!open);}
-      else if(key==='f'&&e.shiftKey){e.preventDefault();setPalette(false);setEverything(q=>q===null?'':null);}
-      else if(key==='n'&&!e.shiftKey){e.preventDefault();newChat();}
+      if(key==='k'){e.preventDefault();setSettingsOpen(false);setPalette(open=>!open);}
+      else if(key==='f'&&e.shiftKey){e.preventDefault();setPalette(false);setSettingsOpen(false);setEverything(q=>q===null?'':null);}
+      else if(key==='n'&&!e.shiftKey){e.preventDefault();setSettingsOpen(false);newChat();}
       else if(key===','){e.preventDefault();openSettings();}
     };
     window.addEventListener('keydown',onKey);
@@ -1422,7 +1434,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     ...(desktop?[{id:'browse-folders',group:'Actions',label:'Browse folders on this PC',icon:'projects',keywords:'files local linked read change',run:()=>setFolderView({})}]:[]),
     {id:'open-pack',group:'Actions',label:'Open a study pack',icon:'import',keywords:'import share mowrpack flashcards',run:()=>archiveUploader.current?.click()},
     ...nav.filter(([icon])=>icon!=='new').map(([icon,label])=>({id:'go-'+icon,group:'Go to',label,icon,run:()=>navigate(`/app/${icon}`)})),
-    ...["General","Security","Models","Memory","Automations","Connectors","Linked folders","Telegram","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
+    ...["Profile","General","Security","Models","Memory","Automations","Connectors","Linked folders","Telegram","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
     ...state.spaces.map(space=>({id:'space-'+space.id,group:space.kind==='project'?'Projects':'Subjects',label:space.name,icon:space.kind==='project'?'projects':'subjects',keywords:space.description,run:()=>newChat(space.id)})),
     ...[...state.chats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
   ];
@@ -1639,13 +1651,62 @@ In this subject the learner keeps missing these questions in review; connect to 
               )}
             </div>
 
+            {settingsOpen&&<SettingsWindow tab={settingsTab} onTab={setSettingsTab} onClose={()=>setSettingsOpen(false)} unread={signals.unread} me={{name:state.name,email:session.user?.email,avatar:state.avatar}}>
+                    {settingsTab === "Profile" ? (
+                      <ProfileSettings name={state.name} email={session.user?.email} avatar={state.avatar} storage={sizeLabel(bytes)} onName={name=>patch(s=>({...s,name}))} onAvatar={avatar=>patch(s=>({...s,avatar}))} onSecurity={()=>setSettingsTab("Security")} onFiles={()=>{setSettingsOpen(false);navigate("/app/files");}} onExport={exportWorkspace}/>
+                    ) : settingsTab === "General" ? (<>
+                      <SettingsCard title="Appearance">
+                        <SettingRow title="Quiet mode" description="Keep drawings still and reduce motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
+                      </SettingsCard>
+                      <BackgroundSettings/>
+                      <SettingsCard title="Shortcuts">
+                        <SettingRow title="Search everything"><Keys keys={["Ctrl","K"]}/></SettingRow>
+                        <SettingRow title="New chat"><Keys keys={["Ctrl","N"]}/></SettingRow>
+                        <SettingRow title="Open settings"><Keys keys={["Ctrl",","]}/></SettingRow>
+                        <SettingRow title="Capture screen" description="Works from any app while Mowr is open."><Keys keys={["Ctrl","Shift","Space"]}/></SettingRow>
+                      </SettingsCard>
+                    </>) : settingsTab === "Security" ? (
+                      <SettingsCard><SecuritySettings/></SettingsCard>
+                    ) : settingsTab === "Models" ? (
+                      <ModelsSettings key={accountRevision} locked={anyRunning} liveData={accountData} models={models} onConnect={()=>setModal("connect-model")} onRefresh={refreshModels}/>
+                    ) : settingsTab === "Connectors" ? (
+                      <SettingsCard note="Sources you add to a project or subject stay in that space.">
+                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Docs, Slides and videos, read live. Nothing is copied to this PC."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
+                      </SettingsCard>
+                    ) : settingsTab === "Linked folders" ? (
+                      <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes(false))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
+                    ) : settingsTab === "Telegram" ? (
+                      <SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect">{(({value,picker})=><>{picker}<TelegramPanel scope={value} labelFor={scope=>scope==='user:me'?'your whole workspace':scopeLabel(scope)}/></>)(settingsScopes(true))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>
+                    ) : settingsTab === "Memory" ? (
+                      <SettingsCard note="Projects and subjects keep their own memory.">
+                        {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
+                      </SettingsCard>
+                    ) : settingsTab === "Automations" ? (
+                      <SettingsCard note="New routines start in a chat. They run while Mowr is open.">
+                        {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
+                      </SettingsCard>
+                    ) : settingsTab === "Help & support" ? (
+                      <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary support-paypal"><PayPalMark size={16}/>Support with PayPal</SupportLink></SettingRow></SettingsCard></>
+                    ) : (<>
+                      <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
+                        <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
+                        <SettingRow title="Conversations" description={`${state.chats.length} saved on this PC`}><button className="secondary danger" disabled={!state.chats.length||anyRunning} onClick={async()=>{
+                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${state.chats.length} conversations are removed from this PC. Saved files, skills and memory are kept. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
+                          try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
+                        }}>Delete all chats</button></SettingRow>
+                      </SettingsCard>
+                      <SettingsCard>
+                        <SettingRow title="Privacy policy" description="How Mowr handles your information."><a className="secondary" href="https://mowrai.com/#/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
+                      </SettingsCard>
+                    </>)}
+            </SettingsWindow>}
             {palette&&<CommandPalette commands={commands} onClose={()=>setPalette(false)}/>}
             {!handoffs.length&&<NoticeStack notices={accountNotices} onDismiss={id=>setAccountNotices(items=>items.filter(n=>n.id!==id))}/>}
             {handoffs[0]&&<AccountHandoff key={handoffs[0].key} task={handoffs[0].task} models={models} onChoose={(model,reasoning)=>handoffs[0].resolve({model,reasoning})} onStay={()=>handoffs[0].resolve(null)}/>}
             <div className="sidebar-bottom">
               <button
                 className="account-button"
-                onClick={() => navigate("/app/account")}
+                onClick={() => openSettings("Profile")}
               >
                 <span className="avatar"><ProfileAvatar value={state.avatar} size={30}/></span>
                 <span>
@@ -2102,92 +2163,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                     </span>
                   </button>
                 )}
-              </div>
-            ) : route === "/app/settings" ? (
-              <div className="page settings-page v2">
-                <div className="settings-layout">
-                  <aside className="settings-side"><h1>Settings</h1><SettingsNav active={settingsTab} onSelect={setSettingsTab}/></aside>
-                  <div className="settings-content" key={settingsTab}>
-                    <SettingsHead name={settingsTab}/>
-                    {settingsTab === "General" ? (<>
-                      <SettingsCard title="Profile">
-                        <div className="settings-profile"><span className="avatar large"><ProfileAvatar value={state.avatar} size={56}/></span><div><strong>{state.name}</strong><span>{session.user?.email || "Signed in on this PC"}</span></div>
-                          <SettingsPopup bare title="Profile" action="Edit profile"><div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h3>{state.name}</h3><p className="fine">Choose a picture.</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/><label className="field">What should we call you?<input value={state.name} maxLength={50} onChange={(e) => patch((s) => ({ ...s, name: e.target.value }))}/></label></SettingsPopup>
-                        </div>
-                      </SettingsCard>
-                      <SettingsCard title="Appearance">
-                        <SettingRow title="Quiet mode" description="Keep drawings still and reduce motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
-                      </SettingsCard>
-                      <BackgroundSettings/>
-                      <SettingsCard title="Shortcuts">
-                        <SettingRow title="Search everything"><Keys keys={["Ctrl","K"]}/></SettingRow>
-                        <SettingRow title="New chat"><Keys keys={["Ctrl","N"]}/></SettingRow>
-                        <SettingRow title="Open settings"><Keys keys={["Ctrl",","]}/></SettingRow>
-                        <SettingRow title="Capture screen" description="Works from any app while Mowr is open."><Keys keys={["Ctrl","Shift","Space"]}/></SettingRow>
-                      </SettingsCard>
-                    </>) : settingsTab === "Security" ? (
-                      <SettingsCard><SecuritySettings/></SettingsCard>
-                    ) : settingsTab === "Models" ? (
-                      <ModelsSettings key={accountRevision} locked={anyRunning} liveData={accountData} models={models} onConnect={()=>setModal("connect-model")} onRefresh={refreshModels}/>
-                    ) : settingsTab === "Connectors" ? (
-                      <SettingsCard note="Sources you add to a project or subject stay in that space.">
-                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Docs, Slides and videos, read live. Nothing is copied to this PC."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
-                      </SettingsCard>
-                    ) : settingsTab === "Linked folders" ? (
-                      <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes(false))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
-                    ) : settingsTab === "Telegram" ? (
-                      <SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect">{(({value,picker})=><>{picker}<TelegramPanel scope={value} labelFor={scope=>scope==='user:me'?'your whole workspace':scopeLabel(scope)}/></>)(settingsScopes(true))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>
-                    ) : settingsTab === "Memory" ? (
-                      <SettingsCard note="Projects and subjects keep their own memory.">
-                        {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
-                      </SettingsCard>
-                    ) : settingsTab === "Automations" ? (
-                      <SettingsCard note="New routines start in a chat. They run while Mowr is open.">
-                        {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
-                      </SettingsCard>
-                    ) : settingsTab === "Help & support" ? (
-                      <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary support-paypal"><PayPalMark size={16}/>Support with PayPal</SupportLink></SettingRow></SettingsCard></>
-                    ) : (<>
-                      <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
-                        <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
-                        <SettingRow title="Conversations" description={`${state.chats.length} saved on this PC`}><button className="secondary danger" disabled={!state.chats.length||anyRunning} onClick={async()=>{
-                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${state.chats.length} conversations are removed from this PC. Saved files, skills and memory are kept. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
-                          try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
-                        }}>Delete all chats</button></SettingRow>
-                      </SettingsCard>
-                      <SettingsCard>
-                        <SettingRow title="Privacy policy" description="How Mowr handles your information."><a className="secondary" href="https://mowrai.com/#/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
-                      </SettingsCard>
-                    </>)}
-                  </div>
-                </div>
-              </div>
-            ) : route === "/app/account" ? (
-              <div className="page account-page">
-                <span className="eyebrow">Your corner of Mowr</span>
-                <h1>Your account.</h1>
-                <div className="profile-preview"><span className="avatar large"><ProfileAvatar value={state.avatar} size={72}/></span><div><h2>{state.name}</h2><p className="fine">{session.user?.email}</p></div></div><ProfilePicker value={state.avatar} onChange={avatar=>patch(s=>({...s,avatar}))}/><div className="setting-row"><div><h3>Account security</h3><p>Password, email, Google sign-in, and two-factor authentication.</p></div><button onClick={()=>openSettings("Security")}>Manage security</button></div>
-                <div className="setting-row">
-                  <div>
-                    <h3>Workspace storage</h3>
-                    <p>
-                      {sizeLabel(bytes)} used ·{" "}
-                      Saved on this device
-                    </p>
-                  </div>
-                  <button onClick={() => navigate("/app/files")}>
-                    Manage files <Icon name="arrow" size={18} />
-                  </button>
-                </div>
-                <div className="setting-row">
-                  <div>
-                    <h3>Export your work</h3>
-                    <p>
-                      Download conversations, skills, and workspace settings.
-                    </p>
-                  </div>
-                  <button onClick={exportWorkspace}>Export</button>
-                </div>
               </div>
             ) : (
               <div className="empty-state">
