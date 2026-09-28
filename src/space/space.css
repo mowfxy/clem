@@ -21,8 +21,7 @@
 .sp-instructions svg{width:15px;height:15px;color:var(--sp-muted);transition:color .16s}
 .sp-instructions.set svg,.sp-instructions:hover svg{color:var(--sp-ink)}
 .space-page .sp-menu-trigger,.space-page .sp-actions .sp-menu>.icon-button{display:grid;place-items:center;height:34px;min-width:34px;padding:0 9px;border-radius:9px;border:1px solid var(--sp-line-2);background:none}
-.sp-art{flex:none;width:132px;height:108px;margin:0 8px -4px 0}
-.sp-art svg{display:block;width:100%;height:100%;overflow:hidden}
+.sp-art{flex:none;display:grid;place-items:center;width:132px;height:108px;margin:0 8px -4px 0}
 
 .sp-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin:0 0 18px;border:1px solid var(--sp-line);border-radius:16px;background:var(--sp-line);overflow:hidden}
 .space-page .sp-stat{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:16px 18px;border:0;border-radius:0;background:var(--sp-card);text-align:left;color:inherit;font:inherit;min-width:0}
