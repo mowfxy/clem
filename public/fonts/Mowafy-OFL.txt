@@ -1,6 +1,6 @@
-Mowafy Serif: Copyright 2011 The Lora Project Authors (https://github.com/cyrealtype/Lora-Cyrillic), with Reserved Font Name "Lora". Modified 2026: reshaped glyph by glyph (x-height, t, s, k, a, n, c, e, y tail, dots, spacing), weights instanced and extended, outlines smoothed, renamed Mowafy.
+Mowafy Serif: Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic). Modified 2026: instanced from Noto Serif at a narrower width, refitted to a larger x-height and new proportions, weights set by stem thickness, hairlines trimmed, spacing adjusted, outlines softened, renamed Mowafy.
 
-Mowafy Sans: Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font). Modified 2026: weights instanced, outlines smoothed with a slight ink spread, renamed Mowafy.
+Mowafy Sans: Copyright 2023 The Schibsted Grotesk Project Authors (https://github.com/schibsted/schibsted-grotesk). Modified 2026: instanced from Schibsted Grotesk, refitted to new proportions, weights set by stem thickness, spacing adjusted, outlines softened, renamed Mowafy.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
