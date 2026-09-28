@@ -1,24 +1,18 @@
-import {useId,useMemo,useRef,useState} from 'react';
-import type {Chat,StoredFile,StudySet} from '../../core/types';
+import {useEffect,useId,useMemo,useRef,useState} from 'react';
+import './activity-graph.css';
 
 const DAY=86_400_000, DAYS=30;
-const W=240, H=56, PAD_X=8, PAD_TOP=8, PAD_BOTTOM=8, GRID=8;
+const PAD_X=8, PAD_TOP=8, PAD_BOTTOM=8, GRID=8;
 
 /** The grid's dots, each with a start offset: a slow wave that sweeps left to right, with a little
  * scatter so it shimmers instead of marching. Negative offsets start it mid-cycle on first paint. */
-const DOTS:[number,number,number][]=[];
-for(let y=3;y<H;y+=GRID)for(let x=PAD_X%GRID+1;x<W;x+=GRID){
-  const scatter=Math.abs(Math.sin(x*12.9898+y*78.233)*43758.5453)%1;
-  DOTS.push([x,y,-(7-(x/W)*4.2-(y/H)*1.1-scatter*1.2)]);
-}
-
-/** Every moment something happened in a space: chats, file edits, study sets, quiz attempts and card reviews. */
-export function activityTimes(chats:Chat[],files:StoredFile[],sets:StudySet[]):number[]{
-  return [
-    ...chats.map(c=>c.updated),
-    ...files.flatMap(f=>[f.created,...(f.updated?[f.updated]:[]),...(f.versions||[]).map(v=>v.at)]),
-    ...sets.flatMap(s=>[s.created,...s.attempts.map(a=>a.at),...(s.cards||[]).flatMap(c=>c?.reps?[c.last]:[])]),
-  ].filter(t=>Number.isFinite(t)&&t>0);
+function gridDots(W:number,H:number){
+  const dots:[number,number,number][]=[];
+  for(let y=3;y<H;y+=GRID)for(let x=PAD_X%GRID+1;x<W;x+=GRID){
+    const scatter=Math.abs(Math.sin(x*12.9898+y*78.233)*43758.5453)%1;
+    dots.push([x,y,-(7-(x/W)*4.2-(y/H)*1.1-scatter*1.2)]);
+  }
+  return dots;
 }
 
 /** Counts per day for the last DAYS days, oldest first, ending today. */
@@ -34,33 +28,49 @@ export function dailyActivity(times:number[],now:number):number[]{
   return out;
 }
 
-/** A thin line over a dotted grid, ending in a glowing dot. Hovering scrubs along it; there is no text on hover. */
-export function ActivityGraph({chats,files,sets,tone}:{chats:Chat[];files:StoredFile[];sets:StudySet[];tone:'green'|'white'}){
+/** A thin line over a dotted grid, ending in a glowing dot, for the last 30 days of `times`. It fills its
+ * container's width (down to 240px); hovering scrubs along it and reports the day under the pointer. */
+export function ActivityGraph({times,tone,label='Activity graph',height=56,onScrub}:{times:number[];tone:'green'|'white';label?:string;height?:number;onScrub?:(day:{at:number;count:number}|null)=>void}){
   const id=useId().replace(/:/g,'');
+  const box=useRef<HTMLElement>(null);
   const svg=useRef<SVGSVGElement>(null);
+  const [W,setW]=useState(240);
+  const H=height;
+  useEffect(()=>{
+    const el=box.current;if(!el||typeof ResizeObserver==='undefined')return;
+    const ro=new ResizeObserver(([e])=>setW(Math.max(240,Math.round(e.contentRect.width))));
+    ro.observe(el);return()=>ro.disconnect();
+  },[]);
   const [hover,setHover]=useState<number|null>(null);
+  const raw=useMemo(()=>dailyActivity(times,Date.now()),[times]);
+  const dots=useMemo(()=>gridDots(W,H),[W,H]);
   const points=useMemo(()=>{
-    const raw=dailyActivity(activityTimes(chats,files,sets),Date.now());
     // A light rolling blend so the line reads as a trend rather than a row of spikes.
     const days=raw.map((_,i)=>[-2,-1,0,1,2].reduce((sum,d)=>sum+(raw[i+d]??0)*[1,2,4,2,1][d+2],0)/10);
     // Square root keeps one busy day from flattening the rest of the month.
     const top=Math.sqrt(Math.max(...days,1));
     const span=W-PAD_X*2, rise=H-PAD_TOP-PAD_BOTTOM;
     return days.map((n,i)=>({x:PAD_X+span*i/(DAYS-1),y:H-PAD_BOTTOM-rise*Math.sqrt(n)/top}));
-  },[chats,files,sets]);
+  },[raw,W,H]);
   const line=smooth(points);
   const area=`${line}L${points[points.length-1].x} ${H}L${points[0].x} ${H}Z`;
   const end=points[points.length-1];
   const curve=useRef<SVGPathElement>(null);
   const at=hover===null?null:pointAt(curve.current,hover);
   const move=(e:React.PointerEvent)=>{
-    const box=svg.current?.getBoundingClientRect();if(!box)return;
-    setHover(Math.min(W-PAD_X,Math.max(PAD_X,(e.clientX-box.left)/box.width*W)));
+    const r=svg.current?.getBoundingClientRect();if(!r)return;
+    const x=Math.min(W-PAD_X,Math.max(PAD_X,(e.clientX-r.left)/r.width*W));
+    setHover(x);
+    if(onScrub){
+      const i=Math.round((x-PAD_X)/(W-PAD_X*2)*(DAYS-1));
+      const today=new Date();today.setHours(0,0,0,0);
+      onScrub({at:today.getTime()-(DAYS-1-i)*DAY,count:raw[i]});
+    }
   };
 
-  return <figure className={`sp-activity tone-${tone} ${at?'scrubbing':''}`} onPointerMove={move} onPointerLeave={()=>setHover(null)}>
-    <figcaption>Activity graph</figcaption>
-    <svg ref={svg} viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label="Activity graph for the last 30 days">
+  return <figure ref={box} className={`activity-graph tone-${tone} ${at?'scrubbing':''}`} onPointerMove={move} onPointerLeave={()=>{setHover(null);onScrub?.(null);}}>
+    <figcaption>{label}</figcaption>
+    <svg ref={svg} viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={`${label} for the last 30 days`}>
       <defs>
         <pattern id={`grid-${id}`} width={GRID} height={GRID} patternUnits="userSpaceOnUse" x={PAD_X%GRID} y="2">
           <circle cx="1" cy="1" r=".7" className="dot"/>
@@ -77,7 +87,7 @@ export function ActivityGraph({chats,files,sets,tone}:{chats:Chat[];files:Stored
         <mask id={`edge-${id}`}><rect width={W} height={H} fill={`url(#feather-${id})`}/></mask>
         <mask id={`near-${id}`}><rect width={W} height={H} fill="#000"/>{at&&<circle cx={at.x} cy={H/2} r="46" fill={`url(#lens-${id})`}/>}</mask>
       </defs>
-      <g className="grid" mask={`url(#edge-${id})`}>{DOTS.map(([x,y,d],i)=><circle key={i} cx={x} cy={y} r=".7" className="dot" style={{animationDelay:`${d}s`}}/>)}</g>
+      <g className="grid" mask={`url(#edge-${id})`}>{dots.map(([x,y,d],i)=><circle key={i} cx={x} cy={y} r=".7" className="dot" style={{animationDelay:`${d}s`}}/>)}</g>
       <rect width={W} height={H} fill={`url(#grid-${id})`} className="grid-lit" mask={`url(#near-${id})`}/>
       <path d={area} fill={`url(#fill-${id})`} className="area"/>
       <path ref={curve} d={line} className="line" pathLength={1}/>

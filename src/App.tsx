@@ -16,6 +16,7 @@ import {LocalAutomations,nextAutomation,firstAutomationRun} from "./LocalAutomat
 import {SettingsPopup} from "./SettingsPopup";
 import {SettingsNav,SettingsHead,SettingsCard,SettingRow,Switch,Keys} from "./settings/SettingsParts";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
+import {UsageSettings} from "./settings/UsageSettings";
 import {ProfileAvatar, ProfilePicker} from "./ProfileAvatar";
 import "./settings.css";
 import {localSourceContext} from "./source-context";
@@ -1422,7 +1423,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     ...(desktop?[{id:'browse-folders',group:'Actions',label:'Browse folders on this PC',icon:'projects',keywords:'files local linked read change',run:()=>setFolderView({})}]:[]),
     {id:'open-pack',group:'Actions',label:'Open a study pack',icon:'import',keywords:'import share mowrpack flashcards',run:()=>archiveUploader.current?.click()},
     ...nav.filter(([icon])=>icon!=='new').map(([icon,label])=>({id:'go-'+icon,group:'Go to',label,icon,run:()=>navigate(`/app/${icon}`)})),
-    ...["General","Security","Models","Memory","Automations","Connectors","Linked folders","Telegram","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
+    ...["General","Security","Models","Memory","Automations","Connectors","Linked folders","Telegram","Usage","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
     ...state.spaces.map(space=>({id:'space-'+space.id,group:space.kind==='project'?'Projects':'Subjects',label:space.name,icon:space.kind==='project'?'projects':'subjects',keywords:space.description,run:()=>newChat(space.id)})),
     ...[...state.chats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
   ];
@@ -2145,6 +2146,8 @@ In this subject the learner keeps missing these questions in review; connect to 
                       <SettingsCard note="New routines start in a chat. They run while Mowr is open.">
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
+                    ) : settingsTab === "Usage" ? (
+                      <UsageSettings chats={state.chats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
                     ) : settingsTab === "Help & support" ? (
                       <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary support-paypal"><PayPalMark size={16}/>Support with PayPal</SupportLink></SettingRow></SettingsCard></>
                     ) : (<>
