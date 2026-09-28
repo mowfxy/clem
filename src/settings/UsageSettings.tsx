@@ -1,4 +1,4 @@
-import {useMemo,useState} from 'react';
+import {useMemo} from 'react';
 import {ActivityGraph} from './ActivityGraph';
 import {SettingsCard} from './SettingsParts';
 import type {Chat,Model,Space,StoredFile,StudySet,VisualRecord,Automation} from '../../core/types';
@@ -57,22 +57,21 @@ function Stat({value,label,detail}:{value:string;label:string;detail?:string}){
 export function UsageSettings(data:UsageData){
   const s=useMemo(()=>usageStats(data),[data.chats,data.spaces,data.files,data.studySets,data.visuals,data.automations,data.models]);
   const times=useMemo(()=>data.chats.map(c=>c.updated),[data.chats]);
-  const [day,setDay]=useState<{at:number;count:number}|null>(null);
   const novels=s.words+s.wordsBack>=90_000?(s.words+s.wordsBack)/90_000:0;
 
   return <>
     <section className="st-card-wrap"><div className="st-card usage-hero">
       <div className="usage-hero-head">
         <div>
-          <span className="st-eyebrow">{day?new Date(day.at).toLocaleDateString([], {weekday:'long',month:'short',day:'numeric'}):'Last 30 days'}</span>
-          <strong>{day?plural(day.count,'thread'):plural(s.recent,'thread')}</strong>
+          <span className="st-eyebrow">Last 30 days</span>
+          <strong>{plural(s.recent,'thread')}</strong>
         </div>
         <div className="usage-hero-side">
           <span><b>{s.streak}</b>day streak</span>
           <span><b>{s.activeDays}</b>active days</span>
         </div>
       </div>
-      <ActivityGraph times={times} label="Threads" height={104} onScrub={setDay}/>
+      <ActivityGraph times={times} label="Threads" unit="thread" height={104}/>
     </div></section>
 
     <SettingsCard title="Conversations" note={s.since?`Counted from ${new Date(s.since).toLocaleDateString([], {month:'long',day:'numeric',year:'numeric'})}, across the chats saved on this PC.`:undefined}>
