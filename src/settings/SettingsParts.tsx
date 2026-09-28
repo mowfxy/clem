@@ -34,14 +34,14 @@ export function SettingsNav({active,onSelect}:{active:string;onSelect:(name:stri
  </div>)}</nav>;
 }
 
-/** Each header drawing cropped to where it sits on the 480×390 stage, so every one is centred at the same size. */
-const crops:Partial<Record<Scene,string>>={folder:'79 82 318 265',hourglass:'91 45 360 300',house:'45 24 387 323',jar:'45 37 386 321',lifebuoy:'33 29 415 346',link:'92 100 295 246',plane:'217 89 293 244',plug:'-27 -37 537 447',profile:'-6 -58 499 416',safe:'57 60 363 302'};
+/** The new drawings share one centred frame; the header shows the middle of the 480×390 stage. */
+const crop='60 30 360 300';
 
 /** The illustrated header at the top of each settings tab. */
 export function SettingsHead({name}:{name:string}){
  const t=settingsTab(name);
  return <header className="settings-head" key={t.name}>
-  <Illustration scene={t.scene} ambient still={t.still} viewBox={crops[t.scene]} className="settings-feature-art"/>
+  <Illustration scene={t.scene} ambient still={t.still} viewBox={crop} className="settings-feature-art"/>
   <div><h2>{t.name}</h2><p>{t.line}</p></div>
  </header>;
 }

@@ -2,36 +2,11 @@ import {createContext,useCallback,useContext,useEffect,useId,useRef,useState,typ
 import type {Person} from './api';
 import type {Scene} from '../vectorFilm';
 import {Illustration} from '../Illustrations';
+import {Icon} from '../Icons';
 import {copyText} from '../clipboard';
 
-const paths:Record<string,string>={
-  overview:'M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-3H4zM14 7h6V4h-6z',
-  users:'M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19M10 10.5a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5M20 19v-1.4a3.3 3.3 0 0 0-2.4-3.2M15.5 4.2a3.25 3.25 0 0 1 0 6.1',
-  card:'M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5zM3 10h18M7 15h3',
-  inbox:'M3 13h5l1.5 2.5h5L16 13h5M5.5 5h13l2.5 8v5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-5z',
-  megaphone:'M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1M17 8.5a5 5 0 0 1 0 7',
-  shield:'M12 3 5 6v5.5c0 4.3 3 7.8 7 9.5 4-1.7 7-5.2 7-9.5V6zM9 12l2 2 4-4',
-  log:'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
-  search:'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14M20 20l-3.5-3.5',
-  close:'M6 6l12 12M18 6 6 18',
-  arrow:'M5 12h14M13 6l6 6-6 6',
-  refresh:'M20 11a8 8 0 0 0-14.7-4.3L4 8.5M4 4v4.5h4.5M4 13a8 8 0 0 0 14.7 4.3L20 15.5M20 20v-4.5h-4.5',
-  logout:'M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3',
-  send:'M4 12 20 4l-4 16-4-7zM12 13l8-9',
-  note:'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5',
-  download:'M12 4v11M7 10l5 5 5-5M5 20h14',
-  gift:'M4 11h16v9H4zM3 7h18v4H3zM12 7v13M12 7c-1.5-3-5-3.5-5-1.5S10 7 12 7c2 0 5 .5 5-1.5S13.5 4 12 7',
-  ban:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M5.6 5.6l12.8 12.8',
-  check:'M5 12.5 10 17 19 7',
-  chevron:'M7 10l5 5 5-5',
-  spark:'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6',
-  clock:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 7v5l3 2',
-  external:'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
-  copy:'M9 9h11v11H9zM5 15H4V4h11v1',
-};
-export function I({name,size=17}:{name:keyof typeof paths|string;size?:number}){
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]||''}/></svg>;
-}
+/** The admin portal draws from the app's own icon set, so both read as one family. */
+export function I({name,size=17}:{name:string;size?:number}){return <Icon name={name} size={size}/>;}
 
 /** Mowr is free, so a person's standing is about access and progress, never billing. */
 export function PersonStatus({person}:{person:Pick<Person,'plan'|'suspended'|'setup_step'>}){

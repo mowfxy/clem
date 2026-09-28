@@ -1,4 +1,4 @@
-/** File-type marks in the style Drive users know: a coloured tile with a clear white glyph for each kind. */
+/** File-type marks: a tile tinted with the colour Drive users know for each kind, with the kind drawn in the app's line. */
 export type DriveKind = "folder" | "gdoc" | "gsheet" | "gslides" | "gform" | "gdraw" | "pdf" | "word" | "excel" | "powerpoint" | "image" | "video" | "audio" | "archive" | "code" | "text" | "file";
 
 export function driveKindOf(mime: string, name = ""): DriveKind {
@@ -28,22 +28,25 @@ const TILE: Record<DriveKind, string> = {
   audio: "#8e44c9", archive: "#6d6a63", code: "#3b7c8c", text: "#6f7680", file: "#6f7680",
 };
 
-const W = "#fff";
+// Drawn like the app's icons: an ivory line with round ends on a tile tinted with the kind's colour.
+const W = "#f3f2ec";
+const line = { fill: "none", stroke: W, strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+const soft = { fill: W, fillOpacity: 0.28 };
 function Glyph({ kind }: { kind: DriveKind }) {
   switch (kind) {
-    case "folder": return <path d="M4.5 7.2c0-.9.7-1.6 1.6-1.6h3.6l1.5 1.6h6.7c.9 0 1.6.7 1.6 1.6v7.1c0 .9-.7 1.6-1.6 1.6H6.1c-.9 0-1.6-.7-1.6-1.6z" fill={W} />;
-    case "gdoc": case "word": case "text": return <g fill={W}><rect x="7" y="7" width="10" height="1.7" rx=".6" /><rect x="7" y="10.3" width="10" height="1.7" rx=".6" /><rect x="7" y="13.6" width="6.5" height="1.7" rx=".6" /></g>;
-    case "gsheet": case "excel": return <g fill="none" stroke={W} strokeWidth="1.6"><rect x="6.5" y="6.5" width="11" height="11" rx="1.2" /><path d="M6.5 10.2h11M6.5 13.8h11M10.5 6.5v11" /></g>;
-    case "gslides": case "powerpoint": return <g><rect x="6" y="7.4" width="12" height="9.2" rx="1.3" fill="none" stroke={W} strokeWidth="1.6" /><rect x="8.6" y="10" width="6.8" height="4" rx=".6" fill={W} /></g>;
-    case "gform": return <g fill={W}><circle cx="8.4" cy="8.6" r="1.1" /><circle cx="8.4" cy="12" r="1.1" /><circle cx="8.4" cy="15.4" r="1.1" /><rect x="10.6" y="7.9" width="6" height="1.5" rx=".6" /><rect x="10.6" y="11.3" width="6" height="1.5" rx=".6" /><rect x="10.6" y="14.7" width="6" height="1.5" rx=".6" /></g>;
-    case "gdraw": return <path d="M7 16.5l1-3.4 6.8-6.8a1.7 1.7 0 012.4 2.4l-6.8 6.8z" fill={W} />;
-    case "pdf": return <text x="12" y="14.8" textAnchor="middle" fontFamily="'Mowafy Sans',Arial,sans-serif" fontWeight="800" fontSize="7.4" fill={W} letterSpacing=".2">PDF</text>;
-    case "image": return <g><rect x="6" y="6.6" width="12" height="10.8" rx="1.6" fill="none" stroke={W} strokeWidth="1.6" /><circle cx="9.6" cy="10" r="1.3" fill={W} /><path d="M6.8 16.2l3.6-3.6 2.3 2.2 1.9-1.9 3 3.3z" fill={W} /></g>;
-    case "video": return <path d="M9.4 7.6v8.8l7.2-4.4z" fill={W} />;
-    case "audio": return <path d="M14.8 6.2v7.6a2.3 2.3 0 11-1.6-2.2V8.3l-4 1v5.9a2.3 2.3 0 11-1.6-2.2V8.1z" fill={W} />;
-    case "archive": return <g fill={W}><rect x="11" y="5.5" width="2" height="1.6" /><rect x="11" y="8.3" width="2" height="1.6" /><rect x="11" y="11.1" width="2" height="1.6" /><rect x="10.3" y="13.6" width="3.4" height="4" rx=".8" /></g>;
-    case "code": return <path d="M9.6 8.3L6.4 12l3.2 3.7M14.4 8.3l3.2 3.7-3.2 3.7" fill="none" stroke={W} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />;
-    default: return <path d="M8 5.8h5.4L17 9.4v8.8H8z" fill="none" stroke={W} strokeWidth="1.6" strokeLinejoin="round" />;
+    case "folder": return <g {...line}><path d="M5 8.5a1.5 1.5 0 0 1 1.5-1.5h3l1.5 1.5h6.5A1.5 1.5 0 0 1 19 10v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 16Z" {...soft} /><path d="M5 11h14" /></g>;
+    case "gdoc": case "word": case "text": return <g {...line}><path d="M7.5 5.5h6l3 3v10h-9Z" {...soft} /><path d="M9.5 12h5M9.5 15h3.5" /></g>;
+    case "gsheet": case "excel": return <g {...line}><rect x="6" y="6.5" width="12" height="11" rx="1.5" {...soft} /><path d="M6 10.5h12M6 14h12M10.5 6.5v11" /></g>;
+    case "gslides": case "powerpoint": return <g {...line}><rect x="5.5" y="6.5" width="13" height="9" rx="1.5" {...soft} /><path d="M12 15.5v3M9.5 18.5h5" /></g>;
+    case "gform": return <g {...line}><circle cx="8.5" cy="8.5" r="1.2" {...soft} /><circle cx="8.5" cy="12" r="1.2" {...soft} /><circle cx="8.5" cy="15.5" r="1.2" {...soft} /><path d="M11.5 8.5h5M11.5 12h5M11.5 15.5h3.5" /></g>;
+    case "gdraw": return <g {...line}><path d="M7 17l.8-3.2 7-7a1.6 1.6 0 0 1 2.4 2.4l-7 7Z" {...soft} /><path d="M13.5 8l2.5 2.5" /></g>;
+    case "pdf": return <g><path d="M7.5 5.5h6l3 3v10h-9Z" {...line} {...soft} /><text x="12" y="15.6" textAnchor="middle" fontFamily="'Mowafy Sans',Arial,sans-serif" fontWeight="800" fontSize="5" fill={W}>PDF</text></g>;
+    case "image": return <g {...line}><rect x="5.5" y="6.5" width="13" height="11" rx="2" /><circle cx="9.5" cy="10" r="1.3" {...soft} /><path d="M6 16.5l3.8-3.5 2.4 2 2.2-2 3.6 3.5" /></g>;
+    case "video": return <g {...line}><circle cx="12" cy="12" r="6.5" /><path d="M10.5 9.5l4 2.5-4 2.5Z" {...soft} /></g>;
+    case "audio": return <g {...line}><path d="M10 16V7.5l7-1.5V14" /><circle cx="8.3" cy="16" r="1.8" {...soft} /><circle cx="15.3" cy="14" r="1.8" {...soft} /></g>;
+    case "archive": return <g {...line}><rect x="6.5" y="5.5" width="11" height="13" rx="1.5" {...soft} /><path d="M12 5.5v2M12 9.5v1.5M11 13h2v2.5h-2Z" /></g>;
+    case "code": return <g {...line}><path d="M9.5 8.5L6 12l3.5 3.5M14.5 8.5L18 12l-3.5 3.5" /></g>;
+    default: return <g {...line}><path d="M7.5 5.5h6l3 3v10h-9Z" {...soft} /><path d="M13.5 5.5v3h3" /></g>;
   }
 }
 
@@ -53,9 +56,8 @@ const LETTER: Partial<Record<DriveKind, string>> = { word: "W", excel: "X", powe
 export function DriveIcon({ mime, name = "", size = 28 }: { mime: string; name?: string; size?: number }) {
   const kind = driveKindOf(mime, name), letter = LETTER[kind];
   return <svg className={"gd-icon gd-" + kind} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill={TILE[kind]} />
-    <rect x="1.5" y="1.5" width="21" height="10.5" rx="6" fill="#fff" opacity=".09" />
-    {letter ? <text x="12" y="16.4" textAnchor="middle" fontFamily="'Mowafy Sans',Arial,sans-serif" fontWeight="800" fontSize="11.5" fill={W}>{letter}</text> : <Glyph kind={kind} />}
+    <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill={TILE[kind]} fillOpacity=".24" stroke={TILE[kind]} strokeOpacity=".55" strokeWidth="1" />
+    {letter ? <text x="12" y="16.2" textAnchor="middle" fontFamily="'Mowafy Sans',Arial,sans-serif" fontWeight="800" fontSize="11" fill={W}>{letter}</text> : <Glyph kind={kind} />}
   </svg>;
 }
 
