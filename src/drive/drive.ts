@@ -16,7 +16,6 @@ const set = (next: State) => { if (next.connected === state.connected && next.er
 const subscribe = (l: () => void) => { listeners.add(l); return () => listeners.delete(l); };
 /** `connected` is null until the first check finishes, so nothing flashes a "Connect" screen in the meantime. */
 export const useDrive = () => useSyncExternalStore(subscribe, () => state);
-export const driveConnected = () => state.connected;
 
 let checking: Promise<void> | null = null;
 export function refreshDrive(force = false) {

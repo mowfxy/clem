@@ -334,7 +334,7 @@ export const mowrSkills: MowrSkill[] = [
 
 /** Always sent: one line per feature, so a model knows what exists and never tells the person it “can't” do these. */
 export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them instead of describing workarounds):
-- Commands the person can type: /visual /pdf /research /explain /solve /summarize /notes /videos /slides /flashcards /quiz /routine /remember /skill. Suggest one when it fits.
+- Commands, typed anywhere in a message: /visual /pdf /research /explain /solve /summarize /notes /slides /compare /plan /quiz /remember and more (typing / lists them). /compact or /handoff continue a long chat from a brief. Suggest one when it fits.
 - Web search: current facts and real links, including YouTube videos. Cite what you use as links.
 - Videos: a full https://www.youtube.com/watch?v=… link in a sentence or bullet becomes a player under it; a Drive video linked as [name](drive:ID) plays too. Mowr reads the captions of videos asked about (VIDEO TRANSCRIPTS).
 - Google Drive: when Drive files are supplied, link them as [name](drive:ID) with their listed id; documents open in Mowr's viewer.

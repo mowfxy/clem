@@ -1,5 +1,5 @@
 /* A file open beside the conversation, edited by the chat */
-.workspace.has-panel .chat-view{min-width:0}
+
 .chat-split{display:flex;min-height:0;flex:1}
 .chat-split>.chat-view{flex:1;min-width:0}
 .file-panel{position:relative;flex:none;width:clamp(380px,46%,820px);position:sticky;top:10px;align-self:flex-start;height:calc(100vh - 20px);display:flex;flex-direction:column;margin:10px 10px 10px 0;border:1px solid #2f2f2c;border-radius:16px;background:#1a1a19;color:#eeede7;font-family:'Mowafy Sans',system-ui,sans-serif;overflow:hidden;box-sizing:border-box;animation:fp-in .28s cubic-bezier(.2,.9,.3,1)}
@@ -63,10 +63,10 @@
 .fp-error{margin:14px 18px 0;padding:10px 14px;border-radius:10px;background:#3a1f1d;color:#f5b3a4;font-size:13px}
 .fp-note,.fp-empty{padding:40px;text-align:center;color:#8f8e88}
 .fp-empty .fp-ghost{margin-top:8px}
-.fp-picked{display:flex;align-items:center;gap:6px;padding:8px 12px;border-top:1px solid #2a2a28;font-size:12px}
-.fp-picked span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic;color:#cfcec7}
-.fp-picked button{padding:5px 10px;border-radius:99px;border:1px solid #3a3a37;background:#232322;color:#cfcec7;font-size:12px;cursor:pointer}
-.fp-picked button:hover{color:#fff;border-color:#55544f}
+
+
+
+
 .fp-flash{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:99px;background:#f2f1ec;color:#141413;font-size:12.5px;white-space:nowrap;box-shadow:0 10px 30px #0008;animation:ps-drop .3s ease-out both}
 @media(max-width:900px){.chat-split{flex-direction:column}.file-panel,.file-panel.wide{position:relative;top:0;width:auto;height:60vh;margin:0 8px 8px;align-self:stretch}}
 @media(prefers-reduced-motion:reduce){.file-panel,.fp-changed,.fp-flash{animation:none}.is-working .fp-body::before{animation:none}}

@@ -83,19 +83,19 @@
 /* Picker, gallery and cards */
 .visual-thumb{background:#161615;border-radius:9px;overflow:hidden;line-height:0}
 .visual-thumb svg{width:100%;height:auto;display:block}
-.visual-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin:14px 0}
-.visual-picker button,.visual-gallery button{display:grid;gap:10px;text-align:left;padding:8px 8px 12px;border:1px solid #2e2e2b;border-radius:12px;background:#1b1b19;transition:transform .2s cubic-bezier(.2,.8,.2,1),border-color .2s,background .2s}
-.visual-picker button:hover,.visual-gallery button:hover{transform:translateY(-3px);border-color:#4a4a45;background:#1f1f1d}
-.visual-picker strong,.visual-gallery strong{font:400 15px/1.25 'Mowafy Serif',Georgia,serif;padding:0 4px;color:#f0efeb}
-.visual-picker small,.visual-gallery small{font-size:11px;color:#8b8a83;padding:0 4px;line-height:1.5}
-.visual-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin:6px 0 36px}
-.visual-gallery .visual-subject{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#6f6e68;padding:0 4px}
-.visuals-section-title,.page h2.visuals-section-title{font:500 12px/1 'Mowafy Sans',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#8b8a83;margin:10px 0 14px}
-.visual-record .visual-thumb{margin-bottom:16px}
-.visual-recent{margin-bottom:30px}
-.visual-recent .visual-thumb{aspect-ratio:16/10;display:flex;align-items:center}
-.visual-recent strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(prefers-reduced-motion:reduce){.visual-engine.v2{animation:none}.visual-picker button,.visual-gallery button{transition:none}}
+
+
+
+
+
+
+
+
+
+
+
+
+@media(prefers-reduced-motion:reduce){.visual-engine.v2{animation:none}}
 .v2 .scene-tick{font-size:10.5px;color:var(--v-faint);font-variant-numeric:tabular-nums}
 .v2 .scene-axis{font-size:12px;color:var(--v-soft,#a3a3a0);font-style:italic}
 .v2 .visual-3d canvas{display:block;touch-action:none;cursor:grab}.v2 .visual-3d canvas:active{cursor:grabbing}

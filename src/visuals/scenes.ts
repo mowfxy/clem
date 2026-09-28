@@ -404,16 +404,6 @@ export const scenes: SceneDef[] = [projectile, pendulum, waves, lens, field, orb
 export const sceneById = (id?: string | boolean) => scenes.find(s => s.id === id) || (id === true ? projectile : undefined);
 export const defaults = (scene: SceneDef): Values => Object.fromEntries(scene.params.map(p => [p.key, p.value]));
 
-/** Picks the best-matching scene for a /visual request and reads any stated quantities. */
-export function matchVisual(prompt: string): { scene: SceneDef; params: Values } | undefined {
-  const text = prompt.replace(/^\/visual\s*/i, '');
-  const scored = scenes.map(s => ({ s, n: (text.match(new RegExp(s.keywords.source, 'gi')) || []).length })).filter(x => x.n).sort((a, b) => b.n - a.n);
-  if (!scored.length) return;
-  const scene = scored[0].s, params = defaults(scene);
-  for (const p of scene.params) { const m = p.parse && text.match(p.parse); if (m) params[p.key] = clamp(Number(m[1]), p.min, p.max); }
-  return { scene, params };
-}
-
 export function sceneSvg(scene: SceneDef, params = defaults(scene), t = scene.still(params)) {
   const pen = new SvgPen();
   scene.draw(pen, params, t);

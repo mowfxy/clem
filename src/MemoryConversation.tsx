@@ -11,6 +11,11 @@ type Fact = {
 };
 const PROFILE = "user:me";
 const newestFirst = (records: Fact[]) => records.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+/** The last records read, so reopening Memory shows them at once while a fresh copy loads. */
+let remembered: Fact[] | null = null;
+const keep = (records: Fact[]) => (remembered = newestFirst(records));
+/** Reads memory ahead of time (the app calls this at start), so the first open is instant too. */
+export function warmMemory() { if (desktop && !remembered) void desktop.invoke({ action: "memoryAll" }).then((r) => keep(r.records)).catch(() => {}); }
 const cleanError = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 /**
  * Everything Mowr remembers, grouped by where it applies: about the person first, then the open
@@ -35,15 +40,15 @@ export function MemoryConversation({
   onSummary?: (text: string) => void;
   empty?: string;
 }) {
-  const [facts, setFacts] = useState<Fact[] | null>(null),
+  const [facts, setFacts] = useState<Fact[] | null>(remembered),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [status, setStatus] = useState("");
-  const load = async () => setFacts(newestFirst((await desktop!.invoke({ action: "memoryAll" })).records));
+  const load = async () => setFacts(keep((await desktop!.invoke({ action: "memoryAll" })).records));
   useEffect(() => {
     let active = true;
     void desktop!.invoke({ action: "memoryAll" })
-      .then((r) => { if (active) setFacts(newestFirst(r.records)); })
+      .then((r) => { const records = keep(r.records); if (active) setFacts(records); })
       .catch(() => { if (active) { setFacts([]); setStatus("Memory could not be opened. Close and try again."); } });
     return () => { active = false; };
   }, []);
@@ -62,7 +67,7 @@ export function MemoryConversation({
   const count = groups.reduce((n, g) => n + g.items.length, 0) + (summary.trim() ? 1 : 0);
   return (
     <section className="memory-panel">
-      <p className="memory-lede">{facts === null ? "Opening…" : count ? `${count} ${count === 1 ? "thing" : "things"} remembered` : "Nothing remembered yet"}</p>
+      <p className="memory-lede">{facts === null ? " " : count ? `${count} ${count === 1 ? "thing" : "things"} remembered` : "Nothing remembered yet"}</p>
       {facts !== null && !count && (
         <div className="memory-empty">
           <span className="memory-empty-mark"><Icon name="subjects" size={22} /></span>

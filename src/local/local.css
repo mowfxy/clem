@@ -83,33 +83,33 @@ dialog.folder-browser[open]{display:flex;animation:se-in .28s cubic-bezier(.2,1.
 .pc-folder-row .watch-badge{font-size:10.5px;color:#9fd3b0;border:1px solid #2f4a37;border-radius:999px;padding:3px 8px;flex-shrink:0}
 
 /* Study packs */
-.pack-share,.pack-preview{display:flex;flex-direction:column;gap:12px;min-width:0;width:100%;box-sizing:border-box}
-.pack-cover,.pack-contents,.pack-preview .field,.pack-share .field{min-width:0;box-sizing:border-box}
-.pack-pick{border:1px solid #363634;border-radius:12px;padding:8px 12px 10px;margin:0;display:flex;flex-direction:column;gap:2px}
-.pack-pick legend{font-size:12px;color:#aaa9a2;padding:0 5px}
-.pack-pick legend small{color:#77766f}
-.pack-pick label{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13.5px;color:#dcdbd4;cursor:pointer}
-.pack-pick label span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pack-pick label small{color:#88877f;font-size:11.5px}
-.pack-name{display:flex;align-items:center;gap:9px;font-size:13px;color:#c9c8c1}
-.pack-privacy{display:flex;align-items:flex-start;gap:8px;margin:0;font-size:12px;line-height:1.5;color:#9fd3b0}
-.pack-privacy svg{flex-shrink:0;margin-top:1px}
-.pack-error{color:#f2a38e;font-size:13px;margin:0}
-.pack-share .modal-actions,.pack-preview .modal-actions{align-items:center}
-.pack-share .modal-actions .fine{margin-right:auto;color:#88877f}
-.pack-cover{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#232a44,#1d1d1c);border:1px solid #34395a}
-.pack-cover h3{margin:0 0 2px;font:400 22px/1.2 'Mowafy Serif',Georgia,serif}
-.pack-cover p{margin:0;font-size:12px;color:#a9aac0}
-.pack-desc{margin:0;font-size:13.5px;color:#c9c8c1;line-height:1.6;white-space:pre-wrap}
-.pack-contents{list-style:none;margin:0;padding:0;border:1px solid #333331;border-radius:12px}
-.pack-contents li{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #2a2a28;font-size:13px;color:#dcdbd4}
-.pack-contents li:last-child{border-bottom:0}
-.pack-contents span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pack-contents small{color:#88877f}
-.pack-sample{font-size:12.5px;color:#aaa9a2}
-.pack-sample summary{cursor:pointer}
-.pack-sample p{display:flex;flex-direction:column;gap:2px;margin:8px 0 0;padding:8px 10px;border-radius:8px;background:#1f1f1e}
-.pack-sample b{color:#e6e5df;font-weight:500}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @media (prefers-reduced-motion:reduce){dialog.search-everything[open],dialog.folder-browser[open]{animation:none}}
 [data-quiet=true] dialog.search-everything[open],[data-quiet=true] dialog.folder-browser[open]{animation:none}
@@ -117,7 +117,7 @@ dialog.folder-browser[open]{display:flex;animation:se-in .28s cubic-bezier(.2,1.
 /* The shared dialog style is sized for small confirmations; these two panels are workspaces. */
 dialog.search-everything.search-everything{width:min(760px,calc(100vw - 32px));max-width:none;max-height:none;overflow:hidden;padding:0}
 dialog.folder-browser.folder-browser{width:min(1180px,calc(100vw - 40px));max-width:none;max-height:none;overflow:hidden;padding:0}
-.search-everything input.search-everything-input,.search-everything .se-input input,.folder-browser .fv-input input,.folder-browser .fb-filter input{width:auto;border-radius:0;box-shadow:none!important;font-size:inherit}
+.search-everything .se-input input,.folder-browser .fv-input input,.folder-browser .fb-filter input{width:auto;border-radius:0;box-shadow:none!important;font-size:inherit}
 .search-everything .se-input input{font-size:17px}
 .folder-browser .fv-input input{font-size:14px}
 .folder-browser .fb-filter input{font-size:13px}

@@ -20,46 +20,12 @@
   font-size: 11px !important;
   padding: 8px !important;
 }
-.model-provider-summary {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 20px;
-  border: 1px solid #393b35;
-  border-radius: 12px;
-  background: #1b1d19;
-  margin-bottom: 20px;
-}
-.model-provider-mark {
-  display: grid;
-  place-items: center;
-  width: 43px;
-  height: 43px;
-  border-radius: 11px;
-  background: #2b3025;
-  color: #c4ceb5;
-  flex-shrink: 0;
-}
-.model-provider-summary > div {
-  flex: 1;
-}
-.settings-content .model-provider-summary h3 {
-  font-size: 15px;
-  margin: 0 0 6px;
-}
-.settings-content .model-provider-summary p {
-  font-size: 12px;
-  line-height: 1.55;
-  margin: 0;
-  max-width: 300px;
-  color: #a0a398;
-}
-.model-provider-summary button.primary {
-  font-size: 12px;
-  padding: 9px 12px;
-  white-space: nowrap;
-  gap: 7px;
-}
+
+
+
+
+
+
 .connected-account {
   border: 1px solid #393b35;
   border-radius: 12px;
@@ -265,16 +231,9 @@
   color: #91968a;
 }
 @media (max-width: 600px) {
-  .model-provider-summary {
-    flex-wrap: wrap;
-    padding: 16px;
-  }
-  .model-provider-summary > div {
-    min-width: 150px;
-  }
-  .model-provider-summary .primary {
-    margin-left: 57px;
-  }
+  
+  
+  
   .usage-windows {
     grid-template-columns: 1fr;
     gap: 16px;

@@ -72,6 +72,8 @@ Your files stay in Documents\Mowr on your PC. You need a Mowr account and an int
 
 **Features (one per line):** Chat with ChatGPT, Claude or Grok using your own subscription · Subjects with flashcards and quizzes · Interactive visual models · Works with folders on your PC · Proposed edits you approve · Documents and PDFs in one click
 
-**Search terms:** AI workspace, study, flashcards, research, ChatGPT, Claude, notes
+**Search terms:** AI workspace, study, flashcards, research, notes, quiz, study planner
+
+Only generic words: Store policy 10.1.3 rejects search terms that name other publishers’ products (Submission 1 was sent back for “ChatGPT” and “Claude” on 2026-09-28).
 
 **Certification notes:** Sign-in opens the browser at mowrai.com and returns to the app. Test account: create one free at https://mowrai.com. Settings → Models can install the official Claude Code or Grok command-line tools; this runs the vendor's own installer from its own domain only when the person clicks Install, and is optional.

@@ -15,20 +15,20 @@
 @media(prefers-reduced-motion:reduce){.unified-picker-panel{animation:none}}
 .unified-picker-panel button{font:inherit;color:inherit;display:flex;align-items:center;cursor:pointer;border:0;background:none}
 .unified-picker-panel button:focus-visible{outline:2px solid #d6d5cf;outline-offset:-2px}
-.picker-search{display:flex;align-items:center;gap:8px;margin:2px 2px 6px;padding:0 10px;height:34px;border-radius:9px;background:#1a1a19;border:1px solid #37372f;color:#8f8e87}
-.picker-search:focus-within{border-color:#6b6b63}
-.picker-search input{flex:1;min-width:0;border:0;background:transparent;color:#eeede7;font:13px 'Mowafy Sans',sans-serif;outline:none}
-.picker-model-list{overflow:auto;overscroll-behavior:contain;max-height:300px;min-height:0}
+
+
+
+
 .picker-group+.picker-group{margin-top:4px;padding-top:4px;border-top:1px solid #ffffff0a}
 .picker-group-name{padding:7px 10px 4px;font-size:11px;letter-spacing:.02em;color:#8c8b84}
 .unified-picker-panel .picker-model-row{width:100%;gap:10px;text-align:left;padding:8px 10px;border-radius:10px}
 .unified-picker-panel .picker-model-row:hover{background:#ffffff08}
 .unified-picker-panel .picker-model-row[aria-pressed=true]{background:#ffffff0f}
 .picker-model-row>svg{flex:none;color:#e8e7e0}
-.picker-model-text{flex:1;min-width:0;display:grid;gap:2px}
+
 .picker-model-name{display:flex;align-items:center;gap:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#efeee8}
 .picker-model-name em{font-style:normal;font-size:10px;padding:2px 6px;border-radius:99px;border:1px solid #ffffff17;color:#9d9c95}
-.picker-model-text small{font-size:11.5px;color:#8f8e87;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
 .picker-empty{font-size:12px;color:#aaa99f;padding:8px 10px 12px;margin:0}
 .unified-picker-panel .picker-connect{border-top:1px solid #ffffff0c;border-radius:0;width:100%;justify-content:space-between;margin-top:6px;padding:10px 10px 5px;font-size:11.5px;color:#a5a59c}
 .unified-picker-panel .picker-connect:hover{color:#eeede7}
@@ -47,9 +47,9 @@
 .step-instructions{display:flex;gap:12px;align-items:flex-start;margin:14px 0}
 .step-instructions p{font-size:13px;line-height:1.65;margin:0;flex:1}
 .step-instructions button{flex-shrink:0}
-.plan-editor .step-output{font-size:12px;color:#aaa;line-height:1.6}
+
 .history-row{display:flex;align-items:center}.history-row .history-item{min-width:0;flex:1}
-.history-delete{opacity:0;padding:6px;color:#999}.history-row:hover .history-delete,.history-row:focus-within .history-delete{opacity:1}
+
 
 /* Thinking level: a Mowr bar in black and white */
 .picker-effort{margin-top:6px;padding:12px 8px 6px;border-top:1px solid #ffffff0c}
@@ -73,7 +73,7 @@
 .effort-knob{position:absolute;top:2px;left:calc(2px + (100% - 30px) * var(--p));width:var(--k);height:var(--k);border-radius:50%;background:#fff;box-shadow:0 2px 8px #0008,0 0 0 1px #0000000f;transition:left .42s cubic-bezier(.3,1.35,.5,1),transform .15s}
 .effort-track:active .effort-knob,.effort-track.is-dragging .effort-knob{transform:scale(1.08)}
 .effort-track.is-dragging .effort-fill,.effort-track.is-dragging .effort-knob{transition:none}
-.picker-effort-hint{margin:10px 2px 0;font-size:11.5px;line-height:1.45;color:#96958e;min-height:17px;text-align:center}
+
 @media(prefers-reduced-motion:reduce){.effort-fill,.effort-knob,.effort-mark{transition:none}.effort-fill::after,.effort-petal{animation:none}}
 
 /* Two compact popovers: model list and thinking level */
