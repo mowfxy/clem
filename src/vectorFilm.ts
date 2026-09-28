@@ -1,5 +1,5 @@
 /** Authored 24 fps vector cels. Geometry is redrawn, never moved as a rigid SVG group. */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards';
 type P=[number,number];
 const WHITE='#f3f2ec',BLUE='#8197e2',RED='#d87968';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
@@ -359,5 +359,18 @@ function wave(t:number,_id:string){
  out+=blob(352,98,15*phase(t,3.9,4.4),t,BLUE)+burst(352,98,24,t,4.2)+blob(126,300,8*phase(t,4.3,4.7),t,RED);
  return out;
 }
-const scenes={balance,untangle,build,discover,learn,orchestrate,sprout,kite:kiteAir,telescope:telescopeNight,pencil,bridge:bridgeWater,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave};
+/** Skills: an index box of ways of working. The cards drop in, then the tabbed one keeps being picked out. */
+function cards(t:number,_id:string){
+ let s='';
+ const pick=t>6?swell(cycle(t,3.2))*24:0;
+ for(const [i,x,y0,sk] of [[0,150,140,-4],[1,198,104,0],[2,246,146,4]] as const){
+  const k=phase(t,.25+i*.35,1.15+i*.35),y=lerp(-160,y0,k)-(i===1?pick:0);
+  s+=polygon(quad(x,y,84,130),PAPER)+rect(x,y,84,130,t,sk)+stroke([[x+15,y+26],[x+58,y+27]],t,4)+stroke([[x+15,y+42],[x+66,y+41]],t,4)+stroke([[x+15,y+58],[x+48,y+58]],t,4);
+  if(i===1)s+=shape([[x+44,y-24],[x+76,y-24],[x+76,y+1],[x+44,y+1]],RED)+stroke([[x+44,y+1],[x+44,y-24],[x+76,y-24],[x+76,y+1]],t,5);
+ }
+ s+=polygon([[138,228],[342,228],[330,318],[150,318]],PAPER)+stroke(sharp([[138,228],[342,228],[330,318],[150,318],[138,228]]),t,9);
+ s+=faded(blob(240,273,16,t,BLUE),phase(t,1.6,2.2));
+ return s+burst(240,72,20,t,2.1)+floor(t,100,380,330);
+}
+const scenes={balance,untangle,build,discover,learn,orchestrate,sprout,kite:kiteAir,telescope:telescopeNight,pencil,bridge:bridgeWater,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards};
 export function filmFrame(scene:Scene,seconds:number,id:string,boil:number|null=null){const t=Math.max(0,seconds);boilClock=boil;try{return `<defs><filter id="${id}" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="4"/><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/></filter></defs>${scenes[scene](t,id)}`;}finally{boilClock=null}}

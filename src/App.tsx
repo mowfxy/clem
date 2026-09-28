@@ -17,6 +17,7 @@ import {SettingsPopup} from "./SettingsPopup";
 import {SettingsCard,SettingRow,Switch,Keys} from "./settings/SettingsParts";
 import {SettingsWindow} from "./settings/SettingsWindow";
 import {ProfileSettings} from "./settings/ProfileSettings";
+import {SkillsSettings} from "./settings/SkillsSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
 import {ProfileAvatar} from "./ProfileAvatar";
 import "./settings.css";
@@ -152,7 +153,6 @@ const nav = [
   ["visuals", "Visuals"],
   ["projects", "Projects"],
   ["subjects", "Subjects"],
-  ["skills", "Skills"],
   ["files", "Files"],
 ];
 const uid = () => crypto.randomUUID();
@@ -1248,7 +1248,7 @@ In this subject the learner keeps missing these questions in review; connect to 
   // pages open it over the page you were on.
   const lastRoute=useRef("/app");
   useEffect(()=>{
-    const tab=route==="/app/settings"?"General":route==="/app/account"?"Profile":route==="/app/connectors"?"Connectors":"";
+    const tab=route==="/app/settings"?"General":route==="/app/account"?"Profile":route==="/app/connectors"?"Connectors":route==="/app/skills"?"Skills":"";
     if(!tab){lastRoute.current=route;return;}
     history.replaceState(null,"",location.pathname+location.search+"#"+lastRoute.current);
     setRoute(lastRoute.current);
@@ -1434,7 +1434,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     ...(desktop?[{id:'browse-folders',group:'Actions',label:'Browse folders on this PC',icon:'projects',keywords:'files local linked read change',run:()=>setFolderView({})}]:[]),
     {id:'open-pack',group:'Actions',label:'Open a study pack',icon:'import',keywords:'import share mowrpack flashcards',run:()=>archiveUploader.current?.click()},
     ...nav.filter(([icon])=>icon!=='new').map(([icon,label])=>({id:'go-'+icon,group:'Go to',label,icon,run:()=>navigate(`/app/${icon}`)})),
-    ...["Profile","General","Security","Models","Memory","Automations","Connectors","Linked folders","Telegram","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
+    ...["Profile","General","Security","Models","Memory","Skills","Automations","Connectors","Linked folders","Telegram","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
     ...state.spaces.map(space=>({id:'space-'+space.id,group:space.kind==='project'?'Projects':'Subjects',label:space.name,icon:space.kind==='project'?'projects':'subjects',keywords:space.description,run:()=>newChat(space.id)})),
     ...[...state.chats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
   ];
@@ -1681,6 +1681,8 @@ In this subject the learner keeps missing these questions in review; connect to 
                       <SettingsCard note="Projects and subjects keep their own memory.">
                         {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
+                    ) : settingsTab === "Skills" ? (
+                      <SkillsSettings skills={skills} onOpen={skill=>{setEditingSkill(skill);setModal("skill-detail");}} onCreate={()=>{setEditingSkill(null);setModal("skill-create");}} onImport={()=>setModal("skill-import")}/>
                     ) : settingsTab === "Automations" ? (
                       <SettingsCard note="New routines start in a chat. They run while Mowr is open.">
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
@@ -1952,88 +1954,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                       <br />
                       What happens here stays in this context.
                     </p>
-                  </div>
-                )}
-              </div>
-            ) : route === "/app/skills" ? (
-              <div className="page">
-                <div className="page-heading">
-                  <div>
-                    <span className="eyebrow">
-                      A practice, not just a prompt
-                    </span>
-                    <h1>Ways of working.</h1>
-                    <p>
-                      Always available in chat. Describe your goal; Mowr applies
-                      the relevant workflows automatically.
-                    </p>
-                  </div>
-                  <button
-                    className="primary"
-                    onClick={() => {
-                      setEditingSkill(null);
-                      setModal("skill-create");
-                    }}
-                  >
-                    <Icon name="plus" size={18} /> Create a skill
-                  </button>
-                </div>
-                <div className="library-toolbar">
-                  <div className="filter-tabs">
-                    {[
-                      "All",
-                      "Learning",
-                      "Research",
-                      "Writing",
-                      "Work",
-                    ].map((t) => (
-                      <button
-                        className={filter === t ? "active" : ""}
-                        onClick={() => setFilter(t)}
-                        key={t}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  <button onClick={() => setModal("skill-import")}>
-                    <Icon name="attach" size={16} /> Import skill
-                  </button>
-                </div>
-                <div className="skill-grid">
-                  {skills
-                    .filter(
-                      (s) =>
-                        filter === "All" ||
-                        s.category === filter,
-                    )
-                    .map((s) => (
-                      <button
-                        className="skill-card"
-                        key={s.id}
-                        onClick={() => {
-                          setEditingSkill(s);
-                          setModal("skill-detail");
-                        }}
-                      >
-                        <Icon name={s.icon} size={32} />
-                        <span className="skill-category">
-                          {s.category || "Your skill"}
-                        </span>
-                        <h2>{s.name}</h2>
-                        <p>{s.description}</p>
-                        <div>
-                          <span>{s.steps.length} considered steps</span>
-                          <Icon name="arrow" size={20} />
-                        </div>
-                      </button>
-                    ))}
-                </div>
-                {!skills.length && (
-                  <div className="empty-state">
-                    <Illustration ambient scene="orchestrate" className="workspace-idle-art"/>
-                    <h2>Your way of working belongs here.</h2>
-                    <p>Create a multi-step workflow, or import one as JSON.</p>
                   </div>
                 )}
               </div>
