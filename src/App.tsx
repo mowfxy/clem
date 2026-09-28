@@ -110,6 +110,7 @@ import "./conversation.css";
 import "./motion.css";
 import "./visuals/visuals-page.css";
 import "./contrast.css";
+import "./library.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -1866,138 +1867,96 @@ In this subject the learner keeps missing these questions in review; connect to 
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
                 chats={state.chats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} actions={spaceActions(pageSpace)}/></Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (
-              <div className="page">
-                <div className="page-heading">
-                  <div>
-                    <span className="eyebrow">
-                      Context with a place of its own
-                    </span>
-                    <h1>
-                      {route.endsWith("projects") ? "Projects" : "Subjects"}
-                    </h1>
-                    <p>
-                      {route.endsWith("projects")
-                        ? "Keep a body of work together, from first thought to final draft."
-                        : "A dedicated space for each subject you’re making sense of."}
-                    </p>
-                  </div>
-                  <div className="space-heading-actions">
-                  {route.endsWith('subjects')&&<button className="subject-import icon-button" aria-label="Import a subject ZIP or study pack" title="Import a subject ZIP or study pack" onClick={()=>archiveUploader.current?.click()}><Icon name="import" size={21}/></button>}
-                  <button
-                    className="primary"
-                    onClick={() =>
-                      setModal(
-                        route.endsWith("projects")
-                          ? "project-create"
-                          : "subject-create",
-                      )
-                    }
-                  >
-                    <Icon name="plus" size={19} />
-                    New {route.endsWith("projects") ? "project" : "subject"}
-                  </button></div>
-                </div>
-                <div className="search-field">
-                  <Icon name="research" size={19} />
-                  <input
-                    aria-label="Search spaces"
-                    placeholder="Find a space…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <div className="space-grid">
-                  {state.spaces
-                    .filter(
-                      (s) =>
-                        s.kind ===
-                          (route.endsWith("projects")
-                            ? "project"
-                            : "subject") &&
-                        s.name.toLowerCase().includes(search.toLowerCase()),
-                    )
-                    .map((s) => (
-                      <article className="space-card" key={s.id}>
-                        <SpaceMark space={s} size={32} bare />
-                        <h2>
-                          <button
-                            onClick={() => {
-                              openSpace(s.id);
-                            }}
-                          >
-                            {s.name}
-                          </button>
-                        </h2>
-                        {s.description && <p className="space-desc">{s.description}</p>}
-                        <div className="space-meta">
-                          <span>
-                            {(() => { const n = state.chats.filter((c) => c.spaceId === s.id).length; return `${n} ${n === 1 ? "conversation" : "conversations"}`; })()}
-                          </span>
-                          <button
-                            className="icon-button"
-                            aria-label={`Chat in ${s.name}`}
-                            onClick={() => newChat(s.id)}
-                          >
-                            <Icon name="arrow" />
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                </div>
-                {!state.spaces.some(
-                  (s) =>
-                    s.kind ===
-                    (route.endsWith("projects") ? "project" : "subject"),
-                ) && (
-                  <div className="empty-state">
-                    <Illustration scene={route.endsWith("projects")?"build":"learn"} className="workspace-idle-art"/>
+              (() => {
+                const projects = route.endsWith("projects"), kind = projects ? "project" : "subject";
+                const all = state.spaces.filter((s) => s.kind === kind);
+                const shown = all.filter((s) => (s.name + " " + (s.description || "")).toLowerCase().includes(search.trim().toLowerCase()));
+                const create = () => setModal(projects ? "project-create" : "subject-create");
+                return <div className="page lib">
+                  <header className="lib-head">
+                    <div className="lib-head-text">
+                      <span className="lib-eyebrow">Spaces</span>
+                      <h1>{projects ? "Projects" : "Subjects"}</h1>
+                      <p>{projects ? "Keep a body of work together, from first thought to final draft." : "A dedicated space for each subject you’re making sense of."}</p>
+                    </div>
+                    <Illustration scene={projects ? "build" : "learn"} viewBox="60 30 360 300" className="lib-art"/>
+                  </header>
+                  {all.length > 0 && <div className="lib-bar">
+                    <label className="lib-find"><Icon name="research" size={17}/><input aria-label={`Search ${projects ? "projects" : "subjects"}`} placeholder={`Find a ${kind}`} value={search} onChange={(e) => setSearch(e.target.value)}/></label>
+                    <div className="lib-actions">
+                      {!projects && <button type="button" className="lib-btn" aria-label="Import a subject ZIP or study pack" title="Import a subject ZIP or study pack" onClick={() => archiveUploader.current?.click()}><Icon name="import" size={16}/>Import</button>}
+                      <button type="button" className="lib-btn strong" onClick={create}><Icon name="plus" size={16}/>New {kind}</button>
+                    </div>
+                  </div>}
+                  {all.length > 0 && <div className="lib-grid">
+                    {shown.map((s) => {
+                      const chats = state.chats.filter((c) => c.spaceId === s.id), n = chats.length;
+                      const last = chats.reduce((m, c) => Math.max(m, c.updated || 0), 0);
+                      return <article className="lib-card" key={s.id}>
+                        <button type="button" className="lib-card-open" onClick={() => openSpace(s.id)}>
+                          <SpaceMark space={s} size={28} bare />
+                          <strong>{s.name}</strong>
+                          <span className="lib-card-desc">{s.description || (projects ? "No description yet." : "Nothing noted about it yet.")}</span>
+                        </button>
+                        <footer>
+                          <span>{n} {n === 1 ? "chat" : "chats"}{last ? " · " + new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}</span>
+                          <button type="button" className="lib-card-chat" aria-label={`New chat in ${s.name}`} title="New chat here" onClick={() => newChat(s.id)}><Icon name="arrow" size={16}/></button>
+                        </footer>
+                      </article>;
+                    })}
+                    {!shown.length && <p className="lib-none">Nothing matches “{search.trim()}”.</p>}
+                  </div>}
+                  {!all.length && <div className="lib-empty">
                     <h2>Some ideas deserve their own space.</h2>
-                    <p>
-                      Bring related chats, files, and memory together.
-                      <br />
-                      What happens here stays in this context.
-                    </p>
-                  </div>
-                )}
-              </div>
+                    <p>Bring related chats, files and memory together. What happens here stays in this context.</p>
+                    <div className="lib-actions">
+                      <button type="button" className="lib-btn strong" onClick={create}><Icon name="plus" size={16}/>New {kind}</button>
+                      {!projects && <button type="button" className="lib-btn" onClick={() => archiveUploader.current?.click()}><Icon name="import" size={16}/>Import a study pack</button>}
+                    </div>
+                  </div>}
+                </div>;
+              })()
             ) : route === "/app/visuals" ? (
-              <div className="page visuals-page">
-                <header className="vp-hero">
-                  <span className="eyebrow">Visuals</span>
-                  <h1>See it move.</h1>
-                  <p>Describe any idea and Mowr draws a visual you can play with. Save the ones worth keeping and they live here.</p>
-                  <form className="vp-ask" onSubmit={(e) => { e.preventDefault(); const topic = String(new FormData(e.currentTarget).get("topic") || "").trim(); if (!topic) return; newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + topic), 60); }}>
-                    <span className="vp-ask-icon"><Icon name="visuals" size={22} /></span>
-                    <input name="topic" aria-label="What would you like to see?" placeholder="Photosynthesis, supply and demand, a Fourier series…" autoComplete="off" />
-                    <button className="primary" aria-label="Draw it">Draw<Icon name="arrow" size={17} /></button>
+              (() => {
+                const saved = state.visuals.filter((v) => state.chats.some((c) => c.id === v.chatId));
+                const open = (chat: string) => { const c = state.chats.find((x) => x.id === chat)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); };
+                const draw = (topic: string) => { newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + topic), 60); };
+                return <div className="page lib">
+                  <header className="lib-head">
+                    <div className="lib-head-text">
+                      <span className="lib-eyebrow">Visuals</span>
+                      <h1>See it move.</h1>
+                      <p>Describe any idea and Mowr draws a visual you can play with. Save the ones worth keeping and they live here.</p>
+                    </div>
+                    <Illustration scene="pencil" viewBox="60 30 360 300" className="lib-art"/>
+                  </header>
+                  <form className="lib-ask" onSubmit={(e) => { e.preventDefault(); const topic = String(new FormData(e.currentTarget).get("topic") || "").trim(); if (topic) draw(topic); }}>
+                    <Icon name="visuals" size={18}/>
+                    <input name="topic" aria-label="What would you like to see?" placeholder="Photosynthesis, supply and demand, a Fourier series…" autoComplete="off"/>
+                    <button className="lib-btn strong" aria-label="Draw it">Draw<Icon name="arrow" size={15}/></button>
                   </form>
-                </header>
-                {(() => {
-                  const saved = state.visuals.filter((v) => state.chats.some((c) => c.id === v.chatId));
-                  const open = (chat: string) => { const c = state.chats.find((x) => x.id === chat)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); };
-                  return saved.length ? <section className="vp-saved" aria-label="Saved visuals">
-                    <div className="vp-section-head"><h2>Saved</h2><span>{saved.length}</span></div>
-                    <div className="vp-grid">
+                  {saved.length ? <section className="lib-section" aria-label="Saved visuals">
+                    <h2 className="lib-section-title">Saved <span>{saved.length}</span></h2>
+                    <div className="lib-grid wide">
                       {saved.map((v) => (
-                        <article className="vp-card" key={v.id}>
-                          <button type="button" className="vp-open" onClick={() => open(v.chatId)} aria-label={`Open ${v.title} in its chat`}>
+                        <article className="lib-card lib-visual" key={v.id}>
+                          <button type="button" className="lib-visual-open" onClick={() => open(v.chatId)} aria-label={`Open ${v.title} in its chat`}>
                             <Suspense fallback={<div className="visual-thumb" />}>{v.spec ? <SpecThumb spec={v.spec} /> : <VisualThumb scene={v.scene || "projectile"} params={v.params} />}</Suspense>
                           </button>
-                          <div className="vp-card-foot">
-                            <div><strong>{v.title}</strong><small>{new Date(v.created).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</small></div>
-                            <button type="button" className="icon-button" aria-label={`Remove ${v.title} from Visuals`} title="Remove from Visuals (it stays in its chat)" onClick={() => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== v.id) }))}><Icon name="close" size={16} /></button>
-                          </div>
+                          <footer>
+                            <div><strong>{v.title}</strong><span>{new Date(v.created).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
+                            <button type="button" className="lib-card-chat" aria-label={`Remove ${v.title} from Visuals`} title="Remove from Visuals (it stays in its chat)" onClick={() => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== v.id) }))}><Icon name="close" size={15} /></button>
+                          </footer>
                         </article>
                       ))}
                     </div>
-                  </section> : <section className="vp-empty">
-                    <Icon name="visuals" size={30} />
-                    <h2>Nothing saved yet</h2>
-                    <p>Visuals stay in their chat. Press <b>Save</b> on the top right of one to keep it here.</p>
-                    <div className="vp-ideas">{["The water cycle", "How a transistor switches", "Compound interest over 30 years", "Orbits and Kepler’s laws"].map((idea) => <button type="button" key={idea} onClick={() => { newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + idea), 60); }}><Icon name="visuals" size={15} />{idea}</button>)}</div>
-                  </section>;
-                })()}
-              </div>
+                  </section> : <section className="lib-section">
+                    <h2 className="lib-section-title">Try one</h2>
+                    <p className="lib-note">Visuals stay in their chat. Press <b>Save</b> on the top right of one to keep it here.</p>
+                    <div className="lib-ideas">{["The water cycle", "How a transistor switches", "Compound interest over 30 years", "Orbits and Kepler’s laws"].map((idea) => <button type="button" key={idea} onClick={() => draw(idea)}><span>{idea}</span><Icon name="arrow" size={15}/></button>)}</div>
+                  </section>}
+                </div>;
+              })()
             ) : route === "/app/files" ? (
               <div className="page">
                 <div className="page-heading">
