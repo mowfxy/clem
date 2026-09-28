@@ -126,16 +126,9 @@
   border: 0;
   margin: 0;
 }
-.settings-dialog-body .profile-preview {
-  margin: 0;
-}
-.settings-dialog-body .profile-preview .avatar.large {
-  background: none;
-  border: 0;
-}
-.settings-dialog-body .profile-preview + h2 {
-  display: none;
-}
+
+
+
 .settings-dialog-body .profile-picker {
   margin-bottom: 20px;
 }

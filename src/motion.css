@@ -3,7 +3,7 @@
 :root{--ease-out:cubic-bezier(.2,.8,.2,1);--ease-spring:cubic-bezier(.2,1.25,.35,1)}
 
 /* Views arrive instead of popping in. */
-.workspace>.page,.workspace>.chat-view,.settings-content>*{animation:m-rise .38s var(--ease-out) both}
+.workspace>.page,.workspace>.chat-view{animation:m-rise .38s var(--ease-out) both}
 .page-heading{animation:m-rise .42s var(--ease-out) both}
 
 /* New messages settle into the conversation. */
@@ -44,7 +44,7 @@ dialog[open]::backdrop{animation:m-fade .25s ease-out both}
 @keyframes m-toast{from{opacity:0;transform:translate(-50%,18px) scale(.94)}to{transform:translateX(-50%)}}
 
 @media (prefers-reduced-motion:reduce){
-  .workspace>.page,.workspace>.chat-view,.settings-content>*,.page-heading,.messages .message,.history-row,.suggestions>*,dialog[open],dialog[open]::backdrop,.toast{animation:none!important}
+  .workspace>.page,.workspace>.chat-view,.page-heading,.messages .message,.history-row,.suggestions>*,dialog[open],dialog[open]::backdrop,.toast{animation:none!important}
   .suggestions>button:hover,.primary:active:not(:disabled){transform:none!important}
 }
-html[data-quiet=true] .workspace>.page,html[data-quiet=true] .workspace>.chat-view,html[data-quiet=true] .settings-content>*,html[data-quiet=true] .messages .message,html[data-quiet=true] .history-row,html[data-quiet=true] .suggestions>*,html[data-quiet=true] dialog[open]{animation:none!important}
+html[data-quiet=true] .workspace>.page,html[data-quiet=true] .workspace>.chat-view,html[data-quiet=true] .messages .message,html[data-quiet=true] .history-row,html[data-quiet=true] .suggestions>*,html[data-quiet=true] dialog[open]{animation:none!important}
