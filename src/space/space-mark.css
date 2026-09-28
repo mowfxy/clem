@@ -41,3 +41,54 @@
 :is(.history-item:is(:hover,:focus-visible),.lib-card:hover) .m-other .stroke-1{stroke-dasharray:1;animation:mark-draw .5s .1s ease-out backwards}
 @media(prefers-reduced-motion:reduce){.space-mark .drawn-icon,.space-mark .stroke{animation:none!important;transform:none!important;transition:none}}
 [data-quiet=true] .space-mark .drawn-icon,[data-quiet=true] .space-mark .stroke{animation:none!important;transform:none!important}
+
+/* The mark as the headline drawing inside a space: it draws itself in, stroke by stroke, then keeps moving the way
+   its discipline does, with long rests in between. */
+.sp-art .space-mark.bare{margin:0;color:#f4f3ed}
+.sp-art .stroke{stroke-dasharray:1;transform-box:fill-box;transform-origin:center;animation:mark-draw 1.1s cubic-bezier(.4,0,.2,1) both}
+.sp-art .stroke-1{animation-delay:.18s}.sp-art .stroke-2{animation-delay:.36s}.sp-art .stroke-3{animation-delay:.54s}.sp-art .stroke-4{animation-delay:.72s}
+.sp-art .stroke[fill-opacity]{animation:mark-draw 1.1s cubic-bezier(.4,0,.2,1) both,mark-fill .8s ease-out both}
+.sp-art .stroke-1[fill-opacity]{animation-delay:.18s,.9s}.sp-art .stroke-2[fill-opacity]{animation-delay:.36s,1.1s}.sp-art .stroke-3[fill-opacity]{animation-delay:.54s,1.3s}.sp-art .stroke-4[fill-opacity]{animation-delay:.72s,1.5s}
+.sp-art .stroke-0[fill-opacity]{animation-delay:0s,.7s}
+.sp-art .drawn-icon{transition:none;stroke-width:1.6}
+@keyframes mark-fill{from{fill-opacity:0}}
+@keyframes idle-redraw{0%,12%{stroke-dashoffset:1}45%,100%{stroke-dashoffset:0}}
+@keyframes idle-spin{to{transform:rotate(360deg)}}
+@keyframes idle-sway{0%,100%{transform:rotate(0)}50%{transform:rotate(-7deg)}}
+@keyframes idle-slosh{0%,55%,100%{transform:translateY(0) rotate(0)}65%{transform:translateY(-1px) rotate(-8deg)}80%{transform:translateY(.5px) rotate(6deg)}90%{transform:rotate(-2deg)}}
+@keyframes idle-apart-l{0%,60%,100%{transform:translateX(0)}75%,85%{transform:translateX(-2px)}}
+@keyframes idle-apart-r{0%,60%,100%{transform:translateX(0)}75%,85%{transform:translateX(2px)}}
+@keyframes idle-tilt{0%,60%,100%{transform:rotate(0)}75%,85%{transform:rotate(14deg)}}
+@keyframes idle-rise{0%,55%,100%{transform:scaleY(1)}70%{transform:scaleY(.55)}85%{transform:scaleY(1.06)}}
+@keyframes idle-lift{0%,55%,100%{transform:translateY(0)}70%,82%{transform:translateY(-2.5px)}}
+@keyframes idle-scribble{0%,50%,100%{transform:translate(0,0)}60%{transform:translate(-1.5px,1px)}70%{transform:translate(1px,-.5px)}80%{transform:translate(-.5px,1px)}}
+@keyframes idle-flip{0%,40%,100%{transform:scaleX(1)}60%,80%{transform:scaleX(-1)}}
+@keyframes idle-hop{0%,60%,100%{transform:translateY(0) rotate(0)}70%{transform:translateY(-3px) rotate(-7deg)}82%{transform:translateY(.5px) rotate(3deg)}}
+@keyframes idle-twist{0%,60%,100%{transform:rotate(0)}72%,80%{transform:rotate(-28deg)}}
+@keyframes idle-turn{0%,50%{transform:rotate(0)}75%,100%{transform:rotate(360deg)}}
+/* Each discipline's rest motion starts once the drawing is in. */
+.sp-art .m-maths .stroke-0{animation:mark-draw 1.1s cubic-bezier(.4,0,.2,1) both,idle-redraw 7s 2s cubic-bezier(.4,0,.2,1) infinite}
+.sp-art .m-physics .drawn-icon{animation:idle-spin 30s 1.6s linear infinite}
+.sp-art .m-chemistry .stroke-2{transform-origin:center bottom;animation:mark-draw 1.1s .36s both,mark-fill .8s 1.1s both,idle-slosh 4.5s 2s ease-in-out infinite}
+.sp-art .m-biology .drawn-icon{transform-origin:20% 80%;animation:idle-sway 5s 1.6s ease-in-out infinite}
+.sp-art .m-medicine .stroke-0{animation:mark-draw 1.1s cubic-bezier(.4,0,.2,1) both,idle-redraw 2.6s 1.4s linear infinite}
+.sp-art .m-code .stroke-0{animation:mark-draw 1.1s both,idle-apart-l 4s 1.8s ease-in-out infinite}
+.sp-art .m-code .stroke-1{animation:mark-draw 1.1s .18s both,idle-apart-r 4s 1.8s ease-in-out infinite}
+.sp-art .m-code .stroke-2{animation:mark-draw 1.1s .36s both,idle-tilt 4s 1.8s ease-in-out infinite}
+.sp-art .m-economics .stroke{transform-origin:center bottom}
+.sp-art .m-economics .stroke-1{animation:mark-draw 1.1s .18s both,mark-fill .8s .9s both,idle-rise 4s 2s ease-in-out infinite}
+.sp-art .m-economics .stroke-2{animation:mark-draw 1.1s .36s both,mark-fill .8s 1.1s both,idle-rise 4s 2.1s ease-in-out infinite}
+.sp-art .m-economics .stroke-3{animation:mark-draw 1.1s .54s both,mark-fill .8s 1.3s both,idle-rise 4s 2.2s ease-in-out infinite}
+.sp-art .m-economics .stroke-4{animation:mark-draw 1.1s .72s both,mark-fill .8s 1.5s both,idle-rise 4s 2.3s ease-in-out infinite}
+.sp-art .m-history .stroke-1{animation:mark-draw 1.1s .18s both,mark-fill .8s .9s both,idle-lift 4.5s 2s ease-in-out infinite}
+.sp-art .m-language .stroke-0{animation:mark-draw 1.1s both,mark-fill .8s .7s both,idle-scribble 3.5s 1.8s ease-in-out infinite}
+.sp-art .m-language .stroke-2{animation:mark-draw 1.1s .36s both,idle-redraw 3.5s 1.8s ease-out infinite}
+.sp-art .m-earth .stroke-2{animation:mark-draw 1.1s .36s both,mark-fill .8s 1.1s both,idle-flip 4s 1.8s ease-in-out infinite}
+.sp-art .m-music .drawn-icon{animation:idle-hop 3.2s 1.8s cubic-bezier(.3,.7,.3,1) infinite}
+.sp-art .m-art .drawn-icon{transform-origin:40% 60%;animation:idle-sway 4.5s 1.6s ease-in-out infinite}
+.sp-art .m-engineering .drawn-icon{animation:idle-twist 4s 1.8s cubic-bezier(.3,.7,.3,1) infinite}
+.sp-art .m-mind .stroke-1{animation:mark-draw 1.1s .18s both,idle-turn 6s 1.8s ease-in-out infinite}
+.sp-art .m-other .stroke-0{animation:mark-draw 1.1s both,mark-fill .8s .7s both,idle-lift 4.5s 1.8s ease-in-out infinite}
+.sp-art .m-other .stroke-1{animation:mark-draw 1.1s .18s both,idle-redraw 4.5s 1.8s ease-out infinite}
+@media(prefers-reduced-motion:reduce){.sp-art .stroke,.sp-art .drawn-icon{animation:none!important}}
+[data-quiet=true] .sp-art .stroke,[data-quiet=true] .sp-art .drawn-icon{animation:none!important}

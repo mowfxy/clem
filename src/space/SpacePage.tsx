@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode} from 'react';
 import {Icon} from '../Icons';
-import {Illustration} from '../Illustrations';
+import {SpaceMark} from './SpaceMark';
 import {RenameField,PencilIcon} from '../files/RenameField';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
@@ -102,7 +102,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
           <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
         </div>
-        <Illustration scene={subject?'learn':'build'} viewBox="60 30 360 300" className="sp-art"/>
+        <span className="sp-art" aria-hidden="true"><SpaceMark space={space} size={92} bare/></span>
       </div>
       {subject&&<div className="sp-stats">
         <button className={`sp-stat due ${due?'hot':''}`} onClick={startReview} disabled={!due&&!fresh}>
