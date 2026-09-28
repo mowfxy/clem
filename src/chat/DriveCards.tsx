@@ -28,7 +28,7 @@ export function DriveVideo({ file, onOpenWeb }: { file: DriveRef; onOpenWeb?: (f
           <span className="drive-avatar" aria-hidden="true"><DriveLogo size={22} /></span>
           <span className="drive-head-text"><strong>{file.name.replace(/\.[a-z0-9]{2,4}$/i, "")}</strong><small>Google Drive{file.durationMs ? " · " + minutes(file.durationMs) : ""}</small></span>
         </span>
-        <span className="drive-play" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" /></svg></span>
+        <span className="drive-play" aria-hidden="true"><Icon name="playhead" size={28} /></span>
         {onOpenWeb && <button type="button" className="yt-open" onClick={(e) => { e.stopPropagation(); onOpenWeb(file); }}>Open in <DriveLogo size={16} /> Drive</button>}
       </span>}
   </span>;

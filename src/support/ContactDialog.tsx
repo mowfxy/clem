@@ -34,10 +34,7 @@ export function ContactOptions({ onSent }: { onSent?: () => void | Promise<void>
 }
 
 function ContactGlyph({ kind }: { kind: ContactKind }) {
-  const common = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  if (kind === "bug") return <svg {...common}><path d="M8 9a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0z" /><path d="M12 10v8M4 13h4M16 13h4M5 7l3 2M19 7l-3 2M5 19l3-2M19 19l-3-2M10 5 9 3M14 5l1-2" /></svg>;
-  if (kind === "idea") return <svg {...common}><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z" /></svg>;
-  return <svg {...common}><path d="M4 5h16v11H9l-5 4z" /><path d="M8 9.5h8M8 12.5h5" /></svg>;
+  return <Icon name={kind === "bug" ? "bug" : kind === "idea" ? "idea" : "question"} size={20} />;
 }
 
 export function ContactDialog({ kind, onClose, onSent }: { kind: ContactKind; onClose: () => void; onSent?: () => void | Promise<void> }) {

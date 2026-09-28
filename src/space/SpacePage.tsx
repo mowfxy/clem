@@ -109,7 +109,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
           <span><b>{due?`${due} due`:fresh?`${fresh} new`:'All caught up'}</b><small>{due||fresh?'Review now':'Nothing to review'}</small></span>
         </button>
         <div className="sp-stat mastery"><Ring value={mastery} size={40}/><span><b>{Math.round(mastery*100)}% mastered</b><small>{Math.round(seen*100)}% seen · {cards.length} cards</small></span></div>
-        <div className="sp-stat streak"><span className={`sp-stat-icon flame ${days?'lit':''}`}><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.4 2.3 3.8 4 3.8 7.6A3.8 3.8 0 0 1 8 13a3.8 3.8 0 0 1-3.8-3.9c0-1.7 1-2.7 1.6-3.4.2 1.2.8 1.9 1.5 2.1C7 5.5 7.3 3.4 8 1.5Z" fill="currentColor"/></svg></span><span><b>{days} day streak</b><small>{days?'Keep it going today':'Review to start one'}</small></span></div>
+        <div className="sp-stat streak"><span className={`sp-stat-icon flame ${days?'lit':''}`}><Icon name="flame" size={16}/></span><span><b>{days} day streak</b><small>{days?'Keep it going today':'Review to start one'}</small></span></div>
       </div>}
       <form className="sp-ask" onSubmit={e=>{e.preventDefault();if(ask.trim()){actions.onAsk(ask.trim());setAsk('');}}}>
         <Icon name="chat" size={18}/>
@@ -266,6 +266,6 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
 }
 
 export const folderPath=(folders:SpaceFolder[],id:string)=>{const names:string[]=[];let cur:string|null=id;while(cur){const f=folders.find(x=>x.id===cur);if(!f)break;names.unshift(f.name);cur=f.parentId;}return names.join(' / ');};
-function FolderIcon(){return <svg className="sp-folder-icon" width="34" height="28" viewBox="0 0 34 28" aria-hidden="true"><path d="M2 5.5A3.5 3.5 0 0 1 5.5 2h7.2l3.2 3.4H28.5A3.5 3.5 0 0 1 32 8.9v14.6A3.5 3.5 0 0 1 28.5 27h-23A3.5 3.5 0 0 1 2 23.5z" fill="currentColor" opacity=".9"/><path d="M2 10h30" stroke="#0003" strokeWidth="1.2"/></svg>;}
+function FolderIcon(){return <span className="sp-folder-icon"><Icon name="folder" size={30}/></span>;}
 
 function DriveGlyph(){return <svg className="drive-glyph" width="15" height="14" viewBox="0 0 87.3 78" aria-hidden="true"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>;}

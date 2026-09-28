@@ -87,7 +87,7 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
         const click = () => isFolder ? open(f) : mode === "files" ? toggle(f) : undefined;
         return <div role="listitem" key={f.id} className={"gd-row" + (isFolder ? " is-folder" : "") + (chosen ? " is-picked" : "") + (muted ? " is-muted" : "")}>
           <button className="gd-open" disabled={muted} onClick={click} onDoubleClick={() => { if (!isFolder && mode === "files") onFiles?.([f]); }} title={f.name}>
-            <span className="gd-thumb">{(grid ? f.thumbnail : hasPreview(f)) ? <Thumb id={f.id} mime={f.mimeType} name={f.name} /> : <DriveIcon mime={f.mimeType} name={f.name} size={grid ? 44 : 26} />}{f.mimeType.startsWith("video/") && <span className="gd-play" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor" /></svg></span>}</span>
+            <span className="gd-thumb">{(grid ? f.thumbnail : hasPreview(f)) ? <Thumb id={f.id} mime={f.mimeType} name={f.name} /> : <DriveIcon mime={f.mimeType} name={f.name} size={grid ? 44 : 26} />}{f.mimeType.startsWith("video/") && <span className="gd-play" aria-hidden="true"><Icon name="playhead" size={11} /></span>}</span>
             <span className="gd-name"><strong>{f.name}</strong><small>{[kindName(f.mimeType, f.name), when(f.modified), bytes(f.size)].filter(Boolean).join(" · ")}</small></span>
             {mode === "files" && !isFolder && <span className={"gd-check" + (chosen ? " on" : "")} aria-hidden="true">{chosen && <Icon name="check" size={12} />}</span>}
             {isFolder && <Chevron />}
@@ -113,9 +113,9 @@ function Thumb({ id, mime, name }: { id: string; mime: string; name: string }) {
   const [failed, setFailed] = useState(false);
   return failed ? <DriveIcon mime={mime} name={name} size={26} /> : <img src={"/api/drive/thumb/" + id} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} />;
 }
-const Chevron = () => <svg className="gd-chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-const GridGlyph = () => <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.3" /><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.3" /><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.3" /><rect x="9" y="9" width="5.5" height="5.5" rx="1.3" /></g></svg>;
-const ListGlyph = () => <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="1.5" y="2.5" width="13" height="2.2" rx="1" /><rect x="1.5" y="6.9" width="13" height="2.2" rx="1" /><rect x="1.5" y="11.3" width="13" height="2.2" rx="1" /></g></svg>;
+const Chevron = () => <span className="gd-chev"><Icon name="right" size={12} /></span>;
+const GridGlyph = () => <Icon name="grid" size={15} />;
+const ListGlyph = () => <Icon name="list" size={15} />;
 function GoogleG() {
   return <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.4 13.7 17.7 9.5 24 9.5z" /><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z" /><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l8-6.1z" /><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.2-13.5-10l-8 6.1C6.6 42.6 14.6 48 24 48z" /></svg>;
 }
