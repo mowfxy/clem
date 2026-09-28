@@ -10,7 +10,7 @@ import {Reveal} from './Reveal';
 const scenes:Record<string,Scene>={'financial-analysis':'balance','physics-diagrams':'telescope','technical-reports':'build',research:'discover',learning:'learn',presentations:'conversation','professional-documents':'pencil','connected-work':'folder'};
 // Provider-specific pages are not part of the product story.
 const shown=features.filter(f=>f.id!=='multi-model-work');
-export function FeatureArt({kind}:{kind:string}){return <div className="sx-feature-art"><Illustration scene={scenes[kind]||'learn'} ambient/></div>;}
+export function FeatureArt({kind}:{kind:string}){return <div className="sx-feature-art"><Illustration scene={scenes[kind]||'learn'}/></div>;}
 
 export function Marketing({route}:{route:string}){if(route==='/support'||route==='/pricing')return <SupportPage/>;return <MarketingPage route={route}/>;}
 

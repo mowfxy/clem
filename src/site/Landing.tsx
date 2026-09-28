@@ -65,7 +65,7 @@ export function Landing(){
       <section className="sx-section" id="features">
         <Reveal className="sx-head"><h2>Bring any kind of work.</h2></Reveal>
         <div className="sx-bento">{features.map(([scene,title,body],i)=><Reveal key={title} className="sx-tile" delay={(i%3)*90}>
-          <div className="sx-tile-art"><Illustration scene={scene} ambient/></div>
+          <div className="sx-tile-art"><Illustration scene={scene}/></div>
           <h3>{title}</h3><p>{body}</p>
         </Reveal>)}</div>
       </section>
@@ -77,7 +77,7 @@ export function Landing(){
 
       <section className="sx-section">
         <Reveal className="sx-local">
-          <div className="sx-local-art"><Illustration scene="house" ambient/></div>
+          <div className="sx-local-art"><Illustration scene="house"/></div>
           <div>
             <h2>Yours. On your PC.</h2>
             <ul className="sx-checks">

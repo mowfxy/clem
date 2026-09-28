@@ -456,7 +456,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // When Mowr revises the file that is open beside the chat, the panel follows it.
   useEffect(()=>{if(!panelFile)return;const f=state.files.find(x=>x.id===panelFile.id);if(f&&f!==panelFile&&(f.updated!==panelFile.updated||f.size!==panelFile.size))setPanelFile(f);},[state.files]);
   const desktopScope=activeSpace?`${activeSpace.kind}:${activeSpace.id}`:`chat:${chatId||draftChatId.current}`;
-  // Built-in workflows apply automatically; the Skills page lists only the ones people make.
+  // Built-in workflows apply automatically; Settings → Skills lists only the ones people make.
   const skills = state.skills.filter(s=>!s.builtin);
   const bytes = state.files.reduce((n, f) => n + f.size, 0);
   function newChat(id: string | null = null) {
@@ -1950,7 +1950,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     (route.endsWith("projects") ? "project" : "subject"),
                 ) && (
                   <div className="empty-state">
-                    <Illustration ambient scene={route.endsWith("projects")?"build":"learn"} className="workspace-idle-art"/>
+                    <Illustration scene={route.endsWith("projects")?"build":"learn"} className="workspace-idle-art"/>
                     <h2>Some ideas deserve their own space.</h2>
                     <p>
                       Bring related chats, files, and memory together.

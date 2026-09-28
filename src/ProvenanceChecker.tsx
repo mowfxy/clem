@@ -46,7 +46,7 @@ export default function ProvenanceChecker() {
       </header>
       <section className="checker-layout">
         <div className="checker-intro">
-          <Illustration ambient scene="discover" className="checker-art" />
+          <Illustration scene="discover" className="checker-art" />
           <span className="eyebrow">A little clarity</span>
           <h1>
             Does it carry

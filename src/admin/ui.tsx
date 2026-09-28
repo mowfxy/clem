@@ -34,12 +34,12 @@ export function Avatar({person,size=32}:{person:{id?:string;email?:string|null;u
 }
 
 export function Empty({icon='spark',scene,title,children}:{icon?:string;scene?:Scene;title:string;children?:ReactNode}){
-  return <div className="adm-empty">{scene?<div className="adm-empty-art"><Illustration scene={scene} ambient/></div>:<span className="adm-empty-mark"><I name={icon} size={20}/></span>}<h3>{title}</h3>{children&&<p>{children}</p>}</div>;
+  return <div className="adm-empty">{scene?<div className="adm-empty-art"><Illustration scene={scene}/></div>:<span className="adm-empty-mark"><I name={icon} size={20}/></span>}<h3>{title}</h3>{children&&<p>{children}</p>}</div>;
 }
 
 /** The illustrated page header, matching the one at the top of each settings tab in the app. */
 export function PageHead({scene,title,line,children}:{scene:Scene;title:string;line:ReactNode;children?:ReactNode}){
-  return <header className="adm-page-head"><Illustration scene={scene} ambient className="adm-head-art"/><div className="adm-head-text"><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
+  return <header className="adm-page-head"><Illustration scene={scene} className="adm-head-art"/><div className="adm-head-text"><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
 }
 export function Skeleton({rows=5}:{rows?:number}){return <div className="adm-skeleton" aria-busy="true" aria-label="Loading">{Array.from({length:rows},(_,i)=><span key={i} style={{animationDelay:i*80+'ms'}}/>)}</div>;}
 

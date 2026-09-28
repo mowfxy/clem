@@ -105,10 +105,10 @@ export const mowrSkills: MowrSkill[] = [
     id: "own-skills", name: "The person's own skills", description: "Reusable workflows the person saves and Mowr follows.",
     when: /(?:^|\s)\/skill\b|\b(?:create|make|build|save|add|write|edit|change|update|delete|remove|new|my|custom|own) (?:a |an |my |this |own |new )*(?:skills?|workflows?)\b/i,
     steps: [
-      "A skill is a named list of steps the person saves in Mowr (Skills page → New skill, or type /skill in the message box). The form has a name (up to 100 characters), a one-line description and the steps, one per line, at least two. Once saved, Mowr adds every one of the person's skills to each request under “The user's own workflows”, and you apply the ones that fit.",
+      "A skill is a named list of steps the person saves in Mowr (Settings → Skills → Create a skill, or type /skill in the message box). The form has a name (up to 100 characters), a one-line description and the steps, one per line, at least two. Once saved, Mowr adds every one of the person's skills to each request under “The user's own workflows”, and you apply the ones that fit.",
       "You cannot save, change or delete a skill yourself. To help the person make one, write it ready to paste: a name, a one-line description, then 3–10 steps as plain lines (no numbers or bullets, since each line becomes one step), each an instruction that produces something checkable.",
       "Name the Mowr features each step should use (web search, Kinetra PDFs and figures, ```visual blocks, ```check blocks, [[file, p. N]] citations, Drive files) so the workflow uses the app fully, and keep every step within what Mowr can do.",
-      "Then tell the person to open the form with /skill and paste the steps in. They can edit or delete a skill later from the Skills page.",
+      "Then tell the person to open the form with /skill and paste the steps in. They can edit or delete a skill later in Settings → Skills.",
       "When the person's own workflow applies to a request, follow it, but the Mowr rules above it (formats, citations, never inventing links or files) still win.",
     ],
   },

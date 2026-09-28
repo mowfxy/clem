@@ -41,12 +41,11 @@ b,strong{font-weight:700}
 code,kbd,pre,samp{font-family:var(--mono)}
 
 /* Voice: the one serif headline a screen gets, and Mowr talking in an empty or finished state. */
-.voice,
 .empty-state h2,.upload-empty h2,.vp-empty h2,.sh-done h2,.contact-sent h3,.adm-empty h3,
 .new-chat-content .greeting-row h1{font-family:var(--serif);font-weight:400;letter-spacing:var(--track-display)}
 
 /* Numbers that are read as values line up. */
-.tabular,.adm-stat strong,.study-numbers strong,.sp-stat strong{font-variant-numeric:tabular-nums}
+.adm-stat strong,.study-numbers strong,.sp-stat strong{font-variant-numeric:tabular-nums}
 
 /* Eyebrows: the small capital labels above a title or group. */
-.eyebrow,.type-label{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase}
+.eyebrow{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase}
