@@ -31,13 +31,15 @@
 .sx-menu{display:none!important;background:none;border:0;color:#f0efeb;padding:8px}
 
 /* Hero */
-.sx-hero{position:relative;max-width:1200px;margin:0 auto;padding:120px 20px 40px;display:grid;justify-items:center;text-align:center}
+.sx-hero{position:relative;max-width:1440px;margin:0 auto;padding:120px 20px 40px;display:grid;justify-items:center;text-align:center}
 .sx-hero-glow{position:absolute;inset:-160px -20% auto;height:760px;pointer-events:none;background:radial-gradient(38% 46% at 50% 42%,#f0efeb0f,transparent 70%),radial-gradient(26% 32% at 16% 18%,#d8796810,transparent 70%);animation:sx-breathe 14s ease-in-out infinite alternate}
-.sx-hero-copy{position:relative;display:grid;justify-items:center;animation:sx-rise .9s var(--sx-ease) both}
-.sx-hero .sx-lede{margin-inline:auto}
+.sx-hero-copy{position:relative;width:100%;display:grid;justify-items:center;animation:sx-rise .9s var(--sx-ease) both}
+.sx-hero .sx-lede{margin:34px auto 36px;max-width:none}
 .sx-hero .sx-cta-row{justify-content:center}
 .sx-hero-copy .mowr-mark{color:var(--sx-ink);margin-bottom:28px}
-.sx-hero h1{font-size:clamp(52px,6.4vw,92px);line-height:.98;letter-spacing:-.045em}
+.sx-hero h1{font-size:clamp(52px,9.2vw,134px);line-height:1;letter-spacing:-.05em;white-space:nowrap}
+.sx-narrow-break{display:none}
+@media (max-width:760px){.sx-hero h1{white-space:normal}.sx-narrow-break{display:inline}}
 .sx-lede{font-size:clamp(18px,1.6vw,20px);margin:24px 0 34px;max-width:440px}
 .sx-cta-row{display:flex;gap:12px;flex-wrap:wrap}
 
