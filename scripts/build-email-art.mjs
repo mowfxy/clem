@@ -51,7 +51,7 @@ const only=process.argv.find(a=>a.startsWith('--only='))?.slice(7).split(',');
 for(const scene of process.argv.includes('--mark-only')?[]:SCENES.filter(s=>!only||only.includes(s))){
   const svg=t=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 390"><rect width="480" height="390" fill="${BG}"/>${filmFrame(scene,t,'f')}</svg>`;
   const frames=[[await raster(svg(6),W,H),1400]];
-  for(let t=0;t<6;t+=1/10)frames.push([await raster(svg(t),W,H),100]);
+  for(let t=0;t<6;t+=.08)frames.push([await raster(svg(t),W,H),80]);
   frames.push([await raster(svg(6),W,H),2200]);
   encode(frames,W,H,`${scene}.gif`);
 }
