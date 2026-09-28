@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import {Icon,Logo} from '../Icons';
 import './site.css';
 
-const links=[['#/features','Features'],['#/#visuals','Visuals'],['#/support','Support'],['#/download','Setup']];
+const links=[['#/features','Features'],['#/#visuals','Visuals'],['#/support','Support'],['#/about','About']];
 
 /** Shared site navigation: condenses on scroll and folds into a menu on phones. */
 export function SiteHeader(){
@@ -12,7 +12,7 @@ export function SiteHeader(){
   return <header className={`sx-header ${scrolled?'scrolled':''} ${open?'open':''}`}>
     <a className="sx-brand" href="#/" aria-label="Mowr home"><Logo size={24}/><span>mowr</span></a>
     <nav aria-label="Site">{links.map(([href,label])=><a key={href} href={href} onClick={e=>{if(href.includes('#/#')){e.preventDefault();jump(href.split('#/#')[1]);}}}>{label}</a>)}</nav>
-    <a className="sx-btn sx-btn-primary sx-header-cta" href="#/download?start">Download</a>
+    <a className="sx-btn sx-btn-primary sx-header-cta" href="/download/windows">Download</a>
     <button className="sx-menu" aria-label={open?'Close menu':'Open menu'} aria-expanded={open} onClick={()=>setOpen(!open)}><Icon name={open?'close':'menu'} size={20}/></button>
   </header>;
 }
@@ -29,7 +29,7 @@ export function SiteFooter(){
     <div className="sx-footer-top">
       <a className="sx-brand" href="#/"><Logo size={24}/><span>mowr</span></a>
       <nav aria-label="Footer">
-        <a href="#/features">Features</a><a href="#/download">Setup</a><a href="#/support">Support</a><a href="#/about">About</a>
+        <a href="#/features">Features</a><a href="/download/windows">Download</a><a href="#/support">Support</a><a href="#/about">About</a>
         <a href="mailto:support@mowrai.com">Contact</a><a href="#/privacy">Privacy</a><a href="#/terms">Terms</a>
       </nav>
     </div>

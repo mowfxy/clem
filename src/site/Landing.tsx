@@ -54,7 +54,7 @@ export function Landing(){
           <h1>Your space<br/>to think.</h1>
           <p className="sx-lede">One calm place for your projects, study and documents.</p>
           <div className="sx-cta-row">
-            <a className="sx-btn sx-btn-primary sx-btn-lg" href="#/download?start">Download for Windows<Icon name="download" size={18}/></a>
+            <a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a>
             <a className="sx-btn sx-btn-ghost sx-btn-lg" href="#/features">Explore</a>
           </div>
           <p className="sx-fine">Free to download · Free to use</p>
@@ -100,7 +100,7 @@ export function Landing(){
       </section>
 
       <section className="sx-final">
-        <Reveal><Logo size={52} thinking/><h2>What’s on your mind?</h2><a className="sx-btn sx-btn-primary sx-btn-lg" href="#/download?start">Download for Windows<Icon name="download" size={18}/></a></Reveal>
+        <Reveal><Logo size={52} thinking/><h2>What’s on your mind?</h2><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
       </section>
     </main>
     <SiteFooter/>

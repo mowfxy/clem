@@ -5,7 +5,7 @@ import type {Go} from './AdminApp';
 
 const statuses=[['active','Active'],['open','Open'],['pending','Waiting on person'],['resolved','Resolved'],['closed','Closed'],['all','All']] as const;
 const priorityTone:Record<string,string>={urgent:'danger',high:'warn',normal:'neutral',low:'quiet'};
-const replies=['Thanks for reaching out — I\'m looking into this now and will update you shortly.','This is fixed in the latest build. Please update Mowr from mowrai.com/download and let us know if it happens again.','Could you share the steps that lead to this, and your Mowr version (Settings → About)?'];
+const replies=['Thanks for reaching out — I\'m looking into this now and will update you shortly.','This is fixed in the latest version. Update Mowr from the Microsoft Store (Library → Get updates) and let us know if it happens again.','Could you share the steps that lead to this, and your Mowr version (Settings → About)?'];
 
 export function Cases({go,selected}:{go:Go;selected?:string}){
   const [status,setStatus]=useState('active');const [q,setQ]=useState('');const [query,setQuery]=useState('');

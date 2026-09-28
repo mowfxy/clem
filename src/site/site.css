@@ -99,6 +99,7 @@
 .sx-tile:hover{border-color:#3e3e3a;background:#1a1a18;transform:translateY(-4px)}
 .sx-tile-art{height:170px;display:grid;place-items:center;margin-bottom:10px}
 .sx-tile-art .ink-scene{width:210px;max-width:100%}
+.sx-tile-art .ink-scene svg{display:block;overflow:hidden}
 .sx-tile h3{font-size:25px;margin-bottom:6px}
 .sx-tile p{margin:0;font-size:15px}
 
@@ -126,13 +127,13 @@
 .sx-checks li svg{flex:none;color:var(--sx-muted)}
 
 /* Pricing */
-.sx-price-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;padding:48px;border-radius:28px;border:1px solid var(--sx-line-2);background:radial-gradient(70% 90% at 0 0,#f0efeb0a,transparent 60%),var(--sx-bg-2)}
-.sx-plan{font:500 12.5px/1 'Mowafy Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--sx-muted)}
-.sx-price{font:400 96px/1 'Mowafy Serif',Georgia,serif;letter-spacing:-.05em;color:var(--sx-ink)!important;margin:16px 0 8px}
-.sx-price span{font:400 18px 'Mowafy Sans',sans-serif;color:var(--sx-muted);letter-spacing:0;margin-left:6px}
-.sx-price-card>div>p:not(.sx-price){font-size:18px;margin:0 0 26px}
-.sx-price-card small{display:block;margin-top:14px;color:var(--sx-muted);font-size:13px}
-.sx-price-card .sx-support{display:flex;width:fit-content;margin-top:22px;font-size:14.5px}
+
+
+
+
+
+
+
 .sx-paypal{display:grid;grid-template-columns:auto 1fr auto;gap:26px;align-items:center;max-width:860px;padding:34px 36px;border-radius:26px;border:1px solid var(--sx-line-2);background:radial-gradient(70% 120% at 0 0,#009cde12,transparent 60%),var(--sx-bg-2)}
 .sx-paypal-mark{width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:#f0efeb}
 .sx-paypal h2{font-size:30px;margin-bottom:6px}
@@ -142,9 +143,9 @@
 .sx-paypal+.sx-fine a{color:var(--sx-ink)}
 @media (max-width:760px){.sx-paypal{grid-template-columns:1fr;padding:26px}.sx-paypal .sx-btn{width:100%}}
 .support-pending,.support-pending:hover,.support-pending:active{cursor:default;transform:none}
-.sx-price-card ul{list-style:none;margin:0;padding:0;display:grid;gap:14px;align-content:center}
-.sx-price-card li{display:flex;gap:11px;align-items:center;color:#e3e2dc;font-size:16px}
-.sx-price-card li svg{flex:none;color:var(--sx-muted)}
+
+
+
 
 /* FAQ */
 .sx-faq-list{display:grid;gap:0;max-width:820px;border-top:1px solid var(--sx-line)}
@@ -215,13 +216,12 @@
 @keyframes sx-breathe{from{opacity:.7;transform:translateY(0)}to{opacity:1;transform:translateY(30px)}}
 @keyframes sx-progress{0%{width:0;opacity:1}64%,88%{width:100%;opacity:1}94%{width:100%;opacity:0}95%,100%{width:0;opacity:0}}
 @keyframes sx-file{0%,66%{opacity:0;transform:translateY(10px) scale(.97)}72%,88%{opacity:1;transform:none}95%,100%{opacity:0;transform:translateY(6px) scale(.99)}}
-@keyframes sx-blink{0%,100%{box-shadow:0 0 0 0 #fff0}50%{box-shadow:0 0 0 4px #ffffff55}}
 
 @media (max-width:1020px){
   .sx-hero{grid-template-columns:1fr;gap:50px;padding-top:50px}
   .sx-mock{transform:none}
   .sx-bento,.sx-feature-grid{grid-template-columns:repeat(2,1fr)}
-  .sx-price-card,.sx-feature-hero,.sx-feature-detail{grid-template-columns:1fr}
+  .sx-feature-hero,.sx-feature-detail{grid-template-columns:1fr}
   .sx-local{grid-template-columns:1fr}
   .sx-local-art{max-width:170px}
 }
@@ -237,8 +237,8 @@
   .sx-mock-body{grid-template-columns:1fr;height:auto}
   .sx-mock-side{display:none}
   .sx-mock-main{min-height:400px}
-  .sx-price-card,.sx-local{padding:28px}
-  .sx-price{font-size:76px}
+  .sx-local{padding:28px}
+  
   .sx-cta-row .sx-btn{flex:1}
   .sx-demo-stage{min-height:0}
 }
@@ -255,30 +255,4 @@
 .sx-download-hero .sx-lede{margin:18px auto 30px}
 .sx-download-cta{display:grid;justify-items:center;gap:14px}
 .sx-download-meta{color:var(--sx-muted)!important;font-size:14px;margin:0}
-.sx-install-steps{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-.sx-install-steps li{position:relative;padding:26px 22px;border-radius:var(--sx-radius);border:1px solid var(--sx-line);background:var(--sx-bg-2)}
-.sx-install-steps li>svg{color:var(--sx-soft)}
-.sx-install-steps h3{font-size:21px;margin:16px 0 8px}
-.sx-install-steps p{margin:0;font-size:14.5px}
-.sx-install-n{position:absolute;top:18px;right:20px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12.5px;font-weight:500;background:#ffffff0c;color:var(--sx-muted)}
-.sx-smartscreen{display:grid;grid-template-columns:340px 1fr;gap:36px;align-items:center;margin-top:18px;padding:32px;border-radius:24px;border:1px solid var(--sx-line);background:var(--sx-bg-2)}
-.sx-smartscreen h3{font-size:26px;margin-bottom:10px}
-.sx-ss-window{border-radius:6px;background:#1560b4;color:#fff;padding:18px 20px;font-family:'Segoe UI',system-ui,sans-serif;box-shadow:0 20px 50px -20px #000}
-.sx-ss-top{font-size:20px;font-weight:300;margin-bottom:10px}
-.sx-ss-window p{color:#e6efff!important;font-size:12.5px;margin:0 0 10px;line-height:1.5}
-.sx-ss-link{text-decoration:underline;font-weight:600;animation:sx-blink 2.4s ease-in-out infinite}
-.sx-ss-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
-.sx-ss-actions span{padding:6px 14px;border:1px solid #ffffff99;font-size:12px}
-.sx-ss-actions .run{background:#fff;color:#1560b4;animation:sx-blink 2.4s 1.2s ease-in-out infinite}
-.sx-hash{display:flex;align-items:center;gap:10px;margin-top:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--sx-line-2);background:#141413;flex-wrap:wrap}
-.sx-hash span{font-size:12px;color:var(--sx-muted);letter-spacing:.08em}
-.sx-hash code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px;color:#d9d8d1}
-.sx-hash .sx-btn{padding:7px 12px;font-size:13px}
-.sx-req-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.sx-req-grid>div{padding:26px;border-radius:var(--sx-radius);border:1px solid var(--sx-line)}
-.sx-req-grid h3{font-size:21px;margin-bottom:12px}
-.sx-req-grid ul{margin:0;padding-left:18px;color:var(--sx-soft);display:grid;gap:8px;font-size:15px}
-.sx-download-help{margin-top:22px}
 .sx-account{max-width:760px}
-@media (max-width:1020px){.sx-install-steps{grid-template-columns:repeat(2,1fr)}.sx-smartscreen{grid-template-columns:1fr}.sx-req-grid{grid-template-columns:1fr}}
-@media (max-width:560px){.sx-install-steps{grid-template-columns:1fr}}
