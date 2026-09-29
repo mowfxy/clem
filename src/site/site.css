@@ -39,7 +39,7 @@
 .sx-hero-copy .mowr-mark{color:var(--sx-ink);margin-bottom:28px}
 .sx-hero h1{font-size:clamp(44px,5.6vw,80px);line-height:1;letter-spacing:-.04em;white-space:nowrap}
 .sx-narrow-break{display:none}
-@media (max-width:760px){.sx-hero h1{white-space:normal}.sx-narrow-break{display:inline}}
+@media (max-width:760px){.sx-hero h1{white-space:normal;line-height:1.1}.sx-narrow-break{display:inline}}
 .sx-lede{font-size:clamp(18px,1.6vw,20px);margin:24px 0 34px;max-width:440px}
 .sx-cta-row{display:flex;gap:12px;flex-wrap:wrap}
 
@@ -175,7 +175,7 @@
 
 /* Inner pages */
 .sx-page-hero{max-width:1160px;margin:0 auto;padding:100px 20px 30px}
-.sx-page-hero h1{font-size:clamp(52px,6.4vw,88px);line-height:1;letter-spacing:-.045em}
+.sx-page-hero h1{font-size:clamp(52px,6.4vw,88px);line-height:1.1;letter-spacing:-.045em}
 .sx-page-hero .sx-lede{margin-bottom:28px}
 .sx-feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .sx-feature-card{position:relative;display:grid;gap:4px;padding:18px 22px 24px;border-radius:22px;border:1px solid var(--sx-line);background:var(--sx-bg-2);text-decoration:none;transition:border-color .3s,transform .4s var(--sx-ease),background .3s}
@@ -187,7 +187,7 @@
 .sx-feature-card>svg{position:absolute;top:22px;right:22px;color:var(--sx-muted);transition:transform .3s var(--sx-ease),color .3s}
 .sx-feature-card:hover>svg{transform:translateX(4px);color:var(--sx-ink)}
 .sx-feature-hero{max-width:1160px;margin:0 auto;padding:90px 20px 0;display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
-.sx-feature-hero h1{font-size:clamp(46px,5.4vw,76px);line-height:1.02;letter-spacing:-.04em}
+.sx-feature-hero h1{font-size:clamp(46px,5.4vw,76px);line-height:1.1;letter-spacing:-.04em}
 .sx-back{display:inline-flex;align-items:center;gap:8px;color:var(--sx-muted)!important;text-decoration:none;font-size:14px;margin-bottom:26px}
 .sx-back svg{transform:rotate(180deg)}
 .sx-back:hover{color:var(--sx-ink)!important}
@@ -253,7 +253,7 @@
 
 /* Download page */
 .sx-download-hero{position:relative;max-width:900px;margin:0 auto;padding:90px 20px 30px;text-align:center;display:grid;justify-items:center;gap:6px}
-.sx-download-hero h1{font-size:clamp(46px,6.4vw,80px);letter-spacing:-.045em;line-height:1.02;margin-top:18px}
+.sx-download-hero h1{font-size:clamp(46px,6.4vw,80px);letter-spacing:-.045em;line-height:1.1;margin-top:18px}
 .sx-download-hero .sx-lede{margin:18px auto 30px}
 .sx-download-cta{display:grid;justify-items:center;gap:14px}
 .sx-download-meta{color:var(--sx-muted)!important;font-size:14px;margin:0}
