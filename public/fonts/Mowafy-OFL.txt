@@ -1,4 +1,4 @@
-Mowafy Serif: Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic). Modified 2026: instanced from Noto Serif at a narrower width, refitted to a larger x-height and new proportions, weights set by stem thickness, hairlines trimmed, spacing adjusted, outlines softened, renamed Mowafy.
+Mowafy Serif: Copyright 2020 The Libre Caslon Text Project Authors (https://github.com/thundernixon/Libre-Caslon). Modified 2026: instanced from Libre Caslon Text, refitted to new proportions, weights set by stem thickness, horizontal strokes thickened, outlines smoothed and thinned, spacing tightened, typographic spaces added, renamed Mowafy.
 
 Mowafy Sans: Copyright 2023 The Schibsted Grotesk Project Authors (https://github.com/schibsted/schibsted-grotesk). Modified 2026: instanced from Schibsted Grotesk, refitted to new proportions, weights set by stem thickness, spacing adjusted, outlines softened, renamed Mowafy.
 
