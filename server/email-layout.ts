@@ -24,7 +24,7 @@ export function layout({art,title,body,label,url,note,code,preheader=body,footer
 <tr><td style="padding:0 4px 18px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle"><img src="${BASE}/email/mowr-mark.gif" width="30" height="30" alt="Mowr" style="display:block;border:0"></td><td style="padding-left:10px;vertical-align:middle;font-family:${serif};font-size:22px;color:#f0efeb">mowr</td></tr></table></td></tr>
 <tr><td class="mw-card" bgcolor="#1b1b19" style="background:#1b1b19;border:1px solid #2e2e2b;border-radius:20px;padding:34px 36px 32px;text-align:center">
 ${art?`<img class="mw-rise" src="${BASE}/email/${art}.gif" width="240" height="195" alt="" style="display:block;margin:0 auto 14px;width:240px;max-width:100%;height:auto;border:0">`:''}
-<h1 class="mw-rise mw-d1 mw-title" style="margin:0 0 12px;font-family:${serif};font-weight:400;font-size:30px;line-height:1.2;letter-spacing:-.4px;color:#f0efeb">${title}</h1>
+<h1 class="mw-rise mw-d1 mw-title" style="margin:0 0 12px;font-family:${serif};font-weight:400;font-size:30px;line-height:1.2;word-spacing:.06em;color:#f0efeb">${title}</h1>
 <p class="mw-rise mw-d2" style="margin:0 auto;max-width:400px;font-family:${sans};font-size:15px;line-height:1.65;color:#b5b4ad;white-space:pre-wrap">${body}</p>
 ${token}${button}${fallback}${small}
 </td></tr>
