@@ -29,10 +29,10 @@ export function MessageTools({ content, models, model, onReview, onVerify, canVe
   const reviewers = reviewerFor(models, model || '');
   const plain = content.replace(/```(?:visual|check|edit)[\s\S]*?(?:```|$)/g, '').trim();
   return <div className="message-tools" ref={wrap}>
-    <button type="button" aria-label={copied ? 'Copied' : 'Copy answer'} title="Copy" onClick={() => void copyText(plain).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
-    {reviewers.length > 0 && <button type="button" aria-label="Second opinion" title="Second opinion" aria-expanded={menu} disabled={busy} onClick={() => { place(); setMenu(!menu); }}><Icon name="compare" size={16} /><span>Second opinion</span></button>}
-    {canVerify && onVerify && <button type="button" aria-label="Check against sources" title="Check against your sources" disabled={busy} onClick={onVerify}><Icon name="verify" size={16} /><span>Check sources</span></button>}
-    {onExport && <button type="button" aria-label="Export" title="Export as a document" aria-expanded={exporting === 'menu'} disabled={busy || (!!exporting && exporting !== 'menu')} onClick={() => { place(); setMenu(false); setExporting(exporting === 'menu' ? null : 'menu'); }}><Icon name="download" size={16} /><span>{exporting && exporting !== 'menu' ? 'Exporting…' : 'Export'}</span></button>}
+    <button type="button" aria-label={copied ? 'Copied' : 'Copy answer'} aria-description="Copy" onClick={() => void copyText(plain).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
+    {reviewers.length > 0 && <button type="button" aria-label="Second opinion" aria-description="Second opinion" aria-expanded={menu} disabled={busy} onClick={() => { place(); setMenu(!menu); }}><Icon name="compare" size={16} /><span>Second opinion</span></button>}
+    {canVerify && onVerify && <button type="button" aria-label="Check against sources" aria-description="Check against your sources" disabled={busy} onClick={onVerify}><Icon name="verify" size={16} /><span>Check sources</span></button>}
+    {onExport && <button type="button" aria-label="Export" aria-description="Export as a document" aria-expanded={exporting === 'menu'} disabled={busy || (!!exporting && exporting !== 'menu')} onClick={() => { place(); setMenu(false); setExporting(exporting === 'menu' ? null : 'menu'); }}><Icon name="download" size={16} /><span>{exporting && exporting !== 'menu' ? 'Exporting…' : 'Export'}</span></button>}
     {exporting === 'menu' && <div className={'review-menu export-menu' + (up ? ' up' : '')} role="menu">
       <p>Save this answer as a formatted document</p>
       <button role="menuitem" onClick={() => void exportAs('pdf')}><span>PDF document</span><small>Typeset, A4</small></button>

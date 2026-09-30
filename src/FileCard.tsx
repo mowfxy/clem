@@ -14,9 +14,9 @@ export function FileCard({file,onOpen,onError}:{file:StoredFile;onOpen:()=>void;
  const [thumb,setThumb]=useState('');
  useEffect(()=>{if(kind!=='image'||file.size>12_000_000)return;let url='',live=true;void getBlob(file.id).then(b=>{if(b&&live){url=URL.createObjectURL(b);setThumb(url);}}).catch(()=>{});return()=>{live=false;if(url)URL.revokeObjectURL(url);};},[file.id,kind]);
  const save=()=>void (async()=>{const blob=await getBlob(file.id);if(!blob)throw Error('File unavailable.');download(blob,file.name);})().catch(e=>onError(e.message));
- if(thumb)return <div className="file-slip file-photo"><button className="file-photo-open" onClick={onOpen} title={file.name}><img src={thumb} alt={file.name}/></button><span className="file-photo-bar"><span>{middle(file.name,28)}</span><button aria-label={'Download '+file.name} onClick={save}><Icon name="download" size={14}/></button></span></div>;
+ if(thumb)return <div className="file-slip file-photo"><button className="file-photo-open" onClick={onOpen} aria-description={file.name}><img src={thumb} alt={file.name}/></button><span className="file-photo-bar"><span>{middle(file.name,28)}</span><button aria-label={'Download '+file.name} onClick={save}><Icon name="download" size={14}/></button></span></div>;
  return <div className={'file-slip tone-'+kind}>
-  <button className="file-slip-open" onClick={onOpen} title={file.name}>
+  <button className="file-slip-open" onClick={onOpen} aria-description={file.name}>
    <span className="file-page" aria-hidden="true"><span className="file-fold"/><b>{ext}</b></span>
    <span className="file-slip-text"><strong>{middle(file.name)}</strong><small>{file.made?'Made by Mowr · ':''}{sizeLabel(file.size)}</small></span>
   </button>

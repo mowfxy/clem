@@ -1443,7 +1443,7 @@ In this subject the learner keeps missing these questions in review; connect to 
   ];
   const composerUI = (
     <form className="composer" onSubmit={send}>
-      {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} title={p.text || "Selected area"}>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
+      {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} aria-description={p.text || "Selected area"}>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
       <SlashField
         inputRef={composer}
         inSubject={activeSpace?.kind === "subject"}
@@ -1462,7 +1462,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       />
       {driveRefs.length > 0 && (
         <div className="attachment-chips drive-chips">
-          {driveRefs.map((ref) => <button type="button" key={ref.id} aria-label={`Remove ${ref.name}`} title={`${ref.name} · read live from Google Drive`} onClick={() => setDriveRefs((all) => all.filter((x) => x.id !== ref.id))}><DriveIcon mime={ref.mimeType} name={ref.name} size={16} />{ref.name}<Icon name="close" size={12} /></button>)}
+          {driveRefs.map((ref) => <button type="button" key={ref.id} aria-label={`Remove ${ref.name}`} aria-description={`${ref.name} · read live from Google Drive`} onClick={() => setDriveRefs((all) => all.filter((x) => x.id !== ref.id))}><DriveIcon mime={ref.mimeType} name={ref.name} size={16} />{ref.name}<Icon name="close" size={12} /></button>)}
         </div>
       )}
       {attachments.length > 0 && (
@@ -1537,7 +1537,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             className={`mode-button long-toggle ${long ? "selected" : ""}`}
             aria-pressed={long}
             aria-label="Long task"
-            title="Long task: Mowr drafts a step-by-step plan you can edit, then runs each step and keeps the results."
+            aria-description="Long task: Mowr drafts a step-by-step plan you can edit, then runs each step and keeps the results."
             onClick={() => setLong(!long)}
           >
             <Icon name="long" size={16} />
@@ -1552,7 +1552,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               type="button"
               className="send-button"
               aria-label="Stop response"
-              title="Stop this chat (other chats keep going)"
+              aria-description="Stop this chat (other chats keep going)"
               onClick={() => stopChat(conversationTarget)}
             >
               <span className="stop-square" />
@@ -1561,7 +1561,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             <button
               className="send-button"
               aria-label={running ? "Interrupt and send" : "Send message"}
-              title={running ? "Stops this answer and sends your message" : undefined}
+              aria-description={running ? "Stops this answer and sends your message" : undefined}
               disabled={!draft.trim()}
             >
               <Icon name="up" size={22} />
@@ -1624,7 +1624,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                 <span>Recent thoughts</span>
                 <button
                   className="icon-button"
-                  aria-label="Search chats" title="Search chats · Ctrl K for everything"
+                  aria-label="Search chats" aria-description="Search chats · Ctrl K for everything"
                   onClick={() => setEverything("")}
                 >
                   <Icon name="research" size={17} />
@@ -1642,7 +1642,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                   >
                     {(() => { const space = c.spaceId ? state.spaces.find((x) => x.id === c.spaceId) : undefined; return space ? <SpaceMark space={space} /> : null; })()}
                     <span className="history-title">{c.title}</span>
-                    {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" title={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" aria-label="New reply" title="New reply" /> : null}
+                    {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" aria-description={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" aria-label="New reply" aria-description="New reply" /> : null}
                   </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={c.id in runs} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
                 ))
               ) : (
@@ -1819,7 +1819,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                             )}
                             {streaming && m.content && runs[activeChat.id] ? <span className="work-status" role="status"><span className="work-dot" />{runs[activeChat.id]}</span> : null}
                           </div>
-                          {m.role === "user" && !!m.drive?.length && <div className="message-drive">{m.drive.map((d) => <button type="button" key={d.id} className="drive-attached" onClick={() => openDrive(d)} title={"Open " + d.name}><DriveIcon mime={d.mimeType} name={d.name} size={18} /><span>{d.name}</span></button>)}</div>}
+                          {m.role === "user" && !!m.drive?.length && <div className="message-drive">{m.drive.map((d) => <button type="button" key={d.id} className="drive-attached" onClick={() => openDrive(d)} aria-description={"Open " + d.name}><DriveIcon mime={d.mimeType} name={d.name} size={18} /><span>{d.name}</span></button>)}</div>}
                           {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=>{const Card=m.role==='assistant'?DocumentCard:FileCard;return <Card key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>;})}
                           {/* Visuals from older chats, drawn by the ready-made models Mowr used to have. */}
                           {typeof m.visual === "string" && m.visual !== "choose" && (
@@ -1885,7 +1885,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                   {all.length > 0 && <div className="lib-bar">
                     <label className="lib-find"><Icon name="research" size={17}/><input aria-label={`Search ${projects ? "projects" : "subjects"}`} placeholder={`Find a ${kind}`} value={search} onChange={(e) => setSearch(e.target.value)}/></label>
                     <div className="lib-actions">
-                      {!projects && <button type="button" className="lib-btn" aria-label="Import a subject ZIP or study pack" title="Import a subject ZIP or study pack" onClick={() => archiveUploader.current?.click()}><Icon name="import" size={16}/>Import</button>}
+                      {!projects && <button type="button" className="lib-btn" aria-label="Import a subject ZIP or study pack" aria-description="Import a subject ZIP or study pack" onClick={() => archiveUploader.current?.click()}><Icon name="import" size={16}/>Import</button>}
                       <button type="button" className="lib-btn strong" onClick={create}><Icon name="plus" size={16}/>New {kind}</button>
                     </div>
                   </div>}
@@ -1901,7 +1901,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                         </button>
                         <footer>
                           <span>{n} {n === 1 ? "chat" : "chats"}{last ? " · " + new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}</span>
-                          <button type="button" className="lib-card-chat" aria-label={`New chat in ${s.name}`} title="New chat here" onClick={() => newChat(s.id)}><Icon name="arrow" size={16}/></button>
+                          <button type="button" className="lib-card-chat" aria-label={`New chat in ${s.name}`} aria-description="New chat here" onClick={() => newChat(s.id)}><Icon name="arrow" size={16}/></button>
                         </footer>
                       </article>;
                     })}
@@ -1946,7 +1946,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                           </button>
                           <footer>
                             <div><strong>{v.title}</strong><span>{new Date(v.created).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
-                            <button type="button" className="lib-card-chat" aria-label={`Remove ${v.title} from Visuals`} title="Remove from Visuals (it stays in its chat)" onClick={() => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== v.id) }))}><Icon name="close" size={15} /></button>
+                            <button type="button" className="lib-card-chat" aria-label={`Remove ${v.title} from Visuals`} aria-description="Remove from Visuals (it stays in its chat)" onClick={() => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== v.id) }))}><Icon name="close" size={15} /></button>
                           </footer>
                         </article>
                       ))}
@@ -2004,7 +2004,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                           </small>
                         </div>
                         <span>{sizeLabel(f.size)}</span>
-                        <button className="icon-button" aria-label={`Rename ${f.name}`} title="Rename" onClick={() => setRenamingFile(f.id)}><PencilIcon size={17} /></button>
+                        <button className="icon-button" aria-label={`Rename ${f.name}`} aria-description="Rename" onClick={() => setRenamingFile(f.id)}><PencilIcon size={17} /></button>
                         <button
                           className="icon-button"
                           aria-label={`Download ${f.name}`}
@@ -2393,7 +2393,7 @@ function ImageThumb({id}:{id:string}){
 /** Thumbnail for a model-drawn visual saved in history. */
 function SpecThumb({spec}:{spec:unknown}){
   const [html,setHtml]=useState("");
-  useEffect(()=>{let live=true;void Promise.all([import("../core/visual-spec"),import("./visuals/SpecVisual")]).then(([core,view])=>{try{const svg=view.specSvg(core.compileVisual(spec));if(live)setHtml(svg);}catch{/* an invalid saved spec keeps the empty frame */}});return()=>{live=false;};},[spec]);
+  useEffect(()=>{let live=true;void Promise.all([import("../core/visual-spec"),import("./visuals/SpecVisual")]).then(([core,view])=>{try{const svg=view.specSvg(core.compileVisual(spec));if(live)setHtml(svg.replace(/<title>[\s\S]*?<\/title>/g,""));}catch{/* an invalid saved spec keeps the empty frame */}});return()=>{live=false;};},[spec]);
   return <div className="visual-thumb" aria-hidden="true" dangerouslySetInnerHTML={{__html:html}}/>;
 }
 type ChangeRow={id:string;path:string;at:number;summary:string;added:number;removed:number;undone?:boolean};
@@ -2406,7 +2406,7 @@ function FolderChanges({onError}:{onError:(message:string)=>void}){
   if(!rows.length)return <p className="muted">No changes yet. When you ask Mowr to edit a file in a linked folder, it shows the diff first.</p>;
   return <div className="change-list">{rows.slice(0,12).map(r=><div className={`change-row ${r.undone?"undone":""}`} key={r.id}>
     <Icon name="files" size={16}/>
-    <div><strong title={r.path}>{r.path.split(/[\\/]/).pop()}</strong><small>{r.summary||r.path} · {new Date(r.at).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"})}</small></div>
+    <div><strong aria-description={r.path}>{r.path.split(/[\\/]/).pop()}</strong><small>{r.summary||r.path} · {new Date(r.at).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"})}</small></div>
     <span className="edit-stats"><b>+{r.added}</b> <i>−{r.removed}</i></span>
     {r.undone?<span className="edit-state">Undone</span>:<button type="button" onClick={()=>void desktop!.invoke({action:"folderChangeUndo",id:r.id}).then(load).catch(e=>onError(cleanError(e)))}><Icon name="undo" size={14}/>Undo</button>}
   </div>)}</div>;

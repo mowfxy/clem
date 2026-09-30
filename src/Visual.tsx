@@ -68,9 +68,9 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
       <div className="visual-transport">
         {scene.id === 'projectile' && !compact && <div className="segmented" role="group" aria-label="View"><button aria-pressed={view === '2d'} onClick={() => setView('2d')}>Diagram</button><button aria-pressed={view === '3d'} onClick={() => setView('3d')}>3D</button></div>}
         {view === '2d' && <>
-          <button className="visual-icon" aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(!playing)}>{playing ? <Icon name="pause" size={16} /> : <Icon name="playhead" size={16} />}</button>
-          <button className="visual-icon" aria-label="Restart" title="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><Icon name="restart" size={16} /></button>
-          <button className="visual-rate" aria-label={`Playback speed ${rate}×`} title="Playback speed" onClick={() => setRate(rate === 1 ? 2 : rate === 2 ? 0.5 : 1)}>{rate}×</button>
+          <button className="visual-icon" aria-label={playing ? 'Pause' : 'Play'} aria-description={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(!playing)}>{playing ? <Icon name="pause" size={16} /> : <Icon name="playhead" size={16} />}</button>
+          <button className="visual-icon" aria-label="Restart" aria-description="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><Icon name="restart" size={16} /></button>
+          <button className="visual-rate" aria-label={`Playback speed ${rate}×`} aria-description="Playback speed" onClick={() => setRate(rate === 1 ? 2 : rate === 2 ? 0.5 : 1)}>{rate}×</button>
         </>}
       </div>
     </header>
@@ -103,6 +103,6 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
 /** Static miniature of any scene, used by the gallery and saved-visual cards. */
 export function VisualThumb({ scene, params }: { scene: string | boolean | undefined; params?: Values }) {
   const def = sceneById(scene) || scenes[0];
-  const html = useMemo(() => sceneSvg(def, { ...defaults(def), ...params }), [def, params]);
+  const html = useMemo(() => sceneSvg(def, { ...defaults(def), ...params }).replace(/<title>[\s\S]*?<\/title>/g, ''), [def, params]);
   return <div className="visual-thumb" aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />;
 }

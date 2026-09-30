@@ -7,8 +7,8 @@ import "./slash.css";
 export function CommandChip({ command, onRemove }: { command: SlashCommand; onRemove?: () => void }) {
   const inner = <><Icon name={command.icon} size={16} /><span>{command.label}</span></>;
   return onRemove
-    ? <button type="button" className="command-chip" title={`${command.description} · click to remove`} aria-label={`${command.label} command, remove`} onClick={onRemove}>{inner}</button>
-    : <span className="command-chip" title={command.description}>{inner}</span>;
+    ? <button type="button" className="command-chip" aria-description={`${command.description} · click to remove`} aria-label={`${command.label} command, remove`} onClick={onRemove}>{inner}</button>
+    : <span className="command-chip" aria-description={command.description}>{inner}</span>;
 }
 
 /** The composer's text box. Typing "/" at the start or after a space lists the commands; choosing one (or finishing

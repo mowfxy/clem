@@ -68,7 +68,7 @@ function VisualBlock({ body, streaming }: { body: string; streaming: boolean }) 
   if (result.visual) {
     const saved = !!saves?.saved(result.spec);
     return <div className="visual-frame">
-      <Suspense fallback={<div className="visual-drafting">Drawing…</div>}><SpecVisual visual={result.visual} headerAction={saves && !streaming && <button type="button" className={`visual-save ${saved ? "saved" : ""}`} aria-pressed={saved} title={saved ? "Saved to Visuals · click to remove" : "Save to Visuals"} onClick={() => saves.toggle(result.spec)}>
+      <Suspense fallback={<div className="visual-drafting">Drawing…</div>}><SpecVisual visual={result.visual} headerAction={saves && !streaming && <button type="button" className={`visual-save ${saved ? "saved" : ""}`} aria-pressed={saved} aria-description={saved ? "Saved to Visuals · click to remove" : "Save to Visuals"} onClick={() => saves.toggle(result.spec)}>
         <Icon name={saved ? "check" : "pin"} size={16} /><span>{saved ? "Saved" : "Save"}</span>
       </button>} /></Suspense>
     </div>;
@@ -91,7 +91,7 @@ function CheckBlock({ body, streaming }: { body: string; streaming: boolean }) {
     {(open || differs.length > 0) && <ul>{results.map((r, i) => <li key={i} className={r.status}>
       <span className="check-mark" aria-label={r.status === 'ok' ? 'Confirmed' : r.status === 'differs' ? 'Differs' : 'Not checked'}>{r.status === 'ok' ? '✓' : r.status === 'differs' ? '!' : '–'}</span>
       <span className="check-label">{r.label}</span>
-      <code title={r.expr}>{r.expr}</code>
+      <code aria-description={r.expr}>{r.expr}</code>
       <span className="check-value">{r.status === 'differs' ? <>stated {showNumber(r.claimed)} · <strong>recomputed {showNumber(r.computed)}</strong></> : r.status === 'ok' ? <>{showNumber(r.computed)}</> : r.error}{r.unit && r.status !== 'error' ? ' ' + r.unit : ''}</span>
     </li>)}<li className="checks-note">Mowr recomputes each stated formula with its inputs. It confirms the arithmetic, not the choice of formula.</li></ul>}
   </div>;
@@ -120,7 +120,7 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
           const cite = href ? readCitation(href) : null;
           if (cite) {
             const usable = handlers.canCite?.(cite) ?? false;
-            return <button type="button" className={`cite ${usable ? '' : 'unavailable'}`} title={usable ? `Open ${cite.name}${cite.page ? ', page ' + cite.page : ''}` : `${cite.name} is not in your files`} onClick={() => usable && handlers.onCite?.(cite)}><Icon name="files" size={12} /><span>{children}</span></button>;
+            return <button type="button" className={`cite ${usable ? '' : 'unavailable'}`} aria-description={usable ? `Open ${cite.name}${cite.page ? ', page ' + cite.page : ''}` : `${cite.name} is not in your files`} onClick={() => usable && handlers.onCite?.(cite)}><Icon name="files" size={12} /><span>{children}</span></button>;
           }
           return href ? <LinkChip href={href}>{children}</LinkChip> : <>{children}</>;
         },

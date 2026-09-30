@@ -82,11 +82,11 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
     <header className="visual-heading">
       <div className="visual-title"><span className="visual-subject">{kindLabel}</span><strong>{spec.title}</strong></div>
       <div className="visual-transport">
-        {use3d && <button className="visual-icon" aria-label="Reset view" title="Reset view" onClick={() => view3d.current?.resetView()}><Icon name="cube" size={16} /></button>}
+        {use3d && <button className="visual-icon" aria-label="Reset view" aria-description="Reset view" onClick={() => view3d.current?.resetView()}><Icon name="cube" size={16} /></button>}
         {moving && <>
-          <button className="visual-icon" aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(!playing)}>{playing ? <Icon name="pause" size={16} /> : <Icon name="playhead" size={16} />}</button>
-          <button className="visual-icon" aria-label="Restart" title="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><Icon name="restart" size={16} /></button>
-          <button className="visual-rate" aria-label={`Playback speed ${rate}×`} title="Playback speed" onClick={() => setRate(rate === 1 ? 2 : rate === 2 ? 0.5 : 1)}>{rate}×</button>
+          <button className="visual-icon" aria-label={playing ? 'Pause' : 'Play'} aria-description={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(!playing)}>{playing ? <Icon name="pause" size={16} /> : <Icon name="playhead" size={16} />}</button>
+          <button className="visual-icon" aria-label="Restart" aria-description="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><Icon name="restart" size={16} /></button>
+          <button className="visual-rate" aria-label={`Playback speed ${rate}×`} aria-description="Playback speed" onClick={() => setRate(rate === 1 ? 2 : rate === 2 ? 0.5 : 1)}>{rate}×</button>
         </>}
         {headerAction}
       </div>

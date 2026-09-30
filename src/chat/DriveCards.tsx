@@ -43,7 +43,7 @@ export function DriveChip({ children, onClick }: { children: React.ReactNode; on
 /** A Drive document, image or audio file linked in a reply; opens in Mowr's viewer, streamed. */
 export function DriveCard({ file, label, onOpen }: { file: DriveRef; label?: string; onOpen: (file: DriveRef) => void }) {
   const kind = driveKind(file.mimeType);
-  return <button type="button" className="drive-card" onClick={() => onOpen(file)} title={"Open " + file.name}>
+  return <button type="button" className="drive-card" onClick={() => onOpen(file)} aria-description={"Open " + file.name}>
     <span className="drive-card-mark"><DriveLogo size={16} /></span>
     <span className="drive-card-text"><strong>{label || file.name}</strong><small>{typeName(file.mimeType)}{file.modified ? " · " + new Date(file.modified).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : ""}</small></span>
     <Icon name={kind === "audio" ? "arrow" : "expand"} size={14} />

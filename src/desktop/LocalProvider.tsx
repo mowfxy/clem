@@ -84,7 +84,7 @@ export function LocalProvider({ onDone, accountId }: { onDone: () => void; accou
       ) : (
         <div className="provider-challenge cx-challenge">
           <p>Enter this code on the OpenAI sign-in page</p>
-          <button type="button" className="cx-code" title="Copy code" onClick={() => { void copyText(challenge.code).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1600); }); }}>
+          <button type="button" className="cx-code" aria-description="Copy code" onClick={() => { void copyText(challenge.code).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1600); }); }}>
             <code>{challenge.code}</code>
             <span>{copied ? "Copied" : "Copy"}</span>
           </button>

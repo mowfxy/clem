@@ -28,7 +28,7 @@ export function EditProposal({ block, streaming, scope, outcome, onDecide, onUnd
   return <div className={`edit-proposal ${outcome?.status || ''}`}>
     <header>
       <Icon name="files" size={16} />
-      <div><strong title={block.path}>{name}</strong><small>{block.summary || block.path}</small></div>
+      <div><strong aria-description={block.path}>{name}</strong><small>{block.summary || block.path}</small></div>
       {stats && !outcome && <span className="edit-stats"><b>+{stats.added}</b> <i>−{stats.removed}</i></span>}
       {outcome?.status === 'applied' && <span className="edit-state">Applied</span>}
       {outcome?.status === 'undone' && <span className="edit-state">Undone</span>}

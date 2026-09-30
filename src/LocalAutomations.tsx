@@ -43,7 +43,7 @@ export function LocalAutomations({
           </div>
           <div className="setting-row-control">
             <button className="secondary" onClick={() => onChange((items) => items.map((x) => x.id === a.id ? { ...x, enabled: !x.enabled, nextRun: x.nextRun && x.nextRun <= Date.now() ? nextAutomation(x.schedule, x.nextRun) : x.nextRun || Date.now() } : x))}>{a.enabled ? "Pause" : "Resume"}</button>
-            <button className="secondary icon-only" aria-label={`Delete ${a.name}`} title="Delete" onClick={async () => {
+            <button className="secondary icon-only" aria-label={`Delete ${a.name}`} aria-description="Delete" onClick={async () => {
               if (await confirmDialog({ title: "Delete this routine?", message: "It stops running. Chats it already created are kept.", confirm: "Delete", danger: true }))
                 onChange((items) => items.filter((x) => x.id !== a.id));
             }}><Icon name="trash" size={15} /></button>

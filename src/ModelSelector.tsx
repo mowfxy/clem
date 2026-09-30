@@ -32,7 +32,7 @@ function EffortSlider({ levels, level, onChange, onReset }: {
     <div className="effort-head">
       <span className="effort-mark" style={{ transform: `rotate(${intensity * 90}deg)` }}><Logo size={16} /></span>
       <div className="effort-title"><b>{effortName(level)}</b></div>
-      {onReset ? <button type="button" className="picker-effort-reset" aria-label="Reset thinking level" title="Reset to default" onClick={() => { onReset(); track.current?.focus(); }}><Icon name="undo" size={15} /></button> : <span className="effort-spacer" />}
+      {onReset ? <button type="button" className="picker-effort-reset" aria-label="Reset thinking level" aria-description="Reset to default" onClick={() => { onReset(); track.current?.focus(); }}><Icon name="undo" size={15} /></button> : <span className="effort-spacer" />}
     </div>
     <div ref={track} className={"effort-track" + (drag !== null ? " is-dragging" : "")} style={style} role="slider" tabIndex={0}
       aria-label="Reasoning effort" aria-valuemin={0} aria-valuemax={levels.length - 1} aria-valuenow={index} aria-valuetext={effortName(level)}
@@ -105,12 +105,12 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
     rows[key === "Home" ? 0 : key === "End" ? rows.length - 1 : current < 0 ? 0 : (current + (key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus();
   };
   return <div className="model-selector unified-model-picker">
-    <button ref={modelButton} type="button" className="picker-trigger" disabled={disabled} aria-label="Choose model" aria-haspopup="menu" aria-expanded={open === "model"} title={selected?.name || "Choose a model"} onClick={() => setOpen(open === "model" ? null : "model")}>
+    <button ref={modelButton} type="button" className="picker-trigger" disabled={disabled} aria-label="Choose model" aria-haspopup="menu" aria-expanded={open === "model"} aria-description={selected?.name || "Choose a model"} onClick={() => setOpen(open === "model" ? null : "model")}>
       {selected && <ProviderMark provider={selected.provider} />}
       <span className="picker-trigger-name">{selected?.name || "Choose model"}</span>
       <Icon name="down" size={12} />
     </button>
-    {level && onEffort && levels.length > 0 && <button ref={effortButton} type="button" className="picker-trigger picker-trigger-effort" data-level={level} disabled={disabled} aria-label="Thinking level" aria-haspopup="dialog" aria-expanded={open === "effort"} title={effortName(level) + " thinking"} onClick={() => setOpen(open === "effort" ? null : "effort")}>
+    {level && onEffort && levels.length > 0 && <button ref={effortButton} type="button" className="picker-trigger picker-trigger-effort" data-level={level} disabled={disabled} aria-label="Thinking level" aria-haspopup="dialog" aria-expanded={open === "effort"} aria-description={effortName(level) + " thinking"} onClick={() => setOpen(open === "effort" ? null : "effort")}>
       <span className="effort-pip" aria-hidden="true" style={{ "--p": levels.length > 1 ? levels.findIndex((l) => l.reasoningEffort === level) / (levels.length - 1) : 1 } as CSSProperties} />
       {effortName(level)}
     </button>}
