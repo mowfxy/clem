@@ -6,7 +6,6 @@ import type {Scene} from '../vectorFilm';
 import {Reveal} from './Reveal';
 import {Faq,PayPalCard} from './sections';
 
-const Visual=lazy(()=>import('../Visual'));
 const SpecDemo=lazy(()=>import('./SpecDemo'));
 
 const features:[Scene,string,string][]=[
@@ -17,16 +16,10 @@ const features:[Scene,string,string][]=[
   ['discover','Research','Every claim links to its page.'],
   ['balance','Checked','Numbers recomputed. A second opinion on call.'],
 ];
-// Each demo is the words someone typed; some use a ready-made model, others are drawn on request.
-const demos:{ask:string;scene?:string;spec?:string}[]=[
-  {ask:'a thrown ball',scene:'projectile'},
+// Each demo is the words someone typed, drawn from the app's visual descriptions.
+const demos:{ask:string;spec:string}[]=[
   {ask:'partial derivatives in 3D',spec:'partials'},
-  {ask:'photosynthesis',spec:'photosynthesis'},
   {ask:'a methane molecule',spec:'methane'},
-  {ask:'supply and demand',spec:'market'},
-  {ask:'a standing wave',spec:'wave'},
-  {ask:'compound interest',spec:'savings'},
-  {ask:'planet orbits',scene:'orbit'},
 ];
 
 /** Loads the live visual only when its section approaches the viewport. */
@@ -37,7 +30,7 @@ function VisualDemo(){
   return <div ref={ref} className="sx-demo">
     <div className="sx-ask" aria-hidden="true"><span className="sx-ask-cmd">/visual</span><span key={demo.ask} className="sx-ask-text">{demo.ask}</span><b>↑</b></div>
     <div className="sx-chips" role="tablist" aria-label="Choose a visual">{demos.map((d,i)=><button key={d.ask} role="tab" aria-selected={pick===i} className={pick===i?'on':''} onClick={()=>setPick(i)}>{d.ask}</button>)}</div>
-    <div className="sx-demo-stage">{near?<Suspense fallback={<div className="sx-demo-wait"/>}>{demo.scene?<Visual key={demo.ask} scene={demo.scene} compact/>:<SpecDemo key={demo.ask} name={demo.spec!}/>}</Suspense>:<div className="sx-demo-wait"/>}</div>
+    <div className="sx-demo-stage">{near?<Suspense fallback={<div className="sx-demo-wait"/>}><SpecDemo key={demo.ask} name={demo.spec}/></Suspense>:<div className="sx-demo-wait"/>}</div>
   </div>;
 }
 
