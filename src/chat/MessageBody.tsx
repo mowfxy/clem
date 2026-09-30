@@ -68,10 +68,9 @@ function VisualBlock({ body, streaming }: { body: string; streaming: boolean }) 
   if (result.visual) {
     const saved = !!saves?.saved(result.spec);
     return <div className="visual-frame">
-      <Suspense fallback={<div className="visual-drafting">Drawing…</div>}><SpecVisual visual={result.visual} /></Suspense>
-      {saves && !streaming && <button type="button" className={`visual-save ${saved ? "saved" : ""}`} aria-pressed={saved} title={saved ? "Saved to Visuals · click to remove" : "Save to Visuals"} onClick={() => saves.toggle(result.spec)}>
+      <Suspense fallback={<div className="visual-drafting">Drawing…</div>}><SpecVisual visual={result.visual} headerAction={saves && !streaming && <button type="button" className={`visual-save ${saved ? "saved" : ""}`} aria-pressed={saved} title={saved ? "Saved to Visuals · click to remove" : "Save to Visuals"} onClick={() => saves.toggle(result.spec)}>
         <Icon name={saved ? "check" : "pin"} size={16} /><span>{saved ? "Saved" : "Save"}</span>
-      </button>}
+      </button>} /></Suspense>
     </div>;
   }
   if (streaming) return <div className="visual-drafting" role="status"><span className="drafting-dot" />Drawing the visual…</div>;

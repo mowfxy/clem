@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import 'katex/contrib/mhchem';
@@ -21,7 +21,7 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 const fileName = (title: string) => title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().slice(0, 60) || 'visual';
 
 /** Renders a model-authored visual with the same engine, controls and exports as the built-in models. */
-export default function SpecVisual({ visual, compact = false, initial }: { visual: CompiledVisual; compact?: boolean; initial?: Record<string, number> }) {
+export default function SpecVisual({ visual, compact = false, initial, headerAction }: { visual: CompiledVisual; compact?: boolean; initial?: Record<string, number>; headerAction?: ReactNode }) {
   const { spec, params, moving, steps } = visual;
   const [values, setValues] = useState(() => ({ ...defaultValues(visual), ...initial }));
   const [playing, setPlaying] = useState(() => moving && !reducedMotion());
@@ -88,6 +88,7 @@ export default function SpecVisual({ visual, compact = false, initial }: { visua
           <button className="visual-icon" aria-label="Restart" title="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><Icon name="restart" size={16} /></button>
           <button className="visual-rate" aria-label={`Playback speed ${rate}×`} title="Playback speed" onClick={() => setRate(rate === 1 ? 2 : rate === 2 ? 0.5 : 1)}>{rate}×</button>
         </>}
+        {headerAction}
       </div>
     </header>
     <div className="visual-stage" ref={stage}>
