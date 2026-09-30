@@ -36,7 +36,7 @@ export function LinkChip({ href, children }: { href: string; children?: ReactNod
   const text = textOf(children).trim();
   const bare = !text || text === href || text.replace(/\/$/, "") === href.replace(/\/$/, "") || /^https?:\/\//.test(text);
   const label = bare ? (brand && brand.name !== "Google Drive" && brand.name !== "GitHub" ? brand.name : shortUrl(url)) : children;
-  return <a className="link-chip" href={url.href} target="_blank" rel="noopener" title={url.href}>
+  return <a className="link-chip" href={url.href} target="_blank" rel="noopener" aria-description={url.href}>
     <span className="link-mark" aria-hidden="true">{brand?.mark || globe}</span><span className="link-label">{label}</span>
   </a>;
 }
@@ -64,7 +64,7 @@ export function YouTubeEmbed({ href }: { href: string }) {
   if (!video) return null;
   return <span className="yt-embed" role="group" aria-label="YouTube video">
     {playing
-      ? <iframe title="YouTube video player" src={`https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&start=${video.start}&playsinline=1&rel=0`} referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen />
+      ? <iframe aria-label="YouTube video player" src={`https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&start=${video.start}&playsinline=1&rel=0`} referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen />
       : <span className="yt-poster" role="button" tabIndex={0} aria-label="Play video" onClick={() => setPlaying(true)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPlaying(true); } }}>
         <img src={`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`} alt="" loading="lazy" referrerPolicy="no-referrer" />
         <span className="yt-play" aria-hidden="true"><YouTubeLogo size={64} /></span>

@@ -267,13 +267,13 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const detail = kind === "pdf" ? (pages ? `${pages} page${pages === 1 ? "" : "s"}` : "PDF") : kind === "office" ? (/\.pptx$/i.test(file.name) ? "Presentation" : /\.xlsx$/i.test(file.name) ? "Workbook" : "Document") : kind === "text" ? "Text" : kind === "image" ? "Image" : "File";
   const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
     <header className="fp-head">
-      <div className="fp-title"><span className="fp-crumb">Files /</span><strong title={file.name}>{file.name}</strong></div>
+      <div className="fp-title"><span className="fp-crumb">Files /</span><strong aria-description={file.name}>{file.name}</strong></div>
       <small className="fp-meta">{detail}{current.versions?.length ? ` · edited ${current.versions.length}×` : ""}</small>
-      {!!current.versions?.length && !proposal && !working && <button className="fp-icon" title="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}
+      {!!current.versions?.length && !proposal && !working && <button className="fp-icon" aria-description="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}
       {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Mowr</button>}
-      <button className="fp-icon" title="Open in browser" aria-label="Open in browser" onClick={() => onOpenExternally(current)}><Icon name="arrow" size={16} /></button>
-      <button className="fp-icon" title="Download" aria-label="Download" disabled={!blob} onClick={() => blob && download(blob, file.name)}><Icon name="download" size={16} /></button>
-      <button className="fp-icon" title="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
+      <button className="fp-icon" aria-description="Open in browser" aria-label="Open in browser" onClick={() => onOpenExternally(current)}><Icon name="arrow" size={16} /></button>
+      <button className="fp-icon" aria-description="Download" aria-label="Download" disabled={!blob} onClick={() => blob && download(blob, file.name)}><Icon name="download" size={16} /></button>
+      <button className="fp-icon" aria-description="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
     </header>
     {saved && !proposal && <div className="fp-proposal is-saved" role="status">
       <div><strong>{saved.summary}</strong><small>Saved · earlier version kept</small></div>

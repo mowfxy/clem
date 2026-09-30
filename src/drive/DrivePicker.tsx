@@ -72,21 +72,21 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
         <button role="tab" aria-selected={root === "shared" && !search} onClick={() => { setRoot("shared"); setTrail([]); setQuery(""); }}><Icon name="account" size={14} />Shared with me</button>
       </div>
       <label className="gd-search"><Icon name="research" size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={mode === "folder" ? "Search folders" : "Search Drive"} aria-label="Search Google Drive" />{query && <button aria-label="Clear search" onClick={() => setQuery("")}><Icon name="close" size={12} /></button>}</label>
-      <button className="gd-view" aria-label={grid ? "List view" : "Grid view"} title={grid ? "List view" : "Grid view"} onClick={() => { const g = !grid; setGrid(g); try { localStorage.setItem("mowr-drive-grid", g ? "1" : "0"); } catch {} }}>{grid ? <ListGlyph /> : <GridGlyph />}</button>
+      <button className="gd-view" aria-label={grid ? "List view" : "Grid view"} aria-description={grid ? "List view" : "Grid view"} onClick={() => { const g = !grid; setGrid(g); try { localStorage.setItem("mowr-drive-grid", g ? "1" : "0"); } catch {} }}>{grid ? <ListGlyph /> : <GridGlyph />}</button>
     </div>
     <nav className="gd-trail" aria-label="Folder path">
       {search ? <span className="gd-crumb here">Results for “{search}”</span> : <>
         <button className={"gd-crumb" + (trail.length ? "" : " here")} onClick={() => up(0)}>{root === "root" ? "My Drive" : "Shared with me"}</button>
         {trail.map((t, i) => <span key={t.id} className="gd-crumb-wrap"><Chevron /><button className={"gd-crumb" + (i === trail.length - 1 ? " here" : "")} onClick={() => up(i + 1)}>{t.name}</button></span>)}
       </>}
-      <button className="gd-refresh" aria-label="Refresh" title="Refresh" disabled={busy} onClick={() => void load()}><Icon name="undo" size={13} /></button>
+      <button className="gd-refresh" aria-label="Refresh" aria-description="Refresh" disabled={busy} onClick={() => void load()}><Icon name="undo" size={13} /></button>
     </nav>
     <div className={"gd-list" + (busy && items.length ? " is-loading" : "")} role="list">
       {shown.map((f) => {
         const isFolder = f.mimeType === FOLDER, chosen = picked.has(f.id), muted = mode === "folder" && !isFolder;
         const click = () => isFolder ? open(f) : mode === "files" ? toggle(f) : undefined;
         return <div role="listitem" key={f.id} className={"gd-row" + (isFolder ? " is-folder" : "") + (chosen ? " is-picked" : "") + (muted ? " is-muted" : "")}>
-          <button className="gd-open" disabled={muted} onClick={click} onDoubleClick={() => { if (!isFolder && mode === "files") onFiles?.([f]); }} title={f.name}>
+          <button className="gd-open" disabled={muted} onClick={click} onDoubleClick={() => { if (!isFolder && mode === "files") onFiles?.([f]); }} aria-description={f.name}>
             <span className="gd-thumb">{(grid ? f.thumbnail : hasPreview(f)) ? <Thumb id={f.id} mime={f.mimeType} name={f.name} /> : <DriveIcon mime={f.mimeType} name={f.name} size={grid ? 44 : 26} />}{f.mimeType.startsWith("video/") && <span className="gd-play" aria-hidden="true"><Icon name="playhead" size={11} /></span>}</span>
             <span className="gd-name"><strong>{f.name}</strong><small>{[kindName(f.mimeType, f.name), when(f.modified), bytes(f.size)].filter(Boolean).join(" · ")}</small></span>
             {mode === "files" && !isFolder && <span className={"gd-check" + (chosen ? " on" : "")} aria-hidden="true">{chosen && <Icon name="check" size={12} />}</span>}

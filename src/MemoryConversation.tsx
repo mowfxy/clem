@@ -77,7 +77,7 @@ export function MemoryConversation({
       {summary.trim() && onSummary && (
         <div className="memory-group">
           <h4>{summaryLabel}</h4>
-          <ul><li><span className="memory-text">{summary.trim()}</span><span className="memory-actions"><button type="button" className="memory-icon" disabled={busy} aria-label="Forget your notes" title="Forget" onClick={async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Mowr stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); }}><Icon name="close" size={13} /></button></span></li></ul>
+          <ul><li><span className="memory-text">{summary.trim()}</span><span className="memory-actions"><button type="button" className="memory-icon" disabled={busy} aria-label="Forget your notes" aria-description="Forget" onClick={async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Mowr stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); }}><Icon name="close" size={13} /></button></span></li></ul>
         </div>
       )}
       {groups.map(({ scope, items }) => (
@@ -88,8 +88,8 @@ export function MemoryConversation({
               <li key={m.id} className={m.confirmed ? "" : "learned"}>
                 <span className="memory-text">{m.text}</span>
                 <span className="memory-actions">
-                  {!m.confirmed && <button type="button" className="memory-keep" disabled={busy} title="Learned from a chat. Keep it?" onClick={() => void act("memoryConfirm", m.id)}>Keep</button>}
-                  <button type="button" className="memory-icon" disabled={busy} aria-label={"Forget: " + m.text} title="Forget" onClick={() => void act("memoryForget", m.id)}><Icon name="close" size={13} /></button>
+                  {!m.confirmed && <button type="button" className="memory-keep" disabled={busy} aria-description="Learned from a chat. Keep it?" onClick={() => void act("memoryConfirm", m.id)}>Keep</button>}
+                  <button type="button" className="memory-icon" disabled={busy} aria-label={"Forget: " + m.text} aria-description="Forget" onClick={() => void act("memoryForget", m.id)}><Icon name="close" size={13} /></button>
                 </span>
               </li>
             ))}

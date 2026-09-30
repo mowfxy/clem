@@ -39,10 +39,10 @@ export function DriveFolderView({ folderId, folderName, onOpen, onAsk, onChangeF
     <header className="gd-space-head">
       <DriveLogo size={18} />
       <div><strong>{folderName}</strong><br /><small>{items ? `${files.length} file${files.length === 1 ? "" : "s"} · read live from Google Drive` : "Google Drive"}</small></div>
-      <span className="gd-live" title="Always up to date: nothing is downloaded">Live</span>
+      <span className="gd-live" aria-description="Always up to date: nothing is downloaded">Live</span>
       <div className="gd-space-actions">
-        {files.length > 0 && <button onClick={() => onAsk(files)} title="Ask Mowr about this folder"><Icon name="chat" size={13} /> Ask about it</button>}
-        <button onClick={() => void load(true)} disabled={busy} aria-label="Refresh" title="Refresh"><Icon name="undo" size={13} /></button>
+        {files.length > 0 && <button onClick={() => onAsk(files)} aria-description="Ask Mowr about this folder"><Icon name="chat" size={13} /> Ask about it</button>}
+        <button onClick={() => void load(true)} disabled={busy} aria-label="Refresh" aria-description="Refresh"><Icon name="undo" size={13} /></button>
         <button onClick={onChangeFolder}>Change</button>
         <button onClick={onUnlink}>Unlink</button>
       </div>
@@ -56,7 +56,7 @@ export function DriveFolderView({ folderId, folderName, onOpen, onAsk, onChangeF
       {error && <p className="gd-error">{error}</p>}
       {!items && !error && connected !== false && Array.from({ length: 4 }, (_, i) => <div key={i} className="gd-skeleton" />)}
       {here.map((i) => <div key={i.id} className={"gd-row" + (i.folder ? " is-folder" : "")}>
-        <button className="gd-open" onClick={() => (i.folder ? setAt(full(i)) : onOpen(i))} title={i.name}>
+        <button className="gd-open" onClick={() => (i.folder ? setAt(full(i)) : onOpen(i))} aria-description={i.name}>
           <span className="gd-thumb">{i.thumbnail && /^(image|video)\//.test(i.mimeType) ? <img src={"/api/drive/thumb/" + i.id} alt="" loading="lazy" /> : <DriveIcon mime={i.mimeType} name={i.name} size={26} />}</span>
           <span className="gd-name"><strong>{i.name}</strong><small>{i.folder ? `${count(full(i))} file${count(full(i)) === 1 ? "" : "s"}` : [kindName(i.mimeType, i.name), ago(i.modified)].filter(Boolean).join(" · ")}</small></span>
         </button>

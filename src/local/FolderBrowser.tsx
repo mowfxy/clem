@@ -34,7 +34,7 @@ export function FolderBrowser({initial,folderId:startFolder,scopeLabel,onAsk,onC
   const folder=folders?.find(f=>f.id===folderId);
   return <dialog ref={dialog} className="folder-browser" aria-label="Folders on this PC" onClose={onClose} onClick={e=>{if(e.target===dialog.current)onClose();}}>
     <header className="fb-head">
-      <div><span className="eyebrow">On this PC</span><h2>{open?baseName(open.path):folder?baseName(folder.path):'Linked folders'}</h2>{folder&&<p title={folder.path}>{folder.path} · {scopeLabel(folder.scope)}</p>}</div>
+      <div><span className="eyebrow">On this PC</span><h2>{open?baseName(open.path):folder?baseName(folder.path):'Linked folders'}</h2>{folder&&<p aria-description={folder.path}>{folder.path} · {scopeLabel(folder.scope)}</p>}</div>
       <button className="icon-button" aria-label="Close" onClick={onClose}><Icon name="close" size={18}/></button>
     </header>
     <div className="fb-layout">
@@ -44,7 +44,7 @@ export function FolderBrowser({initial,folderId:startFolder,scopeLabel,onAsk,onC
         <div className="fb-files" role="list">
           {folders&&!folders.length&&<p className="fb-note">No folders linked yet. Link one from a chat, project or subject in Settings → Linked folders.</p>}
           {folderId&&!tree&&!error&&<p className="fb-note">Reading folder…</p>}
-          {visible.map(f=>{const parts=f.path.split(/[\\/]/);return <button role="listitem" key={f.path} className={open?.path===f.path&&open.folderId===folderId?'active':''} onClick={()=>tree&&setOpen({folderId:tree.id,scope:tree.scope,folder:baseName(tree.path),path:f.path})} title={f.path}>
+          {visible.map(f=>{const parts=f.path.split(/[\\/]/);return <button role="listitem" key={f.path} className={open?.path===f.path&&open.folderId===folderId?'active':''} onClick={()=>tree&&setOpen({folderId:tree.id,scope:tree.scope,folder:baseName(tree.path),path:f.path})} aria-description={f.path}>
             <Icon name="files" size={15}/><span>{parts.length>1&&<i>{parts.slice(0,-1).join('/')}/</i>}{parts.at(-1)}</span></button>;})}
           {tree&&!visible.length&&<p className="fb-note">{tree.files.length?'No file matches that filter.':'No text or code files in this folder.'}</p>}
         </div>
@@ -79,7 +79,7 @@ export function FileViewer({file,onAsk}:{file:OpenFolderFile;onAsk:(instruction:
   };
   const submit=(value=instruction)=>{if(value.trim())onAsk(value.trim());};
   return <div className="file-viewer">
-    <div className="fv-meta"><span title={file.path}>{file.path}</span>{text!==null&&<small>{lines.length} lines · read-only</small>}</div>
+    <div className="fv-meta"><span aria-description={file.path}>{file.path}</span>{text!==null&&<small>{lines.length} lines · read-only</small>}</div>
     <div className="fv-body" ref={body} tabIndex={0} aria-label={`Contents of ${file.path}`}>
       {error?<p className="fb-error">{error}</p>:text===null?<p className="fb-note">Opening…</p>:
         <table><tbody>{lines.map((l,i)=><tr key={i} data-line={i+1} className={file.line===i+1?'target':''}><td>{i+1}</td><td><code>{highlight(l)}</code></td></tr>)}</tbody></table>}
@@ -87,7 +87,7 @@ export function FileViewer({file,onAsk}:{file:OpenFolderFile;onAsk:(instruction:
     <form className="fv-ask" onSubmit={e=>{e.preventDefault();submit();}}>
       <div className="fv-suggest">{suggestions.map(s=><button type="button" key={s} onClick={()=>setInstruction(s)}>{s}</button>)}</div>
       <div className="fv-input"><Icon name="chat" size={17}/><input value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder={`Tell Mowr what to change in ${baseName(file.path)}…`} aria-label="Describe the change"/>
-        <button type="button" className="secondary" onClick={()=>onAsk('')} title="Ask a question about this file">Ask about it</button>
+        <button type="button" className="secondary" onClick={()=>onAsk('')} aria-description="Ask a question about this file">Ask about it</button>
         <button className="primary" disabled={!instruction.trim()||text===null}>Propose change<Icon name="arrow" size={15}/></button></div>
       <p className="fine">Mowr drafts a diff in the chat. Nothing is written until you press Apply.</p>
     </form>
@@ -103,7 +103,7 @@ export function PcFolders({scopeLabel,onBrowse}:{scopeLabel:(scope:string)=>stri
   return <section className="pc-folders">
     <h2>Folders on this PC</h2>
     <p>{folders.length?'Read any file here, then tell Mowr what to change. Files stay in place.':'Link a folder from a chat, project or subject (Settings → Linked folders) to read and change its files here.'}</p>
-    {folders.map(f=><div className="pc-folder-row" key={f.id}><Icon name="projects" size={22}/><div><strong>{baseName(f.path)}</strong><small title={f.path}>{f.path} · {scopeLabel(f.scope)}</small></div>{watch&&<span className="watch-badge">Watching for changes</span>}<button className="secondary" onClick={()=>onBrowse(f.id)}>Browse</button></div>)}
+    {folders.map(f=><div className="pc-folder-row" key={f.id}><Icon name="projects" size={22}/><div><strong>{baseName(f.path)}</strong><small aria-description={f.path}>{f.path} · {scopeLabel(f.scope)}</small></div>{watch&&<span className="watch-badge">Watching for changes</span>}<button className="secondary" onClick={()=>onBrowse(f.id)}>Browse</button></div>)}
   </section>;
 }
 
