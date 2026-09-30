@@ -1,11 +1,4 @@
-Mowafy Serif: Copyright 2020 The Libre Caslon Text Project Authors (https://github.com/thundernixon/Libre-Caslon). Modified 2026: instanced from Libre Caslon Text, refitted to new proportions, weights set by stem thickness, horizontal strokes thickened, outlines smoothed and thinned, spacing tightened, typographic spaces added, renamed Mowafy.
-Mowafy Serif also contains Greek, mathematical, scientific and symbol glyphs from:
-  Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts) (STIX Two Text, STIX Two Math)
-  Copyright 2022 Google LLC. All Rights Reserved. (Noto Sans Math)
-  Copyright 2017 The EB Garamond Project Authors (https://github.com/octaviopardo/EBGaramond12) (EB Garamond)
-  Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) (Noto Serif)
-  Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols) (Noto Sans Symbols)
-Modified 2026: rescaled to Mowafy Serif's proportions, stroke weights matched, outlines smoothed.
+Mowafy Serif: Copyright 2026 Mohamed Mowafy. Original Latin outlines and licensed companions from mowfxy/serif, revision 3f1dea6. Full copyright notices and SIL OFL 1.1 licenses for each face are in fonts/licenses/.
 
 Mowafy Sans: Copyright 2023 The Schibsted Grotesk Project Authors (https://github.com/schibsted/schibsted-grotesk). Modified 2026: instanced from Schibsted Grotesk, refitted to new proportions, weights set by stem thickness, spacing adjusted, outlines softened, renamed Mowafy.
 
