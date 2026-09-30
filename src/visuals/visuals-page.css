@@ -1,6 +1,8 @@
 /* A drawn visual in chat, with its Save button on the top right. */
 .visual-frame{position:relative}
-.visual-save{position:absolute;top:12px;right:12px;z-index:3;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px 0 10px;border:1px solid #4a4a45;border-radius:9px;background:#1c1c1acc;backdrop-filter:blur(6px);color:#f5f4f0;font:400 13px/1 var(--sans);cursor:pointer;opacity:.9;transition:opacity .15s,border-color .15s,background .15s}
+.visual-save{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;height:32px;margin-left:4px;padding:0 12px 0 10px;border:1px solid #4a4a45;border-radius:9px;background:#1c1c1acc;backdrop-filter:blur(6px);color:#f5f4f0;font:400 13px/1 var(--sans);cursor:pointer;opacity:.9;transition:opacity .15s,border-color .15s,background .15s}
+.visual-frame .visual-heading{flex-wrap:wrap}
+.visual-frame .visual-transport{flex-shrink:0;max-width:100%;margin-left:auto}
 .visual-save:hover,.visual-save:focus-visible{opacity:1;border-color:#75746e;background:#262624e6}
 .visual-save .drawn-icon{color:#f5f4f0}
 .visual-save.saved{background:#f0efeb;border-color:#f0efeb;color:#161615}
