@@ -215,7 +215,9 @@ test("PDF figures are checked together and every problem is reported at once", a
   const html = documentHtml(spec, await renderFigures(spec));
   assert.match(html, /<math/);
   assert.match(html, /<table>/);
-  assert.match(html, /Computed with Kinetra \(diagram\/projectile\.renderProjectile\)/);
+  assert.match(html, /<figure id="fig-1"><img [^>]*src="data:image\/svg\+xml;base64,/);
+  assert.match(html, /<span class="cap-label">Figure&#160;1:<\/span> Launch at 40°/);
+  assert.ok(!html.includes("Computed with Kinetra"), "captions read like print, without tool credits");
   assert.ok(!html.includes("<b>"));
 });
 
@@ -313,17 +315,73 @@ test("a PDF in a chatty voice is refused with every offending passage listed", a
   await renderFigures({ title: "Friction", sections: [{ text: "You can see it." }] }, { checkVoice: false });
 });
 
-test("professional layout: kind label, summary, numbered sections, contents, references", async () => {
-  const spec = { kind: "report", title: "Friction on inclined planes", subtitle: "Measurement of kinetic friction", date: "2026-09-25", summary: "The kinetic friction coefficient was measured as 0.42.", sections: ["1. Introduction", "Method", "Results", "Conclusions"].map((heading) => ({ heading, text: "### Detail\nText with a table:\n\n| a | b |\n|---|---|\n| 1 | 2 |" })), references: ["Serway, R. *Physics for Scientists and Engineers*, 2018."] };
+test("professional layout: technical report title block, abstract, numbered sections, contents, references", async () => {
+  const spec = { kind: "report", title: "Friction on inclined planes", subtitle: "Measurement of kinetic friction", date: "2026-09-25", summary: "The kinetic friction coefficient was measured as 0.42 [1].", sections: ["1. Introduction", "Method", "Results", "Conclusions"].map((heading) => ({ heading, text: "### Detail\nText with a table, see Table 1 and Section 2.1 [1]:\n\nTable: Values measured.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n$$F = \\mu N$$" })), references: ["Serway, R. *Physics for Scientists and Engineers*, 2018."] };
   const html = documentHtml(spec, await renderFigures(spec));
-  assert.match(html, /Technical report/);
-  assert.match(html, /Executive summary/);
+  assert.match(html, /<body class="layout-technical numbered eqnum">/);
+  assert.match(html, /<div class="title-rule"><h1>Friction on inclined planes<\/h1><\/div>/);
+  assert.match(html, /<h2>Abstract<\/h2>/);
   assert.match(html, /25 September 2026/);
-  assert.match(html, /<nav class="doc-toc">/);
-  assert.match(html, /<h2>Introduction<\/h2>/, "manual numbers are removed; Mowr numbers sections");
-  assert.match(html, /<h3>Detail<\/h3>/, "in-section headings nest under the section");
-  assert.match(html, /<em>Physics for Scientists and Engineers<\/em>/);
-  assert.match(html, /body class="numbered"/);
+  assert.match(html, /@top-center\{content:"Friction on inclined planes"/, "running head from page 2");
+  assert.match(html, /@page:first\{@top-left\{content:none/, "no running head on the title page");
+  assert.match(html, /<nav class="doc-toc"><h2 class="toc-head">Contents<\/h2><a class="toc-row toc-l2" href="#sec-1"><span class="toc-num">1<\/span><span class="toc-text">Introduction<\/span>/);
+  assert.match(html, /<h2 id="sec-1"><span class="num">1<\/span>Introduction<\/h2>/, "manual numbers are removed; Mowr numbers sections");
+  assert.match(html, /<h3 id="sec-2-1"><span class="num">2\.1<\/span>Detail<\/h3>/, "in-section headings nest under the section");
+  assert.match(html, /<table id="tab-1"><caption><span class="cap-label">Table&#160;1:<\/span> Values measured\.<\/caption>/);
+  assert.match(html, /Table <a class="ref" href="#tab-1">1<\/a>/);
+  assert.match(html, /Section <a class="ref" href="#sec-2-1">2\.1<\/a>/);
+  assert.match(html, /<span class="cite">\[<a href="#ref-1">1<\/a>\]<\/span>/);
+  assert.match(html, /<div class="katex-display">/);
+  assert.match(html, /<li id="ref-1">Serway, R\. <em>Physics for Scientists and Engineers<\/em>/);
+  assert.ok(!/Mowafy/i.test(html), "documents never use the app's fonts");
+  assert.match(html, /--body:'Times New Roman'/);
+  const numbered = documentHtml(spec, await renderFigures(spec), new Map([["sec-1", 2], ["references", 7]]));
+  assert.match(numbered, /href="#sec-1">(?:(?!<\/a>)[\s\S])*<span class="toc-page">2<\/span>/, "the second printing fills page numbers");
+  assert.match(numbered, /href="#references">(?:(?!<\/a>)[\s\S])*<span class="toc-page">7<\/span>/);
+});
+
+test("documents never use Mowr's own fonts, and each kind has its own print design", async () => {
+  const { documentFonts, layoutFor } = await import("../../desktop/pdf-document.ts");
+  for (const font of ["Mowafy Serif", "mowafy", "Mowafy Sans", "Mowr"]) assert.ok(!/mowafy|mowr/i.test(JSON.stringify(documentFonts({ font, headingFont: font }))), font);
+  assert.match(documentFonts({ kind: "notes" }).body, /Palatino/);
+  assert.match(documentFonts({ kind: "proposal" }).head, /Arial/);
+  assert.match(documentFonts({ font: "Garamond" }).body, /Garamond/);
+  assert.deepEqual(["report", "paper", "notes", "worksheet", "brief", "memo", "letter", "document"].map((kind) => layoutFor({ kind })), ["technical", "technical", "notes", "notes", "business", "business", "letter", "notes"]);
+  assert.equal(layoutFor({ kind: "notes", style: "technical" }), "technical");
+  await assert.rejects(renderFigures({ title: "T", style: "fancy", sections: [{ text: "x" }] }), /Unknown style "fancy"/);
+  const memo = documentHtml({ kind: "memo", title: "Closure", author: "Head", sections: [{ text: "The lab closes." }] }, []);
+  assert.match(memo, /<table class="memo-table"><tbody><tr><td>Subject<\/td><td><strong>Closure<\/strong>/);
+  const sheet = documentHtml({ kind: "worksheet", title: "Practice", sections: [{ text: "1. Solve it." }] }, []);
+  assert.match(sheet, /<div class="answer-line"><span>Name<\/span><span>Date<\/span><\/div>/);
+});
+
+test("figures in documents and exported files are set in standard fonts", async () => {
+  const { standardFonts } = await import("../../core/print-fonts.ts");
+  const svg = `<svg><text font-family="'Mowafy Sans','Segoe UI',Arial,sans-serif">a</text><text font-family="'Mowafy Serif',serif">b</text><text style="font-family:'Mowafy Serif',serif;fill:red">c</text><text font-family="Consolas, monospace">d</text></svg>`;
+  const out = standardFonts(svg);
+  assert.ok(!/Mowafy/.test(out));
+  assert.match(out, /font-family="Arial, Helvetica[^"]*">a/);
+  assert.match(out, /font-family="Times New Roman[^"]*">b/);
+  assert.match(out, /style="font-family: Times New Roman[^"]*;fill:red"/);
+  assert.match(out, /font-family="Consolas[^"]*">d/);
+  assert.match(standardFonts(svg, "'Palatino Linotype',serif"), /font-family="Palatino Linotype,serif">a/);
+  const spec = { title: "T", sections: [{ text: "x", figure: kinetraRecipes[1].figure }] };
+  const html = documentHtml(spec, await renderFigures(spec));
+  const image = Buffer.from(/base64,([^"]+)"/.exec(html)![1], "base64").toString();
+  assert.ok(image.includes("<svg") && !/Mowafy/.test(image));
+});
+
+test("definitions, theorems, examples and proofs print as numbered environments", () => {
+  const html = markdownHtml("> [!DEFINITION] Charge\n> A property of matter.\n\n> [!PROOF]\n> Direct.\n\n> [!NOTE]\n> Keep units.\n\n> ordinary quote", { top: 3 });
+  assert.match(html, /<blockquote class="env env-definition"><p><span class="env-head">Definition<!--env-n--><\/span> <span class="env-title">\(Charge\)<\/span><span class="env-dot">\.<\/span> A property of matter\./);
+  assert.match(html, /<blockquote class="env env-proof"><p><span class="env-head">Proof<\/span><span class="env-dot">\.<\/span> Direct\./, "proofs are not numbered");
+  assert.match(html, /<blockquote class="env env-box env-note">/);
+  assert.match(html, /<blockquote>\n<p>ordinary quote/);
+  const doc = documentHtml({ title: "T", sections: [{ heading: "A", text: "x" }, { heading: "B", text: "> [!THEOREM] T\n> Claim.\n\n> [!EXAMPLE]\n> Case." }] }, []);
+  assert.match(doc, /Theorem 2\.1<\/span>/);
+  assert.match(doc, /Example 2\.2<\/span>/);
+  assert.match(markdownHtml("$\\ce{H2O}$ and $\\vb{F} = \\dv{p}{t}$ and \\(x^2\\)"), /<math/);
+  assert.ok(!/katex-error/.test(markdownHtml("$\\ce{2H2 + O2 -> 2H2O}$ $\\SI{3}{m/s}$ $\\pdv{f}{x}$")), "chemistry and physics shortcuts render in PDFs as in the chat");
 });
 
 test("any answer can become a document: title from the first heading, sections from ## headings", async () => {
@@ -347,11 +405,14 @@ test("built-in skills: specific triggers win and every skill is well formed", as
   for (const s of builtinSkills) assert.ok(s.steps.length >= 5 && s.steps.length <= 12 && s.builtin, s.id);
   assert.ok(builtinSkills.length >= 20);
 });
-test("a long answer with more than 300 parts exports with every part kept", async () => {
-  const { markdownDocument, renderFigures } = await import("../../desktop/pdf-document.ts");
+test("a long answer with thousands of parts exports with every part kept", async () => {
+  const { markdownDocument, renderFigures, MAX_SECTIONS } = await import("../../desktop/pdf-document.ts");
   const markdown = "# Long\n\n" + Array.from({ length: 400 }, (_, i) => `## Part ${i}\n\n${"Text \"quoted\"\n".repeat(120)}`).join("\n");
   const doc = markdownDocument(markdown, "Chat");
-  assert.ok(doc.sections.length <= 300);
+  assert.equal(doc.sections.length, 400, "each ## part stays its own section");
+  const huge = markdownDocument("# Huge\n\n" + Array.from({ length: MAX_SECTIONS + 500 }, (_, i) => `## P${i}\n\nx`).join("\n"), "Chat");
+  assert.ok(huge.sections.length <= MAX_SECTIONS && huge.sections.some((s) => s.text?.includes(`## P${MAX_SECTIONS + 499}`)));
+  assert.deepEqual(markdownDocument("# T\n\n```md\n## not a heading\n```\n\n## Real", "C").sections.map((s) => s.heading), [undefined, "Real"], "## inside code is code");
   for (const i of [0, 200, 399]) assert.ok(doc.sections.some((s) => s.heading === `Part ${i}` || s.text?.includes(`## Part ${i}\n`)));
   assert.ok(JSON.stringify(doc).length > 300000);
   await renderFigures(doc, { checkVoice: false });
@@ -364,4 +425,24 @@ test("every textbook figure recipe renders through the worker, and the PDF guide
   await assert.rejects(kinetraCall({ module: "mowr", fn: "illustration", args: [{ items: [{ type: "rope", path: ["ghost.top", [0, 0]] }] }] }), /no item has the id “ghost”/);
   assert.ok(kinetraInstructions.includes('"fn":"illustration"') && kinetraInstructions.includes("textbook figure"));
   assert.match(illustrationGuide, /fieldLines/);
+});
+
+test("printed PDFs are read quickly: page count, section pages and bookmarks", async () => {
+  const { PDFDocument, PDFName, PDFArray } = await import("pdf-lib");
+  const { destinationPages, pageCount, outlineEntries, addOutline } = await import("../../desktop/pdf-structure.ts");
+  const doc = await PDFDocument.create();
+  const pages = [doc.addPage(), doc.addPage(), doc.addPage()];
+  doc.catalog.set(PDFName.of("Dests"), doc.context.obj({ "sec-1": [pages[1].ref, "XYZ", 0, 700, 0], "sec-1-1": [pages[2].ref, "XYZ", 0, 500, 0] }));
+  for (const objectStreams of [false, true]) {
+    const bytes = await doc.save({ useObjectStreams: objectStreams });
+    assert.equal(await pageCount(bytes), 3);
+    assert.deepEqual([...(await destinationPages(bytes))].sort(), [["sec-1", 2], ["sec-1-1", 3]]);
+  }
+  const html = '<nav class="doc-toc"><h2 class="toc-head">Contents</h2><a class="toc-row toc-l2" href="#sec-1"><span class="toc-num">1</span><span class="toc-text">Intro &amp; scope</span><span class="toc-fill"></span><span class="toc-page"></span></a><a class="toc-row toc-l3" href="#sec-1-1"><span class="toc-num">1.1</span><span class="toc-text">Aim</span><span class="toc-fill"></span><span class="toc-page"></span></a></nav>';
+  const entries = outlineEntries(html);
+  assert.deepEqual(entries, [{ level: 2, id: "sec-1", title: "1  Intro & scope" }, { level: 3, id: "sec-1-1", title: "1.1  Aim" }]);
+  const marked = await PDFDocument.load(await addOutline(await doc.save({ useObjectStreams: false }), entries));
+  const outlines = marked.catalog.lookup(PDFName.of("Outlines")) as any;
+  assert.ok(outlines && outlines.get(PDFName.of("First")));
+  assert.ok(marked.catalog.lookup(PDFName.of("Dests")) && !(marked.catalog.lookup(PDFName.of("Dests")) instanceof PDFArray));
 });

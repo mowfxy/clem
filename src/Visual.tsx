@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icons';
 import { downloadMade } from './store';
+import { exportFonts, standardFonts } from '../core/print-fonts';
 import { CanvasPen, C, H, W } from './visuals/pen';
 import { defaults, projectileLatex, sceneById, scenes, sceneSvg, type Handle, type Values } from './visuals/scenes';
 import './visuals/visuals.css';
@@ -91,9 +92,9 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
     </div>
     <footer className="visual-caption"><span className="visual-equation">{scene.equation}</span><span>{scene.assumption}</span></footer>
     {!compact && <div className="visual-exports">
-      <button onClick={() => { const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = C.bg; ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); scene.draw(new CanvasPen(ctx), params, local()); off.toBlob(b => b && void downloadMade(b, `${name}.png`), 'image/png'); }}><Icon name="download" size={16} /> Image</button>
-      <button onClick={() => void downloadMade(new Blob([svg()], { type: 'image/svg+xml' }), `${name}.svg`)}>SVG</button>
-      <button onClick={() => void import('./visual-pdf').then(m => m.exportDiagramPdf(svg(), `${name}.pdf`)).catch(() => setError('Could not export the PDF. Please try again.'))}>PDF</button>
+      <button onClick={() => { const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = C.bg; ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); scene.draw(new CanvasPen(ctx, exportFonts), params, local()); off.toBlob(b => b && void downloadMade(b, `${name}.png`), 'image/png'); }}><Icon name="download" size={16} /> Image</button>
+      <button onClick={() => void downloadMade(new Blob([standardFonts(svg())], { type: 'image/svg+xml' }), `${name}.svg`)}>SVG</button>
+      <button onClick={() => void import('./visual-pdf').then(m => m.exportDiagramPdf(standardFonts(svg()), `${name}.pdf`)).catch(() => setError('Could not export the PDF. Please try again.'))}>PDF</button>
       {scene.id === 'projectile' && <button onClick={() => void downloadMade(new Blob([projectileLatex(params)], { type: 'text/plain' }), 'projectile.tex')}>LaTeX</button>}
       <button className="visual-reset" onClick={() => setParams(defaults(scene))}>Reset values</button>
     </div>}

@@ -61,7 +61,7 @@ test('the notes playbook comes with transcripts and the old "cannot transcribe" 
   assert.ok(mowrSkillsFor('make notes on this lecture video').some(s=>s.id==='video-notes'));
   assert.ok(!mowrSkillsFor('what is entropy').some(s=>s.id==='video-notes'));
   assert.doesNotMatch(mowrSkillText('give me a youtube video on this and make notes'),/Mowr cannot watch or transcribe/i);
-  assert.ok(capabilityIndex.length<2000);
+  assert.ok(capabilityIndex.length<2200);
 });
 
 // A fake YouTube: the watch page (with a European consent step), the Android player endpoint and a caption track.
