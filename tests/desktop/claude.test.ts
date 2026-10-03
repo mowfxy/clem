@@ -65,3 +65,32 @@ test('Claude output split inside a multi-byte character is decoded intact',async
   await provider.run('one','hi','claude:sonnet',undefined,(event:any)=>events.push(event));
   assert.equal(events.find(event=>event.type==='delta').text,'Café — مرحبا');
 });
+
+test('Claude models come from Claude Code itself, so a model added to the plan appears without a Mowr update',async()=>{
+  const {parseClaudeModels}=await import('../../desktop/claude.ts');
+  const parsed=parseClaudeModels([
+    {value:'default',displayName:'Default (recommended)',description:'Opus 5.5'},
+    {value:'opus',displayName:'Opus',description:'Opus 5.5 · Most capable',supportsEffort:true,supportedEffortLevels:['low','medium','high','xhigh','max']},
+    {value:'claude-fable-5-1',displayName:'Fable 5.1',description:'New model',supportedEffortLevels:['low','high']},
+    {value:'opus[1m]',displayName:'Opus (1M context)',description:'Long context'},
+    {value:'bad name; rm',displayName:'x'},
+  ]);
+  assert.deepEqual(parsed.map(m=>m.id),['claude:opus','claude:claude-fable-5-1','claude:opus[1m]']);
+  assert.equal(parsed[0].name,'Claude Opus');assert.equal(parsed[0].defaultReasoningEffort,'high');
+  assert.deepEqual(parsed[0].reasoningEfforts.map(e=>e.reasoningEffort),['low','medium','high','xhigh','max']);
+  assert.equal(parsed[2].context,1_000_000);
+
+  const provider:any=new ClaudeProvider('fixture','C:/fixture');
+  let request:any=null;
+  provider.start=async()=>{
+    const child:any=new EventEmitter();
+    child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+    child.stdin.on('data',(part:Buffer)=>{request=JSON.parse(part.toString());queueMicrotask(()=>child.stdout.write(JSON.stringify({type:'control_response',response:{subtype:'success',request_id:request.request_id,response:{models:[{value:'claude-fable-5-1',displayName:'Fable 5.1',description:'New'}]}}})+'\n'));});
+    return child;
+  };
+  assert.deepEqual((await provider.models()).map((m:any)=>m.id),['claude:claude-fable-5-1']);
+  assert.equal(request.request.subtype,'initialize');
+  // A model the plan no longer lists is refused before anything starts.
+  provider.status=async()=>({connected:true});
+  await assert.rejects(provider.run('x','hi','claude:opus',undefined,()=>{}),/no longer available/);
+});

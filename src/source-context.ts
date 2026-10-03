@@ -22,7 +22,7 @@ export async function localSourceContext(
   query: string,
   owner: string,
   signal?: AbortSignal,
-  { focus = [], related = [], budget = contextBudget().sources }: { focus?: string[]; related?: string[]; budget?: number } = {},
+  { focus = [], related = [], budget = contextBudget().sources, library }: { focus?: string[]; related?: string[]; budget?: number; library?: { name: string; text: string }[] } = {},
 ) {
   const sources: { name: string; text: string }[] = [], focused: number[] = [], earlier: number[] = [], skipped: string[] = [];
   for (const file of files) {
@@ -34,6 +34,8 @@ export async function localSourceContext(
       if (focus.includes(file.id)) focused.push(sources.length);
       else if (related.includes(file.id)) earlier.push(sources.length);
       sources.push({ name: file.name, text });
+      // The whole text goes along too, so the model can read what did not fit (core/file-tools.ts).
+      library?.push({ name: file.name, text });
     } catch (e) {
       if (signal?.aborted) throw e;
       skipped.push(file.name);

@@ -12,9 +12,9 @@ export class ProviderAccounts {
   private mutation = Promise.resolve();
   private snapshots = new Map<string, AccountStatus>();
   private vault:Vault;
-  private executable:string;
+  private executable:string|(()=>string);
   private root:string;
-  constructor(vault:Vault,executable:string,root:string){this.vault=vault;this.executable=executable;this.root=root;}
+  constructor(vault:Vault,executable:string|(()=>string),root:string){this.vault=vault;this.executable=executable;this.root=root;}
   private async registry(owner: string) {
     let value = this.registries.get(owner);
     if (!value) {
@@ -41,6 +41,8 @@ export class ProviderAccounts {
     }
     return value;
   }
+  /** Codex was updated: every account lists its models again with the new program. */
+  engineChanged(){for(const client of this.clients.values())client.engineChanged();}
   private async checked(owner: string, id: string) {
     const r = await this.registry(owner);
     if (!r.ids.includes(id)) throw Error("Account not found.");

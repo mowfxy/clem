@@ -14,11 +14,18 @@ export type ChatOptions = {
   images?: { name: string; data: string }[];
   /** Documents Mowr made in this conversation, so a change updates that same file. */
   documents?: { id: string; name: string }[];
+  /** The full text of the chat's files, for the model's file tools (core/file-tools.ts); not added to the prompt. */
+  library?: { name: string; text: string }[];
   /** Text-only answer (a document edit returning JSON): Mowr's tools are off, so it can never make a new file. */
   plain?: boolean;
   /** What Mowr is doing right now ("Searching the web…", "Typesetting the PDF…"). */
   onStatus?: (text: string) => void;
 };
+/** Within the request's limits (desktop/contracts.ts): at most 200 files and 40 MB of text, the first files first. */
+function fitLibrary(files: { name: string; text: string }[]) {
+  let room = 40_000_000;
+  return files.slice(0, 200).flatMap((f) => { const text = f.text.slice(0, Math.min(8_000_000, room)); room -= text.length; return text ? [{ name: f.name.slice(0, 400), text }] : []; });
+}
 export async function desktopChat(
   messages: { role: string; content: string }[],
   scope: string,
@@ -64,7 +71,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}) })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);

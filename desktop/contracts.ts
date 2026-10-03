@@ -75,13 +75,17 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("documentPdf"), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(1_000_000) }),
   z.object({
     action: z.literal("chat"),
-    model:z.string().regex(/^[a-zA-Z0-9._:-]{1,100}$/).optional(),
+    // Claude Code ids can end in a context tag, e.g. claude:opus[1m].
+    model:z.string().regex(/^[a-zA-Z0-9._:-]{1,100}(?:\[[a-z0-9]{1,8}\])?$/).optional(),
     reasoning:z.enum(["none","minimal","low","medium","high","xhigh","max","ultra"]).optional(),
     id: z.string().uuid(),
     scope: scopeSchema,
     /** Documents Mowr made in this conversation; a change to one updates that same file. */
     documents: z.array(z.object({ id: z.string().uuid(), name: z.string().max(200) })).max(20).optional(),
     images: z.array(z.object({ name: z.string().max(200), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(4).optional(),
+    /** The full text of the chat's files (attached, in its subject or project), read by the model's file tools only. */
+    library: z.array(z.object({ name: z.string().min(1).max(400), text: z.string().max(8_000_000) })).max(200).optional()
+      .refine((l) => !l || l.reduce((n, f) => n + f.text.length, 0) <= 40_000_000, "Too much file text for one request."),
     /** An internal request that must answer in text only (a document edit returning JSON): no Kinetra tools, so no new file. */
     plain: z.boolean().optional(),
     // Sized to the largest context budget (core/context-budget.ts): one message may carry whole files.

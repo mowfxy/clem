@@ -41,7 +41,7 @@ import { composePrompt } from "./prompt";
 import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
-import {ClaudeProvider,claudeModels} from './claude';
+import {ClaudeProvider} from './claude';
 import {GrokProvider,grokModels,GROK_PREFIX} from './grok';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
@@ -50,6 +50,8 @@ import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
 import {installCli} from './cli-install';
+import {CodexEngine,daily} from './engines';
+import {fileTool,fileToolsGuide,type LibraryFile} from '../core/file-tools';
 import {
   inside,
   link,
@@ -197,17 +199,32 @@ void app.whenReady().then(async () => {
       : resolve(
           "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
         ));
+  // Codex is kept at OpenAI's latest build, since only a current Codex lists newly released models. A Codex chosen
+  // with MOWR_CODEX_EXECUTABLE (development, tests) is used as it is.
+  const codexEngine = new CodexEngine(codexExecutable, local);
+  const codexProgram = process.env.MOWR_CODEX_EXECUTABLE ? codexExecutable : () => codexEngine.executable();
   codex = new Codex(
-    codexExecutable,
+    codexProgram,
     join(local, "codex"),
     join(local, "scratch"),
   );
-  providerAccounts = new ProviderAccounts(vault,codexExecutable,local);
+  providerAccounts = new ProviderAccounts(vault,codexProgram,local);
+  codexEngine.onUpdated = () => { codex.engineChanged(); providerAccounts.engineChanged(); };
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
   const claudeFor=(owner:string)=>{let value=claudeProviders.get(owner);if(!value){value=new ClaudeProvider(claudeExecutable,join(local,owner,'claude'));claudeProviders.set(owner,value);}return value;};
   const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   const driveMedia=new DriveMediaServer(driveLive,async()=>!!await auth.user());
   app.on("before-quit",()=>driveMedia.stop());
+  /**
+   * Keeps Codex, Claude Code and Grok current in the background, since each provider offers a new model only to a
+   * program new enough to use it. Codex is checked every six hours (or on Refresh), the others once a day when installed.
+   */
+  const keepEnginesCurrent=(owner:string,force=false)=>{
+    if(!process.env.MOWR_CODEX_EXECUTABLE)void codexEngine.update(force);
+    const failed=(error:unknown)=>console.warn('Engine update:',(error as Error)?.message||error);
+    void daily(local,'claude',()=>claudeFor(owner).update()).catch(failed);
+    void daily(local,'grok',async()=>{const grok=grokFor(owner);if(!(await grok.status()).installed)return;await installCli('grok');grok.forget();}).catch(failed);
+  };
   const grokFor=(owner:string)=>{let value=grokProviders.get(owner);if(!value){value=new GrokProvider(join(local,owner,'grok'));grokProviders.set(owner,value);}return value;};
   let providerOwner = "";
   const providerLink=new ProviderLink(auth,vault,local);
@@ -541,6 +558,7 @@ void app.whenReady().then(async () => {
         void welcomeOnce();
         // Everything a first message needs is started in the background as soon as the workspace opens.
         void selectProvider(state.user.id).then((provider) => provider.warm()).catch(() => {});
+        keepEnginesCurrent(state.user.id);
         void driveLive.state().catch(() => {});
       }
       return Response.json({
@@ -560,7 +578,8 @@ void app.whenReady().then(async () => {
     }
     if (url.pathname === "/api/models") {
       const user = await auth.user();
-      try{if(!user)return Response.json([]);const [codexModels,claudeStatus,grok]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claudeFor(user.id).status(),grokFor(user.id).status().catch(()=>null)]);return Response.json([...codexModels,...(claudeStatus.connected?claudeModels:[]),...(grok?.connected?grokModels(grok):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
+      // Every list comes from the provider itself (Codex's model/list, Claude Code's model handshake, grok models), so a model added to the person's plan shows up here without a Mowr update.
+      try{if(!user)return Response.json([]);const claude=claudeFor(user.id);const [codexModels,claudeList,grok]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claude.status().then(s=>s.connected?claude.models():[]).catch(()=>[]),grokFor(user.id).status().catch(()=>null)]);return Response.json([...codexModels,...claudeList,...(grok?.connected?grokModels(grok):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
     }
     if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection") || (request.method === "POST" && url.pathname === "/api/drive/upload")) {
       try {
@@ -847,6 +866,7 @@ void app.whenReady().then(async () => {
       return { pending: true };
     }
     if (request.action === "providerAccounts") {
+      if(request.refresh)keepEnginesCurrent(user.id,true);
       const listed=await providerAccounts.list(user.id,request.refresh);
       for(const account of listed.accounts)if(account.connected)void providerLink.backup(user.id,account.id,"codex",(account as {email?:string}).email||"").catch(linkFailed);
       return listed;
@@ -1136,13 +1156,15 @@ void app.whenReady().then(async () => {
         (f) => f.scope === request.scope,
       );
       const unavailable: string[] = [];
+      // Every file the model may read on demand: the chat's own (sent by the window) and its linked folders' (indexed here).
+      const library: LibraryFile[] = (request.library || []).map((f) => ({ name: f.name, text: f.text, kind: "file" as const }));
       // Everything a request needs is prepared together, not one network call after another.
       const [entitlement, , sources, memoryState, setup] = await Promise.all([
         cachedEntitlement(user.id),
         claude ? undefined : providerAccounts.selectForTask(user.id,{model:request.model,reasoning:request.reasoning}).then(async (selection) => { if (selection.switched) await selectProvider(user.id); }),
         // A folder that is missing, moved or unreadable is left out; the others still answer.
         Promise.all(folders.map(async (folder) => {
-          try { return retrieveFiles(await freshIndex(folder), query, Math.floor((budget.sources * 0.15) / Math.max(1, folders.length))); }
+          try { const index = await freshIndex(folder); for (const file of index) if (file.text) library.push({ name: file.path, text: file.text, kind: "folder" }); return retrieveFiles(index, query, Math.floor((budget.sources * 0.15) / Math.max(1, folders.length))); }
           catch { unavailable.push(basename(folder.path)); return []; }
         })).then((lists) => lists.flat()),
         loadMemory(),
