@@ -2,6 +2,7 @@ import { kinetraCall } from "./kinetra-runtime.ts";
 import { markdownHtml } from "./pdf-markdown.ts";
 import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
 import { standardFonts } from "../core/print-fonts.ts";
+import { visualBlocks, visualCaption } from "../core/visual-print.ts";
 const escape = (text: unknown) =>
   String(text ?? "").replace(
     /[&<>"']/g,
@@ -220,6 +221,8 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
         if (unsafeSvg.test(svg)) throw Error("the generated figure contained unsupported content");
         return svg;
       } catch (error) {
+        // An export of an answer the person already has prints without a visual that cannot be drawn, rather than not at all.
+        if (!checkVoice) return undefined;
         problems.push(`Section ${i + 1} figure (${s.figure.module}.${s.figure.fn}) failed: ${(error as Error).message}`);
         return undefined;
       }
@@ -541,15 +544,21 @@ export function unwritten(spec: Pick<DocumentSpec, "plan" | "sections">) {
   });
 }
 
+/** Each ```visual block becomes a marker line, and the visual itself a printed figure (Kinetra mowr.visual). */
+const VISUAL_MARK = /^\u0000visual(\d+)\u0000$/;
 /** A Markdown answer as a document: the first heading is the title and "##" headings start sections.
- *  Mowr's interactive blocks (visual, check, edit) are left out of the printed copy. */
+ *  Every ```visual is printed as a numbered figure where it stood; the other interactive blocks (check, edit,
+ *  automation) are left out of the printed copy. */
 export function markdownDocument(markdown: string, fallbackTitle = "Document"): DocumentSpec {
-  const text = markdown.replace(/```(?:visual|check|edit|automation)[\s\S]*?(?:```|$)/g, "").replace(/\[\[([^\]|,]+)(?:,\s*p\.\s*(\d+))?\]\]/g, (_, file, page) => `(${file.trim()}${page ? ", p. " + page : ""})`).trim();
+  const visuals = visualBlocks(markdown);
+  let marked = markdown;
+  for (let i = visuals.length - 1; i >= 0; i--) marked = marked.slice(0, visuals[i].start) + `\n\u0000visual${i}\u0000\n` + marked.slice(visuals[i].end);
+  const text = marked.replace(/```(?:visual|check|edit|automation)[\s\S]*?(?:```|$)/g, "").replace(/\[\[([^\]|,]+)(?:,\s*p\.\s*(\d+))?\]\]/g, (_, file, page) => `(${file.trim()}${page ? ", p. " + page : ""})`).trim();
   const lines = text.split("\n");
   let title = fallbackTitle;
   const first = lines.findIndex((l) => l.trim());
   if (first >= 0 && /^#\s+/.test(lines[first])) { title = lines[first].replace(/^#\s+/, "").trim(); lines.splice(first, 1); }
-  else if (first >= 0 && lines[first].trim().length <= 90 && /^\*\*[^*]+\*\*$|^[^.!?]+$/.test(lines[first].trim()) && lines.length > 3) { title = lines[first].replace(/\*\*/g, "").replace(/^#+\s*/, "").trim(); lines.splice(first, 1); }
+  else if (first >= 0 && !VISUAL_MARK.test(lines[first]) && lines[first].trim().length <= 90 && /^\*\*[^*]+\*\*$|^[^.!?]+$/.test(lines[first].trim()) && lines.length > 3) { title = lines[first].replace(/\*\*/g, "").replace(/^#+\s*/, "").trim(); lines.splice(first, 1); }
   const sections: Section[] = [];
   let current: Section = {};
   let fence = false;
@@ -557,7 +566,13 @@ export function markdownDocument(markdown: string, fallbackTitle = "Document"): 
     // "## " inside a fenced code block is code, not a section.
     if (/^\s*(```|~~~)/.test(line)) fence = !fence;
     const heading = fence ? null : /^##\s+(.+)$/.exec(line);
-    if (heading) { if (current.heading || current.text?.trim()) sections.push(current); current = { heading: heading[1].trim(), text: "" }; }
+    const visual = fence ? null : VISUAL_MARK.exec(line);
+    if (visual) {
+      // A section holds one figure, after its text: the text that follows the visual continues in an unheaded section.
+      const spec = visuals[Number(visual[1])].spec;
+      sections.push({ ...current, figure: { module: "mowr", fn: "visual", args: [spec] }, caption: visualCaption(spec) || undefined });
+      current = {};
+    } else if (heading) { if (current.heading || current.text?.trim()) sections.push(current); current = { heading: heading[1].trim(), text: "" }; }
     else current.text = (current.text || "") + line + "\n";
   }
   if (current.heading || current.text?.trim()) sections.push(current);

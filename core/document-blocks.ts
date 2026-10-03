@@ -1,7 +1,9 @@
 export type DocumentBlock =
   | { kind: "heading"; level: number; text: string }
   | { kind: "paragraph" | "bullet" | "number" | "code"; text: string }
-  | { kind: "table"; rows: string[][] };
+  | { kind: "table"; rows: string[][] }
+  /** A ```visual block's JSON, printed as a figure in exported files (core/visual-print.ts). */
+  | { kind: "visual"; spec: Record<string, unknown> };
 export function documentBlocks(markdown: string): DocumentBlock[] {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n"),
     blocks: DocumentBlock[] = [];
@@ -17,6 +19,14 @@ export function documentBlocks(markdown: string): DocumentBlock[] {
       const code = [];
       while (++i < lines.length && !/^\s*```/.test(lines[i]))
         code.push(lines[i]);
+      if (/^\s*```visual\b/.test(line)) {
+        // A visual that is not readable JSON is left out rather than printed as code.
+        try {
+          const spec = JSON.parse(code.join("\n"));
+          if (spec && typeof spec === "object" && !Array.isArray(spec)) blocks.push({ kind: "visual", spec });
+        } catch {}
+        continue;
+      }
       blocks.push({ kind: "code", text: code.join("\n") });
       continue;
     }

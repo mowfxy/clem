@@ -115,6 +115,12 @@ export const diagramRecipes: KinetraRecipe[] = [
     figure: { module: "mowr", fn: "venn", args: [{ title: "Mitosis and meiosis", sets: [{ label: "Mitosis", items: ["2 daughter cells", "Identical", "Growth and repair"] }, { label: "Meiosis", items: ["4 daughter cells", "Genetically different", "Gametes"] }], overlap: ["DNA replicates first", "Spindle fibres", "Nuclear division"] }] },
     notes: "2 or 3 sets; for 3 sets, overlaps: {AB:[…],AC:[…],BC:[…],all:[…]}. Keep items to a few words.",
   },
+  {
+    name: "chat visual",
+    use: "a ```visual already drawn in the conversation (plot, chart, diagram, figure or 3d), printed unchanged",
+    figure: { module: "mowr", fn: "visual", args: [{ kind: "diagram", title: "Request lifecycle", direction: "right", nodes: [{ id: "a", label: "Client request" }, { id: "b", label: "Validate input", shape: "pill" }, { id: "c", label: "Store result" }], edges: [{ from: "a", to: "b" }, { from: "b", to: "c", label: "valid" }] }] },
+    notes: "args[0] is the visual's JSON object exactly as written in the ```visual block. Printed on white paper; sliders at their starting values, animations at their final frame, every step shown.",
+  },
 ];
 
 /**

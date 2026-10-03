@@ -22,6 +22,11 @@ import {
 export { flowchart, chart, timeline, cycle, mindMap, tree, venn } from "./kinetra-diagrams";
 /** Textbook illustrations (pulleys, inclines, levers, springs, vessels, charges and field lines): {items, view?} → SVG. Recipes: core/figure-recipes.ts. */
 export { renderIllustration as illustration } from "../core/illustration";
+/** A chat ```visual (plot, chart, diagram, figure or 3d) printed as it was drawn, on white paper: the visual's JSON → SVG.
+ *  Loaded on first use: its schema is most of the worker's size, and every other call starts a worker without it. */
+export async function visual(spec: Record<string, unknown>): Promise<string> {
+  return (await import("../core/visual-print")).printVisualSvg(spec);
+}
 /** JSON-friendly adapters. Expressions use Kinetra's parser, never eval or new Function. */
 export function integrateExpression(
   expression: string,

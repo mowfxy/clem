@@ -929,7 +929,8 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   /** Answers leave Mowr as properly formatted documents, not screenshots of a chat. */
   async function exportAnswer(format:'pdf'|'docx'|'pptx',content:string,title:string){
-    const clean=content.replace(/```(?:visual|check|edit|automation)[\s\S]*?(?:```|$)/g,'').trim();
+    // Visuals stay: every export prints them as figures (core/visual-print). Interactive-only blocks are left out.
+    const clean=content.replace(/```(?:check|edit|automation)[\s\S]*?(?:```|$)/g,'').trim();
     const name=title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').slice(0,80)||'Mowr document';
     try{
       if(format==='pdf'){
