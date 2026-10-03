@@ -3,7 +3,7 @@ export function diagram(angle:number,speed:number){
  if(!Number.isFinite(angle)||angle<10||angle>80||!Number.isFinite(speed)||speed<5||speed>30)throw new Error('Angle must be 10–80° and speed 5–30 m/s.');
  const model={initialPosition:{x:0,y:0},initialSpeed:speed,launchAngleDeg:angle,gravity:9.81,width:800,height:460};
  const a=projectileAnalytics(model);const points=Array.from({length:121},(_,i)=>projectilePosition(model,a.flightTime*i/120));
- const svg=renderProjectile(model).replace(/font-family="[^"]*"/g,'font-family="Mowafy Serif, Georgia, serif"');
+ const svg=renderProjectile(model).replace(/font-family="[^"]*"/g,'font-family="Mowafy Serif, serif"');
  const coords=points.map(p=>`(${p.x.toFixed(5)},${p.y.toFixed(5)})`).join(' ');
  const latex=String.raw`\documentclass{article}
 \usepackage{fontspec}

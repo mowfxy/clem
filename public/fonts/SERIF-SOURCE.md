@@ -1,12 +1,11 @@
 Mowafy Serif is imported byte for byte from https://github.com/mowfxy/serif at
-revision c0f52a6 (Make Bold only slightly heavier than Regular): the original
-Latin Regular and Bold plus the Greek, Arabic, math, math supplement, science,
-science supplement and Coptic supplement companions.
+revision a0e0a74 (Make Bold a bit thicker): the original Latin Regular and Bold,
+and nothing else. No Source Serif 4, Soft Ink, Noto or STIX faces are loaded,
+and the serif stack names no fallback font.
 
-`src/type.css` and `core/serif-fonts.ts` expose them as one family, Mowafy Serif,
-with non-overlapping Unicode ranges in the source package's fallback order.
-Companions without a Bold use their Regular at both weights. There is no italic
-(browsers slant the Regular). Native MathML uses the dedicated Mowafy Math face.
+`src/type.css` declares Regular at weights 300-500 and Bold at 600-800. There is
+no italic (browsers slant the Regular). Native MathML uses the separate
+`MowafyMath-Regular.woff2` (STIX-derived) and only for `<math>`.
 
-The desktop's external pages embed the Latin, Greek and Arabic files through
-`desktop/brand-fonts.ts`. Copyright notices and licenses are in `licenses/`.
+The desktop's external pages embed both weights through `desktop/brand-fonts.ts`.
+Licenses are in `licenses/`.
