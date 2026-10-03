@@ -31,6 +31,6 @@ Installer/
 .shot.mjs
 
 # Marketing videos stay local
-ads/
+/ads/
 release-next/
 release-build/
