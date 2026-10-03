@@ -8,6 +8,8 @@ import type { DriveRef } from "../../core/drive-search";
  * then kept fresh), file text read live when a question needs it, and stream addresses for video. Nothing from Drive
  * is written to this PC; text is kept in memory for this session only.
  */
+/** Characters read from one Drive file; each request then sends what fits its budget. */
+const DRIVE_TEXT_LIMIT = 2_000_000;
 export type DriveItem = DriveRef & { thumbnail?: boolean; path?: string; folder?: boolean };
 type State = { connected: boolean | null; error?: string };
 let state: State = { connected: null };
@@ -79,17 +81,17 @@ export function driveText(ref: DriveRef): Promise<string> {
     const type = response.headers.get("Content-Type") || ref.mimeType;
     if (/presentationml|spreadsheetml/.test(type) || /\.(pptx|xlsx)$/i.test(ref.name)) {
       const { readOffice } = await import("../office");
-      return (await readOffice(new Blob([bytes], { type }))).map((b) => b.text).join("\n").slice(0, 40000);
+      return (await readOffice(new Blob([bytes], { type }))).map((b) => b.text).join("\n").slice(0, DRIVE_TEXT_LIMIT);
     }
     const { extractAttachment } = await import("../desktop/attachment-processing");
-    return extractAttachment(bytes, ref.name, type === "application/pdf" || /\.pdf$/i.test(ref.name) ? "application/pdf" : /wordprocessing/.test(type) || /\.docx$/i.test(ref.name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : type).catch(() => "");
+    return extractAttachment(bytes, ref.name, type === "application/pdf" || /\.pdf$/i.test(ref.name) ? "application/pdf" : /wordprocessing/.test(type) || /\.docx$/i.test(ref.name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : type, DRIVE_TEXT_LIMIT).catch(() => "");
   })().catch(() => { texts.delete(key); return ""; }));
   return texts.get(key)!;
 }
 
 /** Excerpts of Drive files for a question, labelled with their names so the model can cite and link them. */
-export async function driveSources(refs: DriveRef[], query: string, budget = 14000) {
-  const readable = refs.filter((r) => !/^(video|audio|image)\//.test(r.mimeType)).slice(0, 6);
+export async function driveSources(refs: DriveRef[], query: string, budget = 14000, max = 6) {
+  const readable = refs.filter((r) => !/^(video|audio|image)\//.test(r.mimeType)).slice(0, max);
   const texts = await Promise.all(readable.map(async (r) => ({ name: r.name, text: await driveText(r) })));
   const usable = texts.filter((t) => t.text.trim());
   return usable.length ? sourceExcerpts(usable, query, budget) : "";

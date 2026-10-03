@@ -38,9 +38,10 @@ export function spaceTheme(space: Pick<Space, 'name' | 'description' | 'mark'>) 
 }
 
 /** `bare` draws the glyph alone at `size` (cards); otherwise it sits on a small grey tile (sidebar). */
-export function SpaceMark({ space, size = 20, bare = false }: { space: Pick<Space, 'id' | 'name' | 'description' | 'kind' | 'mark'>; size?: number; bare?: boolean }) {
+/** `decorative` when the space's name is written right beside the mark, so it is not announced twice. */
+export function SpaceMark({ space, size = 20, bare = false, decorative = false }: { space: Pick<Space, 'id' | 'name' | 'description' | 'kind' | 'mark'>; size?: number; bare?: boolean; decorative?: boolean }) {
   const theme = spaceTheme(space), glyph = bare ? size : Math.round(size * 0.66);
-  return <span className={`space-mark m-${theme.key} ${bare ? 'bare' : ''}`} style={{ width: size, height: size }} aria-description={`${space.kind === 'subject' ? 'Subject' : 'Project'}: ${space.name}`} aria-label={`In ${space.kind} ${space.name}`}>
+  return <span className={`space-mark m-${theme.key} ${bare ? 'bare' : ''}`} style={{ width: size, height: size }} {...(decorative ? { 'aria-hidden': true } : { 'aria-description': `${space.kind === 'subject' ? 'Subject' : 'Project'}: ${space.name}`, 'aria-label': `In ${space.kind} ${space.name}` })}>
     <svg className="drawn-icon" width={glyph} height={glyph} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth={bare ? 2.1 : 2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {strokes(theme.strokes)}
     </svg>

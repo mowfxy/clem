@@ -28,7 +28,7 @@ export async function illustratedPdf(spec: any, { checkVoice = true }: { checkVo
       preferCSSPageSize: true,
       displayHeaderFooter: true,
       headerTemplate: "<span></span>",
-      footerTemplate: '<div style="width:100%;margin:0 21mm;padding-top:5px;border-top:0.5px solid #c4c8cd;font:7.5px Mowafy Sans,Segoe UI,Arial,sans-serif;color:#80868e;display:flex;justify-content:space-between"><span class="title" style="max-width:75%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"></span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>',
+      footerTemplate: '<div style="width:100%;margin:0 21mm;padding-top:5px;border-top:0.5px solid #c4c8cd;font:7.5px Calibri,Segoe UI,Arial,sans-serif;color:#80868e;display:flex;justify-content:space-between"><span class="title" style="max-width:75%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"></span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>',
       generateTaggedPDF: true,
     });
     return new Uint8Array(

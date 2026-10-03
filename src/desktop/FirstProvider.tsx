@@ -20,7 +20,8 @@ export function FirstProvider({ onConnected }: { onConnected: (connected: boolea
       desktop!.invoke({ action: "grokStatus" }).catch(() => ({})),
     ]);
     setChatgpt(!!accounts?.accounts?.some((a: { connected?: boolean }) => a.connected));
-    setClaude(claudeStatus); setGrok(grokStatus); setChecked(true);
+    // A status that comes back empty means not connected; it must never blank the setup screen.
+    setClaude(claudeStatus || {}); setGrok(grokStatus || {}); setChecked(true);
   }
   const store = (kind: CliKind, status: Cli) => kind === "claude" ? setClaude(status) : setGrok(status);
   const { setup, connect } = useCliConnect(store, refresh, setError);

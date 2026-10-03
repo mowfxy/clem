@@ -296,11 +296,11 @@ const chatInput = z.object({
     .array(
       z.object({
         role: z.enum(["system", "user", "assistant"]),
-        content: z.string().min(1).max(210000),
+        content: z.string().min(1).max(1_000_000),
       }),
     )
     .min(1)
-    .max(150),
+    .max(200),
 });
 app.post("/api/chat", async (req, res) => {
   const u = await identity(req);

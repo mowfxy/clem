@@ -105,7 +105,7 @@ export function MemoryConversation({
           setBusy(true);
           setStatus("");
           try {
-            await desktop!.invoke({ action: "memorySave", scope: home || PROFILE, key: "note:" + crypto.randomUUID().slice(0, 18), text: value, kind: /\b(prefer|like|want|always|never|please|answer|reply|explain)\b/i.test(value) ? "preference" : "fact", sharedWith: [], source: "Added by you in memory settings" });
+            await desktop!.invoke({ action: "memorySave", scope: home || PROFILE, key: "note:" + crypto.randomUUID().slice(0, 18), text: value, kind: /\b(prefer\w*|like|want|always|never|please|answers?|repl(?:y|ies)|explain\w*|use|avoid|keep|short|brief|concise|detailed|simple|formal|casual|tone|style|format\w*)\b/i.test(value) ? "preference" : "fact", sharedWith: [], source: "Added by you in memory settings" });
             setText("");
             await load();
           } catch (err) { setStatus(cleanError(err)); }

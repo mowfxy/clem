@@ -51,7 +51,7 @@ test("errors are data; loops are bounded and cancellation prevents another call"
       ),
     /tool limit/,
   );
-  assert.equal(count, 12);
+  assert.equal(count, 20);
   let cancelled = false;
   await assert.rejects(
     () =>
@@ -192,4 +192,17 @@ test("study and Boolean tools return useful structured data", async () => {
     args: [{ variables: ["A", "B"], minterms: [1, 3], form: "pos" }],
   });
   assert.ok(kmap);
+});
+
+test("a document already made is replayed as its outline, a failed one in full", async () => {
+  const inputs: string[] = [];
+  const long = "Detailed explanation. ".repeat(5000);
+  const spec = { action: "pdf", title: "Lecture 1", sections: [{ heading: "Enzymes", text: long }] };
+  const replies = [JSON.stringify({ kinetra: spec }), JSON.stringify({ kinetra: { ...spec, title: "Lecture 2" } }), "Both documents are ready."];
+  let created = 0;
+  await runKinetraTurn("Make a PDF for each lecture.", "", async (input) => { inputs.push(input); return replies.shift()!; },
+    async (request) => (request.title === "Lecture 1" ? { created: true, file: { id: "a" } } : (created++, { error: "figure failed" })), () => false);
+  assert.equal(created, 1);
+  assert.ok(!inputs[1].includes(long) && inputs[1].includes("Enzymes"));
+  assert.ok(inputs[2].includes(long));
 });

@@ -37,16 +37,16 @@ export function compressReply(text: string, limit = 1400) {
 /**
  * Fits a conversation into the model's budget without losing what the user asked for.
  * - Instructions and the current request (with its attached sources) are always kept whole.
- * - Recent turns stay word for word; older answers are compressed to outlines; older user
+ * - The whole chat is sent word for word when it fits. Otherwise recent turns stay word for word; older answers are compressed to outlines; older user
  *   messages are kept close to verbatim because they carry the requirements.
  * - When anything was shortened or left out, a brief lists every earlier request in order,
  *   so the first goal and later corrections stay in view however long the chat gets.
  */
 export function boundedConversation(
   messages: ContextMessage[],
-  budget = 160000,
-  recentFull = 8,
-  maxHistory = 60,
+  budget = 320000,
+  recentFull = 12,
+  maxHistory = 100,
 ) {
   const system = messages.filter((m) => m.role === "system");
   const history = messages.filter((m) => m.role !== "system" && m.content.trim());
@@ -54,7 +54,7 @@ export function boundedConversation(
   for (let i = history.length - 1; i >= 0; i--)
     if (history[i].role === "user" && !isSource(history[i])) { latest = i; break; }
   if (latest < 0) latest = Math.max(0, history.length - 1);
-  const required = history.slice(latest);
+  let required = history.slice(latest);
   const earlier = history.slice(0, latest);
   const cost = (m: ContextMessage) => JSON.stringify(m).length + 1;
 
@@ -75,9 +75,26 @@ export function boundedConversation(
   };
 
   const alreadyBounded = system.some((m) => m.content.startsWith(BRIEF_PREFIX));
-  let used = system.reduce((n, m) => n + cost(m), 0) + required.reduce((n, m) => n + cost(m), 0) + 2;
-  if (used > budget)
-    throw Error("This request and its context are too large. Narrow the request or attach fewer excerpts.");
+  const fixed = system.reduce((n, m) => n + cost(m), 0) + 2;
+  let used = fixed + required.reduce((n, m) => n + cost(m), 0);
+  // Files that do not fit are trimmed, never the person's words: the request still goes, with a note saying what was cut.
+  if (used > budget) {
+    const own = required.filter((m) => !isSource(m)).reduce((n, m) => n + cost(m), 0);
+    const sourceCost = used - fixed - own, room = budget - fixed - own - 400 * required.length;
+    if (room > 2000 && sourceCost > 0) {
+      const share = room / sourceCost;
+      required = required.map((m) => isSource(m)
+        ? { ...m, content: clip(m.content, Math.floor(m.content.length * share)) + "\n[Source material shortened to fit this request: the middle of the longer part was left out. Say so if the answer needs it.]" }
+        : m);
+      used = fixed + required.reduce((n, m) => n + cost(m), 0);
+    }
+    if (used > budget)
+      throw Error("This message is too long to send in one request. Shorten it or split it into parts.");
+  }
+
+  // The whole chat fits: send it word for word, so nothing said earlier is lost.
+  const whole = earlier.reduce((n, m) => n + cost(m), 0);
+  if (earlier.length <= maxHistory && used + whole <= budget) return [...system, ...earlier, ...required];
 
   // Newest first: full text for recent turns, outlines for older answers, near-verbatim older requests.
   const reserve = alreadyBounded || !asks.length ? 0 : cost(briefFor(earlier.length)) + 200;
@@ -86,7 +103,9 @@ export function boundedConversation(
   for (let i = earlier.length - 1; i >= 0; i--) {
     const m = earlier[i], age = earlier.length - 1 - i;
     if (kept.length >= maxHistory) { changed += i + 1; break; }
-    const content = age < recentFull ? m.content
+    // Recent turns stay whole while they leave a quarter of the room for older ones; past that they are outlined too.
+    const full = age < recentFull && used + reserve + cost(m) <= budget * 0.75;
+    const content = full ? m.content
       : m.role === "assistant" ? compressReply(m.content)
       : isSource(m) ? clip(m.content, 1500)
       : clip(m.content, 3000);

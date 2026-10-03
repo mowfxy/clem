@@ -1,4 +1,5 @@
 import {boundedConversation} from "../../core/chat-context.ts";
+import {contextBudget} from "../../core/context-budget.ts";
 import type { DesktopBridge } from "../../desktop/contracts";
 import type { FileVersion, StoredFile } from "../../core/types";
 declare global {
@@ -13,6 +14,8 @@ export type ChatOptions = {
   images?: { name: string; data: string }[];
   /** Documents Mowr made in this conversation, so a change updates that same file. */
   documents?: { id: string; name: string }[];
+  /** Text-only answer (a document edit returning JSON): Mowr's tools are off, so it can never make a new file. */
+  plain?: boolean;
   /** What Mowr is doing right now ("Searching the web…", "Typesetting the PDF…"). */
   onStatus?: (text: string) => void;
 };
@@ -24,9 +27,9 @@ export async function desktopChat(
   selection?: ChatOptions,
   onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
-  messages=boundedConversation(messages);
-  const id = crypto.randomUUID();
   const { onStatus, ...options } = selection || {};
+  messages=boundedConversation(messages,contextBudget(options.model).conversation);
+  const id = crypto.randomUUID();
   let result = "";
   return new Promise<string>((resolve, reject) => {
     const cleanup = () => {
@@ -61,7 +64,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}) })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { serifFaces } from "../core/serif-fonts";
+import { serifFaces } from "../core/serif-fonts.ts";
 
 const faces: [family: string, file: string, weight: string, range?: string][] = [
   ["Mowafy Sans", "MowafySans-Regular", "400"],
