@@ -29,7 +29,7 @@ body .breadcrumb,body .breadcrumb button{color:#e6e5df}
 
 /* An icon always takes its control's colour where that colour means something: dark on light buttons, red on
    delete and other danger actions. Only plain controls get the white icon colour above. */
-body :is(.primary,.send-button,.danger,.sp-share,.visual-save.saved,.app-confirm-ok,.contact-primary,.contact-chips button[aria-pressed=true],.fp-toggle button[aria-pressed=true],.ps-toggle button[aria-pressed=true],.se-filters button.active,.fp-keep,.fp-flash,.fp-area button,.fp-edit,.sh-option.on,.sh-file-icon,.cx-mowr,.cx-go,.gd-google,.gd-link-folder:hover,.drive-video-actions button:hover,.au-submit,.adm-primary,.adm-toast,.toast-mark,.support-team-mark,.provider-action.primary,.account-handoff button.primary,.tg-badge,.sx-btn-primary,.memory-send) .drawn-icon{color:inherit}
+body :is(.primary,.send-button,.danger,.sp-share,.visual-save.saved,.app-confirm-ok,.contact-primary,.contact-chips button[aria-pressed=true],.fp-toggle button[aria-pressed=true],.se-filters button.active,.fp-keep,.fp-flash,.fp-area button,.fp-edit,.sh-option.on,.sh-file-icon,.cx-mowr,.cx-go,.gd-google,.gd-link-folder:hover,.drive-video-actions button:hover,.au-submit,.adm-primary,.adm-toast,.toast-mark,.support-team-mark,.provider-action.primary,.account-handoff button.primary,.tg-badge,.sx-btn-primary,.memory-send) .drawn-icon{color:inherit}
 body .send-button{color:#1b1b19}
 body .send-button:disabled{color:#6f6e68}
 
