@@ -75,7 +75,7 @@ export function sourceExcerpts(
       continue;
     }
     cut = true;
-    if (limit < 400) { status.push(`${source.name}: not included (no room left; ask for it by name to read it)`); continue; }
+    if (limit < 400) { status.push(`${source.name}: not included (no room left in this request; read it with the file tools, or ask about it by name)`); continue; }
     const chunks: { start: number; text: string; score: number }[] = [];
     for (let start = 0; start < source.text.length; start += STEP) {
       const text = source.text.slice(start, start + CHUNK), low = text.toLowerCase();
@@ -98,7 +98,7 @@ export function sourceExcerpts(
     parts.push(picked.map((c) => `[Source: ${source.name}; text offset ${c.start}]\n${c.text}`).join("\n\n"));
   }
   const notice = cut
-    ? `[Selected excerpts only for some files (see the index). Do not claim to have reviewed those in full; when the request needs all of one, say which parts were not available and offer to work through it file by file.]\n`
+    ? `[Selected excerpts only for some files (see the index). Do not claim to have reviewed those in full; when the request needs more of one, read it with the FILE TOOLS (search, read) when your instructions list them; otherwise say which parts were not available and offer to work through it file by file.]\n`
     : "";
   return `[Files available (${sources.length}):\n${status.map((s, i) => `${i + 1}. ${s}`).join("\n")}]\n${notice}\n` + parts.join("\n\n");
 }

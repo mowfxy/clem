@@ -22,6 +22,9 @@ const IDLE_MS = 10 * 60_000;
 export function toolStatus(request: any) {
   if (request?.action === "pdf") return request.revise ? "Updating the document…" : "Typesetting the PDF…";
   if (request?.action === "open") return "Reading the document…";
+  if (request?.action === "read" && typeof request.file === "string") return `Reading ${request.file.split(/[\\/]/).pop()!.slice(0, 60)}${Number(request.page) > 0 ? `, page ${Math.floor(Number(request.page))}` : ""}…`;
+  if (request?.action === "search") return "Searching your files…";
+  if (request?.action === "files") return "Looking through your files…";
   if (request?.action === "call" && typeof request.module === "string" && /^diagram\/|^mowr$/.test(request.module) && /^render|plot|flowchart|chart|timeline|cycle|mindmap|diagram|table|venn/i.test(String(request.fn))) return "Drawing the figure…";
   if (request?.action === "call") return "Calculating…";
   return "Checking Mowr's tools…";
@@ -83,10 +86,11 @@ export class Codex {
   private loginProcess: ChildProcessWithoutNullStreams | null = null;
   private starting: number | boolean = 0;
   private active = new Map<string, ChildProcessWithoutNullStreams>();
-  private executable: string;
+  /** A function when the program can change while Mowr runs (CodexEngine updates it); read at every start. */
+  private executable: string | (() => string);
   private home: string;
   private workspace: string;
-  constructor(executable: string, home: string, workspace: string) {
+  constructor(executable: string | (() => string), home: string, workspace: string) {
     this.executable = executable;
     this.home = home;
     this.workspace = workspace;
@@ -108,7 +112,7 @@ export class Codex {
       if (process.env[key]) env[key] = process.env[key];
     env.CODEX_HOME = this.home;
     return spawn(
-      this.executable,
+      typeof this.executable === "function" ? this.executable() : this.executable,
       [
         "-c",
         'cli_auth_credentials_store="file"',
@@ -404,6 +408,11 @@ export class Codex {
           reject(Error("No provider sign-in challenge was received."));
       });
     });
+  }
+  /** After Codex itself was updated: the next listing and connection use the new program. */
+  engineChanged() {
+    this.catalog = null;
+    this.closeServer();
   }
   private closeServer() {
     if (this.server && !this.busy) { this.server.close(); this.server = null; }

@@ -510,12 +510,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
     images?:{name:string;data:string}[],
-    extra:{chat?:string;documents?:{id:string;name:string}[]}={},
+    extra:{chat?:string;documents?:{id:string;name:string}[];library?:{name:string;text:string}[]}={},
   ) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // A new document joins the reply; a revised one is the same file, so it opens beside the chat instead of arriving again.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(images?.length?{images}:{}),documents:extra.documents,onStatus:status(target)},(file,revised)=>revised?void(viewing.current===target&&setPanelFile(p=>p?.id===file.id?p:stateRef.current.files.find(f=>f.id===file.id)||p)):updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,onStatus:status(target)},(file,revised)=>revised?void(viewing.current===target&&setPanelFile(p=>p?.id===file.id?p:stateRef.current.files.find(f=>f.id===file.id)||p)):updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -766,7 +766,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png`, data: p.image! }));
       if (pointerImages.length && !/^(claude|grok):/.test(model)) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
       status(id)("Reading your files…");
-      const fileText = await chatSources(next,prompt,controller.signal);
+      // Every readable file's full text also goes to the desktop app, which lets the model read what the excerpts left out.
+      const library: { name: string; text: string }[] = [];
+      const fileText = await chatSources(next,prompt,controller.signal,model,library);
       // Google Drive, live: files picked for this chat, the space's linked folder and a Drive search when asked about.
       // The model links them as [name](drive:ID); videos play in the chat and documents open in the viewer.
       const driveNotes: string[] = [];
@@ -869,7 +871,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               m.id === messageId ? { ...m, content: isVisual ? text : hideTitleMarker(text) } : m,
             ),
           })),
-        "chat", undefined, images, { chat: id, documents: documentsIn(next) },
+        "chat", undefined, images, { chat: id, documents: documentsIn(next), library: isVisual ? undefined : library },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
       updateChat(id, (c) => ({
@@ -948,7 +950,7 @@ In this subject the learner keeps missing these questions in review; connect to 
   /** Every file this chat can see, read for each request so nothing sent earlier is forgotten: files attached
    *  anywhere in the chat, the file open beside it, Mowr-made documents in it, and all files of its subject or project.
    *  The latest message's files come first and are read whole whenever they fit. */
-  async function chatSources(chat:Chat,query:string,signal?:AbortSignal,forModel=model){
+  async function chatSources(chat:Chat,query:string,signal?:AbortSignal,forModel=model,library?:{name:string;text:string}[]){
     const latest=[...chat.messages].reverse().find(m=>m.role==='user');
     const focus=[...(latest?.attachments||[]),...(latest?.context||[])];
     const space=stateRef.current.spaces.find(s=>s.id===chat.spaceId);
@@ -958,7 +960,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     const listed=ids.map(id=>files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f);
     const inSpace=chat.spaceId?files.filter(f=>f.spaceId===chat.spaceId&&!ids.includes(f.id)).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created)):[];
     const readable=[...listed,...inSpace].filter(f=>!f.type.startsWith("image/")&&!f.remote).slice(0,MAX_CHAT_SOURCES);
-    return localSourceContext(readable,query,ownerRef.current,signal,{focus,related:inChat,budget:contextBudget(forModel).sources});
+    return localSourceContext(readable,query,ownerRef.current,signal,{focus,related:inChat,budget:contextBudget(forModel).sources,library});
   }
   async function blobBase64(id:string){
     const blob=await getBlob(id);if(!blob)throw Error("An attached image is no longer on this device.");

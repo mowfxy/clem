@@ -16,11 +16,36 @@ export function claudeStatus(event:any):string|null{
   if(event?.type==='user'&&(event.message?.content||[]).some((part:any)=>part.type==='tool_result'))return 'Reading what it found…';
   return null;
 }
-export const claudeModels = [
-  {id:'claude:sonnet',name:'Claude Sonnet',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Sonnet on your Claude subscription',reasoningEfforts:[{reasoningEffort:'low',description:'Low'},{reasoningEffort:'medium',description:'Medium'},{reasoningEffort:'high',description:'High'}],defaultReasoningEffort:'medium'},
-  {id:'claude:opus',name:'Claude Opus',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:[{reasoningEffort:'low',description:'Low'},{reasoningEffort:'medium',description:'Medium'},{reasoningEffort:'high',description:'High'}],defaultReasoningEffort:'high'},
+type ClaudeModel = {id:string;name:string;provider:string;connected:boolean;context:number;specialties:string[];tools:string[];description:string;reasoningEfforts:{reasoningEffort:string;description:string}[];defaultReasoningEffort:string};
+const effortNames:Record<string,string>={low:'Low',medium:'Medium',high:'High',xhigh:'Extra high',max:'Max'};
+const levels=(names:string[])=>names.map(reasoningEffort=>({reasoningEffort,description:effortNames[reasoningEffort]||reasoningEffort}));
+/** Used only until Claude Code has said which models the person's plan has (or when it cannot say). */
+export const claudeModels:ClaudeModel[] = [
+  {id:'claude:sonnet',name:'Claude Sonnet',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Sonnet on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'medium'},
+  {id:'claude:opus',name:'Claude Opus',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'high'},
   {id:'claude:haiku',name:'Claude Haiku',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
-] as const;
+];
+/** Model names Mowr passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
+const MODEL_NAME=/^[A-Za-z0-9._-]{1,80}(?:\[[a-z0-9]{1,8}\])?$/;
+
+/**
+ * The models Claude Code offers this account, from its own startup handshake (the list its model picker shows),
+ * so a model added to the person's plan appears without a Mowr update. "default" only repeats one of the others.
+ */
+export function parseClaudeModels(list:any):ClaudeModel[]{
+  if(!Array.isArray(list))return [];
+  const seen=new Set<string>();const models:ClaudeModel[]=[];
+  for(const m of list){
+    const value=String(m?.value||'');
+    if(!MODEL_NAME.test(value)||value==='default'||seen.has(value))continue;
+    seen.add(value);
+    const efforts=m.supportsEffort===false?[]:(Array.isArray(m.supportedEffortLevels)?m.supportedEffortLevels:[]).filter((e:any)=>typeof e==='string'&&/^[a-z]{2,12}$/.test(e));
+    const name=String(m.displayName||value).replace(/\s*\((?:recommended|default)\)\s*$/i,'').trim().slice(0,80)||value;
+    models.push({id:'claude:'+value,name:/^claude\b/i.test(name)?name:'Claude '+name,provider:'Anthropic',connected:true,context:/\[1m\]$/i.test(value)?1_000_000:32000,specialties:[],tools:[],
+      description:String(m.description||'On your Claude subscription').slice(0,200),reasoningEfforts:levels(efforts),defaultReasoningEffort:efforts.includes('high')&&/opus/i.test(value)?'high':efforts.includes('medium')?'medium':efforts[0]||''});
+  }
+  return models;
+}
 
 export function claudeSubscriptionStatus(raw:string,code:number|null) {
   if(code!==0)return {installed:true,connected:false};
@@ -59,7 +84,50 @@ export class ClaudeProvider {
     });
     this.statusCache={at:Date.now(),value};return value;
   }
-  forget(){this.statusCache=null;}
+  forget(){this.statusCache=null;this.catalog=null;}
+  private catalog:{at:number;models:ClaudeModel[]}|null=null;
+  private catalogRequest:Promise<ClaudeModel[]>|null=null;
+  /** The models this Claude account can use, read from Claude Code every ten minutes; the fixed list if it cannot say. */
+  async models():Promise<ClaudeModel[]>{
+    if(this.catalog&&Date.now()-this.catalog.at<10*60_000)return this.catalog.models;
+    if(!this.catalogRequest)this.catalogRequest=this.readModels().then(models=>{
+      if(models.length)this.catalog={at:Date.now(),models};
+      return models.length?models:this.catalog?.models||claudeModels;
+    }).finally(()=>{this.catalogRequest=null;});
+    return this.catalogRequest;
+  }
+  /** Opens Claude Code's stream-json control channel, asks `initialize` (which lists the models) and stops before any prompt. */
+  private async readModels():Promise<ClaudeModel[]>{
+    let child:ChildProcessWithoutNullStreams;
+    try{child=await this.start(['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','1','--permission-prompts','none','--safe-mode','--no-session-persistence']);}catch{return [];}
+    return new Promise(resolve=>{
+      let buffer='',done=false;
+      const finish=(models:ClaudeModel[])=>{if(done)return;done=true;clearTimeout(timer);child.kill();resolve(models);};
+      const timer=setTimeout(()=>finish([]),25000);
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data',(part:string)=>{
+        buffer+=part;if(buffer.length>4_000_000){finish([]);return;}
+        let newline;
+        while((newline=buffer.indexOf('\n'))>=0){
+          const line=buffer.slice(0,newline);buffer=buffer.slice(newline+1);
+          let event:any;try{event=JSON.parse(line);}catch{continue;}
+          if(event.type!=='control_response'||event.response?.request_id!=='mowr-models')continue;
+          finish(parseClaudeModels(event.response?.response?.models??event.response?.models));
+        }
+      });
+      child.stderr.resume();child.on('error',()=>finish([]));child.on('close',()=>finish([]));
+      child.stdin.write(JSON.stringify({type:'control_request',request_id:'mowr-models',request:{subtype:'initialize'}})+'\n');
+    });
+  }
+  /** Claude Code's own updater, at most once a day: a new model can need a newer Claude Code. Mowr turns off
+   *  Claude Code's background traffic, which includes its automatic updates, so Mowr asks for them here instead. */
+  async update(){
+    if(!(await this.status()).installed)return;
+    const child=await this.start(['update']).catch(()=>null);
+    if(!child)return;
+    await new Promise<void>(resolve=>{const timer=setTimeout(()=>child.kill(),5*60_000);child.stdout.resume();child.stderr.resume();child.on('error',()=>{clearTimeout(timer);resolve();});child.on('close',()=>{clearTimeout(timer);resolve();});child.stdin.end();});
+    this.catalog=null;
+  }
   async login(){
     await mkdir(this.root,{recursive:true});
     this.statusCache=null;
@@ -72,9 +140,12 @@ export class ClaudeProvider {
    * image blocks and the person sees what Claude is doing (thinking, searching, writing) while it works.
    */
   async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[]){
-    const selected=claudeModels.find(item=>item.id===model);
-    if(!selected)throw Error('Choose a supported Claude model.');
-    if(effort&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
+    if(!model.startsWith('claude:')||!MODEL_NAME.test(model.slice(7)))throw Error('Choose a supported Claude model.');
+    // Checked against the account's own list when Mowr has it; otherwise Claude Code itself refuses an unknown model.
+    const listed=this.catalog?.models||claudeModels;
+    const selected=listed.find(item=>item.id===model);
+    if(!selected&&this.catalog)throw Error('That Claude model is no longer available on your plan. Pick another one.');
+    if(effort&&selected&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
     if(!(await this.status(true)).connected)throw Error('Sign in to a Claude subscription through Claude Code first.');
     // Web search is the only tool: it lets Claude find real, current sources (such as YouTube videos) on the person's own plan.
     const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode','--no-session-persistence'];
