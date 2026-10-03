@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useContext, useMemo, useState, type ReactNode } from 'react';
+import { lazy, memo, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { VisualSaveContext } from './visual-save';
 import { LinkChip, YouTubeEmbed, videosIn } from './Links';
 import { DriveAudio, DriveCard, DriveChip, DriveVideo } from './DriveCards';
@@ -16,6 +16,8 @@ import { parseVisual } from '../../core/visual-spec';
 import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
 import { Icon } from '../Icons';
 import { copyText } from '../clipboard';
+import { tokenize, languageName } from './highlight';
+import { runCode, runnable } from './code-run';
 import { EditProposal, type EditBlock } from './EditProposal';
 import { AutomationProposal } from './AutomationProposal';
 import { readAutomationBlock, type AutomationBlock } from '../LocalAutomations';
@@ -54,11 +56,49 @@ function driveIdsIn(node: unknown): string[] {
   return found;
 }
 
-function CodeBlock({ lang, code }: { lang: string; code: string }) {
+function CodeBlock({ lang, code, streaming }: { lang: string; code: string; streaming: boolean }) {
   const [copied, setCopied] = useState(false);
-  return <div className="code-block">
-    <div className="code-head"><span>{lang || 'text'}</span><button type="button" aria-label="Copy code" onClick={() => { void copyText(code).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); }); }}>{copied ? <><Icon name="check" size={14} />Copied</> : <><Icon name="copy" size={14} />Copy</>}</button></div>
-    <pre><code>{code}</code></pre>
+  const [wrap, setWrap] = useState(false);
+  const [run, setRun] = useState<{ output: { err: boolean; text: string }[]; status: string; state: 'running' | 'ok' | 'failed' | 'stopped'; ms: number } | null>(null);
+  const stop = useRef<(() => void) | null>(null);
+  const tokens = useMemo(() => tokenize(code, lang), [code, lang]);
+  const runAs = runnable(lang);
+  useEffect(() => () => stop.current?.(), []);
+  const start = () => {
+    if (!runAs) return;
+    const began = performance.now();
+    setRun({ output: [], status: '', state: 'running', ms: 0 });
+    stop.current = runCode(runAs, code, (e) => setRun((r) => {
+      if (!r) return r;
+      if (e.type === 'status') return { ...r, status: e.text };
+      if (e.type === 'done') { stop.current = null; return { ...r, status: '', state: e.stopped ? 'stopped' : e.ok ? 'ok' : 'failed', ms: performance.now() - began }; }
+      const last = r.output[r.output.length - 1], err = e.type === 'err';
+      // Lines of the same stream join into one chunk, and a run is capped so a runaway loop cannot flood the chat.
+      if (r.output.reduce((n, o) => n + o.text.length, 0) > 200_000) return r;
+      return { ...r, output: last && last.err === err ? [...r.output.slice(0, -1), { err, text: last.text + e.text }] : [...r.output, { err, text: e.text }] };
+    }));
+  };
+  const running = run?.state === 'running';
+  return <div className={`code-block ${wrap ? 'wrapped' : ''}`}>
+    <div className="code-head">
+      <span className="code-lang"><span className="code-glyph" aria-hidden="true">&lt;/&gt;</span>{languageName(lang)}</span>
+      <div className="code-tools">
+        <button type="button" className="code-icon" aria-pressed={wrap} aria-label={wrap ? 'Stop wrapping lines' : 'Wrap long lines'} title={wrap ? 'Unwrap' : 'Wrap lines'} onClick={() => setWrap(!wrap)}><Icon name="wrap" size={15} /></button>
+        <button type="button" className="code-icon" aria-label={copied ? 'Copied' : 'Copy code'} title={copied ? 'Copied' : 'Copy'} onClick={() => { void copyText(code).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); }); }}><Icon name={copied ? 'check' : 'copy'} size={15} /></button>
+        {runAs && <button type="button" className={`code-run ${running ? 'running' : ''}`} disabled={streaming} aria-label={running ? 'Stop running' : `Run ${languageName(lang)} code`} onClick={() => running ? stop.current?.() : start()}>
+          <Icon name={running ? 'stop' : 'playhead'} size={13} />{running ? 'Stop' : 'Run'}
+        </button>}
+      </div>
+    </div>
+    <pre><code>{tokens.map((t, i) => t.kind === 'plain' ? t.text : <span key={i} className={'tk-' + t.kind}>{t.text}</span>)}</code></pre>
+    {run && <div className={`code-output ${run.state}`} role="log" aria-live="polite" aria-label="Output">
+      <div className="code-output-head">
+        <span>{running ? (run.status || 'Running…') : run.state === 'ok' ? 'Output' : run.state === 'stopped' ? 'Stopped' : 'Error'}</span>
+        {!running && <span className="code-output-meta">{run.ms < 1000 ? Math.max(1, Math.round(run.ms)) + ' ms' : (run.ms / 1000).toFixed(1) + ' s'}</span>}
+        {!running && <button type="button" className="code-icon" aria-label="Clear output" title="Clear" onClick={() => setRun(null)}><Icon name="close" size={13} /></button>}
+      </div>
+      <pre>{run.output.length ? run.output.map((o, i) => <span key={i} className={o.err ? 'code-err' : undefined}>{o.text}</span>) : !running && <span className="code-none">No output</span>}{running && <span className="code-caret" aria-hidden="true" />}</pre>
+    </div>}
   </div>;
 }
 
@@ -146,7 +186,7 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
             if (!block) return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Preparing a routine…</div> : <details className="block-error"><summary>A proposed routine could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             return <AutomationProposal block={block} streaming={streaming} outcome={handlers.edits?.[key]} onDecide={approve => handlers.onSchedule?.(key, block, approve) ?? Promise.resolve()} />;
           }
-          return <CodeBlock lang={lang} code={code} />;
+          return <CodeBlock lang={lang} code={code} streaming={streaming} />;
         },
       }}
     >{prepared}</ReactMarkdown>
