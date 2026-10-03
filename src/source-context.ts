@@ -2,6 +2,7 @@ import { get, set } from "idb-keyval";
 import { extractFiles } from "./documents";
 import { loadEdits } from "./document-state";
 import { sourceExcerpts } from "../core/source-context";
+import { distinctNames } from "../core/file-tools";
 import type { StoredFile } from "../core/types";
 import { contextBudget } from "../core/context-budget";
 /** Reads a stored file's text once, then reuses it until the file (or its saved edits) changes.
@@ -34,13 +35,15 @@ export async function localSourceContext(
       if (focus.includes(file.id)) focused.push(sources.length);
       else if (related.includes(file.id)) earlier.push(sources.length);
       sources.push({ name: file.name, text });
-      // The whole text goes along too, so the model can read what did not fit (core/file-tools.ts).
-      library?.push({ name: file.name, text });
     } catch (e) {
       if (signal?.aborted) throw e;
       skipped.push(file.name);
     }
   }
-  const text = sourceExcerpts(sources, query, budget, focused, earlier);
+  // Same-named files get distinct names, so the index, citations and file tools can tell them apart.
+  const named = distinctNames(sources);
+  // The whole text goes along too, so the model can read what did not fit (core/file-tools.ts).
+  library?.push(...named);
+  const text = sourceExcerpts(named, query, budget, focused, earlier);
   return skipped.length ? `${text}\n(Could not read: ${skipped.join(", ")}.)`.trim() : text;
 }

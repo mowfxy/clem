@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {fileTool,fileToolsGuide,findFile,readFile,searchFiles,READ_LIMIT,type LibraryFile} from '../core/file-tools.ts';
+import {distinctNames,fileTool,fileToolsGuide,findFile,readFile,searchFiles,READ_LIMIT,type LibraryFile} from '../core/file-tools.ts';
 
 const lecture=(n:number,pages:string[])=>({name:`Lecture_0${n}.pdf`,text:pages.map((p,i)=>`\n[Lecture_0${n}.pdf, page ${i+1}]\n${p}\n`).join('')});
 const files:LibraryFile[]=[
@@ -49,4 +49,29 @@ test('only file actions are handled, and the guide appears only when there are f
   assert.equal((fileTool(files,{action:'files'}) as any).files[1].pages,3);
   assert.equal(fileToolsGuide([]),'');
   assert.match(fileToolsGuide(files),/"action":"read"/);
+});
+
+test('page markers work for names with brackets, and quoted marker text in a page is not a page',()=>{
+  const odd:LibraryFile={name:'Notes [final].pdf',text:'\n[Notes [final].pdf, page 1]\nSee the note ", page 2]\n" above.\n\n[Notes [final].pdf, page 2]\nSecond page about enzymes.\n'};
+  assert.equal((fileTool([odd],{action:'files'}) as any).files[0].pages,2);
+  assert.match((readFile([odd],{file:'Notes [final].pdf',page:2}) as any).text,/^\[Notes \[final\]\.pdf, page 2\]\nSecond page/);
+  assert.equal((searchFiles([odd],{query:'enzymes'}) as any).results[0].page,2);
+});
+
+test('same-named files are both readable, and search offsets survive letters whose lower case is longer',()=>{
+  const twins=distinctNames<LibraryFile>([{name:'notes.pdf',text:'first copy'},{name:'Notes.pdf',text:'second copy'},{name:'other.txt',text:'x'}]);
+  assert.deepEqual(twins.map(f=>f.name),['notes.pdf','Notes.pdf (2)','other.txt']);
+  assert.equal((readFile(twins,{file:'Notes.pdf (2)'}) as any).text,'second copy');
+  const turkish:LibraryFile={name:'tr.txt',text:'İİİİ '.repeat(400)+'mitochondria power'};
+  const hit=(searchFiles([turkish],{query:'mitochondria'}) as any).results[0];
+  assert.ok(turkish.text.slice(hit.from).includes('mitochondria'));
+  assert.equal(hit.text,turkish.text.slice(hit.from,hit.from+1400));
+});
+
+test('a citation of "notes.pdf (2)" opens the second file of that name',async()=>{
+  const {matchSource}=await import('../core/citations.ts');
+  const stored=[{id:'a',name:'notes.pdf'},{id:'b',name:'notes.pdf'}];
+  assert.equal(matchSource(stored,'notes.pdf (2)')?.id,'b');
+  assert.equal(matchSource(stored,'notes.pdf')?.id,'a');
+  assert.equal(matchSource([{id:'c',name:'Report (2)'}],'Report (2)')?.id,'c','a real name ending in (2) still matches itself');
 });

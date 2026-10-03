@@ -84,7 +84,7 @@ export function boundedConversation(
     if (room > 2000 && sourceCost > 0) {
       const share = room / sourceCost;
       required = required.map((m) => isSource(m)
-        ? { ...m, content: clip(m.content, Math.floor(m.content.length * share)) + "\n[Source material shortened to fit this request: the middle of the longer part was left out. Say so if the answer needs it.]" }
+        ? { ...m, content: clip(m.content, Math.floor(m.content.length * share)) + "\n[Source material shortened to fit this request: the middle of the longer part was left out, so a file marked complete above may not be. Read what is missing with the FILE TOOLS when your instructions list them; otherwise say so if the answer needs it.]" }
         : m);
       used = fixed + required.reduce((n, m) => n + cost(m), 0);
     }

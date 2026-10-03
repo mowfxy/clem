@@ -950,7 +950,7 @@ In this subject the learner keeps missing these questions in review; connect to 
   /** Every file this chat can see, read for each request so nothing sent earlier is forgotten: files attached
    *  anywhere in the chat, the file open beside it, Mowr-made documents in it, and all files of its subject or project.
    *  The latest message's files come first and are read whole whenever they fit. */
-  async function chatSources(chat:Chat,query:string,signal?:AbortSignal,forModel=model,library?:{name:string;text:string}[]){
+  async function chatSources(chat:Chat,query:string,signal?:AbortSignal,forModel=model,library?:{name:string;text:string}[],budget=contextBudget(forModel).sources){
     const latest=[...chat.messages].reverse().find(m=>m.role==='user');
     const focus=[...(latest?.attachments||[]),...(latest?.context||[])];
     const space=stateRef.current.spaces.find(s=>s.id===chat.spaceId);
@@ -960,7 +960,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     const listed=ids.map(id=>files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f);
     const inSpace=chat.spaceId?files.filter(f=>f.spaceId===chat.spaceId&&!ids.includes(f.id)).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created)):[];
     const readable=[...listed,...inSpace].filter(f=>!f.type.startsWith("image/")&&!f.remote).slice(0,MAX_CHAT_SOURCES);
-    return localSourceContext(readable,query,ownerRef.current,signal,{focus,related:inChat,budget:contextBudget(forModel).sources,library});
+    return localSourceContext(readable,query,ownerRef.current,signal,{focus,related:inChat,budget,library});
   }
   async function blobBase64(id:string){
     const blob=await getBlob(id);if(!blob)throw Error("An attached image is no longer on this device.");
@@ -1007,7 +1007,8 @@ In this subject the learner keeps missing these questions in review; connect to 
     patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:"",status:"running"}}));
     const controller=begin(chat.id);
     try{
-      const sources=await chatSources(chat,question.content,controller.signal);
+      // Chosen for this question within the review's room, so every file gets its share instead of only the first ones.
+      const sources=await chatSources(chat,question.content,controller.signal,reviewer,undefined,16000);
       const text=await streamChat([{role:"system",content:reviewInstructions},{role:"user",content:JSON.stringify({question:question.content.slice(0,12000),answer:answer.content.slice(0,24000),sources:sources.slice(0,16000)})}],reviewer,controller.signal,t=>patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:t,status:"running"}})),"step",models.find(m=>m.id===reviewer)?.defaultReasoningEffort,undefined,{chat:chat.id});
       patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:text,status:"done"}}));
     }catch(e){
@@ -1023,7 +1024,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     patchMessage(chat.id,messageId,m=>({...m,verify:{status:"running"}}));
     const controller=begin(chat.id);
     try{
-      const sources=await chatSources(chat,answer.content,controller.signal);
+      const sources=await chatSources(chat,answer.content,controller.signal,connected.id,undefined,20000);
       if(!sources.trim())throw Error("This conversation has no readable sources to check against.");
       const raw=await streamChat([{role:"system",content:verifyInstructions},{role:"user",content:JSON.stringify({answer:answer.content.replace(/```(?:visual|check|edit|automation)[\s\S]*?```/g,"").slice(0,20000),sources:sources.slice(0,20000)})}],connected.id,controller.signal,()=>{},"step",undefined,undefined,{chat:chat.id});
       const claims=parseClaims(raw);
@@ -1103,7 +1104,9 @@ In this subject the learner keeps missing these questions in review; connect to 
     let current = approved;
     try {
       const planChat = stateRef.current.chats.find((c) => c.id === id);
-      const sources = planChat ? await chatSources(planChat,plan.goal,controller.signal) : "";
+      // Each step gets the passages that best fit the goal within its room, and can read the rest with the file tools.
+      const library: { name: string; text: string }[] = [];
+      const sources = planChat ? await chatSources(planChat,plan.goal,controller.signal,model,library,18000) : "";
       const workflow = await openWorkflow(ownerRef.current, approved, JSON.stringify({sources, scope:desktopScope, memory:activeSpace?.memory || (!spaceId ? state.memory : "")}));
       current = workflow.plan;
       const executionPlan=current;
@@ -1155,7 +1158,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             ],
             task.model,
             signal,
-            () => {}, "step", task.reasoning, undefined, { chat: id },
+            () => {}, "step", task.reasoning, undefined, { chat: id, library },
           );
         },
         controller.signal,
