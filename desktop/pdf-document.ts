@@ -60,6 +60,29 @@ export function documentFonts(spec: Pick<DocumentSpec, "font" | "headingFont">) 
   const body = pick(spec.font) || fonts.classic;
   return { body: body.body, head: pick(spec.headingFont)?.body || body.head };
 }
+/** Figures already drawn, so adding a part to a long document does not draw (and risk timing out) every earlier figure again. */
+const drawn = new Map<string, string>();
+async function drawFigure(figure: any) {
+  const key = JSON.stringify(figure);
+  const cached = drawn.get(key);
+  if (cached) return cached;
+  const svg = await kinetraCall(figure);
+  if (typeof svg === "string" && svg.length < 4_000_000) {
+    drawn.set(key, svg);
+    if (drawn.size > 300) drawn.delete(drawn.keys().next().value!);
+  }
+  return svg;
+}
+/** Runs `work` over `items` a few at a time: each figure has a 5 s limit, and dozens started at once would starve each other. */
+async function inTurns<T, R>(items: T[], limit: number, work: (item: T, index: number) => Promise<R>) {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; results[i] = await work(items[i], i); }
+  }));
+  return results;
+}
+const MAX_SECTIONS = 3000;
 const unsafeSvg = /<script|<foreignObject|\bon\w+\s*=|(?:href|src)\s*=\s*["'](?:https?:|file:|javascript:)/i;
 const kinds = new Set(["report", "paper", "brief", "notes", "proposal", "manual", "handout", "worksheet", "letter", "memo", "document"]);
 const kindLabel: Record<string, string> = { report: "Technical report", paper: "Paper", brief: "Briefing", notes: "Notes", proposal: "Proposal", manual: "Guide", handout: "Handout", worksheet: "Worksheet", letter: "Letter", memo: "Memorandum", document: "" };
@@ -70,13 +93,14 @@ export const cleanHeading = (heading: string) => heading.replace(/^\s*(?:(?:\d+(
 /** Checks the whole specification and renders every figure before any page is laid out.
  *  All problems (structure, voice and figures) are reported together, so the model can correct them in one pass. */
 export async function renderFigures(spec: any, { checkVoice = true }: { checkVoice?: boolean } = {}) {
-  if (
-    !spec || typeof spec.title !== "string" || !spec.title.trim() ||
-    !Array.isArray(spec.sections) || spec.sections.length < 1 || spec.sections.length > 300 ||
-    // An export of the person's own answer (no voice check) may be any answer the app accepts (300k characters of Markdown, larger once encoded).
-    JSON.stringify(spec).length > (checkVoice ? 1_000_000 : 2_000_000)
-  )
-    throw Error('Invalid PDF specification: expected {"title":string,"sections":[1-300 sections]}.');
+  if (!spec || typeof spec.title !== "string" || !spec.title.trim() || !Array.isArray(spec.sections) || spec.sections.length < 1)
+    throw Error('Invalid PDF specification: expected {"title":string,"sections":[at least one section]}.');
+  if (spec.sections.length > MAX_SECTIONS)
+    throw Error(`This document would have ${spec.sections.length} sections; the limit is ${MAX_SECTIONS}. Use ### subsections inside fewer sections, or start a second document for the rest.`);
+  // An export of the person's own answer (no voice check) may be any answer the app accepts (300k characters of Markdown, larger once encoded).
+  const size = JSON.stringify(spec).length, limit = checkVoice ? 12_000_000 : 16_000_000;
+  if (size > limit)
+    throw Error(`This document would be ${size} characters; the limit is ${limit} (roughly 3,000 pages). Start a second document for the rest.`);
   for (const field of ["font", "headingFont"] as const)
     if (spec[field] !== undefined && (typeof spec[field] !== "string" || !fontName.test(spec[field].trim())))
       throw Error(`${field} must be a font name such as "Times New Roman", "Arial" or "Georgia".`);
@@ -105,11 +129,10 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
     if (voice.length)
       problems.push(`The text does not meet the document standard (formal, impersonal, written as the document itself): ${voice.slice(0, 8).join("; ")}. Rewrite these passages impersonally (for example "This report…", "The results show…").`);
   }
-  const figures = await Promise.all(
-    sections.map(async (s, i) => {
+  const figures = await inTurns(sections, 4, async (s, i) => {
       if (!s.figure) return undefined;
       try {
-        const svg = await kinetraCall(s.figure);
+        const svg = await drawFigure(s.figure);
         if (typeof svg !== "string" || !svg.includes("<svg"))
           throw Error(`${s.figure.module}.${s.figure.fn} returned data, not a drawing. Use a render function (see the figure recipes).`);
         if (unsafeSvg.test(svg)) throw Error("the generated figure contained unsupported content");
@@ -118,8 +141,7 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
         problems.push(`Section ${i + 1} figure (${s.figure.module}.${s.figure.fn}) failed: ${(error as Error).message}`);
         return undefined;
       }
-    }),
-  );
+    });
   if (problems.length) throw Error(problems.join(" ") + " No PDF was created. Fix these problems and send the pdf action again.");
   return figures;
 }

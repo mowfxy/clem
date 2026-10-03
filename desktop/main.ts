@@ -1,5 +1,6 @@
 import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
+import { PDFDocument } from "pdf-lib";
 import {markdownDocument} from "./pdf-document";
 import {boundedConversation,memoryQuery,retrievalQuery} from "../core/chat-context";
 import {contextBudget} from "../core/context-budget";
@@ -1217,6 +1218,10 @@ void app.whenReady().then(async () => {
         }
         const data = await illustratedPdf(clean);
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
+        // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
+        const pages = await PDFDocument.load(data, { updateMetadata: false }).then((d) => d.getPageCount()).catch(() => undefined);
+        const words = String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0);
+        const length = { pages, words, sections: clean.sections.length, check: "Compare this with the request. If it asked for a full, detailed or complete explanation, or the source has topics this does not cover yet, keep adding the missing sections with append before answering." };
         const specBytes = new TextEncoder().encode(JSON.stringify(clean));
         if (revise) {
           const previous = await disk.readFile(user.id, revise);
@@ -1230,7 +1235,7 @@ void app.whenReady().then(async () => {
           await disk.writeFile(user.id, "spec-" + revise, specBytes);
           const file = { id: revise, name: documents.get(revise)!, size: data.byteLength, type: "application/pdf", created: Date.now(), updated: Date.now(), spaceId: null, made: true };
           emit({ id: request.id, type: "artifact", file, scope: request.scope, revised: { version } });
-          return { created: true, revised: true, file: { id: revise, name: file.name, size: file.size }, sections: clean.sections.length, note: "The same file was updated; the earlier version is kept for undo." };
+          return { created: true, revised: true, file: { id: revise, name: file.name, size: file.size }, ...length, note: "The same file was updated; the earlier version is kept for undo." };
         }
         const id = randomUUID();
         const file = { id, name: String(clean.title).replace(/[<>:"/\\|?*\x00-\x1f]/g, "").slice(0, 100) + ".pdf", size: data.byteLength, type: "application/pdf", created: Date.now(), spaceId: /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined, made: true };
@@ -1238,17 +1243,19 @@ void app.whenReady().then(async () => {
         await disk.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
         emit({ id: request.id, type: "artifact", file, scope: request.scope });
-        return { created: true, file: { id, name: file.name, size: file.size }, sections: clean.sections.length, note: 'To continue this document, send {"action":"pdf","revise":"' + id + '","append":true,"sections":[…]}.' };
+        return { created: true, file: { id, name: file.name, size: file.size }, ...length, note: 'To continue this document, send {"action":"pdf","revise":"' + id + '","append":true,"sections":[…]}.' };
       };
       /** Reading a document's current source, so a change keeps everything the person did not ask to change. */
       const tools = async (tool: any) => {
+        const read = fileTool(library, tool);
+        if (read) return read;
         if (tool?.action !== "open") return undefined;
         if (!documents.has(tool.id)) return { error: `No Mowr-made document with id "${tool.id}" in this conversation.` };
         const spec = await disk.readFile(user.id, "spec-" + tool.id);
         return spec ? { id: tool.id, name: documents.get(tool.id), specification: JSON.parse(spec.toString("utf8")) } : { error: "That document's source is missing, so it can only be edited in the file panel." };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name })));
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf, instructions, tools: (tool) => tools(tool) });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});

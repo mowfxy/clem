@@ -1,7 +1,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { runKinetraTurn, toolRequest } from "../../desktop/kinetra-turn.ts";
+import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, shownLength, MAX_CALLS } from "../../desktop/kinetra-turn.ts";
 import { kinetraTool, kinetraCall } from "../../desktop/kinetra-runtime.ts";
 before(async () => {
   await build({
@@ -18,6 +18,42 @@ test("only exact tool envelopes are dispatched; application JSON stays final", (
   assert.deepEqual(toolRequest('{"kinetra":{"action":"skill"}}'), {
     action: "skill",
   });
+});
+test("a malformed tool envelope goes back for correction instead of becoming the answer", async () => {
+  const broken = '{"kinetra":{"action":"call","module":"math/eval","fn":"evalMatrix","args":[{"rows":[[1]]]}, {"vars":{}}]}}';
+  assert.ok(brokenToolRequest(broken));
+  assert.equal(brokenToolRequest('{"kinetra":{"action":"help"}}'), null);
+  assert.equal(brokenToolRequest("The answer is {x}."), null);
+  const replies = [broken, '{"kinetra":{"action":"call"}}', "Done."];
+  const inputs: string[] = [];
+  let calls = 0;
+  const result = await runKinetraTurn("m", "", async (input) => { inputs.push(input); return replies.shift()!; }, async () => { calls++; return 1; }, () => false);
+  assert.equal(result, "Done.");
+  assert.equal(calls, 1);
+  assert.match(inputs[1], /not valid JSON/);
+});
+test("a lead-in sentence or several envelopes in one reply still run; quoted examples do not", async () => {
+  assert.deepEqual(toolRequests('Let me calculate that.\n{"kinetra":{"action":"call","fn":"a"}}'), [{ action: "call", fn: "a" }]);
+  assert.deepEqual(toolRequests('{"kinetra":{"action":"pdf","title":"A {x}"}}\n```json\n{"kinetra":{"action":"pdf","title":"B"}}\n```'), [{ action: "pdf", title: "A {x}" }, { action: "pdf", title: "B" }]);
+  assert.deepEqual(toolRequests('I will read the lecture first.\n{"kinetra":{"action":"read","file":"L3.pdf"}}'), [{ action: "read", file: "L3.pdf" }]);
+  assert.equal(toolRequests('An example: {"kinetra":{}}'), null);
+  assert.equal(toolRequests('Use {"kinetra":{"action":"call"}} and then read the result.'), null);
+  assert.equal(shownLength('Let me check.\n{"kinetra":{"act'), 'Let me check.\n'.length);
+  assert.equal(shownLength('Let me check.\n{"kin'), 'Let me check.\n'.length);
+  assert.equal(shownLength("Plain answer."), "Plain answer.".length);
+  const ran: any[] = [];
+  const replies = ['One PDF per lecture.\n{"kinetra":{"action":"pdf","title":"L1"}}\n{"kinetra":{"action":"pdf","title":"L2"}}', "Both made."];
+  const inputs: string[] = [];
+  const result = await runKinetraTurn("m", "", async (input) => { inputs.push(input); return replies.shift()!; }, async (r) => { ran.push(r.title); return { created: true }; }, () => false, { stateful: true });
+  assert.equal(result, "Both made.");
+  assert.deepEqual(ran, ["L1", "L2"]);
+  assert.match(inputs[1], /L1[\s\S]*L2/);
+});
+test("running out of tool calls asks for the final answer instead of discarding the work", async () => {
+  let calls = 0;
+  const result = await runKinetraTurn("m", "", async (input) => (/No tool calls are left/.test(input) ? "The document covers parts 1-40; ask to continue." : '{"kinetra":{"action":"pdf"}}'), async () => { calls++; return { created: true }; }, () => false, { stateful: true });
+  assert.equal(calls, MAX_CALLS);
+  assert.match(result, /ask to continue/);
 });
 test("tool loop supplies results and preserves final output", async () => {
   let count = 0;
@@ -51,7 +87,7 @@ test("errors are data; loops are bounded and cancellation prevents another call"
       ),
     /tool limit/,
   );
-  assert.equal(count, 20);
+  assert.equal(count, MAX_CALLS);
   let cancelled = false;
   await assert.rejects(
     () =>
