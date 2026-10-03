@@ -1,23 +1,30 @@
-// Imported from mowfxy/serif at abf57cc: one file per style covers Latin, Greek, Cyrillic, Arabic, math and symbols.
+// Soft Ink Serif Book from mowfxy/serif at 2967d3c, with the fuller Mowafy Serif (cb34d94) behind it for bold, italic and
+// every script the Book face lacks. Declared last, Book wins wherever it has the character.
 export const serifFaces = [
+  {
+    "file": "MowafySerifFull-Regular",
+    "weight": "300 500",
+    "style": "normal"
+  },
+  {
+    "file": "MowafySerifFull-Bold",
+    "weight": "600 800",
+    "style": "normal"
+  },
+  {
+    "file": "MowafySerifFull-RegularItalic",
+    "weight": "300 500",
+    "style": "italic"
+  },
+  {
+    "file": "MowafySerifFull-BoldItalic",
+    "weight": "600 800",
+    "style": "italic"
+  },
   {
     "file": "MowafySerif-Regular",
     "weight": "300 500",
-    "style": "normal"
-  },
-  {
-    "file": "MowafySerif-Bold",
-    "weight": "600 800",
-    "style": "normal"
-  },
-  {
-    "file": "MowafySerif-RegularItalic",
-    "weight": "300 500",
-    "style": "italic"
-  },
-  {
-    "file": "MowafySerif-BoldItalic",
-    "weight": "600 800",
-    "style": "italic"
+    "style": "normal",
+    "range": "U+20-7E,U+A0-12B,U+12E-131,U+134-165,U+168-17F,U+18F,U+192,U+1A0-1A1,U+1AF-1B0,U+1CD-1DC,U+1E6-1E7,U+1F8-1F9,U+218-21B,U+237,U+251,U+259,U+261,U+2B0,U+2B2-2B3,U+2B7-2B8,U+2BB-2BC,U+2BE-2BF,U+2C6-2CC,U+2D8-2DD,U+2E1-2E3,U+300-304,U+306-30C,U+31B,U+323-324,U+326-329,U+32E,U+331,U+374-375,U+37E,U+384-38A,U+38C,U+38E-3A1,U+3A3-3CE,U+3D7,U+3D9,U+3DB,U+3DD,U+3E1,U+400-45F,U+462-463,U+472-475,U+490-493,U+496-49B,U+4A0-4A3,U+4AA-4AB,U+4AE-4B3,U+4B6-4B7,U+4BA-4BB,U+4C0-4C2,U+4CF-4D1,U+4D4-4D9,U+4E2-4E3,U+4E6-4E9,U+4EE-4EF,U+4F2-4F3,U+1D43,U+1D47-1D49,U+1D4D,U+1D4F-1D50,U+1D52,U+1D56-1D58,U+1D5B,U+1D9C,U+1DA0,U+1DBB,U+1E0C-1E0F,U+1E20-1E21,U+1E24-1E25,U+1E2A-1E2B,U+1E36-1E3B,U+1E3E-1E3F,U+1E42-1E49,U+1E5A-1E63,U+1E6C-1E6F,U+1E80-1E85,U+1E8E-1E8F,U+1E92-1E93,U+1E97,U+1E9E,U+1EA0-1EF9,U+2002-2007,U+2009-200B,U+2010,U+2012-2015,U+2018-201A,U+201C-201E,U+2020-2022,U+2025-2026,U+202F-2030,U+2032-2033,U+2039-203A,U+203C,U+2044,U+2047-2049,U+2070-2071,U+2074-2079,U+207D-2089,U+208D-208E,U+20A1,U+20A4,U+20A6-20A7,U+20A9,U+20AB-20AC,U+20AE,U+20B1-20B2,U+20B4-20B5,U+20B8-20BA,U+20BD,U+20BF,U+2113,U+2116-2117,U+2120,U+2122,U+2126,U+212E,U+2153-2154,U+215B-215E,U+2190-2193,U+2196-2199,U+2202,U+2206,U+220F,U+2211-2212,U+2215,U+2219-221A,U+221E,U+222B,U+2248,U+2260,U+2264-2265,U+25A0,U+25B2-25B3,U+25B6-25B7,U+25BC-25BD,U+25C0-25C1,U+25C6,U+25C9-25CA,U+2610-2611,U+266A,U+2713,U+2752,U+2E3A-2E3B,U+FB00-FB04,U+1F12F,U+1F16A-1F16B"
   }
 ] as const;

@@ -6,8 +6,8 @@ import { serifFaces } from "../core/serif-fonts.ts";
 const faces: [family: string, file: string, weight: string, range?: string, style?: string][] = [
   ["Mowafy Sans", "MowafySans-Regular", "400"],
   ["Mowafy Sans", "MowafySans-Bold", "700"],
-  // Upright only: these pages inline every file, and each serif style is over a megabyte.
-  ...serifFaces.filter(face => face.style === "normal").map(face => ["Mowafy Serif", face.file, String(face.weight), undefined, face.style] as [string, string, string, undefined, string]),
+  // Only the Book face (about 230 kB) is inlined: the fuller family is over a megabyte a style.
+  ...serifFaces.filter(face => "range" in face).map(face => ["Mowafy Serif", face.file, String(face.weight), (face as { range: string }).range, face.style] as [string, string, string, string, string]),
 ];
 let css: string | undefined;
 
