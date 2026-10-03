@@ -21,6 +21,7 @@
 .history-row:hover,.history-row:focus-within{background:#ffffff0b}
 .history-row.chosen{background:#292929}
 .history-row .history-item,.history-row .history-item:hover,.history-row .history-item.chosen{background:transparent!important;padding-right:34px}
+.history-row.is-working .history-item,.history-row.is-unseen .history-item{padding-right:52px!important}
 .history-row .history-more{position:absolute;right:4px;top:50%;transform:translateY(-50%);height:28px;padding:0 7px;border-radius:6px;background:transparent!important;color:#8f8e87;opacity:0;transition:opacity .15s,color .15s}
 .history-row:hover .history-more,.history-row:focus-within .history-more,.history-row.chosen .history-more{opacity:1}
 .history-row .history-more:hover{color:#f0efeb}

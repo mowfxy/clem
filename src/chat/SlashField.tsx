@@ -1,5 +1,5 @@
-import { useEffect, useState, type RefObject } from "react";
-import { commandsFor, leadingCommand, readCommand, type SlashCommand } from "../../core/commands";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { commandsFor, readCommand, type SlashCommand } from "../../core/commands";
 import { Icon } from "../Icons";
 import "./slash.css";
 
@@ -12,8 +12,8 @@ export function CommandChip({ command, onRemove }: { command: SlashCommand; onRe
 }
 
 /** The composer's text box. Typing "/" at the start or after a space lists the commands; choosing one (or finishing
- *  its name with a space) turns it into a chip in front of the text. The message itself stays "/name words", which is
- *  what the app and the model read (see core/commands.ts). */
+ *  its name with a space) leaves "/name" right where it was typed, drawn as a small pill behind the words so the
+ *  sentence reads straight through. The message is moved to "/name words" only when it is sent (see core/commands.ts). */
 export function SlashField({ value, onChange, onEnter, placeholder, inSubject, inputRef }: {
   value: string;
   onChange: (value: string) => void;
@@ -22,42 +22,45 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
   inSubject: boolean;
   inputRef: RefObject<HTMLTextAreaElement | null>;
 }) {
-  const head = /^\/([a-z]+)\s/i.exec(value);
-  const command = head ? readCommand(value)?.command ?? null : null;
-  const rest = command ? value.slice(head![0].length) : value;
-  const [caret, setCaret] = useState(rest.length);
+  const [caret, setCaret] = useState(value.length);
   // The "/word" being typed just before the caret, if any (only one command per message).
-  const typed = command ? null : /(^|\s)\/([a-z]*)$/i.exec(rest.slice(0, caret));
-  const options = typed ? commandsFor(typed[2], inSubject) : [];
+  const typed = /(^|\s)\/([a-z]*)$/i.exec(value.slice(0, caret));
+  // A finished command is a known "/name" followed by a space or the end that the caret is not still typing.
+  const token = [...value.matchAll(/(^|\s)\/([a-z]+)(?=\s|$)/gi)].find((m) => readCommand(`/${m[2]}`) && !(typed && m.index + m[0].length === caret));
+  const command = token ? readCommand(`/${token[2]}`)!.command : null;
+  const options = typed && !command ? commandsFor(typed[2], inSubject) : [];
   const [index, setIndex] = useState(0);
   const [closed, setClosed] = useState(false);
   const typing = typed ? typed[2] : null;
   useEffect(() => { setIndex(0); if (typing === null) setClosed(false); }, [typing]);
   const open = options.length > 0 && !closed;
   const at = Math.min(index, options.length - 1);
+  const mirror = useRef<HTMLDivElement>(null);
+  // The pill layer copies the text box's type so both wrap and scroll identically.
+  useLayoutEffect(() => {
+    const el = inputRef.current, m = mirror.current;
+    if (!el || !m) return;
+    const css = getComputedStyle(el);
+    for (const k of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "wordSpacing", "textIndent"] as const) m.style[k] = css[k];
+    // The words are painted by this layer (so the command can be tinted); the box keeps only the caret.
+    m.style.color = el.dataset.ink ||= css.color;
+    el.style.caretColor = el.dataset.ink;
+    m.scrollTop = el.scrollTop;
+  });
   // Puts the caret back after the text is rewritten, unless more was typed in the meantime.
   const focusAt = (pos: number, text: string) => requestAnimationFrame(() => { const el = inputRef.current; if (!el) return; el.focus(); if (el.value !== text) return; el.setSelectionRange(pos, pos); setCaret(pos); });
 
   const choose = (c: SlashCommand) => {
     const start = typed!.index + typed![1].length;
-    const before = rest.slice(0, start).replace(/[ \t]+$/, ""), after = rest.slice(caret).replace(/^[ \t]+/, "");
-    // The words around the command close up with one space, and the caret goes where the command was.
-    const lead = before.replace(/^\s+/, ""), gap = lead && !lead.endsWith("\n") ? " " : "";
-    onChange(`/${c.id} ${lead}${gap}${after}`);
-    focusAt(lead.length + gap.length, lead + gap + after);
+    const after = value.slice(caret);
+    const next = `${value.slice(0, start)}/${c.id} ${after.replace(/^[ 	]+/, "")}`;
+    onChange(next);
+    focusAt(start + c.id.length + 2, next);
   };
-  const remove = () => { onChange(rest); focusAt(0, rest); };
-  const edit = (text: string, pos: number) => {
-    setCaret(pos);
-    if (command) return onChange(`/${command.id} ${text}`);
-    // A command typed out in full, then a space, becomes a chip too.
-    const done = [...text.matchAll(/(^|\s)\/([a-z]+)\s/gi)].find((m) => readCommand(`/${m[2]}`));
-    if (done) { const moved = leadingCommand(text); onChange(moved); focusAt(Math.max(0, pos - done[2].length - 1), moved.slice(moved.indexOf(" ") + 1)); return; }
-    onChange(text);
-  };
+  const split = token ? token.index + token[1].length : 0;
 
   return (
-    <div className={`slash-field ${command ? "has-command" : ""}`}>
+    <div className="slash-field">
       {open && (
         <div className="slash-menu" role="listbox" aria-label="Commands">
           {options.map((c, i) => (
@@ -71,16 +74,20 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
           ))}
         </div>
       )}
-      {command && <CommandChip command={command} onRemove={remove} />}
+      <div className="slash-mirror" aria-hidden="true" ref={mirror}>
+        {token ? <>{value.slice(0, split)}<mark><b>/</b>{value.slice(split + 1, split + token[2].length + 1)}</mark>{value.slice(split + token[2].length + 1)}</> : value}{"\n"}
+      </div>
       <textarea
         ref={inputRef}
+        className={command ? "has-command" : undefined}
         aria-label="Your message"
         aria-autocomplete="list"
         aria-expanded={open}
-        placeholder={command ? command.placeholder : placeholder}
-        value={rest}
-        onChange={(e) => edit(e.target.value, e.target.selectionStart)}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => { setCaret(e.target.selectionStart); onChange(e.target.value); }}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+        onScroll={(e) => { if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop; }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return;
           if (open) {
@@ -88,7 +95,6 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
             if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); choose(options[at]); return; }
             if (e.key === "Escape") { e.preventDefault(); setClosed(true); return; }
           }
-          if (command && e.key === "Backspace" && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) { e.preventDefault(); remove(); return; }
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onEnter(); }
         }}
       />
