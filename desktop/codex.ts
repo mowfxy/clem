@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
-import {toolRequest,runKinetraTurn} from "./kinetra-turn.ts";
+import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn} from "./kinetra-turn.ts";
 
 /** While a reply might still turn out to be a tool envelope, hold it instead of streaming it. */
 export function mayBeTool(text: string) {
@@ -452,18 +452,19 @@ export class Codex {
     const turn={cancelled:false};this.turns.set(id,turn);
     const session:TurnSession={};
     try{
+      let shown=false;
       await runKinetraTurn(prompt,instructions,async(input,followUp)=>{
         let output="",delivered=0;
+        // A lead-in shown before a tool ran ("Let me calculate that.") is its own paragraph, never glued to the answer.
+        const show=(end:number)=>{if(end<=delivered)return;emit({id,type:"delta",text:(shown&&!delivered?"\n\n":"")+output.slice(delivered,end)});delivered=end;shown=true;};
         await this.runOnce(id,input,event=>{
           if(event.type==="status"){emit({id,...event});return;}
           if(event.type!=="delta")return;
           output+=event.text||"";
-          // Hold possible tool envelopes, but stream ordinary prose immediately.
-          if(!mayBeTool(output)){
-            emit({id,type:"delta",text:output.slice(delivered)});delivered=output.length;
-          }
+          // Hold tool envelopes (and anything that may still become one), but stream ordinary prose immediately.
+          if(!mayBeTool(output))show(shownLength(output));
         },followUp?[]:images,selection,session,turn);
-        if(!toolRequest(output)&&delivered<output.length)emit({id,type:"delta",text:output.slice(delivered)});
+        if(!toolRequests(output)&&!brokenToolRequest(output))show(output.length);
         return output;
       },async request=>{
         emit({id,type:"status",text:toolStatus(request)});
