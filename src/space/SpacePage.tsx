@@ -11,12 +11,13 @@ import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
 import {MemoryConversation,warmMemory} from '../MemoryConversation';
 import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './InstructionsDialog';
-import type {Chat,Space,SpaceFolder,StoredFile,StudySet} from '../../core/types';
+import type {Chat,Space,SpaceFolder,StoredFile,StudySet,VisualRecord} from '../../core/types';
+import {SavedVisuals} from '../visuals/SavedVisuals';
 import {DriveFolderView} from '../drive/DriveFolderView';
 import type {DriveItem} from '../drive/drive';
 import './space.css';
 
-export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'memory';
+export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
 type Linked={id:string;scope:string;path:string};
 export type SpaceActions={
   onAsk:(prompt:string)=>void;
@@ -39,6 +40,8 @@ export type SpaceActions={
   onDeleteFile:(file:StoredFile)=>Promise<void>;
   onUpdateSet:(set:StudySet)=>void;
   onDeleteSet:(id:string)=>void;
+  /** Takes a saved visual off the Visuals lists; it stays in its chat. */
+  onRemoveVisual:(id:string)=>void;
   onExport:()=>void;
   onDelete:()=>void;
   onBrowseLinked:(folderId?:string)=>void;
@@ -68,7 +71,7 @@ function Menu({label,items,trigger}:{label:string;items:{label:string;icon?:stri
     {open&&<div className="sp-menu-list" role="menu">{items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={e=>{e.stopPropagation();setOpen(false);i.run();}}>{i.icon&&<Icon name={i.icon} size={15}/>}{i.label}</button>)}</div>}</div>;
 }
 
-export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions}){
+export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions}){
   const subject=space.kind==='subject';
   const now=Date.now();
   const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
@@ -80,7 +83,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
   const [ask,setAsk]=useState('');
   const [review,setReview]=useState(0);
   const [instructions,setInstructions]=useState(false),[describing,setDescribing]=useState(false);
-  const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length]]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length]];
+  const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length],['visuals','Visuals',visuals.length]]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length],['visuals','Visuals',visuals.length]];
   if(desktop)tabs.push(['memory','Memory']);
   const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
@@ -165,6 +168,7 @@ export function SpacePage({space,chats,files,sets,tab,onTab,actions}:{space:Spac
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions}/>}
+      {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals saved in this {space.kind}'s chats appear here. Press <b>Save</b> on the top right of one to keep it.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
       {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}

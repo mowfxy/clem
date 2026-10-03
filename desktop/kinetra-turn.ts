@@ -137,13 +137,13 @@ export async function runKinetraTurn(
   model: (prompt: string, followUp: boolean) => Promise<string>,
   tool: (request: any) => Promise<any>,
   cancelled: () => boolean,
-  { stateful = false, limit = 3_000_000 }: { stateful?: boolean; limit?: number } = {},
+  { stateful = false, limit = 3_000_000, unfinished }: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined } = {},
 ) {
   const history: { request: any; result: any }[] = [];
   const check = () => {
     if (cancelled()) throw Error("Request cancelled");
   };
-  let sent = 0, calls = 0, reported = 0, closing = false;
+  let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0;
   for (let replies = 0; ; replies++) {
     check();
     const left = MAX_CALLS - calls;
@@ -172,7 +172,18 @@ export async function runKinetraTurn(
     check();
     const requests = toolRequests(text);
     const broken = requests ? null : brokenToolRequest(text);
-    if (!requests && !broken) return text;
+    if (!requests && !broken) {
+      // A document planned in parts is finished before the answer: the model is sent back to write what its own
+      // plan still lacks, as long as each round adds something (two rounds without progress end it).
+      const gap = !closing && calls < MAX_CALLS ? unfinished?.() : undefined;
+      if (!gap) return text;
+      stale = gap === lastGap ? stale + 1 : 0;
+      lastGap = gap;
+      if (stale >= 2) return text;
+      calls++;
+      history.push({ request: { answer: "not accepted yet" }, result: { error: gap } });
+      continue;
+    }
     if (closing || calls >= MAX_CALLS) {
       // Asked to finish, the model sent another request: whatever it wrote before it is still the answer.
       if (leadIn(text)) return leadIn(text);

@@ -257,3 +257,42 @@ test("a model that asks for another tool after none are left still gives the ans
   const result = await runKinetraTurn("m", "", async (input) => (/No tool calls are left/.test(input) ? 'The document covers parts 1-40.\n{"kinetra":{"action":"pdf"}}' : '{"kinetra":{"action":"pdf"}}'), async () => ({ created: true }), () => false, { stateful: true });
   assert.equal(result, "The document covers parts 1-40.");
 });
+
+test("a planned document is finished before the answer is accepted, without the person asking for more", async () => {
+  const { unwritten } = await import("../../desktop/pdf-document.ts");
+  const plan = ["Introduction", "Kinematics", "Dynamics", "Energy", "Conclusions"];
+  let sections: { heading: string; text?: string }[] = [];
+  const replies = [
+    '{"kinetra":{"action":"pdf","title":"Mechanics","plan":["Introduction","Kinematics","Dynamics","Energy","Conclusions"],"sections":[{"heading":"Introduction"},{"heading":"Kinematics"}]}}',
+    "Here is your document.",
+    '{"kinetra":{"action":"pdf","revise":"d","append":true,"sections":[{"heading":"3. Dynamics","text":"### Energy\\nWork."}]}}',
+    "Done now?",
+    '{"kinetra":{"action":"pdf","revise":"d","append":true,"sections":[{"heading":"Conclusions"}]}}',
+    "The document is complete.",
+  ];
+  const inputs: string[] = [];
+  const result = await runKinetraTurn("Explain mechanics as a PDF", "", async (input) => { inputs.push(input); return replies.shift()!; },
+    async (request) => { sections = [...sections, ...request.sections]; return { created: true, remaining: unwritten({ plan, sections }) }; }, () => false,
+    { stateful: true, unfinished: () => { const missing = unwritten({ plan, sections }); return missing.length ? "still missing: " + missing.join(", ") : undefined; } });
+  assert.equal(result, "The document is complete.");
+  assert.match(inputs[2], /still missing: Dynamics, Energy, Conclusions/);
+  assert.match(inputs[4], /still missing: Conclusions/, "a ### subheading counts as written");
+  // No progress twice in a row: the answer goes through rather than looping.
+  const stuck = ["Answer A", "Answer B", "Answer C"];
+  assert.equal(await runKinetraTurn("m", "", async () => stuck.shift()!, async () => 1, () => false, { unfinished: () => "missing X" }), "Answer C");
+});
+
+test("a described design is built on top of the layout, and the defaults apply only without one", async () => {
+  const { documentHtml, renderFigures, designProblems, cleanCss } = await import("../../desktop/pdf-document.ts");
+  const spec = { kind: "report", title: "T", design: { accent: "#0b5394", columns: 2 as const, pageSize: "Letter" as const, margin: 18, fontSize: 11, titleAlign: "left" as const, runningHead: false, css: "h2{text-transform:uppercase}" }, sections: ["A", "B", "C", "D"].map((heading) => ({ heading, text: "x" })) };
+  const html = documentHtml(spec, await renderFigures(spec));
+  assert.match(html, /body class="layout-technical numbered eqnum accented columns-2 title-left"/);
+  assert.match(html, /@page\{size:Letter;margin:18mm;/);
+  assert.ok(!/@top-center/.test(html), "no running head when the design turns it off");
+  assert.match(html, /body\{--accent:#0b5394\}body\{font-size:11pt;\}h2\{text-transform:uppercase\}<\/style>/);
+  const plain = documentHtml({ title: "T", design: { numbered: false, contents: true }, sections: [{ heading: "A", text: "x" }, { heading: "B", text: "y" }] }, []);
+  assert.match(plain, /class="doc-toc"/);
+  assert.ok(!/<span class="num">/.test(plain));
+  assert.deepEqual(designProblems({ accent: "blue", columns: 3, colour: 1 }).length, 3);
+  assert.equal(cleanCss("@import url(x.css); h1{font-family:'Mowafy Serif';color:red} body{background:url(http://x)}</style>"), " h1{color:red} body{background:none}");
+});

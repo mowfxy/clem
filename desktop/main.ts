@@ -1,7 +1,7 @@
 import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
-import {markdownDocument} from "./pdf-document";
+import {markdownDocument, unwritten} from "./pdf-document";
 import {boundedConversation,memoryQuery,retrievalQuery} from "../core/chat-context";
 import {contextBudget} from "../core/context-budget";
 import {WorkspaceDisk} from "./workspace-disk";
@@ -259,11 +259,11 @@ void app.whenReady().then(async () => {
    * feature never works on one provider only.
    */
   async function answerWith(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
-    { images = [], pdf, instructions = kinetraInstructions, tools }: { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any> } = {}) {
+    { images = [], pdf, instructions = kinetraInstructions, tools, unfinished }: { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined } = {}) {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:");
     // Stop pressed while the request was being prepared (folders, memory, account choice): nothing starts.
     if (cancelledRuns.has(id)) throw Error("Request cancelled");
-    if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions, tools);
+    if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions, tools, unfinished);
     const cancelled = () => cancelledRuns.has(id);
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
@@ -278,7 +278,7 @@ void app.whenReady().then(async () => {
     }, async (tool) => {
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { limit: Math.round(contextBudget(model).ceiling * 1.25) });
+    }, cancelled, { limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished });
     emit({ id, type: "delta", text: answer });
     emit({ id, type: "done" });
   }
@@ -1203,6 +1203,13 @@ void app.whenReady().then(async () => {
       const emit = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
       // Documents Mowr made earlier in this conversation. Asking to change one revises that same file.
       const documents = new Map<string, string>();
+      // Planned sections each document made in this answer still lacks; the answer waits until they are written.
+      const gaps = new Map<string, string[]>();
+      const unfinished = () => {
+        const open = [...gaps].filter(([, missing]) => missing.length);
+        if (!open.length) return undefined;
+        return open.map(([doc, missing]) => `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten section${missing.length === 1 ? "" : "s"} (${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}). Write them now with {"action":"pdf","revise":"${doc}","append":true,"sections":[…the next sections, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`).join(" ") + " Answer the person only when every planned section is written.";
+      };
       for (const doc of request.documents || []) if (await disk.readFile(user.id, "spec-" + doc.id)) documents.set(doc.id, doc.name);
       const pdf = async (spec: any, cancelled: () => boolean) => {
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
@@ -1220,11 +1227,12 @@ void app.whenReady().then(async () => {
           if (!clean.references.length) delete clean.references;
         }
         const data = await illustratedPdf(clean);
+        const missing = unwritten(clean);
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
         const pages = await pageCount(data).catch(() => undefined);
         const words = String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0);
-        const length = { pages, words, sections: clean.sections.length, check: "Compare this with the request. If it asked for a full, detailed or complete explanation, or the source has topics this does not cover yet, keep adding the missing sections with append before answering." };
+        const length = { pages, words, sections: clean.sections.length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? "Keep going: append the next sections now. The document is only finished when every planned section is written in full depth." : "Every planned section is written." } : { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." }) };
         const specBytes = new TextEncoder().encode(JSON.stringify(clean));
         if (revise) {
           const previous = await disk.readFile(user.id, revise);
@@ -1237,6 +1245,7 @@ void app.whenReady().then(async () => {
           await disk.writeFile(user.id, revise, data);
           await disk.writeFile(user.id, "spec-" + revise, specBytes);
           const file = { id: revise, name: documents.get(revise)!, size: data.byteLength, type: "application/pdf", created: Date.now(), updated: Date.now(), spaceId: null, made: true };
+          gaps.set(revise, missing);
           emit({ id: request.id, type: "artifact", file, scope: request.scope, revised: { version } });
           return { created: true, revised: true, file: { id: revise, name: file.name, size: file.size }, ...length, note: "The same file was updated; the earlier version is kept for undo." };
         }
@@ -1245,6 +1254,7 @@ void app.whenReady().then(async () => {
         await disk.writeFile(user.id, id, data);
         await disk.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
+        gaps.set(id, missing);
         emit({ id: request.id, type: "artifact", file, scope: request.scope });
         return { created: true, file: { id, name: file.name, size: file.size }, ...length, note: 'To continue this document, send {"action":"pdf","revise":"' + id + '","append":true,"sections":[…]}.' };
       };
@@ -1259,7 +1269,7 @@ void app.whenReady().then(async () => {
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
       const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
-      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf, instructions, tools: (tool) => tools(tool) });
+      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf, instructions, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
