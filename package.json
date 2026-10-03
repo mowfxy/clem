@@ -34,6 +34,7 @@
     "film:demo": "node scripts/film/capture.mjs && node scripts/film/render.mjs",
     "film:live-setup": "node scripts/film/capture.mjs --live-setup",
     "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live",
+    "ads": "node scripts/ads/build.mjs",
     "db:email": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/email-schema.sql",
     "emails:announce": "node scripts/announce-release.mjs"
   },

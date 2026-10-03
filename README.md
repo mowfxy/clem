@@ -64,6 +64,8 @@ Smoke tests use a temporary profile. Real account authorization, payments and Te
 
 `npm run film:demo` captures the story in the browser fixture at 2× (`scripts/film/capture.mjs`), composites it with a virtual camera, drawn cursor and kinetic title cards (`stage.js`, `render.mjs`), scores it with an original synthesised track and UI sounds (`score.mjs`) and writes `ads/mowr-film-demo.mp4`. AI replies in the demo are scripted and the video says so. For the real film: `npm run desktop:build`, then `npm run film:live-setup` once to sign in and connect the ChatGPT account with GPT-6 Luna in a separate ad profile, then `npm run film:live` (writes `ads/mowr-film.mp4`). `node scripts/film/render.mjs [--live] [--preview]` re-renders without re-capturing.
 
+**Short ads** (30–45 s each): `npm run ads` captures and renders `ads/mowr-ad-visuals.mp4`, `mowr-ad-pdf.mp4` and `mowr-ad-study.mp4`. Each ad's edit and copy live in `scripts/ads/ads.mjs`; `node scripts/ads/capture.mjs <ad>` and `node scripts/ads/render.mjs <ad> [--preview]` run one step. Built-in visuals are the real engine; the PDF and study ads use the fixture's scripted replies and say so on screen.
+
 ## Find the code
 
 - `desktop/`: main process, protected storage, authentication, local Codex and Claude, folders, memory and Telegram. `provider-link.ts` backs connections up to the account and restores them after a reinstall.

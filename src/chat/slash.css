@@ -10,6 +10,8 @@ button.command-chip:hover>span::after{content:"\00a0\00d7"}
 /* The text layer behind the box paints the words so a chosen /command can be tinted inline; the box's own text turns transparent. */
 .slash-mirror{position:absolute;inset:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:break-word;pointer-events:none;box-sizing:border-box}
 .slash-field .slash-mirror+textarea{-webkit-text-fill-color:transparent}
+/* The transparent fill above would hide the placeholder too; it disappears on its own once something is typed. */
+.slash-field .slash-mirror+textarea::placeholder{-webkit-text-fill-color:#a9a8a1;color:#a9a8a1;opacity:1}
 .slash-mirror mark{background:none;color:#8fb0ff}
 .slash-mirror mark b{font-weight:inherit;color:#7384b8}
 .slash-menu{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 10px);z-index:30;width:min(320px,calc(100% - 16px));max-height:216px;overflow:auto;padding:3px;border:1px solid #3a3a36;border-radius:10px;background:#1c1c1a;box-shadow:0 18px 40px -16px #000,0 0 0 1px #00000040;scrollbar-width:thin;scrollbar-color:#45453f transparent;animation:slash-in .12s cubic-bezier(.2,.8,.2,1)}
