@@ -88,7 +88,7 @@ function runs(raw: string): Run[] {
 }
 const glyphW = (ch: string) => /[il.,:;'|!]/.test(ch) ? 0.3 : /[mwMW]/.test(ch) ? 0.85 : /[A-Z0-9θ]/.test(ch) ? 0.64 : 0.52;
 const measure = (raw: string, size: number) => runs(raw).reduce((w, r) => w + [...r.text].reduce((a, ch) => a + glyphW(ch), 0) * size * (r.shift ? 0.7 : 1), 0);
-const SERIF = "'Mowafy Serif','Times New Roman',Georgia,serif";
+const SERIF = "'Mowafy Serif',serif";
 type TextOpts = { size?: number; color?: string; anchor?: 'start' | 'middle' | 'end'; italic?: boolean; bold?: boolean; halo?: boolean | string };
 function richText(raw: string, x: number, y: number, o: TextOpts = {}) {
   const size = o.size ?? 19, rs = runs(raw);

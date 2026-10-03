@@ -42,7 +42,7 @@ export const fonts: Record<string, { body: string; head: string }> = {
   helvetica: { body: "Helvetica,Arial,sans-serif", head: "Helvetica,Arial,sans-serif" },
   "segoe ui": { body: "'Segoe UI',Arial,sans-serif", head: "'Segoe UI Semibold','Segoe UI',Arial,sans-serif" },
   verdana: { body: "Verdana,Arial,sans-serif", head: "Verdana,Arial,sans-serif" },
-  mowafy: { body: "'Mowafy Serif',Cambria,Georgia,serif", head: "'Mowafy Sans','Segoe UI',Arial,sans-serif" },
+  mowafy: { body: "'Mowafy Serif',serif", head: "'Mowafy Sans','Segoe UI',Arial,sans-serif" },
 };
 // Letters, digits, spaces and hyphens only: the name goes into the page's CSS.
 const fontName = /^[\p{L}\p{N} -]{2,48}$/u;

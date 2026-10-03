@@ -6,8 +6,8 @@ import { serifFaces } from "../core/serif-fonts.ts";
 const faces: [family: string, file: string, weight: string, range?: string, style?: string][] = [
   ["Mowafy Sans", "MowafySans-Regular", "400"],
   ["Mowafy Sans", "MowafySans-Bold", "700"],
-  // Latin, Greek and Arabic are inlined (under 100 kB each); the math and science companions run to a megabyte and stay out.
-  ...serifFaces.filter(face => /Serif|Greek|Arabic/.test(face.file)).map(face => ["Mowafy Serif", face.file, String(face.weight), face.range, face.style] as [string, string, string, string, string]),
+  // Mowafy Serif is only a few kB, so both weights are inlined.
+  ...serifFaces.map(face => ["Mowafy Serif", face.file, String(face.weight), face.range, face.style] as [string, string, string, string, string]),
 ];
 let css: string | undefined;
 
