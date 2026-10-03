@@ -123,7 +123,7 @@ const ShareSheet = lazy(() => import("./local/StudyPack").then(m => ({ default: 
 const PackPreview = lazy(() => import("./local/StudyPack").then(m => ({ default: m.PackPreview })));
 const SpacePage = lazy(() => import("./space/SpacePage").then(m => ({ default: m.SpacePage })));
 const Visual = lazy(() => import("./Visual"));
-const VisualThumb = lazy(() => import("./Visual").then(m => ({ default: m.VisualThumb })));
+const SavedVisuals = lazy(() => import("./visuals/SavedVisuals").then(m => ({ default: m.SavedVisuals })));
 const modelPlaceholders: Model[] = [
   {
     id: "openai",
@@ -1415,6 +1415,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       onDeleteFile:async file=>{await deleteStoredFile(file);},
       onUpdateSet:set=>patch(s=>({...s,studySets:s.studySets.map(x=>x.id===set.id?set:x)})),
       onDeleteSet:id=>patch(s=>({...s,studySets:s.studySets.filter(x=>x.id!==id)})),
+      onRemoveVisual:id=>patch(s=>({...s,visuals:s.visuals.filter(x=>x.id!==id)})),
       onExport:()=>void archiveCourse(space),
       onDelete:()=>void deleteCourse(space).then(()=>{if(!stateRef.current.spaces.some(x=>x.id===space.id))navigate(space.kind==='project'?'/app/projects':'/app/subjects');}),
       onBrowseLinked:folderId=>setFolderView({folderId}),
@@ -1888,7 +1889,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               </div>
             ) : pageSpace ? (
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
-                chats={state.chats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} actions={spaceActions(pageSpace)}/></Suspense>
+                chats={state.chats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} actions={spaceActions(pageSpace)}/></Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (
               (() => {
                 const projects = route.endsWith("projects"), kind = projects ? "project" : "subject";
@@ -1960,19 +1961,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                   </form>
                   {saved.length ? <section className="lib-section" aria-label="Saved visuals">
                     <h2 className="lib-section-title">Saved <span>{saved.length}</span></h2>
-                    <div className="lib-grid wide">
-                      {saved.map((v) => (
-                        <article className="lib-card lib-visual" key={v.id}>
-                          <button type="button" className="lib-visual-open" onClick={() => open(v.chatId)} aria-label={`Open ${v.title} in its chat`}>
-                            <Suspense fallback={<div className="visual-thumb" />}>{v.spec ? <SpecThumb spec={v.spec} /> : <VisualThumb scene={v.scene || "projectile"} params={v.params} />}</Suspense>
-                          </button>
-                          <footer>
-                            <div><strong>{v.title}</strong><span>{new Date(v.created).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span></div>
-                            <button type="button" className="lib-card-chat" aria-label={`Remove ${v.title} from Visuals`} aria-description="Remove from Visuals (it stays in its chat)" onClick={() => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== v.id) }))}><Icon name="close" size={15} /></button>
-                          </footer>
-                        </article>
-                      ))}
-                    </div>
+                    <Suspense fallback={null}><SavedVisuals visuals={saved} chats={state.chats} spaces={state.spaces} onOpen={open} onRemove={(id) => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== id) }))} /></Suspense>
                   </section> : <section className="lib-section">
                     <h2 className="lib-section-title">Try one</h2>
                     <p className="lib-note">Visuals stay in their chat. Press <b>Save</b> on the top right of one to keep it here.</p>
@@ -2411,12 +2400,6 @@ function ImageThumb({id}:{id:string}){
   const [url,setUrl]=useState("");
   useEffect(()=>{let live=true,made="";void getBlob(id).then(b=>{if(b&&live){made=URL.createObjectURL(b);setUrl(made);}});return()=>{live=false;if(made)URL.revokeObjectURL(made);};},[id]);
   return url?<img src={url} alt=""/>:<Icon name="capture" size={14}/>;
-}
-/** Thumbnail for a model-drawn visual saved in history. */
-function SpecThumb({spec}:{spec:unknown}){
-  const [html,setHtml]=useState("");
-  useEffect(()=>{let live=true;void Promise.all([import("../core/visual-spec"),import("./visuals/SpecVisual")]).then(([core,view])=>{try{const svg=view.specSvg(core.compileVisual(spec));if(live)setHtml(svg.replace(/<title>[\s\S]*?<\/title>/g,""));}catch{/* an invalid saved spec keeps the empty frame */}});return()=>{live=false;};},[spec]);
-  return <div className="visual-thumb" aria-hidden="true" dangerouslySetInnerHTML={{__html:html}}/>;
 }
 type ChangeRow={id:string;path:string;at:number;summary:string;added:number;removed:number;undone?:boolean};
 /** Recent approved file changes, newest first, each with undo. */

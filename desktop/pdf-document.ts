@@ -27,7 +27,53 @@ export type DocumentSpec = {
   font?: string;
   /** A different typeface for headings, tables and captions; defaults to one that suits `font`. */
   headingFont?: string;
+  /** The person's own design (or one a skill describes), on top of the layout; see `designCss`. */
+  design?: Design;
+  /** Every heading the finished document will have, sent with the first part. Mowr reports which are still
+   *  unwritten, so a long document is completed over as many parts as it needs (desktop/main.ts). */
+  plan?: string[];
 };
+export type Design = {
+  /** Colour for headings, rules, links and tinted boxes (#rgb or #rrggbb). */
+  accent?: string;
+  /** Body text size in points (8–14) and line spacing (1–2.4). */
+  fontSize?: number;
+  lineHeight?: number;
+  columns?: 1 | 2;
+  pageSize?: "A4" | "Letter" | "Legal" | "A5";
+  /** Page margins in millimetres (8–40). */
+  margin?: number;
+  titleAlign?: "left" | "center";
+  /** false: no section numbers. */
+  numbered?: boolean;
+  /** true: a contents list even for short documents; false: none. */
+  contents?: boolean;
+  /** false: no running head on the pages after the first. */
+  runningHead?: boolean;
+  /** Any further CSS for the print page (classes .doc-head, h1, h2, h3, .doc-summary, .doc-toc, main, table, figure, figcaption, .env, .env-definition …). */
+  css?: string;
+};
+const pageSizes = new Set(["A4", "Letter", "Legal", "A5"]);
+/** Checks a design; returns the problems in words the model can act on. */
+export function designProblems(design: unknown): string[] {
+  if (design === undefined) return [];
+  if (!design || typeof design !== "object" || Array.isArray(design)) return ['design must be an object such as {"accent":"#0b5394","columns":2}.'];
+  const d = design as Record<string, unknown>, problems: string[] = [];
+  const known = ["accent", "fontSize", "lineHeight", "columns", "pageSize", "margin", "titleAlign", "numbered", "contents", "runningHead", "css"];
+  for (const key of Object.keys(d)) if (!known.includes(key)) problems.push(`design.${key} is not a design setting (use ${known.join(", ")}, or put it in design.css).`);
+  if (d.accent !== undefined && !(typeof d.accent === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(d.accent))) problems.push('design.accent must be a hex colour like "#0b5394".');
+  const range = (key: string, min: number, max: number) => { if (d[key] !== undefined && !(typeof d[key] === "number" && d[key]! >= min && d[key]! <= max)) problems.push(`design.${key} must be a number from ${min} to ${max}.`); };
+  range("fontSize", 8, 14); range("lineHeight", 1, 2.4); range("margin", 8, 40);
+  if (d.columns !== undefined && d.columns !== 1 && d.columns !== 2) problems.push("design.columns must be 1 or 2.");
+  if (d.pageSize !== undefined && !pageSizes.has(d.pageSize as string)) problems.push("design.pageSize must be A4, Letter, Legal or A5.");
+  if (d.titleAlign !== undefined && d.titleAlign !== "left" && d.titleAlign !== "center") problems.push('design.titleAlign must be "left" or "center".');
+  for (const key of ["numbered", "contents", "runningHead"]) if (d[key] !== undefined && typeof d[key] !== "boolean") problems.push(`design.${key} must be true or false.`);
+  if (d.css !== undefined && (typeof d.css !== "string" || d.css.length > 20000)) problems.push("design.css must be CSS text of at most 20,000 characters.");
+  return problems;
+}
+/** The person's CSS, kept inside the style element and away from Mowr's own fonts and from anything outside the page. */
+export const cleanCss = (css: string) =>
+  css.replace(/<\/?style[^>]*>?|<!--|-->/gi, "").replace(/@import[^;]*;?/gi, "").replace(/url\s*\([^)]*\)/gi, "none").replace(/[^;{}]*mowafy[^;{}]*;?/gi, "");
 
 /**
  * Page designs. Every document is typeset like professional print, never like the app:
@@ -137,6 +183,10 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
       throw Error(`${field} must be a font name such as "Times New Roman", "Arial" or "Georgia".`);
   if (spec.kind !== undefined && !kinds.has(spec.kind)) throw Error(`Unknown document kind "${spec.kind}". Use one of: ${[...kinds].join(", ")}.`);
   if (spec.style !== undefined && !layouts.has(spec.style)) throw Error(`Unknown style "${spec.style}". Use one of: ${[...layouts].join(", ")}, or leave it out to follow the kind.`);
+  const design = designProblems(spec.design);
+  if (design.length) throw Error(design.join(" "));
+  if (spec.plan !== undefined && (!Array.isArray(spec.plan) || spec.plan.some((h: unknown) => typeof h !== "string") || spec.plan.length > MAX_SECTIONS))
+    throw Error("plan must be the list of every heading the finished document will have.");
   if (spec.references !== undefined && (!Array.isArray(spec.references) || spec.references.some((r: unknown) => typeof r !== "string") || spec.references.length > 2000))
     throw Error("references must be a list of citation strings.");
   const sections = spec.sections as Section[];
@@ -183,12 +233,19 @@ const longDate = (value?: string) => {
   return date ? date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : String(value);
 };
 /** A CSS string literal (for the running head), safe inside a <style> element. */
-const cssString = (text: string) => '"' + text.replace(/[\\"]/g, "\\$&").replace(/[\r\n]+/g, " ").replace(/</g, "\\3C ") + '"';
+const cssString = (text: string) => '"' + text.replace(/[\\"]/g, "\\$&").replace(/[\r\n]+/g, " ").replace(/</g, "\\3C ").replace(/\{/g, "\\7B ").replace(/\}/g, "\\7D ") + '"';
 const runningTitle = (title: string) => (title.length > 90 ? title.slice(0, 87).replace(/\s+\S*$/, "") + "…" : title);
 
 /** Page frame per layout: margins, running head (from page 2) and page numbers. Written with literal font stacks,
  *  since page-margin boxes do not see the document's custom properties. */
-function pageCss(layout: Layout, type: { body: string; head: string }, title: string, label: string) {
+function pageCss(layout: Layout, type: { body: string; head: string }, title: string, label: string, design: Design = {}) {
+  let css = pageFrame(layout, type, title, label).replace(/size:A4/g, "size:" + (design.pageSize || "A4"));
+  if (design.margin) css = css.replace(/(@page\{size:\w+;)margin:[^;]+;/, `$1margin:${design.margin}mm;`);
+  // Without a running head only the page number stays. Braces in the title are escaped (cssString), so this is exact.
+  if (design.runningHead === false) css = css.replace(/@top-(?:left|center|right)\{[^}]*\}/g, "");
+  return css;
+}
+function pageFrame(layout: Layout, type: { body: string; head: string }, title: string, label: string) {
   const head = cssString(runningTitle(title)), tag = cssString(label);
   const off = "@top-left{content:none;border:0}@top-center{content:none;border:0}@top-right{content:none;border:0}";
   if (layout === "letter")
@@ -207,7 +264,17 @@ export const documentCss = `
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{margin:0;font:10.5pt/1.36 var(--body);color:#111;font-variant-numeric:lining-nums proportional-nums;hyphens:auto;text-rendering:optimizeLegibility;font-kerning:normal}
 a{color:inherit;text-decoration:none}
-a.ref,.cite a{color:#1f57c3}
+a.ref,.cite a{color:var(--link)}
+body{--link:#1f57c3;--accent:#1f57c3;--tint:color-mix(in srgb,var(--accent) 7%,#fff)}
+.layout-notes{--accent:var(--accent)}
+.layout-business{--accent:var(--accent)}
+.accented{--link:var(--accent)}
+.accented h1,.accented h2,.accented h3,.accented .num{color:var(--accent)}
+.accented .title-rule,.accented .doc-head{border-color:var(--accent)}
+.columns-2 main{column-count:2;column-gap:7mm;column-fill:auto}
+.columns-2 main figure,.columns-2 main table{break-inside:avoid}
+body.title-left .doc-head,body.title-left .doc-head h1,body.title-left .doc-subtitle,body.title-left .doc-author,body.title-left .doc-date{text-align:left}
+body.title-center .doc-head,body.title-center .doc-head h1,body.title-center .doc-subtitle,body.title-center .doc-meta,body.title-center .doc-kind{text-align:center}
 p{margin:0 0 6pt;text-align:justify;orphans:3;widows:3}
 ul,ol{margin:0 0 7pt;padding-left:18pt}
 li{margin:2pt 0;text-align:justify}
@@ -299,10 +366,10 @@ ol.refs li::before{content:"[" counter(ref) "]";position:absolute;left:0}
 .layout-notes .doc-meta{margin:9pt 0 0;font-size:9.8pt;color:#444}
 .layout-notes h2{font-size:14pt;margin:20pt 0 9pt;padding-bottom:3pt;border-bottom:.5pt solid #9a9a96}
 .layout-notes h2 .num{min-width:1.7em}
-.layout-notes .doc-summary{margin:0 0 14pt;padding:7pt 11pt 6pt;border-left:2pt solid #2f4a6d;background:#f4f6f9}
+.layout-notes .doc-summary{margin:0 0 14pt;padding:7pt 11pt 6pt;border-left:2pt solid var(--accent);background:var(--tint)}
 .layout-notes .doc-summary h2{margin:0 0 3pt;padding:0;border:0;font-size:10.5pt;font-variant:small-caps;letter-spacing:.06em}
-.layout-notes .env-definition{padding:6pt 10pt 1pt;border-left:2pt solid #2f4a6d;background:#f4f6f9;break-inside:avoid}
-.layout-notes .env-plain{padding:6pt 10pt 1pt;border:.6pt solid #2f4a6d;break-inside:avoid}
+.layout-notes .env-definition{padding:6pt 10pt 1pt;border-left:2pt solid var(--accent);background:var(--tint);break-inside:avoid}
+.layout-notes .env-plain{padding:6pt 10pt 1pt;border:.6pt solid var(--accent);break-inside:avoid}
 .layout-notes .env-example,.layout-notes .env-exercise,.layout-notes .env-problem,.layout-notes .env-question{background:none;border-left:2pt solid #9a9a96}
 .layout-notes .doc-toc .toc-l2 .toc-fill{background:radial-gradient(circle,#444 .55pt,transparent .7pt) right bottom/4.5pt 2pt repeat-x}
 .answer-line{display:flex;gap:16pt;margin:12pt 0 0;font-size:10.5pt}
@@ -312,18 +379,18 @@ ol.refs li::before{content:"[" counter(ref) "]";position:absolute;left:0}
 
 /* business */
 .layout-business{font-size:10.3pt;line-height:1.42}
-.layout-business .doc-head{margin:0 0 8mm;padding-bottom:10pt;border-bottom:2pt solid #1d2b4f}
-.layout-business .doc-kind{margin:0 0 8pt;font:700 8.4pt var(--head);letter-spacing:.14em;text-transform:uppercase;color:#1d2b4f}
+.layout-business .doc-head{margin:0 0 8mm;padding-bottom:10pt;border-bottom:2pt solid var(--accent)}
+.layout-business .doc-kind{margin:0 0 8pt;font:700 8.4pt var(--head);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
 .layout-business h1{margin:0;font-size:22pt;line-height:1.15;letter-spacing:-.01em;color:#141a2b}
 .layout-business .doc-subtitle{margin:6pt 0 0;font:400 12pt/1.35 var(--head);color:#3d4556}
 .layout-business .doc-meta{margin:10pt 0 0;font:8.8pt var(--head);color:#4e5667}
 .layout-business .memo-table{margin:0;border:0;font:10pt var(--head)}
 .layout-business .memo-table td{padding:2pt 14pt 2pt 0;border:0}
-.layout-business .memo-table td:first-child{font-weight:700;color:#1d2b4f;text-transform:uppercase;font-size:8.4pt;letter-spacing:.1em;vertical-align:baseline}
+.layout-business .memo-table td:first-child{font-weight:700;color:var(--accent);text-transform:uppercase;font-size:8.4pt;letter-spacing:.1em;vertical-align:baseline}
 .layout-business h2{color:#141a2b;font-size:12.6pt}
-.layout-business h2 .num,.layout-business h3 .num{color:#1d2b4f}
-.layout-business .doc-summary{margin:0 0 15pt;padding:9pt 13pt 7pt;border-left:3pt solid #1d2b4f;background:#f1f3f7;break-inside:avoid}
-.layout-business .doc-summary h2{margin:0 0 5pt;font:700 8.4pt var(--head);letter-spacing:.14em;text-transform:uppercase;color:#1d2b4f}
+.layout-business h2 .num,.layout-business h3 .num{color:var(--accent)}
+.layout-business .doc-summary{margin:0 0 15pt;padding:9pt 13pt 7pt;border-left:3pt solid var(--accent);background:var(--tint);break-inside:avoid}
+.layout-business .doc-summary h2{margin:0 0 5pt;font:700 8.4pt var(--head);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
 .layout-business table,.layout-business .doc-toc{font-family:var(--head);font-size:9pt}
 .layout-business .doc-toc{font-size:9.8pt}
 .layout-business th{background:#eef0f4}
@@ -370,7 +437,8 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
   const type = documentFonts(spec);
   const sections = spec.sections;
   const headed = sections.filter((s) => s.heading);
-  const numbered = headed.length >= 2 && layout !== "letter";
+  const design: Design = spec.design || {};
+  const numbered = design.numbered !== false && headed.length >= 2 && layout !== "letter";
   const label = kindLabel[kind] ?? "";
   const author = spec.author ? escape(spec.author) : "";
   const date = escape(longDate(spec.date));
@@ -438,10 +506,11 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
   const references = spec.references?.length || 0;
   let body = head;
   if (spec.summary) body += '<aside class="doc-summary"><h2>' + summaryLabel(kind) + '</h2><div class="abstract">' + linkText(markdownHtml(String(spec.summary), { top: 4 }), targets, references) + "</div></aside>";
-  if (numbered && headed.length >= 4) {
+  if (design.contents !== false && headed.length >= (design.contents ? 2 : 4) && (numbered || design.contents)) {
     // A short contents for a short document; a long one (as in a book) gets its own page and only top-level entries
     // once it would run to several pages.
-    const entries = toc.length > 120 ? toc.filter((e) => e.level === 2) : toc;
+    const listed = numbered ? toc : headed.map((s, i) => ({ id: "sec-u" + sections.indexOf(s), num: "", text: cleanHeading(s.heading!), level: 2 as const }));
+    const entries = listed.length > 120 ? listed.filter((e) => e.level === 2) : listed;
     const own = entries.length > 14;
     const slot = (id: string) => '<span class="toc-page">' + (pages?.get(id) ?? "") + "</span>";
     body += '<nav class="doc-toc' + (own ? " page" : "") + '"><h2 class="toc-head">Contents</h2>' +
@@ -451,11 +520,25 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
   }
   body += "<main>" + parts.map((part) => linkText(part, targets, references)).join("") + "</main>";
   if (references) body += '<section class="doc-references"><h2 id="references">References</h2><ol class="refs">' + spec.references!.map((r, i) => '<li id="ref-' + (i + 1) + '">' + markdownHtml(r.replace(/^\s*\[\d+\]\s*/, ""), { inline: true }) + "</li>").join("") + "</ol></section>";
-  const classes = ["layout-" + layout, numbered ? "numbered" : "plain", kind === "worksheet" ? "worksheet" : "", layout === "technical" ? "eqnum" : ""].filter(Boolean).join(" ");
+  const classes = ["layout-" + layout, numbered ? "numbered" : "plain", kind === "worksheet" ? "worksheet" : "", layout === "technical" && numbered ? "eqnum" : "", design.accent ? "accented" : "", design.columns === 2 ? "columns-2" : "", design.titleAlign ? "title-" + design.titleAlign : ""].filter(Boolean).join(" ");
+  const custom = (design.accent ? `body{--accent:${design.accent}}` : "") +
+    (design.fontSize || design.lineHeight ? `body{${design.fontSize ? `font-size:${design.fontSize}pt;` : ""}${design.lineHeight ? `line-height:${design.lineHeight}` : ""}}` : "") +
+    (design.css ? cleanCss(design.css) : "");
   return (
     '<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(spec.title) + '</title><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'"><style>' +
-    pageCss(layout, type, spec.title, label) + ":root{--body:" + type.body + ";--head:" + type.head + "}" + documentCss + '</style><body class="' + classes + '">' + body + "</body></html>"
+    pageCss(layout, type, spec.title, label, design) + ":root{--body:" + type.body + ";--head:" + type.head + "}" + documentCss + custom + '</style><body class="' + classes + '">' + body + "</body></html>"
   );
+}
+
+const headingKey = (heading: string) => cleanHeading(heading).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+/** The planned headings a specification does not have yet (each matched to a written heading or ### subheading). */
+export function unwritten(spec: Pick<DocumentSpec, "plan" | "sections">) {
+  if (!Array.isArray(spec.plan) || !spec.plan.length) return [];
+  const written = spec.sections.flatMap((s) => [s.heading || "", ...[...String(s.text || "").matchAll(/^#{1,4}\s+(.+)$/gm)].map((m) => m[1])]).map(headingKey).filter(Boolean);
+  return spec.plan.filter((planned) => {
+    const key = headingKey(planned);
+    return key && !written.some((w) => w === key || (w.length > 3 && key.length > 3 && (w.startsWith(key) || key.startsWith(w))));
+  });
 }
 
 /** A Markdown answer as a document: the first heading is the title and "##" headings start sections.

@@ -447,7 +447,7 @@ export class Codex {
     this.server?.close();
     this.server = null;
   }
-  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>){
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,unfinished?:()=>string|undefined){
     if(this.turns.has(id))throw Error("This chat is already answering.");
     const turn={cancelled:false};this.turns.set(id,turn);
     const session:TurnSession={};
@@ -469,7 +469,7 @@ export class Codex {
       },async request=>{
         emit({id,type:"status",text:toolStatus(request)});
         return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
-      },()=>turn.cancelled,{stateful:true});
+      },()=>turn.cancelled,{stateful:true,unfinished});
       emit({id,type:"done"});
     }finally{if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
   }
