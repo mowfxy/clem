@@ -36,7 +36,7 @@ export const environments: Record<string, { label: string; style: "plain" | "def
   mistake: { label: "Common mistake", style: "box" },
 };
 /** Proofs and solutions are not numbered; everything else counts within its section (Definition 2.1, Example 2.2). */
-const unnumbered = new Set(["proof", "solution", "answer", "note", "tip", "important", "key", "summary", "warning", "caution", "mistake", "remark"]);
+export const unnumbered = new Set(["proof", "solution", "answer", "note", "tip", "important", "key", "summary", "warning", "caution", "mistake", "remark"]);
 
 /**
  * Section text for generated PDFs: GitHub Markdown and LaTeX math ($…$, $$…$$, \(…\), \[…\], bare environments,

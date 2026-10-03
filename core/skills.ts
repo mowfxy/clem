@@ -8,7 +8,7 @@ import { documentStandard, documentIntent } from './document-standard.ts';
  * them literally, so vague steps give vague work. The two that fit a request are added to it (see relevantSkills).
  */
 const DOC = 'Follow the document standard: write the document itself in a formal, impersonal voice, never a message to the requester.';
-const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (flowchart, chart, timeline, cycle, mind map, tree, Venn or a science recipe) wherever a picture explains faster than text. A ```visual already drawn in this chat goes into the PDF unchanged as the figure {"module":"mowr","fn":"visual","args":[the JSON of that visual]}.';
+const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (docx with the same specification when they want to edit it in Word; never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (flowchart, chart, timeline, cycle, mind map, tree, Venn or a science recipe) wherever a picture explains faster than text. A ```visual already drawn in this chat goes into the PDF unchanged as the figure {"module":"mowr","fn":"visual","args":[the JSON of that visual]}.';
 export const builtinSkills: Skill[] = [
  // Learning
  {id:'tutor',name:'A thoughtful tutor',description:'Build understanding step by step, at your pace.',category:'Learning',icon:'subjects',steps:[
@@ -158,7 +158,7 @@ export const builtinSkills: Skill[] = [
   'Write bullets as action verb + task + measurable result (numbers, scale, impact), most relevant first; no first-person pronouns.',
   'Mirror the role’s key terms where they are true of the person, so applicant-tracking systems and readers see the match.',
   'Cover letter under one page: why this role and organisation specifically, two or three matched strengths with evidence, and a clear close asking for an interview.',
-  'Keep tense, dates, punctuation and formatting consistent; for a file, export as Word so it stays editable.',
+  'Keep tense, dates, punctuation and formatting consistent; for a file, make it with the Kinetra docx action (kind "letter") so it stays editable.',
  ],builtin:true},
  {id:'editing',name:'Editing & proofreading',description:'Tighter, clearer, correct prose that keeps the author’s voice.',category:'Writing',icon:'check',steps:[
   'Keep the author’s meaning, voice and regional spelling unless asked to change them; ask what level of editing is wanted only if it is unclear (proofread, line edit, restructure).',
@@ -172,11 +172,11 @@ export const builtinSkills: Skill[] = [
  {id:'slides',name:'Presentations',description:'An argument people can follow, one slide at a time.',category:'Writing',icon:'slides',steps:[
   'Define the audience, the one message to leave them with, and the talk length (roughly one slide per minute).',
   'Outline the story first: problem, why it matters, the key points, evidence, and the ask or conclusion.',
-  'Write each slide as a ## heading that states the slide’s claim as a sentence (not a topic label), followed by 3–5 short bullets of no more than about 12 words; Export → PowerPoint starts a new slide at every # or ## heading, so use ### or bold text for anything inside a slide.',
-  'Put supporting numbers in a small table on the slide that uses them. Maths is not typeset on exported slides, so write formulas in plain words or simple symbols, and draw pictures as ```visual blocks with a caption: Export → PowerPoint puts each one on its own slide after its section.',
-  'Keep one idea per slide; split any slide that needs more than five bullets.',
-  'Finish with a summary slide and, if asked, speaker notes as a short paragraph under each slide.',
-  'Remind the person they can export the answer as PowerPoint from the Export button under it.',
+  'Make the deck itself with the Kinetra pptx action (never a Markdown outline for the person to export): choose the theme that suits the subject and audience, then tune its colours and fonts to any brand or preference given.',
+  'Write each slide title as the slide’s claim in a sentence (not a topic label), and pick the layout that shows the content best: stats or chart for numbers, process or timeline for sequences, comparison for options, cards for parallel ideas, figure for diagrams, equation for formulas; vary layouts so no four slides in a row are text.',
+  'Keep one idea per slide with at most six short bullets; put the explanation the speaker will say in each slide’s notes.',
+  'Compute any derived number with Kinetra before it goes on a slide, and use real values for charts.',
+  'Finish with a summary or closing slide; a long deck gets an agenda and section slides between its parts.',
  ],builtin:true},
  // Research
  {id:'research',name:'Evidence-based answers',description:'Answer from your files and the web. Keep every important claim traceable.',category:'Research',icon:'research',steps:[

@@ -15,7 +15,7 @@ export function toolRequest(text: string): Record<string, unknown> | null {
   }
 }
 // Kinetra's own actions and the file tools (core/file-tools.ts).
-const ACTIONS = new Set(["call", "pdf", "open", "recipes", "api", "skill", "help", "files", "read", "search"]);
+const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look"]);
 const START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
 /** Index just past the JSON object that opens at `start`, or -1 when it never closes. Strings are skipped. */
 function objectEnd(text: string, start: number) {
@@ -95,9 +95,21 @@ function forModel(request: any, result: any) {
 /** A document that was made is replayed as its outline, not its full text, so several long PDFs fit in one turn.
  *  A failed one keeps its full specification, so it can be corrected rather than rewritten. */
 function sentBefore(request: any, result: any) {
-  if (request?.action !== "pdf" || !result?.created) return request;
-  const { sections, summary: _summary, references: _references, ...rest } = request;
-  return { ...rest, sections: Array.isArray(sections) ? sections.map((s: any) => s?.heading || "(untitled section)") : sections, note: "sections shortened to their headings; the full text is in the file" };
+  if (!result?.created) return request;
+  if (request?.action === "pdf" || request?.action === "docx") {
+    const { sections, summary: _summary, references: _references, ...rest } = request;
+    return { ...rest, sections: Array.isArray(sections) ? sections.map((s: any) => s?.heading || "(untitled section)") : sections, note: "sections shortened to their headings; the full text is in the file" };
+  }
+  if (request?.action === "pptx") {
+    const { slides, ...rest } = request;
+    return { ...rest, slides: Array.isArray(slides) ? slides.map((s: any) => `${s?.layout}: ${s?.title || s?.quote || ""}`) : slides, note: "slides shortened to their layouts and titles; open the file for the full deck" };
+  }
+  if (request?.action === "xlsx") {
+    const { sheets, ...rest } = request;
+    return { ...rest, sheets: Array.isArray(sheets) ? sheets.map((s: any) => ({ name: s?.name, columns: s?.columns?.map((c: any) => c?.header), rows: s?.rows?.length })) : sheets, note: "sheets shortened to their columns and row counts" };
+  }
+  if (request?.action === "file" && typeof request.content === "string" && request.content.length > 2000) return { ...request, content: request.content.slice(0, 600) + `… (${request.content.length} characters; open the file to read it all)` };
+  return request;
 }
 /**
  * Without a provider thread every step resends the whole history, so it must stay inside the model's window.
@@ -131,10 +143,11 @@ const LAST_CALL = 'No tool calls are left. Write your final answer to the origin
  * being thrown away (a document made by then is already saved). Without a thread, `limit` is the most one
  * request may carry (the model's window in characters); older large results are dropped before that.
  */
-export async function runKinetraTurn(
+export async function runKinetraTurn<Picture = unknown>(
   prompt: string,
   instructions: string,
-  model: (prompt: string, followUp: boolean) => Promise<string>,
+  /** `pictures`: pages the model asked to look at ("look"), sent with this message (with a thread: only the new ones). */
+  model: (prompt: string, followUp: boolean, pictures: Picture[]) => Promise<string>,
   tool: (request: any) => Promise<any>,
   cancelled: () => boolean,
   { stateful = false, limit = 3_000_000, unfinished }: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined } = {},
@@ -144,6 +157,9 @@ export async function runKinetraTurn(
     if (cancelled()) throw Error("Request cancelled");
   };
   let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0;
+  // Pictures from "look" results: all of them go with every request when there is no thread, the new ones when there is.
+  const looked: Picture[] = [];
+  let newPictures: Picture[] = [];
   for (let replies = 0; ; replies++) {
     check();
     const left = MAX_CALLS - calls;
@@ -168,7 +184,8 @@ export async function runKinetraTurn(
     }
     sent += input.length;
     reported = history.length;
-    const text = await model(input, stateful && replies > 0);
+    const text = await model(input, stateful && replies > 0, stateful ? newPictures : [...looked]);
+    newPictures = [];
     check();
     const requests = toolRequests(text);
     const broken = requests ? null : brokenToolRequest(text);
@@ -210,6 +227,12 @@ export async function runKinetraTurn(
         result = { error: (error as Error).message };
       }
       check();
+      if (result && Array.isArray(result.attachPictures)) {
+        const { attachPictures, ...rest } = result;
+        looked.push(...attachPictures);
+        newPictures.push(...attachPictures);
+        result = { ...rest, note: "These pages are attached to this message as pictures: look at them now." };
+      }
       history.push({ request: sentBefore(request, result), result: forModel(request, result) });
     }
   }

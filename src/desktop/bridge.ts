@@ -20,6 +20,8 @@ export type ChatOptions = {
   plain?: boolean;
   /** What Mowr is doing right now ("Searching the web…", "Typesetting the PDF…"). */
   onStatus?: (text: string) => void;
+  /** Pictures of pages the model asks to look at ({"action":"look"}), drawn here where the files and pdf.js are. */
+  look?: (file: string, pages: number[]) => Promise<{ name: string; data: string }[]>;
 };
 /** Within the request's limits (desktop/contracts.ts): at most 400 files (as many as a chat reads, MAX_CHAT_SOURCES) and 40 MB of text, the first files first. */
 function fitLibrary(files: { name: string; text: string }[]) {
@@ -34,7 +36,7 @@ export async function desktopChat(
   selection?: ChatOptions,
   onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
-  const { onStatus, ...options } = selection || {};
+  const { onStatus, look, ...options } = selection || {};
   messages=boundedConversation(messages,contextBudget(options.model).conversation);
   const id = crypto.randomUUID();
   let result = "";
@@ -52,6 +54,11 @@ export async function desktopChat(
       if (event.id !== id) return;
       if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
       if (event.type === "status" && event.text) onStatus?.(event.text);
+      if (event.type === "look" && event.look) {
+        const reply = (result: { images?: { name: string; data: string }[]; error?: string }) => void desktop!.invoke({ action: "pageImages", id: event.look!, ...result }).catch(() => {});
+        if (!look) reply({ error: "Pages cannot be looked at in this conversation." });
+        else look(String(event.file || ""), (event.pages || []).map(Number)).then((images) => reply({ images: images.slice(0, 8) }), (error) => reply({ error: (error as Error).message }));
+      }
       if (event.type === "delta") {
         result += event.text || "";
         onText(result);

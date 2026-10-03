@@ -82,7 +82,8 @@ export const requestSchema = z.discriminatedUnion("action", [
     scope: scopeSchema,
     /** Documents Mowr made in this conversation; a change to one updates that same file. */
     documents: z.array(z.object({ id: z.string().uuid(), name: z.string().max(200) })).max(20).optional(),
-    images: z.array(z.object({ name: z.string().max(200), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(4).optional(),
+    /** What the model looks at: attached pictures, PDF pages with drawings or scans, pictures inside Office files (src/desktop/page-images.ts). */
+    images: z.array(z.object({ name: z.string().max(300), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(20).optional(),
     /** The full text of the chat's files (attached, in its subject or project), read by the model's file tools only. */
     library: z.array(z.object({ name: z.string().min(1).max(400), text: z.string().max(8_000_000) })).max(400).optional()
       .refine((l) => !l || l.reduce((n, f) => n + f.text.length, 0) <= 40_000_000, "Too much file text for one request."),
@@ -150,6 +151,13 @@ export const requestSchema = z.discriminatedUnion("action", [
     text: z.string().max(40000).optional(),
     error: z.boolean().optional(),
   }),
+  /** Pictures of the pages the model asked to look at (desktop/main.ts "look"). */
+  z.object({
+    action: z.literal("pageImages"),
+    id: z.string().uuid(),
+    images: z.array(z.object({ name: z.string().max(300), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(8).optional(),
+    error: z.string().max(500).optional(),
+  }),
 ]);
 export type DesktopRequest = z.infer<typeof requestSchema>;
 export type DesktopStatus = {
@@ -195,6 +203,9 @@ export type DesktopBridge = {
       error?: string;
       /** An artifact that replaced an existing file's contents (a revised document) rather than a new file. */
       revised?: { version: import("../core/types").FileVersion };
+      /** type "look": the model asks to see `pages` of `file`; answer with the pageImages action and this id. */
+      look?: string;
+      pages?: number[];
     }) => void,
   ) => () => void;
 };

@@ -32,6 +32,7 @@ import {LinkifiedText} from "./chat/Links";
 import {youtubeReferences} from "./youtube";
 import {isMediaType, videoContentIntent, videoContext, type VideoCaptions} from "../core/captions";
 import {desktop,desktopChat} from './desktop/bridge';
+import {conversationPictures,pageImages} from './desktop/page-images';
 import {LinkedFolders} from './desktop/LinkedFolders';
 import type {OpenFolderFile} from './local/SearchEverything';
 import type {OpenedPack} from './local/StudyPack';
@@ -510,12 +511,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
     images?:{name:string;data:string}[],
-    extra:{chat?:string;documents?:{id:string;name:string}[];library?:{name:string;text:string}[]}={},
+    extra:{chat?:string;documents?:{id:string;name:string}[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>}={},
   ) {
     if(desktop){
       const target=extra.chat||conversationTarget;
-      // A new document joins the reply; a revised one is the same file, so it opens beside the chat instead of arriving again.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,onStatus:status(target)},(file,revised)=>revised?void(viewing.current===target&&setPanelFile(p=>p?.id===file.id?p:stateRef.current.files.find(f=>f.id===file.id)||p)):updateChat(target,c=>{
+      // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -761,10 +762,13 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const controller = begin(id);
     try {
       const memory = activeSpace ? activeSpace.memory : state.memory;
-      const pictures = stateRef.current.files.filter((f) => user.attachments.includes(f.id) && f.type.startsWith("image/"));
-      const images = desktop ? await Promise.all(pictures.slice(0, 4).map(async (f) => ({ name: f.name, data: await blobBase64(f.id) }))) : [];
-      const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png`, data: p.image! }));
-      if (pointerImages.length && !/^(claude|grok):/.test(model)) images.push(...pointerImages.slice(0, Math.max(0, 4 - images.length)));
+      // The model sees the files, not only their text: attached pictures, PDF pages with diagrams or scans, and the
+      // pictures inside Word and PowerPoint files, from this message first and then from earlier in the chat.
+      const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png (the area the person is pointing at)`, data: p.image! }));
+      if (desktop && !isVisual) status(id)("Looking at your files…");
+      const earlierFiles = [...next.messages].reverse().filter((m) => m.role === "user" && m.id !== user.id).flatMap((m) => [...(m.attachments || []), ...(m.context || [])]);
+      const images = desktop && !isVisual ? await conversationPictures({ files: stateRef.current.files, attached: user.attachments, open: user.context?.[0], earlier: earlierFiles, prompt, limit: 16 - pointerImages.length, signal: controller.signal }).catch((e) => { if (controller.signal.aborted) throw e; return []; }) : [];
+      images.unshift(...pointerImages);
       status(id)("Reading your files…");
       // Every readable file's full text also goes to the desktop app, which lets the model read what the excerpts left out.
       const library: { name: string; text: string }[] = [];
@@ -871,7 +875,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               m.id === messageId ? { ...m, content: isVisual ? text : hideTitleMarker(text) } : m,
             ),
           })),
-        "chat", undefined, images, { chat: id, documents: documentsIn(next), library: isVisual ? undefined : library },
+        "chat", undefined, images, { chat: id, documents: documentsIn(next), library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => pageImages(sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id))), name, pages) },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
       updateChat(id, (c) => ({
@@ -913,10 +917,10 @@ In this subject the learner keeps missing these questions in review; connect to 
   }
   /** Mowr-made PDFs in a conversation: asking to change one revises that same file instead of making another. */
   function documentsIn(chat:Chat){
-    // Made in this chat, open beside it, or attached to it: any Mowr-made PDF can be revised in place.
+    // Made in this chat, open beside it, or attached to it: any Mowr-made file (PDF, Word, deck, workbook…) can be revised in place.
     // The open one goes last: a vague "change it" means the most recent document.
     const ids=[...new Set([...chat.messages.flatMap(m=>[...(m.attachments||[]),...(m.context||[])]).filter(i=>i!==panelFile?.id),...(panelFile?[panelFile.id]:[])])];
-    return ids.map(id=>stateRef.current.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f?.made&&f.type==='application/pdf').map(f=>({id:f.id,name:f.name}));
+    return ids.map(id=>stateRef.current.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f?.made).map(f=>({id:f.id,name:f.name}));
   }
   /** How to use Mowr itself, plus only the workflows that fit this request, as short numbered lists. */
   function workflowText(prompt:string,context:import('../core/mowr-skills').SkillContext={}){
@@ -962,13 +966,6 @@ In this subject the learner keeps missing these questions in review; connect to 
     const inSpace=chat.spaceId?files.filter(f=>f.spaceId===chat.spaceId&&!ids.includes(f.id)).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created)):[];
     const readable=[...listed,...inSpace].filter(f=>!f.type.startsWith("image/")&&!f.remote).slice(0,MAX_CHAT_SOURCES);
     return localSourceContext(readable,query,ownerRef.current,signal,{focus,related:inChat,budget,library});
-  }
-  async function blobBase64(id:string){
-    const blob=await getBlob(id);if(!blob)throw Error("An attached image is no longer on this device.");
-    if(blob.size>8_000_000)throw Error("Images must be under 8 MB.");
-    const bytes=new Uint8Array(await blob.arrayBuffer());let binary="";
-    for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
-    return btoa(binary);
   }
   /** Model-drawn visuals join the Visuals page history, like the built-in ones. */
   /** A drawn visual stays in its chat; the Save button on it adds it to the Visuals page, or takes it off again. */

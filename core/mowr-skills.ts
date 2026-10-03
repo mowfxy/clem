@@ -234,13 +234,13 @@ export const mowrSkills: MowrSkill[] = [
   },
   {
     // src/App.tsx exportAnswer (strips check, edit and automation blocks; visuals print as figures via core/visual-print.ts); src/document-export.ts slidesBlob (# and ## start slides).
-    id: "export", name: "Exporting answers", description: "Any answer can leave Mowr as a PDF, Word document or PowerPoint deck.",
-    when: /\b(export|download|word doc\w*|ms word|in word|docx|powerpoint|pptx|slides?|slide ?deck|deck|save (?:it|this) as|as a file)\b/i,
+    id: "export", name: "Making files", description: "Mowr makes real PDF, Word, PowerPoint, Excel, CSV, HTML, calendar and other files itself.",
+    when: /\b(export|download|word doc\w*|ms word|in word|docx|powerpoint|pptx|excel|xlsx|spreadsheet|workbook|csv|slides?|slide ?deck|deck|presentation|save (?:it|this) as|as a file|\.(?:md|html|json|ics|tex|svg|png))\b/i,
     steps: [
-      "The Export button under every answer saves it as a typeset PDF (desktop app), an editable Word document or a PowerPoint deck. Mention it when the person wants the answer as a file they can edit; use the Kinetra pdf action instead when they want a designed PDF document with figures.",
-      "Exports keep the Markdown text, headings, lists and tables, and print every ```visual block as a numbered figure with its caption where it stands (in the PDF and Word file in place; in PowerPoint on its own slide after its section). ```check, ```edit and ```automation blocks are left out. So an answer meant for export can draw its diagrams, charts and figures as ```visual blocks with a caption; sliders print at their starting values and animations as their final frame.",
-      "For a deck, write each slide as a ## heading that states the slide's point, with 3–5 short bullets under it. Export → PowerPoint starts a new slide at every # or ## heading (### stays on the same slide), continues an overfull slide on the next one, and writes tables as rows of text. Maths is not typeset on slides, so write formulas in plain words or simple symbols there.",
-      "For Word, structure the answer with clear # and ## headings, tables in Markdown and no chat phrasing, so the exported document reads as a document.",
+      "When the person asks for a file (a Word document, a PowerPoint deck, an Excel workbook, a CSV, an HTML page, a calendar file…), make it yourself with the Kinetra file actions (docx, pptx, xlsx, file, image, pdf); never tell them to export or copy the answer instead, and never paste a whole file into the chat.",
+      "Decks: use the pptx action with a theme chosen for the subject and audience and varied layouts (see the SLIDES skill). Word: the docx action takes the same specification as pdf. Spreadsheets: the xlsx action with live formulas, formats, totals and charts.",
+      "A ```visual already drawn in this chat goes into a PDF, Word document or deck unchanged as the figure {\"module\":\"mowr\",\"fn\":\"visual\",\"args\":[that visual's JSON]}.",
+      "The Export button under every answer still saves that answer as it is (PDF, Word or PowerPoint) for a quick copy; mention it only when the person wants the chat answer itself as a file.",
     ],
   },
   {
@@ -377,7 +377,7 @@ export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them i
 - Memory: Mowr remembers the person's facts and preferences itself (Settings → Memory).
 - Routines: one \`\`\`automation block proposes a daily or weekly task the person schedules with one click.
 - Long tasks: the Long task button plans big jobs as reviewable steps.
-- Export: any answer saves as PDF, Word or PowerPoint from the Export button under it.`;
+- Making files: PDF, Word, PowerPoint, Excel, CSV, HTML and more, made by Mowr itself; Export saves any answer.`;
 
 /** Whether a playbook fits this request, given what the request carries. */
 function fits(skill: MowrSkill, request: string, context: SkillContext) {
@@ -416,8 +416,8 @@ export const foldersPlaybook = guide(mowrSkills.find((s) => s.id === "folders")!
 /** Tells the model which documents it made in this conversation and how to change them in place. */
 export function documentsNote(documents: { id: string; name: string }[]) {
   if (!documents.length) return "";
-  return `\n\nDOCUMENTS IN THIS CONVERSATION (made by Mowr; change them in place, never as a new file):\n${documents.map((d) => `- id=${d.id} · ${d.name}`).join("\n")}\nTo change one: {"kinetra":{"action":"open","id":"<id>"}} returns its current specification; then {"kinetra":{"action":"pdf","revise":"<id>","change":"one short sentence",…the complete revised specification…}} updates that same file and keeps the earlier version for undo. Make a new document only when the person asks for a separate one.`;
+  return `\n\nFILES IN THIS CONVERSATION (made by Mowr; change them in place, never as a new file):\n${documents.map((d) => `- id=${d.id} · ${d.name}`).join("\n")}\nTo change one: {"kinetra":{"action":"open","id":"<id>"}} returns its current specification and the action that made it; then {"kinetra":{"action":<that action>,"revise":"<id>","change":"one short sentence",…the complete revised specification…}} updates that same file and keeps the earlier version for undo. Make a new file only when the person asks for a separate one.`;
 }
 
 /** Telegram shows replies as plain text, so the chat-only formats must not be used there. */
-export const telegramInstructions = "This reply goes to Telegram, which shows plain text only: no Markdown headings, bold, tables or code fences, no LaTeX (write formulas in plain words or simple symbols like x^2 and sqrt(2)), and no ```visual, ```check, ```edit or ```automation blocks, [[file]] citations or drive: links, since none of them render there. Keep paragraphs short and write links as full https:// addresses. Messages over 4000 characters are split, so be concise. For a document, make one PDF with the Kinetra pdf action; it is sent as a file (one per reply).";
+export const telegramInstructions = "This reply goes to Telegram, which shows plain text only: no Markdown headings, bold, tables or code fences, no LaTeX (write formulas in plain words or simple symbols like x^2 and sqrt(2)), and no ```visual, ```check, ```edit or ```automation blocks, [[file]] citations or drive: links, since none of them render there. Keep paragraphs short and write links as full https:// addresses. Messages over 4000 characters are split, so be concise. For a document, make one file with a Kinetra file action (pdf by default; docx, pptx, xlsx or a text file when asked); it is sent as a file (one per reply).";

@@ -1,6 +1,7 @@
 import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
+import { makeFile, FILE_ACTIONS, partsKey, sameFormat } from "./file-maker";
 import {markdownDocument, unwritten} from "./pdf-document";
 import {boundedConversation,memoryQuery,retrievalQuery} from "../core/chat-context";
 import {contextBudget} from "../core/context-budget";
@@ -269,11 +270,11 @@ void app.whenReady().then(async () => {
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
     // Claude and Grok answer in one piece, so Kinetra runs as a loop around them: each tool result is sent back until the answer is final.
     // Each step resends everything, so the file passages read along the way must still fit their window (about 200k tokens).
-    const answer = await runKinetraTurn(prompt, instructions, async (input, followUp) => {
+    const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked) => {
       let text = "";
       const collect = (event: any) => { if (event.type === "delta") text += event.text || ""; else if (event.type === "status") emit({ ...event, id }); };
-      if (grok) await grokFor(owner).run(id, input, model!, collect, followUp ? [] : images.map((i) => i.path));
-      else await claudeFor(owner).run(id, input, model!, reasoning, collect, followUp ? [] : pictures);
+      if (grok) await grokFor(owner).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path));
+      else await claudeFor(owner).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))]);
       return text;
     }, async (tool) => {
       emit({ id, type: "status", text: toolStatus(tool) });
@@ -300,6 +301,8 @@ void app.whenReady().then(async () => {
     string,
     { resolve: (text: string) => void; reject: () => void }
   >();
+  /** Pages the model asked to look at, drawn by the window (src/desktop/page-images.ts) and returned with pageImages. */
+  const pendingLooks = new Map<string, { resolve: (images: { name: string; data: string }[]) => void; reject: (error: Error) => void }>();
   telegram = new TelegramService(vault, async (owner, envelope, bytes) => {
     const user = await auth.user();
     if (user?.id !== owner) throw Error("Account changed.");
@@ -395,10 +398,11 @@ void app.whenReady().then(async () => {
           if (event.type === "delta") text += event.text || "";
         },
         { images: imagePath ? [{ path: imagePath, mime: imagePath.endsWith(".png") ? "image/png" : "image/jpeg" }] : [], pdf: async (spec,cancelled)=>{
-          if(generated)throw Error('Only one PDF attachment per Telegram reply is supported');
-          const bytes=await illustratedPdf(spec);if(cancelled())throw Error('Request cancelled');
-          generated={name:'Mowr-response.pdf',mime:'application/pdf',bytes};
-          return {created:true,name:generated.name};
+          // One file per Telegram reply; a corrected version replaces the draft rather than becoming a second file.
+          const {revise:_revise,append:_append,change:_change,action,...rest}=spec||{};
+          const made=await makeFile(FILE_ACTIONS.has(String(action))?String(action):'pdf',rest);if(cancelled())throw Error('Request cancelled');
+          generated={name:made.name,mime:made.type,bytes:made.bytes};
+          return {created:true,name:generated.name,...made.info,note:'Only one file can be sent per Telegram reply; sending another file action replaces this one.'};
         } },
       );
       await vault.write(historyKey, [...history, { role: "user", content: envelope.text }, { role: "assistant", content: text || "(sent a document)" }].slice(-200));
@@ -752,6 +756,14 @@ void app.whenReady().then(async () => {
       pendingAttachments.delete(request.id);
       if (request.error || request.text === undefined) pending.reject();
       else pending.resolve(request.text);
+      return { ok: true };
+    }
+    if (request.action === "pageImages") {
+      const pending = pendingLooks.get(request.id);
+      if (!pending) throw Error("Page request expired.");
+      pendingLooks.delete(request.id);
+      if (request.error || !request.images?.length) pending.reject(Error(request.error || "No pages could be drawn."));
+      else pending.resolve(request.images);
       return { ok: true };
     }
     if (request.action === "status") return status();
@@ -1177,11 +1189,12 @@ void app.whenReady().then(async () => {
       library.splice(0, library.length, ...distinctNames(library));
       const memories = retrieveMemory(memoryState, request.scope, memoryQuery(request.messages));
       // Pictures go to Codex as local image files that are removed when the turn ends.
-      const imagePaths: string[] = [], pictures: Picture[] = [];
-      if (request.images?.length) {
+      const imagePaths: string[] = [];
+      const savePictures = async (images: { name: string; data: string }[]) => {
         const folder = join(local, "scratch", "images");
         await mkdir(folder, { recursive: true });
-        for (const image of request.images) {
+        const saved: Picture[] = [];
+        for (const image of images) {
           const bytes = Buffer.from(image.data, "base64");
           const png = bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
           const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
@@ -1190,86 +1203,158 @@ void app.whenReady().then(async () => {
           const path = join(folder, randomUUID() + (png ? ".png" : jpeg ? ".jpg" : ".webp"));
           await writeFile(path, bytes);
           imagePaths.push(path);
-          pictures.push({ path, mime: png ? "image/png" : jpeg ? "image/jpeg" : "image/webp" });
+          saved.push({ path, mime: png ? "image/png" : jpeg ? "image/jpeg" : "image/webp" });
         }
-      }
+        return saved;
+      };
+      const pictures = await savePictures(request.images || []);
+      // The model is told what each picture is (which file, which page), in the order they are attached.
+      const pictureNote = request.images?.length
+        ? `\n\nPICTURES ATTACHED TO THIS REQUEST (look at them; they are part of the person's files, not decoration), in order:\n${request.images.map((image, i) => `${i + 1}. ${image.name}`).join("\n")}\nDiagrams, circuits, graphs, tables, handwriting and scanned pages in them are only in the pictures: read them there, not from the extracted text alone.`
+        : "";
       const prompt = composePrompt({
         messages,
         sources,
         memories,
         name: memoryState.enabled ? setup.displayName : undefined,
-        extra: (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : ""),
+        extra: (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : "") + pictureNote,
       });
-      const emit = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
-      // Documents Mowr made earlier in this conversation. Asking to change one revises that same file.
+      const send = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
+      // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
+      // times on the way, and the person should get the final file, not every draft (and not one card per tool call).
+      const delivery = new Map<string, any>();
+      const deliver = () => { for (const event of delivery.values()) send(event); delivery.clear(); };
+      const emit = (event: any) => { if (event.type === "done") deliver(); send(event); };
+      // Files Mowr made earlier in this conversation. Asking to change one revises that same file.
       const documents = new Map<string, string>();
+      // Files made in this answer, and the version each earlier file had before this answer first changed it. One answer
+      // that changes a file counts as one edit (one Undo step), however many times the model reworked it before replying.
+      const madeNow = new Map<string, any>();
+      const before = new Map<string, { blob: string; at: number; summary: string; size: number }>();
       // Planned sections each document made in this answer still lacks; the answer waits until they are written.
       const gaps = new Map<string, string[]>();
       const unfinished = () => {
         const open = [...gaps].filter(([, missing]) => missing.length);
         if (!open.length) return undefined;
-        return open.map(([doc, missing]) => `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten section${missing.length === 1 ? "" : "s"} (${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}). Write them now with {"action":"pdf","revise":"${doc}","append":true,"sections":[…the next sections, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`).join(" ") + " Answer the person only when every planned section is written.";
+        return open.map(([doc, missing]) => {
+          const action = documents.get(doc)!.split(".").pop()!.toLowerCase(), key = partsKey[action] || "sections";
+          return `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten ${key === "slides" ? "slide" : "section"}${missing.length === 1 ? "" : "s"} (${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}). Write them now with {"action":"${action}","revise":"${doc}","append":true,"${key}":[…the next ${key}, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`;
+        }).join(" ") + " Answer the person only when every planned part is written.";
       };
       for (const doc of request.documents || []) if (await disk.readFile(user.id, "spec-" + doc.id)) documents.set(doc.id, doc.name);
-      const pdf = async (spec: any, cancelled: () => boolean) => {
+      const spaceOf = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined;
+      /** Makes a file (pdf, docx, pptx, xlsx, any text format, or an image), or revises one made earlier in this conversation. */
+      const makeOrRevise = async (spec: any, cancelled: () => boolean) => {
+        const action = FILE_ACTIONS.has(String(spec?.action)) ? String(spec.action) : "pdf";
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
-        if (revise && !documents.has(revise)) throw Error(`No document with id "${revise}" in this conversation. Use an id from the documents list, or leave out "revise" to make a new document.`);
+        if (revise && !documents.has(revise)) throw Error(`No file with id "${revise}" in this conversation. Use an id from the files list, or leave out "revise" to make a new file.`);
+        if (revise && !sameFormat(action, documents.get(revise)!)) throw Error(`"${documents.get(revise)}" is a .${documents.get(revise)!.split(".").pop()} file: revise it with the action that made it, or leave out "revise" to make a new ${action} file.`);
         const { revise: _revise, change, action: _action, append, ...rest } = spec || {};
         let clean = rest;
-        // A long document is written in parts: "append" adds sections to the end of the same file.
+        const key = partsKey[action];
+        // A long file is written in parts: "append" adds sections (or slides, or sheets) to the end of the same file.
         if (append) {
-          if (!revise) throw Error('"append" needs "revise": the id of the document to add to.');
+          if (!revise) throw Error('"append" needs "revise": the id of the file to add to.');
+          if (!key) throw Error('"append" works for pdf, docx, pptx and xlsx files; send the complete file instead.');
           const current = await disk.readFile(user.id, "spec-" + revise);
-          if (!current) throw Error("That document's source is missing, so nothing can be added to it.");
-          const base = JSON.parse(current.toString("utf8"));
-          if (!Array.isArray(rest.sections) || !rest.sections.length) throw Error('"append" needs the new "sections" to add.');
-          clean = { ...base, ...Object.fromEntries(Object.entries(rest).filter(([k]) => k !== "sections")), sections: [...base.sections, ...rest.sections], references: [...new Set([...(base.references || []), ...(rest.references || [])])] };
-          if (!clean.references.length) delete clean.references;
-        }
-        const data = await illustratedPdf(clean);
-        const missing = unwritten(clean);
-        if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
-        // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
-        const pages = await pageCount(data).catch(() => undefined);
-        const words = String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0);
-        const length = { pages, words, sections: clean.sections.length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? "Keep going: append the next sections now. The document is only finished when every planned section is written in full depth." : "Every planned section is written." } : { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." }) };
-        const specBytes = new TextEncoder().encode(JSON.stringify(clean));
-        if (revise) {
-          const previous = await disk.readFile(user.id, revise);
-          const version = { blob: "v-" + randomUUID(), at: Date.now(), summary: String(change || "Revised by Mowr").slice(0, 200), size: previous?.length || 0 };
-          if (previous) {
-            await disk.writeFile(user.id, version.blob, new Uint8Array(previous));
-            const oldSpec = await disk.readFile(user.id, "spec-" + revise);
-            if (oldSpec) await disk.writeFile(user.id, "spec-" + version.blob, new Uint8Array(oldSpec));
+          if (!current) throw Error("That file's source is missing, so nothing can be added to it.");
+          const { action: _made, ...base } = JSON.parse(current.toString("utf8"));
+          if (!Array.isArray(rest[key]) || !rest[key].length) throw Error(`"append" needs the new "${key}" to add.`);
+          clean = { ...base, ...Object.fromEntries(Object.entries(rest).filter(([k]) => k !== key)), [key]: [...(base[key] || []), ...rest[key]] };
+          if (key === "sections") {
+            clean.references = [...new Set([...(base.references || []), ...(rest.references || [])])];
+            if (!clean.references.length) delete clean.references;
           }
-          await disk.writeFile(user.id, revise, data);
+        }
+        const made = await makeFile(action, clean);
+        if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
+        const missing = key === "sections" ? unwritten(clean) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
+        // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
+        const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
+        const words = key === "sections" ? String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0) : undefined;
+        const length = key === "sections" || key === "slides"
+          ? { ...(pages ? { pages } : {}), ...(words !== undefined ? { words } : {}), [key]: clean[key].length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? `Keep going: append the next ${key} now. The file is only finished when every planned part is written in full depth.` : "Every planned part is written." } : key === "sections" ? { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." } : {}) }
+          : {};
+        const specBytes = new TextEncoder().encode(JSON.stringify({ action, ...clean }));
+        if (revise) {
+          const earlier = !madeNow.has(revise);
+          if (earlier && !before.has(revise)) {
+            // The first change this answer makes to a file the person already had: keep that file for Undo.
+            const previous = await disk.readFile(user.id, revise);
+            const version = { blob: "v-" + randomUUID(), at: Date.now(), summary: String(change || "Revised by Mowr").slice(0, 200), size: previous?.length || 0 };
+            if (previous) {
+              await disk.writeFile(user.id, version.blob, new Uint8Array(previous));
+              const oldSpec = await disk.readFile(user.id, "spec-" + revise);
+              if (oldSpec) await disk.writeFile(user.id, "spec-" + version.blob, new Uint8Array(oldSpec));
+            }
+            before.set(revise, version);
+          } else if (earlier && change) before.get(revise)!.summary = String(change).slice(0, 200);
+          await disk.writeFile(user.id, revise, made.bytes);
           await disk.writeFile(user.id, "spec-" + revise, specBytes);
-          const file = { id: revise, name: documents.get(revise)!, size: data.byteLength, type: "application/pdf", created: Date.now(), updated: Date.now(), spaceId: null, made: true };
           gaps.set(revise, missing);
-          emit({ id: request.id, type: "artifact", file, scope: request.scope, revised: { version } });
-          return { created: true, revised: true, file: { id: revise, name: file.name, size: file.size }, ...length, note: "The same file was updated; the earlier version is kept for undo." };
+          if (earlier) {
+            const file = { id: revise, name: documents.get(revise)!, size: made.bytes.byteLength, type: made.type, created: Date.now(), updated: Date.now(), spaceId: null, made: true };
+            delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope, revised: { version: before.get(revise) } });
+          } else {
+            const file = { ...madeNow.get(revise), size: made.bytes.byteLength };
+            madeNow.set(revise, file);
+            delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope });
+          }
+          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
         }
         const id = randomUUID();
-        const file = { id, name: String(clean.title).replace(/[<>:"/\\|?*\x00-\x1f]/g, "").slice(0, 100) + ".pdf", size: data.byteLength, type: "application/pdf", created: Date.now(), spaceId: /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined, made: true };
-        await disk.writeFile(user.id, id, data);
+        const file = { id, name: made.name, size: made.bytes.byteLength, type: made.type, created: Date.now(), spaceId: spaceOf, made: true };
+        await disk.writeFile(user.id, id, made.bytes);
         await disk.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
+        madeNow.set(id, file);
         gaps.set(id, missing);
-        emit({ id: request.id, type: "artifact", file, scope: request.scope });
-        return { created: true, file: { id, name: file.name, size: file.size }, ...length, note: 'To continue this document, send {"action":"pdf","revise":"' + id + '","append":true,"sections":[…]}.' };
+        delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
+        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
       };
-      /** Reading a document's current source, so a change keeps everything the person did not ask to change. */
+      /** A stopped answer leaves no trace: files it made are removed and files it changed get their earlier contents back. */
+      const rollback = async () => {
+        delivery.clear();
+        for (const id of madeNow.keys()) await Promise.all([disk.deleteFile(user.id, id), disk.deleteFile(user.id, "spec-" + id)]).catch(() => {});
+        for (const [id, version] of before) {
+          const previous = await disk.readFile(user.id, version.blob).catch(() => undefined);
+          if (!previous) continue;
+          await disk.writeFile(user.id, id, new Uint8Array(previous));
+          const oldSpec = await disk.readFile(user.id, "spec-" + version.blob).catch(() => undefined);
+          if (oldSpec) await disk.writeFile(user.id, "spec-" + id, new Uint8Array(oldSpec));
+          await Promise.all([disk.deleteFile(user.id, version.blob), disk.deleteFile(user.id, "spec-" + version.blob)]).catch(() => {});
+        }
+      };
+      /** Reading a file's current source, so a change keeps everything the person did not ask to change. */
       const tools = async (tool: any) => {
         const read = fileTool(library, tool);
         if (read) return read;
+        if (tool?.action === "look") {
+          // The model looks at pages it was not shown: the window draws them, and they go with the next message to the model.
+          const pages = (Array.isArray(tool.pages) ? tool.pages : [tool.page]).map(Number).filter((n: number) => Number.isInteger(n) && n > 0).slice(0, 8);
+          if (typeof tool.file !== "string" || !tool.file.trim() || !pages.length) return { error: '"look" needs "file" (a file name from this chat) and "pages": [page numbers], up to 8 at a time.' };
+          const look = randomUUID();
+          try {
+            const images = await new Promise<{ name: string; data: string }[]>((resolve, reject) => {
+              const timer = setTimeout(() => { pendingLooks.delete(look); reject(Error("Drawing the pages took too long.")); }, 60_000);
+              pendingLooks.set(look, { resolve: (value) => { clearTimeout(timer); resolve(value); }, reject: (error) => { clearTimeout(timer); reject(error); } });
+              send({ id: request.id, type: "look", look, file: tool.file, pages });
+            });
+            return { pictures: images.map((i) => i.name), attachPictures: await savePictures(images) };
+          } catch (error) {
+            return { error: (error as Error).message };
+          }
+        }
         if (tool?.action !== "open") return undefined;
-        if (!documents.has(tool.id)) return { error: `No Mowr-made document with id "${tool.id}" in this conversation.` };
+        if (!documents.has(tool.id)) return { error: `No Mowr-made file with id "${tool.id}" in this conversation.` };
         const spec = await disk.readFile(user.id, "spec-" + tool.id);
-        return spec ? { id: tool.id, name: documents.get(tool.id), specification: JSON.parse(spec.toString("utf8")) } : { error: "That document's source is missing, so it can only be edited in the file panel." };
+        if (!spec) return { error: "That file's source is missing, so it can only be edited in the file panel." };
+        const { action, ...specification } = JSON.parse(spec.toString("utf8"));
+        return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
       const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
-      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf, instructions, tools: (tool) => tools(tool), unfinished });
+      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
@@ -1277,14 +1362,16 @@ void app.whenReady().then(async () => {
           if (!cancelledRuns.has(request.id)) learnFromTurn(user.id, request.scope, request.id, query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
         })
         .catch(async (error) => {
-          if (!window.isDestroyed())
-            window.webContents.send("mowr:chat", {
-              id: request.id,
-              type: "error",
-              error:claude
-                ? (error instanceof Error ? error.message : 'This model could not complete this request.')
-                : codexFailureMessage(error),
-            });
+          // Stopped: nothing it made is kept. Failed part-way: the files already finished are still delivered.
+          if (cancelledRuns.has(request.id) || /Request cancelled/.test(String((error as Error)?.message))) await rollback().catch(() => {});
+          else deliver();
+          send({
+            id: request.id,
+            type: "error",
+            error: claude
+              ? (error instanceof Error ? error.message : 'This model could not complete this request.')
+              : codexFailureMessage(error),
+          });
         })
         .finally(() => cancelledRuns.delete(request.id));
       return { started: true };

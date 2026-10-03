@@ -17,7 +17,8 @@ export async function readOffice(blob:Blob):Promise<OfficeBlock[]>{
  for(const part of Object.keys(files).filter(k=>officePart.test(k)).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))){
   const doc=xml(files[part]),sheet=part.startsWith('xl/');
   elements(doc,sheet?'c':'p').forEach((node,index)=>{
-   const raw=sheet?value(node,'v')||value(node,'t'):value(node,'t');
+   // A formula with no saved result (a workbook Mowr made, which Excel calculates on open) shows the formula itself.
+   const raw=sheet?value(node,'v')||value(node,'t')||(elements(node,'f').length?'='+value(node,'f'):''):value(node,'t');
    const text=sheet&&node.getAttribute('t')==='s'?shared[Number(raw)]||'':raw;
    const section=part.startsWith('ppt/')?'Slide '+part.match(/slide(\d+)/)?.[1]:sheet?'Sheet '+part.match(/sheet(\d+)/)?.[1]:'Document';
    blocks.push({part,index,text,label:section+(sheet?' · '+node.getAttribute('r'):' · Paragraph '+(index+1)),editable:sheet?elements(node,'f').length===0:elements(node,'t').length>0});
