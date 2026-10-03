@@ -25,7 +25,7 @@ export const builtinSkills: Skill[] = [
  ],builtin:true},
  {id:'problem-solving',name:'Worked solutions',description:'Step-by-step solutions to maths, physics and engineering problems, with every number checked.',category:'Learning',icon:'diagram',steps:[
   'Restate the problem precisely: list the givens with values and units, the unknowns being asked for, and any quantity implied but not stated (for example g = 9.81 m/s², air resistance neglected, ideal pulley).',
-  'Draw the situation when geometry, forces, circuits or motion are involved: a Kinetra figure (free-body diagram, projectile, circuit, optics) in a PDF, or a ```visual block in the chat, so directions and signs are fixed before any algebra.',
+  'Draw the situation when geometry, forces, circuits or motion are involved, so directions and signs are fixed before any algebra: apparatus (pulleys, inclines, levers, springs, charges) as a textbook figure (```visual kind figure in the chat, the Kinetra mowr illustration recipe in a PDF), graphs as a plot, circuits and optics with their Kinetra recipes.',
   'Name the principle or method that applies (Newton’s second law, conservation of energy, Kirchhoff’s laws, integration by parts…) and say in one sentence why it fits this problem better than the alternatives.',
   'Choose a sign convention and coordinate axes explicitly and keep them for the whole solution.',
   'Solve symbolically first and keep the expression general as long as possible; this exposes mistakes and lets the result be sanity-checked by limits.',

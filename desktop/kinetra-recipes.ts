@@ -3,6 +3,8 @@
  * tests/desktop/kinetra.test.ts, so the model starts from JSON that works instead of
  * guessing argument shapes. Adapt values; keep the structure.
  */
+import { figureRecipes, figureVocabulary } from "../core/figure-recipes.ts";
+
 export type KinetraRecipe = { name: string; use: string; figure: { module: string; fn: string; args: unknown[] }; notes: string };
 
 export const kinetraRecipes: KinetraRecipe[] = [
@@ -115,5 +117,16 @@ export const diagramRecipes: KinetraRecipe[] = [
   },
 ];
 
+/**
+ * Textbook illustrations (core/illustration.ts): the drawings of a physics book, with apparatus drawn as it looks
+ * (shaded blocks and balls, pulleys and ropes on true tangents, spring scales, inclines, levers, vessels, charges with
+ * computed field lines). The same figures draw in the chat as ```visual kind "figure".
+ */
+export const illustrationRecipes: KinetraRecipe[] = figureRecipes.map((r) => ({ name: `textbook figure: ${r.name}`, use: r.use, figure: { module: "mowr", fn: "illustration", args: [r.figure] }, notes: r.notes }));
+
+/** The full item list for {"module":"mowr","fn":"illustration"} figures, returned by {"action":"skill","name":"figures"}. */
+export const illustrationGuide = `${figureVocabulary}
+Call it as {"module":"mowr","fn":"illustration","args":[{"items":[…],"view"?:{…}}]}. Start from the closest textbook figure recipe and change positions, sizes and labels; keep every id unique and refer only to anchors of items that exist.`;
+
 export const recipeText = () =>
-  [...kinetraRecipes, ...diagramRecipes].map((r) => `- ${r.name} (${r.use}): {"figure":${JSON.stringify(r.figure)}} — ${r.notes}`).join("\n");
+  [...kinetraRecipes, ...diagramRecipes, ...illustrationRecipes].map((r) => `- ${r.name} (${r.use}): {"figure":${JSON.stringify(r.figure)}} — ${r.notes}`).join("\n");

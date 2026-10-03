@@ -7,7 +7,9 @@ import type { P, Pen, Style } from './visual-spec.ts';
  *  (src/visuals/Spec3D.tsx) and the projected drawing used for SVG, PDF and thumbnails both draw those primitives. */
 
 export type Vec = [number, number, number];
-type Base = { color: string; opacity: number; dim: number };
+type Base = { color: string; opacity: number; dim: number; mat?: Material };
+export const materials = ['metal', 'copper', 'gold', 'glass', 'plastic', 'rubber', 'wood', 'matte'] as const;
+export type Material = typeof materials[number];
 export type Prim =
   | Base & { k: 'mesh'; rows: number; cols: number; pos: Float32Array; colormap: boolean; wire: boolean }
   | Base & { k: 'line'; pts: Vec[]; width: number; dash: boolean }
@@ -17,14 +19,17 @@ export type Prim =
   | Base & { k: 'box'; c: Vec; s: Vec }
   | Base & { k: 'cyl'; a: Vec; b: Vec; r: number; cone: boolean }
   | Base & { k: 'poly'; pts: Vec[] }
-  | Base & { k: 'text'; p: Vec; text: string; size: number };
+  | Base & { k: 'text'; p: Vec; text: string; size: number }
+  /** A + or − printed on a charged surface: lies in the surface at p, facing along n, its bar along t. */
+  | Base & { k: 'glyph'; p: Vec; n: Vec; t: Vec; sign: 1 | -1; size: number };
 
 /* ── Schema ── */
 const num = z.union([z.number(), z.string().max(600)]);
 const text = (max = 80) => z.string().trim().max(max);
 const color = z.string().max(20).optional();
 const range = z.tuple([num, num]);
-const common = { id: z.string().max(40).optional(), color, label: text(40).optional(), opacity: z.number().min(0.05).max(1).optional() };
+const common = { id: z.string().max(40).optional(), color, label: text(40).optional(), opacity: z.number().min(0.05).max(1).optional(), material: z.enum(materials).optional() };
+const charge = { q: num.optional(), signs: z.boolean().optional() };
 const atom = z.object({ el: z.string().regex(/^[A-Z][a-z]?$/), x: z.number(), y: z.number(), z: z.number(), label: text(20).optional() });
 export const object3dSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('surface'), expr: z.string().max(600), x: range.optional(), y: range.optional(), colormap: z.boolean().optional(), wireframe: z.boolean().optional(), resolution: z.number().int().min(8).max(90).optional(), ...common }),
@@ -33,9 +38,10 @@ export const object3dSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('point'), x: num, y: num, z: num, size: z.number().min(1).max(14).optional(), ...common }),
   z.object({ type: z.literal('vector'), x: num, y: num, z: num, dx: num, dy: num, dz: num, ...common }),
   z.object({ type: z.literal('segment'), x1: num, y1: num, z1: num, x2: num, y2: num, z2: num, dash: z.boolean().optional(), ...common }),
-  z.object({ type: z.literal('sphere'), x: num, y: num, z: num, r: num, ...common }),
-  z.object({ type: z.literal('box'), x: num, y: num, z: num, w: num, d: num, h: num, ...common }),
-  z.object({ type: z.enum(['cylinder', 'cone']), x: num, y: num, z: num, r: num, h: num, axis: z.enum(['x', 'y', 'z']).optional(), ...common }),
+  z.object({ type: z.literal('sphere'), x: num, y: num, z: num, r: num, ...charge, ...common }),
+  z.object({ type: z.literal('box'), x: num, y: num, z: num, w: num, d: num, h: num, ...charge, ...common }),
+  z.object({ type: z.enum(['cylinder', 'cone']), x: num, y: num, z: num, r: num, h: num, axis: z.enum(['x', 'y', 'z']).optional(), ...charge, ...common }),
+  z.object({ type: z.literal('fieldLines'), lines: z.number().int().min(4).max(80).optional(), arrows: z.boolean().optional(), color, id: z.string().max(40).optional(), opacity: z.number().min(0.05).max(1).optional() }),
   z.object({ type: z.literal('polygon'), points: z.array(z.tuple([num, num, num])).min(3).max(60), ...common }),
   z.object({ type: z.literal('field'), dx: z.string().max(600), dy: z.string().max(600), dz: z.string().max(600), density: z.number().int().min(2).max(8).optional(), ...common }),
   z.object({ type: z.literal('text'), x: num, y: num, z: num, text: text(120), size: z.number().min(8).max(24).optional(), color }),
@@ -50,6 +56,76 @@ const elements: Record<string, [string, number]> = {
   S: ['#d9b36c', 1.05], P: ['#e39a5b', 1.07], Na: ['#b49ddb', 1.66], K: ['#b49ddb', 2.03], Mg: ['#9fcf8f', 1.41], Ca: ['#a3a3a0', 1.76], Fe: ['#d08a5a', 1.32], Cu: ['#d08a5a', 1.32], Zn: ['#9aa3c9', 1.22], Si: ['#d9c49a', 1.11], B: ['#e2b3a0', 0.84], Li: ['#b49ddb', 1.28],
 };
 export const elementColor = (el: string) => elements[el]?.[0] ?? '#b8b7b2';
+const materialColor: Record<Material, string> = { metal: '#b9c0c8', copper: '#c97b45', gold: '#d9b04c', glass: '#cfe9f2', plastic: '#e9e3d6', rubber: '#4a4e54', wood: '#b98a56', matte: '#a3a3a0' };
+export const POSITIVE = '#e0483e', NEGATIVE = '#4f86e8';
+
+/* ── Electrostatics: charged spheres (point charges), cylinders (uniform line charges) and boxes (charged plates) ── */
+type Source3 = { kind: 'point'; c: Vec; q: number; r: number } | { kind: 'line'; a: Vec; b: Vec; q: number; r: number } | { kind: 'plate'; pts: Vec[]; q: number; c: Vec; half: Vec };
+const v3 = { add: (a: Vec, b: Vec): Vec => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], sub: (a: Vec, b: Vec): Vec => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], mul: (a: Vec, k: number): Vec => [a[0] * k, a[1] * k, a[2] * k], dot: (a: Vec, b: Vec) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], len: (a: Vec) => Math.hypot(a[0], a[1], a[2]) };
+const norm = (a: Vec): Vec => v3.mul(a, 1 / (v3.len(a) || 1));
+const crossV = (a: Vec, b: Vec): Vec => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+/** Electric field (k = 1): q r̂/r² for points, the exact finite-segment integral for line charges, a grid of points for plates. */
+export function field3(sources: Source3[], p: Vec): Vec {
+  let e: Vec = [0, 0, 0];
+  const point = (c: Vec, q: number) => { const d = v3.sub(p, c), r2 = Math.max(v3.dot(d, d), 1e-9); e = v3.add(e, v3.mul(d, q / (r2 * Math.sqrt(r2)))); };
+  for (const s of sources) {
+    if (s.kind === 'point') point(s.c, s.q);
+    else if (s.kind === 'plate') for (const c of s.pts) point(c, s.q / s.pts.length);
+    else {
+      const L = v3.len(v3.sub(s.b, s.a)); if (L < 1e-9) continue;
+      const u = norm(v3.sub(s.b, s.a)), lam = s.q / L, x1 = v3.dot(v3.sub(s.a, p), u), x2 = v3.dot(v3.sub(s.b, p), u);
+      const perp = v3.sub(p, v3.add(s.a, v3.mul(u, v3.dot(v3.sub(p, s.a), u)))), h = Math.max(v3.len(perp), 1e-6), n = v3.mul(perp, 1 / h);
+      const r1 = Math.hypot(x1, h), r2 = Math.hypot(x2, h);
+      e = v3.add(e, v3.add(v3.mul(u, lam * (1 / r2 - 1 / r1)), v3.mul(n, lam / h * (x2 / r2 - x1 / r1))));
+    }
+  }
+  return e;
+}
+const inside3 = (s: Source3, p: Vec, grow = 1) => {
+  if (s.kind === 'point') return v3.len(v3.sub(p, s.c)) < s.r * grow;
+  if (s.kind === 'plate') return [0, 1, 2].every(i => Math.abs(p[i] - s.c[i]) < s.half[i] * grow + 1e-9);
+  const u = norm(v3.sub(s.b, s.a)), t = Math.max(0, Math.min(v3.len(v3.sub(s.b, s.a)), v3.dot(v3.sub(p, s.a), u)));
+  return v3.len(v3.sub(p, v3.add(s.a, v3.mul(u, t)))) < s.r * grow;
+};
+/** Even points on a unit sphere (Fibonacci lattice). */
+const fib = (n: number): Vec[] => Array.from({ length: n }, (_, i) => { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * Math.PI * (3 - Math.sqrt(5)); return [Math.cos(a) * r, Math.sin(a) * r, y] as Vec; });
+/** Field lines in 3D, seeded evenly on each charged body in proportion to |q| and traced with RK4 until they end on a body or leave the scene. */
+export function traceField3(sources: Source3[], b: Bounds, density = 24) {
+  const maxQ = Math.max(...sources.map(s => Math.abs(s.q)), 1e-12), size = Math.hypot(b.x[1] - b.x[0], b.y[1] - b.y[0], b.z[1] - b.z[0]), ds = size / 300;
+  const lo: Vec = [b.x[0], b.y[0], b.z[0]], hi: Vec = [b.x[1], b.y[1], b.z[1]], pad = v3.mul(v3.sub(hi, lo), 0.5);
+  const out: { pts: Vec[]; reversed: boolean }[] = [];
+  const dir = (p: Vec, sign: number): Vec | null => { const e = field3(sources, p), m = v3.len(e); return m > 1e-14 ? v3.mul(e, sign / m) : null; };
+  for (const src of sources) {
+    const sign = src.q > 0 ? 1 : -1, count = Math.max(6, Math.round(density * Math.abs(src.q) / maxQ)), seeds: Vec[] = [];
+    if (src.kind === 'point') fib(count).forEach(d => seeds.push(v3.add(src.c, v3.mul(d, src.r * 1.04))));
+    else if (src.kind === 'plate') {
+      const flat = [0, 1, 2].reduce((m, i) => (src.half[i] < src.half[m] ? i : m), 0), axes = [0, 1, 2].filter(k => k !== flat), side = Math.max(2, Math.round(Math.sqrt(count / 2)));
+      for (const f of [-1, 1]) for (let i = 0; i < side; i++) for (let j = 0; j < side; j++) { const p: Vec = [...src.c] as Vec; p[axes[0]] += src.half[axes[0]] * (-0.8 + 1.6 * (i + 0.5) / side); p[axes[1]] += src.half[axes[1]] * (-0.8 + 1.6 * (j + 0.5) / side); p[flat] += f * src.half[flat] * 1.05; seeds.push(p); }
+    } else {
+      const u = norm(v3.sub(src.b, src.a)), e1 = norm(Math.abs(u[2]) < 0.9 ? crossV(u, [0, 0, 1]) : crossV(u, [1, 0, 0])), e2 = crossV(u, e1), around = 8, along = Math.max(1, Math.round(count / around));
+      for (let i = 0; i < along; i++) for (let k = 0; k < around; k++) { const a = (k + (i % 2) * 0.5) * Math.PI * 2 / around, c = v3.add(src.a, v3.mul(v3.sub(src.b, src.a), (i + 0.5) / along)); seeds.push(v3.add(c, v3.add(v3.mul(e1, Math.cos(a) * src.r * 1.05), v3.mul(e2, Math.sin(a) * src.r * 1.05)))); }
+    }
+    for (const seed of seeds) {
+      const pts: Vec[] = [seed];
+      let p = seed, ended: Source3 | null = null;
+      for (let k = 0; k < 1400; k++) {
+        const k1 = dir(p, sign); if (!k1) break;
+        const k2 = dir(v3.add(p, v3.mul(k1, ds / 2)), sign); if (!k2) break;
+        const k3 = dir(v3.add(p, v3.mul(k2, ds / 2)), sign); if (!k3) break;
+        const k4 = dir(v3.add(p, v3.mul(k3, ds)), sign); if (!k4) break;
+        p = v3.add(p, v3.mul(v3.add(v3.add(k1, v3.mul(k2, 2)), v3.add(v3.mul(k3, 2), k4)), ds / 6));
+        pts.push(p);
+        const hit = sources.find(s => s !== src && inside3(s, p)); if (hit) { ended = hit; break; }
+        if (k > 4 && inside3(src, p, 0.98)) break;
+        if ([0, 1, 2].some(i => p[i] < lo[i] - pad[i] || p[i] > hi[i] + pad[i])) break;
+      }
+      // A line traced back from a negative charge that ends on a positive one repeats a line drawn from that positive.
+      if (sign < 0 && ended && ended.q > 0) continue;
+      if (pts.length > 3) out.push({ pts, reversed: sign < 0 });
+    }
+  }
+  return out;
+}
 const covalent = (el: string) => elements[el]?.[1] ?? 1;
 
 export type Bounds = { x: [number, number]; y: [number, number]; z: [number, number] };
@@ -79,16 +155,23 @@ export function compile3d(spec: Spec3D, c: C, tone: (value: unknown, fallback: s
   let auto = 0;
   // Surfaces thin out when something is drawn on them, so points, slopes and slices beneath stay visible.
   const marked = objects.some(o => ['point', 'vector', 'curve', 'segment', 'field'].includes(o.type));
+  // Charged objects, evaluated per frame, are the sources a fieldLines object traces.
+  const charges: ((v: Vars) => Source3 | null)[] = [];
   const E = (f: Compiled, v: Vars) => safeEval(f, v);
   const V3 = (f: readonly [Compiled, Compiled, Compiled], v: Vars): Vec => [E(f[0], v), E(f[1], v), E(f[2], v)];
   const fin = (p: Vec) => p.every(Number.isFinite);
 
   type Build = (v: Vars, b: Bounds, out: Prim[], base: Base) => void;
-  const builds: { id?: string; build: Build; base: (dim: number) => Base; label?: string }[] = objects.map((o): { id?: string; build: Build; base: (dim: number) => Base; label?: string } => {
+  type Item = { id?: string; build: Build; base: (dim: number) => Base; label?: string; measure?: boolean };
+  const builds: Item[] = objects.map((o): Item => {
     const shaded = o.type === 'surface' || o.type === 'parametricSurface' || o.type === 'curve' || o.type === 'field';
-    const col = tone(o.color, shaded ? palette[auto++ % palette.length] : o.type === 'point' || o.type === 'vector' ? 'coral' : 'soft');
-    const op = 'opacity' in o && o.opacity !== undefined ? o.opacity : o.type === 'surface' || o.type === 'parametricSurface' ? (marked ? 0.62 : 0.92) : o.type === 'box' || o.type === 'cylinder' || o.type === 'cone' || o.type === 'polygon' ? 0.55 : 1;
-    const base = (dim: number): Base => ({ color: col, opacity: op, dim });
+    const mat = 'material' in o ? o.material : undefined;
+    const col = mat && !o.color ? materialColor[mat] : tone(o.color, shaded ? palette[auto++ % palette.length] : o.type === 'point' || o.type === 'vector' ? 'coral' : 'soft');
+    // Solids given a material or a charge are real objects, so they are opaque unless asked otherwise.
+    const solid = !!mat || ('q' in o && o.q !== undefined);
+    const op = 'opacity' in o && o.opacity !== undefined ? o.opacity : o.type === 'surface' || o.type === 'parametricSurface' ? (marked ? 0.62 : 0.92) : (o.type === 'box' || o.type === 'cylinder' || o.type === 'cone' || o.type === 'polygon') && !solid ? 0.55 : 1;
+    const base = (dim: number): Base => ({ color: col, opacity: op, dim, mat });
+    const qf = 'q' in o && o.q !== undefined ? c(o.q) : null, signs = !('signs' in o) || o.signs !== false;
     const id = 'id' in o ? o.id : undefined, label = 'label' in o ? o.label : undefined;
     switch (o.type) {
       case 'surface': {
@@ -141,19 +224,55 @@ export function compile3d(spec: Spec3D, c: C, tone: (value: unknown, fallback: s
       }
       case 'sphere': {
         const f = [c(o.x), c(o.y), c(o.z)] as const, r = c(o.r);
-        return { id, base, label, build: (v, _b, out, bs) => { const p = V3(f, v), rr = E(r, v); if (!fin(p) || !(rr > 0)) return; out.push({ ...bs, k: 'sphere', c: p, r: rr }); if (label) out.push({ ...bs, k: 'text', p: [p[0], p[1], p[2] + rr], text: label, size: 12, opacity: 1 }); } };
+        if (qf) charges.push(v => { const p = V3(f, v), rr = E(r, v), q = E(qf, v); return fin(p) && rr > 0 && q ? { kind: 'point', c: p, q, r: rr } : null; });
+        return { id, base, label, build: (v, _b, out, bs) => {
+          const p = V3(f, v), rr = E(r, v); if (!fin(p) || !(rr > 0)) return; out.push({ ...bs, k: 'sphere', c: p, r: rr });
+          const q = qf ? E(qf, v) : 0;
+          if (q && signs) for (const d of fib(Math.max(14, Math.min(40, Math.round(18 + 6 * Math.abs(q)))))) { const t = norm(Math.abs(d[2]) < 0.9 ? crossV([0, 0, 1], d) : crossV([1, 0, 0], d)); out.push({ ...bs, opacity: 1, mat: undefined, color: q > 0 ? POSITIVE : NEGATIVE, k: 'glyph', p: v3.add(p, v3.mul(d, rr)), n: d, t, sign: q > 0 ? 1 : -1, size: rr * 0.2 }); }
+          if (label) out.push({ ...bs, k: 'text', p: [p[0], p[1], p[2] + rr * 1.25], text: label, size: 12, opacity: 1 });
+        } };
       }
       case 'box': {
         const f = [c(o.x), c(o.y), c(o.z)] as const, s = [c(o.w), c(o.d), c(o.h)] as const;
-        return { id, base, label, build: (v, _b, out, bs) => { const p = V3(f, v), sz = V3(s, v); if (!fin(p) || !fin(sz)) return; out.push({ ...bs, k: 'box', c: p, s: sz.map(Math.abs) as Vec }); if (label) out.push({ ...bs, k: 'text', p: [p[0], p[1], p[2] + Math.abs(sz[2]) / 2], text: label, size: 12, opacity: 1 }); } };
+        const flatOf = (half: Vec) => [0, 1, 2].reduce((m, i) => (half[i] < half[m] ? i : m), 0);
+        if (qf) charges.push(v => {
+          const p = V3(f, v), half = V3(s, v).map(x => Math.abs(x) / 2) as Vec, q = E(qf, v);
+          if (!fin(p) || !q) return null;
+          const flat = flatOf(half), axes = [0, 1, 2].filter(k => k !== flat), pts: Vec[] = [];
+          for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) { const c0: Vec = [...p] as Vec; c0[axes[0]] += half[axes[0]] * (-1 + 2 * (i + 0.5) / 7); c0[axes[1]] += half[axes[1]] * (-1 + 2 * (j + 0.5) / 7); pts.push(c0); }
+          return { kind: 'plate', pts, q, c: p, half };
+        });
+        return { id, base, label, build: (v, _b, out, bs) => {
+          const p = V3(f, v), sz = V3(s, v); if (!fin(p) || !fin(sz)) return; out.push({ ...bs, k: 'box', c: p, s: sz.map(Math.abs) as Vec });
+          const q = qf ? E(qf, v) : 0;
+          if (q && signs) {
+            const half = sz.map(x => Math.abs(x) / 2) as Vec, flat = flatOf(half), axes = [0, 1, 2].filter(k => k !== flat), g = 4, size = Math.min(half[axes[0]], half[axes[1]]) * 0.16;
+            for (const side of [-1, 1]) for (let i = 0; i < g; i++) for (let j = 0; j < g; j++) {
+              const at: Vec = [...p] as Vec, n: Vec = [0, 0, 0], t: Vec = [0, 0, 0];
+              at[axes[0]] += half[axes[0]] * (-1 + 2 * (i + 0.5) / g) * 0.85; at[axes[1]] += half[axes[1]] * (-1 + 2 * (j + 0.5) / g) * 0.85; at[flat] += side * half[flat]; n[flat] = side; t[axes[0]] = 1;
+              out.push({ ...bs, opacity: 1, mat: undefined, color: q > 0 ? POSITIVE : NEGATIVE, k: 'glyph', p: at, n, t, sign: q > 0 ? 1 : -1, size });
+            }
+          }
+          if (label) out.push({ ...bs, k: 'text', p: [p[0], p[1], p[2] + Math.abs(sz[2]) / 2], text: label, size: 12, opacity: 1 });
+        } };
       }
       case 'cylinder': case 'cone': {
         const f = [c(o.x), c(o.y), c(o.z)] as const, r = c(o.r), h = c(o.h), axis = o.axis ?? 'z';
+        const ends = (v: Vars): [Vec, Vec] => { const p = V3(f, v), hh = E(h, v); return [p, [p[0] + (axis === 'x' ? hh : 0), p[1] + (axis === 'y' ? hh : 0), p[2] + (axis === 'z' ? hh : 0)]]; };
+        if (qf && o.type === 'cylinder') charges.push(v => { const [a, b] = ends(v), rr = E(r, v), q = E(qf, v); return fin(a) && fin(b) && rr > 0 && q ? { kind: 'line', a, b, q, r: rr } : null; });
         return { id, base, label, build: (v, _b, out, bs) => {
           const p = V3(f, v), rr = E(r, v), hh = E(h, v);
           if (!fin(p) || !(rr > 0) || !Number.isFinite(hh)) return;
           const top: Vec = [p[0] + (axis === 'x' ? hh : 0), p[1] + (axis === 'y' ? hh : 0), p[2] + (axis === 'z' ? hh : 0)];
           out.push({ ...bs, k: 'cyl', a: p, b: top, r: rr, cone: o.type === 'cone' });
+          const q = qf && o.type === 'cylinder' ? E(qf, v) : 0;
+          if (q && signs) {
+            const u = norm(v3.sub(top, p)), e1 = norm(Math.abs(u[2]) < 0.9 ? crossV(u, [0, 0, 1]) : crossV(u, [1, 0, 0])), e2 = crossV(u, e1), L = v3.len(v3.sub(top, p)), thin = rr * 12 < L, around = thin ? 4 : rr * 6 > L ? 10 : 6, along = Math.max(2, Math.min(thin ? 22 : 28, Math.round(L / (rr * (thin ? 2.6 : 1.6)))));
+            for (let i = 0; i < along; i++) for (let k = 0; k < around; k++) {
+              const a = (k + (i % 2) * 0.5) * Math.PI * 2 / around, n = v3.add(v3.mul(e1, Math.cos(a)), v3.mul(e2, Math.sin(a)));
+              out.push({ ...bs, opacity: 1, mat: undefined, color: q > 0 ? POSITIVE : NEGATIVE, k: 'glyph', p: v3.add(v3.add(p, v3.mul(u, L * (i + 0.5) / along)), v3.mul(n, rr)), n, t: u, sign: q > 0 ? 1 : -1, size: thin ? rr * 0.8 : Math.min(rr * 0.62, L / along * 0.34) });
+            }
+          }
           if (label) out.push({ ...bs, k: 'text', p: top, text: label, size: 12, opacity: 1 });
         } };
       }
@@ -177,6 +296,20 @@ export function compile3d(spec: Spec3D, c: C, tone: (value: unknown, fallback: s
       case 'text': {
         const f = [c(o.x), c(o.y), c(o.z)] as const;
         return { base: (dim) => ({ color: tone(o.color, 'soft'), opacity: 1, dim }), build: (v, _b, out, bs) => { const p = V3(f, v); if (fin(p)) out.push({ ...bs, k: 'text', p, text: o.text, size: o.size ?? 12.5 }); } };
+      }
+      case 'fieldLines': {
+        const density = o.lines ?? 30;
+        return { id, base, measure: false, build: (v, b, out, bs) => {
+          const sources = charges.map(f => { try { return f(v); } catch { return null; } }).filter((x): x is Source3 => !!x);
+          if (!sources.length) return;
+          const span = Math.hypot(b.x[1] - b.x[0], b.y[1] - b.y[0], b.z[1] - b.z[0]), head = span * 0.016;
+          for (const line of traceField3(sources, b, density)) {
+            out.push({ ...bs, k: 'line', pts: line.pts, width: 1.4, dash: false, opacity: o.opacity ?? 0.85 });
+            if (o.arrows === false || line.pts.length < 10) continue;
+            const k = Math.floor(line.pts.length * (line.reversed ? 0.55 : 0.4)), a = line.pts[k - 1], z2 = line.pts[k + 1], d = norm(line.reversed ? v3.sub(a, z2) : v3.sub(z2, a)), tip = line.pts[k];
+            out.push({ ...bs, k: 'cyl', a: v3.sub(tip, v3.mul(d, head)), b: tip, r: head * 0.38, cone: true, opacity: 1 });
+          }
+        } };
       }
       case 'molecule': {
         const atoms = o.atoms, n = atoms.length;
@@ -211,18 +344,19 @@ export function compile3d(spec: Spec3D, c: C, tone: (value: unknown, fallback: s
     const r = (a: typeof axX): [number, number] | undefined => { if (!a) return undefined; let lo = E(a[0], v), hi = E(a[1], v); if (!Number.isFinite(lo) || !Number.isFinite(hi)) return undefined; if (hi < lo) [lo, hi] = [hi, lo]; if (hi - lo < 1e-9) hi = lo + 1; return [lo, hi]; };
     return { x: r(axX), y: r(axY), z: r(axZ) };
   };
+  const fieldScene = objects.some(o => o.type === 'fieldLines');
   // Axes the spec leaves open are measured once from the scene at its starting values, so the camera does not jump.
   const measured = (() => {
     const start = fromAxes({ ...defaults, t: 0 }), guess: Bounds = { x: start.x ?? [-5, 5], y: start.y ?? [-5, 5], z: start.z ?? [-5, 5] };
     if (start.x && start.y && start.z) return guess;
     const out: Prim[] = [];
-    for (const b of builds) try { b.build({ ...defaults, t: 0 }, guess, out, b.base(1)); } catch { /* skip */ }
+    for (const b of builds) if (b.measure !== false) try { b.build({ ...defaults, t: 0 }, guess, out, b.base(1)); } catch { /* skip */ }
     const lo: Vec = [Infinity, Infinity, Infinity], hi: Vec = [-Infinity, -Infinity, -Infinity];
     const add = (p: Vec, pad = 0) => { for (let i = 0; i < 3; i++) if (Number.isFinite(p[i])) { lo[i] = Math.min(lo[i], p[i] - pad); hi[i] = Math.max(hi[i], p[i] + pad); } };
     for (const p of out) {
       if (p.k === 'mesh') for (let i = 0; i < p.pos.length; i += 3) add([p.pos[i], p.pos[i + 1], p.pos[i + 2]]);
       else if (p.k === 'line' || p.k === 'poly') p.pts.forEach(q => add(q));
-      else if (p.k === 'point' || p.k === 'text') add(p.p);
+      else if (p.k === 'point' || p.k === 'text' || p.k === 'glyph') add(p.p);
       else if (p.k === 'arrow') { add(p.from); add(p.to); }
       else if (p.k === 'sphere') add(p.c, p.r);
       else if (p.k === 'box') { add([p.c[0] - p.s[0] / 2, p.c[1] - p.s[1] / 2, p.c[2] - p.s[2] / 2]); add([p.c[0] + p.s[0] / 2, p.c[1] + p.s[1] / 2, p.c[2] + p.s[2] / 2]); }
@@ -231,18 +365,20 @@ export function compile3d(spec: Spec3D, c: C, tone: (value: unknown, fallback: s
     const pick = (i: number, given?: [number, number]): [number, number] => {
       if (given) return given;
       if (!(hi[i] >= lo[i])) return [-1, 1];
-      const span = hi[i] - lo[i], pad = Math.max(span * 0.08, 0.5);
+      // Field lines reach well beyond the bodies they leave, so a scene with them gets more room around it.
+      const span = hi[i] - lo[i], pad = Math.max(span * (fieldScene ? 0.32 : 0.08), fieldScene ? 1 : 0.5);
       return [lo[i] - pad, hi[i] + pad];
     };
     return { x: pick(0, start.x), y: pick(1, start.y), z: pick(2, start.z) } as Bounds;
   })();
-  const anyAxis = !!(axX || axY || axZ), onlyShapes = objects.every(o => ['molecule', 'sphere', 'box', 'cylinder', 'cone', 'text', 'polygon'].includes(o.type));
+  const anyAxis = !!(axX || axY || axZ), onlyShapes = objects.every(o => ['molecule', 'sphere', 'box', 'cylinder', 'cone', 'text', 'polygon', 'fieldLines'].includes(o.type));
 
   return {
     equal: spec.equal ?? (!anyAxis || onlyShapes),
-    axes: spec.axes ?? !objects.every(o => o.type === 'molecule' || o.type === 'text'),
+    // A model of real objects (molecules, charged bodies, apparatus) with no axis ranges is shown without a grid, like an illustration.
+    axes: spec.axes ?? !(objects.every(o => o.type === 'molecule' || o.type === 'text') || (!anyAxis && onlyShapes)),
     labels: { x: spec.x?.label, y: spec.y?.label, z: spec.z?.label },
-    camera: { azimuth: spec.camera?.azimuth ?? 38, elevation: spec.camera?.elevation ?? 24, zoom: spec.camera?.zoom ?? 1 },
+    camera: { azimuth: spec.camera?.azimuth ?? 38, elevation: spec.camera?.elevation ?? 24, zoom: spec.camera?.zoom ?? (fieldScene ? 1.55 : 1) },
     autoRotate: !!spec.autoRotate,
     bounds(values, t) { const a = fromAxes({ ...values, t }); return { x: a.x ?? measured.x, y: a.y ?? measured.y, z: a.z ?? measured.z }; },
     primitives(values, t, step) {
@@ -303,7 +439,7 @@ export function drawProjected(pen: Pen, scene: Compiled3D, values: Vars, t: numb
   }
   // Painter's order: farther primitives first.
   const depthOf = (p: Prim) => p.k === 'mesh' ? project([p.pos[Math.floor(p.pos.length / 6) * 3], p.pos[Math.floor(p.pos.length / 6) * 3 + 1], p.pos[Math.floor(p.pos.length / 6) * 3 + 2]])[2]
-    : p.k === 'line' || p.k === 'poly' ? project(p.pts[Math.floor(p.pts.length / 2)] || [0, 0, 0])[2] : p.k === 'arrow' ? project(p.from)[2] : p.k === 'sphere' || p.k === 'box' ? project(p.c)[2] : p.k === 'cyl' ? project([(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2, (p.a[2] + p.b[2]) / 2])[2] : project(p.p)[2];
+    : p.k === 'line' || p.k === 'poly' ? project(p.pts[Math.floor(p.pts.length / 2)] || [0, 0, 0])[2] : p.k === 'arrow' ? project(p.from)[2] : p.k === 'sphere' || p.k === 'box' ? project(p.c)[2] : p.k === 'cyl' ? project([(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2, (p.a[2] + p.b[2]) / 2])[2] : p.k === 'glyph' ? project(p.p)[2] - 1e-3 : project(p.p)[2];
   const order = prims.map((p, i) => ({ p, i, d: p.k === 'text' ? -Infinity : depthOf(p) })).sort((a, b2) => b2.d - a.d || a.i - b2.i);
   for (const { p } of order) {
     if (p.k === 'mesh') {
@@ -330,5 +466,13 @@ export function drawProjected(pen: Pen, scene: Compiled3D, values: Vars, t: numb
       if (p.r < 0.12 && !p.cone) pen.path([P2(p.a), P2(p.b)], st(p, { width: 3, alpha: p.dim }));
       else { const bottom = ring(p.a, p.r), top = p.cone ? [P2(p.b)] : ring(p.b, p.r); pen.path(bottom, st(p, { alpha: p.dim }), true); if (!p.cone) pen.path(top, { fill: p.color, alpha: 0.2 * p.dim }, true); for (const i of [0, 6, 12, 18]) pen.path([bottom[i], top[p.cone ? 0 : i]], st(p, { alpha: p.dim })); }
     } else if (p.k === 'text') { const q = P2(p.p); pen.text(q[0] + 6, q[1] - 6, p.text, { size: p.size, color: p.color, alpha: p.dim }); }
+    else if (p.k === 'glyph') {
+      // Only signs on the side facing the camera are printed.
+      const e = 1e-3, near = project([p.p[0] + p.n[0] * e, p.p[1] + p.n[1] * e, p.p[2] + p.n[2] * e])[2] < project(p.p)[2];
+      if (!near) continue;
+      const q = P2(p.p), a = P2([p.p[0] + p.t[0] * p.size, p.p[1] + p.t[1] * p.size, p.p[2] + p.t[2] * p.size]), dx = a[0] - q[0], dy = a[1] - q[1], k = Math.max(3, Math.hypot(dx, dy)) / (Math.hypot(dx, dy) || 1);
+      pen.path([[q[0] - dx * k, q[1] - dy * k], [q[0] + dx * k, q[1] + dy * k]], { stroke: p.color, width: 1.8, alpha: p.dim });
+      if (p.sign > 0) pen.path([[q[0] + dy * k, q[1] - dx * k], [q[0] - dy * k, q[1] + dx * k]], { stroke: p.color, width: 1.8, alpha: p.dim });
+    }
   }
 }

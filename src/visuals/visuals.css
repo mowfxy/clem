@@ -100,3 +100,7 @@
 .v2 .scene-axis{font-size:12px;color:var(--v-soft,#a3a3a0);font-style:italic}
 .v2 .visual-3d canvas{display:block;touch-action:none;cursor:grab}.v2 .visual-3d canvas:active{cursor:grabbing}
 .v2 .visual-hint-3d{position:absolute;left:12px;bottom:10px;font-size:11px;color:var(--v-faint);pointer-events:none;opacity:.85}
+/* Textbook figures: printed on paper inside the visual's frame, the same drawing as in PDFs. */
+.v2 .visual-figure{background:#fffdf8;display:grid;place-items:center}
+.v2 .visual-figure svg{display:block;width:100%;height:auto;max-height:640px}
+.v2 .visual-exports .visual-note{align-self:center;color:var(--v-faint)}

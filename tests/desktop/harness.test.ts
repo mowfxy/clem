@@ -356,3 +356,11 @@ test("a long answer with more than 60 parts exports with every part kept", async
   assert.ok(markdown.length < 300000 && JSON.stringify(doc).length > 300000);
   await renderFigures(doc, { checkVoice: false });
 });
+test("every textbook figure recipe renders through the worker, and the PDF guide describes it", async () => {
+  const { illustrationRecipes, illustrationGuide } = await import("../../desktop/kinetra-recipes.ts");
+  assert.ok(illustrationRecipes.length >= 10);
+  for (const recipe of illustrationRecipes) assert.match(await kinetraCall(recipe.figure), /^<svg[\s\S]*<\/svg>$/, recipe.name);
+  await assert.rejects(kinetraCall({ module: "mowr", fn: "illustration", args: [{ items: [{ type: "rope", path: ["ghost.top", [0, 0]] }] }] }), /no item has the id “ghost”/);
+  assert.ok(kinetraInstructions.includes('"fn":"illustration"') && kinetraInstructions.includes("textbook figure"));
+  assert.match(illustrationGuide, /fieldLines/);
+});

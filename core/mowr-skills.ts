@@ -7,6 +7,7 @@
  */
 import { documentIntent } from "./document-standard.ts";
 import { driveIntent } from "./drive-search.ts";
+import { figureRecipeText, figureVocabulary } from "./figure-recipes.ts";
 
 export type MowrSkill = { id: string; name: string; description: string; when: RegExp; steps: string[] };
 
@@ -26,6 +27,12 @@ export type SkillContext = {
   /** A PC folder is linked to this chat or space (```edit proposals are available). */
   folders?: boolean;
 };
+
+/**
+ * Which renderer draws what. Every playbook that draws repeats this rule word for word, so a model given any one of
+ * them picks the same renderer for the same idea.
+ */
+export const visualChoice = "Pick the renderer from what the person needs to see: a function, motion or anything on axes → plot; a process, cycle, system or concept map → diagram; data or comparisons → chart; physical things as a textbook draws them (blocks, balls, pulleys and ropes, spring scales, inclines, levers, springs, vessels of liquid, charged bodies with their field lines, free-body diagrams, lever arms) → figure; depth itself (a surface z=f(x,y), 3D vectors, solids, molecules, orbitals, or apparatus the person asks to see in 3D or turn around) → 3d. A charged wire and a sphere is a figure on paper and a 3d scene of real objects (q, material, fieldLines) when 3D is asked for, never bare shapes on axes. In a PDF everything is a Kinetra figure: apparatus uses the textbook figure recipes (mowr illustration).";
 
 /** A request that asks for something to be made, not only explained. */
 const MAKE = /\b(write|draft|create|make|prepare|produce|generate|compose|build|design|give me|i (?:want|need)|turn .{0,60} into|as a|into a|export|print(?:able)?)\b/i;
@@ -215,7 +222,7 @@ export const mowrSkills: MowrSkill[] = [
       "Plan before writing: the audience, the purpose, the sections the content needs and which figures will carry the ideas. Use the attached files, the linked Drive folder and web search for facts, and compute numbers with a Kinetra call first.",
       "Send the Kinetra pdf action as the whole reply: {\"kinetra\":{\"action\":\"pdf\",\"kind\":K,\"title\":T,\"subtitle\":S,\"summary\":\"…\",\"sections\":[{\"heading\":H,\"text\":\"Markdown\",\"figure\":{\"module\":M,\"fn\":F,\"args\":[…]},\"caption\":C}],\"references\":[\"…\"]}}. K is exactly one of report, paper, brief, notes, proposal, manual, handout, worksheet, letter, memo. Give a specific title, a subtitle when useful, a real 2–4 sentence summary for reports, papers, briefs and proposals, and one section per topic with ### subsections where needed.",
       "Use as many sections and pages as the material needs. A summary of a whole course or a long report is several pages; never squeeze it onto one page or drop topics to stay short.",
-      "Every diagram, chart or figure is a Kinetra figure in a section's figure field, never an image, SVG, ```visual block or ASCII drawing. Pick the recipe that matches: flowchart for processes, algorithms and decision paths; cycle for repeating processes; timeline for dated sequences; mind map for topic overviews; tree for classifications and hierarchies; Venn for comparisons; bar, line or pie chart for data; and the physics, circuit, optics and logic recipes for science. One figure per section; use extra sections without headings for more figures.",
+      "Every diagram, chart or figure is a Kinetra figure in a section's figure field, never an image, SVG, ```visual block or ASCII drawing. Pick the recipe that matches: flowchart for processes, algorithms and decision paths; cycle for repeating processes; timeline for dated sequences; mind map for topic overviews; tree for classifications and hierarchies; Venn for comparisons; bar, line or pie chart for data; and the physics, circuit, optics and logic recipes for science. Apparatus (pulleys, inclines, levers, springs, vessels, charges and field lines, free-body insets) is a textbook figure: {\"module\":\"mowr\",\"fn\":\"illustration\",\"args\":[{\"items\":[…]}]} from the textbook figure recipes, the same drawing as ```visual kind figure in the chat. One figure per section; use extra sections without headings for more figures.",
       "Give each figure a caption that says what it shows and its assumptions (without “Figure 1”), and refer to it in the text. If a figure fails, no PDF is made and Mowr returns every problem at once: fix them all and send the pdf action again rather than dropping the figure. At most 12 Kinetra calls per answer.",
       "Write the text itself in the document standard: formal and impersonal, no “you”, “I” or chat phrases (they are checked and rejected), tables in Markdown, maths in $LaTeX$, headings without numbers (Mowr numbers them).",
       "Worksheets: numbered questions of rising difficulty with space to answer, and the answers in a separate final section. Handouts and study guides: key ideas, definitions, formulas with symbols explained, worked examples and common mistakes.",
@@ -234,19 +241,36 @@ export const mowrSkills: MowrSkill[] = [
     ],
   },
   {
+    // core/illustration.ts (layout, draw, checkSpec); core/figure-recipes.ts (verified recipes and the vocabulary); src/visuals/SpecVisual.tsx (Video export).
+    id: "figures", name: "Textbook figures", description: "Apparatus drawn like a printed physics book: pulleys, inclines, levers, springs, vessels, charges and field lines.",
+    when: /\b(pulleys?|atwood|inclined? planes?|inclines?|ramps?|slopes?|spring (?:scales?|balances?)|springs?|levers?|fulcrum|seesaw|wheelbarrow|torques?|moments? about|free[- ]body|fbd|tension|hanging (?:mass|block|weight)|blocks? on|pendulum|charged (?:spheres?|wires?|rods?|plates?|balls?|objects?)|point charges?|dipoles?|field lines?|electric fields?|equipotentials?|beakers?|vessels?|buoyan\w*|manometer|apparatus|set-?up|textbook (?:figure|diagram|illustration|picture)s?|like (?:a|the|my|in a) textbook|labell?ed (?:diagram|drawing|sketch))\b/i,
+    steps: [
+      visualChoice,
+      "A textbook figure is ONE ```visual block with \"kind\":\"figure\", a \"title\", a one-line \"caption\" with the assumptions, and \"items\". Mowr draws it on paper like a printed book (shaded blocks and balls, metal pulleys, hatched ceilings and ground, red force arrows, serif labels) and the same drawing goes into PDFs, so never write SVG, ASCII art or a plot of circles and lines instead.",
+      "Start from the closest verified recipe below: copy its items, then change positions, sizes, labels and forces. Keep every id unique and attach things through anchors (\"m1.top\", \"ramp\", \"scale.b\") instead of typing coordinates that only look attached.",
+      "Make it physically right before making it pretty: a mass hangs straight below the side of its pulley (x = pulley x ± r); a rope goes from an anchor, {\"around\":\"pulleyId\",\"side\":\"over\"}, to an anchor; a block on a slope uses \"on\" and \"at\" so it sits on the surface; force arrows start on the body they act on, point the right way (dir 90 up, −90 down; on a slope rising at θ: up the slope θ, normal θ+90, down the slope θ+180) and have lengths in proportion to the magnitudes you computed (N = mg cos θ, T, mg); third-law partners go on different bodies; mark the angles you use.",
+      "Electric fields are computed, never drawn by hand: give each charged body a signed \"q\" (only ratios matter) and add one {\"type\":\"fieldLines\"}. Lines leave + and end on −; a body with more charge gets more lines. Use q of the same sign for repulsion. Do not fake field lines with line or curve items.",
+      "Make it teach: sliders for the quantities a learner changes (an angle, a mass, a charge) used inside item numbers as formulas; animate with t when motion is the point (a block sliding, a mass oscillating), with \"animate\":{\"duration\":4}; steps with \"focus\" ids to walk through it (the weight first, then the normal force, then friction). Labels use _ for subscripts (F_{net}, m_1) and Greek as θ or \\theta.",
+      "Under every figure the person has Image, SVG and PDF downloads, and Video for animated figures. When they want it as a document or worksheet, make the PDF with the Kinetra pdf action and the same items as a figure: {\"module\":\"mowr\",\"fn\":\"illustration\",\"args\":[{\"items\":[…]}]}.",
+      "Introduce the figure in one sentence, then say what to notice (at most three short points). When the answer computes numbers (tension, acceleration, torque), end with a ```check block.",
+      figureVocabulary,
+      "VERIFIED TEXTBOOK FIGURES (each renders as-is; adapt the values, keep the structure):\n" + figureRecipeText(),
+    ],
+  },
+  {
     // core/answer-format.ts visualLanguage; core/visual-spec.ts schema limits; src/App.tsx recordVisuals (needs "title").
     id: "visuals", name: "Interactive visuals in chat", description: "Plots, diagrams and charts drawn by Mowr from a small JSON block.",
     when: /\b(visuali[sz]e|visual|diagram|draw|plot|graph|chart|animate|simulate|show me how|illustrate|map out|flow ?chart|mind ?map)\b/i,
     steps: [
       "In a chat answer, draw with ONE ```visual block of strict JSON (no comments, no trailing commas) as described under VISUALS. Never write SVG, HTML, Mermaid, ASCII art or plotting code for it: Mowr draws the block and the person can export it as PNG, SVG or PDF.",
       "Always give a short \"title\": Mowr saves every titled visual on the Visuals page, where the person can find it again. The person can also type /visual <topic> to ask for one directly.",
-      "Choose the form from the idea: plot for functions, motion and anything flat (with sliders and animation over t); diagram with steps for processes, cycles, systems and concept maps; chart for data and comparisons; 3d when depth is the point (surfaces, 3D vectors, solids, molecules; see 3D models in chat).",
+      visualChoice,
       "Pick the plot layer that matches the maths: function for y=f(x); parametric for paths and orbits; polar for r(θ) (cardioids, roses, orbits); implicit for relations and contours f(x,y)=c (circles, ellipses, hyperbolas, level sets, equipotentials, phase curves; several levels draw a contour map); field for vector, force, velocity and slope fields (differential equations, electric and magnetic fields, fluid flow); points for measured data and scatter plots (add a function layer for the fit); area for integrals and probability. A plot needs x and y ranges.",
       "Charts: bar for comparing categories, line for change over time, area for cumulative or stacked-looking totals, pie only for shares of one whole with at most seven parts.",
       "Stay inside what Mowr draws: at most 6 sliders and 6 readouts; a plot has at most 40 layers (field density 6–32); a diagram at most 24 nodes with unique ids, 40 edges and 12 steps whose focus ids exist; a chart at most 24 labels and 5 series, each with one value per label; slider keys must be unique. A block that breaks these shows an error instead of a picture.",
       "Make the visual teach one relationship. Good examples: projectile with angle and speed sliders; a travelling wave animated over t; the electric field of a dipole as a field layer with a slider for charge; a conic drawn with implicit and a slider for eccentricity; the Krebs cycle as a diagram with steps; population growth data as points with a logistic curve.",
       "Add sliders for the quantities a learner would change, with realistic ranges and units, and readouts for derived values; write a one-line caption with the assumptions. Keep the maths correct: equal axes for geometry, angles in radians inside expressions (rad(deg) converts), labelled axes with units.",
-      "Introduce the visual in one sentence and follow it with at most three short prompts on what to try and notice. In a PDF, use a Kinetra figure instead of a ```visual block.",
+      "Introduce the visual in one sentence and follow it with at most three short prompts on what to try and notice. Animated and 3D visuals have a Video button that saves an MP4 the person can put in slides; mention it when they want to share or present it. In a PDF, use a Kinetra figure instead of a ```visual block.",
     ],
   },
   {
@@ -254,15 +278,18 @@ export const mowrSkills: MowrSkill[] = [
     id: "3d", name: "3D models in chat", description: "Orbitable 3D scenes: surfaces, curves, vectors, solids, fields and molecules.",
     when: /\b(3d|3-d|three[- ]dimension\w*|surface|surfaces|z ?= ?f\(x|multivariable|partial derivatives?|gradient|tangent plane|saddle|paraboloid|helix|sphere|cylinder|cone|cube(?! roots?)|prism|pyramid|torus|volume of|solid of revolution|cross[- ]section|vector field|flux|curl|divergence|orbitals?|molecule|molecular|bond angle|vsepr|tetrahedral|trigonal|crystal|lattice|unit cell|protein structure|protein folding|dna structure|double helix|cell structure|organelles?|magnetic field|electric field|orbit|rotate|rotating|isometric)\b/i,
     steps: [
+      visualChoice,
       "Use kind \"3d\" when seeing depth is what makes the idea click: a function of two variables z=f(x,y) and its partial derivatives or gradient; tangent planes; parametric curves in space (helix, trajectories, field lines); 3D vectors, dot and cross products; solids, volumes, cross-sections and solids of revolution; vector fields; molecular shape and bond angles (VSEPR); crystal lattices; orbitals; the double helix. If the idea reads fine flat (a single curve, a 2D field), use a plot instead: it is clearer.",
       "Set x, y and z ranges with axis labels and units for mathematical scenes; omit them for molecules and models, and Mowr fits the camera to the scene and hides the axes.",
       "Surfaces: {\"type\":\"surface\",\"expr\":\"…in x and y…\"} uses the axis ranges; colormap colours by height and is the default without a colour. Closed shapes (spheres, tori, orbitals, cones) are parametricSurface objects over u and v with opacity 0.5–0.8 so what is inside stays visible.",
       "Show the teaching moment on top of the surface: a point at the place being discussed, vectors for the gradient or partial slopes (for example dx along x and dz equal to ∂f/∂x there), curves for the slices y=b or x=a (a curve with x=\"s\", y=\"b\", z=\"f(s,b)\"), and labels. Give sliders for the point's coordinates so the person can move it and watch the slopes change.",
       "Molecules: give real 3D coordinates in ångströms from known geometry (bond lengths and angles), with the central atom at the origin; element symbols like \"C\", \"Cl\"; bonds as [i,j] or [i,j,order] for double and triple bonds, or omit bonds to connect atoms by distance; labels:true names the atoms. Keep hydrogens; at most 120 atoms. For large biomolecules, draw a simplified model (a double helix from two curves and rungs as segments) and say so in the caption.",
       "Biology and physical models (a cell, the heart, a leaf, the Earth's magnetic field): build them from spheres, boxes, cylinders, cones, curves and labels, give every part an id and a label, and add steps that focus each part in turn with one or two sentences about it.",
+      "Real objects look real: give spheres, cylinders, cones and boxes a \"material\" (metal, copper, gold, glass, plastic, rubber, wood, matte) and they are drawn solid with reflections, like the molecule models. Leave out axis ranges for a model of objects and Mowr hides the grid, as in an illustration.",
+      "Charged objects: a sphere (point charge), a cylinder (a wire or rod, a uniform line charge) or a thin box (a plate) takes a signed \"q\" and is printed with + or − signs on its surface; one {\"type\":\"fieldLines\",\"lines\":30} traces the electric field between all of them in 3D. Example, a negatively charged wire under a positive sphere: {\"type\":\"cylinder\",\"id\":\"wire\",\"x\":-3,\"y\":0,\"z\":0,\"r\":0.12,\"h\":6,\"axis\":\"x\",\"q\":-3,\"material\":\"metal\",\"label\":\"wire (−)\"}, {\"type\":\"sphere\",\"id\":\"ball\",\"x\":0,\"y\":0,\"z\":1.8,\"r\":0.5,\"q\":1,\"material\":\"gold\",\"label\":\"sphere (+)\"}, {\"type\":\"fieldLines\"}. Never draw field lines by hand with curves.",
       "Animate with t only when motion is the idea (an orbit, a rotating field line, a wave on a surface); otherwise keep it still. autoRotate:true suits a showcase model with no sliders. Choose a camera azimuth and elevation that shows the key feature at first sight.",
       "Keep scenes light: about 30 objects (60 at most), field density 3–6 (2–8 allowed), surface resolution left at the default.",
-      "Introduce the model in one sentence, tell the person they can drag to orbit and scroll to zoom, then give at most three things to try.",
+      "Introduce the model in one sentence, tell the person they can drag to orbit and scroll to zoom, then give at most three things to try. Its Video button films a turn around the model (or the animation), ready for slides.",
     ],
   },
   {
@@ -339,7 +366,7 @@ export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them i
 - Videos: a full https://www.youtube.com/watch?v=… link in a sentence or bullet becomes a player under it; a Drive video linked as [name](drive:ID) plays too. Mowr reads the captions of videos asked about (VIDEO TRANSCRIPTS).
 - Google Drive: when Drive files are supplied, link them as [name](drive:ID) with their listed id; documents open in Mowr's viewer.
 - Documents: Kinetra makes typeset PDFs with computed figures. Changing a document Mowr made updates that same file.
-- Visuals: one \`\`\`visual block draws an interactive plot, diagram, chart or orbitable 3D model in the chat.
+- Visuals: one \`\`\`visual block draws a plot, diagram, chart, textbook figure (apparatus, charges and field lines) or orbitable 3D model; moving and 3D ones save as video.
 - Maths and science: LaTeX in $…$ and $$…$$ renders, including chemistry with \\ce{…} and units.
 - Checks and citations: \`\`\`check recomputes numbers; [[file, p. N]] opens the source at that page.
 - Files: attached files and a space's sources arrive as excerpts to cite; a file open beside the chat is edited in place; linked PC folders take \`\`\`edit proposals the person applies.

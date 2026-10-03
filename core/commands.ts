@@ -21,6 +21,8 @@ export type SlashCommand = {
 
 export const slashCommands: SlashCommand[] = [
   { id: "visual", label: "Visual", icon: "visuals", description: "Draw an interactive visual", placeholder: "What should Mowr draw?", skills: ["visuals"] },
+  { id: "figure", label: "Figure", icon: "visuals", description: "Draw it like a textbook figure", placeholder: "Which setup or apparatus should Mowr draw?", skills: ["figures", "visuals", "notation"],
+    instruction: () => "Draw this as a textbook figure: one ```visual block with \"kind\":\"figure\", started from the closest verified textbook figure and made physically correct (attachments through anchors, forces with the right directions and proportional lengths, computed field lines). If I ask for 3D, use a \"3d\" scene of real objects with materials and charges instead. Then say in two or three lines what the figure shows." },
   { id: "pdf", label: "PDF", icon: "cmd-pdf", description: "Make a formatted PDF document", placeholder: "What should the document cover?", skills: ["documents"], workflow: "report",
     instruction: () => "Make this as a PDF document with the Kinetra pdf action, not as a chat answer. Choose the right kind of document, a specific title and one section per heading." },
   { id: "research", label: "Research", icon: "research", description: "Search the web and cite every source", placeholder: "What should Mowr research?", skills: ["web", "numbers"], workflow: "research",
