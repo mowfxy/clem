@@ -296,3 +296,25 @@ test("a described design is built on top of the layout, and the defaults apply o
   assert.deepEqual(designProblems({ accent: "blue", columns: 3, colour: 1 }).length, 3);
   assert.equal(cleanCss("@import url(x.css); h1{font-family:'Mowafy Serif';color:red} body{background:url(http://x)}</style>"), " h1{color:red} body{background:none}");
 });
+
+test("a chat visual goes into a PDF unchanged: through mowr.visual, and in an exported answer where it stood", async () => {
+  const { markdownDocument, renderFigures, documentHtml } = await import("../../desktop/pdf-document.ts");
+  const chart = { kind: "chart", title: "Sales", caption: "Quarterly sales in units", chart: { type: "bar", labels: ["Q1", "Q2"], series: [{ name: "2026", values: [3, 5] }] } };
+  const svg = await kinetraCall({ module: "mowr", fn: "visual", args: [chart] });
+  assert.match(svg, /^<svg[\s\S]*<\/svg>$/);
+  assert.match(String(await kinetraTool({ action: "help" })), /"fn":"visual"/);
+  const answer = "# Sales review\n\n## Results\nSales grew.\n```visual\n" + JSON.stringify(chart) + "\n```\nThe second quarter was stronger.\n```visual\n{broken\n```\n## Outlook\nSteady.";
+  const spec = markdownDocument(answer);
+  assert.equal(spec.title, "Sales review");
+  assert.deepEqual(spec.sections.map((s) => [s.heading, !!s.figure]), [["Results", true], [undefined, false], ["Outlook", false]]);
+  assert.equal(spec.sections[0].caption, "Quarterly sales in units");
+  assert.match(spec.sections[1].text!, /second quarter/);
+  assert.ok(!JSON.stringify(spec).includes("broken"), "an unreadable visual is left out");
+  const html = documentHtml(spec, await renderFigures(spec, { checkVoice: false }));
+  assert.match(html, /<figure id="fig-1"><img[^>]+data:image\/svg\+xml;base64,/);
+  assert.match(html, /Figure&#160;1:<\/span> Quarterly sales in units/);
+  // An answer whose visual cannot be drawn still exports, without that figure; a document the AI writes is refused instead.
+  const bad = markdownDocument("Text\n```visual\n" + JSON.stringify({ kind: "chart", title: "x" }) + "\n```");
+  assert.equal((await renderFigures(bad, { checkVoice: false })).filter(Boolean).length, 0);
+  await assert.rejects(renderFigures({ title: "T", sections: [{ text: "This report shows a chart.", figure: { module: "mowr", fn: "visual", args: [{ kind: "chart", title: "x" }] } }] }), /needs labels and series/);
+});

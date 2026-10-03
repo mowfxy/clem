@@ -25,7 +25,7 @@ export function toolStatus(request: any) {
   if (request?.action === "read" && typeof request.file === "string") return `Reading ${request.file.split(/[\\/]/).pop()!.slice(0, 60)}${Number(request.page) > 0 ? `, page ${Math.floor(Number(request.page))}` : ""}…`;
   if (request?.action === "search") return "Searching your files…";
   if (request?.action === "files") return "Looking through your files…";
-  if (request?.action === "call" && typeof request.module === "string" && /^diagram\/|^mowr$/.test(request.module) && /^render|plot|flowchart|chart|timeline|cycle|mindmap|diagram|table|venn/i.test(String(request.fn))) return "Drawing the figure…";
+  if (request?.action === "call" && typeof request.module === "string" && /^diagram\/|^mowr$/.test(request.module) && /^render|plot|flowchart|chart|timeline|cycle|mindmap|diagram|table|venn|illustration|visual/i.test(String(request.fn))) return "Drawing the figure…";
   if (request?.action === "call") return "Calculating…";
   return "Checking Mowr's tools…";
 }

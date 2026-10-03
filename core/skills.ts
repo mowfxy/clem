@@ -8,7 +8,7 @@ import { documentStandard, documentIntent } from './document-standard.ts';
  * them literally, so vague steps give vague work. The two that fit a request are added to it (see relevantSkills).
  */
 const DOC = 'Follow the document standard: write the document itself in a formal, impersonal voice, never a message to the requester.';
-const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (flowchart, chart, timeline, cycle, mind map, tree, Venn or a science recipe) wherever a picture explains faster than text.';
+const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (flowchart, chart, timeline, cycle, mind map, tree, Venn or a science recipe) wherever a picture explains faster than text. A ```visual already drawn in this chat goes into the PDF unchanged as the figure {"module":"mowr","fn":"visual","args":[the JSON of that visual]}.';
 export const builtinSkills: Skill[] = [
  // Learning
  {id:'tutor',name:'A thoughtful tutor',description:'Build understanding step by step, at your pace.',category:'Learning',icon:'subjects',steps:[
@@ -56,7 +56,7 @@ export const builtinSkills: Skill[] = [
   'Add readouts for the derived values a learner would ask about (period, range, maximum, equilibrium point).',
   'Write a one-line caption stating the assumptions (no air resistance, small-angle approximation, ideal gas…).',
   'Follow with at most three short prompts: which slider to move and exactly what to notice, so the visual teaches rather than decorates.',
-  'For a document instead of the chat, draw the same idea as a Kinetra figure in the PDF.',
+  'For a document instead of the chat, draw the same idea as a Kinetra figure in the PDF; a ```visual already drawn in this chat goes in unchanged as {"module":"mowr","fn":"visual","args":[the JSON of that visual]}.',
  ],builtin:true},
  {id:'diagrams',name:'Technical diagrams',description:'Textbook figures computed from the physics, not sketched.',category:'Learning',icon:'diagram',steps:[
   'Extract the givens, units and unknowns; state every assumption the figure depends on (g = 9.81 m/s², ideal pulley, thin lens, rigid body, steady state).',
@@ -173,7 +173,7 @@ export const builtinSkills: Skill[] = [
   'Define the audience, the one message to leave them with, and the talk length (roughly one slide per minute).',
   'Outline the story first: problem, why it matters, the key points, evidence, and the ask or conclusion.',
   'Write each slide as a ## heading that states the slide’s claim as a sentence (not a topic label), followed by 3–5 short bullets of no more than about 12 words; Export → PowerPoint starts a new slide at every # or ## heading, so use ### or bold text for anything inside a slide.',
-  'Put supporting numbers in a small table on the slide that uses them. Maths is not typeset on exported slides, so write formulas in plain words or simple symbols, and describe any picture in words: ```visual blocks are left out of the export.',
+  'Put supporting numbers in a small table on the slide that uses them. Maths is not typeset on exported slides, so write formulas in plain words or simple symbols, and draw pictures as ```visual blocks with a caption: Export → PowerPoint puts each one on its own slide after its section.',
   'Keep one idea per slide; split any slide that needs more than five bullets.',
   'Finish with a summary slide and, if asked, speaker notes as a short paragraph under each slide.',
   'Remind the person they can export the answer as PowerPoint from the Export button under it.',

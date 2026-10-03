@@ -60,7 +60,8 @@ const modules: Record<string, any> = {
   "math/calculus": m23,
   "math/linear": m24,
 };
-try {
+// Async so a lazily loaded function (mowr.visual) can be awaited; every other function returns at once.
+void (async () => { try {
   const { module: moduleName, fn, args } = workerData;
   if (
     !Object.hasOwn(modules, moduleName) ||
@@ -78,7 +79,7 @@ try {
         throw Error("Invalid review date");
     }
   }
-  const result = modules[moduleName][fn](...args);
+  const result = await modules[moduleName][fn](...args);
   const json = JSON.stringify(result, (_, v) =>
     typeof v === "bigint"
       ? v.toString()
@@ -92,4 +93,4 @@ try {
   parentPort!.postMessage({ result: json ? JSON.parse(json) : null });
 } catch (e) {
   parentPort!.postMessage({ error: (e as Error).message });
-}
+} })();

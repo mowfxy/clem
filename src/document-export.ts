@@ -1,4 +1,22 @@
 import { documentBlocks, slidePages } from "../core/document-blocks";
+type Picture = { data: Uint8Array; url: string; width: number; height: number; caption: string };
+/** A chat visual as a PNG for Word and PowerPoint (drawn on paper by core/visual-print), or null when it cannot be drawn. */
+async function visualPicture(spec: Record<string, unknown>): Promise<Picture | null> {
+  try {
+    const [{ printVisualSvg, visualCaption }, { standardFonts }, { paintSvg }] = await Promise.all([import("../core/visual-print"), import("../core/print-fonts"), import("./visuals/record")]);
+    const svg = standardFonts(printVisualSvg(spec));
+    const box = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+) ([\d.]+)"/.exec(svg), width = box ? +box[1] : 800, height = box ? +box[2] : 440;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * 2);
+    canvas.height = Math.round(height * 2);
+    await paintSvg(canvas, svg);
+    const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/png"));
+    if (!blob) return null;
+    return { data: new Uint8Array(await blob.arrayBuffer()), url: canvas.toDataURL("image/png"), width, height, caption: visualCaption(spec) };
+  } catch {
+    return null;
+  }
+}
 export async function docxBlob(content: string, title: string) {
   const {
     Document,
@@ -16,6 +34,7 @@ export async function docxBlob(content: string, title: string) {
     Footer,
     PageNumber,
     AlignmentType,
+    ImageRun,
   } = await import("docx");
   const rule = { style: BorderStyle.SINGLE, size: 8, color: "1B1D21" };
   const hair = { style: BorderStyle.SINGLE, size: 2, color: "D9DCE0" };
@@ -36,7 +55,19 @@ export async function docxBlob(content: string, title: string) {
   const blocks = documentBlocks(content);
   // The title is set once at the top; a leading heading that repeats it is dropped.
   if (blocks[0]?.kind === "heading" && blocks[0].text.trim().toLowerCase() === title.trim().toLowerCase()) blocks.shift();
-  const children = blocks.map((block) => {
+  // Visuals become numbered figures with their caption below, sized to the text width (about 6.2 in).
+  const pictures = await Promise.all(blocks.map((block) => (block.kind === "visual" ? visualPicture(block.spec) : null)));
+  let figureNo = 0;
+  const children = blocks.flatMap((block, i) => {
+    if (block.kind === "visual") {
+      const picture = pictures[i];
+      if (!picture) return [];
+      const width = Math.min(600, picture.width), height = Math.round((picture.height * width) / picture.width);
+      return [
+        new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { before: 160, after: 80 }, children: [new ImageRun({ type: "png", data: picture.data, transformation: { width, height }, altText: { name: "Figure " + (figureNo + 1), description: picture.caption, title: picture.caption } })] }),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 220 }, children: [new TextRun({ text: `Figure ${++figureNo}${picture.caption ? ": " : ""}`, bold: true, size: 19 }), new TextRun({ text: picture.caption, size: 19 })] }),
+      ];
+    }
     if (block.kind === "table")
       return new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
@@ -151,14 +182,19 @@ export async function slidesBlob(content: string, title: string) {
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Mowr";
   pptx.title = title;
-  const sections: { title: string; lines: string[] }[] = [];
+  const sections: { title: string; lines: string[]; pictures: Picture[] }[] = [];
   let listNumber = 0;
   for (const block of documentBlocks(content)) {
     if (block.kind === "heading" && block.level <= 2)
-      sections.push({ title: block.text, lines: [] });
-    else {
+      sections.push({ title: block.text, lines: [], pictures: [] });
+    else if (block.kind === "visual") {
+      // Each visual gets a slide of its own after its section's text.
+      const picture = await visualPicture(block.spec);
+      if (!sections.length) sections.push({ title, lines: [], pictures: [] });
+      if (picture) sections.at(-1)!.pictures.push(picture);
+    } else {
       if (block.kind !== "number") listNumber = 0;
-      if (!sections.length) sections.push({ title, lines: [] });
+      if (!sections.length) sections.push({ title, lines: [], pictures: [] });
       sections
         .at(-1)!
         .lines.push(
@@ -172,45 +208,33 @@ export async function slidesBlob(content: string, title: string) {
         );
     }
   }
-  if (!sections.length) sections.push({ title, lines: [] });
+  if (!sections.length) sections.push({ title, lines: [], pictures: [] });
   let number = 0;
-  for (const section of sections)
-    for (const [index, page] of slidePages(
-      section.lines.join("\n"),
-    ).entries()) {
+  const heading = (slide: any, text: string) => slide.addText(text, { x: 0.7, y: 0.5, w: 11.9, h: 1, fontFace: "Georgia", fontSize: 28, color: "EEECE4", fit: "shrink" });
+  const pageNumber = (slide: any) => slide.addText(String(++number), { x: 11.8, y: 7, w: 0.8, h: 0.2, fontSize: 10, color: "999999", align: "right" });
+  for (const section of sections) {
+    // A section that is only a visual goes straight to its figure slide, without an empty text slide first.
+    const text = section.lines.join("\n");
+    if (text.trim() || !section.pictures.length)
+      for (const [index, page] of slidePages(text).entries()) {
+        const slide = pptx.addSlide();
+        slide.background = { color: "171717" };
+        heading(slide, section.title + (index ? " · continued" : ""));
+        slide.addText(page, { x: 0.7, y: 1.7, w: 11.9, h: 4.85, fontFace: "Calibri", fontSize: 18, color: "D2D3CA", valign: "top", fit: "shrink", margin: 0 });
+        pageNumber(slide);
+      }
+    for (const picture of section.pictures) {
+      // The figure keeps its proportions on a white card, the way it prints, with its caption under it.
       const slide = pptx.addSlide();
       slide.background = { color: "171717" };
-      slide.addText(section.title + (index ? " · continued" : ""), {
-        x: 0.7,
-        y: 0.5,
-        w: 11.9,
-        h: 1,
-        fontFace: "Georgia",
-        fontSize: 28,
-        color: "EEECE4",
-        fit: "shrink",
-      });
-      slide.addText(page, {
-        x: 0.7,
-        y: 1.7,
-        w: 11.9,
-        h: 4.85,
-        fontFace: "Calibri",
-        fontSize: 18,
-        color: "D2D3CA",
-        valign: "top",
-        fit: "shrink",
-        margin: 0,
-      });
-      slide.addText(String(++number), {
-        x: 11.8,
-        y: 7,
-        w: 0.8,
-        h: 0.2,
-        fontSize: 10,
-        color: "999999",
-        align: "right",
-      });
+      heading(slide, picture.caption && picture.caption.length <= 70 ? picture.caption : section.title);
+      const room = { w: 11.9, h: 5.0 }, scale = Math.min(room.w / picture.width, room.h / picture.height);
+      const w = picture.width * scale, h = picture.height * scale, x = 0.7 + (room.w - w) / 2, y = 1.6 + (room.h - h) / 2;
+      slide.addShape("rect", { x: x - 0.1, y: y - 0.1, w: w + 0.2, h: h + 0.2, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" } });
+      slide.addImage({ data: picture.url, x, y, w, h, altText: picture.caption });
+      if (picture.caption && picture.caption.length > 70) slide.addText(picture.caption, { x: 0.7, y: 6.7, w: 10.9, h: 0.5, fontFace: "Calibri", fontSize: 13, color: "B9BAB2", fit: "shrink" });
+      pageNumber(slide);
     }
+  }
   return (await pptx.write({ outputType: "blob" })) as Blob;
 }
