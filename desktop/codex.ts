@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
@@ -157,6 +158,9 @@ export class Codex {
   }
   private async readModels(): Promise<any[]> {
     if (!(await this.status())) return [];
+    // Codex keeps its own copy of the model list in this account's home and goes on serving it for days, so a model
+    // released after the account was linked never shows up. Dropping it makes this listing ask OpenAI again.
+    await rm(join(this.home, "models_cache.json"), { force: true }).catch(() => {});
     const child = await this.start(["app-server"]);
     const lines = createInterface({ input: child.stdout });
     return new Promise((resolve, reject) => {

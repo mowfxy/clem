@@ -1,4 +1,4 @@
-Mowafy Serif: Copyright 2026 Mohamed Mowafy. Original Latin outlines and licensed companions from mowfxy/serif, revision 3f1dea6. Full copyright notices and SIL OFL 1.1 licenses for each face are in fonts/licenses/.
+Mowafy Serif: Copyright 2026 Mohamed Mowafy. Latin and Greek derived from Source Serif 4 (Copyright 2014-2023 Adobe, SIL OFL 1.1; "Source" reserved name not used), from mowfxy/serif revision abf57cc, with Arabic, math and symbol coverage merged from the Noto and STIX Two OFL fonts. Full copyright notices and SIL OFL 1.1 licenses for each face are in fonts/licenses/.
 
 Mowafy Sans: Copyright 2023 The Schibsted Grotesk Project Authors (https://github.com/schibsted/schibsted-grotesk). Modified 2026: instanced from Schibsted Grotesk, refitted to new proportions, weights set by stem thickness, spacing adjusted, outlines softened, renamed Mowafy.
 
