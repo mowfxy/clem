@@ -3,10 +3,11 @@ import { join, resolve } from "node:path";
 
 import { serifFaces } from "../core/serif-fonts.ts";
 
-const faces: [family: string, file: string, weight: string, range?: string][] = [
+const faces: [family: string, file: string, weight: string, range?: string, style?: string][] = [
   ["Mowafy Sans", "MowafySans-Regular", "400"],
   ["Mowafy Sans", "MowafySans-Bold", "700"],
-  ...serifFaces.map(face => ["Mowafy Serif", face.file, String(face.weight), face.range] as [string, string, string, string]),
+  // Upright only: these pages inline every file, and each serif style is over a megabyte.
+  ...serifFaces.filter(face => face.style === "normal").map(face => ["Mowafy Serif", face.file, String(face.weight), undefined, face.style] as [string, string, string, undefined, string]),
 ];
 let css: string | undefined;
 
@@ -17,10 +18,10 @@ export function brandFontFaces() {
   let dir: string;
   try { dir = resolve(__dirname, "../dist/fonts"); } catch { return (css = ""); } // no __dirname when run unbundled (tests)
   css = faces
-    .map(([family, file, weight, range]) => {
+    .map(([family, file, weight, range, style]) => {
       try {
         const data = readFileSync(join(dir, file + ".woff2")).toString("base64");
-        return `@font-face{font-family:'${family}';src:url(data:font/woff2;base64,${data}) format('woff2');font-weight:${weight};font-display:block${range ? ";unicode-range:" + range : ""}}`;
+        return `@font-face{font-family:'${family}';src:url(data:font/woff2;base64,${data}) format('woff2');font-weight:${weight};font-style:${style ?? "normal"};font-display:block${range ? ";unicode-range:" + range : ""}}`;
       } catch {
         return "";
       }
