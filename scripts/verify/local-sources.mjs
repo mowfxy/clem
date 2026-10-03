@@ -115,7 +115,7 @@ try {
     );
   });
   await page
-    .getByRole("button", { name: "Local research", exact: true })
+    .getByRole("button", { name: /^Local research\b/ })
     .click();
   await page
     .locator("input[type=file][multiple]")

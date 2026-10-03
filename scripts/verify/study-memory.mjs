@@ -27,6 +27,10 @@ try {
         if (r.action === "essentialSync")
           return { skills: r.skills, notes: r.notes };
         if (r.action === "memoryList") return { enabled: true, records: [] };
+        // Memory notes the person adds in Settings → Memory.
+        window.memory ||= [];
+        if (r.action === "memoryAll") return { enabled: true, records: [...window.memory] };
+        if (r.action === "memorySave") { window.memory.push({ id: r.key, scope: r.scope, text: r.text, kind: r.kind, confirmed: true, source: r.source, created: Date.now(), updated: Date.now() }); return { ok: true }; }
         if (r.action === "folders") return [];
         if (r.action === "securityInfo")
           return {
@@ -144,7 +148,7 @@ try {
   });
   await page.locator(".greeting-row").waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
-  await page.getByRole("button", { name: "Calculus", exact: true }).click();
+  await page.getByRole("button", { name: /^Calculus\b/ }).click();
   await page.getByRole("tab", { name: /^Quizzes/ }).click();
   await page.getByRole("button", { name: "New quiz", exact: true }).click();
   await page
@@ -153,7 +157,7 @@ try {
   await page.locator(".composer textarea").press("Enter");
   await page.getByText("Limits practice is ready:", { exact: false }).waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
-  await page.getByRole("button", { name: "Calculus", exact: true }).click();
+  await page.getByRole("button", { name: /^Calculus\b/ }).click();
   await page.getByRole("tab", { name: /^Quizzes/ }).click();
   await page
     .getByRole("button", { name: "Limits practice", exact: true })
@@ -189,9 +193,9 @@ try {
     })
     .waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
-  await page.locator(".space-card").nth(1).waitFor();
+  await page.locator(".lib-card").nth(1).waitFor();
   assert.equal(
-    await page.getByRole("button", { name: "Calculus", exact: true }).count(),
+    await page.getByRole("button", { name: /^Calculus\b/ }).count(),
     2,
   );
   await page.evaluate(() => (location.hash = "/app/settings"));
@@ -201,53 +205,39 @@ try {
     .click();
   await page.screenshot({ path: "artifacts/settings-memory.png" });
   await page.getByRole("button", { name: "Open memory", exact: true }).click();
-  await page.getByLabel("Change your memory").fill("Use short explanations.");
-  await page
-    .getByRole("button", { name: "Update memory", exact: true })
-    .click();
-  await page.getByText("Memory updated.", { exact: true }).waitFor();
+  await page.getByLabel("Add a memory").fill("Use short explanations.");
+  await page.getByRole("button", { name: "Remember", exact: true }).click();
+  await page.getByText("Use short explanations.", { exact: true }).waitFor();
   assert.ok(
-    (await page.locator(".memory-summary").innerText()).includes(
-      "short explanations",
+    (await page.evaluate(() => window.requests)).some(
+      (r) => r.action === "memorySave" && r.text === "Use short explanations." && r.kind === "preference",
     ),
   );
   await page.keyboard.press("Escape");
+  // Routines are proposed and approved in a chat; here one is saved as approving it does, then managed in Settings.
+  await page.evaluate(async () => {
+    const store = await import("/src/store.ts");
+    const current = await store.loadState();
+    current.automations = [{ id: "routine-1", name: "Daily review", prompt: "Review my goals", model: "openai", schedule: "daily", nextRun: Date.now() + 3600000, enabled: true, spaceId: null }];
+    await store.saveState(current);
+    window.dispatchEvent(new Event("mowr-auth"));
+  });
+  await page.evaluate(() => (location.hash = "/app"));
+  await page.evaluate(() => (location.hash = "/app/settings"));
   await page
     .locator(".st-nav")
     .getByRole("button", { name: "Automations", exact: true })
     .click();
   await page.screenshot({ path: "artifacts/settings-automations.png" });
-  await page
-    .getByRole("button", { name: "Manage automations", exact: true })
-    .click();
   assert.equal(
     await page.getByText("Configure URL", { exact: false }).count(),
     0,
   );
   await page
-    .getByRole("button", { name: "New automation", exact: true })
-    .click();
-  await page.getByLabel("Name", { exact: true }).fill("Daily review");
-  await page
-    .getByLabel("Instructions", { exact: true })
-    .fill("Review my goals");
-  await page.getByLabel("Model", { exact: true }).selectOption("openai");
-  await page
-    .getByLabel("First run (your local time)")
-    .fill(
-      new Date(Date.now() + 60000 - new Date().getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16),
-    );
-  await page
-    .getByRole("button", { name: "Schedule task", exact: true })
-    .click();
-  await page
     .getByRole("heading", { name: "Daily review", exact: true })
     .waitFor();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await page.getByText("Paused", { exact: true }).waitFor();
-  await page.keyboard.press("Escape");
   await page.evaluate(async () => {
     const store = await import("/src/store.ts");
     const current = await store.loadState();

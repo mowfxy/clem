@@ -131,12 +131,16 @@ try {
   await page.getByText("1 of 2 claims supported").waitFor();
   await page.screenshot({ path: "artifacts/standout-answer.png", fullPage: true });
 
-  // Built-in /visual models still answer instantly without a model call.
+  // /visual is drawn by the connected model, which receives only the visual instructions.
   const before = await page.evaluate(() => window.requests.filter((r) => r.action === "chat").length);
   await page.locator(".composer textarea").fill("/visual projectile at 30° and 20 m/s");
   await page.locator(".composer textarea").press("Enter");
-  await page.locator(".visual-engine:not(.spec-visual)").waitFor();
-  assert.equal(await page.evaluate(() => window.requests.filter((r) => r.action === "chat").length), before);
+  await page.waitForFunction((n) => window.requests.filter((r) => r.action === "chat").length > n, before);
+  const visualAsk = await page.evaluate(() => window.requests.filter((r) => r.action === "chat").at(-1));
+  assert.match(visualAsk.messages[0].content, /interactive visual/);
+  assert.ok(visualAsk.messages.some((m) => m.role === "user" && m.content.startsWith("Visualize: projectile at 30° and 20 m/s")));
+  // The chat's earlier file still comes along, so a visual can be drawn from it.
+  assert.ok(visualAsk.messages.some((m) => m.content.includes("[Source: Hydrology.txt; complete file]")));
 
   // Offline reading keeps the workspace open and holds sending.
   await page.evaluate(() => window.__render({ offline: true }));
@@ -147,7 +151,7 @@ try {
   await page.getByText("You’re offline", { exact: false }).waitFor();
   assert.equal(await page.evaluate(() => window.requests.filter((r) => r.action === "chat").length), sent);
   assert.deepEqual(errors, []);
-  console.log("PASS model-drawn visuals, steps, checked numbers, citations, file change apply/undo, second opinion, source check, capture attachment, built-in visuals and offline reading");
+  console.log("PASS model-drawn visuals, steps, checked numbers, citations, file change apply/undo, second opinion, source check, capture attachment, /visual requests and offline reading");
 } finally {
   await browser.close();
   await server.close();

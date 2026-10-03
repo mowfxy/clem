@@ -63,7 +63,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderEditApply"), scope: scopeSchema, path: z.string().min(1).max(400), find: z.string().max(200000).optional(), replace: z.string().max(200000).optional(), content: z.string().max(256000).optional(), summary: z.string().max(400).optional() }),
   z.object({ action: z.literal("folderChanges"), scope: scopeSchema.optional() }),
   z.object({ action: z.literal("folderChangeUndo"), id: z.string().uuid() }),
-  z.object({ action: z.literal("pdfRender"), spec: z.string().min(2).max(600_000) }),
+  z.object({ action: z.literal("pdfRender"), spec: z.string().min(2).max(1_500_000) }),
   z.object({ action: z.literal("shareSave"), name: z.string().min(1).max(160), data: z.instanceof(Uint8Array).refine((d) => d.length <= 105_000_000, "Share files are limited to 100 MB.") }),
   z.object({ action: z.literal("shareReveal"), path: z.string().min(3).max(600) }),
   z.object({ action: z.literal("foldersAll") }),
@@ -72,7 +72,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderWatch"), enabled: z.boolean().optional() }),
   z.object({ action: z.literal("captureScreen") }),
   z.object({ action: z.literal("openInBrowser"), name: z.string().min(1).max(200), data: z.instanceof(Uint8Array).refine((d) => d.length <= 300_000_000, "Files are limited to 300 MB.") }),
-  z.object({ action: z.literal("documentPdf"), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(300000) }),
+  z.object({ action: z.literal("documentPdf"), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(1_000_000) }),
   z.object({
     action: z.literal("chat"),
     model:z.string().regex(/^[a-zA-Z0-9._:-]{1,100}$/).optional(),
@@ -82,15 +82,18 @@ export const requestSchema = z.discriminatedUnion("action", [
     /** Documents Mowr made in this conversation; a change to one updates that same file. */
     documents: z.array(z.object({ id: z.string().uuid(), name: z.string().max(200) })).max(20).optional(),
     images: z.array(z.object({ name: z.string().max(200), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(4).optional(),
+    /** An internal request that must answer in text only (a document edit returning JSON): no Kinetra tools, so no new file. */
+    plain: z.boolean().optional(),
+    // Sized to the largest context budget (core/context-budget.ts): one message may carry whole files.
     messages: z
       .array(
         z.object({
           role: z.enum(["user", "assistant", "system"]),
-          content: z.string().max(60000),
+          content: z.string().max(1_000_000),
         }),
       )
       .min(1)
-      .max(80),
+      .max(200),
   }),
   z.object({ action: z.literal("cancel"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryList"), scope: scopeSchema }),

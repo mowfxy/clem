@@ -2,6 +2,7 @@ import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import {markdownDocument} from "./pdf-document";
 import {boundedConversation,memoryQuery,retrievalQuery} from "../core/chat-context";
+import {contextBudget} from "../core/context-budget";
 import {WorkspaceDisk} from "./workspace-disk";
 import {afterUpdate} from "./update-care";
 import {cp,access,stat as statFile,readFile as readDiskFile} from "node:fs/promises";
@@ -1120,8 +1121,9 @@ void app.whenReady().then(async () => {
       // Claude and Grok use their own sign-ins; only ChatGPT picks among the person's Codex accounts.
       const claude = !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX);
       void vault.write(lastModelKey(user.id), { model: request.model, reasoning: request.reasoning }).catch(() => {});
-      const messages = boundedConversation(request.messages);
-      if (JSON.stringify(messages).length > 200000)
+      const budget = contextBudget(request.model);
+      const messages = boundedConversation(request.messages, budget.conversation);
+      if (JSON.stringify(messages).length > budget.ceiling)
         throw Error(
           "This conversation exceeds the current context budget. Start a new conversation.",
         );
@@ -1135,7 +1137,7 @@ void app.whenReady().then(async () => {
         claude ? undefined : providerAccounts.selectForTask(user.id,{model:request.model,reasoning:request.reasoning}).then(async (selection) => { if (selection.switched) await selectProvider(user.id); }),
         // A folder that is missing, moved or unreadable is left out; the others still answer.
         Promise.all(folders.map(async (folder) => {
-          try { return retrieveFiles(await freshIndex(folder), query, Math.floor(16000 / Math.max(1, folders.length))); }
+          try { return retrieveFiles(await freshIndex(folder), query, Math.floor((budget.sources * 0.15) / Math.max(1, folders.length))); }
           catch { unavailable.push(basename(folder.path)); return []; }
         })).then((lists) => lists.flat()),
         loadMemory(),
@@ -1174,7 +1176,18 @@ void app.whenReady().then(async () => {
       const pdf = async (spec: any, cancelled: () => boolean) => {
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
         if (revise && !documents.has(revise)) throw Error(`No document with id "${revise}" in this conversation. Use an id from the documents list, or leave out "revise" to make a new document.`);
-        const { revise: _revise, change, action: _action, ...clean } = spec || {};
+        const { revise: _revise, change, action: _action, append, ...rest } = spec || {};
+        let clean = rest;
+        // A long document is written in parts: "append" adds sections to the end of the same file.
+        if (append) {
+          if (!revise) throw Error('"append" needs "revise": the id of the document to add to.');
+          const current = await disk.readFile(user.id, "spec-" + revise);
+          if (!current) throw Error("That document's source is missing, so nothing can be added to it.");
+          const base = JSON.parse(current.toString("utf8"));
+          if (!Array.isArray(rest.sections) || !rest.sections.length) throw Error('"append" needs the new "sections" to add.');
+          clean = { ...base, ...Object.fromEntries(Object.entries(rest).filter(([k]) => k !== "sections")), sections: [...base.sections, ...rest.sections], references: [...new Set([...(base.references || []), ...(rest.references || [])])] };
+          if (!clean.references.length) delete clean.references;
+        }
         const data = await illustratedPdf(clean);
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
         const specBytes = new TextEncoder().encode(JSON.stringify(clean));
@@ -1190,7 +1203,7 @@ void app.whenReady().then(async () => {
           await disk.writeFile(user.id, "spec-" + revise, specBytes);
           const file = { id: revise, name: documents.get(revise)!, size: data.byteLength, type: "application/pdf", created: Date.now(), updated: Date.now(), spaceId: null, made: true };
           emit({ id: request.id, type: "artifact", file, scope: request.scope, revised: { version } });
-          return { created: true, revised: true, file: { name: file.name, size: file.size }, note: "The same file was updated; the earlier version is kept for undo." };
+          return { created: true, revised: true, file: { id: revise, name: file.name, size: file.size }, sections: clean.sections.length, note: "The same file was updated; the earlier version is kept for undo." };
         }
         const id = randomUUID();
         const file = { id, name: String(clean.title).replace(/[<>:"/\\|?*\x00-\x1f]/g, "").slice(0, 100) + ".pdf", size: data.byteLength, type: "application/pdf", created: Date.now(), spaceId: /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined, made: true };
@@ -1198,7 +1211,7 @@ void app.whenReady().then(async () => {
         await disk.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
         emit({ id: request.id, type: "artifact", file, scope: request.scope });
-        return { created: true, file: { id, name: file.name, size: file.size } };
+        return { created: true, file: { id, name: file.name, size: file.size }, sections: clean.sections.length, note: 'To continue this document, send {"action":"pdf","revise":"' + id + '","append":true,"sections":[…]}.' };
       };
       /** Reading a document's current source, so a change keeps everything the person did not ask to change. */
       const tools = async (tool: any) => {
@@ -1207,8 +1220,9 @@ void app.whenReady().then(async () => {
         const spec = await disk.readFile(user.id, "spec-" + tool.id);
         return spec ? { id: tool.id, name: documents.get(tool.id), specification: JSON.parse(spec.toString("utf8")) } : { error: "That document's source is missing, so it can only be edited in the file panel." };
       };
-      const instructions = kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name })));
-      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, { images: pictures, pdf, instructions, tools: (tool) => tools(tool) });
+      // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name })));
+      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf, instructions, tools: (tool) => tools(tool) });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {

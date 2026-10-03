@@ -21,7 +21,45 @@ export type DocumentSpec = {
   summary?: string;
   sections: Section[];
   references?: string[];
+  /** The typeface the person asked for: a preset (see `fonts`) or the name of a font installed on this PC. */
+  font?: string;
+  /** A different typeface for headings, tables and captions; defaults to one that suits `font`. */
+  headingFont?: string;
 };
+
+/** Standard document typefaces, so a PDF reads like a document rather than like the app. Mowr's own fonts only on request. */
+const sansStack = "Calibri,'Segoe UI',Carlito,Arial,sans-serif";
+export const fonts: Record<string, { body: string; head: string }> = {
+  classic: { body: "Cambria,Georgia,'Times New Roman',serif", head: sansStack },
+  serif: { body: "Georgia,Cambria,'Times New Roman',serif", head: "Georgia,Cambria,'Times New Roman',serif" },
+  sans: { body: sansStack, head: sansStack },
+  times: { body: "'Times New Roman',Times,serif", head: "'Times New Roman',Times,serif" },
+  georgia: { body: "Georgia,serif", head: "Georgia,serif" },
+  garamond: { body: "Garamond,'EB Garamond','Times New Roman',serif", head: "Garamond,'EB Garamond','Times New Roman',serif" },
+  cambria: { body: "Cambria,Georgia,serif", head: "Cambria,Georgia,serif" },
+  calibri: { body: sansStack, head: sansStack },
+  arial: { body: "Arial,Helvetica,sans-serif", head: "Arial,Helvetica,sans-serif" },
+  helvetica: { body: "Helvetica,Arial,sans-serif", head: "Helvetica,Arial,sans-serif" },
+  "segoe ui": { body: "'Segoe UI',Arial,sans-serif", head: "'Segoe UI Semibold','Segoe UI',Arial,sans-serif" },
+  verdana: { body: "Verdana,Arial,sans-serif", head: "Verdana,Arial,sans-serif" },
+  mowafy: { body: "'Mowafy Serif',Cambria,Georgia,serif", head: "'Mowafy Sans','Segoe UI',Arial,sans-serif" },
+};
+// Letters, digits, spaces and hyphens only: the name goes into the page's CSS.
+const fontName = /^[\p{L}\p{N} -]{2,48}$/u;
+const isSerif = (name: string) => /serif|times|georgia|garamond|cambria|book|roman|baskerville|palatino|caslon|minion|charter|lora|merriweather/i.test(name) && !/sans/i.test(name);
+/** The CSS font stacks for a specification; unknown names are used as installed fonts with a sensible fallback. */
+export function documentFonts(spec: Pick<DocumentSpec, "font" | "headingFont">) {
+  const pick = (name: unknown) => {
+    const key = typeof name === "string" ? name.trim().toLowerCase().replace(/^mowafy.*/, "mowafy").replace(/\s+new roman$/, "") : "";
+    if (!key) return undefined;
+    if (fonts[key]) return fonts[key];
+    if (!fontName.test(String(name).trim())) return undefined;
+    const stack = `'${String(name).trim()}',` + (isSerif(String(name)) ? fonts.classic.body : sansStack);
+    return { body: stack, head: stack };
+  };
+  const body = pick(spec.font) || fonts.classic;
+  return { body: body.body, head: pick(spec.headingFont)?.body || body.head };
+}
 const unsafeSvg = /<script|<foreignObject|\bon\w+\s*=|(?:href|src)\s*=\s*["'](?:https?:|file:|javascript:)/i;
 const kinds = new Set(["report", "paper", "brief", "notes", "proposal", "manual", "handout", "worksheet", "letter", "memo", "document"]);
 const kindLabel: Record<string, string> = { report: "Technical report", paper: "Paper", brief: "Briefing", notes: "Notes", proposal: "Proposal", manual: "Guide", handout: "Handout", worksheet: "Worksheet", letter: "Letter", memo: "Memorandum", document: "" };
@@ -34,11 +72,14 @@ export const cleanHeading = (heading: string) => heading.replace(/^\s*(?:(?:\d+(
 export async function renderFigures(spec: any, { checkVoice = true }: { checkVoice?: boolean } = {}) {
   if (
     !spec || typeof spec.title !== "string" || !spec.title.trim() ||
-    !Array.isArray(spec.sections) || spec.sections.length < 1 || spec.sections.length > 60 ||
+    !Array.isArray(spec.sections) || spec.sections.length < 1 || spec.sections.length > 300 ||
     // An export of the person's own answer (no voice check) may be any answer the app accepts (300k characters of Markdown, larger once encoded).
-    JSON.stringify(spec).length > (checkVoice ? 300000 : 2_000_000)
+    JSON.stringify(spec).length > (checkVoice ? 1_000_000 : 2_000_000)
   )
-    throw Error('Invalid PDF specification: expected {"title":string,"sections":[1-60 sections]}.');
+    throw Error('Invalid PDF specification: expected {"title":string,"sections":[1-300 sections]}.');
+  for (const field of ["font", "headingFont"] as const)
+    if (spec[field] !== undefined && (typeof spec[field] !== "string" || !fontName.test(spec[field].trim())))
+      throw Error(`${field} must be a font name such as "Times New Roman", "Arial" or "Georgia".`);
   if (spec.kind !== undefined && !kinds.has(spec.kind)) throw Error(`Unknown document kind "${spec.kind}". Use one of: ${[...kinds].join(", ")}.`);
   if (spec.references !== undefined && (!Array.isArray(spec.references) || spec.references.some((r: unknown) => typeof r !== "string") || spec.references.length > 200))
     throw Error("references must be a list of citation strings.");
@@ -92,26 +133,26 @@ export const documentCss = `
 @page{size:A4;margin:24mm 21mm 22mm 21mm}
 *{box-sizing:border-box}
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-body{margin:0;font:10.4pt/1.55 'Mowafy Serif',Cambria,'Charter','Georgia','Times New Roman',serif;color:#1b1d21;font-variant-numeric:lining-nums proportional-nums;hyphens:auto;text-rendering:optimizeLegibility;font-kerning:normal}
+body{margin:0;font:10.4pt/1.55 var(--body);color:#1b1d21;font-variant-numeric:lining-nums proportional-nums;hyphens:auto;text-rendering:optimizeLegibility;font-kerning:normal}
 .doc-head{padding-bottom:14pt;margin-bottom:18pt;border-bottom:.9pt solid #1b1d21}
-.doc-kind{margin:0 0 9pt;font:700 7.6pt/1 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#1f4e79}
-h1{margin:0;font:700 22.5pt/1.16 'Mowafy Sans','Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:-.25pt;color:#101114;hyphens:none}
-.doc-subtitle{margin:7pt 0 0;font:400 12pt/1.35 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#4a4f57;hyphens:none}
-.doc-meta{display:flex;gap:18pt;margin-top:12pt;font:8.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#5c6169}
+.doc-kind{margin:0 0 9pt;font:700 7.6pt/1 var(--head);letter-spacing:.16em;text-transform:uppercase;color:#1f4e79}
+h1{margin:0;font:700 22.5pt/1.16 var(--head);letter-spacing:-.25pt;color:#101114;hyphens:none}
+.doc-subtitle{margin:7pt 0 0;font:400 12pt/1.35 var(--head);color:#4a4f57;hyphens:none}
+.doc-meta{display:flex;gap:18pt;margin-top:12pt;font:8.6pt var(--head);color:#5c6169}
 .doc-meta span+span::before{content:"";display:inline-block;width:3pt;height:3pt;border-radius:50%;background:#9aa0a8;margin:0 18pt 1.5pt -11pt;vertical-align:middle}
 .doc-summary{margin:0 0 18pt;padding:10pt 13pt 4pt;border-left:2.2pt solid #1f4e79;background:#f3f6f9;break-inside:avoid}
-.doc-summary h2{margin:0 0 5pt;font:700 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#1f4e79}
+.doc-summary h2{margin:0 0 5pt;font:700 8pt var(--head);letter-spacing:.12em;text-transform:uppercase;color:#1f4e79}
 .doc-summary h2::before{content:none}
 .doc-summary p{text-align:left}
-.doc-toc{margin:0 0 20pt;break-inside:avoid;font:9.4pt/1.7 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif}
-.doc-toc h2{margin:0 0 4pt;font:700 8pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
+.doc-toc{margin:0 0 20pt;break-inside:avoid;font:9.4pt/1.7 var(--head)}
+.doc-toc h2{margin:0 0 4pt;font:700 8pt var(--head);letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
 .doc-toc h2::before{content:none}
 .doc-toc ol{margin:0;padding:0;list-style:none;counter-reset:toc}
 .doc-toc li{counter-increment:toc;display:flex;gap:10pt;border-bottom:.4pt dotted #c4c8cd}
 .doc-toc li::before{content:counter(toc);min-width:16pt;color:#1f4e79;font-weight:700}
 main{counter-reset:h2 figure table}
 section{counter-reset:h3}
-h2,h3,h4{font-family:'Mowafy Sans','Segoe UI Semibold','Segoe UI',Calibri,Arial,sans-serif;color:#101114;break-after:avoid;hyphens:none;text-align:left}
+h2,h3,h4{font-family:var(--head);color:#101114;break-after:avoid;hyphens:none;text-align:left}
 h2{margin:20pt 0 7pt;font-size:13.6pt;font-weight:700;line-height:1.25;counter-increment:h2}
 h2::before{content:counter(h2);display:inline-block;min-width:22pt;color:#1f4e79}
 h3{margin:14pt 0 5pt;font-size:11.2pt;font-weight:700;line-height:1.3;counter-increment:h3}
@@ -123,7 +164,7 @@ ul,ol{margin:0 0 8pt;padding-left:17pt}
 li{margin:2.5pt 0;text-align:left}
 li>p{margin:0}
 strong{font-weight:700;color:#101114}
-table{counter-increment:table;border-collapse:collapse;width:100%;margin:10pt 0 13pt;font:9pt/1.4 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;font-variant-numeric:lining-nums tabular-nums;border-top:1pt solid #1b1d21;border-bottom:1pt solid #1b1d21;break-inside:avoid}
+table{counter-increment:table;border-collapse:collapse;width:100%;margin:10pt 0 13pt;font:9pt/1.4 var(--head);font-variant-numeric:lining-nums tabular-nums;border-top:1pt solid #1b1d21;border-bottom:1pt solid #1b1d21;break-inside:avoid}
 th{padding:5pt 8pt;text-align:left;font-weight:700;border-bottom:.6pt solid #1b1d21;vertical-align:bottom}
 td{padding:4pt 8pt;text-align:left;vertical-align:top;border-bottom:.3pt solid #d9dce0}
 tr:last-child td{border-bottom:0}
@@ -140,21 +181,22 @@ math{font-size:1.06em}
 .katex-error{color:#b00020}
 figure{counter-increment:figure;margin:13pt 0 15pt;break-inside:avoid;text-align:center}
 figure img{display:block;margin:0 auto;max-width:100%;max-height:118mm;object-fit:contain}
-figcaption{margin:7pt auto 0;max-width:92%;font:8.6pt/1.45 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#30343a;text-align:left}
+figcaption{margin:7pt auto 0;max-width:92%;font:8.6pt/1.45 var(--head);color:#30343a;text-align:left}
 figcaption::before{content:"Figure " counter(figure) ". ";font-weight:700;color:#101114}
 .source{color:#80868e}
 .footnotes{margin:12pt 0 8pt;padding-top:5pt;border-top:.5pt solid #c4c8cd;font-size:8.8pt;line-height:1.45}
-.footnote-label{margin:0 0 3pt;font:700 7.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
+.footnote-label{margin:0 0 3pt;font:700 7.6pt var(--head);letter-spacing:.12em;text-transform:uppercase;color:#5c6169}
 .footnotes ol{padding-left:15pt}
 .doc-references{margin-top:22pt}
 .doc-references h2::before{content:none}
 .doc-references ol{padding-left:22pt;font-size:9.2pt;line-height:1.45}
 .doc-references li{padding-left:3pt;margin:3pt 0}
-.doc-end{margin-top:22pt;padding-top:6pt;border-top:.5pt solid #c4c8cd;font:7.6pt 'Mowafy Sans','Segoe UI',Calibri,Arial,sans-serif;color:#80868e}
+.doc-end{margin-top:22pt;padding-top:6pt;border-top:.5pt solid #c4c8cd;font:7.6pt var(--head);color:#80868e}
 `;
 
 export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]) {
   const kind = String(spec.kind || "report");
+  const type = documentFonts(spec);
   const sections = spec.sections;
   const headed = sections.filter((s) => s.heading);
   const numbered = headed.length >= 2;
@@ -184,7 +226,7 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
   if (spec.references?.length) body += '<section class="doc-references"><h2>References</h2><ol>' + spec.references.map((r) => "<li>" + markdownHtml(r, { inline: true }) + "</li>").join("") + "</ol></section>";
   return (
     '<!doctype html><html lang="en-GB"><meta charset="utf-8"><title>' + escape(spec.title) + '</title><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; font-src data:; style-src \'unsafe-inline\'"><style>' +
-    brandFontFaces() + documentCss + '</style><body class="' + (numbered ? "numbered" : "plain") + '">' + body + "</body></html>"
+    (/mowafy/i.test(type.body + type.head) ? brandFontFaces() : "") + ":root{--body:" + type.body + ";--head:" + type.head + "}" + documentCss + '</style><body class="' + (numbered ? "numbered" : "plain") + '">' + body + "</body></html>"
   );
 }
 
@@ -205,8 +247,8 @@ export function markdownDocument(markdown: string, fallbackTitle = "Document"): 
     else current.text = (current.text || "") + line + "\n";
   }
   if (current.heading || current.text?.trim()) sections.push(current);
-  // A document holds at most 60 sections: a longer answer keeps every part, with neighbouring "##" parts sharing one section.
-  const per = Math.ceil(sections.length / 60), merged: Section[] = [];
+  // A document holds at most 300 sections: a longer answer keeps every part, with neighbouring "##" parts sharing one section.
+  const per = Math.ceil(sections.length / 300), merged: Section[] = [];
   for (let i = 0; i < sections.length; i += per) {
     const group = sections.slice(i, i + per);
     merged.push({ ...group[0], text: [group[0].text, ...group.slice(1).map((s) => (s.heading ? "## " + s.heading + "\n\n" : "") + (s.text || ""))].join("\n\n") });

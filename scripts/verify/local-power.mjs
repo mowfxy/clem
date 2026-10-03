@@ -33,7 +33,9 @@ try {
   await page.evaluate((f) => window.fireFolder({ folderId: f.id, scope: f.scope, folder: "Biology 101", added: ["week4-genetics.md"], changed: ["glossary.md"], removed: [] }), FOLDER);
   await page.getByText("2 files changed in Biology 101").waitFor();
   await page.getByRole("button", { name: "Update flashcards" }).click();
-  assert.match(await page.locator(".composer textarea").inputValue(), /^\/flashcards Update this subject's flashcards/);
+  // The /flashcards command shows as a chip in front of the words.
+  await page.locator(".composer .command-chip", { hasText: "Flashcards" }).waitFor();
+  assert.match(await page.locator(".composer textarea").inputValue(), /^Update this subject's flashcards/);
   await page.locator(".composer textarea").fill("");
 
   // Search everything.
@@ -45,13 +47,13 @@ try {
 
   // The subject is a page, not a pop-up.
   await page.evaluate(() => { location.hash = "/app/subjects"; });
-  await page.locator(".space-card h2 button", { hasText: "Biology 101" }).click();
+  await page.locator(".lib-card-open", { hasText: "Biology 101" }).click();
   await page.locator(".space-page .sp-name", { hasText: "Biology 101" }).waitFor();
   assert.equal(await page.locator("dialog[open]").count(), 0, "no pop-up");
   assert.match(page.url(), /#\/app\/space\/bio$/);
   await page.locator(".sp-stat.due", { hasText: "5 new" }).waitFor();
   await page.screenshot({ path: "artifacts/subject-overview.png" });
-  for (const tab of ["Chats", "Flashcards", "Quizzes", "About"]) await page.getByRole("tab", { name: new RegExp("^" + tab) }).click();
+  for (const tab of ["Chats", "Flashcards", "Quizzes", "Files", "Overview"]) await page.getByRole("tab", { name: new RegExp("^" + tab) }).click();
   await page.getByRole("tab", { name: /^Flashcards/ }).click();
   await page.getByText("Cell organelles").waitFor();
 

@@ -1,7 +1,9 @@
+/** A document's text. `limit` is the most characters read: small for Telegram messages, large for Drive files. */
 export async function extractAttachment(
   bytes: Uint8Array,
   name: string,
   mime: string,
+  limit = 40000,
 ) {
   const blob = new Blob([new Uint8Array(bytes)], { type: mime });
   if (mime === "application/pdf") {
@@ -14,7 +16,7 @@ export async function extractAttachment(
     const pdf = await loading.promise;
     let text = "";
     try {
-      if (pdf.numPages > 100) throw Error("Choose at most 100 pages.");
+      if (pdf.numPages > Math.max(100, limit / 400)) throw Error(`Choose at most ${Math.max(100, limit / 400)} pages.`);
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i),
           content = await page.getTextContent();
@@ -26,7 +28,7 @@ export async function extractAttachment(
             .map((item) => ("str" in item ? item.str : ""))
             .join(" ");
         page.cleanup();
-        if (text.length > 40000)
+        if (text.length > limit)
           throw Error("Document exceeds the context budget.");
       }
       if (!text.replace(/\[Page \d+\]/g, "").trim())
@@ -39,10 +41,10 @@ export async function extractAttachment(
   if (/\.docx$/i.test(name) || mime.includes("wordprocessing"))
     return (await (await import("../office")).officeText(blob, name)).slice(
       0,
-      40000,
+      limit,
     );
-  if (mime === "text/plain") {
-    if (bytes.length > 40000) throw Error("Text exceeds context budget.");
+  if (mime.startsWith("text/") || /^application\/(json|xml|javascript)/.test(mime) || (await import("../documents")).textFile.test(name)) {
+    if (bytes.length > limit) throw Error("Text exceeds context budget.");
     return new TextDecoder().decode(bytes);
   }
   throw Error("Unsupported document.");

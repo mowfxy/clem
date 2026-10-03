@@ -42,12 +42,15 @@ try {
   await page.getByLabel("Display name").fill("Test Person");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Enable memory").uncheck();
-  await page.getByText("3 OF 3", { exact: false }).waitFor();
+  await page.getByText("3 OF 4", { exact: false }).waitFor();
   assert.equal(await page.getByText("$2").count(), 0, "no plan step");
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   assert.equal(await page.getByLabel("Enable memory").isChecked(), false);
-  await page.getByRole("button", { name: "Open workspace", exact: true }).waitFor();
+  // The last step connects an AI; the workspace opens only once one is connected.
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByText("4 OF 4", { exact: false }).waitFor();
+  assert.ok(await page.getByRole("button", { name: "Open workspace", exact: true }).isDisabled(), "needs a connected AI first");
   await page.emulateMedia({ reducedMotion: "reduce" });
   assert.equal(
     await page
@@ -60,7 +63,7 @@ try {
   const bounds = await page.locator(".setup-card").boundingBox();
   assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 420);
   console.log(
-    "Setup UI verified with mocked account: three free steps, no plan or checkout, saved choice, Back, narrow layout and reduced motion.",
+    "Setup UI verified with mocked account: four free steps (the last connects an AI), no plan or checkout, saved choice, Back, narrow layout and reduced motion.",
   );
 } finally {
   await browser.close();
