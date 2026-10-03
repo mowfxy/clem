@@ -5,12 +5,14 @@ import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { recordCanvas } from './record';
 import { cameraPosition, tickLabel, worldFrame, type Bounds, type Compiled3D, type Prim, type Vec } from '../../core/visual-3d';
 import type { Vars } from '../../core/expr';
 
 /** What the surrounding visual tells the 3D view each frame. `dirty` is set whenever values, time or step change. */
 export type Clock = { values: Vars; t: number; step?: number; dirty: boolean };
-export type Scene3DHandle = { capture(): Promise<Blob | null>; resetView(): void };
+export type Scene3DHandle = { capture(): Promise<Blob | null>; resetView(): void; record(seconds: number, turntable: boolean): Promise<{ blob: Blob; ext: string }> };
 
 const BG = '#161615';
 const ramp = ['#3d4f9a', '#8197e2', '#b49ddb', '#d87968', '#d9b36c'].map(c => new THREE.Color(c));
@@ -18,11 +20,13 @@ function heat(f: number, out: THREE.Color) { const x = Math.max(0, Math.min(0.99
 
 const unitSphere = new THREE.SphereGeometry(1, 36, 24), unitBox = new THREE.BoxGeometry(1, 1, 1), unitCyl = new THREE.CylinderGeometry(1, 1, 1, 36), unitCone = new THREE.ConeGeometry(1, 1, 36);
 const boxEdges = new THREE.EdgesGeometry(unitBox), Y = new THREE.Vector3(0, 1, 0);
-const shared = new Set<THREE.BufferGeometry>([unitSphere, unitBox, unitCyl, unitCone, boxEdges]);
+// A printed sign: a flat bar; "+" adds a second bar across it.
+const bar = new THREE.BoxGeometry(1, 0.26, 0.06);
+const shared = new Set<THREE.BufferGeometry>([unitSphere, unitBox, unitCyl, unitCone, boxEdges, bar]);
 
 type Slot = { sig: string; obj: THREE.Object3D; update(p: Prim): void };
 /** Primitives with the same signature can be updated in place instead of rebuilt. */
-const sigOf = (p: Prim) => p.k === 'mesh' ? `mesh${p.rows}x${p.cols}${p.wire}${p.colormap}` : p.k === 'line' ? `line${p.pts.length}${p.dash}` : p.k === 'poly' ? `poly${p.pts.length}` : p.k === 'cyl' ? (p.cone ? 'cone' : 'cyl') : p.k;
+const sigOf = (p: Prim) => p.k === 'mesh' ? `mesh${p.rows}x${p.cols}${p.wire}${p.colormap}` : p.k === 'line' ? `line${p.pts.length}${p.dash}` : p.k === 'poly' ? `poly${p.pts.length}` : p.k === 'cyl' ? (p.cone ? 'cone' : 'cyl') + (p.mat ?? '') : p.k === 'glyph' ? `glyph${p.sign}` : p.k + (('mat' in p && p.mat) || '');
 
 /** Orbitable Three.js view of a model-authored 3D scene. Drag to orbit, scroll or pinch to zoom, right-drag to pan. */
 export default function Spec3D({ scene, clock, handle, onError, label }: { scene: Compiled3D; clock: MutableRefObject<Clock>; handle: MutableRefObject<Scene3DHandle | null>; onError: (message: string) => void; label: string }) {
@@ -38,6 +42,8 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
     const labels = new CSS2DRenderer(); labels.domElement.className = 'scene-labels'; element.appendChild(labels.domElement);
 
     const three = new THREE.Scene(); three.background = new THREE.Color(BG);
+    // Reflections for metal, glass and plastic: a soft studio room, only on objects given a material.
+    const pmrem = new THREE.PMREMGenerator(renderer), env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     three.add(new THREE.HemisphereLight(0xf4f2ec, 0x2a2a27, 1.15));
     const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(9, 16, 11); three.add(key);
     const rim = new THREE.DirectionalLight(0x9fb0ff, 0.55); rim.position.set(-12, 6, -10); three.add(rim);
@@ -58,7 +64,16 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
       camera.position.set(p[0], p[2], -p[1]); controls.target.set(0, 0, 0); camera.near = d / 200; camera.far = d * 20; camera.updateProjectionMatrix(); controls.update();
     };
 
-    const material = (p: Prim, extra: THREE.MeshStandardMaterialParameters = {}) => { const o = p.opacity * p.dim; return new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.5, metalness: 0.05, transparent: o < 1, opacity: o, depthWrite: o >= 0.95, ...extra }); };
+    const looks: Record<string, THREE.MeshPhysicalMaterialParameters> = {
+      metal: { metalness: 0.92, roughness: 0.26, envMap: env, envMapIntensity: 1.1 }, copper: { metalness: 0.95, roughness: 0.3, envMap: env }, gold: { metalness: 0.95, roughness: 0.24, envMap: env },
+      glass: { metalness: 0, roughness: 0.06, transmission: 0.88, thickness: 0.6, ior: 1.45, envMap: env, envMapIntensity: 1.2 }, plastic: { metalness: 0, roughness: 0.32, clearcoat: 0.6, clearcoatRoughness: 0.2, envMap: env, envMapIntensity: 0.6 },
+      rubber: { metalness: 0, roughness: 0.92 }, wood: { metalness: 0, roughness: 0.72 }, matte: { metalness: 0, roughness: 0.85 },
+    };
+    const material = (p: Prim, extra: THREE.MeshStandardMaterialParameters = {}) => {
+      const o = p.opacity * p.dim;
+      if (p.mat && looks[p.mat]) return new THREE.MeshPhysicalMaterial({ color: p.color, transparent: o < 1, opacity: o, depthWrite: o >= 0.95, ...extra, ...looks[p.mat] });
+      return new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.5, metalness: 0.05, transparent: o < 1, opacity: o, depthWrite: o >= 0.95, ...extra });
+    };
     const fatLine = (pts: THREE.Vector3[], color: string, width: number, opacity: number, dash: boolean) => {
       const g = new LineGeometry(); g.setPositions(pts.flatMap(v => [v.x, v.y, v.z]));
       const m = new LineMaterial({ color, linewidth: width, transparent: opacity < 1, opacity, dashed: dash, dashSize: 0.25, gapSize: 0.18, worldUnits: false }); m.resolution.copy(resolution); lineMaterials.add(m);
@@ -146,6 +161,20 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
             g.add(new THREE.Mesh(geo, material(pl, { side: THREE.DoubleSide })), new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: pl.color, transparent: true, opacity: pl.dim })));
           } };
         }
+        case 'glyph': {
+          // Unlit, like ink printed on the surface, and lifted a hair off it so it never flickers.
+          const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: p.color, transparent: p.dim < 1, opacity: p.dim }), a = new THREE.Mesh(bar, mat); g.add(a);
+          if (p.sign > 0) { const b2 = new THREE.Mesh(bar, mat); b2.rotation.z = Math.PI / 2; g.add(b2); }
+          const basis = new THREE.Matrix4(), x = new THREE.Vector3(), y = new THREE.Vector3(), z = new THREE.Vector3();
+          return { sig: `glyph${p.sign}`, obj: g, update(q) {
+            const gl = q as Extract<Prim, { k: 'glyph' }>, k = frame.scale;
+            z.set(gl.n[0] * k[0], gl.n[1] * k[1], gl.n[2] * k[2]).normalize(); x.set(gl.t[0] * k[0], gl.t[1] * k[1], gl.t[2] * k[2]); x.addScaledVector(z, -x.dot(z)).normalize(); y.crossVectors(z, x);
+            basis.makeBasis(x, y, z); g.quaternion.setFromRotationMatrix(basis);
+            const size = gl.size * (k[0] + k[1] + k[2]) / 3 * 2; g.scale.setScalar(size);
+            g.position.copy(W3(gl.p)).addScaledVector(z, size * 0.06);
+            mat.color.set(gl.color); mat.opacity = gl.dim; mat.transparent = gl.dim < 1;
+          } };
+        }
         case 'text': {
           const o = tag(p.text, p.color, p.size);
           return { sig: 'text', obj: o, update(q) { const t = q as Extract<Prim, { k: 'text' }>; o.position.copy(W3(t.p)); o.element.textContent = t.text; o.element.style.opacity = String(t.dim); } };
@@ -185,13 +214,13 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
       if (bk !== boundsKey) { const first = !boundsKey; boundsKey = bk; frame = worldFrame(b, scene.equal); drawAxes(b); if (first) resetView(); }
       const prims = scene.primitives(c.values, c.t, c.step);
       if (prims.length !== slots.length || prims.some((p, i) => slots[i].sig !== sigOf(p))) {
-        clear(content); slots = prims.map(build); for (const s of slots) content.add(s.obj);
+        clear(content); slots = prims.map(p => ({ ...build(p), sig: sigOf(p) })); for (const s of slots) content.add(s.obj);
       }
       prims.forEach((p, i) => slots[i].update(p));
     };
 
     const resize = () => { const w = element.clientWidth, h = element.clientHeight || w * 0.55; renderer.setSize(w, h); labels.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); resolution.set(w, h); lineMaterials.forEach(m => m.resolution.copy(resolution)); needs = true; };
-    let raf = 0, needs = true, visible = true;
+    let raf = 0, needs = true, visible = true, film: HTMLCanvasElement | null = null;
     controls.addEventListener('change', () => { needs = true; });
     const observer = new ResizeObserver(resize); observer.observe(element); resize();
     const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; needs = true; }); io.observe(element);
@@ -199,13 +228,15 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
     if (quiet) controls.autoRotate = false;
     const tick = () => {
       raf = requestAnimationFrame(tick);
-      if (!visible || document.hidden) return;
+      if ((!visible || document.hidden) && !film) return;
       if (clock.current.dirty) { clock.current.dirty = false; try { sync(); } catch { /* a failing formula leaves the last good frame */ } needs = true; }
       if (controls.update()) needs = true;
       if (controls.autoRotate) needs = true;
+      if (film) needs = true;
       if (!needs) return;
       needs = false;
       renderer.render(three, camera); labels.render(three, camera);
+      if (film) paint(film);
     };
     clock.current.dirty = true;
     raf = requestAnimationFrame(tick);
@@ -215,9 +246,21 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
       // The PNG is the WebGL frame with every label painted on, so exports read like the live view.
       capture: () => new Promise(resolve => {
         renderer.render(three, camera);
-        const src = renderer.domElement, out = document.createElement('canvas'); out.width = src.width; out.height = src.height;
-        const ctx = out.getContext('2d')!; ctx.drawImage(src, 0, 0);
-        const scale = src.width / element.clientWidth, v = new THREE.Vector3();
+        const out = document.createElement('canvas'); out.width = renderer.domElement.width; out.height = renderer.domElement.height;
+        paint(out);
+        out.toBlob(resolve, 'image/png');
+      }),
+      // Films what is on screen with its labels; a still model turns once around while recording.
+      record: (seconds, turntable) => {
+        const out = document.createElement('canvas'); out.width = renderer.domElement.width; out.height = renderer.domElement.height; paint(out); film = out;
+        if (turntable) { controls.autoRotate = true; controls.autoRotateSpeed = 60 / seconds; }
+        return recordCanvas(out, seconds).finally(() => { film = null; controls.autoRotate = scene.autoRotate && !quiet; controls.autoRotateSpeed = 1.2; });
+      },
+    };
+    function paint(out: HTMLCanvasElement) {
+        const src = renderer.domElement;
+        const ctx = out.getContext('2d')!; ctx.drawImage(src, 0, 0, out.width, out.height);
+        const scale = out.width / (element!.clientWidth || out.width), v = new THREE.Vector3();
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         three.traverse(o => {
           if (!(o instanceof CSS2DObject) || !o.element.textContent) return;
@@ -228,12 +271,10 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
           if (o.element.className === 'scene-label') { const w = ctx.measureText(text).width + 12 * scale; ctx.fillStyle = '#161615dd'; ctx.fillRect(x - w / 2, y - size * 0.85, w, size * 1.7); }
           ctx.fillStyle = o.element.style.color || (o.element.className === 'scene-label' ? '#f0efeb' : '#8f8e89'); ctx.fillText(text, x, y);
         });
-        out.toBlob(resolve, 'image/png');
-      }),
-    };
+    }
     return () => {
       cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); controls.dispose();
-      clear(content); clear(axes); renderer.dispose(); handle.current = null; element.replaceChildren();
+      clear(content); clear(axes); env.dispose(); pmrem.dispose(); renderer.dispose(); handle.current = null; element.replaceChildren();
     };
   }, [scene]);
   return <div className="visual-3d" ref={host} role="img" aria-label={`${label}. Three-dimensional view: drag to orbit, scroll to zoom, right-drag to pan.`} />;

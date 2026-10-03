@@ -20,6 +20,8 @@ import {
 } from "../vendor/kinetra/packages/core/src/retrieval/hybrid";
 /** Concept diagrams for documents (flowcharts, charts, timelines, cycles, mind maps, trees, Venn diagrams). */
 export { flowchart, chart, timeline, cycle, mindMap, tree, venn } from "./kinetra-diagrams";
+/** Textbook illustrations (pulleys, inclines, levers, springs, vessels, charges and field lines): {items, view?} → SVG. Recipes: core/figure-recipes.ts. */
+export { renderIllustration as illustration } from "../core/illustration";
 /** JSON-friendly adapters. Expressions use Kinetra's parser, never eval or new Function. */
 export function integrateExpression(
   expression: string,

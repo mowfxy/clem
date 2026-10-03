@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { compile, numeric, safeEval, type Compiled, type Vars } from './expr.ts';
 import { camera3dSchema, compile3d, drawProjected, object3dSchema, type Compiled3D } from './visual-3d.ts';
+import { compileFigure, figureIdPattern, figureItemTypes, type CompiledFigure } from './illustration.ts';
+const figureItemSchema = z.object({ type: z.enum(figureItemTypes), id: z.string().regex(figureIdPattern, 'ids start with a letter and use letters, digits, _ or -').optional() }).passthrough();
+const figureSpan = z.tuple([z.union([z.number(), z.string().max(200)]), z.union([z.number(), z.string().max(200)])]);
+const figureViewSchema = z.object({ x: figureSpan.optional(), y: figureSpan.optional() });
 
 /** Model-authored visuals. A model describes *what* to draw in a small JSON language;
  *  Mowr validates it, compiles every expression safely and draws it with the same pen
@@ -42,7 +46,7 @@ const axis = z.object({ min: num, max: num, label: text(40).optional() });
 const node = z.object({ id: z.string().max(40), label: text(60), x: z.number().min(0).max(100).optional(), y: z.number().min(0).max(100).optional(), shape: z.enum(['box', 'pill', 'circle']).optional(), color, detail: text(160).optional() });
 const edge = z.object({ from: z.string().max(40), to: z.string().max(40), label: text(40).optional(), dashed: z.boolean().optional(), flow: z.boolean().optional() });
 export const visualSpecSchema = z.object({
-  kind: z.enum(['plot', 'diagram', 'chart', '3d']),
+  kind: z.enum(['plot', 'diagram', 'chart', '3d', 'figure']),
   title: text(80).min(1),
   subject: text(40).optional(),
   caption: text(240).optional(),
@@ -53,6 +57,7 @@ export const visualSpecSchema = z.object({
   x: axis.optional(), y: axis.optional(), z: axis.optional(), grid: z.boolean().optional(), equal: z.boolean().optional(),
   objects: z.array(object3dSchema).max(60).optional(), camera: camera3dSchema.optional(), autoRotate: z.boolean().optional(), axes: z.boolean().optional(),
   layers: z.array(layer).max(40).optional(),
+  items: z.array(figureItemSchema).max(150).optional(), view: figureViewSchema.optional(),
   nodes: z.array(node).max(24).optional(), edges: z.array(edge).max(40).optional(), direction: z.enum(['right', 'down']).optional(),
   steps: z.array(z.object({ title: text(80), text: text(400).optional(), focus: z.array(z.string().max(40)).max(24).optional() })).max(12).optional(),
   chart: z.object({ type: z.enum(['bar', 'line', 'area', 'pie']), labels: z.array(text(30)).min(1).max(24), series: z.array(z.object({ name: text(40), values: z.array(num).max(24), color })).min(1).max(5), yLabel: text(40).optional(), xLabel: text(40).optional(), unit: text(12).optional() }).optional(),
@@ -69,6 +74,8 @@ export type CompiledVisual = {
   steps: NonNullable<VisualSpec['steps']>;
   /** Present for kind "3d": the scene the Three.js view draws; `draw` is its projected still. */
   scene3d?: Compiled3D;
+  /** Present for kind "figure": a textbook illustration drawn as SVG (core/illustration.ts); `draw` is unused for it. */
+  figure?: CompiledFigure;
   draw(pen: Pen, values: Vars, t: number, step?: number): void;
   readouts(values: Vars, t: number): [string, string][];
   describe(): string;
@@ -119,8 +126,16 @@ export function compileVisual(raw: unknown): CompiledVisual {
   let draw: CompiledVisual['draw'];
   let hasFlow = false;
   let scene3d: Compiled3D | undefined;
+  let figure: CompiledFigure | undefined;
 
-  if (spec.kind === '3d') {
+  if (spec.kind === 'figure') {
+    if (!spec.items?.length) throw Error('A figure needs "items" (see the textbook figure recipes).');
+    const ids = new Set(spec.items.map(i => i.id).filter(Boolean));
+    for (const s of spec.steps || []) for (const f of s.focus || []) if (!ids.has(f)) throw Error(`A step highlights an unknown item “${f}”.`);
+    figure = compileFigure({ items: spec.items, view: spec.view }, params.map(p => p.key), Object.fromEntries(params.map(p => [p.key, p.value])));
+    if (figure.usesTime) hasFlow = true;
+    draw = () => { /* drawn as SVG by the figure */ };
+  } else if (spec.kind === '3d') {
     const scene = compile3d(spec, c, (value, fallback) => tone(value, fallback as Tone), Object.fromEntries(params.map(p => [p.key, p.value])));
     scene3d = scene;
     draw = (pen, values, t, step) => drawProjected(pen, scene, values, t, step, palette);
@@ -400,7 +415,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
   const period = spec.animate ? spec.animate.duration : Infinity;
   return {
     spec, params, period, moving: usesTime || !!spec.animate, steps: spec.steps || [],
-    draw, scene3d,
+    draw, scene3d, figure,
     readouts(values, t) { return readouts.map(r => { const v = safeEval(r.fn, { ...values, t }); return [r.label, `${fmt(v, r.digits ?? 2)}${r.unit ? ' ' + r.unit : ''}`]; }); },
     describe() { return `${spec.title}. ${spec.caption || ''}`.trim(); },
   };
