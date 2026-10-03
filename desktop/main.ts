@@ -599,9 +599,14 @@ void app.whenReady().then(async () => {
     );
     if (!inside(root, path)) return new Response("", { status: 403 });
     const response = await net.fetch(pathToFileURL(path).toString());
+    if (path.endsWith(".wasm")) response.headers.set("Content-Type", "application/wasm");
+    // The chat code runner's worker compiles Python (WebAssembly) and JavaScript snippets, so it alone may evaluate code;
+    // it can only fetch the bundled Pyodide files and seals its network before any snippet runs (src/chat/run-worker.ts).
     response.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; media-src 'self' blob: http://127.0.0.1:*; frame-src https://www.youtube-nocookie.com; object-src 'none'",
+      /^\/assets\/run-worker-[\w-]+\.js$/.test(url.pathname)
+        ? "default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src mowr://app/pyodide/"
+        : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; media-src 'self' blob: http://127.0.0.1:*; frame-src https://www.youtube-nocookie.com; object-src 'none'",
     );
     return response;
   });
