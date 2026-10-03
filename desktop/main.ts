@@ -1,6 +1,6 @@
 import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
-import { PDFDocument } from "pdf-lib";
+import { pageCount } from "./pdf-structure";
 import {markdownDocument} from "./pdf-document";
 import {boundedConversation,memoryQuery,retrievalQuery} from "../core/chat-context";
 import {contextBudget} from "../core/context-budget";
@@ -1222,7 +1222,7 @@ void app.whenReady().then(async () => {
         const data = await illustratedPdf(clean);
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
-        const pages = await PDFDocument.load(data, { updateMetadata: false }).then((d) => d.getPageCount()).catch(() => undefined);
+        const pages = await pageCount(data).catch(() => undefined);
         const words = String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0);
         const length = { pages, words, sections: clean.sections.length, check: "Compare this with the request. If it asked for a full, detailed or complete explanation, or the source has topics this does not cover yet, keep adding the missing sections with append before answering." };
         const specBytes = new TextEncoder().encode(JSON.stringify(clean));

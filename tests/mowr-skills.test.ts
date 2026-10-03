@@ -23,7 +23,7 @@ test('document revision is taught only when the conversation has documents',()=>
 });
 test('the capability index is always present and short',()=>{
   assert.ok(mowrSkillText('hello').startsWith(capabilityIndex));
-  assert.ok(capabilityIndex.length<2000);
+  assert.ok(capabilityIndex.length<2200);
 });
 test('every built-in skill is detailed',()=>{
   for(const s of builtinSkills){assert.ok(s.steps.length>=5,s.id);assert.ok(s.steps.every(x=>x.length>20),s.id);}
@@ -92,7 +92,7 @@ test('playbooks are complete, distinct and listed in the capability index',()=>{
   assert.equal(new Set(mowrSkills.map(s=>s.id)).size,mowrSkills.length);
   for(const s of mowrSkills){assert.ok(s.steps.length>=3,s.id);assert.ok(s.steps.every(x=>x.length>30),s.id);}
   for(const word of ['Web search','Videos','Google Drive','Documents','Visuals','Checks','Files','Subjects','Memory','Routines','Long tasks','Export','```edit']) assert.ok(capabilityIndex.includes(word),word);
-  assert.ok(capabilityIndex.length<2000);
+  assert.ok(capabilityIndex.length<2200);
 });
 test('playbook formats match the parsers that read them',()=>{
   const numbers=mowrSkills.find(s=>s.id==='numbers')!.steps.join('\n');

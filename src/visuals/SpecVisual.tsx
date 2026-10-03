@@ -6,6 +6,7 @@ import { mathMacros } from '../../core/math-markdown';
 import type { Clock, Scene3DHandle } from './Spec3D';
 import { Icon } from '../Icons';
 import { downloadMade } from '../store';
+import { exportFonts, standardFonts } from '../../core/print-fonts';
 import { CanvasPen, SvgPen, C, H, W } from './pen';
 import { defaultValues, type CompiledVisual } from '../../core/visual-spec';
 import { paintSvg, recordCanvas, videoFormat } from './record';
@@ -84,8 +85,8 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
 
   const svg = () => { if (figure) return figureSvg(values, local(), step); const pen = new SvgPen(); visual.draw(pen, values, local(), step); return pen.toString(spec.title); };
   const png = () => {
-    if (figure) { const out = svg(), m = /viewBox="0 0 (\d+) (\d+)"/.exec(out), c = document.createElement('canvas'); c.width = (m ? +m[1] : 760) * 2; c.height = (m ? +m[2] : 460) * 2; void paintSvg(c, out).then(() => c.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`), 'image/png')); return; }
-    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && void downloadMade(b, `${fileName(spec.title)}.png`)); return; } const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = C.bg; ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); visual.draw(new CanvasPen(ctx), values, local(), step); off.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`), 'image/png'); };
+    if (figure) { const out = svg(), m = /viewBox="0 0 (\d+) (\d+)"/.exec(out), c = document.createElement('canvas'); c.width = (m ? +m[1] : 760) * 2; c.height = (m ? +m[2] : 460) * 2; void paintSvg(c, standardFonts(out)).then(() => c.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`), 'image/png')); return; }
+    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && void downloadMade(b, `${fileName(spec.title)}.png`)); return; } const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = C.bg; ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); visual.draw(new CanvasPen(ctx, exportFonts), values, local(), step); off.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`), 'image/png'); };
   // Films the visual as it plays: animations from the start for one loop, still 3D models as a turntable.
   const canFilm = (moving || use3d) && !!videoFormat();
   const video = async () => {
@@ -139,9 +140,9 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
     {(spec.equation || spec.caption) && <footer className="visual-caption">{spec.equation && <Equation source={spec.equation} />}{spec.caption && <span>{spec.caption}</span>}</footer>}
     {!compact && <div className="visual-exports">
       <button onClick={png}><Icon name="download" size={16} /> Image</button>
-      <button onClick={() => void downloadMade(new Blob([svg()], { type: 'image/svg+xml' }), `${fileName(spec.title)}.svg`)}>SVG</button>
+      <button onClick={() => void downloadMade(new Blob([standardFonts(svg())], { type: 'image/svg+xml' }), `${fileName(spec.title)}.svg`)}>SVG</button>
       {canFilm && <button onClick={() => void video()} disabled={recording} aria-busy={recording}><Icon name="playhead" size={16} /> {recording ? 'Recording…' : 'Video'}</button>}
-      <button onClick={() => void import('../visual-pdf').then(m => m.exportDiagramPdf(svg(), `${fileName(spec.title)}.pdf`))}>PDF</button>
+      <button onClick={() => void import('../visual-pdf').then(m => m.exportDiagramPdf(standardFonts(svg()), `${fileName(spec.title)}.pdf`))}>PDF</button>
       {note && <span className="visual-note" role="status">{note}</span>}
       {params.length > 0 && <button className="visual-reset" onClick={() => setValues(defaultValues(visual))}>Reset values</button>}
     </div>}

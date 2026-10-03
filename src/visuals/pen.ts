@@ -32,7 +32,8 @@ export const fmt = (v: number, digits = 2) => (Math.abs(v) < 1e-9 ? 0 : v).toFix
 export class CanvasPen implements Pen {
   readonly w = W;
   readonly h = H;
-  constructor(private ctx: CanvasRenderingContext2D) {}
+  /** `fonts` replaces the app's faces, for an exported image (files use standard fonts, see core/print-fonts). */
+  constructor(private ctx: CanvasRenderingContext2D, private fonts?: { sans: string; serif: string }) {}
   private apply(s: Style) {
     const c = this.ctx;
     c.globalAlpha = s.alpha ?? 1;
@@ -65,7 +66,7 @@ export class CanvasPen implements Pen {
   text(x: number, y: number, value: string, s: TextStyle = {}) {
     const c = this.ctx;
     c.globalAlpha = s.alpha ?? 1;
-    c.font = `${s.weight ?? 400} ${s.size ?? 12}px ${s.serif ? SERIF : SANS}`;
+    c.font = `${s.weight ?? 400} ${s.size ?? 12}px ${s.serif ? this.fonts?.serif ?? SERIF : this.fonts?.sans ?? SANS}`;
     c.fillStyle = s.color ?? C.soft;
     c.textAlign = s.align === 'middle' ? 'center' : s.align === 'end' ? 'right' : 'left';
     c.textBaseline = 'alphabetic';
