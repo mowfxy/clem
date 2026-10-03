@@ -24,6 +24,9 @@ export function readCitation(href: string): Citation | null {
 /** Finds the stored file a citation names: exact, then case-insensitive, then by stem. */
 export function matchSource<T extends { name: string }>(files: T[], name: string): T | undefined {
   const lower = name.toLowerCase(), stem = (s: string) => s.toLowerCase().replace(/\.[a-z0-9]{1,5}$/, '');
+  // "notes.pdf (2)" is how a second file of the same name is shown to the model (core/file-tools.ts).
+  const copy = name.match(/^(.+) \((\d+)\)$/);
+  if (copy && !files.some(f => f.name === name)) return files.filter(f => f.name.toLowerCase() === copy[1].toLowerCase())[Number(copy[2]) - 1] || matchSource(files, copy[1]);
   return files.find(f => f.name === name) || files.find(f => f.name.toLowerCase() === lower) || files.find(f => stem(f.name) === stem(name)) || files.find(f => f.name.toLowerCase().endsWith('/' + lower) || f.name.toLowerCase().endsWith('\\' + lower));
 }
 

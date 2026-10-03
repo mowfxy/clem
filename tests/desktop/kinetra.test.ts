@@ -242,3 +242,18 @@ test("a document already made is replayed as its outline, a failed one in full",
   assert.ok(!inputs[1].includes(long) && inputs[1].includes("Enzymes"));
   assert.ok(inputs[2].includes(long));
 });
+test("without a thread, old file passages are dropped to stay within the model's window, newest kept", async () => {
+  const inputs: string[] = [];
+  let n = 0;
+  const result = await runKinetraTurn("m", "", async (input) => { inputs.push(input); return n++ < 3 ? `{"kinetra":{"action":"read","file":"f${n}"}}` : "Done."; },
+    async (r) => ({ file: r.file, from: 0, to: 30_000, text: r.file + ":" + "x".repeat(30_000) }), () => false, { limit: 70_000 });
+  assert.equal(result, "Done.");
+  assert.ok(inputs.every((input) => input.length <= 70_000), "every request fits");
+  assert.match(inputs[3], /f3:x/, "the newest passage is kept");
+  assert.match(inputs[3], /dropped to keep the request/);
+  assert.doesNotMatch(inputs[3], /No tool calls are left/, "dropping old text does not end the turn");
+});
+test("a model that asks for another tool after none are left still gives the answer it wrote", async () => {
+  const result = await runKinetraTurn("m", "", async (input) => (/No tool calls are left/.test(input) ? 'The document covers parts 1-40.\n{"kinetra":{"action":"pdf"}}' : '{"kinetra":{"action":"pdf"}}'), async () => ({ created: true }), () => false, { stateful: true });
+  assert.equal(result, "The document covers parts 1-40.");
+});

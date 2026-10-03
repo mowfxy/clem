@@ -84,7 +84,7 @@ export const requestSchema = z.discriminatedUnion("action", [
     documents: z.array(z.object({ id: z.string().uuid(), name: z.string().max(200) })).max(20).optional(),
     images: z.array(z.object({ name: z.string().max(200), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(4).optional(),
     /** The full text of the chat's files (attached, in its subject or project), read by the model's file tools only. */
-    library: z.array(z.object({ name: z.string().min(1).max(400), text: z.string().max(8_000_000) })).max(200).optional()
+    library: z.array(z.object({ name: z.string().min(1).max(400), text: z.string().max(8_000_000) })).max(400).optional()
       .refine((l) => !l || l.reduce((n, f) => n + f.text.length, 0) <= 40_000_000, "Too much file text for one request."),
     /** An internal request that must answer in text only (a document edit returning JSON): no Kinetra tools, so no new file. */
     plain: z.boolean().optional(),

@@ -52,7 +52,7 @@ import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
 import {installCli} from './cli-install';
 import {CodexEngine,daily} from './engines';
-import {fileTool,fileToolsGuide,type LibraryFile} from '../core/file-tools';
+import {distinctNames,fileTool,fileToolsGuide,type LibraryFile} from '../core/file-tools';
 import {
   inside,
   link,
@@ -268,6 +268,7 @@ void app.whenReady().then(async () => {
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
     // Claude and Grok answer in one piece, so Kinetra runs as a loop around them: each tool result is sent back until the answer is final.
+    // Each step resends everything, so the file passages read along the way must still fit their window (about 200k tokens).
     const answer = await runKinetraTurn(prompt, instructions, async (input, followUp) => {
       let text = "";
       const collect = (event: any) => { if (event.type === "delta") text += event.text || ""; else if (event.type === "status") emit({ ...event, id }); };
@@ -277,7 +278,7 @@ void app.whenReady().then(async () => {
     }, async (tool) => {
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled);
+    }, cancelled, { limit: Math.round(contextBudget(model).ceiling * 1.25) });
     emit({ id, type: "delta", text: answer });
     emit({ id, type: "done" });
   }
@@ -1172,6 +1173,8 @@ void app.whenReady().then(async () => {
         vault.read("setup-" + user.id, setupDefault),
       ]);
       if (!entitlement.active) throw Error(entitlementMessage(entitlement));
+      // A folder file can share a name with a chat file; each must stay readable by name.
+      library.splice(0, library.length, ...distinctNames(library));
       const memories = retrieveMemory(memoryState, request.scope, memoryQuery(request.messages));
       // Pictures go to Codex as local image files that are removed when the turn ends.
       const imagePaths: string[] = [], pictures: Picture[] = [];

@@ -13,9 +13,29 @@ export type LibraryFile = { name: string; text: string; kind?: "file" | "folder"
 export const READ_LIMIT = 40_000;
 const PASSAGE = 1400;
 
+/** Lower case with every offset unchanged: the few letters whose lower case is longer (Turkish İ) stay as they are,
+ *  so a passage found in the folded text starts at the same place in the file. */
+const fold = (text: string) => {
+  const lower = text.toLowerCase();
+  return lower.length === text.length ? lower : Array.from(text, (c) => { const l = c.toLowerCase(); return l.length === c.length ? l : c; }).join("");
+};
+
+/** Two files with one name (the same upload twice, a chat file and a folder file) could not both be read:
+ *  later ones are named "notes.pdf (2)", "notes.pdf (3)" for the file tools. */
+export function distinctNames<T extends { name: string }>(files: T[]): T[] {
+  const seen = new Map<string, number>();
+  return files.map((f) => {
+    const key = f.name.toLowerCase(), n = (seen.get(key) || 0) + 1;
+    seen.set(key, n);
+    return n === 1 ? f : { ...f, name: `${f.name} (${n})` };
+  });
+}
+
 const plainName = (s: string) => s.toLowerCase().replace(/\\/g, "/").replace(/\s+/g, " ").trim();
-/** Rough page count from the "[name, page N]" markers PDFs carry. */
-const pages = (f: LibraryFile) => { let n = 0; for (const m of f.text.matchAll(/\n\[[^\]\n]*, page (\d+)\]\n/g)) n = Math.max(n, Number(m[1])); return n; };
+/** The "[name, page N]" markers PDFs carry (src/documents.ts), each on its own line. A name may itself hold brackets. */
+const markers = (f: LibraryFile) => [...f.text.matchAll(/(?:^|\n)\[[^\n]*?, page (\d+)\]\n/g)].map((m) => ({ at: m.index! + (m[0].startsWith("\n") ? 1 : 0), page: Number(m[1]) }));
+/** Rough page count from those markers. */
+const pages = (f: LibraryFile) => markers(f).reduce((n, m) => Math.max(n, m.page), 0);
 
 /** The file a request names: exact name or path, then case-insensitive, then a unique partial or "lecture 3" match. */
 export function findFile(files: LibraryFile[], name: unknown) {
@@ -53,9 +73,10 @@ export function readFile(files: LibraryFile[], request: { file?: unknown; from?:
   let from = Math.max(0, Math.floor(Number(request.from) || 0));
   if (request.page !== undefined) {
     const page = Math.floor(Number(request.page));
-    const marker = file.text.indexOf(`, page ${page}]\n`);
-    if (!(page > 0) || marker < 0) return { error: `"${file.name}" has no page ${String(request.page)}${pages(file) ? `; it has ${pages(file)} pages` : " markers; read it by offset instead"}.` };
-    from = file.text.lastIndexOf("\n[", marker) + 1;
+    // The marker itself, not the same words quoted in the page text.
+    const marker = page > 0 ? markers(file).find((m) => m.page === page) : undefined;
+    if (!marker) return { error: `"${file.name}" has no page ${String(request.page)}${pages(file) ? `; it has ${pages(file)} pages` : " markers; read it by offset instead"}.` };
+    from = marker.at;
   }
   if (from >= file.text.length) return { file: file.name, characters: file.text.length, error: `Offset ${from} is past the end of the file.` };
   const length = Math.min(READ_LIMIT, Math.max(500, Math.floor(Number(request.length) || READ_LIMIT)));
@@ -79,7 +100,7 @@ export function searchFiles(files: LibraryFile[], request: { query?: unknown; fi
   if (!terms.length) return { error: "Give a query with at least one word." };
   let scope = files;
   if (request.file !== undefined) { const one = findFile(files, request.file); if (!one) return missing(files, request.file); scope = [one]; }
-  const lower = scope.map((f) => f.text.toLowerCase());
+  const lower = scope.map((f) => fold(f.text));
   // Rarer words decide more, as in the source excerpts; a phrase found whole counts most.
   const rarity = new Map(terms.map((t) => [t, Math.log(1 + scope.length / Math.max(1, lower.filter((l) => l.includes(t)).length)) + 0.2]));
   const phrase = terms.length > 1 ? query.toLowerCase().replace(/\s+/g, " ").trim() : "";
@@ -87,7 +108,7 @@ export function searchFiles(files: LibraryFile[], request: { query?: unknown; fi
   scope.forEach((file, i) => {
     const text = lower[i];
     if (!terms.some((t) => text.includes(t))) return;
-    const markers = [...file.text.matchAll(/\n\[[^\]\n]*, page (\d+)\]\n/g)].map((m) => ({ at: m.index!, page: Number(m[1]) }));
+    const marks = markers(file);
     for (let start = 0; start < text.length; start += PASSAGE - 200) {
       const part = text.slice(start, start + PASSAGE);
       let score = 0, top = "", weight = 0;
@@ -96,7 +117,7 @@ export function searchFiles(files: LibraryFile[], request: { query?: unknown; fi
       if (score <= 0) continue;
       // The page of the passage's strongest match: the last page marker before it.
       const at = start + part.indexOf(top);
-      const page = markers.filter((m) => m.at <= at).at(-1)?.page;
+      const page = marks.filter((m) => m.at <= at).at(-1)?.page;
       hits.push({ file: file.name, from: start, score, page, text: file.text.slice(start, start + PASSAGE) });
     }
   });

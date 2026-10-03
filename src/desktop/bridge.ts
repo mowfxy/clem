@@ -21,10 +21,10 @@ export type ChatOptions = {
   /** What Mowr is doing right now ("Searching the web…", "Typesetting the PDF…"). */
   onStatus?: (text: string) => void;
 };
-/** Within the request's limits (desktop/contracts.ts): at most 200 files and 40 MB of text, the first files first. */
+/** Within the request's limits (desktop/contracts.ts): at most 400 files (as many as a chat reads, MAX_CHAT_SOURCES) and 40 MB of text, the first files first. */
 function fitLibrary(files: { name: string; text: string }[]) {
   let room = 40_000_000;
-  return files.slice(0, 200).flatMap((f) => { const text = f.text.slice(0, Math.min(8_000_000, room)); room -= text.length; return text ? [{ name: f.name.slice(0, 400), text }] : []; });
+  return files.slice(0, 400).flatMap((f) => { const text = f.text.slice(0, Math.min(8_000_000, room)); room -= text.length; return text ? [{ name: f.name.slice(0, 400), text }] : []; });
 }
 export async function desktopChat(
   messages: { role: string; content: string }[],
