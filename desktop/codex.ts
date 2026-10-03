@@ -20,8 +20,14 @@ const IDLE_MS = 10 * 60_000;
 
 /** What the person sees while a tool runs, instead of a silent pause. */
 export function toolStatus(request: any) {
-  if (request?.action === "pdf") return request.revise ? "Updating the document…" : "Typesetting the PDF…";
+  if (request?.action === "pdf") return request.revise ? (request.append ? "Writing the next part…" : "Updating the document…") : "Typesetting the PDF…";
+  if (request?.action === "docx") return request.revise ? (request.append ? "Writing the next part…" : "Updating the Word document…") : "Writing the Word document…";
+  if (request?.action === "pptx") return request.revise ? "Updating the slides…" : "Designing the slides…";
+  if (request?.action === "xlsx") return request.revise ? "Updating the spreadsheet…" : "Building the spreadsheet…";
+  if (request?.action === "image") return "Drawing the image…";
+  if (request?.action === "file") return `Writing ${String(request.name || "the file").slice(0, 60)}…`;
   if (request?.action === "open") return "Reading the document…";
+  if (request?.action === "look") return "Looking at the pages…";
   if (request?.action === "read" && typeof request.file === "string") return `Reading ${request.file.split(/[\\/]/).pop()!.slice(0, 60)}${Number(request.page) > 0 ? `, page ${Math.floor(Number(request.page))}` : ""}…`;
   if (request?.action === "search") return "Searching your files…";
   if (request?.action === "files") return "Looking through your files…";
@@ -453,7 +459,7 @@ export class Codex {
     const session:TurnSession={};
     try{
       let shown=false;
-      await runKinetraTurn(prompt,instructions,async(input,followUp)=>{
+      await runKinetraTurn<{path:string}>(prompt,instructions,async(input,followUp,looked)=>{
         let output="",delivered=0;
         // A lead-in shown before a tool ran ("Let me calculate that.") is its own paragraph, never glued to the answer.
         const show=(end:number)=>{if(end<=delivered)return;emit({id,type:"delta",text:(shown&&!delivered?"\n\n":"")+output.slice(delivered,end)});delivered=end;shown=true;};
@@ -463,7 +469,7 @@ export class Codex {
           output+=event.text||"";
           // Hold tool envelopes (and anything that may still become one), but stream ordinary prose immediately.
           if(!mayBeTool(output))show(shownLength(output));
-        },followUp?[]:images,selection,session,turn);
+        },[...(followUp?[]:images),...looked.map(p=>p.path)],selection,session,turn);
         if(!toolRequests(output)&&!brokenToolRequest(output))show(output.length);
         return output;
       },async request=>{
