@@ -225,10 +225,19 @@ test("redacted words are cleaned from bookmarks, properties, XMP, tags, comments
   const elem = ctx.register(ctx.obj({ Type: "StructElem", S: "Figure", Alt: PDFHexString.fromText("Photo of Amira Hassan"), ActualText: PDFString.of("Amira Hassan"), Pg: page.ref }));
   doc.catalog.set(PDFName.of("StructTreeRoot"), ctx.obj({ Type: "StructTreeRoot", K: ctx.obj([ctx.obj({ S: "Document", K: elem })]) }));
   page.node.set(PDFName.of("Annots"), ctx.obj([ctx.register(ctx.obj({ Type: "Annot", Subtype: "Text", Rect: [300, 50, 318, 68], Contents: PDFHexString.fromText("Call Amira Hassan back"), T: PDFString.of("Reviewer") }))]));
+  // A link away from the box whose address holds the name, written as addresses write it, with another chained after it.
+  const next = ctx.obj({ S: "URI", URI: PDFString.of("https://clinic.example/patients/Amira%20Hassan") });
+  (page.node.lookup(PDFName.of("Annots")) as PDFArray).push(ctx.register(ctx.obj({ Type: "Annot", Subtype: "Link", Rect: [40, 140, 140, 160], A: ctx.obj({ S: "URI", URI: PDFString.of("mailto:amira.hassan@clinic.example"), Next: next }) })));
   const src = await doc.save();
   // The name's box only: what pdf.js reads there is what is cleaned elsewhere.
   const r = await editPdf({ file: "n.pdf", ops: [{ op: "redact", page: 1, bbox: [95, 195, 200, 216] }] }, helpers({ "n.pdf": src }));
-  assert.match(r.done[0], /also removed from 1 bookmark, the document title and author, the XMP metadata, 1 tagged element, 1 comment and 1 named destination$/);
+  assert.match(r.done[0], /also removed from 1 bookmark, the document title and author, the XMP metadata, 1 tagged element, 1 comment, 1 link and 1 named destination$/);
+  // The addresses stay valid: the name percent-encoded as █, the rest as it was.
+  const annots = (await PDFDocument.load(r.bytes)).getPage(0).node.lookup(PDFName.of("Annots")) as PDFArray;
+  const action = annots.asArray().map((_, i) => annots.lookup(i) as PDFDict).find((a) => a.lookup(PDFName.of("Subtype")) === PDFName.of("Link"))!.lookup(PDFName.of("A")) as PDFDict;
+  const address = (a: PDFDict) => Buffer.from((a.lookup(PDFName.of("URI")) as PDFHexString).asBytes()).toString("latin1");
+  assert.equal(address(action), "mailto:" + "%E2%96%88".repeat(12) + "@clinic.example");
+  assert.equal(address(action.lookup(PDFName.of("Next")) as PDFDict), "https://clinic.example/patients/" + "%E2%96%88".repeat(14));
   const all = await everyText(r.bytes);
   assert.doesNotMatch(all, /amira|hassan/i, "the name is in no string or stream of the file");
   assert.ok(!all.includes(hexOf("Amira")) && !all.includes(Buffer.from("﻿Amira", "utf16le").swap16().toString("hex").toUpperCase()));
