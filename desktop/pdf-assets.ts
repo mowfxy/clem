@@ -1,4 +1,4 @@
-import { PDFDocument, degrees } from "pdf-lib";
+import { PDFDocument, PDFArray, PDFDict, PDFName, PDFString, PDFHexString } from "pdf-lib";
 import { randomBytes } from "node:crypto";
 import type { Box } from "../core/pdf-regions.ts";
 
@@ -53,8 +53,10 @@ export class CropAssets {
     await this.io.write(id + "-png", png);
     if (pdf) await this.io.write(id + "-pdf", pdf);
     const asset: CropAsset = { ...meta, vector: !!pdf, id, created: Date.now() };
+    // Its own record too, so a document that uses it can be typeset again outside this chat (the file panel's edits).
+    await this.io.write(id + "-meta", new TextEncoder().encode(JSON.stringify(asset)));
     list.push(asset);
-    for (const old of list.splice(0, Math.max(0, list.length - MAX_ASSETS))) await Promise.all([this.io.remove(old.id + "-png"), this.io.remove(old.id + "-pdf")]).catch(() => {});
+    for (const old of list.splice(0, Math.max(0, list.length - MAX_ASSETS))) await Promise.all(["-png", "-pdf", "-meta"].map((k) => this.io.remove(old.id + k))).catch(() => {});
     await this.io.write(this.key, new TextEncoder().encode(JSON.stringify(list)));
     return asset;
   }
@@ -81,13 +83,12 @@ export async function vectorCrop(source: Uint8Array, page: number, box: Box): Pr
   const out = await PDFDocument.create();
   out.setProducer("Mowr");
   const from = src.getPage(page - 1);
+  // A page shown turned is cut as a picture: a placed page ignores its turn, so the vector copy would lie on its side.
+  if (from.getRotation().angle % 360) return undefined;
   const [x0, y0, x1, y1] = box;
   const embedded = await out.embedPage(from, { left: x0, bottom: y0, right: x1, top: y1 });
   const sheet = out.addPage([x1 - x0, y1 - y0]);
   sheet.drawPage(embedded, { x: 0, y: 0, width: x1 - x0, height: y1 - y0 });
-  // A page shown turned keeps the same turn, so the crop looks as it did on the page.
-  const turn = from.getRotation().angle % 360;
-  if (turn) sheet.setRotation(degrees(turn));
   return out.save();
 }
 
@@ -134,9 +135,117 @@ export function cropTools(ask: WindowTask, assets: CropAssets) {
         check: hit.length
           ? `The drawing seems to run on past the ${hit.join(" and ")} edge${hit.length > 1 ? "s" : ""}. Look at the attached picture; if anything is cut, crop again with a larger "bbox".`
           : `Trimmed to the drawing's own edges with ${tool.trim === false ? "no trimming (as asked)" : "every edge on paper"}. Look at the attached picture: every label whole, nothing from around it. If it is wrong, crop again with an adjusted "bbox" (same units).`,
-        note: `Kept in this chat as "${asset.id}"${asset.vector ? " (vector: sharp at any size)" : ""}.`,
+        note: `Kept in this chat as "${asset.id}"${asset.vector ? " (vector: sharp at any size)" : ""}. To put it in a pdf, docx or pptx, use "figure":{"asset":"${asset.id}","source"?:"…" or true}.`,
       },
       pictures: images,
     };
   };
+}
+
+/** One crop by id, from its own record: what documents use, in or outside the chat that cut it. */
+export async function readAsset(io: AssetIo, id: unknown) {
+  if (typeof id !== "string" || !ID.test(id)) return undefined;
+  const raw = await io.read(id + "-meta").catch(() => null);
+  if (!raw) return undefined;
+  let meta: CropAsset;
+  try { meta = JSON.parse(Buffer.from(raw).toString("utf8")); } catch { return undefined; }
+  const png = await io.read(id + "-png");
+  if (!png) return undefined;
+  return { meta, png, pdf: meta.vector ? (await io.read(id + "-pdf")) ?? undefined : undefined };
+}
+export type ReadAsset = (id: string) => Promise<Awaited<ReturnType<typeof readAsset>>>;
+
+/**
+ * A crop as a drawing the document makers already know how to place: an SVG of the crop's size holding its PNG,
+ * marked with the crop's id. Word and PowerPoint take the PNG out whole (desktop/rasterize.ts), and the PDF maker
+ * puts the vector crop where it lands (stampVectors). Sizes are CSS pixels: points × 96/72 for a PDF crop.
+ */
+export function assetSvg(meta: CropAsset, png: Uint8Array) {
+  const [x0, y0, x1, y1] = meta.box;
+  const scale = meta.units === "pt" ? 96 / 72 : 1;
+  const w = Math.max(1, Math.round((x1 - x0) * scale * 100) / 100), h = Math.max(1, Math.round((y1 - y0) * scale * 100) / 100);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" data-mowr-asset="${meta.id}"${meta.vector ? ' data-mowr-vector="1"' : ""}><image width="${w}" height="${h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(png).toString("base64")}"/></svg>`;
+}
+const ASSET_SVG = /^<svg [^>]*\bwidth="([\d.]+)" height="([\d.]+)"[^>]*\bdata-mowr-asset="(crop-[a-f0-9]{8})"[^>]*><image [^>]*href="data:image\/png;base64,([A-Za-z0-9+/=]+)"\/><\/svg>$/;
+/** The crop inside an assetSvg drawing: its id, its CSS size, its PNG; undefined for any other drawing. */
+export function assetOf(svg: string) {
+  const m = ASSET_SVG.exec(svg);
+  return m ? { id: m[3], width: Number(m[1]), height: Number(m[2]), png: new Uint8Array(Buffer.from(m[4], "base64")), vector: /\bdata-mowr-vector="1"/.test(svg.slice(0, 400)) } : undefined;
+}
+
+const LABEL = /^\s*(?:fig(?:ure)?|table|tab|scheme|plate|chart)\.?\s*(?:\d+|[IVXLC]+\b)(?:[.\-–:]\d+)*[a-z]?[.:]?\s*/i;
+/** The caption under a reused crop: the one given, else the source's own without its old number ("Figure 2.4"), and
+ *  "Source: …" after it when the model gives a source (true: the file and page it was cut from). */
+export function assetCaption(figure: any, own: unknown, meta: CropAsset) {
+  let text = typeof own === "string" && own.trim() ? own.trim() : typeof figure?.caption === "string" && figure.caption.trim() ? figure.caption.trim() : meta.caption ? meta.caption.replace(LABEL, "").trim() : "";
+  const source = figure?.source === true ? `${meta.file.split(/[\\/]/).pop()}${meta.page ? `, p. ${meta.page}` : ""}` : typeof figure?.source === "string" ? figure.source.trim().slice(0, 300) : "";
+  if (source && !/\bsource:/i.test(text)) text = (text ? text + (/[.!?]$/.test(text) ? " " : ". ") : "") + "Source: " + source + (/[.!?]$/.test(source) ? "" : ".");
+  return text || undefined;
+}
+
+/**
+ * Crop figures ({"asset":"crop-…"}) in a pdf, docx or pptx specification, resolved for drawing: a copy of the spec whose
+ * asset figures carry their drawing (figure.svg) and caption, the vector crops for the PDF maker, and the ids that are
+ * not crops this person has. The spec as sent (and stored) keeps only the ids.
+ */
+export async function resolveAssets(spec: any, read: ReadAsset) {
+  const vectors = new Map<string, Uint8Array>(), missing: string[] = [];
+  if (!spec || typeof spec !== "object") return { spec, vectors, missing };
+  const resolve = async (figure: any) => {
+    if (!figure || typeof figure !== "object" || typeof figure.asset !== "string") return undefined;
+    const asset = await read(figure.asset).catch(() => undefined);
+    if (!asset) { missing.push(figure.asset); return undefined; }
+    if (asset.pdf) vectors.set(asset.meta.id, asset.pdf);
+    return { figure: { ...figure, svg: assetSvg(asset.meta, asset.png) }, meta: asset.meta };
+  };
+  const copy = { ...spec };
+  if (Array.isArray(spec.sections)) copy.sections = await Promise.all(spec.sections.map(async (s: any) => {
+    const r = await resolve(s?.figure);
+    return r ? { ...s, figure: r.figure, caption: assetCaption(s.figure, s.caption, r.meta) } : s;
+  }));
+  if (Array.isArray(spec.slides)) copy.slides = await Promise.all(spec.slides.map(async (s: any) => {
+    const r = await resolve(s?.figure);
+    if (r) return { ...s, figure: r.figure, caption: assetCaption(s.figure, s.caption, r.meta) };
+    const p = await resolve(s?.image?.figure);
+    return p ? { ...s, image: { ...s.image, figure: p.figure }, ...(s.caption !== undefined || s.image.figure.source ? { caption: assetCaption(s.image.figure, s.caption, p.meta) } : {}) } : s;
+  }));
+  return { spec: copy, vectors, missing: [...new Set(missing)] };
+}
+
+/** Where a vector crop goes on the printed page: a link to this address, wrapped round a placeholder of its size. */
+export const SLOT = "https://asset.mowr.invalid/";
+
+/**
+ * Puts each vector crop where its placeholder was printed: Chromium writes every link as an annotation with its exact
+ * rectangle, so the crop's page is drawn into that rectangle and the link removed. Throws when a place is missing, so
+ * the caller prints with the PNGs instead.
+ */
+export async function stampVectors(bytes: Uint8Array, vectors: Map<string, Uint8Array>, expected: number) {
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const embedded = new Map<string, Awaited<ReturnType<PDFDocument["embedPdf"]>>[number]>();
+  let placed = 0;
+  for (const page of doc.getPages()) {
+    const annots = page.node.lookup(PDFName.of("Annots"));
+    if (!(annots instanceof PDFArray)) continue;
+    for (let i = annots.size() - 1; i >= 0; i--) {
+      const annot = annots.lookup(i);
+      if (!(annot instanceof PDFDict)) continue;
+      const action = annot.lookup(PDFName.of("A"));
+      const uri = action instanceof PDFDict ? action.lookup(PDFName.of("URI")) : undefined;
+      const target = uri instanceof PDFString || uri instanceof PDFHexString ? uri.decodeText() : "";
+      if (!target.startsWith(SLOT)) continue;
+      const id = target.slice(SLOT.length).split(/[/?#]/)[0];
+      const crop = vectors.get(id);
+      const rect = annot.lookup(PDFName.of("Rect"));
+      if (!crop || !(rect instanceof PDFArray) || rect.size() !== 4) throw Error("A crop's place could not be found.");
+      if (!embedded.has(id)) embedded.set(id, (await doc.embedPdf(crop, [0]))[0]);
+      const [ax, ay, bx, by] = rect.asArray().map((n: any) => Number(n.asNumber?.()));
+      if (![ax, ay, bx, by].every(Number.isFinite)) throw Error("A crop's place could not be read.");
+      page.drawPage(embedded.get(id)!, { x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay) });
+      annots.remove(i);
+      placed++;
+    }
+  }
+  if (placed !== expected) throw Error(`${expected - placed} crop place${expected - placed === 1 ? "" : "s"} could not be found.`);
+  return doc.save({ useObjectStreams: false });
 }

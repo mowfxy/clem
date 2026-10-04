@@ -57,7 +57,7 @@ import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn,toolRequests,brokenToolRequest,requestLead,SessionLost,UsageLimit} from './kinetra-turn';
 import {inlinePictures} from './kinetra-mcp';
-import {CropAssets,cropTools,memoryIo} from './pdf-assets';
+import {CropAssets,cropTools,memoryIo,readAsset,type AssetIo} from './pdf-assets';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
@@ -371,6 +371,7 @@ void app.whenReady().then(async () => {
   const pendingTasks = new Map<string, { resolve: (result: { data: any; images: { name: string; data: string }[]; files: Uint8Array[] }) => void; reject: (error: Error) => void }>();
   /** Crops cut in temporary chats live only here, for as long as Mowr runs: nothing of those chats is written to disk. */
   const temporaryCrops = new Map<string, Uint8Array>();
+  const diskCrops = (owner: string): AssetIo => ({ read: async (k) => { const b = await disk.readFile(owner, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => disk.writeFile(owner, k, b), remove: (k) => disk.deleteFile(owner, k) });
   telegram = new TelegramService(vault, async (owner, envelope, bytes) => {
     const user = await auth.user();
     if (user?.id !== owner) throw Error("Account changed.");
@@ -1106,7 +1107,8 @@ void app.whenReady().then(async () => {
     if (request.action === "pdfRender") {
       let spec: unknown;
       try { spec = JSON.parse(request.spec); } catch { throw Error("The revised document was not valid. Try the edit again."); }
-      return { bytes: await illustratedPdf(spec) };
+      // A document with crops in it reads them from the workspace, as when it was made.
+      return { bytes: (await makeFile("pdf", spec, { assets: (id) => readAsset(diskCrops(user.id), id) })).bytes };
     }
     if (request.action === "shareSave") {
       const folder = join(app.getPath("downloads"), "Mowr");
@@ -1367,7 +1369,7 @@ void app.whenReady().then(async () => {
             if (!clean.references.length) delete clean.references;
           }
         }
-        const made = await makeFile(action, clean, { preview: true, seen: figuresSeen });
+        const made = await makeFile(action, clean, { preview: true, seen: figuresSeen, assets: (id) => readAsset(cropIo, id) });
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
         // Pictures of the result (a deck's slides, its new figures) go back to the model with this result, so it checks what it made.
         const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.image).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
@@ -1432,7 +1434,8 @@ void app.whenReady().then(async () => {
       };
       /** Reading a file's current source, so a change keeps everything the person did not ask to change. */
       // Crops are kept with the chat (desktop/pdf-assets.ts); a temporary chat's only in memory.
-      const crops = new CropAssets(request.temporary || !request.chat ? memoryIo(temporaryCrops) : { read: async (k) => { const b = await disk.readFile(user.id, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => disk.writeFile(user.id, k, b), remove: (k) => disk.deleteFile(user.id, k) }, request.chat || request.id);
+      const cropIo = request.temporary || !request.chat ? memoryIo(temporaryCrops) : diskCrops(user.id);
+      const crops = new CropAssets(cropIo, request.chat || request.id);
       /** One task for the window, with the same minute "look" has. */
       const windowTask = (op: string, args: Record<string, unknown>) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
         const task = randomUUID();

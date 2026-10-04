@@ -107,7 +107,7 @@ export function deckProblems(spec: any): string[] {
         problems.push(`${at} chart: "labels" and every series' "values" (numbers) must have the same length.`);
     }
     if (s.layout === "table") need(!!s.table && Array.isArray(s.table.header) && Array.isArray(s.table.rows) && s.table.rows.length <= 18, '"table": {header:[…], rows:[[…]]} with at most 18 rows (split longer tables)');
-    if (s.layout === "figure") need(isFigure(s.figure), '"figure": {module, fn, args} (a Kinetra figure)');
+    if (s.layout === "figure") need(isFigure(s.figure), '"figure": {module, fn, args} (a Kinetra figure) or {asset} (a crop)');
     if (s.layout === "image") {
       const p = s.image;
       need(!!p && (isFigure(p.figure) || typeof p.svg === "string" || !!p.art || typeof p.icon === "string"), '"image": {figure} (Kinetra), {svg} (your own drawing), {art:true} (generated art) or {icon}');
@@ -124,7 +124,7 @@ export function deckProblems(spec: any): string[] {
   if (spec.theme !== undefined && (typeof spec.theme !== "object" || Array.isArray(spec.theme))) problems.push('"theme" must be an object.');
   return problems;
 }
-const isFigure = (f: any) => !!f && typeof f.module === "string" && typeof f.fn === "string" && Array.isArray(f.args);
+const isFigure = (f: any) => !!f && ((typeof f.module === "string" && typeof f.fn === "string" && Array.isArray(f.args)) || typeof f.asset === "string");
 const label = (s: Slide) => s.title || s.statement || s.quote || (s.value !== undefined ? String(s.value) : "");
 
 /** Notes on the deck's story and design, returned with the result so the model can improve the deck. */
@@ -192,6 +192,12 @@ export async function powerpointDeck(input: DeckSpec, { preview = false }: { pre
   await Promise.all(input.slides?.map(async (s, i) => {
     const figure = s?.layout === "figure" ? s.figure : s?.layout === "image" ? s.image?.figure : undefined;
     if (!figure || !isFigure(figure)) return;
+    // A crop (desktop/pdf-assets.ts resolveAssets put its drawing in "svg").
+    if (typeof (figure as any).asset === "string") {
+      if (typeof (figure as any).svg === "string") figures.set(i, (figure as any).svg);
+      else problems.push(`Slide ${i + 1} figure: there is no crop "${(figure as any).asset}". Use an id a crop result gave, or crop the figure again.`);
+      return;
+    }
     try {
       const svg = await kinetraCall(figure);
       if (typeof svg !== "string" || !svg.includes("<svg")) throw Error(`${figure.module}.${figure.fn} returned data, not a drawing`);
