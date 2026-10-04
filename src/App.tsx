@@ -528,12 +528,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
     images?:{name:string;data:string}[],
-    extra:{chat?:string;documents?:{id:string;name:string}[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>}={},
+    extra:{chat?:string;documents?:{id:string;name:string}[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>;pdfTask?:(op:string,args:any)=>Promise<any>}={},
   ) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -893,7 +893,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               m.id === messageId ? { ...m, content: isVisual ? text : hideTitleMarker(text) } : m,
             ),
           })),
-        "chat", undefined, images, { chat: id, documents: documentsIn(next), library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => pageImages(sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id))), name, pages) },
+        "chat", undefined, images, { chat: id, documents: documentsIn(next), library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => pageImages(sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id))), name, pages), pdfTask: isVisual ? undefined : (op, args) => import("./desktop/pdf-tasks").then((m) => m.pdfTask(sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id))), op, args)) },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
       updateChat(id, (c) => ({

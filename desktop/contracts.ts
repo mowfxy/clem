@@ -98,6 +98,8 @@ export const requestSchema = z.discriminatedUnion("action", [
     plain: z.boolean().optional(),
     /** A temporary chat: the model reads memory and files as usual, but nothing from it is remembered or kept. */
     temporary: z.boolean().optional(),
+    /** The conversation: crops the model cuts are kept with it (desktop/pdf-assets.ts). */
+    chat: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
     // Sized to the largest context budget (core/context-budget.ts): one message may carry whole files.
     messages: z
       .array(
@@ -169,6 +171,16 @@ export const requestSchema = z.discriminatedUnion("action", [
     images: z.array(z.object({ name: z.string().max(300), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(8).optional(),
     error: z.string().max(500).optional(),
   }),
+  /** The window's answer to a "regions" or "crop" task (desktop/main.ts windowTask, src/desktop/pdf-tasks.ts). */
+  z.object({
+    action: z.literal("pdfTaskResult"),
+    id: z.string().uuid(),
+    data: z.string().max(4_000_000).optional(),
+    images: z.array(z.object({ name: z.string().max(300), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(4).optional(),
+    /** A crop's PNG, and for vector pages the PDF it was cut from. */
+    files: z.array(z.instanceof(Uint8Array).refine((d) => d.length <= 210_000_000, "Files are limited to 200 MB.")).max(3).optional(),
+    error: z.string().max(500).optional(),
+  }),
 ]);
 export type DesktopRequest = z.infer<typeof requestSchema>;
 export type DesktopStatus = {
@@ -217,6 +229,10 @@ export type DesktopBridge = {
       /** type "look": the model asks to see `pages` of `file`; answer with the pageImages action and this id. */
       look?: string;
       pages?: number[];
+      /** type "pdfTask": run `op` with `args` (src/desktop/pdf-tasks.ts); answer with the pdfTaskResult action and this id. */
+      task?: string;
+      op?: string;
+      args?: any;
     }) => void,
   ) => () => void;
 };
