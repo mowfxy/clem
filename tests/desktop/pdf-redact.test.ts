@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { inflateSync } from "node:zlib";
-import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, PDFHexString, PDFDict, PDFArray, PDFStream, PDFRawStream, decodePDFRawStream } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees, PDFName, PDFString, PDFHexString, PDFDict, PDFArray, PDFStream, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { kit, lib, fixture, open } from "./pdf-kit.ts";
 import { editPdf, type EditHelpers, type Box } from "../../desktop/pdf-edit-tools.ts";
-import { parseContent, redactPage, collectGarbage, Unclean } from "../../desktop/pdf-redact.ts";
+import { parseContent, redactPage, collectGarbage, streamBytes, Unclean } from "../../desktop/pdf-redact.ts";
 import { vectorCrop, type CropAsset } from "../../desktop/pdf-assets.ts";
 import { greyOf } from "../../core/pdf-page.ts";
 
@@ -250,6 +250,70 @@ test("redacted words are cleaned from bookmarks, properties, XMP, tags, comments
   const empty = await editPdf({ file: "n.pdf", ops: [{ op: "redact", page: 1, bbox: [40, 40, 100, 80] }] }, helpers({ "n.pdf": src }));
   assert.doesNotMatch(empty.done[0], /also removed/);
   assert.equal((await PDFDocument.load(empty.bytes)).getTitle(), "Notes on Amira Hassan");
+});
+
+/** Every point of every path on page 1, in page space (forms aside). */
+async function pathPoints(bytes: Uint8Array) {
+  const page = (await PDFDocument.load(bytes)).getPage(0), contents = page.node.Contents()!;
+  const parts = contents instanceof PDFArray ? contents.asArray().map((_, i) => contents.lookup(i)) : [contents];
+  const src = parts.map((p) => Buffer.from(streamBytes(p)).toString("latin1")).join("\n");
+  type M = [number, number, number, number, number, number];
+  let ctm: M = [1, 0, 0, 1, 0, 0];
+  const stack: M[] = [], out: [number, number][] = [];
+  const at = (x: number, y: number): [number, number] => [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]];
+  for (const { op, args } of parseContent(src)) {
+    const v = args.map(Number);
+    if (op === "q") stack.push(ctm);
+    else if (op === "Q") ctm = stack.pop() ?? ctm;
+    else if (op === "cm") { const n = ctm; ctm = [v[0] * n[0] + v[1] * n[2], v[0] * n[1] + v[1] * n[3], v[2] * n[0] + v[3] * n[2], v[2] * n[1] + v[3] * n[3], v[4] * n[0] + v[5] * n[2] + n[4], v[4] * n[1] + v[5] * n[3] + n[5]]; }
+    else if (op === "re") out.push(at(v[0], v[1]), at(v[0] + v[2], v[1]), at(v[0], v[1] + v[3]), at(v[0] + v[2], v[1] + v[3]));
+    else if ("mlcvy".includes(op) && op.length === 1) for (let i = 0; i + 1 < v.length; i += 2) out.push(at(v[i], v[i + 1]));
+  }
+  return out;
+}
+
+test("a ruled table crossing the box is cut at its edge, as vectors: no line goes on under the fill and nothing outside moves", async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([400, 300]);
+  const f = await doc.embedFont(StandardFonts.Helvetica), ink = rgb(0, 0, 0);
+  // A header row filled and ruled (fill and stroke at once), the table's frame, its rules, and a name in one cell.
+  page.drawRectangle({ x: 50, y: 180, width: 300, height: 40, color: rgb(0.85, 0.85, 0.85), borderColor: ink, borderWidth: 1 });
+  page.drawRectangle({ x: 50, y: 60, width: 300, height: 160, borderColor: ink, borderWidth: 1.5 });
+  for (const x of [150, 250]) page.drawLine({ start: { x, y: 60 }, end: { x, y: 220 }, thickness: 1, color: ink });
+  for (const y of [100, 140]) page.drawLine({ start: { x: 50, y }, end: { x: 350, y }, thickness: 0.75, color: ink });
+  page.drawText("Amira Hassan", { x: 160, y: 155, size: 12, font: f });
+  page.drawText("Name", { x: 60, y: 195, size: 12, font: f });
+  page.drawText("Kept row", { x: 60, y: 75, size: 12, font: f });
+  const src = await doc.save();
+  const box: Box = [140, 120, 260, 200];
+  const r = await editPdf({ file: "t.pdf", ops: [{ op: "redact", page: 1, bbox: box }] }, helpers({ "t.pdf": src }));
+  assert.doesNotMatch(r.done[0], /picture/);
+  assert.equal([...Buffer.from(r.bytes).toString("latin1").matchAll(/\/Subtype\s*\/Image/g)].length, 0, "the page has no picture");
+  const text = await textOf(r.bytes);
+  assert.ok(!/Amira|Hassan/.test(text) && /Name/.test(text) && /Kept row/.test(text), text);
+  const points = await pathPoints(r.bytes);
+  // The fill drawn over the box is itself a path: it is the only one with points on its corners and none inside.
+  const stray = points.filter(([x, y]) => x > box[0] + 1e-3 && x < box[2] - 1e-3 && y > box[1] + 1e-3 && y < box[3] - 1e-3);
+  assert.deepEqual(stray, [], "no path point lies inside the box");
+  assert.ok(points.some(([x, y]) => Math.abs(x - 150) < 1e-3 && Math.abs(y - 120) < 1e-3), "the rule stops at the box's edge");
+  const { outside, black } = await compare(src, r.bytes, [box]);
+  assert.ok(outside < 20, `${outside} pixels changed outside the box`);
+  assert.ok(black > 0.97);
+});
+
+test("a drawing that cannot be cut exactly (turned, curved, dashed) still makes the page a picture", async () => {
+  const make = async (draw: (p: ReturnType<PDFDocument["addPage"]>) => void) => { const d = await PDFDocument.create(); draw(d.addPage([400, 300])); return d.save(); };
+  const box: Box = [140, 120, 260, 200];
+  const turned = await make((p) => p.drawRectangle({ x: 100, y: 100, width: 120, height: 60, rotate: degrees(30), borderColor: rgb(0, 0, 0), borderWidth: 1 }));
+  const curve = await make((p) => p.drawEllipse({ x: 140, y: 160, xScale: 60, yScale: 30, borderColor: rgb(0, 0, 0), borderWidth: 1 }));
+  const dashed = await make((p) => p.drawLine({ start: { x: 50, y: 160 }, end: { x: 350, y: 160 }, thickness: 1, dashArray: [4, 2] }));
+  for (const [name, src] of Object.entries({ turned, curve, dashed })) {
+    const r = await editPdf({ file: "d.pdf", ops: [{ op: "redact", page: 1, bbox: box }] }, helpers({ "d.pdf": src }));
+    assert.match(r.done[0], /turned into a picture/, name);
+  }
+  // Straight lines only partly under the box under a plain transform are cut, not turned into a picture.
+  const plain = await make((p) => p.drawLine({ start: { x: 50, y: 160 }, end: { x: 350, y: 160 }, thickness: 1 }));
+  assert.doesNotMatch((await editPdf({ file: "d.pdf", ops: [{ op: "redact", page: 1, bbox: box }] }, helpers({ "d.pdf": plain }))).done[0], /picture/);
 });
 
 test("the content reader keeps inline images whole and the marked-content alternative text of removed glyphs is scrubbed", async () => {
