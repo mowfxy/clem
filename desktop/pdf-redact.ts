@@ -731,8 +731,8 @@ function dropField(doc: PDFDocument, widget: PDFDict, ref: unknown) {
 
 // ---- The removed words elsewhere in the file ----
 
-/** Any of `texts`, ignoring case, with any whitespace (or none) where they have some; longest first. */
-const wordsPattern = (texts: string[]) => new RegExp([...texts].sort((a, b) => b.length - a.length).map((t) => t.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s*")).join("|"), "giu");
+/** Any of `texts`, ignoring case, with `join` (any whitespace or none) where they have some; longest first. */
+const wordsPattern = (texts: string[], join = "\\s*") => new RegExp([...texts].sort((a, b) => b.length - a.length).map((t) => t.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(join)).join("|"), "giu");
 const blot = (m: string) => "█".repeat([...m].length);
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -785,17 +785,37 @@ export function scrubText(doc: PDFDocument, texts: string[]): string[] {
     dict.set(PDFName.of(key), writeString(out, utf8));
     return true;
   };
-  /** A destination given by name (a link, an outline, a GoTo action) follows its renamed destination. */
-  const follow = (dict: PDFDict) => {
+  // In a web address the words may be joined by dots, dashes, underscores, + or %20 (amira.hassan@…), and █ must be
+  // percent-encoded to stay a valid address.
+  const web = wordsPattern(texts, "(?:\\s|%20|[._+\\-])*");
+  let links = 0;
+  /**
+   * A destination given by name (a link, an outline, a GoTo action) follows its renamed destination; a web address an
+   * action opens loses the words, and so does each action chained after it.
+   */
+  const follow = (dict: PDFDict, first: unknown = dict.lookup(PDFName.of("A"))) => {
     clean(dict, "Dest");
     const dest = dict.lookup(PDFName.of("Dest"));
     if (dest instanceof PDFName) dict.set(PDFName.of("Dest"), nameOf(nameText(dest).replace(re, blot)));
-    const action = dict.lookup(PDFName.of("A"));
-    if (action instanceof PDFDict) {
+    const actions = [first], done = new Set<unknown>();
+    let linked = false;
+    while (actions.length) {
+      const action = actions.pop();
+      if (action instanceof PDFArray) { for (let i = 0; i < action.size(); i++) actions.push(action.lookup(i)); continue; }
+      if (!(action instanceof PDFDict) || done.has(action)) continue;
+      done.add(action);
       clean(action, "D");
       const d = action.lookup(PDFName.of("D"));
       if (d instanceof PDFName) action.set(PDFName.of("D"), nameOf(nameText(d).replace(re, blot)));
+      const uri = action.lookup(PDFName.of("URI"));
+      if (uri instanceof PDFString || uri instanceof PDFHexString) {
+        // An address is bytes (7-bit ASCII), not a text string: changed as such and written back as bytes.
+        const raw = latin1(uri.asBytes()), out = raw.replace(web, (m) => "%E2%96%88".repeat([...m].length));
+        if (out !== raw) { action.set(PDFName.of("URI"), PDFHexString.of([...fromLatin1(out)].map((b) => b.toString(16).padStart(2, "0")).join(""))); linked = true; }
+      }
+      actions.push(action.lookup(PDFName.of("Next")));
     }
+    if (linked) links++;
   };
   const said: string[] = [], count = (n: number, one: string, many = one + "s") => { if (n) said.push(`${n} ${n === 1 ? one : many}`); };
   const catalog = doc.catalog;
@@ -864,10 +884,12 @@ export function scrubText(doc: PDFDocument, texts: string[]): string[] {
     }
   }
   count(comments, "comment");
+  // What opening the document does is itself an action.
+  const open = catalog.lookup(PDFName.of("OpenAction"));
+  if (open instanceof PDFDict) follow(catalog, open);
+  count(links, "link");
   // Named destinations: the names tree (string keys, kept in order) and the older dictionary (name keys).
   let names = 0;
-  const open = catalog.lookup(PDFName.of("OpenAction"));
-  if (open instanceof PDFDict) follow(open);
   const tree = (catalog.lookup(PDFName.of("Names")) as PDFDict | undefined)?.lookup?.(PDFName.of("Dests"));
   const limits = (node: unknown): [PDFString | PDFHexString, PDFString | PDFHexString] | null => {
     if (!(node instanceof PDFDict) || seen.has(node)) return null;
