@@ -18,6 +18,41 @@ import {
   addToHybridIndex,
   searchHybrid,
 } from "../vendor/kinetra/packages/core/src/retrieval/hybrid";
+import { solveNetlist, solveNetlistTransient } from "../vendor/kinetra/packages/core/src/circuit/spice";
+import type { Netlist } from "../vendor/kinetra/packages/core/src/circuit/circuit";
+import { formatValue } from "../vendor/kinetra/packages/core/src/diagram/schematic_kit";
+/**
+ * The DC solution of the netlist renderCircuit draws ({elements:[{kind,from,to,label,value,unit}]}, node "0" is
+ * ground): node voltages, each element's voltage (V(from) − V(to)), current (from → to) and absorbed power, and every
+ * named current and voltage. Solve and draw from one netlist so the numbers in the text are the circuit in the figure.
+ */
+export function solveCircuit(netlist: Netlist) {
+  const solved = solveNetlist(netlist);
+  const v = (x: number) => formatValue(x, "V"), a = (x: number) => formatValue(x, "A"), w = (x: number) => formatValue(x, "W");
+  return {
+    ...solved,
+    summary: [
+      ...Object.entries(solved.nodes).filter(([n]) => n !== solved.ground).map(([n, x]) => `node ${n}: ${v(x)}`),
+      ...solved.elements.map((e) => `${e.label} (${e.kind}, ${e.from}→${e.to}): ${v(e.voltage)}, ${a(e.current)}, ${w(e.power)} absorbed${e.conducting === undefined ? "" : e.conducting ? ", conducting" : ", off"}`),
+      ...Object.entries(solved.quantities).map(([name, x]) => `${name} = ${/^v/i.test(name) ? v(x) : a(x)}`),
+    ],
+  };
+}
+/** Transient response of the same netlist (backward Euler): at most 201 evenly spaced samples, so long runs stay small. */
+export function circuitTransient(netlist: Netlist, options: { endTime: number; dt: number; startTime?: number; events?: { t: number; element: string; closed: boolean }[] }) {
+  const { endTime, dt, startTime = 0 } = options || ({} as any);
+  if (![endTime, dt, startTime].every(Number.isFinite) || dt <= 0 || endTime <= startTime) throw Error("circuitTransient needs {endTime, dt} with dt > 0 and endTime after startTime");
+  if ((endTime - startTime) / dt > 200_000) throw Error("At most 200000 time steps: use a larger dt");
+  const r = solveNetlistTransient(netlist, { startTime, endTime, dt, events: options.events });
+  const step = Math.max(1, Math.ceil(r.times.length / 201));
+  const pick = <T,>(values: T[]) => values.filter((_, i) => i % step === 0 || i === values.length - 1);
+  return {
+    times: pick(r.times),
+    nodes: Object.fromEntries(Object.entries(r.nodes).map(([k, values]) => [k, pick(values)])),
+    currents: Object.fromEntries(Object.entries(r.currents).map(([k, values]) => [k, pick(values)])),
+    units: { time: "s", voltage: "V", current: "A" },
+  };
+}
 /** Concept diagrams for documents (flowcharts, charts, timelines, cycles, mind maps, trees, Venn diagrams). */
 export { flowchart, chart, timeline, cycle, mindMap, tree, venn } from "./kinetra-diagrams";
 /** Textbook illustrations (pulleys, inclines, levers, springs, vessels, charges and field lines): {items, view?} → SVG. Recipes: core/figure-recipes.ts. */

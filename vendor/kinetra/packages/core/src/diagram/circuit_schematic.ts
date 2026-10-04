@@ -13,6 +13,7 @@
 
 import { createArtifact, withRendering } from "../artifacts.js";
 import { sceneTransform, validateScene2D } from "./scene2d.js";
+import { netlistGround } from "../circuit/circuit.js";
 import {
   CLEAR, INK, FONT, LINE_H, SIZE, aroundSymbol, blockSize, bodyEnds, dotSvg, drawSymbol, groundSymbol, junctions, labelLines,
   leadArrow, num, place, segBox, symbolKind, textBlock, textWidth, wirePath,
@@ -244,7 +245,6 @@ export interface CircuitSpec {
   order?: string[];
 }
 
-const GROUND = /^(0|gnd|ground|ref|com|common)$/i;
 
 /** The node order along the rail with the shortest connections and fewest crossings (exhaustive up to 8 nodes). */
 function bestOrder(nodes: string[], pairs: [string, string][]): string[] {
@@ -295,10 +295,8 @@ export function layoutCircuit(spec: CircuitSpec): CircuitLayout {
   });
   const names: string[] = [];
   for (const e of els) for (const n of [e.from, e.to]) if (!names.includes(n)) names.push(n);
-  const degree = (n: string) => els.filter((e) => e.from === n || e.to === n).length;
-  let ground = spec.ground ?? names.find((n) => GROUND.test(n));
-  const earth = ground !== undefined;
-  if (ground === undefined) ground = names.reduce((a, b) => (degree(b) > degree(a) ? b : a));
+  // The solver (circuit/spice.ts solveNetlist) picks the same reference, so a solved node is the node drawn.
+  const { ground, named: earth } = netlistGround(els, spec.ground);
   if (!names.includes(ground)) throw new Error(`Circuit: ground node "${ground}" is not used by any element`);
   for (const e of els) if (e.from === ground && e.to === ground) throw new Error("Circuit: an element connects ground to ground");
   const others = names.filter((n) => n !== ground);

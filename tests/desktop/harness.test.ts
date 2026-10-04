@@ -194,6 +194,25 @@ test("every figure recipe the model is shown renders with the real worker", asyn
   assert.ok(kinetraInstructions.includes('"fn":"renderProjectile"'));
 });
 
+test("the circuit recipe solves and draws from one netlist", async () => {
+  const recipe = kinetraRecipes.find((r) => r.name === "circuit schematic")!;
+  const netlist = recipe.figure.args[0] as any;
+  assert.match(recipe.notes, /"fn":"solveCircuit","args":\[this same netlist object\]/);
+  // The figure's own netlist, unchanged, goes to the solver through the real worker.
+  const solved = await kinetraCall({ module: "mowr", fn: "solveCircuit", args: [netlist] });
+  assert.equal(solved.ground, "0");
+  assert.deepEqual(Object.keys(solved.nodes).sort(), ["0", "1", "2", "3", "4"]);
+  assert.ok(Math.abs(solved.nodes["1"] - 740 / 123) < 1e-9 && Math.abs(solved.quantities.i_o - 148 / 123) < 1e-9);
+  assert.equal(solved.elements.length, netlist.elements.length);
+  assert.ok(solved.summary.some((line: string) => /^R_2 \(resistor, 2→0\): 1\.203 V, 1\.203 A/.test(line)), solved.summary.join("\n"));
+  // Every element drawn has its numbers: the labels in the figure are the elements solved.
+  const svg = await kinetraCall(recipe.figure);
+  for (const e of netlist.elements.filter((x: any) => x.label)) assert.ok(svg.includes(e.label.split("_")[0]), e.label);
+  const response = await kinetraCall({ module: "mowr", fn: "circuitTransient", args: [{ elements: [{ kind: "voltage-source", from: "0", to: "1", value: 5 }, { kind: "resistor", from: "1", to: "2", value: 1000, id: "R" }, { kind: "capacitor", from: "2", to: "0", value: 1, unit: "µF" }] }, { endTime: 0.005, dt: 1e-6 }] });
+  assert.ok(response.times.length <= 202 && response.nodes["2"].at(-1) > 4.9);
+  await assert.rejects(kinetraCall({ module: "mowr", fn: "solveCircuit", args: [{ elements: [{ kind: "resistor", from: "1", to: "0", value: 1, unit: "V" }] }] }), /unit "V"/);
+});
+
 test("a figure with colliding text goes back once with the reason, then draws as sent", async () => {
   // A label wider than the whole figure cannot be placed anywhere clear.
   const crowded = { module: "diagram/freebody", fn: "renderFBD", args: [{ bodyPosition: { x: 0, y: 0 }, bodySize: { w: 2, h: 1.2 }, bodyLabel: "5 kg", frameAngleDeg: 0, forces: [{ point: { x: 0, y: 0 }, components: { x: 20, y: 0 }, magnitude: 20, unit: "N", label: "The applied force from the rope that is pulling the block toward the right-hand wall" }], world: { xMin: -5, xMax: 5, yMin: -4, yMax: 4 }, width: 300, height: 260 }] };

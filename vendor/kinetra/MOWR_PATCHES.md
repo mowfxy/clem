@@ -24,6 +24,7 @@ Diagram quality (all diagrams):
 - `renderSchematic` (components placed by coordinates) routes wires at right angles around the symbols instead of drawing straight pin-to-pin diagonals, and adds junction dots.
 - Circuit labels print a value once with engineering prefixes ("4 ohm" with value 4 → "4 Ω"; 2200 Ω → "2.2 kΩ") and are placed by a collision search that keeps 7 px from every wire, symbol, other label and the frame.
 - Scene diagrams (free-body, projectile, optics, pulley, fields) place each label at its usual spot when clear, otherwise at the nearest clear spot beside, above or below the point it labels.
+- One circuit model for drawing and numbers: `circuit/circuit.ts` reads the netlist `renderCircuit` draws (`normalizeNetlist`, SI units from prefixed units, dependent sources linked to the `current`/`voltage` their label names, the same ground rule via `netlistGround`), `circuit/spice.ts` `solveNetlist` returns its DC operating point (node voltages, each element's voltage, current and power; diodes by constant drop) and `solveNetlistTransient` runs `solveTransient` on it by name. `test/circuit/netlist.test.ts` checks them against hand analysis.
 - `test/diagram/circuit_layout.test.ts` rebuilds the electrical nets from the drawn wires and checks them against the netlist, plus clearances, on fixed and random circuits.
 
 The desktop bridge, JSON adapters, skill/API loader and illustrated PDF exporter live in `desktop/`. PDF figures use Chromium SVG rendering; the upstream PDF `addFigure` placeholder is not used. Original license: Apache-2.0.
