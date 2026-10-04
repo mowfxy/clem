@@ -44,11 +44,13 @@ const designs: Record<Layout, { accent: string; size: number; line: number; just
   letter: { accent: "1A1A1A", size: 22, line: 264, justify: false, headSize: [24, 22, 22], titleSize: 28, titleAlign: "left" },
 };
 
-export async function wordDocument(spec: DocumentSpec, { checkVoice = true }: { checkVoice?: boolean } = {}) {
+/** `drawn` receives the figures as placed in the document. */
+export async function wordDocument(spec: DocumentSpec, { checkVoice = true, drawn }: { checkVoice?: boolean; drawn?: (figures: (string | undefined)[]) => void } = {}) {
   // The checks are the PDF's; the message names this file type.
   const figures = await renderFigures(spec, { checkVoice }).catch((error: Error) => {
     throw Error(error.message.replace("No PDF was created. Fix these problems and send the pdf action again.", "No Word document was created. Fix these problems and send the docx action again.").replace("Invalid PDF specification", "Invalid document specification"));
   });
+  drawn?.(figures);
   const raster = await rasterizer();
   try {
     return await build(spec, figures, raster);

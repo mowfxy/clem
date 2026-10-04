@@ -5,6 +5,7 @@ import { excelWorkbook } from "./xlsx-workbook.ts";
 import { kinetraCall } from "./kinetra-runtime.ts";
 import { rasterizer } from "./rasterize.ts";
 import { unsafeSvg } from "./svg-safety.ts";
+import { documentFigures, figureCheck, figurePictures, FIGURES_PER_RESULT, type DrawnFigure } from "./figure-review.ts";
 
 /** The tool actions that make a file (desktop/file-guides.ts). Each one also revises a file it made earlier ("revise": id). */
 import { textFormats } from "./file-guides.ts";
@@ -22,8 +23,21 @@ export const MIME: Record<string, string> = {
 const BOM = String.fromCharCode(0xfeff);
 const safeName = (name: string) => name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "").replace(/[. ]+$/, "").trim().slice(0, 120);
 
-/** `previews`: pictures of the file (a deck's slides) for the model to check before it answers. */
-export type Made = { bytes: Uint8Array; name: string; type: string; info?: Record<string, unknown>; previews?: { name: string; jpeg: Uint8Array }[] };
+/** `previews`: pictures of the file (a deck's slides, the figures drawn in it) for the model to check before it answers (PNG or JPEG). */
+export type Made = { bytes: Uint8Array; name: string; type: string; info?: Record<string, unknown>; previews?: { name: string; image: Uint8Array }[] };
+
+/** Pictures of the figures the model has not seen yet in this answer, and the note asking it to check them against their source. */
+async function withFigures(made: Made, figures: DrawnFigure[], seen: Set<string>, limit: number): Promise<Made> {
+  if (!figures.length || limit <= 0) return made;
+  const raster = await rasterizer();
+  try {
+    const { pictures, more } = await figurePictures(figures, seen, raster, limit);
+    const check = figureCheck(pictures.map((p) => p.name), more);
+    return { ...made, previews: [...(made.previews || []), ...pictures], ...(check ? { info: { ...made.info, figureCheck: check } } : {}) };
+  } finally {
+    raster.close();
+  }
+}
 
 /** The file name for a request: its own name or title, with the extension of what it is. */
 export function fileName(action: string, spec: any, fallback = "Mowr file") {
@@ -36,18 +50,28 @@ export function fileName(action: string, spec: any, fallback = "Mowr file") {
 }
 
 /** Makes the file a tool request describes. Throws with every problem at once when the request cannot be made.
- *  `preview`: also return pictures of the result for the model to look at (decks: contact sheets of the slides). */
-export async function makeFile(action: string, spec: any, { preview = false }: { preview?: boolean } = {}): Promise<Made> {
+ *  `preview`: also return pictures of the result for the model to look at (decks: contact sheets of the slides; pdf,
+ *  docx and pptx: the figures drawn in it that are not in `seen`, the figures already shown in this answer). */
+export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>() }: { preview?: boolean; seen?: Set<string> } = {}): Promise<Made> {
   switch (action) {
-    case "pdf": return { bytes: await illustratedPdf(spec), name: fileName("pdf", spec), type: MIME.pdf };
-    case "docx": return { bytes: await wordDocument(spec), name: fileName("docx", spec), type: MIME.docx };
+    case "pdf":
+    case "docx": {
+      let drawn: (string | undefined)[] = [];
+      const keep = (figures: (string | undefined)[]) => { drawn = figures; };
+      const made = action === "pdf"
+        ? { bytes: await illustratedPdf(spec, { drawn: keep }), name: fileName("pdf", spec), type: MIME.pdf }
+        : { bytes: await wordDocument(spec, { drawn: keep }), name: fileName("docx", spec), type: MIME.docx };
+      return preview ? withFigures(made, documentFigures(spec, drawn), seen, FIGURES_PER_RESULT) : made;
+    }
     case "pptx": {
       const deck = await powerpointDeck(spec, { preview });
-      return {
+      const made: Made = {
         bytes: deck.bytes, name: fileName("pptx", spec), type: MIME.pptx,
         info: { slides: deck.slides, design: deck.design, ...(deck.review.length ? { review: deck.review, next: "Fix what matters in the review with a revise before answering." } : { review: "The slides were drawn, measured and checked: nothing to fix." }) },
-        previews: deck.sheets.map((s) => ({ name: `${fileName("pptx", spec)} — ${s.name}`, jpeg: s.jpeg })),
+        previews: deck.sheets.map((s) => ({ name: `${fileName("pptx", spec)} — ${s.name}`, image: s.jpeg })),
       };
+      // The contact sheets show every slide small; the figures come close up as well, within the same picture budget.
+      return preview ? withFigures(made, deck.figures, seen, Math.max(2, FIGURES_PER_RESULT + 2 - deck.sheets.length)) : made;
     }
     case "xlsx": return { bytes: excelWorkbook(spec), name: fileName("xlsx", { title: spec?.title || spec?.sheets?.[0]?.name }), type: MIME.xlsx, info: { sheets: spec.sheets.map((s: any) => ({ name: s.name, rows: s.rows.length, headerRow: s.title ? 3 : 1, firstDataRow: s.title ? 4 : 2 })) } };
     case "file": {
