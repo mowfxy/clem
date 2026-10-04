@@ -2,7 +2,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { renameSync, rmSync } from "node:fs";
-import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, shownLength, MAX_CALLS } from "../../desktop/kinetra-turn.ts";
+import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, shownLength, MAX_CALLS, MAX_BROKEN } from "../../desktop/kinetra-turn.ts";
 import { kinetraTool, kinetraCall } from "../../desktop/kinetra-runtime.ts";
 before(async () => {
   // Built beside and renamed into place: another test file builds the same worker at the same time.
@@ -350,4 +350,41 @@ test("a lost provider session falls back to resending everything, and a session 
   // Losing the session costs one full resend, then the rest of the turn is stateless, and the answer still arrives.
   assert.equal(lost.answer, "Finished.");
   assert.ok(lost.characters > withSession.characters && lost.step === 13);
+});
+test("an example request in a ```text block is shown as part of the answer, never run", async () => {
+  const example = 'Send this to look something up:\n```text\n{"kinetra":{"action":"help"}}\n```';
+  assert.equal(toolRequests(example), null);
+  assert.equal(brokenToolRequest(example), null);
+  assert.equal(toolRequests('Unclosed example:\n```text\n{"kinetra":{"action":"help"}}'), null);
+  assert.equal(brokenToolRequest('Broken example:\n```text\n{"kinetra":{"action":"pdf"\n```'), null);
+  // A real request after an example still runs.
+  assert.deepEqual(toolRequests(example + '\nNow I will check.\n```json\n{"kinetra":{"action":"call","fn":"a"}}\n```'), [{ action: "call", fn: "a" }]);
+  let ran = 0;
+  const result = await runKinetraTurn("m", "", async () => example, async () => { ran++; return 1; }, () => false);
+  assert.equal(result, example);
+  assert.equal(ran, 0);
+});
+test("a model that keeps sending broken requests stops after a few: its text is the answer, or a clear error", async () => {
+  const broken = 'Here is the summary of the circuit.\n{"kinetra":{"action":"pdf","sections":[{"heading":"Q1"';
+  let replies = 0;
+  const result = await runKinetraTurn("m", "", async () => { replies++; return broken; }, async () => 1, () => false);
+  assert.equal(result, "Here is the summary of the circuit.");
+  assert.equal(replies, MAX_BROKEN);
+  replies = 0;
+  await assert.rejects(() => runKinetraTurn("m", "", async () => { replies++; return '{"kinetra":{"action":"pdf"'; }, async () => 1, () => false), /3 tool requests in a row that could not run/);
+  assert.equal(replies, MAX_BROKEN);
+  // A request that runs resets the count.
+  const sequence = [broken, broken, '{"kinetra":{"action":"call"}}', broken, broken, "Done."];
+  let calls = 0;
+  assert.equal(await runKinetraTurn("m", "", async () => sequence.shift()!, async () => { calls++; return 1; }, () => false), "Done.");
+  assert.equal(calls, 1);
+});
+test("streaming keeps showing an example quoted earlier and holds only the request that may end the reply", () => {
+  const quoted = 'A request looks like {"kinetra":{"action":"help"}} and Mowr runs it. ';
+  assert.equal(shownLength(quoted + "More prose."), (quoted + "More prose.").length);
+  assert.equal(shownLength(quoted + 'Let me check.\n{"kinetra":{"act'), (quoted + "Let me check.\n").length);
+  assert.equal(shownLength(quoted + 'Now:\n```json\n{"kinetra":{"action":"call"}}\n```\n{"kinetra":{"act'), (quoted + "Now:\n").length);
+  assert.equal(shownLength(quoted + 'Now {"kinetra"'), (quoted + "Now ").length);
+  assert.equal(shownLength(quoted + "Now {"), (quoted + "Now ").length);
+  assert.equal(shownLength('Example:\n```text\n{"kinetra":{"action":"help"}}\n```\nThat is all.'), 'Example:\n```text\n{"kinetra":{"action":"help"}}\n```\nThat is all.'.length);
 });
