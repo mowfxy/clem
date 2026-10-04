@@ -3,8 +3,34 @@ import { checkContent } from "../core/provenance";
 import { Logo, Icon } from "./Icons";
 import { Illustration } from "./Illustrations";
 import "./checker.css";
+type Verdict = {
+  tone: "found" | "changed" | "none" | "error";
+  icon: string;
+  title: string;
+  body: string;
+};
+const verdicts: Record<"found" | "changed" | "none", Verdict> = {
+  found: {
+    tone: "found",
+    icon: "verify",
+    title: "Made with Mowr",
+    body: "The Mowr mark is in this file and the content is unchanged since it was exported.",
+  },
+  changed: {
+    tone: "changed",
+    icon: "alert",
+    title: "The mark doesn't match",
+    body: "A Mowr mark was found, but it is invalid or the content has changed since it was exported.",
+  },
+  none: {
+    tone: "none",
+    icon: "search",
+    title: "No Mowr mark found",
+    body: "This doesn't rule out Mowr: editing or re-exporting a file can remove the mark.",
+  },
+};
 export default function ProvenanceChecker() {
-  const [result, setResult] = useState(""),
+  const [verdict, setVerdict] = useState<Verdict | null>(null),
     [busy, setBusy] = useState(false),
     [filename, setFilename] = useState(""),
     [dragging, setDragging] = useState(false);
@@ -14,21 +40,20 @@ export default function ProvenanceChecker() {
     if (!file || checking.current) return;
     checking.current = true;
     setBusy(true);
-    setResult("");
+    setVerdict(null);
     setFilename(file.name);
     try {
       if (file.size > 250_000_000)
         throw Error("Choose a file smaller than 250 MB.");
       const r = await checkContent(file);
-      setResult(
-        r.status === "found"
-          ? "Mowr marker found. The marked content is unchanged."
-          : r.status === "changed"
-            ? "A marker was found, but it is invalid or the content has changed."
-            : "No Mowr marker found. This does not rule out Mowr: editing or re-exporting can remove the marker.",
-      );
+      setVerdict(verdicts[r.status === "found" ? "found" : r.status === "changed" ? "changed" : "none"]);
     } catch (e) {
-      setResult((e as Error).message);
+      setVerdict({
+        tone: "error",
+        icon: "alert",
+        title: "Couldn't read that file",
+        body: (e as Error).message,
+      });
     } finally {
       checking.current = false;
       setBusy(false);
@@ -47,8 +72,7 @@ export default function ProvenanceChecker() {
       <section className="checker-layout">
         <div className="checker-intro">
           <Illustration scene="discover" className="checker-art" />
-          <span className="eyebrow">A little clarity</span>
-          <h1>
+                    <h1>
             Does it carry
             <br />
             the Mowr mark?
@@ -76,8 +100,8 @@ export default function ProvenanceChecker() {
             <span className="checker-file-mark">
               <Icon name="files" size={30} />
             </span>
-            <h2>{busy ? "Reading the mark…" : "A file. A little clarity."}</h2>
-            <p>{filename || "Drop your document here to take a look."}</p>
+            <h2>{busy ? "Reading the mark…" : "Drop a file to check it"}</h2>
+            <p>{filename || "Documents, slides, sheets and PDFs made with Mowr."}</p>
             <button
               className="primary"
               disabled={busy}
@@ -103,9 +127,20 @@ export default function ProvenanceChecker() {
             />
             <small>PDF, Office documents, text and more · up to 250 MB</small>
           </div>
-          {result && (
-            <div className="checker-result" role="status">
-              {result}
+          {verdict && (
+            <div
+              className={"checker-result " + verdict.tone}
+              role="status"
+              aria-label={verdict.title}
+            >
+              <span className="checker-result-mark">
+                <Icon name={verdict.icon} size={22} />
+              </span>
+              <div>
+                <h3>{verdict.title}</h3>
+                <p>{verdict.body}</p>
+                {filename && <small>{filename}</small>}
+              </div>
             </div>
           )}
           <p className="checker-private">

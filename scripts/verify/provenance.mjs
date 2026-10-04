@@ -35,7 +35,7 @@ try {
     });
   await page
     .getByRole("status")
-    .filter({ hasText: "Mowr marker found" })
+    .filter({ hasText: "Made with Mowr" })
     .waitFor();
   assert.equal(uploads.length, 0);
   await page.screenshot({ path: "artifacts/checker.png" });
@@ -48,7 +48,7 @@ try {
     });
   await page
     .getByRole("status")
-    .filter({ hasText: "No Mowr marker found" })
+    .filter({ hasText: "No Mowr mark found" })
     .waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(
