@@ -18,10 +18,10 @@ import { fileGuidesFor } from "../../desktop/file-guides.ts";
 import { brandFont } from "../../core/print-fonts.ts";
 
 // pptx-deck and deck-review open Chromium only when a deck is drawn: bundled with electron left out, their checks run here.
-let deck: { deckProblems: (spec: any) => string[]; deckReview: (spec: any) => string[]; themes: Record<string, any>; staticFindings: (slides: any[], W: number, H: number) => { slide: number; problem: string }[] };
+let deck: { deckProblems: (spec: any) => string[]; deckReview: (spec: any) => string[]; themes: Record<string, any>; staticFindings: (slides: any[], W: number, H: number) => { slide: number; problem: string }[]; capturePage: (contents: any, rect: any, tries?: number) => Promise<any> };
 before(async () => {
   await build({
-    stdin: { contents: `export {deckProblems,deckReview,themes} from "./desktop/pptx-deck.ts";export {staticFindings} from "./desktop/deck-review.ts";`, resolveDir: process.cwd(), loader: "ts" },
+    stdin: { contents: `export {deckProblems,deckReview,themes} from "./desktop/pptx-deck.ts";export {staticFindings} from "./desktop/deck-review.ts";export {capturePage} from "./desktop/rasterize.ts";`, resolveDir: process.cwd(), loader: "ts" },
     outfile: "desktop-dist/deck-checks-test.cjs", bundle: true, platform: "node", format: "cjs", external: ["electron"], logLevel: "error",
   });
   deck = createRequire(import.meta.url)("../../desktop-dist/deck-checks-test.cjs");
@@ -212,6 +212,17 @@ test("without a session, only the newest pictures looked at are resent", async (
 test("the slides skill asks for a brief, an archetype, a storyline and a review, and lists the new layouts and icons", () => {
   const skill = fileGuidesFor("make a pitch deck for investors");
   for (const want of [/BRIEF FIRST/, /ARCHETYPE/, /STORYLINE/, /big-number/, /matrix/, /roadmap/, /diagram/, /REVIEW/, /rocket/, /kids/]) assert.match(skill, want);
+});
+
+test("a capture Chromium fails once is tried again; one that keeps failing still reports the error", async () => {
+  const image = { isEmpty: () => false };
+  let calls = 0, invalidated = 0;
+  const flaky = { capturePage: async () => { if (++calls === 1) throw Error("UnknownVizError"); return image; }, invalidate: () => invalidated++ };
+  assert.equal(await deck.capturePage(flaky, { x: 0, y: 0, width: 10, height: 10 }), image);
+  assert.equal(calls, 2);
+  assert.equal(invalidated, 1);
+  const broken = { capturePage: async () => { throw Error("UnknownVizError"); }, invalidate: () => {} };
+  await assert.rejects(deck.capturePage(broken, { x: 0, y: 0, width: 10, height: 10 }), /UnknownVizError/);
 });
 
 test("Mowr's own fonts are recognised wherever they are named", () => {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { contrast } from "./deck-design.ts";
+import { capturePage } from "./rasterize.ts";
 
 /**
  * The deck's self-review. Every element drawn on a slide is recorded as it goes into PowerPoint; the slides are then
@@ -198,7 +199,7 @@ export async function slideReviewer() {
         const width = perRow * cellW + (perRow + 1) * 14, height = rows * cellH + (rows + 1) * 14;
         await load(body, width, height);
         await new Promise((done) => setTimeout(done, 80));
-        const image = await page.webContents.capturePage({ x: 0, y: 0, width: Math.ceil(width), height: Math.ceil(height) });
+        const image = await capturePage(page.webContents, { x: 0, y: 0, width: Math.ceil(width), height: Math.ceil(height) });
         out.push({ name: `slides ${start + 1}–${start + group.length}`, jpeg: new Uint8Array(image.toJPEG(82)) });
       }
       return out;
