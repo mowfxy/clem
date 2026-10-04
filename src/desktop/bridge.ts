@@ -9,6 +9,8 @@ declare global {
 }
 export const desktop = typeof window === "undefined" ? undefined : window.mowrDesktop;
 export type ChatOptions = {
+  /** A temporary chat: nothing from it is remembered or kept. */
+  temporary?: boolean;
   model?: string;
   reasoning?: string;
   images?: { name: string; data: string }[];
@@ -93,7 +95,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);

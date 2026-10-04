@@ -1260,7 +1260,7 @@ void app.whenReady().then(async () => {
       const condensed = await condenseConversation(request.messages, budget.conversation, {
         ask: async (text) => { if (!condensing) { condensing = true; send({ id: request.id, type: "status", text: "Condensing the earlier part of this chat…" }); } return quickAsk(user.id, request.model, text); },
         load: async () => (await vault.read<Record<string, Brief>>(briefs, {}))[briefKeyOf],
-        save: async (brief) => { const all = await vault.read<Record<string, Brief & { at: number }>>(briefs, {}); all[briefKeyOf] = { ...brief, at: Date.now() }; await vault.write(briefs, Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 60))); },
+        save: async (brief) => { if (request.temporary) return; const all = await vault.read<Record<string, Brief & { at: number }>>(briefs, {}); all[briefKeyOf] = { ...brief, at: Date.now() }; await vault.write(briefs, Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 60))); },
       });
       const messages = condensed.messages;
       if (condensed.condensed) send({ id: request.id, type: "condensed" });
@@ -1307,6 +1307,8 @@ void app.whenReady().then(async () => {
       // Files made in this answer, and the version each earlier file had before this answer first changed it. One answer
       // that changes a file counts as one edit (one Undo step), however many times the model reworked it before replying.
       const madeNow = new Map<string, any>();
+      // Figures the model has already been shown pictures of in this answer (desktop/figure-review.ts): each is sent once.
+      const figuresSeen = new Set<string>();
       const before = new Map<string, { blob: string; at: number; summary: string; size: number }>();
       // Planned sections each document made in this answer still lacks; the answer waits until they are written.
       const gaps = new Map<string, string[]>();
@@ -1347,10 +1349,10 @@ void app.whenReady().then(async () => {
             if (!clean.references.length) delete clean.references;
           }
         }
-        const made = await makeFile(action, clean, { preview: true });
+        const made = await makeFile(action, clean, { preview: true, seen: figuresSeen });
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
-        // Pictures of the result (a deck's slides) go back to the model with this result, so it checks what it made.
-        const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.jpeg).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
+        // Pictures of the result (a deck's slides, its new figures) go back to the model with this result, so it checks what it made.
+        const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.image).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
         const missing = key === "sections" ? unwritten(clean) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
         const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
@@ -1444,7 +1446,7 @@ void app.whenReady().then(async () => {
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
           // A stopped answer teaches nothing.
-          if (!cancelledRuns.has(request.id)) learnFromTurn(user.id, request.scope, request.id, query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
+          if (!cancelledRuns.has(request.id) && !request.temporary) learnFromTurn(user.id, request.scope, request.id, query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
         })
         .catch(async (error) => {
           // Stopped: nothing it made is kept. Failed part-way: the files already finished are still delivered.

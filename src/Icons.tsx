@@ -36,6 +36,7 @@ pin:['F M12 4h8l-1.5 7.5L23 16v3H9v-3l4.5-4.5Z','M16 19v9'],
 unpin:['F M12 4h8l-1.5 7.5L23 16v3H9v-3l4.5-4.5Z','M16 19v9','M4 4l24 24'],
 new:['M26 17v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h8','F M24 3.8a2.4 2.4 0 0 1 3.4 3.4L17 17.6l-4.6 1 1-4.6Z'],
 chat:['F '+bubble,'M11 13h10M11 18h6'],
+temp:['F M6 27V14a10 10 0 0 1 20 0v13l-3.3-2.6L19.3 27 16 24.4 12.7 27 9.3 24.4Z','M12.5 14v.1','M19.5 14v.1'],
 // Visuals: a circle, a triangle and a square, the parts every figure is made of. The triangle turns on hover.
 visuals:['F '+c(22.5,9.5,5.5),'M10 4.5l6.5 11h-13Z',box(9,18.5,14,9.5)],
 projects:['F M4 9a2 2 0 0 1 2-2h6l3 3h11a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z','M4 15h24'],
