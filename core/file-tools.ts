@@ -10,7 +10,7 @@ import { namedSources } from "./source-context.ts";
 export type LibraryFile = { name: string; text: string; kind?: "file" | "folder" };
 
 /** At most this much text per read, so one call cannot crowd out the answer. */
-export const READ_LIMIT = 40_000;
+export const READ_LIMIT = 120_000;
 const PASSAGE = 1400;
 
 /** Lower case with every offset unchanged: the few letters whose lower case is longer (Turkish İ) stay as they are,

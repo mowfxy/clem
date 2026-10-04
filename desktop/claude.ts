@@ -104,6 +104,8 @@ export class ClaudeProvider {
     for(const key of ['PATH','SystemRoot','WINDIR','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','HOMEDRIVE','HOMEPATH'])if(process.env[key])env[key]=process.env[key];
     env.CLAUDE_CONFIG_DIR=this.root;
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1';
+    // The longest reply each model allows, so one part of a long document is not cut off mid-request.
+    env.CLAUDE_CODE_MAX_OUTPUT_TOKENS='64000';
     return env;
   }
   private async start(args:string[]){await mkdir(this.root,{recursive:true});const child=spawn(this.executable,args,{cwd:join(this.root,'workspace'),env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});return child;}
@@ -198,7 +200,7 @@ export class ClaudeProvider {
         const finish=(value?:string,failure?:Error)=>{if(done)return;done=true;clearTimeout(timer);failure?reject(failure):resolve(value||'');};
         // An inactivity limit: any output from Claude Code restarts it, so a long answer that keeps streaming is never cut off.
         let timer:ReturnType<typeof setTimeout>;
-        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},180000);};
+        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},600000);};
         touch();
         let last='';
         const read=(line:string)=>{
@@ -214,7 +216,7 @@ export class ClaudeProvider {
         child.stdout.setEncoding('utf8');
         child.stdout.on('data',(part:string)=>{
           if(!done)touch();
-          bytes+=part.length;if(bytes>8_000_000){child.kill();finish(undefined,Error('Claude response exceeded the safe limit.'));return;}
+          bytes+=part.length;if(bytes>64_000_000){child.kill();finish(undefined,Error('Claude response exceeded the safe limit.'));return;}
           buffer+=part;let newline;
           while((newline=buffer.indexOf('\n'))>=0){read(buffer.slice(0,newline));buffer=buffer.slice(newline+1);}
         });

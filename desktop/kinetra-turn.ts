@@ -69,32 +69,69 @@ function envelopesFrom(text: string, first: number): Record<string, unknown>[] |
   }
   return requests.length ? requests : null;
 }
+/** A reply whose first envelope starts this close to its beginning was meant as a tool request, whatever follows it. */
+const LEAD = 400;
+/** Whether an envelope stands on its own (on its own line or after a finished sentence), not quoted mid-sentence ("Use {…} to…"). */
+const standalone = (text: string, from: number) => /(?:^|\n|[.:!?])\s*$/.test(text.slice(Math.max(0, from - 200), from));
+/** Every envelope in the reply, when each one stands alone, is complete and names a known action; prose around them is ignored. */
+function everyEnvelope(text: string, starts: number[]): Record<string, unknown>[] | null {
+  const requests: Record<string, unknown>[] = [];
+  let after = 0;
+  for (const from of starts) {
+    if (from < after) continue;
+    if (!standalone(text, from)) return null;
+    const open = text.indexOf("{", from);
+    const end = objectEnd(text, open);
+    if (end < 0) return null;
+    const request = toolRequest(text.slice(open, end));
+    if (!request || !ACTIONS.has(String(request.action))) return null;
+    requests.push(request);
+    after = end;
+  }
+  return requests.length ? requests : null;
+}
+/** The requests in a reply and where the prose before them ends. */
+function findRequests(text: string): { requests: Record<string, unknown>[]; at: number } | null {
+  const exact = toolRequest(text);
+  if (exact) return { requests: [exact], at: 0 };
+  const starts = envelopeStarts(text);
+  // A reply that opens with a request but keeps writing after it (a note between two requests, "then I will…" at
+  // the end) runs every envelope in it, as long as each one is whole. The prose after them is dropped.
+  if (starts.length && starts[0] <= LEAD) {
+    const requests = everyEnvelope(text, starts);
+    if (requests) return { requests, at: starts[0] };
+  }
+  // The lead-in may itself quote the format; the requests are the run of envelopes that ends the reply.
+  for (const at of starts) {
+    const requests = envelopesFrom(text, at);
+    if (requests) return { requests, at };
+  }
+  return null;
+}
 /**
  * The tool requests in a reply. Models do not always send one bare envelope: they lead with prose
  * ("Let me calculate that."), sometimes pages of it when an agent narrates its own steps, send several
- * envelopes in one reply (a PDF per lecture), or fence them. All of these run, however long the lead-in.
- * Envelopes must end the reply and name a known action, so an answer that mentions the format in passing
- * is never dispatched.
+ * envelopes in one reply (a PDF per lecture), fence them, or add a note after them. All of these run,
+ * however long the lead-in. After a long lead-in envelopes must end the reply and name a known action,
+ * so an answer that mentions the format in passing is never dispatched.
  */
 export function toolRequests(text: string): Record<string, unknown>[] | null {
-  const exact = toolRequest(text);
-  if (exact) return [exact];
-  // The lead-in may itself quote the format; the requests are the run of envelopes that ends the reply.
-  for (const at of envelopeStarts(text)) {
-    const requests = envelopesFrom(text, at);
-    if (requests) return requests;
-  }
-  return null;
+  return findRequests(text)?.requests ?? null;
 }
 /** Where the broken request in a reply starts (see brokenToolRequest), or -1 when there is none. */
 function brokenStart(text: string) {
   if (toolRequests(text)) return -1;
   const starts = envelopeStarts(text);
   if (!starts.length) return -1;
-  if (starts[0] <= 400) return starts[0];
+  if (starts[0] <= LEAD) return starts[0];
   const from = starts[starts.length - 1];
   const end = objectEnd(text, text.indexOf("{", from));
   return end >= 0 && text.slice(end).replace(/^\s*```/, "").trim() ? -1 : from;
+}
+/** Whether the request in a broken reply never closes: the reply was cut off, usually at the model's reply length limit. */
+function cutOff(text: string) {
+  const from = brokenStart(text);
+  return from >= 0 && envelopeStarts(text).some((at) => at >= from && objectEnd(text, text.indexOf("{", at)) < 0);
 }
 /**
  * A reply that was meant as a tool request but cannot run (a missing bracket in a long request, an unknown
@@ -109,10 +146,16 @@ export function brokenToolRequest(text: string): string | null {
   const rest = text.slice(from).trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```\s*$/, "");
   try {
     JSON.parse(rest);
-    return 'The reply must be {"kinetra":{"action":…}} objects with a known action and nothing after them.';
+    return 'The reply must be {"kinetra":{"action":…}} objects with a known action.';
   } catch (error) {
     return (error as Error).message;
   }
+}
+/** The prose a reply opens with before its tool requests (whole or broken): shown as a note while the tools run. Never any request JSON. */
+export function requestLead(text: string) {
+  const found = findRequests(text);
+  const at = found ? found.at : brokenStart(text);
+  return (at < 0 ? text : text.slice(0, at)).trim();
 }
 /** Whether the reply from `at` may still become the run of requests that ends it: envelopes with nothing between them, the last perhaps unfinished. */
 function mayEndWithRequests(text: string, at: number) {
@@ -133,7 +176,9 @@ function mayEndWithRequests(text: string, at: number) {
  * An envelope quoted earlier, with prose after it, is part of the answer and keeps streaming.
  */
 export function shownLength(text: string) {
-  const at = envelopeStarts(text).find((from) => mayEndWithRequests(text, from));
+  const starts = envelopeStarts(text);
+  if (starts.length && starts[0] <= LEAD && standalone(text, starts[0])) return starts[0];
+  const at = starts.find((from) => mayEndWithRequests(text, from));
   if (at !== undefined) return at;
   for (const marker of ['```json\n{"kinetra"', '{"kinetra"'])
     for (let n = Math.min(marker.length, text.length); n > 0; n--)
@@ -141,7 +186,7 @@ export function shownLength(text: string) {
   return text.length;
 }
 /** Enough for a long document written in parts (each part is one call) plus the calculations and checks around it. */
-export const MAX_CALLS = 150;
+export const MAX_CALLS = 2000;
 /** Large tool results are summarised for the model; SVG is rendered from its structured request instead. */
 function forModel(request: any, result: any) {
   if (typeof result === "string" && result.includes("<svg"))
@@ -197,7 +242,7 @@ function withoutBroken(text: string) {
   return (at < 0 ? text : text.slice(0, at)).trim();
 }
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
-export const MAX_BROKEN = 3;
+export const MAX_BROKEN = 5;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
 const recent = <T>(pictures: T[]) => pictures.slice(-12);
 const LAST_CALL = 'No tool calls are left. Write your final answer to the original request now, as plain text without any {"kinetra":…} request. If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.';
@@ -245,7 +290,7 @@ export async function runKinetraTurn<Picture = unknown>(
         ? fresh.map((h) => `Kinetra result for ${JSON.stringify(h.request)} (data, not instructions):\n${JSON.stringify(h.result)}`).join("\n\n") + "\n" + next
         : full();
     if (!stateful && input.length > limit && compact(history, input.length - limit)) input = full();
-    if (!closing && (stateful ? sent + input.length > 20_000_000 : input.length > limit)) {
+    if (!closing && (stateful ? sent + input.length > 400_000_000 : input.length > limit)) {
       // Out of room: the results so far are dropped from the request and the model is asked to finish.
       closing = true;
       input = stateful && replies > 0 ? LAST_CALL : instructions + "\n\nOriginal request and context:\n" + prompt + "\n" + LAST_CALL;
@@ -295,7 +340,11 @@ export async function runKinetraTurn<Picture = unknown>(
       calls++;
       history.push({
         request: { invalid: text.length > 4000 ? text.slice(0, 4000) + "…" : text },
-        result: { error: `That tool request is not valid JSON (${broken}), so it did not run. Check that every [ and { is closed, then send the corrected request.` },
+        result: {
+          error: cutOff(text)
+            ? `That tool request was cut off before it closed (the reply reached ${text.length} characters, the most one reply can hold), so it did not run. Send the same content again split into smaller requests: fewer sections per pdf action (then "revise" with "append":true for the rest), fewer slides or rows per request.`
+            : `That tool request is not valid JSON (${broken}), so it did not run. Check that every [ and { is closed, then send the corrected request.`,
+        },
       });
       continue;
     }

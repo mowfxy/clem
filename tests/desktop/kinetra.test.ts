@@ -2,7 +2,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { renameSync, rmSync } from "node:fs";
-import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, shownLength, MAX_CALLS, MAX_BROKEN } from "../../desktop/kinetra-turn.ts";
+import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN } from "../../desktop/kinetra-turn.ts";
 import { kinetraTool, kinetraCall } from "../../desktop/kinetra-runtime.ts";
 before(async () => {
   // Built beside and renamed into place: another test file builds the same worker at the same time.
@@ -371,7 +371,7 @@ test("a model that keeps sending broken requests stops after a few: its text is 
   assert.equal(result, "Here is the summary of the circuit.");
   assert.equal(replies, MAX_BROKEN);
   replies = 0;
-  await assert.rejects(() => runKinetraTurn("m", "", async () => { replies++; return '{"kinetra":{"action":"pdf"'; }, async () => 1, () => false), /3 tool requests in a row that could not run/);
+  await assert.rejects(() => runKinetraTurn("m", "", async () => { replies++; return '{"kinetra":{"action":"pdf"'; }, async () => 1, () => false), new RegExp(`${MAX_BROKEN} tool requests in a row that could not run`));
   assert.equal(replies, MAX_BROKEN);
   // A request that runs resets the count.
   const sequence = [broken, broken, '{"kinetra":{"action":"call"}}', broken, broken, "Done."];
@@ -387,4 +387,20 @@ test("streaming keeps showing an example quoted earlier and holds only the reque
   assert.equal(shownLength(quoted + 'Now {"kinetra"'), (quoted + "Now ").length);
   assert.equal(shownLength(quoted + "Now {"), (quoted + "Now ").length);
   assert.equal(shownLength('Example:\n```text\n{"kinetra":{"action":"help"}}\n```\nThat is all.'), 'Example:\n```text\n{"kinetra":{"action":"help"}}\n```\nThat is all.'.length);
+});
+test("a request with a note after it still runs, and its JSON is never shown as the note", async () => {
+  const reply = 'Last three planned sections: Questions 7 and 8, then the answer summary.{"kinetra":{"action":"pdf","revise":"d","append":true,"sections":[{"heading":"Question 7"}]}}\nThen Question 8 follows.';
+  assert.deepEqual(toolRequests(reply), [{ action: "pdf", revise: "d", append: true, sections: [{ heading: "Question 7" }] }]);
+  assert.equal(brokenToolRequest(reply), null);
+  assert.equal(requestLead(reply), "Last three planned sections: Questions 7 and 8, then the answer summary.");
+  assert.equal(shownLength(reply), reply.indexOf("{"));
+  // Two requests with a note between them both run.
+  assert.deepEqual(toolRequests('First:\n{"kinetra":{"action":"call","fn":"a"}}\nNow the second.\n{"kinetra":{"action":"call","fn":"b"}}'), [{ action: "call", fn: "a" }, { action: "call", fn: "b" }]);
+  // A broken one is held back from the note too.
+  const cut = 'Next part.{"kinetra":{"action":"pdf","sections":[{"heading":"Q7","text":"Find';
+  assert.equal(requestLead(cut), "Next part.");
+  // A cut-off request is sent back with the advice to split it.
+  const sent: string[] = [];
+  await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? cut : "Done."; }, async () => 1, () => false);
+  assert.match(sent[1], /cut off before it closed/);
 });

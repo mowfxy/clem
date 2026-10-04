@@ -35,7 +35,7 @@ export async function streamTurn(
   onText: (text: string) => void,
   cancelled: () => boolean,
   control: TurnControl = {},
-  timeoutMs = 180000,
+  timeoutMs = 600000,
   onStatus: (text: string) => void = () => {},
 ) {
   await server.ready;
@@ -99,7 +99,7 @@ export async function streamTurn(
         try {
           if (method === "item/agentMessage/delta") {
             bytes += String(p.delta || "").length;
-            if (bytes > 8_000_000) throw Error("Codex response exceeded the limit.");
+            if (bytes > 64_000_000) throw Error("Codex response exceeded the limit.");
             received.set(p.itemId, (received.get(p.itemId) || "") + p.delta);
             if (!commentary.has(p.itemId)) answer(p.itemId, String(p.delta || ""));
           } else if (method === "item/started" && p.item?.type === "reasoning") {

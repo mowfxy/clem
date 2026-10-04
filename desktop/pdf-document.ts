@@ -159,7 +159,7 @@ async function inTurns<T, R>(items: T[], limit: number, work: (item: T, index: n
   }));
   return results;
 }
-export const MAX_SECTIONS = 3000;
+export const MAX_SECTIONS = 10000;
 const unsafeSvg = /<script|<foreignObject|\bon\w+\s*=|(?:href|src)\s*=\s*["'](?:https?:|file:|javascript:)/i;
 const kinds = new Set(["report", "paper", "brief", "notes", "proposal", "manual", "handout", "worksheet", "letter", "memo", "document"]);
 const kindLabel: Record<string, string> = { report: "Technical Report", paper: "Preprint", brief: "Briefing", notes: "Notes", proposal: "Proposal", manual: "Guide", handout: "Handout", worksheet: "Worksheet", letter: "Letter", memo: "Memorandum", document: "" };
@@ -175,9 +175,9 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
   if (spec.sections.length > MAX_SECTIONS)
     throw Error(`This document would have ${spec.sections.length} sections; the limit is ${MAX_SECTIONS}. Use ### subsections inside fewer sections, or start a second document for the rest.`);
   // An export of the person's own answer (no voice check) may be any answer the app accepts (300k characters of Markdown, larger once encoded).
-  const size = JSON.stringify(spec).length, limit = checkVoice ? 12_000_000 : 16_000_000;
+  const size = JSON.stringify(spec).length, limit = 40_000_000;
   if (size > limit)
-    throw Error(`This document would be ${size} characters; the limit is ${limit} (roughly 3,000 pages). Start a second document for the rest.`);
+    throw Error(`This document would be ${size} characters; the limit is ${limit} (roughly 10,000 pages). Start a second document for the rest.`);
   for (const field of ["font", "headingFont"] as const)
     if (spec[field] !== undefined && (typeof spec[field] !== "string" || !fontName.test(spec[field].trim())))
       throw Error(`${field} must be a font name such as "Times New Roman", "Arial" or "Georgia".`);
