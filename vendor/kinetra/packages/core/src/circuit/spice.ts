@@ -8,8 +8,8 @@
  * found in introductory electronics.
  */
 
-import { validateCircuit } from "./circuit.js";
-import type { Circuit } from "./circuit.js";
+import { validateCircuit, normalizeNetlist, circuitFromNetlist } from "./circuit.js";
+import type { Circuit, Netlist, NormalElement } from "./circuit.js";
 import type { AnyComponent, CircuitNodeId } from "./circuit.js";
 
 export interface DCResult {
@@ -309,6 +309,151 @@ export function solveTransient(circuit: Circuit, opts: TransientOptions): Transi
     }
   }
   return { times, nodeVoltages, componentCurrents };
+}
+
+// --- Netlists ---------------------------------------------------------------
+
+/** One element of a solved netlist. `voltage` is V(from) − V(to); `current` flows through the element from `from` to
+ *  `to`; `power` is absorbed (passive sign convention), so a source delivering power shows a negative value. */
+export interface NetlistElementResult {
+  id: string;
+  label: string;
+  kind: string;
+  from: string;
+  to: string;
+  voltage: number;
+  current: number;
+  power: number;
+  /** Diodes and LEDs: whether the diode conducts in the solution. */
+  conducting?: boolean;
+}
+export interface NetlistDCResult {
+  ground: string;
+  /** Node voltages in volts, relative to ground (which is 0). */
+  nodes: Record<string, number>;
+  elements: NetlistElementResult[];
+  /** Every named `current` and `voltage` (i_o, v_o…) with its value in amperes or volts. */
+  quantities: Record<string, number>;
+  units: { voltage: "V"; current: "A"; power: "W" };
+}
+
+/** Diode forward voltages when the netlist gives none. */
+const FORWARD: Record<string, number> = { diode: 0.7, led: 2 };
+
+/**
+ * DC operating point of a netlist (the one renderCircuit draws): node voltages and the current, voltage and power of
+ * every element. Capacitors are open, inductors, wires and ammeters are shorts, voltmeters and open switches are open,
+ * dependent sources follow the current or voltage their label names ("4i_o"), and diodes use a constant forward drop
+ * (their value in volts, else 0.7 V; LEDs 2 V). Every element gets its own current unknown, so a current used as a
+ * control is available whatever kind of element carries it.
+ */
+export function solveNetlist(spec: Netlist): NetlistDCResult {
+  const net = normalizeNetlist(spec);
+  const { nodes, elements } = net;
+  for (const e of elements) {
+    if (e.kind === "ac-source") throw new Error(`Circuit: element ${e.index + 1} (${e.name}) is an AC source; the DC solver needs DC sources (voltage-source, battery, current-source)`);
+    if (["resistor", "lamp", "voltage-source", "battery", "current-source"].includes(e.kind) && e.si === undefined)
+      throw new Error(`Circuit: element ${e.index + 1} (${e.name}) needs a value to be solved`);
+    if ((e.kind === "resistor" || e.kind === "lamp") && !(e.si! > 0)) throw new Error(`Circuit: element ${e.index + 1} (${e.name}) needs a positive resistance`);
+  }
+  const N = nodes.length, E = elements.length, dim = N + E;
+  const node = (n: string) => (n === net.ground ? -1 : nodes.indexOf(n));
+  const controlOf = new Map<string, { index: number; type: "i" | "v" }>();
+  for (const e of elements) {
+    if (e.current) controlOf.set(e.current.replace(/[\s$]/g, ""), { index: e.index, type: "i" });
+    if (e.voltage) controlOf.set(e.voltage.replace(/[\s$]/g, ""), { index: e.index, type: "v" });
+  }
+  const diodes = elements.filter((e) => e.kind === "diode" || e.kind === "led");
+  const on = new Map(diodes.map((d) => [d.index, false]));
+  const forward = (e: NormalElement) => e.si ?? FORWARD[e.kind];
+  const solveOnce = () => {
+    const A: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0));
+    const b: number[] = new Array(dim).fill(0);
+    // KCL: the currents leaving each node sum to zero (an element's current leaves `from` and enters `to`).
+    elements.forEach((e, k) => {
+      const f = node(e.from), t = node(e.to);
+      if (f >= 0) A[f][N + k] += 1;
+      if (t >= 0) A[t][N + k] -= 1;
+    });
+    // One equation per element. row += V(from) − V(to) with coefficient c.
+    elements.forEach((e, k) => {
+      const row = N + k, f = node(e.from), t = node(e.to);
+      const across = (c: number, r = row) => { if (f >= 0) A[r][f] += c; if (t >= 0) A[r][t] -= c; };
+      const control = (gain: number) => {
+        const q = controlOf.get(e.control!.name)!;
+        if (q.type === "i") A[row][N + q.index] -= gain;
+        else { const c = elements[q.index], cf = node(c.from), ct = node(c.to); if (cf >= 0) A[row][cf] -= gain; if (ct >= 0) A[row][ct] += gain; }
+      };
+      switch (e.kind) {
+        case "resistor": case "lamp": across(1); A[row][N + k] -= e.si!; break;
+        case "voltage-source": case "battery": across(1); b[row] = -e.si!; break; // + at `to`: V(to) − V(from) = V.
+        case "current-source": A[row][N + k] = 1; b[row] = e.si!; break;
+        case "dependent-voltage-source": across(-1); control(e.control!.gain); break; // V(to) − V(from) = gain × control.
+        case "dependent-current-source": A[row][N + k] = 1; control(e.control!.gain); break;
+        case "capacitor": case "voltmeter": A[row][N + k] = 1; break;
+        case "inductor": case "wire": case "ammeter": across(1); break;
+        case "switch": if (e.closed) across(1); else A[row][N + k] = 1; break;
+        case "diode": case "led": if (on.get(e.index)) { across(1); b[row] = forward(e); } else A[row][N + k] = 1; break;
+        default: throw new Error(`Circuit: element ${e.index + 1} (${e.name}) is a ${e.kind}, which the DC solver does not model`);
+      }
+    });
+    try {
+      return solveLinear(A, b);
+    } catch {
+      throw new Error("Circuit: the circuit has no unique DC solution. Look for a node joined to the rest only through capacitors, open switches or voltmeters, a loop of voltage sources, inductors or wires, or current sources in series.");
+    }
+  };
+  let x = solveOnce();
+  // Diodes: switch each one whose state contradicts the solution, until every state is consistent.
+  for (let round = 0; ; round++) {
+    const wrong = diodes.find((d) => {
+      const k = d.index, v = (node(d.from) >= 0 ? x[node(d.from)] : 0) - (node(d.to) >= 0 ? x[node(d.to)] : 0);
+      return on.get(k) ? x[N + k] < -1e-12 : v > forward(d) + 1e-9;
+    });
+    if (!wrong) break;
+    if (round >= 4 * diodes.length + 20) throw new Error("Circuit: the diode states did not settle");
+    on.set(wrong.index, !on.get(wrong.index));
+    x = solveOnce();
+  }
+  const volt = (n: string) => (n === net.ground ? 0 : x[nodes.indexOf(n)]);
+  const clean = (v: number) => (Math.abs(v) < 1e-12 ? 0 : v);
+  const results = elements.map((e, k): NetlistElementResult => {
+    const voltage = clean(volt(e.from) - volt(e.to)), current = clean(x[N + k]);
+    return { id: e.id, label: e.name, kind: e.kind, from: e.from, to: e.to, voltage, current, power: clean(voltage * current), ...(on.has(k) ? { conducting: on.get(k) } : {}) };
+  });
+  const quantities: Record<string, number> = {};
+  for (const e of elements) {
+    if (e.current) quantities[e.current] = results[e.index].current;
+    if (e.voltage) quantities[e.voltage] = results[e.index].voltage;
+  }
+  return {
+    ground: net.ground,
+    nodes: Object.fromEntries([[net.ground, 0], ...nodes.map((n) => [n, clean(volt(n))])]),
+    elements: results,
+    quantities,
+    units: { voltage: "V", current: "A", power: "W" },
+  };
+}
+
+/**
+ * Transient response of a netlist (backward Euler, through solveTransient): node voltages by name and the currents
+ * of resistors and inductors by element id. Same limits as solveTransient (one voltage source carries `waveform`).
+ */
+export function solveNetlistTransient(spec: Netlist, opts: Omit<TransientOptions, "recordNodes" | "recordComponents" | "events"> & { events?: { t: number; element: string; closed: boolean }[] }) {
+  const { circuit, nodes, ids } = circuitFromNetlist(spec);
+  const element = (name: string) => {
+    const i = spec.elements.findIndex((e, k) => (e.id ?? `E${k + 1}`) === name || e.label === name);
+    const found = i < 0 ? undefined : ids.get(spec.elements[i].id ?? `E${i + 1}`);
+    if (!found) throw new Error(`Circuit: no switch "${name}" (use the element's id, such as E3, or its label)`);
+    return found;
+  };
+  const r = solveTransient(circuit, { ...opts, events: opts.events?.map((e) => ({ t: e.t, componentId: element(e.element), closed: e.closed })) });
+  const back = new Map([...ids].map(([k, v]) => [v, k]));
+  return {
+    times: r.times,
+    nodes: Object.fromEntries([...nodes].map(([name, id]) => [name, id === 0 ? r.times.map(() => 0) : r.nodeVoltages.get(id) ?? []])),
+    currents: Object.fromEntries([...r.componentCurrents].filter(([id, v]) => back.has(id) && v.length).map(([id, v]) => [back.get(id)!, v])),
+  };
 }
 
 // --- Linear algebra ---------------------------------------------------------
