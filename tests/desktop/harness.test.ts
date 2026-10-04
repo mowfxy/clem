@@ -324,6 +324,36 @@ test("prompt sections: attachments become sources and untrusted text cannot clos
   assert.equal(prompt.match(/<\/mowr-sources>/g)!.length, 1);
   assert.match(prompt, /The user's name is Sam/);
   assert.match(prompt, /User: Earlier question/);
+  // Stable parts first, so the prompt cache reuses them: instructions, the conversation, then what this message chose.
+  const at = (tag: string) => prompt.indexOf("<mowr-" + tag);
+  assert.ok(at("instructions") < at("conversation") && at("conversation") < at("memory") && at("memory") < at("sources") && at("sources") < at("request"));
+  // The next message adds to the conversation and picks other sources, but repeats everything before the memory.
+  const next = composePrompt({
+    messages: [
+      { role: "system", content: "Be helpful." },
+      { role: "user", content: "Earlier question" },
+      { role: "assistant", content: "Earlier answer" },
+      { role: "user", content: "Summarise my notes" },
+      { role: "assistant", content: "Here is the summary." },
+      { role: "user", content: "Now a quiz" },
+    ],
+    sources: [{ source: "other.pdf", text: "Other passage" }],
+    name: "Sam",
+  });
+  assert.ok(next.startsWith(prompt.slice(0, at("conversation")) + "<mowr-conversation>\nUser: Earlier question\n\nAssistant: Earlier answer"));
+});
+
+test("the Kinetra guide keeps its fixed text first: this conversation's notes, then the recipes for the topic at hand", () => {
+  const notes = "\n\nFILES IN THIS CONVERSATION: report.pdf";
+  const circuits = kinetraInstructionsFor("Explain nodal analysis with dependent sources as a PDF", false, { notes });
+  const optics = kinetraInstructionsFor("Make a PDF on thin lenses and ray diagrams", false, { notes });
+  let same = 0;
+  while (circuits[same] === optics[same]) same++;
+  // Everything up to and including the notes is shared; only the recipes differ.
+  assert.ok(same >= circuits.indexOf(notes) + notes.length);
+  assert.ok(circuits.indexOf(notes) < circuits.indexOf("Verified figure recipes"));
+  assert.ok(kinetraInstructionsFor("hi, how are you?", false, { notes }).endsWith(notes));
+  assert.ok(kinetraInstructionsFor("Solve this and make a PDF", false, { pictures: true, notes }).includes(notes));
 });
 
 const empty: MemoryState = { enabled: true, records: [] };
