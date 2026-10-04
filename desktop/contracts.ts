@@ -96,6 +96,8 @@ export const requestSchema = z.discriminatedUnion("action", [
       .refine((l) => !l || l.reduce((n, f) => n + f.text.length, 0) <= 40_000_000, "Too much file text for one request."),
     /** An internal request that must answer in text only (a document edit returning JSON): no Kinetra tools, so no new file. */
     plain: z.boolean().optional(),
+    /** A temporary chat: the model reads memory and files as usual, but nothing from it is remembered or kept. */
+    temporary: z.boolean().optional(),
     // Sized to the largest context budget (core/context-budget.ts): one message may carry whole files.
     messages: z
       .array(

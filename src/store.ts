@@ -1,4 +1,5 @@
 import { desktop } from "./desktop/bridge";
+import { withoutTemporary } from "../core/temporary-chat";
 import { get, set, del } from "idb-keyval";
 import type {
   Chat,
@@ -101,6 +102,7 @@ export async function loadState(): Promise<State> {
   return stored ? restoreState(stored) : structuredClone(emptyState);
 }
 export async function saveState(state: State, ns = namespace) {
+  state = withoutTemporary(state);
   if (desktop) {
     if (ns !== namespace) throw Error("Account changed before saving.");
     await local("state", "PUT", JSON.stringify(state));

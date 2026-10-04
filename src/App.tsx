@@ -223,6 +223,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const model=savedSelection?.model ?? defaultModel;
   const reasoning=savedSelection?.reasoning ?? (savedSelection?.model ? models.find(m=>m.id===model)?.defaultReasoningEffort || "" : defaultReasoning);
   const [deleteChatId,setDeleteChatId]=useState<string|null>(null);
+  // The next new chat is temporary: the model still reads files and memory, but the chat is never saved or remembered.
+  const [temporaryNext,setTemporaryNext]=useState(false);
   const [modal, setModal] = useState<string | null>(null);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [toast, setToast] = useState("");
@@ -432,6 +434,20 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(()=>{const selected=models.find(m=>m.id===defaultModel);if(selected&&!selected.reasoningEfforts?.some(e=>e.reasoningEffort===defaultReasoning))setDefaultReasoning(selected.defaultReasoningEffort||"");},[models,defaultModel,defaultReasoning]);
   const patch = (fn: (s: State) => State) => {const next=fn(stateRef.current);stateRef.current=next;setState(next);};
   const activeChat = state.chats.find((c) => c.id === chatId);
+  const savedChats = state.chats.filter((c) => !c.temporary);
+  const isTemporary = activeChat ? !!activeChat.temporary : temporaryNext;
+  // Leaving a temporary chat deletes it without a word; nothing was ever written to disk.
+  const lastChat = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = lastChat.current;
+    lastChat.current = chatId;
+    if (!previous || previous === chatId || !stateRef.current.chats.find((c) => c.id === previous)?.temporary) return;
+    stopChat(previous);
+    void deleteWorkflowCheckpoints(ownerRef.current, stateRef.current.chats.find((c) => c.id === previous)?.messages.flatMap((m) => (m.plan ? [m.plan] : [])) || []).catch(() => {});
+    patch((s) => ({ ...s, chats: s.chats.filter((c) => c.id !== previous), visuals: s.visuals.filter((v) => v.chatId !== previous) }));
+  }, [chatId]);
+  /** Keeps a temporary chat: from here on it is an ordinary saved chat. */
+  const saveTemporaryChat = (id: string) => { updateChat(id, ({ temporary, ...c }) => c); setToast("Chat saved."); };
   const activeSpace = state.spaces.find((s) => s.id === spaceId);
   useEffect(()=>{
     const receive=(event:Event)=>{const {file:made,scope,revised}=(event as CustomEvent).detail as {file:StoredFile;scope?:string;revised?:{version:import('../core/types').FileVersion}};
@@ -467,6 +483,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const bytes = state.files.reduce((n, f) => n + f.size, 0);
   function newChat(id: string | null = null) {
     setChatId(null);
+    setTemporaryNext(false);
     setSpaceId(id);
     setDraft("");
     setAttachments([]);
@@ -516,7 +533,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -603,6 +620,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       spaceId,
       messages: [],
       updated: Date.now(),
+      ...(temporaryNext ? { temporary: true } : {}),
     };
     const next = {
       ...chat,
@@ -1457,7 +1475,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     window.addEventListener('keydown',onKey);
     return()=>window.removeEventListener('keydown',onKey);
   },[route]);
-  const searchMatches=modal==="search"?state.chats.filter((c)=>(c.title+" "+c.messages.map((m)=>m.content).join(" ")).toLowerCase().includes(search.toLowerCase())):[];
+  const searchMatches=modal==="search"?savedChats.filter((c)=>(c.title+" "+c.messages.map((m)=>m.content).join(" ")).toLowerCase().includes(search.toLowerCase())):[];
   const commands:Command[]=[
     {id:'new-chat',group:'Actions',label:'New chat',hint:'Ctrl N',icon:'new',run:()=>newChat()},
     {id:'long-task',group:'Actions',label:'Start a long task',icon:'long',keywords:'plan workflow steps',run:()=>{newChat();setLong(true);}},
@@ -1469,7 +1487,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     ...nav.filter(([icon])=>icon!=='new').map(([icon,label])=>({id:'go-'+icon,group:'Go to',label,icon,run:()=>navigate(`/app/${icon}`)})),
     ...["Profile","General","Security","Models","Memory","Skills","Automations","Connectors","Linked folders","Telegram","Usage","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
     ...state.spaces.map(space=>({id:'space-'+space.id,group:space.kind==='project'?'Projects':'Subjects',label:space.name,icon:space.kind==='project'?'projects':'subjects',keywords:space.description,run:()=>newChat(space.id)})),
-    ...[...state.chats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
+    ...[...savedChats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
   ];
   const composerUI = (
     <form className="composer" onSubmit={send}>
@@ -1660,8 +1678,8 @@ In this subject the learner keeps missing these questions in review; connect to 
                   <Icon name="research" size={17} />
                 </button>
               </div>
-              {state.chats.length ? (
-                [...state.chats].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||b.updated-a.updated).slice(0, 12).map((c) => (
+              {savedChats.length ? (
+                [...savedChats].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||b.updated-a.updated).slice(0, 12).map((c) => (
                   <div className={`history-row ${c.id === chatId && route === "/app" ? "chosen" : ""} ${c.id in runs ? "is-working" : ""} ${unseen.has(c.id) ? "is-unseen" : ""}`} key={c.id}><button
                     className={`history-item ${c.id === chatId && route === "/app" ? "chosen" : ""}`}
                     onClick={() => {
@@ -1721,14 +1739,14 @@ In this subject the learner keeps missing these questions in review; connect to 
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Usage" ? (
-                      <UsageSettings chats={state.chats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
+                      <UsageSettings chats={savedChats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
                     ) : settingsTab === "Help & support" ? (
                       <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary support-paypal"><PayPalMark size={16}/>Support with PayPal</SupportLink></SettingRow></SettingsCard></>
                     ) : (<>
                       <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
-                        <SettingRow title="Conversations" description={`${state.chats.length} saved on this PC`}><button className="secondary danger" disabled={!state.chats.length||anyRunning} onClick={async()=>{
-                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${state.chats.length} conversations are removed from this PC. Saved files, skills and memory are kept. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
+                        <SettingRow title="Conversations" description={`${savedChats.length} saved on this PC`}><button className="secondary danger" disabled={!savedChats.length||anyRunning} onClick={async()=>{
+                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC. Saved files, skills and memory are kept. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
                           try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
                         }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
@@ -1780,22 +1798,33 @@ In this subject the learner keeps missing these questions in review; connect to 
                   `Your ${route.split("/").at(-1)}`
                 )}
               </span>
+              {route === "/app" && (activeChat?.temporary ? (
+                <div className="temp-controls">
+                  <span className="temp-pill"><Icon name="temp" size={15} />Temporary chat</span>
+                  <button className="secondary" onClick={() => saveTemporaryChat(activeChat.id)}><Icon name="check" size={15} />Save chat</button>
+                </div>
+              ) : !activeChat ? (
+                <div className="temp-controls">
+                  <button className={`icon-button temp-toggle ${temporaryNext ? "on" : ""}`} aria-pressed={temporaryNext} aria-label="Temporary chat" title={temporaryNext ? "Temporary chat is on" : "Start a temporary chat"} onClick={() => setTemporaryNext(!temporaryNext)}><Icon name="temp" size={21} /></button>
+                </div>
+              ) : null)}
             </header>
             {route === "/app" ? (
               <div className="chat-split">
               <div
-                className={`chat-view ${activeChat?.messages.length ? "has-messages" : ""}`}
+                className={`chat-view ${activeChat?.messages.length ? "has-messages" : ""} ${isTemporary ? "temporary" : ""}`}
               >
                 {!activeChat?.messages.length ? (
                   <div className="new-chat-content">
                     <div className="greeting-row">
                       <Logo size={47} />
                       <h1>
-                        {activeSpace
+                        {temporaryNext ? "Temporary chat." : activeSpace
                           ? `Let’s think about ${activeSpace.name}.`
                           : `${new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 18 ? "Afternoon" : "Evening"}, ${state.name === "Thinker" ? "thinker" : state.name}.`}
                       </h1>
                     </div>
+                    {temporaryNext && <p className="temp-note">Not saved and never remembered. Mowr can still use your files and memory.</p>}
                     {composerUI}
                     <div className="suggestions">
                       {[
@@ -1883,7 +1912,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     <div className="chat-composer">
                       {composerUI}
                       <p className="composer-note">
-                        Make room for doubt. Check the things that matter.
+                        {activeChat?.temporary ? "Temporary chat: not saved and never remembered. It disappears when you leave unless you save it." : "Make room for doubt. Check the things that matter."}
                       </p>
                     </div>
                   </>
@@ -1896,7 +1925,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               </div>
             ) : pageSpace ? (
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
-                chats={state.chats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} actions={spaceActions(pageSpace)}/></Suspense>
+                chats={savedChats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} actions={spaceActions(pageSpace)}/></Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (
               (() => {
                 const projects = route.endsWith("projects"), kind = projects ? "project" : "subject";
@@ -1921,7 +1950,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                   </div>}
                   {all.length > 0 && <div className="lib-grid">
                     {shown.map((s) => {
-                      const chats = state.chats.filter((c) => c.spaceId === s.id), n = chats.length;
+                      const chats = savedChats.filter((c) => c.spaceId === s.id), n = chats.length;
                       const last = chats.reduce((m, c) => Math.max(m, c.updated || 0), 0);
                       return <article className="lib-card" key={s.id}>
                         <button type="button" className="lib-card-open" onClick={() => openSpace(s.id)}>
@@ -1949,7 +1978,7 @@ In this subject the learner keeps missing these questions in review; connect to 
               })()
             ) : route === "/app/visuals" ? (
               (() => {
-                const saved = state.visuals.filter((v) => state.chats.some((c) => c.id === v.chatId));
+                const saved = state.visuals.filter((v) => savedChats.some((c) => c.id === v.chatId));
                 const open = (chat: string) => { const c = state.chats.find((x) => x.id === chat)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); };
                 const draw = (topic: string) => { newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + topic), 60); };
                 return <div className="page lib">
@@ -1968,7 +1997,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                   </form>
                   {saved.length ? <section className="lib-section" aria-label="Saved visuals">
                     <h2 className="lib-section-title">Saved <span>{saved.length}</span></h2>
-                    <Suspense fallback={null}><SavedVisuals visuals={saved} chats={state.chats} spaces={state.spaces} onOpen={open} onRemove={(id) => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== id) }))} /></Suspense>
+                    <Suspense fallback={null}><SavedVisuals visuals={saved} chats={savedChats} spaces={state.spaces} onOpen={open} onRemove={(id) => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== id) }))} /></Suspense>
                   </section> : <section className="lib-section">
                     <h2 className="lib-section-title">Try one</h2>
                     <p className="lib-note">Visuals stay in their chat. Press <b>Save</b> on the top right of one to keep it here.</p>
@@ -2171,7 +2200,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     </button>
                   ))}
               </div>
-              {!state.chats.length ? (
+              {!savedChats.length ? (
                 <p>
                   No conversations yet. Your first thought is a good place to
                   start.
@@ -2386,7 +2415,7 @@ In this subject the learner keeps missing these questions in review; connect to 
           ) : null}
         </Modal>
       )}
-      {everything!==null&&<Suspense fallback={null}><SearchEverything initialQuery={everything} chats={state.chats} spaces={state.spaces} studySets={state.studySets} files={state.files} owner={ownerRef.current} scopeLabel={scopeLabel} onClose={()=>setEverything(null)}
+      {everything!==null&&<Suspense fallback={null}><SearchEverything initialQuery={everything} chats={savedChats} spaces={state.spaces} studySets={state.studySets} files={state.files} owner={ownerRef.current} scopeLabel={scopeLabel} onClose={()=>setEverything(null)}
         onOpenChat={chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}} onOpenSpace={space=>openSpace(space.id)} onOpenFile={file=>setViewer(file)} onOpenFolderFile={file=>setFolderView({file,folderId:file.folderId})}/></Suspense>}
       {folderView&&<Suspense fallback={null}><FolderBrowser initial={folderView.file} folderId={folderView.folderId} key={(folderView.folderId||'')+(folderView.file?.path||'')} scopeLabel={scopeLabel} onAsk={askAboutFolderFile} onClose={()=>setFolderView(null)}/></Suspense>}
       {packShare&&<Suspense fallback={null}><ShareSheet space={packShare.space} folderId={packShare.folderId} sets={state.studySets.filter(x=>x.spaceId===packShare.space.id)} files={state.files.filter(f=>f.spaceId===packShare.space.id)} author={state.name} onClose={()=>setPackShare(null)} onDone={message=>setToast(message)}/></Suspense>}
