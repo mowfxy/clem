@@ -7,7 +7,8 @@ import { renameSync, rmSync } from "node:fs";
 import { Codex, mayBeTool } from "../../desktop/codex.ts";
 import { toolRequest } from "../../desktop/kinetra-turn.ts";
 import { kinetraCall, kinetraInstructionsFor, kinetraInstructions, kinetraBrief, kinetraTool } from "../../desktop/kinetra-runtime.ts";
-import { kinetraRecipes } from "../../desktop/kinetra-recipes.ts";
+import { kinetraRecipes, diagramRecipes, illustrationRecipes } from "../../desktop/kinetra-recipes.ts";
+import { textProblems } from "../../desktop/figure-audit.ts";
 import { renderFigures, documentHtml } from "../../desktop/pdf-document.ts";
 import { markdownHtml } from "../../desktop/pdf-markdown.ts";
 import { composePrompt } from "../../desktop/prompt.ts";
@@ -183,12 +184,24 @@ test("full Kinetra instructions only when the request needs them", async () => {
 });
 
 test("every figure recipe the model is shown renders with the real worker", async () => {
-  for (const recipe of kinetraRecipes) {
+  for (const recipe of [...kinetraRecipes, ...diagramRecipes, ...illustrationRecipes]) {
     const svg = await kinetraCall(recipe.figure);
     assert.equal(typeof svg, "string", recipe.name);
     assert.match(svg, /<svg/, recipe.name);
+    // No recipe draws text over text or past the edge of the figure.
+    assert.deepEqual(textProblems(svg), [], recipe.name);
   }
   assert.ok(kinetraInstructions.includes('"fn":"renderProjectile"'));
+});
+
+test("a figure with colliding text goes back once with the reason, then draws as sent", async () => {
+  // A label wider than the whole figure cannot be placed anywhere clear.
+  const crowded = { module: "diagram/freebody", fn: "renderFBD", args: [{ bodyPosition: { x: 0, y: 0 }, bodySize: { w: 2, h: 1.2 }, bodyLabel: "5 kg", frameAngleDeg: 0, forces: [{ point: { x: 0, y: 0 }, components: { x: 20, y: 0 }, magnitude: 20, unit: "N", label: "The applied force from the rope that is pulling the block toward the right-hand wall" }], world: { xMin: -5, xMax: 5, yMin: -4, yMax: 4 }, width: 300, height: 260 }] };
+  const svg = await kinetraCall(crowded);
+  assert.ok(textProblems(svg).length, "the label does not fit");
+  const spec = { title: "Forces", sections: [{ heading: "Forces on the block", text: "The block is pulled by two ropes.", figure: crowded }] };
+  await assert.rejects(renderFigures(spec), /text collides/);
+  await renderFigures(spec);
 });
 
 test("plot adapter parses plain expressions and refuses blank graphs", async () => {

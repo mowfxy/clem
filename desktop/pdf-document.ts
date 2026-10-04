@@ -1,3 +1,4 @@
+import { textProblems } from "./figure-audit.ts";
 import { kinetraCall } from "./kinetra-runtime.ts";
 import { markdownHtml } from "./pdf-markdown.ts";
 import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
@@ -137,6 +138,8 @@ export function documentFonts(spec: Pick<DocumentSpec, "font" | "headingFont" | 
   const body = pick(spec.font) || layoutFonts[layoutFor(spec)];
   return { body: body.body, head: pick(spec.headingFont)?.body || body.head };
 }
+/** Figures whose crowded text was already reported once; sent again unchanged, they are drawn as they are. */
+const accepted = new Set<string>();
 /** Figures already drawn, so adding a part to a long document does not draw (and risk timing out) every earlier figure again. */
 const drawn = new Map<string, string>();
 async function drawFigure(figure: any) {
@@ -218,6 +221,14 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
         if (typeof svg !== "string" || !svg.includes("<svg"))
           throw Error(`${s.figure.module}.${s.figure.fn} returned data, not a drawing. Use a render function (see the figure recipes).`);
         if (unsafeSvg.test(svg)) throw Error("the generated figure contained unsupported content");
+        // Overlapping or clipped text goes back once with the reason; the same figure sent again is accepted as it is.
+        const crowded = checkVoice ? textProblems(svg) : [];
+        const key = JSON.stringify(s.figure);
+        if (crowded.length && !accepted.has(key)) {
+          accepted.add(key);
+          if (accepted.size > 500) accepted.delete(accepted.values().next().value!);
+          throw Error(`its text collides: ${crowded.slice(0, 6).join("; ")}. Shorten or move those labels (or give the figure more room: a larger world range, width or spacing), then send it again`);
+        }
         return svg;
       } catch (error) {
         // An export of an answer the person already has prints without a visual that cannot be drawn, rather than not at all.

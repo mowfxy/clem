@@ -31,7 +31,7 @@ import {
   validateCircuit,
 } from "../../../../core/src/circuit/circuit.js";
 import { solveDC, solveTransient } from "../../../../core/src/circuit/spice.js";
-import { renderSchematic } from "../../../../core/src/diagram/circuit_schematic.js";
+import { renderCircuit } from "../../../../core/src/diagram/circuit_schematic.js";
 import { renderPlotSvg } from "../../../../core/src/graph/render_svg.js";
 import { samplePlot } from "../../../../core/src/graph/sample.js";
 ```
@@ -63,8 +63,10 @@ import { samplePlot } from "../../../../core/src/graph/sample.js";
    with `transient.nodeVoltages.get(nodeId)`, then call
    `renderPlotSvg(spec)`. The SVG output is byte-stable for the same
    spec.
-5. **Render schematic.** Build a `Schematic` model with `components`
-   (id, kind, x, y, label) and `wires`, then `renderSchematic`.
+5. **Render schematic.** Pass the netlist to `renderCircuit`:
+   `{ elements: [{ kind, from, to, label?, value?, unit?, current?, voltage? }] }`
+   with node "0" as ground. It lays out the figure itself (right-angle
+   wires, junction dots, clear labels); never give coordinates.
 
 ## Solver limits to surface honestly
 

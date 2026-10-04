@@ -6,6 +6,8 @@
 import { el, line, renderSvg, text } from "./primitives.js";
 import type { SvgElement } from "./primitives.js";
 import type { Color, Vec2 } from "./primitives.js";
+import { collision, textWidth as measure } from "./schematic_kit.js";
+import type { Box, Scene, Seg } from "./schematic_kit.js";
 
 export interface Scene2DModel {
   width: number;
@@ -220,8 +222,10 @@ export function renderScene2D(s: Scene2DModel): string {
       }
     }
   }
-  // Shapes
-  for (const sh of s.shapes) pushShape(s, sh, children);
+  // Shapes: geometry first, then every label placed clear of strokes and of the labels before it.
+  const ctx: Context = { labels: [], strokes: [], boxes: [] };
+  for (const sh of s.shapes) pushShape(s, sh, children, ctx);
+  placeLabels(s, ctx, children);
   if (s.caption) {
     children.push(text(s.width / 2, s.height - 8, s.caption, "#555", 11, "middle"));
   }
@@ -229,15 +233,55 @@ export function renderScene2D(s: Scene2DModel): string {
   return renderSvg(root, { viewBox: `0 0 ${s.width} ${s.height}`, width: s.width, height: s.height, background: s.background ?? "#fff" });
 }
 
-function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[]): void {
+type LabelRequest = { text: string; size: number; color: string; anchor: "start" | "middle" | "end"; x: number; y: number; at: Vec2; backdrop: boolean };
+type Context = { labels: LabelRequest[]; strokes: Seg[]; boxes: Box[] };
+const labelBox = (x: number, y: number, contents: string, size: number, anchor: "start" | "middle" | "end"): Box => {
+  const w = measure(contents, size);
+  return { x: anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x, y: y - size * 0.85, w, h: size * 1.15 };
+};
+/**
+ * Places each label at its preferred spot when that is clear; otherwise at the nearest clear spot around the point
+ * it labels (an arrow tip, a point), so labels never sit on each other or on a stroke.
+ */
+function placeLabels(s: Scene2DModel, ctx: Context, out: SvgElement[]) {
+  const scene: Scene = { segments: ctx.strokes, boxes: ctx.boxes, labels: [], frame: { x: 0, y: 0, w: s.width, h: s.height } };
+  if (s.title) scene.labels.push(labelBox(s.width / 2, 16, s.title, 14, "middle"));
+  for (const l of ctx.labels) {
+    const first = clampText(s, l.x, l.y, l.text, l.size, l.anchor, { dx: 0, dy: 0 });
+    const options: { x: number; y: number; cost: number }[] = [{ ...first, cost: 0 }];
+    const w = measure(l.text, l.size), h = l.size * 1.15;
+    const shift = l.anchor === "middle" ? w / 2 : l.anchor === "end" ? w : 0;
+    // Beside the point (right or left, sliding up and down), then above or below it (sliding sideways), stepping outward.
+    const at = (left: number, top: number, cost: number) => options.push({ x: left + shift, y: top + l.size * 0.85, cost });
+    for (const g of [6, 14, 26, 42, 62]) {
+      for (const v of [0, -12, 12, -24, 24, -38, 38]) {
+        at(l.at.x + g, l.at.y + v - h / 2, 3 + g * 0.5 + Math.abs(v) * 0.3);
+        at(l.at.x - g - w, l.at.y + v - h / 2, 4 + g * 0.5 + Math.abs(v) * 0.3);
+      }
+      for (const u of [0, -0.5, 0.5]) {
+        at(l.at.x - w / 2 + u * w, l.at.y - g - h, 3.5 + g * 0.5 + Math.abs(u) * 8);
+        at(l.at.x - w / 2 + u * w, l.at.y + g, 3.5 + g * 0.5 + Math.abs(u) * 8);
+      }
+    }
+    let best = options[0], score = Infinity;
+    for (const o of options) {
+      const sc = o.cost + collision(labelBox(o.x, o.y, l.text, l.size, l.anchor), scene);
+      if (sc < score - 1e-9) { best = o; score = sc; }
+    }
+    const box = labelBox(best.x, best.y, l.text, l.size, l.anchor);
+    scene.labels.push(box);
+    if (l.backdrop) out.push(el("rect", { x: box.x - 1, y: box.y - 0.5, width: box.w + 2, height: box.h + 1, fill: "#ffffff", stroke: "none" }));
+    out.push(text(best.x, best.y, l.text, l.color, l.size, l.anchor));
+  }
+}
+
+function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[], ctx: Context): void {
   switch (sh.kind) {
     case "point": {
       const p = worldToView(s, sh.at);
       out.push(el("circle", { cx: p.x, cy: p.y, r: 3, fill: sh.color ?? "#222" }));
-      if (sh.label) {
-        const tc = clampText(s, p.x + 5, p.y - 5, sh.label, 12, "start", { dx: 0, dy: 0 });
-        out.push(text(tc.x, tc.y, sh.label, sh.color ?? "#222", 12, "start"));
-      }
+      ctx.boxes.push({ x: p.x - 3, y: p.y - 3, w: 6, h: 6 });
+      if (sh.label) ctx.labels.push({ text: sh.label, size: 12, color: sh.color ?? "#222", anchor: "start", x: p.x + 5, y: p.y - 5, at: p, backdrop: false });
       return;
     }
     case "segment": {
@@ -246,6 +290,7 @@ function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[]): void {
       const attrs: Record<string, string | number> = { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: sh.color ?? "#222", "stroke-width": sh.width ?? 1, "stroke-linecap": "round" };
       if (sh.dashed) attrs["stroke-dasharray"] = "4 4";
       out.push(el("line", attrs));
+      ctx.strokes.push({ a, b });
       return;
     }
     case "vector": {
@@ -266,22 +311,24 @@ function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[]): void {
         out.push(line(a.x, a.y, tip.x, a.y, cc, 0.8, "3 3"));
         out.push(line(tip.x, a.y, tip.x, tip.y, cc, 0.8, "3 3"));
       }
-      if (sh.label) {
-        const tc = clampText(s, tip.x + 5, tip.y - 5, sh.label, 12, "start", { dx: 0, dy: 0 });
-        out.push(text(tc.x, tc.y, sh.label, sh.color ?? "#222", 12, "start"));
-      }
+      ctx.strokes.push({ a, b: tip });
+      if (sh.label) ctx.labels.push({ text: sh.label, size: 12, color: sh.color ?? "#222", anchor: "start", x: tip.x + 5, y: tip.y - 5, at: tip, backdrop: false });
       return;
     }
     case "circle": {
       const c = worldToView(s, sh.center);
       const t = sceneTransform(s);
       out.push(el("ellipse", { cx: c.x, cy: c.y, rx: sh.r * t.sx, ry: sh.r * t.sy, fill: sh.fill ?? "none", stroke: sh.stroke ?? "#222", "stroke-width": 1 }));
+      ring(ctx, Array.from({ length: 24 }, (_, i) => ({ x: c.x + Math.cos((i * Math.PI) / 12) * sh.r * t.sx, y: c.y + Math.sin((i * Math.PI) / 12) * sh.r * t.sy })), true);
+      ctx.boxes.push({ x: c.x - sh.r * t.sx * 0.7, y: c.y - sh.r * t.sy * 0.7, w: sh.r * t.sx * 1.4, h: sh.r * t.sy * 1.4 });
       return;
     }
     case "rect": {
       const o = worldToView(s, sh.origin);
       const op = worldToView(s, { x: sh.origin.x + sh.size.w, y: sh.origin.y + sh.size.h });
       out.push(el("rect", { x: o.x, y: op.y, width: op.x - o.x, height: o.y - op.y, fill: sh.fill ?? "none", stroke: sh.stroke ?? "#222", "stroke-width": 1, rx: sh.rx ?? 0 }));
+      ring(ctx, [{ x: o.x, y: op.y }, { x: op.x, y: op.y }, { x: op.x, y: o.y }, { x: o.x, y: o.y }], true);
+      ctx.boxes.push({ x: Math.min(o.x, op.x), y: Math.min(o.y, op.y), w: Math.abs(op.x - o.x), h: Math.abs(o.y - op.y) });
       return;
     }
     case "arc": {
@@ -291,12 +338,14 @@ function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[]): void {
         return worldToView(s, { x: sh.center.x + sh.r * Math.cos(a), y: sh.center.y + sh.r * Math.sin(a) });
       });
       out.push(el("path", { d: points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" "), fill: "none", stroke: sh.color ?? "#222", "stroke-width": sh.width ?? 1 }));
+      ring(ctx, points, false);
       return;
     }
     case "polygon": {
       const pts = sh.points.map((p) => worldToView(s, p));
       const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z";
       out.push(el("path", { d, fill: sh.fill ?? "none", stroke: sh.stroke ?? "#222", "stroke-width": 1 }));
+      ring(ctx, pts, true);
       return;
     }
     case "path": {
@@ -312,24 +361,21 @@ function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[]): void {
       const dy = sh.offset?.dy ?? 0;
       const sz = sh.size ?? 12;
       const anchor = sh.anchor ?? "start";
-      const tc = clampText(s, p.x + dx, p.y + dy, sh.text, sz, anchor, { dx: 0, dy: 0 });
-      // White backdrop so the label stays readable when grid lines or other
-      // thin reference strokes pass behind it.
-      const lW = textWidth(sh.text, sz);
-      const lH = sz * 1.15;
-      let bgX = tc.x;
-      if (anchor === "middle") bgX = tc.x - lW / 2;
-      else if (anchor === "end") bgX = tc.x - lW;
-      const bgY = tc.y - sz * 0.85;
-      out.push(el("rect", { x: bgX - 1, y: bgY - 0.5, width: lW + 2, height: lH + 1, fill: "#ffffff", stroke: "none" }));
-      out.push(text(tc.x, tc.y, sh.text, sh.color ?? "#222", sz, anchor));
+      // A white backdrop keeps the label readable when grid lines or thin reference strokes pass behind it.
+      ctx.labels.push({ text: sh.text, size: sz, color: sh.color ?? "#222", anchor, x: p.x + dx, y: p.y + dy, at: { x: p.x + dx, y: p.y + dy - sz * 0.35 }, backdrop: true });
       return;
     }
     case "group": {
-      for (const c of sh.children) pushShape(s, c, out);
+      for (const c of sh.children) pushShape(s, c, out, ctx);
       return;
     }
   }
+}
+
+/** The edges of an outline, as strokes labels keep clear of. */
+function ring(ctx: Context, pts: Vec2[], closed: boolean) {
+  for (let i = 1; i < pts.length; i++) ctx.strokes.push({ a: pts[i - 1], b: pts[i] });
+  if (closed && pts.length > 2) ctx.strokes.push({ a: pts[pts.length - 1], b: pts[0] });
 }
 
 /**
