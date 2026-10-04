@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { renameSync, rmSync } from "node:fs";
 import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN, MAX_PARALLEL } from "../../desktop/kinetra-turn.ts";
-import { kinetraTool, kinetraCall } from "../../desktop/kinetra-runtime.ts";
+import { kinetraTool, kinetraCall, kinetraPool } from "../../desktop/kinetra-runtime.ts";
+import { kinetraRecipes } from "../../desktop/kinetra-recipes.ts";
 before(async () => {
   // Built beside and renamed into place: another test file builds the same worker at the same time.
   const tmp = `desktop-dist/kinetra-worker.${process.pid}.tmp`;
@@ -429,4 +430,36 @@ test("independent requests in one reply run side by side; file making and look k
   assert.ok(log.indexOf("start d") > log.indexOf("end pdf"));
   const results = [...sent[1].matchAll(/"result":"(\w+) ok"/g)].map((m) => m[1]);
   assert.deepEqual(results, ["a", "b", "c", "pdf", "d"]);
+});
+
+test("Kinetra calls share a few warm workers; one that times out or stops is replaced", async () => {
+  const integral = { module: "mowr", fn: "integrateExpression", args: ["x^2", "x", 0, 1] };
+  assert.ok(Math.abs((await kinetraCall(integral)) - 1 / 3) < 1e-8);
+  const [warm] = kinetraPool.workers();
+  // Later calls reuse the loaded worker instead of starting one each time.
+  for (let i = 0; i < 5; i++) await kinetraCall(integral);
+  assert.equal(kinetraPool.workers()[0], warm);
+  // Many at once are spread over at most MAX_PARALLEL workers and all answered.
+  const many = await Promise.all(Array.from({ length: 12 }, () => kinetraCall(integral)));
+  assert.equal(many.length, 12);
+  assert.ok(kinetraPool.workers().length <= MAX_PARALLEL);
+  // A call over the time limit fails as before, and its worker is thrown away.
+  const pulley = (kinetraRecipes as any[]).find((r) => r.figure.fn === "renderPulley").figure;
+  const before = kinetraPool.workers().length;
+  kinetraPool.callMs = 1;
+  try {
+    await assert.rejects(kinetraCall(pulley), /timed out/);
+  } finally {
+    kinetraPool.callMs = 30_000;
+  }
+  assert.equal(kinetraPool.workers().length, before - 1);
+  // Workers that stop mid-call (a crash) fail that call; they leave the pool and the next call gets a fresh worker.
+  const running = kinetraCall(pulley);
+  const stopped = kinetraPool.workers();
+  const exits = stopped.map((worker) => worker.terminate());
+  await assert.rejects(running, /stopped without a result/);
+  await Promise.all(exits);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(!kinetraPool.workers().some((worker) => stopped.includes(worker)));
+  assert.ok(Math.abs((await kinetraCall(integral)) - 1 / 3) < 1e-8);
 });

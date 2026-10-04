@@ -60,9 +60,8 @@ const modules: Record<string, any> = {
   "math/calculus": m23,
   "math/linear": m24,
 };
-// Async so a lazily loaded function (mowr.visual) can be awaited; every other function returns at once.
-void (async () => { try {
-  const { module: moduleName, fn, args } = workerData;
+/** One call. Async so a lazily loaded function (mowr.visual) can be awaited; every other function returns at once. */
+async function execute({ module: moduleName, fn, args }: { module: string; fn: string; args: any[] }) {
   if (
     !Object.hasOwn(modules, moduleName) ||
     !Object.hasOwn(modules[moduleName], fn) ||
@@ -90,7 +89,12 @@ void (async () => { try {
           : v,
   );
   if (json && json.length > 2000000) throw Error("Kinetra result is too large");
-  parentPort!.postMessage({ result: json ? JSON.parse(json) : null });
-} catch (e) {
-  parentPort!.postMessage({ error: (e as Error).message });
-} })();
+  return json ? JSON.parse(json) : null;
+}
+// Started with a request (workerData), the worker answers it once. Without one it stays warm and answers each
+// {id, request} it is sent (desktop/kinetra-runtime.ts keeps a few of these), one at a time.
+if (workerData)
+  execute(workerData).then((result) => parentPort!.postMessage({ result }), (e) => parentPort!.postMessage({ error: (e as Error).message }));
+else
+  parentPort!.on("message", ({ id, request }) =>
+    execute(request).then((result) => parentPort!.postMessage({ id, result }), (e) => parentPort!.postMessage({ id, error: (e as Error).message })));
