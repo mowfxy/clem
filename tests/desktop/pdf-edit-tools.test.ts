@@ -161,6 +161,15 @@ test("notes, text boxes, stamps and page numbers are added, upright on a turned 
   assert.deepEqual(ok.changed, [1, 2, 3]);
 });
 
+test("drawing after an edit that searched the page is kept (a stamp, a search, then page numbers)", async () => {
+  const h = helpers({ "paper.pdf": new Uint8Array(await fixture("two-column.pdf")) });
+  const r = await editPdf({ file: "paper.pdf", ops: [{ op: "stamp", text: "DRAFT" }, { op: "highlight", page: 1, find: "Kirchhoff's laws" }, { op: "pageNumbers", format: "Page {n}" }, { op: "text", page: 1, bbox: [318, 300, 540, 340], text: "Reviewer note" }] }, h);
+  const [p] = await read(r.bytes);
+  assert.match(p.text, /DRAFT/);
+  assert.match(p.text, /Page 1/);
+  assert.match(p.text, /Reviewer note/);
+});
+
 test("form fields are filled (text, checkbox, choice), unknown names are answered with the real ones, and a form can be flattened", async () => {
   const doc = await PDFDocument.create();
   const page = doc.addPage([400, 300]), form = doc.getForm();

@@ -8,6 +8,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { makeFile } from "../../desktop/file-maker.ts";
 import { readAsset, type AssetIo } from "../../desktop/pdf-assets.ts";
+import { typesetBlock } from "../../desktop/text-block.ts";
 
 const dir = process.argv.at(-1)!;
 const io: AssetIo = {
@@ -22,7 +23,7 @@ app.whenReady().then(async () => {
   for (const [action, name, spec] of jobs) {
     try {
       // Edits read their files from the folder by name (the window does it in the app).
-      const edit = { load: async (ref: string) => ({ bytes: (await io.read(ref))!, source: "src-00000000-0000-0000-0000-000000000000", name: ref }), words: async () => [], crop: (id: string) => readAsset(io, id) };
+      const edit = { load: async (ref: string) => ({ bytes: (await io.read(ref))!, source: "src-00000000-0000-0000-0000-000000000000", name: ref }), words: async () => [], crop: (id: string) => readAsset(io, id), raster: async () => { throw Error("no window here"); }, typeset: typesetBlock };
       const made = await makeFile(action, spec, { assets: (id) => readAsset(io, id), edit });
       await writeFile(join(dir, name), made.bytes);
       console.log("ok", name, made.bytes.length, JSON.stringify({ name: made.name, info: made.info, spec: made.spec }));

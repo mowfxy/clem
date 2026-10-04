@@ -59,6 +59,7 @@ import {runKinetraTurn,toolRequests,brokenToolRequest,requestLead,SessionLost,Us
 import {inlinePictures} from './kinetra-mcp';
 import {CropAssets,cropTools,memoryIo,readAsset,type AssetIo} from './pdf-assets';
 import type {EditHelpers} from './pdf-edit-tools';
+import {typesetBlock} from './text-block';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
@@ -1483,6 +1484,12 @@ void app.whenReady().then(async () => {
         },
         words: async (bytes, page) => (await windowTask("words", { bytes, page })).data.items,
         crop: (id) => readAsset(cropIo, id),
+        raster: async (bytes, page, boxes, fill) => {
+          const { files } = await windowTask("raster", { bytes, page, boxes, fill, dpi: 200 });
+          if (!files[0]) throw Error("The page could not be drawn.");
+          return files[0];
+        },
+        typeset: typesetBlock,
       };
       const renderPages = async (bytes: Uint8Array, pages: number[]) => (await windowTask("render", { bytes, pages, name: "edited PDF" })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {

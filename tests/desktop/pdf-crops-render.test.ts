@@ -55,7 +55,7 @@ test("a crop is a figure in PDFs (as vectors), Word documents and decks (as its 
   writeFileSync(join(dir, "crop-0000bbbb-png"), settled.png);
   const doc = (id: string) => ({ kind: "report", title: "Series and parallel resistors", sections: [{ heading: "The circuit", text: "The network below combines a series resistor with a parallel pair.", figure: { asset: id, source: true } }, { heading: "Analysis", text: "The equivalent resistance follows from the series and parallel rules." }] });
   const deck = { title: "Resistor networks", slides: [{ layout: "title" }, { layout: "figure", title: "The circuit", figure: { asset: "crop-0000aaaa", source: "Textbook, chapter 2" } }, { layout: "closing", title: "Questions" }] };
-  writeFileSync(join(dir, "jobs.json"), JSON.stringify([["pdf", "report.pdf", doc("crop-0000aaaa")], ["pdf", "fallback.pdf", doc("crop-0000bbbb")], ["docx", "report.docx", doc("crop-0000aaaa")], ["pptx", "deck.pptx", deck], ["pdf", "missing.pdf", doc("crop-0000cccc")], ["editpdf", "edited.pdf", { file: "report.pdf", ops: [{ op: "stamp", text: "DRAFT" }, { op: "crops", assets: ["crop-0000aaaa"] }] }]]));
+  writeFileSync(join(dir, "jobs.json"), JSON.stringify([["pdf", "report.pdf", doc("crop-0000aaaa")], ["pdf", "fallback.pdf", doc("crop-0000bbbb")], ["docx", "report.docx", doc("crop-0000aaaa")], ["pptx", "deck.pptx", deck], ["pdf", "missing.pdf", doc("crop-0000cccc")], ["editpdf", "edited.pdf", { file: "report.pdf", ops: [{ op: "stamp", text: "DRAFT" }, { op: "crops", assets: ["crop-0000aaaa"] }] }], ["editpdf", "translated.pdf", { file: "report.pdf", ops: [{ op: "replace", page: 1, bbox: [60, 150, 540, 200], text: "تحليل الشبكة يبدأ بالعناصر التي تحتويها", background: "white" }] }]]));
   const run = spawnSync(process.execPath, ["scripts/verify/pdf-crops.mjs", dir], { encoding: "utf8", timeout: 600_000 });
   assert.equal(run.status, 0, run.stdout + run.stderr);
   for (const name of ["report.pdf", "fallback.pdf", "report.docx", "deck.pptx"]) assert.match(run.stdout, new RegExp(`ok ${name.replace(".", "\\.")}`), run.stdout);
@@ -65,6 +65,11 @@ test("a crop is a figure in PDFs (as vectors), Word documents and decks (as its 
   assert.equal(edited.info.pages, 2);
   assert.deepEqual(edited.info.changedPages, [1, 2]);
   assert.match(edited.spec.source, /^src-/);
+  // A translation in another script, typeset by Chromium and placed where the original was, readable as text.
+  assert.match(run.stdout, /ok translated\.pdf/, run.stdout);
+  // Chromium writes Arabic as its shaped letter forms in visual order: folded back, the words read right to left.
+  const arabic = (await pageInfo(new Uint8Array(readFileSync(join(dir, "translated.pdf"))))).text.normalize("NFKC").replace(/\s+/g, "");
+  assert.ok(arabic.includes([..."الشبكة"].reverse().join("")), arabic);
   // An id that is no crop is reported, and nothing is made.
   assert.match(run.stdout, /FAIL missing\.pdf .*no crop "crop-0000cccc"/);
 

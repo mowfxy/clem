@@ -1,6 +1,7 @@
 import { PDFDocument, PDFPage, PDFName, PDFHexString, PDFArray, PDFDict, StandardFonts, rgb, degrees, PDFTextField, PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFOptionList, type PDFFont } from "pdf-lib";
 import { textBoxes, type TextItem } from "../core/pdf-edit.ts";
 import { assetCaption, type CropAsset } from "./pdf-assets.ts";
+import { redactPage, collectGarbage, Unclean } from "./pdf-redact.ts";
 
 /**
  * Changes to a PDF the person sent, as a new PDF: pages taken, reordered, turned, removed or merged in; highlights,
@@ -16,12 +17,18 @@ export type EditHelpers = {
   /** The text runs of one page of a document (pdf.js, in the window), for edits that find text. */
   words(bytes: Uint8Array, page: number): Promise<TextItem[]>;
   crop(id: string): Promise<{ meta: CropAsset; png: Uint8Array; pdf?: Uint8Array } | undefined>;
+  /** A page drawn as a picture (JPEG) with `boxes` filled: the redaction that always works, for pages whose content
+   *  cannot be taken out exactly. */
+  raster(bytes: Uint8Array, page: number, boxes: Box[], fill: [number, number, number]): Promise<Uint8Array>;
+  /** A block of text in any script, typeset by Chromium as a one-page PDF of `width` × `height` points. */
+  typeset?(text: string, options: { width: number; height: number; size: number; font: string; bold: boolean; color: [number, number, number]; align: string }): Promise<Uint8Array>;
 };
 export type EditResult = { bytes: Uint8Array; spec: any; changed: number[]; pages: number; done: string[] };
 
 export const MAX_OPS = 300, MAX_PAGES = 5000;
 const COLOURS: Record<string, [number, number, number]> = { yellow: [1, 0.92, 0.23], green: [0.56, 0.93, 0.56], blue: [0.53, 0.81, 0.98], pink: [1, 0.6, 0.8], orange: [1, 0.76, 0.3], red: [0.85, 0.15, 0.15], black: [0, 0, 0], white: [1, 1, 1], grey: [0.5, 0.5, 0.5], gray: [0.5, 0.5, 0.5] };
-type Box = [number, number, number, number];
+export type Box = [number, number, number, number];
+const overlaps = (a: Box, b: Box) => Math.min(a[2], b[2]) > Math.max(a[0], b[0]) && Math.min(a[3], b[3]) > Math.max(a[1], b[1]);
 
 /** A colour by name or #hex, as 0–1 channels. */
 export function colour(value: unknown, fallback: [number, number, number]): [number, number, number] {
@@ -138,7 +145,14 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
   };
   // Finding text needs pdf.js on the document as it is now: one copy, saved again only after a change.
   let snapshot: Uint8Array | null = null;
-  const current = async () => (snapshot ??= await doc.save());
+  const current = async () => {
+    if (snapshot) return snapshot;
+    snapshot = await doc.save();
+    // Saving freezes what each page stream holds (pdf-lib caches the encoded bytes), so the next drawing on any page
+    // must start a new stream or it would be lost.
+    for (const p of doc.getPages()) { (p as any).contentStream = undefined; (p as any).contentStreamRef = undefined; }
+    return snapshot;
+  };
   const page = (n: unknown) => {
     const p = Number(n), count = doc.getPageCount();
     if (!Number.isInteger(p) || p < 1 || p > count) throw Error(`"page" must be 1–${count} (the document as it is at this edit).`);
@@ -146,6 +160,78 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
   };
   const encodable = (f: PDFFont, text: string) => {
     try { f.encodeText(text); } catch { throw Error(`“${text.slice(0, 40)}” has characters the standard PDF fonts cannot set (they cover Latin text). Write it in Latin characters.`); }
+  };
+  /**
+   * Removes what is under each region (desktop/pdf-redact.ts) and fills it. A page whose content cannot be taken out
+   * exactly, or where pdf.js still finds text under a region afterwards, is replaced by a picture of itself with the
+   * regions filled. Returns the pages that became pictures.
+   */
+  const redact = async (regions: { page: number; box: Box }[], fill: [number, number, number]) => {
+    const byPage = new Map<number, Box[]>();
+    for (const r of regions) byPage.set(r.page, [...(byPage.get(r.page) || []), r.box]);
+    const pictures: number[] = [];
+    for (const [n, boxes] of byPage) {
+      const p = doc.getPage(n - 1);
+      try {
+        redactPage(doc, p, boxes);
+        for (const b of boxes) p.drawRectangle({ x: b[0], y: b[1], width: b[2] - b[0], height: b[3] - b[1], color: rgb(...fill) });
+        snapshot = null;
+        // Checked the way anyone would try to read it back: no text pdf.js can extract may remain under a region.
+        const left = (await helpers.words(await current(), n)).filter((i) => i.str.trim() && boxes.some((b) => overlaps(b, [i.x, i.y - i.size * 0.2, i.x + i.width, i.y + i.size * 0.75])));
+        if (left.length) throw new Unclean("text still under the box");
+      } catch (error) {
+        if (!(error instanceof Unclean)) throw error;
+        await rasterize(n, boxes, fill);
+        pictures.push(n);
+      }
+      touched.add(doc.getPage(n - 1));
+    }
+    return pictures;
+  };
+  /** Page `n` replaced by a picture of itself (as it is now) with `boxes` filled, the same size and turn. */
+  const rasterize = async (n: number, boxes: Box[], fill: [number, number, number]) => {
+    snapshot = null;
+    const jpeg = await helpers.raster(await current(), n, boxes, fill);
+    const old = doc.getPage(n - 1), crop = old.getCropBox(), turn = old.getRotation().angle;
+    const fresh = doc.insertPage(n - 1, [crop.width, crop.height]);
+    fresh.setMediaBox(crop.x, crop.y, crop.width, crop.height);
+    fresh.drawImage(await doc.embedJpg(jpeg), { x: crop.x, y: crop.y, width: crop.width, height: crop.height });
+    fresh.setRotation(degrees(turn));
+    doc.removePage(n);
+    snapshot = null;
+  };
+  /** Text written in a box, upright as the page is shown, shrunk to fit; any script, through Chromium, when the standard fonts cannot set it. */
+  const textIn = async (p: PDFPage, box: Box, op: any) => {
+    const view = shown(p);
+    const [a, b] = [view.toShown(box[0], box[1]), view.toShown(box[2], box[3])];
+    const sx0 = Math.min(a[0], b[0]), sx1 = Math.max(a[0], b[0]), sy0 = Math.min(a[1], b[1]), sy1 = Math.max(a[1], b[1]);
+    const face = FACES[op.font] ? op.font : "sans";
+    const f = await font(FACES[face][op.bold ? 1 : 0]);
+    const ink = colour(op.color, COLOURS.black);
+    if (op.background !== "none" && op.background !== undefined) {
+      const bg = colour(op.background, COLOURS.white), [ux, uy] = view.toUser(sx0, sy0);
+      p.drawRectangle({ x: ux, y: uy, width: sx1 - sx0, height: sy1 - sy0, color: rgb(...bg), rotate: degrees(view.r) });
+    }
+    let latin = true;
+    try { f.encodeText(op.text); } catch { latin = false; }
+    if (!latin) {
+      if (!helpers.typeset) encodable(f, op.text);
+      const block = await helpers.typeset!(op.text, { width: sx1 - sx0, height: sy1 - sy0, size: Math.min(72, Math.max(4, Number(op.size) || 11)), font: face, bold: !!op.bold, color: ink, align: String(op.align || "") });
+      const [placed] = await doc.embedPdf(block, [0]);
+      const [ux, uy] = view.toUser(sx0, sy0);
+      p.drawPage(placed, { x: ux, y: uy, width: sx1 - sx0, height: sy1 - sy0, rotate: degrees(view.r) });
+      return;
+    }
+    // The size asked for (11 pt by default), smaller until the text fits the box.
+    let size = Math.min(72, Math.max(4, Number(op.size) || 11)), lines = wrap(op.text, f, size, sx1 - sx0 - 4);
+    while (size > 4 && lines.length * size * 1.2 > sy1 - sy0 - 2) { size -= 0.5; lines = wrap(op.text, f, size, sx1 - sx0 - 4); }
+    if (lines.length * size * 1.2 > sy1 - sy0 - 2) throw Error("That text does not fit the box even at 4 pt: give a larger \"bbox\" or less text.");
+    lines.forEach((line, k) => {
+      const w = f.widthOfTextAtSize(line, size);
+      const vx = op.align === "center" ? sx0 + (sx1 - sx0 - w) / 2 : op.align === "right" ? sx1 - 2 - w : sx0 + 2;
+      const [ux, uy] = view.toUser(vx, sy1 - 1 - size * (k + 0.92) - k * size * 0.2);
+      p.drawText(line, { x: ux, y: uy, size, font: f, color: rgb(...ink), rotate: degrees(view.r) });
+    });
   };
   /** Rebuilds the page list as `order` (1-based, repeats allowed). */
   const arrange = async (order: number[]) => {
@@ -264,31 +350,51 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           break;
         }
         case "text": {
-          const p = page(op.page), view = shown(p);
+          const p = page(op.page);
           if (typeof op.text !== "string" || !op.text.trim()) throw Error('"text": the words to write.');
-          const box = boxOf(op.bbox);
-          const [a, b] = [view.toShown(box[0], box[1]), view.toShown(box[2], box[3])];
-          const sx0 = Math.min(a[0], b[0]), sx1 = Math.max(a[0], b[0]), sy0 = Math.min(a[1], b[1]), sy1 = Math.max(a[1], b[1]);
-          const face = FACES[op.font] ? op.font : "sans";
-          const f = await font(FACES[face][op.bold ? 1 : 0]);
-          encodable(f, op.text);
-          // The size asked for (11 pt by default), smaller until the text fits the box.
-          let size = Math.min(72, Math.max(4, Number(op.size) || 11)), lines = wrap(op.text, f, size, sx1 - sx0 - 4);
-          while (size > 4 && lines.length * size * 1.2 > sy1 - sy0 - 2) { size -= 0.5; lines = wrap(op.text, f, size, sx1 - sx0 - 4); }
-          if (lines.length * size * 1.2 > sy1 - sy0 - 2) throw Error("That text does not fit the box even at 4 pt: give a larger \"bbox\" or less text.");
-          if (op.background !== "none" && op.background !== undefined) {
-            const bg = colour(op.background, COLOURS.white), [ux, uy] = view.toUser(sx0, sy0);
-            p.drawRectangle({ x: ux, y: uy, width: sx1 - sx0, height: sy1 - sy0, color: rgb(...bg), rotate: degrees(view.r) });
-          }
-          const ink = rgb(...colour(op.color, COLOURS.black));
-          lines.forEach((line, k) => {
-            const w = f.widthOfTextAtSize(line, size);
-            const vx = op.align === "center" ? sx0 + (sx1 - sx0 - w) / 2 : op.align === "right" ? sx1 - 2 - w : sx0 + 2;
-            const [ux, uy] = view.toUser(vx, sy1 - 1 - size * (k + 0.92) - k * size * 0.2);
-            p.drawText(line, { x: ux, y: uy, size, font: f, color: ink, rotate: degrees(view.r) });
-          });
+          await textIn(p, boxOf(op.bbox), op);
           touched.add(p);
           done.push(`wrote a text box on page ${op.page}`);
+          break;
+        }
+        case "redact": {
+          // Each place: a box, or every place some text is printed (on one page, or on "pages" with find).
+          let regions: { page: number; box: Box }[];
+          if (Array.isArray(op.regions)) regions = op.regions.map((r: any) => ({ page: Number(r.page), box: boxOf(r.box, "regions") }));
+          else if (op.bbox) regions = [{ page: Number(op.page), box: boxOf(op.bbox) }];
+          else if (typeof op.find === "string" && op.find.trim()) {
+            const pages = op.pages !== undefined ? pageList(op.pages, count, "all") : [Number(op.page)];
+            regions = [];
+            for (const n of pages) {
+              page(n);
+              for (const b of textBoxes(await helpers.words(await current(), n), op.find, advance)) regions.push({ page: n, box: [b.x0 - 1, b.y0 - 0.5, b.x1 + 1, b.y1 + 0.5] });
+            }
+            if (!regions.length) throw Error(`“${op.find.slice(0, 60)}” is not printed on ${pages.length === 1 ? "page " + pages[0] : "those pages"}. Quote it exactly as printed (one line at a time), or give "bbox".`);
+            op.regions = regions.map((r) => ({ page: r.page, box: r.box.map((v) => Math.round(v * 100) / 100) }));
+          } else throw Error('Give "bbox" (with "page") or "find" (the text to remove, with "page" or "pages").');
+          for (const r of regions) page(r.page);
+          const fill = colour(op.color, COLOURS.black);
+          const pictures = await redact(regions, fill);
+          done.push(`redacted ${regions.length} place${regions.length === 1 ? "" : "s"}: the content under ${regions.length === 1 ? "it is" : "them is"} removed, not covered${pictures.length ? `; page${pictures.length === 1 ? "" : "s"} ${pictures.join(", ")} could not be cleaned exactly and ${pictures.length === 1 ? "was" : "were"} turned into a picture (${pictures.length === 1 ? "its" : "their"} text can no longer be selected or searched)` : ""}`);
+          break;
+        }
+        case "replace": {
+          const p = page(op.page), box = boxOf(op.bbox);
+          if (!op.asset && !(typeof op.text === "string" && op.text.trim())) throw Error('Give the new content: "asset" (a crop id) or "text".');
+          const pictures = await redact([{ page: Number(op.page), box }], colour(op.background, COLOURS.white));
+          const target = doc.getPage(Number(op.page) - 1);
+          if (op.asset) {
+            const asset = await helpers.crop(String(op.asset));
+            if (!asset) throw Error(`There is no crop "${op.asset}". Use an id a crop result gave, or crop it again.`);
+            // Fitted inside the box, centred, its proportions kept.
+            const [x0, y0, x1, y1] = asset.meta.box, w = x1 - x0, h = y1 - y0, scale = Math.min((box[2] - box[0]) / w, (box[3] - box[1]) / h);
+            const at = { x: box[0] + (box[2] - box[0] - w * scale) / 2, y: box[1] + (box[3] - box[1] - h * scale) / 2, width: w * scale, height: h * scale };
+            if (asset.pdf) target.drawPage((await doc.embedPdf(asset.pdf, [0]))[0], at);
+            else target.drawImage(await doc.embedPng(asset.png), at);
+          } else await textIn(target, box, op);
+          touched.add(target);
+          void p;
+          done.push(`replaced a box on page ${op.page}${pictures.length ? " (that page could not be cleaned exactly and was turned into a picture first)" : ""}`);
           break;
         }
         case "stamp": {
@@ -355,7 +461,7 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           break;
         }
         default:
-          throw Error(`Unknown edit "${op.op}". The edits are: pages, delete, reorder, rotate, merge, crops, highlight, note, text, stamp, pageNumbers, fill.`);
+          throw Error(`Unknown edit "${op.op}". The edits are: pages, delete, reorder, rotate, merge, crops, highlight, note, text, stamp, pageNumbers, fill, redact, replace.`);
       }
     } catch (error) {
       throw Error(`Edit ${index + 1} (${String(op.op || "?")}): ${(error as Error).message}`);
@@ -363,6 +469,10 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
     snapshot = null;
     resolved.ops.push(op);
   }
+  // Nothing removed may stay in the file: objects no page or catalogue points to any more are dropped before saving.
+  // Placed pages and fonts are written into the document only when it is saved: that happens first, or the sweep would
+  // take away the parts they are made from.
+  if (resolved.ops.some((o: any) => o.op === "redact" || o.op === "replace")) { await (doc as any).flush(); collectGarbage(doc); }
   const pages = doc.getPages();
   const bytes = await doc.save();
   return { bytes, spec: resolved, changed: pages.flatMap((p, i) => (touched.has(p) ? [i + 1] : [])), pages: pages.length, done };
