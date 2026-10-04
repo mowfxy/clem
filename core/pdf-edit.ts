@@ -93,22 +93,46 @@ export function planEdits(pages: TextItem[][], edits: PdfTextEdit[]): Placement[
 export function textBoxes(items: TextItem[], find: string, advance: (ch: string, item: TextItem) => number = () => 1) {
   if (!find.trim()) return [];
   return locate(lines(items), find).map(({ line, start, end }) => {
-    // Each character's place inside its run: a space added between runs belongs to the run before it.
-    const local: number[] = [];
-    line.owners.forEach((owner, c) => local.push(c && line.owners[c - 1] === owner ? local[c - 1] + 1 : 0));
-    // Running widths of each run's letters, so a letter's left edge is the share of the run before it.
-    const sums = new Map<TextItem, number[]>();
-    const sum = (item: TextItem) => {
-      let s = sums.get(item);
-      if (!s) { s = [0]; for (const ch of item.str) s.push(s[s.length - 1] + Math.max(0.05, advance(ch, item) || 0)); sums.set(item, s); }
-      return s;
-    };
-    const at = (c: number, after: boolean) => {
-      const item = line.items[line.owners[c]], s = sum(item), n = s.length - 1;
-      return item.x + (item.width * s[Math.min(n, local[c] + (after ? 1 : 0))]) / Math.max(1e-6, s[n]);
-    };
+    const at = edges(line, advance);
     const run = line.items.slice(line.owners[start], line.owners[end - 1] + 1);
     const size = Math.max(...run.map((i) => i.size)), base = Math.min(...run.map((i) => i.y));
     return { x0: at(start, false), y0: base - size * 0.22, x1: at(end - 1, true), y1: base + size * 0.78 };
   });
+}
+
+/** Where each character of a line starts (or ends, `after`): placed along its run in proportion to `advance`. */
+function edges(line: Line, advance: (ch: string, item: TextItem) => number) {
+  // Each character's place inside its run: a space added between runs belongs to the run before it.
+  const local: number[] = [];
+  line.owners.forEach((owner, c) => local.push(c && line.owners[c - 1] === owner ? local[c - 1] + 1 : 0));
+  // Running widths of each run's letters, so a letter's left edge is the share of the run before it.
+  const sums = new Map<TextItem, number[]>();
+  const sum = (item: TextItem) => {
+    let s = sums.get(item);
+    if (!s) { s = [0]; for (const ch of item.str) s.push(s[s.length - 1] + Math.max(0.05, advance(ch, item) || 0)); sums.set(item, s); }
+    return s;
+  };
+  return (c: number, after: boolean) => {
+    const item = line.items[line.owners[c]], s = sum(item), n = s.length - 1;
+    return item.x + (item.width * s[Math.min(n, local[c] + (after ? 1 : 0))]) / Math.max(1e-6, s[n]);
+  };
+}
+
+/**
+ * The text printed inside a box, one string for each stretch of a line in it: a character counts when its middle is in
+ * the box (as a redaction there takes glyphs). What a redaction by box removes, to clean it from the rest of the file.
+ */
+export function textInside(items: TextItem[], [x0, y0, x1, y1]: [number, number, number, number], advance: (ch: string, item: TextItem) => number = () => 1) {
+  const out: string[] = [];
+  for (const line of lines(items)) {
+    const at = edges(line, advance);
+    let run = "";
+    for (let c = 0; c < line.owners.length; c++) {
+      const item = line.items[line.owners[c]], cx = (at(c, false) + at(c, true)) / 2, cy = item.y + item.size * 0.28;
+      if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) run += line.text[c];
+      else { if (run.trim()) out.push(run.trim()); run = ""; }
+    }
+    if (run.trim()) out.push(run.trim());
+  }
+  return out;
 }

@@ -1,4 +1,4 @@
-import { PDFDocument, PDFPage, PDFName, PDFDict, PDFArray, PDFNumber, PDFRawStream, PDFStream, PDFRef, StandardFontEmbedder, decodePDFRawStream } from "pdf-lib";
+import { PDFDocument, PDFPage, PDFName, PDFDict, PDFArray, PDFNumber, PDFRawStream, PDFStream, PDFRef, PDFString, PDFHexString, StandardFontEmbedder, decodePDFRawStream } from "pdf-lib";
 
 /**
  * Removes what lies under a box from a page's content, not just covering it: a page's content stream is read operator
@@ -577,6 +577,185 @@ function dropField(doc: PDFDocument, widget: PDFDict, ref: unknown) {
   const acro = doc.catalog.lookup(PDFName.of("AcroForm"));
   const fields = acro instanceof PDFDict ? acro.lookup(PDFName.of("Fields")) : undefined;
   if (fields instanceof PDFArray) for (let k = fields.size() - 1; k >= 0; k--) if (fields.lookup(k) === field) fields.remove(k);
+}
+
+// ---- The removed words elsewhere in the file ----
+
+/** Any of `texts`, ignoring case, with any whitespace (or none) where they have some; longest first. */
+const wordsPattern = (texts: string[]) => new RegExp([...texts].sort((a, b) => b.length - a.length).map((t) => t.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s*")).join("|"), "giu");
+const blot = (m: string) => "█".repeat([...m].length);
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const unescapeXml = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e: string) => e[0] === "#" ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITIES[e.toLowerCase()]);
+const escapeXml = (s: string, quote = "") => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(quote ? new RegExp(quote, "g") : /(?!)/, quote === '"' ? "&quot;" : "&apos;");
+
+/**
+ * XML (XMP, rich-text comments) with the words blotted in its text nodes, CDATA, comments and attribute values, read
+ * with their entities; markup and every untouched part stay byte for byte, so it stays valid.
+ */
+export function scrubXml(xml: string, re: RegExp) {
+  const text = (s: string, quote = "") => { const plain = unescapeXml(s), out = plain.replace(re, blot); return out === plain ? s : escapeXml(out, quote); };
+  return xml.replace(/(<!\[CDATA\[)([\s\S]*?)(\]\]>)|(<!--)([\s\S]*?)(-->)|(<\?[\s\S]*?\?>)|(<[^>]*>)|([^<]+)/g, (all, c0, cdata, c1, k0, comment, k1, pi, tag, body) => {
+    if (cdata !== undefined) return c0 + cdata.replace(re, blot) + c1;
+    if (comment !== undefined) return k0 + comment.replace(re, blot) + k1;
+    if (pi) return pi;
+    if (tag) return tag.replace(/(=\s*)(?:"([^"]*)"|'([^']*)')/g, (_: string, eq: string, d?: string, s?: string) => d !== undefined ? `${eq}"${text(d, '"')}"` : `${eq}'${text(s!, "'")}'`);
+    return text(body);
+  });
+}
+
+/** A text string's value, read as PDF reads it (UTF-16BE or UTF-8 with their marks, else PDFDocEncoding). */
+function readString(v: PDFString | PDFHexString) {
+  const b = v.asBytes();
+  if (b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) return { text: new TextDecoder().decode(b.subarray(3)), utf8: true };
+  return { text: v.decodeText(), utf8: false };
+}
+/** The blotted text as a string again: UTF-16BE with its mark (█ is not in PDFDocEncoding), or UTF-8 if it was. */
+const writeString = (text: string, utf8: boolean) => utf8 ? PDFHexString.of("EFBBBF" + [...new TextEncoder().encode(text)].map((b) => b.toString(16).padStart(2, "0")).join("")) : PDFHexString.fromText(text);
+/** A name's text (names hold UTF-8 bytes) and the name for blotted text. */
+const nameText = (n: PDFName) => { const raw = n.decodeText(); try { return new TextDecoder("utf-8", { fatal: true }).decode(fromLatin1(raw)); } catch { return raw; } };
+const nameOf = (text: string) => PDFName.of(latin1(new TextEncoder().encode(text)));
+
+/**
+ * Takes `texts` (what a redaction removed from a page) out of every other place a PDF keeps words: bookmark titles,
+ * the Info dictionary, XMP metadata, the structure tree's alternative texts, annotations' comments, and named
+ * destinations (with the links to them). Each occurrence becomes █ of the same length. Returns what was cleaned, for
+ * the person ("2 bookmarks", "the document title").
+ */
+export function scrubText(doc: PDFDocument, texts: string[]): string[] {
+  texts = [...new Set(texts.map((t) => t.trim()).filter(Boolean))];
+  if (!texts.length) return [];
+  const re = wordsPattern(texts), ctx = doc.context;
+  /** Blots dict[key] when it is a string holding the words; true when it did. */
+  const clean = (dict: PDFDict, key: string, xml = false) => {
+    const v = dict.lookup(PDFName.of(key));
+    if (!(v instanceof PDFString || v instanceof PDFHexString)) return false;
+    const { text, utf8 } = readString(v), out = xml ? scrubXml(text, re) : text.replace(re, blot);
+    if (out === text) return false;
+    dict.set(PDFName.of(key), writeString(out, utf8));
+    return true;
+  };
+  /** A destination given by name (a link, an outline, a GoTo action) follows its renamed destination. */
+  const follow = (dict: PDFDict) => {
+    clean(dict, "Dest");
+    const dest = dict.lookup(PDFName.of("Dest"));
+    if (dest instanceof PDFName) dict.set(PDFName.of("Dest"), nameOf(nameText(dest).replace(re, blot)));
+    const action = dict.lookup(PDFName.of("A"));
+    if (action instanceof PDFDict) {
+      clean(action, "D");
+      const d = action.lookup(PDFName.of("D"));
+      if (d instanceof PDFName) action.set(PDFName.of("D"), nameOf(nameText(d).replace(re, blot)));
+    }
+  };
+  const said: string[] = [], count = (n: number, one: string, many = one + "s") => { if (n) said.push(`${n} ${n === 1 ? one : many}`); };
+  const catalog = doc.catalog;
+  // Bookmarks, each once (a broken outline may loop).
+  const seen = new Set<unknown>();
+  let bookmarks = 0;
+  const outlines = catalog.lookup(PDFName.of("Outlines"));
+  const items = outlines instanceof PDFDict ? [outlines.lookup(PDFName.of("First"))] : [];
+  while (items.length) {
+    const item = items.pop();
+    if (!(item instanceof PDFDict) || seen.has(item)) continue;
+    seen.add(item);
+    if (clean(item, "Title")) bookmarks++;
+    follow(item);
+    items.push(item.lookup(PDFName.of("Next")), item.lookup(PDFName.of("First")));
+  }
+  count(bookmarks, "bookmark");
+  // The document's properties.
+  const info = ctx.lookup((ctx.trailerInfo as Record<string, unknown>).Info as PDFRef);
+  if (info instanceof PDFDict) {
+    const LABEL: Record<string, string> = { Title: "title", Author: "author", Subject: "subject", Keywords: "keywords" };
+    const hit = new Set<string>();
+    for (const [key] of info.entries()) if (clean(info, key.decodeText())) hit.add(LABEL[key.decodeText()] ?? "properties");
+    const list = [...hit].sort((a, b) => Object.values(LABEL).concat("properties").indexOf(a) - Object.values(LABEL).concat("properties").indexOf(b));
+    if (list.length) said.push("the document " + (list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list[list.length - 1] : list[0]));
+  }
+  // XMP packets: the document's and any other (pages, pictures, structure elements may carry their own).
+  let xmp = false;
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFStream) || obj.dict.lookup(PDFName.of("Type")) !== PDFName.of("Metadata")) continue;
+    let bytes: Uint8Array;
+    try { bytes = streamBytes(obj); } catch { continue; }
+    const xml = new TextDecoder().decode(bytes), out = scrubXml(xml, re);
+    if (out === xml) continue;
+    const dict = obj.dict.clone(ctx);
+    for (const key of ["Filter", "DecodeParms", "Length"]) dict.delete(PDFName.of(key));
+    // Left unfiltered, as XMP is, so tools that scan files for it still find it.
+    ctx.assign(ref, PDFRawStream.of(dict, new TextEncoder().encode(out)));
+    xmp = true;
+  }
+  if (xmp) said.push("the XMP metadata");
+  // The structure tree: what assistive technology reads out for each element.
+  let tags = 0;
+  const nodes: unknown[] = [catalog.lookup(PDFName.of("StructTreeRoot"))];
+  while (nodes.length) {
+    const node = nodes.pop();
+    if (node instanceof PDFArray) { for (let i = 0; i < node.size(); i++) nodes.push(node.lookup(i)); continue; }
+    if (!(node instanceof PDFDict) || seen.has(node)) continue;
+    seen.add(node);
+    if (["Alt", "ActualText", "E", "T"].map((k) => clean(node, k)).some(Boolean)) tags++;
+    nodes.push(node.lookup(PDFName.of("K")));
+  }
+  count(tags, "tagged element");
+  // Comments and their pop-ups on every page; links to a renamed destination follow it.
+  let comments = 0;
+  for (const page of doc.getPages()) {
+    const annots = page.node.lookup(PDFName.of("Annots"));
+    const list = annots instanceof PDFArray ? annots.asArray().map((_, i) => annots.lookup(i)) : [];
+    while (list.length) {
+      const a = list.pop();
+      if (!(a instanceof PDFDict) || seen.has(a)) continue;
+      seen.add(a);
+      if ([clean(a, "Contents"), clean(a, "RC", true), clean(a, "T"), clean(a, "Subj")].some(Boolean)) comments++;
+      follow(a);
+      list.push(a.lookup(PDFName.of("Popup")));
+    }
+  }
+  count(comments, "comment");
+  // Named destinations: the names tree (string keys, kept in order) and the older dictionary (name keys).
+  let names = 0;
+  const open = catalog.lookup(PDFName.of("OpenAction"));
+  if (open instanceof PDFDict) follow(open);
+  const tree = (catalog.lookup(PDFName.of("Names")) as PDFDict | undefined)?.lookup?.(PDFName.of("Dests"));
+  const limits = (node: unknown): [PDFString | PDFHexString, PDFString | PDFHexString] | null => {
+    if (!(node instanceof PDFDict) || seen.has(node)) return null;
+    seen.add(node);
+    const kids = node.lookup(PDFName.of("Kids")), leaf = node.lookup(PDFName.of("Names"));
+    let ends: [PDFString | PDFHexString, PDFString | PDFHexString] | null = null;
+    if (leaf instanceof PDFArray) {
+      const pairs: [PDFString | PDFHexString, unknown][] = [];
+      for (let i = 0; i + 1 < leaf.size(); i += 2) {
+        const key = leaf.lookup(i);
+        if (!(key instanceof PDFString || key instanceof PDFHexString)) continue;
+        const { text, utf8 } = readString(key), out = text.replace(re, blot);
+        if (out !== text) names++;
+        pairs.push([out !== text ? writeString(out, utf8) : key, leaf.get(i + 1)]);
+      }
+      // Keys are compared as bytes; viewers search them in order.
+      const order = (k: PDFString | PDFHexString) => latin1(k.asBytes());
+      pairs.sort((a, b) => (order(a[0]) < order(b[0]) ? -1 : order(a[0]) > order(b[0]) ? 1 : 0));
+      node.set(PDFName.of("Names"), ctx.obj(pairs.flat() as any));
+      if (pairs.length) ends = [pairs[0][0], pairs[pairs.length - 1][0]];
+    } else if (kids instanceof PDFArray) {
+      const all = kids.asArray().map((_, i) => limits(kids.lookup(i))).filter((e) => e !== null);
+      if (all.length) ends = [all[0]![0], all[all.length - 1]![1]];
+    }
+    if (ends && node.has(PDFName.of("Limits"))) node.set(PDFName.of("Limits"), ctx.obj([ends[0], ends[1]]));
+    return ends;
+  };
+  limits(tree);
+  const dests = catalog.lookup(PDFName.of("Dests"));
+  if (dests instanceof PDFDict) for (const [key, value] of dests.entries()) {
+    const text = nameText(key), out = text.replace(re, blot);
+    if (out === text) continue;
+    dests.delete(key);
+    dests.set(nameOf(out), value);
+    names++;
+  }
+  count(names, "named destination");
+  return said;
 }
 
 /** Keeps only what is (at least partly) inside `box`: the rest of the page is taken out of a vector crop. */

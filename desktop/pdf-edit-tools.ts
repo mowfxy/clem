@@ -1,7 +1,7 @@
 import { PDFDocument, PDFPage, PDFName, PDFHexString, PDFArray, PDFDict, StandardFonts, rgb, degrees, PDFTextField, PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFOptionList, type PDFFont } from "pdf-lib";
-import { textBoxes, type TextItem } from "../core/pdf-edit.ts";
+import { textBoxes, textInside, type TextItem } from "../core/pdf-edit.ts";
 import { assetCaption, type CropAsset } from "./pdf-assets.ts";
-import { redactPage, collectGarbage, Unclean } from "./pdf-redact.ts";
+import { redactPage, collectGarbage, scrubText, Unclean } from "./pdf-redact.ts";
 
 /**
  * Changes to a PDF the person sent, as a new PDF: pages taken, reordered, turned, removed or merged in; highlights,
@@ -187,6 +187,25 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
       touched.add(doc.getPage(n - 1));
     }
     return pictures;
+  };
+  /**
+   * What a redaction removes, as words, to take out of the rest of the file too (bookmarks, properties, tags…): the text
+   * searched for, or what pdf.js reads inside each box before it goes. Bits of a word or two (a box's edge through a
+   * line) would blot every such letter pair in the titles, so a box's text counts from three letters.
+   */
+  const removedText = async (regions: { page: number; box: Box }[], find: unknown) => {
+    if (typeof find === "string" && find.trim()) return [find];
+    const out: string[] = [];
+    for (const n of new Set(regions.map((r) => r.page))) {
+      const items = await helpers.words(await current(), n);
+      for (const r of regions) if (r.page === n) out.push(...textInside(items, r.box, advance).filter((t) => t.replace(/\s/g, "").length >= 3));
+    }
+    return out;
+  };
+  /** "; also removed from 2 bookmarks and the document title", or nothing. */
+  const scrubbed = (texts: string[]) => {
+    const where = scrubText(doc, texts);
+    return where.length ? `; also removed from ${where.length > 1 ? where.slice(0, -1).join(", ") + " and " + where[where.length - 1] : where[0]}` : "";
   };
   /** Page `n` replaced by a picture of itself (as it is now) with `boxes` filled, the same size and turn. */
   const rasterize = async (n: number, boxes: Box[], fill: [number, number, number]) => {
@@ -374,14 +393,18 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           } else throw Error('Give "bbox" (with "page") or "find" (the text to remove, with "page" or "pages").');
           for (const r of regions) page(r.page);
           const fill = colour(op.color, COLOURS.black);
+          const removed = await removedText(regions, op.find);
           const pictures = await redact(regions, fill);
-          done.push(`redacted ${regions.length} place${regions.length === 1 ? "" : "s"}: the content under ${regions.length === 1 ? "it is" : "them is"} removed, not covered${pictures.length ? `; page${pictures.length === 1 ? "" : "s"} ${pictures.join(", ")} could not be cleaned exactly and ${pictures.length === 1 ? "was" : "were"} turned into a picture (${pictures.length === 1 ? "its" : "their"} text can no longer be selected or searched)` : ""}`);
+          const also = scrubbed(removed);
+          done.push(`redacted ${regions.length} place${regions.length === 1 ? "" : "s"}: the content under ${regions.length === 1 ? "it is" : "them is"} removed, not covered${pictures.length ? `; page${pictures.length === 1 ? "" : "s"} ${pictures.join(", ")} could not be cleaned exactly and ${pictures.length === 1 ? "was" : "were"} turned into a picture (${pictures.length === 1 ? "its" : "their"} text can no longer be selected or searched)` : ""}${also}`);
           break;
         }
         case "replace": {
           const p = page(op.page), box = boxOf(op.bbox);
           if (!op.asset && !(typeof op.text === "string" && op.text.trim())) throw Error('Give the new content: "asset" (a crop id) or "text".');
+          const removed = await removedText([{ page: Number(op.page), box }], undefined);
           const pictures = await redact([{ page: Number(op.page), box }], colour(op.background, COLOURS.white));
+          const also = scrubbed(removed);
           const target = doc.getPage(Number(op.page) - 1);
           if (op.asset) {
             const asset = await helpers.crop(String(op.asset));
@@ -394,7 +417,7 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           } else await textIn(target, box, op);
           touched.add(target);
           void p;
-          done.push(`replaced a box on page ${op.page}${pictures.length ? " (that page could not be cleaned exactly and was turned into a picture first)" : ""}`);
+          done.push(`replaced a box on page ${op.page}${pictures.length ? " (that page could not be cleaned exactly and was turned into a picture first)" : ""}${also}`);
           break;
         }
         case "stamp": {
