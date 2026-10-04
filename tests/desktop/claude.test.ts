@@ -123,3 +123,25 @@ test('a tool loop continues one Claude Code session: the first step names it, la
   // The same failure on a first step is an ordinary error, not a lost session.
   await assert.rejects(provider.run('a','first','claude:sonnet',undefined,()=>{},[],{id,resume:false}),e=>!(e instanceof SessionLost));
 });
+
+test('Claude’s reply streams as partial events while it is written; text inside a tool never does',async()=>{
+  const provider:any=new ClaudeProvider('fixture','C:/fixture');
+  provider.status=async()=>({connected:true});
+  provider.start=async()=>{
+    const child:any=new EventEmitter();
+    child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+    const event=(e:any,parent:string|null=null)=>JSON.stringify({type:'stream_event',event:e,parent_tool_use_id:parent})+'\n';
+    const text=(t:string,parent:string|null=null)=>event({type:'content_block_delta',index:0,delta:{type:'text_delta',text:t}},parent);
+    child.stdin.on('finish',()=>queueMicrotask(()=>{
+      child.stdout.write(event({type:'message_start',message:{}})+text('Let me ')+text('search.')+event({type:'message_start',message:{}},'toolu_1')+text('inside the search','toolu_1'));
+      child.stdout.write(event({type:'message_start',message:{}})+text('Two ')+text('videos.'));
+      child.stdout.write(JSON.stringify({type:'result',subtype:'success',result:'Two videos.',is_error:false})+'\n');
+      child.emit('close',0);
+    }));
+    return child;
+  };
+  const events:any[]=[];
+  await provider.run('one','find videos','claude:sonnet',undefined,(event:any)=>events.push(event));
+  assert.deepEqual(events.filter(e=>e.type==='partial').map(e=>[e.text,e.fresh]),[['Let me ',true],['search.',false],['Two ',true],['videos.',false]]);
+  assert.deepEqual(events.filter(e=>e.type==='delta').map(e=>e.text),['Two videos.']);
+});
