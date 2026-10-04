@@ -2,7 +2,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { renameSync, rmSync } from "node:fs";
-import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN } from "../../desktop/kinetra-turn.ts";
+import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN, MAX_PARALLEL } from "../../desktop/kinetra-turn.ts";
 import { kinetraTool, kinetraCall } from "../../desktop/kinetra-runtime.ts";
 before(async () => {
   // Built beside and renamed into place: another test file builds the same worker at the same time.
@@ -406,4 +406,27 @@ test("a request with a note after it still runs, and its JSON is never shown as 
   const sent: string[] = [];
   await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? cut : "Done."; }, async () => 1, () => false);
   assert.match(sent[1], /cut off before it closed/);
+});
+
+test("independent requests in one reply run side by side; file making and look keep their order; results keep the request order", async () => {
+  const reply = ["a", "b", "c"].map((fn) => JSON.stringify({ kinetra: { action: "call", fn } })).join("\n") + "\n" + JSON.stringify({ kinetra: { action: "pdf", title: "T" } }) + "\n" + JSON.stringify({ kinetra: { action: "call", fn: "d" } });
+  const log: string[] = [];
+  let active = 0, most = 0;
+  // "a" is the slowest, so it finishes last of the three.
+  const delay: Record<string, number> = { a: 60, b: 10, c: 30, d: 5 };
+  const sent: string[] = [];
+  const result = await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? reply : "Done."; }, async (request) => {
+    const name = request.fn || request.action;
+    active++; most = Math.max(most, active); log.push("start " + name);
+    await new Promise((resolve) => setTimeout(resolve, delay[name] ?? 5));
+    active--; log.push("end " + name);
+    return name + " ok";
+  }, () => false);
+  assert.equal(result, "Done.");
+  assert.equal(most, Math.min(3, MAX_PARALLEL), "a, b and c ran at the same time");
+  // The PDF waits for every call before it, and the call after it waits for the PDF.
+  assert.ok(log.indexOf("start pdf") > log.indexOf("end a"));
+  assert.ok(log.indexOf("start d") > log.indexOf("end pdf"));
+  const results = [...sent[1].matchAll(/"result":"(\w+) ok"/g)].map((m) => m[1]);
+  assert.deepEqual(results, ["a", "b", "c", "pdf", "d"]);
 });

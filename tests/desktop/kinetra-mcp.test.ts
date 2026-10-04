@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { kinetraMcp, claudeMcpConfig, codexMcpConfig, toolResult, NATIVE_NOTE, MAX_BODY, CLAUDE_TOOL, TOOL_TIMEOUT_SECONDS } from "../../desktop/kinetra-mcp.ts";
-import { runKinetraTurn, MAX_CALLS } from "../../desktop/kinetra-turn.ts";
+import { runKinetraTurn, MAX_CALLS, MAX_PARALLEL } from "../../desktop/kinetra-turn.ts";
 import { ClaudeProvider, claudeArgs } from "../../desktop/claude.ts";
 import { Codex } from "../../desktop/codex.ts";
 
@@ -104,7 +104,7 @@ test("text and native requests run the same tools and give the model identical r
   assert.equal(native.inputs.length, 1, "native results are never resent as new results");
 });
 
-test("native calls share MAX_CALLS with the text protocol and run one at a time", async () => {
+test("native calls share MAX_CALLS with the text protocol and run a few at a time", async () => {
   let running = 0, most = 0, ran = 0;
   const results: any[] = [];
   await runKinetraTurn("q", "", async (_input, followUp, _p, native) => {
@@ -114,7 +114,7 @@ test("native calls share MAX_CALLS with the text protocol and run one at a time"
     return "Done.";
   }, async () => { running++; most = Math.max(most, running); await new Promise((r) => setImmediate(r)); running--; ran++; return 1; }, () => false, { stateful: true });
   assert.equal(ran, MAX_CALLS);
-  assert.equal(most, 1);
+  assert.equal(most, MAX_PARALLEL);
   assert.deepEqual(results.slice(-3).map((r) => r.error), Array(3).fill("Not run: no tool calls were left."));
 });
 
