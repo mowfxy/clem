@@ -7,6 +7,7 @@ import "./model-selector.css";
 
 export const effortName = (value: string) =>
   value === "low" ? "Light" : value === "minimal" ? "Minimal" : value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1);
+const EFFORT_NAMES = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const PETAL = "M12 2c3.2-.9 5.6 1.3 5.5 4.4 0 2.1-1.3 3.9-2.7 4.2-.8.1-.7-1-.4-1.6.6-1.8-.8-2.5-2.2-1.8-1.4.6-2.2-.7-2.2-2.3 0-1.3.7-2.3 2-2.9Z";
 /** Mowr's four-petal mark, small enough to drift through the thinking bar. */
 function Petal({ style }: { style: CSSProperties }) {
@@ -118,7 +119,8 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
     </button>
     {level && onEffort && levels.length > 0 && <button ref={effortButton} type="button" className="picker-trigger picker-trigger-effort" data-level={level} disabled={disabled} aria-label="Thinking level" aria-haspopup="dialog" aria-expanded={open === "effort"} aria-description={effortName(level) + " thinking"} onClick={() => setOpen(open === "effort" ? null : "effort")}>
       <span className="effort-pip" aria-hidden="true" style={{ "--p": levels.length > 1 ? levels.findIndex((l) => l.reasoningEffort === level) / (levels.length - 1) : 1 } as CSSProperties} />
-      {effortName(level)}
+      {/* Every name sits in the same cell so the button keeps the widest one's width and the model button never shifts. */}
+      <span className="effort-label">{[...new Set([...EFFORT_NAMES, ...levels.map((l) => l.reasoningEffort)])].map((l) => <span key={l} aria-hidden={l !== level || undefined} className={l === level ? "is-on" : undefined}>{effortName(l)}</span>)}</span>
     </button>}
     {open === "model" && createPortal(<div ref={modelPop.panel} className="unified-picker-panel model-pop" role="menu" aria-label="Select model" style={modelPop.position} onKeyDown={(e) => { if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) { e.preventDefault(); moveRow(e.key); } }}>
       {available.map((m, i) => <div key={m.id}>
