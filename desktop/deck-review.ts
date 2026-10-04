@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { contrast } from "./deck-design.ts";
 import { capturePage } from "./rasterize.ts";
+import { unmark } from "./deck-math.ts";
 
 /**
  * The deck's self-review. Every element drawn on a slide is recorded as it goes into PowerPoint; the slides are then
@@ -38,7 +39,8 @@ export function recorded(slide: any, index: number, adjust: Adjust, records: Sli
       const k = texts++, factor = adjust.get(`${index}:${k}`);
       let runs: Run[] = typeof value === "string" ? [{ text: value }] : value;
       if (factor) { o = scaled(o, factor); runs = runs.map((r) => ({ ...r, options: scaled(r.options || {}, factor) })); }
-      record.items.push({ kind: "text", x: o.x, y: o.y, w: o.w, h: o.h, runs, o, k });
+      // Inline equations travel as marked runs (deck-math.ts); the review sees their plain-text form.
+      record.items.push({ kind: "text", x: o.x, y: o.y, w: o.w, h: o.h, runs: runs.map((r) => ({ ...r, text: unmark(r.text) })), o, k });
       return slide.addText(typeof value === "string" ? runs[0].text : runs, o);
     },
     addShape(shape: string, o: Record<string, any>) {

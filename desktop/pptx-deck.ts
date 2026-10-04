@@ -4,6 +4,7 @@ import { rasterizer, svgSize } from "./rasterize.ts";
 import { unsafeSvg } from "./svg-safety.ts";
 import { latexMathml } from "./docx-math.ts";
 import { runs, strip } from "./deck-text.ts";
+import { embedMath } from "./deck-math.ts";
 import { designTheme, ARCHETYPES, archetypes, luminance, on, mix, contrast, readable, type Theme, type Art } from "./deck-design.ts";
 import { artSvg, iconSvg, iconFor, iconNames } from "./deck-art.ts";
 import { recorded, staticFindings, slideReviewer, type Adjust, type SlideRecord } from "./deck-review.ts";
@@ -485,7 +486,7 @@ async function draw(spec: DeckSpec, t: Theme, figures: Map<number, string>, rast
         items.forEach((item, k) => {
           const col = Math.floor(k / per), row = k % per, x = box.x + col * (box.w / cols), y = box.y + row * rowH;
           text(slide, String(k + 1).padStart(2, "0"), { x, y, w: 0.8, h: rowH, fontFace: t.head, fontSize: 28, color: t.accent, bold: true, valign: "middle" });
-          text(slide, strip(item), { x: x + 0.85, y, w: box.w / cols - 1.1, h: rowH, fontSize: fitSize([item], box.w / cols - 1.1, rowH, 26, 14, { width: bodyW }), valign: "middle" });
+          text(slide, runs(item), { x: x + 0.85, y, w: box.w / cols - 1.1, h: rowH, fontSize: fitSize([item], box.w / cols - 1.1, rowH, 26, 14, { width: bodyW }), valign: "middle" });
           slide.addShape(shape("line"), { x: x + 0.85, y: y + rowH - 0.04, w: box.w / cols - 1.2, h: 0, line: { color: t.dark ? t.surface : mix(t.bg, t.text, 0.15), width: 0.75 } });
         });
         number(slide, n);
@@ -508,7 +509,7 @@ async function draw(spec: DeckSpec, t: Theme, figures: Map<number, string>, rast
           bulletList(slide, s.bullets || [], { ...box, w: box.w * 0.62 });
           const tb = { x: box.x + box.w * 0.66, y: box.y, w: box.w * 0.34, h: Math.min(box.h, 3.2) }, ground = t.dark ? t.surface : t.accent;
           panel(slide, tb, ground);
-          text(slide, strip(s.takeaway), { x: tb.x + 0.3, y: tb.y + 0.3, w: tb.w - 0.6, h: tb.h - 0.6, fontFace: t.head, fontSize: fitSize([s.takeaway], tb.w - 0.6, tb.h - 0.6, 24, 13, { width: headW }), color: t.dark ? t.accent : on(t.accent), valign: "middle" });
+          text(slide, runs(s.takeaway), { x: tb.x + 0.3, y: tb.y + 0.3, w: tb.w - 0.6, h: tb.h - 0.6, fontFace: t.head, fontSize: fitSize([s.takeaway], tb.w - 0.6, tb.h - 0.6, 24, 13, { width: headW }), color: t.dark ? t.accent : on(t.accent), valign: "middle" });
         } else bulletList(slide, s.bullets || [], box);
         number(slide, n);
         break;
@@ -609,7 +610,7 @@ async function draw(spec: DeckSpec, t: Theme, figures: Map<number, string>, rast
           if (x.icon) icon(slide, x.icon, k, { x: left + 0.25, y: box.y + 0.25, w: 0.6, h: 0.6 });
           text(slide, String(x.value), { x: left + 0.25, y: box.y + 0.35 + lift, w: w - 0.5, h: 1.5 - lift * 0.4, fontFace: t.head, fontSize: Math.round(valueSize * (lift ? 0.85 : 1)), bold: true, color, valign: "middle" });
           text(slide, strip(x.label), { x: left + 0.25, y: box.y + 1.95 + lift * 0.6, w: w - 0.5, h: 0.8, fontSize: fitEach(stats.map((v) => v.label), w - 0.5, 0.8, 22, 12, { width: bodyW }), bold: true });
-          if (x.detail) text(slide, strip(x.detail), { x: left + 0.25, y: box.y + 2.8 + lift * 0.6, w: w - 0.5, h: h - 2.95 - lift * 0.6, fontSize: fitEach(stats.map((v) => v.detail || ""), w - 0.5, h - 2.95 - lift * 0.6, 18, 11, { width: bodyW }), color: t.muted });
+          if (x.detail) text(slide, runs(x.detail), { x: left + 0.25, y: box.y + 2.8 + lift * 0.6, w: w - 0.5, h: h - 2.95 - lift * 0.6, fontSize: fitEach(stats.map((v) => v.detail || ""), w - 0.5, h - 2.95 - lift * 0.6, 18, 11, { width: bodyW }), color: t.muted });
         });
         if (s.takeaway) text(slide, runs(s.takeaway), { x: box.x, y: box.y + h + 0.3, w: box.w, h: 0.8, fontFace: t.head, fontSize: fitSize([strip(s.takeaway)], box.w, 0.8, 24, 13, { width: headW }), color: t.text, valign: "middle" });
         number(slide, n);
@@ -957,7 +958,7 @@ async function draw(spec: DeckSpec, t: Theme, figures: Map<number, string>, rast
     return { bytes: new Uint8Array(), records };
   }
   const out = await pptx.write({ outputType: "nodebuffer" });
-  return { bytes: new Uint8Array(out as Buffer), records };
+  return { bytes: embedMath(new Uint8Array(out as Buffer)), records };
 }
 const hashSlot = (slot: string) => [...slot].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 export { ARCHETYPES };
