@@ -1,7 +1,7 @@
 import { kinetraCall } from "./kinetra-runtime.ts";
 import { markdownHtml } from "./pdf-markdown.ts";
 import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
-import { standardFonts } from "../core/print-fonts.ts";
+import { standardFonts, brandFont } from "../core/print-fonts.ts";
 import { visualBlocks, visualCaption } from "../core/visual-print.ts";
 const escape = (text: unknown) =>
   String(text ?? "").replace(
@@ -119,8 +119,7 @@ export const fonts: Record<string, { body: string; head: string }> = {
   "segoe ui": { body: "'Segoe UI',Arial,sans-serif", head: "'Segoe UI Semibold','Segoe UI',Arial,sans-serif" },
   verdana: { body: "Verdana,Arial,sans-serif", head: "Verdana,Arial,sans-serif" },
 };
-/** Mowr's own typefaces (Mowafy Serif and Sans and their earlier names) belong to the app, not to documents. */
-export const brandFont = /mowafy|\bmowr\b|kindred|soft ink/i;
+export { brandFont };
 // Letters, digits, spaces and hyphens only: the name goes into the page's CSS.
 const fontName = /^[\p{L}\p{N} -]{2,48}$/u;
 const isSerif = (name: string) => /serif|times|georgia|garamond|cambria|book|roman|baskerville|palatino|caslon|minion|charter|lora|merriweather/i.test(name) && !/sans/i.test(name);

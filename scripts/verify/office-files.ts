@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { makeFile } from "../../desktop/file-maker.ts";
 import { themes } from "../../desktop/pptx-deck.ts";
 import { kinetraRecipes } from "../../desktop/kinetra-recipes.ts";
+import { deckSamples } from "./deck-samples.ts";
 
 const out = process.argv.at(-1)!;
 const circuit = kinetraRecipes.find((r) => r.name === "circuit schematic")!.figure;
@@ -51,11 +52,16 @@ const deck = (preset: string) => ({
 app.on("window-all-closed", () => {});
 app.whenReady().then(async () => {
   await mkdir(out, { recursive: true });
-  const jobs: [string, string, any][] = [["docx", "report.docx", doc], ["pdf", "report.pdf", doc], ["docx", "notes.docx", { ...doc, kind: "notes" }], ["docx", "brief.docx", { ...doc, kind: "brief", design: { accent: "#0B5CAD" } }], ...Object.keys(themes).map((p) => ["pptx", `deck-${p}.pptx`, deck(p)] as [string, string, any]), ["image", "circuit.png", { name: "circuit", figure: circuit }], ["file", "data.csv", { name: "data.csv", content: "a,b\n1,2\n" }]];
+  const jobs: [string, string, any][] = [["docx", "report.docx", doc], ["pdf", "report.pdf", doc], ["docx", "notes.docx", { ...doc, kind: "notes" }], ["docx", "brief.docx", { ...doc, kind: "brief", design: { accent: "#0B5CAD" } }], ...Object.keys(themes).map((p) => ["pptx", `deck-${p}.pptx`, deck(p)] as [string, string, any]), ...Object.entries(deckSamples).map(([name, spec]) => ["pptx", `context-${name}.pptx`, spec] as [string, string, any]), ["image", "circuit.png", { name: "circuit", figure: circuit }], ["file", "data.csv", { name: "data.csv", content: "a,b\n1,2\n" }]];
+  // MOWR_ONLY=<regex> makes only the matching files (e.g. MOWR_ONLY=context- for the context decks).
+  const only = process.env.MOWR_ONLY ? new RegExp(process.env.MOWR_ONLY) : null;
   for (const [action, name, spec] of jobs) {
+    if (only && !only.test(name)) continue;
     try {
-      const made = await makeFile(action, spec);
+      const made = await makeFile(action, spec, { preview: action === "pptx" });
       await writeFile(join(out, name), made.bytes);
+      // The contact sheets the model is shown, saved beside the deck.
+      for (const [k, sheet] of (made.previews || []).entries()) await writeFile(join(out, `${name}.sheet${k + 1}.jpg`), sheet.jpeg);
       console.log("ok", name, made.bytes.length, made.info ? JSON.stringify(made.info) : "");
     } catch (error) {
       console.log("FAIL", name, (error as Error).message);

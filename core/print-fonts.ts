@@ -23,3 +23,6 @@ export function standardFonts(svg: string, only?: string) {
 
 /** The same faces for a canvas drawing saved as an image. */
 export const exportFonts = { sans: printSans, serif: printSerif };
+
+/** Mowr's own typefaces (Mowafy Serif and Sans and their earlier names) belong to the app, not to documents. */
+export const brandFont = /mowafy|\bmowr\b|kindred|soft ink/i;

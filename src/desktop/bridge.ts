@@ -18,6 +18,10 @@ export type ChatOptions = {
   library?: { name: string; text: string }[];
   /** Text-only answer (a document edit returning JSON): Mowr's tools are off, so it can never make a new file. */
   plain?: boolean;
+  /** Send the whole conversation: the main process condenses older turns into a brief when it outgrows the model's window. */
+  condense?: boolean;
+  /** Mowr condensed the earlier part of a long chat into a brief for this answer. */
+  onCondensed?: () => void;
   /** What Mowr is doing right now ("Searching the web…", "Typesetting the PDF…"). */
   onStatus?: (text: string) => void;
   /** Pictures of pages the model asks to look at ({"action":"look"}), drawn here where the files and pdf.js are. */
@@ -28,6 +32,16 @@ function fitLibrary(files: { name: string; text: string }[]) {
   let room = 40_000_000;
   return files.slice(0, 400).flatMap((f) => { const text = f.text.slice(0, Math.min(8_000_000, room)); room -= text.length; return text ? [{ name: f.name.slice(0, 400), text }] : []; });
 }
+/** The most a whole chat may carry to the main process (desktop/contracts.ts): the condenser summarises the older part anyway. */
+export const MAX_CHAT_CHARACTERS = 60_000_000;
+/** The newest messages within `count` and `characters`; system messages (the instructions) are always kept. */
+export function newestWithin<T extends { role: string; content: string }>(messages: T[], count: number, characters: number) {
+  const system = messages.filter((m) => m.role === "system"), rest = messages.filter((m) => m.role !== "system");
+  let room = characters - system.reduce((n, m) => n + m.content.length, 0), keep = 0;
+  for (let i = rest.length - 1; i >= 0 && keep < count - system.length && rest[i].content.length <= room; i--) { room -= rest[i].content.length; keep++; }
+  const kept = new Set(rest.slice(rest.length - keep));
+  return messages.filter((m) => m.role === "system" || kept.has(m));
+}
 export async function desktopChat(
   messages: { role: string; content: string }[],
   scope: string,
@@ -36,8 +50,8 @@ export async function desktopChat(
   selection?: ChatOptions,
   onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
-  const { onStatus, look, ...options } = selection || {};
-  messages=boundedConversation(messages,contextBudget(options.model).conversation);
+  const { onStatus, onCondensed, look, condense, ...options } = selection || {};
+  messages=condense?newestWithin(messages,2000,MAX_CHAT_CHARACTERS):boundedConversation(messages,contextBudget(options.model).conversation);
   const id = crypto.randomUUID();
   let result = "";
   return new Promise<string>((resolve, reject) => {
@@ -54,6 +68,7 @@ export async function desktopChat(
       if (event.id !== id) return;
       if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
       if (event.type === "status" && event.text) onStatus?.(event.text);
+      if (event.type === "condensed") onCondensed?.();
       if (event.type === "look" && event.look) {
         const reply = (result: { images?: { name: string; data: string }[]; error?: string }) => void desktop!.invoke({ action: "pageImages", id: event.look!, ...result }).catch(() => {});
         if (!look) reply({ error: "Pages cannot be looked at in this conversation." });

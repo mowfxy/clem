@@ -1,6 +1,6 @@
 {
   "name": "mowr",
-  "version": "0.2.0-preview.38",
+  "version": "0.2.0-preview.39",
   "private": true,
   "type": "module",
   "scripts": {
@@ -50,6 +50,7 @@
     "ignore": "7.0.5",
     "jose": "^6.2.12",
     "katex": "^0.16.47",
+    "libheif-js": "1.23.2",
     "nodemailer": "10.0.9",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "^6.3.289",

@@ -1,9 +1,13 @@
 import { zipSync, strToU8 } from "fflate";
+import { Calculator, cellKey, isError, type Grid, type Value } from "../core/xlsx-formulas.ts";
 
 /**
  * Excel workbooks written directly as Office Open XML: typed cells, live formulas, number formats, a styled header,
- * banded rows, frozen header, filters, totals and native Excel charts. Formulas are stored without cached values
- * and the workbook asks Excel to calculate on open, so every number the person sees is Excel's own.
+ * banded rows, frozen header, filters, totals and native Excel charts. The workbook asks Excel to calculate
+ * on open, so every number the person sees in Excel is Excel's own.
+ *
+ * Each formula also carries its calculated value (core/xlsx-formulas.ts), so a viewer that does not calculate (Mowr's own file
+ * panel, Quick Look, a program reading the text) shows numbers, not "=B4-C4"; Excel still recalculates everything on open.
  *
  * Formulas may use {row} (this row), {first} and {last} (the first and last data rows) so a model does not have
  * to count rows: "=B{row}*C{row}", "=SUM(D{first}:D{last})". Columns can also be named: [Price]{row}.
@@ -88,6 +92,49 @@ export function excelWorkbook(spec: WorkbookSpec): Uint8Array {
     return i;
   };
 
+  // Every cell's value or formula, so each formula can be written with its result.
+  const grid: Grid = new Map();
+  for (const sheet of spec.sheets) {
+    const headers = sheet.columns.map((c) => c.header), headerRow = sheet.title ? 3 : 1, first = headerRow + 1, last = headerRow + Math.max(1, sheet.rows.length);
+    const cells = new Map<string, { value?: Value; formula?: string }>();
+    const put = (r: number, c: number, v: unknown) => {
+      if (v === null || v === undefined || v === "") return;
+      if (typeof v === "string" && v.startsWith("=") && v.length > 1) { cells.set(cellKey(r, c + 1), { formula: resolveFormula(v.slice(1), r, first, last, headers) }); return; }
+      if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/.test(v) && serial(v) !== null) { cells.set(cellKey(r, c + 1), { value: serial(v) }); return; }
+      cells.set(cellKey(r, c + 1), { value: v as Value });
+    };
+    if (sheet.title) put(1, 0, sheet.title);
+    headers.forEach((h, c) => put(headerRow, c, h));
+    sheet.rows.forEach((row, k) => sheet.columns.forEach((_, c) => put(first + k, c, row[c])));
+    if (sheet.totals) {
+      const fn = { sum: "SUM", average: "AVERAGE", min: "MIN", max: "MAX", count: "COUNTA" } as const;
+      sheet.columns.forEach((c, i) => { const how = sheet.totals!.columns[c.header]; if (how && fn[how]) put(last + 1, i, `=${fn[how]}(${col(i)}${first}:${col(i)}${last})`); });
+    }
+    grid.set(sheet.name, cells);
+  }
+  const cellOrder = (key: string) => { const [r, c] = key.split(",").map(Number); return r * 16384 + c; };
+  const calc = new Calculator(grid);
+  // Calculated top to bottom, sheet by sheet, so a long chain (a running balance over thousands of rows) is
+  // worked out one step at a time from cached rows instead of in one deep recursion.
+  for (const [name, cells] of grid)
+    for (const key of [...cells.keys()].filter((k) => cells.get(k)!.formula !== undefined).sort((a, b) => cellOrder(a) - cellOrder(b))) {
+      const [r, c] = key.split(",").map(Number);
+      calc.value(name, r, c);
+    }
+  /** The `<v>` (and type) a formula cell is written with, from its calculated result. */
+  const result = (sheetName: string, ref: string) => {
+    const m = /^([A-Z]+)(\d+)$/.exec(ref)!;
+    let c = 0;
+    for (const ch of m[1]) c = c * 26 + ch.charCodeAt(0) - 64;
+    const v = calc.value(sheetName, Number(m[2]), c);
+    // Nothing to show, or a function the viewer does not know (#NAME?): no saved value, so no reader shows a false error.
+    if (v === null || (isError(v) && v.error === "#NAME?")) return { type: "", xml: "" };
+    if (isError(v)) return { type: ' t="e"', xml: `<v>${esc(v.error)}</v>` };
+    if (typeof v === "boolean") return { type: ' t="b"', xml: `<v>${v ? 1 : 0}</v>` };
+    if (typeof v === "number") return Number.isFinite(v) ? { type: "", xml: `<v>${v}</v>` } : { type: ' t="e"', xml: "<v>#NUM!</v>" };
+    return { type: ' t="str"', xml: `<v>${esc(v)}</v>` };
+  };
+
   const files: Record<string, Uint8Array> = {};
   const sheetEntries: string[] = [], rels: string[] = [], overrides: string[] = [], defined: string[] = [];
   let chartNo = 0;
@@ -101,7 +148,7 @@ export function excelWorkbook(spec: WorkbookSpec): Uint8Array {
       if (typeof value === "number") return Number.isFinite(value) ? `<c r="${ref}" s="${xf}"><v>${value}</v></c>` : `<c r="${ref}" s="${xf}" t="e"><v>#NUM!</v></c>`;
       if (typeof value === "boolean") return `<c r="${ref}" s="${xf}" t="b"><v>${value ? 1 : 0}</v></c>`;
       const text = String(value);
-      if (text.startsWith("=") && text.length > 1) return `<c r="${ref}" s="${xf}"><f>${esc(resolveFormula(text.slice(1), r, first, last, headers))}</f></c>`;
+      if (text.startsWith("=") && text.length > 1) { const shown = result(sheet.name, ref); return `<c r="${ref}" s="${xf}"${shown.type}><f>${esc(resolveFormula(text.slice(1), r, first, last, headers))}</f>${shown.xml}</c>`; }
       return `<c r="${ref}" s="${xf}" t="inlineStr"><is><t xml:space="preserve">${esc(text.slice(0, 32767))}</t></is></c>`;
     };
     if (sheet.title) rowsXml.push(`<row r="1" ht="24" customHeight="1">${cell("A1", sheet.title, style("title"), 1)}</row>`);

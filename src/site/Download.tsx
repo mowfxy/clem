@@ -12,10 +12,10 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
   const [failed,setFailed]=useState(false);
   const [started,setStarted]=useState(false);
   const store=release?.store,link=store||release?.url;
-  const wantsStart=()=>/[?&]start/.test(location.hash);
+  const wantsStart=()=>/[?&]start\b/.test(location.hash);
   const autostart=useRef(wantsStart()),releaseRef=useRef<Release|null>(null);
   // Older links end in "?start": they open the Store (or start the download) right away.
-  const begin=(url:string)=>{autostart.current=false;setStarted(true);history.replaceState(history.state,'',location.pathname+location.search+location.hash.replace(/[?&]start.*$/,''));location.href=url;};
+  const begin=(url:string)=>{autostart.current=false;setStarted(true);history.replaceState(history.state,'',location.pathname+location.search+location.hash.replace(/[?&]start\b.*$/,''));location.href=url;};
   useEffect(()=>{document.title='Get Mowr for Windows';window.scrollTo(0,0);},[]);
   useEffect(()=>{
     const abort=new AbortController();

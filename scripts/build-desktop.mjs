@@ -49,6 +49,8 @@ await cp("dist", "desktop-package/dist", { recursive: true });
 await cp("desktop-dist", "desktop-package/desktop-dist", { recursive: true });
 await mkdir("desktop-package/licenses",{recursive:true});
 await copyFile("vendor/kinetra/LICENSE","desktop-package/licenses/kinetra.txt");
+await copyFile("node_modules/libheif-js/LICENSE","desktop-package/licenses/libheif-js-LGPL-3.0.txt");
+await copyFile("THIRD-PARTY-NOTICES.md","desktop-package/licenses/THIRD-PARTY-NOTICES.md");
 await copyFile("desktop/icon.ico", "desktop-package/desktop/icon.ico");
 const manifest = JSON.parse(await readFile("package.json", "utf8"));
 await writeFile(

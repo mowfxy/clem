@@ -30,7 +30,7 @@ export class TelegramService {
       bytes?: Buffer,
     ) => Promise<{
       text: string;
-      document?: { name: string; mime: string; bytes: Uint8Array };
+      documents?: { name: string; mime: string; bytes: Uint8Array; photo?: boolean }[];
     }>,
   ) {}
   stop() {
@@ -151,13 +151,20 @@ export class TelegramService {
                   envelope.chatId,
                   result.text.slice(i, i + 4000),
                 );
-              if (result.document)
-                await client.sendDocument(
-                  envelope.chatId,
-                  result.document.name,
-                  result.document.bytes,
-                  result.document.mime,
-                );
+              // One file failing (a photo Telegram refuses, a dropped connection) does not stop the others; the person is told which.
+              const unsent: string[] = [];
+              for (const file of result.documents || []) {
+                signal.throwIfAborted();
+                try {
+                  if (file.photo) await client.sendPhoto(envelope.chatId, file.name, file.bytes, file.mime).catch(() => client.sendDocument(envelope.chatId, file.name, file.bytes, file.mime));
+                  else await client.sendDocument(envelope.chatId, file.name, file.bytes, file.mime);
+                } catch {
+                  if (signal.aborted) return;
+                  unsent.push(file.name);
+                }
+              }
+              if (unsent.length)
+                await client.sendText(envelope.chatId, `${unsent.length === 1 ? "This file" : "These files"} could not be sent: ${unsent.join(", ").slice(0, 600)}. Ask again to get ${unsent.length === 1 ? "it" : "them"}.`);
               // A later request that completes clears the note about an earlier interrupted one.
               delete config.error;
             } catch {

@@ -1,9 +1,15 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, nativeImage } from "electron";
 import { writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
+
+/** No network and no files: a drawing may use only what is inside it (desktop/svg-safety.ts names what is refused). */
+const DRAWING_CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
+
+/** The drawing set to exactly `width`×`height` CSS pixels (its viewBox scales the content). */
+const sized = (svg: string, width: number, height: number) => svg.replace(/<svg\b([^>]*)>/, (_, attrs: string) => `<svg${attrs.replace(/\s(width|height)\s*=\s*["'][^"']*["']/g, "")} width="${width}" height="${height}">`);
 
 /** A drawing's size in CSS pixels, from its width/height or viewBox. */
 export function svgSize(svg: string) {
@@ -32,7 +38,7 @@ export async function rasterizer() {
   async function capture(html: string, width: number, height: number, scale = 2) {
     width = Math.max(1, Math.ceil(width));
     height = Math.max(1, Math.ceil(height));
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}body{width:${width}px;height:${height}px;zoom:${scale}}</style></head><body>${html}</body></html>`;
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${DRAWING_CSP}"><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}body{width:${width}px;height:${height}px;zoom:${scale}}</style></head><body>${html}</body></html>`;
     page.setContentSize(Math.ceil(width * scale), Math.ceil(height * scale));
     await writeFile(file, doc, "utf8");
     await page.loadFile(file);
@@ -47,8 +53,33 @@ export async function rasterizer() {
       const size = svgSize(svg);
       const scale = Math.min(1, maxWidth / size.width);
       const width = size.width * scale, height = size.height * scale;
-      const sized = svg.replace(/<svg\b([^>]*)>/, (_, attrs: string) => `<svg${attrs.replace(/\s(width|height)\s*=\s*["'][^"']*["']/g, "")} width="${width}" height="${height}">`);
-      return capture(`<div style="background:${background};width:${width}px;height:${height}px">${sized}</div>`, width, height, Math.min(3, 2400 / width));
+      return capture(`<div style="background:${background};width:${width}px;height:${height}px">${sized(svg, width, height)}</div>`, width, height, Math.min(3, 2400 / width));
+    },
+    /**
+     * Many drawings (a deck's icons and art) laid out on one page per batch and captured together, then cut apart:
+     * one page load instead of one per picture. Each comes back as a PNG `scale` times its size in CSS pixels.
+     */
+    async many(items: { svg: string; width: number; height: number }[], scale = 1) {
+      const out: Uint8Array[] = new Array(items.length);
+      const SHEET = 2400 / scale, LIMIT = 6000 / scale;
+      let start = 0;
+      while (start < items.length) {
+        // Shelf packing: rows left to right, a new batch when the page would get too tall.
+        const placed: { i: number; x: number; y: number }[] = [];
+        let x = 0, y = 0, row = 0, i = start;
+        for (; i < items.length; i++) {
+          const { width, height } = items[i];
+          if (x + width > SHEET && x > 0) { x = 0; y += row + 2; row = 0; }
+          if (y + height > LIMIT && placed.length) break;
+          placed.push({ i, x, y });
+          x += width + 2; row = Math.max(row, height);
+        }
+        const pageH = y + row, html = placed.map((p) => `<div style="position:absolute;left:${p.x}px;top:${p.y}px;width:${items[p.i].width}px;height:${items[p.i].height}px">${sized(items[p.i].svg, items[p.i].width, items[p.i].height)}</div>`).join("");
+        const shot = nativeImage.createFromBuffer(Buffer.from((await capture(html, SHEET, pageH, scale)).png));
+        for (const p of placed) out[p.i] = new Uint8Array(shot.crop({ x: Math.round(p.x * scale), y: Math.round(p.y * scale), width: Math.round(items[p.i].width * scale), height: Math.round(items[p.i].height * scale) }).toPNG());
+        start = i;
+      }
+      return out;
     },
     /** Equations (KaTeX MathML) measured first, then captured tightly around the ink. */
     async math(mathml: string, { color = "#111111", font = "Cambria Math", size = 22, display = true }: { color?: string; font?: string; size?: number; display?: boolean } = {}) {

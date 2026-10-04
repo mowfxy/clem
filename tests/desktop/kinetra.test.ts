@@ -1,16 +1,15 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import { renameSync, rmSync } from "node:fs";
 import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, shownLength, MAX_CALLS } from "../../desktop/kinetra-turn.ts";
 import { kinetraTool, kinetraCall } from "../../desktop/kinetra-runtime.ts";
 before(async () => {
-  await build({
-    entryPoints: ["desktop/kinetra-worker.ts"],
-    outfile: "desktop-dist/kinetra-worker.cjs",
-    bundle: true,
-    platform: "node",
-    format: "cjs",
-  });
+  // Built beside and renamed into place: another test file builds the same worker at the same time.
+  const tmp = `desktop-dist/kinetra-worker.${process.pid}.tmp`;
+  await build({ entryPoints: ["desktop/kinetra-worker.ts"], outfile: tmp, bundle: true, platform: "node", format: "cjs" });
+  // If the other file renamed its (identical) build first, Windows refuses this rename; that build is already in place.
+  try { renameSync(tmp, "desktop-dist/kinetra-worker.cjs"); } catch { rmSync(tmp, { force: true }); }
 });
 test("only exact tool envelopes are dispatched; application JSON stays final", () => {
   assert.equal(toolRequest('An example: {"kinetra":{}}'), null);
@@ -317,4 +316,26 @@ test("a chat visual goes into a PDF unchanged: through mowr.visual, and in an ex
   const bad = markdownDocument("Text\n```visual\n" + JSON.stringify({ kind: "chart", title: "x" }) + "\n```");
   assert.equal((await renderFigures(bad, { checkVoice: false })).filter(Boolean).length, 0);
   await assert.rejects(renderFigures({ title: "T", sections: [{ text: "This report shows a chart.", figure: { module: "mowr", fn: "visual", args: [{ kind: "chart", title: "x" }] } }] }), /needs labels and series/);
+});
+
+test("a lost provider session falls back to resending everything, and a session saves most of what a long document task sends", async () => {
+  const { SessionLost } = await import("../../desktop/kinetra-turn.ts");
+  // A 12-part document: every part is a tool call carrying its text; each reply asks for the next part.
+  const part = (n: number) => `{"kinetra":{"action":"pdf","revise":"d","append":true,"sections":[{"heading":"Part ${n}","text":"${"w".repeat(4000)}"}]}}`;
+  const run = async (stateful: boolean, lose = -1) => {
+    let step = 0, characters = 0;
+    const answer = await runKinetraTurn("m", "INSTRUCTIONS " + "i".repeat(20000), async (input, followUp) => {
+      if (followUp && step === lose) throw new SessionLost("gone");
+      characters += input.length;
+      return ++step <= 12 ? part(step) : "Finished.";
+    }, async () => ({ created: true, file: { id: "d", name: "d.pdf", size: 1 } }), () => false, { stateful });
+    return { answer, characters, step };
+  };
+  const without = await run(false), withSession = await run(true), lost = await run(true, 6);
+  console.log(`characters sent on a 12-part document task: no session ${without.characters}, session ${withSession.characters} (${(without.characters / withSession.characters).toFixed(1)}× fewer), session lost at step 6 ${lost.characters}`);
+  assert.equal(withSession.answer, "Finished.");
+  assert.ok(withSession.characters * 3 < without.characters);
+  // Losing the session costs one full resend, then the rest of the turn is stateless, and the answer still arrives.
+  assert.equal(lost.answer, "Finished.");
+  assert.ok(lost.characters > withSession.characters && lost.step === 13);
 });

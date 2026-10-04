@@ -1,5 +1,5 @@
 Mowafy Serif is imported byte for byte from https://github.com/mowfxy/serif at
-revision 3e6fe88 (Redraw E, F, L and G; make Bold thicker): the original Latin Regular and Bold,
+revision 898d879 (Fix P spacing, widen word space, redraw E, L and w): the original Latin Regular and Bold,
 and nothing else. No Source Serif 4, Soft Ink, Noto or STIX faces are loaded,
 and the serif stack names no fallback font.
 

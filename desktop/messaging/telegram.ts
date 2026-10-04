@@ -151,6 +151,19 @@ export class TelegramClient {
       throw Error("Attachment contents do not match its declared format.");
     return data;
   }
+  /** A picture shown inline in the chat (Telegram recompresses it; the original is not kept as a file). */
+  async sendPhoto(chatId: number, name: string, bytes: Uint8Array, mime = "image/png") {
+    if (bytes.length > 10_000_000)
+      throw Error("Photo exceeds Telegram’s 10 MB limit.");
+    const form = new FormData();
+    form.set("chat_id", String(chatId));
+    form.set("photo", new Blob([new Uint8Array(bytes)], { type: mime }), name.replace(/[^a-zA-Z0-9._-]/g, "_"));
+    const response = await fetch(
+      `https://api.telegram.org/bot${this.token}/sendPhoto`,
+      { method: "POST", body: form, signal: AbortSignal.timeout(30000) },
+    );
+    if (!response.ok) throw Error("Telegram photo delivery failed.");
+  }
   async sendDocument(
     chatId: number,
     name: string,

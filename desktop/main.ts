@@ -2,8 +2,14 @@ import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
 import { makeFile, FILE_ACTIONS, partsKey, sameFormat } from "./file-maker";
+import { ReplyFiles } from "./reply-files";
+import { inflight } from "./inflight";
+import { wordDocument } from "./docx-document";
+import { powerpointDeck } from "./pptx-deck";
+import { markdownDeck } from "./markdown-deck";
 import {markdownDocument, unwritten} from "./pdf-document";
 import {boundedConversation,memoryQuery,retrievalQuery} from "../core/chat-context";
+import {condenseConversation,briefKey,type Brief} from "./chat-condense";
 import {contextBudget} from "../core/context-budget";
 import {WorkspaceDisk} from "./workspace-disk";
 import {afterUpdate} from "./update-care";
@@ -12,6 +18,7 @@ import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
 import {UsageTally} from "./usage-tally";
 import { securityActions, handleSecurity } from "./security";
+import { contentSecurityPolicy } from "./csp";
 import {
   app,
   BrowserWindow,
@@ -269,17 +276,22 @@ void app.whenReady().then(async () => {
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
     // Claude and Grok answer in one piece, so Kinetra runs as a loop around them: each tool result is sent back until the answer is final.
-    // Each step resends everything, so the file passages read along the way must still fit their window (about 200k tokens).
+    // One provider session carries the whole loop: the first step sends the context, later steps only the new tool results.
+    // A session the CLI no longer has falls back to resending everything (runKinetraTurn), which must still fit the window (about 200k tokens).
+    const sessions: string[] = [];
     const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked) => {
+      // A first step (or a resend after a lost session) starts a new session; the others continue the latest one.
+      if (!followUp) sessions.push(randomUUID());
+      const session = sessions.at(-1)!;
       let text = "";
       const collect = (event: any) => { if (event.type === "delta") text += event.text || ""; else if (event.type === "status") emit({ ...event, id }); };
-      if (grok) await grokFor(owner).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path));
-      else await claudeFor(owner).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))]);
+      if (grok) await grokFor(owner).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session, resume: followUp });
+      else await claudeFor(owner).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session, resume: followUp });
       return text;
     }, async (tool) => {
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished });
+    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished }).finally(() => { for (const session of sessions) void (grok ? grokFor(owner) : claudeFor(owner)).endSession(session).catch(() => {}); });
     emit({ id, type: "delta", text: answer });
     emit({ id, type: "done" });
   }
@@ -378,7 +390,7 @@ void app.whenReady().then(async () => {
         );
       }
       let text = "";
-      let generated: {name:string;mime:string;bytes:Uint8Array}|undefined;
+      const replyFiles = new ReplyFiles(undefined, unwritten);
       await selectProvider(owner);
       const chosen = await vault.read<{ model?: string; reasoning?: string }>(lastModelKey(owner), {});
       await answerWith(
@@ -397,25 +409,20 @@ void app.whenReady().then(async () => {
         (event) => {
           if (event.type === "delta") text += event.text || "";
         },
-        { images: imagePath ? [{ path: imagePath, mime: imagePath.endsWith(".png") ? "image/png" : "image/jpeg" }] : [], pdf: async (spec,cancelled)=>{
-          // One file per Telegram reply; a corrected version replaces the draft rather than becoming a second file.
-          const {revise:_revise,append:_append,change:_change,action,...rest}=spec||{};
-          const made=await makeFile(FILE_ACTIONS.has(String(action))?String(action):'pdf',rest);if(cancelled())throw Error('Request cancelled');
-          generated={name:made.name,mime:made.type,bytes:made.bytes};
-          return {created:true,name:generated.name,...made.info,note:'Only one file can be sent per Telegram reply; sending another file action replaces this one.'};
-        } },
+        { images: imagePath ? [{ path: imagePath, mime: imagePath.endsWith(".png") ? "image/png" : "image/jpeg" }] : [], pdf: (spec,cancelled)=>replyFiles.handle(spec,cancelled), unfinished: () => replyFiles.unfinished() },
       );
       await vault.write(historyKey, [...history, { role: "user", content: envelope.text }, { role: "assistant", content: text || "(sent a document)" }].slice(-200));
       learnFromTurn(owner, envelope.scope, id, envelope.text, chosen.model, history.at(-1)?.content);
-      if(generated)return {text,document:generated};
+      if(replyFiles.size)return {text,documents:replyFiles.list()};
       return /^\/pdf\b/.test(envelope.text)
         ? {
             text: "Your PDF is ready.",
-            document: {
+            documents: [{
               name: "Mowr-response.pdf",
               mime: "application/pdf",
               bytes: await illustratedPdf(markdownDocument(text, "Mowr document"), { checkVoice: false }).catch(() => textPdf(text)),
-            },
+              photo: false,
+            }],
           }
         : { text };
     } finally {
@@ -625,14 +632,7 @@ void app.whenReady().then(async () => {
     if (!inside(root, path)) return new Response("", { status: 403 });
     const response = await net.fetch(pathToFileURL(path).toString());
     if (path.endsWith(".wasm")) response.headers.set("Content-Type", "application/wasm");
-    // The chat code runner's worker compiles Python (WebAssembly) and JavaScript snippets, so it alone may evaluate code;
-    // it can only fetch the bundled Pyodide files and seals its network before any snippet runs (src/chat/run-worker.ts).
-    response.headers.set(
-      "Content-Security-Policy",
-      /^\/assets\/run-worker-[\w-]+\.js$/.test(url.pathname)
-        ? "default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src mowr://app/pyodide/"
-        : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://i.ytimg.com; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; media-src 'self' blob: http://127.0.0.1:*; frame-src https://www.youtube-nocookie.com; object-src 'none'",
-    );
+    response.headers.set("Content-Security-Policy", contentSecurityPolicy(url.pathname));
     return response;
   });
   window = new BrowserWindow({
@@ -1152,6 +1152,11 @@ void app.whenReady().then(async () => {
       await capture(true);
       return { ok: true };
     }
+    if (request.action === "documentExport") {
+      // The person's own answer as a Word document or deck, built like a file the AI makes: same typesetting, equations and figures.
+      if (request.format === "docx") return wordDocument(markdownDocument(request.markdown, request.title));
+      return (await powerpointDeck(markdownDeck(request.markdown, request.title))).bytes;
+    }
     if (request.action === "documentPdf")
       // The person's own answer, typeset as-is: no voice check, same professional layout.
       return illustratedPdf(markdownDocument(request.markdown, request.title), { checkVoice: false });
@@ -1161,11 +1166,6 @@ void app.whenReady().then(async () => {
       const claude = !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX);
       void vault.write(lastModelKey(user.id), { model: request.model, reasoning: request.reasoning }).catch(() => {});
       const budget = contextBudget(request.model);
-      const messages = boundedConversation(request.messages, budget.conversation);
-      if (JSON.stringify(messages).length > budget.ceiling)
-        throw Error(
-          "This conversation exceeds the current context budget. Start a new conversation.",
-        );
       const folders = (await vault.read<Folder[]>(key, [])).filter(
         (f) => f.scope === request.scope,
       );
@@ -1187,6 +1187,19 @@ void app.whenReady().then(async () => {
       if (!entitlement.active) throw Error(entitlementMessage(entitlement));
       // A folder file can share a name with a chat file; each must stay readable by name.
       library.splice(0, library.length, ...distinctNames(library));
+      // A chat that has outgrown the budget never stops: its older turns become a brief written by the person's own AI
+      // (kept per chat, extended only as needed) and the newest turns stay word for word.
+      const send = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
+      const briefs = "chat-briefs-" + user.id, briefKeyOf = briefKey(request.scope, request.messages.find((m) => m.role !== "system")?.content || "");
+      let condensing = false;
+      const condensed = await condenseConversation(request.messages, budget.conversation, {
+        ask: async (text) => { if (!condensing) { condensing = true; send({ id: request.id, type: "status", text: "Condensing the earlier part of this chat…" }); } return quickAsk(user.id, request.model, text); },
+        load: async () => (await vault.read<Record<string, Brief>>(briefs, {}))[briefKeyOf],
+        save: async (brief) => { const all = await vault.read<Record<string, Brief & { at: number }>>(briefs, {}); all[briefKeyOf] = { ...brief, at: Date.now() }; await vault.write(briefs, Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 60))); },
+      });
+      const messages = condensed.messages;
+      if (condensed.condensed) send({ id: request.id, type: "condensed" });
+      if (cancelledRuns.has(request.id)) throw Error("Request cancelled");
       const memories = retrieveMemory(memoryState, request.scope, memoryQuery(request.messages));
       // Pictures go to Codex as local image files that are removed when the turn ends.
       const imagePaths: string[] = [];
@@ -1219,7 +1232,6 @@ void app.whenReady().then(async () => {
         name: memoryState.enabled ? setup.displayName : undefined,
         extra: (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : "") + pictureNote,
       });
-      const send = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
       // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
       // times on the way, and the person should get the final file, not every draft (and not one card per tool call).
       const delivery = new Map<string, any>();
@@ -1243,8 +1255,12 @@ void app.whenReady().then(async () => {
       };
       for (const doc of request.documents || []) if (await disk.readFile(user.id, "spec-" + doc.id)) documents.set(doc.id, doc.name);
       const spaceOf = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined;
+      // File work still running when the answer stops: rollback waits for it (desktop/inflight.ts), so a draft
+      // finishing late can neither overwrite the restored file nor leave an orphan behind.
+      const fileWork = inflight();
       /** Makes a file (pdf, docx, pptx, xlsx, any text format, or an image), or revises one made earlier in this conversation. */
-      const makeOrRevise = async (spec: any, cancelled: () => boolean) => {
+      const makeOrRevise = (spec: any, cancelled: () => boolean) => fileWork.run((stopped) => makeOrReviseNow(spec, stopped), cancelled);
+      const makeOrReviseNow = async (spec: any, cancelled: () => boolean) => {
         const action = FILE_ACTIONS.has(String(spec?.action)) ? String(spec.action) : "pdf";
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
         if (revise && !documents.has(revise)) throw Error(`No file with id "${revise}" in this conversation. Use an id from the files list, or leave out "revise" to make a new file.`);
@@ -1266,8 +1282,10 @@ void app.whenReady().then(async () => {
             if (!clean.references.length) delete clean.references;
           }
         }
-        const made = await makeFile(action, clean);
+        const made = await makeFile(action, clean, { preview: true });
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
+        // Pictures of the result (a deck's slides) go back to the model with this result, so it checks what it made.
+        const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.jpeg).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
         const missing = key === "sections" ? unwritten(clean) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
         const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
@@ -1276,6 +1294,7 @@ void app.whenReady().then(async () => {
           ? { ...(pages ? { pages } : {}), ...(words !== undefined ? { words } : {}), [key]: clean[key].length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? `Keep going: append the next ${key} now. The file is only finished when every planned part is written in full depth.` : "Every planned part is written." } : key === "sections" ? { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." } : {}) }
           : {};
         const specBytes = new TextEncoder().encode(JSON.stringify({ action, ...clean }));
+        if (cancelled()) throw Error("Request cancelled");
         if (revise) {
           const earlier = !madeNow.has(revise);
           if (earlier && !before.has(revise)) {
@@ -1300,7 +1319,7 @@ void app.whenReady().then(async () => {
             madeNow.set(revise, file);
             delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope });
           }
-          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
+          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, ...look, note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
         }
         const id = randomUUID();
         const file = { id, name: made.name, size: made.bytes.byteLength, type: made.type, created: Date.now(), spaceId: spaceOf, made: true };
@@ -1310,10 +1329,11 @@ void app.whenReady().then(async () => {
         madeNow.set(id, file);
         gaps.set(id, missing);
         delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
-        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
+        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...look, note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
       };
       /** A stopped answer leaves no trace: files it made are removed and files it changed get their earlier contents back. */
       const rollback = async () => {
+        await fileWork.stop();
         delivery.clear();
         for (const id of madeNow.keys()) await Promise.all([disk.deleteFile(user.id, id), disk.deleteFile(user.id, "spec-" + id)]).catch(() => {});
         for (const [id, version] of before) {
