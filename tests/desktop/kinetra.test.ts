@@ -376,8 +376,11 @@ test("a model that keeps sending broken requests stops after a few: its text is 
   // A request that runs resets the count.
   const sequence = [broken, broken, '{"kinetra":{"action":"call"}}', broken, broken, "Done."];
   let calls = 0;
-  assert.equal(await runKinetraTurn("m", "", async () => sequence.shift()!, async () => { calls++; return 1; }, () => false), "Done.");
+  // The timing log counts every step, the call that ran and each broken request sent back.
+  const stats = { steps: 0, calls: 0, broken: 0 };
+  assert.equal(await runKinetraTurn("m", "", async () => sequence.shift()!, async () => { calls++; return 1; }, () => false, { stats }), "Done.");
   assert.equal(calls, 1);
+  assert.deepEqual(stats, { steps: 6, calls: 1, broken: 4 });
 });
 test("streaming keeps showing an example quoted earlier and holds only the request that may end the reply", () => {
   const quoted = 'A request looks like {"kinetra":{"action":"help"}} and Mowr runs it. ';

@@ -6,6 +6,7 @@ import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
 import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn} from "./kinetra-turn.ts";
+import type {TurnStats} from "./turn-timing.ts";
 
 /** While a reply might still turn out to be a tool envelope, hold it instead of streaming it. */
 export function mayBeTool(text: string) {
@@ -453,7 +454,7 @@ export class Codex {
     this.server?.close();
     this.server = null;
   }
-  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,unfinished?:()=>string|undefined){
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,unfinished?:()=>string|undefined,stats?:TurnStats){
     if(this.turns.has(id))throw Error("This chat is already answering.");
     const turn={cancelled:false};this.turns.set(id,turn);
     const session:TurnSession={};
@@ -475,7 +476,7 @@ export class Codex {
       },async request=>{
         emit({id,type:"status",text:toolStatus(request)});
         return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
-      },()=>turn.cancelled,{stateful:true,unfinished});
+      },()=>turn.cancelled,{stateful:true,unfinished,stats});
       emit({id,type:"done"});
     }finally{if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
   }

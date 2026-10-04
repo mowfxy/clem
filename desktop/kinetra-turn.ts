@@ -1,3 +1,4 @@
+import type { TurnStats } from "./turn-timing.ts";
 /** Thrown by a provider that could not use its session (the CLI no longer has it, or does not support sessions at all):
  *  the loop resends everything instead, for the rest of the turn. */
 export class SessionLost extends Error {}
@@ -260,9 +261,10 @@ export async function runKinetraTurn<Picture = unknown>(
   model: (prompt: string, followUp: boolean, pictures: Picture[]) => Promise<string>,
   tool: (request: any) => Promise<any>,
   cancelled: () => boolean,
-  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined } = {},
+  /** `stats` counts the steps, calls and broken requests for the timing log (desktop/turn-timing.ts). */
+  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; stats?: TurnStats } = {},
 ) {
-  const { limit = 3_000_000, unfinished } = options;
+  const { limit = 3_000_000, unfinished, stats = { steps: 0, calls: 0, broken: 0 } } = options;
   // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
   let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
@@ -300,6 +302,7 @@ export async function runKinetraTurn<Picture = unknown>(
     let text: string;
     try {
       // With a thread only the new pictures go, but still within the same per-message limit.
+      stats.steps++;
       text = await model(input, stateful && replies > 0, recent(stateful ? newPictures : looked));
     } catch (error) {
       if (!(error instanceof SessionLost) || !stateful) throw error;
@@ -308,6 +311,7 @@ export async function runKinetraTurn<Picture = unknown>(
       input = closing ? instructions + "\n\nOriginal request and context:\n" + prompt + "\n" + LAST_CALL : full();
       if (input.length > limit && compact(history, input.length - limit)) input = full();
       sent += input.length;
+      stats.steps++;
       text = await model(input, false, recent(looked));
     }
     newPictures = [];
@@ -332,6 +336,7 @@ export async function runKinetraTurn<Picture = unknown>(
       throw Error("Kinetra tool limit reached. Try a smaller task.");
     }
     if (broken) {
+      stats.broken++;
       // A model that keeps ending with a request it cannot fix would loop to the call limit: after a few, what it wrote is the answer.
       if (++brokenInRow >= MAX_BROKEN) {
         const answer = withoutBroken(text);
@@ -356,6 +361,7 @@ export async function runKinetraTurn<Picture = unknown>(
         continue;
       }
       calls++;
+      stats.calls++;
       let result: any;
       try {
         result = await tool(request);

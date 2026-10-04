@@ -57,6 +57,7 @@ import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn,toolRequests,brokenToolRequest,requestLead,SessionLost,UsageLimit} from './kinetra-turn';
 import {kinetraTool} from './kinetra-runtime';
+import {turnTimer,type TurnStats} from './turn-timing';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
 import {installCli} from './cli-install';
@@ -283,17 +284,28 @@ void app.whenReady().then(async () => {
   /** Chats the person stopped; a Claude or Grok tool loop checks this between steps. */
   const cancelledRuns = new Set<string>();
   type Picture = { path: string; mime: string };
+  type AnswerOptions = { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined };
   /**
    * One answer from whichever AI the person chose (ChatGPT through Codex, Claude or Grok), with Mowr's
    * Kinetra tools, documents and pictures. Chat, Telegram and memory notes all go through here, so a
-   * feature never works on one provider only.
+   * feature never works on one provider only. Each answer logs its timings (desktop/turn-timing.ts).
    */
-  async function answerWith(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
-    { images = [], pdf, instructions = kinetraInstructions, tools, unfinished }: { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined } = {}) {
+  async function answerWith(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void, options: AnswerOptions = {}) {
+    const timer = turnTimer(model?.startsWith(GROK_PREFIX) ? "grok" : model?.startsWith("claude:") ? "claude" : "codex");
+    try {
+      await answerTimed(owner, id, model, reasoning, prompt, timer.watch(emit), options, timer.stats);
+      timer.end();
+    } catch (error) {
+      timer.end("failed");
+      throw error;
+    }
+  }
+  async function answerTimed(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
+    { images = [], pdf, instructions = kinetraInstructions, tools, unfinished }: AnswerOptions, stats: TurnStats) {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:");
     // Stop pressed while the request was being prepared (folders, memory, account choice): nothing starts.
     if (cancelledRuns.has(id)) throw Error("Request cancelled");
-    if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions, tools, unfinished);
+    if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions, tools, unfinished, stats);
     const cancelled = () => cancelledRuns.has(id);
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
@@ -339,7 +351,7 @@ void app.whenReady().then(async () => {
     }, async (tool) => {
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); });
+    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, stats }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); });
     emit({ id, type: "delta", text: (shown && answer ? "\n\n" : "") + answer });
     emit({ id, type: "done" });
   }
