@@ -2,8 +2,9 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { renameSync, rmSync } from "node:fs";
-import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN } from "../../desktop/kinetra-turn.ts";
-import { kinetraTool, kinetraCall } from "../../desktop/kinetra-runtime.ts";
+import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN, MAX_PARALLEL } from "../../desktop/kinetra-turn.ts";
+import { kinetraTool, kinetraCall, kinetraPool } from "../../desktop/kinetra-runtime.ts";
+import { kinetraRecipes } from "../../desktop/kinetra-recipes.ts";
 before(async () => {
   // Built beside and renamed into place: another test file builds the same worker at the same time.
   const tmp = `desktop-dist/kinetra-worker.${process.pid}.tmp`;
@@ -376,8 +377,11 @@ test("a model that keeps sending broken requests stops after a few: its text is 
   // A request that runs resets the count.
   const sequence = [broken, broken, '{"kinetra":{"action":"call"}}', broken, broken, "Done."];
   let calls = 0;
-  assert.equal(await runKinetraTurn("m", "", async () => sequence.shift()!, async () => { calls++; return 1; }, () => false), "Done.");
+  // The timing log counts every step, the call that ran and each broken request sent back.
+  const stats = { steps: 0, calls: 0, broken: 0 };
+  assert.equal(await runKinetraTurn("m", "", async () => sequence.shift()!, async () => { calls++; return 1; }, () => false, { stats }), "Done.");
   assert.equal(calls, 1);
+  assert.deepEqual(stats, { steps: 6, calls: 1, broken: 4 });
 });
 test("streaming keeps showing an example quoted earlier and holds only the request that may end the reply", () => {
   const quoted = 'A request looks like {"kinetra":{"action":"help"}} and Mowr runs it. ';
@@ -403,4 +407,59 @@ test("a request with a note after it still runs, and its JSON is never shown as 
   const sent: string[] = [];
   await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? cut : "Done."; }, async () => 1, () => false);
   assert.match(sent[1], /cut off before it closed/);
+});
+
+test("independent requests in one reply run side by side; file making and look keep their order; results keep the request order", async () => {
+  const reply = ["a", "b", "c"].map((fn) => JSON.stringify({ kinetra: { action: "call", fn } })).join("\n") + "\n" + JSON.stringify({ kinetra: { action: "pdf", title: "T" } }) + "\n" + JSON.stringify({ kinetra: { action: "call", fn: "d" } });
+  const log: string[] = [];
+  let active = 0, most = 0;
+  // "a" is the slowest, so it finishes last of the three.
+  const delay: Record<string, number> = { a: 60, b: 10, c: 30, d: 5 };
+  const sent: string[] = [];
+  const result = await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? reply : "Done."; }, async (request) => {
+    const name = request.fn || request.action;
+    active++; most = Math.max(most, active); log.push("start " + name);
+    await new Promise((resolve) => setTimeout(resolve, delay[name] ?? 5));
+    active--; log.push("end " + name);
+    return name + " ok";
+  }, () => false);
+  assert.equal(result, "Done.");
+  assert.equal(most, Math.min(3, MAX_PARALLEL), "a, b and c ran at the same time");
+  // The PDF waits for every call before it, and the call after it waits for the PDF.
+  assert.ok(log.indexOf("start pdf") > log.indexOf("end a"));
+  assert.ok(log.indexOf("start d") > log.indexOf("end pdf"));
+  const results = [...sent[1].matchAll(/"result":"(\w+) ok"/g)].map((m) => m[1]);
+  assert.deepEqual(results, ["a", "b", "c", "pdf", "d"]);
+});
+
+test("Kinetra calls share a few warm workers; one that times out or stops is replaced", async () => {
+  const integral = { module: "mowr", fn: "integrateExpression", args: ["x^2", "x", 0, 1] };
+  assert.ok(Math.abs((await kinetraCall(integral)) - 1 / 3) < 1e-8);
+  const [warm] = kinetraPool.workers();
+  // Later calls reuse the loaded worker instead of starting one each time.
+  for (let i = 0; i < 5; i++) await kinetraCall(integral);
+  assert.equal(kinetraPool.workers()[0], warm);
+  // Many at once are spread over at most MAX_PARALLEL workers and all answered.
+  const many = await Promise.all(Array.from({ length: 12 }, () => kinetraCall(integral)));
+  assert.equal(many.length, 12);
+  assert.ok(kinetraPool.workers().length <= MAX_PARALLEL);
+  // A call over the time limit fails as before, and its worker is thrown away.
+  const pulley = (kinetraRecipes as any[]).find((r) => r.figure.fn === "renderPulley").figure;
+  const before = kinetraPool.workers().length;
+  kinetraPool.callMs = 1;
+  try {
+    await assert.rejects(kinetraCall(pulley), /timed out/);
+  } finally {
+    kinetraPool.callMs = 30_000;
+  }
+  assert.equal(kinetraPool.workers().length, before - 1);
+  // Workers that stop mid-call (a crash) fail that call; they leave the pool and the next call gets a fresh worker.
+  const running = kinetraCall(pulley);
+  const stopped = kinetraPool.workers();
+  const exits = stopped.map((worker) => worker.terminate());
+  await assert.rejects(running, /stopped without a result/);
+  await Promise.all(exits);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(!kinetraPool.workers().some((worker) => stopped.includes(worker)));
+  assert.ok(Math.abs((await kinetraCall(integral)) - 1 / 3) < 1e-8);
 });

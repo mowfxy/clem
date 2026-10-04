@@ -186,6 +186,26 @@ test("full Kinetra instructions only when the request needs them", async () => {
   assert.ok(kinetraBrief.length < 300);
 });
 
+test("the full guide goes with requests that need tools, and everyday words that are also science terms do not pull it in", () => {
+  const full = [
+    "Make a PDF worksheet on projectile motion", "Explain nodal analysis with dependent sources as a PDF", "Make a PDF report on the French Revolution",
+    "What is the current through the 4 Ω resistor?", "Find the force on a charge in a uniform electric field", "Calculate the tension in the rope of an Atwood machine",
+    "A 5 kg block slides down an incline", "A ball is thrown at 20 m/s at 30 degrees", "Draw a free-body diagram for a box on a ramp", "Integrate x^2 from 0 to 1",
+    "differentiate sin(x) cos(x)", "Simplify the boolean expression A'B + AB", "Make a K-map for this truth table", "plot y = x^2 - 3", "Draw a flowchart of the login process",
+    "Make a quiz on photosynthesis", "create flashcards for biology", "Give me a practice exam on thermodynamics", "Find the eigenvalues of [[2,1],[1,2]]", "solve 2x + 3 = 7",
+    "A concave mirror has a focal length of 10 cm", "two springs in series", "Grade my answers to these questions", "Make me a study plan for finals",
+  ];
+  for (const ask of full) assert.match(kinetraInstructionsFor(ask), /KINETRA TOOLS/, ask);
+  const brief = [
+    "hi, how are you?", "what is the current news", "who is the current prime minister of Canada", "I currently live in Cairo", "how do I force quit an app on Windows",
+    "tell me about the air force", "what is a brute force attack", "give me an example of a metaphor", "my computer keeps freezing", "help me figure out what to cook",
+    "what's the plot of Inception", "simplify this paragraph for a child", "how do I integrate Slack with Notion", "differentiate between empathy and sympathy",
+    "how many web pages does Google index", "explain that in more detail", "make the story longer", "I'm inclined to agree", "plans for spring break",
+    "how can I mirror my phone screen", "I have 2 apples a day", "what grade is a 14 year old in", "the tension between the two countries", "is a documentary a good idea",
+  ];
+  for (const ask of brief) assert.equal(kinetraInstructionsFor(ask), kinetraBrief, ask);
+});
+
 test("figure recipes come for the topic at hand, and none a request needs is left out", async () => {
   const { allRecipes, diagramRecipes, recipesFor, recipeTopics, kinetraRecipes, illustrationRecipes } = await import("../../desktop/kinetra-recipes.ts");
   const has = (text: string, fn: string) => text.includes(`"fn":"${fn}"`);
@@ -324,6 +344,36 @@ test("prompt sections: attachments become sources and untrusted text cannot clos
   assert.equal(prompt.match(/<\/mowr-sources>/g)!.length, 1);
   assert.match(prompt, /The user's name is Sam/);
   assert.match(prompt, /User: Earlier question/);
+  // Stable parts first, so the prompt cache reuses them: instructions, the conversation, then what this message chose.
+  const at = (tag: string) => prompt.indexOf("<mowr-" + tag);
+  assert.ok(at("instructions") < at("conversation") && at("conversation") < at("memory") && at("memory") < at("sources") && at("sources") < at("request"));
+  // The next message adds to the conversation and picks other sources, but repeats everything before the memory.
+  const next = composePrompt({
+    messages: [
+      { role: "system", content: "Be helpful." },
+      { role: "user", content: "Earlier question" },
+      { role: "assistant", content: "Earlier answer" },
+      { role: "user", content: "Summarise my notes" },
+      { role: "assistant", content: "Here is the summary." },
+      { role: "user", content: "Now a quiz" },
+    ],
+    sources: [{ source: "other.pdf", text: "Other passage" }],
+    name: "Sam",
+  });
+  assert.ok(next.startsWith(prompt.slice(0, at("conversation")) + "<mowr-conversation>\nUser: Earlier question\n\nAssistant: Earlier answer"));
+});
+
+test("the Kinetra guide keeps its fixed text first: this conversation's notes, then the recipes for the topic at hand", () => {
+  const notes = "\n\nFILES IN THIS CONVERSATION: report.pdf";
+  const circuits = kinetraInstructionsFor("Explain nodal analysis with dependent sources as a PDF", false, { notes });
+  const optics = kinetraInstructionsFor("Make a PDF on thin lenses and ray diagrams", false, { notes });
+  let same = 0;
+  while (circuits[same] === optics[same]) same++;
+  // Everything up to and including the notes is shared; only the recipes differ.
+  assert.ok(same >= circuits.indexOf(notes) + notes.length);
+  assert.ok(circuits.indexOf(notes) < circuits.indexOf("Verified figure recipes"));
+  assert.ok(kinetraInstructionsFor("hi, how are you?", false, { notes }).endsWith(notes));
+  assert.ok(kinetraInstructionsFor("Solve this and make a PDF", false, { pictures: true, notes }).includes(notes));
 });
 
 const empty: MemoryState = { enabled: true, records: [] };

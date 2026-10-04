@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {installedPath,signInWindow} from './cli-install.ts';
 import {SessionLost,UsageLimit,unsupportedFlag,MAX_CALLS} from './kinetra-turn.ts';
 import {kinetraMcp,claudeMcpConfig,keepingAlive,NATIVE_NOTE,CLAUDE_TOOL,TOOL_TIMEOUT_SECONDS,TOOL_OUTPUT_TOKENS,type NativeCall} from './kinetra-mcp.ts';
+import {liveText} from './live-reply.ts';
 
 /**
  * Claude Code's arguments for one answer. Web search is its only built-in tool: it lets Claude find real, current
@@ -71,6 +72,8 @@ export const claudeModels:ClaudeModel[] = [
   {id:'claude:opus',name:'Claude Opus',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'high'},
   {id:'claude:haiku',name:'Claude Haiku',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
 ];
+/** A failure that looks like a lapsed sign-in: the next request checks the sign-in again instead of trusting the last check. */
+const signedOut=/not logged in|log ?in|unauthori[sz]ed|\b401\b|authenticat|oauth token|invalid api key/i;
 /** Model names Mowr passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
 const MODEL_NAME=/^[A-Za-z0-9._-]{1,80}(?:\[[a-z0-9]{1,8}\])?$/;
 
@@ -107,6 +110,8 @@ export class ClaudeProvider {
   /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
+  /** The last sign-in check while it is recent: each step of a tool loop reuses it instead of starting `claude auth status` again. */
+  private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
   /** The plan windows Claude Code last reported (it says so with each answer), and when. */
   private limits=new Map<string,ClaudeLimit>();
   private limitsAt=0;
@@ -199,6 +204,8 @@ export class ClaudeProvider {
   /**
    * One answer on the person's Claude plan. Input and output are Claude Code's stream-json, so pictures go in as
    * image blocks and the person sees what Claude is doing (thinking, searching, writing) while it works.
+   * The reply streams as `partial` events while it is written (desktop/live-reply.ts); the final `delta` is the
+   * confirmed result, which alone is read for tool requests.
    */
   /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. */
   async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall){
@@ -210,7 +217,8 @@ export class ClaudeProvider {
     const selected=listed.find(item=>item.id===model);
     if(!selected&&this.catalog)throw Error('That Claude model is no longer available on your plan. Pick another one.');
     if(effort&&selected&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
-    if(!(await this.status(true)).connected)throw Error('Sign in to a Claude subscription through Claude Code first.');
+    // A sign-in that lapsed since fails the step itself, which clears the check (below); only a signed-out one is checked again now.
+    if(!(this.recentStatus()?.connected||(await this.status(true)).connected))throw Error('Sign in to a Claude subscription through Claude Code first.');
     // A new session learns that requests go to the tool (a resumed one already has it in its history).
     if(native&&!session?.resume)prompt=NATIVE_NOTE+prompt;
     // While a native Kinetra call runs Claude Code prints nothing, so the inactivity limit below is kept from firing.
@@ -228,10 +236,12 @@ export class ClaudeProvider {
         const touch=()=>{if(done)return;clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},600000);};
         touch();alive=touch;
         let last='';
+        const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
         const read=(line:string)=>{
           if(!line.trim())return;
           let event:any;try{event=JSON.parse(line);}catch{return;}
           if(event.type==='result'){result=event;return;}
+          live(event);
           const limit=parseRateLimit(event);
           if(limit){this.limits.set(limit.type,limit);this.limitsAt=Date.now();}
           const status=claudeStatus(event);
@@ -255,6 +265,7 @@ export class ClaudeProvider {
           if(session&&unsupportedFlag.test(detail)){this.noSessions=true;return finish(undefined,new SessionLost('This Claude Code does not keep sessions.'));}
           if(session?.resume&&/no conversation found|session.{0,40}(not found|does not exist|missing)/i.test(detail+JSON.stringify(result?.errors||'')))return finish(undefined,new SessionLost('Claude Code no longer has this session.'));
           if(usage(detail))return finish(undefined,new UsageLimit('Claude subscription usage is unavailable right now.'));
+          if(signedOut.test(detail))this.statusCache=null;
           finish(undefined,Error(/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
         });
         child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
