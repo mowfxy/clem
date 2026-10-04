@@ -4,7 +4,7 @@ import reference from "./generated/kinetra.json" with { type: "json" };
 import { illustrationGuide, recipeText, recipesFor } from "./kinetra-recipes.ts";
 import { documentStandard, documentIntent } from "../core/document-standard.ts";
 import { FILE_ACTIONS, fileCatalog, fileGuides, fileGuidesFor, fileIntent } from "./file-guides.ts";
-import { MAX_CALLS } from "./kinetra-turn.ts";
+import { MAX_CALLS, MAX_PARALLEL } from "./kinetra-turn.ts";
 
 /** The tool guide with the given figure recipes (all of them, or the ones for the topic at hand). The recipes change
  *  with the topic, so they come last: the rest is the same every time and stays in the provider's prompt cache. */
@@ -56,36 +56,83 @@ export function kinetraInstructionsFor(request: string, hasDocuments = false, { 
   return guide + (guides ? "\n\n" + guides : "");
 }
 
+/**
+ * Warm workers for Kinetra calls. Starting a worker loads the whole 1.2 MB bundle, which took longer than most
+ * calls themselves (about 40 ms each, so a document with many figures spent seconds just starting workers). Up to
+ * MAX_PARALLEL stay loaded and take one call at a time; more wait for a free one. Each keeps the 512 MB memory limit,
+ * and one that times out, crashes or runs out of memory is thrown away, so the next call gets a fresh one. An idle
+ * worker never keeps the app running and is closed after a few minutes.
+ */
+type PoolWorker = { worker: Worker; busy: boolean; idle?: ReturnType<typeof setTimeout> };
+const pool: PoolWorker[] = [];
+const waiting: { request: any; resolve: (value: any) => void; reject: (error: Error) => void }[] = [];
+const IDLE_MS = 5 * 60_000;
+/** Test seam: the time limit for one call, and the workers now loaded. */
+export const kinetraPool = { callMs: 30_000, workers: () => pool.map((w) => w.worker) };
+let callId = 0;
+function startWorker() {
+  const worker = new Worker(join(typeof __dirname === "string" ? __dirname : process.cwd() + "/desktop-dist", "kinetra-worker.cjs"), { resourceLimits: { maxOldGenerationSizeMb: 512 } });
+  const entry: PoolWorker = { worker, busy: false };
+  // Errors are handled by the call that is running; one while idle only ends the worker, which leaves the pool.
+  worker.on("error", () => {});
+  worker.on("exit", () => drop(entry));
+  worker.unref();
+  pool.push(entry);
+  return entry;
+}
+function drop(entry: PoolWorker) {
+  clearTimeout(entry.idle);
+  const at = pool.indexOf(entry);
+  if (at >= 0) pool.splice(at, 1);
+  void entry.worker.terminate();
+}
+function runOn(entry: PoolWorker, request: any) {
+  const { worker } = entry;
+  entry.busy = true;
+  clearTimeout(entry.idle);
+  worker.ref();
+  return new Promise<any>((resolve, reject) => {
+    const id = ++callId;
+    const end = (failed: boolean) => {
+      clearTimeout(timer);
+      worker.off("message", message);
+      worker.off("error", error);
+      worker.off("exit", exit);
+      if (failed) return drop(entry);
+      entry.busy = false;
+      worker.unref();
+      entry.idle = setTimeout(() => drop(entry), IDLE_MS);
+      entry.idle.unref?.();
+    };
+    const message = (reply: any) => {
+      if (reply?.id !== id) return;
+      end(false);
+      reply.error ? reject(Error(reply.error)) : resolve(reply.result);
+    };
+    const error = (e: Error) => { end(true); reject(e); };
+    const exit = () => { end(true); reject(Error("Kinetra worker stopped without a result")); };
+    // A call that never returns cannot be interrupted inside the worker, so the worker itself is replaced.
+    const timer = setTimeout(() => { end(true); reject(Error("Kinetra calculation timed out")); }, kinetraPool.callMs);
+    worker.on("message", message);
+    worker.on("error", error);
+    worker.on("exit", exit);
+    worker.postMessage({ id, request });
+  });
+}
+function nextCall() {
+  while (waiting.length) {
+    const entry = pool.find((w) => !w.busy) ?? (pool.length < MAX_PARALLEL ? startWorker() : undefined);
+    if (!entry) return;
+    const call = waiting.shift()!;
+    runOn(entry, call.request).then(call.resolve, call.reject).finally(nextCall);
+  }
+}
 export async function kinetraCall(request: any) {
   if (JSON.stringify(request).length > 2_000_000)
     throw Error("Kinetra input too large");
   return new Promise<any>((resolve, reject) => {
-    const worker = new Worker(
-      join(
-        typeof __dirname === "string"
-          ? __dirname
-          : process.cwd() + "/desktop-dist",
-        "kinetra-worker.cjs",
-      ),
-      { workerData: request, resourceLimits: { maxOldGenerationSizeMb: 512 } },
-    );
-    const timer = setTimeout(() => {
-      void worker.terminate();
-      reject(Error("Kinetra calculation timed out"));
-    }, 30000);
-    worker.once("message", (message) => {
-      clearTimeout(timer);
-      void worker.terminate();
-      message.error ? reject(Error(message.error)) : resolve(message.result);
-    });
-    worker.once("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    worker.once("exit", () => {
-      clearTimeout(timer);
-      reject(Error("Kinetra worker stopped without a result"));
-    });
+    waiting.push({ request, resolve, reject });
+    nextCall();
   });
 }
 const skillNote = `[Mowr note: in Mowr, run the functions in this guide with {"kinetra":{"action":"call","module":"diagram/projectile","fn":"renderProjectile","args":[model]}} (module path without core/src and .js). Import paths, npm scripts and CLI commands below are not available here.]\n\n`;
