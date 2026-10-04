@@ -340,6 +340,31 @@ test("a drawing that cannot be cut exactly (turned, curved) still makes the page
   assert.doesNotMatch((await editPdf({ file: "d.pdf", ops: [{ op: "redact", page: 1, bbox: box }] }, helpers({ "d.pdf": plain }))).done[0], /picture/);
 });
 
+test("a redacted document carries no attached files: the list, paperclip notes and files an action points to all go", async () => {
+  const doc = await PDFDocument.create(), ctx = doc.context;
+  const page = doc.addPage([400, 300]);
+  const f = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText("Patient: Amira Hassan", { x: 40, y: 200, size: 14, font: f });
+  // The unredacted original, attached as documents often are; and two more files reached other ways.
+  await doc.attach(Buffer.from("ORIGINAL-COPY Amira Hassan"), "original.txt", { mimeType: "text/plain" });
+  const file = (text: string) => ctx.obj({ Type: "Filespec", F: PDFString.of(text + ".txt"), EF: ctx.obj({ F: ctx.register(ctx.stream(Buffer.from(text), { Type: "EmbeddedFile" })) }) });
+  page.node.set(PDFName.of("Annots"), ctx.obj([
+    ctx.register(ctx.obj({ Type: "Annot", Subtype: "FileAttachment", Rect: [300, 250, 318, 268], FS: file("PAPERCLIP-COPY") })),
+    ctx.register(ctx.obj({ Type: "Annot", Subtype: "Link", Rect: [40, 40, 140, 60], A: ctx.obj({ S: "Launch", F: file("LAUNCH-COPY") }) })),
+  ]));
+  const src = await doc.save();
+  assert.match(rawText(src), /ORIGINAL-COPY/);
+  const r = await editPdf({ file: "a.pdf", ops: [{ op: "redact", page: 1, find: "Amira Hassan" }] }, helpers({ "a.pdf": src }));
+  assert.match(r.done[0], /; removed 3 attached files, which could hold the original$/);
+  const raw = rawText(r.bytes);
+  for (const marker of ["ORIGINAL-COPY", "/EmbeddedFile", "/FileAttachment", "/EF"]) assert.ok(!raw.includes(marker), marker);
+  assert.ok(!/(PAPERCLIP|LAUNCH)-COPY(?!\.txt)/.test(raw), "the attached bytes are gone (a file's name may stay)");
+  assert.match(await textOf(r.bytes), /Patient:/);
+  // A document with nothing attached says nothing about attachments.
+  const plain = await editPdf({ file: "p.pdf", ops: [{ op: "redact", page: 1, bbox: [10, 10, 20, 20] }] }, helpers({ "p.pdf": await make(() => {}) }));
+  assert.doesNotMatch(plain.done[0], /attached/);
+});
+
 test("the content reader keeps inline images whole and the marked-content alternative text of removed glyphs is scrubbed", async () => {
   const ops = parseContent("q 10 0 0 10 50 50 cm BI /W 2 /H 1 /BPC 8 /CS /G ID \x00EI\xff EI Q (a\\)b) Tj [<00ff> -20 (c)] TJ");
   assert.deepEqual(ops.map((o) => o.op), ["q", "cm", "BI", "Q", "Tj", "TJ"]);

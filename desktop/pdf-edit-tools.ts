@@ -1,7 +1,7 @@
 import { PDFDocument, PDFPage, PDFName, PDFHexString, PDFArray, PDFDict, StandardFonts, rgb, degrees, PDFTextField, PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFOptionList, type PDFFont } from "pdf-lib";
 import { textBoxes, textInside, type TextItem } from "../core/pdf-edit.ts";
 import { assetCaption, type CropAsset } from "./pdf-assets.ts";
-import { redactPage, collectGarbage, scrubText, Unclean } from "./pdf-redact.ts";
+import { redactPage, collectGarbage, scrubText, dropAttachments, Unclean } from "./pdf-redact.ts";
 
 /**
  * Changes to a PDF the person sent, as a new PDF: pages taken, reordered, turned, removed or merged in; highlights,
@@ -202,10 +202,13 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
     }
     return out;
   };
-  /** "; also removed from 2 bookmarks and the document title", or nothing. */
+  /** "; also removed from 2 bookmarks and the document title", "; removed 1 attached file…", or nothing. */
   const scrubbed = (texts: string[]) => {
     const where = scrubText(doc, texts);
-    return where.length ? `; also removed from ${where.length > 1 ? where.slice(0, -1).join(", ") + " and " + where[where.length - 1] : where[0]}` : "";
+    // Attached files go whatever was removed: one could be the unredacted original.
+    const files = dropAttachments(doc);
+    return (where.length ? `; also removed from ${where.length > 1 ? where.slice(0, -1).join(", ") + " and " + where[where.length - 1] : where[0]}` : "")
+      + (files ? `; removed ${files} attached file${files === 1 ? "" : "s"}, which could hold the original` : "");
   };
   /** Page `n` replaced by a picture of itself (as it is now) with `boxes` filled, the same size and turn. */
   const rasterize = async (n: number, boxes: Box[], fill: [number, number, number]) => {
