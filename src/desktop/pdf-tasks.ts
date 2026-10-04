@@ -96,7 +96,10 @@ async function regions(files: StoredFile[], args: any): Promise<TaskResult> {
       results.push({ page: p, kind: a.kind, view: a.view, ...(a.rotate ? { rotate: a.rotate } : {}), regions: a.regions.map(brief) });
       images.push({ name: `${file.name} — page ${p} of ${pdf.numPages}, candidate regions`, data: base64(await regionsPicture(pdf, a, kit)) });
     }
-    return { data: { file: file.name, type: "pdf", pages: pdf.numPages, units: "pt", results }, images };
+    // A form's fields, so "fill" can name them.
+    const objects = await pdf.getFieldObjects().catch(() => null);
+    const fields = objects ? Object.entries(objects).slice(0, 200).map(([name, list]: [string, any]) => ({ name, type: list[0]?.type, ...(list[0]?.value !== undefined && list[0]?.value !== "" ? { value: list[0].value } : {}), ...(list[0]?.items?.length ? { options: list[0].items.map((i: any) => i.displayValue ?? i.exportValue).slice(0, 40) } : {}), ...(list[0]?.page !== undefined ? { page: list[0].page + 1 } : {}) })) : [];
+    return { data: { file: file.name, type: "pdf", pages: pdf.numPages, units: "pt", results, ...(fields.length ? { fields } : {}) }, images };
   });
 }
 
@@ -136,9 +139,69 @@ async function crop(files: StoredFile[], args: any): Promise<TaskResult> {
   });
 }
 
+/** A PDF of the conversation as it is, for an edit (desktop/pdf-edit-tools.ts works on its bytes). */
+async function bytes(files: StoredFile[], args: any): Promise<TaskResult> {
+  const file = pick(files, args.file);
+  if (!isPdf(file)) throw Error(`${file.name} is not a PDF.`);
+  return { data: { file: file.name }, files: [await bytesOf(file)] };
+}
+
+/** Bytes the main process sent (a document being edited), opened with pdf.js. */
+async function withBytes<T>(data: unknown, run: (pdf: any, lib: any) => Promise<T>) {
+  if (!(data instanceof Uint8Array) || data.length > MAX_FILE) throw Error("No document to read.");
+  const lib = await pdfjs(), loading = lib.getDocument({ data: data.slice(), useSystemFonts: false });
+  try { return await run(await loading.promise, lib); } finally { await loading.destroy(); }
+}
+
+/** The text runs of one page, as core/pdf-edit.ts finds text in them. */
+function words(args: any): Promise<TaskResult> {
+  return withBytes(args.bytes, async (pdf) => {
+    const page = await pdf.getPage(Math.floor(Number(args.page)));
+    try {
+      const content = await page.getTextContent();
+      const items = content.items.flatMap((item: any) => {
+        if (!("str" in item) || !item.str) return [];
+        const [a, b, c, d, e, f] = item.transform as number[];
+        // The font's family (serif, sans-serif, monospace) says whose letter widths to place characters by.
+        return [{ str: item.str, x: e, y: f, width: item.width, size: Math.hypot(c, d) || Math.hypot(a, b), font: content.styles[item.fontName]?.fontFamily }];
+      });
+      return { data: { items } };
+    } finally {
+      page.cleanup();
+    }
+  });
+}
+
+/** Pictures of pages of a document the main process made (an edited PDF), with its annotations, for the model to check. */
+function render(args: any): Promise<TaskResult> {
+  return withBytes(args.bytes, async (pdf, lib) => {
+    const pages = (Array.isArray(args.pages) ? args.pages : []).map(Number).filter((p: number) => Number.isInteger(p) && p >= 1 && p <= pdf.numPages).slice(0, 8);
+    const images = [];
+    for (const n of pages) {
+      const page = await pdf.getPage(n);
+      try {
+        const base = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale: Math.min(2.5, 1600 / Math.max(base.width, base.height)) });
+        const canvas = kit.create(Math.round(viewport.width), Math.round(viewport.height)), ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Print intent never waits for animation frames (a hidden window has none) and draws printable annotations.
+        await page.render({ canvasContext: ctx, canvas, viewport, intent: "print", annotationMode: lib.AnnotationMode.ENABLE }).promise;
+        images.push({ name: `${String(args.name || "edited PDF").slice(0, 200)} — page ${n} of ${pdf.numPages}`, data: base64(await kit.encode(canvas, "image/jpeg", 0.85)) });
+        canvas.width = canvas.height = 0;
+      } finally {
+        page.cleanup();
+      }
+    }
+    return { data: { pages: pdf.numPages }, images };
+  });
+}
+
 /** Runs one task the main process sent. */
 export function pdfTask(files: StoredFile[], op: string, args: any): Promise<TaskResult> {
   if (op === "regions") return regions(files, args || {});
   if (op === "crop") return crop(files, args || {});
+  if (op === "bytes") return bytes(files, args || {});
+  if (op === "words") return words(args || {});
+  if (op === "render") return render(args || {});
   return Promise.reject(Error(`Unknown task "${op}".`));
 }

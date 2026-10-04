@@ -31,6 +31,7 @@ export function toolStatus(request: any) {
   if (request?.action === "look") return "Looking at the pages…";
   if (request?.action === "regions") return "Finding the figures…";
   if (request?.action === "crop") return "Cropping the figure…";
+  if (request?.action === "editpdf") return request.revise ? "Updating the edited PDF…" : "Editing the PDF…";
   if (request?.action === "read" && typeof request.file === "string") return `Reading ${request.file.split(/[\\/]/).pop()!.slice(0, 60)}${Number(request.page) > 0 ? `, page ${Math.floor(Number(request.page))}` : ""}…`;
   if (request?.action === "search") return "Searching your files…";
   if (request?.action === "files") return "Looking through your files…";
