@@ -56,6 +56,7 @@ import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn,toolRequests,brokenToolRequest,requestLead,SessionLost,UsageLimit} from './kinetra-turn';
+import {inlinePictures} from './kinetra-mcp';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
@@ -305,7 +306,9 @@ void app.whenReady().then(async () => {
     // A session the CLI no longer has falls back to resending everything (runKinetraTurn), which must still fit the window (about 200k tokens).
     const sessions: { id: string; provider: ClaudeProvider | GrokProvider }[] = [];
     let shown = false;
-    const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked) => {
+    // Claude Code gets Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; Grok keeps the text protocol.
+    const native = !!(pdf || tools);
+    const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked, call) => {
       // A first step (or a resend after a lost session) starts a new session; the others continue the latest one.
       if (!followUp) sessions.push({ id: randomUUID(), provider: current.provider });
       const session = sessions.at(-1)!;
@@ -314,7 +317,7 @@ void app.whenReady().then(async () => {
       const once = async () => {
         text = "";
         if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning);
-        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp });
+        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined);
       };
       try {
         await once();

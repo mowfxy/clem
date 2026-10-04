@@ -7,7 +7,8 @@ export const baseInstructions =
 /** Live web search through the person's own ChatGPT plan. Mowr never fetches pages itself. */
 export const WEB_SEARCH = "live";
 
-export type TurnSession = { threadId?: string };
+/** `mcp`: thread configuration that adds Kinetra as a native tool (desktop/kinetra-mcp.ts codexMcpConfig). */
+export type TurnSession = { threadId?: string; mcp?: Record<string, unknown> };
 
 /**
  * A few words on what the model is doing, taken from the bold headline that opens each reasoning
@@ -19,7 +20,8 @@ export function reasoningHeadline(summary: string): string | null {
   const words = bold[1].trim().replace(/[.:…]+$/, "").split(/\s+/);
   return words.slice(0, 6).join(" ") + "…";
 }
-export type TurnControl = { interrupt?: () => void };
+/** `alive` restarts the inactivity limit: a native tool call that is still working counts as activity. */
+export type TurnControl = { interrupt?: () => void; alive?: () => void };
 
 /**
  * Runs one turn on a shared app-server. The first turn opens an ephemeral, read-only thread;
@@ -52,6 +54,7 @@ export async function streamTurn(
         "features.unified_exec": false,
         web_search: WEB_SEARCH,
         project_doc_max_bytes: 0,
+        ...session.mcp,
       },
     });
     session.threadId = started.thread.id as string;
@@ -79,6 +82,7 @@ export async function streamTurn(
       clearTimeout(timer);
       unsubscribe();
       control.interrupt = undefined;
+      control.alive = undefined;
       error ? reject(error) : resolve();
     };
     const interrupt = () => {
@@ -90,8 +94,9 @@ export async function streamTurn(
     control.interrupt = interrupt;
     // An inactivity limit: every event from the provider (text, reasoning, tool use) restarts it, so long answers that keep streaming are never cut off.
     let timer: ReturnType<typeof setTimeout>;
-    const touch = () => { clearTimeout(timer); timer = setTimeout(() => { interrupt(); finish(Error("Codex request timed out")); }, timeoutMs); };
+    const touch = () => { if (ended) return; clearTimeout(timer); timer = setTimeout(() => { interrupt(); finish(Error("Codex request timed out")); }, timeoutMs); };
     touch();
+    control.alive = touch;
     const unsubscribe = server.subscribe(threadId, {
       onFail: (error) => finish(cancelled() ? Error("Request cancelled") : error),
       onMessage: (method, p) => {

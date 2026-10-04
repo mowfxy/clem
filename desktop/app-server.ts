@@ -8,7 +8,8 @@ type Listener = { onMessage: (method: string, params: any) => void; onFail: (err
  * One long-lived `codex app-server` connection that many turns share.
  * Starting the CLI and completing the handshake costs far more than a turn's first token,
  * so the connection is kept warm and reused; each conversation still gets its own
- * ephemeral, read-only thread. Provider tool/approval requests are always refused.
+ * ephemeral, read-only thread. Provider tool/approval requests are always refused,
+ * except a confirmation before calling Mowr's own Kinetra MCP server.
  */
 export class AppServer {
   private pending = new Map<number, Pending>();
@@ -62,7 +63,13 @@ export class AppServer {
     let m: any;
     try { m = JSON.parse(line); } catch { return; }
     if (m.method && m.id !== undefined) {
-      // Never leave a provider tool/approval request hanging, and never grant it.
+      // Mowr's own Kinetra server (desktop/kinetra-mcp.ts) is the one MCP server a thread may have: a confirmation Codex
+      // asks for before calling it is granted, as Mowr already decided to offer that tool. A link (url mode) never is.
+      if (m.method === "mcpServer/elicitation/request" && m.params?.serverName === "kinetra" && m.params?.mode !== "url") {
+        this.write({ id: m.id, result: { action: "accept", content: {} } });
+        return;
+      }
+      // Never leave any other provider tool/approval request hanging, and never grant it.
       this.write({ id: m.id, error: { code: -32601, message: "Tools are not enabled in this conversation." } });
       const thread = m.params?.threadId;
       const listener = thread && this.threads.get(thread);
