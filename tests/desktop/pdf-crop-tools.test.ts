@@ -70,3 +70,12 @@ test("regions and crop are Kinetra actions in text and native calls, with a stat
   assert.match(fileToolsGuide([], true), /"action":"crop"/);
   assert.equal(fileToolsGuide([]), "");
 });
+
+test("editpdf is a file action like pdf: routed to file making, revised and appended to by its edit list, explained in the guide", async () => {
+  const { FILE_ACTIONS, partsKey, sameFormat } = await import("../../desktop/file-guides.ts");
+  assert.ok(ACTIONS.has("editpdf") && FILE_ACTIONS.has("editpdf"));
+  assert.equal(partsKey.editpdf, "ops");
+  assert.ok(sameFormat("editpdf", "lecture (edited).pdf") && !sameFormat("editpdf", "notes.docx"));
+  assert.equal(toolStatus({ action: "editpdf" }), "Editing the PDF…");
+  assert.match(fileToolsGuide([{ name: "a.pdf", text: "x" }]), /"action":"editpdf"/);
+});

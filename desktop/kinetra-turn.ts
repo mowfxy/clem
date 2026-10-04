@@ -22,7 +22,7 @@ export function toolRequest(text: string): Record<string, unknown> | null {
   }
 }
 // Kinetra's own actions and the file tools (core/file-tools.ts).
-export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop"]);
+export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop", "editpdf"]);
 const START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
 /** Index just past the JSON object that opens at `start`, or -1 when it never closes. Strings are skipped. */
 function objectEnd(text: string, start: number) {

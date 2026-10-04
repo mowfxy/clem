@@ -7,6 +7,7 @@ import { rasterizer } from "./rasterize.ts";
 import { unsafeSvg } from "./svg-safety.ts";
 import { documentFigures, figureCheck, figurePictures, FIGURES_PER_RESULT, type DrawnFigure } from "./figure-review.ts";
 import { resolveAssets, type ReadAsset } from "./pdf-assets.ts";
+import { editPdf, type EditHelpers } from "./pdf-edit-tools.ts";
 
 /** The tool actions that make a file (desktop/file-guides.ts). Each one also revises a file it made earlier ("revise": id). */
 import { textFormats } from "./file-guides.ts";
@@ -25,7 +26,10 @@ const BOM = String.fromCharCode(0xfeff);
 const safeName = (name: string) => name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "").replace(/[. ]+$/, "").trim().slice(0, 120);
 
 /** `previews`: pictures of the file (a deck's slides, the figures drawn in it) for the model to check before it answers (PNG or JPEG). */
-export type Made = { bytes: Uint8Array; name: string; type: string; info?: Record<string, unknown>; previews?: { name: string; image: Uint8Array }[] };
+/** `spec`: what to keep as the file's source when it differs from the request (an edit list with its files resolved). */
+export type Made = { bytes: Uint8Array; name: string; type: string; info?: Record<string, unknown>; previews?: { name: string; image: Uint8Array }[]; spec?: any };
+/** Pictures of the changed pages of an edited PDF, at most this many per result. */
+const EDIT_PREVIEWS = 6;
 
 /** Pictures of the figures the model has not seen yet in this answer, and the note asking it to check them against their source. */
 async function withFigures(made: Made, figures: DrawnFigure[], seen: Set<string>, limit: number): Promise<Made> {
@@ -56,7 +60,7 @@ export function fileName(action: string, spec: any, fallback = "Mowr file") {
  *  `preview`: also return pictures of the result for the model to look at (decks: contact sheets of the slides; pdf,
  *  docx and pptx: the figures drawn in it that are not in `seen`, the figures already shown in this answer).
  *  `assets` reads the crops that pdf, docx and pptx figures may name ({"asset":"crop-…"}, desktop/pdf-assets.ts). */
-export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>(), assets }: { preview?: boolean; seen?: Set<string>; assets?: ReadAsset } = {}): Promise<Made> {
+export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>(), assets, edit, render }: { preview?: boolean; seen?: Set<string>; assets?: ReadAsset; edit?: EditHelpers; render?: (bytes: Uint8Array, pages: number[]) => Promise<{ name: string; image: Uint8Array }[]> } = {}): Promise<Made> {
   // Crop figures get their drawing and caption here; the spec as sent (and stored) keeps only their ids.
   let vectors = new Map<string, Uint8Array>();
   if ((action === "pdf" || action === "docx" || action === "pptx") && JSON.stringify(spec?.sections || spec?.slides || []).includes('"asset"')) {
@@ -83,6 +87,19 @@ export async function makeFile(action: string, spec: any, { preview = false, see
       };
       // The contact sheets show every slide small; the figures come close up as well, within the same picture budget.
       return preview ? withFigures(made, deck.figures, seen, Math.max(2, FIGURES_PER_RESULT + 2 - deck.sheets.length)) : made;
+    }
+    case "editpdf": {
+      // An edit of a PDF the person sent (desktop/pdf-edit-tools.ts); the result is a new PDF, the original untouched.
+      if (!edit) throw Error("PDFs can only be edited in a chat.");
+      const result = await editPdf(spec, edit);
+      const base = safeName(String(result.spec.name || spec?.title || "Edited").replace(/\.pdf$/i, "")).replace(/ \(edited\)$/i, "") || "Edited";
+      const show = (result.changed.length ? result.changed : Array.from({ length: Math.min(4, result.pages) }, (_, i) => i + 1)).slice(0, EDIT_PREVIEWS);
+      const previews = preview && render ? await render(result.bytes, show).catch(() => []) : [];
+      const more = result.changed.length - show.length;
+      return {
+        bytes: result.bytes, name: base + " (edited).pdf", type: MIME.pdf, spec: result.spec, previews,
+        info: { pages: result.pages, edits: result.done, ...(result.changed.length ? { changedPages: result.changed.slice(0, 200) } : {}), ...(previews.length ? { check: `Pictures of ${result.changed.length ? "the changed" : "the first"} pages are attached${more > 0 ? ` (${more} more changed page${more === 1 ? "" : "s"} not shown)` : ""}. Look at them: every edit where it should be and nothing else changed; if not, send the edits again with "revise".` } : {}) },
+      };
     }
     case "xlsx": return { bytes: excelWorkbook(spec), name: fileName("xlsx", { title: spec?.title || spec?.sheets?.[0]?.name }), type: MIME.xlsx, info: { sheets: spec.sheets.map((s: any) => ({ name: s.name, rows: s.rows.length, headerRow: s.title ? 3 : 1, firstDataRow: s.title ? 4 : 2 })) } };
     case "file": {

@@ -55,10 +55,16 @@ test("a crop is a figure in PDFs (as vectors), Word documents and decks (as its 
   writeFileSync(join(dir, "crop-0000bbbb-png"), settled.png);
   const doc = (id: string) => ({ kind: "report", title: "Series and parallel resistors", sections: [{ heading: "The circuit", text: "The network below combines a series resistor with a parallel pair.", figure: { asset: id, source: true } }, { heading: "Analysis", text: "The equivalent resistance follows from the series and parallel rules." }] });
   const deck = { title: "Resistor networks", slides: [{ layout: "title" }, { layout: "figure", title: "The circuit", figure: { asset: "crop-0000aaaa", source: "Textbook, chapter 2" } }, { layout: "closing", title: "Questions" }] };
-  writeFileSync(join(dir, "jobs.json"), JSON.stringify([["pdf", "report.pdf", doc("crop-0000aaaa")], ["pdf", "fallback.pdf", doc("crop-0000bbbb")], ["docx", "report.docx", doc("crop-0000aaaa")], ["pptx", "deck.pptx", deck], ["pdf", "missing.pdf", doc("crop-0000cccc")]]));
+  writeFileSync(join(dir, "jobs.json"), JSON.stringify([["pdf", "report.pdf", doc("crop-0000aaaa")], ["pdf", "fallback.pdf", doc("crop-0000bbbb")], ["docx", "report.docx", doc("crop-0000aaaa")], ["pptx", "deck.pptx", deck], ["pdf", "missing.pdf", doc("crop-0000cccc")], ["editpdf", "edited.pdf", { file: "report.pdf", ops: [{ op: "stamp", text: "DRAFT" }, { op: "crops", assets: ["crop-0000aaaa"] }] }]]));
   const run = spawnSync(process.execPath, ["scripts/verify/pdf-crops.mjs", dir], { encoding: "utf8", timeout: 600_000 });
   assert.equal(run.status, 0, run.stdout + run.stderr);
   for (const name of ["report.pdf", "fallback.pdf", "report.docx", "deck.pptx"]) assert.match(run.stdout, new RegExp(`ok ${name.replace(".", "\\.")}`), run.stdout);
+  // An edit of a PDF Mowr just made: a new file named after it, with its edits listed and its source kept as a copy.
+  const edited = JSON.parse(/ok edited\.pdf \d+ (.*)/.exec(run.stdout)![1]);
+  assert.equal(edited.name, "report (edited).pdf");
+  assert.equal(edited.info.pages, 2);
+  assert.deepEqual(edited.info.changedPages, [1, 2]);
+  assert.match(edited.spec.source, /^src-/);
   // An id that is no crop is reported, and nothing is made.
   assert.match(run.stdout, /FAIL missing\.pdf .*no crop "crop-0000cccc"/);
 

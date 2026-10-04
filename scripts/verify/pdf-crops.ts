@@ -21,9 +21,11 @@ app.whenReady().then(async () => {
   const jobs: [string, string, any][] = JSON.parse(await readFile(join(dir, "jobs.json"), "utf8"));
   for (const [action, name, spec] of jobs) {
     try {
-      const made = await makeFile(action, spec, { assets: (id) => readAsset(io, id) });
+      // Edits read their files from the folder by name (the window does it in the app).
+      const edit = { load: async (ref: string) => ({ bytes: (await io.read(ref))!, source: "src-00000000-0000-0000-0000-000000000000", name: ref }), words: async () => [], crop: (id: string) => readAsset(io, id) };
+      const made = await makeFile(action, spec, { assets: (id) => readAsset(io, id), edit });
       await writeFile(join(dir, name), made.bytes);
-      console.log("ok", name, made.bytes.length);
+      console.log("ok", name, made.bytes.length, JSON.stringify({ name: made.name, info: made.info, spec: made.spec }));
     } catch (error) {
       console.log("FAIL", name, (error as Error).message);
     }
