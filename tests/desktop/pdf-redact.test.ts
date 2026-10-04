@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { inflateSync } from "node:zlib";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, PDFHexString, PDFDict, PDFArray, PDFStream, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { kit, lib, fixture, open } from "./pdf-kit.ts";
 import { editPdf, type EditHelpers, type Box } from "../../desktop/pdf-edit-tools.ts";
 import { parseContent, redactPage, collectGarbage, Unclean } from "../../desktop/pdf-redact.ts";
@@ -189,6 +189,67 @@ test("vector crops carry only what is inside them: the rest of the page is gone 
   assert.ok(!text.includes("network") && !rawText(crop).includes(hexOf("network")), "body text is not hidden in it");
   const raster = (await vectorCrop(new Uint8Array(await fixture("raster-figure.pdf")), 1, [72, 600, 540, 740]))!;
   assert.equal([...Buffer.from(raster).toString("latin1").matchAll(/\/Subtype\s*\/Image/g)].length, 0, "a picture outside the crop is not carried");
+});
+
+/** Every string of a file, decoded as PDF reads it (UTF-16 included), and every stream's text. */
+async function everyText(bytes: Uint8Array) {
+  const doc = await PDFDocument.load(bytes), out: string[] = [rawText(bytes)];
+  const visit = (v: unknown): void => {
+    if (v instanceof PDFString || v instanceof PDFHexString) out.push(v.decodeText());
+    else if (v instanceof PDFName) out.push(v.decodeText());
+    else if (v instanceof PDFDict) for (const [k, x] of v.entries()) { visit(k); visit(x); }
+    else if (v instanceof PDFArray) v.asArray().forEach(visit);
+    else if (v instanceof PDFStream) { visit(v.dict); try { out.push(Buffer.from(v instanceof PDFRawStream ? (v.dict.has(PDFName.of("Filter")) ? decodePDFRawStream(v).decode() : v.contents) : (v as any).getContents()).toString("utf8")); } catch { /* unreadable */ } }
+  };
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) visit(obj);
+  return out.join("\n");
+}
+
+test("redacted words are cleaned from bookmarks, properties, XMP, tags, comments and named destinations too", async () => {
+  const doc = await PDFDocument.create(), ctx = doc.context;
+  const page = doc.addPage([400, 300]);
+  const f = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText("Patient: Amira Hassan", { x: 40, y: 200, size: 14, font: f });
+  page.drawText("Seen on 3 March.", { x: 40, y: 150, size: 14, font: f });
+  doc.setTitle("Notes on Amira Hassan");
+  doc.getInfoDict().set(PDFName.of("Author"), PDFString.of("AMIRA  hassan's doctor"));
+  doc.setSubject("Clinic");
+  const target = ctx.register(ctx.obj([page.ref, PDFName.of("XYZ"), null, null, null]));
+  const outlines = ctx.nextRef(), item = ctx.nextRef();
+  ctx.assign(item, ctx.obj({ Title: PDFString.of("Amira Hassan, first visit"), Parent: outlines, Dest: PDFHexString.fromText("amira hassan") }));
+  ctx.assign(outlines, ctx.obj({ Type: "Outlines", First: item, Last: item, Count: 1 }));
+  doc.catalog.set(PDFName.of("Outlines"), outlines);
+  doc.catalog.set(PDFName.of("Names"), ctx.obj({ Dests: ctx.obj({ Names: [PDFHexString.fromText("amira hassan"), target, PDFString.of("zz-other"), target] }) }));
+  const xmp = `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:pdf="http://ns.adobe.com/pdf/1.3/" pdf:Keywords="amira hassan; clinic"><dc:title><rdf:Alt><rdf:li xml:lang="x-default">Notes on Amira&#32;Hassan &amp; co</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`;
+  doc.catalog.set(PDFName.of("Metadata"), ctx.register(ctx.stream(Buffer.from(xmp, "utf8"), { Type: "Metadata", Subtype: "XML" })));
+  const elem = ctx.register(ctx.obj({ Type: "StructElem", S: "Figure", Alt: PDFHexString.fromText("Photo of Amira Hassan"), ActualText: PDFString.of("Amira Hassan"), Pg: page.ref }));
+  doc.catalog.set(PDFName.of("StructTreeRoot"), ctx.obj({ Type: "StructTreeRoot", K: ctx.obj([ctx.obj({ S: "Document", K: elem })]) }));
+  page.node.set(PDFName.of("Annots"), ctx.obj([ctx.register(ctx.obj({ Type: "Annot", Subtype: "Text", Rect: [300, 50, 318, 68], Contents: PDFHexString.fromText("Call Amira Hassan back"), T: PDFString.of("Reviewer") }))]));
+  const src = await doc.save();
+  // The name's box only: what pdf.js reads there is what is cleaned elsewhere.
+  const r = await editPdf({ file: "n.pdf", ops: [{ op: "redact", page: 1, bbox: [95, 195, 200, 216] }] }, helpers({ "n.pdf": src }));
+  assert.match(r.done[0], /also removed from 1 bookmark, the document title and author, the XMP metadata, 1 tagged element, 1 comment and 1 named destination$/);
+  const all = await everyText(r.bytes);
+  assert.doesNotMatch(all, /amira|hassan/i, "the name is in no string or stream of the file");
+  assert.ok(!all.includes(hexOf("Amira")) && !all.includes(Buffer.from("﻿Amira", "utf16le").swap16().toString("hex").toUpperCase()));
+  assert.match(await textOf(r.bytes), /Patient:[\s\S]*Seen on 3 March\./, "the rest of the page is still text");
+  const out = await PDFDocument.load(r.bytes);
+  assert.equal(out.getTitle(), "Notes on ████████████", "the same length, the rest of the title kept");
+  assert.equal(out.getSubject(), "Clinic");
+  assert.match((out.getInfoDict().lookup(PDFName.of("Author")) as PDFHexString).decodeText(), /^█{13}'s doctor$/, "across case and doubled spaces");
+  // The XMP is still XML, its markup and entities intact.
+  const meta = all.match(/<\?xpacket begin="﻿"[\s\S]*?end="w"\?>/)![0];
+  assert.match(meta, /pdf:Keywords="█{12}; clinic"/);
+  assert.match(meta, /<rdf:li xml:lang="x-default">Notes on █{12} &amp; co<\/rdf:li>/);
+  // The bookmark still goes to the destination, renamed with it.
+  const first = (out.catalog.lookup(PDFName.of("Outlines")) as PDFDict).lookup(PDFName.of("First")) as PDFDict;
+  const names = ((out.catalog.lookup(PDFName.of("Names")) as PDFDict).lookup(PDFName.of("Dests")) as PDFDict).lookup(PDFName.of("Names")) as PDFArray;
+  assert.equal((first.lookup(PDFName.of("Dest")) as PDFHexString).decodeText(), "█".repeat(12));
+  assert.deepEqual(names.asArray().filter((_, i) => i % 2 === 0).map((k) => (k as PDFString).decodeText()), ["zz-other", "█".repeat(12)], "kept in byte order");
+  // A box with no text under it leaves the rest of the file alone.
+  const empty = await editPdf({ file: "n.pdf", ops: [{ op: "redact", page: 1, bbox: [40, 40, 100, 80] }] }, helpers({ "n.pdf": src }));
+  assert.doesNotMatch(empty.done[0], /also removed/);
+  assert.equal((await PDFDocument.load(empty.bytes)).getTitle(), "Notes on Amira Hassan");
 });
 
 test("the content reader keeps inline images whole and the marked-content alternative text of removed glyphs is scrubbed", async () => {
