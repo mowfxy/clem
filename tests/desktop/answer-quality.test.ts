@@ -5,7 +5,8 @@ import { PassThrough } from "node:stream";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ClaudeProvider } from "../../desktop/claude.ts";
+import { ClaudeProvider, parseClaudeModels, toolEffort } from "../../desktop/claude.ts";
+import { requestSchema } from "../../desktop/contracts.ts";
 import { GrokProvider, grokRules, GROK_RULES_MAX } from "../../desktop/grok.ts";
 import { composePrompt, coreRules, systemPrompt } from "../../desktop/prompt.ts";
 import { brokenToolRequest, runKinetraTurn, toolRequest } from "../../desktop/kinetra-turn.ts";
@@ -213,4 +214,25 @@ test("when the context fills up, the final answer still gets the results, shorte
   assert.ok(last.length <= 9_000 + 12_000);
   assert.match(last, /No file was made in this answer: do not say one was\./);
   assert.match(last, /- call step3 → \{"value":42/, "the dropped results come back shortened");
+});
+
+test("Claude thinks harder for tool and document work only when the level is still the model's default", () => {
+  const models = parseClaudeModels([
+    { value: "sonnet", displayName: "Sonnet", supportedEffortLevels: ["low", "medium", "high", "xhigh"] },
+    { value: "opus", displayName: "Opus", supportedEffortLevels: ["low", "medium", "high", "max"] },
+    { value: "haiku", displayName: "Haiku" },
+  ]);
+  // The defaults themselves are unchanged: chat stays quick.
+  assert.deepEqual(models.map((m) => m.defaultReasoningEffort), ["medium", "high", ""]);
+  assert.equal(toolEffort(models, "claude:sonnet", "medium", false, true), "high");
+  assert.equal(toolEffort(models, "claude:sonnet", "medium", false, false), "medium", "chat keeps the default");
+  assert.equal(toolEffort(models, "claude:sonnet", "low", true, true), "low", "a level the person picked is never changed");
+  assert.equal(toolEffort(models, "claude:sonnet", "medium", true, true), "medium", "even when it equals the default");
+  assert.equal(toolEffort(models, "claude:sonnet", "xhigh", false, true), "xhigh", "never lowered");
+  assert.equal(toolEffort(models, "claude:opus", "high", false, true), "high");
+  assert.equal(toolEffort(models, "claude:haiku", undefined, false, true), undefined, "a model without levels gets none");
+  // The renderer says when the level was picked; the request schema carries it.
+  const chat = (extra: object) => requestSchema.safeParse({ action: "chat", id: crypto.randomUUID(), scope: "chat:test", messages: [{ role: "user", content: "hi" }], reasoning: "low", ...extra });
+  assert.ok(chat({ reasoningChosen: true }).success);
+  assert.equal(chat({ reasoningChosen: "yes" }).success, false);
 });
