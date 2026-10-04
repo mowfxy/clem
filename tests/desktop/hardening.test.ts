@@ -209,6 +209,21 @@ test("without a session, only the newest pictures looked at are resent", async (
   assert.ok(Math.max(...sent) <= 12);
 });
 
+test("with a session, the new pictures of one reply stay within the per-message limit too", async () => {
+  // One reply with five "look" requests of eight pages each used to send all forty pictures in the next message.
+  const sent: string[][] = [];
+  let step = 0;
+  const look = '{"kinetra":{"action":"look","file":"a.pdf","pages":[1,2,3,4,5,6,7,8]}}';
+  let n = 0;
+  await runKinetraTurn<string>("q", "i", async (_input, _f, pictures) => {
+    sent.push(pictures);
+    return ++step === 1 ? Array(5).fill(look).join("\n") : "answer";
+  }, async () => ({ attachPictures: Array.from({ length: 8 }, () => `p${++n}`) }), () => false, { stateful: true });
+  assert.equal(sent[1].length, 12);
+  // The newest are kept: the ones the model asked for last.
+  assert.equal(sent[1].at(-1), "p40");
+});
+
 test("the slides skill asks for a brief, an archetype, a storyline and a review, and lists the new layouts and icons", () => {
   const skill = fileGuidesFor("make a pitch deck for investors");
   for (const want of [/BRIEF FIRST/, /ARCHETYPE/, /STORYLINE/, /big-number/, /matrix/, /roadmap/, /diagram/, /REVIEW/, /rocket/, /kids/]) assert.match(skill, want);

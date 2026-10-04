@@ -8,9 +8,10 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 /** Prints a document specification to a tagged A4 PDF with an outline (bookmarks) and a contents with page numbers.
- *  `checkVoice` is off only for exports of text the person already has. */
-export async function illustratedPdf(spec: any, { checkVoice = true }: { checkVoice?: boolean } = {}) {
+ *  `checkVoice` is off only for exports of text the person already has. `drawn` receives the figures as printed. */
+export async function illustratedPdf(spec: any, { checkVoice = true, drawn }: { checkVoice?: boolean; drawn?: (figures: (string | undefined)[]) => void } = {}) {
   const figures = await renderFigures(spec, { checkVoice });
+  drawn?.(figures);
   const page = new BrowserWindow({
     show: false,
     webPreferences: {

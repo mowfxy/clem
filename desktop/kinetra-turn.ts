@@ -299,7 +299,8 @@ export async function runKinetraTurn<Picture = unknown>(
     reported = history.length;
     let text: string;
     try {
-      text = await model(input, stateful && replies > 0, stateful ? newPictures : recent(looked));
+      // With a thread only the new pictures go, but still within the same per-message limit.
+      text = await model(input, stateful && replies > 0, recent(stateful ? newPictures : looked));
     } catch (error) {
       if (!(error instanceof SessionLost) || !stateful) throw error;
       check();

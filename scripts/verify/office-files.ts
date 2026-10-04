@@ -58,10 +58,10 @@ app.whenReady().then(async () => {
   for (const [action, name, spec] of jobs) {
     if (only && !only.test(name)) continue;
     try {
-      const made = await makeFile(action, spec, { preview: action === "pptx" });
+      const made = await makeFile(action, spec, { preview: action === "pptx" || /^report\.(pdf|docx)$/.test(name) });
       await writeFile(join(out, name), made.bytes);
       // The contact sheets the model is shown, saved beside the deck.
-      for (const [k, sheet] of (made.previews || []).entries()) await writeFile(join(out, `${name}.sheet${k + 1}.jpg`), sheet.jpeg);
+      for (const [k, sheet] of (made.previews || []).entries()) await writeFile(join(out, `${name}.sheet${k + 1}.${sheet.image[0] === 0x89 ? "png" : "jpg"}`), sheet.image);
       console.log("ok", name, made.bytes.length, made.info ? JSON.stringify(made.info) : "");
     } catch (error) {
       console.log("FAIL", name, (error as Error).message);

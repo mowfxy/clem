@@ -67,11 +67,12 @@ export async function rasterizer() {
   }
   return {
     /** An SVG drawing on white (or transparent) paper, at most `maxWidth` CSS pixels wide. */
-    async svg(svg: string, { maxWidth = 1100, background = "#ffffff" }: { maxWidth?: number; background?: string } = {}) {
+    /** `maxHeight` also bounds it; `pixelRatio` sets the capture's device pixels per CSS pixel (sharp for print by default). */
+    async svg(svg: string, { maxWidth = 1100, maxHeight = Infinity, background = "#ffffff", pixelRatio }: { maxWidth?: number; maxHeight?: number; background?: string; pixelRatio?: number } = {}) {
       const size = svgSize(svg);
-      const scale = Math.min(1, maxWidth / size.width);
+      const scale = Math.min(1, maxWidth / size.width, maxHeight / size.height);
       const width = size.width * scale, height = size.height * scale;
-      return capture(`<div style="background:${background};width:${width}px;height:${height}px">${sized(svg, width, height)}</div>`, width, height, Math.min(3, 2400 / width));
+      return capture(`<div style="background:${background};width:${width}px;height:${height}px">${sized(svg, width, height)}</div>`, width, height, pixelRatio ?? Math.min(3, 2400 / width));
     },
     /**
      * Many drawings (a deck's icons and art) laid out on one page per batch and captured together, then cut apart:
