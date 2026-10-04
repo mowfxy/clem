@@ -3,6 +3,7 @@ import {mkdir,readdir,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {installedPath,signInWindow} from './cli-install.ts';
 import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
+import {liveText} from './live-reply.ts';
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 
 export type ClaudeImage = { mime: string; data: string };
@@ -177,6 +178,8 @@ export class ClaudeProvider {
   /**
    * One answer on the person's Claude plan. Input and output are Claude Code's stream-json, so pictures go in as
    * image blocks and the person sees what Claude is doing (thinking, searching, writing) while it works.
+   * The reply streams as `partial` events while it is written (desktop/live-reply.ts); the final `delta` is the
+   * confirmed result, which alone is read for tool requests.
    */
   async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean}){
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
@@ -203,10 +206,12 @@ export class ClaudeProvider {
         const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},600000);};
         touch();
         let last='';
+        const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
         const read=(line:string)=>{
           if(!line.trim())return;
           let event:any;try{event=JSON.parse(line);}catch{return;}
           if(event.type==='result'){result=event;return;}
+          live(event);
           const limit=parseRateLimit(event);
           if(limit){this.limits.set(limit.type,limit);this.limitsAt=Date.now();}
           const status=claudeStatus(event);

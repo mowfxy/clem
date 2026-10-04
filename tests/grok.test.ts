@@ -96,3 +96,25 @@ test('only Grok’s final message is the reply, and the chosen thinking level is
   await new FakeGrok('ok').run('r','hi','grok:grok-build-0.1',e=>unlisted.push(e),[],undefined,'xhigh');
   assert.equal(unlisted.find(e=>e.type==='delta').text,'[grok-build-0.1] hi');
 });
+
+test('Grok’s reply streams as partial events while it is written; the reply itself is still the final message',async()=>{
+  class Spy extends FakeGrok{args:string[][]=[];async start(args:string[]){this.args.push(args);return super.start(args);}}
+  const grok=new Spy('stream');const events:any[]=[];
+  await grok.run('r','what is this?','grok:grok-4.6',e=>events.push(e));
+  assert.ok(grok.args.find(a=>a.includes('--prompt-file'))!.includes('--include-partial-messages'));
+  const partial=events.filter(e=>e.type==='partial');
+  assert.deepEqual(partial.map(e=>[e.text,e.fresh]),[["I'll look ",true],['at it.',false],['The picture ',true],['shows a ',false],['pulley.',false]]);
+  assert.deepEqual(events.filter(e=>e.type==='delta').map(e=>e.text),['The picture shows a pulley.']);
+  assert.ok(events.findIndex(e=>e.type==='partial')<events.findIndex(e=>e.type==='delta'));
+});
+
+test('a Grok build without partial messages answers in one piece, and is not asked for them again',async()=>{
+  class Spy extends FakeGrok{args:string[][]=[];async start(args:string[]){this.args.push(args);return super.start(args);}}
+  const grok=new Spy('nopartial');
+  const first:any[]=[];await grok.run('r','hi','grok:grok-4.6',e=>first.push(e));
+  assert.equal(first.find(e=>e.type==='delta').text,'[grok-4.6] hi');
+  const runs=grok.args.filter(a=>a.includes('--prompt-file'));
+  assert.deepEqual(runs.map(a=>a.includes('--include-partial-messages')),[true,false]);
+  await grok.run('r','again','grok:grok-4.6',()=>{});
+  assert.equal(grok.args.filter(a=>a.includes('--prompt-file')).at(-1)!.includes('--include-partial-messages'),false);
+});

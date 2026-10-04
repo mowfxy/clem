@@ -55,7 +55,8 @@ import {GrokProvider,grokModels,grokUsage,GROK_PREFIX} from './grok';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
-import {runKinetraTurn,toolRequests,brokenToolRequest,requestLead,SessionLost,UsageLimit} from './kinetra-turn';
+import {runKinetraTurn,SessionLost,UsageLimit} from './kinetra-turn';
+import {LiveScreen} from './live-reply';
 import {kinetraTool} from './kinetra-runtime';
 import {turnTimer,type TurnStats} from './turn-timing';
 import {toolStatus} from './codex';
@@ -312,19 +313,25 @@ void app.whenReady().then(async () => {
     const accounts = (grok ? groks : claudes) as unknown as CliAccounts<ClaudeProvider | GrokProvider>;
     const autoSwitch = await providerAccounts.autoSwitchEnabled(owner);
     let current = await accounts.selected(owner);
-    // Claude and Grok answer in one piece, so Kinetra runs as a loop around them: each tool result is sent back until the answer is final.
+    // Kinetra runs as a loop around Claude and Grok: each tool result is sent back until the answer is final.
     // One provider session carries the whole loop: the first step sends the context, later steps only the new tool results.
     // A session the CLI no longer has falls back to resending everything (runKinetraTurn), which must still fit the window (about 200k tokens).
     const sessions: { id: string; provider: ClaudeProvider | GrokProvider }[] = [];
-    let shown = false;
+    // Their text streams as it is written; tool requests never show, and nothing shows twice (desktop/live-reply.ts).
+    const screen = new LiveScreen((text) => emit({ id, type: "delta", text }));
     const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked) => {
       // A first step (or a resend after a lost session) starts a new session; the others continue the latest one.
       if (!followUp) sessions.push({ id: randomUUID(), provider: current.provider });
       const session = sessions.at(-1)!;
       let text = "";
-      const collect = (event: any) => { if (event.type === "delta") text += event.text || ""; else if (event.type === "status") emit({ ...event, id }); };
+      const collect = (event: any) => {
+        if (event.type === "delta") text += event.text || "";
+        else if (event.type === "partial") screen.partial(event.text || "", !!event.fresh);
+        else if (event.type === "status") emit({ ...event, id });
+      };
       const once = async () => {
         text = "";
+        screen.step();
         if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning);
         else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp });
       };
@@ -343,16 +350,13 @@ void app.whenReady().then(async () => {
         await once();
       }
       // Notes written before a tool request show while the tool runs, each its own paragraph, as ChatGPT's do.
-      if (toolRequests(text) || brokenToolRequest(text)) {
-        const lead = requestLead(text);
-        if (lead) { emit({ id, type: "delta", text: (shown ? "\n\n" : "") + lead }); shown = true; }
-      }
+      screen.reply(text);
       return text;
     }, async (tool) => {
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
     }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, stats }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); });
-    emit({ id, type: "delta", text: (shown && answer ? "\n\n" : "") + answer });
+    screen.answer(answer);
     emit({ id, type: "done" });
   }
   /** A short internal request (memory notes) on the same AI the person is using, at its lightest setting. */
