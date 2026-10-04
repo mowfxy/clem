@@ -6,6 +6,7 @@ import { kinetraCall } from "./kinetra-runtime.ts";
 import { rasterizer } from "./rasterize.ts";
 import { unsafeSvg } from "./svg-safety.ts";
 import { documentFigures, figureCheck, figurePictures, FIGURES_PER_RESULT, type DrawnFigure } from "./figure-review.ts";
+import { resolveAssets, type ReadAsset } from "./pdf-assets.ts";
 
 /** The tool actions that make a file (desktop/file-guides.ts). Each one also revises a file it made earlier ("revise": id). */
 import { textFormats } from "./file-guides.ts";
@@ -28,6 +29,8 @@ export type Made = { bytes: Uint8Array; name: string; type: string; info?: Recor
 
 /** Pictures of the figures the model has not seen yet in this answer, and the note asking it to check them against their source. */
 async function withFigures(made: Made, figures: DrawnFigure[], seen: Set<string>, limit: number): Promise<Made> {
+  // Crops were shown to the model when it cut them.
+  figures = figures.filter((f) => typeof (f.figure as any)?.asset !== "string");
   if (!figures.length || limit <= 0) return made;
   const raster = await rasterizer();
   try {
@@ -51,15 +54,23 @@ export function fileName(action: string, spec: any, fallback = "Mowr file") {
 
 /** Makes the file a tool request describes. Throws with every problem at once when the request cannot be made.
  *  `preview`: also return pictures of the result for the model to look at (decks: contact sheets of the slides; pdf,
- *  docx and pptx: the figures drawn in it that are not in `seen`, the figures already shown in this answer). */
-export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>() }: { preview?: boolean; seen?: Set<string> } = {}): Promise<Made> {
+ *  docx and pptx: the figures drawn in it that are not in `seen`, the figures already shown in this answer).
+ *  `assets` reads the crops that pdf, docx and pptx figures may name ({"asset":"crop-…"}, desktop/pdf-assets.ts). */
+export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>(), assets }: { preview?: boolean; seen?: Set<string>; assets?: ReadAsset } = {}): Promise<Made> {
+  // Crop figures get their drawing and caption here; the spec as sent (and stored) keeps only their ids.
+  let vectors = new Map<string, Uint8Array>();
+  if ((action === "pdf" || action === "docx" || action === "pptx") && JSON.stringify(spec?.sections || spec?.slides || []).includes('"asset"')) {
+    const resolved = await resolveAssets(spec, assets || (async () => undefined));
+    spec = resolved.spec;
+    vectors = resolved.vectors;
+  }
   switch (action) {
     case "pdf":
     case "docx": {
       let drawn: (string | undefined)[] = [];
       const keep = (figures: (string | undefined)[]) => { drawn = figures; };
       const made = action === "pdf"
-        ? { bytes: await illustratedPdf(spec, { drawn: keep }), name: fileName("pdf", spec), type: MIME.pdf }
+        ? { bytes: await illustratedPdf(spec, { drawn: keep, vectors }), name: fileName("pdf", spec), type: MIME.pdf }
         : { bytes: await wordDocument(spec, { drawn: keep }), name: fileName("docx", spec), type: MIME.docx };
       return preview ? withFigures(made, documentFigures(spec, drawn), seen, FIGURES_PER_RESULT) : made;
     }

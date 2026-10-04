@@ -28,7 +28,7 @@ export function documentFigures(spec: any, svgs: (string | undefined)[]): DrawnF
   (spec?.sections || []).forEach((s: any, i: number) => {
     if (typeof s?.heading === "string" && s.heading.trim()) heading = s.heading.trim();
     const svg = svgs[i];
-    if (typeof svg !== "string") return;
+    if (typeof svg !== "string" || typeof s?.figure?.asset === "string") return;
     out.push({ svg, where: `Figure ${out.length + 1}${heading ? ` (in “${heading.slice(0, 60)}”)` : ""}`, figure: s.figure });
   });
   return out;
