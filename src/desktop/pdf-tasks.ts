@@ -196,6 +196,37 @@ function render(args: any): Promise<TaskResult> {
   });
 }
 
+/**
+ * A page of a document the main process sent, drawn as a picture as it stands in page space (its turn left off, as the
+ * page that replaces it keeps the same turn), with `boxes` (PDF points) filled: the redaction that always works.
+ */
+function raster(args: any): Promise<TaskResult> {
+  return withBytes(args.bytes, async (pdf) => {
+    const page = await pdf.getPage(Math.floor(Number(args.page)));
+    try {
+      const base = page.getViewport({ scale: 1, rotation: 0 });
+      const scale = Math.min(Math.max(72, Number(args.dpi) || 200) / 72, Math.sqrt(16_000_000 / (base.width * base.height)));
+      const viewport = page.getViewport({ scale, rotation: 0 });
+      const canvas = kit.create(Math.round(viewport.width), Math.round(viewport.height)), ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, canvas, viewport, intent: "print", annotationMode: 0 }).promise;
+      const [r, g, b] = (Array.isArray(args.fill) ? args.fill : [0, 0, 0]).map((c: number) => Math.round(Math.min(1, Math.max(0, Number(c) || 0)) * 255));
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      for (const box of Array.isArray(args.boxes) ? args.boxes : []) {
+        const [ax, ay] = viewport.convertToViewportPoint(box[0], box[1]), [bx, by] = viewport.convertToViewportPoint(box[2], box[3]);
+        // Whole pixels outward, so no sliver of what was there survives at the edge.
+        ctx.fillRect(Math.floor(Math.min(ax, bx)), Math.floor(Math.min(ay, by)), Math.ceil(Math.abs(bx - ax)) + 1, Math.ceil(Math.abs(by - ay)) + 1);
+      }
+      const jpeg = await kit.encode(canvas, "image/jpeg", 0.92);
+      canvas.width = canvas.height = 0;
+      return { data: { page: args.page }, files: [jpeg] };
+    } finally {
+      page.cleanup();
+    }
+  });
+}
+
 /** Runs one task the main process sent. */
 export function pdfTask(files: StoredFile[], op: string, args: any): Promise<TaskResult> {
   if (op === "regions") return regions(files, args || {});
@@ -203,5 +234,6 @@ export function pdfTask(files: StoredFile[], op: string, args: any): Promise<Tas
   if (op === "bytes") return bytes(files, args || {});
   if (op === "words") return words(args || {});
   if (op === "render") return render(args || {});
+  if (op === "raster") return raster(args || {});
   return Promise.reject(Error(`Unknown task "${op}".`));
 }

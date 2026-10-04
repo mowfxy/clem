@@ -1,6 +1,7 @@
 import { PDFDocument, PDFArray, PDFDict, PDFName, PDFString, PDFHexString } from "pdf-lib";
 import { randomBytes } from "node:crypto";
 import type { Box } from "../core/pdf-regions.ts";
+import { keepInside, collectGarbage, cropTo, Unclean } from "./pdf-redact.ts";
 
 /**
  * Crops the model cut from the person's PDFs and pictures, kept as assets of the chat under stable ids ("crop-1a2b3c4d")
@@ -86,9 +87,15 @@ export async function vectorCrop(source: Uint8Array, page: number, box: Box): Pr
   // A page shown turned is cut as a picture: a placed page ignores its turn, so the vector copy would lie on its side.
   if (from.getRotation().angle % 360) return undefined;
   const [x0, y0, x1, y1] = box;
-  const embedded = await out.embedPage(from, { left: x0, bottom: y0, right: x1, top: y1 });
-  const sheet = out.addPage([x1 - x0, y1 - y0]);
-  sheet.drawPage(embedded, { x: 0, y: 0, width: x1 - x0, height: y1 - y0 });
+  // The page itself, its boxes set to the crop, with everything outside the crop taken out of its content and its
+  // resources (desktop/pdf-redact.ts): a crop must not carry the rest of the page hidden in it. Content that cannot be
+  // read exactly stays, clipped away by the page's box.
+  const [sheet] = await out.copyPages(src, [page - 1]);
+  out.addPage(sheet);
+  for (const key of ["Annots", "TrimBox", "BleedBox", "ArtBox", "B", "StructParents", "Thumb"]) sheet.node.delete(PDFName.of(key));
+  try { keepInside(out, sheet, box); } catch (error) { if (!(error instanceof Unclean)) throw error; }
+  cropTo(out, sheet, box);
+  collectGarbage(out);
   return out.save();
 }
 

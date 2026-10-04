@@ -3,6 +3,8 @@
  * circuit, a scanned page, a page with an embedded raster figure, and a two-column paper. Each figure's true box is
  * measured, not declared: the page is drawn again with only that figure on it, at 8 pixels per point, and the box is
  * where its ink is. Run: node --experimental-strip-types tests/fixtures/pdf/make.ts
+ * chromium-report.pdf is not made here: it is a document Mowr printed with Chromium (composite fonts, a crop placed as a
+ * form), saved from a run of scripts/verify/pdf-crops.mjs, for the redaction tests.
  */
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFPage } from "pdf-lib";
 import { createCanvas } from "@napi-rs/canvas";
