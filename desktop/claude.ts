@@ -1,11 +1,14 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import {mkdir,readdir,rm} from 'node:fs/promises';
+import {mkdir,readdir,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {installedPath,signInWindow} from './cli-install.ts';
 import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 
 export type ClaudeImage = { mime: string; data: string };
+/** A Claude Code too old for --system-prompt-file: the step is run again with the rules in the message. */
+class NoSystemFile extends Error {}
 /** A few words on what Claude is doing, from one stream-json event (null when the event says nothing new). */
 export function claudeStatus(event:any):string|null{
   const block=event?.type==='stream_event'&&event.event?.type==='content_block_start'?event.event.content_block:null;
@@ -87,6 +90,8 @@ export class ClaudeProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
   /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
+  /** Set when this Claude Code refused --system-prompt-file: Mowr's rules then go at the top of the message. */
+  private noSystemFile=false;
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
   /** The plan windows Claude Code last reported (it says so with each answer), and when. */
   private limits=new Map<string,ClaudeLimit>();
@@ -178,9 +183,11 @@ export class ClaudeProvider {
    * One answer on the person's Claude plan. Input and output are Claude Code's stream-json, so pictures go in as
    * image blocks and the person sees what Claude is doing (thinking, searching, writing) while it works.
    */
-  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean}){
+  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},{system}:{system?:string}={}):Promise<void>{
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
+    // One without --system-prompt-file gets Mowr's rules ahead of the request, as before, rather than not at all.
+    if(system&&this.noSystemFile){prompt=system+'\n\n'+prompt;system=undefined;}
     if(!model.startsWith('claude:')||!MODEL_NAME.test(model.slice(7)))throw Error('Choose a supported Claude model.');
     // Checked against the account's own list when Mowr has it; otherwise Claude Code itself refuses an unknown model.
     const listed=this.catalog?.models||claudeModels;
@@ -193,7 +200,13 @@ export class ClaudeProvider {
     // A tool loop keeps one Claude Code session across its steps: later steps send only the new results and Claude Code supplies the history.
     args.push(...(session?(session.resume?['--resume',session.id]:['--session-id',session.id]):['--no-session-persistence']));
     if(effort)args.push('--effort',effort);
-    const child=await this.start(args);this.active.set(id,child);
+    // Mowr's own system prompt replaces Claude Code's coding-agent one (a file: it is far past Windows' command-line limit).
+    // A resumed session reuses the one it recorded; it is passed again for a Claude Code that does not record it.
+    const systemFile=system?join(this.root,'workspace','.system-'+randomUUID()+'.txt'):undefined;
+    if(systemFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(systemFile,system!);args.push('--system-prompt-file',systemFile);}
+    let child:ChildProcessWithoutNullStreams;
+    try{child=await this.start(args);}catch(error){if(systemFile)await rm(systemFile,{force:true}).catch(()=>{});throw error;}
+    this.active.set(id,child);
     try{
       const answer=await new Promise<string>((resolve,reject)=>{
         let buffer='',bytes=0,error='',done=false,result:any=null;
@@ -227,6 +240,7 @@ export class ClaudeProvider {
           const usage=(text:string)=>/limit|quota|429/i.test(text);
           if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&code===0){finish(result.result);return;}
           const detail=String(result?.result||'')+' '+error;
+          if(systemFile&&unsupportedFlag.test(detail)&&/system-prompt/i.test(detail)){this.noSystemFile=true;return finish(undefined,new NoSystemFile());}
           if(session&&unsupportedFlag.test(detail)){this.noSessions=true;return finish(undefined,new SessionLost('This Claude Code does not keep sessions.'));}
           if(session?.resume&&/no conversation found|session.{0,40}(not found|does not exist|missing)/i.test(detail+JSON.stringify(result?.errors||'')))return finish(undefined,new SessionLost('Claude Code no longer has this session.'));
           if(usage(detail))return finish(undefined,new UsageLimit('Claude subscription usage is unavailable right now.'));
@@ -235,7 +249,11 @@ export class ClaudeProvider {
         child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
       });
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
-    }finally{this.active.delete(id);}
+    }catch(error){
+      // Nothing ran: the same step again, with the rules in the message instead.
+      if(error instanceof NoSystemFile)return this.run(id,prompt,model,effort,emit,images,session,{system});
+      throw error;
+    }finally{this.active.delete(id);if(systemFile)await rm(systemFile,{force:true}).catch(()=>{});}
   }
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk. */
   async endSession(sessionId:string){

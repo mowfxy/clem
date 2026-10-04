@@ -116,6 +116,14 @@ export function grokUsage(usage?:GrokUsage):UsageSnapshot|undefined{
   return {rateLimits:{primary:{usedPercent:usage.percentUsed,windowDurationMins:minutes,resetsAt:Number.isFinite(end)?Math.round(end/1000):null}}};
 }
 
+/** Windows passes at most 32,767 characters of command line, and Grok's --rules takes only literal text (no file). */
+export const GROK_RULES_MAX=24_000;
+/**
+ * Mowr's system prompt as Grok's --rules (added to Grok's own system prompt; replacing that prompt made Grok fetch pages
+ * instead of searching). A prompt too long for the command line returns undefined and goes at the top of the message.
+ */
+export function grokRules(system?:string){return system&&system.length<=GROK_RULES_MAX?system:undefined;}
+
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
 function friendly(detail:string){
   if(/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i.test(detail))return 'Sign in to Grok again in Settings → Models.';
@@ -216,7 +224,9 @@ export class GrokProvider {
     return {started:true};
   }
   /** Pictures are copied into Grok's own workspace and named in the prompt, so Grok opens them with its file tool. */
-  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string){
+  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system}:{system?:string}={}){
+    const rules=grokRules(system);
+    if(system&&!rules)prompt=system+'\n\n'+prompt;
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     const slug=model.slice(GROK_PREFIX.length);
@@ -240,7 +250,7 @@ export class GrokProvider {
     await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering.':prompt);
     try{
       let child:ChildProcessWithoutNullStreams;
-      try{child=await this.start(['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json','--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace(),...(effort?['--reasoning-effort',effort]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])]);}
+      try{child=await this.start(['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json','--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace(),...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])]);}
       catch{throw Error('Grok could not start. Install it in Settings → Models.');}
       this.active.set(id,child);
       const result=await new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
