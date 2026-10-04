@@ -38,6 +38,15 @@ test("a lead-in sentence or several envelopes in one reply still run; quoted exa
   // An agent that narrates each of its steps leads with several notes; the request at the end still runs.
   const notes = "I'll start by reading the assignment pages so the circuit diagrams are taken from the figures, then solve each question and put the work in a PDF.The diagrams are in. Next I'll load the circuit solver API and compute each problem so the PDF uses verified numbers.I'll load the circuit module API so the numbers in the solutions match a real solver.Next I'll read the circuit solver's exact argument shapes so each assignment number is computed, not estimated.";
   assert.deepEqual(toolRequests(notes + '{"kinetra":{"action":"api","module":"circuit/circuit"}}'), [{ action: "api", module: "circuit/circuit" }]);
+  // However long the lead-in, and even when it quotes the format itself, a request that ends the reply runs.
+  const pages = "Working through the circuit step by step. ".repeat(400);
+  assert.deepEqual(toolRequests(pages + '{"kinetra":{"action":"call","fn":"a"}}'), [{ action: "call", fn: "a" }]);
+  assert.deepEqual(toolRequests('Requests look like {"kinetra":{"action":"help"}} in general. ' + pages + '```json\n{"kinetra":{"action":"read","file":"A.pdf"}}\n```'), [{ action: "read", file: "A.pdf" }]);
+  // After a long lead-in, a cut-off or unknown request is sent back to be fixed, never shown; a quoted one with prose after it is prose.
+  assert.ok(brokenToolRequest(pages + '{"kinetra":{"action":"pdf","sections":[{"heading":"Q1"'));
+  assert.ok(brokenToolRequest(pages + '{"kinetra":{"action":"nope"}}'));
+  assert.equal(brokenToolRequest(pages + 'A request looks like {"kinetra":{"action":"help"}} and then Mowr runs it.'), null);
+  assert.equal(toolRequests(pages + 'A request looks like {"kinetra":{"action":"help"}} and then Mowr runs it.'), null);
   assert.equal(toolRequests('An example: {"kinetra":{}}'), null);
   assert.equal(toolRequests('Use {"kinetra":{"action":"call"}} and then read the result.'), null);
   assert.equal(shownLength('Let me check.\n{"kinetra":{"act'), 'Let me check.\n'.length);
