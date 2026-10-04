@@ -5,17 +5,41 @@ export class SessionLost extends Error {}
 export class UsageLimit extends Error {}
 /** A CLI that does not know a flag it was given (a build without sessions): the provider then stops sending session flags. */
 export const unsupportedFlag = /unknown (?:option|argument|flag)|unexpected (?:argument|option)|unrecognized (?:option|argument)|no such option|invalid option/i;
+/** LaTeX commands whose first letter is also a JSON escape: "\frac" parses as a form feed and "rac", "\theta" as a tab and "heta". */
+const LATEX_ESCAPE = /[\f\b]|\t(?=(?:heta|imes|au|ext[a-z]*|ilde|an|anh|riangle)(?![a-z]))|\r(?=(?:ho|ight[a-z]*|angle|m)(?![a-z]))|\n(?=(?:abla|eq)(?![a-z]))/g;
+const ESCAPED: Record<string, string> = { "\f": "\\f", "\b": "\\b", "\t": "\\t", "\r": "\\r", "\n": "\\n" };
+/** Puts back the backslash of a LaTeX command that JSON read as an escape, in every string of a parsed request. */
+function keepLatex(value: unknown): unknown {
+  if (typeof value === "string") return value.replace(LATEX_ESCAPE, (c) => ESCAPED[c]);
+  if (Array.isArray(value)) return value.map(keepLatex);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, keepLatex(v)]));
+  return value;
+}
+/**
+ * JSON as models write it in long documents: LaTeX with single backslashes ("$\alpha$", "\sqrt{2}"). A backslash
+ * that starts no JSON escape is taken literally instead of failing the whole request (and costing a round trip),
+ * and one that does but reads as a LaTeX command is kept, so the PDF shows \frac, not a blank and "rac".
+ */
+export function parseRequest(text: string): any {
+  try { return JSON.parse(text); } catch (error) {
+    const lenient = text.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})|\\/g, (m, escape) => (escape ? m : "\\\\"));
+    if (lenient === text) throw error;
+    return JSON.parse(lenient);
+  }
+}
+/** Documents whose Markdown carries LaTeX; a csv or text file may hold real tabs, so it is left as sent. */
+const MATH_DOCS = new Set(["pdf", "docx", "pptx"]);
 /** Exact envelopes only: normal prose and application JSON remain untouched. */
 export function toolRequest(text: string): Record<string, unknown> | null {
   const trimmed = text.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, "$1");
   try {
-    const value = JSON.parse(trimmed);
+    const value = parseRequest(trimmed);
     return value &&
       Object.keys(value).length === 1 &&
       value.kinetra &&
       typeof value.kinetra === "object" &&
       !Array.isArray(value.kinetra)
-      ? value.kinetra
+      ? MATH_DOCS.has(value.kinetra.action) ? (keepLatex(value.kinetra) as Record<string, unknown>) : value.kinetra
       : null;
   } catch {
     return null;
@@ -143,13 +167,45 @@ function cutOff(text: string) {
 export function brokenToolRequest(text: string): string | null {
   const from = brokenStart(text);
   if (from < 0) return null;
-  const rest = text.slice(from).trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```\s*$/, "");
-  try {
-    JSON.parse(rest);
-    return 'The reply must be {"kinetra":{"action":…}} objects with a known action.';
-  } catch (error) {
-    return (error as Error).message;
+  // The first envelope from there that cannot run, and exactly why: one retry should be enough to fix it.
+  for (const at of envelopeStarts(text).filter((at) => at >= from)) {
+    const open = text.indexOf("{", at);
+    const end = objectEnd(text, open);
+    const problem = envelopeProblem(text.slice(open, end < 0 ? text.length : end).replace(/\s*```\s*$/, ""));
+    if (problem) return problem;
   }
+  return 'Each request must stand on its own line as {"kinetra":{"action":…}}, not inside a sentence. Send the request again on its own.';
+}
+/** A stretch of the model's own reply, quoted back on one line. */
+const shown = (s: string) => s.replace(/\s+/g, " ");
+/** Why one {"kinetra":…} envelope cannot run (null when it can): the JSON fault with the text around it, or what the object lacks. */
+function envelopeProblem(envelope: string): string | null {
+  let value: any;
+  try {
+    value = parseRequest(envelope);
+  } catch (error) {
+    const message = (error as Error).message.replace(/^SyntaxError:\s*/, "");
+    const at = Number(/position (\d+)/.exec(message)?.[1] ?? envelope.length);
+    const where = `${at > 60 ? "…" : ""}${shown(envelope.slice(Math.max(0, at - 60), at))} ⟪HERE⟫ ${shown(envelope.slice(at, at + 30))}${at + 30 < envelope.length ? "…" : ""}`;
+    const fix = /control character/i.test(message)
+      ? "A string holds a raw line break or tab: inside JSON strings write \\n for a new line and \\t for a tab."
+      : /end of JSON|Unterminated string/i.test(message)
+        ? "The request ends before every string, [ and { is closed."
+        : /after property value|after array element|Expected ',' or/i.test(message)
+          ? 'Usually a " inside a string that is not escaped (write \\" for a quotation mark inside text), or a missing comma.'
+          : /non-whitespace character after JSON/i.test(message)
+            ? "There is text or an extra } or ] after the request's closing brace: send the request alone."
+            : "Fix the JSON at that point.";
+    return `It is not valid JSON (${message}). At ⟪HERE⟫: ${where}. ${fix} Send the whole corrected request again.`;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 'A request is one object: {"kinetra":{"action":…}}.';
+  const extra = Object.keys(value).filter((key) => key !== "kinetra");
+  if (extra.length) return `The request has ${extra.map((k) => `"${k}"`).join(", ")} beside "kinetra": everything goes inside it, as {"kinetra":{"action":…,…}}.`;
+  const request = value.kinetra;
+  if (!request || typeof request !== "object" || Array.isArray(request)) return '"kinetra" must hold one object with an "action", such as {"kinetra":{"action":"help"}}.';
+  if (typeof request.action !== "string") return `The request has no "action". Add one of: ${[...ACTIONS].join(", ")}.`;
+  if (!ACTIONS.has(request.action)) return `Unknown action "${request.action}". Use one of: ${[...ACTIONS].join(", ")}.`;
+  return null;
 }
 /** The prose a reply opens with before its tool requests (whole or broken): shown as a note while the tools run. Never any request JSON. */
 export function requestLead(text: string) {
@@ -241,6 +297,17 @@ function withoutBroken(text: string) {
   const at = brokenStart(text);
   return (at < 0 ? text : text.slice(0, at)).trim();
 }
+/**
+ * What a cut-off request is told: where it stopped and what to send instead. A model told only "it was too long"
+ * tends to resend the same request, or shorten the content itself, which the person never asked for.
+ */
+function cutOffError(text: string) {
+  const headings = [...text.matchAll(/"(?:heading|title)"\s*:\s*"((?:[^"\\]|\\.){1,120})"/g)].map((m) => m[1]);
+  const action = /"action"\s*:\s*"(\w+)"/.exec(text.slice(Math.max(0, brokenStart(text))))?.[1];
+  const parts = action === "pptx" ? "slides" : action === "xlsx" ? "rows" : "sections";
+  const last = headings.length > 1 ? ` The last part it reached was "${headings.at(-1)}", unfinished; everything before it was complete.` : "";
+  return `That tool request was cut off before it closed, at ${text.length} characters (the most one reply can hold), so nothing in it was done. It stopped at: "…${shown(text.slice(-120))}".${last} Send the same content in smaller requests, at full depth: the first few ${parts} now${action ? ` in one ${action} action` : ""}, then the rest with "revise" and "append":true, one part per request.`;
+}
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
 export const MAX_BROKEN = 5;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
@@ -271,7 +338,7 @@ export async function runKinetraTurn<Picture = unknown>(
   const check = () => {
     if (cancelled()) throw Error("Request cancelled");
   };
-  let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0, brokenInRow = 0;
+  let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0, brokenInRow = 0, lastBroken = "";
   // Pictures from "look" results: all of them go with every request when there is no thread, the new ones when there is.
   const looked: Picture[] = [];
   let newPictures: Picture[] = [];
@@ -339,17 +406,17 @@ export async function runKinetraTurn<Picture = unknown>(
         throw Error(`The model sent ${MAX_BROKEN} tool requests in a row that could not run (${broken}). Try again or rephrase the request.`);
       }
       calls++;
+      // The same fault twice means the model cannot see it: a smaller request is easier to get right than a third try.
+      const again = broken === lastBroken ? " This is the same problem as your previous attempt: send a smaller request (fewer sections, slides or rows) instead of resending the same one." : "";
+      lastBroken = broken;
       history.push({
         request: { invalid: text.length > 4000 ? text.slice(0, 4000) + "…" : text },
-        result: {
-          error: cutOff(text)
-            ? `That tool request was cut off before it closed (the reply reached ${text.length} characters, the most one reply can hold), so it did not run. Send the same content again split into smaller requests: fewer sections per pdf action (then "revise" with "append":true for the rest), fewer slides or rows per request.`
-            : `That tool request is not valid JSON (${broken}), so it did not run. Check that every [ and { is closed, then send the corrected request.`,
-        },
+        result: { error: (cutOff(text) ? cutOffError(text) : `That tool request could not run, so nothing in it was done. ${broken}`) + again },
       });
       continue;
     }
     brokenInRow = 0;
+    lastBroken = "";
     for (const request of requests!) {
       if (calls >= MAX_CALLS) {
         history.push({ request, result: { error: "Not run: no tool calls were left." } });
