@@ -118,3 +118,16 @@ test('a Grok build without partial messages answers in one piece, and is not ask
   await grok.run('r','again','grok:grok-4.6',()=>{});
   assert.equal(grok.args.filter(a=>a.includes('--prompt-file')).at(-1)!.includes('--include-partial-messages'),false);
 });
+
+test('the steps of a tool loop reuse the sign-in check; usage is read again the next time the window asks',async()=>{
+  class Spy extends FakeGrok{args:string[][]=[];async start(args:string[]){this.args.push(args);return super.start(args);}}
+  const grok=new Spy('ok');
+  for(let step=0;step<3;step++)await grok.run('r','step','grok:grok-4.6',()=>{});
+  const count=(name:string)=>grok.args.filter(a=>a[0]===name).length;
+  assert.equal(count('models'),1);
+  assert.equal(count('agent'),1);
+  await grok.status();
+  assert.equal(count('models'),2,'an answer changed the plan usage');
+  await grok.status();
+  assert.equal(count('models'),2);
+});
