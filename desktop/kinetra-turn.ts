@@ -38,6 +38,15 @@ function objectEnd(text: string, start: number) {
 }
 /** Envelope starts anywhere in a reply (a separate expression from START, whose lastIndex the parser moves). */
 const ANY_START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
+/** The spans of ```text blocks (an unclosed one runs to the end): the request format shown as an example, never run. */
+function textFences(text: string) {
+  return [...text.matchAll(/```text\b[\s\S]*?(?:```|$)/g)].map((m) => [m.index!, m.index! + m[0].length]);
+}
+/** Where envelopes start in a reply, leaving out examples inside ```text blocks. */
+function envelopeStarts(text: string) {
+  const fences = textFences(text);
+  return [...text.matchAll(ANY_START)].map((m) => m.index!).filter((at) => !fences.some(([from, to]) => at > from && at < to));
+}
 /** The envelopes from `first` to the end of the reply, or null when anything else (prose, an unknown action) is there. */
 function envelopesFrom(text: string, first: number): Record<string, unknown>[] | null {
   const requests: Record<string, unknown>[] = [];
@@ -71,17 +80,21 @@ export function toolRequests(text: string): Record<string, unknown>[] | null {
   const exact = toolRequest(text);
   if (exact) return [exact];
   // The lead-in may itself quote the format; the requests are the run of envelopes that ends the reply.
-  for (const match of text.matchAll(ANY_START)) {
-    const requests = envelopesFrom(text, match.index!);
+  for (const at of envelopeStarts(text)) {
+    const requests = envelopesFrom(text, at);
     if (requests) return requests;
   }
   return null;
 }
-/** Where the reply's last envelope starts, or -1. */
-function lastStart(text: string) {
-  let at = -1;
-  for (const match of text.matchAll(ANY_START)) at = match.index!;
-  return at;
+/** Where the broken request in a reply starts (see brokenToolRequest), or -1 when there is none. */
+function brokenStart(text: string) {
+  if (toolRequests(text)) return -1;
+  const starts = envelopeStarts(text);
+  if (!starts.length) return -1;
+  if (starts[0] <= 400) return starts[0];
+  const from = starts[starts.length - 1];
+  const end = objectEnd(text, text.indexOf("{", from));
+  return end >= 0 && text.slice(end).replace(/^\s*```/, "").trim() ? -1 : from;
 }
 /**
  * A reply that was meant as a tool request but cannot run (a missing bracket in a long request, an unknown
@@ -91,15 +104,8 @@ function lastStart(text: string) {
  * it, stays prose.
  */
 export function brokenToolRequest(text: string): string | null {
-  if (toolRequests(text)) return null;
-  let from = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
+  const from = brokenStart(text);
   if (from < 0) return null;
-  if (from > 400) {
-    from = lastStart(text);
-    const open = text.indexOf("{", from);
-    const end = objectEnd(text, open);
-    if (end >= 0 && text.slice(end).replace(/^\s*```/, "").trim()) return null;
-  }
   const rest = text.slice(from).trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```\s*$/, "");
   try {
     JSON.parse(rest);
@@ -108,12 +114,29 @@ export function brokenToolRequest(text: string): string | null {
     return (error as Error).message;
   }
 }
-/** Where a streamed reply may be shown up to: never into a tool envelope, nor a partial start of one. */
+/** Whether the reply from `at` may still become the run of requests that ends it: envelopes with nothing between them, the last perhaps unfinished. */
+function mayEndWithRequests(text: string, at: number) {
+  while (true) {
+    START.lastIndex = at;
+    const match = START.exec(text);
+    if (!match) return !text.slice(at).trim() || "```".startsWith(text.slice(at).trim());
+    if (text.slice(at, match.index).trim()) return false;
+    const end = objectEnd(text, match.index + match[0].lastIndexOf("{"));
+    if (end < 0) return true;
+    at = end;
+    const fence = text.slice(at).match(/^\s*```(?!\s*(?:json)?\s*\{)/);
+    if (fence) at += fence[0].length;
+  }
+}
+/**
+ * Where a streamed reply may be shown up to: never into the envelopes that may end it, nor a partial start of one.
+ * An envelope quoted earlier, with prose after it, is part of the answer and keeps streaming.
+ */
 export function shownLength(text: string) {
-  const at = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"/);
-  if (at >= 0) return at;
+  const at = envelopeStarts(text).find((from) => mayEndWithRequests(text, from));
+  if (at !== undefined) return at;
   for (const marker of ['```json\n{"kinetra"', '{"kinetra"'])
-    for (let n = Math.min(marker.length - 1, text.length); n > 0; n--)
+    for (let n = Math.min(marker.length, text.length); n > 0; n--)
       if (text.endsWith(marker.slice(0, n))) return text.length - n;
   return text.length;
 }
@@ -165,9 +188,16 @@ function compact(history: { request: any; result: any }[], over: number) {
 }
 /** Any prose before the first envelope: what to show when the model asks for a tool after none are left. */
 function leadIn(text: string) {
-  const at = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
+  const at = envelopeStarts(text)[0] ?? -1;
   return (at < 0 ? text : text.slice(0, at)).trim();
 }
+/** A reply's text without its trailing broken request. */
+function withoutBroken(text: string) {
+  const at = brokenStart(text);
+  return (at < 0 ? text : text.slice(0, at)).trim();
+}
+/** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
+export const MAX_BROKEN = 3;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
 const recent = <T>(pictures: T[]) => pictures.slice(-12);
 const LAST_CALL = 'No tool calls are left. Write your final answer to the original request now, as plain text without any {"kinetra":…} request. If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.';
@@ -194,7 +224,7 @@ export async function runKinetraTurn<Picture = unknown>(
   const check = () => {
     if (cancelled()) throw Error("Request cancelled");
   };
-  let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0;
+  let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0, brokenInRow = 0;
   // Pictures from "look" results: all of them go with every request when there is no thread, the new ones when there is.
   const looked: Picture[] = [];
   let newPictures: Picture[] = [];
@@ -256,6 +286,12 @@ export async function runKinetraTurn<Picture = unknown>(
       throw Error("Kinetra tool limit reached. Try a smaller task.");
     }
     if (broken) {
+      // A model that keeps ending with a request it cannot fix would loop to the call limit: after a few, what it wrote is the answer.
+      if (++brokenInRow >= MAX_BROKEN) {
+        const answer = withoutBroken(text);
+        if (answer) return answer;
+        throw Error(`The model sent ${MAX_BROKEN} tool requests in a row that could not run (${broken}). Try again or rephrase the request.`);
+      }
       calls++;
       history.push({
         request: { invalid: text.length > 4000 ? text.slice(0, 4000) + "…" : text },
@@ -263,6 +299,7 @@ export async function runKinetraTurn<Picture = unknown>(
       });
       continue;
     }
+    brokenInRow = 0;
     for (const request of requests!) {
       if (calls >= MAX_CALLS) {
         history.push({ request, result: { error: "Not run: no tool calls were left." } });
