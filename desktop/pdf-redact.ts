@@ -930,6 +930,43 @@ export function scrubText(doc: PDFDocument, texts: string[]): string[] {
   return said;
 }
 
+/**
+ * Takes every attached file out of the document: the attachments list, file-attachment annotations, associated files, a
+ * portfolio's layout, and the embedded bytes of any file specification wherever it is (a link or action may point to
+ * one). An attachment can hold anything, the original of this very document included, and cannot be searched reliably,
+ * so a redacted document carries none. Returns how many files went.
+ */
+export function dropAttachments(doc: PDFDocument): number {
+  const files = new Set<unknown>();
+  const seen = new Set<unknown>(), queue: unknown[] = [...doc.context.enumerateIndirectObjects()].map(([, obj]) => obj);
+  while (queue.length) {
+    const v = queue.pop();
+    if (v instanceof PDFStream) { queue.push(v.dict); continue; }
+    if (!(v instanceof PDFDict || v instanceof PDFArray) || seen.has(v)) continue;
+    seen.add(v);
+    if (v instanceof PDFArray) { for (let i = 0; i < v.size(); i++) if (!(v.get(i) instanceof PDFRef)) queue.push(v.get(i)); continue; }
+    // EF holds a file's bytes (one stream per platform name, often the same one); RF, its related files.
+    const ef = v.lookup(PDFName.of("EF"));
+    if (ef instanceof PDFDict) files.add(v);
+    v.delete(PDFName.of("EF"));
+    v.delete(PDFName.of("RF"));
+    // Indirect objects are all in the queue already; only direct ones are looked into here.
+    for (const [, x] of v.entries()) if (!(x instanceof PDFRef)) queue.push(x);
+  }
+  const names = doc.catalog.lookup(PDFName.of("Names"));
+  if (names instanceof PDFDict) names.delete(PDFName.of("EmbeddedFiles"));
+  for (const key of ["AF", "Collection"]) doc.catalog.delete(PDFName.of(key));
+  for (const page of doc.getPages()) {
+    page.node.delete(PDFName.of("AF"));
+    const annots = page.node.lookup(PDFName.of("Annots"));
+    if (annots instanceof PDFArray) for (let i = annots.size() - 1; i >= 0; i--) {
+      const a = annots.lookup(i);
+      if (a instanceof PDFDict && a.lookup(PDFName.of("Subtype")) === PDFName.of("FileAttachment")) annots.remove(i);
+    }
+  }
+  return files.size;
+}
+
 /** Keeps only what is (at least partly) inside `box`: the rest of the page is taken out of a vector crop. */
 export function keepInside(doc: PDFDocument, page: PDFPage, box: Box) {
   const policy: Policy = {
