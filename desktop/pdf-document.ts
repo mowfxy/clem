@@ -4,6 +4,7 @@ import { markdownHtml } from "./pdf-markdown.ts";
 import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
 import { standardFonts, brandFont } from "../core/print-fonts.ts";
 import { visualBlocks, visualCaption } from "../core/visual-print.ts";
+import { assetOf, SLOT } from "./pdf-assets.ts";
 const escape = (text: unknown) =>
   String(text ?? "").replace(
     /[&<>"']/g,
@@ -170,6 +171,9 @@ const summaryLabel = (kind: string) => (kind === "paper" || kind === "report" ? 
 /** Mowr numbers sections itself, so manual numbers in headings are removed. */
 export const cleanHeading = (heading: string) => heading.replace(/^\s*(?:(?:\d+(?:\.\d+)*|[IVXLC]+|[A-Z])[.)]|\d+(?:\.\d+)+)\s+/, "").trim();
 
+/** How long a specification is as written: a crop's picture (added for drawing, desktop/pdf-assets.ts) does not count. */
+export const specSize = (spec: unknown) => JSON.stringify(spec, (k, v) => (k === "svg" && typeof v === "string" && v.includes("data-mowr-asset") ? "" : v)).length;
+
 /** Checks the whole specification and renders every figure before any page is laid out.
  *  All problems (structure, voice and figures) are reported together, so the model can correct them in one pass. */
 export async function renderFigures(spec: any, { checkVoice = true }: { checkVoice?: boolean } = {}) {
@@ -178,7 +182,7 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
   if (spec.sections.length > MAX_SECTIONS)
     throw Error(`This document would have ${spec.sections.length} sections; the limit is ${MAX_SECTIONS}. Use ### subsections inside fewer sections, or start a second document for the rest.`);
   // An export of the person's own answer (no voice check) may be any answer the app accepts (300k characters of Markdown, larger once encoded).
-  const size = JSON.stringify(spec).length, limit = 40_000_000;
+  const size = specSize(spec), limit = 40_000_000;
   if (size > limit)
     throw Error(`This document would be ${size} characters; the limit is ${limit} (roughly 10,000 pages). Start a second document for the rest.`);
   for (const field of ["font", "headingFont"] as const)
@@ -198,8 +202,11 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
     if (!s || typeof s !== "object" || (!s.heading && !s.text && !s.figure)) problems.push(`Section ${i + 1} is empty.`);
     else if ([s.heading, s.text, s.caption].some((v) => v !== undefined && v !== null && typeof v !== "string"))
       problems.push(`Section ${i + 1} "heading", "text" and "caption" must be strings.`);
-    else if (s.figure && (typeof s.figure.module !== "string" || typeof s.figure.fn !== "string" || !Array.isArray(s.figure.args)))
-      problems.push(`Section ${i + 1} figure must be {"module":string,"fn":string,"args":[…]}.`);
+    else if (s.figure && typeof (s.figure as any).asset === "string") {
+      // A crop (desktop/pdf-assets.ts resolveAssets put its drawing in "svg"); an id this person has no crop for is reported.
+      if (typeof (s.figure as any).svg !== "string") problems.push(`Section ${i + 1} figure: there is no crop "${(s.figure as any).asset}". Use an id a crop result gave, or crop the figure again.`);
+    } else if (s.figure && (typeof s.figure.module !== "string" || typeof s.figure.fn !== "string" || !Array.isArray(s.figure.args)))
+      problems.push(`Section ${i + 1} figure must be {"module":string,"fn":string,"args":[…]} (a Kinetra figure) or {"asset":"crop-…"} (a crop).`);
   });
   if (problems.length) throw Error(problems.join(" "));
   if (checkVoice) {
@@ -207,7 +214,8 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
       [
         { where: "Title", text: spec.title + " " + (spec.subtitle || "") },
         { where: "Summary", text: spec.summary || "" },
-        ...sections.map((s, i) => ({ where: `Section ${i + 1}${s.heading ? ` (${s.heading})` : ""}`, text: [s.heading, s.text, s.caption].filter(Boolean).join("\n") })),
+        // A crop's caption is the source's own words (or its attribution), not the document's voice.
+        ...sections.map((s, i) => ({ where: `Section ${i + 1}${s.heading ? ` (${s.heading})` : ""}`, text: [s.heading, s.text, typeof (s.figure as any)?.asset === "string" ? "" : s.caption].filter(Boolean).join("\n") })),
       ],
       spec.kind || "report",
     );
@@ -216,6 +224,7 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
   }
   const figures = await inTurns(sections, 4, async (s, i) => {
       if (!s.figure) return undefined;
+      if (typeof (s.figure as any).asset === "string") return (s.figure as any).svg as string;
       try {
         const svg = await drawFigure(s.figure);
         if (typeof svg !== "string" || !svg.includes("<svg"))
@@ -316,6 +325,8 @@ math{font-family:'Cambria Math','STIX Two Math',math}
 .eqnum .katex-display::after{content:"(" counter(eq) ")";position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:10.5pt}
 figure{margin:12pt 0 14pt;break-inside:avoid;text-align:center}
 figure img{display:block;margin:0 auto 7pt;max-width:100%;max-height:112mm;object-fit:contain}
+figure a.asset-slot{display:block;width:fit-content;max-width:100%;margin:0 auto 7pt;line-height:0}
+figure a.asset-slot img{margin:0}
 figcaption,caption{display:table;margin:0 auto;font-size:9.6pt;line-height:1.35;text-align:justify;color:#111}
 caption{display:table-caption;caption-side:top;margin-bottom:6pt;text-align:center}
 .cap-label{font-weight:400}
@@ -444,7 +455,8 @@ function linkText(html: string, targets: Set<string>, references: number) {
  * The print page for a specification. `pages` (from a first printing) fills the contents with page numbers;
  * the numbers sit in fixed-width slots, so filling them never moves anything else.
  */
-export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[], pages?: Map<string, number>) {
+/** `pictures`: print vector crops as their PNG (when placing the vectors failed). */
+export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[], pages?: Map<string, number>, { pictures = false }: { pictures?: boolean } = {}) {
   const kind = String(spec.kind || "report");
   const layout = layoutFor(spec);
   const type = documentFonts(spec);
@@ -510,9 +522,13 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
     if (svg && section.figure) {
       const id = "fig-" + ++figureNo;
       targets.add(id);
-      html += '<figure id="' + id + '"><img alt="' + escape(section.caption || heading || "Figure") + '" src="data:image/svg+xml;base64,' +
-        Buffer.from(standardFonts(svg, type.body)).toString("base64") +
-        '"><figcaption><span class="cap-label">Figure&#160;' + figureNo + ":</span> " + (section.caption ? markdownHtml(section.caption, { inline: true }) : escape(heading)) + "</figcaption></figure>";
+      const crop = assetOf(svg), alt = escape(section.caption || heading || "Figure");
+      // A vector crop prints as an empty picture of its size inside a link; desktop/pdf-assets.ts stampVectors then
+      // draws the crop into the link's rectangle. Other crops print their PNG, and drawings print as they are.
+      const picture = crop?.vector && !pictures
+        ? '<a class="asset-slot" href="' + SLOT + crop.id + "/" + figureNo + '"><img alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${crop.width}" height="${crop.height}" viewBox="0 0 ${crop.width} ${crop.height}"/>`).toString("base64") + '"></a>'
+        : '<img alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(crop ? svg : standardFonts(svg, type.body)).toString("base64") + '">';
+      html += '<figure id="' + id + '">' + picture + '<figcaption><span class="cap-label">Figure&#160;' + figureNo + ":</span> " + (section.caption ? markdownHtml(section.caption, { inline: true }) : escape(heading)) + "</figcaption></figure>";
     }
     return '<section class="' + (num ? "" : "unnumbered") + '">' + html + "</section>";
   });

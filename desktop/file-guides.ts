@@ -4,18 +4,19 @@
  * otherwise returned by {"action":"skill","name":…}. The skills are about judgement (what a good deck, report or
  * workbook for *this* audience looks like), so files made by Mowr are not all alike.
  */
-export const FILE_ACTIONS = new Set(["pdf", "docx", "pptx", "xlsx", "file", "image"]);
+export const FILE_ACTIONS = new Set(["pdf", "docx", "pptx", "xlsx", "file", "image", "editpdf"]);
 import { archetypeGuide } from "./deck-design.ts";
 import { iconNames } from "./deck-art.ts";
 /** Text formats the "file" action writes. Programs Windows would run on a double-click (.bat, .ps1, .vbs, .exe…) are never made. */
 export const textFormats = /\.(csv|tsv|md|markdown|txt|html?|css|json|jsonl|xml|ya?ml|toml|ini|tex|bib|ics|vcf|srt|vtt|sql|ipynb|py|r|m|jl|js|mjs|cjs|ts|tsx|jsx|java|kt|c|h|cpp|hpp|cs|go|rs|swift|php|rb|lua|dart|sh|svg|gv|dot|mmd|log|rst|adoc|org|tikz|sty|cls)$/i;
 /** Where an appended part goes for each kind of file: sections for documents, slides for decks, sheets for workbooks. */
-export const partsKey: Record<string, string> = { pdf: "sections", docx: "sections", pptx: "slides", xlsx: "sheets" };
+export const partsKey: Record<string, string> = { pdf: "sections", docx: "sections", pptx: "slides", xlsx: "sheets", editpdf: "ops" };
 /** Whether `action` can revise the file called `name` (a revision keeps the file's format). */
 export function sameFormat(action: string, name: string) {
   const ext = name.split(".").pop()!.toLowerCase();
   if (action === "image") return ext === "png" || ext === "svg";
   if (action === "file") return textFormats.test(name);
+  if (action === "editpdf") return ext === "pdf";
   return ext === action;
 }
 

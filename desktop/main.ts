@@ -58,6 +58,9 @@ import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit} from './kinetra-turn';
 import {LiveScreen} from './live-reply';
 import {inlinePictures} from './kinetra-mcp';
+import {CropAssets,cropTools,memoryIo,readAsset,type AssetIo} from './pdf-assets';
+import type {EditHelpers} from './pdf-edit-tools';
+import {typesetBlock} from './text-block';
 import {kinetraTool} from './kinetra-runtime';
 import {turnTimer,type TurnStats} from './turn-timing';
 import {toolStatus} from './codex';
@@ -382,6 +385,11 @@ void app.whenReady().then(async () => {
   >();
   /** Pages the model asked to look at, drawn by the window (src/desktop/page-images.ts) and returned with pageImages. */
   const pendingLooks = new Map<string, { resolve: (images: { name: string; data: string }[]) => void; reject: (error: Error) => void }>();
+  /** Regions and crops the model asked for, worked out by the window (src/desktop/pdf-tasks.ts) and returned with pdfTaskResult. */
+  const pendingTasks = new Map<string, { resolve: (result: { data: any; images: { name: string; data: string }[]; files: Uint8Array[] }) => void; reject: (error: Error) => void }>();
+  /** Crops cut in temporary chats live only here, for as long as Mowr runs: nothing of those chats is written to disk. */
+  const temporaryCrops = new Map<string, Uint8Array>();
+  const diskCrops = (owner: string): AssetIo => ({ read: async (k) => { const b = await disk.readFile(owner, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => disk.writeFile(owner, k, b), remove: (k) => disk.deleteFile(owner, k) });
   telegram = new TelegramService(vault, async (owner, envelope, bytes) => {
     const user = await auth.user();
     if (user?.id !== owner) throw Error("Account changed.");
@@ -834,6 +842,16 @@ void app.whenReady().then(async () => {
       else pending.resolve(request.images);
       return { ok: true };
     }
+    if (request.action === "pdfTaskResult") {
+      const pending = pendingTasks.get(request.id);
+      if (!pending) throw Error("Task expired.");
+      pendingTasks.delete(request.id);
+      let data: any;
+      try { data = request.data === undefined ? undefined : JSON.parse(request.data); } catch { data = undefined; }
+      if (request.error || !data) pending.reject(Error(request.error || "That could not be done."));
+      else pending.resolve({ data, images: request.images || [], files: request.files || [] });
+      return { ok: true };
+    }
     if (request.action === "status") return status();
     if (request.action === "mfa") {
       if (!auth.client) throw Error("Sign in first.");
@@ -1108,7 +1126,8 @@ void app.whenReady().then(async () => {
     if (request.action === "pdfRender") {
       let spec: unknown;
       try { spec = JSON.parse(request.spec); } catch { throw Error("The revised document was not valid. Try the edit again."); }
-      return { bytes: await illustratedPdf(spec) };
+      // A document with crops in it reads them from the workspace, as when it was made.
+      return { bytes: (await makeFile("pdf", spec, { assets: (id) => readAsset(diskCrops(user.id), id) })).bytes };
     }
     if (request.action === "shareSave") {
       const folder = join(app.getPath("downloads"), "Mowr");
@@ -1369,7 +1388,13 @@ void app.whenReady().then(async () => {
             if (!clean.references.length) delete clean.references;
           }
         }
-        const made = await makeFile(action, clean, { preview: true, seen: figuresSeen });
+        // An edited PDF's revision replays its edits on the same original: the stored copy carries over.
+        if (action === "editpdf" && revise) {
+          const stored = JSON.parse((await disk.readFile(user.id, "spec-" + revise))?.toString("utf8") || "{}");
+          if (stored.action !== "editpdf") throw Error(`"${documents.get(revise)}" was not made by editpdf. To change it as a PDF, send {"action":"editpdf","file":"${revise}",…}: that makes an edited copy.`);
+          if (!append && !clean.file && !clean.source) clean = { source: stored.source, name: stored.name, ...clean };
+        }
+        const made = await makeFile(action, clean, { preview: true, seen: figuresSeen, assets: (id) => readAsset(cropIo, id), edit: editHelpers, render: renderPages });
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
         // Pictures of the result (a deck's slides, its new figures) go back to the model with this result, so it checks what it made.
         const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.image).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
@@ -1380,7 +1405,7 @@ void app.whenReady().then(async () => {
         const length = key === "sections" || key === "slides"
           ? { ...(pages ? { pages } : {}), ...(words !== undefined ? { words } : {}), [key]: clean[key].length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? `Keep going: append the next ${key} now. The file is only finished when every planned part is written in full depth.` : "Every planned part is written." } : key === "sections" ? { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." } : {}) }
           : {};
-        const specBytes = new TextEncoder().encode(JSON.stringify({ action, ...clean }));
+        const specBytes = new TextEncoder().encode(JSON.stringify({ action, ...(made.spec ?? clean) }));
         if (cancelled()) throw Error("Request cancelled");
         if (revise) {
           const earlier = !madeNow.has(revise);
@@ -1423,6 +1448,7 @@ void app.whenReady().then(async () => {
         await fileWork.stop();
         delivery.clear();
         for (const id of madeNow.keys()) await Promise.all([disk.deleteFile(user.id, id), disk.deleteFile(user.id, "spec-" + id)]).catch(() => {});
+        for (const id of sourcesNow.values()) await disk.deleteFile(user.id, id).catch(() => {});
         for (const [id, version] of before) {
           const previous = await disk.readFile(user.id, version.blob).catch(() => undefined);
           if (!previous) continue;
@@ -1433,9 +1459,67 @@ void app.whenReady().then(async () => {
         }
       };
       /** Reading a file's current source, so a change keeps everything the person did not ask to change. */
+      // Crops are kept with the chat (desktop/pdf-assets.ts); a temporary chat's only in memory.
+      const cropIo = request.temporary || !request.chat ? memoryIo(temporaryCrops) : diskCrops(user.id);
+      const crops = new CropAssets(cropIo, request.chat || request.id);
+      /** One task for the window, with the same minute "look" has. */
+      const windowTask = (op: string, args: Record<string, unknown>) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
+        const task = randomUUID();
+        const timer = setTimeout(() => { pendingTasks.delete(task); reject(Error("That took too long.")); }, 60_000);
+        pendingTasks.set(task, { resolve: (value) => { clearTimeout(timer); resolve(value); }, reject: (error) => { clearTimeout(timer); reject(error); } });
+        send({ id: request.id, type: "pdfTask", task, op, args });
+      });
+      const cropTool = cropTools(windowTask, crops);
+      // Copies of the PDFs an edit read ("src-…"), so a revision or Undo replays the edits on the same originals even
+      // after the person changes or deletes the file; a stopped answer removes the copies it made.
+      const sourcesNow = new Map<string, string>();
+      const keepSource = async (key: string, bytes: Uint8Array) => {
+        if (sourcesNow.has(key)) return sourcesNow.get(key)!;
+        const id = "src-" + randomUUID();
+        await disk.writeFile(user.id, id, bytes);
+        sourcesNow.set(key, id);
+        return id;
+      };
+      const editHelpers: EditHelpers = {
+        load: async (ref) => {
+          if (/^src-[0-9a-f-]{36}$/.test(ref)) {
+            const bytes = await disk.readFile(user.id, ref);
+            if (!bytes) throw Error("The original this edit was made from is missing.");
+            return { bytes: new Uint8Array(bytes), source: ref };
+          }
+          // A file Mowr made in this conversation, by id.
+          if (documents.has(ref)) {
+            if (!/\.pdf$/i.test(documents.get(ref)!)) throw Error(`${documents.get(ref)} is not a PDF.`);
+            const bytes = await disk.readFile(user.id, ref);
+            if (!bytes) throw Error(`${documents.get(ref)} is missing.`);
+            return { bytes: new Uint8Array(bytes), source: await keepSource("id:" + ref, new Uint8Array(bytes)), name: documents.get(ref) };
+          }
+          // A PDF of the conversation, by name: only the window has it.
+          const { data, files } = await windowTask("bytes", { file: ref });
+          if (!files[0]) throw Error(`${ref} could not be read.`);
+          return { bytes: files[0], source: await keepSource("name:" + data.file, files[0]), name: data.file };
+        },
+        words: async (bytes, page) => (await windowTask("words", { bytes, page })).data.items,
+        crop: (id) => readAsset(cropIo, id),
+        raster: async (bytes, page, boxes, fill) => {
+          const { files } = await windowTask("raster", { bytes, page, boxes, fill, dpi: 200 });
+          if (!files[0]) throw Error("The page could not be drawn.");
+          return files[0];
+        },
+        typeset: typesetBlock,
+      };
+      const renderPages = async (bytes: Uint8Array, pages: number[]) => (await windowTask("render", { bytes, pages, name: "edited PDF" })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
         const read = fileTool(library, tool);
         if (read) return read;
+        if (tool?.action === "regions" || tool?.action === "crop") {
+          try {
+            const outcome = (await cropTool(tool))!;
+            return outcome.pictures.length ? { ...outcome.result, attachPictures: await savePictures(outcome.pictures) } : outcome.result;
+          } catch (error) {
+            return { error: (error as Error).message };
+          }
+        }
         if (tool?.action === "look") {
           // The model looks at pages it was not shown: the window draws them, and they go with the next message to the model.
           const pages = (Array.isArray(tool.pages) ? tool.pages : [tool.page]).map(Number).filter((n: number) => Number.isInteger(n) && n > 0).slice(0, 8);
@@ -1460,7 +1544,9 @@ void app.whenReady().then(async () => {
         return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0, { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0, notes: documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library) });
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0, { context: prompt + "
+" + library.map((f) => f.name).join("
+"), pictures: pictures.length > 0, notes: documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library, pictures.length > 0) });
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
 import { drawnArrows } from "./math-draw.ts";
+import { assetOf } from "./pdf-assets.ts";
 
 /** No network and no files: a drawing may use only what is inside it (desktop/svg-safety.ts names what is refused). */
 const DRAWING_CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
@@ -72,6 +73,9 @@ export async function rasterizer() {
       const size = svgSize(svg);
       const scale = Math.min(1, maxWidth / size.width, maxHeight / size.height);
       const width = size.width * scale, height = size.height * scale;
+      // A crop is already a picture at the resolution it was cut at: it goes in as it is.
+      const crop = assetOf(svg);
+      if (crop) return { png: crop.png, width, height };
       return capture(`<div style="background:${background};width:${width}px;height:${height}px">${sized(svg, width, height)}</div>`, width, height, pixelRatio ?? Math.min(3, 2400 / width));
     },
     /**
