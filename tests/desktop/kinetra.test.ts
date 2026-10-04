@@ -35,6 +35,9 @@ test("a lead-in sentence or several envelopes in one reply still run; quoted exa
   assert.deepEqual(toolRequests('Let me calculate that.\n{"kinetra":{"action":"call","fn":"a"}}'), [{ action: "call", fn: "a" }]);
   assert.deepEqual(toolRequests('{"kinetra":{"action":"pdf","title":"A {x}"}}\n```json\n{"kinetra":{"action":"pdf","title":"B"}}\n```'), [{ action: "pdf", title: "A {x}" }, { action: "pdf", title: "B" }]);
   assert.deepEqual(toolRequests('I will read the lecture first.\n{"kinetra":{"action":"read","file":"L3.pdf"}}'), [{ action: "read", file: "L3.pdf" }]);
+  // An agent that narrates each of its steps leads with several notes; the request at the end still runs.
+  const notes = "I'll start by reading the assignment pages so the circuit diagrams are taken from the figures, then solve each question and put the work in a PDF.The diagrams are in. Next I'll load the circuit solver API and compute each problem so the PDF uses verified numbers.I'll load the circuit module API so the numbers in the solutions match a real solver.Next I'll read the circuit solver's exact argument shapes so each assignment number is computed, not estimated.";
+  assert.deepEqual(toolRequests(notes + '{"kinetra":{"action":"api","module":"circuit/circuit"}}'), [{ action: "api", module: "circuit/circuit" }]);
   assert.equal(toolRequests('An example: {"kinetra":{}}'), null);
   assert.equal(toolRequests('Use {"kinetra":{"action":"call"}} and then read the result.'), null);
   assert.equal(shownLength('Let me check.\n{"kinetra":{"act'), 'Let me check.\n'.length);

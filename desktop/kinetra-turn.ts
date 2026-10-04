@@ -1,6 +1,8 @@
 /** Thrown by a provider that could not use its session (the CLI no longer has it, or does not support sessions at all):
  *  the loop resends everything instead, for the rest of the turn. */
 export class SessionLost extends Error {}
+/** Thrown by a provider whose plan has no usage left: Mowr can move the request to another connected account. */
+export class UsageLimit extends Error {}
 /** A CLI that does not know a flag it was given (a build without sessions): the provider then stops sending session flags. */
 export const unsupportedFlag = /unknown (?:option|argument|flag)|unexpected (?:argument|option)|unrecognized (?:option|argument)|no such option|invalid option/i;
 /** Exact envelopes only: normal prose and application JSON remain untouched. */
@@ -34,8 +36,12 @@ function objectEnd(text: string, start: number) {
   }
   return -1;
 }
+/** How much prose may come before a tool request. Agents that work in steps (Grok, Claude) can lead with several
+ *  notes ("I'll read the pages. The diagrams are in. Next I'll load the solver."), so this is generous; the request
+ *  must still end the reply and name a known action. */
+const LEAD_IN = 6000;
 /**
- * The tool requests in a reply. Models do not always send one bare envelope: they lead with a line of prose
+ * The tool requests in a reply. Models do not always send one bare envelope: they lead with prose
  * ("Let me calculate that."), send several envelopes in one reply (a PDF per lecture), or fence them. All of
  * these run. Envelopes must end the reply and name a known action, so an answer that mentions the format
  * in passing is never dispatched.
@@ -44,7 +50,7 @@ export function toolRequests(text: string): Record<string, unknown>[] | null {
   const exact = toolRequest(text);
   if (exact) return [exact];
   const first = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
-  if (first < 0 || first > 400) return null;
+  if (first < 0 || first > LEAD_IN) return null;
   const requests: Record<string, unknown>[] = [];
   let at = first;
   while (at < text.length) {
@@ -70,8 +76,8 @@ export function toolRequests(text: string): Record<string, unknown>[] | null {
 export function brokenToolRequest(text: string): string | null {
   if (toolRequests(text)) return null;
   const first = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
-  // Only a reply that is (after at most a short lead-in) a tool request; an envelope quoted mid-answer is prose.
-  if (first < 0 || first > 400) return null;
+  // Only a reply that is (after its lead-in) a tool request; an envelope quoted mid-answer is prose.
+  if (first < 0 || first > LEAD_IN) return null;
   const rest = text.slice(first).trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```\s*$/, "");
   try {
     JSON.parse(rest);

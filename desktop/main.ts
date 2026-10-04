@@ -51,10 +51,11 @@ import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
 import {ClaudeProvider} from './claude';
-import {GrokProvider,grokModels,GROK_PREFIX} from './grok';
+import {GrokProvider,grokModels,grokUsage,GROK_PREFIX} from './grok';
+import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
-import {runKinetraTurn} from './kinetra-turn';
+import {runKinetraTurn,toolRequests,brokenToolRequest,shownLength,SessionLost,UsageLimit} from './kinetra-turn';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
@@ -111,8 +112,9 @@ if (!primaryInstance) app.quit();
 let window: BrowserWindow;
 let codex: Codex;
 let providerAccounts: ProviderAccounts;
-const claudeProviders=new Map<string,ClaudeProvider>();
-const grokProviders=new Map<string,GrokProvider>();
+/** Claude and Grok accounts (several of each, like ChatGPT's): set up once the vault is open. */
+let claudeAccounts: CliAccounts<ClaudeProvider> | undefined;
+let grokAccounts: CliAccounts<GrokProvider> | undefined;
 let telegram: TelegramService;
 let folderWatcher: FolderWatcher | undefined;
 /** A .mowrpack opened from Explorer, handed to the workspace once it is ready to receive it. */
@@ -142,8 +144,8 @@ app.on("before-quit", () => {
   globalShortcut.unregisterAll();
   codex?.stop();
   providerAccounts?.stop();
-  for(const provider of claudeProviders.values())provider.stop();
-  for(const provider of grokProviders.values())provider.stop();
+  claudeAccounts?.stop();
+  grokAccounts?.stop();
   telegram?.stop();
   folderWatcher?.stop();
 });
@@ -220,7 +222,17 @@ void app.whenReady().then(async () => {
   providerAccounts = new ProviderAccounts(vault,codexProgram,local);
   codexEngine.onUpdated = () => { codex.engineChanged(); providerAccounts.engineChanged(); };
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
-  const claudeFor=(owner:string)=>{let value=claudeProviders.get(owner);if(!value){value=new ClaudeProvider(claudeExecutable,join(local,owner,'claude'));claudeProviders.set(owner,value);}return value;};
+  // The first Claude account keeps the folder Mowr always used; each added one has its own CLAUDE_CONFIG_DIR.
+  const claudeFolder=(owner:string,id:string)=>id==='default'?join(local,owner,'claude'):join(local,owner,'claude-accounts',id);
+  const claudes=claudeAccounts=new CliAccounts<ClaudeProvider>('claude',vault,{
+    make:(owner,id)=>new ClaudeProvider(claudeExecutable,claudeFolder(owner,id)),
+    folder:claudeFolder,
+    describe:async(provider,refresh)=>{const s=await provider.status(refresh) as {installed:boolean;connected:boolean;email?:string;plan?:string};return {installed:s.installed,connected:s.connected,email:s.email,plan:s.plan,...(s.connected?provider.usage():{})};},
+  });
+  /** The active Claude account's provider. */
+  const claudeFor=async(owner:string)=>(await claudes.selected(owner)).provider;
+  /** Where an account's Claude sign-in is kept with the Mowr account: the first as before, added ones by their own id. */
+  const claudeLinkId=(id:string)=>id==='default'?CLAUDE_LINK_ID:'claude-'+id;
   const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   const driveMedia=new DriveMediaServer(driveLive,async()=>!!await auth.user());
   app.on("before-quit",()=>driveMedia.stop());
@@ -231,10 +243,19 @@ void app.whenReady().then(async () => {
   const keepEnginesCurrent=(owner:string,force=false)=>{
     if(!process.env.MOWR_CODEX_EXECUTABLE)void codexEngine.update(force);
     const failed=(error:unknown)=>console.warn('Engine update:',(error as Error)?.message||error);
-    void daily(local,'claude',()=>claudeFor(owner).update()).catch(failed);
-    void daily(local,'grok',async()=>{const grok=grokFor(owner);if(!(await grok.status()).installed)return;await installCli('grok');grok.forget();}).catch(failed);
+    void daily(local,'claude',async()=>{await (await claudeFor(owner)).update();for(const provider of await claudes.all(owner))provider.forget();}).catch(failed);
+    void daily(local,'grok',async()=>{const grok=await grokFor(owner);if(!(await grok.status()).installed)return;await installCli('grok');for(const provider of await groks.all(owner))provider.forget();}).catch(failed);
   };
-  const grokFor=(owner:string)=>{let value=grokProviders.get(owner);if(!value){value=new GrokProvider(join(local,owner,'grok'));grokProviders.set(owner,value);}return value;};
+  // The first Grok account uses Grok's own home (~/.grok); each added one has its own GROK_HOME.
+  const grokFolder=(owner:string,id:string)=>id==='default'?join(local,owner,'grok'):join(local,owner,'grok-accounts',id);
+  const groks=grokAccounts=new CliAccounts<GrokProvider>('grok',vault,{
+    make:(owner,id)=>new GrokProvider(grokFolder(owner,id),process.env.MOWR_GROK_EXECUTABLE,id==='default'?undefined:join(grokFolder(owner,id),'home')),
+    folder:grokFolder,
+    describe:async(provider,refresh)=>{const s=await provider.status(refresh);return {installed:s.installed,connected:s.connected,plan:s.usage?.plan,usage:grokUsage(s.usage),...(s.connected&&s.usage?{checkedAt:Date.now()}:{}),...(!s.connected&&s.error?{error:s.error}:{})};},
+  });
+  /** The active Grok account's provider. */
+  const grokFor=async(owner:string)=>(await groks.selected(owner)).provider;
+  const grokSignIn=(provider:GrokProvider)=>provider.login(url=>{if(/^https:\/\/([a-z0-9-]+\.)*(x\.ai|grok\.com)\//.test(url))void shell.openExternal(url);});
   let providerOwner = "";
   const providerLink=new ProviderLink(auth,vault,local);
   const linkFailed=(error:unknown)=>console.warn('Account linking:',(error as Error)?.message||error);
@@ -248,6 +269,7 @@ void app.whenReady().then(async () => {
       if(owner!=='signed-out')await Promise.race([
         providerLink.restore(owner).then(async r=>{
           await providerAccounts.adopt(owner,r.codex,r.written);
+          if(r.claude.length)await claudes.adopt(owner,r.claude);
           for(const value of r.values)if(value.kind==='telegram'&&await telegram.adoptLinked(owner,value.data))telegram.start(owner);
         }),
         new Promise(done=>setTimeout(done,8000)),
@@ -275,24 +297,50 @@ void app.whenReady().then(async () => {
     const cancelled = () => cancelledRuns.has(id);
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
+    const accounts = (grok ? groks : claudes) as unknown as CliAccounts<ClaudeProvider | GrokProvider>;
+    const autoSwitch = await providerAccounts.autoSwitchEnabled(owner);
+    let current = await accounts.selected(owner);
     // Claude and Grok answer in one piece, so Kinetra runs as a loop around them: each tool result is sent back until the answer is final.
     // One provider session carries the whole loop: the first step sends the context, later steps only the new tool results.
     // A session the CLI no longer has falls back to resending everything (runKinetraTurn), which must still fit the window (about 200k tokens).
-    const sessions: string[] = [];
+    const sessions: { id: string; provider: ClaudeProvider | GrokProvider }[] = [];
+    let shown = false;
     const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked) => {
       // A first step (or a resend after a lost session) starts a new session; the others continue the latest one.
-      if (!followUp) sessions.push(randomUUID());
+      if (!followUp) sessions.push({ id: randomUUID(), provider: current.provider });
       const session = sessions.at(-1)!;
       let text = "";
       const collect = (event: any) => { if (event.type === "delta") text += event.text || ""; else if (event.type === "status") emit({ ...event, id }); };
-      if (grok) await grokFor(owner).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session, resume: followUp });
-      else await claudeFor(owner).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session, resume: followUp });
+      const once = async () => {
+        text = "";
+        if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning);
+        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp });
+      };
+      try {
+        await once();
+      } catch (error) {
+        // Out of usage: with automatic switching the request moves to another connected account, as ChatGPT's do.
+        if (!(error instanceof UsageLimit) || cancelled()) throw error;
+        const next = await accounts.failover(owner, current.id, autoSwitch);
+        if (!next) throw error;
+        current = { id: next.id, provider: next.provider };
+        emit({ id, type: "status", text: `Switched to ${next.email || "another " + (grok ? "Grok" : "Claude") + " account"}…` });
+        // The new account has none of this turn's session: a later step resends everything there, a first step simply runs again.
+        if (followUp) throw new SessionLost("Moved to another account.");
+        session.provider = current.provider;
+        await once();
+      }
+      // Notes written before a tool request show while the tool runs, each its own paragraph, as ChatGPT's do.
+      if (toolRequests(text) || brokenToolRequest(text)) {
+        const lead = text.slice(0, shownLength(text)).trim();
+        if (lead) { emit({ id, type: "delta", text: (shown ? "\n\n" : "") + lead }); shown = true; }
+      }
       return text;
     }, async (tool) => {
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished }).finally(() => { for (const session of sessions) void (grok ? grokFor(owner) : claudeFor(owner)).endSession(session).catch(() => {}); });
-    emit({ id, type: "delta", text: answer });
+    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); });
+    emit({ id, type: "delta", text: (shown && answer ? "\n\n" : "") + answer });
     emit({ id, type: "done" });
   }
   /** A short internal request (memory notes) on the same AI the person is using, at its lightest setting. */
@@ -300,8 +348,8 @@ void app.whenReady().then(async () => {
     if (model?.startsWith(GROK_PREFIX) || model?.startsWith("claude:")) {
       let text = "";
       const collect = (event: any) => { if (event.type === "delta") text += event.text || ""; };
-      if (model.startsWith("claude:")) await claudeFor(owner).run(randomUUID(), prompt, "claude:haiku", undefined, collect);
-      else await grokFor(owner).run(randomUUID(), prompt, model, collect);
+      if (model.startsWith("claude:")) await (await claudeFor(owner)).run(randomUUID(), prompt, "claude:haiku", undefined, collect);
+      else await (await grokFor(owner)).run(randomUUID(), prompt, model, collect);
       return text;
     }
     if (model && !codex.catalogHas(model)) model = undefined;
@@ -592,7 +640,7 @@ void app.whenReady().then(async () => {
     if (url.pathname === "/api/models") {
       const user = await auth.user();
       // Every list comes from the provider itself (Codex's model/list, Claude Code's model handshake, grok models), so a model added to the person's plan shows up here without a Mowr update.
-      try{if(!user)return Response.json([]);const claude=claudeFor(user.id);const [codexModels,claudeList,grok]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claude.status().then(s=>s.connected?claude.models():[]).catch(()=>[]),grokFor(user.id).status().catch(()=>null)]);return Response.json([...codexModels,...claudeList,...(grok?.connected?grokModels(grok):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
+      try{if(!user)return Response.json([]);const claude=await claudeFor(user.id);const [codexModels,claudeList,grok]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claude.status().then(s=>s.connected?claude.models():[]).catch(()=>[]),grokFor(user.id).then(g=>g.status()).catch(()=>null)]);return Response.json([...codexModels,...claudeList,...(grok?.connected?grokModels(grok):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
     }
     if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection") || (request.method === "POST" && url.pathname === "/api/drive/upload")) {
       try {
@@ -807,8 +855,8 @@ void app.whenReady().then(async () => {
     if (request.action === "logout") {
       loginAttempt?.stop();
       codex.stop();
-      for(const provider of claudeProviders.values())provider.stop();
-      for(const provider of grokProviders.values())provider.stop();
+      claudeAccounts?.stop();
+      grokAccounts?.stop();
       await selectProvider("signed-out");
       driveLive.forget();driveMedia.forget();
       await auth.client?.auth.signOut().catch(() => {});
@@ -887,11 +935,27 @@ void app.whenReady().then(async () => {
     }
     if (request.action === "providerAutoSwitch") return providerAccounts.setAutoSwitch(user.id,request.enabled);
     if (request.action === "claudeStatus") {
-      const status=await claudeFor(user.id).status(true);
-      if(status.connected)void providerLink.backup(user.id,CLAUDE_LINK_ID,"claude",(status as {email?:string}).email||"").catch(linkFailed);
+      const {id,provider}=await claudes.selected(user.id);
+      const status=await provider.status(true);
+      if(status.connected)void providerLink.backup(user.id,claudeLinkId(id),"claude",(status as {email?:string}).email||"").catch(linkFailed);
       return status;
     }
-    if (request.action === "claudeLogin") return claudeFor(user.id).login();
+    if (request.action === "claudeLogin") return (await claudeFor(user.id)).login();
+    // Claude and Grok accounts, managed as ChatGPT's are: list (with usage), add, sign in again, use, remove.
+    if (request.action === "cliAccounts") {
+      const accounts=request.kind==="grok"?groks:claudes;
+      const listed=await accounts.list(user.id,!!request.refresh);
+      if(request.kind!=="grok")for(const account of listed.accounts)if(account.connected)void providerLink.backup(user.id,claudeLinkId(account.id),"claude",account.email||"").catch(linkFailed);
+      return {...listed,autoSwitch:await providerAccounts.autoSwitchEnabled(user.id)};
+    }
+    if (request.action === "cliAccountAdd") return request.kind==="grok"?groks.add(user.id,grokSignIn):claudes.add(user.id,(provider)=>provider.login());
+    if (request.action === "cliAccountSignIn") return request.kind==="grok"?groks.signIn(user.id,request.id,grokSignIn):claudes.signIn(user.id,request.id,(provider)=>provider.login());
+    if (request.action === "cliAccountSelect") return (request.kind==="grok"?groks:claudes).activate(user.id,request.id);
+    if (request.action === "cliAccountRemove") {
+      const result=await (request.kind==="grok"?groks:claudes).remove(user.id,request.id);
+      if(request.kind!=="grok")await providerLink.forget(user.id,claudeLinkId(request.id)).catch(linkFailed);
+      return result;
+    }
     if (request.action === "driveSearch") return driveLive.search(request.query);
     if (request.action === "driveStatus") return driveLive.state(request.refresh);
     if (request.action === "driveList") return driveLive.list({folder:request.folder,page:request.page,query:request.query,kind:request.kind});
@@ -905,10 +969,10 @@ void app.whenReady().then(async () => {
       return driveLive.captions(request.id,languages);
     }
     if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
-    if (request.action === "grokStatus") return grokFor(user.id).status(true);
-    if (request.action === "grokLogin") return grokFor(user.id).login(url=>{if(/^https:\/\/([a-z0-9-]+\.)*(x\.ai|grok\.com)\//.test(url))void shell.openExternal(url);});
-    if (request.action === "grokInstall") {await installCli("grok");const provider=grokFor(user.id);provider.forget();return provider.status(true);}
-    if (request.action === "claudeInstall") {await installCli("claude");const provider=claudeFor(user.id);provider.forget();return provider.status(true);}
+    if (request.action === "grokStatus") return (await grokFor(user.id)).status(true);
+    if (request.action === "grokLogin") return grokSignIn(await grokFor(user.id));
+    if (request.action === "grokInstall") {await installCli("grok");for(const provider of await groks.all(user.id))provider.forget();return (await grokFor(user.id)).status(true);}
+    if (request.action === "claudeInstall") {await installCli("claude");for(const provider of await claudes.all(user.id))provider.forget();return (await claudeFor(user.id)).status(true);}
     if (request.action === "providerAccountRetry") return providerAccounts.retry(user.id,request.id);
     if (request.action === "providerAccountAdd") return providerAccounts.add(user.id);
     if (request.action === "providerAccountStatus") {
@@ -928,8 +992,7 @@ void app.whenReady().then(async () => {
     if (request.action === "cancel") {
       cancelledRuns.add(request.id);
       codex.cancel(request.id);
-      claudeFor(user.id).cancel(request.id);
-      grokFor(user.id).cancel(request.id);
+      for(const provider of [...await claudes.all(user.id),...await groks.all(user.id)])provider.cancel(request.id);
       return { ok: true };
     }
     const memoryKey = "memory-" + user.id;
@@ -1175,7 +1238,9 @@ void app.whenReady().then(async () => {
       // Everything a request needs is prepared together, not one network call after another.
       const [entitlement, , sources, memoryState, setup] = await Promise.all([
         cachedEntitlement(user.id),
-        claude ? undefined : providerAccounts.selectForTask(user.id,{model:request.model,reasoning:request.reasoning}).then(async (selection) => { if (selection.switched) await selectProvider(user.id); }),
+        // Every service moves to another of the person's accounts before a request when its active one is nearly out of usage.
+        claude ? providerAccounts.autoSwitchEnabled(user.id).then((on) => (request.model!.startsWith(GROK_PREFIX) ? groks : claudes).selectForTask(user.id, on)).catch(() => {})
+          : providerAccounts.selectForTask(user.id,{model:request.model,reasoning:request.reasoning}).then(async (selection) => { if (selection.switched) await selectProvider(user.id); }),
         // A folder that is missing, moved or unreadable is left out; the others still answer.
         Promise.all(folders.map(async (folder) => {
           try { const index = await freshIndex(folder); for (const file of index) if (file.text) library.push({ name: file.path, text: file.text, kind: "folder" }); return retrieveFiles(index, query, Math.floor((budget.sources * 0.15) / Math.max(1, folders.length))); }

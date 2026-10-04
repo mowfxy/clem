@@ -1,5 +1,5 @@
 // Stands in for xAI's `grok` (Grok Build) in tests, matching its source: `grok models` text, ACP over
-// `grok agent stdio`, and the `--output-format json` result object. FAKE_GROK=signed-out | limit | split | lost | old (no session flags) | ok (default)
+// `grok agent stdio`, and `--output-format streaming-messages-json` (messages, then a result). FAKE_GROK=signed-out | limit | split | lost | old (no session flags) | steps (notes between tool uses) | ok (default)
 import {argv,stdin,stdout,stderr,exit,env} from 'node:process';
 import {readFileSync} from 'node:fs';
 const args=argv.slice(2),mode=env.FAKE_GROK||'ok';
@@ -10,7 +10,7 @@ if(args[0]==='models'){
 }
 if(args[0]==='agent'&&args[1]==='stdio'){
   let buf='';stdin.on('data',d=>{buf+=d;let nl;while((nl=buf.indexOf('\n'))>=0){const m=JSON.parse(buf.slice(0,nl));buf=buf.slice(nl+1);
-    if(m.method==='initialize')stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{protocolVersion:1,agentCapabilities:{}}})+'\n');
+    if(m.method==='initialize')stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{protocolVersion:1,agentCapabilities:{},_meta:{modelState:{availableModels:[{modelId:'grok-4.6',_meta:{supportsReasoningEffort:true,reasoningEffort:'high',reasoningEfforts:[{value:'xhigh'},{value:'high',default:true},{value:'medium'},{value:'low'}]}},{modelId:'grok-build-0.1',_meta:{supportsReasoningEffort:false}}]}}}})+'\n');
     else if(m.method==='_x.ai/billing')stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{result:{config:{creditUsagePercent:37.4,billingPeriodEnd:'2026-10-01T00:00:00Z'},subscription_tier:'SUPERGROK'}}})+'\n');
     else stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,error:{code:-32601,message:'nope'}})+'\n');}});
   stdin.on('end',()=>exit(0));
@@ -20,11 +20,18 @@ else {
   const mode2=args[args.indexOf('--permission-mode')+1];
   if(mode2!=='dontAsk'){stderr.write('expected dontAsk, got '+mode2+'\n');exit(2);}
   const prompt=readFileSync(args[args.indexOf('--prompt-file')+1],'utf8'),model=args[args.indexOf('-m')+1];
+  if(args[args.indexOf('--output-format')+1]!=='streaming-messages-json'){stderr.write('expected streaming-messages-json\n');exit(2);}
+  const effort=args.includes('--reasoning-effort')?args[args.indexOf('--reasoning-effort')+1]:'';
+  const line=o=>JSON.stringify(o)+'\n';
+  const said=(text,extra=[])=>line({type:'assistant',message:{role:'assistant',content:[{type:'text',text},...extra]}});
   if(mode==='old'&&(args.includes('--session-id')||args.includes('--resume'))){stderr.write("error: unknown option '"+(args.includes('--resume')?'--resume':'--session-id')+"'\n");exit(2);}
   if(mode==='lost'&&args.includes('--resume')){stdout.write(JSON.stringify({type:'error',message:'Session 1234 not found'})+'\n');exit(1);}
   if(mode==='limit'){stdout.write(JSON.stringify({type:'error',message:'Rate limit exceeded for your plan'})+'\n');exit(1);}
   // A reply written in two pipe chunks that cut through a multi-byte character.
-  if(mode==='split'){const bytes=Buffer.from(JSON.stringify({text:'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627'})+'\n'),cut=bytes.indexOf(0xc3)+1;stdout.write(bytes.subarray(0,cut),()=>setTimeout(()=>stdout.write(bytes.subarray(cut),()=>exit(0)),50));}
+  if(mode==='split'){const bytes=Buffer.from(line({type:'result',subtype:'success',is_error:false,result:'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627'})),cut=bytes.indexOf(0xc3)+1;stdout.write(bytes.subarray(0,cut),()=>setTimeout(()=>stdout.write(bytes.subarray(cut),()=>exit(0)),50));}
+  // Grok's own agent may note what it is doing and use its tools before the reply: only the last message is the reply.
+  else if(mode==='steps'){stdout.write(line({type:'system',subtype:'init'})+said("I'll read the pages.",[{type:'tool_use',id:'t1',name:'read_file',input:{}}])+line({type:'user',message:{role:'user',content:[{type:'tool_result',tool_use_id:'t1'}]}})+said('The pages are in.')+said('{"kinetra":{"action":"help"}}')+line({type:'result',subtype:'success',is_error:false,result:'{"kinetra":{"action":"help"}}'}),()=>exit(0));}
   else{
-  stdout.write(JSON.stringify({text:`[${model}] ${prompt}`,stopReason:'end_turn',sessionId:'s1',requestId:'r1'},null,2)+'\n');exit(0);}
+  const reply=`[${model}${effort?' '+effort:''}] ${prompt}`;
+  stdout.write(line({type:'system',subtype:'init'})+said(reply)+line({type:'result',subtype:'success',is_error:false,result:reply}),()=>exit(0));}
 }
