@@ -9,6 +9,8 @@ import { ClaudeProvider } from "../../desktop/claude.ts";
 import { GrokProvider, grokRules, GROK_RULES_MAX } from "../../desktop/grok.ts";
 import { composePrompt, coreRules, systemPrompt } from "../../desktop/prompt.ts";
 import { runKinetraTurn } from "../../desktop/kinetra-turn.ts";
+import { kinetraCompact, kinetraExtrasFor, needsKinetra } from "../../desktop/kinetra-runtime.ts";
+import { recipeText } from "../../desktop/kinetra-recipes.ts";
 
 /** A fake CLI child: records what it was given and answers with `lines` once its input ends. */
 function fakeChild(lines: () => string[], code = 0) {
@@ -114,4 +116,28 @@ test("the tool loop sends only the request when the instructions travel in the s
   assert.equal(inputs[0], "Original request and context:\nREQUEST");
   await runKinetraTurn("REQUEST", "NOTES", async (input) => { inputs.push(input); return "Answer"; }, async () => 1, () => false);
   assert.equal(inputs[1], "NOTES\n\nOriginal request and context:\nREQUEST");
+});
+
+test("Claude and Grok always see every tool, whatever words the request uses", () => {
+  // The compact guide names every action and file kind, so a request the intent regex misses still knows what exists.
+  for (const action of ['"action":"call"', '"action":"pdf"', '"action":"recipes"', '"action":"skill"']) assert.ok(kinetraCompact.includes(action), action);
+  assert.match(kinetraCompact, /FILES: Mowr makes real files/);
+  assert.equal(kinetraCompact.includes(recipeText()), false);
+  // It fits Grok's --rules with the rules around it, so Grok gets it as a system prompt too.
+  assert.ok(grokRules(systemPrompt(kinetraCompact)));
+  // Identical for every request: the CLIs' prompt cache keeps it.
+  assert.equal(systemPrompt(kinetraCompact), systemPrompt(kinetraCompact));
+});
+
+test("what a request adds to the compact guide goes in the message: recipes for tool work, the guide for the file type", () => {
+  assert.equal(kinetraExtrasFor("how are you today?"), "");
+  assert.ok(kinetraExtrasFor("Draw the circuit with two resistors").includes(recipeText()));
+  // A document made earlier in this chat may be revised: its figures need the recipes.
+  assert.ok(kinetraExtrasFor("make it shorter", true).includes(recipeText()));
+  const deck = kinetraExtrasFor("Make a PowerPoint deck on photosynthesis");
+  assert.ok(deck.includes(recipeText()));
+  assert.ok(deck.length > recipeText().length + 1000, "the slides guide comes with a deck request");
+  // Together they are the same knowledge the full guide gave.
+  assert.equal(needsKinetra("hi"), false);
+  assert.equal(needsKinetra("solve this integral"), true);
 });

@@ -31,9 +31,27 @@ ${documentStandard}`;
 export const kinetraBrief = `Kinetra tools (verified calculations, physics/circuit/logic figures, and real files: PDF, Word, PowerPoint, Excel, CSV, HTML, calendar and other text files, images) are available. If this request needs them, reply with ONLY {"kinetra":{"action":"help"}}; otherwise answer normally.`;
 
 const kinetraIntent = /\b(pdf|handout|worksheet|document|report|summary sheet|study guide|diagram|figure|illustrat|draw|sketch|plot|graph|chart|flow ?chart|timeline|mind ?map|venn|hierarchy|circuit|resistor|capacitor|voltage|current|k-?map|karnaugh|truth table|boolean|logic gate|projectile|trajector|free[- ]?body|force|pulley|atwood|optic|lens|mirror|ray diagram|electrostat|charged rod|electric field|field lines?|charged (?:sphere|wire|ball|plate)|point charges?|dipole|incline|inclined plane|ramp|slope|spring scale|spring balance|springs?\b|lever|torque|fulcrum|seesaw|wheelbarrow|tension|buoyan|vessel|beaker|apparatus|vector field|integral|integrate|derivative|differentiat|matrix|eigen|solve|equation|calculat|compute|simplif|quiz|exam|flashcard|grade|study (?:plan|schedule)|revision|pages?\b|longer|expand|more detail|in depth|full explanation)/i;
+/** Whether a request may use the tools: a figure, a calculation, a file, or a change to a document made earlier. */
+export function needsKinetra(request: string, hasDocuments = false) {
+  return hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) || fileIntent.test(request);
+}
+/**
+ * Claude's and Grok's tool guide, in every system prompt: every action, the file catalog and the document standard,
+ * without the recipe list (21k of its 37k characters). With a regex choosing between the full guide and kinetraBrief,
+ * a request it missed ("make me a cheat sheet") left the model guessing whether tools exist, or spending a round trip
+ * on "help". Measured on Grok, this guide added no noticeable time to a plain chat reply (+3.6k input tokens, within
+ * run-to-run noise); the full one added about a second. It is the same for every request, so the CLI's cache keeps it.
+ */
+export const kinetraCompact = kinetraInstructions.replace(recipeText(), 'Not listed here: {"action":"recipes"} returns every recipe, and a request that needs figures carries them after this guide.');
+/** What a request adds after kinetraCompact, in the message: the recipes when it may need tools, and the design guide for the kind of file asked for. */
+export function kinetraExtrasFor(request: string, hasDocuments = false) {
+  const guides = fileGuidesFor(request);
+  const recipes = needsKinetra(request, hasDocuments) ? `KINETRA FIGURE RECIPES (verified; each renders as-is; adapt the values, keep the structure):\n${recipeText()}` : "";
+  return [recipes, guides].filter(Boolean).join("\n\n");
+}
 /** The full tool guide when the request may need it (or a document it could change exists); otherwise one line. */
 export function kinetraInstructionsFor(request: string, hasDocuments = false) {
-  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief;
+  if (!needsKinetra(request, hasDocuments)) return kinetraBrief;
   // The design skill for the kind of file asked for comes with the catalog, so the first file is already well designed.
   const guides = fileGuidesFor(request);
   return kinetraInstructions + (guides ? "\n\n" + guides : "");
