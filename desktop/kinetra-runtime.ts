@@ -1,12 +1,13 @@
 import { Worker } from "node:worker_threads";
 import { join } from "node:path";
 import reference from "./generated/kinetra.json" with { type: "json" };
-import { illustrationGuide, recipeText } from "./kinetra-recipes.ts";
+import { illustrationGuide, recipeText, recipesFor } from "./kinetra-recipes.ts";
 import { documentStandard, documentIntent } from "../core/document-standard.ts";
 import { FILE_ACTIONS, fileCatalog, fileGuides, fileGuidesFor, fileIntent } from "./file-guides.ts";
 import { MAX_CALLS } from "./kinetra-turn.ts";
 
-export const kinetraInstructions = `KINETRA TOOLS: deterministic calculations and textbook figures that run on this PC.
+/** The tool guide with the given figure recipes (all of them, or the ones for the topic at hand). */
+const buildInstructions = (recipes: string) => `KINETRA TOOLS: deterministic calculations and textbook figures that run on this PC.
 To use one, reply with ONLY a JSON object {"kinetra":{…}} and nothing else. Mowr runs it and replies with the result; then call another tool or write your final answer. Never put tool JSON in the final answer.
 When you show the request format as an example (not to run it), put it in a \`\`\`text block; a real request is bare JSON or in a \`\`\`json block.
 Actions:
@@ -21,22 +22,34 @@ Actions:
 - Physics and engineering apparatus (pulleys, ropes, spring scales, blocks on inclines, levers and wheelbarrows, springs, vessels of liquid, charged spheres, rods and wires with field lines, free-body insets, lever arms) is drawn as a textbook figure: {"module":"mowr","fn":"illustration","args":[{"items":[…]}]}. Start from the closest "textbook figure" recipe below, keep its structure and change positions, sizes and labels; {"action":"skill","name":"figures"} returns every item and anchor. Prefer it to the plain free-body, pulley and charged-rod recipes whenever the apparatus itself should be seen; those stay for bare numeric diagrams. Documents are printed, so a 3D scene becomes a textbook figure drawn in 2D (a sphere as a shaded ball, a wire as a rod, field lines in the page).
 - {"action":"recipes"} lists the verified figure recipes below; {"action":"api","module":M} returns a module's TypeScript declarations (exact argument shapes); {"action":"skill","name":N} returns a topic guide (figures, slides, word, spreadsheets, files, ${Object.keys(reference.skills).join(", ")}).
 Verified figure recipes (each renders as-is; adapt the values, keep the structure):
-${recipeText()}
+${recipes}
 Callable modules: ${reference.modules.join(", ")}. Before using a module that has no recipe, read its api. Functions that need callbacks, Map instances or classes cannot be called; prefer module mowr (integrateExpression, plot, logicDiagram, vectorField, scalarField, solveCircuit, circuitTransient, retrieve, studySchedule).
 Accuracy rules: compute numbers with call before writing them, and use the same model for the figure so text and drawing agree. State assumptions (units, g = 9.81 m/s², ideal pulleys, thin lenses). A tool error is not success. Never claim a file exists unless a file action returned created:true. At most ${MAX_CALLS} tool calls per answer.
 ${fileCatalog}
 ${documentStandard}`;
 
+/** The full guide, with every recipe: what {"action":"help"} returns. */
+export const kinetraInstructions = buildInstructions(recipeText());
+
 /** Everyday messages get a one-line pointer instead of the full catalog; the model can ask for it. */
 export const kinetraBrief = `Kinetra tools (verified calculations, physics/circuit/logic figures, and real files: PDF, Word, PowerPoint, Excel, CSV, HTML, calendar and other text files, images) are available. If this request needs them, reply with ONLY {"kinetra":{"action":"help"}}; otherwise answer normally.`;
 
 const kinetraIntent = /\b(pdf|handout|worksheet|document|report|summary sheet|study guide|diagram|figure|illustrat|draw|sketch|plot|graph|chart|flow ?chart|timeline|mind ?map|venn|hierarchy|circuit|resistor|capacitor|voltage|current|k-?map|karnaugh|truth table|boolean|logic gate|projectile|trajector|free[- ]?body|force|pulley|atwood|optic|lens|mirror|ray diagram|electrostat|charged rod|electric field|field lines?|charged (?:sphere|wire|ball|plate)|point charges?|dipole|incline|inclined plane|ramp|slope|spring scale|spring balance|springs?\b|lever|torque|fulcrum|seesaw|wheelbarrow|tension|buoyan|vessel|beaker|apparatus|vector field|integral|integrate|derivative|differentiat|matrix|eigen|solve|equation|calculat|compute|simplif|quiz|exam|flashcard|grade|study (?:plan|schedule)|revision|pages?\b|longer|expand|more detail|in depth|full explanation)/i;
-/** The full tool guide when the request may need it (or a document it could change exists); otherwise one line. */
-export function kinetraInstructionsFor(request: string, hasDocuments = false) {
+/**
+ * The tool guide when the request may need it (or a document it could change exists); otherwise one line. The guide
+ * carries the concept diagrams and the science recipes for the topic at hand, found in the request and in `context`
+ * (the conversation and its sources, so "notes on this lecture" finds the lecture's circuits); with `pictures` attached,
+ * whose subject only the pictures show, it carries every recipe. Recipes left out stay one {"action":"recipes"} away.
+ */
+export function kinetraInstructionsFor(request: string, hasDocuments = false, { context = "", pictures = false }: { context?: string; pictures?: boolean } = {}) {
   if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief;
+  const { recipes, omitted } = recipesFor(request + "\n" + context, { pictures });
+  const guide = omitted
+    ? buildInstructions(recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`)
+    : kinetraInstructions;
   // The design skill for the kind of file asked for comes with the catalog, so the first file is already well designed.
   const guides = fileGuidesFor(request);
-  return kinetraInstructions + (guides ? "\n\n" + guides : "");
+  return guide + (guides ? "\n\n" + guides : "");
 }
 
 export async function kinetraCall(request: any) {

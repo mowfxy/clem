@@ -134,5 +134,48 @@ export const illustrationRecipes: KinetraRecipe[] = figureRecipes.map((r) => ({ 
 export const illustrationGuide = `${figureVocabulary}
 Call it as {"module":"mowr","fn":"illustration","args":[{"items":[…],"view"?:{…}}]}. Start from the closest textbook figure recipe and change positions, sizes and labels; keep every id unique and refer only to anchors of items that exist.`;
 
-export const recipeText = () =>
-  [...kinetraRecipes, ...diagramRecipes, ...illustrationRecipes].map((r) => `- ${r.name} (${r.use}): {"figure":${JSON.stringify(r.figure)}} — ${r.notes}`).join("\n");
+/** Every recipe: the science recipes, the concept diagrams and the textbook figures. */
+export const allRecipes = () => [...kinetraRecipes, ...diagramRecipes, ...illustrationRecipes];
+export const recipeText = (recipes: KinetraRecipe[] = allRecipes()) =>
+  recipes.map((r) => `- ${r.name} (${r.use}): {"figure":${JSON.stringify(r.figure)}} — ${r.notes}`).join("\n");
+
+/**
+ * What each science recipe is about. A recipe goes with the instructions when the request, the conversation or its
+ * sources mention its topic; concept diagrams (flowcharts, charts, timelines…) serve every subject and always go.
+ * Generous on purpose: a recipe sent needlessly costs some prompt, one left out costs a figure drawn from guesswork.
+ */
+const MECHANICS = "force|newton|mechanic|dynamics|statics|equilibrium|tension|weight|mass|accelerat|friction";
+const ELECTROSTATICS = "electrostat|charge|coulomb|electric field|field lines?|static electric|insulator|conductor|induction";
+const topic = (words: string) => new RegExp(words, "i");
+export const recipeTopics: Record<string, RegExp> = {
+  "function plot": /plot|graph|curve|function|f\s*\(\s*x\s*\)|y\s*=|parabol|quadratic|polynomial|trig|\bsin\b|\bcos\b|\btan\b|exponential|logarithm|derivative|differentiat|integral|integrat|calculus|scatter|data points?|asymptot|equation|maths?\b|mathematic/i,
+  projectile: topic(`projectile|trajector|launch|thrown|throw|kinematic|free fall|motion|velocity|range|apex|${MECHANICS}`),
+  "free-body diagram": topic(`free[- ]?body|fbd|normal|incline|ramp|slope|${MECHANICS}`),
+  "pulley (Atwood)": topic(`pulley|atwood|rope|hanging|${MECHANICS}`),
+  "thin lens / mirror": /lens|mirror|optic|ray diagram|focal|refract|reflect|image distance|magnif|light/i,
+  "charged rods": topic(`\\brods?\\b|rubb|attract|repel|${ELECTROSTATICS}`),
+  "vector field": topic(`vector field|electric field|magnetic field|\\bflows?\\b|flux|gradient|divergence|curl|potential|${ELECTROSTATICS}`),
+  "circuit schematic": /circuit|resistor|resistance|capacitor|inductor|voltage|current|\bohms?\b|Ω|kirchhoff|kvl|kcl|nodal|mesh analysis|th[eé]venin|norton|diode|battery|power supply|op-?amp|\brlc?\b|\brc\b|transistor|ammeter|voltmeter|electronic|electric|schematic|netlist/i,
+  "logic circuit": /logic|boolean|\bgates?\b|nand|\bnor\b|xor|k-?map|karnaugh|truth table|digital|flip-?flop|combinational|sum of products|minterm/i,
+  "textbook figure: spring scale between two hanging masses": topic(`spring (?:scale|balance)|scale|pulley|hanging|${MECHANICS}`),
+  "textbook figure: hanging pulley with a spring scale (Atwood)": topic(`pulley|atwood|spring (?:scale|balance)|hanging|${MECHANICS}`),
+  "textbook figure: block on an incline held by a spring scale": topic(`incline|ramp|slope|spring (?:scale|balance)|${MECHANICS}`),
+  "textbook figure: free-body diagram on an incline": topic(`incline|ramp|slope|free[- ]?body|normal|${MECHANICS}`),
+  "textbook figure: wheelbarrow lever (torques)": /lever|torque|moment|wheelbarrow|fulcrum|pivot|mechanical advantage|rotation|statics|equilibrium/i,
+  "textbook figure: seesaw lever on a pivot": /seesaw|lever|torque|moment|fulcrum|pivot|balanc|statics|equilibrium/i,
+  "textbook figure: charged sphere near a charged wire, with field lines": topic(`sphere|wire|${ELECTROSTATICS}`),
+  "textbook figure: electric dipole field": topic(`dipole|point charges?|${ELECTROSTATICS}`),
+  "textbook figure: rotating liquid in a vessel": /liquid|fluid|vessel|beaker|container|buoyan|pressure|meniscus|rotat|hydro|archimedes|water/i,
+  "textbook figure: mass on a spring": /spring|hooke|oscillat|harmonic|\bshm\b|vibrat|pendulum|elastic/i,
+};
+
+/**
+ * The recipes for one request: every concept diagram, and each science recipe whose topic `text` mentions (a recipe
+ * without a topic always goes). With pictures attached every recipe goes, since a scanned problem names its apparatus
+ * only in the picture. `omitted` counts the recipes left out (the instructions then say how to get them).
+ */
+export function recipesFor(text: string, { pictures = false }: { pictures?: boolean } = {}) {
+  const science = [...kinetraRecipes, ...illustrationRecipes];
+  const chosen = new Set(pictures ? science : science.filter((r) => recipeTopics[r.name]?.test(text) ?? true));
+  return { recipes: allRecipes().filter((r) => !science.includes(r) || chosen.has(r)), omitted: science.length - chosen.size };
+}

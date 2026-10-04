@@ -57,6 +57,7 @@ import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit} from './kinetra-turn';
 import {LiveScreen} from './live-reply';
+import {inlinePictures} from './kinetra-mcp';
 import {kinetraTool} from './kinetra-runtime';
 import {turnTimer,type TurnStats} from './turn-timing';
 import {toolStatus} from './codex';
@@ -319,7 +320,9 @@ void app.whenReady().then(async () => {
     const sessions: { id: string; provider: ClaudeProvider | GrokProvider }[] = [];
     // Their text streams as it is written; tool requests never show, and nothing shows twice (desktop/live-reply.ts).
     const screen = new LiveScreen((text) => emit({ id, type: "delta", text }));
-    const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked) => {
+    // Claude Code gets Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; Grok keeps the text protocol.
+    const native = !!(pdf || tools);
+    const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked, call) => {
       // A first step (or a resend after a lost session) starts a new session; the others continue the latest one.
       if (!followUp) sessions.push({ id: randomUUID(), provider: current.provider });
       const session = sessions.at(-1)!;
@@ -333,7 +336,7 @@ void app.whenReady().then(async () => {
         text = "";
         screen.step();
         if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning);
-        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp });
+        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined);
       };
       try {
         await once();
@@ -1456,7 +1459,7 @@ void app.whenReady().then(async () => {
         return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0, { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0 }) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
