@@ -47,7 +47,7 @@ import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { composePrompt, systemPrompt } from "./prompt";
-import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
+import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraExtrasFor } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
 import {ClaudeProvider} from './claude';
@@ -1292,13 +1292,14 @@ void app.whenReady().then(async () => {
       const pictureNote = request.images?.length
         ? `\n\nPICTURES ATTACHED TO THIS REQUEST (look at them; they are part of the person's files, not decoration), in order:\n${request.images.map((image, i) => `${i + 1}. ${image.name}`).join("\n")}\nDiagrams, circuits, graphs, tables, handwriting and scanned pages in them are only in the pictures: read them there, not from the extracted text alone.`
         : "";
+      const cli = !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX);
       const prompt = composePrompt({
         messages,
         sources,
         memories,
         name: memoryState.enabled ? setup.displayName : undefined,
         // Claude and Grok have coreRules in their system prompt (answerWith).
-        rulesInSystem: !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX),
+        rulesInSystem: cli,
         extra: (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : "") + pictureNote,
       });
       // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
@@ -1444,9 +1445,10 @@ void app.whenReady().then(async () => {
         return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0);
-      // This conversation's files change from turn to turn, so they stay out of the (cached) system prompt.
-      const notes = request.plain ? "" : documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
+      // Claude and Grok always see the whole tool guide (kinetraCompact, the same in every system prompt); what this request
+      // adds to it (recipes, a file design guide) and this conversation's files change from turn to turn, so they go in the message.
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0);
+      const notes = request.plain ? "" : (cli ? kinetraExtrasFor(query, documents.size > 0) : "") + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
