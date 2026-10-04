@@ -1,3 +1,4 @@
+import type { TurnStats } from "./turn-timing.ts";
 /** Thrown by a provider that could not use its session (the CLI no longer has it, or does not support sessions at all):
  *  the loop resends everything instead, for the rest of the turn. */
 export class SessionLost extends Error {}
@@ -241,6 +242,9 @@ function withoutBroken(text: string) {
   const at = brokenStart(text);
   return (at < 0 ? text : text.slice(0, at)).trim();
 }
+/** Actions that make or change a file, or attach pictures of pages, run in the order they were asked for. */
+export const MAX_PARALLEL = 4;
+const IN_ORDER = new Set(["pdf", "docx", "pptx", "xlsx", "file", "image", "look", "open"]);
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
 export const MAX_BROKEN = 5;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
@@ -267,9 +271,10 @@ export async function runKinetraTurn<Picture = unknown>(
   model: (prompt: string, followUp: boolean, pictures: Picture[], native: NativeTool<Picture>) => Promise<string>,
   tool: (request: any) => Promise<any>,
   cancelled: () => boolean,
-  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined } = {},
+  /** `stats` counts the steps, calls and broken requests for the timing log (desktop/turn-timing.ts). */
+  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; stats?: TurnStats } = {},
 ) {
-  const { limit = 3_000_000, unfinished } = options;
+  const { limit = 3_000_000, unfinished, stats = { steps: 0, calls: 0, broken: 0 } } = options;
   // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
   let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
@@ -280,14 +285,14 @@ export async function runKinetraTurn<Picture = unknown>(
   // Pictures from "look" results: all of them go with every request when there is no thread, the new ones when there is.
   const looked: Picture[] = [];
   let newPictures: Picture[] = [];
-  /** One request, whichever way it came: counted, run, its pictures taken out of the result, and recorded. */
-  const runRequest = async (request: any) => {
+  /** One request, whichever way it came: counted, run, its pictures taken out of the result, and recorded in `entry`. */
+  const runRequest = async (request: any, entry: { request: any; result: any }) => {
     if (closing || calls >= MAX_CALLS) {
-      const result = { error: "Not run: no tool calls were left." };
-      history.push({ request, result });
-      return { result: result as unknown, pictures: [] as Picture[] };
+      entry.result = { error: "Not run: no tool calls were left." };
+      return { result: entry.result as unknown, pictures: [] as Picture[] };
     }
     calls++;
+    stats.calls++;
     let result: any;
     try {
       result = await tool(request);
@@ -303,17 +308,31 @@ export async function runKinetraTurn<Picture = unknown>(
       const seen = "These pictures are attached: look at them now.";
       result = { ...rest, note: typeof rest.note === "string" ? rest.note + " " + seen : seen };
     }
-    const entry = { request: sentBefore(request, result), result: forModel(request, result) };
-    history.push(entry);
+    entry.request = sentBefore(request, result);
+    entry.result = forModel(request, result);
     return { result: entry.result as unknown, pictures };
   };
-  // Native calls run one at a time, in the order they arrive, exactly as the envelopes of one reply do.
-  let queue: Promise<unknown> = Promise.resolve();
-  const native: NativeTool<Picture> = (request) => {
-    const run = queue.then(() => { check(); return runRequest(request); });
-    queue = run.catch(() => {});
+  // Requests that only compute or read run side by side (the envelopes of one reply, or native calls sent together). One
+  // that makes or changes a file, or looks at pages, waits for every request before it and holds back those after it.
+  // Each is recorded where it was asked for, so the history keeps the order of the requests whatever finishes first.
+  // At most MAX_PARALLEL run at once, so a reply with dozens of calls does not start dozens of workers.
+  let barrier: Promise<unknown> = Promise.resolve();
+  let running: Promise<unknown>[] = [];
+  let free = MAX_PARALLEL;
+  const waiting: (() => void)[] = [];
+  const take = () => free > 0 ? (free--, Promise.resolve()) : new Promise<void>((resolve) => waiting.push(resolve));
+  const give = () => { const next = waiting.shift(); if (next) next(); else free++; };
+  const schedule = (request: any) => {
+    const entry = { request, result: undefined as any };
+    history.push(entry);
+    const inOrder = IN_ORDER.has(String(request?.action));
+    const run = (inOrder ? Promise.all([barrier, ...running]) : barrier).then(take).then(() => { check(); return runRequest(request, entry); }).finally(give);
+    const settled = run.catch(() => {});
+    if (inOrder) { barrier = settled; running = []; } else running.push(settled);
     return run;
   };
+  const settled = () => Promise.all([barrier, ...running]);
+  const native: NativeTool<Picture> = (request) => schedule(request);
   for (let replies = 0; ; replies++) {
     check();
     const left = MAX_CALLS - calls;
@@ -341,6 +360,7 @@ export async function runKinetraTurn<Picture = unknown>(
     let text: string;
     try {
       // With a thread only the new pictures go, but still within the same per-message limit.
+      stats.steps++;
       text = await model(input, stateful && replies > 0, recent(stateful ? newPictures : looked), native);
     } catch (error) {
       if (!(error instanceof SessionLost) || !stateful) throw error;
@@ -349,10 +369,11 @@ export async function runKinetraTurn<Picture = unknown>(
       input = closing ? instructions + "\n\nOriginal request and context:\n" + prompt + "\n" + LAST_CALL : full();
       if (input.length > limit && compact(history, input.length - limit)) input = full();
       sent += input.length;
+      stats.steps++;
       text = await model(input, false, recent(looked), native);
     }
     // Native calls made during the reply were answered inside it: they are not sent again as new results.
-    await queue;
+    await settled();
     reported = history.length;
     newPictures = [];
     check();
@@ -376,6 +397,7 @@ export async function runKinetraTurn<Picture = unknown>(
       throw Error("Kinetra tool limit reached. Try a smaller task.");
     }
     if (broken) {
+      stats.broken++;
       // A model that keeps ending with a request it cannot fix would loop to the call limit: after a few, what it wrote is the answer.
       if (++brokenInRow >= MAX_BROKEN) {
         const answer = withoutBroken(text);
@@ -394,6 +416,6 @@ export async function runKinetraTurn<Picture = unknown>(
       continue;
     }
     brokenInRow = 0;
-    for (const request of requests!) newPictures.push(...(await runRequest(request)).pictures);
+    for (const { pictures } of await Promise.all(requests!.map(schedule))) newPictures.push(...pictures);
   }
 }

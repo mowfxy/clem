@@ -4,10 +4,11 @@ import reference from "./generated/kinetra.json" with { type: "json" };
 import { illustrationGuide, recipeText, recipesFor } from "./kinetra-recipes.ts";
 import { documentStandard, documentIntent } from "../core/document-standard.ts";
 import { FILE_ACTIONS, fileCatalog, fileGuides, fileGuidesFor, fileIntent } from "./file-guides.ts";
-import { MAX_CALLS } from "./kinetra-turn.ts";
+import { MAX_CALLS, MAX_PARALLEL } from "./kinetra-turn.ts";
 
-/** The tool guide with the given figure recipes (all of them, or the ones for the topic at hand). */
-const buildInstructions = (recipes: string) => `KINETRA TOOLS: deterministic calculations and textbook figures that run on this PC.
+/** The tool guide with the given figure recipes (all of them, or the ones for the topic at hand). The recipes change
+ *  with the topic, so they come last: the rest is the same every time and stays in the provider's prompt cache. */
+const buildInstructions = (recipes: string, notes = "") => `KINETRA TOOLS: deterministic calculations and textbook figures that run on this PC.
 To use one, reply with ONLY a JSON object {"kinetra":{…}} and nothing else. Mowr runs it and replies with the result; then call another tool or write your final answer. Never put tool JSON in the final answer.
 When you show the request format as an example (not to run it), put it in a \`\`\`text block; a real request is bare JSON or in a \`\`\`json block.
 Actions:
@@ -21,67 +22,145 @@ Actions:
 - Figures in PDFs: every diagram, chart or picture in a document is a Kinetra figure (one per section; use several sections for several figures, a section without a heading continues the one before). Match the recipe to the content: flowchart for processes and algorithms, cycle for repeating processes, timeline for dated sequences, mind map for overviews, tree for classifications and hierarchies, Venn for comparisons, bar/line/pie chart for data, and the science recipes for physics, circuits and logic. A good study document or report usually has at least one figure where a picture explains faster than text. A \`\`\`visual already drawn in this conversation (plot, chart, diagram, figure or 3d) goes in unchanged: {"module":"mowr","fn":"visual","args":[that visual's JSON object]} prints the same drawing on white paper with its caption; use it whenever the person asks for "that diagram" or the chat's visuals in a file, instead of redrawing.
 - Physics and engineering apparatus (pulleys, ropes, spring scales, blocks on inclines, levers and wheelbarrows, springs, vessels of liquid, charged spheres, rods and wires with field lines, free-body insets, lever arms) is drawn as a textbook figure: {"module":"mowr","fn":"illustration","args":[{"items":[…]}]}. Start from the closest "textbook figure" recipe below, keep its structure and change positions, sizes and labels; {"action":"skill","name":"figures"} returns every item and anchor. Prefer it to the plain free-body, pulley and charged-rod recipes whenever the apparatus itself should be seen; those stay for bare numeric diagrams. Documents are printed, so a 3D scene becomes a textbook figure drawn in 2D (a sphere as a shaded ball, a wire as a rod, field lines in the page).
 - {"action":"recipes"} lists the verified figure recipes below; {"action":"api","module":M} returns a module's TypeScript declarations (exact argument shapes); {"action":"skill","name":N} returns a topic guide (figures, slides, word, spreadsheets, files, ${Object.keys(reference.skills).join(", ")}).
-Verified figure recipes (each renders as-is; adapt the values, keep the structure):
-${recipes}
 Callable modules: ${reference.modules.join(", ")}. Before using a module that has no recipe, read its api. Functions that need callbacks, Map instances or classes cannot be called; prefer module mowr (integrateExpression, plot, logicDiagram, vectorField, scalarField, solveCircuit, circuitTransient, retrieve, studySchedule).
 Accuracy rules: compute numbers with call before writing them, and use the same model for the figure so text and drawing agree. State assumptions (units, g = 9.81 m/s², ideal pulleys, thin lenses). A tool error is not success. Never claim a file exists unless a file action returned created:true. At most ${MAX_CALLS} tool calls per answer.
 ${fileCatalog}
-${documentStandard}`;
+${documentStandard}${notes}
+Verified figure recipes (each renders as-is; adapt the values, keep the structure):
+${recipes}`;
 
 /** The full guide, with every recipe: what {"action":"help"} returns. */
-export const kinetraInstructions = buildInstructions(recipeText());
+const allRecipes = recipeText();
+export const kinetraInstructions = buildInstructions(allRecipes);
 
 /** Everyday messages get a one-line pointer instead of the full catalog; the model can ask for it. */
 export const kinetraBrief = `Kinetra tools (verified calculations, physics/circuit/logic figures, and real files: PDF, Word, PowerPoint, Excel, CSV, HTML, calendar and other text files, images) are available. If this request needs them, reply with ONLY {"kinetra":{"action":"help"}}; otherwise answer normally.`;
 
-const kinetraIntent = /\b(pdf|handout|worksheet|document|report|summary sheet|study guide|diagram|figure|illustrat|draw|sketch|plot|graph|chart|flow ?chart|timeline|mind ?map|venn|hierarchy|circuit|resistor|capacitor|voltage|current|k-?map|karnaugh|truth table|boolean|logic gate|projectile|trajector|free[- ]?body|force|pulley|atwood|optic|lens|mirror|ray diagram|electrostat|charged rod|electric field|field lines?|charged (?:sphere|wire|ball|plate)|point charges?|dipole|incline|inclined plane|ramp|slope|spring scale|spring balance|springs?\b|lever|torque|fulcrum|seesaw|wheelbarrow|tension|buoyan|vessel|beaker|apparatus|vector field|integral|integrate|derivative|differentiat|matrix|eigen|solve|equation|calculat|compute|simplif|quiz|exam|flashcard|grade|study (?:plan|schedule)|revision|pages?\b|longer|expand|more detail|in depth|full explanation)/i;
+/**
+ * Requests that need the full tool guide. Whole words only, and an everyday word that is also a science term counts only
+ * with the context that makes it one: "the current through R2" but not "the current news", "the force on the block" but
+ * not "air force", "simplify x^2 + 2x" but not "simplify this paragraph". Document requests ("write a report") are
+ * found by documentIntent and file requests by fileIntent; a document already made in the chat brings the guide anyway.
+ */
+const kinetraIntent = new RegExp([
+  // Documents and figures
+  String.raw`\bpdfs?\b|\bhandouts?\b|\bworksheets?\b|\bsummary sheets?\b|\bstudy guides?\b|\b(?<!(?:news|weather|police|credit|traffic|book) )reports?\b`,
+  String.raw`\bdiagrams?\b|\bfigures?\b(?! out| skat)|\billustrations?\b|\bdraw(?:s|ing|n)?\b|\bsketch(?:es|ing)?\b|\bplot(?:s|ting|ted)?\b(?=[^.?!\n]{0,40}(?:[=^+*/(]|\b(?:x|y|data|function|curve|points?|values|against|versus|vs|over time|axis|axes)\b))|\bplot (?:it|this|that|them)\b`,
+  String.raw`\bgraph(?:s|ing)?\b|\bcharts?\b|\bflow ?charts?\b|\btimelines?\b|\bmind ?maps?\b|\bvenn\b|\bhierarch(?:y|ies)\b`,
+  // Circuits and logic
+  String.raw`\bcircuits?\b(?! training| breaker)|\bresistors?\b|\bcapacitors?\b|\binductors?\b|\bvoltages?\b|\bohm'?s law\b|\b(?:electric|alternating|direct|induced|load|branch|mesh|loop|short[- ]circuit|peak|rms) currents?\b|\bcurrents? (?:through|in (?:the|a|each)|flow|source|divider|density)\b`,
+  String.raw`\bk-?maps?\b|\bkarnaugh\b|\btruth tables?\b|\bboolean\b|\blogic gates?\b`,
+  // Mechanics, optics, fields, fluids
+  String.raw`\bprojectiles?\b|\btrajector(?:y|ies)\b|\bfree[- ]?body\b|\bpulleys?\b|\batwood\b|\boptics\b|\bray diagrams?\b|\b(?:concave|convex|plane|spherical|curved) mirrors?\b|\b(?:convex|concave|converging|diverging|thin|biconvex|biconcave) lens(?:es)?\b|\blens (?:equation|formula)\b|\bfocal length\b`,
+  String.raw`\b(?<!(?:air|brute|task|police|labou?r|sales|driving|life|work|special|armed|naval) )forces?\b(?! quit)|\bfriction\b|\btorques?\b|\bfulcrum\b|\bseesaw\b|\bwheelbarrow\b|\blevers?\b|\btension (?:in|of|on)\b|\b(?:rope|string|cable) tension\b`,
+  String.raw`\belectrostatic|\bcharged (?:rod|sphere|wire|ball|plate)s?\b|\belectric fields?\b|\bfield lines?\b|\bpoint charges?\b|\bdipoles?\b|\bvector fields?\b`,
+  String.raw`\bincline\b|\binclined plane\b|\bspring (?:constant|scale|balance|force|stiffness|system|mass)\b|\bmass[- ](?:on[- ]a[- ])?spring\b|\bhooke'?s law\b|\bsprings? in (?:series|parallel)\b|\bbuoyan|\bbeakers?\b|\bapparatus\b|\b(?<!blood )vessels?\b`,
+  // Maths
+  String.raw`\bintegrals?\b|\bintegrat\w*\b(?=[^.?!\n]{0,40}(?:\bd[a-z]\b|\bfrom\b|respect to|by parts|[\^=+*/]|\b(?:sin|cos|tan|exp|ln|log|sqrt|x|y|t)\b))`,
+  String.raw`\bderivatives?\b(?! (?:trading|market|contract))|\bdifferentiat\w*\b(?! between)(?=[^.?!\n]{0,40}(?:[\^=+*/(]|respect to|\b(?:sin|cos|tan|exp|ln|log|sqrt|x|y|t)\b))`,
+  String.raw`\bmatri(?:x|ces)\b|\beigen|\bdeterminants?\b|\bsolv(?:e|es|ing)\b|\bequations?\b|\bcalculat(?:e|es|ing|ion|ions)\b|\bcomput(?:e|es|ing|ation)\b|\bslopes?\b`,
+  String.raw`\bsimplif\w*\b(?=[^.?!\n]{0,40}(?:expression|equation|fraction|function|boolean|logic|circuit|[\^=+*/]|\b[xyz]\b))`,
+  // Study tools
+  String.raw`\bquiz(?:zes)?\b|\bflashcards?\b|\b(?:mock|practice|sample) (?:exams?|tests?)\b|\bexam (?:papers?|questions?)\b|\b(?:make|create|generate|write|build|give me)\b[^.?!\n]{0,30}\b(?:exam|test)\b|\bgrad(?:e|ing) (?:this|these|my|the following)\b|\bgrading\b|\brubrics?\b|\bstudy (?:plan|schedule)s?\b|\brevision (?:plan|schedule|timetable|notes)\b`,
+].join("|"), "i");
+/** A quantity with a unit ("a 5 kg block", "20 m/s", "12 V", "4 Ω"): case matters, so "2 a day" is not one. */
+const quantity = /\d\s*(?:m\/s²?|km\/h|kg|N|Pa|Hz|V|mA|A|Ω|kΩ|ohms?|µF|uF|nF|mH)(?![\w\/])/;
 /**
  * The tool guide when the request may need it (or a document it could change exists); otherwise one line. The guide
  * carries the concept diagrams and the science recipes for the topic at hand, found in the request and in `context`
  * (the conversation and its sources, so "notes on this lecture" finds the lecture's circuits); with `pictures` attached,
  * whose subject only the pictures show, it carries every recipe. Recipes left out stay one {"action":"recipes"} away.
+ * `notes` are about this conversation (the files it made, the files it can read): they go after the parts that never
+ * change and before the parts chosen for this message, so the provider's prompt cache keeps as much as it can.
  */
-export function kinetraInstructionsFor(request: string, hasDocuments = false, { context = "", pictures = false }: { context?: string; pictures?: boolean } = {}) {
-  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief;
+export function kinetraInstructionsFor(request: string, hasDocuments = false, { context = "", pictures = false, notes = "" }: { context?: string; pictures?: boolean; notes?: string } = {}) {
+  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || quantity.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief + notes;
   const { recipes, omitted } = recipesFor(request + "\n" + context, { pictures });
   const guide = omitted
-    ? buildInstructions(recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`)
-    : kinetraInstructions;
+    ? buildInstructions(recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`, notes)
+    : notes ? buildInstructions(allRecipes, notes) : kinetraInstructions;
   // The design skill for the kind of file asked for comes with the catalog, so the first file is already well designed.
   const guides = fileGuidesFor(request);
   return guide + (guides ? "\n\n" + guides : "");
 }
 
+/**
+ * Warm workers for Kinetra calls. Starting a worker loads the whole 1.2 MB bundle, which took longer than most
+ * calls themselves (about 40 ms each, so a document with many figures spent seconds just starting workers). Up to
+ * MAX_PARALLEL stay loaded and take one call at a time; more wait for a free one. Each keeps the 512 MB memory limit,
+ * and one that times out, crashes or runs out of memory is thrown away, so the next call gets a fresh one. An idle
+ * worker never keeps the app running and is closed after a few minutes.
+ */
+type PoolWorker = { worker: Worker; busy: boolean; idle?: ReturnType<typeof setTimeout> };
+const pool: PoolWorker[] = [];
+const waiting: { request: any; resolve: (value: any) => void; reject: (error: Error) => void }[] = [];
+const IDLE_MS = 5 * 60_000;
+/** Test seam: the time limit for one call, and the workers now loaded. */
+export const kinetraPool = { callMs: 30_000, workers: () => pool.map((w) => w.worker) };
+let callId = 0;
+function startWorker() {
+  const worker = new Worker(join(typeof __dirname === "string" ? __dirname : process.cwd() + "/desktop-dist", "kinetra-worker.cjs"), { resourceLimits: { maxOldGenerationSizeMb: 512 } });
+  const entry: PoolWorker = { worker, busy: false };
+  // Errors are handled by the call that is running; one while idle only ends the worker, which leaves the pool.
+  worker.on("error", () => {});
+  worker.on("exit", () => drop(entry));
+  worker.unref();
+  pool.push(entry);
+  return entry;
+}
+function drop(entry: PoolWorker) {
+  clearTimeout(entry.idle);
+  const at = pool.indexOf(entry);
+  if (at >= 0) pool.splice(at, 1);
+  void entry.worker.terminate();
+}
+function runOn(entry: PoolWorker, request: any) {
+  const { worker } = entry;
+  entry.busy = true;
+  clearTimeout(entry.idle);
+  worker.ref();
+  return new Promise<any>((resolve, reject) => {
+    const id = ++callId;
+    const end = (failed: boolean) => {
+      clearTimeout(timer);
+      worker.off("message", message);
+      worker.off("error", error);
+      worker.off("exit", exit);
+      if (failed) return drop(entry);
+      entry.busy = false;
+      worker.unref();
+      entry.idle = setTimeout(() => drop(entry), IDLE_MS);
+      entry.idle.unref?.();
+    };
+    const message = (reply: any) => {
+      if (reply?.id !== id) return;
+      end(false);
+      reply.error ? reject(Error(reply.error)) : resolve(reply.result);
+    };
+    const error = (e: Error) => { end(true); reject(e); };
+    const exit = () => { end(true); reject(Error("Kinetra worker stopped without a result")); };
+    // A call that never returns cannot be interrupted inside the worker, so the worker itself is replaced.
+    const timer = setTimeout(() => { end(true); reject(Error("Kinetra calculation timed out")); }, kinetraPool.callMs);
+    worker.on("message", message);
+    worker.on("error", error);
+    worker.on("exit", exit);
+    worker.postMessage({ id, request });
+  });
+}
+function nextCall() {
+  while (waiting.length) {
+    const entry = pool.find((w) => !w.busy) ?? (pool.length < MAX_PARALLEL ? startWorker() : undefined);
+    if (!entry) return;
+    const call = waiting.shift()!;
+    runOn(entry, call.request).then(call.resolve, call.reject).finally(nextCall);
+  }
+}
 export async function kinetraCall(request: any) {
   if (JSON.stringify(request).length > 2_000_000)
     throw Error("Kinetra input too large");
   return new Promise<any>((resolve, reject) => {
-    const worker = new Worker(
-      join(
-        typeof __dirname === "string"
-          ? __dirname
-          : process.cwd() + "/desktop-dist",
-        "kinetra-worker.cjs",
-      ),
-      { workerData: request, resourceLimits: { maxOldGenerationSizeMb: 512 } },
-    );
-    const timer = setTimeout(() => {
-      void worker.terminate();
-      reject(Error("Kinetra calculation timed out"));
-    }, 30000);
-    worker.once("message", (message) => {
-      clearTimeout(timer);
-      void worker.terminate();
-      message.error ? reject(Error(message.error)) : resolve(message.result);
-    });
-    worker.once("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    worker.once("exit", () => {
-      clearTimeout(timer);
-      reject(Error("Kinetra worker stopped without a result"));
-    });
+    waiting.push({ request, resolve, reject });
+    nextCall();
   });
 }
 const skillNote = `[Mowr note: in Mowr, run the functions in this guide with {"kinetra":{"action":"call","module":"diagram/projectile","fn":"renderProjectile","args":[model]}} (module path without core/src and .js). Import paths, npm scripts and CLI commands below are not available here.]\n\n`;

@@ -4,6 +4,7 @@ import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
 import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
+import {liveText} from './live-reply.ts';
 import type {UsageSnapshot} from '../core/account-usage.ts';
 
 // Grok through the person's own SuperGrok or X Premium+ plan, by running xAI's official, open-source Grok Build CLI
@@ -74,6 +75,10 @@ export function parseGrokReply(raw:string):{text?:string;error?:string}{
 }
 /** A few words on what Grok is doing, from one streamed message (null when it says nothing new). */
 export function grokStatus(event:any):string|null{
+  // With partial messages a block says what it is when it opens, long before its whole message arrives.
+  const block=event?.type==='stream_event'&&!event.parent_tool_use_id&&event.event?.type==='content_block_start'?event.event.content_block:null;
+  if(block?.type==='thinking')return 'Thinking it through…';
+  if(block?.type==='text')return 'Writing the answer…';
   if(event?.type==='assistant'){
     const parts:any[]=event.message?.content||[];
     const tool=parts.find(p=>p?.type==='tool_use');
@@ -117,8 +122,9 @@ export function grokUsage(usage?:GrokUsage):UsageSnapshot|undefined{
 }
 
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
+const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
 function friendly(detail:string){
-  if(/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i.test(detail))return 'Sign in to Grok again in Settings → Models.';
+  if(signedOut.test(detail))return 'Sign in to Grok again in Settings → Models.';
   if(outOfUsage(detail))return 'Your Grok plan has no usage left right now. Try again later or pick another model.';
   if(/model/i.test(detail)&&/not (found|available|supported)|unknown/i.test(detail))return 'This Grok model is not available on your plan. Pick another one.';
   return 'Grok could not complete this request. Check Grok in Settings → Models.';
@@ -128,7 +134,13 @@ export class GrokProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
   /** Set when this CLI refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
+  /** Set when this CLI refused --include-partial-messages: replies then arrive in one piece. */
+  private noPartial=false;
   private statusCache:{at:number;value:GrokStatus}|null=null;
+  /** Set after each answer: the plan's usage changed, so the next status the window asks for is read again. */
+  private usageStale=false;
+  /** The last check while it is recent: each step of a tool loop reuses it instead of starting `grok models` and Grok's agent again. */
+  private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
   private root:string;
   private configured:string|undefined;
   /** GROK_HOME for this account: each added Grok account keeps its own sign-in there. Unset for the first one (~/.grok). */
@@ -189,7 +201,8 @@ export class GrokProvider {
     });
   }
   async status(force=false):Promise<GrokStatus>{
-    if(!force&&this.statusCache&&Date.now()-this.statusCache.at<30000)return this.statusCache.value;
+    if(!force&&!this.usageStale&&this.statusCache&&Date.now()-this.statusCache.at<30000)return this.statusCache.value;
+    this.usageStale=false;
     const listed=await this.capture(['models'],30000);
     let value:GrokStatus;
     if(!listed)value={installed:false,connected:false,models:[]};
@@ -220,7 +233,7 @@ export class GrokProvider {
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     const slug=model.slice(GROK_PREFIX.length);
-    let status=await this.status();
+    let status=this.recentStatus()||await this.status();
     if(!status.connected||!status.models.includes(slug))status=await this.status(true);
     if(!status.installed)throw Error('Install Grok first (Settings → Models).');
     if(!status.connected)throw Error(status.error||'Sign in to Grok first (Settings → Models).');
@@ -239,37 +252,54 @@ export class GrokProvider {
     }
     await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering.':prompt);
     try{
-      let child:ChildProcessWithoutNullStreams;
-      try{child=await this.start(['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json','--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace(),...(effort?['--reasoning-effort',effort]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])]);}
-      catch{throw Error('Grok could not start. Install it in Settings → Models.');}
-      this.active.set(id,child);
-      const result=await new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
-        let out='',err='',done=false;
-        const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);f?reject(f):resolve(v!);};
-        // An inactivity limit: any output from Grok restarts it, so a long answer that is still arriving is never cut off.
-        let timer:ReturnType<typeof setTimeout>;
-        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},600000);};
-        touch();
-        // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
-        child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
-        // Each streamed message also says what Grok is doing (thinking, searching, writing) while it works.
-        let pending='',last='';
-        const read=(line:string)=>{if(!line.trim())return;let event:any;try{event=JSON.parse(line);}catch{return;}const status=grokStatus(event);if(status&&status!==last){last=status;emit({id,type:'status',text:status});}};
-        child.stdout.on('data',(p:string)=>{if(!done)touch();out+=p;if(out.length>64_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));return;}
-          pending+=p;let nl;while((nl=pending.indexOf('\n'))>=0){read(pending.slice(0,nl));pending=pending.slice(nl+1);}});
-        child.stderr.on('data',(p:string)=>{if(!done)touch();err=(err+p).slice(-5000);});
-        child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
-        child.on('close',code=>finish({code,out,err}));
-        child.stdin.end();
-      }).finally(()=>this.active.delete(id));
+      const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace(),...(effort?['--reasoning-effort',effort]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])];
+      let result=await this.attempt(id,args(),emit);
+      // A Grok build without partial messages still answers, in one piece.
+      if(!this.noPartial&&unsupportedFlag.test(result.err)&&/include-partial-messages/.test(result.err)){this.noPartial=true;result=await this.attempt(id,args(),emit);}
       const reply=parseGrokReply(result.out);
       if(session&&(reply.error||!reply.text)&&unsupportedFlag.test((reply.error||'')+result.err)){this.noSessions=true;throw new SessionLost('This Grok CLI does not keep sessions.');}
       if(session?.resume&&(reply.error||!reply.text)&&/session/i.test((reply.error||'')+result.err)&&/not found|no such|unknown|does not exist|invalid/i.test((reply.error||'')+result.err))throw new SessionLost('Grok no longer has this session.');
       if((reply.error||!reply.text)&&outOfUsage(reply.error||result.err))throw new UsageLimit(friendly(reply.error||result.err));
+      if((reply.error||!reply.text)&&signedOut.test((reply.error||'')+result.err))this.statusCache=null;
       if(reply.error||!reply.text)throw Error(friendly(reply.error||result.err||String(result.code)));
-      this.statusCache=null; // usage changed
+      this.usageStale=true;
       emit({id,type:'delta',text:reply.text});emit({id,type:'done'});
     }finally{await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
+  }
+  /**
+   * One headless run. Each streamed line says what Grok is doing (thinking, searching, writing), and the reply streams
+   * as `partial` events while it is written (desktop/live-reply.ts). Those lines are not kept: `out` holds the whole
+   * messages and the result, which parseGrokReply reads.
+   */
+  private async attempt(id:string,args:string[],emit:(event:any)=>void){
+    let child:ChildProcessWithoutNullStreams;
+    try{child=await this.start(args);}
+    catch{throw Error('Grok could not start. Install it in Settings → Models.');}
+    this.active.set(id,child);
+    return new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
+      let out='',err='',done=false;
+      const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);f?reject(f):resolve(v!);};
+      // An inactivity limit: any output from Grok restarts it, so a long answer that is still arriving is never cut off.
+      let timer:ReturnType<typeof setTimeout>;
+      const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},600000);};
+      touch();
+      // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
+      child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
+      let pending='',last='',bytes=0;
+      const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
+      const read=(line:string)=>{
+        if(!line.trim())return;
+        let event:any;try{event=JSON.parse(line);}catch{out+=line+'\n';return;}
+        const status=grokStatus(event);if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
+        if(event?.type==='stream_event')live(event);else out+=line+'\n';
+      };
+      child.stdout.on('data',(p:string)=>{if(!done)touch();bytes+=p.length;if(bytes>256_000_000||out.length>64_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));return;}
+        pending+=p;let nl;while((nl=pending.indexOf('\n'))>=0){read(pending.slice(0,nl));pending=pending.slice(nl+1);}});
+      child.stderr.on('data',(p:string)=>{if(!done)touch();err=(err+p).slice(-5000);});
+      child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
+      child.on('close',code=>{read(pending);pending='';finish({code,out,err});});
+      child.stdin.end();
+    }).finally(()=>this.active.delete(id));
   }
   /** Grok keeps headless sessions under ~/.grok/sessions; the ones a finished tool loop made are removed (best effort: its layout is not documented). */
   async endSession(sessionId:string){
