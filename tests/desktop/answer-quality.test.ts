@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { ClaudeProvider } from "../../desktop/claude.ts";
 import { GrokProvider, grokRules, GROK_RULES_MAX } from "../../desktop/grok.ts";
 import { composePrompt, coreRules, systemPrompt } from "../../desktop/prompt.ts";
-import { runKinetraTurn } from "../../desktop/kinetra-turn.ts";
-import { kinetraCompact, kinetraExtrasFor, needsKinetra } from "../../desktop/kinetra-runtime.ts";
+import { brokenToolRequest, runKinetraTurn, toolRequest } from "../../desktop/kinetra-turn.ts";
+import { kinetraCompact, kinetraExtrasFor, kinetraTool, needsKinetra } from "../../desktop/kinetra-runtime.ts";
 import { recipeText } from "../../desktop/kinetra-recipes.ts";
 
 /** A fake CLI child: records what it was given and answers with `lines` once its input ends. */
@@ -140,4 +140,46 @@ test("what a request adds to the compact guide goes in the message: recipes for 
   // Together they are the same knowledge the full guide gave.
   assert.equal(needsKinetra("hi"), false);
   assert.equal(needsKinetra("solve this integral"), true);
+});
+
+test("LaTeX written with single backslashes runs as written instead of failing or losing letters", () => {
+  // "\alpha" and "\sqrt" are not JSON escapes: once a broken request and a round trip, now taken literally.
+  assert.deepEqual(toolRequest(String.raw`{"kinetra":{"action":"pdf","sections":[{"text":"$\alpha = \sqrt{2}$"}]}}`), { action: "pdf", sections: [{ text: String.raw`$\alpha = \sqrt{2}$` }] });
+  // "\frac" and "\theta" are (form feed + "rac", tab + "heta"): the backslash is put back in documents.
+  assert.deepEqual(toolRequest(String.raw`{"kinetra":{"action":"pdf","sections":[{"text":"$\frac{1}{2} \theta \times \rho \right) \nabla$"}]}}`), { action: "pdf", sections: [{ text: String.raw`$\frac{1}{2} \theta \times \rho \right) \nabla$` }] });
+  // Correctly escaped JSON, real line breaks and a csv's real tabs are untouched.
+  assert.deepEqual(toolRequest(String.raw`{"kinetra":{"action":"pdf","sections":[{"text":"$\\frac{1}{2}$\nNext line"}]}}`), { action: "pdf", sections: [{ text: "$\\frac{1}{2}$\nNext line" }] });
+  assert.deepEqual(toolRequest(String.raw`{"kinetra":{"action":"file","name":"c.tsv","content":"colour\ttan"}}`), { action: "file", name: "c.tsv", content: "colour\ttan" });
+  assert.equal(brokenToolRequest(String.raw`{"kinetra":{"action":"pdf","title":"\beta decay"}}`), null);
+});
+
+test("a broken request is told exactly what is wrong and where, so one retry fixes it", async () => {
+  const quote = brokenToolRequest('{"kinetra":{"action":"pdf","title":"The "ideal" gas","sections":[]}}')!;
+  assert.match(quote, /not valid JSON/);
+  assert.match(quote, /"title":"The " ⟪HERE⟫ ideal" gas"/, "the text around the fault");
+  assert.match(quote, /write \\" for a quotation mark/);
+  assert.match(brokenToolRequest('{"kinetra":{"action":"pdf","sections":[{"text":"Line one\nLine two"}]}}')!, /raw line break/);
+  assert.match(brokenToolRequest('Drawing it now.\n{"kinetra":{"action":"draw","fn":"x"}}')!, /Unknown action "draw"\. Use one of: call, pdf/);
+  assert.match(brokenToolRequest('Plotting it.\n{"kinetra":{"module":"mowr","fn":"plot"}}')!, /no "action"/);
+  // A lone request without an action runs, and the tool itself says what is missing.
+  await assert.rejects(kinetraTool({ module: "mowr", fn: "plot" }), /no "action", so nothing ran/);
+  assert.match(brokenToolRequest('{"kinetra":{"action":"call"},"note":"then a PDF"}')!, /"note" beside "kinetra"/);
+  // Of several requests, the one that cannot run is named, not the first.
+  assert.match(brokenToolRequest('{"kinetra":{"action":"help"}}\n{"kinetra":{"action":"pfd"}}')!, /Unknown action "pfd"/);
+});
+
+test("a cut-off request is told where it stopped and to send smaller parts; the same fault twice asks for a smaller request", async () => {
+  const cut = '{"kinetra":{"action":"pdf","title":"Mechanics","sections":[{"heading":"Kinematics","text":"Done."},{"heading":"Newton\'s laws","text":"The first law states that a body';
+  const twice = '{"kinetra":{"action":"pdf","title":"A "B" C"}}';
+  const replies = [cut, twice, twice, "Answer."];
+  const inputs: string[] = [];
+  await runKinetraTurn("m", "", async (input) => { inputs.push(input); return replies.shift()!; }, async () => 1, () => false, { stateful: true });
+  assert.match(inputs[1], /cut off before it closed, at \d+ characters/);
+  const error = JSON.parse(inputs[1].split("\n")[1]).error;
+  assert.match(error, /The last part it reached was "Newton's laws", unfinished/);
+  assert.match(error, /It stopped at: "….*"text":"The first law states that a body"\./, "where it stopped");
+  assert.match(error, /"append":true/);
+  assert.match(inputs[1], /in one pdf action/);
+  assert.doesNotMatch(inputs[2], /same problem/);
+  assert.match(inputs[3], /same problem as your previous attempt/);
 });

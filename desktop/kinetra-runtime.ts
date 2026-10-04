@@ -96,6 +96,8 @@ export async function kinetraTool(
 ) {
   if (!request || typeof request !== "object")
     throw Error("Invalid Kinetra request");
+  if (typeof request.action !== "string")
+    throw Error(`The request has no "action", so nothing ran. Send it again with "action" set to call, pdf, docx, pptx, xlsx, file, image, open, recipes, api, skill or help (and its other fields).`);
   if (request.action === "help") return kinetraInstructions;
   if (request.action === "recipes") return recipeText();
   if (request.action === "skill" && request.name === "figures") return illustrationGuide;
