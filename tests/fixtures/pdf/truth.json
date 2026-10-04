@@ -1,0 +1,100 @@
+{
+ "textbook-circuit.pdf": {
+  "fig": {
+   "parts": [
+    "fig"
+   ],
+   "kind": "figure",
+   "caption": "Figure 2.4",
+   "box": [
+    128.75,
+    385.88,
+    474.75,
+    538.88
+   ]
+  }
+ },
+ "raster-figure.pdf": {
+  "fig": {
+   "parts": [
+    "fig"
+   ],
+   "kind": "image",
+   "caption": "Fig. 3.",
+   "box": [
+    159.38,
+    321.63,
+    429.38,
+    476.63
+   ]
+  }
+ },
+ "two-column.pdf": {
+  "fig1": {
+   "parts": [
+    "fig1"
+   ],
+   "kind": "figure",
+   "caption": "Fig. 1.",
+   "box": [
+    86.25,
+    446.75,
+    271.75,
+    590.75
+   ]
+  },
+  "fig2": {
+   "parts": [
+    "fig2"
+   ],
+   "kind": "figure",
+   "caption": "Fig. 2.",
+   "box": [
+    321.5,
+    599.5,
+    536.5,
+    626.5
+   ]
+  },
+  "table": {
+   "parts": [
+    "table"
+   ],
+   "kind": "table",
+   "caption": "TABLE I",
+   "box": [
+    338,
+    479.5,
+    518,
+    544.5
+   ]
+  },
+  "fig3": {
+   "parts": [
+    "fig3"
+   ],
+   "kind": "figure",
+   "caption": "Fig. 3.",
+   "box": [
+    92,
+    187.88,
+    520,
+    236
+   ]
+  }
+ },
+ "scanned-page.pdf": {
+  "fig": {
+   "parts": [
+    "fig"
+   ],
+   "kind": "region",
+   "box": [
+    140.16,
+    372,
+    458.4,
+    495.36
+   ]
+  }
+ }
+}
