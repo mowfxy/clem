@@ -36,7 +36,35 @@ export const kinetraInstructions = buildInstructions(allRecipes);
 /** Everyday messages get a one-line pointer instead of the full catalog; the model can ask for it. */
 export const kinetraBrief = `Kinetra tools (verified calculations, physics/circuit/logic figures, and real files: PDF, Word, PowerPoint, Excel, CSV, HTML, calendar and other text files, images) are available. If this request needs them, reply with ONLY {"kinetra":{"action":"help"}}; otherwise answer normally.`;
 
-const kinetraIntent = /\b(pdf|handout|worksheet|document|report|summary sheet|study guide|diagram|figure|illustrat|draw|sketch|plot|graph|chart|flow ?chart|timeline|mind ?map|venn|hierarchy|circuit|resistor|capacitor|voltage|current|k-?map|karnaugh|truth table|boolean|logic gate|projectile|trajector|free[- ]?body|force|pulley|atwood|optic|lens|mirror|ray diagram|electrostat|charged rod|electric field|field lines?|charged (?:sphere|wire|ball|plate)|point charges?|dipole|incline|inclined plane|ramp|slope|spring scale|spring balance|springs?\b|lever|torque|fulcrum|seesaw|wheelbarrow|tension|buoyan|vessel|beaker|apparatus|vector field|integral|integrate|derivative|differentiat|matrix|eigen|solve|equation|calculat|compute|simplif|quiz|exam|flashcard|grade|study (?:plan|schedule)|revision|pages?\b|longer|expand|more detail|in depth|full explanation)/i;
+/**
+ * Requests that need the full tool guide. Whole words only, and an everyday word that is also a science term counts only
+ * with the context that makes it one: "the current through R2" but not "the current news", "the force on the block" but
+ * not "air force", "simplify x^2 + 2x" but not "simplify this paragraph". Document requests ("write a report") are
+ * found by documentIntent and file requests by fileIntent; a document already made in the chat brings the guide anyway.
+ */
+const kinetraIntent = new RegExp([
+  // Documents and figures
+  String.raw`\bpdfs?\b|\bhandouts?\b|\bworksheets?\b|\bsummary sheets?\b|\bstudy guides?\b|\b(?<!(?:news|weather|police|credit|traffic|book) )reports?\b`,
+  String.raw`\bdiagrams?\b|\bfigures?\b(?! out| skat)|\billustrations?\b|\bdraw(?:s|ing|n)?\b|\bsketch(?:es|ing)?\b|\bplot(?:s|ting|ted)?\b(?=[^.?!\n]{0,40}(?:[=^+*/(]|\b(?:x|y|data|function|curve|points?|values|against|versus|vs|over time|axis|axes)\b))|\bplot (?:it|this|that|them)\b`,
+  String.raw`\bgraph(?:s|ing)?\b|\bcharts?\b|\bflow ?charts?\b|\btimelines?\b|\bmind ?maps?\b|\bvenn\b|\bhierarch(?:y|ies)\b`,
+  // Circuits and logic
+  String.raw`\bcircuits?\b(?! training| breaker)|\bresistors?\b|\bcapacitors?\b|\binductors?\b|\bvoltages?\b|\bohm'?s law\b|\b(?:electric|alternating|direct|induced|load|branch|mesh|loop|short[- ]circuit|peak|rms) currents?\b|\bcurrents? (?:through|in (?:the|a|each)|flow|source|divider|density)\b`,
+  String.raw`\bk-?maps?\b|\bkarnaugh\b|\btruth tables?\b|\bboolean\b|\blogic gates?\b`,
+  // Mechanics, optics, fields, fluids
+  String.raw`\bprojectiles?\b|\btrajector(?:y|ies)\b|\bfree[- ]?body\b|\bpulleys?\b|\batwood\b|\boptics\b|\bray diagrams?\b|\b(?:concave|convex|plane|spherical|curved) mirrors?\b|\b(?:convex|concave|converging|diverging|thin|biconvex|biconcave) lens(?:es)?\b|\blens (?:equation|formula)\b|\bfocal length\b`,
+  String.raw`\b(?<!(?:air|brute|task|police|labou?r|sales|driving|life|work|special|armed|naval) )forces?\b(?! quit)|\bfriction\b|\btorques?\b|\bfulcrum\b|\bseesaw\b|\bwheelbarrow\b|\blevers?\b|\btension (?:in|of|on)\b|\b(?:rope|string|cable) tension\b`,
+  String.raw`\belectrostatic|\bcharged (?:rod|sphere|wire|ball|plate)s?\b|\belectric fields?\b|\bfield lines?\b|\bpoint charges?\b|\bdipoles?\b|\bvector fields?\b`,
+  String.raw`\bincline\b|\binclined plane\b|\bspring (?:constant|scale|balance|force|stiffness|system|mass)\b|\bmass[- ](?:on[- ]a[- ])?spring\b|\bhooke'?s law\b|\bsprings? in (?:series|parallel)\b|\bbuoyan|\bbeakers?\b|\bapparatus\b|\b(?<!blood )vessels?\b`,
+  // Maths
+  String.raw`\bintegrals?\b|\bintegrat\w*\b(?=[^.?!\n]{0,40}(?:\bd[a-z]\b|\bfrom\b|respect to|by parts|[\^=+*/]|\b(?:sin|cos|tan|exp|ln|log|sqrt|x|y|t)\b))`,
+  String.raw`\bderivatives?\b(?! (?:trading|market|contract))|\bdifferentiat\w*\b(?! between)(?=[^.?!\n]{0,40}(?:[\^=+*/(]|respect to|\b(?:sin|cos|tan|exp|ln|log|sqrt|x|y|t)\b))`,
+  String.raw`\bmatri(?:x|ces)\b|\beigen|\bdeterminants?\b|\bsolv(?:e|es|ing)\b|\bequations?\b|\bcalculat(?:e|es|ing|ion|ions)\b|\bcomput(?:e|es|ing|ation)\b|\bslopes?\b`,
+  String.raw`\bsimplif\w*\b(?=[^.?!\n]{0,40}(?:expression|equation|fraction|function|boolean|logic|circuit|[\^=+*/]|\b[xyz]\b))`,
+  // Study tools
+  String.raw`\bquiz(?:zes)?\b|\bflashcards?\b|\b(?:mock|practice|sample) (?:exams?|tests?)\b|\bexam (?:papers?|questions?)\b|\b(?:make|create|generate|write|build|give me)\b[^.?!\n]{0,30}\b(?:exam|test)\b|\bgrad(?:e|ing) (?:this|these|my|the following)\b|\bgrading\b|\brubrics?\b|\bstudy (?:plan|schedule)s?\b|\brevision (?:plan|schedule|timetable|notes)\b`,
+].join("|"), "i");
+/** A quantity with a unit ("a 5 kg block", "20 m/s", "12 V", "4 Ω"): case matters, so "2 a day" is not one. */
+const quantity = /\d\s*(?:m\/s²?|km\/h|kg|N|Pa|Hz|V|mA|A|Ω|kΩ|ohms?|µF|uF|nF|mH)(?![\w\/])/;
 /**
  * The tool guide when the request may need it (or a document it could change exists); otherwise one line. The guide
  * carries the concept diagrams and the science recipes for the topic at hand, found in the request and in `context`
@@ -46,7 +74,7 @@ const kinetraIntent = /\b(pdf|handout|worksheet|document|report|summary sheet|st
  * change and before the parts chosen for this message, so the provider's prompt cache keeps as much as it can.
  */
 export function kinetraInstructionsFor(request: string, hasDocuments = false, { context = "", pictures = false, notes = "" }: { context?: string; pictures?: boolean; notes?: string } = {}) {
-  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief + notes;
+  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || quantity.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief + notes;
   const { recipes, omitted } = recipesFor(request + "\n" + context, { pictures });
   const guide = omitted
     ? buildInstructions(recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`, notes)
