@@ -57,6 +57,7 @@ import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn,toolRequests,brokenToolRequest,requestLead,SessionLost,UsageLimit} from './kinetra-turn';
 import {inlinePictures} from './kinetra-mcp';
+import {CropAssets,cropTools,memoryIo} from './pdf-assets';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
@@ -366,6 +367,10 @@ void app.whenReady().then(async () => {
   >();
   /** Pages the model asked to look at, drawn by the window (src/desktop/page-images.ts) and returned with pageImages. */
   const pendingLooks = new Map<string, { resolve: (images: { name: string; data: string }[]) => void; reject: (error: Error) => void }>();
+  /** Regions and crops the model asked for, worked out by the window (src/desktop/pdf-tasks.ts) and returned with pdfTaskResult. */
+  const pendingTasks = new Map<string, { resolve: (result: { data: any; images: { name: string; data: string }[]; files: Uint8Array[] }) => void; reject: (error: Error) => void }>();
+  /** Crops cut in temporary chats live only here, for as long as Mowr runs: nothing of those chats is written to disk. */
+  const temporaryCrops = new Map<string, Uint8Array>();
   telegram = new TelegramService(vault, async (owner, envelope, bytes) => {
     const user = await auth.user();
     if (user?.id !== owner) throw Error("Account changed.");
@@ -815,6 +820,16 @@ void app.whenReady().then(async () => {
       pendingLooks.delete(request.id);
       if (request.error || !request.images?.length) pending.reject(Error(request.error || "No pages could be drawn."));
       else pending.resolve(request.images);
+      return { ok: true };
+    }
+    if (request.action === "pdfTaskResult") {
+      const pending = pendingTasks.get(request.id);
+      if (!pending) throw Error("Task expired.");
+      pendingTasks.delete(request.id);
+      let data: any;
+      try { data = request.data === undefined ? undefined : JSON.parse(request.data); } catch { data = undefined; }
+      if (request.error || !data) pending.reject(Error(request.error || "That could not be done."));
+      else pending.resolve({ data, images: request.images || [], files: request.files || [] });
       return { ok: true };
     }
     if (request.action === "status") return status();
@@ -1416,9 +1431,27 @@ void app.whenReady().then(async () => {
         }
       };
       /** Reading a file's current source, so a change keeps everything the person did not ask to change. */
+      // Crops are kept with the chat (desktop/pdf-assets.ts); a temporary chat's only in memory.
+      const crops = new CropAssets(request.temporary || !request.chat ? memoryIo(temporaryCrops) : { read: async (k) => { const b = await disk.readFile(user.id, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => disk.writeFile(user.id, k, b), remove: (k) => disk.deleteFile(user.id, k) }, request.chat || request.id);
+      /** One task for the window, with the same minute "look" has. */
+      const windowTask = (op: string, args: Record<string, unknown>) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
+        const task = randomUUID();
+        const timer = setTimeout(() => { pendingTasks.delete(task); reject(Error("That took too long.")); }, 60_000);
+        pendingTasks.set(task, { resolve: (value) => { clearTimeout(timer); resolve(value); }, reject: (error) => { clearTimeout(timer); reject(error); } });
+        send({ id: request.id, type: "pdfTask", task, op, args });
+      });
+      const cropTool = cropTools(windowTask, crops);
       const tools = async (tool: any) => {
         const read = fileTool(library, tool);
         if (read) return read;
+        if (tool?.action === "regions" || tool?.action === "crop") {
+          try {
+            const outcome = (await cropTool(tool))!;
+            return outcome.pictures.length ? { ...outcome.result, attachPictures: await savePictures(outcome.pictures) } : outcome.result;
+          } catch (error) {
+            return { error: (error as Error).message };
+          }
+        }
         if (tool?.action === "look") {
           // The model looks at pages it was not shown: the window draws them, and they go with the next message to the model.
           const pages = (Array.isArray(tool.pages) ? tool.pages : [tool.page]).map(Number).filter((n: number) => Number.isInteger(n) && n > 0).slice(0, 8);
@@ -1443,7 +1476,7 @@ void app.whenReady().then(async () => {
         return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0, { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0 }) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0, { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0 }) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library, pictures.length > 0);
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});

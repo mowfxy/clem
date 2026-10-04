@@ -11,7 +11,7 @@ import { namedPages } from "../../core/file-tools";
 export type Picture = { name: string; data: string };
 const MAX_SIDE = 1600;
 
-async function pdfjs() {
+export async function pdfjs() {
   const lib = await import("pdfjs-dist");
   lib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).href;
   return lib;
@@ -82,7 +82,8 @@ async function renderPage(file: StoredFile, pdf: any, n: number) {
     const context = canvas.getContext("2d")!;
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: context, viewport, canvas } as any).promise;
+    // Print intent: the display intent waits for animation frames, which never come while the window is hidden.
+    await page.render({ canvasContext: context, viewport, canvas, intent: "print" } as any).promise;
     const data = await base64(await jpeg(canvas));
     remember(key, data);
     return data;

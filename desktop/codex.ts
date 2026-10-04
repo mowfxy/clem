@@ -29,6 +29,8 @@ export function toolStatus(request: any) {
   if (request?.action === "file") return `Writing ${String(request.name || "the file").slice(0, 60)}…`;
   if (request?.action === "open") return "Reading the document…";
   if (request?.action === "look") return "Looking at the pages…";
+  if (request?.action === "regions") return "Finding the figures…";
+  if (request?.action === "crop") return "Cropping the figure…";
   if (request?.action === "read" && typeof request.file === "string") return `Reading ${request.file.split(/[\\/]/).pop()!.slice(0, 60)}${Number(request.page) > 0 ? `, page ${Math.floor(Number(request.page))}` : ""}…`;
   if (request?.action === "search") return "Searching your files…";
   if (request?.action === "files") return "Looking through your files…";

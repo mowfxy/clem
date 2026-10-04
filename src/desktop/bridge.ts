@@ -28,6 +28,10 @@ export type ChatOptions = {
   onStatus?: (text: string) => void;
   /** Pictures of pages the model asks to look at ({"action":"look"}), drawn here where the files and pdf.js are. */
   look?: (file: string, pages: number[]) => Promise<{ name: string; data: string }[]>;
+  /** The model's "regions" and "crop" on the conversation's PDFs and pictures (src/desktop/pdf-tasks.ts). */
+  pdfTask?: (op: string, args: any) => Promise<{ data?: unknown; images?: { name: string; data: string }[]; files?: Uint8Array[] }>;
+  /** The conversation, so crops the model cuts stay available to later answers in it. */
+  chat?: string;
 };
 /** Within the request's limits (desktop/contracts.ts): at most 400 files (as many as a chat reads, MAX_CHAT_SOURCES) and 40 MB of text, the first files first. */
 function fitLibrary(files: { name: string; text: string }[]) {
@@ -52,7 +56,7 @@ export async function desktopChat(
   selection?: ChatOptions,
   onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
-  const { onStatus, onCondensed, look, condense, ...options } = selection || {};
+  const { onStatus, onCondensed, look, pdfTask, condense, ...options } = selection || {};
   messages=condense?newestWithin(messages,2000,MAX_CHAT_CHARACTERS):boundedConversation(messages,contextBudget(options.model).conversation);
   const id = crypto.randomUUID();
   let result = "";
@@ -76,6 +80,11 @@ export async function desktopChat(
         if (!look) reply({ error: "Pages cannot be looked at in this conversation." });
         else look(String(event.file || ""), (event.pages || []).map(Number)).then((images) => reply({ images: images.slice(0, 8) }), (error) => reply({ error: (error as Error).message }));
       }
+      if (event.type === "pdfTask" && event.task) {
+        const reply = (result: { data?: unknown; images?: { name: string; data: string }[]; files?: Uint8Array[]; error?: string }) => void desktop!.invoke({ action: "pdfTaskResult", id: event.task!, ...(result.data !== undefined ? { data: JSON.stringify(result.data) } : {}), ...(result.images ? { images: result.images.slice(0, 4) } : {}), ...(result.files ? { files: result.files.slice(0, 3) as Uint8Array<ArrayBuffer>[] } : {}), ...(result.error ? { error: result.error.slice(0, 500) } : {}) }).catch(() => {});
+        if (!pdfTask) reply({ error: "PDFs and pictures cannot be worked on in this conversation." });
+        else pdfTask(String(event.op || ""), event.args || {}).then(reply, (error: unknown) => reply({ error: (error as Error).message || "That could not be done." }));
+      }
       if (event.type === "delta") {
         result += event.text || "";
         onText(result);
@@ -95,7 +104,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.chat && /^[a-zA-Z0-9_-]{1,80}$/.test(options.chat) ? { chat: options.chat } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);
