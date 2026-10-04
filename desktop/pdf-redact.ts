@@ -3,9 +3,10 @@ import { PDFDocument, PDFPage, PDFName, PDFDict, PDFArray, PDFNumber, PDFRawStre
 /**
  * Removes what lies under a box from a page's content, not just covering it: a page's content stream is read operator
  * by operator with its transforms, fonts and text positions, and every glyph, picture or drawing under the box is taken
- * out (glyphs one by one, so the rest of the line keeps its place). The same reading keeps only what is inside a box,
+ * out (glyphs one by one, so the rest of the line keeps its place; a drawing of straight lines crossing the box is cut at
+ * its edge). The same reading keeps only what is inside a box,
  * so a vector crop does not carry the rest of its page hidden in it. What cannot be removed exactly (a picture or a
- * shading only partly under the box, a complex drawing crossing it, text in a font whose codes cannot be read) throws
+ * shading only partly under the box, a curved, dashed or turned drawing crossing it, text in a font whose codes cannot be read) throws
  * Unclean, and the caller turns that page into a picture instead (desktop/pdf-edit-tools.ts).
  */
 export type Box = [number, number, number, number];
@@ -210,19 +211,134 @@ function write(v: Value): string {
   return "<<" + [...v.dict].map(([k, val]) => write({ name: k }) + " " + write(val)).join(" ") + ">>";
 }
 
+// ---- Cutting a drawing at a box's edge ----
+
+type Pt = [number, number];
+/** One subpath in path space: its corners, whether it is closed, and for an axis-aligned rectangle its turn (±1). */
+type Sub = { pts: Pt[]; closed: boolean; rect?: number };
+const EPS = 1e-6;
+const inv = (m: Matrix): Matrix | null => {
+  const det = m[0] * m[3] - m[1] * m[2];
+  if (Math.abs(det) < 1e-12) return null;
+  return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det, (m[2] * m[5] - m[3] * m[4]) / det, (m[1] * m[4] - m[0] * m[5]) / det];
+};
+const strictlyIn = ([x, y]: Pt, b: Box) => x > b[0] + EPS && x < b[2] - EPS && y > b[1] + EPS && y < b[3] - EPS;
+const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+
+/** The part of a→b inside `box`, as [t0, t1], or null when the segment only runs along its edge or misses it. */
+function inside(a: Pt, b: Pt, box: Box): [number, number] | null {
+  let t0 = 0, t1 = 1;
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  for (const [p, q] of [[-dx, a[0] - box[0]], [dx, box[2] - a[0]], [-dy, a[1] - box[1]], [dy, box[3] - a[1]]]) {
+    if (Math.abs(p) < 1e-12) { if (q < 0) return null; continue; }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+  }
+  return t1 - t0 > EPS && strictlyIn(lerp(a, b, (t0 + t1) / 2), box) ? [t0, t1] : null;
+}
+
+/** Stroked subpaths with what lies inside `box` cut away: the pieces outside, as open polylines that keep their joins. */
+function cutStroke(subs: Sub[], box: Box): Sub[] {
+  const out: Sub[] = [];
+  for (const sub of subs) {
+    const n = sub.pts.length, segs: [Pt, Pt][] = [];
+    for (let i = 0; i + 1 < n; i++) segs.push([sub.pts[i], sub.pts[i + 1]]);
+    if (sub.closed && n > 1) segs.push([sub.pts[n - 1], sub.pts[0]]);
+    const cuts = segs.map(([a, b]) => inside(a, b, box));
+    const first = cuts.findIndex(Boolean);
+    if (first < 0) { out.push(sub); continue; }
+    // A closed one is walked from where it first leaves the box, so the corner at its start keeps its join.
+    const order = sub.closed ? [...segs.keys()].map((k) => (k + first) % segs.length) : [...segs.keys()];
+    let line: Pt[] = [];
+    const flush = () => { if (line.length > 1) out.push({ pts: line, closed: false }); line = []; };
+    const walk = (k: number, part: "all" | "before" | "after") => {
+      const [a, b] = segs[k], cut = cuts[k];
+      if (!cut) { if (!line.length) line.push(a); line.push(b); return; }
+      if (part !== "after" && cut[0] > EPS) { if (!line.length) line.push(a); line.push(lerp(a, b, cut[0])); }
+      if (part === "before") return;
+      flush();
+      if (cut[1] < 1 - EPS) line = [lerp(a, b, cut[1]), b];
+    };
+    order.forEach((k, i) => walk(k, sub.closed && i === 0 ? "after" : "all"));
+    if (sub.closed) walk(first, "before");
+    flush();
+  }
+  return out;
+}
+
+/**
+ * Filled subpaths with `box` taken out: each rectangle becomes up to four that do not overlap, turning the same way (so
+ * either fill rule gives what it gave outside the box). Any other shape must lie clear of the box, or it cannot be cut.
+ */
+function cutFill(subs: Sub[], box: Box): Sub[] {
+  const out: Sub[] = [];
+  for (const sub of subs) {
+    const xs = sub.pts.map((p) => p[0]), ys = sub.pts.map((p) => p[1]);
+    const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    const c: Box = [Math.max(x0, box[0]), Math.max(y0, box[1]), Math.min(x1, box[2]), Math.min(y1, box[3])];
+    if (c[2] - c[0] <= EPS || c[3] - c[1] <= EPS) { out.push(sub); continue; }
+    if (!sub.rect) throw new Unclean("a filled shape crossing the box");
+    const pieces: Box[] = [[x0, y0, x1, c[1]], [x0, c[3], x1, y1], [x0, c[1], c[0], c[3]], [c[2], c[1], x1, c[3]]];
+    for (const [a, b, e, f] of pieces) if (e - a > EPS && f - b > EPS) out.push({ pts: sub.rect > 0 ? [[a, b], [e, b], [e, f], [a, f]] : [[a, f], [e, f], [e, b], [a, b]], closed: true, rect: sub.rect });
+  }
+  return out;
+}
+
+/** An axis-aligned rectangle's turn (+1 counter-clockwise, -1 clockwise), or undefined for any other shape. */
+function rectTurn(pts: Pt[]): number | undefined {
+  const p = pts.length === 5 && Math.abs(pts[4][0] - pts[0][0]) < EPS && Math.abs(pts[4][1] - pts[0][1]) < EPS ? pts.slice(0, 4) : pts;
+  if (p.length !== 4) return undefined;
+  const sides = p.map((a, i) => { const b = p[(i + 1) % 4]; return Math.abs(a[0] - b[0]) < EPS ? "v" : Math.abs(a[1] - b[1]) < EPS ? "h" : "x"; });
+  if (sides.includes("x") || sides[0] === sides[1] || sides[1] === sides[2] || sides[2] === sides[3]) return undefined;
+  const turn = p.reduce((s, a, i) => { const b = p[(i + 1) % 4]; return s + a[0] * b[1] - b[0] * a[1]; }, 0);
+  return Math.abs(turn) < EPS ? undefined : Math.sign(turn);
+}
+
+const writeSubs = (subs: Sub[]) => subs.map((s) => s.pts.map((p, i) => `${fmt(p[0])} ${fmt(p[1])} ${i ? "l" : "m"}`).join(" ") + (s.closed ? " h" : "")).join(" ");
+
+/**
+ * A path of straight segments painted by `paint`, under `ctm`, with every part inside `boxes` (page space) cut away, as
+ * content to draw in its place; "" when nothing is left. Throws Unclean when that cannot be done exactly: curves, a dash
+ * pattern (cut pieces would restart it), a transform that turns the boxes off the path's axes, filled shapes other
+ * than rectangles crossing a box.
+ */
+function cutPath(subs: Sub[], curved: boolean, paint: string, ctm: Matrix, boxes: Box[], dashed: boolean) {
+  if (curved) throw new Unclean("a curved drawing crossing the box");
+  const back = inv(ctm);
+  if (!back || !((Math.abs(ctm[1]) < EPS && Math.abs(ctm[2]) < EPS) || (Math.abs(ctm[0]) < EPS && Math.abs(ctm[3]) < EPS))) throw new Unclean("a turned drawing crossing the box");
+  const local = boxes.map((b) => map(back, b[0], b[1], b[2], b[3]));
+  const stroke = !["f", "F", "f*"].includes(paint), fill = paint !== "S" && paint !== "s";
+  const evenOdd = paint.endsWith("*");
+  if (stroke && dashed) throw new Unclean("a dashed line crossing the box");
+  // s, b and b* close the last subpath first; a fill closes them all.
+  if ("sb".includes(paint[0]) && subs.length) subs[subs.length - 1].closed = true;
+  let parts = "";
+  if (fill) {
+    const filled = local.reduce<Sub[]>((all, b) => cutFill(all, b), subs.map((s) => ({ ...s, closed: true, rect: s.rect ?? rectTurn(s.pts) })));
+    if (filled.length) parts += writeSubs(filled) + (evenOdd ? " f*" : " f");
+  }
+  if (stroke) {
+    const stroked = local.reduce<Sub[]>((all, b) => cutStroke(all, b), subs);
+    if (stroked.length) parts += (parts ? "\n" : "") + writeSubs(stroked) + " S";
+  }
+  return parts;
+}
+
 // ---- The rewrite ----
 
 /** What to do with each thing a page draws, by its box in page space. */
 export type Policy = {
   /** Keep this glyph? */
   glyph(box: Box): boolean;
-  /** A path (with how many segments it has), a picture or a shading: keep, drop, or give up on clean removal. */
-  mark(box: Box, kind: "path" | "image" | "shading", segments: number): "keep" | "drop" | "fail";
+  /** A path, a picture or a shading: keep, drop, cut a path at `cut`'s edges, or give up on clean removal. */
+  mark(box: Box, kind: "path" | "image" | "shading"): "keep" | "drop" | "cut" | "fail";
   /** A form XObject: keep it whole, drop it, or rewrite a copy of it with the same policy. */
   form(box: Box): "keep" | "drop" | "recurse";
+  /** The boxes (page space) a path marked "cut" loses what is inside. */
+  cut?: Box[];
 };
 
-type State = { ctm: Matrix; font?: FontInfo; size: number; tc: number; tw: number; th: number; tl: number; rise: number; clip: Box };
+type State = { ctm: Matrix; font?: FontInfo; size: number; tc: number; tw: number; th: number; tl: number; rise: number; clip: Box; dashed?: boolean };
 const latin1 = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return s; };
 const fromLatin1 = (s: string) => { const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 255; return out; };
 
@@ -258,7 +374,8 @@ export function rewriteContent(doc: PDFDocument, bytes: Uint8Array, resources: P
   // Positions are unknown after text in a font that could not be read, until the next line positioning.
   let lost = false;
   const replace = new Map<number, string>();
-  let path: { from: number; segments: number; box: Box | null } | null = null;
+  // The path being built: where it starts, its extent in page space, and its subpaths in path space (for cutting).
+  let path: { from: number; box: Box | null; subs: Sub[]; curved: boolean; clip?: boolean } | null = null;
   let changed = false;
   const nums = (args: Value[]) => args.map((a) => (typeof a === "number" ? a : 0));
   // Marked content around a removed glyph loses its ActualText, Alt and E: they would still say what was there.
@@ -343,39 +460,51 @@ export function rewriteContent(doc: PDFDocument, bytes: Uint8Array, resources: P
       }
       case "m": case "l": case "c": case "v": case "y": case "re": {
         const v = nums(args);
-        if (!path) path = { from: k, segments: 0, box: null };
+        if (!path) path = { from: k, box: null, subs: [], curved: false };
         const pts: [number, number][] = op === "re" ? [[v[0], v[1]], [v[0] + v[2], v[1] + v[3]]] : Array.from({ length: v.length / 2 }, (_, j) => [v[2 * j], v[2 * j + 1]] as [number, number]);
         for (const [x, y] of pts) {
           const b = map(s.ctm, x, y, x, y);
           path.box = path.box ? [Math.min(path.box[0], b[0]), Math.min(path.box[1], b[1]), Math.max(path.box[2], b[2]), Math.max(path.box[3], b[3])] : b;
         }
-        path.segments++;
+        const last = path.subs[path.subs.length - 1];
+        if (op === "re") path.subs.push({ pts: [[v[0], v[1]], [v[0] + v[2], v[1]], [v[0] + v[2], v[1] + v[3]], [v[0], v[1] + v[3]]], closed: true, rect: Math.sign(v[2] * v[3]) || undefined });
+        else if (op === "m" || !last) path.subs.push({ pts: [pts[0]], closed: false });
+        // A segment after h starts a new subpath where the closed one began.
+        else if (last.closed) path.subs.push({ pts: [last.pts[0], pts[pts.length - 1]], closed: false });
+        else last.pts.push(pts[pts.length - 1]);
+        if (op !== "m" && op !== "l" && op !== "re") path.curved = true;
         break;
       }
-      case "h": break;
-      case "W": case "W*": if (path) (path as any).clip = true; break;
+      case "h": if (path?.subs.length) path.subs[path.subs.length - 1].closed = true; break;
+      case "d": s.dashed = Array.isArray(args[0]) && args[0].some((n) => typeof n === "number" && n > 0); break;
+      case "W": case "W*": if (path) path.clip = true; break;
       case "S": case "s": case "f": case "F": case "f*": case "B": case "B*": case "b": case "b*": case "n": {
         if (path?.box) {
-          const clip = (path as any).clip;
+          const clip = path.clip;
           if (clip) s.clip = intersectBox(s.clip, path.box);
           if (op !== "n" && !clip) {
             // Lines are widened by half their width at most; a box test with the bare path is close enough.
-            const decision = policy.mark(path.box, "path", path.segments);
+            const decision = policy.mark(path.box, "path");
             if (decision === "fail") throw new Unclean("a drawing crossing the box");
             if (decision === "drop") { for (let j = path.from; j <= k; j++) replace.set(j, ""); changed = true; }
+            if (decision === "cut") {
+              const text = cutPath(path.subs, path.curved, op, s.ctm, policy.cut ?? [], !!s.dashed);
+              for (let j = path.from; j <= k; j++) replace.set(j, j === path.from ? text : "");
+              changed = true;
+            }
           }
         }
         path = null;
         break;
       }
       case "sh": {
-        const decision = policy.mark(s.clip, "shading", 1);
+        const decision = policy.mark(s.clip, "shading");
         if (decision === "fail") throw new Unclean("a shading crossing the box");
         if (decision === "drop") { replace.set(k, ""); changed = true; }
         break;
       }
       case "BI": {
-        const decision = policy.mark(map(s.ctm, 0, 0, 1, 1), "image", 1);
+        const decision = policy.mark(map(s.ctm, 0, 0, 1, 1), "image");
         if (decision === "fail") throw new Unclean("a picture partly under the box");
         if (decision === "drop") { replace.set(k, ""); changed = true; }
         break;
@@ -386,7 +515,7 @@ export function rewriteContent(doc: PDFDocument, bytes: Uint8Array, resources: P
         if (!(x instanceof PDFStream)) break;
         const type = x.dict.lookup(PDFName.of("Subtype"));
         if (type === PDFName.of("Image")) {
-          const decision = policy.mark(map(s.ctm, 0, 0, 1, 1), "image", 1);
+          const decision = policy.mark(map(s.ctm, 0, 0, 1, 1), "image");
           if (decision === "fail") throw new Unclean("a picture partly under the box");
           if (decision === "drop") { replace.set(k, ""); changed = true; }
         } else if (type === PDFName.of("Form")) {
@@ -515,18 +644,20 @@ const covered = (glyph: Box, regions: Box[]) => regions.some((r) => {
 
 /**
  * Takes everything under `regions` off the page: glyphs one by one, pictures and drawings that lie inside, annotations
- * over it, form fields there with their values. A simple shape crossing a box edge (a rule, a cell border) stays, under
- * the box drawn over it; anything else only partly under a box throws Unclean.
+ * over it, form fields there with their values. A drawing of straight lines crossing a box edge (a rule, a cell border)
+ * is cut at the edge; anything else only partly under a box throws Unclean.
  */
 export function redactPage(doc: PDFDocument, page: PDFPage, regions: Box[]) {
   const policy: Policy = {
     glyph: (box) => !covered(box, regions),
-    mark: (box, kind, segments) => {
-      const hits = regions.filter((r) => overlap(box, r) > 0 || (area(box) === 0 && within(box, r)));
+    mark: (box, kind) => {
+      // Open interiors: a rule (a box with no width) through a region counts, one along its edge does not.
+      const hits = regions.filter((r) => box[0] < r[2] && box[2] > r[0] && box[1] < r[3] && box[3] > r[1]);
       if (!hits.length) return "keep";
       if (hits.some((r) => within(box, r))) return "drop";
-      return kind === "path" && segments <= 24 ? "keep" : "fail";
+      return kind === "path" ? "cut" : "fail";
     },
+    cut: regions,
     form: (box) => (!regions.some((r) => overlap(box, r) > 0) ? "keep" : regions.some((r) => within(box, r)) ? "drop" : "recurse"),
   };
   const resources = page.node.Resources();
