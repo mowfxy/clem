@@ -73,7 +73,7 @@ export const claudeModels:ClaudeModel[] = [
   {id:'claude:haiku',name:'Claude Haiku',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
 ];
 /** A failure that looks like a lapsed sign-in: the next request checks the sign-in again instead of trusting the last check. */
-const signedOut=/not logged in|log ?in|unauthori[sz]ed|401|authenticat|oauth token|invalid api key/i;
+const signedOut=/not logged in|log ?in|unauthori[sz]ed|\b401\b|authenticat|oauth token|invalid api key/i;
 /** Model names Mowr passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
 const MODEL_NAME=/^[A-Za-z0-9._-]{1,80}(?:\[[a-z0-9]{1,8}\])?$/;
 

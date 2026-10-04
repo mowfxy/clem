@@ -163,4 +163,9 @@ test('the steps of a tool loop reuse the sign-in check; a sign-in failure makes 
   reply={type:'result',subtype:'success',result:'ok',is_error:false};
   await provider.run('one','step','claude:sonnet',undefined,()=>{});
   assert.equal(checks,2);
+  reply={type:'result',subtype:'error_during_execution',result:'Request failed with status 401',is_error:true};
+  await assert.rejects(()=>provider.run('one','step','claude:sonnet',undefined,()=>{}));
+  reply={type:'result',subtype:'success',result:'ok',is_error:false};
+  await provider.run('one','step','claude:sonnet',undefined,()=>{});
+  assert.equal(checks,3);
 });
