@@ -183,3 +183,34 @@ test("a cut-off request is told where it stopped and to send smaller parts; the 
   assert.doesNotMatch(inputs[2], /same problem/);
   assert.match(inputs[3], /same problem as your previous attempt/);
 });
+
+test("when the calls run out, the final answer is told which files exist, what failed and what the plan still lacks", async () => {
+  const gap = '"Mechanics.pdf" is not finished: its plan still has 2 unwritten sections (Energy; Momentum). Write them now with {"action":"pdf","revise":"d","append":true,"sections":[…]}, in full depth. Answer the person only when every planned part is written.';
+  let finalInput = "";
+  let n = 0;
+  await runKinetraTurn("m", "", async (input) => {
+    if (/No tool calls are left/.test(input)) { finalInput = input; return "Answer."; }
+    return n++ % 2 ? '{"kinetra":{"action":"call","fn":"broken"}}' : '{"kinetra":{"action":"pdf","title":"Mechanics"}}';
+  }, async (r) => {
+    if (r.fn === "broken") throw Error("bad args");
+    return { created: true, file: { id: "d", name: "Mechanics.pdf", size: 1 }, pages: 12, sections: 6 };
+  }, () => false, { stateful: true, unfinished: () => gap });
+  assert.match(finalInput, /all \d+ of this answer's are used/);
+  assert.match(finalInput, /Files made or updated in this answer \(the person receives them\): "Mechanics\.pdf" \(12 pages, 6 sections\)\./, "one file, listed once");
+  assert.match(finalInput, /\d+ tool requests failed/);
+  assert.match(finalInput, /Not finished: "Mechanics\.pdf" is not finished: its plan still has 2 unwritten sections \(Energy; Momentum\)\. Say what the document covers so far/);
+  assert.doesNotMatch(finalInput.split("No tool calls are left")[1], /Write them now/, "no request asked for in the last call");
+});
+
+test("when the context fills up, the final answer still gets the results, shortened, and is told no file exists if none does", async () => {
+  const inputs: string[] = [];
+  let n = 0;
+  // Without a thread: results too small to drop one by one pile up until the request no longer fits.
+  await runKinetraTurn("m", "", async (input) => { inputs.push(input); return !/No more tools can run/.test(input) && n++ < 12 ? `{"kinetra":{"action":"call","fn":"step${n}"}}` : "Answer."; },
+    async (r) => ({ value: r.fn === "step3" ? 42 : 0, padding: "p".repeat(1500) }), () => false, { limit: 9_000 });
+  const last = inputs.find((input) => /No more tools can run/.test(input))!;
+  assert.ok(last, "the context, not the call count, is named as the reason");
+  assert.ok(last.length <= 9_000 + 12_000);
+  assert.match(last, /No file was made in this answer: do not say one was\./);
+  assert.match(last, /- call step3 → \{"value":42/, "the dropped results come back shortened");
+});
