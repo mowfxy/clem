@@ -36,21 +36,10 @@ function objectEnd(text: string, start: number) {
   }
   return -1;
 }
-/** How much prose may come before a tool request. Agents that work in steps (Grok, Claude) can lead with several
- *  notes ("I'll read the pages. The diagrams are in. Next I'll load the solver."), so this is generous; the request
- *  must still end the reply and name a known action. */
-const LEAD_IN = 6000;
-/**
- * The tool requests in a reply. Models do not always send one bare envelope: they lead with prose
- * ("Let me calculate that."), send several envelopes in one reply (a PDF per lecture), or fence them. All of
- * these run. Envelopes must end the reply and name a known action, so an answer that mentions the format
- * in passing is never dispatched.
- */
-export function toolRequests(text: string): Record<string, unknown>[] | null {
-  const exact = toolRequest(text);
-  if (exact) return [exact];
-  const first = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
-  if (first < 0 || first > LEAD_IN) return null;
+/** Envelope starts anywhere in a reply (a separate expression from START, whose lastIndex the parser moves). */
+const ANY_START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
+/** The envelopes from `first` to the end of the reply, or null when anything else (prose, an unknown action) is there. */
+function envelopesFrom(text: string, first: number): Record<string, unknown>[] | null {
   const requests: Record<string, unknown>[] = [];
   let at = first;
   while (at < text.length) {
@@ -71,14 +60,47 @@ export function toolRequests(text: string): Record<string, unknown>[] | null {
   }
   return requests.length ? requests : null;
 }
-/** A reply that was meant as a tool envelope but is not valid JSON (a missing bracket in a long request).
- *  It is sent back for correction instead of being shown to the person as the answer. */
+/**
+ * The tool requests in a reply. Models do not always send one bare envelope: they lead with prose
+ * ("Let me calculate that."), sometimes pages of it when an agent narrates its own steps, send several
+ * envelopes in one reply (a PDF per lecture), or fence them. All of these run, however long the lead-in.
+ * Envelopes must end the reply and name a known action, so an answer that mentions the format in passing
+ * is never dispatched.
+ */
+export function toolRequests(text: string): Record<string, unknown>[] | null {
+  const exact = toolRequest(text);
+  if (exact) return [exact];
+  // The lead-in may itself quote the format; the requests are the run of envelopes that ends the reply.
+  for (const match of text.matchAll(ANY_START)) {
+    const requests = envelopesFrom(text, match.index!);
+    if (requests) return requests;
+  }
+  return null;
+}
+/** Where the reply's last envelope starts, or -1. */
+function lastStart(text: string) {
+  let at = -1;
+  for (const match of text.matchAll(ANY_START)) at = match.index!;
+  return at;
+}
+/**
+ * A reply that was meant as a tool request but cannot run (a missing bracket in a long request, an unknown
+ * action, prose after it). It is sent back for correction instead of being shown to the person as the answer.
+ * After a short lead-in any envelope counts. After a long one, only a request at the very end does: one that
+ * never closes (cut off), or closes with nothing after it; an envelope quoted mid-answer, with prose after
+ * it, stays prose.
+ */
 export function brokenToolRequest(text: string): string | null {
   if (toolRequests(text)) return null;
-  const first = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
-  // Only a reply that is (after its lead-in) a tool request; an envelope quoted mid-answer is prose.
-  if (first < 0 || first > LEAD_IN) return null;
-  const rest = text.slice(first).trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```\s*$/, "");
+  let from = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
+  if (from < 0) return null;
+  if (from > 400) {
+    from = lastStart(text);
+    const open = text.indexOf("{", from);
+    const end = objectEnd(text, open);
+    if (end >= 0 && text.slice(end).replace(/^\s*```/, "").trim()) return null;
+  }
+  const rest = text.slice(from).trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```\s*$/, "");
   try {
     JSON.parse(rest);
     return 'The reply must be {"kinetra":{"action":…}} objects with a known action and nothing after them.';
