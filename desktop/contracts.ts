@@ -68,7 +68,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderEditApply"), scope: scopeSchema, path: z.string().min(1).max(400), find: z.string().max(200000).optional(), replace: z.string().max(200000).optional(), content: z.string().max(256000).optional(), summary: z.string().max(400).optional() }),
   z.object({ action: z.literal("folderChanges"), scope: scopeSchema.optional() }),
   z.object({ action: z.literal("folderChangeUndo"), id: z.string().uuid() }),
-  z.object({ action: z.literal("pdfRender"), spec: z.string().min(2).max(1_500_000) }),
+  z.object({ action: z.literal("pdfRender"), spec: z.string().min(2).max(16_000_000) }),
   z.object({ action: z.literal("shareSave"), name: z.string().min(1).max(160), data: z.instanceof(Uint8Array).refine((d) => d.length <= 105_000_000, "Share files are limited to 100 MB.") }),
   z.object({ action: z.literal("shareReveal"), path: z.string().min(3).max(600) }),
   z.object({ action: z.literal("foldersAll") }),

@@ -55,7 +55,7 @@ import {GrokProvider,grokModels,grokUsage,GROK_PREFIX} from './grok';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
-import {runKinetraTurn,toolRequests,brokenToolRequest,shownLength,SessionLost,UsageLimit} from './kinetra-turn';
+import {runKinetraTurn,toolRequests,brokenToolRequest,requestLead,SessionLost,UsageLimit} from './kinetra-turn';
 import {kinetraTool} from './kinetra-runtime';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
@@ -332,7 +332,7 @@ void app.whenReady().then(async () => {
       }
       // Notes written before a tool request show while the tool runs, each its own paragraph, as ChatGPT's do.
       if (toolRequests(text) || brokenToolRequest(text)) {
-        const lead = text.slice(0, shownLength(text)).trim();
+        const lead = requestLead(text);
         if (lead) { emit({ id, type: "delta", text: (shown ? "\n\n" : "") + lead }); shown = true; }
       }
       return text;

@@ -248,14 +248,14 @@ export class GrokProvider {
         const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);f?reject(f):resolve(v!);};
         // An inactivity limit: any output from Grok restarts it, so a long answer that is still arriving is never cut off.
         let timer:ReturnType<typeof setTimeout>;
-        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},330000);};
+        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},600000);};
         touch();
         // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
         child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
         // Each streamed message also says what Grok is doing (thinking, searching, writing) while it works.
         let pending='',last='';
         const read=(line:string)=>{if(!line.trim())return;let event:any;try{event=JSON.parse(line);}catch{return;}const status=grokStatus(event);if(status&&status!==last){last=status;emit({id,type:'status',text:status});}};
-        child.stdout.on('data',(p:string)=>{if(!done)touch();out+=p;if(out.length>8_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));return;}
+        child.stdout.on('data',(p:string)=>{if(!done)touch();out+=p;if(out.length>64_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));return;}
           pending+=p;let nl;while((nl=pending.indexOf('\n'))>=0){read(pending.slice(0,nl));pending=pending.slice(nl+1);}});
         child.stderr.on('data',(p:string)=>{if(!done)touch();err=(err+p).slice(-5000);});
         child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
