@@ -1443,7 +1443,7 @@ void app.whenReady().then(async () => {
         return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0, { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0 }) + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
       const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
