@@ -6,6 +6,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/contrib/mhchem";
 import { mathMacros, normalizeMath } from "../core/math-markdown.ts";
+import { drawnArrows, uprightChemistry } from "./math-draw.ts";
 
 /** Block types written as `> [!DEFINITION] Optional title`, typeset like LaTeX theorem environments. */
 export const environments: Record<string, { label: string; style: "plain" | "definition" | "remark" | "proof" | "box" }> = {
@@ -44,6 +45,22 @@ export const unnumbered = new Set(["proof", "solution", "answer", "note", "tip",
  * Chromium typesets natively, so no fonts or scripts are needed in the locked-down print page. Raw HTML is escaped,
  * links become plain text and images are dropped: a document can only show Kinetra-computed figures.
  */
+/** Chemical formulas in $…$ and $$…$$ set upright before KaTeX reads them (desktop/math-draw.ts). */
+function remarkChemistry() {
+  const visit = (node: any) => {
+    if ((node.type === "math" || node.type === "inlineMath") && typeof node.value === "string") {
+      const upright = uprightChemistry(node.value);
+      if (upright !== node.value) {
+        // remark-math also keeps the text for rehype in data.hChildren; both must change.
+        const rewrite = (n: any) => { if (n.type === "text" && n.value === node.value) n.value = upright; (n.children || []).forEach(rewrite); };
+        (node.data?.hChildren || []).forEach(rewrite);
+        node.value = upright;
+      }
+    }
+    (node.children || []).forEach(visit);
+  };
+  return (tree: any) => visit(tree);
+}
 export function markdownHtml(text: string, { top = 0, inline = false }: { top?: number; inline?: boolean } = {}) {
   // Models usually write display math on one line ("$$E = mc^2$$"); give it its own block.
   text = normalizeMath(text).replace(/^[ \t]*\$\$([^\n$]+?)\$\$[ \t]*$/gm, "$$$$\n$1\n$$$$");
@@ -51,7 +68,7 @@ export function markdownHtml(text: string, { top = 0, inline = false }: { top?: 
     createElement(
       Markdown,
       {
-        remarkPlugins: [remarkGfm, remarkMath],
+        remarkPlugins: [remarkGfm, remarkMath, remarkChemistry],
         // Footnotes get a small label, not the default hidden <h2>: the page styles every h2 as a numbered
         // section, so "Footnotes" would print as a section of its own and shift the numbers after it.
         remarkRehypeOptions: { footnoteLabelTagName: "p", footnoteLabelProperties: { className: ["footnote-label"] }, footnoteBackContent: () => [] },
@@ -87,6 +104,8 @@ function typeset(html: string) {
   });
   // An environment whose title line was its only line leaves an empty first paragraph: let the head run into the next one.
   html = html.replace(/(<span class="env-dot">\.<\/span> )<\/p>\s*<p>/g, "$1");
+  // Arrows with labels are drawn to full width: Chromium does not stretch them (desktop/math-draw.ts).
+  html = html.replace(/<math\b[\s\S]*?<\/math>/g, (math) => drawnArrows(math));
   // Display maths gets its own block, so it can be centred and (in reports) numbered.
   html = html.replace(/<span class="katex">(<math[^>]*display="block"[\s\S]*?<\/math>)<\/span>/g, '<div class="katex-display"><span class="katex">$1</span></div>');
   // Tables: "Table: caption" just before (or after) a table is its caption, as in Pandoc.

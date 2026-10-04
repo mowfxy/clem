@@ -4,12 +4,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
+import { drawnArrows } from "./math-draw.ts";
 
 /** No network and no files: a drawing may use only what is inside it (desktop/svg-safety.ts names what is refused). */
 const DRAWING_CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
 
 /** The drawing set to exactly `width`×`height` CSS pixels (its viewBox scales the content). */
 const sized = (svg: string, width: number, height: number) => svg.replace(/<svg\b([^>]*)>/, (_, attrs: string) => `<svg${attrs.replace(/\s(width|height)\s*=\s*["'][^"']*["']/g, "")} width="${width}" height="${height}">`);
+
+/**
+ * A capture of an offscreen page. Chromium's compositor occasionally fails a capture once ("UnknownVizError", seen
+ * on the first capture after a restart); one failure should not fail the whole file, so it is tried three times.
+ */
+export async function capturePage(contents: Electron.WebContents, rect: Electron.Rectangle, tries = 3): Promise<Electron.NativeImage> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const image = await contents.capturePage(rect);
+      if (!image.isEmpty() || attempt >= tries) return image;
+    } catch (error) {
+      if (attempt >= tries) throw error;
+    }
+    contents.invalidate();
+    await new Promise((done) => setTimeout(done, 150 * attempt));
+  }
+}
 
 /** A drawing's size in CSS pixels, from its width/height or viewBox. */
 export function svgSize(svg: string) {
@@ -44,7 +62,7 @@ export async function rasterizer() {
     await page.loadFile(file);
     // One frame after load, so the offscreen surface holds the finished drawing.
     await new Promise((done) => setTimeout(done, 60));
-    const image = await page.webContents.capturePage({ x: 0, y: 0, width: Math.ceil(width * scale), height: Math.ceil(height * scale) });
+    const image = await capturePage(page.webContents, { x: 0, y: 0, width: Math.ceil(width * scale), height: Math.ceil(height * scale) });
     return { png: new Uint8Array(image.toPNG()), width, height };
   }
   return {
@@ -83,7 +101,9 @@ export async function rasterizer() {
     },
     /** Equations (KaTeX MathML) measured first, then captured tightly around the ink. */
     async math(mathml: string, { color = "#111111", font = "Cambria Math", size = 22, display = true }: { color?: string; font?: string; size?: number; display?: boolean } = {}) {
-      const box = `<div id="m" style="display:inline-block;padding:2px 4px;color:${color};font-family:'${font}','Cambria Math','STIX Two Math',serif;font-size:${size}px;line-height:1.2">${display ? mathml.replace("<math", '<math display="block"') : mathml}</div>`;
+      // Arrows with labels are drawn to full width: Chromium does not stretch them (desktop/math-draw.ts).
+      const drawn = drawnArrows(display ? mathml.replace("<math", '<math display="block"') : mathml);
+      const box = `<div id="m" style="display:inline-block;padding:2px 4px;color:${color};font-family:'${font}','Cambria Math','STIX Two Math',serif;font-size:${size}px;line-height:1.2">${drawn}</div>`;
       // A generous box for the first layout; the second capture is cropped to the measured size.
       const probe = await capture(box, 1600, 400, 1);
       const bounds = ink(probe.png);

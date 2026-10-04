@@ -5,6 +5,7 @@ import {
   MathLimitLower, MathLimitUpper, MathRoundBrackets, MathSquareBrackets, MathCurlyBrackets, MathAngledBrackets,
 } from "docx";
 import { mathMacros } from "../core/math-markdown.ts";
+import { uprightChemistry } from "./math-draw.ts";
 
 /**
  * LaTeX as native Word equations (OMML), so maths in a Word file stays editable in Word's equation editor.
@@ -101,6 +102,9 @@ function limits(n: Node, body: any[]): any[] {
   const under = n.tag === "munder" || n.tag === "msub" ? parts[1] : n.tag === "munderover" || n.tag === "msubsup" ? parts[1] : undefined;
   const over = n.tag === "mover" || n.tag === "msup" ? parts[1] : n.tag === "munderover" || n.tag === "msubsup" ? parts[2] : undefined;
   const symbol = base?.tag === "mo" ? textOf(base) : "";
+  // A labelled arrow (\xrightarrow{light}, \ce{->[light]}) would become a short arrow with the label as a "limit"; the
+  // equation goes in as a picture instead, where the arrow is drawn as wide as its label (desktop/math-draw.ts).
+  if (base?.tag === "mo" && base.attrs.stretchy === "true" && /[←→↔⇐⇒⇔⟵⟶⟷⟸⟹⟺↦⇌⇋]/.test(symbol)) throw Error("labelled arrow");
   const sub = under ? convert(under) : undefined, sup = over ? convert(over) : undefined;
   if (nary.has(symbol)) return [new MathSum({ children: body, subScript: sub, superScript: sup })];
   if (integrals.has(symbol)) return [new MathIntegral({ children: body, subScript: sub, superScript: sup })];
@@ -119,7 +123,8 @@ function limits(n: Node, body: any[]): any[] {
 
 /** KaTeX MathML for LaTeX (the MathML the PDFs print); `display` for an equation on its own line. */
 export function latexMathml(latex: string, display: boolean) {
-  const html = katex.renderToString(latex, { output: "mathml", displayMode: display, throwOnError: true, strict: "ignore", macros: { ...mathMacros } });
+  // Chemical formulas are set upright (desktop/math-draw.ts), in Word equations and pictures alike.
+  const html = katex.renderToString(uprightChemistry(latex), { output: "mathml", displayMode: display, throwOnError: true, strict: "ignore", macros: { ...mathMacros } });
   return html.replace(/^<span class="katex(?:-display)?">|<\/span>$/g, "").replace(/^<span class="katex">|<\/span>$/g, "");
 }
 

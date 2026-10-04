@@ -133,6 +133,8 @@ export const deckSamples: Record<string, any> = {
       { layout: "title", kicker: "Electronics 101" },
       { layout: "figure", title: "A 12 V divider", figure: circuit, caption: "R1 = 100 Ω, R2 = 200 Ω", bullets: ["I = 40 mA", "V2 = 8 V"] },
       { layout: "image", title: "The same divider, drawn as a schematic", image: { figure: circuit }, side: "left", bullets: ["Two resistors in series", "Output taken across R2"] },
+      { layout: "equation", title: "Arrows carry their labels", math: "N_2 + 3H_2 \\xrightarrow[\\text{450 °C, Fe}]{\\text{200 atm}} 2NH_3 \\qquad V_{in} \\xRightarrow{\\text{divider}} V_{out}", text: "Vector notation: $\\overrightarrow{AB}$ and $A \\xleftarrow{f} B$." },
+      { layout: "equation", title: "Long labels stretch the arrow", math: "\\overrightarrow{PQ} = \\vec{q} - \\vec{p} \\qquad A \\xrightarrow{\\text{after a very long reaction}} B" },
       { layout: "closing", title: "Questions?" },
     ],
   },
