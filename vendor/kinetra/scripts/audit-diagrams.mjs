@@ -5,7 +5,7 @@ import { lensImage, renderOptics } from '../packages/core/src/diagram/optics.ts'
 import { buildSceneFromProjectile, renderProjectile } from '../packages/core/src/diagram/projectile.ts';
 import { renderScene2D, worldToView } from '../packages/core/src/diagram/scene2d.ts';
 import { renderScalarField } from '../packages/core/src/diagram/fields.ts';
-import { renderSchematic } from '../packages/core/src/diagram/circuit_schematic.ts';
+import { renderSchematic, layoutSchematic } from '../packages/core/src/diagram/circuit_schematic.ts';
 
 const base = { world: { xMin: -5, xMax: 5, yMin: -3, yMax: 3 }, width: 600, height: 360 };
 const optic = { ...base, element: { kind: 'thin-lens-converging', x: 0, y: 0, focal: 1 }, objectBase: { x: -2, y: 0 }, objectHeight: 1 };
@@ -38,9 +38,10 @@ const contour = renderScalarField({ ...base, type: 'scalar', field: p => p.x + p
 const contourLines = [...contour.matchAll(/<line ([^>]+)>?/g)].map(m => Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(a => [a[1], a[2]]))).filter(a => a['stroke-width'] === '0.6');
 check('Linear scalar field produces nonzero contour segments', contourLines.length > 0 && contourLines.every(a => a.x1 !== a.x2 || a.y1 !== a.y2), { segments: contourLines.length, nonzero: contourLines.filter(a => a.x1 !== a.x2 || a.y1 !== a.y2).length });
 const circuit = renderSchematic({ ...base, components: [{ id: 'R', kind: 'resistor', position: { x: 0, y: 0 }, label: 'R' }], wires: [{ from: { componentId: 'R', pin: 0 }, to: { point: { x: -2, y: 0 } } }] });
-const componentMatrix=circuit.match(/data-component="R" transform="matrix\(([^)]+)\)"/)?.[1].split(/[ ,]+/).map(Number);
-const actualSymbolWidth=componentMatrix ? 0.6*Math.hypot(componentMatrix[0],componentMatrix[1]):0.6;
+const circuitLayout = layoutSchematic({ ...base, components: [{ id: 'R', kind: 'resistor', position: { x: 0, y: 0 }, label: 'R' }], wires: [{ from: { componentId: 'R', pin: 0 }, to: { point: { x: -2, y: 0 } } }] });
+const [p0, p1] = circuitLayout.pins.find(p => p.id === 'R').at, actualSymbolWidth = Math.hypot(p1.x - p0.x, p1.y - p0.y);
 check('Schematic symbol applies world scale consistently with wires', Math.abs(actualSymbolWidth-36)<1e-9, { expectedSymbolWidthPx:36, actualSymbolWidthPx:actualSymbolWidth });
+check('Schematic wires are horizontal or vertical', circuitLayout.segments.every(s => s.a.x === s.b.x || s.a.y === s.b.y), { segments: circuitLayout.segments.length });
 const dir = new URL('../out/diagram-audit/', import.meta.url);
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(new URL('results.json', dir), JSON.stringify(results, null, 2) + '\n');

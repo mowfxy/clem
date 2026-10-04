@@ -7,7 +7,7 @@ import type { OpticsModel } from "../../src/diagram/optics.js";
 import { buildSceneFromFBD } from "../../src/diagram/freebody.js";
 import { scalarContours, renderScalarField, renderVectorField } from "../../src/diagram/fields.js";
 import { pulleyTangent, mechanicalAdvantage, buildSceneFromPulley, atwoodDynamics } from "../../src/diagram/pulley.js";
-import { renderSchematic } from "../../src/diagram/circuit_schematic.js";
+import { layoutSchematic } from "../../src/diagram/circuit_schematic.js";
 import { layoutLogic, renderLogicSchematic } from "../../src/diagram/logic_schematic.js";
 import { defaultElectrostaticRods, renderElectrostaticRods, electrostaticForcePair, validateElectrostaticRods } from "../../src/diagram/electrostatics.js";
 import type { Circuit } from "../../src/dld/circuit.js";
@@ -158,12 +158,11 @@ test("textbook: a single anchored movable pulley has two supporting strands", ()
   close(d.tension - 2 * 9.81, 2 * d.acceleration);
 });
 test("textbook: rotated circuit wire reaches the actual resistor symbol terminal", () => {
-  const svg = renderSchematic({ width: 600, height: 600, world, components: [{ id: "R", kind: "resistor", position: { x: 0, y: 0 }, rotationDeg: 90 }], wires: [{ from: { componentId: "R", pin: 0 }, to: { point: { x: 0, y: -2 } } }] });
-  const group = svg.match(/<g data-component="R"[^>]+>/)![0];
-  const pin = apply(matrix(group), -0.3, 0), wire = attrs(svg.match(/<line[^>]+>/)![0]);
-  close(pin.x, Number(wire.x1));
-  close(pin.y, Number(wire.y1));
+  const layout = layoutSchematic({ width: 600, height: 600, world, components: [{ id: "R", kind: "resistor", position: { x: 0, y: 0 }, rotationDeg: 90 }], wires: [{ from: { componentId: "R", pin: 0 }, to: { point: { x: 0, y: -2 } } }] });
+  const pin = layout.pins.find(p => p.id === "R")!.at[0];
   close(pin.y, 318);
+  // The wire leaves exactly from that terminal, straight down.
+  assert.ok(layout.segments.some(s => Math.abs(s.a.x - pin.x) < 1e-9 && Math.abs(s.a.y - pin.y) < 1e-9 && s.b.x === s.a.x && s.b.y > s.a.y));
 });
 const circuit: Circuit = { id: "test", name: "AND", inputs: [{ id: "a", label: "A" }, { id: "b", label: "B" }], outputs: [], nets: [], metadata: {}, gates: [
     { id: "a", kind: "INPUT", inputs: [], output: "na" }, { id: "b", kind: "INPUT", inputs: [], output: "nb" }, { id: "g", kind: "AND", inputs: ["na", "nb"], output: "ng" },
