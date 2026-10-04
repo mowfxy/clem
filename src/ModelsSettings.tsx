@@ -20,6 +20,7 @@ type Bucket = {
 export type Account = {
   id: string;
   connected: boolean;
+  installed?: boolean;
   pending?:boolean;
   loginError?:string;
   email?: string;
@@ -40,102 +41,75 @@ function Reconnect({id,onClose,onDone}:{id:string;onClose:()=>void;onDone:()=>vo
  return <dialog ref={ref} className="settings-dialog" onCancel={onClose}><header><span className="dialog-logo"><OpenAILogo size={20}/></span><h2>Connect ChatGPT</h2><button className="dialog-close" aria-label="Close connection" onClick={onClose}><Icon name="close" size={16}/></button></header><div className="settings-dialog-body"><LocalProvider accountId={id} onDone={onDone}/></div></dialog>;
 }
 function duration(minutes?: number | null) {
-  if (!minutes) return "Usage window";
+  if (!minutes) return "Usage";
   if (minutes === 10080) return "Weekly";
+  if (minutes === 43200) return "Monthly";
   if (minutes % 1440 === 0) return minutes / 1440 + " days";
   return minutes % 60 === 0 ? minutes / 60 + " hours" : minutes + " minutes";
 }
-function Usage({ account }: { account: Account }) {
+const when = (seconds: number) => {
+  const date = new Date(seconds * 1000), soon = date.getTime() - Date.now() < 20 * 3600_000;
+  return date.toLocaleString(undefined, soon ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+};
+const VENDOR: Record<Service, string> = { chatgpt: "OpenAI", claude: "Anthropic", grok: "xAI" };
+/** Each usage window as a thin meter of what is left, with when it resets. */
+function Usage({ account, service }: { account: Account; service: Service }) {
   const buckets =
-    account.usage?.rateLimitsByLimitId &&
-    Object.keys(account.usage.rateLimitsByLimitId).length
+    account.usage?.rateLimitsByLimitId && Object.keys(account.usage.rateLimitsByLimitId).length
       ? Object.entries(account.usage.rateLimitsByLimitId)
-      : account.usage?.rateLimits
-        ? [["codex", account.usage.rateLimits] as const]
-        : [];
-  return (
-    <div className="account-usage">
-      {!buckets.length ? (
-        <p className="usage-unavailable">
-          {account.usageError ||
-            "Usage is not available from the provider yet."}
-        </p>
-      ) : (
-        buckets.map(([id, b]) => (
-          <div className="usage-bucket" key={id}>
-            <h4>{b.limitName || id}</h4>
-            <div className="usage-windows">
-              {[b.primary, b.secondary].filter(Boolean).map((w, i) => {
-                const used =
-                  typeof w!.usedPercent === "number" &&
-                  Number.isFinite(w!.usedPercent)
-                    ? Math.min(100, Math.max(0, w!.usedPercent))
-                    : null;
-                return (
-                  <div className="usage-window" key={i}>
-                    <div>
-                      <span>{duration(w!.windowDurationMins)}</span>
-                      <strong>
-                        {used === null
-                          ? "Unavailable"
-                          : Math.round(100 - used) + "% left"}
-                      </strong>
-                    </div>
-                    {used !== null && (
-                      <progress
-                        aria-label={
-                          duration(w!.windowDurationMins) + " usage consumed"
-                        }
-                        max={100}
-                        value={used}
-                      />
-                    )}
-                    <small>
-                      {w!.resetsAt
-                        ? "Resets " +
-                          new Date(w!.resetsAt! * 1000).toLocaleString(
-                            undefined,
-                            {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            },
-                          )
-                        : "Reset time unavailable"}
-                    </small>
-                  </div>
-                );
-              })}
-            </div>
-            {b.credits &&
-              (b.credits.unlimited || b.credits.balance != null) && (
-                <small>
-                  {b.credits.unlimited
-                    ? "Unlimited credits"
-                    : "Credits: " + b.credits.balance}
-                </small>
-              )}
-          </div>
-        ))
-      )}
-      {account.usage?.ordinaryUsageAllowed === false && (
-        <p role="status">
-          Included usage is currently unavailable for this account.
-        </p>
-      )}
-      {account.checkedAt && (
-        <small className="usage-stamp">
-          Reported by OpenAI · checked{" "}
-          {new Date(account.checkedAt).toLocaleTimeString(undefined, {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </small>
-      )}
-    </div>
-  );
+      : account.usage?.rateLimits ? [["", account.usage.rateLimits] as const] : [];
+  const windows = buckets.flatMap(([id, b]) => [b.primary, b.secondary].filter((w): w is WindowUsage => !!w).map((w) => ({ name: (buckets.length > 1 ? (b.limitName || id) + " · " : "") + duration(w.windowDurationMins), w })));
+  const credits = buckets.map(([, b]) => b.credits).find((c) => c && (c.unlimited || c.balance != null));
+  return <div className="account-usage">
+    {!windows.length
+      ? <p className="usage-unavailable">{account.usageError || (service === "claude" ? "Usage appears after this account's first answer." : "Usage is not available from the provider yet.")}</p>
+      : <div className="usage-meters">{windows.map(({ name, w }, i) => {
+          const used = typeof w.usedPercent === "number" && Number.isFinite(w.usedPercent) ? Math.min(100, Math.max(0, w.usedPercent)) : null;
+          const left = used === null ? null : Math.round(100 - used);
+          return <div className={"usage-meter" + (left !== null && left < 10 ? " is-low" : left !== null && left < 25 ? " is-warn" : "")} key={i}>
+            <div className="usage-meter-line"><span>{name}</span><b>{left === null ? "—" : left + "% left"}</b></div>
+            <div className="usage-meter-track" role={left === null ? undefined : "meter"} aria-label={name + " usage left"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={left ?? undefined}><span style={{ width: (left ?? 0) + "%" }} /></div>
+            <small>{w.resetsAt ? "Resets " + when(w.resetsAt) : "Reset time unavailable"}</small>
+          </div>;
+        })}</div>}
+    {(credits || account.usage?.ordinaryUsageAllowed === false || account.checkedAt) && <div className="usage-foot">
+      {account.usage?.ordinaryUsageAllowed === false && <span className="usage-out">No usage left until it resets</span>}
+      {credits && <span>{credits.unlimited ? "Unlimited credits" : "Credits: " + credits.balance}</span>}
+      {account.checkedAt && <span>{VENDOR[service]} · checked {new Date(account.checkedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>}
+    </div>}
+  </div>;
 }
+const LOGO: Record<Service, (size: number) => ReactNode> = {
+  chatgpt: (size) => <OpenAILogo size={size} title="OpenAI" />,
+  claude: (size) => <ClaudeLogo size={size} title="Claude" />,
+  grok: (size) => <GrokLogo size={size} title="Grok" />,
+};
+const NAME: Record<Service, string> = { chatgpt: "ChatGPT", claude: "Claude", grok: "Grok" };
+/** One connected account: who it is, its plan, whether it is in use, and what it has left. */
+function AccountRow({ account, index, service, active, busy, onUse, onRemove, onSignIn }: {
+  account: Account; index: number; service: Service; active: boolean; busy: boolean;
+  onUse: () => void; onRemove: () => void; onSignIn: () => void;
+}) {
+  const label = account.email || NAME[service] + " account" + (index ? " " + (index + 1) : "");
+  const plan = account.plan ? (service === "grok" ? planName(account.plan) : account.plan.charAt(0).toUpperCase() + account.plan.slice(1)) : "";
+  return <article className={"account-row" + (active && account.connected ? " is-active" : "")}>
+    <div className="account-row-head">
+      <span className="account-avatar" aria-hidden="true">{(account.email || NAME[service]).charAt(0).toUpperCase()}</span>
+      <div className="account-id">
+        <b title={label}>{label}</b>
+        <small>{account.connected ? <>{plan || "Connected"}{active && <span className="account-active">In use</span>}</> : account.pending ? "Waiting for browser sign-in" : "Not signed in"}</small>
+      </div>
+      <div className="account-actions">
+        {account.connected && !active && <button type="button" className="account-use" disabled={busy} onClick={onUse}>Use</button>}
+        <button type="button" className="icon-button" disabled={busy} aria-label={"Disconnect " + label} onClick={onRemove}><Icon name="close" size={14} /></button>
+      </div>
+    </div>
+    {account.error ? <p className="account-note" role="alert">{account.error}</p>
+      : account.connected ? <Usage account={account} service={service} />
+      : <div className="account-recovery"><p>{account.loginError || (account.pending ? "Finish in your browser, then return here." : `This ${NAME[service]} account is not signed in.`)}</p><button type="button" className="secondary" disabled={busy} onClick={onSignIn}>{account.pending ? "Open sign-in again" : "Sign in"}<Icon name="arrow" size={14} /></button></div>}
+  </article>;
+}
+type CliStatus = { installed?: boolean; connected?: boolean; email?: string; plan?: string; models?: string[]; error?: string };
 export function ModelsSettings({
   models,
   onConnect,
@@ -156,11 +130,17 @@ export function ModelsSettings({
     [retryId,setRetryId]=useState<string|null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [claude,setClaude]=useState<{installed?:boolean;connected?:boolean;email?:string;plan?:string}>({}),
-    [grok,setGrok]=useState<{installed?:boolean;connected?:boolean;models?:string[];usage?:{percentUsed?:number;periodEnd?:string;plan?:string};error?:string}>({}),
+    [claude,setClaude]=useState<CliStatus>({}),
+    [grok,setGrok]=useState<CliStatus>({}),
+    [cli,setCli]=useState<Record<CliKind,AccountsData>>({claude:{active:"default",accounts:[]},grok:{active:"default",accounts:[]}}),
     [tab,setTab]=useState<Service|null>(()=>{try{const saved=localStorage.getItem("mowr-provider-tab");return saved==="chatgpt"||saved==="claude"||saved==="grok"?saved:null;}catch{return null;}});
   const store=(kind:CliKind,status:any)=>kind==="claude"?setClaude(status):setGrok(status);
-  const {setup,connect:connectCli}=useCliConnect(store,onRefresh,setError);
+  const {setup,connect:connectCli}=useCliConnect(store,async()=>{await loadCli("claude");await loadCli("grok");await onRefresh();},setError);
+  async function loadCli(kind: CliKind, force = false) {
+    const result = await desktop!.invoke({ action: "cliAccounts", kind, refresh: force }) as AccountsData;
+    if (result?.accounts) setCli((current) => ({ ...current, [kind]: result }));
+    return result;
+  }
   async function refresh(force = false) {
     setBusy(true);
     setError("");
@@ -171,7 +151,7 @@ export function ModelsSettings({
           refresh: force,
         });
         if (result?.accounts) setData(result);
-        const [claudeStatus,grokStatus]=await Promise.all([desktop.invoke({action:'claudeStatus'}),desktop.invoke({action:'grokStatus'})]);
+        const [claudeStatus,grokStatus]=await Promise.all([desktop.invoke({action:'claudeStatus'}),desktop.invoke({action:'grokStatus'}),loadCli("claude",force),loadCli("grok",force)]);
         setClaude(claudeStatus);setGrok(grokStatus);
       }
       await onRefresh();
@@ -188,35 +168,55 @@ export function ModelsSettings({
   useEffect(()=>{
     const onFocus=()=>{if(!busy)void refresh(true);};
     window.addEventListener("focus",onFocus);
-    const timer=data.accounts.some(a=>a.pending)?setTimeout(onFocus,5000):undefined;
-    return()=>{window.removeEventListener("focus",onFocus);clearTimeout(timer);};
-  },[busy,data.accounts]);
-  async function change(id: string, remove = false) {
+    // An account waiting for its browser sign-in is checked every few seconds until it connects.
+    const waiting=data.accounts.some(a=>a.pending);
+    const cliWaiting=(["claude","grok"] as const).filter(kind=>cli[kind].accounts.some(a=>a.pending));
+    const timer=waiting?setTimeout(onFocus,5000):undefined;
+    const cliTimer=cliWaiting.length?setInterval(()=>{for(const kind of cliWaiting)void loadCli(kind,true).then(()=>onRefresh()).catch(()=>{});},4000):undefined;
+    return()=>{window.removeEventListener("focus",onFocus);clearTimeout(timer);clearInterval(cliTimer);};
+  },[busy,data.accounts,cli]);
+  async function run(work: () => Promise<unknown>) {
     if (locked) return;
-    const account = data.accounts.find((a) => a.id === id);
-    if (
-      remove &&
-      !(await confirmDialog({
-        title: "Disconnect " + (account?.email || "this account") + "?",
-        message: "Mowr will stop using this ChatGPT account. Your chats and files stay on this PC, and you can connect it again anytime.",
-        confirm: "Disconnect",
-        danger: true,
-      }))
-    )
-      return;
     setBusy(true);
     setError("");
-    try {
-      await desktop!.invoke({
-        action: remove ? "providerAccountRemove" : "providerAccountSelect",
-        id,
-      });
-      await refresh();
-    } catch (e) {
-      setError((e as Error).message);
-      setBusy(false);
-    }
+    try { await work(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  async function confirmRemove(service: Service, account: Account) {
+    return confirmDialog({
+      title: "Disconnect " + (account.email || "this " + NAME[service] + " account") + "?",
+      message: `Mowr will stop using this ${NAME[service]} account. Your chats and files stay on this PC, and you can connect it again anytime.`,
+      confirm: "Disconnect",
+      danger: true,
+    });
+  }
+  async function change(id: string, remove = false) {
+    const account = data.accounts.find((a) => a.id === id);
+    if (remove && account && !(await confirmRemove("chatgpt", account))) return;
+    await run(async () => {
+      await desktop!.invoke({ action: remove ? "providerAccountRemove" : "providerAccountSelect", id });
+      await refresh();
+    });
+  }
+  async function changeCli(kind: CliKind, id: string, what: "use" | "remove" | "signin") {
+    const account = cli[kind].accounts.find((a) => a.id === id);
+    if (what === "remove" && account && !(await confirmRemove(kind, account))) return;
+    await run(async () => {
+      await desktop!.invoke(what === "use" ? { action: "cliAccountSelect", kind, id } : what === "remove" ? { action: "cliAccountRemove", kind, id } : { action: "cliAccountSignIn", kind, id });
+      await loadCli(kind, true);
+      if (what !== "signin") await onRefresh();
+    });
+  }
+  const addCli = (kind: CliKind) => run(async () => { await desktop!.invoke({ action: "cliAccountAdd", kind }); await loadCli(kind); });
+  const chatgptAccounts = data.accounts.filter((a) => a.connected).length;
+  const counts: Record<Service, number> = { chatgpt: chatgptAccounts, claude: cli.claude.accounts.filter((a) => a.connected).length || (claude.connected ? 1 : 0), grok: cli.grok.accounts.filter((a) => a.connected).length || (grok.connected ? 1 : 0) };
+  const services: Service[] = desktop ? ["chatgpt", "claude", "grok"] : ["chatgpt"];
+  // Until someone picks a tab, open on the first connected service.
+  const current = services.find((x) => x === tab) || services.find((x) => counts[x] > 0) || services[0];
+  const pick = (id: Service) => { setTab(id); try { localStorage.setItem("mowr-provider-tab", id); } catch {} };
+  const status = current === "claude" ? claude : current === "grok" ? grok : null;
+  const listed: AccountsData = current === "chatgpt" ? data : cli[current];
+  const rows = listed.accounts.filter((a) => a.connected || a.pending || a.error || a.id !== "default");
+  const count = counts[current];
   return (
     <section className="models-settings">
       <div className="models-heading">
@@ -234,101 +234,37 @@ export function ModelsSettings({
           <span>{busy ? "Refreshing…" : "Refresh"}</span>
         </button>
       </div>
-      {(() => {
-        const chatgptAccounts = data.accounts.filter((a) => a.connected).length;
-        const services: { id: Service; name: string; logo: ReactNode; connected: boolean }[] = [
-          { id: "chatgpt", name: "ChatGPT", logo: <OpenAILogo size={16} />, connected: chatgptAccounts > 0 },
-          ...(desktop ? [
-            { id: "claude" as const, name: "Claude", logo: <ClaudeLogo size={16} />, connected: !!claude.connected },
-            { id: "grok" as const, name: "Grok", logo: <GrokLogo size={16} />, connected: !!grok.connected },
-          ] : []),
-        ];
-        // Until someone picks a tab, open on the first connected service.
-        const current = services.find((x) => x.id === tab) || services.find((x) => x.connected) || services[0];
-        const pick = (id: Service) => { setTab(id); try { localStorage.setItem("mowr-provider-tab", id); } catch {} };
-        return <section className="provider-panel">
-          {services.length > 1 && <div className="provider-switch" role="tablist" aria-label="AI services">
-            {services.map((x) => <button key={x.id} type="button" role="tab" aria-selected={x.id === current.id} className={"provider-switch-tab provider-" + x.id + (x.id === current.id ? " on" : "")} onClick={() => pick(x.id)}>
-              <span className="provider-switch-logo">{x.logo}</span>{x.name}{x.connected && <span className="provider-dot" aria-label="connected" />}
-            </button>)}
+      <section className="provider-panel">
+        {services.length > 1 && <div className="provider-switch" role="tablist" aria-label="AI services">
+          {services.map((x) => <button key={x} type="button" role="tab" aria-selected={x === current} className={"provider-switch-tab provider-" + x + (x === current ? " on" : "")} onClick={() => pick(x)}>
+            <span className="provider-switch-logo">{LOGO[x](16)}</span>{NAME[x]}{counts[x] > 0 && <span className="provider-dot" aria-label="connected" />}
+          </button>)}
+        </div>}
+        <div key={current} className={"provider-group provider-" + current} role="tabpanel">
+          <div className={"provider-head" + (count ? " is-connected" : "")}>
+            <span className="provider-logo">{LOGO[current](20)}</span>
+            <div className="provider-title">
+              <h3>{NAME[current]}</h3>
+              <small>{count ? count + (count > 1 ? " accounts" : " account") + " connected" : status && !status.installed ? `${current === "claude" ? "Claude Code" : "Grok"} is not installed` : "Not connected"}</small>
+            </div>
+            {current === "chatgpt"
+              ? <button className="provider-action" disabled={locked} onClick={onConnect}>{count ? "Add account" : "Connect ChatGPT"}<Icon name={count ? "plus" : "arrow"} size={14} /></button>
+              : count
+                ? <button className="provider-action" disabled={busy || locked} onClick={() => void addCli(current)}>Add account<Icon name="plus" size={14} /></button>
+                : <SetupButton kind={current} setup={setup} disabled={busy || locked} label={status?.installed ? "Sign in to " + NAME[current] : "Install " + (current === "claude" ? "Claude Code" : "Grok")} account={current === "claude" ? "Claude" : "X or xAI"} onClick={() => void connectCli(current, status?.installed)} />}
+          </div>
+          {current === "grok" && !count && grok.installed && grok.error && <p className="provider-hint">{grok.error}</p>}
+          {rows.length > 0 && <div className="account-list">
+            {rows.map((a, i) => <AccountRow key={a.id} account={a} index={i} service={current} active={a.id === listed.active} busy={busy || locked}
+              onUse={() => void (current === "chatgpt" ? change(a.id) : changeCli(current, a.id, "use"))}
+              onRemove={() => void (current === "chatgpt" ? change(a.id, true) : changeCli(current, a.id, "remove"))}
+              onSignIn={() => current === "chatgpt" ? setRetryId(a.id) : void changeCli(current, a.id, "signin")} />)}
           </div>}
-          <article key={current.id} className={"provider-card provider-" + current.id + (current.connected ? " is-connected" : "")} role="tabpanel">
-            {current.id === "chatgpt" && <>
-              <div className="provider-card-top">
-                <span className="provider-logo"><OpenAILogo size={24} title="OpenAI" /></span>
-                <div className="provider-title"><h3>ChatGPT</h3></div>
-                <span className={"provider-status" + (chatgptAccounts ? " on" : "")}>{chatgptAccounts ? (chatgptAccounts > 1 ? chatgptAccounts + " accounts" : "Connected") : "Not connected"}</span>
-              </div>
-              <button className="provider-action" disabled={locked} onClick={onConnect}>{chatgptAccounts ? "Add another account" : "Connect ChatGPT"}<Icon name="arrow" size={14} /></button>
-            </>}
-            {current.id === "claude" && <>
-              <div className="provider-card-top">
-                <span className="provider-logo"><ClaudeLogo size={24} title="Claude" /></span>
-                <div className="provider-title"><h3>Claude</h3>{claude.connected && claude.email && <small>{claude.email}</small>}</div>
-                <span className={"provider-status" + (claude.connected ? " on" : "")}>{claude.connected ? (claude.plan ? claude.plan.charAt(0).toUpperCase() + claude.plan.slice(1) : "Connected") : claude.installed ? "Sign-in needed" : "Not installed"}</span>
-              </div>
-              {!claude.connected && <SetupButton kind="claude" setup={setup} disabled={busy || locked} label={claude.installed ? "Sign in to Claude" : "Install Claude Code"} account="Claude" onClick={() => void connectCli("claude", claude.installed)} />}
-            </>}
-            {current.id === "grok" && <>
-              <div className="provider-card-top">
-                <span className="provider-logo"><GrokLogo size={24} title="Grok" /></span>
-                <div className="provider-title"><h3>Grok</h3>{grok.connected && <small>{grok.models?.length} models</small>}</div>
-                <span className={"provider-status" + (grok.connected ? " on" : "")}>{grok.connected ? (grok.usage?.plan ? planName(grok.usage.plan) : "Connected") : grok.installed ? "Sign-in needed" : "Not installed"}</span>
-              </div>
-              {grok.connected && grok.usage?.percentUsed !== undefined && <div className="provider-usage" aria-label={`${Math.round(grok.usage.percentUsed)}% of this period's usage used`}>
-                <div className="provider-usage-bar"><span style={{ width: `${Math.max(2, grok.usage.percentUsed)}%` }} /></div>
-                <small>{Math.round(grok.usage.percentUsed)}% used{grok.usage.periodEnd && !Number.isNaN(Date.parse(grok.usage.periodEnd)) ? ` · resets ${new Date(grok.usage.periodEnd).toLocaleDateString([], { month: "short", day: "numeric" })}` : ""}</small>
-              </div>}
-              {!grok.connected && grok.installed && grok.error && <p className="provider-hint">{grok.error}</p>}
-              {!grok.connected && <SetupButton kind="grok" setup={setup} disabled={busy || locked} label={grok.installed ? "Sign in to Grok" : "Install Grok"} account="X or xAI" onClick={() => void connectCli("grok", grok.installed)} />}
-            </>}
-          </article>
-        </section>;
-      })()}
-      {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>Before each request, use another connected ChatGPT account when this one falls below 10% in its short window or 5% weekly. A running response finishes on its current account.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
+        </div>
+      </section>
+      {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>When an account is nearly out of usage (below 10% of its short window or 5% of its weekly one), or its plan refuses a request, Mowr moves to another connected account of the same service. A running answer finishes on its current account.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
       {retryId&&<Reconnect id={retryId} onClose={()=>setRetryId(null)} onDone={()=>{setRetryId(null);void refresh(true);}}/>}
       {error && <p role="alert">{error}</p>}
-      <div className="connected-accounts">
-        {data.accounts
-          .filter((a) => a.connected || a.error || a.id !== "default")
-          .map((a) => (
-            <article className="connected-account" key={a.id}>
-              <header>
-                <div>
-                  <h3>{a.email || "ChatGPT account"}</h3>
-                  <p>
-                    {a.connected ? a.plan || "Connected" : a.pending ? "Waiting for browser sign-in" : "Connection needs attention"}
-                    {a.id === data.active && a.connected && (
-                      <span className="account-active">Active</span>
-                    )}
-                  </p>
-                </div>
-                <div className="account-actions">
-                  {a.connected && a.id !== data.active && (
-                    <button disabled={busy || locked} onClick={() => void change(a.id)}>
-                      Use account
-                    </button>
-                  )}
-                  <button
-                    className="icon-button"
-                    disabled={busy || locked}
-                    aria-label={"Disconnect " + (a.email || "account")}
-                    onClick={() => void change(a.id, true)}
-                  >
-                    <Icon name="close" size={16} />
-                  </button>
-                </div>
-              </header>
-              {a.error ? (
-                <p role="alert">{a.error}</p>
-              ) : a.connected ? (
-                <Usage account={a} />
-              ) : (
-                <div className="account-recovery"><div><p>{a.loginError || (a.pending?"Finish in your browser, then return here.":"Your ChatGPT account is not connected to Mowr yet.")}</p></div><button className="secondary" disabled={busy||locked} onClick={()=>setRetryId(a.id)}>{a.pending?"Continue sign-in":"Retry sign-in"}<Icon name="arrow" size={16}/></button></div>
-              )}
-            </article>
-          ))}
-      </div>
       {models.some((m) => m.connected) && (
         <details className="synced-models">
           <summary>
@@ -342,12 +278,11 @@ export function ModelsSettings({
                 <span key={m.id}>{m.name}</span>
               ))}
           </div>
-          <p>Choose a model and reasoning level in the chat composer.</p>
+          <p>Choose a model and thinking level in the chat composer.</p>
         </details>
       )}
       <p className="models-footnote">
-        Usage covers the whole connected account, including other Codex apps.
-        Each account keeps its own limits. Automatic switching applies to connected ChatGPT accounts only.
+        Usage covers the whole account, including other apps signed in to it. Each account keeps its own limits.
       </p>
     </section>
   );

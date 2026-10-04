@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Model } from "../core/types";
-import { Icon, Logo } from "./Icons";
+import { Icon } from "./Icons";
 import { ProviderLogo } from "./BrandLogos";
 import "./model-selector.css";
 
@@ -12,9 +12,9 @@ const PETAL = "M12 2c3.2-.9 5.6 1.3 5.5 4.4 0 2.1-1.3 3.9-2.7 4.2-.8.1-.7-1-.4-1
 function Petal({ style }: { style: CSSProperties }) {
   return <svg className="effort-petal" style={style} viewBox="0 0 24 24" aria-hidden="true">{[0, 90, 180, 270].map((r) => <path key={r} d={PETAL} transform={`rotate(${r} 12 12)`} />)}</svg>;
 }
-const petals = Array.from({ length: 9 }, (_, i) => ({ top: [18, 62, 34, 76, 46, 24, 68, 40, 56][i], size: [11, 8, 13, 9, 7, 12, 8, 10, 7][i], delay: -i * 0.61 }));
+const petals = Array.from({ length: 9 }, (_, i) => ({ top: [18, 62, 34, 76, 46, 24, 68, 40, 56][i], size: [11, 8, 13, 9, 7, 12, 8, 10, 7][i], delay: -i * 0.53 }));
 
-/** How hard the model thinks: a bar to drag, with Mowr's petals drifting faster as it climbs. */
+/** How hard the model thinks: a bar to drag, with Mowr's petals drifting faster and thicker as it climbs. */
 function EffortSlider({ levels, level, onChange, onReset }: {
   levels: string[]; level: string; onChange: (effort: string) => void; onReset?: () => void;
 }) {
@@ -27,12 +27,18 @@ function EffortSlider({ levels, level, onChange, onReset }: {
   };
   const pick = (p: number) => { const next = levels[Math.round(p * last)]; if (next && next !== level) onChange(next); };
   const intensity = levels.length > 1 ? index / last : 1;
-  const style = { "--p": drag ?? intensity, "--speed": `${(5.2 - intensity * 3.4).toFixed(2)}s`, "--glow": 0.35 + intensity * 0.65 } as CSSProperties;
+  const live = drag ?? intensity;
+  // The drift speeds up through its playback rate, so every petal keeps its place instead of the loop restarting.
+  useEffect(() => {
+    const rate = 0.75 + live * 1.6;
+    for (const animation of track.current?.getAnimations({ subtree: true }) || []) if (animation instanceof CSSAnimation && animation.animationName !== "effort-sheen") animation.updatePlaybackRate(rate);
+  }, [live]);
+  const shown = Math.round(3 + live * (petals.length - 3));
+  const style = { "--p": live, "--glow": 0.35 + live * 0.65 } as CSSProperties;
   return <div className="picker-effort">
     <div className="effort-head">
-      <span className="effort-mark" style={{ transform: `rotate(${intensity * 90}deg)` }}><Logo size={16} /></span>
-      <div className="effort-title"><b>{effortName(level)}</b></div>
-      {onReset ? <button type="button" className="picker-effort-reset" aria-label="Reset thinking level" aria-description="Reset to default" onClick={() => { onReset(); track.current?.focus(); }}><Icon name="undo" size={15} /></button> : <span className="effort-spacer" />}
+      <div className="effort-title"><b>{effortName(level)}</b><small>thinking</small></div>
+      {onReset && <button type="button" className="picker-effort-reset" aria-label="Reset thinking level" aria-description="Reset to default" onClick={() => { onReset(); track.current?.focus(); }}><Icon name="undo" size={15} /></button>}
     </div>
     <div ref={track} className={"effort-track" + (drag !== null ? " is-dragging" : "")} style={style} role="slider" tabIndex={0}
       aria-label="Reasoning effort" aria-valuemin={0} aria-valuemax={levels.length - 1} aria-valuenow={index} aria-valuetext={effortName(level)}
@@ -45,8 +51,8 @@ function EffortSlider({ levels, level, onChange, onReset }: {
         const next = e.key === "Home" ? 0 : e.key === "End" ? levels.length - 1 : Math.max(0, Math.min(levels.length - 1, index + (e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : -1)));
         onChange(levels[next]);
       }}>
-      {levels.map((l, i) => i > index && <span key={l} className="effort-stop" style={{ "--at": i / last } as CSSProperties} />)}
-      <span className="effort-fill">{petals.map((p, i) => <Petal key={i} style={{ top: p.top + "%", width: p.size, height: p.size, animationDelay: `calc(var(--speed) * ${(p.delay / 5).toFixed(3)})` }} />)}</span>
+      {levels.map((l, i) => <span key={l} className={"effort-stop" + (i <= index ? " is-passed" : "")} style={{ "--at": i / last } as CSSProperties} />)}
+      <span className="effort-fill">{petals.map((p, i) => <span key={i} className={"effort-lane" + (i < shown ? " is-on" : "")} style={{ animationDelay: p.delay + "s" }}><Petal style={{ top: p.top + "%", width: p.size, height: p.size, animationDelay: p.delay + "s" }} /></span>)}</span>
       <span className="effort-knob" />
     </div>
   </div>;

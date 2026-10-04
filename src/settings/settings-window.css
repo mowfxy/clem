@@ -115,11 +115,8 @@
 .st .settings-action h3{margin:0 0 3px;font:400 var(--t-body)/1.35 var(--sans);color:var(--st-ink)}
 .st .settings-action p{margin:0;font-size:var(--t-small);line-height:1.5;color:var(--st-muted)}
 .st .models-heading{display:flex;justify-content:flex-end;min-height:0;margin:0 0 12px}
-.st .connected-account,.st .provider-challenge{background:var(--st-card);border-color:var(--st-line);border-radius:16px}
+.st .provider-challenge{background:var(--st-card);border-color:var(--st-line);border-radius:16px}
 .st .synced-models>div span{background:#262624}
-.st .usage-window progress::-webkit-progress-bar{background:#2e2e2b}
-.st .usage-window progress::-webkit-progress-value{background:#f0efeb}
-.st .account-active{color:#f0efeb;background:#ffffff12;padding:2px 8px;border-radius:99px}
 .st .support-inbox{padding:12px 0 14px}
 .st .support-inbox form,.st .support-inbox .field{max-width:none}
 .st .contact-settings{gap:0}

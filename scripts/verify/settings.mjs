@@ -30,6 +30,12 @@ try {
         if(r.action==='providerAccounts'&&window.recovery)return {active:'default',accounts:[{id:'22222222-2222-4222-8222-222222222222',connected:false,loginError:'Sign-in expired. Start again to get a new code.'}]};
         if(r.action==='providerAccounts')return {active:window.activeAccount,accounts:[{id:'default',connected:true,email:'personal@example.com',plan:'plus',checkedAt:Date.now(),usage:{rateLimitsByLimitId:{codex:{primary:{usedPercent:42,windowDurationMins:300,resetsAt:Date.now()/1000+9000},secondary:{usedPercent:18,windowDurationMins:10080,resetsAt:Date.now()/1000+86400}}}}},{id:'11111111-1111-4111-8111-111111111111',connected:true,email:'work@example.com',plan:'pro',usageError:'Usage is unavailable from the provider.'}]};
         if(r.action==='providerAccountSelect'){window.activeAccount=r.id;return {ok:true};}
+        if(r.action==='claudeStatus')return {installed:true,connected:true,email:'me@example.com',plan:'max'};
+        if(r.action==='grokStatus')return {installed:true,connected:true,models:['grok-4.7']};
+        if(r.action==='cliAccounts'&&r.kind==='claude')return {active:window.claudeActive||'default',autoSwitch:true,accounts:[{id:'default',connected:true,email:'me@example.com',plan:'max',checkedAt:Date.now(),usage:{rateLimits:{primary:{usedPercent:64,windowDurationMins:300,resetsAt:Date.now()/1000+5000},secondary:{usedPercent:93,windowDurationMins:10080,resetsAt:Date.now()/1000+300000}}}},{id:'33333333-3333-4333-8333-333333333333',connected:true,email:'team@example.com',plan:'pro'}].concat(window.claudeAdded?[{id:'44444444-4444-4444-8444-444444444444',connected:false,pending:true}]:[])};
+        if(r.action==='cliAccounts'&&r.kind==='grok')return {active:'default',autoSwitch:true,accounts:[{id:'default',connected:true,plan:'X Premium',checkedAt:Date.now(),usage:{rateLimits:{primary:{usedPercent:1,windowDurationMins:10080,resetsAt:Date.now()/1000+290000}}}}]};
+        if(r.action==='cliAccountSelect'){window.claudeActive=r.id;return {ok:true};}
+        if(r.action==='cliAccountAdd'){window.claudeAdded=true;return {id:'44444444-4444-4444-8444-444444444444',pending:true};}
         if(r.action==='providerAccountAdd')return {id:'22222222-2222-4222-8222-222222222222',url:'https://auth.openai.com/codex/device',code:'TEST-TEST'};
         if(r.action==='providerAccountStatus')return {connected:false};
         if (r.action === "essentialSync")
@@ -258,13 +264,31 @@ try {
   });
   await page.keyboard.press("Escape");
   await page.locator('.st-nav').getByRole('button',{name:'Models',exact:true}).click();
+  await page.getByRole('tab',{name:/ChatGPT/}).click();
   await page.getByText('58% left',{exact:true}).waitFor();
-  assert.equal(await page.getByRole('progressbar').count(),2);
+  assert.equal(await page.getByRole('meter').count(),2);
   assert.equal(await page.locator('.st-nav button.active').innerText(),'Models');
+  await page.waitForTimeout(450);
   await page.screenshot({path:'artifacts/settings-models.png'});
-  await page.getByRole('button',{name:'Use account',exact:true}).click();
+  await page.getByRole('button',{name:'Use',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.activeAccount),'11111111-1111-4111-8111-111111111111');
-  await page.getByRole('button',{name:'Add another account',exact:true}).click();
+  // Claude and Grok have the same accounts, usage and switching as ChatGPT.
+  await page.getByRole('tab',{name:/Claude/}).click();
+  await page.getByText('7% left',{exact:true}).waitFor();
+  assert.equal(await page.locator('.account-row').count(),2);
+  await page.waitForTimeout(450);
+  await page.screenshot({path:'artifacts/settings-models-claude.png'});
+  await page.getByRole('button',{name:'Use',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.claudeActive),'33333333-3333-4333-8333-333333333333');
+  await page.getByRole('button',{name:'Add account',exact:true}).click();
+  await page.getByText('Waiting for browser sign-in',{exact:true}).waitFor();
+  assert.ok(await page.evaluate(()=>window.requests.some(r=>r.action==='cliAccountAdd'&&r.kind==='claude')));
+  await page.getByRole('tab',{name:/Grok/}).click();
+  await page.getByText('99% left',{exact:true}).waitFor();
+  await page.waitForTimeout(450);
+  await page.screenshot({path:'artifacts/settings-models-grok.png'});
+  await page.getByRole('tab',{name:/ChatGPT/}).click();
+  await page.getByRole('button',{name:'Add account',exact:true}).click();
   await page.getByRole('button',{name:'Continue with ChatGPT',exact:true}).waitFor();
   await page.screenshot({path:'artifacts/connect-account.png'});
   await page.getByRole('button',{name:'Continue with ChatGPT',exact:true}).click();
@@ -272,9 +296,9 @@ try {
   await page.keyboard.press('Escape');
   await page.evaluate(()=>window.recovery=true);
   await page.getByRole('button',{name:'Refresh connections'}).click();
-  await page.getByRole('button',{name:'Retry sign-in',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();
   await page.screenshot({path:'artifacts/account-recovery.png'});
-  await page.getByRole('button',{name:'Retry sign-in',exact:true}).click();
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await page.getByText('RETRY-CODE',{exact:true}).waitFor();
   await page.keyboard.press('Escape');
   // Every section has its drawing; still ones hold their pose (their lines keep boiling).

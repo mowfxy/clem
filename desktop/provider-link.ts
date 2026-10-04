@@ -28,11 +28,12 @@ export class ProviderLink {
   codexFile(owner: string, id: string) {
     return join(this.root, owner, id === "default" ? "codex" : join("accounts", id), "auth.json");
   }
-  claudeFile(owner: string) {
-    return join(this.root, owner, "claude", ".credentials.json");
+  /** The first Claude account is linked as "claude"; each added one as "claude-<account id>". */
+  claudeFile(owner: string, id = CLAUDE_LINK_ID) {
+    return id === CLAUDE_LINK_ID ? join(this.root, owner, "claude", ".credentials.json") : join(this.root, owner, "claude-accounts", id.replace(/^claude-/, ""), ".credentials.json");
   }
   private fileFor(owner: string, item: { id: string; kind: Kind }) {
-    return item.kind === "codex" ? this.codexFile(owner, item.id) : this.claudeFile(owner);
+    return item.kind === "codex" ? this.codexFile(owner, item.id) : this.claudeFile(owner, item.id);
   }
   private uploaded(owner: string) {
     return this.vault.read<Record<string, string>>("provider-link-" + owner, {});
@@ -87,11 +88,11 @@ export class ProviderLink {
     });
   }
 
-  /** Brings linked sign-ins onto this PC. Returns the ChatGPT connections the account holds and
-   *  the ids whose credentials were written, so their Codex processes can restart. */
+  /** Brings linked sign-ins onto this PC. Returns the ChatGPT connections the account holds, the added Claude
+   *  accounts (by their Mowr account id), and the ids whose credentials were written, so their processes can restart. */
   restore(owner: string) {
     return this.serial(async () => {
-      const result = { codex: [] as { id: string; label: string }[], written: [] as string[], values: [] as LinkedValue[] };
+      const result = { codex: [] as { id: string; label: string }[], claude: [] as string[], written: [] as string[], values: [] as LinkedValue[] };
       if (!(await this.signedIn(owner))) return result;
       const { items } = (await this.auth.cloud("/providers")) as { items: Linked[] };
       const uploaded = await this.uploaded(owner);
@@ -99,7 +100,9 @@ export class ProviderLink {
         if (item.kind === "telegram") { result.values.push({ id: item.id, kind: item.kind, data: item.data }); uploaded[item.id] = item.hash; continue; }
         // The id becomes a folder name: never let a stored entry write outside this account's folders.
         if ((item.kind !== "codex" && item.kind !== "claude") || typeof item.id !== "string" || !/^[\w-]{1,64}$/.test(item.id) || typeof item.data !== "string") continue;
+        if (item.kind === "claude" && item.id !== CLAUDE_LINK_ID && !/^claude-[\w-]{1,57}$/.test(item.id)) continue;
         if (item.kind === "codex") result.codex.push({ id: item.id, label: item.label });
+        if (item.kind === "claude" && item.id !== CLAUDE_LINK_ID) result.claude.push(item.id.replace(/^claude-/, ""));
         const file = this.fileFor(owner, item);
         const local = await readFile(file, "utf8").catch(() => "");
         const localHash = local ? sha(local) : "";

@@ -2,7 +2,8 @@ import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {mkdir,readdir,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {installedPath,signInWindow} from './cli-install.ts';
-import {SessionLost,unsupportedFlag} from './kinetra-turn.ts';
+import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
+import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 
 export type ClaudeImage = { mime: string; data: string };
 /** A few words on what Claude is doing, from one stream-json event (null when the event says nothing new). */
@@ -16,6 +17,31 @@ export function claudeStatus(event:any):string|null{
   }
   if(event?.type==='user'&&(event.message?.content||[]).some((part:any)=>part.type==='tool_result'))return 'Reading what it found…';
   return null;
+}
+/** One of Claude Code's `rate_limit_event` lines: how much of a plan window is used and when it resets. */
+export type ClaudeLimit = {type:string;status?:string;utilization?:number;resetsAt?:number};
+export function parseRateLimit(event:any):ClaudeLimit|null{
+  if(event?.type!=='rate_limit_event')return null;
+  const info=event.rate_limit_info||event.rateLimitInfo||event;
+  const type=String(info?.rateLimitType||info?.rate_limit_type||'five_hour');
+  const utilization=typeof info?.utilization==='number'&&Number.isFinite(info.utilization)?info.utilization:undefined;
+  const resets=Number(info?.resetsAt??info?.resets_at);
+  return {type,status:typeof info?.status==='string'?info.status:undefined,utilization,resetsAt:Number.isFinite(resets)&&resets>0?(resets>1e12?Math.round(resets/1000):resets):undefined};
+}
+/** Claude's plan windows in the same shape as ChatGPT's, so both show and switch the same way. Utilization is a
+ *  fraction (0–1) when Claude Code reports it; a window it refused is shown as used up until it resets. */
+export function claudeUsage(limits:ClaudeLimit[],now=Date.now()/1000):UsageSnapshot|undefined{
+  if(!limits.length)return undefined;
+  const window=(limit:ClaudeLimit|undefined,minutes:number):UsageWindow|null=>{
+    if(!limit)return null;
+    const expired=!!limit.resetsAt&&limit.resetsAt<=now;
+    const used=expired?0:typeof limit.utilization==='number'?Math.max(0,Math.min(100,limit.utilization<=1?limit.utilization*100:limit.utilization)):limit.status==='rejected'?100:null;
+    return {usedPercent:used,windowDurationMins:minutes,resetsAt:expired?null:limit.resetsAt??null};
+  };
+  const short=limits.find(l=>/five|5h|hour|session/i.test(l.type));
+  const weekly=limits.find(l=>/seven|7d|week/i.test(l.type));
+  const refused=limits.some(l=>l.status==='rejected'&&(!l.resetsAt||l.resetsAt>now));
+  return {rateLimits:{primary:window(short,300),secondary:window(weekly,10080)},...(refused?{ordinaryUsageAllowed:false}:{})};
 }
 type ClaudeModel = {id:string;name:string;provider:string;connected:boolean;context:number;specialties:string[];tools:string[];description:string;reasoningEfforts:{reasoningEffort:string;description:string}[];defaultReasoningEffort:string};
 const effortNames:Record<string,string>={low:'Low',medium:'Medium',high:'High',xhigh:'Extra high',max:'Max'};
@@ -40,7 +66,9 @@ export function parseClaudeModels(list:any):ClaudeModel[]{
     const value=String(m?.value||'');
     if(!MODEL_NAME.test(value)||value==='default'||seen.has(value))continue;
     seen.add(value);
-    const efforts=m.supportsEffort===false?[]:(Array.isArray(m.supportedEffortLevels)?m.supportedEffortLevels:[]).filter((e:any)=>typeof e==='string'&&/^[a-z]{2,12}$/.test(e));
+    const listed=(Array.isArray(m.supportedEffortLevels)?m.supportedEffortLevels:[]).filter((e:any)=>typeof e==='string'&&/^[a-z]{2,12}$/.test(e));
+    // A model that supports effort without naming its levels gets Claude Code's standard three, so Claude has a thinking picker like ChatGPT.
+    const efforts=m.supportsEffort===false||/haiku/i.test(value)&&!listed.length?[]:listed.length?listed:['low','medium','high'];
     const name=String(m.displayName||value).replace(/\s*\((?:recommended|default)\)\s*$/i,'').trim().slice(0,80)||value;
     models.push({id:'claude:'+value,name:/^claude\b/i.test(name)?name:'Claude '+name,provider:'Anthropic',connected:true,context:/\[1m\]$/i.test(value)?1_000_000:32000,specialties:[],tools:[],
       description:String(m.description||'On your Claude subscription').slice(0,200),reasoningEfforts:levels(efforts),defaultReasoningEffort:efforts.includes('high')&&/opus/i.test(value)?'high':efforts.includes('medium')?'medium':efforts[0]||''});
@@ -60,6 +88,12 @@ export class ClaudeProvider {
   /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
+  /** The plan windows Claude Code last reported (it says so with each answer), and when. */
+  private limits=new Map<string,ClaudeLimit>();
+  private limitsAt=0;
+  usage(){const usage=claudeUsage([...this.limits.values()]);return usage?{usage,checkedAt:this.limitsAt}:{};}
+  /** Whether a request is running on this account (an account is never switched or removed mid-answer). */
+  get busy(){return this.active.size>0;}
   private configured:string;
   /** Re-resolved each time so a Claude Code that Mowr just installed is found without restarting. */
   private get executable(){return this.configured==='claude'?installedPath('claude','claude'):this.configured;}
@@ -171,6 +205,8 @@ export class ClaudeProvider {
           if(!line.trim())return;
           let event:any;try{event=JSON.parse(line);}catch{return;}
           if(event.type==='result'){result=event;return;}
+          const limit=parseRateLimit(event);
+          if(limit){this.limits.set(limit.type,limit);this.limitsAt=Date.now();}
           const status=claudeStatus(event);
           if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
         };
@@ -191,7 +227,8 @@ export class ClaudeProvider {
           const detail=String(result?.result||'')+' '+error;
           if(session&&unsupportedFlag.test(detail)){this.noSessions=true;return finish(undefined,new SessionLost('This Claude Code does not keep sessions.'));}
           if(session?.resume&&/no conversation found|session.{0,40}(not found|does not exist|missing)/i.test(detail+JSON.stringify(result?.errors||'')))return finish(undefined,new SessionLost('Claude Code no longer has this session.'));
-          finish(undefined,Error(usage(detail)?'Claude subscription usage is unavailable right now.':/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
+          if(usage(detail))return finish(undefined,new UsageLimit('Claude subscription usage is unavailable right now.'));
+          finish(undefined,Error(/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
         });
         child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
       });
@@ -206,6 +243,13 @@ export class ClaudeProvider {
       await rm(join(projects,folder,sessionId+'.jsonl'),{force:true}).catch(()=>{});
       await rm(join(projects,folder,sessionId),{recursive:true,force:true}).catch(()=>{});
     }
+  }
+  /** Signs this Claude Code out (its own command), so the account's sign-in is cleared from this PC. */
+  async logout(){
+    this.statusCache=null;this.limits.clear();
+    const child=await this.start(['auth','logout']).catch(()=>null);
+    if(!child)return;
+    await new Promise<void>(resolve=>{const timer=setTimeout(()=>{child.kill();resolve();},20000);child.stdout.resume();child.stderr.resume();child.on('error',()=>{clearTimeout(timer);resolve();});child.on('close',()=>{clearTimeout(timer);resolve();});child.stdin.end();});
   }
   cancel(id:string){this.active.get(id)?.kill();}
   stop(){for(const child of this.active.values())child.kill();}

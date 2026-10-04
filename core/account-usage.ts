@@ -19,14 +19,14 @@ export function isBelowSwitchThreshold(usage?: UsageSnapshot | null): boolean {
   if (usage?.ordinaryUsageAllowed === false) return true;
   const windows = usageWindows(usage);
   return windows.some(({window,left}) => left !== null &&
-    (window.windowDurationMins === 10080 ? left < 5 : (window.windowDurationMins || 0) <= 360 ? left < 10 : false));
+    ((window.windowDurationMins || 0) >= 10080 ? left < 5 : (window.windowDurationMins || 0) <= 360 ? left < 10 : false));
 }
 
 export function hasCapacity(usage?: UsageSnapshot | null): boolean {
   if (!usage || usage.ordinaryUsageAllowed === false) return false;
   const windows = usageWindows(usage);
   return windows.length > 0 && windows.every(({window,left}) => left !== null &&
-    (window.windowDurationMins === 10080 ? left >= 5 : (window.windowDurationMins || 0) <= 360 ? left >= 10 : left > 0));
+    ((window.windowDurationMins || 0) >= 10080 ? left >= 5 : (window.windowDurationMins || 0) <= 360 ? left >= 10 : left > 0));
 }
 
 export function resetWindows(previous?: UsageSnapshot | null, current?: UsageSnapshot | null): string[] {

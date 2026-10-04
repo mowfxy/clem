@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {GrokProvider,parseModels,parseGrokReply,parseBilling,grokModelName,grokModels} from '../desktop/grok.ts';
+import {GrokProvider,parseModels,parseGrokReply,parseGrokEfforts,parseBilling,grokModelName,grokModels} from '../desktop/grok.ts';
 
 // Runs the fake grok (tests/fixtures/fake-grok.mjs) through node instead of a real grok.exe.
 class FakeGrok extends GrokProvider {
@@ -24,6 +24,10 @@ test('the model list and sign-in state come from `grok models`',()=>{
 test('replies and plan usage are read from Grok’s own formats',()=>{
   assert.deepEqual(parseGrokReply('{\n  "text": "Hi",\n  "stopReason": "end_turn"\n}\n'),{text:'Hi'});
   assert.deepEqual(parseGrokReply('{"type":"error","message":"boom"}\n'),{error:'boom'});
+  // The stream's result is the last message: notes the agent wrote before using its own tools are not part of it.
+  assert.deepEqual(parseGrokReply('{"type":"assistant","message":{"content":[{"type":"text","text":"I will look."}]}}\n{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}\n{"type":"result","subtype":"success","is_error":false,"result":"Done."}\n'),{text:'Done.'});
+  assert.deepEqual(parseGrokReply('{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Rate limit"}\n'),{error:'Rate limit'});
+  assert.deepEqual(parseGrokEfforts({_meta:{modelState:{availableModels:[{modelId:'grok-4.7',_meta:{supportsReasoningEffort:true,reasoningEffort:'high',reasoningEfforts:[{value:'xhigh'},{value:'high',default:true},{value:'low'}]}}]}}}),{'grok-4.7':{levels:['low','high','xhigh'],default:'high'}});
   assert.deepEqual(parseBilling({result:{config:{creditUsagePercent:120,currentPeriod:{end:'2026-10-01'}},subscription_tier:'SUPERGROK'}}),{percentUsed:100,periodEnd:'2026-10-01',plan:'SUPERGROK'});
   assert.equal(parseBilling({result:{}}),undefined);
 });
@@ -31,13 +35,18 @@ test('status: signed in with models and real plan usage, or sign-in needed',asyn
   const ok=await new FakeGrok('ok').status();
   assert.equal(ok.connected,true);assert.deepEqual(ok.models,['grok-4.6','grok-build-0.1','grok-4.3-mini']);
   assert.deepEqual(ok.usage,{percentUsed:37.4,periodEnd:'2026-10-01T00:00:00Z',plan:'SUPERGROK'});
+  // Thinking levels come from Grok's own model list, lowest first, so the composer offers them as it does ChatGPT's.
+  const listed=grokModels(ok);
+  assert.deepEqual(listed.find(m=>m.id==='grok:grok-4.6')!.reasoningEfforts.map(e=>e.reasoningEffort),['low','medium','high','xhigh']);
+  assert.equal(listed.find(m=>m.id==='grok:grok-4.6')!.defaultReasoningEffort,'high');
+  assert.deepEqual(listed.find(m=>m.id==='grok:grok-build-0.1')!.reasoningEfforts,[]);
   const out=await new FakeGrok('signed-out').status();
   assert.equal(out.installed,true);assert.equal(out.connected,false);assert.match(out.error!,/Sign in/);
 });
 test('a reply comes back text-only, with long prompts passed as a file',async()=>{
   const long='Explain limits. '+'x'.repeat(50000);
   const events=await run(new FakeGrok('ok'),long);
-  assert.equal(events[0].text,'[grok-4.6] '+long);assert.equal(events[1].type,'done');
+  assert.equal(events.find(e=>e.type==='delta').text,'[grok-4.6] '+long);assert.equal(events.at(-1).type,'done');
 });
 test('failures turn into clear messages',async()=>{
   await assert.rejects(run(new FakeGrok('limit'),'Hi'),/no usage left/);
@@ -46,7 +55,7 @@ test('failures turn into clear messages',async()=>{
 });
 test('a reply split inside a multi-byte character arrives intact',async()=>{
   const events=await run(new FakeGrok('split'),'hi');
-  assert.equal(events[0].text,'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627');
+  assert.equal(events.find(e=>e.type==='delta').text,'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627');
 });
 test('a tool loop continues one Grok session; a session Grok no longer has is reported so the loop can resend',async()=>{
   const {SessionLost}=await import('../desktop/kinetra-turn.ts');
@@ -73,4 +82,17 @@ test('a Grok CLI without sessions is told apart from a failure, and later steps 
   assert.match(events.find(e=>e.type==='delta').text,/again/);
   const last=grok.args.filter(a=>a.includes('--prompt-file')).at(-1)!;
   assert.ok(!last.includes('--session-id')&&!last.includes('--resume'));
+});
+
+test('only Grok’s final message is the reply, and the chosen thinking level is passed on',async()=>{
+  const events:any[]=[];
+  await new FakeGrok('steps').run('r','hi','grok:grok-4.6',e=>events.push(e));
+  assert.equal(events.find(e=>e.type==='delta').text,'{"kinetra":{"action":"help"}}');
+  assert.ok(events.some(e=>e.type==='status'&&e.text==='Using a tool…'));
+  const chosen:any[]=[];
+  await new FakeGrok('ok').run('r','hi','grok:grok-4.6',e=>chosen.push(e),[],undefined,'xhigh');
+  assert.equal(chosen.find(e=>e.type==='delta').text,'[grok-4.6 xhigh] hi');
+  const unlisted:any[]=[];
+  await new FakeGrok('ok').run('r','hi','grok:grok-build-0.1',e=>unlisted.push(e),[],undefined,'xhigh');
+  assert.equal(unlisted.find(e=>e.type==='delta').text,'[grok-build-0.1] hi');
 });

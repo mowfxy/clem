@@ -223,8 +223,19 @@ try {
   await page.getByRole('button',{name:'Thinking level',exact:true}).click();
   const efforts=page.getByRole('slider',{name:'Reasoning effort'});
   await efforts.focus();
+  // No spinning logo; the petals drift on transform and opacity only, and a new level speeds them up where they are.
+  assert.equal(await page.locator('.effort-mark').count(),0);
+  const drift=()=>page.evaluate(()=>{const a=document.querySelector('.effort-lane').getAnimations()[0];return {time:a.currentTime,rate:a.playbackRate,props:[...new Set(a.effect.getKeyframes().flatMap(k=>Object.keys(k)))]};});
+  await page.waitForTimeout(700);
+  const before=await drift();
+  assert.deepEqual(before.props.filter(k=>!['offset','easing','composite','computedOffset','transform','opacity'].includes(k)),[]);
   await page.keyboard.press('End');
   assert.equal(await efforts.getAttribute('aria-valuetext'),'Ultra');
+  await page.waitForTimeout(100);
+  const after=await drift();
+  assert.ok(after.rate>before.rate,'a higher level drifts faster');
+  assert.ok(after.time>before.time,'the drift continues instead of restarting');
+  await page.waitForTimeout(600);
   await page.screenshot({path:'artifacts/reasoning-picker.png'});
   await page.getByRole('button',{name:'Reset thinking level',exact:true}).click();
   assert.equal(await efforts.getAttribute('aria-valuetext'),'Light');

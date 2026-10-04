@@ -53,35 +53,16 @@
 
 /* Thinking level: a Mowr bar in black and white */
 .picker-effort{margin-top:6px;padding:12px 8px 6px;border-top:1px solid #ffffff0c}
-.effort-head{display:flex;align-items:center;gap:10px;padding:0 2px 12px}
-.effort-mark{width:26px;height:26px;flex:none;display:grid;place-items:center;border-radius:8px;background:#ffffff0c;color:#f2f1ec;transition:transform .5s cubic-bezier(.3,1.4,.5,1)}
-.effort-title{flex:1;min-width:0;display:grid;justify-items:center;gap:1px;text-align:center}
-.effort-title b{font:700 15px/1.2 var(--sans);color:#f6f5f0;letter-spacing:.005em}
-.effort-title small{font-size:11px;color:#8f8e87;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.effort-spacer{width:26px;flex:none}
 .unified-picker-panel .picker-effort-reset{width:26px;height:26px;flex:none;justify-content:center;border-radius:8px;color:#a9a8a0}
 .unified-picker-panel .picker-effort-reset:hover{background:#ffffff0f;color:#fff}
-.effort-track{--k:26px;position:relative;height:32px;box-sizing:border-box;border-radius:99px;background:#141413;border:1px solid #ffffff12;cursor:pointer;touch-action:none;outline:none}
 .effort-track:focus-visible{box-shadow:0 0 0 2px #232321,0 0 0 4px #d6d5cf}
-.effort-stop{position:absolute;top:50%;left:calc(15px + (100% - 30px) * var(--at));width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;background:#ffffff33}
-.effort-fill{position:absolute;inset:-1px auto -1px -1px;width:calc(32px + (100% - 30px) * var(--p));border-radius:99px;overflow:hidden;background:linear-gradient(90deg,#4a4a46,#a3a29b 65%,#e2e1da);box-shadow:inset 0 1px 0 #ffffff22;transition:width .42s cubic-bezier(.3,1.35,.5,1)}
-.effort-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,#ffffff40 50%,transparent 70%);background-size:220% 100%;opacity:var(--glow);animation:effort-sheen calc(var(--speed) * 1.2) linear infinite}
-@keyframes effort-sheen{from{background-position:130% 0}to{background-position:-90% 0}}
-.effort-petal{position:absolute;left:-12px;fill:#fff;opacity:0;animation:effort-drift var(--speed) linear infinite}
-.effort-petal:nth-child(3n){fill:#1a1a19}.effort-petal{filter:drop-shadow(0 0 2px #ffffff55)}
-@keyframes effort-drift{0%{left:-12px;opacity:0;transform:translateY(-50%) rotate(0) scale(.6)}15%{opacity:calc(var(--glow) * .95)}80%{opacity:calc(var(--glow) * .8)}100%{left:calc(100% - 20px);opacity:0;transform:translateY(-50%) rotate(180deg) scale(1)}}
-.effort-knob{position:absolute;top:2px;left:calc(2px + (100% - 30px) * var(--p));width:var(--k);height:var(--k);border-radius:50%;background:#fff;box-shadow:0 2px 8px #0008,0 0 0 1px #0000000f;transition:left .42s cubic-bezier(.3,1.35,.5,1),transform .15s}
-.effort-track:active .effort-knob,.effort-track.is-dragging .effort-knob{transform:scale(1.08)}
-.effort-track.is-dragging .effort-fill,.effort-track.is-dragging .effort-knob{transition:none}
 
-@media(prefers-reduced-motion:reduce){.effort-fill,.effort-knob,.effort-mark{transition:none}.effort-fill::after,.effort-petal{animation:none}}
 
 /* Two compact popovers: model list and thinking level */
 .unified-model-picker{gap:2px;align-items:center}
 .picker-trigger.picker-trigger-effort{padding:0 9px;gap:7px;font-size:12px;color:#aeada5;background:transparent}
 .picker-trigger.picker-trigger-effort[data-level=high],.picker-trigger.picker-trigger-effort[data-level=xhigh],.picker-trigger.picker-trigger-effort[data-level=ultra]{background:transparent;color:#f4f3ee}
 .effort-pip{position:relative;width:18px;height:6px;border-radius:99px;background:#ffffff1c;overflow:hidden;flex:none}
-.effort-pip::after{content:"";position:absolute;inset:0 auto 0 0;width:calc(6px + 12px * var(--p));border-radius:99px;background:linear-gradient(90deg,#8d8c86,#f2f1ec)}
 .unified-picker-panel.model-pop{width:230px;padding:5px;border-radius:13px}
 .model-pop .picker-model-row{display:flex;align-items:center;width:100%;gap:9px;height:34px;padding:0 9px;border-radius:8px;text-align:left}
 .model-pop .picker-model-row:hover,.model-pop .picker-model-row:focus-visible{background:#ffffff0b}
@@ -91,5 +72,30 @@
 .model-pop .picker-connect{margin-top:4px;padding:8px 9px 4px;font-size:11px}
 .unified-picker-panel.effort-pop{width:250px;padding:12px 12px 14px;border-radius:14px}
 .effort-pop .picker-effort{margin:0;padding:0;border:0}
+
+/* Thinking level: one eased value (--p) moves the fill, the knob and the trigger's pip together. */
+@property --p{syntax:"<number>";inherits:true;initial-value:0}
+@property --glow{syntax:"<number>";inherits:true;initial-value:.5}
+.effort-head{display:flex;align-items:center;gap:10px;padding:0 2px 12px;min-height:26px}
+.effort-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px}
+.effort-title b{font:700 14px/1.2 var(--sans);color:#f6f5f0;letter-spacing:.005em}
+.effort-title small{font-size:11px;color:#8f8e87}
+.effort-track{--k:26px;position:relative;height:32px;box-sizing:border-box;border-radius:99px;background:#141413;border:1px solid #ffffff12;cursor:pointer;touch-action:none;outline:none;transition:--p .5s cubic-bezier(.22,1,.36,1),--glow .5s ease}
+.effort-track.is-dragging{transition:--glow .3s ease}
+.effort-stop{position:absolute;top:50%;left:calc(15px + (100% - 30px) * var(--at));width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:#ffffff30;transition:opacity .3s}
+.effort-stop.is-passed{opacity:0}
+.effort-fill{position:absolute;inset:-1px auto -1px -1px;width:calc(32px + (100% - 30px) * var(--p));border-radius:99px;overflow:hidden;background:linear-gradient(90deg,#4a4a46,#a3a29b 65%,#e2e1da);box-shadow:inset 0 1px 0 #ffffff22;contain:paint}
+.effort-fill::after{content:"";position:absolute;top:0;bottom:0;left:0;width:45%;background:linear-gradient(100deg,transparent,#ffffff3a 50%,transparent);opacity:var(--glow);transform:translateX(-120%);animation:effort-sheen 3.6s cubic-bezier(.45,0,.55,1) infinite;will-change:transform}
+@keyframes effort-sheen{to{transform:translateX(330%)}}
+.effort-lane{position:absolute;inset:0;transform:translateX(-100%);animation:effort-lane 4.8s linear infinite;will-change:transform,opacity}
+@keyframes effort-lane{0%{transform:translateX(-100%);opacity:0}14%{opacity:1}82%{opacity:1}100%{transform:translateX(0);opacity:0}}
+.effort-petal{position:absolute;right:8px;margin-top:-5px;fill:#fff;opacity:0;filter:drop-shadow(0 0 2px #ffffff55);transition:opacity .6s ease;animation:effort-spin 4.8s linear infinite}
+.effort-lane.is-on .effort-petal{opacity:calc(var(--glow) * .9)}
+.effort-lane:nth-child(3n) .effort-petal{fill:#1a1a19}
+@keyframes effort-spin{from{transform:rotate(0) scale(.65)}to{transform:rotate(180deg) scale(1)}}
+.effort-knob{position:absolute;top:2px;left:calc(2px + (100% - 30px) * var(--p));width:var(--k);height:var(--k);border-radius:50%;background:#fff;box-shadow:0 2px 8px #0008,0 0 0 1px #0000000f;transition:transform .2s cubic-bezier(.22,1,.36,1)}
+.effort-track:active .effort-knob,.effort-track.is-dragging .effort-knob{transform:scale(1.08)}
+.effort-pip{transition:--p .5s cubic-bezier(.22,1,.36,1)}
+.effort-pip::after{content:"";position:absolute;inset:0 auto 0 0;width:calc(6px + 12px * var(--p));border-radius:99px;background:linear-gradient(90deg,#8d8c86,#f2f1ec)}
 .effort-pop .effort-head{padding:0 0 10px}
-.effort-pop .effort-title b{font-size:14px}
+@media(prefers-reduced-motion:reduce){.effort-track,.effort-pip,.effort-knob{transition:none}.effort-fill::after,.effort-lane,.effort-petal{animation:none}.effort-lane{opacity:0}}
