@@ -13,7 +13,7 @@ import { uprightChemistry } from "./math-draw.ts";
  * docx's equation parts. Anything without a Word counterpart (matrices, aligned rows) makes `wordMath` return
  * null, and the caller prints that equation as a picture instead.
  */
-type Node = { tag: string; attrs: Record<string, string>; children: Node[]; text: string };
+export type Node = { tag: string; attrs: Record<string, string>; children: Node[]; text: string };
 
 const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
 const decode = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (whole, e: string) => e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : entities[e] ?? whole);
@@ -43,11 +43,11 @@ export const UPRIGHT = "\ue000";
 export function wordUpright(xml: string) {
   return xml.replace(/<m:r>(<m:t(?: xml:space="preserve")?>)\ue000/g, '<m:r><m:rPr><m:sty m:val="p"/></m:rPr>$1').replace(/\ue000/g, "");
 }
-const nary = new Set(["∑", "∏", "∐", "⋃", "⋂", "⨁", "⨂", "⨀", "⋁", "⋀"]);
-const integrals = new Set(["∫", "∬", "∭", "∮", "∯", "∰"]);
-const accents: Record<string, string> = { "^": "\u0302", "ˆ": "\u0302", "¯": "\u0304", "ˉ": "\u0304", "‾": "\u0305", "→": "\u20d7", "\u20d7": "\u20d7", "˙": "\u0307", "¨": "\u0308", "~": "\u0303", "˜": "\u0303", "ˇ": "\u030c", "´": "\u0301", "`": "\u0300", "˘": "\u0306" };
-const textOf = (n: Node): string => n.text + n.children.map(textOf).join("");
-const elements = (n: Node) => n.children.filter((c) => c.tag !== "annotation" && c.tag !== "annotation-xml");
+export const nary = new Set(["∑", "∏", "∐", "⋃", "⋂", "⨁", "⨂", "⨀", "⋁", "⋀"]);
+export const integrals = new Set(["∫", "∬", "∭", "∮", "∯", "∰"]);
+export const accents: Record<string, string> = { "^": "\u0302", "ˆ": "\u0302", "¯": "\u0304", "ˉ": "\u0304", "‾": "\u0305", "→": "\u20d7", "\u20d7": "\u20d7", "˙": "\u0307", "¨": "\u0308", "~": "\u0303", "˜": "\u0303", "ˇ": "\u030c", "´": "\u0301", "`": "\u0300", "˘": "\u0306" };
+export const textOf = (n: Node): string => n.text + n.children.map(textOf).join("");
+export const elements = (n: Node) => n.children.filter((c) => c.tag !== "annotation" && c.tag !== "annotation-xml");
 
 function convert(n: Node): any[] {
   switch (n.tag) {
@@ -141,17 +141,36 @@ export function wordMath(latex: string, display = false): any[] | null {
 const supers: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻", "−": "⁻", "=": "⁼", "(": "⁽", ")": "⁾", n: "ⁿ", i: "ⁱ" };
 const subs: Record<string, string> = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋", "−": "₋", "=": "₌", "(": "₍", ")": "₎", a: "ₐ", e: "ₑ", o: "ₒ", x: "ₓ", i: "ᵢ", j: "ⱼ", n: "ₙ", m: "ₘ", k: "ₖ", t: "ₜ", p: "ₚ", s: "ₛ" };
 const script = (text: string, map: Record<string, string>, mark: string) => [...text].every((c) => map[c]) ? [...text].map((c) => map[c]).join("") : mark + (text.length > 1 ? "(" + text + ")" : text);
+/** A group that reads as one unit needs no brackets in a/b or √x; anything with an operator, space or division does. */
+const wrap = (s: string) => (/[+\-−±∓×·÷=<>≤≥≈≠,;:/\s]/.test(s) ? "(" + s + ")" : s);
+/** Arrows that stretch over a label (\xrightarrow{f}) → how to write them in a line: where the label goes between the shaft and the head. */
+const arrowText = (arrow: string, label: string) => {
+  if (/[⇌⇋]/.test(arrow)) return " " + arrow + (label ? "[" + label + "]" : "") + " ";
+  const double = /[⇐⇒⇔⟸⟹⟺]/.test(arrow), toLeft = /[←⟵⇐⟸↔⟷⇔⟺]/.test(arrow), toRight = !/[←⟵⇐⟸]/.test(arrow), shaft = double ? "=" : "–";
+  return " " + (toLeft ? (double ? "⇐" : "←") : shaft) + label + (toRight ? (double ? "⇒" : "→") : shaft) + " ";
+};
 function plain(n: Node): string {
   const kids = elements(n);
   switch (n.tag) {
     case "annotation": case "annotation-xml": case "mphantom": return "";
-    case "mover": { const mark = n.attrs.accent === "true" ? accents[plain(kids[1]).trim()] : undefined; return mark ? plain(kids[0]) + mark : plain(kids[0]) + plain(kids[1]); }
+    case "mover": case "munder": case "munderover": {
+      const base = kids[0], under = n.tag === "mover" ? undefined : kids[1], over = n.tag === "munder" ? undefined : kids[n.tag === "munderover" ? 2 : 1];
+      const symbol = base.tag === "mo" ? textOf(base).trim() : "";
+      if (base.tag === "mo" && base.attrs.stretchy === "true" && /[←→↔⇐⇒⇔⟵⟶⟷⟸⟹⟺↦⇌⇋]/.test(symbol)) return arrowText(symbol, [over, under].filter(Boolean).map((k) => plain(k!).trim()).filter(Boolean).join("/"));
+      if (n.tag === "munder") return n.attrs.accentunder === "true" ? plain(base) : plain(base) + script(plain(under!), subs, "_");
+      if (n.tag === "mover" && n.attrs.accent === "true") {
+        const mark = accents[plain(over!).trim()], letters = plain(base);
+        // A vector over AB marks each letter (A⃗B⃗); a longer or non-letter base takes one mark at the end.
+        return mark ? (/^[\p{L}\p{N}]{1,4}$/u.test(letters) ? [...letters].map((c) => c + mark).join("") : letters + mark) : letters + plain(over!);
+      }
+      return plain(base) + (under ? script(plain(under), subs, "_") : "") + (over ? script(plain(over), supers, "^") : "");
+    }
     case "msup": return plain(kids[0]) + script(plain(kids[1]), supers, "^");
     case "msub": return plain(kids[0]) + script(plain(kids[1]), subs, "_");
     case "msubsup": return plain(kids[0]) + script(plain(kids[1]), subs, "_") + script(plain(kids[2]), supers, "^");
-    case "mfrac": { const a = plain(kids[0]), b = plain(kids[1]); return (a.length > 1 ? "(" + a + ")" : a) + "/" + (b.length > 1 ? "(" + b + ")" : b); }
-    case "msqrt": return "√(" + kids.map(plain).join("") + ")";
-    case "mroot": return script(plain(kids[1]), supers, "") + "√(" + plain(kids[0]) + ")";
+    case "mfrac": return wrap(plain(kids[0])) + "/" + wrap(plain(kids[1]));
+    case "msqrt": return "√" + wrap(kids.map(plain).join(""));
+    case "mroot": return script(plain(kids[1]), supers, "") + "√" + wrap(plain(kids[0]));
     case "mspace": return " ";
     default: return n.text + kids.map(plain).join("");
   }

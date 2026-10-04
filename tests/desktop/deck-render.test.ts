@@ -31,3 +31,26 @@ test("context decks are drawn, measured and photographed, each with its own desi
   const text = Object.entries(report).filter(([f]) => /slides\/slide\d+\.xml$/.test(f)).map(([, b]) => strFromU8(b)).join("");
   assert.match(text, /\$1\.2M retention programme for EMEA SMB/);
 });
+
+test("inline maths on slides is a native PowerPoint equation with a plain-text fallback", { timeout: 600_000 }, () => {
+  const out = mkdtempSync(join(tmpdir(), "mowr-decks-math-"));
+  const run = spawnSync(process.execPath, ["scripts/verify/office-files.mjs", out], { encoding: "utf8", timeout: 600_000, env: { ...process.env, MOWR_ONLY: "context-circuit" } });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  const bytes = new Uint8Array(readFileSync(join(out, "context-circuit-lecture-preset.pptx")));
+  const files = unzipSync(bytes); // still a valid zip
+  const slides = Object.entries(files).filter(([f]) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).map(([, b]) => strFromU8(b));
+  const withMath = slides.filter((x) => x.includes("<a14:m>"));
+  assert.ok(withMath.length >= 2, "the vector slide and the bullets slide carry equations");
+  for (const xml of withMath) {
+    assert.match(xml, /<mc:AlternateContent><mc:Choice Requires="a14"><a14:m><m:oMath>/);
+    assert.match(xml, /<mc:Fallback><a:r>/, "older readers get the plain text");
+    assert.match(xml, /<p:sld[^>]*xmlns:mc=[^>]*xmlns:a14=[^>]*xmlns:m=/);
+    assert.doesNotMatch(xml, /[\ue100-\ue102]/);
+  }
+  const all = withMath.join("");
+  assert.match(all, /<m:acc>/, "the vector is an accent over AB");
+  assert.match(all, /<m:f>/, "the fraction is a native fraction");
+  assert.match(all, /<m:nary>/, "the sum is a native n-ary");
+  // A labelled arrow has no OMML form: it stays text, written readably.
+  assert.match(slides.join(""), /<a:t>A ←f– B<\/a:t>/);
+});

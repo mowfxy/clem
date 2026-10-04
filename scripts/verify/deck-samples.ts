@@ -134,6 +134,7 @@ export const deckSamples: Record<string, any> = {
       { layout: "figure", title: "A 12 V divider", figure: circuit, caption: "R1 = 100 Ω, R2 = 200 Ω", bullets: ["I = 40 mA", "V2 = 8 V"] },
       { layout: "image", title: "The same divider, drawn as a schematic", image: { figure: circuit }, side: "left", bullets: ["Two resistors in series", "Output taken across R2"] },
       { layout: "equation", title: "Arrows carry their labels", math: "N_2 + 3H_2 \\xrightarrow[\\text{450 °C, Fe}]{\\text{200 atm}} 2NH_3 \\qquad V_{in} \\xRightarrow{\\text{divider}} V_{out}", text: "Vector notation: $\\overrightarrow{AB}$ and $A \\xleftarrow{f} B$." },
+      { layout: "bullets", title: "Maths in the middle of a sentence", bullets: ["The divider gives $V_{out} = \\frac{R_2}{R_1 + R_2} V_{in}$ across the second resistor", "Power is $P = I^2 R$, and the spread is $\\sqrt{a^2 + b^2}$", "Summing $\\sum_{i=1}^{n} x_i$ for every reading; $\\int_0^1 f(x)\\,dx$ for the average"], takeaway: "Equations stay editable: $E = mc^2$ sits in line with the words." },
       { layout: "equation", title: "Long labels stretch the arrow", math: "\\overrightarrow{PQ} = \\vec{q} - \\vec{p} \\qquad A \\xrightarrow{\\text{after a very long reaction}} B" },
       { layout: "closing", title: "Questions?" },
     ],
