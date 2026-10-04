@@ -73,5 +73,8 @@ test("desktop bridge rejects arbitrary tools, paths and unbounded messages", () 
   );
   // Whole long files fit in one message; the request is still bounded.
   assert.ok(requestSchema.safeParse({ action: "chat", id: crypto.randomUUID(), scope: "chat:test", messages: [{ role: "user", content: "x".repeat(600_000) }] }).success);
-  assert.ok(!requestSchema.safeParse({ action: "chat", id: crypto.randomUUID(), scope: "chat:test", messages: Array.from({ length: 201 }, () => ({ role: "user", content: "x" })) }).success);
+  // A long chat is sent whole (the main process condenses it); the request is still bounded.
+  const many = (length: number) => requestSchema.safeParse({ action: "chat", id: crypto.randomUUID(), scope: "chat:test", messages: Array.from({ length }, () => ({ role: "user", content: "x" })) }).success;
+  assert.ok(many(2000));
+  assert.ok(!many(2001));
 });

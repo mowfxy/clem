@@ -80,3 +80,20 @@ test("LaTeX becomes native Word equations, upright where it should be", () => {
   assert.equal(plainMath(String.raw`x^2 + \frac{1}{2}`), "x²+1/2");
   assert.equal(wordUpright(`<m:r><m:t>${UPRIGHT}mA</m:t></m:r>`), '<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>mA</m:t></m:r>');
 });
+
+test("a workbook Mowr makes carries each formula's calculated value, so readers that do not calculate show numbers", () => {
+  const zip = unzipSync(excelWorkbook({ sheets: [
+    { name: "Sales", columns: [{ header: "Item" }, { header: "Qty", format: "integer" }, { header: "Price", format: "currency" }, { header: "Total", format: "currency" }], rows: [["Pen", 3, 1.5, "=B{row}*C{row}"], ["Book", 2, 12, "=B{row}*C{row}"]], totals: { columns: { Qty: "sum", Total: "sum" } } },
+    { name: "Summary", columns: [{ header: "Metric" }, { header: "Value" }], rows: [["Biggest", "=MAX(Sales!D2:D3)"], ["Label", '="n="&COUNT(Sales!D2:D3)'], ["Broken", "=1/0"]] },
+  ] }));
+  const sheet = (n: number) => strFromU8(zip[`xl/worksheets/sheet${n}.xml`]);
+  assert.match(sheet(1), /<c r="D2"[^>]*><f>B2\*C2<\/f><v>4\.5<\/v><\/c>/);
+  assert.match(sheet(1), /<c r="D3"[^>]*><f>B3\*C3<\/f><v>24<\/v><\/c>/);
+  assert.match(sheet(1), /<c r="B4"[^>]*><f>SUM\(B2:B3\)<\/f><v>5<\/v><\/c>/);
+  assert.match(sheet(1), /<c r="D4"[^>]*><f>SUM\(D2:D3\)<\/f><v>28\.5<\/v><\/c>/);
+  assert.match(sheet(2), /<c r="B2"[^>]*><f>MAX\(Sales!D2:D3\)<\/f><v>24<\/v>/);
+  assert.match(sheet(2), /<c r="B3"[^>]* t="str"><f>[^<]*<\/f><v>n=2<\/v>/);
+  assert.match(sheet(2), /<c r="B4"[^>]* t="e"><f>1\/0<\/f><v>#DIV\/0!<\/v>/);
+  // Excel is still asked to calculate everything itself on open.
+  assert.match(strFromU8(zip["xl/workbook.xml"]), /fullCalcOnLoad="1"/);
+});

@@ -48,3 +48,29 @@ test('a reply split inside a multi-byte character arrives intact',async()=>{
   const events=await run(new FakeGrok('split'),'hi');
   assert.equal(events[0].text,'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627');
 });
+test('a tool loop continues one Grok session; a session Grok no longer has is reported so the loop can resend',async()=>{
+  const {SessionLost}=await import('../desktop/kinetra-turn.ts');
+  const id='0b8f6a54-3d0e-4a39-9a0d-6d3a4b1d9c11';
+  class Spy extends FakeGrok{args:string[][]=[];async start(args:string[]){this.args.push(args);return super.start(args);}}
+  const grok=new Spy('ok');
+  await grok.run('r',"one",'grok:grok-4.6',()=>{},[],{id,resume:false});
+  await grok.run('r',"two",'grok:grok-4.6',()=>{},[],{id,resume:true});
+  const turns=grok.args.filter(a=>a.includes('--prompt-file'));
+  assert.deepEqual(turns[0].slice(turns[0].indexOf('--session-id'),turns[0].indexOf('--session-id')+2),['--session-id',id]);
+  assert.deepEqual(turns[1].slice(turns[1].indexOf('--resume'),turns[1].indexOf('--resume')+2),['--resume',id]);
+  await assert.rejects(new FakeGrok('lost').run('r','x','grok:grok-4.6',()=>{},[],{id,resume:true}),SessionLost);
+  await new FakeGrok('lost').run('r','x','grok:grok-4.6',()=>{},[],{id,resume:false}).catch(()=>{}); // a first step never resumes
+});
+
+test('a Grok CLI without sessions is told apart from a failure, and later steps run without session flags',async()=>{
+  const {SessionLost}=await import('../desktop/kinetra-turn.ts');
+  const id='0b8f6a54-3d0e-4a39-9a0d-6d3a4b1d9c11';
+  class Spy extends FakeGrok{args:string[][]=[];async start(args:string[]){this.args.push(args);return super.start(args);}}
+  const grok=new Spy('old');
+  await assert.rejects(grok.run('r','first','grok:grok-4.6',()=>{},[],{id,resume:false}),SessionLost);
+  const events:any[]=[];
+  await grok.run('r','again','grok:grok-4.6',e=>events.push(e),[],{id,resume:false});
+  assert.match(events.find(e=>e.type==='delta').text,/again/);
+  const last=grok.args.filter(a=>a.includes('--prompt-file')).at(-1)!;
+  assert.ok(!last.includes('--session-id')&&!last.includes('--resume'));
+});

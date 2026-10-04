@@ -1,3 +1,8 @@
+/** Thrown by a provider that could not use its session (the CLI no longer has it, or does not support sessions at all):
+ *  the loop resends everything instead, for the rest of the turn. */
+export class SessionLost extends Error {}
+/** A CLI that does not know a flag it was given (a build without sessions): the provider then stops sending session flags. */
+export const unsupportedFlag = /unknown (?:option|argument|flag)|unexpected (?:argument|option)|unrecognized (?:option|argument)|no such option|invalid option/i;
 /** Exact envelopes only: normal prose and application JSON remain untouched. */
 export function toolRequest(text: string): Record<string, unknown> | null {
   const trimmed = text.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, "$1");
@@ -135,6 +140,8 @@ function leadIn(text: string) {
   const at = text.search(/(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/);
   return (at < 0 ? text : text.slice(0, at)).trim();
 }
+/** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
+const recent = <T>(pictures: T[]) => pictures.slice(-12);
 const LAST_CALL = 'No tool calls are left. Write your final answer to the original request now, as plain text without any {"kinetra":…} request. If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.';
 /**
  * Runs the tool loop. With `stateful`, the model keeps the conversation (one provider
@@ -150,8 +157,11 @@ export async function runKinetraTurn<Picture = unknown>(
   model: (prompt: string, followUp: boolean, pictures: Picture[]) => Promise<string>,
   tool: (request: any) => Promise<any>,
   cancelled: () => boolean,
-  { stateful = false, limit = 3_000_000, unfinished }: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined } = {},
+  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined } = {},
 ) {
+  const { limit = 3_000_000, unfinished } = options;
+  // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
+  let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
   const check = () => {
     if (cancelled()) throw Error("Request cancelled");
@@ -184,7 +194,18 @@ export async function runKinetraTurn<Picture = unknown>(
     }
     sent += input.length;
     reported = history.length;
-    const text = await model(input, stateful && replies > 0, stateful ? newPictures : [...looked]);
+    let text: string;
+    try {
+      text = await model(input, stateful && replies > 0, stateful ? newPictures : recent(looked));
+    } catch (error) {
+      if (!(error instanceof SessionLost) || !stateful) throw error;
+      check();
+      stateful = false;
+      input = closing ? instructions + "\n\nOriginal request and context:\n" + prompt + "\n" + LAST_CALL : full();
+      if (input.length > limit && compact(history, input.length - limit)) input = full();
+      sent += input.length;
+      text = await model(input, false, recent(looked));
+    }
     newPictures = [];
     check();
     const requests = toolRequests(text);
@@ -231,7 +252,8 @@ export async function runKinetraTurn<Picture = unknown>(
         const { attachPictures, ...rest } = result;
         looked.push(...attachPictures);
         newPictures.push(...attachPictures);
-        result = { ...rest, note: "These pages are attached to this message as pictures: look at them now." };
+        const seen = "These pictures are attached to this message: look at them now.";
+        result = { ...rest, note: typeof rest.note === "string" ? rest.note + " " + seen : seen };
       }
       history.push({ request: sentBefore(request, result), result: forModel(request, result) });
     }

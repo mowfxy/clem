@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
+import { forwardRef, lazy, Suspense, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
@@ -15,6 +15,8 @@ import { readOffice, exportOffice, applyOfficePatches, type OfficeBlock, type Of
 import "../pdf/pdf-studio.css";
 import "./file-panel.css";
 
+const OfficePreview = lazy(() => import("../office-preview"));
+
 export type FilePanelHandle = { /** `context`: the conversation and the chat's files, for edits that add or explain content. */ edit: (instruction: string, context?: string) => Promise<string>; stop: () => void; /** Resolves once the file is open and can be edited. */ ready: () => Promise<void> };
 /** A part of the open file the person pointed at: selected text, or an area cropped as an image. */
 export type FilePointer = { id: string; file: string; page?: number; text?: string; image?: string };
@@ -23,7 +25,8 @@ type Kind = "pdf" | "office" | "text" | "image" | "video" | "audio" | "other";
 type Box = { page: number; x: number; y: number; w: number; h: number };
 type View =
   | { kind: "pdf"; pdf: PDFDocumentProxy; boxes: Box[] }
-  | { kind: "office"; blocks: OfficeBlock[]; changed: Set<string> }
+  /** `blob`: the file's bytes, drawn as slides, pages or sheets (src/office-preview); without it the text view is shown. */
+  | { kind: "office"; blocks: OfficeBlock[]; changed: Set<string>; blob?: Blob }
   | { kind: "text"; text: string; changed: Set<number> };
 type Proposal = { summary: string; after: View; commit: () => Promise<StoredFile> };
 /** An edit that is already saved into the file; `before` is kept on screen for comparison until dismissed. */
@@ -125,7 +128,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     if (!data) throw Error("This file is missing from this PC.");
     setBlob(data);
     if (kind === "pdf") setView({ kind: "pdf", pdf: await openPdf(new Uint8Array(await data.arrayBuffer())), boxes: [] });
-    else if (kind === "office") setView({ kind: "office", blocks: await readOffice(data), changed: new Set() });
+    else if (kind === "office") setView({ kind: "office", blocks: await readOffice(data), changed: new Set(), blob: data });
     else if (kind === "text") { if (data.size > 1_000_000) throw Error("Text preview is limited to 1 MB."); setView({ kind: "text", text: await data.text(), changed: new Set() }); }
     else if (kind === "image") setImageUrl(URL.createObjectURL(data));
     else if (kind === "video" || kind === "audio") setMediaSrc(URL.createObjectURL(data));
@@ -208,8 +211,9 @@ export const FilePanel = forwardRef<FilePanelHandle, {
         ownSave.current = stored.updated;
         setCurrent(stored);
         onChange(stored);
-        setBlob(await getBlob(file.id));
-        const after = next.after;
+        const fresh = await getBlob(file.id);
+        setBlob(fresh);
+        const after: View = next.after.kind === "office" ? { ...next.after, blob: fresh } : next.after;
         setView(after);
         setSaved({ summary: next.summary, before: before.kind === "pdf" ? { ...before, boxes: [] } : before, after });
         setCompare("after");
@@ -233,9 +237,10 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       const saved = await proposal.commit();
       setCurrent(saved);
       onChange(saved);
-      setBlob(await getBlob(file.id));
+      const stored = await getBlob(file.id);
+      setBlob(stored);
       const after = proposal.after;
-      setView(after.kind === "pdf" ? { ...after, boxes: [] } : after.kind === "office" ? { ...after, changed: new Set<string>() } : { ...after, changed: new Set<number>() });
+      setView(after.kind === "pdf" ? { ...after, boxes: [] } : after.kind === "office" ? { ...after, changed: new Set<string>(), blob: stored } : { ...after, changed: new Set<number>() });
       setProposal(null);
       setFlash("Saved to " + file.name + ". Undo anytime.");
     } catch (e) { setError(clean(e)); }
@@ -321,7 +326,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       {mediaSrc && kind === "video" && <div className="fp-media"><video src={mediaSrc} controls autoPlay playsInline controlsList="nodownload" onError={() => setError("This video could not be played here. Open it in Drive instead.")} /></div>}
       {mediaSrc && kind === "audio" && <div className="fp-media is-audio"><audio src={mediaSrc} controls autoPlay /></div>}
       {shown?.kind === "pdf" && <Pages key={(saved || proposal) && compare === "after" ? "after" + (current.updated || "") : "before"} pdf={shown.pdf} highlights={shown.boxes} />}
-      {shown?.kind === "office" && <OfficeView name={file.name} blocks={shown.blocks} changed={shown.changed} />}
+      {shown?.kind === "office" && <OfficeView name={file.name} blocks={shown.blocks} changed={shown.changed} blob={shown.blob} />}
       {shown?.kind === "text" && (/\.(md|markdown)$/i.test(file.name) && !shown.changed.size
         ? <article className="fp-paper fp-prose"><ReactMarkdown remarkPlugins={[remarkGfm]}>{shown.text}</ReactMarkdown></article>
         : <article className="fp-paper fp-code">{shown.text.split("\n").map((line, i) => <div key={i} className={shown.changed.has(i) ? "fp-changed" : undefined}>{line || " "}</div>)}</article>)}
@@ -351,7 +356,13 @@ function ViewerDialog({ onClose, children }: { onClose: () => void; children: Re
 }
 
 /** Office files read as what they are: slides as slides, documents as a page, workbooks as cells. */
-function OfficeView({ name, blocks, changed }: { name: string; blocks: OfficeBlock[]; changed: Set<string> }) {
+function OfficeView({ name, blocks, changed, blob }: { name: string; blocks: OfficeBlock[]; changed: Set<string>; blob?: Blob }) {
+  const text = <OfficeText name={name} blocks={blocks} changed={changed} />;
+  // The file itself is drawn (slides, pages, formatted sheets); its text is the fallback when it cannot be.
+  return blob ? <Suspense fallback={<p className="fp-note">Drawing the preview…</p>}><OfficePreview blob={blob} name={name} changed={changed} fallback={text} /></Suspense> : text;
+}
+/** The plain-text reading of an Office file, listing its paragraphs, slide texts or cells. */
+function OfficeText({ name, blocks, changed }: { name: string; blocks: OfficeBlock[]; changed: Set<string> }) {
   const mark = (b: OfficeBlock) => (changed.has(b.part + ":" + b.index) ? " fp-changed" : "");
   if (/\.pptx$/i.test(name)) {
     const slides = [...new Set(blocks.map((b) => b.part))];

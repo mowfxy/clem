@@ -1,8 +1,9 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import {copyFile, mkdir, rm, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, readdir, rm, writeFile} from 'node:fs/promises';
 import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
+import {SessionLost,unsupportedFlag} from './kinetra-turn.ts';
 
 // Grok through the person's own SuperGrok or X Premium+ plan, by running xAI's official, open-source Grok Build CLI
 // (github.com/xai-org/grok-build, Apache-2.0) that Mowr installs with xAI's own installer. xAI documents headless mode
@@ -61,6 +62,8 @@ function friendly(detail:string){
 
 export class GrokProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
+  /** Set when this CLI refused --session-id/--resume: tool loops then run without a session. */
+  private noSessions=false;
   private statusCache:{at:number;value:GrokStatus}|null=null;
   private root:string;
   private configured:string|undefined;
@@ -143,7 +146,9 @@ export class GrokProvider {
     return {started:true};
   }
   /** Pictures are copied into Grok's own workspace and named in the prompt, so Grok opens them with its file tool. */
-  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[]){
+  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean}){
+    // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
+    if(this.noSessions)session=undefined;
     const slug=model.slice(GROK_PREFIX.length);
     let status=await this.status();
     if(!status.connected||!status.models.includes(slug))status=await this.status(true);
@@ -162,7 +167,7 @@ export class GrokProvider {
     await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering.':prompt);
     try{
       let child:ChildProcessWithoutNullStreams;
-      try{child=await this.start(['--prompt-file',file,'-m',slug,'--output-format','json','--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace()]);}
+      try{child=await this.start(['--prompt-file',file,'-m',slug,'--output-format','json','--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace(),...(session?[session.resume?'--resume':'--session-id',session.id]:[])]);}
       catch{throw Error('Grok could not start. Install it in Settings → Models.');}
       this.active.set(id,child);
       const result=await new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
@@ -181,10 +186,25 @@ export class GrokProvider {
         child.stdin.end();
       }).finally(()=>this.active.delete(id));
       const reply=parseGrokReply(result.out);
+      if(session&&(reply.error||!reply.text)&&unsupportedFlag.test((reply.error||'')+result.err)){this.noSessions=true;throw new SessionLost('This Grok CLI does not keep sessions.');}
+      if(session?.resume&&(reply.error||!reply.text)&&/session/i.test((reply.error||'')+result.err)&&/not found|no such|unknown|does not exist|invalid/i.test((reply.error||'')+result.err))throw new SessionLost('Grok no longer has this session.');
       if(reply.error||!reply.text)throw Error(friendly(reply.error||result.err||String(result.code)));
       this.statusCache=null; // usage changed
       emit({id,type:'delta',text:reply.text});emit({id,type:'done'});
     }finally{await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
+  }
+  /** Grok keeps headless sessions under ~/.grok/sessions; the ones a finished tool loop made are removed (best effort: its layout is not documented). */
+  async endSession(sessionId:string){
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!process.env.USERPROFILE)return;
+    const base=join(process.env.USERPROFILE,'.grok','sessions');
+    const sweep=async(folder:string,depth:number):Promise<void>=>{
+      for(const entry of await readdir(folder,{withFileTypes:true}).catch(()=>[])){
+        const path=join(folder,entry.name);
+        if(entry.name.includes(sessionId))await rm(path,{recursive:true,force:true}).catch(()=>{});
+        else if(entry.isDirectory()&&depth>0)await sweep(path,depth-1);
+      }
+    };
+    await sweep(base,2);
   }
   cancel(id:string){this.active.get(id)?.kill();}
   stop(){for(const child of this.active.values())child.kill();}

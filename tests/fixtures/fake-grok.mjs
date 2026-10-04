@@ -1,5 +1,5 @@
 // Stands in for xAI's `grok` (Grok Build) in tests, matching its source: `grok models` text, ACP over
-// `grok agent stdio`, and the `--output-format json` result object. FAKE_GROK=signed-out | limit | split | ok (default)
+// `grok agent stdio`, and the `--output-format json` result object. FAKE_GROK=signed-out | limit | split | lost | old (no session flags) | ok (default)
 import {argv,stdin,stdout,stderr,exit,env} from 'node:process';
 import {readFileSync} from 'node:fs';
 const args=argv.slice(2),mode=env.FAKE_GROK||'ok';
@@ -20,6 +20,8 @@ else {
   const mode2=args[args.indexOf('--permission-mode')+1];
   if(mode2!=='dontAsk'){stderr.write('expected dontAsk, got '+mode2+'\n');exit(2);}
   const prompt=readFileSync(args[args.indexOf('--prompt-file')+1],'utf8'),model=args[args.indexOf('-m')+1];
+  if(mode==='old'&&(args.includes('--session-id')||args.includes('--resume'))){stderr.write("error: unknown option '"+(args.includes('--resume')?'--resume':'--session-id')+"'\n");exit(2);}
+  if(mode==='lost'&&args.includes('--resume')){stdout.write(JSON.stringify({type:'error',message:'Session 1234 not found'})+'\n');exit(1);}
   if(mode==='limit'){stdout.write(JSON.stringify({type:'error',message:'Rate limit exceeded for your plan'})+'\n');exit(1);}
   // A reply written in two pipe chunks that cut through a multi-byte character.
   if(mode==='split'){const bytes=Buffer.from(JSON.stringify({text:'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627'})+'\n'),cut=bytes.indexOf(0xc3)+1;stdout.write(bytes.subarray(0,cut),()=>setTimeout(()=>stdout.write(bytes.subarray(cut),()=>exit(0)),50));}

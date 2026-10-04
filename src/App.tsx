@@ -516,7 +516,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -761,7 +761,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     }));
     const controller = begin(id);
     try {
-      const memory = activeSpace ? activeSpace.memory : state.memory;
+      const memory = activeSpace ? stateRef.current.spaces.find((s) => s.id === activeSpace.id)?.memory ?? activeSpace.memory : stateRef.current.memory;
       // The model sees the files, not only their text: attached pictures, PDF pages with diagrams or scans, and the
       // pictures inside Word and PowerPoint files, from this message first and then from earlier in the chat.
       const pointerImages = pointed.filter((p) => p.image).slice(0, 4).map((p, i) => ({ name: `selection-${i + 1}.png (the area the person is pointing at)`, data: p.image! }));
@@ -941,6 +941,10 @@ In this subject the learner keeps missing these questions in review; connect to 
         if(!desktop)throw Error('PDF export is available in the desktop app.');
         const bytes:Uint8Array=await desktop.invoke({action:'documentPdf',title,markdown:clean});
         download(new Blob([new Uint8Array(bytes)],{type:'application/pdf'}),name+'.pdf');
+      }else if(desktop){
+        // Word and PowerPoint come from the same builders as the files the AI makes (themes, native equations, figures).
+        const bytes:Uint8Array=await desktop.invoke({action:'documentExport',format,title,markdown:clean});
+        download(new Blob([new Uint8Array(bytes)],{type:format==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/vnd.openxmlformats-officedocument.presentationml.presentation'}),name+'.'+format);
       }else{const docs=await import('./documents');await (format==='docx'?docs.exportDocx(clean,title):docs.exportSlides(clean,title));}
     }catch(e){setToast((e as Error).message||'Could not export this answer.');}
   }
@@ -976,7 +980,9 @@ In this subject the learner keeps missing these questions in review; connect to 
       ?{...s,visuals:s.visuals.filter(v=>!(v.chatId===chat&&sameSpec(v.spec,spec)))}
       :{...s,visuals:[{id:uid(),chatId:chat,title:String((spec as {title?:unknown})?.title||"Visual").slice(0,80),created:Date.now(),spec},...s.visuals].slice(0,200)}),
   });
-  const sourceFiles=(chat?:Chat)=>{const ids=new Set([...(chat?.messages.flatMap(m=>m.attachments||[])||[]),...(state.spaces.find(s=>s.id===chat?.spaceId)?.sources||[])]);return state.files.filter(f=>ids.has(f.id)||f.spaceId===(chat?.spaceId??"__none"));};
+  // Read from stateRef: this also runs long after the render that made it (the model's "look" mid-answer), when files
+  // attached, made or opened since would be missing from that render's `state`.
+  const sourceFiles=(chat?:Chat)=>{const current=stateRef.current;const ids=new Set([...(chat?.messages.flatMap(m=>[...(m.attachments||[]),...(m.context||[])])||[]),...(current.spaces.find(s=>s.id===chat?.spaceId)?.sources||[])]);return current.files.filter(f=>ids.has(f.id)||f.spaceId===(chat?.spaceId??"__none"));};
   const canCite=(c:Citation)=>!!matchSource(stateRef.current.files,c.name);
   const [driveFolderFor,setDriveFolderFor]=useState<string|null>(null);
   /** Chat files open beside the conversation, ready to be edited by it. */
@@ -1194,10 +1200,13 @@ In this subject the learner keeps missing these questions in review; connect to 
     fileQueue.current = fileQueue.current.then(async () => {
       const added: StoredFile[] = [];
       const renamed: string[] = [];
-      for (const file of batch) {
+      for (let file of batch) {
         if(owner!==ownerRef.current)return;
         const id = uid();
         try {
+          // iPhone photos (HEIC) become JPEG here, so the AI sees them and the chat can show them; a failure is said plainly.
+          const heic = await import('./desktop/heic');
+          if (await heic.looksHeic(file)) file = await heic.convertedPhoto(file);
           const remote = false;
           const name = /\.pdf$/i.test(file.name) ? await (await import('./pdf/pdf-name')).readablePdfName(file) : file.name;
           if (name !== file.name) renamed.push(name);
@@ -1831,7 +1840,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                           <div className="message-text">
                             {m.content ? (
                               m.role === "assistant" ? (
-                                <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Mowr continues from this brief</p>}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} /></>
+                                <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Mowr continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} /></>
                               ) : (
                                 <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
                               )

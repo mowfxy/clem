@@ -94,3 +94,32 @@ test('Claude models come from Claude Code itself, so a model added to the plan a
   provider.status=async()=>({connected:true});
   await assert.rejects(provider.run('x','hi','claude:opus',undefined,()=>{}),/no longer available/);
 });
+
+test('a tool loop continues one Claude Code session: the first step names it, later steps resume it, a lost session is reported',async()=>{
+  const {SessionLost}=await import('../../desktop/kinetra-turn.ts');
+  const provider:any=new ClaudeProvider('fixture','C:/fixture');
+  provider.status=async()=>({connected:true});
+  let args:string[]=[];let failure='';
+  provider.start=async(given:string[])=>{
+    args=given;
+    const child:any=new EventEmitter();
+    child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+    child.stdin.on('finish',()=>queueMicrotask(()=>{
+      child.stdout.write(JSON.stringify(failure?{type:'result',subtype:'error_during_execution',is_error:true,result:failure}:{type:'result',subtype:'success',result:'ok',is_error:false}));
+      child.emit('close',failure?1:0);
+    }));
+    return child;
+  };
+  const id='0b8f6a54-3d0e-4a39-9a0d-6d3a4b1d9c11';
+  await provider.run('a','first','claude:sonnet',undefined,()=>{},[],{id,resume:false});
+  assert.deepEqual(args.slice(args.indexOf('--session-id'),args.indexOf('--session-id')+2),['--session-id',id]);
+  assert.ok(!args.includes('--no-session-persistence'));
+  await provider.run('a','more','claude:sonnet',undefined,()=>{},[],{id,resume:true});
+  assert.deepEqual(args.slice(args.indexOf('--resume'),args.indexOf('--resume')+2),['--resume',id]);
+  await provider.run('a','plain','claude:sonnet',undefined,()=>{});
+  assert.ok(args.includes('--no-session-persistence')&&!args.includes('--resume'));
+  failure='No conversation found with session ID: '+id;
+  await assert.rejects(provider.run('a','more','claude:sonnet',undefined,()=>{},[],{id,resume:true}),SessionLost);
+  // The same failure on a first step is an ordinary error, not a lost session.
+  await assert.rejects(provider.run('a','first','claude:sonnet',undefined,()=>{},[],{id,resume:false}),e=>!(e instanceof SessionLost));
+});

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { build } from "esbuild";
+import { renameSync, rmSync } from "node:fs";
 import { Codex, mayBeTool } from "../../desktop/codex.ts";
 import { toolRequest } from "../../desktop/kinetra-turn.ts";
 import { kinetraCall, kinetraInstructionsFor, kinetraInstructions, kinetraBrief, kinetraTool } from "../../desktop/kinetra-runtime.ts";
@@ -13,7 +14,11 @@ import { composePrompt } from "../../desktop/prompt.ts";
 import { PROFILE_SCOPE, retrieveMemory, learnMemories, confirmMemory, parseExtraction, mentionsSelf, explicitRemember, type MemoryState } from "../../desktop/memory.ts";
 
 before(async () => {
-  await build({ entryPoints: ["desktop/kinetra-worker.ts"], outfile: "desktop-dist/kinetra-worker.cjs", bundle: true, platform: "node", format: "cjs", logLevel: "warning" });
+  // Built beside and renamed into place: another test file builds the same worker at the same time.
+  const tmp = `desktop-dist/kinetra-worker.${process.pid}.tmp`;
+  await build({ entryPoints: ["desktop/kinetra-worker.ts"], outfile: tmp, bundle: true, platform: "node", format: "cjs", logLevel: "warning" });
+  // If the other file renamed its (identical) build first, Windows refuses this rename; that build is already in place.
+  try { renameSync(tmp, "desktop-dist/kinetra-worker.cjs"); } catch { rmSync(tmp, { force: true }); }
 });
 
 /** A scripted app-server: answers by method and records everything it was sent. */

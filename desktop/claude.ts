@@ -1,7 +1,8 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import {mkdir} from 'node:fs/promises';
+import {mkdir,readdir,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {installedPath,signInWindow} from './cli-install.ts';
+import {SessionLost,unsupportedFlag} from './kinetra-turn.ts';
 
 export type ClaudeImage = { mime: string; data: string };
 /** A few words on what Claude is doing, from one stream-json event (null when the event says nothing new). */
@@ -56,6 +57,8 @@ export function claudeSubscriptionStatus(raw:string,code:number|null) {
 /** Claude Code is invoked in text mode with web search as its only tool: no files, shell, plugins, project settings or MCP. */
 export class ClaudeProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
+  /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
+  private noSessions=false;
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
   private configured:string;
   /** Re-resolved each time so a Claude Code that Mowr just installed is found without restarting. */
@@ -139,7 +142,9 @@ export class ClaudeProvider {
    * One answer on the person's Claude plan. Input and output are Claude Code's stream-json, so pictures go in as
    * image blocks and the person sees what Claude is doing (thinking, searching, writing) while it works.
    */
-  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[]){
+  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean}){
+    // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
+    if(this.noSessions)session=undefined;
     if(!model.startsWith('claude:')||!MODEL_NAME.test(model.slice(7)))throw Error('Choose a supported Claude model.');
     // Checked against the account's own list when Mowr has it; otherwise Claude Code itself refuses an unknown model.
     const listed=this.catalog?.models||claudeModels;
@@ -148,7 +153,9 @@ export class ClaudeProvider {
     if(effort&&selected&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
     if(!(await this.status(true)).connected)throw Error('Sign in to a Claude subscription through Claude Code first.');
     // Web search is the only tool: it lets Claude find real, current sources (such as YouTube videos) on the person's own plan.
-    const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode','--no-session-persistence'];
+    const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode'];
+    // A tool loop keeps one Claude Code session across its steps: later steps send only the new results and Claude Code supplies the history.
+    args.push(...(session?(session.resume?['--resume',session.id]:['--session-id',session.id]):['--no-session-persistence']));
     if(effort)args.push('--effort',effort);
     const child=await this.start(args);this.active.set(id,child);
     try{
@@ -182,12 +189,23 @@ export class ClaudeProvider {
           const usage=(text:string)=>/limit|quota|429/i.test(text);
           if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&code===0){finish(result.result);return;}
           const detail=String(result?.result||'')+' '+error;
+          if(session&&unsupportedFlag.test(detail)){this.noSessions=true;return finish(undefined,new SessionLost('This Claude Code does not keep sessions.'));}
+          if(session?.resume&&/no conversation found|session.{0,40}(not found|does not exist|missing)/i.test(detail+JSON.stringify(result?.errors||'')))return finish(undefined,new SessionLost('Claude Code no longer has this session.'));
           finish(undefined,Error(usage(detail)?'Claude subscription usage is unavailable right now.':/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
         });
         child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
       });
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
     }finally{this.active.delete(id);}
+  }
+  /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk. */
+  async endSession(sessionId:string){
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId))return;
+    const projects=join(this.root,'projects');
+    for(const folder of await readdir(projects).catch(()=>[] as string[])){
+      await rm(join(projects,folder,sessionId+'.jsonl'),{force:true}).catch(()=>{});
+      await rm(join(projects,folder,sessionId),{recursive:true,force:true}).catch(()=>{});
+    }
   }
   cancel(id:string){this.active.get(id)?.kill();}
   stop(){for(const child of this.active.values())child.kill();}

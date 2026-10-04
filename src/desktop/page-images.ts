@@ -30,14 +30,20 @@ const remember = (key: string, data: string) => { rendered.set(key, data); if (r
 /** Which pages of each PDF draw something (figure pages), by file and version. */
 const surveys = new Map<string, { pages: number; visual: { page: number; weight: number }[]; textless: number[] }>();
 
+/** How long one PDF's survey may take before the message goes without the rest of it (the model can still "look"). */
+const SURVEY_MS = 8000;
 /** The pages that carry pictures or drawings (many path operations: circuits, graphs, diagrams), and those with no text. */
-async function survey(file: StoredFile, pdf: any, lib: any) {
+async function survey(file: StoredFile, pdf: any, lib: any, signal?: AbortSignal) {
   const key = `${file.id}:${file.size}:${file.updated || file.created}`;
   const known = surveys.get(key);
   if (known) return known;
   const visual: { page: number; weight: number }[] = [], textless: number[] = [];
-  const last = Math.min(pdf.numPages, 150);
+  const last = Math.min(pdf.numPages, 150), until = Date.now() + SURVEY_MS;
+  let surveyed = 0;
   for (let p = 1; p <= last; p++) {
+    signal?.throwIfAborted();
+    if (Date.now() > until) break;
+    surveyed = p;
     const page = await pdf.getPage(p);
     try {
       const [ops, text] = await Promise.all([page.getOperatorList(), page.getTextContent()]);
@@ -56,7 +62,8 @@ async function survey(file: StoredFile, pdf: any, lib: any) {
     }
   }
   const result = { pages: pdf.numPages, visual, textless };
-  surveys.set(key, result);
+  // A survey cut short is not kept, so the next message can look further.
+  if (surveyed === last) surveys.set(key, result);
   return result;
 }
 
@@ -85,12 +92,12 @@ async function renderPage(file: StoredFile, pdf: any, n: number) {
 }
 
 /** Pictures of a PDF for a request: named pages first, then short or scanned documents whole, then the pages with drawings. */
-async function pdfPictures(file: StoredFile, blob: Blob, want: number[], limit: number): Promise<Picture[]> {
+async function pdfPictures(file: StoredFile, blob: Blob, want: number[], limit: number, signal?: AbortSignal): Promise<Picture[]> {
   const lib = await pdfjs();
   const loading = lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: false });
   const pdf = await loading.promise;
   try {
-    const info = await survey(file, pdf, lib);
+    const info = await survey(file, pdf, lib, signal);
     const order: number[] = [];
     const add = (p: number) => { if (p >= 1 && p <= info.pages && !order.includes(p)) order.push(p); };
     want.forEach(add);
@@ -101,7 +108,7 @@ async function pdfPictures(file: StoredFile, blob: Blob, want: number[], limit: 
     // In reading order, after any page the person named.
     const named = chosen.filter((p) => want.includes(p)), rest = chosen.filter((p) => !want.includes(p)).sort((a, b) => a - b);
     const out: Picture[] = [];
-    for (const p of [...named, ...rest]) out.push({ name: `${file.name} — page ${p} of ${info.pages}`, data: await renderPage(file, pdf, p) });
+    for (const p of [...named, ...rest]) { signal?.throwIfAborted(); out.push({ name: `${file.name} — page ${p} of ${info.pages}`, data: await renderPage(file, pdf, p) }); }
     return out;
   } finally {
     await loading.destroy();
@@ -111,7 +118,9 @@ async function pdfPictures(file: StoredFile, blob: Blob, want: number[], limit: 
 /** Downscaled to at most MAX_SIDE pixels and re-encoded, so a large photo stays within the provider's limits. */
 async function fitImage(blob: Blob): Promise<string | null> {
   try {
-    const bitmap = await createImageBitmap(blob);
+    // A HEIC photo stored before conversion existed is converted now.
+    const { looksHeic, heicToJpeg } = await import("./heic");
+    const bitmap = await createImageBitmap((await looksHeic(blob)) ? (await heicToJpeg(blob)).jpeg : blob);
     // Icons, bullets and spacer images say nothing.
     if (bitmap.width < 80 || bitmap.height < 80) { bitmap.close(); return null; }
     const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -145,7 +154,7 @@ async function officePictures(file: StoredFile, blob: Blob, limit: number): Prom
   return out;
 }
 
-async function filePictures(file: StoredFile, want: number[], limit: number): Promise<Picture[]> {
+async function filePictures(file: StoredFile, want: number[], limit: number, signal?: AbortSignal): Promise<Picture[]> {
   if (limit <= 0 || file.remote) return [];
   const blob = await getBlob(file.id);
   if (!blob) return [];
@@ -156,7 +165,7 @@ async function filePictures(file: StoredFile, want: number[], limit: number): Pr
     remember(key, data);
     return [{ name: file.name, data }];
   }
-  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return pdfPictures(file, blob, want, limit);
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return pdfPictures(file, blob, want, limit, signal);
   if (/\.(docx|pptx|xlsx)$/i.test(file.name)) return officePictures(file, blob, Math.min(limit, 8));
   return [];
 }
@@ -178,7 +187,7 @@ export async function conversationPictures({ files, attached, open, earlier, pro
     const current = i < attached.length + (open ? 1 : 0);
     const share = current ? Math.max(4, Math.ceil(room / Math.max(1, attached.length + (open ? 1 : 0) - i))) : Math.min(4, room);
     try {
-      out.push(...(await filePictures(file, current ? want : [], Math.min(room, share))));
+      out.push(...(await filePictures(file, current ? want : [], Math.min(room, share), signal)));
     } catch (e) {
       if (signal?.aborted) throw e;
     }

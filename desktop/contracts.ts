@@ -73,6 +73,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("captureScreen") }),
   z.object({ action: z.literal("openInBrowser"), name: z.string().min(1).max(200), data: z.instanceof(Uint8Array).refine((d) => d.length <= 300_000_000, "Files are limited to 300 MB.") }),
   z.object({ action: z.literal("documentPdf"), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(1_000_000) }),
+  /** Export → Word or PowerPoint: the answer built by the same builders the AI's own files use (desktop/docx-document.ts, pptx-deck.ts). */
+  z.object({ action: z.literal("documentExport"), format: z.enum(["docx", "pptx"]), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(1_000_000) }),
   z.object({
     action: z.literal("chat"),
     // Claude Code ids can end in a context tag, e.g. claude:opus[1m].
@@ -98,7 +100,9 @@ export const requestSchema = z.discriminatedUnion("action", [
         }),
       )
       .min(1)
-      .max(200),
+      // A long chat is sent whole: the main process condenses what does not fit (desktop/chat-condense.ts).
+      .max(2000)
+      .refine((m) => m.reduce((n, x) => n + x.content.length, 0) <= 60_000_000, "This conversation is too large to send."),
   }),
   z.object({ action: z.literal("cancel"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryList"), scope: scopeSchema }),
