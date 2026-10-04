@@ -145,3 +145,22 @@ test('Claude’s reply streams as partial events while it is written; text insid
   assert.deepEqual(events.filter(e=>e.type==='partial').map(e=>[e.text,e.fresh]),[['Let me ',true],['search.',false],['Two ',true],['videos.',false]]);
   assert.deepEqual(events.filter(e=>e.type==='delta').map(e=>e.text),['Two videos.']);
 });
+
+test('the steps of a tool loop reuse the sign-in check; a sign-in failure makes the next step check again',async()=>{
+  const provider:any=new ClaudeProvider('fixture','C:/fixture');
+  let checks=0,reply:any={type:'result',subtype:'success',result:'ok',is_error:false};
+  provider.start=async(args:string[])=>{
+    const child:any=new EventEmitter();
+    child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+    if(args[0]==='auth'){checks++;setTimeout(()=>{child.stdout.write(JSON.stringify({loggedIn:true,authMethod:'claude.ai',subscriptionType:'max'}));child.emit('close',0);});return child;}
+    child.stdin.on('finish',()=>queueMicrotask(()=>{child.stdout.write(JSON.stringify(reply)+'\n');child.emit('close',reply.is_error?1:0);}));
+    return child;
+  };
+  for(let step=0;step<3;step++)await provider.run('one','step','claude:sonnet',undefined,()=>{});
+  assert.equal(checks,1);
+  reply={type:'result',subtype:'error_during_execution',result:'Not logged in · Please run /login',is_error:true};
+  await assert.rejects(()=>provider.run('one','step','claude:sonnet',undefined,()=>{}),/Sign in to Claude again/);
+  reply={type:'result',subtype:'success',result:'ok',is_error:false};
+  await provider.run('one','step','claude:sonnet',undefined,()=>{});
+  assert.equal(checks,2);
+});

@@ -122,8 +122,9 @@ export function grokUsage(usage?:GrokUsage):UsageSnapshot|undefined{
 }
 
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
+const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
 function friendly(detail:string){
-  if(/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i.test(detail))return 'Sign in to Grok again in Settings → Models.';
+  if(signedOut.test(detail))return 'Sign in to Grok again in Settings → Models.';
   if(outOfUsage(detail))return 'Your Grok plan has no usage left right now. Try again later or pick another model.';
   if(/model/i.test(detail)&&/not (found|available|supported)|unknown/i.test(detail))return 'This Grok model is not available on your plan. Pick another one.';
   return 'Grok could not complete this request. Check Grok in Settings → Models.';
@@ -136,6 +137,10 @@ export class GrokProvider {
   /** Set when this CLI refused --include-partial-messages: replies then arrive in one piece. */
   private noPartial=false;
   private statusCache:{at:number;value:GrokStatus}|null=null;
+  /** Set after each answer: the plan's usage changed, so the next status the window asks for is read again. */
+  private usageStale=false;
+  /** The last check while it is recent: each step of a tool loop reuses it instead of starting `grok models` and Grok's agent again. */
+  private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
   private root:string;
   private configured:string|undefined;
   /** GROK_HOME for this account: each added Grok account keeps its own sign-in there. Unset for the first one (~/.grok). */
@@ -196,7 +201,8 @@ export class GrokProvider {
     });
   }
   async status(force=false):Promise<GrokStatus>{
-    if(!force&&this.statusCache&&Date.now()-this.statusCache.at<30000)return this.statusCache.value;
+    if(!force&&!this.usageStale&&this.statusCache&&Date.now()-this.statusCache.at<30000)return this.statusCache.value;
+    this.usageStale=false;
     const listed=await this.capture(['models'],30000);
     let value:GrokStatus;
     if(!listed)value={installed:false,connected:false,models:[]};
@@ -227,7 +233,7 @@ export class GrokProvider {
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     const slug=model.slice(GROK_PREFIX.length);
-    let status=await this.status();
+    let status=this.recentStatus()||await this.status();
     if(!status.connected||!status.models.includes(slug))status=await this.status(true);
     if(!status.installed)throw Error('Install Grok first (Settings → Models).');
     if(!status.connected)throw Error(status.error||'Sign in to Grok first (Settings → Models).');
@@ -254,8 +260,9 @@ export class GrokProvider {
       if(session&&(reply.error||!reply.text)&&unsupportedFlag.test((reply.error||'')+result.err)){this.noSessions=true;throw new SessionLost('This Grok CLI does not keep sessions.');}
       if(session?.resume&&(reply.error||!reply.text)&&/session/i.test((reply.error||'')+result.err)&&/not found|no such|unknown|does not exist|invalid/i.test((reply.error||'')+result.err))throw new SessionLost('Grok no longer has this session.');
       if((reply.error||!reply.text)&&outOfUsage(reply.error||result.err))throw new UsageLimit(friendly(reply.error||result.err));
+      if((reply.error||!reply.text)&&signedOut.test((reply.error||'')+result.err))this.statusCache=null;
       if(reply.error||!reply.text)throw Error(friendly(reply.error||result.err||String(result.code)));
-      this.statusCache=null; // usage changed
+      this.usageStale=true;
       emit({id,type:'delta',text:reply.text});emit({id,type:'done'});
     }finally{await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
   }

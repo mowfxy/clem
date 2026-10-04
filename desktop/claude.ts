@@ -53,6 +53,8 @@ export const claudeModels:ClaudeModel[] = [
   {id:'claude:opus',name:'Claude Opus',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'high'},
   {id:'claude:haiku',name:'Claude Haiku',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
 ];
+/** A failure that looks like a lapsed sign-in: the next request checks the sign-in again instead of trusting the last check. */
+const signedOut=/not logged in|log ?in|unauthori[sz]ed|401|authenticat|oauth token|invalid api key/i;
 /** Model names Mowr passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
 const MODEL_NAME=/^[A-Za-z0-9._-]{1,80}(?:\[[a-z0-9]{1,8}\])?$/;
 
@@ -89,6 +91,8 @@ export class ClaudeProvider {
   /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
+  /** The last sign-in check while it is recent: each step of a tool loop reuses it instead of starting `claude auth status` again. */
+  private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
   /** The plan windows Claude Code last reported (it says so with each answer), and when. */
   private limits=new Map<string,ClaudeLimit>();
   private limitsAt=0;
@@ -190,7 +194,8 @@ export class ClaudeProvider {
     const selected=listed.find(item=>item.id===model);
     if(!selected&&this.catalog)throw Error('That Claude model is no longer available on your plan. Pick another one.');
     if(effort&&selected&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
-    if(!(await this.status(true)).connected)throw Error('Sign in to a Claude subscription through Claude Code first.');
+    // A sign-in that lapsed since fails the step itself, which clears the check (below); only a signed-out one is checked again now.
+    if(!(this.recentStatus()?.connected||(await this.status(true)).connected))throw Error('Sign in to a Claude subscription through Claude Code first.');
     // Web search is the only tool: it lets Claude find real, current sources (such as YouTube videos) on the person's own plan.
     const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode'];
     // A tool loop keeps one Claude Code session across its steps: later steps send only the new results and Claude Code supplies the history.
@@ -235,6 +240,7 @@ export class ClaudeProvider {
           if(session&&unsupportedFlag.test(detail)){this.noSessions=true;return finish(undefined,new SessionLost('This Claude Code does not keep sessions.'));}
           if(session?.resume&&/no conversation found|session.{0,40}(not found|does not exist|missing)/i.test(detail+JSON.stringify(result?.errors||'')))return finish(undefined,new SessionLost('Claude Code no longer has this session.'));
           if(usage(detail))return finish(undefined,new UsageLimit('Claude subscription usage is unavailable right now.'));
+          if(signedOut.test(detail))this.statusCache=null;
           finish(undefined,Error(/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
         });
         child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
