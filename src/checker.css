@@ -13,17 +13,17 @@
   font-size: 16px;
 }
 .checker-slash {
-  color: #72726b;
+  color: #6f6f6b;
   margin: 0 7px;
 }
 .checker-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  align-items: center;
+  align-items: start;
   gap: 90px;
   width: min(100%, 1040px);
   margin: auto;
-  padding: 48px 0 65px;
+  padding: 6vh 0 65px;
 }
 .checker-intro .checker-art {
   width: 220px;
@@ -37,7 +37,7 @@
 }
 .provenance-page p {
   font-size: 14px;
-  color: #aaa99e;
+  color: #a6a6a2;
   line-height: 1.7;
 }
 .checker-intro > p {
@@ -46,20 +46,20 @@
 .checker-drop {
   text-align: center;
   padding: 35px 26px 28px;
-  border: 1px solid #414139;
+  border: 1px dashed #444;
   border-radius: 16px;
-  background: #1d201b;
+  background: #1c1c1c;
   transition:
     border-color 0.15s,
     background 0.15s;
 }
 .checker-drop.dragging {
-  border-color: #aab695;
-  background: #272f22;
+  border-color: #bdbdb8;
+  background: #242424;
 }
 .checker-file-mark {
   display: inline-flex;
-  color: #c0c9b3;
+  color: #d6d6d1;
   margin-bottom: 17px;
 }
 .checker-drop h2 {
@@ -85,19 +85,73 @@
   display: block;
   margin-top: 24px;
   font-size: 11px;
-  color: #8d9386;
+  color: #8d8d89;
 }
 .checker-drop input[hidden] {
   display: none !important;
 }
 .checker-result {
-  background: #242821;
-  border: 1px solid #414b38;
-  border-radius: 10px;
-  padding: 18px;
-  margin-top: 16px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  background: #212121;
+  border: 1px solid #333;
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin-top: 14px;
+  animation: checker-in 0.28s ease-out;
+}
+.checker-result-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #2c2c2c;
+  color: #cfcfca;
+}
+.checker-result.found {
+  border-color: #4a4a46;
+  background: #262626;
+}
+.checker-result.found .checker-result-mark {
+  background: #eeeeea;
+  color: #1c1c1c;
+}
+.checker-result.changed .checker-result-mark,
+.checker-result.error .checker-result-mark {
+  background: #3a3228;
+  color: #e3c28f;
+}
+.provenance-page .checker-result h3 {
+  font: 400 24px/1.2 var(--serif);
+  letter-spacing: -0.4px;
+  margin: 2px 0 8px;
+  color: #f0efeb;
+}
+.provenance-page .checker-result p {
   font-size: 13px;
-  line-height: 1.65;
+  margin: 0;
+  color: #b4b4b0;
+}
+.checker-result small {
+  display: block;
+  margin-top: 12px;
+  font-size: 11px;
+  color: #82827e;
+  overflow-wrap: anywhere;
+}
+@keyframes checker-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .checker-result {
+    animation: none;
+  }
 }
 .checker-private {
   display: flex;
@@ -122,10 +176,10 @@
   font-size: 11px;
   color: #919187;
   padding-top: 20px;
-  border-top: 1px solid #30302c;
+  border-top: 1px solid #2a2a2a;
 }
 .checker-drop:focus-within {
-  outline: 2px solid #b2bba2;
+  outline: 2px solid #8a8a86;
   outline-offset: 4px;
 }
 @media (max-width: 760px) {
