@@ -6,8 +6,9 @@ import { documentStandard, documentIntent } from "../core/document-standard.ts";
 import { FILE_ACTIONS, fileCatalog, fileGuides, fileGuidesFor, fileIntent } from "./file-guides.ts";
 import { MAX_CALLS } from "./kinetra-turn.ts";
 
-/** The tool guide with the given figure recipes (all of them, or the ones for the topic at hand). */
-const buildInstructions = (recipes: string) => `KINETRA TOOLS: deterministic calculations and textbook figures that run on this PC.
+/** The tool guide with the given figure recipes (all of them, or the ones for the topic at hand). The recipes change
+ *  with the topic, so they come last: the rest is the same every time and stays in the provider's prompt cache. */
+const buildInstructions = (recipes: string, notes = "") => `KINETRA TOOLS: deterministic calculations and textbook figures that run on this PC.
 To use one, reply with ONLY a JSON object {"kinetra":{…}} and nothing else. Mowr runs it and replies with the result; then call another tool or write your final answer. Never put tool JSON in the final answer.
 When you show the request format as an example (not to run it), put it in a \`\`\`text block; a real request is bare JSON or in a \`\`\`json block.
 Actions:
@@ -21,15 +22,16 @@ Actions:
 - Figures in PDFs: every diagram, chart or picture in a document is a Kinetra figure (one per section; use several sections for several figures, a section without a heading continues the one before). Match the recipe to the content: flowchart for processes and algorithms, cycle for repeating processes, timeline for dated sequences, mind map for overviews, tree for classifications and hierarchies, Venn for comparisons, bar/line/pie chart for data, and the science recipes for physics, circuits and logic. A good study document or report usually has at least one figure where a picture explains faster than text. A \`\`\`visual already drawn in this conversation (plot, chart, diagram, figure or 3d) goes in unchanged: {"module":"mowr","fn":"visual","args":[that visual's JSON object]} prints the same drawing on white paper with its caption; use it whenever the person asks for "that diagram" or the chat's visuals in a file, instead of redrawing.
 - Physics and engineering apparatus (pulleys, ropes, spring scales, blocks on inclines, levers and wheelbarrows, springs, vessels of liquid, charged spheres, rods and wires with field lines, free-body insets, lever arms) is drawn as a textbook figure: {"module":"mowr","fn":"illustration","args":[{"items":[…]}]}. Start from the closest "textbook figure" recipe below, keep its structure and change positions, sizes and labels; {"action":"skill","name":"figures"} returns every item and anchor. Prefer it to the plain free-body, pulley and charged-rod recipes whenever the apparatus itself should be seen; those stay for bare numeric diagrams. Documents are printed, so a 3D scene becomes a textbook figure drawn in 2D (a sphere as a shaded ball, a wire as a rod, field lines in the page).
 - {"action":"recipes"} lists the verified figure recipes below; {"action":"api","module":M} returns a module's TypeScript declarations (exact argument shapes); {"action":"skill","name":N} returns a topic guide (figures, slides, word, spreadsheets, files, ${Object.keys(reference.skills).join(", ")}).
-Verified figure recipes (each renders as-is; adapt the values, keep the structure):
-${recipes}
 Callable modules: ${reference.modules.join(", ")}. Before using a module that has no recipe, read its api. Functions that need callbacks, Map instances or classes cannot be called; prefer module mowr (integrateExpression, plot, logicDiagram, vectorField, scalarField, solveCircuit, circuitTransient, retrieve, studySchedule).
 Accuracy rules: compute numbers with call before writing them, and use the same model for the figure so text and drawing agree. State assumptions (units, g = 9.81 m/s², ideal pulleys, thin lenses). A tool error is not success. Never claim a file exists unless a file action returned created:true. At most ${MAX_CALLS} tool calls per answer.
 ${fileCatalog}
-${documentStandard}`;
+${documentStandard}${notes}
+Verified figure recipes (each renders as-is; adapt the values, keep the structure):
+${recipes}`;
 
 /** The full guide, with every recipe: what {"action":"help"} returns. */
-export const kinetraInstructions = buildInstructions(recipeText());
+const allRecipes = recipeText();
+export const kinetraInstructions = buildInstructions(allRecipes);
 
 /** Everyday messages get a one-line pointer instead of the full catalog; the model can ask for it. */
 export const kinetraBrief = `Kinetra tools (verified calculations, physics/circuit/logic figures, and real files: PDF, Word, PowerPoint, Excel, CSV, HTML, calendar and other text files, images) are available. If this request needs them, reply with ONLY {"kinetra":{"action":"help"}}; otherwise answer normally.`;
@@ -40,13 +42,15 @@ const kinetraIntent = /\b(pdf|handout|worksheet|document|report|summary sheet|st
  * carries the concept diagrams and the science recipes for the topic at hand, found in the request and in `context`
  * (the conversation and its sources, so "notes on this lecture" finds the lecture's circuits); with `pictures` attached,
  * whose subject only the pictures show, it carries every recipe. Recipes left out stay one {"action":"recipes"} away.
+ * `notes` are about this conversation (the files it made, the files it can read): they go after the parts that never
+ * change and before the parts chosen for this message, so the provider's prompt cache keeps as much as it can.
  */
-export function kinetraInstructionsFor(request: string, hasDocuments = false, { context = "", pictures = false }: { context?: string; pictures?: boolean } = {}) {
-  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief;
+export function kinetraInstructionsFor(request: string, hasDocuments = false, { context = "", pictures = false, notes = "" }: { context?: string; pictures?: boolean; notes?: string } = {}) {
+  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief + notes;
   const { recipes, omitted } = recipesFor(request + "\n" + context, { pictures });
   const guide = omitted
-    ? buildInstructions(recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`)
-    : kinetraInstructions;
+    ? buildInstructions(recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`, notes)
+    : notes ? buildInstructions(allRecipes, notes) : kinetraInstructions;
   // The design skill for the kind of file asked for comes with the catalog, so the first file is already well designed.
   const guides = fileGuidesFor(request);
   return guide + (guides ? "\n\n" + guides : "");
