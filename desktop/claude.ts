@@ -79,6 +79,20 @@ export function parseClaudeModels(list:any):ClaudeModel[]{
   return models;
 }
 
+const EFFORT_ORDER=['low','medium','high','xhigh','max'];
+/**
+ * The thinking level for one request. A model's default stays medium (high for Opus) so chat stays quick, but a
+ * multi-step tool or document task at medium plans less: a document stops at a sketch, numbers go unverified, broken
+ * requests repeat. When the level is still the default and the request may use tools (needsKinetra), it goes up to
+ * high. A level the person picked is never changed, nor one the model does not list.
+ */
+export function toolEffort(models:ClaudeModel[],model:string,effort:string|undefined,chosen:boolean,toolWork:boolean){
+  if(chosen||!toolWork)return effort;
+  const levels=models.find(m=>m.id===model)?.reasoningEfforts.map(e=>e.reasoningEffort)||[];
+  if(!levels.includes('high'))return effort;
+  return EFFORT_ORDER.indexOf(effort||'')>=EFFORT_ORDER.indexOf('high')?effort:'high';
+}
+
 export function claudeSubscriptionStatus(raw:string,code:number|null) {
   if(code!==0)return {installed:true,connected:false};
   try {const status=JSON.parse(raw);return {installed:true,connected:status.loggedIn===true && status.authMethod==='claude.ai' && !!status.subscriptionType,email:typeof status.email==='string'?status.email:undefined,plan:typeof status.subscriptionType==='string'?status.subscriptionType:undefined};}
@@ -130,6 +144,8 @@ export class ClaudeProvider {
   }
   forget(){this.statusCache=null;this.catalog=null;}
   private catalog:{at:number;models:ClaudeModel[]}|null=null;
+  /** The models known now, without waiting for Claude Code: the account's list once read, the fixed one until then. */
+  get listed(){return this.catalog?.models||claudeModels;}
   private catalogRequest:Promise<ClaudeModel[]>|null=null;
   /** The models this Claude account can use, read from Claude Code every ten minutes; the fixed list if it cannot say. */
   async models():Promise<ClaudeModel[]>{
@@ -190,7 +206,7 @@ export class ClaudeProvider {
     if(system&&this.noSystemFile){prompt=system+'\n\n'+prompt;system=undefined;}
     if(!model.startsWith('claude:')||!MODEL_NAME.test(model.slice(7)))throw Error('Choose a supported Claude model.');
     // Checked against the account's own list when Mowr has it; otherwise Claude Code itself refuses an unknown model.
-    const listed=this.catalog?.models||claudeModels;
+    const listed=this.listed;
     const selected=listed.find(item=>item.id===model);
     if(!selected&&this.catalog)throw Error('That Claude model is no longer available on your plan. Pick another one.');
     if(effort&&selected&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');

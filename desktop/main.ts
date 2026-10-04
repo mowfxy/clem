@@ -47,10 +47,10 @@ import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { composePrompt, systemPrompt } from "./prompt";
-import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraExtrasFor } from "./kinetra-runtime";
+import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
-import {ClaudeProvider} from './claude';
+import {ClaudeProvider,toolEffort} from './claude';
 import {GrokProvider,grokModels,grokUsage,GROK_PREFIX} from './grok';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
@@ -1449,7 +1449,9 @@ void app.whenReady().then(async () => {
       // adds to it (recipes, a file design guide) and this conversation's files change from turn to turn, so they go in the message.
       const instructions = request.plain ? "Answer with text only; no tools are available for this request." : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0);
       const notes = request.plain ? "" : (cli ? kinetraExtrasFor(query, documents.size > 0) : "") + documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library);
-      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished });
+      // Claude at its default level thinks harder for tool and document work (desktop/claude.ts toolEffort); a level the person picked stays.
+      const reasoning = request.model?.startsWith("claude:") && !request.plain ? toolEffort((await claudeFor(user.id)).listed, request.model, request.reasoning, !!request.reasoningChosen, needsKinetra(query, documents.size > 0)) : request.reasoning;
+      const run = answerWith(user.id, request.id, request.model, reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
