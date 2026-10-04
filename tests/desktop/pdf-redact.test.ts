@@ -301,13 +301,28 @@ test("a ruled table crossing the box is cut at its edge, as vectors: no line goe
   assert.ok(black > 0.97);
 });
 
-test("a drawing that cannot be cut exactly (turned, curved, dashed) still makes the page a picture", async () => {
-  const make = async (draw: (p: ReturnType<PDFDocument["addPage"]>) => void) => { const d = await PDFDocument.create(); draw(d.addPage([400, 300])); return d.save(); };
+const make = async (draw: (p: ReturnType<PDFDocument["addPage"]>) => void) => { const d = await PDFDocument.create(); draw(d.addPage([400, 300])); return d.save(); };
+
+test("dashed lines crossing the box are cut too, each piece's dashes falling where they fell", async () => {
+  const box: Box = [143, 121, 257, 200];
+  const src = await make((p) => {
+    p.drawLine({ start: { x: 50, y: 160 }, end: { x: 350, y: 160 }, thickness: 2, dashArray: [7, 3], dashPhase: 2 });
+    // A closed outline whose start corner is outside the box, and a pattern of odd length (it repeats with dash and gap swapped).
+    p.drawRectangle({ x: 60, y: 90, width: 280, height: 60, borderColor: rgb(0, 0, 0), borderWidth: 2, borderDashArray: [5] });
+  });
+  const r = await editPdf({ file: "d.pdf", ops: [{ op: "redact", page: 1, bbox: box }] }, helpers({ "d.pdf": src }));
+  assert.doesNotMatch(r.done[0], /picture/);
+  assert.deepEqual((await pathPoints(r.bytes)).filter(([x, y]) => x > box[0] + 1e-3 && x < box[2] - 1e-3 && y > box[1] + 1e-3 && y < box[3] - 1e-3), []);
+  const { outside, black } = await compare(src, r.bytes, [box]);
+  assert.ok(outside < 20, `${outside} pixels changed outside the box`);
+  assert.ok(black > 0.97);
+});
+
+test("a drawing that cannot be cut exactly (turned, curved) still makes the page a picture", async () => {
   const box: Box = [140, 120, 260, 200];
   const turned = await make((p) => p.drawRectangle({ x: 100, y: 100, width: 120, height: 60, rotate: degrees(30), borderColor: rgb(0, 0, 0), borderWidth: 1 }));
   const curve = await make((p) => p.drawEllipse({ x: 140, y: 160, xScale: 60, yScale: 30, borderColor: rgb(0, 0, 0), borderWidth: 1 }));
-  const dashed = await make((p) => p.drawLine({ start: { x: 50, y: 160 }, end: { x: 350, y: 160 }, thickness: 1, dashArray: [4, 2] }));
-  for (const [name, src] of Object.entries({ turned, curve, dashed })) {
+  for (const [name, src] of Object.entries({ turned, curve })) {
     const r = await editPdf({ file: "d.pdf", ops: [{ op: "redact", page: 1, bbox: box }] }, helpers({ "d.pdf": src }));
     assert.match(r.done[0], /turned into a picture/, name);
   }

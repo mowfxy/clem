@@ -6,7 +6,7 @@ import { PDFDocument, PDFPage, PDFName, PDFDict, PDFArray, PDFNumber, PDFRawStre
  * out (glyphs one by one, so the rest of the line keeps its place; a drawing of straight lines crossing the box is cut at
  * its edge). The same reading keeps only what is inside a box,
  * so a vector crop does not carry the rest of its page hidden in it. What cannot be removed exactly (a picture or a
- * shading only partly under the box, a curved, dashed or turned drawing crossing it, text in a font whose codes cannot be read) throws
+ * shading only partly under the box, a curved or turned drawing crossing it, text in a font whose codes cannot be read) throws
  * Unclean, and the caller turns that page into a picture instead (desktop/pdf-edit-tools.ts).
  */
 export type Box = [number, number, number, number];
@@ -214,8 +214,11 @@ function write(v: Value): string {
 // ---- Cutting a drawing at a box's edge ----
 
 type Pt = [number, number];
-/** One subpath in path space: its corners, whether it is closed, and for an axis-aligned rectangle its turn (±1). */
-type Sub = { pts: Pt[]; closed: boolean; rect?: number };
+/**
+ * One subpath in path space: its corners, whether it is closed, for an axis-aligned rectangle its turn (±1), and for a
+ * piece cut from a line how far along the original subpath it starts (where its dashes carry on from).
+ */
+type Sub = { pts: Pt[]; closed: boolean; rect?: number; from?: number };
 const EPS = 1e-6;
 const inv = (m: Matrix): Matrix | null => {
   const det = m[0] * m[3] - m[1] * m[2];
@@ -237,8 +240,11 @@ function inside(a: Pt, b: Pt, box: Box): [number, number] | null {
   return t1 - t0 > EPS && strictlyIn(lerp(a, b, (t0 + t1) / 2), box) ? [t0, t1] : null;
 }
 
-/** Stroked subpaths with what lies inside `box` cut away: the pieces outside, as open polylines that keep their joins. */
-function cutStroke(subs: Sub[], box: Box): Sub[] {
+/**
+ * Stroked subpaths with what lies inside `box` cut away: the pieces outside, as open polylines that keep their joins,
+ * each knowing how far along its subpath it starts.
+ */
+function cutStroke(subs: Sub[], box: Box, dashed: boolean): Sub[] {
   const out: Sub[] = [];
   for (const sub of subs) {
     const n = sub.pts.length, segs: [Pt, Pt][] = [];
@@ -247,20 +253,25 @@ function cutStroke(subs: Sub[], box: Box): Sub[] {
     const cuts = segs.map(([a, b]) => inside(a, b, box));
     const first = cuts.findIndex(Boolean);
     if (first < 0) { out.push(sub); continue; }
-    // A closed one is walked from where it first leaves the box, so the corner at its start keeps its join.
-    const order = sub.closed ? [...segs.keys()].map((k) => (k + first) % segs.length) : [...segs.keys()];
-    let line: Pt[] = [];
-    const flush = () => { if (line.length > 1) out.push({ pts: line, closed: false }); line = []; };
+    const length = segs.map(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1])), at: number[] = [];
+    length.forEach((_, k) => at.push(k ? at[k - 1] + length[k - 1] : sub.from ?? 0));
+    // A closed one is walked from where it first leaves the box, so the corner at its start keeps its join. Not when
+    // dashed: its dashes start again at that corner, so no piece may run across it.
+    const turn = sub.closed && !dashed;
+    const order = turn ? [...segs.keys()].map((k) => (k + first) % segs.length) : [...segs.keys()];
+    let line: Pt[] = [], from = 0;
+    const flush = () => { if (line.length > 1) out.push({ pts: line, closed: false, from }); line = []; };
+    const start = (p: Pt, k: number, t: number) => { line = [p]; from = at[k] + t * length[k]; };
     const walk = (k: number, part: "all" | "before" | "after") => {
       const [a, b] = segs[k], cut = cuts[k];
-      if (!cut) { if (!line.length) line.push(a); line.push(b); return; }
-      if (part !== "after" && cut[0] > EPS) { if (!line.length) line.push(a); line.push(lerp(a, b, cut[0])); }
+      if (!cut) { if (!line.length) start(a, k, 0); line.push(b); return; }
+      if (part !== "after" && cut[0] > EPS) { if (!line.length) start(a, k, 0); line.push(lerp(a, b, cut[0])); }
       if (part === "before") return;
       flush();
-      if (cut[1] < 1 - EPS) line = [lerp(a, b, cut[1]), b];
+      if (cut[1] < 1 - EPS) { start(lerp(a, b, cut[1]), k, cut[1]); line.push(b); }
     };
-    order.forEach((k, i) => walk(k, sub.closed && i === 0 ? "after" : "all"));
-    if (sub.closed) walk(first, "before");
+    order.forEach((k, i) => walk(k, turn && i === 0 ? "after" : "all"));
+    if (turn) walk(first, "before");
     flush();
   }
   return out;
@@ -295,21 +306,22 @@ function rectTurn(pts: Pt[]): number | undefined {
 }
 
 const writeSubs = (subs: Sub[]) => subs.map((s) => s.pts.map((p, i) => `${fmt(p[0])} ${fmt(p[1])} ${i ? "l" : "m"}`).join(" ") + (s.closed ? " h" : "")).join(" ");
+/** Dashes and gaps, and where the pattern starts: what `d` set. */
+type Dash = { array: number[]; phase: number };
 
 /**
  * A path of straight segments painted by `paint`, under `ctm`, with every part inside `boxes` (page space) cut away, as
- * content to draw in its place; "" when nothing is left. Throws Unclean when that cannot be done exactly: curves, a dash
- * pattern (cut pieces would restart it), a transform that turns the boxes off the path's axes, filled shapes other
- * than rectangles crossing a box.
+ * content to draw in its place; "" when nothing is left. A dashed piece gets its own phase, so its dashes fall where they
+ * fell before. Throws Unclean when that cannot be done exactly: curves, a transform that turns the boxes off the path's
+ * axes, filled shapes other than rectangles crossing a box.
  */
-function cutPath(subs: Sub[], curved: boolean, paint: string, ctm: Matrix, boxes: Box[], dashed: boolean) {
+function cutPath(subs: Sub[], curved: boolean, paint: string, ctm: Matrix, boxes: Box[], dash: Dash | undefined) {
   if (curved) throw new Unclean("a curved drawing crossing the box");
   const back = inv(ctm);
   if (!back || !((Math.abs(ctm[1]) < EPS && Math.abs(ctm[2]) < EPS) || (Math.abs(ctm[0]) < EPS && Math.abs(ctm[3]) < EPS))) throw new Unclean("a turned drawing crossing the box");
   const local = boxes.map((b) => map(back, b[0], b[1], b[2], b[3]));
   const stroke = !["f", "F", "f*"].includes(paint), fill = paint !== "S" && paint !== "s";
   const evenOdd = paint.endsWith("*");
-  if (stroke && dashed) throw new Unclean("a dashed line crossing the box");
   // s, b and b* close the last subpath first; a fill closes them all.
   if ("sb".includes(paint[0]) && subs.length) subs[subs.length - 1].closed = true;
   let parts = "";
@@ -318,8 +330,11 @@ function cutPath(subs: Sub[], curved: boolean, paint: string, ctm: Matrix, boxes
     if (filled.length) parts += writeSubs(filled) + (evenOdd ? " f*" : " f");
   }
   if (stroke) {
-    const stroked = local.reduce<Sub[]>((all, b) => cutStroke(all, b), subs);
-    if (stroked.length) parts += (parts ? "\n" : "") + writeSubs(stroked) + " S";
+    const stroked = local.reduce<Sub[]>((all, b) => cutStroke(all, b, !!dash), subs);
+    // Dash lengths are in the space the path is built in, the same as the distances along it.
+    const period = dash ? dash.array.reduce((n, v) => n + v, 0) * (dash.array.length % 2 ? 2 : 1) : 0;
+    const text = !dash ? writeSubs(stroked) + " S" : stroked.map((p) => (!p.from ? writeSubs([p]) + " S" : `q ${write(dash.array)} ${fmt((dash.phase + p.from) % period)} d ${writeSubs([p])} S Q`)).join("\n");
+    if (stroked.length) parts += (parts ? "\n" : "") + text;
   }
   return parts;
 }
@@ -338,7 +353,7 @@ export type Policy = {
   cut?: Box[];
 };
 
-type State = { ctm: Matrix; font?: FontInfo; size: number; tc: number; tw: number; th: number; tl: number; rise: number; clip: Box; dashed?: boolean };
+type State = { ctm: Matrix; font?: FontInfo; size: number; tc: number; tw: number; th: number; tl: number; rise: number; clip: Box; dash?: Dash };
 const latin1 = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return s; };
 const fromLatin1 = (s: string) => { const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 255; return out; };
 
@@ -476,7 +491,11 @@ export function rewriteContent(doc: PDFDocument, bytes: Uint8Array, resources: P
         break;
       }
       case "h": if (path?.subs.length) path.subs[path.subs.length - 1].closed = true; break;
-      case "d": s.dashed = Array.isArray(args[0]) && args[0].some((n) => typeof n === "number" && n > 0); break;
+      case "d": {
+        const array = Array.isArray(args[0]) ? args[0].map((n) => (typeof n === "number" ? n : 0)) : [];
+        s.dash = array.some((n) => n > 0) ? { array, phase: typeof args[1] === "number" ? args[1] : 0 } : undefined;
+        break;
+      }
       case "W": case "W*": if (path) path.clip = true; break;
       case "S": case "s": case "f": case "F": case "f*": case "B": case "B*": case "b": case "b*": case "n": {
         if (path?.box) {
@@ -488,7 +507,7 @@ export function rewriteContent(doc: PDFDocument, bytes: Uint8Array, resources: P
             if (decision === "fail") throw new Unclean("a drawing crossing the box");
             if (decision === "drop") { for (let j = path.from; j <= k; j++) replace.set(j, ""); changed = true; }
             if (decision === "cut") {
-              const text = cutPath(path.subs, path.curved, op, s.ctm, policy.cut ?? [], !!s.dashed);
+              const text = cutPath(path.subs, path.curved, op, s.ctm, policy.cut ?? [], s.dash);
               for (let j = path.from; j <= k; j++) replace.set(j, j === path.from ? text : "");
               changed = true;
             }
