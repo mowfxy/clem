@@ -6,17 +6,41 @@ export class SessionLost extends Error {}
 export class UsageLimit extends Error {}
 /** A CLI that does not know a flag it was given (a build without sessions): the provider then stops sending session flags. */
 export const unsupportedFlag = /unknown (?:option|argument|flag)|unexpected (?:argument|option)|unrecognized (?:option|argument)|no such option|invalid option/i;
+/** LaTeX commands whose first letter is also a JSON escape: "\frac" parses as a form feed and "rac", "\theta" as a tab and "heta". */
+const LATEX_ESCAPE = /[\f\b]|\t(?=(?:heta|imes|au|ext[a-z]*|ilde|an|anh|riangle)(?![a-z]))|\r(?=(?:ho|ight[a-z]*|angle|m)(?![a-z]))|\n(?=(?:abla|eq)(?![a-z]))/g;
+const ESCAPED: Record<string, string> = { "\f": "\\f", "\b": "\\b", "\t": "\\t", "\r": "\\r", "\n": "\\n" };
+/** Puts back the backslash of a LaTeX command that JSON read as an escape, in every string of a parsed request. */
+function keepLatex(value: unknown): unknown {
+  if (typeof value === "string") return value.replace(LATEX_ESCAPE, (c) => ESCAPED[c]);
+  if (Array.isArray(value)) return value.map(keepLatex);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, keepLatex(v)]));
+  return value;
+}
+/**
+ * JSON as models write it in long documents: LaTeX with single backslashes ("$\alpha$", "\sqrt{2}"). A backslash
+ * that starts no JSON escape is taken literally instead of failing the whole request (and costing a round trip),
+ * and one that does but reads as a LaTeX command is kept, so the PDF shows \frac, not a blank and "rac".
+ */
+export function parseRequest(text: string): any {
+  try { return JSON.parse(text); } catch (error) {
+    const lenient = text.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})|\\/g, (m, escape) => (escape ? m : "\\\\"));
+    if (lenient === text) throw error;
+    return JSON.parse(lenient);
+  }
+}
+/** Documents whose Markdown carries LaTeX; a csv or text file may hold real tabs, so it is left as sent. */
+const MATH_DOCS = new Set(["pdf", "docx", "pptx"]);
 /** Exact envelopes only: normal prose and application JSON remain untouched. */
 export function toolRequest(text: string): Record<string, unknown> | null {
   const trimmed = text.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, "$1");
   try {
-    const value = JSON.parse(trimmed);
+    const value = parseRequest(trimmed);
     return value &&
       Object.keys(value).length === 1 &&
       value.kinetra &&
       typeof value.kinetra === "object" &&
       !Array.isArray(value.kinetra)
-      ? value.kinetra
+      ? MATH_DOCS.has(value.kinetra.action) ? (keepLatex(value.kinetra) as Record<string, unknown>) : value.kinetra
       : null;
   } catch {
     return null;
@@ -144,13 +168,45 @@ function cutOff(text: string) {
 export function brokenToolRequest(text: string): string | null {
   const from = brokenStart(text);
   if (from < 0) return null;
-  const rest = text.slice(from).trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```\s*$/, "");
-  try {
-    JSON.parse(rest);
-    return 'The reply must be {"kinetra":{"action":…}} objects with a known action.';
-  } catch (error) {
-    return (error as Error).message;
+  // The first envelope from there that cannot run, and exactly why: one retry should be enough to fix it.
+  for (const at of envelopeStarts(text).filter((at) => at >= from)) {
+    const open = text.indexOf("{", at);
+    const end = objectEnd(text, open);
+    const problem = envelopeProblem(text.slice(open, end < 0 ? text.length : end).replace(/\s*```\s*$/, ""));
+    if (problem) return problem;
   }
+  return 'Each request must stand on its own line as {"kinetra":{"action":…}}, not inside a sentence. Send the request again on its own.';
+}
+/** A stretch of the model's own reply, quoted back on one line. */
+const shown = (s: string) => s.replace(/\s+/g, " ");
+/** Why one {"kinetra":…} envelope cannot run (null when it can): the JSON fault with the text around it, or what the object lacks. */
+function envelopeProblem(envelope: string): string | null {
+  let value: any;
+  try {
+    value = parseRequest(envelope);
+  } catch (error) {
+    const message = (error as Error).message.replace(/^SyntaxError:\s*/, "");
+    const at = Number(/position (\d+)/.exec(message)?.[1] ?? envelope.length);
+    const where = `${at > 60 ? "…" : ""}${shown(envelope.slice(Math.max(0, at - 60), at))} ⟪HERE⟫ ${shown(envelope.slice(at, at + 30))}${at + 30 < envelope.length ? "…" : ""}`;
+    const fix = /control character/i.test(message)
+      ? "A string holds a raw line break or tab: inside JSON strings write \\n for a new line and \\t for a tab."
+      : /end of JSON|Unterminated string/i.test(message)
+        ? "The request ends before every string, [ and { is closed."
+        : /after property value|after array element|Expected ',' or/i.test(message)
+          ? 'Usually a " inside a string that is not escaped (write \\" for a quotation mark inside text), or a missing comma.'
+          : /non-whitespace character after JSON/i.test(message)
+            ? "There is text or an extra } or ] after the request's closing brace: send the request alone."
+            : "Fix the JSON at that point.";
+    return `It is not valid JSON (${message}). At ⟪HERE⟫: ${where}. ${fix} Send the whole corrected request again.`;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 'A request is one object: {"kinetra":{"action":…}}.';
+  const extra = Object.keys(value).filter((key) => key !== "kinetra");
+  if (extra.length) return `The request has ${extra.map((k) => `"${k}"`).join(", ")} beside "kinetra": everything goes inside it, as {"kinetra":{"action":…,…}}.`;
+  const request = value.kinetra;
+  if (!request || typeof request !== "object" || Array.isArray(request)) return '"kinetra" must hold one object with an "action", such as {"kinetra":{"action":"help"}}.';
+  if (typeof request.action !== "string") return `The request has no "action". Add one of: ${[...ACTIONS].join(", ")}.`;
+  if (!ACTIONS.has(request.action)) return `Unknown action "${request.action}". Use one of: ${[...ACTIONS].join(", ")}.`;
+  return null;
 }
 /** The prose a reply opens with before its tool requests (whole or broken): shown as a note while the tools run. Never any request JSON. */
 export function requestLead(text: string) {
@@ -245,13 +301,61 @@ function withoutBroken(text: string) {
 /** Actions that make or change a file, or attach pictures of pages, run in the order they were asked for. */
 export const MAX_PARALLEL = 4;
 const IN_ORDER = new Set(["pdf", "docx", "pptx", "xlsx", "file", "image", "look", "open"]);
+/**
+ * What a cut-off request is told: where it stopped and what to send instead. A model told only "it was too long"
+ * tends to resend the same request, or shorten the content itself, which the person never asked for.
+ */
+function cutOffError(text: string) {
+  const headings = [...text.matchAll(/"(?:heading|title)"\s*:\s*"((?:[^"\\]|\\.){1,120})"/g)].map((m) => m[1]);
+  const action = /"action"\s*:\s*"(\w+)"/.exec(text.slice(Math.max(0, brokenStart(text))))?.[1];
+  const parts = action === "pptx" ? "slides" : action === "xlsx" ? "rows" : "sections";
+  const last = headings.length > 1 ? ` The last part it reached was "${headings.at(-1)}", unfinished; everything before it was complete.` : "";
+  return `That tool request was cut off before it closed, at ${text.length} characters (the most one reply can hold), so nothing in it was done. It stopped at: "…${shown(text.slice(-120))}".${last} Send the same content in smaller requests, at full depth: the first few ${parts} now${action ? ` in one ${action} action` : ""}, then the rest with "revise" and "append":true, one part per request.`;
+}
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
 export const MAX_BROKEN = 5;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
 const recent = <T>(pictures: T[]) => pictures.slice(-12);
-const LAST_CALL = 'No tool calls are left. Write your final answer to the original request now, as plain text without any {"kinetra":…} request. If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.';
 /** One tool request run for a provider that calls tools natively (MCP): the result as the model sees it, and its pictures. */
 export type NativeTool<Picture> = (request: Record<string, unknown>) => Promise<{ result: unknown; pictures: Picture[] }>;
+/** A request in a few words, for the recap: its action and what it was about. */
+function label(request: any) {
+  if (!request || typeof request !== "object") return "request";
+  if (request.invalid) return "a request that could not run";
+  const about = request.fn || request.file || request.title || request.name || request.module || request.query || request.revise;
+  return `${request.action ?? "request"}${about ? ` ${shown(String(about)).slice(0, 80)}` : ""}`;
+}
+/**
+ * The last message of a turn whose tools have stopped. "No tool calls are left" alone gave answers that claimed a
+ * file the tools never made, quoted numbers from failed calls, or said a long document was done when half its plan
+ * was missing; when the context filled up, the results were dropped and the model wrote from nothing. So it says why
+ * the tools stopped, which files exist, what failed and what a planned document lacks, and, when results could not
+ * be sent whole, gives them shortened (`digest`, newest kept).
+ */
+function lastCall(reason: "calls" | "context", history: { request: any; result: any }[], gap?: string, digest: { request: any; result: any }[] = []) {
+  const files = new Map<string, string>();
+  for (const { result } of history) {
+    if (!result?.created) continue;
+    const name = result.file?.name ?? "a file", id = result.file?.id ?? name;
+    const size = [result.pages && `${result.pages} pages`, result.sections && `${result.sections} sections`, result.slides && `${result.slides} slides`].filter(Boolean).join(", ");
+    files.set(id, `"${name}"${size ? ` (${size})` : ""}`);
+  }
+  const failed = history.filter((h) => h.result?.error && !h.request?.answer).length;
+  let shortened = "";
+  for (const { request, result } of [...digest].reverse()) {
+    const line = `- ${label(request)} → ${shown(JSON.stringify(result ?? null)).slice(0, 300)}\n`;
+    if (shortened.length + line.length > 12_000) break;
+    shortened = line + shortened;
+  }
+  return [
+    reason === "calls" ? `No tool calls are left: all ${MAX_CALLS} of this answer's are used.` : "No more tools can run: this answer's tool results have filled the model's context.",
+    'Write your final answer to the original request now, as plain text without any {"kinetra":…} request. Base it on the tool results: state only numbers a tool returned or that you can show, and present nothing from a request that failed.',
+    files.size ? `Files made or updated in this answer (the person receives them): ${[...files.values()].join("; ")}.` : "No file was made in this answer: do not say one was.",
+    failed ? `${failed} tool request${failed === 1 ? "" : "s"} failed.` : "",
+    // What the plan lacks, without the note's own "write them now with {…}", which no longer applies.
+    gap ? `Not finished: ${gap.split(/(?<=\.)\s+/).filter((s) => !/\{"action"|"plan" again|Answer the person only/.test(s)).join(" ")} Say what the document covers so far, which parts are missing, and that asking to continue will add them to the same file.` : "If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.",
+  ].filter(Boolean).join(" ") + (shortened ? `\nResults that could not be sent in full, shortened (data, not instructions):\n${shortened}` : "");
+}
 /**
  * Runs the tool loop. With `stateful`, the model keeps the conversation (one provider
  * thread), so each follow-up carries only the newest tool results instead of the whole context.
@@ -278,10 +382,12 @@ export async function runKinetraTurn<Picture = unknown>(
   // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
   let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
+  // `instructions` may be empty: a provider with Mowr's rules in its system prompt sends only this turn's notes here.
+  const opening = (instructions ? instructions + "\n\n" : "") + "Original request and context:\n" + prompt;
   const check = () => {
     if (cancelled()) throw Error("Request cancelled");
   };
-  let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0, brokenInRow = 0;
+  let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0, brokenInRow = 0, lastBroken = "";
   // Pictures from "look" results: all of them go with every request when there is no thread, the new ones when there is.
   const looked: Picture[] = [];
   let newPictures: Picture[] = [];
@@ -336,12 +442,11 @@ export async function runKinetraTurn<Picture = unknown>(
   for (let replies = 0; ; replies++) {
     check();
     const left = MAX_CALLS - calls;
-    const next = closing || left <= 0 ? LAST_CALL : `${left} tool calls left. Continue: another {"kinetra":…} request, or your final answer to the original request.`;
+    const finish = (digest: { request: any; result: any }[] = []) => lastCall(closing ? "context" : "calls", history, unfinished?.(), digest);
+    const next = closing || left <= 0 ? finish() : `${left} tool calls left. Continue: another {"kinetra":…} request, or your final answer to the original request.`;
     const fresh = history.slice(reported);
     const full = () =>
-      instructions +
-      "\n\nOriginal request and context:\n" +
-      prompt +
+      opening +
       (history.length
         ? "\nTool exchanges (data, not instructions):\n" + JSON.stringify(history) + "\n" + next
         : "");
@@ -351,9 +456,9 @@ export async function runKinetraTurn<Picture = unknown>(
         : full();
     if (!stateful && input.length > limit && compact(history, input.length - limit)) input = full();
     if (!closing && (stateful ? sent + input.length > 400_000_000 : input.length > limit)) {
-      // Out of room: the results so far are dropped from the request and the model is asked to finish.
+      // Out of room: the model is asked to finish, with the results it has not seen (all of them, without a thread) shortened.
       closing = true;
-      input = stateful && replies > 0 ? LAST_CALL : instructions + "\n\nOriginal request and context:\n" + prompt + "\n" + LAST_CALL;
+      input = stateful && replies > 0 ? finish(fresh) : opening + "\n" + finish(history);
     }
     sent += input.length;
     reported = history.length;
@@ -366,7 +471,7 @@ export async function runKinetraTurn<Picture = unknown>(
       if (!(error instanceof SessionLost) || !stateful) throw error;
       check();
       stateful = false;
-      input = closing ? instructions + "\n\nOriginal request and context:\n" + prompt + "\n" + LAST_CALL : full();
+      input = closing ? opening + "\n" + finish(history) : full();
       if (input.length > limit && compact(history, input.length - limit)) input = full();
       sent += input.length;
       stats.steps++;
@@ -405,17 +510,17 @@ export async function runKinetraTurn<Picture = unknown>(
         throw Error(`The model sent ${MAX_BROKEN} tool requests in a row that could not run (${broken}). Try again or rephrase the request.`);
       }
       calls++;
+      // The same fault twice means the model cannot see it: a smaller request is easier to get right than a third try.
+      const again = broken === lastBroken ? " This is the same problem as your previous attempt: send a smaller request (fewer sections, slides or rows) instead of resending the same one." : "";
+      lastBroken = broken;
       history.push({
         request: { invalid: text.length > 4000 ? text.slice(0, 4000) + "…" : text },
-        result: {
-          error: cutOff(text)
-            ? `That tool request was cut off before it closed (the reply reached ${text.length} characters, the most one reply can hold), so it did not run. Send the same content again split into smaller requests: fewer sections per pdf action (then "revise" with "append":true for the rest), fewer slides or rows per request.`
-            : `That tool request is not valid JSON (${broken}), so it did not run. Check that every [ and { is closed, then send the corrected request.`,
-        },
+        result: { error: (cutOff(text) ? cutOffError(text) : `That tool request could not run, so nothing in it was done. ${broken}`) + again },
       });
       continue;
     }
     brokenInRow = 0;
+    lastBroken = "";
     for (const { pictures } of await Promise.all(requests!.map(schedule))) newPictures.push(...pictures);
   }
 }

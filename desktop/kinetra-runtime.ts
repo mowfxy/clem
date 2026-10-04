@@ -65,6 +65,34 @@ const kinetraIntent = new RegExp([
 ].join("|"), "i");
 /** A quantity with a unit ("a 5 kg block", "20 m/s", "12 V", "4 Ω"): case matters, so "2 a day" is not one. */
 const quantity = /\d\s*(?:m\/s²?|km\/h|kg|N|Pa|Hz|V|mA|A|Ω|kΩ|ohms?|µF|uF|nF|mH)(?![\w\/])/;
+/** Whether a request may use the tools: a figure, a calculation, a file, or a change to a document made earlier. */
+export function needsKinetra(request: string, hasDocuments = false) {
+  return hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || quantity.test(request) || documentIntent(request) || fileIntent.test(request);
+}
+/** The figure recipes for the topic in the request and its context (every one with pictures attached), noting any left out. */
+function topicalRecipes(request: string, context: string, pictures: boolean) {
+  const { recipes, omitted } = recipesFor(request + "\n" + context, { pictures });
+  return omitted
+    ? recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`
+    : allRecipes;
+}
+/**
+ * Claude's and Grok's tool guide, in every system prompt: every action, the file catalog and the document standard,
+ * without the recipe list. With a regex choosing between the full guide and kinetraBrief, a request it missed ("make me
+ * a cheat sheet") left the model guessing whether tools exist, or spending a round trip on "help". Measured on Grok,
+ * this guide added no noticeable time to a plain chat reply (+3.6k input tokens, within run-to-run noise); the full one
+ * added about a second. It is the same for every request, so the CLI's cache keeps it.
+ */
+export const kinetraCompact = buildInstructions('Not listed here: {"action":"recipes"} returns every recipe, and a request that needs figures carries the ones for its topic after this guide.');
+/**
+ * What a request adds after kinetraCompact, in the message: the recipes for its topic when it may need tools, and the
+ * design guide for the kind of file asked for. `context` and `pictures` choose the recipes as in kinetraInstructionsFor.
+ */
+export function kinetraExtrasFor(request: string, hasDocuments = false, { context = "", pictures = false }: { context?: string; pictures?: boolean } = {}) {
+  const guides = fileGuidesFor(request);
+  const recipes = needsKinetra(request, hasDocuments) ? `KINETRA FIGURE RECIPES (verified; each renders as-is; adapt the values, keep the structure):\n${topicalRecipes(request, context, pictures)}` : "";
+  return [recipes, guides].filter(Boolean).join("\n\n");
+}
 /**
  * The tool guide when the request may need it (or a document it could change exists); otherwise one line. The guide
  * carries the concept diagrams and the science recipes for the topic at hand, found in the request and in `context`
@@ -74,11 +102,9 @@ const quantity = /\d\s*(?:m\/s²?|km\/h|kg|N|Pa|Hz|V|mA|A|Ω|kΩ|ohms?|µF|uF|nF
  * change and before the parts chosen for this message, so the provider's prompt cache keeps as much as it can.
  */
 export function kinetraInstructionsFor(request: string, hasDocuments = false, { context = "", pictures = false, notes = "" }: { context?: string; pictures?: boolean; notes?: string } = {}) {
-  if (!(hasDocuments || /^\/pdf\b/i.test(request.trim()) || kinetraIntent.test(request) || quantity.test(request) || documentIntent(request) || fileIntent.test(request))) return kinetraBrief + notes;
-  const { recipes, omitted } = recipesFor(request + "\n" + context, { pictures });
-  const guide = omitted
-    ? buildInstructions(recipeText(recipes) + `\n(Recipes for ${omitted} other science figures — mechanics, optics, electrostatics, circuits, logic, fluids or oscillations not mentioned here — are left out: {"action":"recipes"} returns every recipe.)`, notes)
-    : notes ? buildInstructions(allRecipes, notes) : kinetraInstructions;
+  if (!needsKinetra(request, hasDocuments)) return kinetraBrief + notes;
+  const recipes = topicalRecipes(request, context, pictures);
+  const guide = recipes === allRecipes && !notes ? kinetraInstructions : buildInstructions(recipes, notes);
   // The design skill for the kind of file asked for comes with the catalog, so the first file is already well designed.
   const guides = fileGuidesFor(request);
   return guide + (guides ? "\n\n" + guides : "");
@@ -170,6 +196,8 @@ export async function kinetraTool(
 ) {
   if (!request || typeof request !== "object")
     throw Error("Invalid Kinetra request");
+  if (typeof request.action !== "string")
+    throw Error(`The request has no "action", so nothing ran. Send it again with "action" set to call, pdf, docx, pptx, xlsx, file, image, open, recipes, api, skill or help (and its other fields).`);
   if (request.action === "help") return kinetraInstructions;
   if (request.action === "recipes") return recipeText();
   if (request.action === "skill" && request.name === "figures") return illustrationGuide;
