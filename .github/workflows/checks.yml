@@ -13,7 +13,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run test:desktop
+      # Electron's SUID sandbox helper is not set up on the runner, and its windows need a display.
+      - run: xvfb-run -a npm run test:desktop
+        env:
+          ELECTRON_DISABLE_SANDBOX: "1"
       - run: npx tsc -p desktop/tsconfig.json
       - run: npm run typecheck:server
       - run: npm run build:vercel
