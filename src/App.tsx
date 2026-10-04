@@ -219,9 +219,13 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   modelsRef.current = models;
   const [defaultModel, setDefaultModel] = useState("");
   const [defaultReasoning,setDefaultReasoning]=useState("");
+  // Whether the person picked the thinking level (rather than taking the model's default): an explicit pick is never changed.
+  const [defaultReasoningChosen,setDefaultReasoningChosen]=useState(false);
   const savedSelection=state.chats.find(c=>c.id===chatId);
   const model=savedSelection?.model ?? defaultModel;
   const reasoning=savedSelection?.reasoning ?? (savedSelection?.model ? models.find(m=>m.id===model)?.defaultReasoningEffort || "" : defaultReasoning);
+  // A chat saved before this flag existed may hold a level the person picked: it counts as chosen.
+  const reasoningChosen=savedSelection?.reasoning!==undefined?savedSelection.reasoningChosen!==false:!savedSelection?.model&&defaultReasoningChosen;
   const [deleteChatId,setDeleteChatId]=useState<string|null>(null);
   // The next new chat is temporary: the model still reads files and memory, but the chat is never saved or remembered.
   const [temporaryNext,setTemporaryNext]=useState(false);
@@ -431,7 +435,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     window.addEventListener('focus',focus);
     return()=>window.removeEventListener('focus',focus);
   },[ready,session.user?.id]);
-  useEffect(()=>{const selected=models.find(m=>m.id===defaultModel);if(selected&&!selected.reasoningEfforts?.some(e=>e.reasoningEffort===defaultReasoning))setDefaultReasoning(selected.defaultReasoningEffort||"");},[models,defaultModel,defaultReasoning]);
+  useEffect(()=>{const selected=models.find(m=>m.id===defaultModel);if(selected&&!selected.reasoningEfforts?.some(e=>e.reasoningEffort===defaultReasoning)){setDefaultReasoning(selected.defaultReasoningEffort||"");setDefaultReasoningChosen(false);}},[models,defaultModel,defaultReasoning]);
   const patch = (fn: (s: State) => State) => {const next=fn(stateRef.current);stateRef.current=next;setState(next);};
   const activeChat = state.chats.find((c) => c.id === chatId);
   const savedChats = state.chats.filter((c) => !c.temporary);
@@ -505,12 +509,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   }
   function chooseModel(id:string) {
     const nextEffort=models.find(m=>m.id===id)?.defaultReasoningEffort||"";
-    if(chatId) updateChat(chatId,c=>({...c,model:id,reasoning:nextEffort}));
-    else {setDefaultModel(id);setDefaultReasoning(nextEffort);}
+    if(chatId) updateChat(chatId,c=>({...c,model:id,reasoning:nextEffort,reasoningChosen:false}));
+    else {setDefaultModel(id);setDefaultReasoning(nextEffort);setDefaultReasoningChosen(false);}
   }
   function chooseReasoning(value:string) {
-    if(chatId) updateChat(chatId,c=>({...c,model,reasoning:value}));
-    else setDefaultReasoning(value);
+    if(chatId) updateChat(chatId,c=>({...c,model,reasoning:value,reasoningChosen:true}));
+    else {setDefaultReasoning(value);setDefaultReasoningChosen(true);}
   }
   function updatePlan(id: string, messageId: string, plan: Plan) {
     updateChat(id, (c) => ({
@@ -533,7 +537,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,reasoningChosen:!!effort||mode!=="step"&&reasoningChosen,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -624,7 +628,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     };
     const next = {
       ...chat,
-      model, reasoning,
+      model, reasoning, reasoningChosen,
       messages: [...chat.messages, user],
       updated: Date.now(),
     };

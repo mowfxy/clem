@@ -46,11 +46,11 @@ import { requestSchema, type DesktopStatus } from "./contracts";
 import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
-import { composePrompt } from "./prompt";
-import { kinetraInstructionsFor, kinetraInstructions } from "./kinetra-runtime";
+import { composePrompt, systemPrompt } from "./prompt";
+import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID, TELEGRAM_LINK_ID } from "./provider-link";
-import {ClaudeProvider} from './claude';
+import {ClaudeProvider,toolEffort} from './claude';
 import {GrokProvider,grokModels,grokUsage,GROK_PREFIX} from './grok';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
@@ -289,7 +289,7 @@ void app.whenReady().then(async () => {
   /** Chats the person stopped; a Claude or Grok tool loop checks this between steps. */
   const cancelledRuns = new Set<string>();
   type Picture = { path: string; mime: string };
-  type AnswerOptions = { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined };
+  type AnswerOptions = { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined };
   /**
    * One answer from whichever AI the person chose (ChatGPT through Codex, Claude or Grok), with Mowr's
    * Kinetra tools, documents and pictures. Chat, Telegram and memory notes all go through here, so a
@@ -306,11 +306,13 @@ void app.whenReady().then(async () => {
     }
   }
   async function answerTimed(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
-    { images = [], pdf, instructions = kinetraInstructions, tools, unfinished }: AnswerOptions, stats: TurnStats) {
+    { images = [], pdf, instructions = kinetraInstructions, notes = "", tools, unfinished }: AnswerOptions, stats: TurnStats) {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:");
     // Stop pressed while the request was being prepared (folders, memory, account choice): nothing starts.
     if (cancelledRuns.has(id)) throw Error("Request cancelled");
-    if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions, tools, unfinished, stats);
+    if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions + notes, tools, unfinished, stats);
+    // Claude and Grok get Mowr's rules and tool guide as their system prompt; only this turn's notes (its files) go with the request.
+    const system = systemPrompt(instructions);
     const cancelled = () => cancelledRuns.has(id);
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
@@ -325,7 +327,7 @@ void app.whenReady().then(async () => {
     const screen = new LiveScreen((text) => emit({ id, type: "delta", text }));
     // Claude Code gets Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; Grok keeps the text protocol.
     const native = !!(pdf || tools);
-    const answer = await runKinetraTurn<Picture>(prompt, instructions, async (input, followUp, looked, call) => {
+    const answer = await runKinetraTurn<Picture>(prompt, notes.trim(), async (input, followUp, looked, call) => {
       // A first step (or a resend after a lost session) starts a new session; the others continue the latest one.
       if (!followUp) sessions.push({ id: randomUUID(), provider: current.provider });
       const session = sessions.at(-1)!;
@@ -338,8 +340,8 @@ void app.whenReady().then(async () => {
       const once = async () => {
         text = "";
         screen.step();
-        if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning);
-        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined);
+        if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system });
+        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined, { system });
       };
       try {
         await once();
@@ -1329,11 +1331,14 @@ void app.whenReady().then(async () => {
       const pictureNote = request.images?.length
         ? `\n\nPICTURES ATTACHED TO THIS REQUEST (look at them; they are part of the person's files, not decoration), in order:\n${request.images.map((image, i) => `${i + 1}. ${image.name}`).join("\n")}\nDiagrams, circuits, graphs, tables, handwriting and scanned pages in them are only in the pictures: read them there, not from the extracted text alone.`
         : "";
+      const cli = !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX);
       const prompt = composePrompt({
         messages,
         sources,
         memories,
         name: memoryState.enabled ? setup.displayName : undefined,
+        // Claude and Grok have coreRules in their system prompt (answerWith).
+        rulesInSystem: cli,
         extra: (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : "") + pictureNote,
       });
       // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
@@ -1544,10 +1549,16 @@ void app.whenReady().then(async () => {
         return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : kinetraInstructionsFor(query, documents.size > 0, { context: prompt + "
-" + library.map((f) => f.name).join("
-"), pictures: pictures.length > 0, notes: documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library, pictures.length > 0) });
-      const run = answerWith(user.id, request.id, request.model, request.reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished });
+      // Claude and Grok always see the whole tool guide (kinetraCompact, the same in every system prompt); what this request
+      // adds to it (recipes, a file design guide) and this conversation's files change from turn to turn, so they go in the message.
+      const fileNotes = documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library, pictures.length > 0);
+      const topic = { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0 };
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0, { ...topic, notes: fileNotes });
+      // This conversation's files come before what this message chose (recipes, a design guide), so the prompt cache keeps more.
+      const notes = request.plain || !cli ? "" : [fileNotes.trim(), kinetraExtrasFor(query, documents.size > 0, topic)].filter(Boolean).join("\n\n");
+      // Claude at its default level thinks harder for tool and document work (desktop/claude.ts toolEffort); a level the person picked stays.
+      const reasoning = request.model?.startsWith("claude:") && !request.plain ? toolEffort((await claudeFor(user.id)).listed, request.model, request.reasoning, !!request.reasoningChosen, needsKinetra(query, documents.size > 0)) : request.reasoning;
+      const run = answerWith(user.id, request.id, request.model, reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       void run.then(() => {
