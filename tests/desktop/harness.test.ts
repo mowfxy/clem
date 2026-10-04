@@ -177,10 +177,43 @@ test("tool envelopes are held even when fenced; prose streams at once", () => {
 
 test("full Kinetra instructions only when the request needs them", async () => {
   assert.equal(kinetraInstructionsFor("hi, how are you?"), kinetraBrief);
-  assert.equal(kinetraInstructionsFor("Make a PDF worksheet on projectile motion"), kinetraInstructions);
-  assert.equal(kinetraInstructionsFor("/pdf notes"), kinetraInstructions);
+  const projectile = kinetraInstructionsFor("Make a PDF worksheet on projectile motion");
+  assert.match(projectile, /KINETRA TOOLS/);
+  assert.match(projectile, /"fn":"renderProjectile"/);
+  assert.match(kinetraInstructionsFor("/pdf notes"), /KINETRA TOOLS/);
+  // help returns the whole guide, every recipe included.
   assert.equal(await kinetraTool({ action: "help" }), kinetraInstructions);
   assert.ok(kinetraBrief.length < 300);
+});
+
+test("figure recipes come for the topic at hand, and none a request needs is left out", async () => {
+  const { allRecipes, diagramRecipes, recipesFor, recipeTopics, kinetraRecipes, illustrationRecipes } = await import("../../desktop/kinetra-recipes.ts");
+  const has = (text: string, fn: string) => text.includes(`"fn":"${fn}"`);
+  // Every science recipe has a topic, and its own name and use mention it: a request phrased like the recipe gets it.
+  for (const r of [...kinetraRecipes, ...illustrationRecipes]) {
+    assert.ok(recipeTopics[r.name], `${r.name} has a topic`);
+    assert.ok(recipeTopics[r.name].test(r.name + " " + r.use), r.name);
+  }
+  const history = kinetraInstructionsFor("Make a PDF report on the French Revolution");
+  assert.ok(history.length < kinetraInstructions.length * 0.7, "a history report is not sent every physics recipe");
+  for (const r of diagramRecipes) assert.ok(history.includes(JSON.stringify(r.figure)), `concept diagrams always go: ${r.name}`);
+  assert.ok(!has(history, "renderCircuit") && !has(history, "renderOptics"));
+  assert.match(history, /\{"action":"recipes"\} returns every recipe/);
+  assert.equal(await kinetraTool({ action: "recipes" }), (await import("../../desktop/kinetra-recipes.ts")).recipeText(allRecipes()));
+  const circuits = kinetraInstructionsFor("Explain nodal analysis with dependent sources as a PDF");
+  assert.ok(has(circuits, "renderCircuit") && has(circuits, "solveCircuit"), "the circuit recipe comes with its solver");
+  assert.ok(!has(circuits, "renderOptics"));
+  // The topic may be only in the sources or earlier messages: "notes from this lecture" with a lecture on circuits.
+  assert.ok(!has(kinetraInstructionsFor("Make notes from this lecture as a PDF"), "renderCircuit"));
+  assert.ok(has(kinetraInstructionsFor("Make notes from this lecture as a PDF", false, { context: "Lecture 5: Thévenin and Norton equivalents" }), "renderCircuit"));
+  // A picture shows its subject only to the model: every recipe goes.
+  assert.equal(kinetraInstructionsFor("Solve this and make a PDF", false, { pictures: true }).length, kinetraInstructions.length);
+  // Mixed topics bring each of theirs; words inside other words do not.
+  const mixed = recipesFor("a PDF on lenses, logic gates and a mass on a spring").recipes.map((r) => r.name);
+  for (const want of ["thin lens / mirror", "logic circuit", "textbook figure: mass on a spring"]) assert.ok(mixed.includes(want), want);
+  const words = recipesFor("An important investigation of product design flowcharts").recipes.map((r) => r.name);
+  for (const not of ["function plot", "logic circuit", "charged rods", "vector field"]) assert.ok(!words.includes(not), not);
+  assert.ok(!recipesFor("Mohamed's report").recipes.some((r) => r.name === "circuit schematic"));
 });
 
 test("every figure recipe the model is shown renders with the real worker", async () => {

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
@@ -7,6 +7,7 @@ import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-s
 import {AppServer} from "./app-server.ts";
 import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn} from "./kinetra-turn.ts";
 import type {TurnStats} from "./turn-timing.ts";
+import {kinetraMcp,codexMcpConfig,inlinePictures,keepingAlive,NATIVE_NOTE,type NativeEndpoint} from "./kinetra-mcp.ts";
 
 /** While a reply might still turn out to be a tool envelope, hold it instead of streaming it. */
 export function mayBeTool(text: string) {
@@ -458,9 +459,20 @@ export class Codex {
     if(this.turns.has(id))throw Error("This chat is already answering.");
     const turn={cancelled:false};this.turns.set(id,turn);
     const session:TurnSession={};
+    // Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools: one endpoint for the whole
+    // answer, added to its thread. A plain request (no files, no tools) stays text only.
+    let endpoint:NativeEndpoint|undefined;
     try{
       let shown=false;
-      await runKinetraTurn<{path:string}>(prompt,instructions,async(input,followUp,looked)=>{
+      await runKinetraTurn<{path:string}>(prompt,instructions,async(input,followUp,looked,call)=>{
+        if((pdf||tools)&&!endpoint){
+          // While a call runs Codex sends nothing, so the turn's inactivity limit is kept from firing.
+          const native=inlinePictures(call,path=>readFile(path));
+          endpoint=await kinetraMcp.open(request=>keepingAlive(()=>native(request),()=>this.controls.get(id)?.alive?.()));
+          session.mcp=codexMcpConfig(endpoint);
+        }
+        // A new thread learns that requests go to the tool (a continued one already has it in its history).
+        if(endpoint&&!session.threadId)input=NATIVE_NOTE+input;
         let output="",delivered=0;
         // A lead-in shown before a tool ran ("Let me calculate that.") is its own paragraph, never glued to the answer.
         const show=(end:number)=>{if(end<=delivered)return;emit({id,type:"delta",text:(shown&&!delivered?"\n\n":"")+output.slice(delivered,end)});delivered=end;shown=true;};
@@ -478,7 +490,7 @@ export class Codex {
         return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
       },()=>turn.cancelled,{stateful:true,unfinished,stats});
       emit({id,type:"done"});
-    }finally{if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
+    }finally{endpoint?.close();if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
   }
   /** A short internal request (memory notes): never blocks the user's turn or streams to the screen. */
   async quick(prompt:string,selection?:{model?:string;reasoning?:string},timeoutMs=45000){

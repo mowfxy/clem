@@ -2,8 +2,27 @@ import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {mkdir,readdir,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {installedPath,signInWindow} from './cli-install.ts';
-import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
+import {SessionLost,UsageLimit,unsupportedFlag,MAX_CALLS} from './kinetra-turn.ts';
+import {kinetraMcp,claudeMcpConfig,keepingAlive,NATIVE_NOTE,CLAUDE_TOOL,TOOL_TIMEOUT_SECONDS,TOOL_OUTPUT_TOKENS,type NativeCall} from './kinetra-mcp.ts';
 import {liveText} from './live-reply.ts';
+
+/**
+ * Claude Code's arguments for one answer. Web search is its only built-in tool: it lets Claude find real, current
+ * sources (such as YouTube videos) on the person's own plan. With `mcpConfig`, Kinetra is a native
+ * tool as well (desktop/kinetra-mcp.ts): it is the only MCP server loaded (--strict-mcp-config), it is allowed without a
+ * prompt, and one reply may make as many calls as the tool loop allows. Safe mode is left out then, since it turns off
+ * every MCP server; Claude Code runs in Mowr's own configuration folder and workspace either way.
+ */
+export function claudeArgs(model:string,effort:string|undefined,session:{id:string;resume:boolean}|undefined,mcpConfig?:string){
+  const tools=mcpConfig
+    ?['--tools','WebSearch','--allowedTools',`WebSearch,${CLAUDE_TOOL}`,'--mcp-config',mcpConfig,'--strict-mcp-config','--disable-slash-commands','--max-turns',String(MAX_CALLS+10)]
+    :['--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--safe-mode'];
+  const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model,...tools,'--permission-prompts','none'];
+  // A tool loop keeps one Claude Code session across its steps: later steps send only the new results and Claude Code supplies the history.
+  args.push(...(session?(session.resume?['--resume',session.id]:['--session-id',session.id]):['--no-session-persistence']));
+  if(effort)args.push('--effort',effort);
+  return args;
+}
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 
 export type ClaudeImage = { mime: string; data: string };
@@ -85,7 +104,7 @@ export function claudeSubscriptionStatus(raw:string,code:number|null) {
   catch{return {installed:true,connected:false};}
 }
 
-/** Claude Code is invoked in text mode with web search as its only tool: no files, shell, plugins, project settings or MCP. */
+/** Claude Code is invoked with web search as its only built-in tool: no files, shell, plugins or project settings, and no MCP server but Mowr's own Kinetra one (desktop/kinetra-mcp.ts). */
 export class ClaudeProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
   /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
@@ -111,6 +130,9 @@ export class ClaudeProvider {
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1';
     // The longest reply each model allows, so one part of a long document is not cut off mid-request.
     env.CLAUDE_CODE_MAX_OUTPUT_TOKENS='64000';
+    // Native Kinetra calls (desktop/kinetra-mcp.ts): as long as a tool may take, and results passed whole, as in the text protocol.
+    env.MCP_TOOL_TIMEOUT=String(TOOL_TIMEOUT_SECONDS*1000);
+    env.MAX_MCP_OUTPUT_TOKENS=String(TOOL_OUTPUT_TOKENS);
     return env;
   }
   private async start(args:string[]){await mkdir(this.root,{recursive:true});const child=spawn(this.executable,args,{cwd:join(this.root,'workspace'),env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});return child;}
@@ -185,7 +207,8 @@ export class ClaudeProvider {
    * The reply streams as `partial` events while it is written (desktop/live-reply.ts); the final `delta` is the
    * confirmed result, which alone is read for tool requests.
    */
-  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean}){
+  /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. */
+  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall){
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     if(!model.startsWith('claude:')||!MODEL_NAME.test(model.slice(7)))throw Error('Choose a supported Claude model.');
@@ -196,20 +219,22 @@ export class ClaudeProvider {
     if(effort&&selected&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
     // A sign-in that lapsed since fails the step itself, which clears the check (below); only a signed-out one is checked again now.
     if(!(this.recentStatus()?.connected||(await this.status(true)).connected))throw Error('Sign in to a Claude subscription through Claude Code first.');
-    // Web search is the only tool: it lets Claude find real, current sources (such as YouTube videos) on the person's own plan.
-    const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model.slice(7),'--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--permission-prompts','none','--safe-mode'];
-    // A tool loop keeps one Claude Code session across its steps: later steps send only the new results and Claude Code supplies the history.
-    args.push(...(session?(session.resume?['--resume',session.id]:['--session-id',session.id]):['--no-session-persistence']));
-    if(effort)args.push('--effort',effort);
-    const child=await this.start(args);this.active.set(id,child);
+    // A new session learns that requests go to the tool (a resumed one already has it in its history).
+    if(native&&!session?.resume)prompt=NATIVE_NOTE+prompt;
+    // While a native Kinetra call runs Claude Code prints nothing, so the inactivity limit below is kept from firing.
+    let alive=()=>{};
+    const endpoint=native?await kinetraMcp.open(request=>keepingAlive(()=>native(request),()=>alive())):undefined;
+    let child:ChildProcessWithoutNullStreams;
+    try{child=await this.start(claudeArgs(model.slice(7),effort,session,endpoint&&claudeMcpConfig(endpoint)));}catch(error){endpoint?.close();throw error;}
+    this.active.set(id,child);
     try{
       const answer=await new Promise<string>((resolve,reject)=>{
         let buffer='',bytes=0,error='',done=false,result:any=null;
         const finish=(value?:string,failure?:Error)=>{if(done)return;done=true;clearTimeout(timer);failure?reject(failure):resolve(value||'');};
         // An inactivity limit: any output from Claude Code restarts it, so a long answer that keeps streaming is never cut off.
         let timer:ReturnType<typeof setTimeout>;
-        const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},600000);};
-        touch();
+        const touch=()=>{if(done)return;clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},600000);};
+        touch();alive=touch;
         let last='';
         const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
         const read=(line:string)=>{
@@ -246,7 +271,7 @@ export class ClaudeProvider {
         child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
       });
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
-    }finally{this.active.delete(id);}
+    }finally{this.active.delete(id);endpoint?.close();}
   }
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk. */
   async endSession(sessionId:string){

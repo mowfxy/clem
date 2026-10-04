@@ -23,7 +23,7 @@ export function toolRequest(text: string): Record<string, unknown> | null {
   }
 }
 // Kinetra's own actions and the file tools (core/file-tools.ts).
-const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look"]);
+export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look"]);
 const START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
 /** Index just past the JSON object that opens at `start`, or -1 when it never closes. Strings are skipped. */
 function objectEnd(text: string, start: number) {
@@ -247,18 +247,25 @@ export const MAX_BROKEN = 5;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
 const recent = <T>(pictures: T[]) => pictures.slice(-12);
 const LAST_CALL = 'No tool calls are left. Write your final answer to the original request now, as plain text without any {"kinetra":…} request. If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.';
+/** One tool request run for a provider that calls tools natively (MCP): the result as the model sees it, and its pictures. */
+export type NativeTool<Picture> = (request: Record<string, unknown>) => Promise<{ result: unknown; pictures: Picture[] }>;
 /**
  * Runs the tool loop. With `stateful`, the model keeps the conversation (one provider
  * thread), so each follow-up carries only the newest tool results instead of the whole context.
  * When the calls or the context run out, the model is asked for its final answer instead of the work
  * being thrown away (a document made by then is already saved). Without a thread, `limit` is the most one
  * request may carry (the model's window in characters); older large results are dropped before that.
+ *
+ * Requests arrive two ways and are run the same way: as {"kinetra":…} envelopes in a reply (every provider), or as
+ * native tool calls while the model is still answering (Claude Code and Codex, through desktop/kinetra-mcp.ts, which
+ * call `native`). Both count against MAX_CALLS, run the same tool, and are recorded in the same history.
  */
 export async function runKinetraTurn<Picture = unknown>(
   prompt: string,
   instructions: string,
-  /** `pictures`: pages the model asked to look at ("look"), sent with this message (with a thread: only the new ones). */
-  model: (prompt: string, followUp: boolean, pictures: Picture[]) => Promise<string>,
+  /** `pictures`: pages the model asked to look at ("look"), sent with this message (with a thread: only the new ones).
+   *  `native`: runs one request for a provider that offers Kinetra as a native tool during this reply. */
+  model: (prompt: string, followUp: boolean, pictures: Picture[], native: NativeTool<Picture>) => Promise<string>,
   tool: (request: any) => Promise<any>,
   cancelled: () => boolean,
   /** `stats` counts the steps, calls and broken requests for the timing log (desktop/turn-timing.ts). */
@@ -275,6 +282,41 @@ export async function runKinetraTurn<Picture = unknown>(
   // Pictures from "look" results: all of them go with every request when there is no thread, the new ones when there is.
   const looked: Picture[] = [];
   let newPictures: Picture[] = [];
+  /** One request, whichever way it came: counted, run, its pictures taken out of the result, and recorded. */
+  const runRequest = async (request: any) => {
+    if (closing || calls >= MAX_CALLS) {
+      const result = { error: "Not run: no tool calls were left." };
+      history.push({ request, result });
+      return { result: result as unknown, pictures: [] as Picture[] };
+    }
+    calls++;
+    stats.calls++;
+    let result: any;
+    try {
+      result = await tool(request);
+    } catch (error) {
+      result = { error: (error as Error).message };
+    }
+    check();
+    let pictures: Picture[] = [];
+    if (result && Array.isArray(result.attachPictures)) {
+      const { attachPictures, ...rest } = result;
+      pictures = attachPictures;
+      looked.push(...attachPictures);
+      const seen = "These pictures are attached: look at them now.";
+      result = { ...rest, note: typeof rest.note === "string" ? rest.note + " " + seen : seen };
+    }
+    const entry = { request: sentBefore(request, result), result: forModel(request, result) };
+    history.push(entry);
+    return { result: entry.result as unknown, pictures };
+  };
+  // Native calls run one at a time, in the order they arrive, exactly as the envelopes of one reply do.
+  let queue: Promise<unknown> = Promise.resolve();
+  const native: NativeTool<Picture> = (request) => {
+    const run = queue.then(() => { check(); return runRequest(request); });
+    queue = run.catch(() => {});
+    return run;
+  };
   for (let replies = 0; ; replies++) {
     check();
     const left = MAX_CALLS - calls;
@@ -303,7 +345,7 @@ export async function runKinetraTurn<Picture = unknown>(
     try {
       // With a thread only the new pictures go, but still within the same per-message limit.
       stats.steps++;
-      text = await model(input, stateful && replies > 0, recent(stateful ? newPictures : looked));
+      text = await model(input, stateful && replies > 0, recent(stateful ? newPictures : looked), native);
     } catch (error) {
       if (!(error instanceof SessionLost) || !stateful) throw error;
       check();
@@ -312,8 +354,11 @@ export async function runKinetraTurn<Picture = unknown>(
       if (input.length > limit && compact(history, input.length - limit)) input = full();
       sent += input.length;
       stats.steps++;
-      text = await model(input, false, recent(looked));
+      text = await model(input, false, recent(looked), native);
     }
+    // Native calls made during the reply were answered inside it: they are not sent again as new results.
+    await queue;
+    reported = history.length;
     newPictures = [];
     check();
     const requests = toolRequests(text);
@@ -355,28 +400,6 @@ export async function runKinetraTurn<Picture = unknown>(
       continue;
     }
     brokenInRow = 0;
-    for (const request of requests!) {
-      if (calls >= MAX_CALLS) {
-        history.push({ request, result: { error: "Not run: no tool calls were left." } });
-        continue;
-      }
-      calls++;
-      stats.calls++;
-      let result: any;
-      try {
-        result = await tool(request);
-      } catch (error) {
-        result = { error: (error as Error).message };
-      }
-      check();
-      if (result && Array.isArray(result.attachPictures)) {
-        const { attachPictures, ...rest } = result;
-        looked.push(...attachPictures);
-        newPictures.push(...attachPictures);
-        const seen = "These pictures are attached to this message: look at them now.";
-        result = { ...rest, note: typeof rest.note === "string" ? rest.note + " " + seen : seen };
-      }
-      history.push({ request: sentBefore(request, result), result: forModel(request, result) });
-    }
+    for (const request of requests!) newPictures.push(...(await runRequest(request)).pictures);
   }
 }
