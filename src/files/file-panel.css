@@ -144,3 +144,11 @@ dialog.fp-dialog::backdrop{background:#0000008c;backdrop-filter:blur(6px);animat
 .fp-media.is-audio audio{width:min(520px,100%)}
 .fp-proposal.is-saved{border-color:#7fd08a33;background:linear-gradient(0deg,#7fd08a0a,#7fd08a0a),#1d1d1b}
 .fp-proposal.is-saved small::before{content:"";display:inline-block;width:6px;height:6px;margin:0 6px 1px 0;border-radius:50%;background:#7fd08a}
+/* The file's Drive copy after an approved edit: a turning ring while it uploads, then a check */
+.fp-sync{flex:none;display:grid;place-items:center;width:16px;height:16px;margin-right:8px;border-radius:50%;box-sizing:border-box}
+.fp-sync.is-uploading{border:2px solid #ffffff1f;border-top-color:#9fb4ff;animation:fp-sync-turn .8s linear infinite}
+.fp-sync.is-synced{background:#7fd08a26;color:#9fd8a7;animation:fp-sync-arrive .25s ease-out}
+.fp-sync.is-failed{background:#e8a39b26;color:#e8a39b;font:700 10px/1 var(--sans)}
+@keyframes fp-sync-turn{to{transform:rotate(360deg)}}
+@keyframes fp-sync-arrive{from{transform:scale(.4);opacity:0}}
+@media (prefers-reduced-motion:reduce){.fp-sync.is-uploading{animation-duration:2.4s}.fp-sync.is-synced{animation:none}}
