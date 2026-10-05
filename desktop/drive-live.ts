@@ -130,10 +130,10 @@ export class DriveLive {
   async upload(folderId:string,name:string,type:string,data:Uint8Array){
     await this.canWrite();
     const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
-    const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",{
+    const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,modifiedTime",{
       method:"POST",signal:AbortSignal.timeout(30000),
       headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
-      body:JSON.stringify({name:name.replace(/[ -]/g,"").slice(0,200),parents:[folderId]}),
+      body:JSON.stringify({name:name.replace(/[\x00-\x1f]/g,"").slice(0,200),parents:[folderId]}),
     });
     if(start.status===403)throw Error(await refusal(start));
     const session=start.headers.get("Location");
@@ -141,14 +141,14 @@ export class DriveLive {
     const done=await this.fetcher(session,{method:"PUT",headers:{"Content-Type":mime},body:data as unknown as BodyInit,signal:AbortSignal.timeout(Math.max(120_000,data.length/50))});
     if(!done.ok)throw Error("Google Drive did not finish saving the file. Try again.");
     for(const [id,tree] of this.trees)if(id===folderId||tree.folders.includes(folderId))this.trees.delete(id);
-    return await done.json() as {id:string};
+    return await done.json() as {id:string;modifiedTime?:string};
   }
 
   /** Replaces the contents of a file Mowr saved to Drive earlier (after an approved edit), keeping its id, name and place. */
   async update(fileId:string,type:string,data:Uint8Array){
     await this.canWrite();
     const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
-    const start=await this.google(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable&supportsAllDrives=true&fields=id`,{
+    const start=await this.google(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable&supportsAllDrives=true&fields=id,modifiedTime`,{
       method:"PATCH",signal:AbortSignal.timeout(30000),
       headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
       body:"{}",
@@ -160,7 +160,29 @@ export class DriveLive {
     const done=await this.fetcher(session,{method:"PUT",headers:{"Content-Type":mime},body:data as unknown as BodyInit,signal:AbortSignal.timeout(Math.max(120_000,data.length/50))});
     if(!done.ok)throw Error("Google Drive did not finish saving the change. Try again.");
     this.trees.clear();
-    return await done.json() as {id:string};
+    return await done.json() as {id:string;modifiedTime?:string};
+  }
+
+  /** Renames a file or folder in Drive, in place. */
+  async rename(fileId:string,name:string){
+    await this.canWrite();
+    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id,name,modifiedTime`,{method:"PATCH",signal:AbortSignal.timeout(20000),
+      headers:{"Content-Type":"application/json; charset=UTF-8"},body:JSON.stringify({name:name.replace(/[\x00-\x1f]/g,"").slice(0,200)})});
+    if(r.status===404)throw Error("The file is no longer in Drive.");
+    if(r.status===403)throw Error(await refusal(r));
+    if(!r.ok)throw Error("Google Drive did not rename the file.");
+    this.trees.clear();this.meta.delete(fileId);
+    return await r.json() as {id:string;name:string;modifiedTime?:string};
+  }
+  /** Moves a file to Drive’s trash, where it can be restored for 30 days; nothing is deleted for good. */
+  async trash(fileId:string){
+    await this.canWrite();
+    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id`,{method:"PATCH",signal:AbortSignal.timeout(20000),
+      headers:{"Content-Type":"application/json; charset=UTF-8"},body:JSON.stringify({trashed:true})});
+    if(r.status===403)throw Error(await refusal(r));
+    if(!r.ok&&r.status!==404)throw Error("Google Drive did not move the file to the trash.");
+    this.trees.clear();this.meta.delete(fileId);
+    return {ok:true};
   }
 
   /** Everything inside a linked folder and its subfolders (5 levels, 1500 items), read live and kept for two minutes. */

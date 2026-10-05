@@ -11,6 +11,8 @@ import type { DriveRef } from "../../core/drive-search";
 /** Characters read from one Drive file; each request then sends what fits its budget. */
 const DRIVE_TEXT_LIMIT = 2_000_000;
 export type DriveItem = DriveRef & { thumbnail?: boolean; path?: string; folder?: boolean };
+/** Where a file's Drive copy stands: uploading shows a turning ring, synced a check, failed a mark with Google's reason. */
+export type DriveSyncState = { state: "uploading" | "synced" | "failed"; error?: string };
 type State = { connected: boolean | null; error?: string };
 let state: State = { connected: null };
 const listeners = new Set<() => void>();
@@ -57,12 +59,25 @@ export async function listDrive(options: { folder?: string; page?: string; query
 
 /** Saves a file into a Drive folder, straight from this PC. */
 export async function uploadToDrive(folder: string, file: Blob, name: string) {
-  return desktop!.invoke({ action: "driveUpload", folder, name, type: file.type || "application/octet-stream", data: new Uint8Array(await file.arrayBuffer()) }) as Promise<{ id: string }>;
+  return desktop!.invoke({ action: "driveUpload", folder, name, type: file.type || "application/octet-stream", data: new Uint8Array(await file.arrayBuffer()) }) as Promise<{ id: string; modifiedTime?: string }>;
 }
-/** Puts a new version of a file Mowr saved to Drive in place of the old one. A file gone from Drive fails with "missing". */
+/** Puts a new version of a file in Drive in place of the old one. A file gone from Drive fails with "no longer in Drive". */
 export async function updateInDrive(id: string, file: Blob) {
-  return desktop!.invoke({ action: "driveUpdate", id, type: file.type || "application/octet-stream", data: new Uint8Array(await file.arrayBuffer()) }) as Promise<{ id: string }>;
+  return desktop!.invoke({ action: "driveUpdate", id, type: file.type || "application/octet-stream", data: new Uint8Array(await file.arrayBuffer()) }) as Promise<{ id: string; modifiedTime?: string }>;
 }
+export const renameInDrive = (id: string, name: string) => desktop!.invoke({ action: "driveRename", id, name }) as Promise<{ id: string; name: string; modifiedTime?: string }>;
+/** Moves a file to Drive's trash (restorable there for 30 days). */
+export const trashInDrive = (id: string) => desktop!.invoke({ action: "driveTrash", id }) as Promise<{ ok: true }>;
+/** A Drive file's bytes, so Mowr can keep a working copy to edit; Google Docs, Slides and Sheets come as PDF. */
+export async function driveBytes(id: string) {
+  const r = await fetch("/api/drive/live/" + id);
+  if (!r.ok) throw Error((await r.json().catch(() => ({}))).error || "Google Drive did not send the file.");
+  return new Blob([await r.arrayBuffer()], { type: (r.headers.get("Content-Type") || "application/octet-stream").split(";")[0] });
+}
+/** Google's own formats (Docs, Slides, Sheets, Drawings) are read as PDF and cannot take an edited file back. */
+export const isGoogleFormat = (mimeType: string) => mimeType.startsWith("application/vnd.google-apps.");
+/** Strips Electron's wrapper from errors that come back from the desktop app. */
+export const driveError = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "") || "Google Drive did not accept the file.";
 export async function driveFolder(folder: string, query = "", refresh = false) {
   return desktop!.invoke({ action: "driveFolder", folder, query: query.slice(0, 4000), refresh }) as Promise<{ items: DriveItem[]; hits: (DriveRef & { excerpt?: string })[]; checked: number }>;
 }
