@@ -517,8 +517,9 @@ app.get("/api/drive/connect", async (req, res) => {
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: process.env.APP_URL + "/api/drive/callback",
     response_type: "code",
-    // Read files people pick or sync; create new files (only) when Mowr saves its work back.
-    scope: "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file",
+    // Read the folders people link, and add files to them: dropped files, Mowr's own files and approved edits. drive.file
+    // alone cannot add to a folder Mowr did not create, so saving into someone's own folder needs the full Drive scope.
+    scope: "https://www.googleapis.com/auth/drive",
     access_type: "offline",
     prompt: "consent",
     state,
@@ -571,19 +572,21 @@ async function driveToken(userId: string) {
     }),
   });
   if (!r.ok) throw new Error("Drive access expired. Reconnect.");
-  return (await r.json()).access_token;
+  return (await r.json()) as { access_token: string; scope?: string };
 }
 // A short-lived access token for the person's own Drive, so the desktop app can search it and stream files (including
 // long videos with seeking) straight from Google instead of through this server. Never stored by the app.
 app.get("/api/drive/token", async (req, res) => {
   const u = await requireDriveUser(req, res);
   if (!u) return;
-  res.json({ accessToken: await driveToken(u.id), expiresIn: 3300 });
+  const t = await driveToken(u.id);
+  // The scopes this connection was granted, so the app can ask for a reconnect before a save that would be refused.
+  res.json({ accessToken: t.access_token, expiresIn: 3300, scope: t.scope || "" });
 });
 app.get("/api/drive/files", async (req, res) => {
   const u = await requireDriveUser(req, res);
   if (!u) return;
-  const token = await driveToken(u.id);
+  const token = (await driveToken(u.id)).access_token;
   const folder = String(req.query.folder || "");
   if (folder && !/^[\w-]{1,150}$/.test(folder))
     throw new Error("Invalid folder.");
@@ -603,7 +606,7 @@ app.get("/api/drive/file/:id", async (req, res) => {
   if (!u) return;
   const id = String(req.params.id);
   if (!/^[\w-]{1,150}$/.test(id)) throw new Error("Invalid Drive file.");
-  const token = await driveToken(u.id);
+  const token = (await driveToken(u.id)).access_token;
   const meta = await fetch(
     `https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,mimeType,size`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -648,7 +651,7 @@ app.post("/api/drive/upload", express.raw({ type: () => true, limit: "4mb" }), a
   if (!/^[\w-]{1,150}$/.test(folder) || !name) { res.status(400).json({ error: "Choose a Drive folder and a file name." }); return; }
   const body = req.body as Buffer;
   if (!Buffer.isBuffer(body) || !body.length) { res.status(400).json({ error: "The file is empty." }); return; }
-  const token = await driveToken(u.id);
+  const token = (await driveToken(u.id)).access_token;
   const boundary = "mowr" + randomUUID().replace(/-/g, "");
   const type = String(req.headers["content-type"] || "application/octet-stream").split(";")[0].replace(/[^\w.+/-]/g, "") || "application/octet-stream";
   const payload = Buffer.concat([

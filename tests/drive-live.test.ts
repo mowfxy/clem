@@ -137,3 +137,15 @@ test('an MP4 written as many small mdat boxes is served as one, so Chromium star
     assert.deepEqual(frag,files.frag12345678,'fragmented MP4s are served untouched');
   }finally{server.stop();}
 });
+
+test('saving into a folder asks for a reconnect under the old read-only scope, and goes through once Drive is fully granted',async()=>{
+  let scope='https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',created=0;
+  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope});
+    if(url.includes('uploadType=resumable'))return new Response('{}',{headers:{Location:'https://upload.example/session'}});
+    created++;return Response.json({id:'new-file-id-123'});}) as any,'https://x.example');
+  await assert.rejects(drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),/Reconnect Google Drive/);
+  assert.equal(created,0);
+  scope='https://www.googleapis.com/auth/drive';
+  assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123'});
+});

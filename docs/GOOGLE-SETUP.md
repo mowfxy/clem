@@ -5,7 +5,7 @@ The existing server connector uses a Web application OAuth client, separate from
 1. Open https://console.cloud.google.com/ and select or create the Mowr project.
 2. Under APIs & Services → Library, enable Google Drive API.
 3. Configure Google Auth Platform branding, audience and contact details. For initial external testing, add your Google account as a test user.
-4. Under Data Access, add `https://www.googleapis.com/auth/drive.readonly`, the scope currently requested by Mowr. This is a restricted scope; public distribution requires Google's applicable verification. A future Google Picker integration can use narrower per-file access.
+4. Under Data Access, add `https://www.googleapis.com/auth/drive`, the scope currently requested by Mowr (it reads linked folders and saves dropped files, Mowr's files and approved edits into them; `drive.file` cannot add to folders Mowr did not create). This is a restricted scope; public distribution requires Google's applicable verification. People connected under the older read-only scope are asked to reconnect once, the first time they save into a folder.
 5. Under Clients, create an OAuth client with application type **Web application**.
 6. Add this exact authorized redirect URI: `https://mowrai.com/api/drive/callback`.
 7. Copy the client ID and client secret into the existing ignored `.env.local` at the repository root:
