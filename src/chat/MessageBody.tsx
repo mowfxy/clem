@@ -34,7 +34,8 @@ export type BodyHandlers = {
   onCite?: (c: Citation) => void;
   canCite?: (c: Citation) => boolean;
   edits?: Record<string, EditOutcome>;
-  onEdit?: (key: string, block: EditBlock, approve: boolean) => Promise<void>;
+  /** `base`: the SHA-256 of the file the change was shown against (null for a new file), checked again when it is applied. */
+  onEdit?: (key: string, block: EditBlock, approve: boolean, base?: string | null) => Promise<void>;
   onUndo?: (key: string, outcome: EditOutcome) => Promise<void>;
   /** A routine proposed with an ```automation block; outcomes share `edits`. */
   onSchedule?: (key: string, block: AutomationBlock, approve: boolean) => Promise<void>;
@@ -179,7 +180,7 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
             let block: EditBlock | null = null;
             try { block = JSON.parse(code); } catch { /* still streaming or malformed */ }
             if (!block || typeof block.path !== 'string') return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Preparing a file change…</div> : <details className="block-error"><summary>A proposed file change could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
-            return <EditProposal block={block} streaming={streaming} scope={handlers.scope} outcome={handlers.edits?.[key]} onDecide={approve => handlers.onEdit?.(key, block!, approve) ?? Promise.resolve()} onUndo={outcome => handlers.onUndo?.(key, outcome) ?? Promise.resolve()} />;
+            return <EditProposal block={block} streaming={streaming} scope={handlers.scope} outcome={handlers.edits?.[key]} onDecide={(approve, base) => handlers.onEdit?.(key, block!, approve, base) ?? Promise.resolve()} onUndo={outcome => handlers.onUndo?.(key, outcome) ?? Promise.resolve()} />;
           }
           if (lang === 'automation') {
             const key = 'automation-' + automationIndex++, block = readAutomationBlock(code);

@@ -132,6 +132,7 @@ export async function makeFile(action: string, spec: any, { preview = false, see
     case "xlsx": return { bytes: excelWorkbook(spec), name: fileName("xlsx", { title: spec?.title || spec?.sheets?.[0]?.name }), type: MIME.xlsx, info: { sheets: spec.sheets.map((s: any) => ({ name: s.name, rows: s.rows.length, headerRow: s.title ? 3 : 1, firstDataRow: s.title ? 4 : 2 })) } };
     case "file": {
       const name = fileName("file", spec);
+      if (/\.jse?$/i.test(name)) throw Error('Windows runs a .js file as a program when it is opened, so Mowr does not make them: name JavaScript .mjs (a module) or .cjs, which open as text.');
       if (!name || !textFormats.test(name)) throw Error('"name" must be a file name with a text extension such as .csv, .md, .html, .json, .txt, .tex, .ics, .py or .svg. Use docx, pptx, xlsx or pdf for those formats.');
       if (typeof spec.content !== "string") throw Error('"content" must be the complete file text.');
       if (spec.content.length > 20_000_000) throw Error("The file is too large (20 MB of text at most).");

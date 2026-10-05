@@ -1,7 +1,7 @@
 import { lstat, readFile, realpath, rename, rm, writeFile, mkdir } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
-import { inside, safeName, supportedText, type Folder } from "./folders.ts";
+import { ignoredIn, inside, safeName, supportedText, type Folder } from "./folders.ts";
 import { applyEdit, diffStats, lineDiff } from "../core/diff.ts";
 
 /** Approved changes to files inside linked folders, with a local undo history.
@@ -29,24 +29,36 @@ async function existingAncestor(path: string): Promise<string> {
   }
 }
 
-/** Finds the one linked folder that holds `path`. New files are allowed only when a single folder is linked. */
+/** Finds the one linked folder that holds `path`. New files are allowed only when a single folder is linked.
+ *  Files the folder's .gitignore or .mowrignore leave out of the index are out of reach here too. */
 export async function locate(folders: Folder[], path: string, create = false) {
-  let parts = cleanRelative(path);
+  const parts = cleanRelative(path);
   const matches: { folder: Folder; absolute: string; exists: boolean }[] = [];
   for (const folder of folders) {
     const root = await realpath(folder.path).catch(() => null);
     if (!root || root !== folder.path) continue;
-    // Accept paths that start with the folder's own name, as models sometimes include it.
+    // Models sometimes start the path with the folder's own name ("project/src/a.ts" in the folder "project"). The path
+    // as written comes first, so a subfolder with the folder's name ("src/src/…") is never skipped over.
     const base = root.split(sep).pop()!.toLowerCase();
-    const rel = parts.length > 1 && parts[0].toLowerCase() === base ? parts.slice(1) : parts;
-    const absolute = join(root, ...rel);
-    if (!inside(root, absolute)) continue;
-    const stat = await lstat(absolute).catch(() => null);
-    if (stat) {
-      if (stat.isSymbolicLink() || !stat.isFile()) continue;
-      if (!inside(root, await realpath(absolute))) continue;
-      matches.push({ folder, absolute, exists: true });
-    } else if (create && inside(root, await existingAncestor(dirname(absolute)))) matches.push({ folder, absolute, exists: false });
+    const readings = parts.length > 1 && parts[0].toLowerCase() === base ? [parts, parts.slice(1)] : [parts];
+    let found: { absolute: string; exists: boolean } | undefined;
+    for (const rel of readings) {
+      const absolute = join(root, ...rel);
+      if (!inside(root, absolute) || await ignoredIn(root, rel)) continue;
+      const stat = await lstat(absolute).catch(() => null);
+      if (stat) {
+        if (stat.isSymbolicLink() || !stat.isFile() || !inside(root, await realpath(absolute))) continue;
+        found = { absolute, exists: true };
+        break;
+      }
+    }
+    if (!found && create) {
+      // A new file goes where the path as written leads when its first folder exists there, else under the folder itself.
+      const rel = readings.length > 1 && !(await lstat(join(root, parts[0])).catch(() => null))?.isDirectory() ? readings[1] : readings[0];
+      const absolute = join(root, ...rel);
+      if (inside(root, absolute) && !(await ignoredIn(root, rel)) && inside(root, await existingAncestor(dirname(absolute)))) found = { absolute, exists: false };
+    }
+    if (found) matches.push({ folder, ...found });
   }
   const existing = matches.filter((m) => m.exists);
   if (existing.length === 1) return existing[0];
@@ -72,9 +84,12 @@ async function writeAtomic(absolute: string, text: string) {
   try { await rename(temp, absolute); } catch (e) { await rm(temp, { force: true }); throw e; }
 }
 
-export async function applyChange(folders: Folder[], scope: string, edit: { path: string; find?: string; replace?: string; content?: string; summary?: string }): Promise<Change> {
+/** `base`: the SHA-256 of the file as the person reviewed the change (null: it did not exist yet). When given, the change
+ *  is refused if the file is different now, so an approval never overwrites work the person did not see in the diff. */
+export async function applyChange(folders: Folder[], scope: string, edit: { path: string; find?: string; replace?: string; content?: string; summary?: string; base?: string | null }): Promise<Change> {
   const target = await locate(folders, edit.path, edit.content !== undefined);
   const before = target.exists ? await readText(target.absolute) : null;
+  if (edit.base !== undefined && (before === null ? null : sha(before)) !== edit.base) throw Error("The file changed since this change was shown, so it was not applied. Review the updated change and apply it again.");
   const after = applyEdit(before ?? "", edit);
   if (after === before) throw Error("This change would not alter the file.");
   await writeAtomic(target.absolute, after);

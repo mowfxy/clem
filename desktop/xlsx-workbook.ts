@@ -97,14 +97,16 @@ export function excelWorkbook(spec: WorkbookSpec): Uint8Array {
   for (const sheet of spec.sheets) {
     const headers = sheet.columns.map((c) => c.header), headerRow = sheet.title ? 3 : 1, first = headerRow + 1, last = headerRow + Math.max(1, sheet.rows.length);
     const cells = new Map<string, { value?: Value; formula?: string }>();
-    const put = (r: number, c: number, v: unknown) => {
+    // A title or header is always its text as written ("=Total", "2024-01"), never a formula or a date.
+    const put = (r: number, c: number, v: unknown, literal = false) => {
       if (v === null || v === undefined || v === "") return;
+      if (literal) { cells.set(cellKey(r, c + 1), { value: String(v) }); return; }
       if (typeof v === "string" && v.startsWith("=") && v.length > 1) { cells.set(cellKey(r, c + 1), { formula: resolveFormula(v.slice(1), r, first, last, headers) }); return; }
       if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/.test(v) && serial(v) !== null) { cells.set(cellKey(r, c + 1), { value: serial(v) }); return; }
       cells.set(cellKey(r, c + 1), { value: v as Value });
     };
-    if (sheet.title) put(1, 0, sheet.title);
-    headers.forEach((h, c) => put(headerRow, c, h));
+    if (sheet.title) put(1, 0, sheet.title, true);
+    headers.forEach((h, c) => put(headerRow, c, h, true));
     sheet.rows.forEach((row, k) => sheet.columns.forEach((_, c) => put(first + k, c, row[c])));
     if (sheet.totals) {
       const fn = { sum: "SUM", average: "AVERAGE", min: "MIN", max: "MAX", count: "COUNTA" } as const;
@@ -143,16 +145,16 @@ export function excelWorkbook(spec: WorkbookSpec): Uint8Array {
     const codes = sheet.columns.map((c) => (c.format ? formats[c.format.toLowerCase()] ?? c.format : undefined));
     const headerRow = sheet.title ? 3 : 1, first = headerRow + 1, last = headerRow + Math.max(1, sheet.rows.length);
     const rowsXml: string[] = [];
-    const cell = (ref: string, value: unknown, xf: number, r: number) => {
+    const cell = (ref: string, value: unknown, xf: number, r: number, literal = false) => {
       if (value === null || value === undefined || value === "") return xf ? `<c r="${ref}" s="${xf}"/>` : "";
       if (typeof value === "number") return Number.isFinite(value) ? `<c r="${ref}" s="${xf}"><v>${value}</v></c>` : `<c r="${ref}" s="${xf}" t="e"><v>#NUM!</v></c>`;
       if (typeof value === "boolean") return `<c r="${ref}" s="${xf}" t="b"><v>${value ? 1 : 0}</v></c>`;
       const text = String(value);
-      if (text.startsWith("=") && text.length > 1) { const shown = result(sheet.name, ref); return `<c r="${ref}" s="${xf}"${shown.type}><f>${esc(resolveFormula(text.slice(1), r, first, last, headers))}</f>${shown.xml}</c>`; }
+      if (!literal && text.startsWith("=") && text.length > 1) { const shown = result(sheet.name, ref); return `<c r="${ref}" s="${xf}"${shown.type}><f>${esc(resolveFormula(text.slice(1), r, first, last, headers))}</f>${shown.xml}</c>`; }
       return `<c r="${ref}" s="${xf}" t="inlineStr"><is><t xml:space="preserve">${esc(text.slice(0, 32767))}</t></is></c>`;
     };
-    if (sheet.title) rowsXml.push(`<row r="1" ht="24" customHeight="1">${cell("A1", sheet.title, style("title"), 1)}</row>`);
-    rowsXml.push(`<row r="${headerRow}" ht="22" customHeight="1">${headers.map((h, c) => cell(col(c) + headerRow, h, style("header"), headerRow)).join("")}</row>`);
+    if (sheet.title) rowsXml.push(`<row r="1" ht="24" customHeight="1">${cell("A1", sheet.title, style("title"), 1, true)}</row>`);
+    rowsXml.push(`<row r="${headerRow}" ht="22" customHeight="1">${headers.map((h, c) => cell(col(c) + headerRow, h, style("header"), headerRow, true)).join("")}</row>`);
     sheet.rows.forEach((row, k) => {
       const r = first + k;
       rowsXml.push(`<row r="${r}">${sheet.columns.map((_, c) => {

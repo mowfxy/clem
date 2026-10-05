@@ -1277,8 +1277,9 @@ void app.whenReady().then(async () => {
     const changesKey = "changes-" + user.id;
     const scopedFolders = async (scope: string) => (await vault.read<Folder[]>(key, [])).filter((f) => f.scope === scope);
     if (request.action === "folderFileRead") {
-      const target = await locate(await scopedFolders(request.scope), request.path);
-      return { path: request.path, text: await readText(target.absolute) };
+      // A proposed new file ("create") has nothing to read yet: it is shown against an empty file.
+      const target = await locate(await scopedFolders(request.scope), request.path, !!request.create);
+      return target.exists ? { path: request.path, text: await readText(target.absolute), exists: true } : { path: request.path, text: "", exists: false };
     }
     if (request.action === "folderEditApply") {
       const change = await applyChange(await scopedFolders(request.scope), request.scope, request);

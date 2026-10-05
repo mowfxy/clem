@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import type { FileVersion, StoredFile } from "../../core/types";
 import { Icon, Logo } from "../Icons";
 import { copyText } from "../clipboard";
-import { getBlob, storeBlob, deleteBlob, download } from "../store";
+import { getBlob, storeBlob, deleteBlob, download, addVersion } from "../store";
 import { desktop, desktopChat } from "../desktop/bridge";
 import { confirmDialog } from "../dialogs";
 import { Pages } from "../pdf/PdfStudio";
@@ -50,7 +50,7 @@ async function commitBlob(file: StoredFile, previous: Blob, next: Blob, summary:
   await storeBlob(blob, previous);
   await storeBlob(file.id, next);
   const version: FileVersion = { blob, at: Date.now(), summary, size: previous.size };
-  return { ...file, size: next.size, updated: Date.now(), versions: [version, ...(file.versions || [])].slice(0, 20) };
+  return { ...file, size: next.size, updated: Date.now(), versions: addVersion(file.versions, version) };
 }
 
 /** A file open beside the conversation. While it is open, the chat edits it: changes stream into

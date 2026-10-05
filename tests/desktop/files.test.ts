@@ -97,3 +97,13 @@ test("a workbook Mowr makes carries each formula's calculated value, so readers 
   // Excel is still asked to calculate everything itself on open.
   assert.match(strFromU8(zip["xl/workbook.xml"]), /fullCalcOnLoad="1"/);
 });
+
+test("a workbook's title and headers stay the text written, even when they look like a formula or a date", () => {
+  const zip = unzipSync(excelWorkbook({ sheets: [{ name: "Data", title: "=Summary=", columns: [{ header: "2024-01-15" }, { header: "=Total" }], rows: [[1, "=A4*2"]] }] }));
+  const sheet = strFromU8(zip["xl/worksheets/sheet1.xml"]);
+  assert.match(sheet, /<c r="A1"[^>]*t="inlineStr"><is><t xml:space="preserve">=Summary=<\/t>/);
+  assert.match(sheet, /<c r="A3"[^>]*t="inlineStr"><is><t xml:space="preserve">2024-01-15<\/t>/);
+  assert.match(sheet, /<c r="B3"[^>]*t="inlineStr"><is><t xml:space="preserve">=Total<\/t>/);
+  // Data cells still take formulas.
+  assert.match(sheet, /<c r="B4"[^>]*><f>A4\*2<\/f><v>2<\/v>/);
+});

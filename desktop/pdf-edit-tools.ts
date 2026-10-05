@@ -441,9 +441,9 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
         case "replace": {
           const p = page(op.page), box = boxOf(op.bbox);
           if (!op.asset && !(typeof op.text === "string" && op.text.trim())) throw Error('Give the new content: "asset" (a crop id) or "text".');
-          const removed = await removedText([{ page: Number(op.page), box }], undefined);
+          // What was in the box goes from the page; a replacement is a correction, not a redaction, so the bookmarks,
+          // title and attached files stay as they were (a fixed typo would otherwise strip that word from every bookmark).
           const pictures = await redact([{ page: Number(op.page), box }], colour(op.background, COLOURS.white));
-          const also = scrubbed(removed);
           const target = doc.getPage(Number(op.page) - 1);
           if (op.asset) {
             const asset = await helpers.crop(String(op.asset));
@@ -455,7 +455,7 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           } else await textIn(target, box, op);
           touched.add(target);
           void p;
-          done.push(`replaced a box on page ${op.page}${pictures.length ? " (that page could not be cleaned exactly and was turned into a picture first)" : ""}${also}`);
+          done.push(`replaced a box on page ${op.page}${pictures.length ? " (that page could not be cleaned exactly and was turned into a picture first)" : ""}`);
           break;
         }
         case "place": {

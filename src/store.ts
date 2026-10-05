@@ -9,6 +9,7 @@ import type {
   VisualRecord,
   Automation,
   StudySet,
+  FileVersion,
 } from "../core/types";
 export type State = {
   studySets: StudySet[];
@@ -147,6 +148,15 @@ export async function deleteBlob(id: string, owner = namespace) {
   await del(blobKey(id, owner));
   await del("mowr-document-" + id);
   await del(`mowr-source:${owner}:${id}`);
+}
+/** How many earlier versions of a file are kept for Undo. */
+export const VERSIONS_KEPT = 20;
+/** A file's versions with `version` first; the ones past the limit are dropped from the list and deleted from disk,
+ *  so revising a file many times does not leave its old copies behind. */
+export function addVersion(versions: FileVersion[] | undefined, version: FileVersion) {
+  const all = [version, ...(versions || [])];
+  for (const old of all.slice(VERSIONS_KEPT)) for (const id of [old.blob, "spec-" + old.blob]) void deleteBlob(id).catch(() => {});
+  return all.slice(0, VERSIONS_KEPT);
 }
 export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
