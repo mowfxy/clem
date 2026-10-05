@@ -50,11 +50,10 @@
 .messages .message.assistant .closed-note{display:inline-block;font-family:var(--sans);font-size:15px;line-height:1.7;color:#8f8f8f}
 /* A finished reply that used tools: how long it took, with the notes written on the way folded underneath. */
 .work-summary-wrap{margin:0 0 14px}
-.messages .work-summary{display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:5px 11px 5px 9px;border-radius:99px;background:#ffffff08;border:1px solid #ffffff0f;color:#b9b7af;font:12px/1.4 var(--sans);white-space:nowrap}
+.messages .work-summary{display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:5px 11px;border-radius:99px;background:#ffffff08;border:1px solid #ffffff0f;color:#b9b7af;font:12px/1.4 var(--sans);white-space:nowrap}
 .work-summary-wrap>.work-summary{margin:0}
 button.work-summary:hover{background:#ffffff10;color:#e4e2da}
 button.work-summary .drawn-icon{transition:transform .18s}
 button.work-summary[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
-.work-summary-dot{width:6px;height:6px;border-radius:50%;background:#8fbf8a;flex:none}
 .work-notes{margin:12px 0 0;padding:2px 0 2px 16px;border-left:2px solid #ffffff14;color:#a9a8a0;font-size:15px}
 .work-notes .message-text,.work-notes p{font-size:15px}
