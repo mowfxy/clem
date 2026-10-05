@@ -2,7 +2,7 @@ import { BrowserWindow } from "electron";
 import { markContent } from "../core/provenance";
 import { renderFigures, documentHtml, specSize, type DocumentSpec } from "./pdf-document";
 import { destinationPages, addOutline, outlineEntries } from "./pdf-structure";
-import { stampVectors } from "./pdf-assets";
+import { stampVectors, type CropSpot } from "./pdf-assets";
 import { writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,8 +10,9 @@ import { randomUUID } from "node:crypto";
 
 /** Prints a document specification to a tagged A4 PDF with an outline (bookmarks) and a contents with page numbers.
  *  `checkVoice` is off only for exports of text the person already has. `drawn` receives the figures as printed.
- *  `vectors`: the vector crops of the spec's crop figures, by id (desktop/pdf-assets.ts resolveAssets). */
-export async function illustratedPdf(spec: any, { checkVoice = true, drawn, vectors = new Map() }: { checkVoice?: boolean; drawn?: (figures: (string | undefined)[]) => void; vectors?: Map<string, Uint8Array> } = {}) {
+ *  `vectors`: the vector crops of the spec's crop figures, by id (desktop/pdf-assets.ts resolveAssets). `placed`
+ *  receives where each crop printed, so its pages can be shown to the model. */
+export async function illustratedPdf(spec: any, { checkVoice = true, drawn, vectors = new Map(), placed }: { checkVoice?: boolean; drawn?: (figures: (string | undefined)[]) => void; vectors?: Map<string, Uint8Array>; placed?: (spots: CropSpot[]) => void } = {}) {
   const figures = await renderFigures(spec, { checkVoice });
   drawn?.(figures);
   const page = new BrowserWindow({
@@ -44,9 +45,19 @@ export async function illustratedPdf(spec: any, { checkVoice = true, drawn, vect
       pages = await destinationPages(bytes).catch(() => undefined);
       if (pages?.size) bytes = await print(documentHtml(spec as DocumentSpec, figures, pages));
     }
-    // Vector crops go where their placeholders printed; if one cannot be placed, every crop prints as its PNG instead.
-    const slots = (html.match(/class="asset-slot"/g) || []).length;
-    if (slots) bytes = await stampVectors(bytes, vectors, slots).catch(() => print(documentHtml(spec as DocumentSpec, figures, pages?.size ? pages : undefined, { pictures: true })));
+    // Vector crops go where their placeholders printed; if one cannot be placed, every crop prints as its PNG instead
+    // (and, should even those places not read back, without the links that mark them).
+    const slots = (html.match(/class="(?:asset|figure)-slot"/g) || []).length;
+    if (slots) {
+      const spots: CropSpot[] = [];
+      const known = pages?.size ? pages : undefined;
+      bytes = await stampVectors(bytes, vectors, slots, spots).catch(async () => {
+        spots.length = 0;
+        const pictures = await print(documentHtml(spec as DocumentSpec, figures, known, { pictures: true }));
+        return stampVectors(pictures, new Map(), slots, spots).catch(async () => { spots.length = 0; return print(documentHtml(spec as DocumentSpec, figures, known, { pictures: true, bare: true })); });
+      });
+      placed?.(spots);
+    }
     if (!tagged) bytes = await addOutline(bytes, outlineEntries(html)).catch(() => bytes);
     return new Uint8Array(await (await markContent(new Blob([new Uint8Array(bytes)]), "document.pdf")).arrayBuffer());
   } finally {

@@ -110,6 +110,42 @@ function wrap(text: string, font: PDFFont, size: number, width: number) {
   return out;
 }
 
+/** The text column of a page from its text runs: where most lines start and end (a heading, a page number or a
+ *  marginal note does not move it). Undefined when the page has too little text to tell. */
+export function textColumn(items: TextItem[]): [number, number] | undefined {
+  const lines = items.filter((i) => i.str.trim().length >= 3 && i.width > 0);
+  if (lines.length < 4) return undefined;
+  const at = (values: number[], q: number) => { const s = [...values].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))]; };
+  const left = at(lines.map((i) => i.x), 0.1), right = at(lines.map((i) => i.x + i.width), 0.9);
+  return right - left > 72 ? [left, right] : undefined;
+}
+
+/**
+ * Where a crop goes in `area` (PDF points): its size and its lower-left corner. By default it keeps its source size
+ * (a picture's pixels at 150 dpi), enlarged towards half the column when small (at most 1.5×) and shrunk to fit the
+ * column and the area; `fill` makes it as large as the area allows instead (a replacement for what was there).
+ * `width` is a share of the column (up to 1) or points. "center" puts the drawing itself (its optical centre) on the
+ * text column's centre when the area spans it, else on the area's; "left"/"right" set it flush with the column;
+ * "box" centres its box in the area. `below` is the room kept under it for a caption; the whole block is centred
+ * vertically in the area.
+ */
+export function fitCrop(meta: Pick<CropAsset, "box" | "units" | "centre">, area: Box, column: [number, number] | undefined, { align = "center", width, fill = false, below = 0 }: { align?: string; width?: number; fill?: boolean; below?: number } = {}) {
+  const [x0, y0, x1, y1] = meta.box;
+  const unit = meta.units === "pt" ? 1 : 72 / 150, w0 = (x1 - x0) * unit, h0 = (y1 - y0) * unit;
+  const col: [number, number] = column && column[0] < area[2] && column[1] > area[0] ? [Math.max(column[0], area[0]), Math.min(column[1], area[2])] : [area[0], area[2]];
+  const colW = col[1] - col[0], areaW = area[2] - area[0], areaH = Math.max(1, area[3] - area[1] - below);
+  let w = typeof width === "number" && width > 0 ? (width <= 1 ? width * colW : width) : fill ? areaW : w0 < 0.45 * colW ? Math.min(0.45 * colW, w0 * 1.5) : w0;
+  w = Math.min(w, fill ? areaW : Math.max(colW, Math.min(areaW, w0)), areaW, (areaH * w0) / h0);
+  const h = (w * h0) / w0;
+  const mid = (col[0] + col[1]) / 2;
+  const centre = align === "box" ? (area[0] + area[2]) / 2 : mid > area[0] + 0.25 * areaW && mid < area[2] - 0.25 * areaW ? mid : (area[0] + area[2]) / 2;
+  const shift = align === "center" ? Math.max(-0.12, Math.min(0.12, 0.5 - (meta.centre ?? 0.5))) * w : 0;
+  let x = align === "left" ? col[0] : align === "right" ? col[1] - w : centre - w / 2 + shift;
+  x = Math.max(area[0], Math.min(area[2] - w, x));
+  const y = area[1] + below + (areaH - h) / 2;
+  return { x, y, width: w, height: h };
+}
+
 const FACES: Record<string, StandardFonts[]> = {
   sans: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
   serif: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold],
@@ -412,15 +448,46 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           if (op.asset) {
             const asset = await helpers.crop(String(op.asset));
             if (!asset) throw Error(`There is no crop "${op.asset}". Use an id a crop result gave, or crop it again.`);
-            // Fitted inside the box, centred, its proportions kept.
-            const [x0, y0, x1, y1] = asset.meta.box, w = x1 - x0, h = y1 - y0, scale = Math.min((box[2] - box[0]) / w, (box[3] - box[1]) / h);
-            const at = { x: box[0] + (box[2] - box[0] - w * scale) / 2, y: box[1] + (box[3] - box[1] - h * scale) / 2, width: w * scale, height: h * scale };
+            // As large as the box allows, its proportions kept, the drawing itself centred (on the text column when the box spans it).
+            const at = fitCrop(asset.meta, box, textColumn(await helpers.words(await current(), Number(op.page))), { align: op.align, width: op.width, fill: true });
             if (asset.pdf) target.drawPage((await doc.embedPdf(asset.pdf, [0]))[0], at);
             else target.drawImage(await doc.embedPng(asset.png), at);
           } else await textIn(target, box, op);
           touched.add(target);
           void p;
           done.push(`replaced a box on page ${op.page}${pictures.length ? " (that page could not be cleaned exactly and was turned into a picture first)" : ""}${also}`);
+          break;
+        }
+        case "place": {
+          // A crop added to a page as it stands: nothing is removed, and it may not cover the page's text.
+          const n = Number(op.page), target = page(op.page);
+          if (typeof op.asset !== "string") throw Error('"asset": the crop to place ("crop-…").');
+          if (op.bbox === undefined) throw Error('"bbox": the empty area of the page to place it in, [x0, y0, x1, y1] in PDF points from the bottom left (the page pictures and regions show where the page is empty).');
+          const area = boxOf(op.bbox);
+          const asset = await helpers.crop(op.asset);
+          if (!asset) throw Error(`There is no crop "${op.asset}". Use an id a crop result gave, or crop it again.`);
+          const items = (await helpers.words(await current(), n)).filter((i) => i.str.trim());
+          const serif = await font(StandardFonts.TimesRoman);
+          let text = op.caption === true ? assetCaption({ source: op.source ?? true }, undefined, asset.meta) : typeof op.caption === "string" && op.caption.trim() ? op.caption.trim() : undefined;
+          try { if (text) serif.encodeText(text); } catch { throw Error("The caption has characters the standard PDF fonts cannot set (they cover Latin text). Write it in Latin characters, or add it with a text edit."); }
+          const column = textColumn(items);
+          let lines: string[] = [], at = fitCrop(asset.meta, area, column, { align: op.align, width: op.width });
+          if (text) {
+            lines = wrap(text, serif, 9, Math.max(120, at.width));
+            at = fitCrop(asset.meta, area, column, { align: op.align, width: op.width, below: lines.length * 11 + 6 });
+            lines = wrap(text, serif, 9, Math.max(120, at.width));
+          }
+          const block: Box = [at.x, at.y - (lines.length ? lines.length * 11 + 6 : 0), at.x + at.width, at.y + at.height];
+          const covered = items.filter((i) => overlaps(block, [i.x, i.y - i.size * 0.2, i.x + i.width, i.y + i.size * 0.75]));
+          if (covered.length) throw Error(`Placed there, the crop would cover text on page ${n} ("${covered.slice(0, 3).map((i) => i.str.trim()).join(" … ").slice(0, 120)}"). Give a "bbox" over empty paper (look at the page), make it smaller with "width", or use "replace" to put it in place of what is there.`);
+          if (asset.pdf) target.drawPage((await doc.embedPdf(asset.pdf, [0]))[0], at);
+          else target.drawImage(await doc.embedPng(asset.png), at);
+          lines.forEach((line, k) => {
+            const lw = serif.widthOfTextAtSize(line, 9);
+            target.drawText(line, { x: Math.max(area[0], at.x + (at.width - lw) / 2), y: at.y - 6 - (k + 1) * 11 + 2, size: 9, font: serif });
+          });
+          touched.add(target);
+          done.push(`placed ${op.asset} on page ${n} at ${Math.round(at.width)} × ${Math.round(at.height)} pt, ${op.align === "left" || op.align === "right" ? "flush " + op.align : "its drawing centred on the text"}${lines.length ? ", captioned" : ""}`);
           break;
         }
         case "stamp": {
@@ -487,7 +554,7 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           break;
         }
         default:
-          throw Error(`Unknown edit "${op.op}". The edits are: pages, delete, reorder, rotate, merge, crops, highlight, note, text, stamp, pageNumbers, fill, redact, replace.`);
+          throw Error(`Unknown edit "${op.op}". The edits are: pages, delete, reorder, rotate, merge, crops, place, highlight, note, text, stamp, pageNumbers, fill, redact, replace.`);
       }
     } catch (error) {
       throw Error(`Edit ${index + 1} (${String(op.op || "?")}): ${(error as Error).message}`);

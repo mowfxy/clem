@@ -77,7 +77,7 @@ export const ARCHETYPES: Record<Archetype, Kind> = {
 export const archetypes = Object.keys(ARCHETYPES) as Archetype[];
 
 /** Subjects and the hue (degrees) that suits them; the first match wins. */
-const SUBJECT_HUES: [RegExp, number][] = [
+export const SUBJECT_HUES: [RegExp, number][] = [
   [/\b(space|astronom|universe|cosmo|galax|planet|star(s|light)\b|nasa|orbit)/i, 245],
   [/\b(ocean|marine|sea\b|water|river|coast|fish|aqua)/i, 198],
   [/\b(biolog|plant|ecolog|nature|forest|garden|sustainab|environment|climate|green|agricult|farm|leaf|tree)/i, 135],

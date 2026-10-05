@@ -305,7 +305,7 @@ test("PDF figures are checked together and every problem is reported at once", a
   const html = documentHtml(spec, await renderFigures(spec));
   assert.match(html, /<math/);
   assert.match(html, /<table>/);
-  assert.match(html, /<figure id="fig-1"><img [^>]*src="data:image\/svg\+xml;base64,/);
+  assert.match(html, /<figure id="fig-1"><a class="figure-slot"[^>]*><img [^>]*src="data:image\/svg\+xml;base64,/);
   assert.match(html, /<span class="cap-label">Figure&#160;1:<\/span> Launch at 40°/);
   assert.ok(!html.includes("Computed with Kinetra"), "captions read like print, without tool credits");
   assert.ok(!html.includes("<b>"));
@@ -438,7 +438,7 @@ test("a PDF in a chatty voice is refused with every offending passage listed", a
 test("professional layout: technical report title block, abstract, numbered sections, contents, references", async () => {
   const spec = { kind: "report", title: "Friction on inclined planes", subtitle: "Measurement of kinetic friction", date: "2026-09-25", summary: "The kinetic friction coefficient was measured as 0.42 [1].", sections: ["1. Introduction", "Method", "Results", "Conclusions"].map((heading) => ({ heading, text: "### Detail\nText with a table, see Table 1 and Section 2.1 [1]:\n\nTable: Values measured.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n$$F = \\mu N$$" })), references: ["Serway, R. *Physics for Scientists and Engineers*, 2018."] };
   const html = documentHtml(spec, await renderFigures(spec));
-  assert.match(html, /<body class="layout-technical numbered eqnum">/);
+  assert.match(html, /<body class="layout-technical numbered eqnum accented t-(?:ruled|center|left) h-(?:plain|smallcaps|accent)">/);
   assert.match(html, /<div class="title-rule"><h1>Friction on inclined planes<\/h1><\/div>/);
   assert.match(html, /<h2>Abstract<\/h2>/);
   assert.match(html, /25 September 2026/);
@@ -454,7 +454,8 @@ test("professional layout: technical report title block, abstract, numbered sect
   assert.match(html, /<div class="katex-display">/);
   assert.match(html, /<li id="ref-1">Serway, R\. <em>Physics for Scientists and Engineers<\/em>/);
   assert.ok(!/Mowafy/i.test(html), "documents never use the app's fonts");
-  assert.match(html, /--body:'Times New Roman'/);
+  // A report's text face is a serif chosen for it (desktop/pdf-design.ts), never a sans.
+  assert.match(html, /--body:'?(?:Times New Roman|Cambria|Palatino Linotype|Book Antiqua|Georgia)\b/);
   const numbered = documentHtml(spec, await renderFigures(spec), new Map([["sec-1", 2], ["references", 7]]));
   assert.match(numbered, /href="#sec-1">(?:(?!<\/a>)[\s\S])*<span class="toc-page">2<\/span>/, "the second printing fills page numbers");
   assert.match(numbered, /href="#references">(?:(?!<\/a>)[\s\S])*<span class="toc-page">7<\/span>/);

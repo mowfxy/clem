@@ -3,7 +3,7 @@
  * on its pixels. pdf.js and the canvas are passed in (the window's own, or Node's in tests), so this is the same code
  * everywhere. Geometry lives in core/pdf-regions.ts.
  */
-import { inkBounds, findRegions, marksFromOps, wordsFromText, scannedPage, segmentBitmap, segments, settleCrop, type Box, type Region, type Word } from "./pdf-regions.ts";
+import { inkBounds, findRegions, marksFromOps, wordsFromText, scannedPage, segmentBitmap, segments, settleCrop, opticalCentre, type Box, type Region, type Word } from "./pdf-regions.ts";
 
 export type Canvas = { width: number; height: number; getContext(type: "2d", options?: any): any };
 export type CanvasKit = {
@@ -158,7 +158,8 @@ export async function pictureWithRegions(canvas: Canvas, regions: Region[], kit:
 }
 
 export type CropOptions = { pad?: number; dpi?: number; trim?: boolean };
-export type Settled = { box: Box; hit: string[]; png: Uint8Array; width: number; height: number; preview: Uint8Array };
+/** `centre`: where the drawing's weight sits across the crop (core/pdf-regions.ts opticalCentre). */
+export type Settled = { box: Box; hit: string[]; png: Uint8Array; width: number; height: number; preview: Uint8Array; centre: number };
 
 /** The crop as a picture the model can check: the PNG itself, or a smaller JPEG of it when it is large. */
 async function previewOf(canvas: Canvas, kit: CanvasKit) {
@@ -202,7 +203,7 @@ export async function settlePdfCrop(pdf: any, n: number, box: Box, { pad = 4, dp
     const out = await draw(page, final, scale, kit);
     const png = await kit.encode(out.canvas, "image/png");
     const preview = await previewOf(out.canvas, kit);
-    const result = { box: final, hit, png, width: out.canvas.width, height: out.canvas.height, preview };
+    const result = { box: final, hit, png, width: out.canvas.width, height: out.canvas.height, preview, centre: opticalCentre(greyOf(out.canvas), out.canvas.width, out.canvas.height) };
     out.canvas.width = out.canvas.height = 0;
     return result;
   } finally {
@@ -225,7 +226,7 @@ export async function settlePictureCrop(canvas: Canvas, box: Box, { pad = 4, tri
   } else final = clamp([final[0] - px, final[1] - px, final[2] + px, final[3] + px]);
   const out = kit.create(final[2] - final[0], final[3] - final[1]);
   out.getContext("2d").drawImage(canvas, final[0], final[1], out.width, out.height, 0, 0, out.width, out.height);
-  const result = { box: final, hit, png: await kit.encode(out, "image/png"), width: out.width, height: out.height, preview: await previewOf(out, kit) };
+  const result = { box: final, hit, png: await kit.encode(out, "image/png"), width: out.width, height: out.height, preview: await previewOf(out, kit), centre: opticalCentre(greyOf(out), out.width, out.height) };
   out.width = out.height = 0;
   return result;
 }
