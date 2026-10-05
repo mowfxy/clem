@@ -10,6 +10,13 @@ import {decodeEntities, isMediaType, parseCaptions, pickTrack, transcriptText, t
 
 const API = "https://www.googleapis.com/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
+const RECONNECT = "Reconnect Google Drive once so Mowr can save files into your folders.";
+/** Why Google refused a save: missing permission on the connection (reconnect), or on the folder itself (shared read-only). */
+const refusal = async (r: Response) => {
+  const reason = String(((await r.json().catch(() => ({}))) as {error?:{errors?:{reason?:string}[]}}).error?.errors?.[0]?.reason || "");
+  return /insufficientScopes|appNotAuthorized|insufficientPermissions|authError/i.test(reason) && !/insufficientFilePermissions|insufficientParentPermissions/i.test(reason)
+    ? RECONNECT : /storageQuotaExceeded|quota/i.test(reason) ? "Your Google Drive is full." : "You can only view this Drive folder, so Mowr cannot save into it.";
+};
 type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string;modifiedTime?:string;iconLink?:string;videoMediaMetadata?:{durationMillis?:string};shortcutDetails?:{targetId?:string;targetMimeType?:string}};
 const SHORTCUT = "application/vnd.google-apps.shortcut";
 // Drive's own video player reads playback details (including its caption tracks) from this service, with this public
@@ -33,7 +40,7 @@ const item = (f: Meta & {hasThumbnail?:boolean}, path?: string): DriveItem => ({
 });
 
 export class DriveLive {
-  private cached: {token:string;until:number}|null = null;
+  private cached: {token:string;until:number;scope:string}|null = null;
   private meta = new Map<string, Meta>();
   private session:()=>Promise<string|null>;
   private fetcher:typeof fetch;
@@ -51,9 +58,9 @@ export class DriveLive {
     const r=await this.fetcher(this.service+"/api/drive/token",{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",signal:AbortSignal.timeout(20000)});
     if(r.status===400||r.status===404||r.status===401||r.status===500){const body=await r.json().catch(()=>({}));if(/connect google drive|reconnect|expired/i.test(body.error||"")){if(generation===this.generation){this.cached=null;this.known={connected:false,at:Date.now()};}return null;}throw Error(body.error||"Google Drive is unavailable right now.");}
     if(!r.ok)throw Error("Google Drive is unavailable right now.");
-    const {accessToken,expiresIn}=await r.json();
+    const {accessToken,expiresIn,scope}=await r.json();
     if(generation!==this.generation)throw Error("The account changed. Try again.");
-    this.cached={token:accessToken,until:Date.now()+Math.max(60,Number(expiresIn)-120)*1000};
+    this.cached={token:accessToken,until:Date.now()+Math.max(60,Number(expiresIn)-120)*1000,scope:typeof scope==="string"?scope:""};
     this.known={connected:true,at:Date.now()};
     return accessToken;
   }
@@ -62,6 +69,15 @@ export class DriveLive {
     const r=await this.fetcher(url,{...init,headers:{...(init.headers as Record<string,string>||{}),Authorization:"Bearer "+token}});
     if(r.status===401&&retry){this.cached=null;return this.google(url,init,false);}
     return r;
+  }
+  /** A connection made before Mowr asked for the full Drive scope can read but not add to people's own folders;
+   *  it says so up front instead of letting Google refuse the file. An unknown scope (older service) is let through. */
+  private async canWrite(){
+    const full=()=>{const scope=this.cached?.scope||"";return !scope||scope.split(/\s+/).includes("https://www.googleapis.com/auth/drive");};
+    await this.token();
+    // A reconnect since the token was cached shows only in a fresh one.
+    if(!full())await this.token(true);
+    if(!full())throw Object.assign(Error(RECONNECT),{code:"reconnect"});
   }
   async connected(){try{return !!await this.token();}catch{return false;}}
   /** The connection as last confirmed. A network hiccup keeps the last answer instead of asking to reconnect. */
@@ -112,13 +128,14 @@ export class DriveLive {
 
   /** Saves a new file into a Drive folder (resumable, so large files go too); the folder is read fresh next time. */
   async upload(folderId:string,name:string,type:string,data:Uint8Array){
+    await this.canWrite();
     const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
     const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",{
       method:"POST",signal:AbortSignal.timeout(30000),
       headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
       body:JSON.stringify({name:name.replace(/[ -]/g,"").slice(0,200),parents:[folderId]}),
     });
-    if(start.status===403)throw Error("Reconnect Google Drive to let Mowr save files there.");
+    if(start.status===403)throw Error(await refusal(start));
     const session=start.headers.get("Location");
     if(!start.ok||!session)throw Error(start.status===404?"This Drive folder is no longer available.":"Google Drive did not accept the file.");
     const done=await this.fetcher(session,{method:"PUT",headers:{"Content-Type":mime},body:data as unknown as BodyInit,signal:AbortSignal.timeout(Math.max(120_000,data.length/50))});
@@ -129,6 +146,7 @@ export class DriveLive {
 
   /** Replaces the contents of a file Mowr saved to Drive earlier (after an approved edit), keeping its id, name and place. */
   async update(fileId:string,type:string,data:Uint8Array){
+    await this.canWrite();
     const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
     const start=await this.google(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable&supportsAllDrives=true&fields=id`,{
       method:"PATCH",signal:AbortSignal.timeout(30000),
@@ -136,7 +154,7 @@ export class DriveLive {
       body:"{}",
     });
     if(start.status===404)throw Object.assign(Error("The file is no longer in Drive."),{code:"missing"});
-    if(start.status===403)throw Error("Google Drive did not let Mowr change this file.");
+    if(start.status===403)throw Error(await refusal(start));
     const session=start.headers.get("Location");
     if(!start.ok||!session)throw Error("Google Drive did not accept the change.");
     const done=await this.fetcher(session,{method:"PUT",headers:{"Content-Type":mime},body:data as unknown as BodyInit,signal:AbortSignal.timeout(Math.max(120_000,data.length/50))});

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Icon } from "../Icons";
 import { DriveLogo } from "../BrandLogos";
 import { DriveIcon, kindName } from "./DriveIcon";
-import { driveFolder, uploadToDrive, useDrive, type DriveItem } from "./drive";
+import { connectDrive, driveFolder, uploadToDrive, useDrive, type DriveItem } from "./drive";
 import "./drive.css";
 
 const ago = (iso?: string) => { if (!iso) return ""; const d = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 7 ? `${d} days ago` : new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" }); };
@@ -116,6 +116,8 @@ export function DriveFolderView({ folderId, folderName, onOpen, onAsk, onChangeF
     <div className="gd-space-list">
       {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Settings → Connectors to see this folder.</p>}
       {error && <p className="gd-error">{error}</p>}
+      {pending.some((p) => p.state === "failed" && /^Reconnect Google Drive/.test(p.error || "")) && <p className="gd-reconnect">Mowr now saves into your own Drive folders, which needs one more permission from Google.
+        <button onClick={() => void connectDrive().then(() => setPending((all) => all.filter((p) => p.state !== "failed"))).catch((e) => setError((e as Error).message))}>Reconnect Google Drive</button></p>}
       {!items && !error && connected !== false && Array.from({ length: 4 }, (_, i) => <div key={i} className="gd-skeleton" />)}
       {pending.filter((p) => p.target === hereId).map((p) => <div key={p.key} className={"gd-row is-pending" + (p.state === "failed" ? " is-failed" : "")}>
         <span className="gd-open">
