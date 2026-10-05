@@ -64,13 +64,17 @@ export const slashCommands: SlashCommand[] = [
   { id: "handoff", label: "Handoff", icon: "cmd-handoff", description: "Continue in a fresh chat with a brief", placeholder: "What should the next chat do? (optional)",
     instruction: (rest) => `Write a handoff brief so a fresh chat can pick this up with no other context: the goal, what has been done and decided, key facts and sources, open questions, and the next steps.${rest.trim() ? " The next chat will: " + rest.trim() + "." : ""} Address it to the next chat. No preamble.` },
   { id: "skill", label: "Skill", icon: "skills", description: "Create a reusable skill", placeholder: "Opens the skill editor", skills: ["own-skills"] },
+  { id: "skill-creator", label: "Skill creator", icon: "skills", description: "Work out a new skill together in chat", placeholder: "What should the skill help with?", skills: ["own-skills"], workflow: "create-skill",
+    instruction: (rest) => rest.trim()
+      ? "Help me turn this into a reusable Mowr skill. Ask me up to three short questions only if something essential is unclear (the outcome, when it applies, what I will provide); otherwise draft it straight away."
+      : "Help me create a reusable Mowr skill. Start by asking, in one short message, what I want it to help with and when it should apply. Draft the skill once you know." },
 ];
 
 const byId = new Map(slashCommands.map((c) => [c.id, c]));
 
 /** The first command in a message ("/name" at the start or after a space) and the message without it, or null. */
 export function readCommand(text: string): { command: SlashCommand; rest: string } | null {
-  for (const m of text.matchAll(/(^|\s)\/([a-z]+)(?=\s|$)/gi)) {
+  for (const m of text.matchAll(/(^|\s)\/([a-z]+(?:-[a-z]+)*)(?=\s|$)/gi)) {
     const command = byId.get(m[2].toLowerCase());
     if (!command) continue;
     const start = m.index + m[1].length, end = start + m[2].length + 1;
