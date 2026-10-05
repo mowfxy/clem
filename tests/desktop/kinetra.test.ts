@@ -2,7 +2,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { renameSync, rmSync } from "node:fs";
-import { runKinetraTurn, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN, MAX_PARALLEL } from "../../desktop/kinetra-turn.ts";
+import { runKinetraTurn, closedRequest, toolRequest, toolRequests, brokenToolRequest, requestLead, shownLength, MAX_CALLS, MAX_BROKEN, MAX_PARALLEL } from "../../desktop/kinetra-turn.ts";
 import { kinetraTool, kinetraCall, kinetraPool } from "../../desktop/kinetra-runtime.ts";
 import { kinetraRecipes } from "../../desktop/kinetra-recipes.ts";
 before(async () => {
@@ -462,4 +462,34 @@ test("Kinetra calls share a few warm workers; one that times out or stops is rep
   await new Promise((resolve) => setImmediate(resolve));
   assert.ok(!kinetraPool.workers().some((worker) => stopped.includes(worker)));
   assert.ok(Math.abs((await kinetraCall(integral)) - 1 / 3) < 1e-8);
+});
+
+test("a request that only lacks its closing brackets runs at once, and its result says it was closed", async () => {
+  // Grok dropped the final "}" of a whole PDF request: it used to be sent back as "cut off" and then written one section per step.
+  const reply = 'Writing the notes now.\n{"kinetra":{"action":"pdf","kind":"notes","title":"Assignment 1","sections":[{"heading":"Question 1","text":"$V=IR$ gives \\(V=12\\,\\mathrm{V}\\)."},{"figure":{"asset":"crop-1","source":true},"caption":"Figure 1."}]}';
+  assert.ok(brokenToolRequest(reply));
+  assert.ok(closedRequest(reply));
+  const ran: any[] = [], sent: string[] = [];
+  const answer = await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? reply : "Done."; }, async (r) => { ran.push(r); return { created: true }; }, () => false, { stateful: true });
+  assert.equal(answer, "Done.");
+  assert.equal(ran.length, 1);
+  assert.equal(ran[0].sections.length, 2);
+  assert.match(sent[1], /missing its closing brackets; Mowr closed it/);
+  assert.doesNotMatch(sent[1], /cut off/);
+  // Cut off inside a string, after a key or a comma, or right after a bare value may be a real cut-off: not closed.
+  assert.equal(closedRequest('{"kinetra":{"action":"pdf","sections":[{"heading":"Q7","text":"Find'), null);
+  assert.equal(closedRequest('{"kinetra":{"action":"pdf","sections":[{"heading":"Q7",'), null);
+  assert.equal(closedRequest('{"kinetra":{"action":"pdf","sections":[{"heading"'), null);
+  assert.equal(closedRequest('{"kinetra":{"action":"pdf","sections":[{"heading":"Q1"'), null);
+  // A complete request or prose is left alone.
+  assert.equal(closedRequest('{"kinetra":{"action":"help"}}'), null);
+  assert.equal(closedRequest("Just an answer."), null);
+  // Several requests, the last one unclosed: all of them run.
+  assert.deepEqual(toolRequests(closedRequest('{"kinetra":{"action":"call","fn":"a"}}\n{"kinetra":{"action":"call","fn":"b","args":[1]}')!), [{ action: "call", fn: "a" }, { action: "call", fn: "b", args: [1] }]);
+});
+
+test("each step asks for every request already known in one reply", async () => {
+  const sent: string[] = [];
+  await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? '{"kinetra":{"action":"call","fn":"a"}}' : "Done."; }, async () => 1, () => false, { stateful: true });
+  assert.match(sent[1], /every one you already know you need, together in this reply/);
 });

@@ -191,7 +191,7 @@ export const kinetraMcp = new KinetraMcp();
  * {"kinetra":…} objects (one description for every provider); this maps each one to a tool call. A model that does not
  * see the tool still has the text protocol, which runs the same way.
  */
-export const NATIVE_NOTE = `NATIVE KINETRA TOOL: this session has a tool named "${TOOL_NAME}". Wherever the instructions below say to reply with {"kinetra":X}, call the ${TOOL_NAME} tool with X as its arguments instead (for example {"kinetra":{"action":"help"}} becomes a ${TOOL_NAME} call with {"action":"help"}), and keep working in the same reply: its result comes back to you directly, with any pictures. Write no {"kinetra":…} JSON in your text. If that tool is not available to you, reply with the {"kinetra":…} JSON as described, and Mowr runs it.\n\n`;
+export const NATIVE_NOTE = `NATIVE KINETRA TOOL: this session has a tool named "${TOOL_NAME}". Wherever the instructions below say to reply with {"kinetra":X}, call the ${TOOL_NAME} tool with X as its arguments instead (for example {"kinetra":{"action":"help"}} becomes a ${TOOL_NAME} call with {"action":"help"}), and keep working in the same reply: its result comes back to you directly, with any pictures. Where the instructions say to batch requests in one reply, make those ${TOOL_NAME} calls together in one turn (parallel tool calls). Write no {"kinetra":…} JSON in your text. If that tool is not available to you, reply with the {"kinetra":…} JSON as described, and Mowr runs it.\n\n`;
 
 /**
  * A provider's side of a native call: the loop's result with its picture files read in, since MCP sends pictures

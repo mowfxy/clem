@@ -54,14 +54,15 @@ export async function desktopChat(
   messages: { role: string; content: string }[],
   scope: string,
   signal: AbortSignal,
-  onText: (text: string) => void,
+  /** `work`: once a tool has run, where the notes written on the way end and the answer begins (undefined before any tool). */
+  onText: (text: string, work?: number) => void,
   selection?: ChatOptions,
   onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
   const { onStatus, onCondensed, look, pdfTask, condense, ...options } = selection || {};
   messages=condense?newestWithin(messages,2000,MAX_CHAT_CHARACTERS):boundedConversation(messages,contextBudget(options.model).conversation);
   const id = crypto.randomUUID();
-  let result = "";
+  let result = "", work: number | undefined;
   return new Promise<string>((resolve, reject) => {
     const cleanup = () => {
       unsubscribe();
@@ -77,6 +78,7 @@ export async function desktopChat(
       if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
       if (event.type === "status" && event.text) onStatus?.(event.text);
       if (event.type === "condensed") onCondensed?.();
+      if (event.type === "worked") { work = result.length; onText(result, work); }
       if (event.type === "look" && event.look) {
         const reply = (result: { images?: { name: string; data: string }[]; error?: string }) => void desktop!.invoke({ action: "pageImages", id: event.look!, ...result }).catch(() => {});
         if (!look) reply({ error: "Pages cannot be looked at in this conversation." });
@@ -89,7 +91,7 @@ export async function desktopChat(
       }
       if (event.type === "delta") {
         result += event.text || "";
-        onText(result);
+        onText(result, work);
       }
       if (event.type === "done") {
         cleanup();

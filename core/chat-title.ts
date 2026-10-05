@@ -90,3 +90,23 @@ export function chatPreview(chat: Pick<Chat, "summary" | "messages">) {
   const text = asks.length === 1 ? asks[0] : `${asks[0]} · then ${asks.slice(1).join(" · ")}`;
   return text.length > 200 ? text.slice(0, 200).replace(/\s+\S*$/, "") + "…" : text;
 }
+
+/**
+ * A reply that used tools, split where the last tool ran (`at`, an offset into the raw reply): the notes the AI wrote
+ * on the way ("I'll solve each circuit first.") and the answer after them, each without title markers. When nothing
+ * follows the notes they are the answer, so `answer` is undefined and the reply stays whole.
+ */
+export function splitWork(reply: string, at: number, ms: number): { answer?: string; work: { ms: number; notes?: string } } {
+  const notes = takeTitle(reply.slice(0, at)).content.trim();
+  const answer = takeTitle(reply.slice(at)).content.trim();
+  return answer ? { answer, work: { ms: Math.max(0, Math.round(ms)), ...(notes ? { notes } : {}) } } : { work: { ms: Math.max(0, Math.round(ms)) } };
+}
+
+/** How long a task took, as people say it: "8s", "2m 14s", "1h 3m". */
+export function workTime(ms: number) {
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}

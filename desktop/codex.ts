@@ -489,6 +489,8 @@ export class Codex {
         if(!toolRequests(output)&&!brokenToolRequest(output))show(output.length);
         return output;
       },async request=>{
+        // Everything shown before a tool runs is a note on the work, not the answer (the chat folds it under "Task completed").
+        emit({id,type:"worked"});
         emit({id,type:"status",text:toolStatus(request)});
         return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
       },()=>turn.cancelled,{stateful:true,unfinished,stats});

@@ -44,3 +44,18 @@ test('a marker still arriving stays hidden when it has a space before its name o
   assert.equal(hideTitleMarker('If a -> b then c.'),'If a -> b then c.');
   assert.equal(hideTitleMarker('Answer.<!--summary: A -> B.-->'),'Answer.');
 });
+
+test("a reply that used tools splits into the notes written on the way and the answer", async () => {
+  const { splitWork, workTime } = await import("../core/chat-title.ts");
+  const reply = "I'll solve each circuit first.\n\nNow writing the PDF.\n\nThe worked solutions are in the PDF.<!--title: Circuits-->";
+  const at = reply.indexOf("The worked");
+  assert.deepEqual(splitWork(reply, at, 134_400), { answer: "The worked solutions are in the PDF.", work: { ms: 134400, notes: "I'll solve each circuit first.\n\nNow writing the PDF." } });
+  // Tools ran before anything was written: no notes.
+  assert.deepEqual(splitWork("Here it is.", 0, 900), { answer: "Here it is.", work: { ms: 900 } });
+  // Nothing after the notes: they are the answer, so the reply stays whole.
+  assert.deepEqual(splitWork("Only notes.", 11, 5000), { work: { ms: 5000 } });
+  assert.equal(workTime(900), "1s");
+  assert.equal(workTime(14_000), "14s");
+  assert.equal(workTime(134_400), "2m 14s");
+  assert.equal(workTime(3_780_000), "1h 3m");
+});
