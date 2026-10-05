@@ -1476,6 +1476,15 @@ In this subject the learner keeps missing these questions in review; connect to 
   const signals=useWorkspaceSignals(!!desktop&&ready&&!!session.user,
     announcement=>notify({kind:announcement.tone==='warning'?'warning':announcement.tone==='success'?'success':'announcement',title:announcement.title,detail:announcement.body,sticky:true,action:announcement.link?{label:'Learn more',run:()=>window.open(announcement.link!,'_blank','noopener')}:undefined}),
     reply=>notify({kind:'support',title:'Mowr support replied',detail:reply.subject,sticky:true,action:{label:'Read reply',run:()=>openSettings('Help & support')}}));
+  // What Mowr noted about the person after an answer, said once, with a way to take it back.
+  useEffect(()=>{
+    if(!desktop)return;
+    return desktop.onChat(event=>{
+      if(event.type!=='memory'||!event.memories?.length)return;
+      const kept=event.memories.every(m=>m.confirmed),ids=event.memories.map(m=>m.id);
+      notify({kind:'info',title:kept?'Mowr will remember this':'Mowr noted this',detail:event.memories.map(m=>m.text).join(' ')+(kept?'':' Keep it in Settings → Memory, or forget it now.'),action:{label:'Forget',run:()=>{void desktop!.invoke({action:'memoryForget',id:ids[0],ids}).then(()=>setToast('Forgotten.'),e=>setToast(cleanError(e)));}}});
+    });
+  },[]);
   /** Names a chat, project or subject scope in the person's own words. */
   const scopeLabel=(scope:string)=>{
     const [kind,id]=scope.split(':');
@@ -1959,8 +1968,8 @@ In this subject the learner keeps missing these questions in review; connect to 
                       <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
                         <SettingRow title="Conversations" description={`${savedChats.length} saved on this PC`}><button className="secondary danger" disabled={!savedChats.length||anyRunning} onClick={async()=>{
-                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC. Saved files, skills and memory are kept. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
-                          try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
+                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC, with what Mowr only noted from them. Saved files, skills and memory you kept stay. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
+                          try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));if(desktop)void desktop.invoke({action:"memoryForgetChat",chats:state.chats.map(c=>c.id).filter(id=>/^[a-zA-Z0-9_-]{1,80}$/.test(id)).slice(0,5000)}).catch(()=>{});patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
                         }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
                       <SettingsCard>
@@ -2334,7 +2343,7 @@ In this subject the learner keeps missing these questions in review; connect to 
           e.target.value = "";
         }}
       />
-      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device. Saved files and memory are kept.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
+      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device, with what Mowr only noted from it. Saved files and memory you kept stay.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);if(desktop&&/^[a-zA-Z0-9_-]{1,80}$/.test(id))void desktop.invoke({action:"memoryForgetChat",chats:[id]}).catch(()=>{});patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
       {modal && (
         <Modal
           title={

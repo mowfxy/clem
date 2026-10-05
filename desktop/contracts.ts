@@ -135,7 +135,9 @@ export const requestSchema = z.discriminatedUnion("action", [
     sharedWith: z.array(scopeSchema).max(10),
     source: z.string().max(300).optional(),
   }),
-  z.object({ action: z.literal("memoryForget"), id: z.string().uuid() }),
+  z.object({ action: z.literal("memoryForget"), id: z.string().uuid(), ids: z.array(z.string().uuid()).max(20).optional() }),
+  /** Deleted chats: what Mowr only learned from them is forgotten; what the person kept stays. */
+  z.object({ action: z.literal("memoryForgetChat"), chats: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/)).max(5000) }),
   z.object({ action: z.literal("memoryConfirm"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryToggle"), enabled: z.boolean() }),
   z.object({ action: z.literal("securityInfo") }),
@@ -232,6 +234,8 @@ export type DesktopBridge = {
       file?: import("../core/types").StoredFile;
       scope?: string;
       error?: string;
+      /** type "memory": what Mowr noted about the person after this answer. */
+      memories?: { id: string; text: string; confirmed: boolean }[];
       /** An artifact that replaced an existing file's contents (a revised document) rather than a new file. */
       revised?: { version: import("../core/types").FileVersion };
       /** type "look": the model asks to see `pages` of `file`; answer with the pageImages action and this id. */
