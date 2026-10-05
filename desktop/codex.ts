@@ -21,6 +21,8 @@ export function mayBeTool(text: string) {
 /** A connection nobody used for this long is closed. Starting one again is the slowest part of a request, so it is
  *  kept through ordinary pauses in a conversation (an idle app-server holds little memory and no network). */
 const IDLE_MS = 30 * 60_000;
+/** The longest `codex logout` may take. */
+export const LOGOUT_MS = 20_000;
 
 /** What the person sees while a tool runs, instead of a silent pause. */
 export function toolStatus(request: any) {
@@ -64,6 +66,10 @@ export class Codex {
   get busy() {
     return this.turns.size > 0 || !!this.starting || this.active.size > 0;
   }
+  /** Busy, or a memory note still running on the connection. */
+  private get inUse() { return this.busy || this.quicks > 0; }
+  /** Short internal requests (memory notes) running now: the connection under them is never closed. */
+  private quicks = 0;
   private server: AppServer | null = null;
   private serverStart: Promise<AppServer> | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -89,7 +95,7 @@ export class Codex {
   private scheduleIdle() {
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      if (this.server?.idle && !this.busy && Date.now() - this.server.lastUsed >= IDLE_MS) { this.server.close(); this.server = null; }
+      if (this.server?.idle && !this.inUse && Date.now() - this.server.lastUsed >= IDLE_MS) { this.server.close(); this.server = null; }
       else if (this.server && !this.server.dead) this.scheduleIdle();
     }, IDLE_MS);
     this.idleTimer.unref?.();
@@ -452,8 +458,12 @@ export class Codex {
     this.catalog = null;
     this.closeServer();
   }
+  /** A connection that has carried a lot is replaced before a new answer, when no answer is using it. */
+  private retireWorn() {
+    if (this.server?.worn && this.server.idle && !this.inUse) { this.server.close(); this.server = null; }
+  }
   private closeServer() {
-    if (this.server && !this.busy) { this.server.close(); this.server = null; }
+    if (this.server && !this.inUse) { this.server.close(); this.server = null; }
   }
   async logout() {
     this.accountCache = null;
@@ -462,11 +472,16 @@ export class Codex {
     this.server = null;
     this.loginProcess?.kill();
     const child = await this.start(["logout"]);
+    // Account changes wait in one queue (provider-accounts.ts), so a sign-out that hangs must not hold it forever.
     await new Promise<void>((resolve, reject) => {
-      child.on("error", reject);
-      child.on("close", (code) =>
-        code === 0 ? resolve() : reject(Error("Provider sign-out failed.")),
-      );
+      const timer = setTimeout(() => { reject(Error("Provider sign-out timed out.")); child.kill(); }, LOGOUT_MS);
+      child.stdout.resume();
+      child.stderr.resume();
+      child.on("error", (error) => { clearTimeout(timer); reject(error); });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        code === 0 ? resolve() : reject(Error("Provider sign-out failed."));
+      });
     });
   }
   /** Stops one chat only; other chats on the same connection keep answering. */
@@ -487,6 +502,7 @@ export class Codex {
   }
   async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,unfinished?:()=>string|undefined,stats?:TurnStats){
     if(this.turns.has(id))throw Error("This chat is already answering.");
+    this.retireWorn();
     const turn={cancelled:false};this.turns.set(id,turn);
     const session:TurnSession={};
     // Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools: one endpoint for the whole
@@ -526,11 +542,14 @@ export class Codex {
   }
   /** A short internal request (memory notes): never blocks the user's turn or streams to the screen. */
   async quick(prompt:string,selection?:{model?:string;reasoning?:string},timeoutMs=45000){
-    const server=await this.connection();
-    let output="";
-    await streamTurn(server,{},prompt,selection,[],text=>{output+=text;},()=>false,{},timeoutMs);
-    this.scheduleIdle();
-    return output;
+    this.retireWorn();
+    this.quicks++;
+    try{
+      const server=await this.connection();
+      let output="";
+      await streamTurn(server,{},prompt,selection,[],text=>{output+=text;},()=>false,{},timeoutMs);
+      return output;
+    }finally{this.quicks--;this.scheduleIdle();}
   }
   /** Whether the model is one of this ChatGPT account's models (as last listed). */
   catalogHas(model:string){return !!this.catalog?.models.some((m:any)=>m.id===model);}

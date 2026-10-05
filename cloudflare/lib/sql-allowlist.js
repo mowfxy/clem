@@ -1,0 +1,35 @@
+// The database Worker runs SQL sent by the Mowr API (server/d1.ts). It accepts only single SELECT/INSERT/UPDATE/DELETE
+// statements over the tables that API uses, so a leaked secret or a compromised API cannot read linked accounts or
+// make itself staff (desktop_admins, desktop_owner_grants, provider_links and the rest are refused).
+// Keep in step with server/: tests/sql-allowlist.test.ts checks every query the API sends.
+
+/** Tables the API inserts into, updates and deletes from. */
+export const writableTables = new Set([
+  "mowr_users", "mowr_credentials", "mowr_rate_limits", "mowr_workspaces", "mowr_scopes", "mowr_usage", "mowr_files",
+  "mowr_automations", "mowr_security", "mowr_email_challenges", "mowr_support", "mowr_email_log", "mowr_email_optout",
+  "mowr_document_edits", "mowr_subscription_sessions", "mowr_runtime_budget",
+]);
+/** Staff email sends are audited (server/staff-emails.ts): the API may add entries, never change or remove them. */
+export const insertableTables = new Set([...writableTables, "desktop_audit_log"]);
+/** Staff emails also look up a person's address and name. */
+export const readableTables = new Set([...insertableTables, "desktop_activity", "desktop_profiles"]);
+
+export function allowedStatement(sql) {
+  if (typeof sql !== "string" || !sql.trim() || sql.length > 20000) return false;
+  // String literals cannot name tables; blank them so their contents are not mistaken for SQL.
+  const text = sql.replace(/'(?:[^']|'')*'/g, "''");
+  if (/'|;|--|\/\*|["`[]/.test(text.replace(/''/g, ""))) return false;
+  const kind = /^\s*(\w+)/.exec(text)?.[1].toUpperCase();
+  if (!["SELECT", "INSERT", "UPDATE", "DELETE"].includes(kind)) return false;
+  if (/\b(pragma|attach|detach|vacuum|drop|alter|create|reindex|load_extension|sqlite_\w*)\b/i.test(text)) return false;
+  // A comma join ("FROM a, b") would name a table without FROM or JOIN in front of it.
+  if (/\b(FROM|JOIN)\s+\w+(\s+(AS\s+)?\w+)?\s*,/i.test(text)) return false;
+  if (kind === "DELETE" && !writableTables.has(/^\s*DELETE\s+FROM\s+(\w+)/i.exec(text)?.[1].toLowerCase())) return false;
+  for (const [, keyword, name] of text.matchAll(/\b(FROM|INTO|UPDATE|JOIN)\s+(\w+)/gi)) {
+    const word = keyword.toUpperCase(), table = name.toLowerCase();
+    if (word === "UPDATE" && table === "set") continue; // ON CONFLICT … DO UPDATE SET
+    const allowed = word === "FROM" || word === "JOIN" ? readableTables : word === "INTO" ? insertableTables : writableTables;
+    if (!allowed.has(table)) return false;
+  }
+  return true;
+}

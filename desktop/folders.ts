@@ -69,6 +69,10 @@ export async function link(path: string, scope: string): Promise<Folder> {
     throw Error("Link the actual folder, not a shortcut or symbolic link.");
   return { id: randomUUID(), scope, path: canonical };
 }
+/** Whether two indexes list the same files at the same versions, so an unchanged index is not written again. */
+export function sameIndex(a: IndexedFile[], b: IndexedFile[]) {
+  return a.length === b.length && a.every((f, i) => f.path === b[i].path && f.hash === b[i].hash && f.mtime === b[i].mtime && f.size === b[i].size);
+}
 /** Full bounded traversal discovers deletions; unchanged file content is reused. */
 export async function indexFolder(
   folder: Folder,
@@ -97,8 +101,8 @@ export async function indexFolder(
             base: dir,
             rules: ignore().add(await readFile(file, "utf8")),
           });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      } catch {
+        // Missing, or unreadable (permissions, a file locked by another program): the folder is indexed without it.
       }
     }
     if (depth > 12) throw Error("Folder nesting exceeds the indexing limit.");

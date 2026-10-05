@@ -9,7 +9,7 @@ import {liveText} from './live-reply.ts';
 
 /**
  * Claude Code's arguments for one answer. Web search is its only built-in tool: it lets Claude find real, current
- * sources (such as YouTube videos) on the person's own plan. With `mcpConfig`, Kinetra is a native
+ * sources (such as YouTube videos) on the person's own plan. With `mcpConfig` (the path of a config file holding the endpoint and its token), Kinetra is a native
  * tool as well (desktop/kinetra-mcp.ts): it is the only MCP server loaded (--strict-mcp-config), it is allowed without a
  * prompt, and one reply may make as many calls as the tool loop allows. Safe mode is left out then, since it turns off
  * every MCP server; Claude Code runs in Mowr's own configuration folder and workspace either way.
@@ -274,9 +274,16 @@ export class ClaudeProvider {
     const systemFile=system?join(this.root,'workspace','.system-'+randomUUID()+'.txt'):undefined;
     if(systemFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(systemFile,system!);}
     const endpoint=native?await kinetraMcp.open(request=>keepingAlive(()=>native(request),()=>alive())):undefined;
+    // The endpoint's token goes in a file in this account's own folder (owner-only), never on the command line, which
+    // other programs and process listings can read.
+    const mcpFile=endpoint?join(this.root,'workspace','.mcp-'+randomUUID()+'.json'):undefined;
+    const removeFiles=async()=>{for(const file of [systemFile,mcpFile])if(file)await rm(file,{force:true}).catch(()=>{});};
     let child:ChildProcessWithoutNullStreams;
-    try{child=await this.start([...claudeArgs(model.slice(7),effort,session,endpoint&&claudeMcpConfig(endpoint)),...(systemFile?['--system-prompt-file',systemFile]:[])]);}
-    catch(error){endpoint?.close();if(systemFile)await rm(systemFile,{force:true}).catch(()=>{});throw error;}
+    try{
+      if(mcpFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(mcpFile,claudeMcpConfig(endpoint!),{mode:0o600});}
+      child=await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile),...(systemFile?['--system-prompt-file',systemFile]:[])]);
+    }
+    catch(error){endpoint?.close();await removeFiles();throw error;}
     this.active.set(id,child);
     try{
       const answer=await new Promise<string>((resolve,reject)=>{
@@ -327,7 +334,7 @@ export class ClaudeProvider {
       // Nothing ran: the same step again, with the rules in the message instead.
       if(error instanceof NoSystemFile)return this.run(id,prompt,model,effort,emit,images,session,native,{system});
       throw error;
-    }finally{this.active.delete(id);endpoint?.close();this.recheck();if(systemFile)await rm(systemFile,{force:true}).catch(()=>{});}
+    }finally{this.active.delete(id);endpoint?.close();this.recheck();await removeFiles();}
   }
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk. */
   async endSession(sessionId:string){

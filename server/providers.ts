@@ -10,11 +10,13 @@ const configs:Config[]=[
  {id:'google',provider:'Google',prefix:'GEMINI',url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'},
  {id:'xai',provider:'xAI',prefix:'XAI',url:'https://api.x.ai/v1/chat/completions'},
 ];
-export function modelCatalog():Model[]{return configs.map(c=>({id:c.id,name:c.id==='openai'?'Codex':c.id==='xai'?'Grok Build':process.env[`${c.prefix}_MODEL`]||c.provider,provider:c.provider,connected:!['openai','xai'].includes(c.id)&&Boolean(process.env[`${c.prefix}_API_KEY`]&&process.env[`${c.prefix}_MODEL`]),context:Number(process.env[`${c.prefix}_CONTEXT`]||32000),specialties:(process.env[`${c.prefix}_SPECIALTIES`]||'').split(',').filter(Boolean),tools:[]}));}
+/** The server's own provider keys serve local development, or a deployment that opts in with MOWR_SERVER_KEYS=true. */
+export function serverKeysAllowed(){return process.env.MOWR_SERVER_KEYS==='true'||!process.env.VERCEL;}
+export function modelCatalog():Model[]{return configs.map(c=>({id:c.id,name:c.id==='openai'?'Codex':c.id==='xai'?'Grok Build':process.env[`${c.prefix}_MODEL`]||c.provider,provider:c.provider,connected:!['openai','xai'].includes(c.id)&&serverKeysAllowed()&&Boolean(process.env[`${c.prefix}_API_KEY`]&&process.env[`${c.prefix}_MODEL`]),context:Number(process.env[`${c.prefix}_CONTEXT`]||32000),specialties:(process.env[`${c.prefix}_SPECIALTIES`]||'').split(',').filter(Boolean),tools:[]}));}
 export function requestSpec(id:string,messages:ChatInput[],credential?:ProviderCredential){
  if(id==='openai'||id==='xai')throw Error('Connect your subscription in Settings. Codex and Grok do not use API keys in Mowr.');
  const c=configs.find(c=>c.id===id);if(!c)throw new Error('Unknown provider.');
- const key=credential?.key||process.env[`${c.prefix}_API_KEY`],model=credential?.model||process.env[`${c.prefix}_MODEL`];if(!key||!model)throw new Error('Add the provider API key and model identifier to .env.local, or connect your own model in Settings.');
+ const server=!credential?.key&&serverKeysAllowed();const key=credential?.key||(server?process.env[`${c.prefix}_API_KEY`]:undefined),model=credential?.model||(server?process.env[`${c.prefix}_MODEL`]:undefined);if(!key||!model)throw new Error('Add the provider API key and model identifier to .env.local, or connect your own model in Settings.');
  const anthropic=c.id==='anthropic';const headers:Record<string,string>={'Content-Type':'application/json'};
  if(anthropic){headers['x-api-key']=key;headers['anthropic-version']='2023-06-01';}else headers.Authorization=`Bearer ${key}`;
  const body=anthropic?{model,stream:true,max_tokens:4096,system:messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),messages:messages.filter(m=>m.role!=='system')}:{model,messages,stream:true,...(c.id==='openai'?{max_completion_tokens:4096}:{max_tokens:4096})};

@@ -3,6 +3,7 @@
 // AES-GCM under PROVIDER_VAULT_KEY, bound to its owner and connection id, and stored as one compact
 // BLOB (IV + ciphertext). Entries are returned only to their owner.
 import { pack, unpack } from "./lib/pack.js";
+import { HttpError, readJson } from "./lib/http.js";
 
 const KINDS = new Set(["codex", "claude", "telegram"]);
 const MAX_ITEMS = 12, MAX_BYTES = 64_000;
@@ -43,7 +44,8 @@ export async function handleProviders(request, env, user, path) {
       return json({ items });
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
-    const body = await request.json().catch(() => ({}));
+    // The credential arrives as a JSON string inside JSON, so escaping can make the body up to about twice its size.
+    const body = await readJson(request, MAX_BYTES * 3);
     const id = String(body.id || "");
     if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) return json({ error: "Invalid connection." }, 400);
     if (path === "/providers/delete") {
@@ -64,6 +66,8 @@ export async function handleProviders(request, env, user, path) {
     }
     return json({ error: "Not found" }, 404);
   } catch (error) {
-    return json({ error: error.message || "Account linking is unavailable." }, 500);
+    if (error instanceof HttpError) return json({ error: error.message }, error.status);
+    console.error("Account linking failed", error?.message);
+    return json({ error: "Account linking is unavailable. Try again shortly." }, 500);
   }
 }

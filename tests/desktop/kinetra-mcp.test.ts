@@ -2,7 +2,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { kinetraMcp, claudeMcpConfig, codexMcpConfig, toolResult, NATIVE_NOTE, MAX_BODY, CLAUDE_TOOL, TOOL_TIMEOUT_SECONDS } from "../../desktop/kinetra-mcp.ts";
@@ -149,9 +149,9 @@ test("Claude Code gets the Kinetra server as its only MCP server, allowed, witho
 
 /** A Claude Code stand-in that calls the MCP server it was given over HTTP, like the real CLI, then answers. */
 function fakeClaude(provider: any, script: (url: string, token: string) => Promise<string>) {
-  const runs: { args: string[]; input: string; env: any }[] = [];
+  const runs: { args: string[]; input: string; env: any; mcpFile?: string }[] = [];
   provider.start = async (args: string[]) => {
-    const run = { args, input: "", env: provider.env() };
+    const run: { args: string[]; input: string; env: any; mcpFile?: string } = { args, input: "", env: provider.env() };
     runs.push(run);
     const child: any = new EventEmitter();
     child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => {};
@@ -160,7 +160,10 @@ function fakeClaude(provider: any, script: (url: string, token: string) => Promi
       const i = args.indexOf("--mcp-config");
       let text = "";
       if (i >= 0) {
-        const server = JSON.parse(args[i + 1]).mcpServers.kinetra;
+        // The config is a file (the token stays off the command line); it must still be there while Claude Code runs.
+        assert.ok(!args[i + 1].trim().startsWith("{"), "the MCP config is passed as a file");
+        const server = JSON.parse(readFileSync(args[i + 1], "utf8")).mcpServers.kinetra;
+        run.mcpFile = args[i + 1];
         text = await script(server.url, server.headers.Authorization.slice(7));
       } else text = await script("", "");
       child.stdout.write(JSON.stringify({ type: "result", subtype: "success", result: text, is_error: false }) + "\n");
@@ -200,8 +203,10 @@ test("Claude: a native call runs through MCP inside one reply, with its pictures
   // The first message says that requests go to the tool; Claude Code has the tool timeout and output limit raised.
   assert.ok(JSON.parse(runs[0].input).message.content[0].text.startsWith(NATIVE_NOTE));
   assert.equal(runs[0].env.MCP_TOOL_TIMEOUT, String(TOOL_TIMEOUT_SECONDS * 1000));
-  // The reply is over: its endpoint no longer answers.
+  // The reply is over: its endpoint no longer answers, and the config file with its token is gone.
   assert.equal((await rpc(url, token, { jsonrpc: "2.0", id: 3, method: "ping" })).status, 401);
+  assert.ok(runs[0].mcpFile && !existsSync(runs[0].mcpFile));
+  assert.ok(!runs[0].args.join(" ").includes(token));
 });
 
 test("Claude: without a provider session or with the text protocol, an envelope in the reply still runs", async () => {

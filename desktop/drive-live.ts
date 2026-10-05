@@ -544,6 +544,8 @@ export class DriveMediaServer {
       server.on("error", reject);
       server.listen(0, "127.0.0.1", () => { this.server = server; resolve((server.address() as {port:number}).port); });
     });
+    // A server that could not start is tried again on the next video, not refused for the rest of the run.
+    this.ready.catch(() => { this.ready = undefined; });
     return this.ready;
   }
   async url(id: string) { return `http://127.0.0.1:${await this.start()}/drive/${id}?k=${this.key}`; }

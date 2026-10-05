@@ -111,7 +111,11 @@ export class DesktopAuth {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000),
     });
-    const result = (await response.json()) as any;
+    // A gateway error page is HTML, not JSON: the person is told the service is unavailable, never a parser message.
+    const result = (await response.json().catch(() => {
+      if (response.ok) throw Error("Account service is unavailable.");
+      return {};
+    })) as any;
     if (!response.ok)
       throw Error(result.error || "Account service is unavailable.");
     return result;

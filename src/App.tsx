@@ -56,6 +56,8 @@ import {RenameField,PencilIcon} from './files/RenameField';
 const REPLY_SOURCE = "reply";
 /** Files of a chat and its subject or project read for each request; the budget decides how much of each is sent. */
 const MAX_CHAT_SOURCES = 400;
+/** The longest a change waits before the workspace is written (streamed answers change it on every token). */
+const SAVE_MS = 400;
 import {SecuritySettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
 import {Legal} from './site/Legal';
@@ -332,6 +334,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [editingMessage,setEditingMessage]=useState<string|null>(null);
   const accountDataRef=useRef(accountData);accountDataRef.current=accountData;
   const observedActiveAccount=useRef<string|null>(null);
+  const lastAccountSnapshot=useRef("");
   const stateRef = useRef(state);
   stateRef.current = state;
   const archiveUploader=useRef<HTMLInputElement>(null);
@@ -358,17 +361,37 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       stopAll();
     };
   }, []);
+  // Saves are coalesced: a streaming answer changes state on every token, but the workspace is written at most every
+  // SAVE_MS with the latest state, and at once when the page hides or the account changes.
+  const pendingSave = useRef<{ state: State; owner: string } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flushSave = () => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
+    const job = pendingSave.current;
+    if (!job) return saveQueue.current;
+    pendingSave.current = null;
+    return (saveQueue.current = saveQueue.current
+      .then(() => saveState(job.state, job.owner))
+      .catch(() =>
+        setToast(
+          "Your changes could not be saved. Export your workspace before closing this tab.",
+        ),
+      ));
+  };
+  const flushSaveRef = useRef(flushSave);
+  flushSaveRef.current = flushSave;
   useEffect(() => {
-    const owner = ownerRef.current;
-    if (ready)
-      saveQueue.current = saveQueue.current
-        .then(() => saveState(state, owner))
-        .catch(() =>
-          setToast(
-            "Your changes could not be saved. Export your workspace before closing this tab.",
-          ),
-        );
+    if (!ready) return;
+    pendingSave.current = { state, owner: ownerRef.current };
+    saveTimer.current ??= setTimeout(() => void flushSaveRef.current(), SAVE_MS);
   }, [state, ready]);
+  useEffect(() => {
+    const flush = () => void flushSaveRef.current();
+    const hidden = () => { if (document.hidden) flush(); };
+    addEventListener("pagehide", flush); addEventListener("beforeunload", flush); document.addEventListener("visibilitychange", hidden);
+    return () => { removeEventListener("pagehide", flush); removeEventListener("beforeunload", flush); document.removeEventListener("visibilitychange", hidden); flush(); };
+  }, []);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 4500);
@@ -379,13 +402,16 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   }, [state.quiet]);
   async function refreshSession() {
     const version = ++sessionVersion.current;
+    // The last account's waiting changes are written under its own name before the workspace switches.
+    const saved = flushSave();
     setReady(false);setLoadError("");setApiReady(false);
-    setAccountNotices([]);setAccountData(undefined);
+    setAccountNotices([]);setAccountData(undefined);lastAccountSnapshot.current="";
     stopAll();
     setChatId(null);
     setSpaceId(null);
     setAttachments([]);
     const data = await api<Session>("auth/session").catch(() => defaultSession);
+    await saved;
     if (version !== sessionVersion.current) return;
     setSession(data);
     ownerRef.current = data.user?.id || "guest";
@@ -426,7 +452,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(()=>{
     if(!desktop||!ready||!session.user)return;
     let live=true,inFlight=false;
-    observedActiveAccount.current=null;
+    observedActiveAccount.current=null;lastAccountSnapshot.current="";
     const poll=async(background=false)=>{
       if(inFlight||(document.hidden&&!background))return;
       inFlight=true;
@@ -439,7 +465,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
           void refreshModels();
         }
         observedActiveAccount.current=result.active;
-        setAccountData(result);
+        // Polled every second but cached for ten in the app: an unchanged snapshot keeps the workspace from re-rendering.
+        const {resets:_,...snapshot}=result,seen=JSON.stringify(snapshot);
+        if(seen!==lastAccountSnapshot.current){lastAccountSnapshot.current=seen;setAccountData(result);}
         if(result.resets?.length)for(const event of result.resets){const windows=[...new Set(event.windows.map(w=>w.endsWith('weekly')?'weekly':'short-window'))];notify({kind:'reset',title:'Usage limits reset',detail:`${event.email||'A connected account'} has fresh ${windows.join(' and ')} usage.`});}
       }catch{/* Keep the last confirmed snapshot until the connection returns. */}
       finally{inFlight=false;}
@@ -1391,7 +1419,6 @@ In this subject the learner keeps missing these questions in review; connect to 
           // iPhone photos (HEIC) become JPEG here, so the AI sees them and the chat can show them; a failure is said plainly.
           const heic = await import('./desktop/heic');
           if (await heic.looksHeic(file)) file = await heic.convertedPhoto(file);
-          const remote = false;
           // The same file sent again is used from where it is already kept, never stored twice.
           const existing = await sameFile(file, destination, added);
           if (existing) { if (!reused.includes(existing) && !added.includes(existing)) reused.push(existing); continue; }
@@ -1407,7 +1434,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             created: Date.now(),
             spaceId: destination,
             folderId: target?.folderId ?? null,
-            remote,
+            remote: false,
           });
         } catch (error) {
           setToast(

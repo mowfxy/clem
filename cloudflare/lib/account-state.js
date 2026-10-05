@@ -56,8 +56,9 @@ export const hasActiveSubscription = (rows) =>
 export async function recordActivity(env, user) {
   const at = now();
   await tolerant(() => env.DB.prepare(
-    "INSERT INTO desktop_activity(user_id,email,first_seen_at,last_seen_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email,last_seen_at=excluded.last_seen_at",
+    // Entitlement is polled often; last-seen only needs hourly precision, so unchanged rows are not rewritten sooner.
+    "INSERT INTO desktop_activity(user_id,email,first_seen_at,last_seen_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email,last_seen_at=excluded.last_seen_at WHERE desktop_activity.email<>excluded.email OR desktop_activity.last_seen_at<?",
   )
-    .bind(user.id, String(user.email || "").toLowerCase(), at, at)
+    .bind(user.id, String(user.email || "").toLowerCase(), at, at, new Date(Date.parse(at) - 3600000).toISOString())
     .run(), null);
 }

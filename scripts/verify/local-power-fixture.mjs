@@ -3,6 +3,7 @@
 // Replies are scripted; nothing here calls a model.
 import { createServer } from "vite";
 import { mockLocalStorage } from "./fixture-local-storage.mjs";
+export { saved } from "./fixture-local-storage.mjs";
 import { specPrinter, worksheetSpec, handoutPdf } from "./fixture-docs.mjs";
 export { worksheetSpec };
 
@@ -86,6 +87,7 @@ export const harderWorksheet = {
   ],
 };
 export const handoutEdits = { summary: "Moved the due date to Monday and made question 2 more precise.", edits: [{ page: 1, find: "Due Friday 26 September", replace: "Due Monday 29 September" }, { page: 1, find: "2. Estimate the concentration at which the mass does not change.", replace: "2. Estimate the isotonic point to two decimal places." }] };
+
 
 /** Starts Vite, installs the fake desktop bridge and opens the workspace. Returns helpers. */
 export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1 } = {}) {

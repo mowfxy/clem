@@ -267,15 +267,19 @@ export class GrokProvider {
   }
   forget(){this.statusCache=null;}
   /** `grok login --oauth` opens xAI's sign-in page in the browser and finishes by itself; no window is shown. */
+  /** The sign-in running now: a second click replaces it rather than leaving one more `grok login` waiting. */
+  private loginChild:ChildProcessWithoutNullStreams|null=null;
   async login(openUrl:(url:string)=>void){
+    this.loginChild?.kill();
     const child=await this.start(['login','--oauth']);
+    this.loginChild=child;
     let seen='',opened=false;
     const look=(p:Buffer)=>{seen=(seen+p.toString()).slice(-8000);const url=seen.match(/https:\/\/[^\s"'<>]*(?:x\.ai|grok\.com)[^\s"'<>]*/)?.[0];if(url&&!opened){opened=true;setTimeout(()=>openUrl(url),2500);}};
     child.stdout.on('data',look);child.stderr.on('data',look);
     // grok opens the browser itself; the fallback above only fires if that failed and it printed the link instead.
-    child.on('close',()=>{opened=true;this.statusCache=null;});
+    const timer=setTimeout(()=>child.kill(),15*60_000);
+    child.on('close',()=>{opened=true;this.statusCache=null;clearTimeout(timer);if(this.loginChild===child)this.loginChild=null;});
     child.on('error',()=>{});
-    setTimeout(()=>child.kill(),15*60_000);
     this.statusCache=null;
     return {started:true};
   }
@@ -375,5 +379,5 @@ export class GrokProvider {
   /** Signs this Grok out with its own command, which clears its cached sign-in. */
   async logout(){this.statusCache=null;await this.capture(['logout'],20000);}
   cancel(id:string){this.active.get(id)?.kill();}
-  stop(){for(const child of this.active.values())child.kill();}
+  stop(){for(const child of this.active.values())child.kill();this.loginChild?.kill();}
 }
