@@ -1,4 +1,4 @@
-// Mowafy Serif imported from mowfxy/serif at 9510dd4: the original Latin Regular and Bold, nothing borrowed.
+// Mowafy Serif imported from mowfxy/serif at c0e4394: the original Latin Regular and Bold, nothing borrowed.
 export const serifFaces = [
   {
       "file": "MowafySerif-Regular",
