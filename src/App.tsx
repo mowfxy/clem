@@ -637,7 +637,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const pickedDrive = driveRefs.map(({ id, name, mimeType, modified, size, durationMs }) => ({ id, name, mimeType, modified, size, durationMs }));
     if (offline) { setToast("You’re offline. Your chats and files are here to read; sending needs a connection."); return; }
     const isVisual = /^\/visual\b/i.test(prompt);
-    const createSkill = /^\/skill\b/i.test(prompt);
+    const createSkill = /^\/skill(?=\s|$)/i.test(prompt);
     if (isVisual && !prompt.replace(/^\/visual\s*/i, "").trim()) {
       setToast("Add what you want to visualize after /visual.");
       return;
@@ -1820,7 +1820,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                         {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Skills" ? (
-                      <SkillsSettings skills={skills} onOpen={skill=>{setEditingSkill(skill);setModal("skill-detail");}} onCreate={()=>{setEditingSkill(null);setModal("skill-create");}} onImport={()=>setModal("skill-import")}/>
+                      <SkillsSettings skills={skills} onOpen={skill=>{setEditingSkill(skill);setModal("skill-detail");}} onCreate={()=>{setSettingsOpen(false);newChat();setDraft("/skill-creator ");}} onImport={()=>setModal("skill-import")}/>
                     ) : settingsTab === "Automations" ? (
                       <SettingsCard note="New routines start in a chat. They run while Mowr is open.">
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}

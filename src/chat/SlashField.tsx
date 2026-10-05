@@ -24,9 +24,9 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
 }) {
   const [caret, setCaret] = useState(value.length);
   // The "/word" being typed just before the caret, if any (only one command per message).
-  const typed = /(^|\s)\/([a-z]*)$/i.exec(value.slice(0, caret));
+  const typed = /(^|\s)\/([a-z-]*)$/i.exec(value.slice(0, caret));
   // A finished command is a known "/name" followed by a space or the end that the caret is not still typing.
-  const token = [...value.matchAll(/(^|\s)\/([a-z]+)(?=\s|$)/gi)].find((m) => readCommand(`/${m[2]}`) && !(typed && m.index + m[0].length === caret));
+  const token = [...value.matchAll(/(^|\s)\/([a-z]+(?:-[a-z]+)*)(?=\s|$)/gi)].find((m) => readCommand(`/${m[2]}`) && !(typed && m.index + m[0].length === caret));
   const command = token ? readCommand(`/${token[2]}`)!.command : null;
   const options = typed && !command ? commandsFor(typed[2], inSubject) : [];
   const [index, setIndex] = useState(0);
