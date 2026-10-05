@@ -47,3 +47,4 @@
 .drive-attached span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drive-attached:hover{background:#ffffff12}
 @media(prefers-reduced-motion:reduce){.history-live{animation-duration:2.4s}.work-dot{animation:none;opacity:.8}}
+.messages .message.assistant .closed-note{display:inline-block;font-family:var(--sans);font-size:15px;line-height:1.7;color:#8f8f8f}

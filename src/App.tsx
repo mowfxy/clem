@@ -1214,6 +1214,29 @@ In this subject the learner keeps missing these questions in review; connect to 
       end(id, controller);
     }
   }
+  // Content fingerprints of stored files, so sending the same file again reuses the copy already kept.
+  const fingerprints = useRef(new Map<string, string>());
+  async function fingerprint(blob: Blob) {
+    return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer())), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  /** A file already kept in the same place with exactly these bytes. */
+  async function sameFile(blob: Blob, destination: string | null, pending: StoredFile[]) {
+    const candidates = [...pending, ...stateRef.current.files].filter((f) => f.spaceId === destination && f.size === blob.size && !f.remote);
+    if (!candidates.length) return undefined;
+    const print = await fingerprint(blob);
+    for (const f of candidates) {
+      const key = f.id + ":" + (f.updated || f.created);
+      let known = fingerprints.current.get(key);
+      if (!known) {
+        const stored = await getBlob(f.id).catch(() => undefined);
+        if (!stored || stored.size !== blob.size) continue;
+        known = await fingerprint(stored);
+        fingerprints.current.set(key, known);
+      }
+      if (known === print) return f;
+    }
+    return undefined;
+  }
   function upload(files: FileList | null, attachNow = false, target?: { spaceId: string; folderId: string | null }) {
     if (!files) return;
     const destination = target ? target.spaceId : spaceId;
@@ -1221,6 +1244,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     const owner=ownerRef.current;
     fileQueue.current = fileQueue.current.then(async () => {
       const added: StoredFile[] = [];
+      const reused: StoredFile[] = [];
       const renamed: string[] = [];
       for (let file of batch) {
         if(owner!==ownerRef.current)return;
@@ -1230,7 +1254,11 @@ In this subject the learner keeps missing these questions in review; connect to 
           const heic = await import('./desktop/heic');
           if (await heic.looksHeic(file)) file = await heic.convertedPhoto(file);
           const remote = false;
-          const name = /\.pdf$/i.test(file.name) ? await (await import('./pdf/pdf-name')).readablePdfName(file) : file.name;
+          // The same file sent again is used from where it is already kept, never stored twice.
+          const existing = await sameFile(file, destination, added);
+          if (existing) { if (!reused.includes(existing) && !added.includes(existing)) reused.push(existing); continue; }
+          // Named by what it covers; inside a subject or project its name is not repeated ("Nodal Analysis – Lecture 3").
+          const name = await (await import('./pdf/pdf-name')).readableName(file, stateRef.current.spaces.find((x) => x.id === destination)?.name);
           if (name !== file.name) renamed.push(name);
           await storeBlob(id, file);
           added.push({
@@ -1257,6 +1285,8 @@ In this subject the learner keeps missing these questions in review; connect to 
         if (renamed.length) setToast(renamed.length === 1 ? `Saved as “${renamed[0]}”.` : `${added.length} files saved · ${renamed.length} renamed from their contents.`);
         // Saving is silent: the files appear where they were added, including whole folders.
       }
+      if (reused.length && owner===ownerRef.current && !target && (route === "/app" || attachNow))
+        setAttachments((a) => [...a, ...reused.map((f) => f.id).filter((id) => !a.includes(id))]);
     });
   }
   async function importCourse(file:File){
@@ -1439,6 +1469,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         ask(`Create a printable worksheet PDF for ${space.name}: 8 questions that rise in difficulty, built on my files and what I have studied here, with space to write answers.`);
       },
       onShare:folderId=>setPackShare({space:stateRef.current.spaces.find(x=>x.id===space.id)||space,folderId}),
+      onDeleteChat:c=>setDeleteChatId(c.id),
       onUpdateSpace:next=>patch(s=>({...s,spaces:s.spaces.map(x=>x.id===next.id?next:x)})),
       onUpdateFiles:fn=>patch(s=>({...s,files:fn(s.files)})),
       onDeleteFile:async file=>{await deleteStoredFile(file);},
@@ -1878,7 +1909,10 @@ In this subject the learner keeps missing these questions in review; connect to 
                                 <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
                               )
                             ) : (
-                              <span className="thinking">{(streaming && runs[activeChat.id]) || "Thinking…"}</span>
+                              m.role === "assistant" && !streaming && !(m === activeChat.messages.at(-1) && activeChat.id in runs) && !m.plan && !m.visual && !m.attachments?.length
+                                // Nothing is answering this chat, so the run that left this empty answer ended with the app.
+                                ? <span className="closed-note">Mowr was closed unexpectedly before this answer finished. Send your message again to continue.</span>
+                                : <span className="thinking">{(streaming && runs[activeChat.id]) || "Thinking…"}</span>
                             )}
                             {streaming && m.content && runs[activeChat.id] ? <span className="work-status" role="status"><span className="work-dot" />{runs[activeChat.id]}</span> : null}
                           </div>
@@ -2120,7 +2154,7 @@ In this subject the learner keeps missing these questions in review; connect to 
           e.target.value = "";
         }}
       />
-      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device. Saved files and memory are kept.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id)newChat();setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
+      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device. Saved files and memory are kept.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
       {modal && (
         <Modal
           title={

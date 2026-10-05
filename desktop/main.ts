@@ -999,6 +999,7 @@ void app.whenReady().then(async () => {
     if (request.action === "driveSearch") return driveLive.search(request.query);
     if (request.action === "driveStatus") return driveLive.state(request.refresh);
     if (request.action === "driveList") return driveLive.list({folder:request.folder,page:request.page,query:request.query,kind:request.kind});
+    if (request.action === "driveUpload") return driveLive.upload(request.folder,request.name,request.type,request.data);
     if (request.action === "driveFolder") return driveLive.folder(request.folder,request.query||"",request.refresh);
     if (request.action === "driveMediaUrl") return {url:await driveMedia.url(request.id)};
     if (request.action === "driveText") return {text:await driveLive.text(request.id)};
