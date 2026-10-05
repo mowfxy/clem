@@ -233,6 +233,26 @@ export function LocalSecurity() {
         )}
         {error && <p role="status">{error}</p>}
       </SettingsPopup>{" "}
+      <div className="settings-action"><div><h3>Sign out</h3><p>Sign out of Mowr on this PC. Your files stay here.</p></div>
+      <button
+        disabled={busy}
+        onClick={() =>
+          void (async () => {
+            setBusy(true);
+            try {
+              await desktop!.invoke({ action: "logout" });
+              // The app shell notices the signed-out state when the window regains focus.
+              window.dispatchEvent(new Event("focus"));
+            } catch (e) {
+              setError((e as Error).message);
+              setBusy(false);
+            }
+          })()
+        }
+      >
+        Sign out
+      </button>
+      </div>
       <div className="settings-action"><div><h3>Sessions</h3><p>Sign out your other devices.</p></div>
       <button
         disabled={busy}
