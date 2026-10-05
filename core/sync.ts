@@ -61,6 +61,11 @@ export function validateSync(kind: SyncKind, data: unknown): SyncItem[] {
 }
 const stamped = (x: SyncItem) =>
   typeof x.updatedAt === "string" && Number.isFinite(Date.parse(x.updatedAt));
+/**
+ * When a record changed. A time more than a day ahead comes from a broken clock (real ones are minutes apart at
+ * most), so it loses to any plausible time instead of winning every conflict until that date.
+ */
+const at = (x: SyncItem) => { const t = Date.parse(x.updatedAt as string); return t > Date.now() + 86_400_000 ? -Infinity : t; };
 /** A stable id for the local side of a conflict, so every device derives the same one. */
 function conflictId(item: SyncItem) {
   let h = 0x811c9dc5;
@@ -87,7 +92,7 @@ export function mergeSync(
     if (equal(l, b) || equal(l, r)) { if (r) result.push(r); continue; }
     if (equal(r, b)) { if (l) result.push(l); continue; }
     if (l && r) {
-      if (stamped(l) && stamped(r)) result.push(Date.parse(l.updatedAt as string) > Date.parse(r.updatedAt as string) ? l : r);
+      if (stamped(l) && stamped(r)) result.push(at(l) > at(r) ? l : r);
       else result.push(r, { ...l, id: conflictId(l) });
     } else {
       const edited = (l || r)!;
