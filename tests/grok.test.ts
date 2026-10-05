@@ -131,3 +131,35 @@ test('the steps of a tool loop reuse the sign-in check; usage is read again the 
   await grok.status();
   assert.equal(count('models'),2);
 });
+
+test('an older sign-in check does not hold up an answer: the answer starts at once and the check is renewed after it',async()=>{
+  class Spy extends FakeGrok{args:string[][]=[];async start(args:string[]){this.args.push(args);return super.start(args);}}
+  const grok=new Spy('ok');
+  await grok.status();
+  const started=(from:number)=>grok.args.slice(from).map(a=>a.includes('--prompt-file')?'answer':a[0]);
+  // The last check is from an hour ago.
+  (grok as any).statusCache.at-=60*60_000;
+  const before=grok.args.length;
+  const events:any[]=[];
+  await grok.run('r','hi','grok:grok-4.6',e=>events.push(e));
+  assert.equal(events.find(e=>e.type==='delta').text,'[grok-4.6] hi');
+  await (grok as any).statusRequest;
+  assert.deepEqual(started(before)[0],'answer');
+  assert.deepEqual(started(before).slice(1).sort(),['agent','models']);
+  // A check a day old is not trusted: the answer waits for a fresh one.
+  (grok as any).statusCache.at-=25*60*60_000;
+  const later=grok.args.length;
+  await grok.run('r','hi','grok:grok-4.6',()=>{});
+  assert.deepEqual(started(later).at(-1),'answer');
+  assert.deepEqual(started(later).slice(0,-1).sort(),['agent','models']);
+});
+
+test('the model list and the agent handshake are read side by side, and callers share one check',async()=>{
+  class Spy extends FakeGrok{args:string[][]=[];async start(args:string[]){this.args.push(args);return super.start(args);}}
+  const grok=new Spy('ok');
+  const [a,b]=await Promise.all([grok.status(true),grok.status(true)]);
+  assert.equal(a,b);
+  assert.deepEqual(grok.args.map(x=>x[0]).sort(),['agent','models']);
+  assert.equal(grok.args[0][0],'agent','the handshake starts without waiting for the model list');
+  assert.equal(a.connected,true);assert.equal(a.usage?.plan,'SUPERGROK');
+});

@@ -381,6 +381,22 @@ void app.whenReady().then(async () => {
     if (model && !codex.catalogHas(model)) model = undefined;
     return codex.quick(prompt, { model, reasoning: codex.lightest(model) });
   }
+  /**
+   * Gets the AI a message is about to go to ready while Mowr still prepares the message (files, memory, account
+   * checks): Codex's connection is opened, Claude's and Grok's sign-ins are checked. Never waits and never fails.
+   */
+  function prepareFor(owner: string, model?: string, ahead = false) {
+    if (model?.startsWith(GROK_PREFIX)) void grokFor(owner).then((grok) => grok.prepare(ahead)).catch(() => {});
+    else if (model?.startsWith("claude:")) void claudeFor(owner).then((claude) => claude.prepare(ahead)).catch(() => {});
+    else void selectProvider(owner).then((provider) => provider.prepare(ahead)).catch(() => {});
+  }
+  /** The same for the AI the person last chatted with (the workspace opening, the window coming back into view). */
+  let preparedAt = 0;
+  function prepareLast(owner: string) {
+    if (Date.now() - preparedAt < 60_000) return;
+    preparedAt = Date.now();
+    void vault.read<{ model?: string }>(lastModelKey(owner), {}).then((last) => prepareFor(owner, last.model, true)).catch(() => {});
+  }
   /** The AI the person last chatted with: Telegram answers with it too. */
   const lastModelKey = (owner: string) => "chat-model-" + owner;
   const pendingAttachments = new Map<
@@ -654,6 +670,7 @@ void app.whenReady().then(async () => {
         void welcomeOnce();
         // Everything a first message needs is started in the background as soon as the workspace opens.
         void selectProvider(state.user.id).then((provider) => provider.warm()).catch(() => {});
+        prepareLast(state.user.id);
         keepEnginesCurrent(state.user.id);
         void driveLive.state().catch(() => {});
       }
@@ -751,6 +768,8 @@ void app.whenReady().then(async () => {
   tray.setContextMenu(Menu.buildFromTemplate([{ label: "Open Mowr", click: showWindow }, { type: "separator" }, { label: "Quit Mowr", click: () => { quitting = true; app.quit(); } }]));
   tray.on("click", showWindow);
   // Signing out or shutting down Windows must never be held up by hiding to the tray.
+  // Back at the window after a pause: the AI is made ready while the person types, not after they send.
+  window.on("focus", () => { if (providerOwner && providerOwner !== "signed-out") prepareLast(providerOwner); });
   window.on("query-session-end", () => { quitting = true; });
   window.on("session-end", () => { quitting = true; });
   window.on("close", (event) => {
@@ -1036,6 +1055,7 @@ void app.whenReady().then(async () => {
       await codex.logout();
       return { ok: true };
     }
+    if (request.action === "prepare") { prepareFor(user.id, request.model); return { ok: true }; }
     if (request.action === "cancel") {
       cancelledRuns.add(request.id);
       codex.cancel(request.id);
@@ -1275,6 +1295,7 @@ void app.whenReady().then(async () => {
       const query = retrievalQuery(request.messages);
       // Claude and Grok use their own sign-ins; only ChatGPT picks among the person's Codex accounts.
       const claude = !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX);
+      prepareFor(user.id, request.model);
       void vault.write(lastModelKey(user.id), { model: request.model, reasoning: request.reasoning }).catch(() => {});
       const budget = contextBudget(request.model);
       const folders = (await vault.read<Folder[]>(key, [])).filter(
@@ -1371,7 +1392,8 @@ void app.whenReady().then(async () => {
           return `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten ${key === "slides" ? "slide" : "section"}${missing.length === 1 ? "" : "s"} (${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}). Write them now with {"action":"${action}","revise":"${doc}","append":true,"${key}":[…the next ${key}, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`;
         }).join(" ") + " Answer the person only when every planned part is written.";
       };
-      for (const doc of request.documents || []) if (await disk.readFile(user.id, "spec-" + doc.id)) documents.set(doc.id, doc.name);
+      const known = await Promise.all((request.documents || []).map(async (doc) => !!(await disk.readFile(user.id, "spec-" + doc.id))));
+      (request.documents || []).forEach((doc, i) => { if (known[i]) documents.set(doc.id, doc.name); });
       const spaceOf = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined;
       // File work still running when the answer stops: rollback waits for it (desktop/inflight.ts), so a draft
       // finishing late can neither overwrite the restored file nor leave an orphan behind.

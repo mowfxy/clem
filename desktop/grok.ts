@@ -166,6 +166,23 @@ export class GrokProvider {
   private usageStale=false;
   /** The last check while it is recent: each step of a tool loop reuses it instead of starting `grok models` and Grok's agent again. */
   private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
+  /**
+   * The last check an answer may start on without waiting for a new one: a recent one as it is, an older one (up to a
+   * day) too, checked again once the answer is done (beside it, the check slowed the answer's own start). A sign-in
+   * that lapsed meanwhile fails the answer itself, which clears the check, so the person is still told to sign in again.
+   */
+  private knownStatus(){
+    if(!this.statusCache||Date.now()-this.statusCache.at>=24*60*60_000)return undefined;
+    return this.statusCache.value;
+  }
+  /** After an answer that started on an older check: checks again for the next one. */
+  private recheck(){if(this.statusCache&&!this.recentStatus())void this.status(true).catch(()=>{});}
+  /**
+   * Gets this account ready for a message. `ahead` (the window coming back into view, well before a message): an older
+   * check is renewed while the person types. Otherwise the message is being sent now, and only an account with no usable
+   * check is checked, so the answer can share that check instead of starting its own.
+   */
+  prepare(ahead=false){if(ahead?!this.recentStatus():!this.knownStatus())void this.status().catch(()=>{});}
   private root:string;
   private configured:string|undefined;
   /** GROK_HOME for this account: each added Grok account keeps its own sign-in there. Unset for the first one (~/.grok). */
@@ -225,16 +242,25 @@ export class GrokProvider {
       send({id:1,method:'initialize',params:{protocolVersion:1,clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false},_meta:{clientType:'mowr',clientVersion:'1'}}});
     });
   }
+  private statusRequest:Promise<GrokStatus>|null=null;
+  /** One check at a time: callers that arrive while one runs share it. */
   async status(force=false):Promise<GrokStatus>{
     if(!force&&!this.usageStale&&this.statusCache&&Date.now()-this.statusCache.at<30000)return this.statusCache.value;
+    this.statusRequest??=this.readStatus().finally(()=>{this.statusRequest=null;});
+    return this.statusRequest;
+  }
+  private async readStatus():Promise<GrokStatus>{
     this.usageStale=false;
+    // The model list and the agent's handshake (usage, reasoning levels) are read side by side: each is a program start.
+    const handshake=this.handshake().catch(()=>undefined);
     const listed=await this.capture(['models'],30000);
     let value:GrokStatus;
     if(!listed)value={installed:false,connected:false,models:[]};
     else{
       const parsed=parseModels(listed.out);
       const connected=parsed.loggedIn&&parsed.models.length>0;
-      const shake=connected?await this.handshake().catch(()=>undefined):undefined;
+      // Waited for only when signed in; signed out, its answer is not needed.
+      const shake=connected?await handshake:undefined;
       value={installed:true,connected,models:parsed.models,defaultModel:parsed.defaultModel,...(shake?.usage?{usage:shake.usage}:{}),...(shake?.efforts&&Object.keys(shake.efforts).length?{efforts:shake.efforts}:{}),...(listed.code!==0&&!connected?{error:friendly(listed.err+listed.out)}:{})};
     }
     this.statusCache={at:Date.now(),value};return value;
@@ -260,7 +286,7 @@ export class GrokProvider {
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     const slug=model.slice(GROK_PREFIX.length);
-    let status=this.recentStatus()||await this.status();
+    let status=this.knownStatus()||await this.status();
     if(!status.connected||!status.models.includes(slug))status=await this.status(true);
     if(!status.installed)throw Error('Install Grok first (Settings → Models).');
     if(!status.connected)throw Error(status.error||'Sign in to Grok first (Settings → Models).');
@@ -275,7 +301,8 @@ export class GrokProvider {
     const named:string[]=[];
     if(images.length){
       await mkdir(pictures,{recursive:true});
-      for(const [index,path] of images.entries()){const name=basename(pictures)+'/'+(index+1)+extname(path);await copyFile(path,join(this.workspace(),name));named.push(name);}
+      named.push(...images.map((path,index)=>basename(pictures)+'/'+(index+1)+extname(path)));
+      await Promise.all(images.map((path,index)=>copyFile(path,join(this.workspace(),named[index]))));
     }
     await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering'+(named.length>1?', all in one step (one read_file call each, sent together)':'')+'.':prompt);
     try{
@@ -293,7 +320,7 @@ export class GrokProvider {
       if(reply.error||!reply.text)throw Error(friendly(reply.error||result.err||String(result.code)));
       this.usageStale=true;
       emit({id,type:'delta',text:reply.text});emit({id,type:'done'});
-    }finally{await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
+    }finally{this.recheck();await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
   }
   /**
    * One headless run. Each streamed line says what Grok is doing (thinking, searching, writing), and the reply streams

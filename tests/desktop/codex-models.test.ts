@@ -242,3 +242,32 @@ test("interim commentary becomes status, and separate answer messages never run 
   await legacy;
   assert.equal(text, "First.\n\nSecond.");
 });
+
+test("the account and its usage are read through the warm connection, with no program started", async () => {
+  const codex: any = new Codex("fixture", "fixture", "fixture");
+  let starts = 0;
+  codex.start = async () => { starts++; throw Error("no program should start"); };
+  const asked: string[] = [];
+  codex.server = { dead: false, ready: Promise.resolve(), request: async (method: string) => {
+    asked.push(method);
+    if (method === "account/read") return { account: { type: "chatgpt", email: "a@example.com", planType: "plus" } };
+    if (method === "account/rateLimits/read") return { rateLimits: { primary: { usedPercent: 12 } } };
+    throw Error("unexpected");
+  } };
+  const account = await codex.account(true);
+  assert.equal(starts, 0);
+  assert.deepEqual(asked, ["account/read", "account/rateLimits/read"]);
+  assert.equal(account.connected, true);
+  assert.equal(account.email, "a@example.com");
+  assert.deepEqual(account.usage, { rateLimits: { primary: { usedPercent: 12 } } });
+  // Usage the provider cannot give still shows the account, as the separate check did.
+  codex.server.request = async (method: string) => { if (method === "account/read") return { account: { type: "chatgpt", email: "a@example.com" } }; throw Error("nope"); };
+  const partial = await codex.account(true);
+  assert.equal(partial.connected, true);
+  assert.equal(partial.usage, null);
+  assert.match(partial.usageError, /unavailable/);
+  // No warm connection: a short-lived one is started, as before.
+  codex.server = null;
+  await assert.rejects(codex.account(true), /no program should start/);
+  assert.equal(starts, 1);
+});
