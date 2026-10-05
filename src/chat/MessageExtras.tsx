@@ -94,3 +94,31 @@ export function parseClaims(raw: string) {
     quote: typeof c.quote === 'string' ? c.quote.slice(0, 240) : '',
   }));
 }
+
+/** Copy, retry and edit under a message the person sent. Retry and Edit answer it again, interrupting a running answer. */
+export function UserMessageTools({ content, onRetry, onEdit }: { content: string; onRetry: () => void; onEdit: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return <div className="message-tools user-tools">
+    <button type="button" aria-label={copied ? 'Copied' : 'Copy message'} aria-description="Copy" onClick={() => void copyText(content).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
+    <button type="button" aria-label="Retry" aria-description="Answer this again" onClick={onRetry}><Icon name="refresh" size={16} /></button>
+    <button type="button" aria-label="Edit" aria-description="Edit and send again" onClick={onEdit}><Icon name="rename" size={16} /></button>
+  </div>;
+}
+
+/** A sent message opened for editing; sending replaces it and everything after it with a fresh answer. */
+export function UserMessageEdit({ content, onCancel, onSend }: { content: string; onCancel: () => void; onSend: (text: string) => void }) {
+  const [text, setText] = useState(content);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const fit = () => { const f = field.current; if (f) { f.style.height = 'auto'; f.style.height = Math.min(f.scrollHeight, 360) + 'px'; } };
+  useEffect(() => { const f = field.current; if (!f) return; fit(); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }, []);
+  const ready = !!text.trim();
+  return <div className="user-edit">
+    <textarea ref={field} value={text} aria-label="Edit your message" rows={1}
+      onChange={e => { setText(e.target.value); fit(); }}
+      onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); onCancel(); } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (ready) onSend(text); } }} />
+    <div className="user-edit-actions">
+      <button type="button" onClick={onCancel}>Cancel</button>
+      <button type="button" className="send" disabled={!ready} onClick={() => onSend(text)}>Send</button>
+    </div>
+  </div>;
+}

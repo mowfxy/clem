@@ -97,7 +97,7 @@ import { PlanEditor } from "./PlanEditor";
 import { ChatMenu } from "./ChatMenu";
 import { MessageBody, type BodyHandlers } from "./chat/MessageBody";
 import { WorkSummary } from "./chat/WorkSummary";
-import { MessageTools, ReviewPanel, VerifyPanel, parseClaims } from "./chat/MessageExtras";
+import { MessageTools, ReviewPanel, VerifyPanel, UserMessageTools, UserMessageEdit, parseClaims } from "./chat/MessageExtras";
 import type { EditBlock } from "./chat/EditProposal";
 import { answerInstructions, visualOnlyInstructions, reviewInstructions, verifyInstructions } from "../core/answer-format";
 import { matchSource, type Citation } from "../core/citations";
@@ -326,7 +326,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const artifactTarget=useRef<{spaceId:string;folderId:string|null;until:number;label?:string}|null>(null);
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
   // A message waiting to be sent, bound to the chat it was written in (none: the chat on screen).
-  const [queued,setQueued]=useState<{prompt:string;chat?:string}|null>(null);
+  // `from`: a sent message answered again by Retry or Edit; it and everything after it are replaced.
+  const [queued,setQueued]=useState<{prompt:string;chat?:string;from?:string}|null>(null);
+  const [editingMessage,setEditingMessage]=useState<string|null>(null);
   const accountDataRef=useRef(accountData);accountDataRef.current=accountData;
   const observedActiveAccount=useRef<string|null>(null);
   const stateRef = useRef(state);
@@ -1522,8 +1524,22 @@ In this subject the learner keeps missing these questions in review; connect to 
       else{setQueued(null);setDraft(queued.prompt);}
       return;
     }
+    if(queued.from){
+      if(running)return;
+      // The interrupted answer has stopped: cut the chat back to before the message, restore its files, then send it as new.
+      const chat=stateRef.current.chats.find(c=>c.id===queued.chat),at=chat?chat.messages.findIndex(m=>m.id===queued.from):-1;
+      if(chat&&at>=0){const sent=chat.messages[at];updateChat(chat.id,c=>({...c,messages:c.messages.slice(0,at)}));setAttachments(sent.attachments||[]);setDriveRefs(sent.drive||[]);}
+      setQueued({prompt:queued.prompt,chat:queued.chat});
+      return;
+    }
     if(!running){const prompt=queued.prompt;setQueued(null);void send(undefined,prompt);}
   },[queued,running,conversationTarget,runs]);
+  function resend(chatId:string,messageId:string,prompt:string){
+    if(!prompt.trim())return;
+    setEditingMessage(null);
+    setQueued({prompt:prompt.trim(),chat:chatId,from:messageId});
+    stopChat(chatId);
+  }
   async function openPackBytes(bytes:Uint8Array,name:string){
     try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast((e as Error).message);}
   }
@@ -2063,7 +2079,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                         return (
                         <article key={m.id} data-message-id={m.id} className={`message ${m.role} ${latest ? "latest" : ""}`}>
                           {m.role === "assistant" && <div className="message-mark"><Logo size={30} thinking={streaming}/></div>}
-                          <div className="message-text">
+                          {m.role === "user" && editingMessage === m.id ? <UserMessageEdit content={m.content} onCancel={() => setEditingMessage(null)} onSend={(text) => resend(activeChat.id, m.id, text)} /> : <div className="message-text">
                             {m.content ? (
                               m.role === "assistant" ? (
                                 <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Mowr continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}{m.work && !streaming && <WorkSummary work={m.work} handlers={bodyHandlers(activeChat, m)} />}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} /></>
@@ -2077,7 +2093,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                                 : <span className="thinking">{(streaming && runs[activeChat.id]) || "Thinking…"}</span>
                             )}
                             {streaming && m.content && runs[activeChat.id] ? <span className="work-status" role="status"><span className="work-dot" />{runs[activeChat.id]}</span> : null}
-                          </div>
+                          </div>}
                           {m.role === "user" && !!m.drive?.length && <div className="message-drive">{m.drive.map((d) => <button type="button" key={d.id} className="drive-attached" onClick={() => openDrive(d)} aria-description={"Open " + d.name}><DriveIcon mime={d.mimeType} name={d.name} size={18} /><span>{d.name}</span></button>)}</div>}
                           {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=>{const Card=m.role==='assistant'?DocumentCard:FileCard;return <Card key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>;})}
                           {/* Visuals from older chats, drawn by the ready-made models Mowr used to have. */}
@@ -2103,6 +2119,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                           {m.role === "assistant" && m.content && !streaming && !m.plan && !m.visual && m.review?.status !== "running" && m.verify?.status !== "running" && (
                             <MessageTools content={m.content} title={activeChat.title} onExport={exportAnswer} models={models} model={m.model || model} busy={activeChat.id in runs} canVerify={sources.length > 0} onReview={(reviewer) => void secondOpinion(activeChat, m.id, reviewer)} onVerify={() => void verifySources(activeChat, m.id)} />
                           )}
+                          {m.role === "user" && m.content && editingMessage !== m.id && <UserMessageTools content={m.content} onRetry={() => resend(activeChat.id, m.id, m.content)} onEdit={() => setEditingMessage(m.id)} />}
                         </article>
                         );
                       })}

@@ -10,7 +10,7 @@
 [data-quiet=true] .messages .message.assistant .thinking{animation:none;background:none;-webkit-text-fill-color:currentColor}
 .message-text p:last-child{margin-bottom:0}
 .history-more{flex-shrink:0;padding:4px 7px;letter-spacing:2px;font-size:20px;color:#aaa}
-.chat-options{position:fixed;inset:auto;margin:0;min-width:160px;padding:5px;background:#252525;color:#e8e6e0;border:1px solid #424242;border-radius:11px;box-shadow:0 12px 36px #0006}
+.chat-options{position:fixed;inset:auto;margin:0;min-width:160px;padding:5px;background:#1c1c1c;color:#e8e6e0;border:1px solid #424242;border-radius:11px;box-shadow:0 12px 36px #0006}
 .chat-options:popover-open{display:grid}
 .chat-options button{justify-content:flex-start;font-size:13px;padding:10px 12px}
 .chat-options button:hover{background:#ffffff0d}

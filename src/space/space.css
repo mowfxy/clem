@@ -134,7 +134,7 @@
 .sp-file-list:has(>.sp-drop-empty){padding:0}
 .sp-files.drop .sp-file-list,.sp-files.drop .sp-drop-empty{outline:2px dashed var(--sp-soft);outline-offset:4px;border-radius:16px}
 .sp-menu{position:relative;flex-shrink:0}
-.sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:190px;padding:5px;border-radius:12px;background:#222220;border:1px solid var(--sp-line-2);box-shadow:0 18px 50px -10px #000c;animation:sp-in .16s ease-out both}
+.sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:190px;padding:5px;border-radius:12px;background:#1c1c1b;border:1px solid var(--sp-line-2);box-shadow:0 18px 50px -10px #000c;animation:sp-in .16s ease-out both}
 .space-page .sp-menu-list button{width:100%;display:flex;align-items:center;gap:9px;justify-content:flex-start;padding:8px 10px;border:0;border-radius:8px;background:none;font:400 var(--t-small)/1.2 var(--sans);color:var(--sp-ink)}
 .space-page .sp-menu-list button:hover{background:#ffffff0d}
 .space-page .sp-menu-list button.danger{color:#f0a594}
