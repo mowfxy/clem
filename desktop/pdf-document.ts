@@ -5,6 +5,7 @@ import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
 import { standardFonts, brandFont } from "../core/print-fonts.ts";
 import { visualBlocks, visualCaption } from "../core/visual-print.ts";
 import { assetOf, SLOT } from "./pdf-assets.ts";
+import { designDocument, TITLE_STYLES, HEADING_STYLES, titleStyles, type TitleStyle, type HeadingStyle } from "./pdf-design.ts";
 const escape = (text: unknown) =>
   String(text ?? "").replace(
     /[&<>"']/g,
@@ -13,7 +14,27 @@ const escape = (text: unknown) =>
         c
       ]!,
   );
-type Figure = { module: string; fn: string; args: unknown[] };
+/** A figure's size and place on the page: "width" is a share of the text column (0.2–1); "align" is "auto" (chosen
+ *  by figureLayout), "center" (in the column, the drawing optically centred), "box" (in the column, its box centred),
+ *  "left" or "right" (in the column, flush), or "wrap-left"/"wrap-right" (beside its section's text, which wraps round it). */
+type Placement = { width?: number; align?: Align };
+export type Align = "auto" | "center" | "box" | "left" | "right" | "wrap-left" | "wrap-right";
+const ALIGNS = new Set<Align>(["auto", "center", "box", "left", "right", "wrap-left", "wrap-right"]);
+
+/**
+ * Where a figure goes when nobody said: the layout a designer would pick. A figure of at most half the column, in a
+ * section with enough text to run beside it (about 120 words: its height in lines), goes beside the text on the
+ * right with the text wrapping round it, so a small drawing does not sit alone in a band of white; anything larger, a
+ * section with little text, two columns or a letter keeps it in the column, its drawing centred. Text in the column
+ * beside a figure needs at least 45% of the column to stay readable.
+ */
+export function figureLayout(width: number, column: number, { words, columns = 1, layout }: { words: number; columns?: number; layout?: Layout }): Exclude<Align, "auto"> {
+  if (columns === 1 && layout !== "letter" && width <= 0.5 * column && column - width >= 0.45 * column && words >= 120) return "wrap-right";
+  return "center";
+}
+/** The width a drawing (a Kinetra figure's SVG) asks for, in CSS pixels, or undefined. */
+const svgWidth = (svg: string) => { const w = Number(/^<svg[^>]*?\swidth="([\d.]+)(?:px)?"/.exec(svg)?.[1]); return w > 0 ? w : undefined; };
+type Figure = { module: string; fn: string; args: unknown[] } & Placement;
 type Section = { heading?: string; text?: string; figure?: Figure; caption?: string };
 export type DocumentSpec = {
   title: string;
@@ -44,15 +65,20 @@ export type Design = {
   lineHeight?: number;
   columns?: 1 | 2;
   pageSize?: "A4" | "Letter" | "Legal" | "A5";
-  /** Page margins in millimetres (8–40). */
+  /** Side margins in millimetres (8–40); the top and bottom keep the page design's own, for the running head and folio. */
   margin?: number;
   titleAlign?: "left" | "center";
+  /** "left": ragged right (no justification); "justify": justified. */
+  textAlign?: "justify" | "left";
   /** false: no section numbers. */
   numbered?: boolean;
   /** true: a contents list even for short documents; false: none. */
   contents?: boolean;
   /** false: no running head on the pages after the first. */
   runningHead?: boolean;
+  /** The title block and the section headings (desktop/pdf-design.ts); worked out per document when not given. */
+  titleStyle?: TitleStyle;
+  headingStyle?: HeadingStyle;
   /** Any further CSS for the print page (classes .doc-head, h1, h2, h3, .doc-summary, .doc-toc, main, table, figure, figcaption, .env, .env-definition …). */
   css?: string;
 };
@@ -62,7 +88,7 @@ export function designProblems(design: unknown): string[] {
   if (design === undefined) return [];
   if (!design || typeof design !== "object" || Array.isArray(design)) return ['design must be an object such as {"accent":"#0b5394","columns":2}.'];
   const d = design as Record<string, unknown>, problems: string[] = [];
-  const known = ["accent", "fontSize", "lineHeight", "columns", "pageSize", "margin", "titleAlign", "numbered", "contents", "runningHead", "css"];
+  const known = ["accent", "fontSize", "lineHeight", "columns", "pageSize", "margin", "titleAlign", "titleStyle", "headingStyle", "textAlign", "numbered", "contents", "runningHead", "css"];
   for (const key of Object.keys(d)) if (!known.includes(key)) problems.push(`design.${key} is not a design setting (use ${known.join(", ")}, or put it in design.css).`);
   if (d.accent !== undefined && !(typeof d.accent === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(d.accent))) problems.push('design.accent must be a hex colour like "#0b5394".');
   const range = (key: string, min: number, max: number) => { if (d[key] !== undefined && !(typeof d[key] === "number" && d[key]! >= min && d[key]! <= max)) problems.push(`design.${key} must be a number from ${min} to ${max}.`); };
@@ -70,6 +96,9 @@ export function designProblems(design: unknown): string[] {
   if (d.columns !== undefined && d.columns !== 1 && d.columns !== 2) problems.push("design.columns must be 1 or 2.");
   if (d.pageSize !== undefined && !pageSizes.has(d.pageSize as string)) problems.push("design.pageSize must be A4, Letter, Legal or A5.");
   if (d.titleAlign !== undefined && d.titleAlign !== "left" && d.titleAlign !== "center") problems.push('design.titleAlign must be "left" or "center".');
+  if (d.textAlign !== undefined && d.textAlign !== "left" && d.textAlign !== "justify") problems.push('design.textAlign must be "left" or "justify".');
+  if (d.titleStyle !== undefined && !(TITLE_STYLES as readonly unknown[]).includes(d.titleStyle)) problems.push(`design.titleStyle must be one of ${TITLE_STYLES.join(", ")}.`);
+  if (d.headingStyle !== undefined && !(HEADING_STYLES as readonly unknown[]).includes(d.headingStyle)) problems.push(`design.headingStyle must be one of ${HEADING_STYLES.join(", ")}.`);
   for (const key of ["numbered", "contents", "runningHead"]) if (d[key] !== undefined && typeof d[key] !== "boolean") problems.push(`design.${key} must be true or false.`);
   if (d.css !== undefined && (typeof d.css !== "string" || d.css.length > 20000)) problems.push("design.css must be CSS text of at most 20,000 characters.");
   return problems;
@@ -143,7 +172,7 @@ export function documentFonts(spec: Pick<DocumentSpec, "font" | "headingFont" | 
 const accepted = new Set<string>();
 /** Figures already drawn, so adding a part to a long document does not draw (and risk timing out) every earlier figure again. */
 const drawn = new Map<string, string>();
-async function drawFigure(figure: any) {
+async function drawFigure({ width: _w, align: _a, ...figure }: any) {
   const key = JSON.stringify(figure);
   const cached = drawn.get(key);
   if (cached) return cached;
@@ -262,7 +291,7 @@ const runningTitle = (title: string) => (title.length > 90 ? title.slice(0, 87).
  *  since page-margin boxes do not see the document's custom properties. */
 function pageCss(layout: Layout, type: { body: string; head: string }, title: string, label: string, design: Design = {}) {
   let css = pageFrame(layout, type, title, label).replace(/size:A4/g, "size:" + (design.pageSize || "A4"));
-  if (design.margin) css = css.replace(/(@page\{size:\w+;)margin:[^;]+;/, `$1margin:${design.margin}mm;`);
+  if (design.margin) css = css.replace(/(@page\{size:\w+;)margin:(\S+) \S+ (\S+);/, `$1margin:$2 ${design.margin}mm $3;`);
   // Without a running head only the page number stays. Braces in the title are escaped (cssString), so this is exact.
   if (design.runningHead === false) css = css.replace(/@top-(?:left|center|right)\{[^}]*\}/g, "");
   return css;
@@ -288,11 +317,7 @@ body{margin:0;font:10.5pt/1.36 var(--body);color:#111;font-variant-numeric:linin
 a{color:inherit;text-decoration:none}
 a.ref,.cite a{color:var(--link)}
 body{--link:#1f57c3;--accent:#1f57c3;--tint:color-mix(in srgb,var(--accent) 7%,#fff)}
-.layout-notes{--accent:var(--accent)}
-.layout-business{--accent:var(--accent)}
 .accented{--link:var(--accent)}
-.accented h1,.accented h2,.accented h3,.accented .num{color:var(--accent)}
-.accented .title-rule,.accented .doc-head{border-color:var(--accent)}
 .columns-2 main{column-count:2;column-gap:7mm;column-fill:auto}
 .columns-2 main figure,.columns-2 main table{break-inside:avoid}
 body.title-left .doc-head,body.title-left .doc-head h1,body.title-left .doc-subtitle,body.title-left .doc-author,body.title-left .doc-date{text-align:left}
@@ -325,8 +350,22 @@ math{font-family:'Cambria Math','STIX Two Math',math}
 .eqnum .katex-display::after{content:"(" counter(eq) ")";position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:10.5pt}
 figure{margin:12pt 0 14pt;break-inside:avoid;text-align:center}
 figure img{display:block;margin:0 auto 7pt;max-width:100%;max-height:112mm;object-fit:contain}
-figure a.asset-slot{display:block;width:fit-content;max-width:100%;margin:0 auto 7pt;line-height:0}
-figure a.asset-slot img{margin:0}
+figure img.sized{max-height:none}
+figure .asset-slot{display:block;width:fit-content;max-width:100%;margin:0 auto 7pt;line-height:0}
+figure .asset-slot img{margin:0;width:100%;height:auto}
+figure .figure-slot{display:block;width:fit-content;max-width:100%;margin:0 auto;line-height:0}
+figure .figure-slot img.sized{width:100%;height:auto}
+figure.align-left,figure.align-right{text-align:left}
+figure.align-left figcaption{margin-left:0}
+figure.align-right figcaption{margin-right:0}
+/* Beside the text: the figure floats at the column's edge and the section's text wraps round it. */
+main>section.has-wrap{display:flow-root}
+figure.align-wrap-right,figure.align-wrap-left{max-width:50%;margin:3pt 0 8pt;text-align:left}
+figure.align-wrap-right{float:right;clear:right;margin-left:14pt}
+figure.align-wrap-left{float:left;clear:left;margin-right:14pt}
+figure.align-wrap-right .asset-slot,figure.align-wrap-left .asset-slot,figure.align-wrap-right .figure-slot,figure.align-wrap-left .figure-slot{margin:0 0 5pt}
+figure.align-wrap-right figcaption,figure.align-wrap-left figcaption{display:block;margin:0;font-size:8.8pt;text-align:left}
+.has-wrap .env,.has-wrap pre,.has-wrap blockquote,.has-wrap .katex-display,.has-wrap ul,.has-wrap ol,.has-wrap h3,.has-wrap h4{display:flow-root}
 figcaption,caption{display:table;margin:0 auto;font-size:9.6pt;line-height:1.35;text-align:justify;color:#111}
 caption{display:table-caption;caption-side:top;margin-bottom:6pt;text-align:center}
 .cap-label{font-weight:400}
@@ -429,6 +468,39 @@ ol.refs li::before{content:"[" counter(ref) "]";position:absolute;left:0}
 .layout-letter .doc-subtitle{margin:2pt 0 0;font-size:11pt}
 .layout-letter p{text-align:left;margin-bottom:9pt}
 .layout-letter h2{font-size:11pt;margin:14pt 0 6pt}
+
+/* Title blocks (desktop/pdf-design.ts). The technical ones restyle its ruled block; the rest share one structure. */
+body.t-center .title-rule{border-top:0;border-bottom:.8pt solid var(--accent);padding:0 0 9pt;margin:0 auto 12pt;max-width:80%}
+body.t-center.layout-technical h1{font-variant:normal;font-weight:700;letter-spacing:0}
+body.t-left .doc-head,body.t-left .doc-head *{text-align:left}
+body.t-left .title-rule{border-top:0;border-bottom:1.4pt solid var(--accent);padding:0 0 9pt;margin:0 0 12pt}
+body.t-left.layout-technical h1{font-variant:normal;font-weight:700;font-size:20pt;letter-spacing:-.005em;text-align:left}
+body.t-left.layout-technical .doc-subtitle{font-variant:normal;font-style:italic;text-align:left}
+body.t-left.layout-technical .doc-author,body.t-left.layout-technical .doc-date{text-align:left}
+body.t-rule .doc-head{margin:0 0 9mm;padding:0 0 9pt;border:0;border-bottom:.8pt solid #111;background:none}
+body.t-bar .doc-head{margin:0 0 8mm;padding:9pt 0 10pt;border:0;border-top:3pt solid var(--accent);border-bottom:.5pt solid #b9bec7;background:none}
+body.t-bar .doc-kind{font:700 8.4pt var(--head);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-variant:normal}
+body.t-band .doc-head{margin:0 0 9mm;padding:13pt 15pt 12pt;border:0;border-left:4pt solid var(--accent);background:var(--tint)}
+body.t-band .doc-kind{color:var(--accent);font-variant:normal;text-transform:uppercase;letter-spacing:.12em;font-size:8.4pt;font-weight:700}
+body.t-plain .doc-head{margin:4mm 0 10mm;padding:0;border:0;background:none}
+body.t-plain .doc-head h1{font-size:26pt;line-height:1.1;letter-spacing:-.015em}
+body.t-plain .doc-kind{color:var(--accent)}
+body.t-center:not(.layout-technical) .doc-head{margin:2mm 0 9mm;padding:0 0 10pt;border:0;border-bottom:.8pt solid var(--accent);background:none;text-align:center}
+body.t-center:not(.layout-technical) .doc-head *{text-align:center}
+body.t-center .answer-line{text-align:left}
+/* Section headings. */
+body.h-plain main h2{border:0;padding:0}
+body.h-rule main h2,body.h-rule .doc-references h2{padding-bottom:3pt;border-bottom:.5pt solid #9a9a96}
+body.h-accent main h2,body.h-accent main h3,body.h-accent .num,body.h-accent .doc-references h2,body.h-accent .toc-head{color:var(--accent)}
+body.h-accent main h2{border-color:var(--accent)}
+body.h-smallcaps main h2,body.h-smallcaps .doc-references h2,body.h-smallcaps .toc-head{font-variant:small-caps;letter-spacing:.045em;font-size:12.8pt}
+body.h-smallcaps main h2 .num{font-variant:normal;letter-spacing:0}
+body.t-left .doc-summary h2{text-align:left}
+body.t-left.layout-technical .doc-summary .abstract{margin:0}
+/* Ragged right: for young readers and business documents, and whenever asked. */
+body.ragged p,body.ragged li,body.ragged .env p,body.ragged figcaption{text-align:left;hyphens:manual}
+body.h-bar main h2{padding:1pt 0 1pt 8pt;border:0;border-left:2.5pt solid var(--accent)}
+body.h-bar main h2 .num{color:var(--accent)}
 `;
 
 const sectionWords = /\b(Figure|Fig\.|Table|Section|§)\s?(\d+(?:\.\d+)*)\b/g;
@@ -455,10 +527,12 @@ function linkText(html: string, targets: Set<string>, references: number) {
  * The print page for a specification. `pages` (from a first printing) fills the contents with page numbers;
  * the numbers sit in fixed-width slots, so filling them never moves anything else.
  */
-/** `pictures`: print vector crops as their PNG (when placing the vectors failed). */
-export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[], pages?: Map<string, number>, { pictures = false }: { pictures?: boolean } = {}) {
+/** `pictures`: print vector crops as their PNG (when placing the vectors failed); `bare`: and without the links that
+ *  mark where each crop printed (when even those could not be read back). */
+export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[], pages?: Map<string, number>, { pictures = false, bare = false }: { pictures?: boolean; bare?: boolean } = {}) {
   const kind = String(spec.kind || "report");
   const layout = layoutFor(spec);
+  spec = withDesign(spec);
   const type = documentFonts(spec);
   const sections = spec.sections;
   const headed = sections.filter((s) => s.heading);
@@ -482,6 +556,10 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
       '<p class="doc-meta">' + (author ? author + " · " : "") + date + "</p>" +
       (kind === "worksheet" ? '<div class="answer-line"><span>Name</span><span>Date</span></div>' : "") + "</header>";
 
+  // The text column in CSS pixels, for sizing crops: the page less its side margins (and the gap, in two columns).
+  const sheet = ({ A4: 210, Letter: 215.9, Legal: 215.9, A5: 148 } as Record<string, number>)[design.pageSize || "A4"] ?? 210;
+  const sides = design.margin ?? (layout === "letter" ? 25 : 22);
+  const column = ((design.columns === 2 ? (sheet - 2 * sides - 7) / 2 : sheet - 2 * sides) * 96) / 25.4;
   // Numbering is written into the text (not CSS counters), so the contents, the PDF outline and cross-references agree.
   type Entry = { id: string; num: string; text: string; level: 2 | 3 };
   const toc: Entry[] = [];
@@ -490,7 +568,7 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
   const parts = sections.map((section, i) => {
     const heading = section.heading ? cleanHeading(section.heading) : "";
     const num = numbered && heading ? String(++n2) : "";
-    let html = "";
+    let html = "", wrapped = false;
     if (heading) {
       const id = num ? "sec-" + num : "sec-u" + i;
       if (num) { targets.add(id); toc.push({ id, num, text: heading, level: 2 }); }
@@ -523,14 +601,43 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
       const id = "fig-" + ++figureNo;
       targets.add(id);
       const crop = assetOf(svg), alt = escape(section.caption || heading || "Figure");
-      // A vector crop prints as an empty picture of its size inside a link; desktop/pdf-assets.ts stampVectors then
-      // draws the crop into the link's rectangle. Other crops print their PNG, and drawings print as they are.
-      const picture = crop?.vector && !pictures
-        ? '<a class="asset-slot" href="' + SLOT + crop.id + "/" + figureNo + '"><img alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${crop.width}" height="${crop.height}" viewBox="0 0 ${crop.width} ${crop.height}"/>`).toString("base64") + '"></a>'
-        : '<img alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(crop ? svg : standardFonts(svg, type.body)).toString("base64") + '">';
-      html += '<figure id="' + id + '">' + picture + '<figcaption><span class="cap-label">Figure&#160;' + figureNo + ":</span> " + (section.caption ? markdownHtml(section.caption, { inline: true }) : escape(heading)) + "</figcaption></figure>";
+      const place = section.figure as Placement;
+      const asked: Align = ALIGNS.has(place.align as Align) ? (place.align as Align) : "auto";
+      const share = typeof place.width === "number" && place.width >= 0.2 && place.width <= 1 ? place.width : undefined;
+      const words = String(section.text || "").split(/\s+/).filter(Boolean).length;
+      // Beside the text, a figure takes at most half the column.
+      const sized = (natural: number | undefined) => (natural ? Math.min(natural, column) : column);
+      let picture: string, align: Exclude<Align, "auto">;
+      // Every figure prints inside a link, so desktop/pdf-assets.ts stampVectors learns where it landed and the model
+      // is shown that page; a vector crop's link holds an empty picture and stampVectors draws the crop into its rectangle.
+      const slot = (cls: string, style: string, href: string, inner: string) => bare
+        ? `<span class="${cls} bare" style="${style}">${inner}</span>`
+        : `<a class="${cls}" style="${style}" href="${href}">${inner}</a>`;
+      if (crop) {
+        let { width, left } = cropPlacement(crop, { share, align: asked === "auto" ? "center" : asked, column });
+        align = asked === "auto" ? figureLayout(width, column, { words, columns: design.columns, layout }) : asked;
+        if (align.startsWith("wrap")) { width = Math.min(width, column * 0.5); left = "0px"; }
+        const src = crop.vector && !pictures ? `<svg xmlns="http://www.w3.org/2000/svg" width="${crop.width}" height="${crop.height}" viewBox="0 0 ${crop.width} ${crop.height}"/>` : svg;
+        const img = '<img class="sized" alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(src).toString("base64") + '">';
+        picture = slot("asset-slot", `width:${width}px;margin-left:${left};margin-right:0`, SLOT + crop.id + "/" + figureNo + (crop.vector && !pictures ? "" : "/p"), img);
+      } else {
+        const natural = svgWidth(svg);
+        const width = share ? share * column : sized(natural);
+        align = asked === "auto" ? figureLayout(width, column, { words, columns: design.columns, layout }) : asked;
+        const wrap = align.startsWith("wrap");
+        const style = (share || wrap ? `width:${Math.round(Math.min(width, wrap ? column * 0.5 : column) * 100) / 100}px;` : "") + (align === "left" || wrap ? "margin-left:0;margin-right:0;" : align === "right" ? "margin-left:auto;margin-right:0;" : "");
+        const img = '<img' + (share || wrap ? ' class="sized"' : "") + ' alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(standardFonts(svg, type.body)).toString("base64") + '">';
+        picture = slot("figure-slot", style, SLOT + "figure/" + figureNo + "/p", img);
+      }
+      const figure = '<figure id="' + id + '"' + (align === "center" || align === "box" ? "" : ' class="align-' + align + '"') + ">" + picture + '<figcaption><span class="cap-label">Figure&#160;' + figureNo + ":</span> " + (section.caption ? markdownHtml(section.caption, { inline: true }) : escape(heading)) + "</figcaption></figure>";
+      // A figure beside the text goes before the section's text (after its heading), so the text wraps round it.
+      if (align.startsWith("wrap")) {
+        const at = heading ? html.indexOf("</h2>") + 5 : 0;
+        html = html.slice(0, at) + figure + html.slice(at);
+        wrapped = true;
+      } else html += figure;
     }
-    return '<section class="' + (num ? "" : "unnumbered") + '">' + html + "</section>";
+    return '<section class="' + [num ? "" : "unnumbered", wrapped ? "has-wrap" : ""].filter(Boolean).join(" ") + '">' + html + "</section>";
   });
   const references = spec.references?.length || 0;
   let body = head;
@@ -549,7 +656,8 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
   }
   body += "<main>" + parts.map((part) => linkText(part, targets, references)).join("") + "</main>";
   if (references) body += '<section class="doc-references"><h2 id="references">References</h2><ol class="refs">' + spec.references!.map((r, i) => '<li id="ref-' + (i + 1) + '">' + markdownHtml(r.replace(/^\s*\[\d+\]\s*/, ""), { inline: true }) + "</li>").join("") + "</ol></section>";
-  const classes = ["layout-" + layout, numbered ? "numbered" : "plain", kind === "worksheet" ? "worksheet" : "", layout === "technical" && numbered ? "eqnum" : "", design.accent ? "accented" : "", design.columns === 2 ? "columns-2" : "", design.titleAlign ? "title-" + design.titleAlign : ""].filter(Boolean).join(" ");
+  const title = design.titleStyle && titleStyles[layout].includes(design.titleStyle) ? design.titleStyle : titleStyles[layout][0];
+  const classes = ["layout-" + layout, numbered ? "numbered" : "plain", kind === "worksheet" ? "worksheet" : "", layout === "technical" && numbered ? "eqnum" : "", design.accent ? "accented" : "", design.columns === 2 ? "columns-2" : "", design.titleAlign ? "title-" + design.titleAlign : "", layout === "letter" ? "" : "t-" + title, layout === "letter" ? "" : "h-" + (design.headingStyle || "plain"), design.textAlign === "left" ? "ragged" : ""].filter(Boolean).join(" ");
   const custom = (design.accent ? `body{--accent:${design.accent}}` : "") +
     (design.fontSize || design.lineHeight ? `body{${design.fontSize ? `font-size:${design.fontSize}pt;` : ""}${design.lineHeight ? `line-height:${design.lineHeight}` : ""}}` : "") +
     (design.css ? cleanCss(design.css) : "");
@@ -557,6 +665,35 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
     '<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(spec.title) + '</title><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'"><style>' +
     pageCss(layout, type, spec.title, label, design) + ":root{--body:" + type.body + ";--head:" + type.head + "}" + documentCss + custom + '</style><body class="' + classes + '">' + body + "</body></html>"
   );
+}
+
+/** A specification with its design worked out (desktop/pdf-design.ts): what is printed, and what is kept with the file
+ *  so revisions look the same. */
+export function withDesign<T extends DocumentSpec>(spec: T): T {
+  const resolved = designDocument(spec, layoutFor(spec));
+  return { ...spec, font: resolved.font, headingFont: resolved.headingFont, design: resolved.design };
+}
+
+/** The tallest a crop prints, in CSS pixels (130 mm), so a figure and its caption leave room for text on the page. */
+const MAX_CROP_HEIGHT = (130 * 96) / 25.4;
+/**
+ * A crop's printed width and left margin in its column. By default a crop prints at the size it has in its source, so
+ * its labels keep their size next to the text; a small PDF crop is enlarged towards half the column (at most 1.5×), and
+ * a crop wider than the column or taller than 130 mm is shrunk to fit. "center" centres the drawing, not its box: the
+ * crop's optical centre (core/pdf-regions.ts opticalCentre) goes on the column's centre, moved at most 12% of its
+ * width and never out of the column.
+ */
+export function cropPlacement(crop: { width: number; height: number; units?: "pt" | "px"; centre?: number }, { share, align = "center", column }: { share?: number; align?: string; column: number }) {
+  const ratio = crop.height / Math.max(1, crop.width);
+  let width = share ? share * column : crop.units === "px" ? crop.width : crop.width < 0.45 * column ? Math.min(0.45 * column, crop.width * 1.5) : crop.width;
+  width = Math.min(width, column, MAX_CROP_HEIGHT / ratio);
+  width = Math.max(1, Math.round(width * 100) / 100);
+  const shift = align === "center" ? Math.max(-0.12, Math.min(0.12, 0.5 - (crop.centre ?? 0.5))) * width : 0;
+  const px = (n: number) => Math.round(n * 100) / 100 + "px";
+  const left = align === "left" ? "0px"
+    : align === "right" ? `max(0px, calc(100% - ${px(width)}))`
+    : `clamp(0px, calc(50% - ${px(width / 2 - shift)}), max(0px, calc(100% - ${px(width)})))`;
+  return { width, left };
 }
 
 const headingKey = (heading: string) => cleanHeading(heading).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();

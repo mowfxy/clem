@@ -15,6 +15,9 @@ export type CropAsset = {
   width: number; height: number; dpi?: number;
   vector: boolean;
   caption?: string;
+  /** Where the drawing's weight sits across the crop, 0 (left edge) to 1 (right edge): the centre a document puts on
+   *  its column (core/pdf-regions.ts opticalCentre). Missing for crops cut before it was measured. */
+  centre?: number;
   created: number;
 };
 /** Where assets are kept: the workspace disk for normal chats, memory for temporary ones (never written anywhere). */
@@ -133,7 +136,8 @@ export function cropTools(ask: WindowTask, assets: CropAssets) {
     // Pages drawn as vectors are cut as vectors too; the PNG is the fallback (and what Word and PowerPoint get).
     const pdf = data.vector && source ? await vectorCrop(source, data.page, box) : undefined;
     const caption = typeof tool.caption === "string" ? tool.caption.slice(0, 300) : data.region?.caption;
-    const asset = await assets.add({ file: data.file, ...(data.page ? { page: data.page } : {}), box, units: data.units, width: data.width, height: data.height, ...(data.dpi ? { dpi: data.dpi } : {}), vector: !!pdf, ...(caption ? { caption } : {}) }, png, pdf);
+    const centre = typeof data.centre === "number" && data.centre >= 0 && data.centre <= 1 ? Math.round(data.centre * 1000) / 1000 : undefined;
+    const asset = await assets.add({ file: data.file, ...(data.page ? { page: data.page } : {}), box, units: data.units, width: data.width, height: data.height, ...(data.dpi ? { dpi: data.dpi } : {}), vector: !!pdf, ...(caption ? { caption } : {}), ...(centre !== undefined ? { centre } : {}) }, png, pdf);
     const hit = (data.hit as string[]).map((s) => SIDES[s]).filter(Boolean);
     return {
       result: {
@@ -142,7 +146,7 @@ export function cropTools(ask: WindowTask, assets: CropAssets) {
         check: hit.length
           ? `The drawing seems to run on past the ${hit.join(" and ")} edge${hit.length > 1 ? "s" : ""}. Look at the attached picture; if anything is cut, crop again with a larger "bbox".`
           : `Trimmed to the drawing's own edges with ${tool.trim === false ? "no trimming (as asked)" : "every edge on paper"}. Look at the attached picture: every label whole, nothing from around it. If it is wrong, crop again with an adjusted "bbox" (same units).`,
-        note: `Kept in this chat as "${asset.id}"${asset.vector ? " (vector: sharp at any size)" : ""}. To put it in a pdf, docx or pptx, use "figure":{"asset":"${asset.id}","source"?:"…" or true}.`,
+        note: `Kept in this chat as "${asset.id}"${asset.vector ? " (vector: sharp at any size)" : ""}. To put it in a pdf, docx or pptx, use "figure":{"asset":"${asset.id}","source"?:"…" or true}; in a PDF it keeps its source size and goes where the page looks best (beside the text when small, else in the column; "width":0.2–1 of the column and "align" choose otherwise). Crop tight to the drawing: whatever else is inside the crop (a neighbouring label, a stray line, the old caption) is placed and centred with it.${centre !== undefined && Math.abs(centre - 0.5) > 0.04 ? ` Its drawing sits ${centre < 0.5 ? "left" : "right"} of the crop's middle (labels or a legend on one side); "center" balances the drawing, not the box.` : ""}`,
       },
       pictures: images,
     };
@@ -171,13 +175,15 @@ export function assetSvg(meta: CropAsset, png: Uint8Array) {
   const [x0, y0, x1, y1] = meta.box;
   const scale = meta.units === "pt" ? 96 / 72 : 1;
   const w = Math.max(1, Math.round((x1 - x0) * scale * 100) / 100), h = Math.max(1, Math.round((y1 - y0) * scale * 100) / 100);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" data-mowr-asset="${meta.id}"${meta.vector ? ' data-mowr-vector="1"' : ""}><image width="${w}" height="${h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(png).toString("base64")}"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" data-mowr-asset="${meta.id}"${meta.vector ? ' data-mowr-vector="1"' : ""} data-mowr-units="${meta.units}"${typeof meta.centre === "number" ? ` data-mowr-centre="${meta.centre}"` : ""}><image width="${w}" height="${h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(png).toString("base64")}"/></svg>`;
 }
 const ASSET_SVG = /^<svg [^>]*\bwidth="([\d.]+)" height="([\d.]+)"[^>]*\bdata-mowr-asset="(crop-[a-f0-9]{8})"[^>]*><image [^>]*href="data:image\/png;base64,([A-Za-z0-9+/=]+)"\/><\/svg>$/;
-/** The crop inside an assetSvg drawing: its id, its CSS size, its PNG; undefined for any other drawing. */
+/** The crop inside an assetSvg drawing: its id, its CSS size, its PNG, its units and optical centre; undefined for any other drawing. */
 export function assetOf(svg: string) {
   const m = ASSET_SVG.exec(svg);
-  return m ? { id: m[3], width: Number(m[1]), height: Number(m[2]), png: new Uint8Array(Buffer.from(m[4], "base64")), vector: /\bdata-mowr-vector="1"/.test(svg.slice(0, 400)) } : undefined;
+  if (!m) return undefined;
+  const head = svg.slice(0, 500), centre = Number(/\bdata-mowr-centre="([\d.]+)"/.exec(head)?.[1]);
+  return { id: m[3], width: Number(m[1]), height: Number(m[2]), png: new Uint8Array(Buffer.from(m[4], "base64")), vector: /\bdata-mowr-vector="1"/.test(head), units: (/\bdata-mowr-units="px"/.test(head) ? "px" : "pt") as "pt" | "px", ...(centre >= 0 && centre <= 1 ? { centre } : {}) };
 }
 
 const LABEL = /^\s*(?:fig(?:ure)?|table|tab|scheme|plate|chart)\.?\s*(?:\d+|[IVXLC]+\b)(?:[.\-–:]\d+)*[a-z]?[.:]?\s*/i;
@@ -222,16 +228,35 @@ export async function resolveAssets(spec: any, read: ReadAsset) {
 /** Where a vector crop goes on the printed page: a link to this address, wrapped round a placeholder of its size. */
 export const SLOT = "https://asset.mowr.invalid/";
 
+/** Where a crop printed: its page (1-based) and rectangle in PDF points, and the page's size. */
+export type CropSpot = { id: string; figure: number; page: number; rect: [number, number, number, number]; sheet: [number, number] };
+
+/** Pictures of the pages a document's figures printed on, at most this many per result. */
+const FIGURE_PAGE_PREVIEWS = 5;
+/**
+ * The pages to show for a document's figures: each page a figure printed on, and the page before when a figure starts
+ * a page (that is where a figure pushed over leaves an empty gap).
+ */
+export function figurePages(spots: CropSpot[], limit = FIGURE_PAGE_PREVIEWS) {
+  const pages: number[] = [];
+  for (const s of spots) {
+    if (s.page > 1 && s.rect[3] > s.sheet[1] - 130) pages.push(s.page - 1);
+    pages.push(s.page);
+  }
+  return [...new Set(pages)].sort((a, b) => a - b).slice(0, limit);
+}
+
 /**
  * Puts each vector crop where its placeholder was printed: Chromium writes every link as an annotation with its exact
- * rectangle, so the crop's page is drawn into that rectangle and the link removed. Throws when a place is missing, so
- * the caller prints with the PNGs instead.
+ * rectangle, so the crop's page is drawn into that rectangle and the link removed. A crop printed as its picture has a
+ * link too ("…/p"), which is only removed. `spots` receives where every crop landed. Throws when a place is missing,
+ * so the caller prints with the PNGs instead.
  */
-export async function stampVectors(bytes: Uint8Array, vectors: Map<string, Uint8Array>, expected: number) {
+export async function stampVectors(bytes: Uint8Array, vectors: Map<string, Uint8Array>, expected: number, spots: CropSpot[] = []) {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   const embedded = new Map<string, Awaited<ReturnType<PDFDocument["embedPdf"]>>[number]>();
   let placed = 0;
-  for (const page of doc.getPages()) {
+  for (const [index, page] of doc.getPages().entries()) {
     const annots = page.node.lookup(PDFName.of("Annots"));
     if (!(annots instanceof PDFArray)) continue;
     for (let i = annots.size() - 1; i >= 0; i--) {
@@ -241,14 +266,19 @@ export async function stampVectors(bytes: Uint8Array, vectors: Map<string, Uint8
       const uri = action instanceof PDFDict ? action.lookup(PDFName.of("URI")) : undefined;
       const target = uri instanceof PDFString || uri instanceof PDFHexString ? uri.decodeText() : "";
       if (!target.startsWith(SLOT)) continue;
-      const id = target.slice(SLOT.length).split(/[/?#]/)[0];
+      const [id, figure, mode] = target.slice(SLOT.length).split(/[?#]/)[0].split("/");
+      const picture = mode === "p";
       const crop = vectors.get(id);
       const rect = annot.lookup(PDFName.of("Rect"));
-      if (!crop || !(rect instanceof PDFArray) || rect.size() !== 4) throw Error("A crop's place could not be found.");
-      if (!embedded.has(id)) embedded.set(id, (await doc.embedPdf(crop, [0]))[0]);
+      if ((!crop && !picture) || !(rect instanceof PDFArray) || rect.size() !== 4) throw Error("A crop's place could not be found.");
       const [ax, ay, bx, by] = rect.asArray().map((n: any) => Number(n.asNumber?.()));
       if (![ax, ay, bx, by].every(Number.isFinite)) throw Error("A crop's place could not be read.");
-      page.drawPage(embedded.get(id)!, { x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay) });
+      if (!picture) {
+        if (!embedded.has(id)) embedded.set(id, (await doc.embedPdf(crop!, [0]))[0]);
+        page.drawPage(embedded.get(id)!, { x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay) });
+      }
+      const { width, height } = page.getSize();
+      spots.push({ id, figure: Number(figure) || 0, page: index + 1, rect: [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)], sheet: [width, height] });
       annots.remove(i);
       placed++;
     }

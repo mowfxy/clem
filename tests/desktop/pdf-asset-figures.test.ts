@@ -54,11 +54,15 @@ test("the PDF page gets a placeholder link for a vector crop, and the crop's PNG
   const svg = assetSvg(meta(), png);
   const spec: any = { title: "T", sections: [{ heading: "A", text: "x", figure: { asset: "crop-0000aaaa", svg }, caption: "C" }] };
   const html = documentHtml(spec, [svg]);
-  assert.match(html, new RegExp(`<a class="asset-slot" href="${SLOT}crop-0000aaaa/1"><img`));
+  assert.match(html, new RegExp(`<a class="asset-slot" style="[^"]*" href="${SLOT}crop-0000aaaa/1"><img`));
   assert.doesNotMatch(html, /data:image\/png/, "the PNG is not printed under the vectors");
+  // Printed as its PNG, the crop still marks where it landed ("/p": the link is only removed).
   const pictures = documentHtml(spec, [svg], undefined, { pictures: true });
-  assert.doesNotMatch(pictures, /<a class="asset-slot"/);
+  assert.match(pictures, new RegExp(`<a class="asset-slot" style="[^"]*" href="${SLOT}crop-0000aaaa/1/p">`));
   assert.ok(pictures.includes(Buffer.from(svg).toString("base64")));
+  const bare = documentHtml(spec, [svg], undefined, { pictures: true, bare: true });
+  assert.doesNotMatch(bare, /<a class="asset-slot"/);
+  assert.ok(bare.includes(Buffer.from(svg).toString("base64")));
 });
 
 test("stampVectors draws the crop into each placeholder's rectangle and removes the link; a missing place throws", async () => {
@@ -86,5 +90,15 @@ test("stampVectors draws the crop into each placeholder's rectangle and removes 
   assert.deepEqual(m.map((v) => Math.round(v * 100) / 100), [2, 0, 0, 2, 100, 200]);
   await pdf.loadingTask.destroy();
   await assert.rejects(stampVectors(await doc.save(), new Map(), 1), /place/);
+  // A crop printed as its picture: the link only goes, and where it landed is reported.
+  const pic = await PDFDocument.create();
+  const pp = pic.addPage([400, 400]);
+  pp.node.set(PDFName.of("Annots"), pic.context.obj([pic.context.register(pic.context.obj({ Type: "Annot", Subtype: "Link", Rect: [50, 60, 250, 160], Border: [0, 0, 0], A: { S: "URI", URI: PDFString.of(SLOT + "crop-0000aaaa/2/p") } }))]));
+  const spots: any[] = [];
+  const kept = await stampVectors(await pic.save(), new Map(), 1, spots);
+  assert.deepEqual(spots, [{ id: "crop-0000aaaa", figure: 2, page: 1, rect: [50, 60, 250, 160], sheet: [400, 400] }]);
+  const keptPdf = await open(kept);
+  assert.deepEqual(await (await keptPdf.getPage(1)).getAnnotations(), []);
+  await keptPdf.loadingTask.destroy();
   await assert.rejects(stampVectors(await doc.save(), new Map([["crop-0000aaaa", cropBytes]]), 2), /could not be found/);
 });

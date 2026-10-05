@@ -1520,7 +1520,7 @@ void app.whenReady().then(async () => {
         },
         typeset: typesetBlock,
       };
-      const renderPages = async (bytes: Uint8Array, pages: number[]) => (await windowTask("render", { bytes, pages, name: "edited PDF" })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
+      const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF") => (await windowTask("render", { bytes, pages, name })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
         const read = fileTool(library, tool);
         if (read) return read;
