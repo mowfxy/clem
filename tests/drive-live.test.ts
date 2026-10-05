@@ -149,3 +149,23 @@ test('saving into a folder asks for a reconnect under the old read-only scope, a
   scope='https://www.googleapis.com/auth/drive';
   assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123'});
 });
+
+test('a file renamed or moved to the trash from Mowr is changed in Drive itself, in place',async()=>{
+  const calls:{url:string;method?:string;body?:string}[]=[];
+  const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const url=String(input);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    calls.push({url,method:init.method,body:init.body});
+    return Response.json({id:'file-id-12345',name:JSON.parse(init.body||'{}').name,modifiedTime:'2026-10-05T10:00:00Z'});}) as any,'https://x.example');
+  assert.deepEqual(await drive.rename('file-id-12345','Week 2.pdf'),{id:'file-id-12345',name:'Week 2.pdf',modifiedTime:'2026-10-05T10:00:00Z'});
+  assert.deepEqual(await drive.trash('file-id-12345'),{ok:true});
+  assert.deepEqual(calls.map(c=>[c.method,new URL(c.url).pathname,JSON.parse(c.body!)]),[['PATCH','/drive/v3/files/file-id-12345',{name:'Week 2.pdf'}],['PATCH','/drive/v3/files/file-id-12345',{trashed:true}]]);
+});
+
+test('a saved file reports Drive’s modified time, so Mowr knows its own upload is not a change made in Drive',async()=>{
+  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    if(url.includes('uploadType=resumable')){assert.match(url,/fields=id,modifiedTime/);return new Response('{}',{headers:{Location:'https://upload.example/session'}});}
+    return Response.json({id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});}) as any,'https://x.example');
+  assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});
+  assert.deepEqual(await drive.update('new-file-id-123','text/plain',new Uint8Array([2])),{id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});
+});

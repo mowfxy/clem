@@ -20,7 +20,10 @@ export type Chat = { /** A temporary chat: never saved, never remembered; it dis
 /** An earlier version of an edited file, kept on this PC so the edit can be undone. */
 export type FileVersion = { blob: string; at: number; summary: string; size: number };
 /** `made` marks PDFs Mowr generated; their source is kept beside them so edits re-typeset the page. */
-export type StoredFile = { remote?:boolean; id: string; name: string; size: number; type: string; created: number; spaceId: string | null; folderId?: string | null; made?: boolean; versions?: FileVersion[]; updated?: number; /** Its copy in the Google Drive folder linked to its subject or project, kept in step after approved edits. */ driveId?: string };
+export type StoredFile = { remote?:boolean; id: string; name: string; size: number; type: string; created: number; spaceId: string | null; folderId?: string | null; made?: boolean; versions?: FileVersion[]; updated?: number; /** Its copy in the Google Drive folder linked to its subject or project, kept in step after approved edits. */ driveId?: string;
+  /** The Drive folder it is being saved into (a file dropped into Drive shows there while it uploads). */ driveFolder?: string;
+  /** Drive's modified time of the copy this file matches, so a change made in Drive is fetched again. */ driveModified?: string;
+  /** Changed here since its Drive copy was saved; goes to Drive once the change is approved. */ drivePending?: boolean };
 export type VisualRecord = { id: string; chatId: string; title: string; created: number; scene?: string; params?: Record<string, number>; spec?: unknown };
 export type Automation = {model?:string;nextRun?:number;lastRun?:number;lastError?:string; id: string; name: string; prompt: string; schedule: string; enabled: boolean; spaceId: string | null };
 
