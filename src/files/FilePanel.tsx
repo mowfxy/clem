@@ -60,7 +60,11 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   onClose: () => void; onChange: (file: StoredFile) => void; onOpenExternally: (file: StoredFile) => void; onPoint: (pointer: FilePointer) => void;
   /** "modal": a centred viewer over the app (from Files pages); "panel" sits beside a chat. */
   variant?: "panel" | "modal"; onEditInChat?: (file: StoredFile) => void;
-}>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onPoint, variant = "panel", onEditInChat }, ref) {
+  /** The person approved a change (Keep, Done or Undo): the file's copy in a linked Drive folder is brought up to date. */
+  onApproved?: (file: StoredFile) => void;
+  /** Where that Drive copy stands: uploading shows a turning ring, synced a check. */
+  sync?: "uploading" | "synced" | "failed";
+}>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onPoint, variant = "panel", onEditInChat, onApproved, sync }, ref) {
   const kind = kindOf(file.name, file.type);
   const [blob, setBlob] = useState<Blob>();
   const [view, setView] = useState<View>();
@@ -243,6 +247,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       setView(after.kind === "pdf" ? { ...after, boxes: [] } : after.kind === "office" ? { ...after, changed: new Set<string>(), blob: stored } : { ...after, changed: new Set<number>() });
       setProposal(null);
       setFlash("Saved to " + file.name + ". Undo anytime.");
+      onApproved?.(saved);
     } catch (e) { setError(clean(e)); }
   }
   async function undo() {
@@ -264,6 +269,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       setSaved(null);
       await load();
       setFlash("Previous version restored.");
+      onApproved?.(restored);
     } catch (e) { setError(clean(e)); }
   }
 
@@ -273,6 +279,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
     <header className="fp-head">
       <div className="fp-title"><span className="fp-crumb">Files /</span><strong aria-description={file.name}>{file.name}</strong></div>
+      {sync && <span className={"fp-sync is-" + sync} role="status" aria-label={sync === "uploading" ? "Saving the change to Google Drive" : sync === "synced" ? "In sync with Google Drive" : "Not saved to Google Drive"}>{sync === "synced" ? <Icon name="check" size={11} /> : sync === "failed" ? "!" : null}</span>}
       <small className="fp-meta">{detail}{current.versions?.length ? ` · edited ${current.versions.length}×` : ""}</small>
       {!!current.versions?.length && !proposal && !working && <button className="fp-icon" aria-description="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}
       {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Mowr</button>}
@@ -284,7 +291,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       <div><strong>{saved.summary}</strong><small>Saved · earlier version kept</small></div>
       <div className="fp-toggle" role="group" aria-label="Compare"><button aria-pressed={compare === "before"} onClick={() => setCompare("before")}>Before</button><button aria-pressed={compare === "after"} onClick={() => setCompare("after")}>After</button></div>
       <button className="fp-ghost" onClick={() => void undo()}>Undo</button>
-      <button className="fp-keep" onClick={() => { setSaved(null); setCompare("after"); }}>Done</button>
+      <button className="fp-keep" onClick={() => { setSaved(null); setCompare("after"); onApproved?.(current); }}>Done</button>
     </div>}
     {proposal && <div className="fp-proposal" role="status">
       <div><strong>{proposal.summary}</strong><small>Not saved yet · compare, then keep or discard</small></div>

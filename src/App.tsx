@@ -47,7 +47,7 @@ import {FilePanel,canEditInPanel,type FilePanelHandle,type FilePointer} from './
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {DriveIcon} from './drive/DriveIcon';
-import {refreshDrive,driveSources,driveFolder,driveList as driveListText,type DriveItem} from './drive/drive';
+import {refreshDrive,driveSources,driveFolder,driveList as driveListText,uploadToDrive,updateInDrive,type DriveItem} from './drive/drive';
 import {mowrSkillText} from '../core/mowr-skills';
 import {boundedConversation,compressReply,SOURCE_PREFIX} from '../core/chat-context';
 import {SavedFilePicker} from './files/SavedFilePicker';
@@ -472,15 +472,40 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   /** Keeps a temporary chat: from here on it is an ordinary saved chat. */
   const saveTemporaryChat = (id: string) => { updateChat(id, ({ temporary, ...c }) => c); setToast("Chat saved."); };
   const activeSpace = state.spaces.find((s) => s.id === spaceId);
+  /** Where each file's Drive copy stands after its last approved change. */
+  const [driveSync,setDriveSync]=useState<Record<string,"uploading"|"synced"|"failed">>({});
+  const syncing=useRef(new Map<string,Promise<void>>());
+  /** Brings a file's copy in its subject's linked Drive folder up to date: the same Drive file gets the new version, or,
+   *  the first time (or if it was removed from Drive), a copy is saved there. One upload per file at a time, in order. */
+  const syncToDrive=(file:StoredFile)=>{
+    const run=async()=>{
+      const live=stateRef.current.files.find(f=>f.id===file.id)||file;
+      const link=live.spaceId?stateRef.current.spaces.find(x=>x.id===live.spaceId)?.drive:undefined;
+      if(!desktop||!link?.saveBack)return;
+      setDriveSync(m=>({...m,[live.id]:"uploading"}));
+      try{
+        const blob=await getBlob(live.id);
+        if(!blob)throw Error(`${live.name} is missing from this PC.`);
+        let driveId=live.driveId;
+        if(driveId)await updateInDrive(driveId,blob).catch(e=>{if(/no longer in Drive/.test(String((e as Error).message)))driveId=undefined;else throw e;});
+        if(!driveId){const made=await uploadToDrive(link.folderId,blob,live.name);patch(s=>({...s,files:s.files.map(f=>f.id===live.id?{...f,driveId:made.id}:f)}));}
+        setDriveSync(m=>({...m,[live.id]:"synced"}));
+      }catch(e){setDriveSync(m=>({...m,[live.id]:"failed"}));setToast(`${live.name} was not saved to Drive: ${cleanError(e)}`);}
+    };
+    const next=(syncing.current.get(file.id)||Promise.resolve()).then(run);
+    syncing.current.set(file.id,next);
+    return next;
+  };
+  const syncRef=useRef(syncToDrive);syncRef.current=syncToDrive;
   useEffect(()=>{
     const receive=(event:Event)=>{const {file:made,scope,revised}=(event as CustomEvent).detail as {file:StoredFile;scope?:string;revised?:{version:import('../core/types').FileVersion}};
       // A revised document replaces the same file's contents; its earlier version is kept for Undo.
-      if(revised){patch(current=>({...current,files:current.files.map(f=>f.id===made.id?{...f,size:made.size,updated:made.updated||Date.now(),versions:[revised.version,...(f.versions||[])].slice(0,20)}:f)}));return;}
+      if(revised){patch(current=>({...current,files:current.files.map(f=>f.id===made.id?{...f,size:made.size,updated:made.updated||Date.now(),versions:[revised.version,...(f.versions||[])].slice(0,20)}:f)}));void syncRef.current(made);return;}
       const target=artifactTarget.current;let file=made;
       if(target&&Date.now()<target.until&&scope?.endsWith(':'+target.spaceId)){file={...made,spaceId:target.spaceId,folderId:target.folderId};artifactTarget.current=null;if(target.label)setToast(`${made.name} saved to ${target.label}.`);}
       patch(current=>({...current,files:current.files.some(f=>f.id===file.id)?current.files:[...current.files,file]}));
       const linked=file.spaceId?stateRef.current.spaces.find(x=>x.id===file.spaceId)?.drive:undefined;
-      if(linked?.saveBack)void (async()=>{const blob=await getBlob(file.id);if(!blob)return;const {uploadToFolder}=await import('./space/drive-sync');await uploadToFolder(linked.folderId,blob,file.name);setToast(`${file.name} saved to Drive · ${linked.folderName}.`);})().catch(e=>setToast(cleanError(e)));
+      if(linked?.saveBack)void syncRef.current(file).then(()=>{if(stateRef.current.files.find(f=>f.id===file.id)?.driveId)setToast(`${file.name} saved to Drive · ${linked.folderName}.`);});
     };
     window.addEventListener('mowr:artifact',receive);return ()=>window.removeEventListener('mowr:artifact',receive);
   },[]);
@@ -1985,7 +2010,8 @@ In this subject the learner keeps missing these questions in review; connect to 
               </div>
               {panelFile && <FilePanel ref={panelRef} key={panelFile.id} file={panelFile} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
                 onClose={() => { setPanelFile(null); setPointers([]); }} onOpenExternally={(f) => void openExternally(f)}
-                onChange={(next) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? next : f)) })); setPanelFile(next); }}
+                onChange={(next) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? { ...next, driveId: f.driveId } : f)) })); setPanelFile(next); }}
+                onApproved={(f) => void syncToDrive(f)} sync={driveSync[panelFile.id]}
                 onPoint={(p) => { setPointers((all) => [...all, p].slice(-6)); setTimeout(() => composer.current?.focus(), 30); }} />}
               </div>
             ) : pageSpace ? (
@@ -2488,7 +2514,8 @@ In this subject the learner keeps missing these questions in review; connect to 
       {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
       {viewer && <FilePanel key={"viewer-" + viewer.id} variant="modal" file={viewer} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
         onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); if (f.id.startsWith("drive_")) { setPointers([p]); return; } newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
-        onChange={(next) => { if (next.id.startsWith("drive_")) return; patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? next : f)) })); setViewer(next); }}
+        onChange={(next) => { if (next.id.startsWith("drive_")) return; patch((s) => ({ ...s, files: s.files.map((f) => (f.id === next.id ? { ...next, driveId: f.driveId } : f)) })); setViewer(next); }}
+        onApproved={(f) => { if (!f.id.startsWith("drive_")) void syncToDrive(f); }} sync={driveSync[viewer.id]}
         onEditInChat={viewer.id.startsWith("drive_") ? undefined : (f) => { setViewer(null); newChat(f.spaceId); openInPanel(f); }} />}
       {toast && <Toast message={toast} onDismiss={() => setToast("")} />}
     </>

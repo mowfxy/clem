@@ -127,6 +127,24 @@ export class DriveLive {
     return await done.json() as {id:string};
   }
 
+  /** Replaces the contents of a file Mowr saved to Drive earlier (after an approved edit), keeping its id, name and place. */
+  async update(fileId:string,type:string,data:Uint8Array){
+    const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
+    const start=await this.google(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable&supportsAllDrives=true&fields=id`,{
+      method:"PATCH",signal:AbortSignal.timeout(30000),
+      headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
+      body:"{}",
+    });
+    if(start.status===404)throw Object.assign(Error("The file is no longer in Drive."),{code:"missing"});
+    if(start.status===403)throw Error("Google Drive did not let Mowr change this file.");
+    const session=start.headers.get("Location");
+    if(!start.ok||!session)throw Error("Google Drive did not accept the change.");
+    const done=await this.fetcher(session,{method:"PUT",headers:{"Content-Type":mime},body:data as unknown as BodyInit,signal:AbortSignal.timeout(Math.max(120_000,data.length/50))});
+    if(!done.ok)throw Error("Google Drive did not finish saving the change. Try again.");
+    this.trees.clear();
+    return await done.json() as {id:string};
+  }
+
   /** Everything inside a linked folder and its subfolders (5 levels, 1500 items), read live and kept for two minutes. */
   async tree(folderId:string,refresh=false){
     const cached=this.trees.get(folderId);

@@ -59,6 +59,10 @@ export async function listDrive(options: { folder?: string; page?: string; query
 export async function uploadToDrive(folder: string, file: Blob, name: string) {
   return desktop!.invoke({ action: "driveUpload", folder, name, type: file.type || "application/octet-stream", data: new Uint8Array(await file.arrayBuffer()) }) as Promise<{ id: string }>;
 }
+/** Puts a new version of a file Mowr saved to Drive in place of the old one. A file gone from Drive fails with "missing". */
+export async function updateInDrive(id: string, file: Blob) {
+  return desktop!.invoke({ action: "driveUpdate", id, type: file.type || "application/octet-stream", data: new Uint8Array(await file.arrayBuffer()) }) as Promise<{ id: string }>;
+}
 export async function driveFolder(folder: string, query = "", refresh = false) {
   return desktop!.invoke({ action: "driveFolder", folder, query: query.slice(0, 4000), refresh }) as Promise<{ items: DriveItem[]; hits: (DriveRef & { excerpt?: string })[]; checked: number }>;
 }
