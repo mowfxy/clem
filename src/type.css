@@ -7,7 +7,7 @@
 @font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
 
-/* Mowafy Serif (mowfxy/serif 898d879): the original Latin Regular and Bold only, no borrowed or fallback faces. */
+/* Mowafy Serif (mowfxy/serif c93ecf9): the original Latin Regular and Bold only, no borrowed or fallback faces. */
 @font-face{font-family:'Mowafy Serif';src:url('/fonts/MowafySerif-Regular.woff2') format('woff2');font-weight:300 500;font-style:normal;font-display:swap}
 @font-face{font-family:'Mowafy Serif';src:url('/fonts/MowafySerif-Bold.woff2') format('woff2');font-weight:600 800;font-style:normal;font-display:swap}
 @font-face{font-family:'Mowafy Math';src:url('/fonts/MowafyMath-Regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
