@@ -500,6 +500,26 @@ export function inkBounds(grey: Uint8Array, w: number, h: number, box: Box = [0,
 }
 
 /**
+ * Where a drawing's weight sits across a bitmap, from 0 (left edge) to 1 (right edge): the middle of the span that holds
+ * the central 90% of its ink. A label, an axis title or a legend standing out to one side carries little ink, so the
+ * drawing itself, not its box, is what a document centres. 0.5 when there is no ink.
+ */
+export function opticalCentre(grey: Uint8Array, w: number, h: number, level?: number) {
+  const cut = level ?? Math.min(235, inkLevel(grey) + 25);
+  const columns = new Float64Array(w);
+  let total = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (grey[y * w + x] < cut) { columns[x]++; total++; }
+  if (!total || w < 2) return 0.5;
+  let a = -1, b = -1;
+  for (let x = 0, sum = 0; x < w; x++) {
+    sum += columns[x];
+    if (a < 0 && sum > total * 0.05) a = x;
+    if (b < 0 && sum >= total * 0.95) { b = x; break; }
+  }
+  return Math.max(0, Math.min(1, (a + b + 1) / 2 / w));
+}
+
+/**
  * Settles a crop on a bitmap of the area around it. Every edge with ink within `reach` pixels outside it moves outward
  * until it has that much paper beyond it, so a label is never cut, whether the edge crosses a glyph, falls in the gap
  * between two letters or stops just short of a word; then every edge moves inward to the ink, so there is no stray

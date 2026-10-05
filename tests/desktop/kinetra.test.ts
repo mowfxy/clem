@@ -298,10 +298,11 @@ test("a described design is built on top of the layout, and the defaults apply o
   const { documentHtml, renderFigures, designProblems, cleanCss } = await import("../../desktop/pdf-document.ts");
   const spec = { kind: "report", title: "T", design: { accent: "#0b5394", columns: 2 as const, pageSize: "Letter" as const, margin: 18, fontSize: 11, titleAlign: "left" as const, runningHead: false, css: "h2{text-transform:uppercase}" }, sections: ["A", "B", "C", "D"].map((heading) => ({ heading, text: "x" })) };
   const html = documentHtml(spec, await renderFigures(spec));
-  assert.match(html, /body class="layout-technical numbered eqnum accented columns-2 title-left"/);
-  assert.match(html, /@page\{size:Letter;margin:18mm;/);
+  assert.match(html, /body class="layout-technical numbered eqnum accented columns-2 title-left t-(?:ruled|center|left) h-accent"/);
+  // "margin" sets the sides; the top and bottom keep room for the running head and folio.
+  assert.match(html, /@page\{size:Letter;margin:25mm 18mm 23mm;/);
   assert.ok(!/@top-center/.test(html), "no running head when the design turns it off");
-  assert.match(html, /body\{--accent:#0b5394\}body\{font-size:11pt;\}h2\{text-transform:uppercase\}<\/style>/);
+  assert.match(html, /body\{--accent:#0b5394\}body\{font-size:11pt;line-height:[\d.]+\}h2\{text-transform:uppercase\}<\/style>/);
   const plain = documentHtml({ title: "T", design: { numbered: false, contents: true }, sections: [{ heading: "A", text: "x" }, { heading: "B", text: "y" }] }, []);
   assert.match(plain, /class="doc-toc"/);
   assert.ok(!/<span class="num">/.test(plain));
@@ -323,7 +324,7 @@ test("a chat visual goes into a PDF unchanged: through mowr.visual, and in an ex
   assert.match(spec.sections[1].text!, /second quarter/);
   assert.ok(!JSON.stringify(spec).includes("broken"), "an unreadable visual is left out");
   const html = documentHtml(spec, await renderFigures(spec, { checkVoice: false }));
-  assert.match(html, /<figure id="fig-1"><img[^>]+data:image\/svg\+xml;base64,/);
+  assert.match(html, /<figure id="fig-1"><a class="figure-slot"[^>]*><img[^>]+data:image\/svg\+xml;base64,/);
   assert.match(html, /Figure&#160;1:<\/span> Quarterly sales in units/);
   // An answer whose visual cannot be drawn still exports, without that figure; a document the AI writes is refused instead.
   const bad = markdownDocument("Text\n```visual\n" + JSON.stringify({ kind: "chart", title: "x" }) + "\n```");
