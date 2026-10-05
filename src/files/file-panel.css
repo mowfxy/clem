@@ -149,6 +149,7 @@ dialog.fp-dialog::backdrop{background:#0000008c;backdrop-filter:blur(6px);animat
 .fp-sync.is-uploading{border:2px solid #ffffff1f;border-top-color:#9fb4ff;animation:fp-sync-turn .8s linear infinite}
 .fp-sync.is-synced{background:#7fd08a26;color:#9fd8a7;animation:fp-sync-arrive .25s ease-out}
 .fp-sync.is-failed{background:#e8a39b26;color:#e8a39b;font:700 10px/1 var(--sans)}
+.fp-sync.is-pending::before{content:"";width:8px;height:8px;border-radius:50%;background:#e9c46a;box-shadow:0 0 0 3px #e9c46a2e}
 @keyframes fp-sync-turn{to{transform:rotate(360deg)}}
 @keyframes fp-sync-arrive{from{transform:scale(.4);opacity:0}}
 @media (prefers-reduced-motion:reduce){.fp-sync.is-uploading{animation-duration:2.4s}.fp-sync.is-synced{animation:none}}

@@ -49,6 +49,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("driveList"), folder: z.string().regex(/^(root|shared|[\w-]{10,150})$/).optional(), page: z.string().max(2000).optional(), query: z.string().max(200).optional(), kind: z.enum(["all", "folders"]).optional() }),
   z.object({ action: z.literal("driveUpload"), folder: z.string().regex(/^[\w-]{10,150}$/), name: z.string().min(1).max(200), type: z.string().max(200), data: z.instanceof(Uint8Array).refine((d) => d.length > 0 && d.length <= 1_000_000_000, "Files saved to Drive are limited to 1 GB.") }),
   z.object({ action: z.literal("driveUpdate"), id: z.string().regex(/^[\w-]{10,150}$/), type: z.string().max(200), data: z.instanceof(Uint8Array).refine((d) => d.length > 0 && d.length <= 1_000_000_000, "Files saved to Drive are limited to 1 GB.") }),
+  z.object({ action: z.literal("driveRename"), id: z.string().regex(/^[\w-]{10,150}$/), name: z.string().trim().min(1).max(200) }),
+  z.object({ action: z.literal("driveTrash"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("driveFolder"), folder: z.string().regex(/^[\w-]{10,150}$/), query: z.string().max(4000).optional(), refresh: z.boolean().optional() }),
   z.object({ action: z.literal("driveMediaUrl"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("driveText"), id: z.string().regex(/^[\w-]{10,150}$/) }),
