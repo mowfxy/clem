@@ -16,8 +16,8 @@ function Petal({ style }: { style: CSSProperties }) {
 const petals = Array.from({ length: 9 }, (_, i) => ({ top: [18, 62, 34, 76, 46, 24, 68, 40, 56][i], size: [11, 8, 13, 9, 7, 12, 8, 10, 7][i], delay: -i * 0.53 }));
 
 /** How hard the model thinks: a bar to drag, with Mowr's petals drifting faster and thicker as it climbs. */
-function EffortSlider({ levels, level, onChange, onReset }: {
-  levels: string[]; level: string; onChange: (effort: string) => void; onReset?: () => void;
+function EffortSlider({ levels, level, onChange }: {
+  levels: string[]; level: string; onChange: (effort: string) => void;
 }) {
   const track = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -39,7 +39,6 @@ function EffortSlider({ levels, level, onChange, onReset }: {
   return <div className="picker-effort">
     <div className="effort-head">
       <div className="effort-title"><b>{effortName(level)}</b><small>thinking</small></div>
-      {onReset && <button type="button" className="picker-effort-reset" aria-label="Reset thinking level" aria-description="Reset to default" onClick={() => { onReset(); track.current?.focus(); }}><Icon name="undo" size={15} /></button>}
     </div>
     <div ref={track} className={"effort-track" + (drag !== null ? " is-dragging" : "")} style={style} role="slider" tabIndex={0}
       aria-label="Reasoning effort" aria-valuemin={0} aria-valuemax={levels.length - 1} aria-valuenow={index} aria-valuetext={effortName(level)}
@@ -135,8 +134,7 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
       <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>
     </div>, document.body)}
     {open === "effort" && onEffort && level && createPortal(<div ref={effortPop.panel} className="unified-picker-panel effort-pop" role="dialog" aria-label="Thinking level" style={effortPop.position}>
-      <EffortSlider levels={levels.map((l) => l.reasoningEffort)} level={level} onChange={onEffort}
-        onReset={selected?.defaultReasoningEffort && level !== selected.defaultReasoningEffort ? () => onEffort(selected.defaultReasoningEffort!) : undefined} />
+      <EffortSlider levels={levels.map((l) => l.reasoningEffort)} level={level} onChange={onEffort} />
     </div>, document.body)}
   </div>;
 }

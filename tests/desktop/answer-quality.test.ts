@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeProvider, parseClaudeModels, toolEffort } from "../../desktop/claude.ts";
 import { requestSchema } from "../../desktop/contracts.ts";
-import { GrokProvider, grokRules, GROK_RULES_MAX } from "../../desktop/grok.ts";
+import { GrokProvider, grokRules, GROK_RULES_MAX, GROK_NOTE, GROK_TOOLS } from "../../desktop/grok.ts";
 import { composePrompt, coreRules, systemPrompt } from "../../desktop/prompt.ts";
 import { brokenToolRequest, runKinetraTurn, toolRequest } from "../../desktop/kinetra-turn.ts";
 import { kinetraCompact, kinetraExtrasFor, kinetraTool, needsKinetra } from "../../desktop/kinetra-runtime.ts";
@@ -91,14 +91,17 @@ test("Grok gets Mowr's rules through --rules when they fit on the command line",
   }
   const grok = new Recording();
   await grok.run("r", "REQUEST", "grok:grok-4.7", () => {}, [], undefined, undefined, { system: "RULES" });
-  assert.equal(grok.args[grok.args.indexOf("--rules") + 1], "RULES");
+  assert.equal(grok.args[grok.args.indexOf("--rules") + 1], "RULES\n\n" + GROK_NOTE);
+  // Only the tools Mowr needs (pictures, the web), and no plan mode: the rest cost about 10k input tokens per step.
+  assert.equal(grok.args[grok.args.indexOf("--tools") + 1], GROK_TOOLS);
+  assert.ok(grok.args.includes("--no-plan"));
   assert.equal(grok.prompt, "REQUEST");
   // Too long for Windows' 32,767-character command line: the rules lead the prompt file instead of being lost.
   const long = "R".repeat(GROK_RULES_MAX + 1);
   assert.equal(grokRules(long), undefined);
   await grok.run("r", "REQUEST", "grok:grok-4.7", () => {}, [], undefined, undefined, { system: long });
   assert.equal(grok.args.includes("--rules"), false);
-  assert.equal(grok.prompt, long + "\n\nREQUEST");
+  assert.equal(grok.prompt, long + "\n\n" + GROK_NOTE + "\n\nREQUEST");
 });
 
 test("with the rules in the system prompt, the message carries only this conversation's own instructions", () => {

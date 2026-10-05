@@ -361,6 +361,8 @@ void app.whenReady().then(async () => {
       screen.reply(text);
       return text;
     }, async (tool) => {
+      // Everything shown before a tool runs is a note on the work, not the answer (the chat folds it under "Task completed").
+      emit({ id, type: "worked" });
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
     }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, stats }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); });
@@ -466,7 +468,7 @@ void app.whenReady().then(async () => {
           ),
         );
       }
-      let text = "";
+      let text = "", work = 0;
       const replyFiles = new ReplyFiles(undefined, unwritten);
       await selectProvider(owner);
       const chosen = await vault.read<{ model?: string; reasoning?: string }>(lastModelKey(owner), {});
@@ -486,9 +488,12 @@ void app.whenReady().then(async () => {
           }),
         (event) => {
           if (event.type === "delta") text += event.text || "";
+          // Notes written before tools ran ("I'll solve each circuit first") are progress: the reply sent is the answer after them.
+          if (event.type === "worked") work = text.length;
         },
         { images: imagePath ? [{ path: imagePath, mime: imagePath.endsWith(".png") ? "image/png" : "image/jpeg" }] : [], pdf: (spec,cancelled)=>replyFiles.handle(spec,cancelled), unfinished: () => replyFiles.unfinished() },
       );
+      text = text.slice(work).trim() || text;
       await vault.write(historyKey, [...history, { role: "user", content: envelope.text }, { role: "assistant", content: text || "(sent a document)" }].slice(-200));
       learnFromTurn(owner, envelope.scope, id, envelope.text, chosen.model, history.at(-1)?.content);
       if(replyFiles.size)return {text,documents:replyFiles.list()};

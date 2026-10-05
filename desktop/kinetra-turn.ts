@@ -177,6 +177,34 @@ export function brokenToolRequest(text: string): string | null {
   }
   return 'Each request must stand on its own line as {"kinetra":{"action":…}}, not inside a sentence. Send the request again on its own.';
 }
+/**
+ * A reply whose last request only lacks its closing brackets, with them added; null otherwise. Models sometimes drop the
+ * final "}" of a long request: sent back, that cost a whole step, and the "cut off" advice it got made one Grok answer
+ * write its PDF one section per step (16 steps, each re-reading the conversation). Only a request that ends outside a
+ * string, right after a complete object or array, is closed: one cut off mid-text still goes back as cut off. The result says
+ * it was closed, so a request that was in fact cut short at that point is continued with "append".
+ */
+export function closedRequest(text: string): string | null {
+  const from = brokenStart(text);
+  if (from < 0) return null;
+  const body = text.replace(/\s*```\s*$/, "");
+  const stack: string[] = [];
+  let inString = false;
+  for (let i = text.indexOf("{", from); i < body.length; i++) {
+    const c = body[i];
+    if (inString) { if (c === "\\") i++; else if (c === '"') inString = false; }
+    else if (c === '"') inString = true;
+    else if (c === "{" || c === "[") stack.push(c === "{" ? "}" : "]");
+    else if (c === "}" || c === "]") { if (stack.pop() !== c) return null; }
+  }
+  // Only a request that ends on a whole object or array ("…}]}"): one ending mid-string or after a key, a comma or a
+  // bare value ("heading":"Q1) may have been cut off there, and goes back as cut off.
+  if (inString || !stack.length || !/[}\]]\s*$/.test(body)) return null;
+  const fixed = body + stack.reverse().join("");
+  return toolRequests(fixed) ? fixed : null;
+}
+/** What a request whose closing brackets Mowr added is told with its result. */
+export const CLOSED_NOTE = "Your request was missing its closing brackets; Mowr closed it and ran it. If it was meant to continue, send the rest with \"revise\" and \"append\":true.";
 /** A stretch of the model's own reply, quoted back on one line. */
 const shown = (s: string) => s.replace(/\s+/g, " ");
 /** Why one {"kinetra":…} envelope cannot run (null when it can): the JSON fault with the text around it, or what the object lacks. */
@@ -310,7 +338,7 @@ function cutOffError(text: string) {
   const action = /"action"\s*:\s*"(\w+)"/.exec(text.slice(Math.max(0, brokenStart(text))))?.[1];
   const parts = action === "pptx" ? "slides" : action === "xlsx" ? "rows" : "sections";
   const last = headings.length > 1 ? ` The last part it reached was "${headings.at(-1)}", unfinished; everything before it was complete.` : "";
-  return `That tool request was cut off before it closed, at ${text.length} characters (the most one reply can hold), so nothing in it was done. It stopped at: "…${shown(text.slice(-120))}".${last} Send the same content in smaller requests, at full depth: the first few ${parts} now${action ? ` in one ${action} action` : ""}, then the rest with "revise" and "append":true, one part per request.`;
+  return `That tool request was cut off before it closed, at ${text.length} characters (the most one reply can hold), so nothing in it was done. It stopped at: "…${shown(text.slice(-120))}".${last} Send the same content in smaller requests, at full depth: the first few ${parts} now${action ? ` in one ${action} action` : ""}, then the rest with "revise" and "append":true, several ${parts} per request, each request shorter than this one.`;
 }
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
 export const MAX_BROKEN = 5;
@@ -443,7 +471,7 @@ export async function runKinetraTurn<Picture = unknown>(
     check();
     const left = MAX_CALLS - calls;
     const finish = (digest: { request: any; result: any }[] = []) => lastCall(closing ? "context" : "calls", history, unfinished?.(), digest);
-    const next = closing || left <= 0 ? finish() : `${left} tool calls left. Continue: another {"kinetra":…} request, or your final answer to the original request.`;
+    const next = closing || left <= 0 ? finish() : `${left} tool calls left. Continue: more {"kinetra":…} requests (every one you already know you need, together in this reply: they run side by side), or your final answer to the original request.`;
     const fresh = history.slice(reported);
     const full = () =>
       opening +
@@ -482,6 +510,9 @@ export async function runKinetraTurn<Picture = unknown>(
     reported = history.length;
     newPictures = [];
     check();
+    // A request that only lacks its closing brackets runs as it is, instead of costing a step to be sent back.
+    const closed = toolRequests(text) ? null : closedRequest(text);
+    if (closed) text = closed;
     const requests = toolRequests(text);
     const broken = requests ? null : brokenToolRequest(text);
     if (!requests && !broken) {
@@ -521,6 +552,11 @@ export async function runKinetraTurn<Picture = unknown>(
     }
     brokenInRow = 0;
     lastBroken = "";
+    const from = history.length;
     for (const { pictures } of await Promise.all(requests!.map(schedule))) newPictures.push(...pictures);
+    if (closed && history.length > from) {
+      const entry = history[history.length - 1], r = entry.result;
+      entry.result = r && typeof r === "object" && !Array.isArray(r) ? { ...r, note: typeof r.note === "string" ? r.note + " " + CLOSED_NOTE : CLOSED_NOTE } : { result: r, note: CLOSED_NOTE };
+    }
   }
 }

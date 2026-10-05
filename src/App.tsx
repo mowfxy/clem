@@ -96,6 +96,7 @@ import { Marketing } from "./site/Marketing";
 import { PlanEditor } from "./PlanEditor";
 import { ChatMenu } from "./ChatMenu";
 import { MessageBody, type BodyHandlers } from "./chat/MessageBody";
+import { WorkSummary } from "./chat/WorkSummary";
 import { MessageTools, ReviewPanel, VerifyPanel, parseClaims } from "./chat/MessageExtras";
 import type { EditBlock } from "./chat/EditProposal";
 import { answerInstructions, visualOnlyInstructions, reviewInstructions, verifyInstructions } from "../core/answer-format";
@@ -106,7 +107,7 @@ import "./chat/workspace.css";
 import { SupportLink, PayPalMark } from "./support-link";
 import { StorageSummary } from './files/StorageSummary';
 import { SpaceMark, markKeys } from './space/SpaceMark';
-import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf } from "../core/chat-title";
+import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } from "../core/chat-title";
 import { Chapters } from "./chat/Chapters";
 import { SlashField, CommandChip } from "./chat/SlashField";
 import { VisualSaveContext } from "./chat/visual-save";
@@ -528,7 +529,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     messages: { role: string; content: string }[],
     selectedModel: string,
     signal: AbortSignal,
-    onText: (text: string) => void,
+    onText: (text: string, work?: number) => void,
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
     images?:{name:string;data:string}[],
@@ -782,6 +783,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       ],
     }));
     const controller = begin(id);
+    const started = Date.now();
+    let work: number | undefined;
     try {
       const memory = activeSpace ? stateRef.current.spaces.find((s) => s.id === activeSpace.id)?.memory ?? activeSpace.memory : stateRef.current.memory;
       // The model sees the files, not only their text: attached pictures, PDF pages with diagrams or scans, and the
@@ -890,22 +893,27 @@ In this subject the learner keeps missing these questions in review; connect to 
         ],
         model,
         controller.signal,
-        (text) =>
+        (text, at) => {
+          work = at;
           updateChat(id, (c) => ({
             ...c,
             messages: c.messages.map((m) =>
               m.id === messageId ? { ...m, content: isVisual ? text : hideTitleMarker(text) } : m,
             ),
-          })),
+          }));
+        },
         "chat", undefined, images, { chat: id, documents: documentsIn(next), library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => pageImages(sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id))), name, pages), pdfTask: isVisual ? undefined : (op, args) => import("./desktop/pdf-tasks").then((m) => m.pdfTask(sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id))), op, args)) },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
+      // A reply that used tools: the notes written on the way fold under "Task completed in …" and the answer stands below it.
+      const done = isVisual || work === undefined ? undefined : splitWork(reply, work, Date.now() - started);
+      if (done?.answer) named.content = done.answer;
       updateChat(id, (c) => ({
         ...c,
         ...(named.title ? { title: named.title, titled: true } : {}),
         ...("summary" in named && named.summary ? { summary: named.summary } : {}),
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
-        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
+        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...(done ? { work: done.work } : {}),...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
       const run = readCommand(prompt)?.command.id;
       if (run === "compact") updateChat(id, (c) => ({ ...c, messages: c.messages.map((m) => m.id === messageId ? { ...m, compact: true } : m) }));
@@ -1904,7 +1912,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                           <div className="message-text">
                             {m.content ? (
                               m.role === "assistant" ? (
-                                <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Mowr continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} /></>
+                                <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Mowr continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}{m.work && !streaming && <WorkSummary work={m.work} handlers={bodyHandlers(activeChat, m)} />}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} /></>
                               ) : (
                                 <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
                               )

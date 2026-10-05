@@ -53,8 +53,6 @@
 
 /* Thinking level: a Mowr bar in black and white */
 .picker-effort{margin-top:6px;padding:12px 8px 6px;border-top:1px solid #ffffff0c}
-.unified-picker-panel .picker-effort-reset{width:26px;height:26px;flex:none;justify-content:center;border-radius:8px;color:#a9a8a0}
-.unified-picker-panel .picker-effort-reset:hover{background:#ffffff0f;color:#fff}
 .effort-track:focus-visible{box-shadow:0 0 0 2px #232321,0 0 0 4px #d6d5cf}
 
 

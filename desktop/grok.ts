@@ -127,7 +127,22 @@ export const GROK_RULES_MAX=24_000;
  * Mowr's system prompt as Grok's --rules (added to Grok's own system prompt; replacing that prompt made Grok fetch pages
  * instead of searching). A prompt too long for the command line returns undefined and goes at the top of the message.
  */
-export function grokRules(system?:string){return system&&system.length<=GROK_RULES_MAX?system:undefined;}
+export function grokRules(system?:string){
+  const rules=system?system+'\n\n'+GROK_NOTE:undefined;
+  return rules&&rules.length<=GROK_RULES_MAX?rules:undefined;
+}
+/**
+ * Grok Build is a coding agent: in Mowr its own tools only open the pictures a message names and reach the web. Without
+ * this, Grok read its bundled pdf skill (SKILL.md, 11k characters) before each document, and each picture cost a step of
+ * its own; every extra step re-reads the whole conversation.
+ */
+export const GROK_NOTE='IN MOWR: your own tools are only for opening the pictures a message names (read_file) and for the web. Files, documents, figures and calculations go only through Mowr\'s {"kinetra":…} requests: never read Grok\'s own skills (SKILL.md) or other files on this PC. When a message names several pictures, open all of them in the same step (one read_file call each, sent together).';
+/**
+ * Grok's built-in tools Mowr keeps: read_file opens the pictures named in a prompt, web_search is xAI's own search
+ * (it runs on xAI's side, but only when listed here). The other 24 (shell, editing, subagents, schedulers, video…)
+ * cost about 10k input tokens on every step. web_fetch is left out: in dontAsk mode a call to it cancelled the run.
+ */
+export const GROK_TOOLS='read_file,web_search';
 
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
 const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
@@ -144,6 +159,8 @@ export class GrokProvider {
   private noSessions=false;
   /** Set when this CLI refused --include-partial-messages: replies then arrive in one piece. */
   private noPartial=false;
+  /** Set when this CLI refused --tools or --no-plan (an older build): it then runs with its default tools. */
+  private noToolList=false;
   private statusCache:{at:number;value:GrokStatus}|null=null;
   /** Set after each answer: the plan's usage changed, so the next status the window asks for is read again. */
   private usageStale=false;
@@ -239,7 +256,7 @@ export class GrokProvider {
   /** Pictures are copied into Grok's own workspace and named in the prompt, so Grok opens them with its file tool. */
   async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system}:{system?:string}={}){
     const rules=grokRules(system);
-    if(system&&!rules)prompt=system+'\n\n'+prompt;
+    if(system&&!rules)prompt=system+'\n\n'+GROK_NOTE+'\n\n'+prompt;
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     const slug=model.slice(GROK_PREFIX.length);
@@ -260,12 +277,14 @@ export class GrokProvider {
       await mkdir(pictures,{recursive:true});
       for(const [index,path] of images.entries()){const name=basename(pictures)+'/'+(index+1)+extname(path);await copyFile(path,join(this.workspace(),name));named.push(name);}
     }
-    await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering.':prompt);
+    await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering'+(named.length>1?', all in one step (one read_file call each, sent together)':'')+'.':prompt);
     try{
-      const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk','--no-subagents','--no-auto-update','--cwd',this.workspace(),...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])];
+      const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk','--no-subagents',...(this.noToolList?[]:['--no-plan','--tools',GROK_TOOLS]),'--no-auto-update','--cwd',this.workspace(),...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])];
       let result=await this.attempt(id,args(),emit);
       // A Grok build without partial messages still answers, in one piece.
       if(!this.noPartial&&unsupportedFlag.test(result.err)&&/include-partial-messages/.test(result.err)){this.noPartial=true;result=await this.attempt(id,args(),emit);}
+      // An older Grok without the tool list still answers, with all of its own tools.
+      if(!this.noToolList&&unsupportedFlag.test(result.err)&&/--tools|no-plan/.test(result.err)){this.noToolList=true;result=await this.attempt(id,args(),emit);}
       const reply=parseGrokReply(result.out);
       if(session&&(reply.error||!reply.text)&&unsupportedFlag.test((reply.error||'')+result.err)){this.noSessions=true;throw new SessionLost('This Grok CLI does not keep sessions.');}
       if(session?.resume&&(reply.error||!reply.text)&&/session/i.test((reply.error||'')+result.err)&&/not found|no such|unknown|does not exist|invalid/i.test((reply.error||'')+result.err))throw new SessionLost('Grok no longer has this session.');
