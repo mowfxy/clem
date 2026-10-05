@@ -6,7 +6,8 @@ import { kinetraCall } from "./kinetra-runtime.ts";
 import { rasterizer } from "./rasterize.ts";
 import { unsafeSvg } from "./svg-safety.ts";
 import { documentFigures, figureCheck, figurePictures, FIGURES_PER_RESULT, type DrawnFigure } from "./figure-review.ts";
-import { resolveAssets, type ReadAsset } from "./pdf-assets.ts";
+import { resolveAssets, figurePages, type ReadAsset, type CropSpot } from "./pdf-assets.ts";
+import { withDesign } from "./pdf-document.ts";
 import { editPdf, type EditHelpers } from "./pdf-edit-tools.ts";
 
 /** The tool actions that make a file (desktop/file-guides.ts). Each one also revises a file it made earlier ("revise": id). */
@@ -30,6 +31,17 @@ const safeName = (name: string) => name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "").re
 export type Made = { bytes: Uint8Array; name: string; type: string; info?: Record<string, unknown>; previews?: { name: string; image: Uint8Array }[]; spec?: any };
 /** Pictures of the changed pages of an edited PDF, at most this many per result. */
 const EDIT_PREVIEWS = 6;
+
+/** Where a figure sits across its page, in words. */
+function across(s: CropSpot) {
+  const mid = (s.rect[0] + s.rect[2]) / 2 / s.sheet[0], share = (s.rect[2] - s.rect[0]) / s.sheet[0];
+  return share > 0.62 ? "across the column" : mid < 0.42 ? "at the left" : mid > 0.58 ? "at the right" : "centred";
+}
+/** What the model is asked to judge on the pages its figures printed on, with where each one landed. */
+function placementCheck(spots: CropSpot[], shown: number[]) {
+  const where = spots.slice(0, 12).map((s) => `Figure ${s.figure}${s.id === "figure" ? "" : ` (${s.id})`} on page ${s.page}, ${Math.round(s.rect[2] - s.rect[0])} × ${Math.round(s.rect[3] - s.rect[1])} pt, ${across(s)}`).join("; ");
+  return `Pictures of page${shown.length === 1 ? "" : "s"} ${shown.join(", ")}, where the figures printed, are attached (${where}). Judge each figure's place as a book designer would, on the page as a whole, and change what does not look right: does it sit well with the text around it (a small figure beside its paragraph with the text wrapping round it, "align":"wrap-right" or "wrap-left"; a large or detailed one across the column; flush "left" or "right" where that suits the page better; "center" centres the drawing as the eye sees it, "box" its picture box); is it the right size next to the text, its labels about the size of the body text ("width": 0.2–1 of the column); is it on the same page as, or right after, the paragraph that discusses it (a figure is placed after its section's text, or before it when beside the text: give it to a section without a heading that splits the text where it belongs); has it been pushed to the next page, leaving an empty gap (make it smaller, put it beside the text, or move it); is its crop clean (nothing from around the original, no old caption or number). Revise the file until every page looks designed.`;
+}
 
 /** Pictures of the figures the model has not seen yet in this answer, and the note asking it to check them against their source. */
 async function withFigures(made: Made, figures: DrawnFigure[], seen: Set<string>, limit: number): Promise<Made> {
@@ -60,7 +72,12 @@ export function fileName(action: string, spec: any, fallback = "Mowr file") {
  *  `preview`: also return pictures of the result for the model to look at (decks: contact sheets of the slides; pdf,
  *  docx and pptx: the figures drawn in it that are not in `seen`, the figures already shown in this answer).
  *  `assets` reads the crops that pdf, docx and pptx figures may name ({"asset":"crop-…"}, desktop/pdf-assets.ts). */
-export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>(), assets, edit, render }: { preview?: boolean; seen?: Set<string>; assets?: ReadAsset; edit?: EditHelpers; render?: (bytes: Uint8Array, pages: number[]) => Promise<{ name: string; image: Uint8Array }[]> } = {}): Promise<Made> {
+export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>(), assets, edit, render }: { preview?: boolean; seen?: Set<string>; assets?: ReadAsset; edit?: EditHelpers; render?: (bytes: Uint8Array, pages: number[], name?: string) => Promise<{ name: string; image: Uint8Array }[]> } = {}): Promise<Made> {
+  // A document's design is worked out from what it is about when nobody described one (desktop/pdf-design.ts) and
+  // kept with the file, so every revision and every appended part looks the same. A malformed design is left for the
+  // document maker to report.
+  const designed = (action === "pdf" || action === "docx") && typeof spec?.title === "string" && Array.isArray(spec.sections) && (spec.design === undefined || (spec.design && typeof spec.design === "object" && !Array.isArray(spec.design))) ? withDesign(spec) : undefined;
+  if (designed) spec = designed;
   // Crop figures get their drawing and caption here; the spec as sent (and stored) keeps only their ids.
   let vectors = new Map<string, Uint8Array>();
   if ((action === "pdf" || action === "docx" || action === "pptx") && JSON.stringify(spec?.sections || spec?.slides || []).includes('"asset"')) {
@@ -71,11 +88,22 @@ export async function makeFile(action: string, spec: any, { preview = false, see
   switch (action) {
     case "pdf":
     case "docx": {
-      let drawn: (string | undefined)[] = [];
+      let drawn: (string | undefined)[] = [], spots: CropSpot[] = [];
       const keep = (figures: (string | undefined)[]) => { drawn = figures; };
-      const made = action === "pdf"
-        ? { bytes: await illustratedPdf(spec, { drawn: keep, vectors }), name: fileName("pdf", spec), type: MIME.pdf }
+      const made: Made = action === "pdf"
+        ? { bytes: await illustratedPdf(spec, { drawn: keep, vectors, placed: (s) => { spots = s; } }), name: fileName("pdf", spec), type: MIME.pdf }
         : { bytes: await wordDocument(spec, { drawn: keep }), name: fileName("docx", spec), type: MIME.docx };
+      if (designed) {
+        const { css: _css, ...design } = designed.design;
+        made.spec = designed;
+        made.info = { design: { font: designed.font, headingFont: designed.headingFont, ...design }, designNote: 'Worked out for this document from its subject, kind and length where not given, and kept with the file. Change any part with "font", "headingFont" or "design" only when the person asks for a different look.' };
+      }
+      // The pages the figures printed on, so the model sees how each sits in the document, not only the figure itself.
+      if (preview && render && spots.length) {
+        const shown = figurePages(spots);
+        const pictures = await render(made.bytes, shown, made.name).catch(() => []);
+        if (pictures.length) { made.previews = [...(made.previews || []), ...pictures]; made.info = { ...made.info, placementCheck: placementCheck(spots, shown) }; }
+      }
       return preview ? withFigures(made, documentFigures(spec, drawn), seen, FIGURES_PER_RESULT) : made;
     }
     case "pptx": {

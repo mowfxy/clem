@@ -119,7 +119,7 @@ async function crop(files: StoredFile[], args: any): Promise<TaskResult> {
     const box = region?.box ?? boxOf(args.bbox);
     if (!box) throw Error('Give "region" (an id from regions) or "bbox": [x0, y0, x1, y1] in pixels, from the top left.');
     const s = await settlePictureCrop(canvas, box, options, kit);
-    return { data: { file: file.name, units: "px", box: s.box, hit: s.hit, width: s.width, height: s.height, vector: false, ...(region ? { region: brief(region) } : {}) }, images: [{ name: `crop of ${file.name}`, data: base64(s.preview) }], files: [s.png] };
+    return { data: { file: file.name, units: "px", box: s.box, hit: s.hit, width: s.width, height: s.height, centre: s.centre, vector: false, ...(region ? { region: brief(region) } : {}) }, images: [{ name: `crop of ${file.name}`, data: base64(s.preview) }], files: [s.png] };
   }
   return withPdf(file, async (pdf, lib, bytes) => {
     const page = Math.floor(Number(args.page));
@@ -132,7 +132,7 @@ async function crop(files: StoredFile[], args: any): Promise<TaskResult> {
     if (region && args.withCaption && region.captionBox) box = [Math.min(box[0], region.captionBox[0]), Math.min(box[1], region.captionBox[1]), Math.max(box[2], region.captionBox[2]), Math.max(box[3], region.captionBox[3])];
     const s = await settlePdfCrop(pdf, page, box, options, kit);
     return {
-      data: { file: file.name, page, pages: pdf.numPages, units: "pt", box: s.box, hit: s.hit, width: s.width, height: s.height, dpi: options.dpi, vector: a.kind === "vector", ...(region ? { region: brief(region) } : {}) },
+      data: { file: file.name, page, pages: pdf.numPages, units: "pt", box: s.box, hit: s.hit, width: s.width, height: s.height, centre: s.centre, dpi: options.dpi, vector: a.kind === "vector", ...(region ? { region: brief(region) } : {}) },
       images: [{ name: `crop of ${file.name}, page ${page}`, data: base64(s.preview) }],
       files: a.kind === "vector" ? [s.png, bytes] : [s.png],
     };
