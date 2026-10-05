@@ -131,6 +131,23 @@ export class ClaudeProvider {
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
   /** The last sign-in check while it is recent: each step of a tool loop reuses it instead of starting `claude auth status` again. */
   private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
+  /**
+   * The last check an answer may start on without waiting for a new one: a recent one as it is, an older one (up to a
+   * day) too, checked again once the answer is done (beside it, the check slowed the answer's own start). A sign-in
+   * that lapsed meanwhile fails the answer itself, which clears the check, so the person is still told to sign in again.
+   */
+  private knownStatus(){
+    if(!this.statusCache||Date.now()-this.statusCache.at>=24*60*60_000)return undefined;
+    return this.statusCache.value;
+  }
+  /** After an answer that started on an older check: checks again for the next one. */
+  private recheck(){if(this.statusCache&&!this.recentStatus())void this.status(true).catch(()=>{});}
+  /**
+   * Gets this account ready for a message. `ahead` (the window coming back into view, well before a message): an older
+   * check is renewed while the person types. Otherwise the message is being sent now, and only an account with no usable
+   * check is checked, so the answer can share that check instead of starting its own.
+   */
+  prepare(ahead=false){if(ahead?!this.recentStatus():!this.knownStatus())void this.status().catch(()=>{});}
   /** The plan windows Claude Code last reported (it says so with each answer), and when. */
   private limits=new Map<string,ClaudeLimit>();
   private limitsAt=0;
@@ -155,8 +172,14 @@ export class ClaudeProvider {
     return env;
   }
   private async start(args:string[]){await mkdir(this.root,{recursive:true});const child=spawn(this.executable,args,{cwd:join(this.root,'workspace'),env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});return child;}
+  private statusRequest:Promise<ReturnType<typeof claudeSubscriptionStatus>>|null=null;
+  /** One check at a time: callers that arrive while one runs share it. */
   async status(force=false){
     if(!force&&this.statusCache&&Date.now()-this.statusCache.at<30000)return this.statusCache.value;
+    this.statusRequest??=this.readStatus().finally(()=>{this.statusRequest=null;});
+    return this.statusRequest;
+  }
+  private async readStatus(){
     await mkdir(join(this.root,'workspace'),{recursive:true});
     let child:ChildProcessWithoutNullStreams;
     try{child=await this.start(['auth','status']);}catch{return {installed:false,connected:false};}
@@ -241,7 +264,7 @@ export class ClaudeProvider {
     if(!selected&&this.catalog)throw Error('That Claude model is no longer available on your plan. Pick another one.');
     if(effort&&selected&&!selected.reasoningEfforts.some(item=>item.reasoningEffort===effort))throw Error('Choose a supported Claude thinking level.');
     // A sign-in that lapsed since fails the step itself, which clears the check (below); only a signed-out one is checked again now.
-    if(!(this.recentStatus()?.connected||(await this.status(true)).connected))throw Error('Sign in to a Claude subscription through Claude Code first.');
+    if(!(this.knownStatus()?.connected||(await this.status(true)).connected))throw Error('Sign in to a Claude subscription through Claude Code first.');
     // A new session learns that requests go to the tool (a resumed one already has it in its history).
     if(native&&!session?.resume)prompt=NATIVE_NOTE+prompt;
     // While a native Kinetra call runs Claude Code prints nothing, so the inactivity limit below is kept from firing.
@@ -304,7 +327,7 @@ export class ClaudeProvider {
       // Nothing ran: the same step again, with the rules in the message instead.
       if(error instanceof NoSystemFile)return this.run(id,prompt,model,effort,emit,images,session,native,{system});
       throw error;
-    }finally{this.active.delete(id);endpoint?.close();if(systemFile)await rm(systemFile,{force:true}).catch(()=>{});}
+    }finally{this.active.delete(id);endpoint?.close();this.recheck();if(systemFile)await rm(systemFile,{force:true}).catch(()=>{});}
   }
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk. */
   async endSession(sessionId:string){
