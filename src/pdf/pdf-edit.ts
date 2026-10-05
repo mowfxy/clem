@@ -2,7 +2,7 @@ import type {PDFDocumentProxy,PDFPageProxy} from 'pdfjs-dist';
 import {planEdits,lines,type TextItem,type PdfTextEdit} from '../../core/pdf-edit';
 import {desktop,desktopChat} from '../desktop/bridge';
 import {SOURCE_PREFIX} from '../../core/chat-context';
-import {getBlob,storeBlob,deleteBlob} from '../store';
+import {getBlob,storeBlob,deleteBlob,addVersion} from '../store';
 import type {StoredFile,FileVersion} from '../../core/types';
 
 /** Real edits to a PDF file: Mowr-made PDFs are re-typeset from their source; any other PDF has
@@ -131,7 +131,7 @@ export async function commitPdfEdit(file:StoredFile,current:Uint8Array,proposal:
   if(file.made&&proposal.spec){const old=await getBlob('spec-'+file.id);if(old)await storeBlob('spec-'+blob,old);await storeBlob('spec-'+file.id,new Blob([proposal.spec],{type:'application/json'}));}
   await storeBlob(file.id,new Blob([proposal.bytes.slice()],{type:'application/pdf'}));
   const version:FileVersion={blob,at:Date.now(),summary:proposal.summary,size:current.length};
-  return {...file,size:proposal.bytes.length,updated:Date.now(),versions:[version,...(file.versions||[])].slice(0,20)};
+  return {...file,size:proposal.bytes.length,updated:Date.now(),versions:addVersion(file.versions,version)};
 }
 
 /** Puts the most recent earlier version back. */

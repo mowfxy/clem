@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, realpath } from "node:fs/promi
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyChange, undoChange, locate } from "../../desktop/folder-edits.ts";
+import { applyChange, undoChange, locate, sha } from "../../desktop/folder-edits.ts";
 import type { Folder } from "../../desktop/folders.ts";
 
 async function workspace() {
@@ -68,5 +68,69 @@ test("a new file cannot be created through a linked subfolder that points outsid
     assert.equal(existsSync(join(other, "new")), false);
     await applyChange(folders, "chat:a", { path: "src/new/notes.txt", content: "ok" });
     assert.equal(await readFile(join(root, "src", "new", "notes.txt"), "utf8"), "ok");
+  } finally { await rm(base, { recursive: true, force: true }); }
+});
+
+test("Windows line breaks: a find written with \n matches a \r\n file, and new text keeps the file's line breaks and BOM", async () => {
+  const { base, root, folders } = await workspace();
+  try {
+    const file = join(root, "src", "win.py");
+    await writeFile(file, "\uFEFFa = 1\r\nb = 2\r\nc = 3\r\n");
+    await applyChange(folders, "chat:a", { path: "src/win.py", find: "a = 1\nb = 2", replace: "a = 1\nb = 20\nb2 = 21" });
+    assert.equal(await readFile(file, "utf8"), "\uFEFFa = 1\r\nb = 20\r\nb2 = 21\r\nc = 3\r\n");
+    await applyChange(folders, "chat:a", { path: "src/win.py", content: "x = 1\ny = 2\n" });
+    assert.equal(await readFile(file, "utf8"), "\uFEFFx = 1\r\ny = 2\r\n");
+    // A plain \n file stays as it is.
+    await applyChange(folders, "chat:a", { path: "src/app.py", find: "x = 1\ny = 2", replace: "x = 1\ny = 5" });
+    assert.equal(await readFile(join(root, "src", "app.py"), "utf8"), "x = 1\ny = 5\n");
+  } finally { await rm(base, { recursive: true, force: true }); }
+});
+
+test("an approval applies only to the file as it was shown: a change made since is never overwritten", async () => {
+  const { base, root, folders } = await workspace();
+  try {
+    const shown = sha("x = 1\ny = 2\n");
+    await writeFile(join(root, "src", "app.py"), "x = 1\ny = 2\nz = 3\n");
+    await assert.rejects(() => applyChange(folders, "chat:a", { path: "src/app.py", content: "replaced\n", base: shown }), /changed since this change was shown/);
+    assert.equal(await readFile(join(root, "src", "app.py"), "utf8"), "x = 1\ny = 2\nz = 3\n");
+    await applyChange(folders, "chat:a", { path: "src/app.py", content: "replaced\n", base: sha("x = 1\ny = 2\nz = 3\n") });
+    assert.equal(await readFile(join(root, "src", "app.py"), "utf8"), "replaced\n");
+    // A new file was shown as new: if one appeared meanwhile, it is not overwritten.
+    await writeFile(join(root, "src", "late.md"), "mine\n");
+    await assert.rejects(() => applyChange(folders, "chat:a", { path: "src/late.md", content: "new\n", base: null }), /changed since/);
+    await applyChange(folders, "chat:a", { path: "src/fresh.md", content: "new\n", base: null });
+    assert.equal(await readFile(join(root, "src", "fresh.md"), "utf8"), "new\n");
+  } finally { await rm(base, { recursive: true, force: true }); }
+});
+
+test("a subfolder named like the linked folder is reached as written; the folder's own name is still accepted", async () => {
+  const { base, root, folders } = await workspace();
+  try {
+    // The linked folder is "project"; it holds project/notes.md and its own notes.md.
+    await mkdir(join(root, "project"), { recursive: true });
+    await writeFile(join(root, "project", "notes.md"), "inner\n");
+    await writeFile(join(root, "notes.md"), "outer\n");
+    assert.equal((await locate(folders, "project/notes.md")).absolute, join(root, "project", "notes.md"));
+    assert.equal((await locate(folders, "notes.md")).absolute, join(root, "notes.md"));
+    // Without such a subfolder, a leading folder name means the folder itself, for reading and for new files.
+    assert.equal((await locate(folders, "project/src/app.py")).absolute, join(root, "src", "app.py"));
+    await rm(join(root, "project"), { recursive: true });
+    const made = await locate(folders, "project/docs/new.md", true);
+    assert.equal(made.absolute, join(root, "docs", "new.md"));
+  } finally { await rm(base, { recursive: true, force: true }); }
+});
+
+test("files the folder's .gitignore or .mowrignore leave out cannot be read or changed", async () => {
+  const { base, root, folders } = await workspace();
+  try {
+    await writeFile(join(root, ".mowrignore"), "private/\n*.log.txt\n");
+    await mkdir(join(root, "src", "private"), { recursive: true });
+    await writeFile(join(root, "src", "private", "diary.md"), "keep out\n");
+    await writeFile(join(root, "src", ".gitignore"), "generated.json\n");
+    await writeFile(join(root, "src", "generated.json"), "{}");
+    await writeFile(join(root, "run.log.txt"), "log");
+    for (const path of ["src/private/diary.md", "src/generated.json", "run.log.txt"]) await assert.rejects(() => locate(folders, path), /not in a linked folder/, path);
+    await assert.rejects(() => applyChange(folders, "chat:a", { path: "src/private/new.md", content: "x" }), /not in a linked folder/);
+    assert.ok((await locate(folders, "src/app.py")).exists);
   } finally { await rm(base, { recursive: true, force: true }); }
 });

@@ -365,6 +365,20 @@ test("a redacted document carries no attached files: the list, paperclip notes a
   assert.doesNotMatch(plain.done[0], /attached/);
 });
 
+test("a replace is a correction: the box's content goes, but the title, bookmarks and attached files stay", async () => {
+  const doc = await PDFDocument.create();
+  const f = await doc.embedFont(StandardFonts.Helvetica);
+  doc.addPage([400, 300]).drawText("Results for Amira Hassan", { x: 40, y: 200, size: 14, font: f });
+  doc.setTitle("Amira Hassan results");
+  await doc.attach(Buffer.from("APPENDIX-DATA"), "appendix.txt", { mimeType: "text/plain" });
+  const r = await editPdf({ file: "c.pdf", ops: [{ op: "replace", page: 1, bbox: [30, 190, 380, 222], text: "Results for Amira Hasan", size: 14 }] }, helpers({ "c.pdf": await doc.save() }));
+  assert.doesNotMatch(r.done[0], /also removed|attached/);
+  const out = await PDFDocument.load(r.bytes, { updateMetadata: false });
+  assert.equal(out.getTitle(), "Amira Hassan results");
+  assert.match(rawText(r.bytes), /APPENDIX-DATA|\/EmbeddedFile/);
+  assert.match(await textOf(r.bytes), /Amira Hasan/);
+});
+
 test("the content reader keeps inline images whole and the marked-content alternative text of removed glyphs is scrubbed", async () => {
   const ops = parseContent("q 10 0 0 10 50 50 cm BI /W 2 /H 1 /BPC 8 /CS /G ID \x00EI\xff EI Q (a\\)b) Tj [<00ff> -20 (c)] TJ");
   assert.deepEqual(ops.map((o) => o.op), ["q", "cm", "BI", "Q", "Tj", "TJ"]);

@@ -4,7 +4,8 @@
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { openFixture, FOLDER } from "./local-power-fixture.mjs";
+import { createHash } from "node:crypto";
+import { openFixture, FOLDER, notes } from "./local-power-fixture.mjs";
 
 await mkdir("artifacts", { recursive: true });
 const browser = await chromium.launch();
@@ -28,6 +29,9 @@ try {
   assert.equal(ask.scope, FOLDER.scope);
   await page.getByRole("button", { name: "Apply change" }).click();
   await page.locator(".edit-proposal .edit-state", { hasText: "Applied" }).waitFor();
+  // The approval names the file as it was shown, hashed the way the desktop side checks it (desktop/folder-edits.ts).
+  const applied = await page.evaluate(() => window.requests.find((r) => r.action === "folderEditApply"));
+  assert.equal(applied.base, createHash("sha256").update(notes["Week 3 - Cell biology.md"]).digest("hex"));
 
   // Outside changes become a notice.
   await page.evaluate((f) => window.fireFolder({ folderId: f.id, scope: f.scope, folder: "Biology 101", added: ["week4-genetics.md"], changed: ["glossary.md"], removed: [] }), FOLDER);

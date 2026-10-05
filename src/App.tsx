@@ -80,6 +80,7 @@ import {
   storeBlob,
   getBlob,
   deleteBlob,
+  addVersion,
   download,
   downloadMade,
   sizeLabel,
@@ -98,7 +99,7 @@ import { ChatMenu } from "./ChatMenu";
 import { MessageBody, type BodyHandlers } from "./chat/MessageBody";
 import { WorkSummary } from "./chat/WorkSummary";
 import { MessageTools, ReviewPanel, VerifyPanel, UserMessageTools, UserMessageEdit, parseClaims } from "./chat/MessageExtras";
-import type { EditBlock } from "./chat/EditProposal";
+import { FOLDER_FILE_CHANGED, type EditBlock } from "./chat/EditProposal";
 import { answerInstructions, visualOnlyInstructions, reviewInstructions, verifyInstructions } from "../core/answer-format";
 import { matchSource, type Citation } from "../core/citations";
 import { weakConcepts } from "./SubjectStudy";
@@ -558,7 +559,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const receive=(event:Event)=>{const {file:made,scope,revised}=(event as CustomEvent).detail as {file:StoredFile;scope?:string;revised?:{version:import('../core/types').FileVersion}};
       // A revised document replaces the same file's contents; its earlier version is kept for Undo. A file in Drive
       // keeps its Drive copy until the change is approved (Done or Approve in the file panel).
-      if(revised){patch(current=>({...current,files:current.files.map(f=>f.id===made.id?{...f,size:made.size,updated:made.updated||Date.now(),versions:[revised.version,...(f.versions||[])].slice(0,20),drivePending:f.drivePending||!!f.driveId}:f)}));return;}
+      if(revised){patch(current=>({...current,files:current.files.map(f=>f.id===made.id?{...f,size:made.size,updated:made.updated||Date.now(),versions:addVersion(f.versions,revised.version),drivePending:f.drivePending||!!f.driveId}:f)}));return;}
       const target=artifactTarget.current;let file=made;
       if(target&&Date.now()<target.until&&scope?.endsWith(':'+target.spaceId)){file={...made,spaceId:target.spaceId,folderId:target.folderId};artifactTarget.current=null;if(target.label)setToast(`${made.name} saved to ${target.label}.`);}
       patch(current=>({...current,files:current.files.some(f=>f.id===file.id)?current.files:[...current.files,file]}));
@@ -1207,10 +1208,12 @@ In this subject the learner keeps missing these questions in review; connect to 
       scope:desktopScope,edits:message.edits,canCite,onCite:openCitation,
       driveFile:(driveId)=>message.drive?.find((d)=>d.id===driveId),onOpenDrive:openDrive,
       onOpenDriveWeb:(ref)=>void desktop?.invoke({action:"driveOpenWeb",id:ref.id}).catch((e)=>setToast(cleanError(e))),
-      onEdit:async(key:string,block:EditBlock,approve:boolean)=>{
+      onEdit:async(key:string,block:EditBlock,approve:boolean,base?:string|null)=>{
         if(!approve){patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"dismissed"}}}));return;}
         try{
-          const result=await desktop!.invoke({action:"folderEditApply",scope:desktopScope,path:block.path,find:block.find,replace:block.replace,content:block.content,summary:block.summary});
+          const result=await desktop!.invoke({action:"folderEditApply",scope:desktopScope,path:block.path,find:block.find,replace:block.replace,content:block.content,summary:block.summary,base});
+          // Other proposals for the same file show their changes against the file as it is now.
+          window.dispatchEvent(new CustomEvent(FOLDER_FILE_CHANGED,{detail:{path:block.path}}));
           patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"applied",changeId:result.id}}}));
           setToast("Change applied. You can undo it from the chat or Settings → Linked folders.");
         }catch(e){setToast(cleanError(e));}
@@ -1225,7 +1228,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         setToast("Routine scheduled. Manage it in Settings → Automations.");
       },
       onUndo:async(key,outcome)=>{
-        try{await desktop!.invoke({action:"folderChangeUndo",id:outcome.changeId!});patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"undone",changeId:outcome.changeId}}}));setToast("Change undone.");}
+        try{await desktop!.invoke({action:"folderChangeUndo",id:outcome.changeId!});window.dispatchEvent(new CustomEvent(FOLDER_FILE_CHANGED));patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"undone",changeId:outcome.changeId}}}));setToast("Change undone.");}
         catch(e){setToast(cleanError(e));}
       },
     };

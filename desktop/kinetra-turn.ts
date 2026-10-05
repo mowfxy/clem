@@ -328,7 +328,8 @@ function withoutBroken(text: string) {
 }
 /** Actions that make or change a file, or attach pictures of pages, run in the order they were asked for. */
 export const MAX_PARALLEL = 4;
-const IN_ORDER = new Set(["pdf", "docx", "pptx", "xlsx", "file", "image", "look", "open"]);
+// editpdf makes or revises a file like the others: two at once would both read the same stored edits and Undo copy.
+const IN_ORDER = new Set(["pdf", "docx", "pptx", "xlsx", "file", "image", "editpdf", "look", "open"]);
 /**
  * What a cut-off request is told: where it stopped and what to send instead. A model told only "it was too long"
  * tends to resend the same request, or shorten the content itself, which the person never asked for.

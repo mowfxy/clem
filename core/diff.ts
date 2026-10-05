@@ -43,12 +43,29 @@ export function hunks(lines: DiffLine[], context = 3) {
 
 export const diffStats = (lines: DiffLine[]) => ({ added: lines.filter(l => l.kind === 'add').length, removed: lines.filter(l => l.kind === 'remove').length });
 
-/** Applies a single exact find/replace; the find text must occur exactly once. */
+/** Whether a file breaks its lines Windows-style (\r\n) more often than not. */
+const usesCrlf = (text: string) => {
+  const crlf = (text.match(/\r\n/g) || []).length;
+  return crlf > 0 && crlf >= (text.match(/\n/g) || []).length - crlf;
+};
+const BOM = '﻿';
+
+/** Applies a single exact find/replace; the find text must occur exactly once. Models write line breaks as \n, so in a
+ *  file with \r\n line breaks the find text also matches with \r\n, and new text gets the file's line breaks. A whole
+ *  new `content` keeps the file's line breaks and byte-order mark too, so an edit does not rewrite every line. */
 export function applyEdit(current: string, edit: { find?: string; replace?: string; content?: string }) {
-  if (edit.content !== undefined) return edit.content;
+  const crlf = usesCrlf(current);
+  const native = (text: string) => (crlf ? text.replace(/\r?\n/g, '\r\n') : text);
+  if (edit.content !== undefined) {
+    const content = native(edit.content);
+    return current.startsWith(BOM) && !content.startsWith(BOM) ? BOM + content : content;
+  }
   if (!edit.find) throw Error('The change does not say what to replace.');
-  const first = current.indexOf(edit.find);
+  let find = edit.find, replace = edit.replace ?? '';
+  let first = current.indexOf(find);
+  if (first < 0 && crlf && native(find) !== find) { find = native(find); first = current.indexOf(find); }
+  if (crlf) replace = native(replace);
   if (first < 0) throw Error('The text to replace is no longer in the file.');
-  if (current.indexOf(edit.find, first + 1) >= 0) throw Error('The text to replace appears more than once. Ask for a more specific change.');
-  return current.slice(0, first) + (edit.replace ?? '') + current.slice(first + edit.find.length);
+  if (current.indexOf(find, first + 1) >= 0) throw Error('The text to replace appears more than once. Ask for a more specific change.');
+  return current.slice(0, first) + replace + current.slice(first + find.length);
 }

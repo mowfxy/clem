@@ -433,6 +433,19 @@ test("independent requests in one reply run side by side; file making and look k
   assert.deepEqual(results, ["a", "b", "c", "pdf", "d"]);
 });
 
+test("two PDF edits in one reply run one after the other, never at once", async () => {
+  const reply = [1, 2].map((n) => JSON.stringify({ kinetra: { action: "editpdf", revise: "f1", append: true, ops: [{ op: "stamp", text: "E" + n }] } })).join("\n");
+  let active = 0, most = 0;
+  const sent: string[] = [];
+  await runKinetraTurn("m", "", async (input) => { sent.push(input); return sent.length === 1 ? reply : "Done."; }, async () => {
+    active++; most = Math.max(most, active);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    active--;
+    return "ok";
+  }, () => false);
+  assert.equal(most, 1);
+});
+
 test("Kinetra calls share a few warm workers; one that times out or stops is replaced", async () => {
   const integral = { module: "mowr", fn: "integrateExpression", args: ["x^2", "x", 0, 1] };
   assert.ok(Math.abs((await kinetraCall(integral)) - 1 / 3) < 1e-8);
