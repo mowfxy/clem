@@ -202,6 +202,24 @@ function Modal({
   );
 }
 function workspaceRoute(){const route=location.hash.slice(1)||"/";return desktop&&!route.startsWith("/app")?"/app":route;}
+/** Scrolls whichever area under a drag can still move, faster the closer the pointer is to its top or bottom edge. */
+function edgeScroll(e:DragEvent){
+  const EDGE=70;
+  for(let el=e.target instanceof Element?e.target:null;el;el=el.parentElement){
+    const root=el===document.scrollingElement||el===document.body;
+    const style=getComputedStyle(el);
+    if(!root&&!/(auto|scroll)/.test(style.overflowY))continue;
+    if(el.scrollHeight<=el.clientHeight+1)continue;
+    const r=root?{top:0,bottom:window.innerHeight}:el.getBoundingClientRect();
+    const top=Math.max(r.top,0),bottom=Math.min(r.bottom,window.innerHeight);
+    const up=e.clientY-top<EDGE&&el.scrollTop>0,down=bottom-e.clientY<EDGE&&el.scrollTop+el.clientHeight<el.scrollHeight-1;
+    if(!up&&!down)continue;
+    const depth=up?EDGE-(e.clientY-top):EDGE-(bottom-e.clientY);
+    el.scrollTop+=(up?-1:1)*Math.ceil(4+depth/3);
+    return;
+  }
+}
+
 export default function App({offline=false}:{offline?:boolean}={}) {
   const [state, setState] = useState<State>(emptyState);
   const [session, setSession] = useState<Session>(defaultSession);
@@ -1417,13 +1435,14 @@ In this subject the learner keeps missing these questions in review; connect to 
     }catch(e){setToast((e as Error).message);}
   }
   useEffect(()=>{if(!desktop?.onPack)return;return desktop.onPack(({bytes,name})=>void openPackBytes(bytes,name));},[]);
-  // A study pack dropped anywhere on the window opens for review.
+  // A study pack dropped anywhere on the window opens for review. While anything is dragged, holding it near the top or
+  // bottom of a scrolling area scrolls it (the wheel does not reach the page mid-drag), so far-off folders stay reachable.
   useEffect(()=>{
     const isPack=(e:DragEvent)=>[...(e.dataTransfer?.items||[])].some(i=>i.kind==='file')&&[...(e.dataTransfer?.files||[])].some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION));
     const over=(e:DragEvent)=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault();};
     const drop=(e:DragEvent)=>{if(e.defaultPrevented||!isPack(e))return;e.preventDefault();const file=[...e.dataTransfer!.files].find(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION))!;void file.arrayBuffer().then(b=>openPackBytes(new Uint8Array(b),file.name));};
-    window.addEventListener('dragover',over);window.addEventListener('drop',drop);
-    return()=>{window.removeEventListener('dragover',over);window.removeEventListener('drop',drop);};
+    window.addEventListener('dragover',over);window.addEventListener('drop',drop);window.addEventListener('dragover',edgeScroll,true);
+    return()=>{window.removeEventListener('dragover',over);window.removeEventListener('drop',drop);window.removeEventListener('dragover',edgeScroll,true);};
   },[]);
   /** A project or subject opens as its own page. */
   function openSpace(id:string,tab:SpaceTab='overview'){setSpaceId(id);setChatId(null);setSpaceTab(tab);navigate('/app/space/'+id);}
