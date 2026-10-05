@@ -18,7 +18,9 @@ export function mayBeTool(text: string) {
   const body = t.replace(/^```(?:json)?/, "").replace(/\s/g, "");
   return !body || '{"kinetra"'.startsWith(body.slice(0, 10)) || body.startsWith('{"kinetra"');
 }
-const IDLE_MS = 10 * 60_000;
+/** A connection nobody used for this long is closed. Starting one again is the slowest part of a request, so it is
+ *  kept through ordinary pauses in a conversation (an idle app-server holds little memory and no network). */
+const IDLE_MS = 30 * 60_000;
 
 /** What the person sees while a tool runs, instead of a silent pause. */
 export function toolStatus(request: any) {
@@ -79,6 +81,7 @@ export class Codex {
     return this.serverStart;
   }
   /** Starts the connection ahead of the first message, so the first reply is not slowed by startup. */
+  prepare(_ahead = false) { this.warm(); }
   warm() {
     void this.connection().then(() => this.scheduleIdle()).catch(() => {});
     if (!this.catalog) void this.models().catch(() => {});
@@ -287,7 +290,31 @@ export class Codex {
       });
     return this.accountRequest;
   }
+  /**
+   * The account and its usage through the warm connection when one is open: no program start, so a check before each
+   * request (automatic switching) or Settings' live view costs one call. Without one, a short-lived app-server is used.
+   */
   private async readAccount(): Promise<any> {
+    const server = this.server;
+    if (server && !server.dead) {
+      try { return await this.accountOn(server); } catch (error) { if (!server.dead) throw error; }
+    }
+    return this.readAccountAlone();
+  }
+  private async accountOn(server: AppServer): Promise<any> {
+    await server.ready;
+    const read = await server.request("account/read", { refreshToken: false }, 20000);
+    const a = read?.account;
+    if (a?.type !== "chatgpt") return { connected: false, checkedAt: Date.now() };
+    const account = { email: a.email || null, plan: a.planType || null };
+    try {
+      return { connected: true, ...account, usage: await server.request("account/rateLimits/read", {}, 20000), checkedAt: Date.now() };
+    } catch (error) {
+      if (server.dead) throw error;
+      return { connected: true, ...account, usage: null, usageError: /in time/.test((error as Error).message) ? "Usage refresh timed out. Try refreshing." : "Usage is unavailable from the provider.", checkedAt: Date.now() };
+    }
+  }
+  private async readAccountAlone(): Promise<any> {
     const child = await this.start(["app-server"]);
     this.inspections.add(child);
     const lines = createInterface({ input: child.stdout });

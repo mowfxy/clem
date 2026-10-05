@@ -117,6 +117,8 @@ export const requestSchema = z.discriminatedUnion("action", [
       .max(2000)
       .refine((m) => m.reduce((n, x) => n + x.content.length, 0) <= 60_000_000, "This conversation is too large to send."),
   }),
+  /** A message is about to be sent to this model: its AI program is made ready meanwhile (desktop/main.ts prepareFor). */
+  z.object({ action: z.literal("prepare"), model: z.string().regex(/^[a-zA-Z0-9._:-]{1,100}(?:\[[a-z0-9]{1,8}\])?$/).optional() }),
   z.object({ action: z.literal("cancel"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryList"), scope: scopeSchema }),
   z.object({ action: z.literal("memoryAll") }),

@@ -169,3 +169,34 @@ test('the steps of a tool loop reuse the sign-in check; a sign-in failure makes 
   await provider.run('one','step','claude:sonnet',undefined,()=>{});
   assert.equal(checks,3);
 });
+
+test('an older Claude sign-in check does not hold up an answer (it is renewed afterwards); a day-old one is checked first',async()=>{
+  const provider:any=new ClaudeProvider('fixture','C:/fixture');
+  const order:string[]=[];
+  let signedIn=true;
+  provider.readStatus=async()=>{order.push('check');await new Promise(r=>setTimeout(r,30));const value={installed:true,connected:signedIn};provider.statusCache={at:Date.now(),value};return value;};
+  provider.start=async()=>{
+    order.push('answer');
+    const child:any=new EventEmitter();
+    child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{};
+    child.stdin.on('finish',()=>queueMicrotask(()=>{child.stdout.write(JSON.stringify({type:'result',subtype:'success',result:'ok',is_error:false})+'\n');child.emit('close',0);}));
+    return child;
+  };
+  const answer=()=>provider.run('r','hi','claude:sonnet',undefined,()=>{});
+  // Never checked: the answer waits for the check.
+  await answer();
+  assert.deepEqual(order,['check','answer']);
+  // An hour old: the answer starts at once, and the check is renewed once it is done.
+  order.length=0;provider.statusCache.at-=60*60_000;
+  await answer();
+  assert.deepEqual(order,['answer','check']);
+  await provider.statusRequest;
+  // Recent: no check at all.
+  order.length=0;
+  await answer();
+  assert.deepEqual(order,['answer']);
+  // A day old: checked again before anything starts, and a lapsed sign-in is refused.
+  order.length=0;signedIn=false;provider.statusCache.at-=25*60*60_000;
+  await assert.rejects(answer(),/Sign in/);
+  assert.deepEqual(order,['check']);
+});

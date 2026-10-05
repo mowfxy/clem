@@ -38,12 +38,14 @@ export class AppServer {
     if (this.dead) return;
     this.child.stdin.write(JSON.stringify(message) + "\n");
   }
-  request<T = any>(method: string, params: unknown): Promise<T> {
+  /** `timeoutMs`: the request is given up after that long (the connection stays open for everything else). */
+  request<T = any>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
     if (this.dead) return Promise.reject(Error("Codex connection closed."));
     this.lastUsed = Date.now();
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = timeoutMs ? setTimeout(() => { this.pending.delete(id); reject(Error("Codex did not answer in time.")); }, timeoutMs) : undefined;
+      this.pending.set(id, { resolve: (value) => { clearTimeout(timer); resolve(value); }, reject: (error) => { clearTimeout(timer); reject(error); } });
       this.write({ id, method, params });
     });
   }
