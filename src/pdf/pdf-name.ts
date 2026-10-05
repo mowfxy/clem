@@ -1,24 +1,14 @@
-/** Gives PDFs with machine-made names (GUC_45_64_46266_2024-09-07T10_43_25.pdf, scan0001.pdf…)
- *  a readable name taken from the document itself: its title metadata, or the largest text on page one. */
+/** Reads what a PDF, Word or PowerPoint file says on its first page, so files with machine-made or bare names
+ *  (GUC_45_64_46266_2024-09-07T10_43_25.pdf, scan0001.pdf, Lec03.pptx…) are saved under a readable one. */
 
-const FILLER = new Set(['scan', 'scanned', 'doc', 'document', 'file', 'img', 'image', 'print', 'untitled', 'download', 'downloads', 'copy', 'new', 'final', 'pdf', 'page', 'export', 'output', 'attachment', 'tmp', 'temp', 'microsoft', 'word']);
+import { betterFileName, isGenericName, type NameLine, type NameSource } from '../../core/file-naming';
 
-export function isGenericName(name: string) {
-  const base = name.replace(/\.[^.]+$/, '');
-  const chars = base.replace(/[\s_\-.()[\]]/g, '');
-  if (!chars) return true;
-  if (/^[A-Za-z ]+$/.test(base) && !FILLER.has(base.trim().toLowerCase())) return false;
-  const digits = (chars.match(/\d/g) || []).length;
-  if (digits / chars.length >= 0.4) return true;
-  if (/[@#$%^&*=+~`|]/.test(base)) return true;
-  const words = base.split(/[\s_\-.()[\]]+/).filter((t) => /^[A-Za-zÀ-ɏ؀-ۿ]{3,}$/.test(t) && !FILLER.has(t.toLowerCase()) && !(t.length <= 4 && t === t.toUpperCase()));
-  return words.length === 0;
-}
+export { isGenericName };
 
 const tidy = (text: string) => text.replace(/\s+/g, ' ').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim();
-const titled = (text: string) => text === text.toUpperCase() && /[A-Z]{4}/.test(text) ? text.toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : text;
 
-export async function suggestPdfName(blob: Blob): Promise<string | undefined> {
+/** The title and page-one lines of a PDF, largest text first in importance. */
+async function pdfSource(blob: Blob): Promise<NameSource | undefined> {
   const lib = await import('pdfjs-dist');
   lib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href;
   const task = lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) });
@@ -26,10 +16,7 @@ export async function suggestPdfName(blob: Blob): Promise<string | undefined> {
     const pdf = await task.promise;
     const meta = await pdf.getMetadata().catch(() => undefined);
     const title = tidy(String((meta?.info as { Title?: string } | undefined)?.Title || ''));
-    if (title.length >= 4 && !isGenericName(title + '.pdf') && !/^(microsoft|untitled|slide ?1|powerpoint)/i.test(title) && !/\.(docx?|pptx?|tex|dvi)$/i.test(title)) return titled(title).slice(0, 80);
-    const page = await pdf.getPage(1);
-    const content = await page.getTextContent();
-    // Group text runs into lines, keeping each line's largest font size.
+    const content = await (await pdf.getPage(1)).getTextContent();
     const lines = new Map<number, { y: number; x: number; size: number; text: string }>();
     for (const item of content.items) {
       if (!('str' in item) || !item.str.trim()) continue;
@@ -42,20 +29,57 @@ export async function suggestPdfName(blob: Blob): Promise<string | undefined> {
       line.x = Math.min(line.x, x);
       lines.set(key, line);
     }
-    const all = [...lines.values()].map((l) => ({ ...l, text: tidy(l.text) })).filter((l) => /\p{L}{2}/u.test(l.text) && l.text.length <= 90);
-    if (!all.length) return undefined;
-    const largest = Math.max(...all.map((l) => l.size));
-    const picked = all.filter((l) => l.size >= largest * 0.8).sort((p, q) => q.y - p.y || p.x - q.x).map((l) => titled(l.text));
-    const name = [...new Set(picked)].slice(0, 3).join(' – ');
-    return name.length >= 3 ? name.slice(0, 80).replace(/[\s–-]+$/, '') : undefined;
+    const ordered: NameLine[] = [...lines.values()].sort((p, q) => q.y - p.y || p.x - q.x).map((l) => ({ text: tidy(l.text), size: l.size })).filter((l) => /\p{L}{2}/u.test(l.text));
+    return { title: title.length >= 4 && !/\.(docx?|pptx?|tex|dvi)$/i.test(title) ? title : undefined, lines: ordered };
   } finally {
     await task.destroy();
   }
 }
 
-/** The file name to store: the original when it reads well, otherwise one drawn from the PDF. */
-export async function readablePdfName(file: File) {
-  if (!/\.pdf$/i.test(file.name) || !isGenericName(file.name)) return file.name;
-  const found = await Promise.race([suggestPdfName(file).catch(() => undefined), new Promise<undefined>((r) => setTimeout(r, 6000))]);
-  return found ? found + '.pdf' : file.name;
+const xmlText = (xml: string) => xml.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+
+/** The title and first slide or first paragraphs of a Word or PowerPoint file; titles count as larger text. */
+async function officeSource(blob: Blob, kind: 'pptx' | 'docx'): Promise<NameSource | undefined> {
+  const { unzipSync, strFromU8 } = await import('fflate');
+  const want = kind === 'pptx' ? 'ppt/slides/slide1.xml' : 'word/document.xml';
+  const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()), { filter: (f) => f.name === want || f.name === 'docProps/core.xml' });
+  const core = zip['docProps/core.xml'] ? strFromU8(zip['docProps/core.xml']) : '';
+  const title = tidy(xmlText(core.match(/<dc:title>([\s\S]*?)<\/dc:title>/)?.[1] || ''));
+  const body = zip[want] ? strFromU8(zip[want]) : '';
+  const lines: NameLine[] = [];
+  if (kind === 'pptx') {
+    for (const shape of body.match(/<p:sp>[\s\S]*?<\/p:sp>/g) || []) {
+      const ph = shape.match(/<p:ph[^>]*type="(\w+)"/)?.[1];
+      const size = ph === 'title' || ph === 'ctrTitle' ? 3 : ph === 'subTitle' ? 2 : 1;
+      for (const para of shape.match(/<a:p>[\s\S]*?<\/a:p>/g) || []) {
+        const text = tidy((para.match(/<a:t>[\s\S]*?<\/a:t>/g) || []).map(xmlText).join(''));
+        if (text) lines.push({ text, size });
+      }
+    }
+  } else {
+    for (const para of (body.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || []).slice(0, 25)) {
+      const text = tidy((para.match(/<w:t[ >][\s\S]*?<\/w:t>/g) || []).map(xmlText).join(''));
+      if (!text) continue;
+      const style = para.match(/<w:pStyle w:val="([^"]+)"/)?.[1] || '';
+      lines.push({ text, size: /^title$/i.test(style) ? 3 : /heading1|^subtitle$/i.test(style) ? 2 : 1 });
+    }
+  }
+  return { title: title.length >= 4 ? title : undefined, lines };
+}
+
+/** What a document's first page says, for naming it; undefined for formats that are not read. */
+export async function nameSource(file: Blob & { name: string }): Promise<NameSource | undefined> {
+  if (/\.pdf$/i.test(file.name)) return pdfSource(file);
+  if (/\.pptx$/i.test(file.name)) return officeSource(file, 'pptx');
+  if (/\.docx$/i.test(file.name)) return officeSource(file, 'docx');
+  return undefined;
+}
+
+/**
+ * The file name to store: the original when it reads well, otherwise one drawn from the document and where it is saved.
+ * `place` is the name of the subject or project the file goes into, if any.
+ */
+export async function readableName(file: File, place?: string) {
+  const source = await Promise.race([nameSource(file).catch(() => undefined), new Promise<undefined>((r) => setTimeout(r, 6000))]);
+  return betterFileName(file.name, source, place);
 }

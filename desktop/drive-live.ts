@@ -110,6 +110,23 @@ export class DriveLive {
     return {connected:true,files,next:body.nextPageToken};
   }
 
+  /** Saves a new file into a Drive folder (resumable, so large files go too); the folder is read fresh next time. */
+  async upload(folderId:string,name:string,type:string,data:Uint8Array){
+    const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
+    const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",{
+      method:"POST",signal:AbortSignal.timeout(30000),
+      headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
+      body:JSON.stringify({name:name.replace(/[ -]/g,"").slice(0,200),parents:[folderId]}),
+    });
+    if(start.status===403)throw Error("Reconnect Google Drive to let Mowr save files there.");
+    const session=start.headers.get("Location");
+    if(!start.ok||!session)throw Error(start.status===404?"This Drive folder is no longer available.":"Google Drive did not accept the file.");
+    const done=await this.fetcher(session,{method:"PUT",headers:{"Content-Type":mime},body:data as unknown as BodyInit,signal:AbortSignal.timeout(Math.max(120_000,data.length/50))});
+    if(!done.ok)throw Error("Google Drive did not finish saving the file. Try again.");
+    for(const [id,tree] of this.trees)if(id===folderId||tree.folders.includes(folderId))this.trees.delete(id);
+    return await done.json() as {id:string};
+  }
+
   /** Everything inside a linked folder and its subfolders (5 levels, 1500 items), read live and kept for two minutes. */
   async tree(folderId:string,refresh=false){
     const cached=this.trees.get(folderId);

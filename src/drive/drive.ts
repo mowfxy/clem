@@ -55,6 +55,10 @@ export async function listDrive(options: { folder?: string; page?: string; query
   return r as { connected: boolean; files: DriveItem[]; next?: string };
 }
 
+/** Saves a file into a Drive folder, straight from this PC. */
+export async function uploadToDrive(folder: string, file: Blob, name: string) {
+  return desktop!.invoke({ action: "driveUpload", folder, name, type: file.type || "application/octet-stream", data: new Uint8Array(await file.arrayBuffer()) }) as Promise<{ id: string }>;
+}
 export async function driveFolder(folder: string, query = "", refresh = false) {
   return desktop!.invoke({ action: "driveFolder", folder, query: query.slice(0, 4000), refresh }) as Promise<{ items: DriveItem[]; hits: (DriveRef & { excerpt?: string })[]; checked: number }>;
 }

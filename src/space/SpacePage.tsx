@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode} from 'react';
+import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode,type MouseEvent as ReactMouseEvent} from 'react';
 import {Icon} from '../Icons';
 import {SpaceMark} from './SpaceMark';
 import {RenameField,PencilIcon} from '../files/RenameField';
@@ -6,7 +6,7 @@ import {FileGlyph} from '../files/FileGlyph';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
 import {chatPreview} from '../../core/chat-title';
-import {sizeLabel} from '../store';
+import {getBlob,sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
 import {MemoryConversation,warmMemory} from '../MemoryConversation';
@@ -24,6 +24,8 @@ export type SpaceActions={
   /** Opens a chat in this space with the message ready to review and send. */
   onDraft:(prompt:string)=>void;
   onOpenChat:(chat:Chat)=>void;
+  /** Asks before deleting a chat of this space. */
+  onDeleteChat:(chat:Chat)=>void;
   onOpenFile:(file:StoredFile)=>void;
   /** Opens the file beside a new chat in this space, where messages edit it. */
   onEditFile:(file:StoredFile)=>void;
@@ -64,6 +66,25 @@ function Ring({value,size=58}:{value:number;size?:number}){
   return <svg className="sp-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={size/2} cy={size/2} r={r} className="track"/><circle cx={size/2} cy={size/2} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform={`rotate(-90 ${size/2} ${size/2})`}/></svg>;
 }
 
+/** A right-click menu for a chat row: the same actions as elsewhere, where the pointer is. */
+function ChatContextMenu({at,onClose,items}:{at:{x:number;y:number};onClose:()=>void;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[]}){
+  const root=useRef<HTMLDivElement>(null);
+  useEffect(()=>{const close=(e:Event)=>{if(!root.current?.contains(e.target as Node))onClose();};const key=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};
+    document.addEventListener('pointerdown',close);document.addEventListener('keydown',key);window.addEventListener('blur',onClose);window.addEventListener('scroll',onClose,true);
+    root.current?.querySelector('button')?.focus();
+    return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',key);window.removeEventListener('blur',onClose);window.removeEventListener('scroll',onClose,true);};},[onClose]);
+  return <div className="sp-menu-list sp-context" role="menu" ref={root} style={{position:'fixed',left:Math.min(at.x,window.innerWidth-210),top:Math.min(at.y,window.innerHeight-60*items.length),right:'auto'}}>
+    {items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={()=>{onClose();i.run();}}>{i.icon&&<Icon name={i.icon} size={15}/>}{i.label}</button>)}</div>;
+}
+/** Right-clicking a chat row opens its menu; returns the handler and the menu to render. */
+function useChatMenu(onDelete:(chat:Chat)=>void){
+  const [menu,setMenu]=useState<{chat:Chat;x:number;y:number}|null>(null);
+  const close=useMemo(()=>()=>setMenu(null),[]);
+  const open=(chat:Chat)=>(e:ReactMouseEvent)=>{e.preventDefault();setMenu({chat,x:e.clientX,y:e.clientY});};
+  const node=menu&&<ChatContextMenu at={menu} onClose={close} items={[{label:'Delete chat',icon:'trash',danger:true,run:()=>onDelete(menu.chat)}]}/>;
+  return {open,node};
+}
+
 function Menu({label,items,trigger}:{label:string;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[];trigger?:ReactNode}){
   const [open,setOpen]=useState(false),root=useRef<HTMLDivElement>(null);
   useEffect(()=>{if(!open)return;const close=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close);},[open]);
@@ -86,6 +107,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions}:
   const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length],['visuals','Visuals',visuals.length]]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length],['visuals','Visuals',visuals.length]];
   if(desktop)tabs.push(['memory','Memory']);
   const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
+  const chatMenu=useChatMenu(actions.onDeleteChat);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
   useEffect(()=>warmMemory(),[]);
@@ -154,7 +176,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions}:
         </section>}
         <section className="sp-card recent">
           <div className="sp-card-head"><span className="sp-eyebrow">Recent chats</span><button onClick={()=>onTab('chats')}>All chats</button></div>
-          {recentChats.slice(0,4).map(c=><button className="sp-row" key={c.id} onClick={()=>actions.onOpenChat(c)}><Icon name="chat" size={16}/><span>{c.title}</span><small>{ago(c.updated)}</small></button>)}
+          {recentChats.slice(0,4).map(c=><button className="sp-row" key={c.id} onClick={()=>actions.onOpenChat(c)} onContextMenu={chatMenu.open(c)}><Icon name="chat" size={16}/><span>{c.title}</span><small>{ago(c.updated)}</small></button>)}
           {!chats.length&&<p className="sp-empty-line">Ask your first question above.</p>}
         </section>
         <section className="sp-card recent">
@@ -164,7 +186,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions}:
         </section>
       </div>}
 
-      {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onNew={()=>actions.onAsk('')}/>}
+      {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onNew={()=>actions.onAsk('')} onMenu={chatMenu.open}/>}
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions}/>}
@@ -173,6 +195,8 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions}:
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
     {describing&&<DescriptionDialog space={space} onSave={description=>actions.onUpdateSpace({...space,description})} onClose={()=>setDescribing(false)}/>}
+
+    {chatMenu.node}
   </div>;
 }
 
@@ -185,12 +209,12 @@ function Editable({value,onSave,className,max,label,placeholder}:{value:string;o
 }
 
 
-function ChatList({chats,onOpen,onNew}:{chats:Chat[];onOpen:(c:Chat)=>void;onNew:()=>void}){
+function ChatList({chats,onOpen,onNew,onMenu}:{chats:Chat[];onOpen:(c:Chat)=>void;onNew:()=>void;onMenu:(c:Chat)=>(e:ReactMouseEvent)=>void}){
   const [q,setQ]=useState('');
   const shown=chats.filter(c=>!q||(c.title+' '+(c.summary||'')+' '+c.messages.map(m=>m.content).join(' ')).toLowerCase().includes(q.toLowerCase()));
   return <section className="sp-list">
     <div className="sp-toolbar"><div className="sp-search"><Icon name="research" size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search these chats" aria-label="Search chats"/></div><button className="primary" onClick={onNew}><Icon name="plus" size={15}/>New chat</button></div>
-    {shown.map(c=>{const last=chatPreview(c);return <button key={c.id} className="sp-chat" onClick={()=>onOpen(c)}><strong>{c.title}</strong>{last&&<span>{last}</span>}<small>{ago(c.updated)} · {c.messages.length} messages</small></button>;})}
+    {shown.map(c=>{const last=chatPreview(c);return <button key={c.id} className="sp-chat" onClick={()=>onOpen(c)} onContextMenu={onMenu(c)}><strong>{c.title}</strong>{last&&<span>{last}</span>}<small>{ago(c.updated)} · {c.messages.length} messages</small></button>;})}
     {!shown.length&&<p className="sp-empty-line">{q?'No chat matches.':'No chats yet.'}</p>}
   </section>;
 }
@@ -223,7 +247,7 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
   const destinations=(file:StoredFile)=>[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==(file.folderId||null));
   const [moving,setMoving]=useState<StoredFile|null>(null);
   const [renaming,setRenaming]=useState<string|null>(null);
-  return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
+  return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
     <div className="sp-toolbar">
       <nav className="sp-path" aria-label="Folder path">
         <button className={over==='crumb-root'?'over':''} onClick={()=>setAt(null)} onDrop={drop(null)} {...dragTarget('crumb-root')}><Icon name="files" size={15}/>Files</button>
@@ -240,7 +264,7 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
         <input ref={input} type="file" multiple hidden onChange={e=>{if(e.target.files?.length)actions.onUpload(e.target.files,at);e.target.value='';}}/>
       </div>
     </div>
-    {space.drive&&!at&&<DriveFolderView folderId={space.drive.folderId} folderName={space.drive.folderName} onOpen={actions.onOpenDrive} onAsk={actions.onAskDrive} onChangeFolder={actions.onLinkDrive} onUnlink={actions.onUnlinkDrive} onItems={actions.onDriveItems}/>}
+    {space.drive&&!at&&<DriveFolderView folderId={space.drive.folderId} folderName={space.drive.folderName} onOpen={actions.onOpenDrive} onAsk={actions.onAskDrive} onChangeFolder={actions.onLinkDrive} onUnlink={actions.onUnlinkDrive} onItems={actions.onDriveItems} onResolveFile={async id=>{const f=files.find(x=>x.id===id);const blob=f&&await getBlob(f.id);return f&&blob?{blob:new Blob([blob],{type:f.type||blob.type}),name:f.name}:undefined;}}/>}
     {space.drive&&!at&&(inHere.length>0||here.length>0)&&<div className="sp-local-label"><span className="sp-eyebrow">On this PC</span></div>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
       {here.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
