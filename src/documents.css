@@ -9,3 +9,11 @@
 
 
 
+
+/* The whole card is one target: it opens from anywhere and lights up as one; download sits on top of it. */
+.document-card{position:relative;transition:border-color .15s,background .15s}
+.document-card:hover{border-color:#5a5a62;background:linear-gradient(110deg,#303036,#2a2a2f)}
+.document-card .document-card-open,.document-card .document-card-open:hover,.document-card .document-card-open:focus-visible{background:none;box-shadow:none;outline:none;cursor:pointer}
+.document-card-open::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.document-card:has(.document-card-open:focus-visible){outline:2px solid #9fb4ff99;outline-offset:2px}
+.document-card>.icon-button{position:relative;z-index:1}

@@ -19,3 +19,8 @@
 .file-photo-open img{display:block;width:100%;max-height:220px;object-fit:cover}
 .file-photo-bar{display:flex;align-items:center;gap:6px;padding:4px 4px 4px 10px;font-size:11px;color:#a9a8a0}
 .file-photo-bar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The slip opens from anywhere on it and highlights as one; download sits on top. */
+.file-slip:not(.file-photo){position:relative}
+.file-slip .file-slip-open,.file-slip .file-slip-open:hover{background:none;box-shadow:none}
+.file-slip:not(.file-photo) .file-slip-open::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.file-slip-save{position:relative;z-index:1}
