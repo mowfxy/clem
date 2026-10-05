@@ -23,6 +23,58 @@ import { handleUsage } from "./usage.js";
 // Stored compressed, a collection must still fit D1's 2 MB value limit, checked after packing.
 const SYNC_MAX_BYTES = 8_000_000, SYNC_MAX_STORED = 1_900_000;
 
+// Supabase confirms each token over the network. Within one isolate a confirmed token is reused for up to a minute
+// (never past its own expiry), so a burst of app calls costs one check instead of one each.
+const USER_CACHE_MS = 60_000;
+const verifiedUsers = new Map();
+function tokenClaims(authorization) {
+  try {
+    const part = authorization.slice(7).split(".")[1];
+    return JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return {};
+  }
+}
+export async function verifiedUser(env, authorization, at = Date.now()) {
+  const cached = verifiedUsers.get(authorization);
+  if (cached && cached.until > at) return cached.user;
+  verifiedUsers.delete(authorization);
+  const check = await fetch(env.SUPABASE_URL + "/auth/v1/user", {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: authorization },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!check.ok) return null;
+  const user = await check.json();
+  const expires = Number(tokenClaims(authorization).exp) * 1000;
+  const until = Math.min(at + USER_CACHE_MS, Number.isFinite(expires) ? expires : at);
+  if (until > at) {
+    if (verifiedUsers.size >= 500) verifiedUsers.clear();
+    verifiedUsers.set(authorization, { user, until });
+  }
+  return user;
+}
+
+const hex = (bytes) => Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
+/**
+ * Email two-step for the account service. Off unless REQUIRE_EMAIL_PROOF="true": the desktop app cannot obtain a proof
+ * yet, and turning this on before it can would lock those people out of sync, linked accounts and support.
+ * The proof is the one server/file-security.ts already makes after an emailed code is confirmed:
+ * X-Mowr-Email-Proof: "<expires>.<HMAC-SHA256(FILE_GATE_SECRET, userId|session_id|session|expires) hex>".
+ */
+export async function emailProofAccepted(request, env, user, authorization, at = Date.now()) {
+  if (env.REQUIRE_EMAIL_PROOF !== "true") return true;
+  const settings = await env.DB.prepare("SELECT email_mfa FROM mowr_security WHERE owner_id=?").bind("supabase:" + user.id).first();
+  if (!settings?.email_mfa) return true;
+  const [expires, proof] = String(request.headers.get("X-Mowr-Email-Proof") || "").split(".");
+  const session = tokenClaims(authorization).session_id;
+  if (!env.FILE_GATE_SECRET || !session || !/^\d{1,12}$/.test(expires || "") || Number(expires) * 1000 <= at || !/^[a-f0-9]{64}$/.test(proof || "")) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.FILE_GATE_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const expected = hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode([user.id, session, "session", expires].join("|"))));
+  let difference = 0;
+  for (let i = 0; i < 64; i++) difference |= expected.charCodeAt(i) ^ proof.charCodeAt(i);
+  return difference === 0;
+}
+
 async function webhook(request, env) {
   const raw = await request.text();
   if (raw.length > 256000) return json({ error: "Payload too large" }, 413);
@@ -106,15 +158,8 @@ async function route(request, env) {
       const authorization = request.headers.get("Authorization");
       if (!authorization?.startsWith("Bearer "))
         return json({ error: "Sign in required" }, 401);
-      const check = await fetch(env.SUPABASE_URL + "/auth/v1/user", {
-        headers: {
-          apikey: env.SUPABASE_ANON_KEY,
-          Authorization: authorization,
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!check.ok) return json({ error: "Session expired" }, 401);
-      const user = await check.json();
+      const user = await verifiedUser(env, authorization);
+      if (!user) return json({ error: "Session expired" }, 401);
       if (!user.id || !user.email_confirmed_at)
         return json({ error: "Verify your email first" }, 403);
       if (user.factors?.some((f) => f.status === "verified")) {
@@ -130,6 +175,8 @@ async function route(request, env) {
         if (claims.sub !== user.id || claims.aal !== "aal2")
           return json({ error: "Authenticator verification required" }, 403);
       }
+      if (!(await emailProofAccepted(request, env, user, authorization)))
+        return json({ error: "Confirm the code we emailed you before continuing.", code: "EMAIL_MFA" }, 403);
       if (ownerEligible(user))
         await env.DB.prepare(
           "INSERT OR IGNORE INTO desktop_owner_grants(user_id,granted_at) VALUES(?,?)",

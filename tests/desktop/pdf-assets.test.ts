@@ -55,7 +55,7 @@ test("crop assets keep stable ids per chat, survive a fresh store, refuse made-u
   const store = new CropAssets(io, "chat-1");
   const png = new Uint8Array([137, 80, 78, 71]), pdf = new Uint8Array([37, 80, 68, 70]);
   const a = await store.add({ file: "lecture.pdf", page: 3, box: [1, 2, 3, 4], units: "pt", width: 10, height: 10, dpi: 300, vector: true, caption: "Figure 1" }, png, pdf);
-  assert.match(a.id, /^crop-[a-f0-9]{8}$/);
+  assert.match(a.id, /^crop-[a-f0-9]{16}$/);
   const again = await new CropAssets(io, "chat-1").get(a.id);
   assert.deepEqual([...again!.png], [...png]);
   assert.deepEqual([...again!.pdf!], [...pdf]);

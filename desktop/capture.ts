@@ -51,7 +51,10 @@ export async function captureRegion(preload: string, hide?: BrowserWindow): Prom
     const result = await new Promise<{ x: number; y: number; width: number; height: number } | null>((resolve) => {
       const onImage = (event: Electron.IpcMainInvokeEvent) => (event.sender === win.webContents ? image.toDataURL() : "");
       const onDone = (event: Electron.IpcMainEvent, rect: unknown) => { if (event.sender !== win.webContents) return; finish(rect as never); };
+      let finished = false;
       const finish = (rect: { x: number; y: number; width: number; height: number } | null) => {
+        if (finished) return;
+        finished = true;
         ipcMain.removeHandler("mowr:capture-image");
         ipcMain.removeListener("mowr:capture-done", onDone);
         resolve(rect);
@@ -63,7 +66,8 @@ export async function captureRegion(preload: string, hide?: BrowserWindow): Prom
       win.on("blur", () => { if (!win.isDestroyed()) win.focus(); });
       win.webContents.on("will-navigate", (e) => e.preventDefault());
       win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-      void win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(page)).then(() => { win.show(); win.focus(); });
+      // An overlay that cannot load ends the capture; otherwise capture would stay "in progress" until restart.
+      win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(page)).then(() => { win.show(); win.focus(); }, () => finish(null));
     });
     if (!result) return null;
     const scale = image.getSize().width / display.bounds.width;

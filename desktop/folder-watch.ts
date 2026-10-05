@@ -24,6 +24,9 @@ export function relevant(relativePath: string) {
 }
 
 const QUIET = 1500;
+/** A watched folder's index is used without walking the folder again for this long after it was last read. */
+const SETTLED_MS = 10 * 60_000;
+type Entry = { folder: Folder; watcher?: FSWatcher; timer?: NodeJS.Timeout; baseline?: IndexedFile[]; at?: number; checking?: boolean; silent?: boolean; running?: Promise<void> };
 
 /**
  * Watches linked folders and reports text files that changed outside Mowr.
@@ -31,7 +34,7 @@ const QUIET = 1500;
  * never hides a change from the watcher. Changes Mowr applies itself are absorbed silently.
  */
 export class FolderWatcher {
-  private live = new Map<string, { folder: Folder; watcher?: FSWatcher; timer?: NodeJS.Timeout; baseline?: IndexedFile[]; silent?: boolean; running?: Promise<void> }>();
+  private live = new Map<string, Entry>();
   private index: (folder: Folder, previous: IndexedFile[]) => Promise<IndexedFile[]>;
   private emit: (event: FolderEvent) => void;
   private open: (path: string, listener: (event: string, name: string | null) => void) => FSWatcher;
@@ -50,10 +53,17 @@ export class FolderWatcher {
 
   watching() { return [...this.live.keys()]; }
 
+  /** The index of a watched folder when no change is waiting to be read and it is recent, so a request can use it
+   *  instead of walking the folder again; undefined otherwise. */
+  settled(folderId: string, path: string) {
+    const entry = this.live.get(folderId);
+    return entry && entry.folder.path === path && entry.baseline && !entry.timer && !entry.checking && Date.now() - (entry.at || 0) < SETTLED_MS ? entry.baseline : undefined;
+  }
+
   private start(folder: Folder) {
-    const entry: { folder: Folder; watcher?: FSWatcher; timer?: NodeJS.Timeout; baseline?: IndexedFile[]; silent?: boolean; running?: Promise<void> } = { folder };
+    const entry: Entry = { folder };
     this.live.set(folder.id, entry);
-    entry.running = this.index(folder, []).then((files) => { entry.baseline = files; }).catch(() => { entry.baseline = []; });
+    entry.running = this.index(folder, []).then((files) => { entry.baseline = files; entry.at = Date.now(); }).catch(() => { entry.baseline = []; });
     try {
       entry.watcher = this.open(folder.path, (_event, name) => {
         if (name && !relevant(name)) return;
@@ -70,7 +80,7 @@ export class FolderWatcher {
     const entry = this.live.get(id);
     if (!entry) return;
     clearTimeout(entry.timer);
-    entry.timer = setTimeout(() => void this.check(id), delay);
+    entry.timer = setTimeout(() => { entry.timer = undefined; void this.check(id); }, delay);
   }
 
   /** Re-reads the folder after Mowr writes to it, updating the baseline without a notice. */
@@ -84,13 +94,15 @@ export class FolderWatcher {
   async check(id: string) {
     const entry = this.live.get(id);
     if (!entry) return;
+    entry.checking = true;
     await entry.running;
     const run = (async () => {
       let next: IndexedFile[];
-      try { next = await this.index(entry.folder, entry.baseline || []); } catch { return; }
+      try { next = await this.index(entry.folder, entry.baseline || []); } catch { entry.at = 0; return; } finally { entry.checking = false; }
       if (this.live.get(id) !== entry) return;
       const delta = diffIndex(entry.baseline || [], next);
       entry.baseline = next;
+      entry.at = Date.now();
       const silent = entry.silent;
       entry.silent = false;
       if (silent || !(delta.added.length + delta.changed.length + delta.removed.length)) return;

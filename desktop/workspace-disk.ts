@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, unlink, stat } from "node:fs/promises";
 import { join } from "node:path";
 export class WorkspaceDisk {
   private root: string;
@@ -38,6 +38,10 @@ export class WorkspaceDisk {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw e;
     }
+  }
+  /** Whether a file is there, without reading it. */
+  async hasFile(owner: string, id: string) {
+    return stat(this.file(owner, id)).then((info) => info.isFile(), () => false);
   }
   async writeFile(owner: string, id: string, data: Uint8Array) {
     const target = this.file(owner, id);

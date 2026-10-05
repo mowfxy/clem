@@ -27,10 +27,28 @@ export type AssetIo = { read(key: string): Promise<Uint8Array | null>; write(key
 export const MAX_ASSETS = 200;
 /** The largest PDF read for a vector crop. */
 export const MAX_SOURCE = 200_000_000;
-const ID = /^crop-[a-f0-9]{8}$/;
+/** Ids are 16 hex digits (64 bits): crops of every chat share one folder, so a collision would overwrite another
+ *  chat's crop. Crops made before kept 8 and stay readable. */
+const ID = /^crop-(?:[a-f0-9]{16}|[a-f0-9]{8})$/;
 
 export function memoryIo(store = new Map<string, Uint8Array>()): AssetIo {
   return { read: async (k) => store.get(k) ?? null, write: async (k, b) => void store.set(k, b), remove: async (k) => void store.delete(k) };
+}
+
+/** Crops of temporary chats, in memory and per chat: only the few most recently used chats keep theirs (a crop can be
+ *  a large PDF), and `drop` frees one chat's at once. */
+export function temporaryStores(limit = 4) {
+  const chats = new Map<string, Map<string, Uint8Array>>();
+  return {
+    store(chat: string) {
+      const store = chats.get(chat) || new Map<string, Uint8Array>();
+      chats.delete(chat); chats.set(chat, store);
+      for (const old of chats.keys()) { if (chats.size <= limit) break; chats.delete(old); }
+      return store;
+    },
+    drop(chat: string) { chats.delete(chat); },
+    get size() { return chats.size; },
+  };
 }
 
 export class CropAssets {
@@ -53,7 +71,7 @@ export class CropAssets {
   async add(meta: Omit<CropAsset, "id" | "created">, png: Uint8Array, pdf?: Uint8Array): Promise<CropAsset> {
     const list = await this.all();
     let id: string;
-    do id = "crop-" + randomBytes(4).toString("hex"); while (list.some((a) => a.id === id));
+    do id = "crop-" + randomBytes(8).toString("hex"); while (list.some((a) => a.id === id));
     await this.io.write(id + "-png", png);
     if (pdf) await this.io.write(id + "-pdf", pdf);
     const asset: CropAsset = { ...meta, vector: !!pdf, id, created: Date.now() };
@@ -177,7 +195,7 @@ export function assetSvg(meta: CropAsset, png: Uint8Array) {
   const w = Math.max(1, Math.round((x1 - x0) * scale * 100) / 100), h = Math.max(1, Math.round((y1 - y0) * scale * 100) / 100);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" data-mowr-asset="${meta.id}"${meta.vector ? ' data-mowr-vector="1"' : ""} data-mowr-units="${meta.units}"${typeof meta.centre === "number" ? ` data-mowr-centre="${meta.centre}"` : ""}><image width="${w}" height="${h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(png).toString("base64")}"/></svg>`;
 }
-const ASSET_SVG = /^<svg [^>]*\bwidth="([\d.]+)" height="([\d.]+)"[^>]*\bdata-mowr-asset="(crop-[a-f0-9]{8})"[^>]*><image [^>]*href="data:image\/png;base64,([A-Za-z0-9+/=]+)"\/><\/svg>$/;
+const ASSET_SVG = /^<svg [^>]*\bwidth="([\d.]+)" height="([\d.]+)"[^>]*\bdata-mowr-asset="(crop-(?:[a-f0-9]{16}|[a-f0-9]{8}))"[^>]*><image [^>]*href="data:image\/png;base64,([A-Za-z0-9+/=]+)"\/><\/svg>$/;
 /** The crop inside an assetSvg drawing: its id, its CSS size, its PNG, its units and optical centre; undefined for any other drawing. */
 export function assetOf(svg: string) {
   const m = ASSET_SVG.exec(svg);

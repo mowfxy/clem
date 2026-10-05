@@ -33,7 +33,7 @@ test("regions then crop: the circuit is found, cut as vectors with its caption, 
   assert.equal(found.pictures.length, 1);
   const cut = (await run({ action: "crop", file: "textbook-circuit.pdf", page: 1, region: figure.id }))!;
   const crop = cut.result.crop as any;
-  assert.match(crop.id, /^crop-[a-f0-9]{8}$/);
+  assert.match(crop.id, /^crop-[a-f0-9]{16}$/);
   assert.equal(crop.vector, true);
   assert.match(crop.caption, /^Figure 2\.4/);
   assert.match(String(cut.result.check), /every edge on paper/);

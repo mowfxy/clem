@@ -3,7 +3,7 @@ import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
 import { makeFile, FILE_ACTIONS, partsKey, sameFormat } from "./file-maker";
 import { ReplyFiles } from "./reply-files";
-import { inflight } from "./inflight";
+import { inflight, stoppedRuns } from "./inflight";
 import { wordDocument } from "./docx-document";
 import { powerpointDeck } from "./pptx-deck";
 import { markdownDeck } from "./markdown-deck";
@@ -58,7 +58,7 @@ import {youtubeCaptions} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit} from './kinetra-turn';
 import {LiveScreen} from './live-reply';
 import {inlinePictures} from './kinetra-mcp';
-import {CropAssets,cropTools,memoryIo,readAsset,type AssetIo} from './pdf-assets';
+import {CropAssets,cropTools,memoryIo,readAsset,temporaryStores,type AssetIo} from './pdf-assets';
 import type {EditHelpers} from './pdf-edit-tools';
 import {typesetBlock} from './text-block';
 import {kinetraTool} from './kinetra-runtime';
@@ -73,6 +73,7 @@ import {
   link,
   indexFolder,
   retrieveFiles,
+  sameIndex,
   type Folder,
   type IndexedFile,
 } from "./folders";
@@ -82,7 +83,7 @@ import { PACK_EXTENSION } from "../core/study-pack";
 import config from "./public-config.json";
 import { diagram } from "../server/diagram";
 import { TelegramService } from "./messaging/service";
-import { textPdf, viewCopyName, browserViewable } from "./documents";
+import { textPdf, viewCopyName, browserViewable, markFromInternet } from "./documents";
 import {
   putMemory,
   forgetMemory,
@@ -198,8 +199,9 @@ void app.whenReady().then(async () => {
   folderWatcher = new FolderWatcher(
     async (folder, previous) => {
       const cache = "index-" + watchOwner + "-" + folder.id;
-      const files = await indexFolder(folder, previous.length ? previous : await vault.read<IndexedFile[]>(cache, []));
-      await vault.write(cache, files);
+      const before = previous.length ? previous : await vault.read<IndexedFile[]>(cache, []);
+      const files = await indexFolder(folder, before);
+      if (!sameIndex(before, files)) await vault.write(cache, files);
       return files;
     },
     (event) => { if (window && !window.isDestroyed()) window.webContents.send("mowr:folder", event); },
@@ -277,9 +279,11 @@ void app.whenReady().then(async () => {
       // Sign-ins kept with the Mowr account come back before any Codex process starts.
       if(owner!=='signed-out')await Promise.race([
         providerLink.restore(owner).then(async r=>{
+          // A restore that outlasted the wait finishes after the person may have signed out or switched: it then changes nothing.
+          if(providerOwner!==owner)return;
           await providerAccounts.adopt(owner,r.codex,r.written);
-          if(r.claude.length)await claudes.adopt(owner,r.claude);
-          for(const value of r.values)if(value.kind==='telegram'&&await telegram.adoptLinked(owner,value.data))telegram.start(owner);
+          if(r.claude.length&&providerOwner===owner)await claudes.adopt(owner,r.claude);
+          for(const value of r.values)if(value.kind==='telegram'&&providerOwner===owner&&await telegram.adoptLinked(owner,value.data)&&providerOwner===owner)telegram.start(owner);
         }),
         new Promise(done=>setTimeout(done,8000)),
       ]).catch(linkFailed);
@@ -290,7 +294,13 @@ void app.whenReady().then(async () => {
     return codex;
   }
   /** Chats the person stopped; a Claude or Grok tool loop checks this between steps. */
-  const cancelledRuns = new Set<string>();
+  const cancelledRuns = stoppedRuns();
+  /** Stops one answer wherever it runs: Codex, or any of the person's Claude and Grok accounts. */
+  async function stopRun(owner: string, id: string) {
+    cancelledRuns.add(id);
+    codex.cancel(id);
+    for (const provider of [...await claudes.all(owner), ...await groks.all(owner)]) provider.cancel(id);
+  }
   type Picture = { path: string; mime: string };
   type AnswerOptions = { images?: Picture[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined };
   /**
@@ -410,10 +420,10 @@ void app.whenReady().then(async () => {
   const pendingLooks = new Map<string, { resolve: (images: { name: string; data: string }[]) => void; reject: (error: Error) => void }>();
   /** Regions and crops the model asked for, worked out by the window (src/desktop/pdf-tasks.ts) and returned with pdfTaskResult. */
   const pendingTasks = new Map<string, { resolve: (result: { data: any; images: { name: string; data: string }[]; files: Uint8Array[] }) => void; reject: (error: Error) => void }>();
-  /** Crops cut in temporary chats live only here, for as long as Mowr runs: nothing of those chats is written to disk. */
-  const temporaryCrops = new Map<string, Uint8Array>();
+  /** Crops cut in temporary chats live only here (the few most recent chats), never on disk. */
+  const temporaryCrops = temporaryStores();
   const diskCrops = (owner: string): AssetIo => ({ read: async (k) => { const b = await disk.readFile(owner, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => disk.writeFile(owner, k, b), remove: (k) => disk.deleteFile(owner, k) });
-  telegram = new TelegramService(vault, async (owner, envelope, bytes) => {
+  telegram = new TelegramService(vault, async (owner, envelope, bytes, signal) => {
     const user = await auth.user();
     if (user?.id !== owner) throw Error("Account changed.");
     const entitlement = await auth.cloud("/entitlement");
@@ -421,7 +431,12 @@ void app.whenReady().then(async () => {
     const id = randomUUID();
     let attachmentText = "",
       imagePath = "";
+    // The bot stopping (sign-out, disconnect) stops this request's AI work too, instead of letting it run unread.
+    cancelledRuns.start(id);
+    const stop = () => void stopRun(owner, id).catch(() => {});
+    signal?.addEventListener("abort", stop, { once: true });
     try {
+      signal?.throwIfAborted();
       if (bytes && envelope.attachment) {
         if (envelope.attachment.mime.startsWith("image/")) {
           imagePath = join(
@@ -474,11 +489,9 @@ void app.whenReady().then(async () => {
       const sources = [];
       for (const folder of folders) {
         const cache = "index-" + owner + "-" + folder.id,
-          files = await indexFolder(
-            folder,
-            await vault.read<IndexedFile[]>(cache, []),
-          );
-        await vault.write(cache, files);
+          before = await vault.read<IndexedFile[]>(cache, []),
+          files = (watchOwner === owner ? folderWatcher?.settled(folder.id, folder.path) : undefined) || await indexFolder(folder, before);
+        if (!sameIndex(before, files)) await vault.write(cache, files);
         sources.push(
           ...retrieveFiles(
             files,
@@ -528,6 +541,8 @@ void app.whenReady().then(async () => {
           }
         : { text };
     } finally {
+      signal?.removeEventListener("abort", stop);
+      cancelledRuns.end(id);
       pendingAttachments.delete(id);
       if (imagePath) await unlink(imagePath).catch(() => {});
     }
@@ -556,6 +571,13 @@ void app.whenReady().then(async () => {
   function withMemory<T>(owner: string, task: () => Promise<T>): Promise<T> {
     const next = (memoryLocks.get(owner) || Promise.resolve()).catch(() => {}).then(task);
     memoryLocks.set(owner, next.catch(() => {}));
+    return next;
+  }
+  /** The same queue for changes to files in linked folders and their undo history. */
+  const folderEditLocks = new Map<string, Promise<unknown>>();
+  function withFolderEdits<T>(owner: string, task: () => Promise<T>): Promise<T> {
+    const next = (folderEditLocks.get(owner) || Promise.resolve()).catch(() => {}).then(task);
+    folderEditLocks.set(owner, next.catch(() => {}));
     return next;
   }
   /**
@@ -891,7 +913,7 @@ void app.whenReady().then(async () => {
     if (event.sender !== window.webContents || typeof path !== "string" || !sharedFiles.has(path)) return;
     event.sender.startDrag({ file: path, icon: dragIcon.isEmpty() ? nativeImage.createFromPath(join(__dirname, "../desktop/icon.ico")) : dragIcon });
   });
-  ipcMain.handle("mowr:request", async (event, input) => {
+  const handleRequest = async (event: Electron.IpcMainInvokeEvent, input: any) => {
     if (
       event.sender !== window.webContents ||
       event.senderFrame !== window.webContents.mainFrame ||
@@ -899,6 +921,8 @@ void app.whenReady().then(async () => {
     )
       throw Error("Untrusted caller.");
     const request = requestSchema.parse(input);
+    // Registered before anything is awaited, so a Stop pressed while the chat is still being prepared counts.
+    if (request.action === "chat") cancelledRuns.start(request.id);
     if (request.action === "attachmentResult") {
       const pending = pendingAttachments.get(request.id);
       if (!pending) throw Error("Document request expired.");
@@ -977,7 +1001,7 @@ void app.whenReady().then(async () => {
     const user = await auth.user(true, securityActions.has(request.action));
     if (user) codex.warm();
     if (!user) throw Error("Sign in first.");
-    void watchFolders(user.id).catch(() => {});
+    // Folder watching follows sign-in (selectProvider) and changes to the folders or the watch setting, not each request.
     if (request.action === "supportSend") {
       const {data,error}=await auth.client!.auth.getSession();
       if(error || !data.session) throw Error("Sign in again to contact support.");
@@ -1106,9 +1130,7 @@ void app.whenReady().then(async () => {
     }
     if (request.action === "prepare") { prepareFor(user.id, request.model); return { ok: true }; }
     if (request.action === "cancel") {
-      cancelledRuns.add(request.id);
-      codex.cancel(request.id);
-      for(const provider of [...await claudes.all(user.id),...await groks.all(user.id)])provider.cancel(request.id);
+      await stopRun(user.id, request.id);
       return { ok: true };
     }
     const memoryKey = "memory-" + user.id;
@@ -1220,9 +1242,13 @@ void app.whenReady().then(async () => {
     }
     /** Refreshes one folder's index from its cache; only changed files are read again. */
     const freshIndex = async (folder: Folder) => {
+      // A watched folder with no change waiting is already indexed; walking it again would find the same files.
+      const watched = watchOwner === user.id ? folderWatcher!.settled(folder.id, folder.path) : undefined;
+      if (watched) return watched;
       const cache = "index-" + user.id + "-" + folder.id;
-      const files = await indexFolder(folder, await vault.read<IndexedFile[]>(cache, []));
-      await vault.write(cache, files);
+      const before = await vault.read<IndexedFile[]>(cache, []);
+      const files = await indexFolder(folder, before);
+      if (!sameIndex(before, files)) await vault.write(cache, files);
       return files;
     };
     if (request.action === "folderTree") {
@@ -1281,18 +1307,20 @@ void app.whenReady().then(async () => {
       const target = await locate(await scopedFolders(request.scope), request.path, !!request.create);
       return target.exists ? { path: request.path, text: await readText(target.absolute), exists: true } : { path: request.path, text: "", exists: false };
     }
-    if (request.action === "folderEditApply") {
+    // Applying and undoing run one at a time per person: two quick approvals for one file must not both pass the
+    // check against the version shown, and neither may drop the other's entry from the history.
+    if (request.action === "folderEditApply") return withFolderEdits(user.id, async () => {
       const change = await applyChange(await scopedFolders(request.scope), request.scope, request);
       folderWatcher!.absorb(change.folderId);
       const history = await vault.read<Change[]>(changesKey, []);
       await vault.write(changesKey, [change, ...history].slice(0, 40));
       return { id: change.id, added: change.added, removed: change.removed };
-    }
+    });
     if (request.action === "folderChanges") {
       const history = await vault.read<Change[]>(changesKey, []);
       return history.filter((c) => !request.scope || c.scope === request.scope).map(({ before: _b, after: _a, ...rest }) => rest);
     }
-    if (request.action === "folderChangeUndo") {
+    if (request.action === "folderChangeUndo") return withFolderEdits(user.id, async () => {
       const history = await vault.read<Change[]>(changesKey, []);
       const change = history.find((c) => c.id === request.id);
       if (!change) throw Error("This change is no longer in the history.");
@@ -1300,7 +1328,7 @@ void app.whenReady().then(async () => {
       folderWatcher!.absorb(change.folderId);
       await vault.write(changesKey, history.map((c) => (c.id === change.id ? { ...c, undone: true } : c)));
       return { ok: true };
-    }
+    });
     if (request.action === "openInBrowser") {
       // A read-only copy in a temp folder, opened in the default web browser (or the default app for
       // formats browsers cannot show, such as Word or PowerPoint files).
@@ -1310,6 +1338,8 @@ void app.whenReady().then(async () => {
       await mkdir(folder, { recursive: true });
       const path = join(folder, name);
       await writeFile(path, request.data);
+      // A file may come from someone else's study pack: Windows and Office treat it as downloaded.
+      await markFromInternet(path);
       if (browserViewable.test(path)) {
         const browser = await defaultBrowser().catch(() => undefined);
         if (browser) { spawn(browser, [pathToFileURL(path).href], { detached: true, stdio: "ignore" }).unref(); return { opened: "browser" }; }
@@ -1431,7 +1461,7 @@ void app.whenReady().then(async () => {
           return `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten ${key === "slides" ? "slide" : "section"}${missing.length === 1 ? "" : "s"} (${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}). Write them now with {"action":"${action}","revise":"${doc}","append":true,"${key}":[…the next ${key}, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`;
         }).join(" ") + " Answer the person only when every planned part is written.";
       };
-      const known = await Promise.all((request.documents || []).map(async (doc) => !!(await disk.readFile(user.id, "spec-" + doc.id))));
+      const known = await Promise.all((request.documents || []).map((doc) => disk.hasFile(user.id, "spec-" + doc.id)));
       (request.documents || []).forEach((doc, i) => { if (known[i]) documents.set(doc.id, doc.name); });
       const spaceOf = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined;
       // File work still running when the answer stops: rollback waits for it (desktop/inflight.ts), so a draft
@@ -1533,7 +1563,7 @@ void app.whenReady().then(async () => {
       };
       /** Reading a file's current source, so a change keeps everything the person did not ask to change. */
       // Crops are kept with the chat (desktop/pdf-assets.ts); a temporary chat's only in memory.
-      const cropIo = request.temporary || !request.chat ? memoryIo(temporaryCrops) : diskCrops(user.id);
+      const cropIo = request.temporary || !request.chat ? memoryIo(temporaryCrops.store(request.chat || request.id)) : diskCrops(user.id);
       const crops = new CropAssets(cropIo, request.chat || request.id);
       /** One task for the window, with the same minute "look" has. */
       const windowTask = (op: string, args: Record<string, unknown>) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
@@ -1629,6 +1659,8 @@ void app.whenReady().then(async () => {
       const run = answerWith(user.id, request.id, request.model, reasoning, prompt, emit, request.plain ? { images: pictures, instructions } : { images: pictures, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
+      // A request outside any chat has no later turn to use its crops.
+      if (!request.chat) void run.finally(() => temporaryCrops.drop(request.id)).catch(() => {});
       void run.then(() => {
           // A stopped answer teaches nothing.
           if (!cancelledRuns.has(request.id) && !request.temporary) learnFromTurn(user.id, request.scope, request.id, "chat:" + (request.chat || request.id), query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
@@ -1645,10 +1677,15 @@ void app.whenReady().then(async () => {
               : codexFailureMessage(error),
           });
         })
-        .finally(() => cancelledRuns.delete(request.id));
+        .finally(() => cancelledRuns.end(request.id));
       return { started: true };
     }
-  });
+  };
+  ipcMain.handle("mowr:request", (event, input) => handleRequest(event, input).catch((error) => {
+    // A chat that failed before its answer started (entitlement, files, a Stop while preparing) has nothing left to stop.
+    if (input?.action === "chat" && typeof input.id === "string") cancelledRuns.end(input.id);
+    throw error;
+  }));
   await window.loadURL("mowr://app/");
   if (pendingPack) { const path = pendingPack; pendingPack = undefined; setTimeout(() => void deliverPack(path), 1500); }
 });

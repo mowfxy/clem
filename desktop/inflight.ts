@@ -22,3 +22,19 @@ export function inflight() {
     },
   };
 }
+
+/**
+ * Chats answering now, and which of them the person stopped. A Stop counts only for an answer that is running (one
+ * pressed after it ended is ignored), and `end` forgets both, so neither set outlives its answers.
+ */
+export function stoppedRuns() {
+  const running = new Set<string>(), stopped = new Set<string>();
+  return {
+    start(id: string) { running.add(id); },
+    /** Marks a running answer stopped; false when no such answer is running. */
+    add(id: string) { if (!running.has(id)) return false; stopped.add(id); return true; },
+    has(id: string) { return stopped.has(id); },
+    end(id: string) { running.delete(id); stopped.delete(id); },
+    get size() { return running.size + stopped.size; },
+  };
+}

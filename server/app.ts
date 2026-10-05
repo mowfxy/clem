@@ -32,6 +32,10 @@ import { encrypt, decrypt } from "./vault.ts";
 import { uploadUrl, downloadUrl, objectSize, removeObject } from "./storage.ts";
 const app = express();
 app.disable("x-powered-by");
+// Routes are matched exactly as written, so "/api/Workspace" cannot slip past the path checks below.
+app.enable("case sensitive routing");
+// On Vercel the client address arrives in X-Forwarded-For from Vercel's own proxy; locally nothing is trusted.
+if (process.env.VERCEL) app.set("trust proxy", true);
 app.use((req, res, next) => {
   if (typeof req.query.route === "string") {
     const query = new URLSearchParams(req.originalUrl.split("?")[1] || "");
@@ -74,7 +78,9 @@ const jsonBody = express.json({ limit: "3mb" });
 app.use((req, res, next) => req.path === "/api/drive/upload" ? next() : jsonBody(req, res, next));
 // Retained legacy readers support migration, but desktop-owned content cannot be uploaded.
 app.use((req,res,next)=>{
-  if(process.env.MOWR_LEGACY_WORKSPACE!=="true" && ["POST","PUT","PATCH"].includes(req.method) && /^\/api\/(workspace|scopes|files)(\/|$)/.test(req.path)) {
+  // Lowercased so a differently cased path cannot reach a retired route; saved edits to cloud files stay open.
+  const path=req.path.toLowerCase();
+  if(process.env.MOWR_LEGACY_WORKSPACE!=="true" && ["POST","PUT","PATCH"].includes(req.method) && /^\/api\/(workspace|scopes|files)(\/|$)/.test(path) && !(req.method==="PUT" && /^\/api\/files\/[^/]+\/edits$/.test(path))) {
     res.status(410).json({error:"Chats, files, projects and subjects are stored locally in the Mowr desktop app."});return;
   }
   next();
@@ -150,9 +156,8 @@ app.post("/api/auth/:action", async (req, res) => {
   }
   if(supabaseConfig()){res.status(400).json({error:"Use the secure sign-in dialog."});return;}
   const body = authInput.parse(req.body);
-  const address = String(req.headers["x-forwarded-for"] || req.ip).split(
-    ",",
-  )[0];
+  // req.ip honours X-Forwarded-For only behind Vercel's proxy (trust proxy above), so it cannot be spoofed locally.
+  const address = String(req.ip);
   if (!(await rate(`auth:${address}`, 6))) {
     res.status(429).json({ error: "Too many attempts. Wait a minute." });
     return;
@@ -340,10 +345,11 @@ app.post("/api/chat", async (req, res) => {
     res.end(JSON.stringify({ type: "done" }) + "\n");
   } catch (e) {
     if (!controller.signal.aborted) {
-      if (!started) res.status(502).json({ error: (e as Error).message });
+      const message = exposable(e) ? e.message : "The model could not be reached. Try again.";
+      if (!started) res.status(502).json({ error: message });
       else
         res.end(
-          JSON.stringify({ type: "error", error: (e as Error).message }) + "\n",
+          JSON.stringify({ type: "error", error: message }) + "\n",
         );
     }
   }
@@ -640,7 +646,16 @@ app.get("/api/drive/file/:id", async (req, res) => {
       res.destroy();
       return;
     }
-    res.write(chunk);
+    // Wait for a slow reader instead of buffering the whole file in memory; stop if they leave.
+    if (!res.write(chunk))
+      await new Promise<void>((resolve) => {
+        const done = () => { res.off("drain", done); res.off("close", done); resolve(); };
+        res.on("drain", done); res.on("close", done);
+      });
+    if (res.destroyed) {
+      await r.body.cancel().catch(() => {});
+      return;
+    }
   }
   res.end();
 });
@@ -682,12 +697,11 @@ app.post("/api/automations", async (req, res) => {
       schedule: z.enum(["daily", "weekdays", "weekly"]),
     })
     .parse(req.body);
-  const count =
-    await db()`SELECT count(*)::int AS count FROM mowr_automations WHERE owner_id=${u.id}`;
-  if (count[0].count >= 5)
-    throw new Error("Keep at most five active automations per account.");
+  // The cap is checked inside the insert, so parallel requests cannot each see four and all add one.
   const rows =
-    await db()`INSERT INTO mowr_automations(id,owner_id,name,prompt,model,schedule,next_run_at) VALUES(${randomUUID()},${u.id},${b.name},${b.prompt},${b.model},${b.schedule},${nextRun(b.schedule)}) RETURNING id`;
+    await db()`INSERT INTO mowr_automations(id,owner_id,name,prompt,model,schedule,next_run_at) SELECT ${randomUUID()},${u.id},${b.name},${b.prompt},${b.model},${b.schedule},${nextRun(b.schedule)} WHERE (SELECT count(*) FROM mowr_automations WHERE owner_id=${u.id})<5 RETURNING id`;
+  if (!rows.length)
+    throw new Error("Keep at most five active automations per account.");
   res.json(rows[0]);
 });
 app.patch("/api/automations/:id", async (req, res) => {
@@ -721,6 +735,10 @@ app.get("/api/cron", async (req, res) => {
   if(subscriptionReady())await cleanExpiredSubscriptionSessions();
   res.json(await runDue());
 });
+/** Messages Mowr wrote for people: plain Errors thrown by this app, not subclasses or errors carrying a system code. */
+export function exposable(error: unknown): error is Error {
+  return error instanceof Error && error.constructor === Error && !("code" in error) && !("status" in error);
+}
 app.use(
   (
     error: Error,
@@ -732,17 +750,26 @@ app.use(
       res.end();
       return;
     }
-    const message =
-      error instanceof z.ZodError
-        ? "Check the required fields and try again."
-        : error.message;
     // Only failures of the database itself are an outage; app errors keep their own message.
     if (error instanceof DatabaseError || error instanceof NeonDbError)
       res.status(503).json({
         error:
           "Database setup is incomplete or unavailable. Check DATABASE_URL and run npm run db:migrate.",
       });
-    else res.status(400).json({ error: message });
+    else if (error instanceof z.ZodError)
+      res.status(400).json({ error: "Check the required fields and try again." });
+    else if (exposable(error))
+      res.status(400).json({ error: error.message });
+    else {
+      // Library and runtime errors (storage, SMTP, fetch, bugs) can carry internals: log them, answer generically.
+      const status = Number((error as { status?: number }).status);
+      if (status >= 400 && status < 500 && (error as { expose?: boolean }).expose) {
+        res.status(status).json({ error: "The request could not be read." });
+        return;
+      }
+      console.error("Request failed", error);
+      res.status(500).json({ error: "Mowr could not complete this request. Try again." });
+    }
   },
 );
 export default app;

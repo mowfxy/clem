@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS desktop_audit_log (
  detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS desktop_audit_log_time ON desktop_audit_log(created_at);
+-- A person's history (portal person page, staff email repeat check) is looked up by target.
+CREATE INDEX IF NOT EXISTS desktop_audit_log_target ON desktop_audit_log(target,created_at);
 -- Anonymous usage counts sent by the desktop app once in a while: which provider and model a person chose and how many
 -- messages per day. Never message content. `hours` is 24 comma-separated counts by the person's local hour.
 -- `device` is a short hash naming the reporting PC, so each PC's running totals are kept apart and summed.

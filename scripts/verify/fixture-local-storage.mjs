@@ -1,3 +1,6 @@
+/** Waits until the App has written its latest changes: it coalesces workspace saves (SAVE_MS in src/App.tsx). */
+export const saved = (page) => page.waitForTimeout(700);
+
 export async function mockLocalStorage(page) {
   let state = null;
   const files = new Map();

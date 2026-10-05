@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 
+export const WORN_BYTES = 64_000_000;
 type Pending = { resolve: (value: any) => void; reject: (error: Error) => void };
 type Listener = { onMessage: (method: string, params: any) => void; onFail: (error: Error) => void };
 
@@ -55,13 +56,14 @@ export class AppServer {
     return () => { if (this.threads.get(threadId) === listener) this.threads.delete(threadId); };
   }
   get idle() { return this.threads.size === 0 && this.pending.size === 0; }
+  /** After a large volume the connection is replaced (Codex.retireWorn), between answers only: closing it here would
+   *  end every answer streaming on it. Each turn keeps its own limit (codex-stream.ts). */
+  get worn() { return this.bytes > WORN_BYTES; }
   /** Conversations currently streaming on this connection. */
   get activeThreads() { return this.threads.size; }
   private receive(line: string) {
     if (this.dead) return;
     this.bytes += line.length;
-    // Protects against a runaway stream; the connection is recycled after a large volume.
-    if (this.bytes > 64_000_000) { this.close(); return; }
     let m: any;
     try { m = JSON.parse(line); } catch { return; }
     if (m.method && m.id !== undefined) {

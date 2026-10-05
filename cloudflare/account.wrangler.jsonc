@@ -20,6 +20,7 @@
   },
   "vars": {
     "LEMON_TEST_MODE": "true",
+    "ADMIN_REQUIRE_MFA": "true",
     "SUPABASE_URL": "https://npdkvkikudvjrgnesuhc.supabase.co",
     "SUPABASE_ANON_KEY": "sb_publishable_iuAX6xFMvThhHYTWkT3fMw_CtkABHLu"
   },

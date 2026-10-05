@@ -28,6 +28,8 @@ export class TelegramService {
       owner: string,
       envelope: TelegramEnvelope,
       bytes?: Buffer,
+      /** Aborted when the bot stops (sign-out, disconnect): the request's AI work stops with it. */
+      signal?: AbortSignal,
     ) => Promise<{
       text: string;
       documents?: { name: string; mime: string; bytes: Uint8Array; photo?: boolean }[];
@@ -144,7 +146,7 @@ export class TelegramService {
               const bytes = envelope.attachment
                 ? await client.download(envelope.attachment)
                 : undefined;
-              const result = await this.process(owner, envelope, bytes);
+              const result = await this.process(owner, envelope, bytes, signal);
               signal.throwIfAborted();
               for (let i = 0; i < result.text.length; i += 4000)
                 await client.sendText(

@@ -11,6 +11,8 @@ export const runnable = (lang: string): RunLang | null => ALIASES[lang.toLowerCa
 const LIMIT_MS = 60_000;
 let python: Worker | null = null, nextId = 1;
 const spawn = (lang: RunLang) => new Worker(new URL('./run-worker.ts', import.meta.url), { type: 'module', name: 'mowr-run-' + lang });
+/** Runs waiting on or using the shared Python worker; stopping one restarts the worker, which ends the others too. */
+const pythonRuns = new Set<() => void>();
 
 /** Starts a run and streams its output to `on`. The returned function stops it. */
 export function runCode(lang: RunLang, code: string, on: (e: RunEvent) => void): () => void {
@@ -20,12 +22,18 @@ export function runCode(lang: RunLang, code: string, on: (e: RunEvent) => void):
     if (finished) return;
     finished = true;
     clearTimeout(timer);
+    pythonRuns.delete(ended);
     w.removeEventListener('message', listen);
     w.removeEventListener('error', crash);
     if (kill || lang !== 'python') w.terminate();
-    if (kill && w === python) python = null;
+    if (kill && w === python) {
+      python = null;
+      for (const other of [...pythonRuns]) other();
+    }
     on(e);
   };
+  const ended = () => { on({ type: 'err', text: 'Python restarted because another run was stopped. Run this block again.\n' }); finish({ type: 'done', ok: false, stopped: true }); };
+  if (lang === 'python') pythonRuns.add(ended);
   const listen = (event: MessageEvent<{ id: number; type: string; text?: string; ok?: boolean }>) => {
     const m = event.data;
     if (m.id !== id) return;

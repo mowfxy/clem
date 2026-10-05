@@ -1,5 +1,6 @@
 import {markContent} from "../core/provenance.ts";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { writeFile } from "node:fs/promises";
 export async function textPdf(text: string) {
   if (text.length > 60000) throw Error("Use a shorter document.");
   const document = await PDFDocument.create(),
@@ -49,13 +50,19 @@ export async function textPdf(text: string) {
 }
 
 /** Formats a copy may be opened in: the browser, or the app Windows associates with it. Anything else (programs,
- *  scripts, shortcuts, macro-enabled Office files) is refused, since a file's name can come from someone else's
+ *  scripts, shortcuts, macro-enabled Office files, and the legacy .doc/.xls/.ppt/.rtf that can carry macros or OLE objects) is refused, since a file's name can come from someone else's
  *  study pack and opening it would run it. */
 export const browserViewable = /\.(pdf|png|jpe?g|gif|webp|svg|txt|md|csv|json|html?|xml|mp4|webm|mp3|wav)$/i;
-const openable = /\.(pdf|png|jpe?g|gif|webp|svg|bmp|tiff?|heic|avif|txt|md|csv|json|xml|html?|log|mp4|webm|mov|m4v|mkv|avi|mp3|wav|m4a|aac|ogg|flac|docx?|xlsx?|pptx?|odt|ods|odp|rtf|epub)$/i;
+const openable = /\.(pdf|png|jpe?g|gif|webp|svg|bmp|tiff?|heic|avif|txt|md|csv|json|xml|html?|log|mp4|webm|mov|m4v|mkv|avi|mp3|wav|m4a|aac|ogg|flac|docx|xlsx|pptx|odt|ods|odp|epub)$/i;
 /** The file name for a local read-only copy, or null when Mowr must not hand the file to Windows to open. */
 export function viewCopyName(name: string) {
   // Windows drops trailing dots and spaces, so "setup.exe." would still be saved, and run, as "setup.exe".
   const clean = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim().replace(/[. ]+$/, "") || "file";
   return openable.test(clean) ? clean : null;
+}
+
+/** Marks a copy as coming from the internet (Mark-of-the-Web), so Office opens it in Protected View and blocks its
+ *  macros, as it would a downloaded file. A drive without alternate data streams (FAT, network shares) just skips it. */
+export async function markFromInternet(path: string) {
+  await writeFile(path + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\n").catch(() => {});
 }

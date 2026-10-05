@@ -102,6 +102,16 @@ const peopleFilters = {
   setup: ["COALESCE(setup_step,0)<4", false],
 };
 
+// The same labels as planFor, worked out in SQL so a plan filter is applied before the list is cut instead of loading
+// every person. planFor still labels the returned rows (and supplies their dates).
+const plans = new Set(["owner", "complimentary", "subscribed", "cancelling", "past_due", "lapsed", "free"]);
+const liveSubscription = (status) => `EXISTS(SELECT 1 FROM desktop_subscriptions x WHERE x.user_id=people.id AND x.status='${status}' AND x.valid_until>?)`;
+const planSql = `CASE WHEN EXISTS(SELECT 1 FROM desktop_owner_grants o WHERE o.user_id=people.id) THEN 'owner'
+ WHEN EXISTS(SELECT 1 FROM desktop_comp_grants g WHERE g.user_id=people.id AND g.revoked_at IS NULL AND (g.valid_until IS NULL OR g.valid_until>?)) THEN 'complimentary'
+ WHEN ${liveSubscription("active")} THEN 'subscribed' WHEN ${liveSubscription("cancelled")} THEN 'cancelling'
+ WHEN EXISTS(SELECT 1 FROM desktop_subscriptions x WHERE x.user_id=people.id AND x.status IN ('past_due','unpaid')) THEN 'past_due'
+ WHEN EXISTS(SELECT 1 FROM desktop_subscriptions x WHERE x.user_id=people.id) THEN 'lapsed' ELSE 'free' END`;
+
 async function people(env, { q = "", filter = "all", limit = 500 } = {}) {
   const like = "%" + q.toLowerCase() + "%";
   const where = ["(?='' OR lower(COALESCE(email,'')) LIKE ? OR lower(COALESCE(username,'')) LIKE ? OR lower(COALESCE(display_name,'')) LIKE ? OR id=?)"];
@@ -110,18 +120,19 @@ async function people(env, { q = "", filter = "all", limit = 500 } = {}) {
   if (sqlFilter) {
     where.push(sqlFilter[0]);
     if (sqlFilter[1]) values.push(new Date(Date.now() - 7 * day).toISOString());
-  }
-  // Plan labels depend on subscriptions and grants, so those filters run over every match.
-  const byPlan = filter !== "all" && !sqlFilter;
-  const base = `SELECT * FROM (${peopleSql}) WHERE ${where.join(" AND ")}`;
+  } else if (plans.has(filter)) {
+    const at = now();
+    where.push(`${planSql}=?`);
+    values.push(at, at, at, filter);
+  } else if (filter !== "all") where.push("0");
+  const base = `SELECT * FROM (${peopleSql}) AS people WHERE ${where.join(" AND ")}`;
   const [rows, counted] = await Promise.all([
-    all(env, `${base} ORDER BY COALESCE(last_seen_at,first_seen_at,'') DESC LIMIT ?`, ...values, byPlan ? -1 : limit),
-    byPlan ? null : first(env, `SELECT COUNT(*) AS n FROM (${base})`, ...values),
+    all(env, `${base} ORDER BY COALESCE(last_seen_at,first_seen_at,'') DESC LIMIT ?`, ...values, limit),
+    first(env, `SELECT COUNT(*) AS n FROM (${base})`, ...values),
   ]);
   const context = await planContext(env, rows.map((r) => r.id));
-  let list = rows.map((row) => ({ ...row, suspended: !!row.suspended, ...planFor(row.id, context) }));
-  if (byPlan) list = list.filter((r) => r.plan === filter);
-  return { users: list.slice(0, limit), total: byPlan ? list.length : counted.n };
+  const list = rows.map((row) => ({ ...row, suspended: !!row.suspended, ...planFor(row.id, context) }));
+  return { users: list, total: counted.n };
 }
 
 async function supabaseUser(env, userId) {
@@ -430,8 +441,11 @@ export async function handleAdmin(request, env, user, path, authorization) {
     need(staff, "owner");
     const email = text(body.email, 200).toLowerCase();
     const role = body.role === "support" ? "support" : "admin";
-    const person = await first(env, "SELECT user_id FROM desktop_activity WHERE email=?", email);
-    if (!person) throw new HttpError(404, "That person needs to sign in to the Mowr app once before they can be added.");
+    // Activity rows refresh on sign-in, so after an email change two accounts can briefly share one address.
+    const matches = await all(env, "SELECT user_id FROM desktop_activity WHERE email=? LIMIT 2", email);
+    if (!matches.length) throw new HttpError(404, "That person needs to sign in to the Mowr app once before they can be added.");
+    if (matches.length > 1) throw new HttpError(409, "More than one Mowr account has used this email, so it cannot be matched to one person yet.");
+    const [person] = matches;
     await run(env, "INSERT INTO desktop_admins(user_id,email,role,added_by,added_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,email=excluded.email", person.user_id, email, role, staff.id, now());
     await audit(env, staff, "team.add", person.user_id, `${email} as ${role}`);
     return json({ ok: true });

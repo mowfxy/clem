@@ -4,7 +4,7 @@
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { openFixture, workspace } from "./local-power-fixture.mjs";
+import { saved, openFixture, workspace } from "./local-power-fixture.mjs";
 import { handoutPdf } from "./fixture-docs.mjs";
 
 await mkdir("artifacts", { recursive: true });
@@ -65,6 +65,7 @@ try {
 
   // Source: a Drive file can be used as a source like any file.
   await row("Lecture notes").getByRole("checkbox").check();
+  await saved(page);
   const sources = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).spaces[0].sources);
   assert.ok(sources.includes("drive:drive-doc-000001"), "Drive file marked as a source");
 
@@ -81,6 +82,7 @@ try {
   assert.equal((await calls("driveUpload")).length, 1);
   assert.equal((await calls("driveUpload"))[0].folder, DRIVE.folderId);
   assert.equal(await page.locator(".sp-file-list .sp-file", { hasText: "Week 4 notes.txt" }).count(), 1, "listed once, in the Drive folder, not again under On this PC");
+  await saved(page);
   const kept = await page.evaluate(async () => { const s = await (await import("/src/store.ts")).loadState(); const f = s.files.find((x) => x.name === "Week 4 notes.txt"); return { f, source: s.spaces[0].sources.includes(f?.id) }; });
   assert.ok(kept.f?.driveId && kept.source, "kept here, linked to its Drive file, and used as a source");
   await page.screenshot({ path: "artifacts/drive-drop-synced.png" });

@@ -1,4 +1,4 @@
-import { mockLocalStorage } from "./fixture-local-storage.mjs";
+import { mockLocalStorage, saved } from "./fixture-local-storage.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -215,6 +215,7 @@ try {
   );
   await page.keyboard.press("Escape");
   // Routines are proposed and approved in a chat; here one is saved as approving it does, then managed in Settings.
+  await saved(page);
   await page.evaluate(async () => {
     const store = await import("/src/store.ts");
     const current = await store.loadState();
@@ -238,6 +239,7 @@ try {
     .waitFor();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await page.getByText("Paused", { exact: true }).waitFor();
+  await saved(page);
   await page.evaluate(async () => {
     const store = await import("/src/store.ts");
     const current = await store.loadState();
@@ -253,6 +255,7 @@ try {
     .locator(".sidebar")
     .getByRole("button", { name: "Daily review", exact: true })
     .waitFor({ timeout: 20000 });
+  await saved(page);
   const taskState = await page.evaluate(async () => {
     const store = await import("/src/store.ts");
     return store.loadState();
