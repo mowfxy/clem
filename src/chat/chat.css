@@ -101,7 +101,18 @@
 .message-tools>button:disabled{opacity:.4}
 .message-tools>button span{display:none}
 .message.latest .message-tools>button span,.message-tools>button[aria-expanded=true] span{display:inline}
-.review-menu{position:absolute;left:0;top:36px;z-index:30;min-width:250px;padding:6px;border-radius:12px;border:1px solid #3a3a36;background:#20201e;box-shadow:0 18px 50px -16px #000c;animation:m-rise .18s var(--c-ease) both}
+.message-tools.user-tools{margin:6px -6px 0 0}
+.messages .message.user:has(>.user-tools){margin-bottom:10px}
+.message.user:hover .user-tools,.message.user:focus-within .user-tools{opacity:1}
+.user-edit{width:min(100%,680px);padding:12px 14px 10px 19px;border-radius:21px;background:#242424;border:1px solid #3a3a3a}
+.messages .user-edit textarea,.messages .user-edit textarea:focus,.messages .user-edit textarea:focus-visible{display:block;width:100%;min-height:26px;max-height:360px;margin:0;padding:0;border:0;border-radius:0;outline:0;box-shadow:none;resize:none;background:none;color:var(--c-ink);font:400 15px/1.65 var(--sans)}
+.user-edit-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+.user-edit-actions button{height:32px;padding:0 14px;border-radius:999px;border:1px solid #444;background:none;color:var(--c-ink);font:400 13px var(--sans);cursor:pointer;transition:background .15s,opacity .15s}
+.user-edit-actions button:hover:not(:disabled){background:#ffffff0d}
+.user-edit-actions button.send{border-color:transparent;background:#ecebe6;color:#151515}
+.user-edit-actions button.send:hover:not(:disabled){background:#fff}
+.user-edit-actions button:disabled{opacity:.4;cursor:default}
+.review-menu{position:absolute;left:0;top:36px;z-index:30;min-width:250px;padding:6px;border-radius:12px;border:1px solid #3a3a36;background:#1c1c1b;box-shadow:0 18px 50px -16px #000c;animation:m-rise .18s var(--c-ease) both}
 .review-menu p{margin:4px 8px 6px;font:400 11px var(--sans);color:var(--c-muted)}
 .review-menu button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:9px 10px;border-radius:8px;border:0;background:none;color:var(--c-ink);font:400 13px var(--sans);text-align:left}
 .review-menu button:hover{background:#ffffff0d}
