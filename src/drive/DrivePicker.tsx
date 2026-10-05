@@ -54,7 +54,8 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
     <h3>Connect Google Drive</h3>
     <p>Browse your Drive, use files in chats and link folders to subjects and projects. Files are read live from Drive, never copied to this PC.</p>
     <ul>
-      <li><Icon name="check" size={14} />Read-only access to what you choose to open</li>
+      <li><Icon name="check" size={14} />Reads the folders and files you choose to open</li>
+      <li><Icon name="check" size={14} />Saves files you add, and Mowr's files, into folders you link</li>
       <li><Icon name="check" size={14} />Videos play straight from Drive</li>
       <li><Icon name="check" size={14} />Disconnect anytime</li>
     </ul>
