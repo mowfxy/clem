@@ -75,33 +75,34 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-google:disabled{opacity:.75;cursor:progress}
 .gd-link{margin-top:10px;border:0;background:none;color:#a9b8ff;font-size:12px;cursor:pointer}
 /* A linked Drive folder inside a subject or project */
-.gd-space{margin-top:18px;border:1px solid #ffffff0e;border-radius:16px;background:#ffffff03;overflow:hidden}
-.gd-space-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #ffffff0b}
-.gd-space-head strong{font-weight:400;font-size:13px;color:#f1f0ea}
-.gd-space-head small{font-size:11px;color:#8c8a83}
-.gd-space-head .gd-live{display:inline-flex;align-items:center;gap:5px;margin-left:4px;padding:2px 8px;border-radius:99px;background:#7fd08a14;color:#9fd8a7;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-.gd-space-head .gd-live::before{content:"";width:6px;height:6px;border-radius:50%;background:#7fd08a;box-shadow:0 0 0 3px #7fd08a26}
+.gd-space{margin-top:18px;border-radius:16px;transition:background .15s,box-shadow .15s}
+.gd-space-head{display:flex;align-items:center;gap:10px;padding:2px 2px 10px}
+.gd-space-head strong{display:block;font-weight:400;font-size:13px;color:#f1f0ea}
+.gd-space-head small{display:block;font-size:11px;color:#8c8a83}
 .gd-space-head .gd-space-actions{margin-left:auto;display:flex;gap:6px}
 .gd-space-head .gd-space-actions button{height:28px;padding:0 11px;border-radius:8px;border:1px solid #ffffff14;background:#ffffff06;color:#d8d6ce;font-size:12px;cursor:pointer}
 .gd-space-head .gd-space-actions button:hover{background:#ffffff10;color:#fff}
-.gd-space .gd-trail{padding:6px 10px 0}
-.gd-space-list{display:flex;flex-direction:column;gap:1px;max-height:420px;overflow:auto;padding:4px 6px 8px}
-.gd-space-list .gd-row .gd-open{padding:6px 8px}
-.gd-space-empty{padding:18px;text-align:center;font-size:12px;color:#8f8d86}
+.gd-space .gd-trail{padding:0 0 8px}
+.gd-space-empty{padding:18px;border-radius:16px;border:1px dashed #ffffff1a;text-align:center;font-size:12px;color:#8f8d86}
 @media(prefers-reduced-motion:reduce){.gd-skeleton{animation:none}}
-.gd-space.is-drop{box-shadow:inset 0 0 0 2px #9fb4ff66;background:#9fb4ff0a}
+.gd-space.is-drop{box-shadow:0 0 0 2px #9fb4ff66;background:#9fb4ff0a}
 .gd-row.is-drop{background:#9fb4ff1a;box-shadow:inset 0 0 0 1px #9fb4ff66}
 .gd-saving{margin:0;padding:8px 12px;font-size:12px;color:#c9c7bf}
-/* A file on its way to Drive: in place at once with a turning ring, then a check once Drive has it */
-.gd-row.is-pending .gd-open{cursor:default}
-.gd-row.is-pending .gd-thumb,.gd-row.is-pending .gd-name strong{opacity:.62}
-.gd-row.is-failed .gd-name small{color:#e8a39b}
-.gd-sync{flex:none;display:grid;place-items:center;width:18px;height:18px;margin-left:6px;border-radius:50%}
+.gd-sync{flex:none;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;box-sizing:border-box}
 .gd-sync.is-uploading{border:2px solid #ffffff1f;border-top-color:#9fb4ff;animation:gd-turn .8s linear infinite;box-sizing:border-box}
-.gd-sync.is-done{background:#7fd08a26;color:#9fd8a7;animation:gd-arrive .25s ease-out}
+.gd-sync.is-synced{background:#7fd08a26;color:#9fd8a7;animation:gd-arrive .25s ease-out}
+.gd-sync.is-pending{background:none}
+.gd-sync.is-pending::before{content:"";width:8px;height:8px;border-radius:50%;background:#e9c46a;box-shadow:0 0 0 3px #e9c46a2e}
 .gd-sync.is-failed{background:#e8a39b26;color:#e8a39b;font:700 11px/1 var(--sans)}
 @keyframes gd-turn{to{transform:rotate(360deg)}}
 @keyframes gd-arrive{from{transform:scale(.4);opacity:0}}
-@media (prefers-reduced-motion:reduce){.gd-sync.is-uploading{animation-duration:2.4s}.gd-sync.is-done{animation:none}}
+@media (prefers-reduced-motion:reduce){.gd-sync.is-uploading{animation-duration:2.4s}.gd-sync.is-synced{animation:none}}
 .gd-reconnect{display:flex;align-items:center;gap:12px;margin:4px 6px 6px;padding:10px 12px;border-radius:11px;background:#9fb4ff12;font-size:12px;color:#d8d6ce}
 .gd-reconnect button{flex:none;margin-left:auto;height:28px;padding:0 12px;border-radius:8px;border:0;background:#f1f0ea;color:#141414;font:400 12px var(--sans);cursor:pointer}
+/* Drive files listed like the files kept here; one on its way to Drive is dimmed until Drive has it */
+.gd-space .sp-folders{margin-bottom:12px}
+.gd-file.is-uploading .file-glyph,.gd-file.is-uploading .sp-file-open strong{opacity:.62}
+.gd-file.is-failed .sp-file-open small{color:#e8a39b}
+.gd-file.is-pending .sp-file-open small{color:#e9c46a}
+.gd-space .gd-skeleton{margin:10px 0}
+.gd-space-head .sp-menu .icon-button{width:28px;height:28px}

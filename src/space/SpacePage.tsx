@@ -1,12 +1,13 @@
-import {useEffect,useMemo,useRef,useState,type DragEvent,type ReactNode,type MouseEvent as ReactMouseEvent} from 'react';
+import {useEffect,useMemo,useRef,useState,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {Icon} from '../Icons';
 import {SpaceMark} from './SpaceMark';
+import {Menu,FolderIcon} from './SpaceMenu';
 import {RenameField,PencilIcon} from '../files/RenameField';
 import {FileGlyph} from '../files/FileGlyph';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
 import {chatPreview} from '../../core/chat-title';
-import {getBlob,sizeLabel} from '../store';
+import {sizeLabel} from '../store';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
 import {MemoryConversation,warmMemory} from '../MemoryConversation';
@@ -14,7 +15,7 @@ import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './Instruct
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet,VisualRecord} from '../../core/types';
 import {SavedVisuals} from '../visuals/SavedVisuals';
 import {DriveFolderView} from '../drive/DriveFolderView';
-import type {DriveItem} from '../drive/drive';
+import type {DriveItem,DriveSyncState} from '../drive/drive';
 import './space.css';
 
 export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
@@ -33,6 +34,14 @@ export type SpaceActions={
   /** A Google Drive folder linked to this space, read live (never downloaded). */
   onLinkDrive:()=>void; onUnlinkDrive:()=>void; onDriveSaveBack:(on:boolean)=>void; onDriveSeen:()=>void;
   onOpenDrive:(file:DriveItem)=>void; onAskDrive:(files:DriveItem[])=>void; onDriveItems:(items:DriveItem[])=>void;
+  /** Saves a file from this PC (or a Mowr file, by id) into a folder of the linked Drive folder, keeping it here too. */
+  onAddToDrive:(folder:string,input:File|string)=>Promise<void>;
+  onRetryDrive:(file:StoredFile)=>void;
+  /** Opens a Drive file beside a new chat to edit it; changes go back to Drive once approved. */
+  onEditDrive:(file:DriveItem)=>void;
+  onOpenDriveWeb:(file:DriveItem)=>void;
+  onRenameDrive:(file:DriveItem,name:string)=>Promise<boolean>;
+  onTrashDrive:(file:DriveItem)=>Promise<boolean>;
   onStudyNew:(kind:'flashcards'|'summary')=>void;
   onUpload:(files:FileList,folderId:string|null)=>void;
   onMake:(kind:'flashcards'|'quiz'|'worksheet'|'summary',folderId?:string|null)=>void;
@@ -85,14 +94,8 @@ function useChatMenu(onDelete:(chat:Chat)=>void){
   return {open,node};
 }
 
-function Menu({label,items,trigger}:{label:string;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[];trigger?:ReactNode}){
-  const [open,setOpen]=useState(false),root=useRef<HTMLDivElement>(null);
-  useEffect(()=>{if(!open)return;const close=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close);},[open]);
-  return <div className="sp-menu" ref={root}><button type="button" className={trigger?'sp-menu-trigger':'icon-button'} aria-label={label} aria-expanded={open} onClick={e=>{e.stopPropagation();setOpen(!open);}}>{trigger||<Icon name="menu" size={16}/>}</button>
-    {open&&<div className="sp-menu-list" role="menu">{items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={e=>{e.stopPropagation();setOpen(false);i.run();}}>{i.icon&&<Icon name={i.icon} size={15}/>}{i.label}</button>)}</div>}</div>;
-}
 
-export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions}){
+export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={}}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>}){
   const subject=space.kind==='subject';
   const now=Date.now();
   const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
@@ -189,7 +192,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions}:
       {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onNew={()=>actions.onAsk('')} onMenu={chatMenu.open}/>}
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
-      {tab==='files'&&<FilesView space={space} files={files} actions={actions}/>}
+      {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
       {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals saved in this {space.kind}'s chats appear here. Press <b>Save</b> on the top right of one to keep it.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
       {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
@@ -219,7 +222,7 @@ function ChatList({chats,onOpen,onNew,onMenu}:{chats:Chat[];onOpen:(c:Chat)=>voi
   </section>;
 }
 
-function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions:SpaceActions}){
+function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile[];actions:SpaceActions;driveSync:Record<string,DriveSyncState>}){
   const folders=space.folders||[];
   const [at,setAt]=useState<string|null>(null);
   const [naming,setNaming]=useState<{id?:string;name:string}|null>(null);
@@ -230,7 +233,10 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
   useEffect(()=>{if(at&&!folders.some(f=>f.id===at))setAt(null);},[folders,at]);
   const path=useMemo(()=>{const out:SpaceFolder[]=[];let id=at;while(id){const f=folders.find(x=>x.id===id);if(!f)break;out.unshift(f);id=f.parentId;}return out;},[at,folders]);
   const here=folders.filter(f=>(f.parentId||null)===at).sort((a,b)=>a.name.localeCompare(b.name));
-  const inHere=files.filter(f=>(f.folderId||null)===at).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
+  // Files kept in the linked Drive folder are listed there, with their sync state, not again under "On this PC".
+  const [driveIds,setDriveIds]=useState<Set<string>>(()=>new Set());
+  const inDrive=(f:StoredFile)=>!!space.drive&&!f.folderId&&(!!f.driveFolder||!!f.driveId&&driveIds.has(f.driveId));
+  const inHere=files.filter(f=>(f.folderId||null)===at&&!inDrive(f)).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const countIn=(id:string):number=>files.filter(f=>f.folderId===id).length+folders.filter(f=>f.parentId===id).reduce((n,f)=>n+countIn(f.id),0);
   const setFolders=(next:SpaceFolder[])=>actions.onUpdateSpace({...space,folders:next});
   const saveName=()=>{if(!naming)return;const name=naming.name.trim().slice(0,80);if(!name){setNaming(null);return;}
@@ -255,7 +261,7 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
       </nav>
       <div className="sp-tool-actions">
         {space.drive
-          ? <Menu label="Google Drive folder" trigger={<span className="sp-drive-chip"><DriveGlyph/>{space.drive.folderName}<small>live</small></span>}
+          ? <Menu label="Google Drive folder" trigger={<span className="sp-drive-chip"><DriveGlyph/>{space.drive.folderName}</span>}
               items={[{label:space.drive.saveBack?'Stop saving Mowr’s files to Drive':'Save Mowr’s files to this Drive folder',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)},{label:'Link another folder',run:actions.onLinkDrive},{label:'Unlink folder',danger:true,run:actions.onUnlinkDrive}]}/>
           : <button onClick={actions.onLinkDrive}><DriveGlyph/>Link a Drive folder</button>}
         <button onClick={()=>setNaming({name:''})}><Icon name="plus" size={15}/>New folder</button>
@@ -264,7 +270,8 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
         <input ref={input} type="file" multiple hidden onChange={e=>{if(e.target.files?.length)actions.onUpload(e.target.files,at);e.target.value='';}}/>
       </div>
     </div>
-    {space.drive&&!at&&<DriveFolderView folderId={space.drive.folderId} folderName={space.drive.folderName} onOpen={actions.onOpenDrive} onAsk={actions.onAskDrive} onChangeFolder={actions.onLinkDrive} onUnlink={actions.onUnlinkDrive} onItems={actions.onDriveItems} onResolveFile={async id=>{const f=files.find(x=>x.id===id);const blob=f&&await getBlob(f.id);return f&&blob?{blob:new Blob([blob],{type:f.type||blob.type}),name:f.name}:undefined;}}/>}
+    {space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
+      onItems={items=>{setDriveIds(new Set(items.filter(x=>!x.folder).map(x=>x.id)));actions.onDriveItems(items);}}/>}
     {space.drive&&!at&&(inHere.length>0||here.length>0)&&<div className="sp-local-label"><span className="sp-eyebrow">On this PC</span></div>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
       {here.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
@@ -292,6 +299,6 @@ function FilesView({space,files,actions}:{space:Space;files:StoredFile[];actions
 }
 
 export const folderPath=(folders:SpaceFolder[],id:string)=>{const names:string[]=[];let cur:string|null=id;while(cur){const f=folders.find(x=>x.id===cur);if(!f)break;names.unshift(f.name);cur=f.parentId;}return names.join(' / ');};
-function FolderIcon(){return <span className="sp-folder-icon"><Icon name="folder" size={30}/></span>;}
+
 
 function DriveGlyph(){return <svg className="drive-glyph" width="15" height="14" viewBox="0 0 87.3 78" aria-hidden="true"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>;}
