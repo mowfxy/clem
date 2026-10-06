@@ -76,7 +76,7 @@ test('Claude models come from Claude Code itself, so a model added to the plan a
     {value:'bad name; rm',displayName:'x'},
   ]);
   assert.deepEqual(parsed.map(m=>m.id),['claude:opus','claude:claude-fable-5-1','claude:opus[1m]']);
-  assert.equal(parsed[0].name,'Claude Opus');assert.equal(parsed[0].defaultReasoningEffort,'high');
+  assert.equal(parsed[0].name,'Claude Opus 5.5');assert.equal(parsed[0].description,'Most capable');assert.equal(parsed[1].name,'Claude Fable 5.1');assert.equal(parsed[2].name,'Claude Opus (1M context)');assert.equal(parsed[0].defaultReasoningEffort,'high');
   assert.deepEqual(parsed[0].reasoningEfforts.map(e=>e.reasoningEffort),['low','medium','high','xhigh','max']);
   assert.equal(parsed[2].context,1_000_000);
 
@@ -199,4 +199,19 @@ test('an older Claude sign-in check does not hold up an answer (it is renewed af
   order.length=0;signedIn=false;provider.statusCache.at-=25*60*60_000;
   await assert.rejects(answer(),/Sign in/);
   assert.deepEqual(order,['check']);
+});
+
+test('Claude model names carry their version, read from what Claude Code reports',async()=>{
+  const {parseClaudeModels}=await import('../../desktop/claude.ts');
+  const parsed=parseClaudeModels([
+    {value:'default',resolvedModel:'claude-opus-5-5',displayName:'Default (recommended)',description:'Use the default model (currently Opus 5.5)'},
+    {value:'opus',resolvedModel:'claude-opus-5-5',displayName:'Opus',description:'Opus 5.5 · Best for everyday, complex tasks · $4/$20 per Mtok'},
+    {value:'claude-fable-5-1[1m]',resolvedModel:'claude-fable-5-1',displayName:'Fable',description:'Fable 5.1 · Most capable for your hardest and longest-running tasks'},
+    {value:'sonnet',resolvedModel:'claude-sonnet-5-5',displayName:'Sonnet',description:'Efficient for routine tasks'},
+    {value:'haiku',resolvedModel:'claude-haiku-4-5-20251001',displayName:'Haiku',description:'Haiku 4.5 · Fastest for quick answers'},
+    {value:'opus[1m]',resolvedModel:'claude-opus-5-5',displayName:'Opus (1M context)',description:'Opus 5.5 for long sessions'},
+  ]);
+  assert.deepEqual(parsed.map(m=>m.name),['Claude Opus 5.5','Claude Fable 5.1','Claude Sonnet 5.5','Claude Haiku 4.5','Claude Opus 5.5 (1M context)']);
+  assert.equal(parsed[0].description,'Best for everyday, complex tasks · $4/$20 per Mtok');
+  assert.equal(parsed[1].context,1_000_000);
 });
