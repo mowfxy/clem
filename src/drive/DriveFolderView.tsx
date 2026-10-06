@@ -100,7 +100,9 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
     return { local, mowr: mowr ? [mowr] : [] };
   };
   const target = (key: string) => ({
-    onDragOver: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; setOver(key); },
+    onDragOver: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation();
+      // A file from this space's own list is dragged as a move; the drop effect has to match or the browser cancels the drop.
+      e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-mowr-file") ? "move" : "copy"; setOver(key); },
     onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === key ? null : o)); },
     onDrop: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation(); setOver(null); const { local, mowr } = dropped(e); save(key, local, mowr); },
   });

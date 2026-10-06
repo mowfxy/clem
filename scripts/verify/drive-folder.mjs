@@ -125,8 +125,19 @@ try {
   assert.equal((await calls("driveUpload")).length, 2, "no second copy is made in Drive");
   await page.screenshot({ path: "artifacts/drive-edit-synced.png" });
 
+  // A real mouse drag of a file from "On this PC" onto the Drive folder saves it there (the browser drops it only when
+  // the drop effect matches the drag's, which a scripted drop event never checks).
+  await page.evaluate(() => { location.hash = "/app"; }); await page.evaluate(() => { location.hash = "/app/space/bio"; });
+  await page.getByRole("tab", { name: /^Files/ }).click();
+  const syllabus = page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Osmosis lab handout.pdf" });
+  await syllabus.dragTo(drive.locator(".gd-space-head"));
+  await page.waitForFunction(() => window.driveCalls.filter((c) => c.action === "driveUpload").length === 3, null, { timeout: 5000 });
+  assert.equal((await calls("driveUpload"))[2].name, "Osmosis lab handout.pdf");
+  await row("Osmosis lab handout.pdf").locator(".gd-sync.is-synced").waitFor({ timeout: 8000 });
+  await page.screenshot({ path: "artifacts/drive-drag-from-pc.png" });
+
   assert.deepEqual(errors, []);
-  console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits all pass.");
+  console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits, drag from On this PC all pass.");
 } finally {
   await close();
   await browser.close();
