@@ -62,6 +62,10 @@ try {
   assert.ok(await row("Lecture notes").locator(".fg-doc").count(), "a Google Doc shows the document icon");
   await drive.locator(".sp-folder", { hasText: "Past papers" }).waitFor();
   await page.screenshot({ path: "artifacts/drive-folder.png" });
+  await page.getByRole("button", { name: "Google Drive folder options" }).click();
+  assert.equal(await page.getByRole("menuitem", { name: "Ask about it" }).count(), 0, "no Ask about it in the folder menu");
+  await page.locator(".sp-menu-list").screenshot({ path: "artifacts/drive-folder-menu.png" });
+  await page.keyboard.press("Escape"); await page.mouse.click(5, 5);
 
   // Source: a Drive file can be used as a source like any file.
   await row("Lecture notes").getByRole("checkbox").check();
