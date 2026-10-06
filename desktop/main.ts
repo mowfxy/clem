@@ -65,6 +65,8 @@ import {kinetraTool} from './kinetra-runtime';
 import {turnTimer,type TurnStats} from './turn-timing';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
+import {cleanAiName,namingPrompt} from '../core/file-naming';
+import {fileRequest,helpText,matchFiles,pickSpace,spaceLabel,telegramCommand,WORKSPACE_SCOPE,type TelegramSpace} from '../core/telegram-commands';
 import {installCli} from './cli-install';
 import {CodexEngine,daily} from './engines';
 import {distinctNames,fileTool,fileToolsGuide,type LibraryFile} from '../core/file-tools';
@@ -83,6 +85,7 @@ import { PACK_EXTENSION } from "../core/study-pack";
 import config from "./public-config.json";
 import { diagram } from "../server/diagram";
 import { TelegramService } from "./messaging/service";
+import type { TelegramEnvelope } from "./messaging/telegram";
 import { textPdf, viewCopyName, browserViewable, markFromInternet } from "./documents";
 import {
   putMemory,
@@ -266,6 +269,23 @@ void app.whenReady().then(async () => {
   });
   /** The active Grok account's provider. */
   const grokFor=async(owner:string)=>(await groks.selected(owner)).provider;
+  /** Claude's sign-in page in a Mowr window of its own: in the default browser an installed Claude desktop app took the
+   *  sign-in over (the person was signed in to that app, and Claude Code was never authorised). Its own saved session
+   *  keeps the person signed in to claude.ai next time; other schemes (claude://) are never followed. */
+  const claudeSignInPage=(url:string)=>{
+    const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Mowr",parent:window,autoHideMenuBar:true,backgroundColor:"#141414",icon:join(__dirname,"../desktop/icon.ico"),
+      webPreferences:{partition:"persist:claude-signin",contextIsolation:true,nodeIntegration:false,sandbox:true}});
+    // A plain Chrome identity: Google refuses sign-in to pages it thinks are embedded in an app.
+    page.webContents.setUserAgent(page.webContents.getUserAgent().replace(/\s(?:Electron|Mowr)\/\S+/g,""));
+    const allowed=(target:string)=>{try{const u=new URL(target);return u.protocol==="https:"||(u.protocol==="http:"&&["localhost","127.0.0.1"].includes(u.hostname));}catch{return false;}};
+    page.webContents.on("will-navigate",(event,target)=>{if(!allowed(target))event.preventDefault();});
+    page.webContents.on("will-redirect",(event,target)=>{if(!allowed(target))event.preventDefault();});
+    // Google and Apple sign-in may open a pop-up; it shares the window's session and rules.
+    page.webContents.setWindowOpenHandler(({url:target})=>allowed(target)?{action:"allow",overrideBrowserWindowOptions:{parent:page,autoHideMenuBar:true,webPreferences:{partition:"persist:claude-signin",sandbox:true,contextIsolation:true,nodeIntegration:false}}}:{action:"deny"});
+    page.webContents.on("did-create-window",(child)=>{child.webContents.on("will-navigate",(event,target)=>{if(!allowed(target))event.preventDefault();});});
+    void page.loadURL(url);
+    return ()=>{if(!page.isDestroyed())page.close();};
+  };
   const grokSignIn=(provider:GrokProvider)=>provider.login(url=>{if(/^https:\/\/([a-z0-9-]+\.)*(x\.ai|grok\.com)\//.test(url))void shell.openExternal(url);});
   let providerOwner = "";
   const providerLink=new ProviderLink(auth,vault,local);
@@ -423,9 +443,95 @@ void app.whenReady().then(async () => {
   /** Crops cut in temporary chats live only here (the few most recent chats), never on disk. */
   const temporaryCrops = temporaryStores();
   const diskCrops = (owner: string): AssetIo => ({ read: async (k) => { const b = await disk.readFile(owner, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => disk.writeFile(owner, k, b), remove: (k) => disk.deleteFile(owner, k) });
+  /** Telegram's running conversation for one space. */
+  const telegramHistoryKey = (owner: string, scope: string) => "telegram-history-" + owner + "-" + scope.replace(/[^\w-]/g, "_");
+  /**
+   * A Telegram command that Mowr answers itself, without the AI (core/telegram-commands.ts). Returns undefined for a
+   * message the AI answers; `scope` in the result moves the bot to another space.
+   */
+  async function telegramReply(owner: string, envelope: TelegramEnvelope): Promise<{ text: string; scope?: string; documents?: { name: string; mime: string; bytes: Uint8Array; photo?: boolean }[] } | undefined> {
+    if (/^\/start(?:@\w+)?\s*$/i.test(envelope.text.trim())) return { text: "Mowr is connected. " + helpText() };
+    const command = telegramCommand(envelope.text);
+    // A file command with a request, or with an attachment to work from, goes to the AI.
+    if (!command || fileRequest(command.name, command.arg || (envelope.attachment ? "the attached file" : ""))) return undefined;
+    const spaces = await vault.read<TelegramSpace[]>("telegram-spaces-" + owner, []);
+    const here = spaceLabel(envelope.scope, spaces);
+    const historyKey = telegramHistoryKey(owner, envelope.scope);
+    const folders = (await vault.read<Folder[]>("folders-" + owner, [])).filter((f) => f.scope === envelope.scope);
+    const indexed = async () => (await Promise.all(folders.map(async (folder) => (await vault.read<IndexedFile[]>("index-" + owner + "-" + folder.id, [])).map((file) => ({ folder, path: file.path, size: file.size }))))).flat();
+    const slash = (path: string) => path.replace(/\\/g, "/");
+    switch (command.name) {
+      case "help": return { text: helpText() };
+      case "pdf": case "word": case "slides": case "sheet": case "brief":
+        return { text: `Add your request after the command, for example: /${command.name} a summary of lecture 3.` };
+      case "new": {
+        await vault.write(historyKey, []);
+        return { text: `Fresh conversation started in ${here}. Earlier messages will not be sent to the AI.` };
+      }
+      case "undo": {
+        const history = await vault.read<{ role: string; content: string }[]>(historyKey, []);
+        if (!history.length) return { text: "There is nothing to forget yet." };
+        const last = history.map((m) => m.role).lastIndexOf("user");
+        await vault.write(historyKey, history.slice(0, Math.max(0, last)));
+        return { text: "Forgot your last question and its answer." };
+      }
+      case "spaces": {
+        if (!spaces.length) return { text: "You have no subjects or projects yet. Make one in Mowr on your PC." };
+        return { text: [`Answering from ${here}.`, "", ...spaces.map((s, i) => `${i + 1}. ${s.name} (${s.kind})${s.scope === envelope.scope ? " ← current" : ""}`), "", "Switch with /space followed by a number or name, or /space workspace."].join("\n") };
+      }
+      case "space": {
+        if (!command.arg) return { text: `Answering from ${here}. Send /spaces to see the others.` };
+        const picked = pickSpace(command.arg, spaces);
+        if (!picked) return { text: `No subject or project matches “${command.arg.slice(0, 80)}”. Send /spaces to see them.` };
+        const scope = picked === "workspace" ? WORKSPACE_SCOPE : picked.scope;
+        const turns = Math.floor((await vault.read<unknown[]>(telegramHistoryKey(owner, scope), [])).length / 2);
+        return { scope, text: `Now answering from ${spaceLabel(scope, spaces)}, with its files and memory.${turns ? ` Its conversation continues (${turns} earlier exchange${turns === 1 ? "" : "s"}); send /new to start fresh.` : ""}` };
+      }
+      case "files": {
+        if (!folders.length) return { text: `No PC folders are linked to ${here}. Link them in Mowr: Settings → Linked folders.` };
+        const all = await indexed();
+        const list = command.arg ? matchFiles(all, command.arg) : all;
+        if (!list.length) return { text: command.arg ? `No file names contain “${command.arg.slice(0, 80)}”.` : "The linked folders have no files Mowr reads yet." };
+        const shown = list.slice(0, 40).map((f) => `• ${basename(f.folder.path)}/${slash(f.path)}`);
+        return { text: [`${list.length} file${list.length === 1 ? "" : "s"} in ${here}:`, ...shown, ...(list.length > 40 ? [`…and ${list.length - 40} more. Add words to narrow it: /files lecture 3`] : []), "", "Send one with /get and its name."].join("\n").slice(0, 3900) };
+      }
+      case "get": {
+        if (!command.arg) return { text: "Add the file's name, for example: /get lecture 3. Send /files to see them." };
+        const hits = matchFiles(await indexed(), command.arg);
+        if (!hits.length) return { text: `No file in ${here} matches “${command.arg.slice(0, 80)}”. Send /files to see them.` };
+        const exact = (hits[0].path.split(/[\\/]/).pop() || "").toLowerCase() === command.arg.trim().toLowerCase();
+        if (hits.length > 8) return { text: `${hits.length} files match. Add more of the name, or see them with /files ${command.arg.slice(0, 60)}` };
+        if (hits.length > 1 && !exact) return { text: ["Which one? Send /get with more of its name:", ...hits.map((f) => "• " + slash(f.path))].join("\n") };
+        const hit = hits[0], path = resolve(hit.folder.path, hit.path);
+        if (!inside(hit.folder.path, path)) return { text: "That file is outside the linked folder." };
+        const info = await statFile(path).catch(() => null);
+        if (!info?.isFile()) return { text: "That file is no longer there. Send /files to see the current list." };
+        if (info.size > 20_000_000) return { text: "That file is over Telegram's 20 MB limit for bots." };
+        const name = basename(path), ext = name.split(".").pop()!.toLowerCase();
+        const mime = ({ pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", txt: "text/plain", md: "text/markdown", csv: "text/csv", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" } as Record<string, string>)[ext] || "application/octet-stream";
+        return { text: `Sending ${name}.`, documents: [{ name, mime, bytes: new Uint8Array(await readDiskFile(path)), photo: false }] };
+      }
+      case "memory": {
+        const state = await vault.read<MemoryState>("memory-" + owner, { enabled: true, records: [] });
+        if (!state.enabled) return { text: "Memory is turned off in Mowr (Settings → Memory)." };
+        const kept = state.records.filter((m) => !m.supersededBy && (m.scope === PROFILE_SCOPE || m.scope === envelope.scope));
+        if (!kept.length) return { text: `Mowr remembers nothing about you or ${here} yet.` };
+        return { text: ["Mowr remembers:", ...kept.slice(-30).map((m) => "• " + m.text), "", "Change or forget these in Mowr: Settings → Memory."].join("\n").slice(0, 3900) };
+      }
+      case "status": {
+        const chosen = await vault.read<{ model?: string }>(lastModelKey(owner), {});
+        const history = await vault.read<unknown[]>(historyKey, []);
+        const model = chosen.model ? chosen.model.replace(/^[a-z]+:/i, "").replace(/[-_]/g, " ") : "your default AI";
+        return { text: [`Space: ${here}`, `AI: ${model} (the one you last used in Mowr; change it there)`, `Conversation: ${Math.floor(history.length / 2)} exchanges (/new starts fresh)`, `Linked folders: ${folders.length ? folders.map((f) => basename(f.path)).join(", ") : "none"}`].join("\n") };
+      }
+    }
+    return undefined;
+  }
   telegram = new TelegramService(vault, async (owner, envelope, bytes, signal) => {
     const user = await auth.user();
     if (user?.id !== owner) throw Error("Account changed.");
+    const answered = await telegramReply(owner, envelope);
+    if (answered) return answered;
     const entitlement = await auth.cloud("/entitlement");
     if (!entitlement.active) throw Error(entitlementMessage(entitlement));
     const id = randomUUID();
@@ -472,7 +578,7 @@ void app.whenReady().then(async () => {
           });
       }
       // Telegram keeps its own running conversation per space, so follow-ups make sense there too.
-      const historyKey = "telegram-history-" + owner + "-" + envelope.scope.replace(/[^\w-]/g, "_");
+      const historyKey = telegramHistoryKey(owner, envelope.scope);
       const history = await vault.read<{ role: string; content: string }[]>(historyKey, []);
       const conversation = boundedConversation([...history, { role: "user", content: envelope.text }], 40000);
       const memories = memoryLines(retrieveMemory(
@@ -516,7 +622,7 @@ void app.whenReady().then(async () => {
             memory: memories,
             sources,
             attachment: attachmentText,
-            request: envelope.text.replace(/^\/pdf\s*/, "Create a PDF: "),
+            request: (() => { const c = telegramCommand(envelope.text); return (c && fileRequest(c.name, c.arg || "the attached file")) || envelope.text; })(),
           }),
         (event) => {
           if (event.type === "delta") text += event.text || "";
@@ -1022,6 +1128,20 @@ void app.whenReady().then(async () => {
       const [skills,notes]=await Promise.all([essentialSync.exchange(user.id,"skills",request.skills),essentialSync.exchange(user.id,"notes",request.notes)]);
       return {skills:skills.data,notes:notes.data,error:skills.error||notes.error};
     }
+    if (request.action === "fileName") {
+      // Named by the AI the person is using, from the first page; the rule-based name stands in when it cannot answer.
+      const ext = request.original.match(/\.[^.\s]{1,6}$/)?.[0] || "";
+      const chosen = await vault.read<{ model?: string }>(lastModelKey(user.id), {});
+      const reply = await Promise.race([
+        quickAsk(user.id, chosen.model, namingPrompt(request)).catch(() => ""),
+        new Promise<string>((done) => setTimeout(() => done(""), 25000)),
+      ]);
+      return { name: cleanAiName(reply, ext, request.place) || request.suggestion };
+    }
+    if (request.action === "telegramSpaces") {
+      await vault.write("telegram-spaces-" + user.id, request.spaces);
+      return { ok: true };
+    }
     if (request.action === "telegramStatus") {
       telegram.start(user.id);
       const linked=await telegram.linkable(user.id);
@@ -1075,7 +1195,7 @@ void app.whenReady().then(async () => {
       if(status.connected)void providerLink.backup(user.id,claudeLinkId(id),"claude",(status as {email?:string}).email||"").catch(linkFailed);
       return status;
     }
-    if (request.action === "claudeLogin") return (await claudeFor(user.id)).login();
+    if (request.action === "claudeLogin") return (await claudeFor(user.id)).login(claudeSignInPage);
     // Claude and Grok accounts, managed as ChatGPT's are: list (with usage), add, sign in again, use, remove.
     if (request.action === "cliAccounts") {
       const accounts=request.kind==="grok"?groks:claudes;
@@ -1083,8 +1203,8 @@ void app.whenReady().then(async () => {
       if(request.kind!=="grok")for(const account of listed.accounts)if(account.connected)void providerLink.backup(user.id,claudeLinkId(account.id),"claude",account.email||"").catch(linkFailed);
       return {...listed,autoSwitch:await providerAccounts.autoSwitchEnabled(user.id)};
     }
-    if (request.action === "cliAccountAdd") return request.kind==="grok"?groks.add(user.id,grokSignIn):claudes.add(user.id,(provider)=>provider.login());
-    if (request.action === "cliAccountSignIn") return request.kind==="grok"?groks.signIn(user.id,request.id,grokSignIn):claudes.signIn(user.id,request.id,(provider)=>provider.login());
+    if (request.action === "cliAccountAdd") return request.kind==="grok"?groks.add(user.id,grokSignIn):claudes.add(user.id,(provider)=>provider.login(claudeSignInPage));
+    if (request.action === "cliAccountSignIn") return request.kind==="grok"?groks.signIn(user.id,request.id,grokSignIn):claudes.signIn(user.id,request.id,(provider)=>provider.login(claudeSignInPage));
     if (request.action === "cliAccountSelect") return (request.kind==="grok"?groks:claudes).activate(user.id,request.id);
     if (request.action === "cliAccountRemove") {
       const result=await (request.kind==="grok"?groks:claudes).remove(user.id,request.id);

@@ -99,6 +99,10 @@ export class TelegramClient {
       signal,
     );
   }
+  /** The commands Telegram lists in the bot's "/" menu. */
+  async setCommands(commands: { command: string; description: string }[]) {
+    return this.call("setMyCommands", { commands });
+  }
   async sendText(chatId: number, text: string) {
     if (text.length > 4096)
       throw Error("Telegram text exceeds 4096 characters.");

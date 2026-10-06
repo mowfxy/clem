@@ -10,6 +10,7 @@ import {
   type TelegramEnvelope,
 } from "./telegram";
 import type { Vault } from "../vault";
+import { TELEGRAM_COMMANDS } from "../../core/telegram-commands.ts";
 type Config = {
   token: string;
   offset: number;
@@ -22,6 +23,7 @@ type Config = {
 export class TelegramService {
   private controller: AbortController | null = null;
   private owner = "";
+  private menuFor = "";
   constructor(
     private vault: Vault,
     private process: (
@@ -32,6 +34,8 @@ export class TelegramService {
       signal?: AbortSignal,
     ) => Promise<{
       text: string;
+      /** Answer from this space from now on (/space). */
+      scope?: string;
       documents?: { name: string; mime: string; bytes: Uint8Array; photo?: boolean }[];
     }>,
   ) {}
@@ -97,6 +101,11 @@ export class TelegramService {
       const config = await this.vault.read<Config | null>(key, null);
       if (!config?.enabled) return;
       const client = new TelegramClient(config.token);
+      // Telegram's "/" menu lists Mowr's commands; set once per bot each time the loop starts.
+      if (this.menuFor !== config.token) {
+        this.menuFor = config.token;
+        void client.setCommands(TELEGRAM_COMMANDS.map((c) => ({ command: c.name, description: c.menu }))).catch(() => { this.menuFor = ""; });
+      }
       try {
         const updates = await client.poll(config.offset, signal);
         for (const update of updates) {
@@ -124,7 +133,7 @@ export class TelegramService {
             await this.vault.write(key, config);
             await client.sendText(
               message.chat.id,
-              "Paired with Mowr. Requests run on your PC while Mowr is open. Send /pdf followed by your request for a PDF response.",
+              "Paired with Mowr. Requests run on your PC while Mowr is open. Send /help to see the commands, such as /new for a fresh conversation and /spaces to switch subject or project.",
             );
             continue;
           }
@@ -148,6 +157,10 @@ export class TelegramService {
                 : undefined;
               const result = await this.process(owner, envelope, bytes, signal);
               signal.throwIfAborted();
+              if (result.scope) {
+                config.routes = config.routes.map((r) => r.chatId === envelope.chatId ? { ...r, scope: result.scope! } : r);
+                await this.vault.write(key, config);
+              }
               for (let i = 0; i < result.text.length; i += 4000)
                 await client.sendText(
                   envelope.chatId,

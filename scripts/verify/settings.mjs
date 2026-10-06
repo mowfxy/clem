@@ -176,6 +176,12 @@ try {
       .getByRole("button", { name, exact: true })
       .click();
     assert.equal(await page.getByLabel("Space", { exact: true }).count(), 0);
+    if (name === "Telegram") {
+      // Every bot command is listed with what it does.
+      for (const command of ["/help", "/new", "/spaces", "/space <name or number>", "/files [words]", "/get <file name>", "/pdf <request>", "/memory", "/status"])
+        await page.locator(".tg-commands code", { hasText: command }).first().waitFor();
+      await page.locator(".tg-commands").screenshot({ path: "artifacts/settings-telegram-commands.png" });
+    }
     await page
       .locator(".st-body")
       .getByRole("button", { name: button, exact: true })

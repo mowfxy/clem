@@ -238,10 +238,12 @@ export class ClaudeProvider {
     await new Promise<void>(resolve=>{const timer=setTimeout(()=>child.kill(),5*60_000);child.stdout.resume();child.stderr.resume();child.on('error',()=>{clearTimeout(timer);resolve();});child.on('close',()=>{clearTimeout(timer);resolve();});child.stdin.end();});
     this.catalog=null;
   }
-  async login(){
+  /** `page`: opens Claude's sign-in page in a Mowr window (see signInWindow); without it the default browser is used. */
+  async login(page?:(url:string)=>()=>void){
     await mkdir(this.root,{recursive:true});
     this.statusCache=null;
-    return signInWindow({title:'Sign in to Claude · Mowr',message:'Sign in with your Claude account in the browser that opens.',env:this.env(),
+    return signInWindow({title:'Sign in to Claude · Mowr',message:page?'Sign in with your Claude account in the Mowr window that opens.':'Sign in with your Claude account in the browser that opens.',env:this.env(),
+      ...(page?{page:{hosts:/^(?:[a-z0-9-]+\.)*(?:claude\.ai|claude\.com|anthropic\.com)$/,open:page}}:{}),
       command:`$env:CLAUDE_CONFIG_DIR='${this.root.replace(/'/g,"''")}'; & '${this.executable.replace(/'/g,"''")}' auth login`,
       signedIn:async()=>(await this.status(true)).connected});
   }
