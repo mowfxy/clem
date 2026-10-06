@@ -2,7 +2,22 @@ import { useEffect, useState } from "react";
 import { desktop } from "./bridge";
 import { Icon } from "../Icons";
 import { copyText } from "../clipboard";
+import { TELEGRAM_COMMANDS } from "../../core/telegram-commands";
 import "./telegram.css";
+
+/** Every command the bot understands and what it does; they also appear in Telegram's "/" menu once paired. */
+export function TelegramCommands() {
+  return (
+    <dl className="tg-commands">
+      {TELEGRAM_COMMANDS.map((c) => (
+        <div key={c.name}>
+          <dt><code>{c.usage}</code></dt>
+          <dd>{c.does}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 /** Telegram's paper plane, drawn to sit with Mowr's line icons. */
 function PlaneMark() {
@@ -90,7 +105,7 @@ export function TelegramPanel({ scope, labelFor }: { scope: string; /** A pairin
 
       <div className="tg-info">
         <div><Icon name="attach" size={16} /><span>Text, photos (JPEG, PNG), PDFs, Word files and plain text, up to 20 MB</span></div>
-        <div><Icon name="files" size={16} /><span>Start a message with <code>/pdf</code> to get the answer back as a PDF</span></div>
+        <div><Icon name="files" size={16} /><span>Start with <code>/new</code> for a fresh conversation, <code>/space</code> to switch subject or project, <code>/pdf</code> for a PDF answer; <code>/help</code> lists the rest</span></div>
         <div><Icon name="clock" size={16} /><span>Mowr must be open on this PC to reply; Telegram holds messages for a while</span></div>
       </div>
       {(error || state.error) && <p className="tg-error" role="alert">{error || state.error}</p>}

@@ -151,7 +151,7 @@ export const mowrSkills: MowrSkill[] = [
     steps: [
       "The person can message Mowr from their phone through their own Telegram bot: in Settings → Telegram they connect a bot made with Telegram's @BotFather, choose which space it answers for, and pair it by sending the bot the /start code Mowr shows within five minutes. Only private chats with the paired account are answered.",
       "Mowr on the PC answers those messages, so it has to be open and signed in; messages sent while it is closed are answered when it opens only if Telegram still holds them (for a limited time). Replies use the model last chosen in Mowr, the space's memory and linked PC folders, and keep their own running conversation.",
-      "They can send text, a photo or a document; a message starting with /pdf comes back as a PDF. Replies are plain text in Telegram: no rendered Markdown, maths, visuals or players.",
+      "They can send text, a photo or a document. Commands (listed in Settings → Telegram and in Telegram's / menu): /help; /new starts a fresh conversation so earlier messages are no longer sent; /undo forgets the last exchange; /spaces lists subjects and projects and /space <name or number> switches to one (its files, memory and conversation; /space workspace for everything); /files [words] lists the space's linked PC folder files and /get <name> sends one; /pdf, /word, /slides and /sheet answer as that kind of file; /brief answers in a few lines; /memory shows what Mowr remembers; /status shows the space, AI and conversation length. Replies are plain text in Telegram: no rendered Markdown, maths, visuals or players.",
       "You cannot set this up or send Telegram messages yourself: give the steps and never claim a message was sent.",
     ],
   },

@@ -194,3 +194,9 @@
 .description-dialog textarea{min-height:84px}
 .instructions-count{position:absolute;right:12px;bottom:10px;font-size:11px;color:#7d7c75;pointer-events:none}
 @media(max-width:560px){.sp-instructions{padding:9px 11px}.contact-dialog.instructions-dialog footer{flex-wrap:wrap}.contact-dialog.instructions-dialog footer small{flex-basis:100%}.contact-dialog.instructions-dialog footer .contact-secondary{margin-left:auto}}
+/* A card whose menu is open sits above the cards after it (a hovered card's lift makes its own stacking layer, which
+   otherwise left the menu underneath the next card). */
+:is(.sp-folder,.sp-file):has(>.sp-menu>.sp-menu-list){position:relative;z-index:40}
+.sp-folder:has(>.sp-menu>.sp-menu-list){transform:none}
+/* The menu button keeps its own width at the card's right edge; the name takes the rest. */
+.sp-folder>.sp-menu{flex:none;margin-left:auto;margin-right:-2px}

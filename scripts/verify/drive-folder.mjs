@@ -1,6 +1,7 @@
 // Browser check for a subject's linked Google Drive folder, behind a scripted Drive: its files are listed like the
-// files kept here (icons, rename, Source, menu); a dropped file shows at once with a turning ring, is kept in the
-// subject and turns into a check once Drive has it; an edit to a Drive file waits for approval before Drive gets it.
+// files kept here (icons, rename, Source, menu); a dropped file shows at once with a turning ring and goes to Drive
+// only (nothing kept on this PC) until "Save on this PC" copies it, or a whole folder; an edit to a Drive file waits for
+// approval before Drive gets it; an open menu sits above the cards after it.
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -16,6 +17,9 @@ const handout = await handoutPdf(browser);
 const driveScript = () => {
   const items = [
     { id: "drive-sub-000001", name: "Past papers", mimeType: "application/vnd.google-apps.folder", folder: true },
+    { id: "drive-sub-000002", name: "🎞️ Lecture Slides and Recordings", mimeType: "application/vnd.google-apps.folder", folder: true },
+    { id: "drive-sub-000003", name: "🤖 AI Notes", mimeType: "application/vnd.google-apps.folder", folder: true },
+    { id: "drive-sub-000004", name: "📝 Personal Notes", mimeType: "application/vnd.google-apps.folder", folder: true },
     { id: "drive-pdf-000001", name: "Lab handout.pdf", mimeType: "application/pdf", size: 52000, modified: new Date(Date.now() - 864e5).toISOString() },
     { id: "drive-doc-000001", name: "Lecture notes", mimeType: "application/vnd.google-apps.document", modified: new Date(Date.now() - 3 * 864e5).toISOString() },
     { id: "drive-pdf-000002", name: "2024 paper.pdf", mimeType: "application/pdf", size: 81000, path: "Past papers", modified: new Date().toISOString() },
@@ -67,20 +71,35 @@ try {
   await page.locator(".sp-menu-list").screenshot({ path: "artifacts/drive-folder-menu.png" });
   await page.keyboard.press("Escape"); await page.mouse.click(5, 5);
 
+  // A folder card's menu button sits at its right edge, leaving the name its room, and its open menu is above the next card.
+  const slides = drive.locator(".sp-folder", { hasText: "Lecture Slides" });
+  const box = await slides.boundingBox(), menuBox = await slides.locator(".sp-menu").boundingBox();
+  assert.ok(box.x + box.width - (menuBox.x + menuBox.width) < 24, "menu button at the card's right edge");
+  await slides.getByRole("button", { name: /options$/ }).click();
+  const list = slides.locator(".sp-menu-list");
+  await list.waitFor();
+  const lb = await list.boundingBox();
+  const top = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest(".sp-menu-list"), [lb.x + lb.width / 2, lb.y + lb.height - 6]);
+  assert.ok(top, "the open menu is not covered by the next card");
+  assert.ok(await list.getByRole("menuitem", { name: "Save on this PC" }).count(), "a Drive folder can be saved on this PC");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "artifacts/drive-folder-card-menu.png", clip: { x: 380, y: lb.y - 120, width: 940, height: 260 } });
+  await page.mouse.click(5, 5);
+
   // Source: a Drive file can be used as a source like any file.
   await row("Lecture notes").getByRole("checkbox").check();
   await saved(page);
   const sources = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).spaces[0].sources);
   assert.ok(sources.includes("drive:drive-doc-000001"), "Drive file marked as a source");
 
-  // Drop a file from this PC: it shows at once with a turning ring, is named like any added file (Lec03 → Lecture 3), then a check; it is kept here and is a source.
+  // Drop a file from this PC: it shows at once with a turning ring, is named like any added file (Lec03 → Lecture 3), then a check; it goes to Drive only and is a source there.
   await drive.evaluate((el) => {
     const data = new DataTransfer();
     data.items.add(new File(["Lecture 3: genetics and inheritance."], "Lec03.txt", { type: "text/plain" }));
     el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data }));
     el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
   });
-  await row("Lecture 3.txt").locator(".gd-sync.is-uploading").waitFor({ timeout: 3000 });
+  await row("Lec03.txt").locator(".gd-sync.is-uploading").waitFor({ timeout: 3000 });
   await page.screenshot({ path: "artifacts/drive-drop-uploading.png" });
   await row("Lecture 3.txt").locator(".gd-sync.is-synced").waitFor({ timeout: 5000 });
   assert.equal((await calls("driveUpload")).length, 1);
@@ -88,8 +107,16 @@ try {
   assert.equal((await calls("driveUpload"))[0].name, "Lecture 3.txt", "named like any added file before it goes to Drive");
   assert.equal(await page.locator(".sp-file-list .sp-file", { hasText: "Lecture 3.txt" }).count(), 1, "listed once, in the Drive folder, not again under On this PC");
   await saved(page);
-  const kept = await page.evaluate(async () => { const s = await (await import("/src/store.ts")).loadState(); const f = s.files.find((x) => x.name === "Lecture 3.txt"); return { f, source: s.spaces[0].sources.includes(f?.id) }; });
-  assert.ok(kept.f?.driveId && kept.source, "kept here, linked to its Drive file, and used as a source");
+  const uploadedId = await page.evaluate(() => window.driveCalls.length && "drive-new-" + String(window.driveCalls.findIndex((c) => c.action === "driveUpload") + 1).padStart(6, "0"));
+  const kept = await page.evaluate(async (id) => { const s = await (await import("/src/store.ts")).loadState(); return { local: s.files.some((x) => x.name === "Lecture 3.txt"), source: s.spaces[0].sources.includes("drive:" + id) }; }, uploadedId);
+  assert.ok(!kept.local, "nothing is kept on this PC");
+  assert.ok(kept.source, "used as a source, as the Drive file");
+
+  // Save on this PC: the Drive file is copied under On this PC and stays in Drive.
+  await row("Lecture 3.txt").getByRole("button", { name: "Lecture 3.txt options" }).click();
+  await page.getByRole("menuitem", { name: "Save on this PC" }).click();
+  await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Lecture 3.txt" }).waitFor({ timeout: 5000 });
+  assert.equal(await row("Lecture 3.txt").count(), 1, "still in Drive");
   await page.screenshot({ path: "artifacts/drive-drop-synced.png" });
 
   // Dropping onto a Drive subfolder saves into that subfolder.
@@ -102,6 +129,16 @@ try {
   await drive.locator(".sp-folder", { hasText: "Past papers" }).locator(".gd-sync.is-uploading").waitFor({ timeout: 1000 });
   await page.waitForFunction(() => window.driveCalls.filter((c) => c.action === "driveUpload").length === 2);
   assert.equal((await calls("driveUpload"))[1].folder, "drive-sub-000001");
+
+  // Save a whole Drive folder on this PC: a folder of the same name under On this PC with its files.
+  await drive.locator(".sp-folder", { hasText: "Past papers" }).getByRole("button", { name: /options$/ }).click();
+  await page.getByRole("menuitem", { name: "Save on this PC" }).click();
+  const localFolder = page.locator(".sp-files > .sp-folders .sp-folder", { hasText: "Past papers" });
+  await localFolder.waitFor({ timeout: 5000 });
+  await localFolder.click();
+  await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "2024 paper.pdf" }).waitFor({ timeout: 5000 });
+  await page.screenshot({ path: "artifacts/drive-folder-saved-on-pc.png" });
+  await page.locator(".sp-path button", { hasText: "Files" }).click();
 
   // Rename in Drive.
   await row("Lab handout.pdf").getByRole("button", { name: "Rename Lab handout.pdf" }).click();
@@ -124,12 +161,14 @@ try {
   await page.locator(".file-panel .fp-sync.is-synced").waitFor({ timeout: 5000 });
   assert.deepEqual((await calls("driveUpdate")).map((c) => c.id), ["drive-pdf-000001"], "the same Drive file gets the approved version");
   assert.equal((await calls("driveUpload")).length, 2, "no second copy is made in Drive");
+  await page.locator(".file-panel").getByRole("button", { name: /close/i }).first().click().catch(() => {});
   await page.screenshot({ path: "artifacts/drive-edit-synced.png" });
 
   // A real mouse drag of a file from "On this PC" onto the Drive folder saves it there (the browser drops it only when
   // the drop effect matches the drag's, which a scripted drop event never checks).
   await page.evaluate(() => { location.hash = "/app"; }); await page.evaluate(() => { location.hash = "/app/space/bio"; });
   await page.getByRole("tab", { name: /^Files/ }).click();
+  await page.setViewportSize({ width: 1440, height: 1500 });
   const syllabus = page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Osmosis lab handout.pdf" });
   await syllabus.dragTo(drive.locator(".gd-space-head"));
   await page.waitForFunction(() => window.driveCalls.filter((c) => c.action === "driveUpload").length === 3, null, { timeout: 5000 });
@@ -159,7 +198,7 @@ try {
 
   assert.deepEqual(errors, []);
   console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits, drag from On this PC, local-only Add files all pass.");
-} finally {
+} catch (e) { await page.screenshot({ path: "artifacts/drive-folder-failure.png" }).catch(() => {}); throw e; } finally {
   await close();
   await browser.close();
 }

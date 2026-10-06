@@ -35,7 +35,10 @@ export type SpaceActions={
   onLinkDrive:()=>void; onUnlinkDrive:()=>void; onDriveSaveBack:(on:boolean)=>void; onDriveSeen:()=>void;
   onOpenDrive:(file:DriveItem)=>void; onAskDrive:(files:DriveItem[])=>void; onDriveItems:(items:DriveItem[])=>void;
   /** Saves a file from this PC (or a Mowr file, by id) into a folder of the linked Drive folder, keeping it here too. */
-  onAddToDrive:(folder:string,input:File|string)=>Promise<void>;
+  /** Saves a file from this PC (or a Mowr file, by id) into a Drive folder only; resolves to it as Drive lists it. */
+  onAddToDrive:(folder:string,input:File|string)=>Promise<DriveItem>;
+  /** Copies Drive files onto this PC, into folders named `dirs` under "On this PC". */
+  onSaveOnPc:(entries:{item:DriveItem;dirs:string[]}[])=>void;
   onRetryDrive:(file:StoredFile)=>void;
   /** Opens a Drive file beside a new chat to edit it; changes go back to Drive once approved. */
   onEditDrive:(file:DriveItem)=>void;

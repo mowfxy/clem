@@ -163,6 +163,18 @@ export const requestSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("telegramStatus") }),
   z.object({
+    action: z.literal("fileName"),
+    original: z.string().min(1).max(260),
+    title: z.string().max(300).optional(),
+    lines: z.array(z.string().max(400)).max(60),
+    place: z.string().max(200).optional(),
+    suggestion: z.string().min(1).max(260),
+  }),
+  z.object({
+    action: z.literal("telegramSpaces"),
+    spaces: z.array(z.object({ scope: scopeSchema, name: z.string().max(200), kind: z.enum(["subject", "project"]) })).max(500),
+  }),
+  z.object({
     action: z.literal("telegramConnect"),
     token: z.string().regex(/^\d+:[A-Za-z0-9_-]{20,100}$/),
     scope: scopeSchema,

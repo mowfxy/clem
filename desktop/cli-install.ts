@@ -1,5 +1,8 @@
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
+import {mkdir,readFile,rm,writeFile} from 'node:fs/promises';
+import {randomBytes} from 'node:crypto';
+import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 // Installs the official command-line tools Mowr uses for Claude and Grok, so nobody has to open a terminal.
@@ -45,10 +48,28 @@ export function installCli(kind:CliKind){
  *  happens on the vendor's page in the browser. Mowr checks `signedIn` every few seconds and closes the window itself
  *  as soon as the account is connected, so the person never has to deal with it. */
 const signIns=new Set<string>();
-export async function signInWindow(options:{title:string;message:string;command:string;cwd?:string;env:NodeJS.ProcessEnv;signedIn:()=>Promise<boolean>}){
+/** Where a CLI's sign-in page may be opened by Mowr itself: the vendor's own https sign-in hosts only. */
+export function signInPageUrl(text:string,hosts:RegExp){
+  const raw=text.trim().replace(/^"|"$/g,'').trim();
+  try{const url=new URL(raw);return url.protocol==='https:'&&!url.username&&!url.password&&hosts.test(url.hostname)?url.href:null;}catch{return null;}
+}
+
+/** `page`: Mowr opens the sign-in page in its own window instead of the default browser (the CLI's BROWSER is pointed
+ *  at a tiny script that hands the address back). In the default browser an installed Claude desktop app took over
+ *  claude.ai's sign-in, so the person ended up signed in to that app and the CLI was never authorised. Returns a closer. */
+export async function signInWindow(options:{title:string;message:string;command:string;cwd?:string;env:NodeJS.ProcessEnv;signedIn:()=>Promise<boolean>;page?:{hosts:RegExp;open:(url:string)=>()=>void}}){
   // One window per account: clicking Sign in again while one is open leaves that one to finish.
   if(signIns.has(options.command))return {started:true};
   signIns.add(options.command);
+  let handoff:string|undefined,closePage=()=>{};
+  if(options.page){
+    handoff=join(tmpdir(),'mowr-signin-'+randomBytes(8).toString('hex'));
+    await mkdir(handoff,{recursive:true});
+    // %* keeps the quotes the CLI puts round the address, so the & in it stays literal for cmd.
+    await writeFile(join(handoff,'open.cmd'),`@echo %*> "${join(handoff,'url.txt')}"\r\n`);
+    options={...options,env:{...options.env,BROWSER:join(handoff,'open.cmd')}};
+  }
+  const cleanup=()=>{closePage();closePage=()=>{};if(handoff)void rm(handoff,{recursive:true,force:true}).catch(()=>{});};
   const quote=(s:string)=>s.replace(/'/g,"''");
   const script=`$Host.UI.RawUI.WindowTitle='${quote(options.title)}'; Write-Host ''; Write-Host '  ${quote(options.message)}' -ForegroundColor Cyan; Write-Host '  Mowr closes this window when you are signed in.'; Write-Host ''; ${options.command}`;
   // The window is opened by Start-Process, not spawned directly: a spawned console gets Node's standard handles
@@ -65,7 +86,7 @@ export async function signInWindow(options:{title:string;message:string;command:
       launcher.on('error',()=>{clearTimeout(timer);reject(Error('Windows PowerShell is needed to sign in.'));});
       launcher.on('close',()=>{clearTimeout(timer);const id=Number(output.trim());Number.isInteger(id)&&id>0?resolve(id):reject(Error('The sign-in window could not open. Try again.'));});
     });
-  }catch(error){signIns.delete(options.command);throw error;}
+  }catch(error){signIns.delete(options.command);cleanup();throw error;}
   const started=Date.now();
   const close=()=>spawn('taskkill.exe',['/PID',String(pid),'/T','/F'],{windowsHide:true,stdio:'ignore'}).on('error',()=>{});
   const open=()=>{try{process.kill(pid,0);return true;}catch{return false;}};
@@ -73,11 +94,21 @@ export async function signInWindow(options:{title:string;message:string;command:
   let wait=3000;
   const check=async()=>{
     // Closed by the person: the next click opens a new window.
-    if(!open()){signIns.delete(options.command);return;}
-    if(Date.now()-started>15*60_000){close();signIns.delete(options.command);return;}
-    if(await options.signedIn().catch(()=>false)){close();signIns.delete(options.command);return;}
+    if(!open()){signIns.delete(options.command);cleanup();return;}
+    if(Date.now()-started>15*60_000){close();signIns.delete(options.command);cleanup();return;}
+    if(await options.signedIn().catch(()=>false)){close();signIns.delete(options.command);cleanup();return;}
     setTimeout(check,wait);wait=Math.min(15000,Math.round(wait*1.3));
   };
   setTimeout(check,4000);
+  // The address arrives within a few seconds of the window opening; it is looked for for up to a minute.
+  if(options.page&&handoff){
+    const page=options.page,file=join(handoff,'url.txt');
+    const look=async(tries:number)=>{
+      const url=signInPageUrl(await readFile(file,'utf8').catch(()=>''),page.hosts);
+      if(url&&signIns.has(options.command)){closePage=page.open(url);return;}
+      if(tries>0&&signIns.has(options.command))setTimeout(()=>void look(tries-1),500);
+    };
+    void look(120);
+  }
   return {started:true};
 }

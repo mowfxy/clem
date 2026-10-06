@@ -1,7 +1,8 @@
 /** Reads what a PDF, Word or PowerPoint file says on its first page, so files with machine-made or bare names
  *  (GUC_45_64_46266_2024-09-07T10_43_25.pdf, scan0001.pdf, Lec03.pptx…) are saved under a readable one. */
 
-import { betterFileName, isGenericName, type NameLine, type NameSource } from '../../core/file-naming';
+import { betterFileName, isGenericName, saysEnough, type NameLine, type NameSource } from '../../core/file-naming';
+import { desktop } from '../desktop/bridge';
 
 export { isGenericName };
 
@@ -80,6 +81,22 @@ export async function nameSource(file: Blob & { name: string }): Promise<NameSou
  * `place` is the name of the subject or project the file goes into, if any.
  */
 export async function readableName(file: File, place?: string) {
+  return (await namedFile(file, place)).name;
+}
+
+/**
+ * The file's name at once from the rules (`name`), and `refine`: the AI's name, read from the first page, when the
+ * file's own name does not already say what it is (worksheets, sheets, assignments, labs and project documents as
+ * much as lectures). `refine` resolves to undefined when there is nothing better, or outside the desktop app.
+ */
+export async function namedFile(file: File, place?: string) {
   const source = await Promise.race([nameSource(file).catch(() => undefined), new Promise<undefined>((r) => setTimeout(r, 6000))]);
-  return betterFileName(file.name, source, place);
+  const name = betterFileName(file.name, source, place);
+  const refine = async () => {
+    if (!desktop || !source || !source.lines.length || saysEnough(file.name, place)) return undefined;
+    const result = await desktop.invoke({ action: 'fileName', original: file.name.slice(0, 260), title: source.title?.slice(0, 300), lines: source.lines.slice(0, 40).map((l) => l.text.slice(0, 400)), place: place?.slice(0, 200), suggestion: name.slice(0, 260) }).catch(() => undefined);
+    const better = typeof result?.name === 'string' ? result.name : undefined;
+    return better && better !== name ? better : undefined;
+  };
+  return { name, refine };
 }

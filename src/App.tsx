@@ -38,7 +38,7 @@ import type {OpenFolderFile} from './local/SearchEverything';
 import type {OpenedPack} from './local/StudyPack';
 import type {SpaceTab} from './space/SpacePage';
 import {PACK_EXTENSION} from '../core/study-pack';
-import {TelegramPanel} from './desktop/TelegramPanel';
+import {TelegramCommands,TelegramPanel} from './desktop/TelegramPanel';
 import {FileCard,DocumentCard} from './FileCard';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
@@ -70,6 +70,7 @@ import type {
   Plan,
   Skill,
   Space,
+  SpaceFolder,
   StoredFile,
 } from "../core/types";
 
@@ -344,6 +345,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const saveQueue = useRef(Promise.resolve());
   const ownerRef = useRef("guest");
   const sessionVersion = useRef(0);
+  // The Telegram bot's /spaces and /space read the subjects and projects by name from here.
+  const spaceDirectory = desktop ? JSON.stringify(state.spaces.map((x) => ({ scope: `${x.kind}:${x.id}`, name: x.name.slice(0, 200), kind: x.kind }))) : "";
+  useEffect(() => {
+    if (desktop && ownerRef.current !== "guest") void desktop.invoke({ action: "telegramSpaces", spaces: JSON.parse(spaceDirectory) }).catch(() => {});
+  }, [spaceDirectory]);
   const navigate = (path: string) => {
     location.hash = path;
     setSidebar(false);
@@ -538,28 +544,63 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const syncOf=(id:string):DriveSyncState['state']|'pending'|undefined=>{const f=state.files.find(x=>x.id===id);const now=driveSync[id]?.state;return now==='uploading'?now:f?.drivePending?'pending':now;};
   /** A file changed here (by Mowr or in the file panel): if it lives in Drive, the change waits for approval before it goes there. */
   const changedFile=(next:StoredFile)=>patch(s=>({...s,files:s.files.map(f=>f.id!==next.id?f:{...next,driveId:f.driveId,driveFolder:f.driveFolder,driveModified:f.driveModified,drivePending:f.drivePending||(!!f.driveId&&next.updated!==f.updated)})}));
-  /** Files dropped into a linked Drive folder (from this PC, or Mowr files dragged there) are kept in the subject like any
-   *  upload and used as sources, show in the Drive folder at once with a turning ring, and turn into a check once Drive has them. */
-  const addToDrive=async(space:Space,folder:string,input:File|string)=>{
-    let file:StoredFile;
+  /** Files added to a linked Drive folder go to Google Drive only: nothing is kept on this PC unless the person picks
+   *  "Save on this PC". A file from this PC is named from its contents first ("Thevenin and Norton – Worksheet 4");
+   *  a Mowr file dragged in is copied to Drive and stays here too. Each becomes a source of the space as a Drive file,
+   *  and is marked as seen so it is not reported as new in Drive. Resolves to the file as Drive lists it. */
+  const addToDrive=async(space:Space,folder:string,input:File|string):Promise<DriveItem>=>{
+    let blob:Blob,name:string;
     if(typeof input==='string'){
       const have=fileNow(input);
-      if(!have)return;
-      if(have.driveId){setToast(`${have.name} is already in Google Drive.`);return;}
-      file={...have,spaceId:space.id,folderId:null,driveFolder:folder};
-      patch(s=>({...s,files:s.files.map(f=>f.id===file.id?file:f)}));
+      if(!have)throw Error('That file is no longer here.');
+      const stored=await getBlob(have.id);
+      if(!stored)throw Error(`${have.name} is missing from this PC.`);
+      blob=stored;name=have.name;
     }else{
-      const id=uid();
-      await storeBlob(id,input);
-      file={id,name:input.name,size:input.size,type:input.type||'application/octet-stream',created:Date.now(),spaceId:space.id,folderId:null,driveFolder:folder};
-      patch(s=>({...s,files:[file,...s.files],spaces:s.spaces.map(x=>x.id===space.id?{...x,sources:[...new Set([...x.sources,id])]}:x)}));
-      setDriveSync(m=>({...m,[id]:{state:"uploading"}}));
-      // Named as any added file is ("Nodal Analysis – Lecture 3"), before it goes to Drive under that name.
-      const name=await (await import('./pdf/pdf-name')).readableName(input,space.name).catch(()=>input.name);
-      if(name!==input.name){patch(s=>({...s,files:s.files.map(f=>f.id===id?{...f,name}:f)}));setToast(`Saved as “${name}”.`);}
+      blob=input;
+      const named=await (await import('./pdf/pdf-name')).namedFile(input,space.name).catch(()=>({name:input.name,refine:async()=>undefined}));
+      name=(await named.refine().catch(()=>undefined))||named.name;
     }
-    setDriveSync(m=>({...m,[file.id]:{state:"uploading"}}));
-    await syncToDrive(file);
+    let saved:{id:string;modifiedTime?:string};
+    try{saved=await uploadToDrive(folder,blob,name);}catch(e){throw Error(driveError(e));}
+    const modified=saved.modifiedTime||new Date().toISOString();
+    patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id&&x.drive?{...x,sources:[...new Set([...x.sources,'drive:'+saved.id])],drive:{...x.drive,seen:{...(x.drive.seen||{}),[saved.id]:modified}}}:x)}));
+    if(typeof input!=='string'&&name!==input.name)setToast(`Saved to Drive as “${name}”.`);
+    return {id:saved.id,name,mimeType:blob.type||'application/octet-stream',size:blob.size,modified};
+  };
+  /** Copies Drive files onto this PC ("Save on this PC"): each lands under "On this PC" as a file of its own, in folders
+   *  named like the Drive ones (`dirs`, made when missing), while the Drive file stays where it is. Google Docs, Slides
+   *  and Sheets come as PDF. */
+  const saveOnPc=async(space:Space,entries:{item:DriveItem;dirs:string[]}[])=>{
+    if(!entries.length){setToast('There are no files in that folder to save.');return;}
+    const owner=ownerRef.current;
+    setToast(entries.length===1?`Saving ${entries[0].item.name} on this PC…`:`Saving ${entries.length} files on this PC…`);
+    let saved=0;const failed:string[]=[];
+    for(const {item,dirs} of entries){
+      if(owner!==ownerRef.current)return;
+      try{
+        // The folder path is found or made inside the space's own folders, one level at a time.
+        let parent:string|null=null;
+        for(const dir of dirs){
+          const current=stateRef.current.spaces.find(x=>x.id===space.id);
+          if(!current)return;
+          const have=(current.folders||[]).find(f=>(f.parentId||null)===parent&&f.name.toLowerCase()===dir.toLowerCase());
+          if(have){parent=have.id;continue;}
+          const made:SpaceFolder={id:crypto.randomUUID(),name:dir.slice(0,80),parentId:parent,created:Date.now()};
+          patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id?{...x,folders:[...(x.folders||[]),made]}:x)}));
+          parent=made.id;
+        }
+        const blob=await driveBytes(item.id);
+        const id=uid();
+        await storeBlob(id,blob);
+        const name=isGoogleFormat(item.mimeType)&&!/\.pdf$/i.test(item.name)?item.name+'.pdf':item.name;
+        const file:StoredFile={id,name,size:blob.size,type:blob.type||item.mimeType,created:Date.now(),spaceId:space.id,folderId:parent,remote:false};
+        patch(s=>({...s,files:[file,...s.files]}));
+        saved++;
+      }catch(e){failed.push(`${item.name} (${driveError(e)})`);}
+    }
+    if(owner!==ownerRef.current)return;
+    setToast(failed.length?`${saved} saved on this PC; not saved: ${failed.slice(0,3).join(', ')}${failed.length>3?'…':''}`:saved===1?`${entries[0].item.name} is saved on this PC too.`:`${saved} files are saved on this PC too.`);
   };
   /** A working copy of a Drive file, made the first time it is edited, so changes are reviewed here and approved before
    *  they go back to the same Drive file. Google Docs, Slides and Sheets are read-only here (they come as PDF). */
@@ -1417,6 +1458,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       const added: StoredFile[] = [];
       const reused: StoredFile[] = [];
       const renamed: string[] = [];
+      const refining: { id: string; name: string; refine: () => Promise<string | undefined> }[] = [];
       for (let file of batch) {
         if(owner!==ownerRef.current)return;
         const id = uid();
@@ -1428,8 +1470,10 @@ In this subject the learner keeps missing these questions in review; connect to 
           const existing = await sameFile(file, destination, added);
           if (existing) { if (!reused.includes(existing) && !added.includes(existing)) reused.push(existing); continue; }
           // Named by what it covers; inside a subject or project its name is not repeated ("Nodal Analysis – Lecture 3").
-          const name = await (await import('./pdf/pdf-name')).readableName(file, stateRef.current.spaces.find((x) => x.id === destination)?.name);
+          const named = await (await import('./pdf/pdf-name')).namedFile(file, stateRef.current.spaces.find((x) => x.id === destination)?.name);
+          const name = named.name;
           if (name !== file.name) renamed.push(name);
+          refining.push({ id, name, refine: named.refine });
           await storeBlob(id, file);
           added.push({
             id,
@@ -1454,6 +1498,19 @@ In this subject the learner keeps missing these questions in review; connect to 
           setAttachments((a) => [...a, ...added.map((f) => f.id)]);
         if (renamed.length) setToast(renamed.length === 1 ? `Saved as “${renamed[0]}”.` : `${added.length} files saved · ${renamed.length} renamed from their contents.`);
         // Saving is silent: the files appear where they were added, including whole folders.
+        // Then the AI reads each first page and gives a better name where it can, one file at a time, in the background.
+        // A file the person renamed or removed meanwhile is left alone.
+        const kept = new Set(added.map((f) => f.id));
+        void (async () => {
+          for (const item of refining.filter((r) => kept.has(r.id))) {
+            if (owner !== ownerRef.current) return;
+            const better = await item.refine().catch(() => undefined);
+            if (!better || owner !== ownerRef.current) continue;
+            if (!stateRef.current.files.some((f) => f.id === item.id && f.name === item.name)) continue;
+            patch((s) => ({ ...s, files: s.files.map((f) => (f.id === item.id && f.name === item.name ? { ...f, name: better } : f)) }));
+            setToast(`Named “${better}” from its contents.`);
+          }
+        })();
       }
       if (reused.length && owner===ownerRef.current && !target && (route === "/app" || attachNow))
         setAttachments((a) => [...a, ...reused.map((f) => f.id).filter((id) => !a.includes(id))]);
@@ -1647,6 +1704,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         return {...x,drive:{...x.drive,seen:now,fresh:[...(x.drive.fresh||[]).filter(o=>!changed.some(n=>n.id===o.id)),...changed].slice(-30)}};
       })}));},
       onAddToDrive:(folder,input)=>addToDrive(space,folder,input),
+      onSaveOnPc:entries=>void saveOnPc(space,entries),
       onRetryDrive:file=>void syncToDrive(file),
       onEditDrive:item=>{
         if(isGoogleFormat(item.mimeType)){void desktop?.invoke({action:'driveOpenWeb',id:item.id}).catch(e=>setToast(cleanError(e)));return;}
@@ -1984,7 +2042,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                     ) : settingsTab === "Linked folders" ? (
                       <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes(false))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
                     ) : settingsTab === "Telegram" ? (
-                      <SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect">{(({value,picker})=><>{picker}<TelegramPanel scope={value} labelFor={scope=>scope==='user:me'?'your whole workspace':scopeLabel(scope)}/></>)(settingsScopes(true))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>
+                      <><SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect">{(({value,picker})=><>{picker}<TelegramPanel scope={value} labelFor={scope=>scope==='user:me'?'your whole workspace':scopeLabel(scope)}/></>)(settingsScopes(true))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Commands" note="Send these to your bot. Telegram also lists them when you type /."><TelegramCommands/></SettingsCard>}</>
                     ) : settingsTab === "Memory" ? (
                       <SettingsCard note="Projects and subjects keep their own memory.">
                         {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
