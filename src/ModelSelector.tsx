@@ -122,6 +122,8 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
       <span className="effort-label">{[...new Set([...EFFORT_NAMES, ...levels.map((l) => l.reasoningEffort)])].map((l) => <span key={l} aria-hidden={l !== level || undefined} className={l === level ? "is-on" : undefined}>{effortName(l)}</span>)}</span>
     </button>}
     {open === "model" && createPortal(<div ref={modelPop.panel} className="unified-picker-panel model-pop" role="menu" aria-label="Select model" style={modelPop.position} onKeyDown={(e) => { if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) { e.preventDefault(); moveRow(e.key); } }}>
+      {/* The models scroll in their own list, so a long one never runs off the window; "Manage connections" stays in view. */}
+      <div className="picker-model-list">
       {available.map((m, i) => <div key={m.id}>
         {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "xAI" ? "Grok" : m.provider}</div>}
         <button className="picker-model-row" type="button" role="menuitemradio" aria-checked={value === m.id} aria-label={m.name} onClick={() => { onChange(m.id); close(); modelButton.current?.focus(); }}>
@@ -131,6 +133,7 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
         </button>
       </div>)}
       {!available.length && <p className="picker-empty">Connect ChatGPT, Claude or Grok to see your models.</p>}
+      </div>
       <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>
     </div>, document.body)}
     {open === "effort" && onEffort && level && createPortal(<div ref={effortPop.panel} className="unified-picker-panel effort-pop" role="dialog" aria-label="Thinking level" style={effortPop.position}>

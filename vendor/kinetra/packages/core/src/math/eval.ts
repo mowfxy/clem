@@ -19,7 +19,7 @@ export function evaluate(e: Expr, ctx: EvalContext = { vars: {} }): number {
     case "num": return e.value;
     case "const": return CONSTS[e.name];
     case "var": {
-      if (!(e.name in ctx.vars)) {
+      if (!Object.hasOwn(ctx.vars, e.name)) {
         throw new KinetraError("validation", `Unknown variable: ${e.name}`, { name: e.name });
       }
       return ctx.vars[e.name];
@@ -99,7 +99,7 @@ function callFn(name: string, args: number[]): number {
     case "tanh": return Math.tanh(args[0]);
     case "exp": return Math.exp(args[0]);
     case "ln": return Math.log(args[0]);
-    case "log": return Math.log(args[0]) / Math.log(args[1]);
+    case "log": return args.length < 2 ? Math.log10(args[0]) : Math.log(args[0]) / Math.log(args[1]);
     case "log2": return Math.log2(args[0]);
     case "log10": return Math.log10(args[0]);
     case "sqrt": return Math.sqrt(args[0]);

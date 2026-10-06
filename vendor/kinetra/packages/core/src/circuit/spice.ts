@@ -149,6 +149,9 @@ export function solveDC(circuit: Circuit, opts: { sourceOverride?: Map<string, n
 export function solveTransient(circuit: Circuit, opts: TransientOptions): TransientResult {
   validateCircuit(circuit);
   const dt = opts.dt;
+  // dt = 0 used to loop forever (Infinity steps).
+  if (!(dt > 0) || !Number.isFinite(opts.startTime) || !Number.isFinite(opts.endTime) || !Number.isFinite((opts.endTime - opts.startTime) / dt))
+    throw new Error("Transient: needs finite startTime and endTime and a time step dt > 0");
   const steps = Math.max(1, Math.round((opts.endTime - opts.startTime) / dt));
   const nodeIds = [...new Set(circuit.components.flatMap((c) => c.nodes))].filter((n) => n !== 0).sort((a, b) => a - b);
   const dim = nodeIds.length;

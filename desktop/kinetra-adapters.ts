@@ -29,12 +29,14 @@ import { formatValue } from "../vendor/kinetra/packages/core/src/diagram/schemat
 export function solveCircuit(netlist: Netlist) {
   const solved = solveNetlist(netlist);
   const v = (x: number) => formatValue(x, "V"), a = (x: number) => formatValue(x, "A"), w = (x: number) => formatValue(x, "W");
+  // A named quantity is a voltage when an element names it as one ("$v_o$", "U_R", "ΔV"), whatever letter it starts with.
+  const voltages = new Set(netlist.elements.map((e) => e.voltage).filter(Boolean));
   return {
     ...solved,
     summary: [
       ...Object.entries(solved.nodes).filter(([n]) => n !== solved.ground).map(([n, x]) => `node ${n}: ${v(x)}`),
       ...solved.elements.map((e) => `${e.label} (${e.kind}, ${e.from}→${e.to}): ${v(e.voltage)}, ${a(e.current)}, ${w(e.power)} absorbed${e.conducting === undefined ? "" : e.conducting ? ", conducting" : ", off"}`),
-      ...Object.entries(solved.quantities).map(([name, x]) => `${name} = ${/^v/i.test(name) ? v(x) : a(x)}`),
+      ...Object.entries(solved.quantities).map(([name, x]) => `${name} = ${voltages.has(name) ? v(x) : a(x)}`),
     ],
   };
 }

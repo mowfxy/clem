@@ -38,8 +38,8 @@ export function renderPlotSvg(spec: PlotSpec, opts: RenderOptions = {}): string 
   const innerH = height - margin.top - margin.bottom;
 
   // Compute scales.
-  const xMin = spec.xRange[0];
-  const xMax = spec.xRange[1];
+  let xMin = spec.xRange[0];
+  let xMax = spec.xRange[1];
   let yMin = spec.yRange?.[0] ?? Number.POSITIVE_INFINITY;
   let yMax = spec.yRange?.[1] ?? Number.NEGATIVE_INFINITY;
   const rows = spec.type === "function2d" || spec.type === "piecewise2d"
@@ -65,6 +65,7 @@ export function renderPlotSvg(spec: PlotSpec, opts: RenderOptions = {}): string 
   const pad = (yMax - yMin) * 0.05;
   yMin -= pad; yMax += pad;
 
+  if (xMin === xMax) { xMin -= 0.5; xMax += 0.5; } // a zero-width range drew NaN coordinates
   const xScale = (x: number) => margin.left + ((x - xMin) / (xMax - xMin)) * innerW;
   const yScale = (y: number) => margin.top + innerH - ((y - yMin) / (yMax - yMin)) * innerH;
 
@@ -175,7 +176,8 @@ function makeTicks(min: number, max: number, count: number): number[] {
   const step = Math.ceil(rawStep / mag) * mag;
   const start = Math.ceil(min / step) * step;
   const out: number[] = [];
-  for (let v = start; v <= max + step * 0.001; v += step) {
+  // At most a few dozen ticks: a step below the spacing of doubles (range of one ulp at 1e20) never advanced v.
+  for (let v = start; v <= max + step * 0.001 && out.length < 50; v += step) {
     out.push(Number(v.toFixed(10)));
   }
   return out;

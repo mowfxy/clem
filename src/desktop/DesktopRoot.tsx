@@ -19,26 +19,6 @@ export default function DesktopRoot() {
   );
 }
 function SetupContent() {
-  useEffect(
-    () =>
-      desktop!.onAttachment((event) => {
-        void import("./attachment-processing")
-          .then((module) =>
-            module.extractAttachment(event.bytes, event.name, event.mime),
-          )
-          .then((text) =>
-            desktop!.invoke({ action: "attachmentResult", id: event.id, text }),
-          )
-          .catch(() =>
-            desktop!.invoke({
-              action: "attachmentResult",
-              id: event.id,
-              error: true,
-            }),
-          );
-      }),
-    [],
-  );
   const [state, setState] = useState<DesktopStatus | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),

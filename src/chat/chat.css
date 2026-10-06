@@ -229,6 +229,7 @@ html[data-quiet=true] .visual-drafting,html[data-quiet=true] .drafting-dot,html[
 .temp-pill{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px dashed #6a6a6a;border-radius:999px;color:#c9c9c9;font-size:12px}
 .temp-controls .secondary{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;font-size:12px;border:1px solid #4a4a4a;border-radius:7px}
 .temp-note{margin:-18px 0 22px;font-size:13px;color:#8f8f8f;text-align:center}
-.chat-view.temporary{background:repeating-linear-gradient(135deg,transparent 0 14px,#ffffff04 14px 15px)}
+/* Stripes go on the whole workspace: the chat view itself stops short of the window bottom, which cut the pattern off. */
+.workspace:has(.chat-view.temporary){background-image:repeating-linear-gradient(135deg,transparent 0 14px,#ffffff04 14px 15px);background-attachment:fixed}
 .chat-view.temporary .composer{border-style:dashed;border-color:#5a5a5a}
 .chat-view.temporary .composer-note{color:#9a9a9a}

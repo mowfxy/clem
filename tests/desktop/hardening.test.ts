@@ -11,7 +11,6 @@ import { artSvg, iconSvg, iconFor, iconNames } from "../../desktop/deck-art.ts";
 import { newestWithin, MAX_CHAT_CHARACTERS } from "../../src/desktop/bridge.ts";
 import { requestSchema } from "../../desktop/contracts.ts";
 import { excelWorkbook } from "../../desktop/xlsx-workbook.ts";
-import { ReplyFiles } from "../../desktop/reply-files.ts";
 import { unwritten } from "../../desktop/pdf-document.ts";
 import { runKinetraTurn, SessionLost, unsupportedFlag } from "../../desktop/kinetra-turn.ts";
 import { fileGuidesFor } from "../../desktop/file-guides.ts";
@@ -167,20 +166,6 @@ test("a running balance over thousands of rows is calculated, and an unknown fun
   const ledger = strFromU8(files["xl/worksheets/sheet1.xml"]), odd = strFromU8(files["xl/worksheets/sheet2.xml"]);
   assert.match(ledger, /<c r="B6001"[^>]*><f>B6000\+A6001<\/f><v>18003000<\/v><\/c>/);
   assert.doesNotMatch(odd, /#NAME\?/);
-});
-
-test("Telegram replies: an empty revise is a new file, appended parts keep their references, and a plan is finished first", async () => {
-  const make = async (action: string, spec: any) => ({ bytes: new TextEncoder().encode(JSON.stringify(spec)), name: (spec.title || "Doc") + "." + action, type: "application/pdf" });
-  const files = new ReplyFiles(make, unwritten);
-  const a = await files.handle({ action: "pdf", revise: null, title: "Notes", plan: ["One", "Two"], sections: [{ heading: "One", text: "x" }], references: ["Ref A"] });
-  assert.equal(a.id, "f1");
-  assert.match(files.unfinished()!, /Notes\.pdf.*lacks 1 planned section: Two/);
-  await files.handle({ action: "pdf", revise: "f1", append: true, sections: [{ heading: "Two", text: "y" }], references: ["Ref B"] });
-  const spec = JSON.parse(new TextDecoder().decode(files.list()[0].bytes));
-  assert.deepEqual(spec.references, ["Ref A", "Ref B"]);
-  assert.equal(files.unfinished(), undefined);
-  await files.handle({ action: "pptx", title: "Talk", plan: ["Intro", "Ask"], slides: [{ layout: "title", title: "Intro" }] });
-  assert.match(files.unfinished()!, /Talk\.pptx.*1 planned slide: Ask/);
 });
 
 test("a provider that cannot keep sessions at all falls back on the first step, and a lost session near the end still finishes", async () => {

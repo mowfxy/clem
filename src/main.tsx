@@ -6,6 +6,7 @@ import './style.css';
 import './revamp.css';
 import './marketing.css';
 import './production.css';
+import './popups.css';
 const ProvenanceChecker=lazy(()=>import("./ProvenanceChecker"));
 const Download=lazy(()=>import('./site/Download').then(module=>({default:module.Download})));
 const DesktopRoot=lazy(()=>import('./desktop/DesktopRoot'));

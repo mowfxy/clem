@@ -1,5 +1,5 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import {copyFile, mkdir, readdir, rm, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, readdir, rm, stat, writeFile} from 'node:fs/promises';
 import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
@@ -136,7 +136,9 @@ export function grokRules(system?:string){
  * this, Grok read its bundled pdf skill (SKILL.md, 11k characters) before each document, and each picture cost a step of
  * its own; every extra step re-reads the whole conversation.
  */
-export const GROK_NOTE='IN MOWR: your own tools are only for opening the pictures a message names (read_file) and for the web. Files, documents, figures and calculations go only through Mowr\'s {"kinetra":…} requests: never read Grok\'s own skills (SKILL.md) or other files on this PC. When a message names several pictures, open all of them in the same step (one read_file call each, sent together).';
+export const GROK_NOTE='IN MOWR: your own tools are only for opening the pictures and PDFs a message names (read_file) and for the web. Files, documents, figures and calculations go only through Mowr\'s {"kinetra":…} requests: never read Grok\'s own skills (SKILL.md) or other files on this PC. When a message names several pictures or PDF page ranges, open all of them in the same step (one read_file call each, sent together).';
+/** Where one turn's PDFs sit in Grok's working folder for read_file: kept for the whole turn, so a later step can open more pages. */
+export const grokPdfPath=(turn:string,index:number,name:string)=>`.pdfs-${turn}/${index+1}-${name.replace(/\.pdf$/i,'').replace(/[^\p{L}\p{N}._ -]+/gu,'_').slice(0,80)}.pdf`;
 /**
  * Grok's built-in tools Mowr keeps: read_file opens the pictures named in a prompt, web_search is xAI's own search
  * (it runs on xAI's side, but only when listed here). The other 24 (shell, editing, subagents, schedulers, video…)
@@ -284,7 +286,8 @@ export class GrokProvider {
     return {started:true};
   }
   /** Pictures are copied into Grok's own workspace and named in the prompt, so Grok opens them with its file tool. */
-  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system}:{system?:string}={}){
+  /** `pdfs`: the conversation's PDFs, saved where read_file opens them (grokPdfPath) until dropPdfs ends the turn. */
+  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system,pdfs=[]}:{system?:string;pdfs?:{name:string;data:Uint8Array}[]}={}){
     const rules=grokRules(system);
     if(system&&!rules)prompt=system+'\n\n'+GROK_NOTE+'\n\n'+prompt;
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
@@ -302,6 +305,11 @@ export class GrokProvider {
     const file=join(this.workspace(),'.prompt-'+randomUUID()+'.txt');
     const pictures=join(this.workspace(),'.images-'+randomUUID());
     await mkdir(this.workspace(),{recursive:true});
+    if(pdfs.length){
+      await mkdir(join(this.workspace(),'.pdfs-'+id),{recursive:true});
+      // Written on the turn's first step; later steps find them there.
+      await Promise.all(pdfs.map((pdf,index)=>{const path=join(this.workspace(),grokPdfPath(id,index,pdf.name));return stat(path).then(()=>{},()=>writeFile(path,pdf.data));}));
+    }
     const named:string[]=[];
     if(images.length){
       await mkdir(pictures,{recursive:true});
@@ -361,6 +369,8 @@ export class GrokProvider {
       child.stdin.end();
     }).finally(()=>this.active.delete(id));
   }
+  /** Removes a turn's PDFs from the working folder once its answer is done. */
+  async dropPdfs(turn:string){if(/^[0-9a-f-]{36}$/i.test(turn))await rm(join(this.workspace(),'.pdfs-'+turn),{recursive:true,force:true}).catch(()=>{});}
   /** Grok keeps headless sessions under ~/.grok/sessions; the ones a finished tool loop made are removed (best effort: its layout is not documented). */
   async endSession(sessionId:string){
     if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!this.home&&!process.env.USERPROFILE)return;

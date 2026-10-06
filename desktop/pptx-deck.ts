@@ -184,8 +184,13 @@ type Shot = { png: Uint8Array; width: number; height: number };
 /** What the review found and could not fix by itself, and pictures of the slides for the model to look at. */
 export type DeckResult = { bytes: Uint8Array; slides: number; review: string[]; design: Record<string, unknown>; sheets: { name: string; jpeg: Uint8Array }[]; figures: DrawnFigure[] };
 
+/** Every string of a specification without the control characters XML cannot hold: pptxgenjs writes them as they are,
+ *  and PowerPoint then refuses the whole file. A vertical tab or form feed (a line or page break) becomes a new line. */
+const xmlSafe = (v: any): any => typeof v === "string" ? v.replace(/[\x0b\x0c]/g, "\n").replace(/[\x00-\x08\x0e-\x1f￾￿]/g, "") : Array.isArray(v) ? v.map(xmlSafe) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, xmlSafe(x)])) : v;
+
 /** `preview`: also photograph the slides (contact sheets) for the model to check. */
 export async function powerpointDeck(input: DeckSpec, { preview = false }: { preview?: boolean } = {}): Promise<DeckResult> {
+  input = xmlSafe(input);
   const problems = deckProblems(input);
   // Figures are drawn first, so every problem (structure and figures) is reported at once.
   const figures = new Map<number, string>();
@@ -216,7 +221,8 @@ export async function powerpointDeck(input: DeckSpec, { preview = false }: { pre
   const notes = deckReview(spec).concat(unknownIcons(spec));
   const W = spec.aspect === "4:3" ? 10 : 13.333;
   const raster = await rasterizer();
-  const reviewer = await slideReviewer();
+  // The raster window is closed even when the review window cannot be made.
+  const reviewer = await slideReviewer().catch((error) => { raster.close(); throw error; });
   try {
     const cache = new Map<string, Shot>();
     const adjust: Adjust = new Map();

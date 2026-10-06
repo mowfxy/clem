@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS mowr_rate_limits (
 );
 
 
-CREATE TRIGGER file_ready_usage AFTER UPDATE OF status ON mowr_files WHEN OLD.status='reserved' AND NEW.status='ready' BEGIN UPDATE mowr_usage SET stored_bytes=stored_bytes+NEW.bytes,reserved_bytes=reserved_bytes-NEW.bytes WHERE owner_id=NEW.owner_id; END;
-CREATE TRIGGER file_delete_usage AFTER DELETE ON mowr_files BEGIN UPDATE mowr_usage SET stored_bytes=stored_bytes-CASE WHEN OLD.status='ready' THEN OLD.bytes ELSE 0 END,reserved_bytes=reserved_bytes-CASE WHEN OLD.status='reserved' THEN OLD.bytes ELSE 0 END WHERE owner_id=OLD.owner_id; END;
+CREATE TRIGGER IF NOT EXISTS file_ready_usage AFTER UPDATE OF status ON mowr_files WHEN OLD.status='reserved' AND NEW.status='ready' BEGIN UPDATE mowr_usage SET stored_bytes=stored_bytes+NEW.bytes,reserved_bytes=reserved_bytes-NEW.bytes WHERE owner_id=NEW.owner_id; END;
+CREATE TRIGGER IF NOT EXISTS file_delete_usage AFTER DELETE ON mowr_files BEGIN UPDATE mowr_usage SET stored_bytes=stored_bytes-CASE WHEN OLD.status='ready' THEN OLD.bytes ELSE 0 END,reserved_bytes=reserved_bytes-CASE WHEN OLD.status='reserved' THEN OLD.bytes ELSE 0 END WHERE owner_id=OLD.owner_id; END;
 CREATE TABLE IF NOT EXISTS mowr_security(owner_id TEXT PRIMARY KEY REFERENCES mowr_users(id) ON DELETE CASCADE,email_mfa INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS mowr_email_challenges(owner_id TEXT NOT NULL,session_id TEXT NOT NULL,code_hash TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,sent_at TEXT NOT NULL,expires_at TEXT NOT NULL,PRIMARY KEY(owner_id,session_id));
 CREATE TABLE IF NOT EXISTS mowr_support(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,category TEXT NOT NULL,subject TEXT NOT NULL,message TEXT NOT NULL,delivered INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));

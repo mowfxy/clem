@@ -1,4 +1,4 @@
--- Linked ChatGPT/Claude sign-ins and the Telegram bot connection. `sealed` is IV (12 bytes) followed by AES-GCM ciphertext of the
+-- Linked ChatGPT/Claude sign-ins ('telegram' rows are from a removed feature; remove-telegram.sql deletes them). `sealed` is IV (12 bytes) followed by AES-GCM ciphertext of the
 -- deflated credential JSON; `hash` is the SHA-256 of the credential, used only to detect changes.
 
 CREATE TABLE IF NOT EXISTS provider_links (

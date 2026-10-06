@@ -91,9 +91,10 @@ export function compile(src: string, allowed?: Iterable<string>): Compiled {
     if (t.k === 'op' && t.v === '(') { const inner = ternary(); eat(')'); return inner; }
     if (t.k === 'id') {
       const name = t.v as string;
+      // Own names only: "constructor", "toString" or "__proto__" are not functions, constants or variables here.
+      const fn = Object.hasOwn(fns, name) ? fns[name] : undefined, isConst = Object.hasOwn(consts, name);
       // A known variable or constant before '(' multiplies: k(x-1), A(1-x), pi(r^2). mul() handles the '('.
-      if (isOp('(') && (fns[name] || !(allow?.has(name) || name in consts))) {
-        const fn = fns[name];
+      if (isOp('(') && (fn || !(allow?.has(name) || isConst))) {
         if (!fn) throw Error(`Unknown function ${name}()`);
         eat('(');
         const args: Node[] = [];
@@ -102,10 +103,10 @@ export function compile(src: string, allowed?: Iterable<string>): Compiled {
         if (args.length > 8) throw Error(`Too many arguments for ${name}()`);
         return v => fn(...args.map(a => a(v)));
       }
-      if (allow ? !allow.has(name) && !(name in consts) : false) throw Error(`Unknown name “${name}”`);
+      if (allow ? !allow.has(name) && !isConst : false) throw Error(`Unknown name “${name}”`);
       names.add(name);
-      if (name in consts && !(allow?.has(name))) { const c = consts[name]; return () => c; }
-      return v => { const x = v[name]; if (x === undefined) { if (name in consts) return consts[name]; throw Error(`Missing value for ${name}`); } return x; };
+      if (isConst && !(allow?.has(name))) { const c = consts[name]; return () => c; }
+      return v => { const x = Object.hasOwn(v, name) ? v[name] : undefined; if (x === undefined) { if (isConst) return consts[name]; throw Error(`Missing value for ${name}`); } return x; };
     }
     throw Error(`Unexpected “${t.v}” in expression`);
   }

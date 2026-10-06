@@ -5,7 +5,8 @@
 import { pack, unpack } from "./lib/pack.js";
 import { HttpError, readJson } from "./lib/http.js";
 
-const KINDS = new Set(["codex", "claude", "telegram"]);
+// "telegram" rows from earlier versions can still be read (so Mowr deletes them) but no new ones are stored.
+const KINDS = new Set(["codex", "claude"]);
 const MAX_ITEMS = 12, MAX_BYTES = 64_000;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 

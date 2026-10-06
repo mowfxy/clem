@@ -9,7 +9,8 @@ export function namedSources(names: string[], query: string) {
     if (stem.length >= 3 && q.includes(" " + stem + " ")) return i;
     // "lecture 3" names "Lecture_03" and "Lecture 3 - Enzymes".
     const numbered = stem.match(/^(.*?\p{L})\s*0*(\d+)\b/u);
-    return numbered && new RegExp(`\\b${numbered[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*0*${numbered[2]}\\b`, "u").test(q) ? i : -1;
+    // Not \b: with the u flag it only knows ASCII letters, so "محاضرة 3" would never match.
+    return numbered && new RegExp(`(?<![\\p{L}\\p{N}])${numbered[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*0*${numbered[2]}\\b`, "u").test(q) ? i : -1;
   }).filter((i) => i >= 0);
 }
 

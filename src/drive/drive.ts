@@ -110,7 +110,7 @@ export function driveText(ref: DriveRef): Promise<string> {
     }
     const { extractAttachment } = await import("../desktop/attachment-processing");
     return extractAttachment(bytes, ref.name, type === "application/pdf" || /\.pdf$/i.test(ref.name) ? "application/pdf" : /wordprocessing/.test(type) || /\.docx$/i.test(ref.name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : type, DRIVE_TEXT_LIMIT).catch(() => "");
-  })().catch(() => { texts.delete(key); return ""; }));
+  })().then((text) => { if (text.includes("(a scanned page whose text is not read yet")) texts.delete(key); return text; }, () => { texts.delete(key); return ""; }));
   return texts.get(key)!;
 }
 

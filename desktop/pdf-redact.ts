@@ -58,7 +58,7 @@ export function parseContent(src: string): Op[] {
           if (e in simple) bytes.push(simple[e]);
           else if (/[0-7]/.test(e)) { let oct = e; while (oct.length < 3 && /[0-7]/.test(src[i])) oct += src[i++]; bytes.push(parseInt(oct, 8) & 255); }
           else if (e === "\r") { if (src[i] === "\n") i++; }
-          else if (e !== "\n") bytes.push(e.charCodeAt(0));
+          else if (e !== "\n" && e !== undefined) bytes.push(e.charCodeAt(0));
         } else if (ch === "(") { depth++; bytes.push(40); }
         else if (ch === ")") { if (--depth) bytes.push(41); }
         else bytes.push(ch.charCodeAt(0));
@@ -476,7 +476,8 @@ export function rewriteContent(doc: PDFDocument, bytes: Uint8Array, resources: P
       case "m": case "l": case "c": case "v": case "y": case "re": {
         const v = nums(args);
         if (!path) path = { from: k, box: null, subs: [], curved: false };
-        const pts: [number, number][] = op === "re" ? [[v[0], v[1]], [v[0] + v[2], v[1] + v[3]]] : Array.from({ length: v.length / 2 }, (_, j) => [v[2 * j], v[2 * j + 1]] as [number, number]);
+        // A rectangle's four corners: under a turned transform its two diagonal ones do not span it.
+        const pts: [number, number][] = op === "re" ? [[v[0], v[1]], [v[0] + v[2], v[1]], [v[0] + v[2], v[1] + v[3]], [v[0], v[1] + v[3]]] : Array.from({ length: v.length / 2 }, (_, j) => [v[2 * j], v[2 * j + 1]] as [number, number]);
         for (const [x, y] of pts) {
           const b = map(s.ctm, x, y, x, y);
           path.box = path.box ? [Math.min(path.box[0], b[0]), Math.min(path.box[1], b[1]), Math.max(path.box[2], b[2]), Math.max(path.box[3], b[3])] : b;
@@ -501,14 +502,17 @@ export function rewriteContent(doc: PDFDocument, bytes: Uint8Array, resources: P
         if (path?.box) {
           const clip = path.clip;
           if (clip) s.clip = intersectBox(s.clip, path.box);
-          if (op !== "n" && !clip) {
+          if (op !== "n") {
             // Lines are widened by half their width at most; a box test with the bare path is close enough.
             const decision = policy.mark(path.box, "path");
             if (decision === "fail") throw new Unclean("a drawing crossing the box");
-            if (decision === "drop") { for (let j = path.from; j <= k; j++) replace.set(j, ""); changed = true; }
+            // A path that also clips what follows (W f) keeps its clip: only its painting goes ("n" ends it unpainted), and
+            // what is left of the painting is drawn just before the path, outside the new clip as it was.
+            if (decision === "drop") { if (clip) replace.set(k, "n"); else for (let j = path.from; j <= k; j++) replace.set(j, ""); changed = true; }
             if (decision === "cut") {
               const text = cutPath(path.subs, path.curved, op, s.ctm, policy.cut ?? [], s.dash);
-              for (let j = path.from; j <= k; j++) replace.set(j, j === path.from ? text : "");
+              if (clip) { const o = ops[path.from]; replace.set(path.from, text + "\n" + src.slice(o.start, o.end)); replace.set(k, "n"); }
+              else for (let j = path.from; j <= k; j++) replace.set(j, j === path.from ? text : "");
               changed = true;
             }
           }
@@ -679,10 +683,11 @@ export function redactPage(doc: PDFDocument, page: PDFPage, regions: Box[]) {
     cut: regions,
     form: (box) => (!regions.some((r) => overlap(box, r) > 0) ? "keep" : regions.some((r) => within(box, r)) ? "drop" : "recurse"),
   };
-  const resources = page.node.Resources();
-  const next = rewriteContent(doc, pageContent(page), resources, IDENTITY, pageBox(page), policy);
-  if (next) setContent(doc, page, next);
-  // Annotations over a box go too; a form field's widget there takes its value with it.
+  // The page's thumbnail is a picture of it as it was, and an editor's private data (Illustrator keeps the whole drawing
+  // in PieceInfo) holds the original too: both go.
+  for (const key of ["Thumb", "PieceInfo"]) page.node.delete(PDFName.of(key));
+  // Annotations over a box go too; a form field's widget there takes its value with it. First, so they are gone even
+  // when the content cannot be cleaned and the page becomes a picture (its fields stay in the form).
   const annots = page.node.lookup(PDFName.of("Annots"));
   if (annots instanceof PDFArray) {
     for (let i = annots.size() - 1; i >= 0; i--) {
@@ -696,6 +701,9 @@ export function redactPage(doc: PDFDocument, page: PDFPage, regions: Box[]) {
       annots.remove(i);
     }
   }
+  const resources = page.node.Resources();
+  const next = rewriteContent(doc, pageContent(page), resources, IDENTITY, pageBox(page), policy);
+  if (next) setContent(doc, page, next);
 }
 
 /** Makes `box` the whole page, with its corner at (0, 0): pages placed elsewhere (pdf-lib embedPage) assume that origin. */

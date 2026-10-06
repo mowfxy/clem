@@ -1,4 +1,4 @@
-/** A document's text. `limit` is the most characters read: small for Telegram messages, large for Drive files. */
+/** A document's text. `limit` is the most characters read. */
 export async function extractAttachment(
   bytes: Uint8Array,
   name: string,
@@ -12,27 +12,32 @@ export async function extractAttachment(
       "pdfjs-dist/build/pdf.worker.min.mjs",
       import.meta.url,
     ).href;
+    // Taken before pdf.js is given the bytes: it moves them to its worker, which leaves `bytes` empty here.
+    const ocrKey = `${name}:${bytes.length}`;
     const loading = pdfjs.getDocument({ data: bytes, useSystemFonts: false });
     const pdf = await loading.promise;
-    let text = "";
+    let text = "", read = 0;
     try {
-      if (pdf.numPages > Math.max(100, limit / 400)) throw Error(`Choose at most ${Math.max(100, limit / 400)} pages.`);
+      // A long PDF gives the text that fits; the model sees its pages themselves (src/desktop/page-images.ts pdfView).
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i),
           content = await page.getTextContent();
-        text +=
-          "\n[Page " +
-          i +
-          "] " +
-          content.items
-            .map((item) => ("str" in item ? item.str : ""))
-            .join(" ");
+        const part = `\n[${name}, page ${i}]\n` + content.items.map((item) => ("str" in item ? item.str : "")).join(" ") + "\n";
         page.cleanup();
-        if (text.length > limit)
-          throw Error("Document exceeds the context budget.");
+        if (text.length + part.length > limit) break;
+        text += part;
+        read = i;
       }
-      if (!text.replace(/\[Page \d+\]/g, "").trim())
-        throw Error("Scanned PDF needs OCR.");
+      if (!text.replace(/\[[^\n]*?, page \d+\]/g, "").trim()) {
+        // A scan: its pages are read with Windows' OCR, as far as time and the text limit allow (src/desktop/ocr.ts).
+        const { scannedText, OCR_PENDING } = await import("./ocr");
+        const pages = Array.from({ length: Math.min(pdf.numPages, Math.max(1, Math.floor(limit / 1500))) }, (_, i) => i + 1);
+        const ocr = await scannedText(pdf, pages, ocrKey, Date.now() + 20_000).catch(() => undefined);
+        const read = ocr ? pages.map((p) => `\n[${name}, page ${p}]\n${ocr.pending.includes(p) ? OCR_PENDING : ocr.texts.get(p) ? "(text read from the scanned page)\n" + ocr.texts.get(p) : ""}\n`).join("").slice(0, limit) : "";
+        if (ocr && [...ocr.texts.values()].some((t) => t.trim())) return read + (pages.length < pdf.numPages ? `\n[${name}: ${pdf.numPages} pages; read later pages from the pages themselves.]` : "");
+        return `[${name}: a scanned or image-only PDF of ${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"} whose text could not be read. Read it from its pages as they are shown to you.]`;
+      }
+      if (read < pdf.numPages) text += `\n[${name}: the text above runs to page ${read} of ${pdf.numPages}; read later pages from the pages themselves.]`;
       return text;
     } finally {
       await loading.destroy();

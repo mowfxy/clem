@@ -1,0 +1,13 @@
+Scope: https://www.googleapis.com/auth/drive
+
+Mowr is a Windows desktop study and work app. The user links a Google Drive folder to a subject or project, and Mowr works with the files in that folder. We use the full drive scope for these user-initiated features, each shown in the demo video:
+
+1. Reading: Mowr lists the linked folder and its subfolders live, streams PDFs and videos from Drive when the user opens them, and reads a chosen file's content from Drive only to answer a question the user asks about it. Files are not copied to our servers.
+2. Saving into the user's own folder: the user can drag a file into the linked Drive folder, use "Add files", and have worksheets Mowr generates saved into that folder.
+3. Updating the same file: when the user approves an edit Mowr made to a file, the new version replaces the content of that same Drive file (no duplicate).
+
+Why a narrower scope is not enough: drive.file only allows access to files the app created or the user opened with a picker, and it cannot add files to a folder the user created themselves. The user links their own existing folder, so saving into it requires the drive scope. drive.readonly cannot write at all. We do not request any broader scope than this one.
+
+Data handling: Drive content is read live from Google and streamed; we store only an encrypted refresh token, deleted when the user chooses Disconnect, which also revokes the grant at Google. Excerpts of a file are sent to the AI provider the user chose only when the user asks about it. Mowr's use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. We do not use Google user data for advertising, do not sell it, and no person reads it except with the user's permission, for security or abuse investigation, or where the law requires.
+
+Privacy policy: https://mowrai.com/#/privacy   Support: support@mowrai.com

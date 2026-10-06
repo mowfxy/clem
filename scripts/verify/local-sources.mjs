@@ -28,7 +28,6 @@ try {
           return { skills: r.skills, notes: r.notes };
         if (r.action === "memoryList") return { enabled: true, records: [] };
         if (r.action === "folders") return [];
-        if (r.action === "telegramStatus") return { connected: false };
         if (r.action === "chat") {
           setTimeout(() => {
             for (const fn of listeners) {

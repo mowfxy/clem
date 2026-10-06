@@ -20,10 +20,6 @@ function getKey(vars: string[], value: number): [string, number] {
 }
 
 export function exprToPoly(e: Expr): Poly {
-  const out: Poly = new Map();
-  function add(p: Poly): void {
-    for (const [k, c] of p) out.set(k, (out.get(k) ?? 0) + c);
-  }
   function convert(node: Expr, signs: number[] = [1]): Poly {
     switch (node.type) {
       case "num": {
@@ -42,9 +38,11 @@ export function exprToPoly(e: Expr): Poly {
         m.set(keyOf([node.name]), signs[0]);
         return m;
       }
-      case "add":
-        for (const a of node.args) add(convert(a, signs));
-        return out;
+      case "add": {
+        const m: Poly = new Map();
+        for (const a of node.args) for (const [k, c] of convert(a, signs)) m.set(k, (m.get(k) ?? 0) + c);
+        return m;
+      }
       case "sub": {
         const m = convert(node.left, signs);
         const r = convert(node.right, [-signs[0]]);
@@ -60,8 +58,8 @@ export function exprToPoly(e: Expr): Poly {
         return acc;
       }
       case "pow": {
-        if (node.right.type !== "num" || !Number.isInteger(node.right.value)) {
-          throw new KinetraError("unsupported", "Polynomial only supports integer exponents");
+        if (node.right.type !== "num" || !Number.isInteger(node.right.value) || node.right.value < 0) {
+          throw new KinetraError("unsupported", "Polynomial only supports non-negative integer exponents");
         }
         const exp = node.right.value;
         let acc: Poly = new Map([["1", signs[0]]]);
@@ -97,18 +95,8 @@ export function polyMul(a: Poly, b: Poly): Poly {
 function mergeKeys(a: string, b: string): string {
   if (a === "1") return b;
   if (b === "1") return a;
-  const av = a.split("*");
-  const bv = b.split("*");
-  const out: string[] = [];
-  let i = 0, j = 0;
-  while (i < av.length || j < bv.length) {
-    const a1 = av[i] ?? "8";
-    const b1 = bv[j] ?? "8";
-    if (a1 < b1) { out.push(a1); i += 1; }
-    else if (a1 > b1) { out.push(b1); j += 1; }
-    else { out.push(a1); i += 1; j += 1; }
-  }
-  return out.join("*");
+  // Keys are sorted multisets of variables (x*x is x^2), so a product keeps every factor.
+  return [...a.split("*"), ...b.split("*")].sort().join("*");
 }
 
 export function polyToExpr(p: Poly): Expr {
@@ -144,8 +132,11 @@ export function simplify(e: Expr): Expr {
     }
     case "add": {
       const simplified = e.args.map(simplify);
-      const poly = exprToPoly({ type: "add", args: simplified });
-      return polyToExpr(poly);
+      try {
+        return polyToExpr(exprToPoly({ type: "add", args: simplified }));
+      } catch {
+        return { type: "add", args: simplified }; // not a polynomial (sin(x) + 1)
+      }
     }
     case "sub": {
       const l = simplify(e.left);
@@ -156,9 +147,13 @@ export function simplify(e: Expr): Expr {
     case "mul": {
       const simplified = e.args.map(simplify);
       let poly: Poly = new Map([["1", 1]]);
-      for (const s of simplified) {
-        const p = exprToPoly(s);
-        poly = polyMul(poly, p);
+      try {
+        for (const s of simplified) {
+          const p = exprToPoly(s);
+          poly = polyMul(poly, p);
+        }
+      } catch {
+        return { type: "mul", args: simplified }; // not a polynomial (x sin(x))
       }
       return polyToExpr(poly);
     }
@@ -223,6 +218,14 @@ export function derivative(v: string, e: Expr): Expr {
         right: { type: "pow", left: e.right, right: num(2) },
       };
     case "pow": {
+      // Constant exponent: n f^(n-1) f' (the general rule below needs ln f, so it fails for f <= 0).
+      if (!collectVars(e.right).includes(v)) {
+        return { type: "mul", args: [e.right, { type: "pow", left: e.left, right: { type: "sub", left: e.right, right: num(1) } }, derivative(v, e.left)] };
+      }
+      // Constant base: f^g ln f g'
+      if (!collectVars(e.left).includes(v)) {
+        return { type: "mul", args: [e, { type: "fn", name: "ln", args: [e.left] }, derivative(v, e.right)] };
+      }
       // d/dx f^g = f^g * (g' ln f + g f'/f)
       return {
         type: "mul",
@@ -239,12 +242,20 @@ export function derivative(v: string, e: Expr): Expr {
       };
     }
     case "fn": {
+      const [a0, a1] = e.args;
+      switch (e.name) {
+        case "floor": case "ceil": case "round": case "sign": return num(0);
+        case "pow": return derivative(v, { type: "pow", left: a0, right: a1 });
+        case "mod": return derivative(v, { type: "sub", left: a0, right: { type: "mul", args: [a1, { type: "fn", name: "floor", args: [{ type: "div", left: a0, right: a1 }] }] } });
+        case "atan2": return { type: "div", left: { type: "sub", left: { type: "mul", args: [a1, derivative(v, a0)] }, right: { type: "mul", args: [a0, derivative(v, a1)] } }, right: { type: "add", args: [{ type: "pow", left: a0, right: num(2) }, { type: "pow", left: a1, right: num(2) }] } };
+        case "log": if (a1) return derivative(v, { type: "div", left: { type: "fn", name: "ln", args: [a0] }, right: { type: "fn", name: "ln", args: [a1] } }); break;
+      }
       const inner = e.args[0];
       const d = derivative(v, inner);
       const dname: Record<string, string> = {
         sin: "cos", cos: "neg_sin", tan: "sec2",
         asin: "asin_p", acos: "acos_p", atan: "atan_p",
-        exp: "exp", ln: "ln_p", log: "log_p", sqrt: "sqrt_p", abs: "abs_p",
+        exp: "exp", ln: "ln_p", log: "log_p", log10: "log_p", log2: "log2_p", sqrt: "sqrt_p", cbrt: "cbrt_p", abs: "abs_p",
         sinh: "cosh", cosh: "sinh", tanh: "sech2",
       };
       const helper = dname[e.name as string];
@@ -259,23 +270,26 @@ export function derivative(v: string, e: Expr): Expr {
           case "exp": return { type: "mul", args: [d, e] };
           case "ln_p": return { type: "div", left: d, right: inner };
           case "log_p": return { type: "div", left: d, right: { type: "mul", args: [inner, { type: "fn", name: "ln", args: [num(10)] }] } };
+          case "log2_p": return { type: "div", left: d, right: { type: "mul", args: [inner, { type: "fn", name: "ln", args: [num(2)] }] } };
+          case "cbrt_p": return { type: "div", left: d, right: { type: "mul", args: [num(3), { type: "pow", left: { type: "fn", name: "cbrt", args: [inner] }, right: num(2) }] } };
           case "sqrt_p": return { type: "div", left: d, right: { type: "mul", args: [num(2), { type: "fn", name: "sqrt", args: [inner] }] } };
-          case "abs_p": return { type: "div", left: d, right: inner };
+          case "abs_p": return { type: "mul", args: [d, { type: "fn", name: "sign", args: [inner] }] };
           case "cosh": return { type: "mul", args: [d, { type: "fn", name: "cosh", args: [inner] }] };
           case "sinh": return { type: "mul", args: [d, { type: "fn", name: "sinh", args: [inner] }] };
           case "sech2": return { type: "mul", args: [d, { type: "pow", left: { type: "fn", name: "cosh", args: [inner] }, right: num(-2) }] };
         }
         return { type: "neg", arg: d };
       };
-      return helperExpr(helper ?? "neg");
+      if (!helper) throw new KinetraError("unsupported", `No derivative rule for ${e.name}`);
+      return helperExpr(helper);
     }
     case "sum": return { type: "sum", var: e.var, from: e.from, to: e.to, body: derivative(v, e.body) };
-    case "prod": return { type: "prod", var: e.var, from: e.from, to: e.to, body: derivative(v, e.body) };
+    case "prod": throw new KinetraError("unsupported", "No derivative rule for a product"); // not the product of the derivatives
     case "piecewise":
       return { type: "piecewise", cases: e.cases.map((c) => ({ cond: c.cond, value: derivative(v, c.value) })), otherwise: derivative(v, e.otherwise) };
     case "vector": return { type: "vector", items: e.items.map((c) => derivative(v, c)) };
     case "matrix": return { type: "matrix", rows: e.rows.map((r) => r.map((c) => derivative(v, c))) };
-    case "deriv": return derivative(v, e.body);
+    case "deriv": return derivative(v, derivative(e.var, e.body));
   }
 }
 
@@ -285,14 +299,9 @@ export function integratePoly(p: Poly, v: string): Poly {
   for (const [k, c] of p) {
     const vars = k === "1" ? [] : k.split("*");
     const exp = vars.filter((x) => x === v).length;
-    if (exp === 0) {
-      // x * constant
-      out.set(v, (out.get(v) ?? 0) + c);
-    } else {
-      const remaining = vars.filter((x) => x !== v);
-      const newKey = remaining.length === 0 ? "1" : remaining.join("*");
-      out.set(newKey, (out.get(newKey) ?? 0) + c / (exp + 1));
-    }
+    // c y x^n -> c y x^(n+1) / (n+1)
+    const newKey = keyOf([...vars, v]);
+    out.set(newKey, (out.get(newKey) ?? 0) + c / (exp + 1));
   }
   return out;
 }

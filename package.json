@@ -1,6 +1,6 @@
 {
   "name": "mowr",
-  "version": "0.2.0-preview.74",
+  "version": "0.2.0-preview.75",
   "private": true,
   "type": "module",
   "scripts": {
@@ -35,6 +35,7 @@
     "film:live-setup": "node scripts/film/capture.mjs --live-setup",
     "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live",
     "ads": "node scripts/ads/build.mjs",
+    "db:remove-telegram": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/remove-telegram.sql",
     "db:email": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/email-schema.sql",
     "emails:announce": "node scripts/announce-release.mjs"
   },

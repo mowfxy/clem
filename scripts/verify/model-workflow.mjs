@@ -35,7 +35,6 @@ try {
             factors: [],
             google: true,
           };
-        if (r.action === "telegramStatus") return { connected: false };
         if (r.action === "chat") {
           setTimeout(() => {
             for (const fn of listeners) {

@@ -44,8 +44,13 @@ const designs: Record<Layout, { accent: string; size: number; line: number; just
   letter: { accent: "1A1A1A", size: 22, line: 264, justify: false, headSize: [24, 22, 22], titleSize: 28, titleAlign: "left" },
 };
 
+/** Every string of a specification without the control characters XML cannot hold: the docx library writes them as they
+ *  are, and Word then refuses the whole file. A vertical tab or form feed (a line or page break) becomes a new line. */
+const xmlSafe = (v: any): any => typeof v === "string" ? v.replace(/[\x0b\x0c]/g, "\n").replace(/[\x00-\x08\x0e-\x1f￾￿]/g, "") : Array.isArray(v) ? v.map(xmlSafe) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, xmlSafe(x)])) : v;
+
 /** `drawn` receives the figures as placed in the document. */
 export async function wordDocument(spec: DocumentSpec, { checkVoice = true, drawn }: { checkVoice?: boolean; drawn?: (figures: (string | undefined)[]) => void } = {}) {
+  spec = xmlSafe(spec);
   // The checks are the PDF's; the message names this file type.
   const figures = await renderFigures(spec, { checkVoice }).catch((error: Error) => {
     throw Error(error.message.replace("No PDF was created. Fix these problems and send the pdf action again.", "No Word document was created. Fix these problems and send the docx action again.").replace("Invalid PDF specification", "Invalid document specification"));

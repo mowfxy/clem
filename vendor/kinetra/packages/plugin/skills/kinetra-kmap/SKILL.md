@@ -49,6 +49,10 @@ import { renderLogicSchematic } from "../../../../core/src/diagram/logic_schemat
 4. **Run the K-map minimizer.** Call
    `buildKMap({ variables, minterms, dontCares?, form?: "sop" | "pos" })`
    (`form` defaults to `"sop"`; any other value is ignored).
+   Minterm numbers count the FIRST variable as the least significant bit
+   (for `["A","B","C"]`, minterm 1 is A=1, B=0, C=0), as truth tables here
+   do. A textbook F(A,B,C) = Σm(...) has A as the most significant bit, so
+   pass `variables` reversed (`["C","B","A"]`) for textbook minterm lists.
    The returned `KMap` exposes `cells` (per-cell value `0 | 1 | "x"`),
    `groups` (each `KMapGroup` has `cells`, `positives`, `negatives`,
    `usesDontCare`), `simplified` (the minimized `BoolExpr`),

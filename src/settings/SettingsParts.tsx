@@ -19,7 +19,6 @@ export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
  {label:'Connections',tabs:[
   {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Mowr can read from.',keywords:'google drive apps'},
   {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Mowr can read.',keywords:'folders files changes undo watch'},
-  {name:'Telegram',icon:'chat',scene:'plane',line:'Message Mowr from your phone.',keywords:'phone bot messages'},
  ]},
  {label:'Data',tabs:[
   {name:'Usage',icon:'analysis',scene:'telescope',line:'Your threads, tokens and habits.',keywords:'usage stats statistics tokens activity graph habits streak threads messages'},

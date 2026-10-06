@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mowrSkills,mowrSkillsFor,mowrSkillText,documentsNote,capabilityIndex,telegramInstructions,type SkillContext} from '../core/mowr-skills.ts';
+import {mowrSkills,mowrSkillsFor,mowrSkillText,documentsNote,capabilityIndex,type SkillContext} from '../core/mowr-skills.ts';
 import {parseChecks} from '../core/checks.ts';
 import {relevantSkills,builtinSkills} from '../core/skills.ts';
 import {isEditRequest,isDocumentChange} from '../src/files/intent.ts';
@@ -58,7 +58,6 @@ test('each request gets the playbooks it needs and not the ones it does not',()=
     ['what files can you see?',{},['files','context'],[]],
     ['share my flashcards with my classmates',{},['study-packs'],[]],
     ['What is the difference between a subject and a project in Mowr?',{},['spaces'],[]],
-    ['how do I use Mowr on telegram',{},['telegram'],[]],
     ['create a skill for grading essays',{},['own-skills'],[]],
     ['this is too big, can you run it as a long task',{},['long-tasks'],[]],
     ['make a pdf study guide on cell biology with a mind map',{},['documents','visuals'],[]],
@@ -106,7 +105,6 @@ test('playbook formats match the parsers that read them',()=>{
   for(const key of ['"title"','6 sliders','24 nodes']) assert.ok(visuals.includes(key),key);
   const study=mowrSkills.find(s=>s.id==='study')!.steps.join('\n');
   assert.match(study,/no set was saved/);assert.match(study,/\/flashcards/);
-  assert.match(telegramInstructions,/plain text/);assert.match(telegramInstructions,/```visual/);
 });
 test('built-in workflows are not triggered by passing words',()=>{
   const ids=(q:string)=>relevantSkills(q).map(s=>s.id);

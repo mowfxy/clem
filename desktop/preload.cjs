@@ -31,10 +31,5 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("mowr:pack", handler);
       return () => ipcRenderer.removeListener("mowr:pack", handler);
     },
-    onAttachment: (listener) => {
-      const handler = (_event, payload) => listener(payload);
-      ipcRenderer.on("mowr:attachment", handler);
-      return () => ipcRenderer.removeListener("mowr:attachment", handler);
-    },
   }),
 );

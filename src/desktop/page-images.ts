@@ -1,6 +1,6 @@
 import { getBlob } from "../store";
 import type { StoredFile } from "../../core/types";
-import { namedPages } from "../../core/file-tools";
+import { namedPages, pageScores, relevantPages } from "../../core/file-tools";
 
 /**
  * What the model sees, not only reads. Text extraction loses circuit diagrams, graphs, figures, handwriting and
@@ -176,9 +176,10 @@ async function filePictures(file: StoredFile, want: number[], limit: number, sig
  * names), then the file open beside the chat, then files from earlier in the conversation, newest first. A file that
  * cannot be drawn is skipped; it never stops the message.
  */
-export async function conversationPictures({ files, attached, open, earlier, prompt, limit = 16, signal }: { files: StoredFile[]; attached: string[]; open?: string; earlier: string[]; prompt: string; limit?: number; signal?: AbortSignal }) {
+export async function conversationPictures({ files, attached, open, earlier, prompt, limit = 16, skip = [], signal }: { files: StoredFile[]; attached: string[]; open?: string; earlier: string[]; prompt: string; limit?: number; skip?: string[]; signal?: AbortSignal }) {
   const want = namedPages(prompt);
-  const ordered = [...new Set([...attached, ...(open ? [open] : []), ...earlier])].map((id) => files.find((f) => f.id === id)).filter((f): f is StoredFile => !!f);
+  // PDFs pdfView already gave the model need no more pictures of their pages.
+  const ordered = [...new Set([...attached, ...(open ? [open] : []), ...earlier])].filter((id) => !skip.includes(id)).map((id) => files.find((f) => f.id === id)).filter((f): f is StoredFile => !!f);
   const out: Picture[] = [];
   for (const [i, file] of ordered.entries()) {
     signal?.throwIfAborted();
@@ -194,6 +195,175 @@ export async function conversationPictures({ files, attached, open, earlier, pro
     }
   }
   return out.slice(0, limit);
+}
+
+export type PdfProvider = "claude" | "grok" | "codex";
+/** A PDF handed to the model as a file: Claude reads it as claude.ai reads an upload, Grok opens its pages itself. */
+export type PdfFile = { name: string; data: Uint8Array<ArrayBuffer> };
+/**
+ * How the conversation's PDFs reach the model, the way each AI reads a PDF on its own:
+ * - Claude takes PDF files (every page as drawn, plus its text). A long PDF goes as a PDF of the pages the question is about.
+ * - Grok's own read_file opens PDF pages as pictures, any range, so it gets the files themselves, however long.
+ * - ChatGPT (Codex) cannot be given a file, so it sees each page as a picture beside the page text, as ChatGPT does.
+ * Short PDFs are seen whole; a long one by the pages the person names, the pages that match the question, and on demand
+ * (search, read, look). `handled`: PDFs dealt with here, which conversationPictures leaves out. `whole`: PDFs Claude has
+ * whole, whose text excerpts would only repeat them.
+ */
+export type PdfView = { files: PdfFile[]; pictures: Picture[]; notes: string[]; handled: string[]; whole: string[]; spent: { bytes: number; whole: number; focus: number } };
+export const NO_PDF_VIEW = (): PdfView => ({ files: [], pictures: [], notes: [], handled: [], whole: [], spent: { bytes: 0, whole: 0, focus: 0 } });
+
+/** Pages seen whole in one message (about 2k tokens a page for Claude, under 1k a picture for ChatGPT). */
+export const wholePageBudget = (model: string) => (/\[1m\]$/i.test(model) ? 200 : 40);
+/** Pages of long PDFs shown in one message; any other page is a search, read or look away. */
+const FOCUS_PAGES = 12;
+/** Page pictures for ChatGPT in one message. */
+const PICTURE_PAGES = 48;
+/** Files not attached (the subject's or project's, Drive's) shown by their best pages: so many files, so many pages each. */
+const RELATED_FILES = 4, RELATED_PAGES = 3;
+/** Claude's request is capped at 32 MB; Grok's files are copied on this PC, so they may be larger. */
+const FILE_BYTES: Record<PdfProvider, number> = { claude: 18_000_000, grok: 150_000_000, codex: 200_000_000 };
+/** The most PDF files and notes one chat request takes (desktop/contracts.ts "chat"). */
+const MAX_FILES = 20, MAX_NOTES = 40;
+const isPdfFile = (f: StoredFile) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+const pageList = (pages: number[]) => pages.slice().sort((a, b) => a - b).join(", ");
+const pagesNamed = (pages: number[]) => (pages.length === 1 ? "page " : "pages ") + pageList(pages);
+const plural = (n: number) => `${n} page${n === 1 ? "" : "s"}`;
+
+/** A few pages of a PDF, as a PDF: what Claude reads of a long one. */
+async function excerptPdf(bytes: Uint8Array, pages: number[]) {
+  const { PDFDocument } = await import("pdf-lib");
+  const source = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  const out = await PDFDocument.create();
+  for (const page of await out.copyPages(source, pages.map((p) => p - 1))) out.addPage(page);
+  return new Uint8Array(await out.save());
+}
+
+export async function pdfView({ files, current, earlier, related = [], prompt, provider, model, text, given, wholePages = wholePageBudget(model), after, signal }: {
+  files: StoredFile[];
+  /** PDFs of this message (attached, open beside the chat, Drive files added to it), first. */
+  current: string[];
+  /** PDFs from earlier in the conversation, newest first. */
+  earlier: string[];
+  /** PDFs the person did not attach but that are theirs to draw on (saved in the subject or project, found in Google Drive),
+   *  with where they are. Never sent whole: the few that match the question best show the pages that match it. */
+  related?: { id: string; where: string }[];
+  prompt: string;
+  provider: PdfProvider;
+  model: string;
+  /** A PDF's extracted text with its page markers (src/source-context.ts cachedFileText), to find the pages a question is about. */
+  text: (file: StoredFile) => Promise<string>;
+  /** PDFs not stored in Mowr (one being edited from disk), by id. */
+  given?: Map<string, Blob>;
+  /** Pages seen whole in this request (less for each step of a plan); longer PDFs are seen by their relevant pages. */
+  wholePages?: number;
+  /** What an earlier view of this same request already sent: its room is used up, and its files are not shown again. */
+  after?: PdfView;
+  signal?: AbortSignal;
+}): Promise<PdfView> {
+  const view = NO_PDF_VIEW();
+  const named = namedPages(prompt);
+  const spent = after?.spent || { bytes: 0, whole: 0, focus: 0 };
+  let wholeRoom = wholePages - spent.whole, focusRoom = FOCUS_PAGES - spent.focus, bytes = spent.bytes;
+  const pictureRoom = () => PICTURE_PAGES - view.pictures.length - (after?.pictures.length || 0);
+  const done = new Set(after?.handled || []);
+
+  /** One PDF to the model, as this AI reads PDFs: whole, or the given pages. `where`: for a file the person did not attach. */
+  const show = async (file: StoredFile, data: Uint8Array<ArrayBuffer>, pdf: any, count: number, pages: number[], whole: boolean, where?: string) => {
+    const rest = `Its whole text is in the file tools: search it and read any page; look at a page you were not shown before relying on what it shows.`;
+    const from = where ? `, ${where}, not attached: only its pages that match the question are shown` : "";
+    // Within what one request may carry; a PDF past it is read from its text as before.
+    if (view.notes.length + (after?.notes.length || 0) >= MAX_NOTES || (provider !== "codex" && view.files.length + (after?.files.length || 0) >= MAX_FILES)) return false;
+    if (provider === "claude") {
+      if (!pages.length) return false;
+      const sent = whole ? data : await excerptPdf(data, pages);
+      if (bytes + sent.length > FILE_BYTES.claude) return false;
+      bytes += sent.length;
+      view.files.push({ name: whole ? file.name : `${file.name} — ${pagesNamed(pages)} of ${count}`, data: sent });
+      view.notes.push(whole
+        ? `"${file.name}" (${plural(count)}): attached whole as a PDF file.`
+        : `"${file.name}" (${plural(count)}${from}): ${where ? "" : "too long to send whole, so "}a PDF of ${pagesNamed(pages)} is attached (its pages are those pages of the original, in that order). ${rest}`);
+      if (whole) view.whole.push(file.id);
+    } else if (provider === "grok") {
+      if (bytes + data.length > FILE_BYTES.grok) return false;
+      bytes += data.length;
+      view.files.push({ name: file.name, data });
+      view.notes.push(whole
+        ? `"${file.name}" (${plural(count)}): read every page with read_file${count > 10 ? ` ("pages": "1-20", then "21-40" and so on, sent together)` : ""} before answering.`
+        : `"${file.name}" (${plural(count)}${from}): read the pages that matter with read_file ("pages": "12-15", at most 20 a call). The pages that match the question: ${pages.length ? pageList(pages) : "none found by their words"}. Mowr's search and read tools find anything else in its text.`);
+    } else {
+      const shown = pages.slice(0, Math.max(0, pictureRoom()));
+      if (!shown.length) return false;
+      for (const p of shown) { signal?.throwIfAborted(); view.pictures.push({ name: `${file.name} — page ${p} of ${count}`, data: await renderPage(file, pdf, p) }); }
+      view.notes.push(shown.length === count
+        ? `"${file.name}" (${plural(count)}): every page is attached as a picture; read each page from its picture and its text together.`
+        : `"${file.name}" (${plural(count)}${from}): ${pagesNamed(shown)} ${shown.length === 1 ? "is" : "are"} attached as pictures. ${rest}`);
+    }
+    view.handled.push(file.id);
+    return true;
+  };
+  /** Opens a PDF for `use`; an encrypted, damaged or unreachable one is skipped (it is read from its text as before). */
+  const open = async (file: StoredFile, use: (data: Uint8Array<ArrayBuffer>, pdf: any, count: number) => Promise<unknown>) => {
+    try {
+      const blob = given?.get(file.id) ?? (await getBlob(file.id));
+      if (!blob || blob.size > FILE_BYTES[provider]) return;
+      const data = new Uint8Array(await blob.arrayBuffer());
+      const lib = await pdfjs();
+      // A copy: pdf.js takes ownership of the bytes it is given.
+      const loading = lib.getDocument({ data: data.slice(), useSystemFonts: false });
+      try {
+        const pdf = await loading.promise;
+        await use(data, pdf, pdf.numPages);
+      } finally {
+        await loading.destroy();
+      }
+    } catch (e) {
+      if (signal?.aborted) throw e;
+    }
+  };
+
+  for (const id of [...new Set([...current, ...earlier])]) {
+    signal?.throwIfAborted();
+    const file = files.find((f) => f.id === id);
+    if (!file || !isPdfFile(file) || done.has(id)) continue;
+    const isCurrent = current.includes(id);
+    await open(file, async (data, pdf, count) => {
+      const whole = count <= wholeRoom;
+      let pages: number[];
+      if (whole) pages = Array.from({ length: count }, (_, i) => i + 1);
+      else {
+        // A long PDF: the pages the person names, then those matching the question (a few for earlier files).
+        const room = Math.min(focusRoom, isCurrent ? FOCUS_PAGES : 4);
+        const matched = room > 0 ? relevantPages(await text(file).catch(() => ""), prompt, room) : [];
+        pages = [...new Set([...(isCurrent ? named : []), ...matched])].filter((p) => p >= 1 && p <= count).slice(0, room);
+        if (!pages.length && isCurrent && room > 0) pages = [1, 2].filter((p) => p <= count);
+      }
+      if (await show(file, data, pdf, count, pages, whole)) { if (whole) wholeRoom -= count; else focusRoom -= pages.length; }
+    });
+  }
+
+  // The person's other PDFs: scored by their text first (cheap, and kept), so only the best few are opened.
+  const seen = new Set([...current, ...earlier, ...done]);
+  const scored: { file: StoredFile; where: string; pages: { page: number; score: number }[] }[] = [];
+  for (const { id, where } of related) {
+    signal?.throwIfAborted();
+    const file = files.find((f) => f.id === id);
+    if (!file || !isPdfFile(file) || seen.has(id)) continue;
+    seen.add(id);
+    const pages = pageScores(await text(file).catch(() => ""), prompt);
+    if (pages.length) scored.push({ file, where, pages });
+  }
+  scored.sort((a, b) => b.pages[0].score - a.pages[0].score);
+  // A file whose best page matches far less than the best file's is not about this question.
+  const best = scored[0]?.pages[0].score || 0;
+  for (const { file, where, pages } of scored.filter((s) => s.pages[0].score >= best * 0.35).slice(0, RELATED_FILES)) {
+    if (focusRoom <= 0) break;
+    await open(file, async (data, pdf, count) => {
+      const chosen = pages.map((p) => p.page).filter((p) => p <= count).slice(0, Math.min(RELATED_PAGES, focusRoom));
+      if (await show(file, data, pdf, count, chosen, false, where)) focusRoom -= chosen.length;
+    });
+  }
+  view.spent = { bytes, whole: wholePages - wholeRoom, focus: FOCUS_PAGES - focusRoom };
+  return view;
 }
 
 /** Specific pages of a file, for the model's {"action":"look"} request. */

@@ -27,6 +27,7 @@ export function claudeArgs(model:string,effort:string|undefined,session:{id:stri
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 
 export type ClaudeImage = { mime: string; data: string };
+export type ClaudePdf = { name: string; data: string };
 /** A Claude Code too old for --system-prompt-file: the step is run again with the rules in the message. */
 class NoSystemFile extends Error {}
 /** A few words on what Claude is doing, from one stream-json event (null when the event says nothing new). */
@@ -321,8 +322,11 @@ export class ClaudeProvider {
    * The reply streams as `partial` events while it is written (desktop/live-reply.ts); the final `delta` is the
    * confirmed result, which alone is read for tool requests.
    */
-  /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. `system`: Mowr's system prompt. */
-  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall,{system}:{system?:string}={}):Promise<void>{
+  /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. `system`: Mowr's system prompt.
+   *  `pdfs`: PDFs read whole as document blocks, as claude.ai takes an upload (every page as drawn plus its text). */
+  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall,{system,pdfs=[]}:{system?:string;pdfs?:ClaudePdf[]}={}):Promise<void>{
+    // The request as asked: a step run again (NoSystemFile below) adds its own notes to it, not to this one's.
+    const asked=prompt;
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     // One without --system-prompt-file gets Mowr's rules ahead of the request, as before, rather than not at all.
@@ -397,12 +401,14 @@ export class ClaudeProvider {
           if(signedOut.test(detail))this.statusCache=null;
           finish(undefined,Error(/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
         });
-        child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
+        // A Claude Code that exits without reading the message (a flag it refuses) fails the pending write: its exit says why, above.
+        child.stdin.on('error',()=>{});
+        child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[...pdfs.map(pdf=>({type:'document',source:{type:'base64',media_type:'application/pdf',data:pdf.data},title:pdf.name})),{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
       });
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
     }catch(error){
       // Nothing ran: the same step again, with the rules in the message instead.
-      if(error instanceof NoSystemFile)return this.run(id,prompt,model,effort,emit,images,session,native,{system});
+      if(error instanceof NoSystemFile)return this.run(id,asked,model,effort,emit,images,session,native,{system,pdfs});
       throw error;
     }finally{this.active.delete(id);endpoint?.close();this.recheck();void this.readUsage(true);await removeFiles();}
   }

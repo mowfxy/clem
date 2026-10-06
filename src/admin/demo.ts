@@ -41,7 +41,7 @@ export async function demoApi(path:string,body?:any):Promise<any>{
       providers:[{provider:'claude',turns:models.filter(m=>m.provider==='claude').reduce((a,m)=>a+m.turns,0),images:0,people:5},{provider:'chatgpt',turns:models.filter(m=>m.provider==='chatgpt').reduce((a,m)=>a+m.turns,0),images:0,people:6},{provider:'grok',turns:models[4].turns,images:0,people:1}].sort((a,b)=>b.turns-a.turns),
       models,reasoning:[{reasoning:'medium',turns:1900},{reasoning:'high',turns:1100},{reasoning:'low',turns:400}],
       byHour:[40,22,14,8,5,4,9,30,70,120,160,170,150,180,210,230,220,190,160,175,210,240,180,90],byWeekday:[380,720,760,700,690,560,420],series,
-      links:[{kind:'codex',people:6},{kind:'claude',people:5},{kind:'telegram',people:2}],sync:[{kind:'memory',people:6},{kind:'skills',people:4},{kind:'notes',people:3}]};
+      links:[{kind:'codex',people:6},{kind:'claude',people:5}],sync:[{kind:'memory',people:6},{kind:'skills',people:4},{kind:'notes',people:3}]};
   }
   if(path==='/admin/announcements')return {announcements};
   if(path==='/admin/team')return {team:[{id:people[5].id,email:'m@mohamedmowafy.com',role:'owner'},{id:people[6].id,email:'priya@college.edu',role:'support'}]};

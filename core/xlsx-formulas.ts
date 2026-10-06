@@ -269,8 +269,22 @@ export class Calculator {
         lines.forEach((line, i) => { const d = compare(line[0], key); if (approximate === true ? d <= 0 && rank(line[0]) === rank(key) : d === 0 && rank(line[0]) === rank(key)) { if (approximate === true || found < 0) found = i; } });
         return found < 0 ? err("#N/A") : lines[found][index - 1] ?? err("#REF!");
       }
-      case "INDEX": { const t = rangeArg(0), r = numberArg(1, 1), c = numberArg(2, 1); return isError(r) ? r : isError(c) ? c : t[(r || 1) - 1]?.[(c || 1) - 1] ?? err("#REF!"); }
-      case "MATCH": { const key = arg(0), values = flat(1); const i = values.findIndex((v) => compare(v, key) === 0 && rank(v) === rank(key)); return i < 0 ? err("#N/A") : i + 1; }
+      case "INDEX": {
+        const t = rangeArg(0), r = numberArg(1, 1), c = numberArg(2, 1);
+        if (isError(r)) return r;
+        if (isError(c)) return c;
+        // A single row is indexed by its one number, as a column is: INDEX(A1:E1,3) is C1.
+        const [row, col] = t.length === 1 && args[2] === undefined ? [1, r] : [r, c];
+        return t[(row || 1) - 1]?.[(col || 1) - 1] ?? err("#REF!");
+      }
+      case "MATCH": {
+        // Match type 1 (the default): the last value at or below the key, as in sorted data; -1 the last at or above; 0 exact.
+        const key = arg(0), values = flat(1), type = numberArg(2, 1);
+        if (isError(type)) return type;
+        let i = -1;
+        values.forEach((v, j) => { if (rank(v) !== rank(key)) return; const d = compare(v, key); if (type > 0 ? d <= 0 : type < 0 ? d >= 0 : d === 0 && i < 0) i = j; });
+        return i < 0 ? err("#N/A") : i + 1;
+      }
       case "ISBLANK": return arg(0) === null;
       case "ISNUMBER": return typeof arg(0) === "number";
       case "ISTEXT": return typeof arg(0) === "string";
