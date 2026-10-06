@@ -272,7 +272,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     </div>
     {space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
       more={[{label:'New folder on this PC',run:()=>setNaming({name:''})},{label:'Upload to this PC',run:()=>input.current?.click()},
-        {label:space.drive.saveBack?'Stop saving Mowr’s files to Drive':'Save Mowr’s files to this Drive folder',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)}]}
+        {label:space.drive.saveBack?'Stop saving to Drive':'Save Mowr’s files to Drive',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)}]}
       onItems={items=>{setDriveIds(new Set(items.filter(x=>!x.folder).map(x=>x.id)));actions.onDriveItems(items);}}/>}
     {space.drive&&!at&&(inHere.length>0||here.length>0)&&<div className="sp-local-label"><span className="sp-eyebrow">On this PC</span></div>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">

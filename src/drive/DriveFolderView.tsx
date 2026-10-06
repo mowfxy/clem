@@ -127,7 +127,6 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
         {connected !== false && <button onClick={() => picker.current?.click()} aria-description={`Add files from this PC to ${at ? parts[parts.length - 1] : folderName} in Drive`}><Icon name="plus" size={13} /> Add files</button>}
         <input ref={picker} type="file" multiple hidden onChange={(e) => { const chosen = Array.from(e.target.files || []); e.target.value = ""; save(hereId, chosen, []); }} />
         <Menu label="Google Drive folder options" items={[
-          ...(allFiles.length > 0 ? [{ label: "Ask about it", run: () => actions.onAskDrive(allFiles) }] : []),
           ...(busy ? [] : [{ label: "Refresh", run: () => void load(true) }]),
           { label: "Open in Google Drive", run: () => actions.onOpenDriveWeb({ id: hereId, name: folderName, mimeType: "application/vnd.google-apps.folder" }) },
           ...more,
