@@ -73,21 +73,22 @@ try {
   const sources = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).spaces[0].sources);
   assert.ok(sources.includes("drive:drive-doc-000001"), "Drive file marked as a source");
 
-  // Drop a file from this PC: it shows at once with a turning ring, then a check; it is kept here and is a source.
+  // Drop a file from this PC: it shows at once with a turning ring, is named like any added file (Lec03 → Lecture 3), then a check; it is kept here and is a source.
   await drive.evaluate((el) => {
     const data = new DataTransfer();
-    data.items.add(new File(["Week 4 notes: genetics and inheritance."], "Week 4 notes.txt", { type: "text/plain" }));
+    data.items.add(new File(["Lecture 3: genetics and inheritance."], "Lec03.txt", { type: "text/plain" }));
     el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data }));
     el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
   });
-  await row("Week 4 notes.txt").locator(".gd-sync.is-uploading").waitFor({ timeout: 1000 });
+  await row("Lecture 3.txt").locator(".gd-sync.is-uploading").waitFor({ timeout: 3000 });
   await page.screenshot({ path: "artifacts/drive-drop-uploading.png" });
-  await row("Week 4 notes.txt").locator(".gd-sync.is-synced").waitFor({ timeout: 5000 });
+  await row("Lecture 3.txt").locator(".gd-sync.is-synced").waitFor({ timeout: 5000 });
   assert.equal((await calls("driveUpload")).length, 1);
   assert.equal((await calls("driveUpload"))[0].folder, DRIVE.folderId);
-  assert.equal(await page.locator(".sp-file-list .sp-file", { hasText: "Week 4 notes.txt" }).count(), 1, "listed once, in the Drive folder, not again under On this PC");
+  assert.equal((await calls("driveUpload"))[0].name, "Lecture 3.txt", "named like any added file before it goes to Drive");
+  assert.equal(await page.locator(".sp-file-list .sp-file", { hasText: "Lecture 3.txt" }).count(), 1, "listed once, in the Drive folder, not again under On this PC");
   await saved(page);
-  const kept = await page.evaluate(async () => { const s = await (await import("/src/store.ts")).loadState(); const f = s.files.find((x) => x.name === "Week 4 notes.txt"); return { f, source: s.spaces[0].sources.includes(f?.id) }; });
+  const kept = await page.evaluate(async () => { const s = await (await import("/src/store.ts")).loadState(); const f = s.files.find((x) => x.name === "Lecture 3.txt"); return { f, source: s.spaces[0].sources.includes(f?.id) }; });
   assert.ok(kept.f?.driveId && kept.source, "kept here, linked to its Drive file, and used as a source");
   await page.screenshot({ path: "artifacts/drive-drop-synced.png" });
 
@@ -136,8 +137,28 @@ try {
   await row("Osmosis lab handout.pdf").locator(".gd-sync.is-synced").waitFor({ timeout: 8000 });
   await page.screenshot({ path: "artifacts/drive-drag-from-pc.png" });
 
+  // "Add files" under On this PC keeps a file here only: named like any added file, listed under On this PC, never sent to Drive.
+  const local = page.locator(".sp-local-head");
+  assert.equal(await page.getByRole("menuitem", { name: "Upload to this PC" }).count(), 0);
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), local.getByRole("button", { name: "Add files" }).click()]);
+  await chooser.setFiles({ name: "Lec05.txt", mimeType: "text/plain", buffer: Buffer.from("Lecture 5: natural selection.") });
+  await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Lecture 5.txt" }).waitFor({ timeout: 8000 });
+  await page.waitForTimeout(1500);
+  assert.equal((await calls("driveUpload")).length, 3, "a file added on this PC is not uploaded to Drive");
+  assert.equal(await drive.locator(".sp-file", { hasText: "Lecture 5.txt" }).count(), 0, "not listed in the Drive folder");
+  // Its edits approved later stay local too, even with "Save Mowr's files" on.
+  await saved(page);
+  const localFile = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).files.find((x) => x.name === "Lecture 5.txt"));
+  assert.ok(localFile && !localFile.driveId && !localFile.driveFolder && !localFile.made, "kept on this PC only");
+  await local.getByRole("button", { name: "On this PC options" }).click();
+  await page.getByRole("menuitem", { name: "New folder" }).click();
+  await page.getByLabel("New folder name").fill("Worksheets");
+  await page.getByLabel("New folder name").press("Enter");
+  await page.locator(".sp-files > .sp-folders .sp-folder", { hasText: "Worksheets" }).waitFor();
+  await page.screenshot({ path: "artifacts/drive-on-this-pc.png" });
+
   assert.deepEqual(errors, []);
-  console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits, drag from On this PC all pass.");
+  console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits, drag from On this PC, local-only Add files all pass.");
 } finally {
   await close();
   await browser.close();
