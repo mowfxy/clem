@@ -106,3 +106,4 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-file.is-pending .sp-file-open small{color:#e9c46a}
 .gd-space .gd-skeleton{margin:10px 0}
 .gd-space-head .sp-menu .icon-button{width:28px;height:28px}
+.gd-crumb.over{background:#ffffff14;color:#f5f4ee;box-shadow:inset 0 0 0 1px #8a897f}

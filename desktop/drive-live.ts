@@ -174,6 +174,28 @@ export class DriveLive {
     this.trees.clear();this.meta.delete(fileId);
     return await r.json() as {id:string;name:string;modifiedTime?:string};
   }
+  /** Moves a file or folder to another folder, both inside the linked folder `root` (never out of it, and a folder
+   *  never into itself or one of its own subfolders). */
+  async move(root:string,fileId:string,to:string){
+    await this.canWrite();
+    const tree=await this.tree(root,true);
+    const moving=tree.items.find(i=>i.id===fileId);
+    if(!moving||!(to===root||tree.folders.includes(to)))throw Error("That is not in the linked Drive folder.");
+    const own=(moving.path?moving.path+" / ":"")+moving.name,target=to===root?"":(()=>{const f=tree.items.find(i=>i.id===to)!;return (f.path?f.path+" / ":"")+f.name;})();
+    if(moving.folder&&(to===fileId||target===own||target.startsWith(own+" / ")))throw Error("A folder can't go inside itself.");
+    const meta=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=parents`,{signal:AbortSignal.timeout(15000)});
+    if(meta.status===404)throw Error("The file is no longer in Drive.");
+    if(!meta.ok)throw Error("Google Drive could not find the file.");
+    const from=((await meta.json()) as {parents?:string[]}).parents||[];
+    if(from.includes(to))return {ok:true};
+    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id,modifiedTime&addParents=${encodeURIComponent(to)}&removeParents=${encodeURIComponent(from.join(","))}`,{method:"PATCH",signal:AbortSignal.timeout(20000),
+      headers:{"Content-Type":"application/json; charset=UTF-8"},body:"{}"});
+    if(r.status===404)throw Error("The file is no longer in Drive.");
+    if(r.status===403)throw Error(await refusal(r));
+    if(!r.ok)throw Error("Google Drive did not move the file.");
+    this.trees.clear();
+    return {ok:true};
+  }
   /** Moves a file to Drive’s trash, where it can be restored for 30 days; nothing is deleted for good. */
   async trash(fileId:string){
     await this.canWrite();
