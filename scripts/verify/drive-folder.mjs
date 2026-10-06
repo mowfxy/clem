@@ -226,6 +226,27 @@ try {
   await page.locator(".sp-files > .sp-folders .sp-folder", { hasText: "Worksheets" }).waitFor();
   await page.screenshot({ path: "artifacts/drive-on-this-pc.png" });
 
+  // A PDF Mowr makes lands under On this PC, even with the old "Save Mowr's files" setting on: nothing goes to Drive by itself.
+  const uploadsMade = (await calls("driveUpload")).length;
+  await page.evaluate(async () => {
+    const store = await import("/src/store.ts");
+    const id = "made-notes-0001";
+    await store.storeBlob(id, new Blob(["%PDF-1.4 made by Mowr"], { type: "application/pdf" }));
+    window.dispatchEvent(new CustomEvent("mowr:artifact", { detail: { file: { id, name: "Stacks revision notes.pdf", size: 21, type: "application/pdf", created: Date.now(), spaceId: "bio", made: true }, scope: "subject:bio" } }));
+  });
+  const madeRow = page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Stacks revision notes.pdf" });
+  await madeRow.waitFor({ timeout: 5000 });
+  await page.waitForTimeout(1500);
+  assert.equal((await calls("driveUpload")).length, uploadsMade, "a made file is not uploaded to Drive by itself");
+  // "Save copy in Drive" in its menu: a copy goes to the Drive folder (with the ring, then the check) and the file stays here.
+  await madeRow.getByRole("button", { name: "Stacks revision notes.pdf options" }).click();
+  await page.getByRole("menuitem", { name: "Save copy in Drive" }).click();
+  await row("Stacks revision notes.pdf").locator(".gd-sync.is-synced").waitFor({ timeout: 8000 });
+  assert.equal((await calls("driveUpload")).length, uploadsMade + 1);
+  assert.equal((await calls("driveUpload"))[uploadsMade].folder, DRIVE.folderId);
+  assert.equal(await madeRow.count(), 1, "still on this PC");
+  await page.screenshot({ path: "artifacts/drive-save-copy.png" });
+
   assert.deepEqual(errors, []);
   console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits, drag from On this PC, drag to move inside Drive, local-only Add files all pass.");
 } catch (e) { await page.screenshot({ path: "artifacts/drive-folder-failure.png" }).catch(() => {}); throw e; } finally {

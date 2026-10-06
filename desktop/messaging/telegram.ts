@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import type { TelegramButton } from "../../core/telegram-commands.ts";
 
 export type Pairing = { digest: string; scope: string; expires: number };
 export type TelegramRoute = { chatId: number; senderId: number; scope: string };
@@ -74,6 +75,15 @@ export function telegramEnvelope(
     attachment,
   };
 }
+const keyboard = (buttons?: TelegramButton[][]) => buttons?.length ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => ({ text: b.text.slice(0, 64), callback_data: b.data }))) } } : {};
+/** A tap on a picker button from a paired chat (anyone else's tap is ignored). */
+export function telegramTap(update: any, routes: TelegramRoute[]) {
+  const tap = update?.callback_query;
+  const chatId = tap?.message?.chat?.id, senderId = tap?.from?.id;
+  if (!tap || typeof tap.id !== "string" || typeof tap.data !== "string" || !Number.isSafeInteger(chatId) || !Number.isSafeInteger(senderId) || tap.message?.chat?.type !== "private") return null;
+  const route = routes.find((r) => r.chatId === chatId && r.senderId === senderId);
+  return route ? { id: tap.id, data: tap.data.slice(0, 64), chatId, messageId: Number(tap.message.message_id), scope: route.scope } : null;
+}
 export class TelegramClient {
   private token:string;
   constructor(token: string) {this.token=token;}
@@ -95,7 +105,7 @@ export class TelegramClient {
   async poll(offset: number, signal: AbortSignal) {
     return this.call(
       "getUpdates",
-      { offset, timeout: 25, limit: 20, allowed_updates: ["message"] },
+      { offset, timeout: 25, limit: 20, allowed_updates: ["message", "callback_query"] },
       signal,
     );
   }
@@ -103,10 +113,19 @@ export class TelegramClient {
   async setCommands(commands: { command: string; description: string }[]) {
     return this.call("setMyCommands", { commands });
   }
-  async sendText(chatId: number, text: string) {
+  /** `buttons`: rows of tap buttons under the message (a picker); a tap comes back as a callback_query. */
+  async sendText(chatId: number, text: string, buttons?: TelegramButton[][]) {
     if (text.length > 4096)
       throw Error("Telegram text exceeds 4096 characters.");
-    return this.call("sendMessage", { chat_id: chatId, text });
+    return this.call("sendMessage", { chat_id: chatId, text, ...keyboard(buttons) });
+  }
+  /** Replaces a picker message after a tap (its text and its buttons, so the choice shows as ticked). */
+  async editText(chatId: number, messageId: number, text: string, buttons?: TelegramButton[][]) {
+    return this.call("editMessageText", { chat_id: chatId, message_id: messageId, text: text.slice(0, 4096), ...keyboard(buttons) }).catch(() => undefined);
+  }
+  /** Stops the tapped button's spinner, with a short note shown at the top of the chat. */
+  async answerTap(id: string, text?: string) {
+    return this.call("answerCallbackQuery", { callback_query_id: id, ...(text ? { text: text.slice(0, 190) } : {}) }).catch(() => undefined);
   }
   async download(attachment: NonNullable<TelegramEnvelope["attachment"]>) {
     const file = await this.call("getFile", { file_id: attachment.id });

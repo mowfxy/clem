@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CliAccounts } from "../../desktop/cli-accounts.ts";
-import { claudeUsage, parseRateLimit } from "../../desktop/claude.ts";
+import { claudeUsage, parsePlanUsage, parseRateLimit } from "../../desktop/claude.ts";
 import { grokUsage } from "../../desktop/grok.ts";
 
 class MemoryVault {
@@ -40,6 +40,11 @@ test("Claude and Grok usage read in ChatGPT's shape, so they show and switch the
   assert.equal(usage.ordinaryUsageAllowed, false);
   // A window that has reset is shown as full again.
   assert.equal(claudeUsage([five], now + 700)!.rateLimits!.primary!.usedPercent, 0);
+  // Claude's usage endpoint gives percents; 1% stays 1%, not a full window.
+  const plan = claudeUsage(parsePlanUsage({ five_hour: { utilization: 1, resets_at: "2027-01-15T10:00:00Z" }, seven_day: { utilization: 54, resets_at: "2027-01-20T03:00:00Z" } }), now)!;
+  assert.equal(Math.round(plan.rateLimits!.primary!.usedPercent!), 1);
+  assert.equal(Math.round(plan.rateLimits!.secondary!.usedPercent!), 54);
+  assert.equal(plan.rateLimits!.secondary!.resetsAt, Date.parse("2027-01-20T03:00:00Z") / 1000);
   assert.deepEqual(grokUsage({ percentUsed: 12, periodEnd: "2026-10-07T21:23:27Z", period: "USAGE_PERIOD_TYPE_WEEKLY" }), { rateLimits: { primary: { usedPercent: 12, windowDurationMins: 10080, resetsAt: Math.round(Date.parse("2026-10-07T21:23:27Z") / 1000) } } });
 });
 

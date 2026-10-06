@@ -278,7 +278,7 @@ export class DriveLive {
     return text?.slice(0,1500);
   }
   /** Text Drive can give directly: Google Docs, Slides and Sheets, and plain text files. Others return undefined. */
-  async text(id:string,limit=60000):Promise<string|undefined>{
+  async text(id:string,limit=2_000_000):Promise<string|undefined>{
     const m=await this.info(id);
     const google=/^application\/vnd\.google-apps\.(document|presentation|spreadsheet)$/.test(m.mimeType);
     const plain=/^text\/|json|csv|markdown/.test(m.mimeType)&&Number(m.size||0)<2_000_000;

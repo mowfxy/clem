@@ -255,6 +255,15 @@ const FIGURE_PAGE_PREVIEWS = 5;
  * The pages to show for a document's figures: each page a figure printed on, and the page before when a figure starts
  * a page (that is where a figure pushed over leaves an empty gap).
  */
+/**
+ * Where a figure sits, as the placement check judges it: which figure, its page, whether it starts the page, and its
+ * width and place across the column (to a tenth of the page). Text reflowing by a line above it (a contents list that
+ * grew when a part was appended) leaves this the same; the figure moving page, size or side changes it.
+ */
+export function placementKey(s: CropSpot) {
+  const tenth = (n: number) => Math.round((n / s.sheet[0]) * 10);
+  return ["spot", s.id, s.figure, s.page, s.rect[3] > s.sheet[1] - 130 ? "top" : "in", tenth(s.rect[2] - s.rect[0]), tenth((s.rect[0] + s.rect[2]) / 2)].join(":");
+}
 export function figurePages(spots: CropSpot[], limit = FIGURE_PAGE_PREVIEWS) {
   const pages: number[] = [];
   for (const s of spots) {
