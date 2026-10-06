@@ -271,10 +271,16 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
       </div>
     </div>
     {space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
-      more={[{label:'New folder on this PC',run:()=>setNaming({name:''})},{label:'Upload to this PC',run:()=>input.current?.click()},
-        {label:space.drive.saveBack?'Stop saving to Drive':'Save Mowr’s files to Drive',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)}]}
+      more={[{label:space.drive.saveBack?'Stop saving to Drive':'Save Mowr’s files to Drive',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)}]}
       onItems={items=>{setDriveIds(new Set(items.filter(x=>!x.folder).map(x=>x.id)));actions.onDriveItems(items);}}/>}
-    {space.drive&&!at&&(inHere.length>0||here.length>0)&&<div className="sp-local-label"><span className="sp-eyebrow">On this PC</span></div>}
+    {/* Files added here are kept on this PC only; they are not sent to the linked Drive folder. */}
+    {space.drive&&!at&&<div className="sp-local-head"><span className="sp-eyebrow">On this PC</span>
+      <div className="sp-local-actions">
+        <button onClick={()=>input.current?.click()} aria-description="Add files from this PC, kept here only"><Icon name="plus" size={13}/> Add files</button>
+        <Menu label="On this PC options" items={[{label:'New folder',run:()=>setNaming({name:''})}]}/>
+      </div>
+    </div>}
+    {space.drive&&!at&&!inHere.length&&!here.length&&!naming&&<p className="sp-empty-line sp-local-empty">Files you add here stay on this PC and aren’t saved to Google Drive.</p>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
       {here.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
         :<div key={f.id} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
@@ -294,7 +300,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
         <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}
     </div>
     {moving&&<div className="sp-move" role="dialog" aria-label={`Move ${moving.name}`}><strong>Move “{moving.name}” to</strong>{destinations(moving).map(d=><button key={d.id||'root'} onClick={()=>{move(moving.id,d.id);setMoving(null);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMoving(null)}>Cancel</button></div>}
-    {desktop&&<div className="sp-linked"><div className="sp-card-head"><span className="sp-eyebrow">On this PC</span><button onClick={()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{})}>Link a folder</button></div>
+    {desktop&&<div className="sp-linked"><div className="sp-card-head"><span className="sp-eyebrow">{space.drive?'Linked folders':'On this PC'}</span><button onClick={()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{})}>Link a folder</button></div>
       {linked.map(l=><button key={l.id} className="sp-row" onClick={()=>actions.onBrowseLinked(l.id)}><Icon name="projects" size={16}/><span>{l.path.split(/[\\/]/).pop()}</span><small>{l.path}</small></button>)}
       {!linked.length&&<p className="sp-empty-line">Link a folder on your PC and Mowr can read and change its files, with your approval.</p>}</div>}
   </section>;

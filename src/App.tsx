@@ -514,7 +514,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const run=async()=>{
       const live=fileNow(file.id,file)!;
       const link=live.spaceId?stateRef.current.spaces.find(x=>x.id===live.spaceId)?.drive:undefined;
-      if(!desktop||!link||!(live.driveId||live.driveFolder||link.saveBack))return;
+      // Files the person added on this PC stay there; "Save Mowr's files" covers only files Mowr made.
+      if(!desktop||!link||!(live.driveId||live.driveFolder||link.saveBack&&live.made))return;
       setDriveSync(m=>({...m,[live.id]:{state:"uploading"}}));
       try{
         const blob=await getBlob(live.id);
@@ -552,6 +553,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       await storeBlob(id,input);
       file={id,name:input.name,size:input.size,type:input.type||'application/octet-stream',created:Date.now(),spaceId:space.id,folderId:null,driveFolder:folder};
       patch(s=>({...s,files:[file,...s.files],spaces:s.spaces.map(x=>x.id===space.id?{...x,sources:[...new Set([...x.sources,id])]}:x)}));
+      setDriveSync(m=>({...m,[id]:{state:"uploading"}}));
+      // Named as any added file is ("Nodal Analysis – Lecture 3"), before it goes to Drive under that name.
+      const name=await (await import('./pdf/pdf-name')).readableName(input,space.name).catch(()=>input.name);
+      if(name!==input.name){patch(s=>({...s,files:s.files.map(f=>f.id===id?{...f,name}:f)}));setToast(`Saved as “${name}”.`);}
     }
     setDriveSync(m=>({...m,[file.id]:{state:"uploading"}}));
     await syncToDrive(file);

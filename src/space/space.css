@@ -174,7 +174,12 @@
 @media(max-width:700px){.sp-drive-news{flex-wrap:wrap}}
 .sp-menu-trigger{display:inline-flex;align-items:center;height:34px;padding:0 11px;border-radius:9px;border:1px solid var(--sp-line-2,#3c3c37);background:none;cursor:pointer}.sp-menu-trigger:hover{background:#ffffff08}
 .sp-file .sp-source input{width:14px!important;height:14px!important;min-width:0!important;min-height:0!important;padding:0!important;flex:none;box-shadow:none}
-.sp-local-label{margin:20px 2px 8px}
+.sp-local-head{display:flex;align-items:center;gap:10px;margin:22px 2px 10px}
+.sp-local-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+.sp-local-actions>button{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:8px;border:1px solid #ffffff14;background:#ffffff06;color:#d8d6ce;font-size:12px;cursor:pointer}
+.sp-local-actions>button:hover{background:#ffffff10;color:#fff}
+.sp-local-actions .sp-menu .icon-button{width:28px;height:28px}
+.sp-local-empty{margin:0 2px 8px}
 .sp-drive-chip small{display:inline-flex;align-items:center;gap:4px}
 .sp-drive-chip small::before{content:"";width:6px;height:6px;border-radius:50%;background:#7fd08a;box-shadow:0 0 0 2px #7fd08a2e}
 .sp-memory{display:grid;gap:12px}
