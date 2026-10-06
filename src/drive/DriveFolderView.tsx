@@ -32,10 +32,12 @@ type Upload = { key: string; name: string; size: number; type: string; folder: s
  * only there, showing a turning ring until Drive has them; "Save on this PC" copies a file or a whole folder to
  * "On this PC" as well. Edits made here go back to the same Drive file once approved.
  */
-export function DriveFolderView({ space, files, driveSync, actions, onItems, more = [] }: {
+export function DriveFolderView({ space, files, driveSync, actions, onItems, more = [], copy }: {
   space: Space; files: StoredFile[]; driveSync: Record<string, DriveSyncState>; actions: SpaceActions; onItems?: (items: DriveItem[]) => void;
   /** Extra entries for the header's menu, from the page around it. */
   more?: { label: string; run: () => void }[];
+  /** A file on this PC to copy into the Drive folder shown ("Save copy in Drive"); a new `key` copies again. */
+  copy?: { key: string; id: string } | null;
 }) {
   const { folderId, folderName } = space.drive!;
   const { connected } = useDrive();
@@ -90,6 +92,8 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
     for (const input of local) send({ key: crypto.randomUUID(), name: input.name, size: input.size, type: input.type, folder: target, input });
     for (const id of mowr) { const f = files.find((x) => x.id === id); if (f) send({ key: crypto.randomUUID(), name: f.name, size: f.size, type: f.type, folder: target, input: id }); }
   }
+  // "Save copy in Drive" from a file's menu: the copy goes where a dropped file would, and the file stays on this PC.
+  useEffect(() => { if (copy && connected !== false) save(hereId, [], [copy.id]); }, [copy?.key]);
   /** Every Drive file inside a folder, with the folders it sits in (starting with the folder itself), for "Save on this PC". */
   const inside = (folder: DriveItem) => { const root = full(folder); return (items || []).filter((i) => !i.folder && (i.path === root || i.path?.startsWith(root + " / "))).map((item) => ({ item, dirs: [folder.name, ...(item.path!.slice(root.length).split(" / ").filter(Boolean))] })); };
   const DRIVE_ITEM = "application/x-mowr-drive";

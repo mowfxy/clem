@@ -32,7 +32,7 @@ export type SpaceActions={
   onEditFile:(file:StoredFile)=>void;
   onRenameFile:(file:StoredFile,name:string)=>void;
   /** A Google Drive folder linked to this space, read live (never downloaded). */
-  onLinkDrive:()=>void; onUnlinkDrive:()=>void; onDriveSaveBack:(on:boolean)=>void; onDriveSeen:()=>void;
+  onLinkDrive:()=>void; onUnlinkDrive:()=>void; onDriveSeen:()=>void;
   onOpenDrive:(file:DriveItem)=>void; onAskDrive:(files:DriveItem[])=>void; onDriveItems:(items:DriveItem[])=>void;
   /** Saves a file from this PC (or a Mowr file, by id) into a folder of the linked Drive folder, keeping it here too. */
   /** Saves a file from this PC (or a Mowr file, by id) into a Drive folder only; resolves to it as Drive lists it. */
@@ -256,6 +256,8 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
   const destinations=(file:StoredFile)=>[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==(file.folderId||null));
   const [moving,setMoving]=useState<StoredFile|null>(null);
   const [renaming,setRenaming]=useState<string|null>(null);
+  /** A file of this PC to copy into the Drive folder shown ("Save copy in Drive"); the Drive view uploads it. */
+  const [toDrive,setToDrive]=useState<{key:string;id:string}|null>(null);
   return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
     <div className="sp-toolbar">
       <nav className="sp-path" aria-label="Folder path">
@@ -274,7 +276,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
       </div>
     </div>
     {space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
-      more={[{label:space.drive.saveBack?'Stop saving to Drive':'Save Mowr’s files to Drive',run:()=>actions.onDriveSaveBack(!space.drive!.saveBack)}]}
+      copy={toDrive}
       onItems={items=>{setDriveIds(new Set(items.filter(x=>!x.folder).map(x=>x.id)));actions.onDriveItems(items);}}/>}
     {/* Files added here are kept on this PC only; they are not sent to the linked Drive folder. */}
     {space.drive&&!at&&<div className="sp-local-head"><span className="sp-eyebrow">On this PC</span>
@@ -297,7 +299,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
         {renaming===f.id?<div className="sp-file-open"><FileGlyph file={f}/><RenameField name={f.name} onSave={name=>{actions.onRenameFile(f,name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>:<button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f} size={36}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>}
         <button className="icon-button sp-rename" aria-label={`Rename ${f.name}`} aria-description="Rename" onClick={()=>setRenaming(f.id)}><PencilIcon size={15}/></button>
         <label className="sp-source" aria-description="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
-        <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+        <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
       </div>)}
       {!inHere.length&&!here.length&&!(space.drive&&!at)&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
         <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}

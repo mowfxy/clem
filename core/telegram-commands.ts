@@ -16,8 +16,56 @@ export const TELEGRAM_COMMANDS: TelegramCommand[] = [
   { name: "sheet", usage: "/sheet <request>", does: "Makes an Excel workbook.", menu: "Make an Excel workbook" },
   { name: "brief", usage: "/brief <request>", does: "Answers in a few lines.", menu: "Short answer" },
   { name: "memory", usage: "/memory", does: "Shows what Mowr remembers about you and this space.", menu: "What Mowr remembers" },
+  { name: "model", usage: "/model [name or number]", does: "Picks the AI that answers here from the models your connected accounts offer: tap one, or send its name or number.", menu: "Choose the AI model" },
+  { name: "thinking", usage: "/thinking [level]", does: "Picks how long the model thinks (the levels it offers, such as low, medium or high): tap one, or send the level.", menu: "Choose the thinking level" },
   { name: "status", usage: "/status", does: "Shows the space, the AI answering, how long the conversation is and the linked folders.", menu: "Where and how replies run" },
 ];
+
+/** A model as Mowr's providers list it (Codex, Claude Code, Grok), for the Telegram pickers. */
+export type TelegramModel = { id: string; name: string; reasoningEfforts?: { reasoningEffort: string }[]; defaultReasoningEffort?: string };
+/** One row of tap buttons under a bot message; `data` comes back when it is tapped (at most 64 bytes, Telegram's limit). */
+export type TelegramButton = { text: string; data: string };
+const EFFORT_NAMES: Record<string, string> = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
+export const effortName = (level: string) => EFFORT_NAMES[level] || level;
+/** Tap data for picking a model or a level: "m|<model id>" and "t|<level>". */
+export const MODEL_PICK = "m|", THINKING_PICK = "t|";
+const fits = (data: string) => new TextEncoder().encode(data).length <= 64;
+
+/** The model a "/model" argument means: a number from the list, then the name or id (exact, starting with, containing). */
+export function pickModel(arg: string, models: TelegramModel[]): TelegramModel | undefined {
+  const want = arg.trim().toLowerCase();
+  if (!want) return undefined;
+  if (/^\d+$/.test(want)) return models[Number(want) - 1];
+  const named = (m: TelegramModel) => [m.name.toLowerCase(), m.id.toLowerCase(), m.id.replace(/^[a-z]+:/i, "").toLowerCase()];
+  return models.find((m) => named(m).includes(want)) || models.find((m) => named(m).some((n) => n.startsWith(want))) || models.find((m) => named(m).some((n) => n.includes(want)));
+}
+/** The level a "/thinking" argument means, among those the model offers ("extra high" and "xhigh" alike). */
+export function pickEffort(arg: string, model: TelegramModel | undefined) {
+  const want = arg.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const levels = (model?.reasoningEfforts || []).map((e) => e.reasoningEffort);
+  if (/^(default|auto)$/.test(want)) return "";
+  return levels.find((l) => l.toLowerCase() === want || effortName(l).toLowerCase().replace(/\s+/g, "") === want);
+}
+/** The model picker: every model, numbered, with the one in use marked; a button for each, two to a row. */
+export function modelMenu(models: TelegramModel[], current: string | undefined) {
+  if (!models.length) return { text: "No AI models are available. Connect ChatGPT, Claude or Grok in Mowr on your PC: Settings → Models.", buttons: [] as TelegramButton[][] };
+  const lines = models.map((m, i) => `${i + 1}. ${m.name}${m.id === current ? " ← current" : ""}`);
+  const tappable = models.filter((m) => fits(MODEL_PICK + m.id)).map((m) => ({ text: (m.id === current ? "✓ " : "") + m.name, data: MODEL_PICK + m.id }));
+  const buttons: TelegramButton[][] = [];
+  for (let i = 0; i < tappable.length; i += 2) buttons.push(tappable.slice(i, i + 2));
+  return { text: ["Choose the AI that answers here:", ...lines, "", "Tap one, or send /model with its name or number."].join("\n"), buttons };
+}
+/** The thinking picker for one model: its levels, the one in use marked, plus the model's own default. */
+export function thinkingMenu(model: TelegramModel | undefined, current: string | undefined) {
+  const levels = (model?.reasoningEfforts || []).map((e) => e.reasoningEffort).filter((l) => fits(THINKING_PICK + l));
+  if (!model) return { text: "Choose a model first with /model.", buttons: [] as TelegramButton[][] };
+  if (!levels.length) return { text: `${model.name} has no thinking levels to choose from.`, buttons: [] as TelegramButton[][] };
+  const fallback = model.defaultReasoningEffort ? ` (${effortName(model.defaultReasoningEffort)})` : "";
+  const row = [{ text: (!current ? "✓ " : "") + "Default" + fallback, data: THINKING_PICK + "default" }, ...levels.map((l) => ({ text: (l === current ? "✓ " : "") + effortName(l), data: THINKING_PICK + l }))];
+  const buttons: TelegramButton[][] = [];
+  for (let i = 0; i < row.length; i += 3) buttons.push(row.slice(i, i + 3));
+  return { text: `How long ${model.name} thinks: now ${current ? effortName(current) : "its default" + fallback}. Longer thinking is slower but more careful. Tap a level, or send /thinking with one.`, buttons };
+}
 
 /** A message's command, if it starts with one Mowr knows ("/space@MyBot Physics" → space, "Physics"). */
 export function telegramCommand(text: string): { name: string; arg: string } | undefined {

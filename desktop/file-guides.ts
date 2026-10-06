@@ -12,6 +12,42 @@ import { iconNames } from "./deck-art.ts";
 export const textFormats = /\.(csv|tsv|md|markdown|txt|html?|css|json|jsonl|xml|ya?ml|toml|ini|tex|bib|ics|vcf|srt|vtt|sql|ipynb|py|r|m|jl|mjs|cjs|ts|tsx|jsx|java|kt|c|h|cpp|hpp|cs|go|rs|swift|php|rb|lua|dart|sh|svg|gv|dot|mmd|log|rst|adoc|org|tikz|sty|cls)$/i;
 /** Where an appended part goes for each kind of file: sections for documents, slides for decks, sheets for workbooks. */
 export const partsKey: Record<string, string> = { pdf: "sections", docx: "sections", pptx: "slides", xlsx: "sheets", editpdf: "ops" };
+
+const plain = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+/** `change` laid over `base`: objects merge field by field (a figure's "align" alone), anything else replaces, null removes. */
+function merged(base: unknown, change: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = plain(base) ? { ...base } : {};
+  for (const [k, v] of Object.entries(change)) {
+    if (v === null) delete out[k];
+    else out[k] = plain(v) && plain(out[k]) ? merged(out[k], v) : v;
+  }
+  return out;
+}
+/**
+ * A file's parts (sections, slides or sheets) with `patch` applied: each entry names a part by "at" (counting from 1,
+ * as the parts stand before the patch) and either changes the fields it sends, "remove":true drops the part, or
+ * "insert":[…] puts new parts before it ("at" one past the last part adds them at the end). Throws on a bad entry.
+ */
+export function patchParts(parts: unknown[], patch: unknown, key: string): unknown[] {
+  const example = `"patch":[{"at":3,…only the fields to change…}]`;
+  if (!Array.isArray(patch) || !patch.length) throw Error(`"patch" is a list of changes, such as ${example} ("at" counts the ${key} from 1).`);
+  const changed = [...parts], removed = new Set<number>(), before = new Map<number, unknown[]>();
+  for (const entry of patch) {
+    const at = Number((entry as any)?.at);
+    if (!plain(entry) || !Number.isInteger(at) || at < 1 || at > parts.length + (Array.isArray(entry.insert) ? 1 : 0)) throw Error(`Each "patch" entry needs "at": the number of one of the ${parts.length} ${key} (from 1), as in ${example}.`);
+    const { at: _at, remove, insert, ...fields } = entry;
+    if (Array.isArray(insert)) { before.set(at - 1, [...(before.get(at - 1) || []), ...insert]); continue; }
+    if (remove === true) { removed.add(at - 1); continue; }
+    if (!Object.keys(fields).length) throw Error(`The "patch" entry for ${key} ${at} changes nothing: send the fields to change, "remove":true, or "insert":[…].`);
+    changed[at - 1] = merged(changed[at - 1], fields);
+  }
+  const out: unknown[] = [];
+  for (let i = 0; i <= changed.length; i++) {
+    out.push(...(before.get(i) || []));
+    if (i < changed.length && !removed.has(i)) out.push(changed[i]);
+  }
+  return out;
+}
 /** Whether `action` can revise the file called `name` (a revision keeps the file's format). */
 export function sameFormat(action: string, name: string) {
   const ext = name.split(".").pop()!.toLowerCase();
@@ -27,7 +63,7 @@ export const fileCatalog = `FILES: Mowr makes real files the person can download
 - {"action":"xlsx","title"?,"theme"?:{"accent":"#hex","font":F},"sheets":[{"name","title"?,"columns":[{"header","format"?,"width"?}],"rows":[[…]],"totals"?,"charts"?,"freeze"?,"filter"?,"notes"?}]} builds an Excel workbook with live formulas. Read the SPREADSHEETS skill if it is not below.
 - {"action":"file","name":"plan.csv","content":"…the complete file…"} writes any text format: csv, tsv, md, txt, html, css, json, xml, yaml, tex, bib, ics (calendar), vcf, srt/vtt, sql, svg, ipynb, py, mjs (never .js: Windows runs it), ts, java, c, cpp, go, rs and other source files. Write the complete, valid file (an .ics with VCALENDAR/VEVENT, an .html page with its own <style>, a .tex that compiles). Programs Windows runs on a double-click (.exe, .bat, .ps1, .vbs) are never made.
 - {"action":"image","name":N,"figure":{Kinetra figure spec}} or {"action":"image","name":N,"svg":"<svg…>","format"?:"png"|"svg","width"?:px} saves a diagram or drawing as a PNG (or SVG) image file.
-- Every file action accepts "revise":ID (with "change":"one short sentence") to replace a file made earlier in this conversation with a corrected or changed version: always revise instead of making a second file for a change. pdf, docx, pptx and xlsx also take "append":true to add sections, slides or sheets to the same file in parts.
+- Every file action accepts "revise":ID (with "change":"one short sentence") to replace a file made earlier in this conversation with a corrected or changed version: always revise instead of making a second file for a change. pdf, docx, pptx and xlsx also take "append":true to add sections, slides or sheets to the same file in parts. To change only some parts, send {"action":<same>,"revise":ID,"change":…,"patch":[{"at":N,…only the fields that change…}]}: "at" counts the sections, slides or sheets from 1; objects such as a figure merge field by field ({"at":4,"figure":{"align":"wrap-right","width":0.45}}), "remove":true drops a part and "insert":[…new parts…] puts parts before it. Every part not named stays exactly as it was, so a fix never needs the whole file sent again; send the complete file only when most of it changes.
 - Draft, check and correct as much as needed: the person receives only the finished files, once, when you give your final answer, and a file you correct within one answer counts as one version. In the final answer, say in one or two sentences what each file contains; do not repeat its content.`;
 
 const slides = `SLIDES SKILL (PowerPoint decks). Design each deck for its talk; never a generic template.
@@ -42,7 +78,7 @@ Send "archetype":"…". Adapt the storyline to the material; do not pad it.
 5. VISUALS. Icons (built in, drawn in the deck's colours): ${iconNames.join(", ")}. Image-led slides take a Kinetra figure, generated art in the deck's style ({"art":true}), a large icon on art, or your own illustration as "svg": a complete flat drawing with a viewBox, 2–5 colours from the deck's palette (the result's "design" lists them), simple shapes, no text, scripts or outside links. Kids' and workshop decks want a picture on most slides; reports want charts and tables; pitches want big numbers and few words.
 6. DESIGN. Leave "theme" out to have the palette, fonts, cover and decoration derived for this deck from the brand, the subject, the archetype and "brief.tone" (calm, formal, bold, playful, dark, light…). Override only what the person asked for: "theme":{"accent":"#hex","accent2":"#hex","accent3":"#hex","background":"#hex","headingFont":F,"bodyFont":F,"cover":"left"|"band"|"full"|"center"|"panel","decor":"rule"|"bar"|"tracker"|"topband"|"block"|"dots"|"none"|"corner"|"frame"|"grid","art":"orbits"|"waves"|"blocks"|"contours"|"confetti"|"grid"|"rays"|"leaves"|"stripes"|"none","icons":"line"|"solid"|"badge","dark":bool}, or start from a named preset ("preset": editorial, midnight, boardroom, academic, studio, classroom, minimal, earth, noir, lab). Fonts must be installed Windows/Office fonts (Segoe UI, Calibri, Cambria, Georgia, Arial, Bahnschrift, Constantia, Corbel, Candara, Garamond, Palatino Linotype, Trebuchet MS, Franklin Gothic, Century Gothic, Gill Sans MT, Rockwell, Segoe Print, Consolas); never Mowr's own fonts. Text stays readable whatever colours are asked for.
 7. WRITING. At most 6 bullets of about 12 words (kids' decks: 15 words a slide); detail and the spoken explanation go in "notes" (always write notes for a deck that will be presented). **bold** marks the key word; $…$ maths shows as plain symbols on slides, so use an equation slide for anything bigger. Chemistry is written \\ce{6CO2 + 6H2O ->[light] C6H12O6 + 6O2} (or with \\mathrm{} formulas) so elements are upright; labelled arrows (\\xrightarrow{…}) are drawn as wide as their label. Table values are shown exactly as given: pass formatted strings ("4.00", "12%").
-8. REVIEW. Every deck is drawn, measured with the real fonts and checked before you get the result: text that overflowed was shrunk, and "review" lists what is left (low contrast, overlapping or crowded slides, topic-label titles, pacing, missing notes or ending). Pictures of the slides are attached to the result: look at them as the audience would. If anything looks wrong, cramped, unbalanced or generic, fix it with {"action":"pptx","revise":ID,…the whole corrected deck…} before you answer.`;
+8. REVIEW. Every deck is drawn, measured with the real fonts and checked before you get the result: text that overflowed was shrunk, and "review" lists what is left (low contrast, overlapping or crowded slides, topic-label titles, pacing, missing notes or ending). Pictures of the slides are attached to the result: look at them as the audience would. If anything looks wrong, cramped, unbalanced or generic, fix those slides with {"action":"pptx","revise":ID,"patch":[{"at":N,…the corrected fields…}]} (the whole corrected deck only when most slides change) before you answer.`;
 
 const word = `WORD SKILL (docx): Same specification as pdf, so everything about kinds, sections, figures, tables, maths, environments, plan-and-append and design applies. The file is meant to be edited: write real headings (they become Word's Heading styles and the navigation pane), real Markdown lists and tables (they become Word lists and tables), $…$ and $$…$$ maths (native Word equations; chemistry as \\ce{…} or \\mathrm{} formulas, so elements are upright), footnotes as [^n] with their [^n]: text, and citations [n] with "references". Choose the kind for the purpose (report, paper, notes, brief, proposal, memo, letter, manual, handout, worksheet) and a design that suits the reader: a formal report keeps the technical design, a company proposal the business design with the organisation's accent colour, lecture notes the notes design. CVs, cover letters and letters: kind "letter" (no section numbers), the person's own facts only, [ADD] where something is missing.`;
 

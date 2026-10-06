@@ -1,7 +1,7 @@
 import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
-import { makeFile, FILE_ACTIONS, partsKey, sameFormat } from "./file-maker";
+import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat } from "./file-maker";
 import { ReplyFiles } from "./reply-files";
 import { inflight, stoppedRuns } from "./inflight";
 import { wordDocument } from "./docx-document";
@@ -66,7 +66,7 @@ import {turnTimer,type TurnStats} from './turn-timing';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook,telegramInstructions} from '../core/mowr-skills';
 import {cleanAiName,namingPrompt} from '../core/file-naming';
-import {fileRequest,helpText,matchFiles,pickSpace,spaceLabel,telegramCommand,WORKSPACE_SCOPE,type TelegramSpace} from '../core/telegram-commands';
+import {effortName,fileRequest,helpText,matchFiles,modelMenu,MODEL_PICK,pickEffort,pickModel,pickSpace,spaceLabel,telegramCommand,thinkingMenu,THINKING_PICK,WORKSPACE_SCOPE,type TelegramModel,type TelegramSpace} from '../core/telegram-commands';
 import {installCli} from './cli-install';
 import {CodexEngine,daily} from './engines';
 import {distinctNames,fileTool,fileToolsGuide,type LibraryFile} from '../core/file-tools';
@@ -241,7 +241,7 @@ void app.whenReady().then(async () => {
   const claudes=claudeAccounts=new CliAccounts<ClaudeProvider>('claude',vault,{
     make:(owner,id)=>new ClaudeProvider(claudeExecutable,claudeFolder(owner,id)),
     folder:claudeFolder,
-    describe:async(provider,refresh)=>{const s=await provider.status(refresh) as {installed:boolean;connected:boolean;email?:string;plan?:string};return {installed:s.installed,connected:s.connected,email:s.email,plan:s.plan,...(s.connected?provider.usage():{})};},
+    describe:async(provider,refresh)=>{const s=await provider.status(refresh) as {installed:boolean;connected:boolean;email?:string;plan?:string};return {installed:s.installed,connected:s.connected,email:s.email,plan:s.plan,...(s.connected?await provider.readUsage(refresh):{})};},
   });
   /** The active Claude account's provider. */
   const claudeFor=async(owner:string)=>(await claudes.selected(owner)).provider;
@@ -432,6 +432,30 @@ void app.whenReady().then(async () => {
   }
   /** The AI the person last chatted with: Telegram answers with it too. */
   const lastModelKey = (owner: string) => "chat-model-" + owner;
+  /** Every model the person's connected accounts offer (Codex's model/list, Claude Code's handshake, grok models). */
+  async function modelsFor(owner: string): Promise<TelegramModel[]> {
+    const claude = await claudeFor(owner);
+    const [codexModels, claudeList, grok] = await Promise.all([(await selectProvider(owner)).models().catch(() => []), claude.status().then((s) => s.connected ? claude.models() : []).catch(() => []), grokFor(owner).then((g) => g.status()).catch(() => null)]);
+    return [...codexModels, ...claudeList, ...(grok?.connected ? grokModels(grok) : [])];
+  }
+  /** The model and thinking level picked in Telegram (/model, /thinking); without one, Telegram answers with the last used in Mowr. */
+  const telegramModelKey = (owner: string) => "telegram-model-" + owner;
+  async function telegramChoice(owner: string) {
+    const picked = await vault.read<{ model?: string; reasoning?: string }>(telegramModelKey(owner), {});
+    if (picked.model) return { model: picked.model, reasoning: picked.reasoning || undefined, picked: true };
+    const last = await vault.read<{ model?: string; reasoning?: string }>(lastModelKey(owner), {});
+    return { model: last.model, reasoning: last.reasoning, picked: false };
+  }
+  /** Makes a Telegram choice and says what it is now: a model keeps the thinking level when it offers it, a level keeps the model. */
+  async function chooseForTelegram(owner: string, change: { model?: TelegramModel; reasoning?: string }, models: TelegramModel[]) {
+    const now = await telegramChoice(owner);
+    const model = change.model || models.find((m) => m.id === now.model);
+    if (!model) return "Choose a model first with /model.";
+    const keep = change.reasoning !== undefined ? change.reasoning : (model.reasoningEfforts || []).some((e) => e.reasoningEffort === now.reasoning) ? now.reasoning || "" : "";
+    await vault.write(telegramModelKey(owner), { model: model.id, reasoning: keep });
+    void prepareFor(owner, model.id, true);
+    return `Telegram now answers with ${model.name}${keep ? `, thinking ${effortName(keep).toLowerCase()}` : ""}.`;
+  }
   const pendingAttachments = new Map<
     string,
     { resolve: (text: string) => void; reject: () => void }
@@ -449,7 +473,7 @@ void app.whenReady().then(async () => {
    * A Telegram command that Mowr answers itself, without the AI (core/telegram-commands.ts). Returns undefined for a
    * message the AI answers; `scope` in the result moves the bot to another space.
    */
-  async function telegramReply(owner: string, envelope: TelegramEnvelope): Promise<{ text: string; scope?: string; documents?: { name: string; mime: string; bytes: Uint8Array; photo?: boolean }[] } | undefined> {
+  async function telegramReply(owner: string, envelope: TelegramEnvelope): Promise<{ text: string; scope?: string; documents?: { name: string; mime: string; bytes: Uint8Array; photo?: boolean }[]; buttons?: import("../core/telegram-commands").TelegramButton[][] } | undefined> {
     if (/^\/start(?:@\w+)?\s*$/i.test(envelope.text.trim())) return { text: "Mowr is connected. " + helpText() };
     const command = telegramCommand(envelope.text);
     // A file command with a request, or with an attachment to work from, goes to the AI.
@@ -518,11 +542,30 @@ void app.whenReady().then(async () => {
         if (!kept.length) return { text: `Mowr remembers nothing about you or ${here} yet.` };
         return { text: ["Mowr remembers:", ...kept.slice(-30).map((m) => "• " + m.text), "", "Change or forget these in Mowr: Settings → Memory."].join("\n").slice(0, 3900) };
       }
+      case "model": {
+        const models = await modelsFor(owner);
+        const now = await telegramChoice(owner);
+        if (!command.arg) return modelMenu(models, now.model);
+        const picked = pickModel(command.arg, models);
+        if (!picked) return { text: `No model matches “${command.arg.slice(0, 80)}”.`, buttons: modelMenu(models, now.model).buttons };
+        return { text: await chooseForTelegram(owner, { model: picked }, models) };
+      }
+      case "thinking": {
+        const models = await modelsFor(owner);
+        const now = await telegramChoice(owner);
+        const model = models.find((m) => m.id === now.model);
+        if (!command.arg) return thinkingMenu(model, now.reasoning);
+        const level = pickEffort(command.arg, model);
+        if (level === undefined) return { text: `${model ? model.name : "This model"} has no thinking level “${command.arg.slice(0, 40)}”.`, buttons: thinkingMenu(model, now.reasoning).buttons };
+        return { text: await chooseForTelegram(owner, { reasoning: level }, models) };
+      }
       case "status": {
-        const chosen = await vault.read<{ model?: string }>(lastModelKey(owner), {});
+        const chosen = await telegramChoice(owner);
         const history = await vault.read<unknown[]>(historyKey, []);
-        const model = chosen.model ? chosen.model.replace(/^[a-z]+:/i, "").replace(/[-_]/g, " ") : "your default AI";
-        return { text: [`Space: ${here}`, `AI: ${model} (the one you last used in Mowr; change it there)`, `Conversation: ${Math.floor(history.length / 2)} exchanges (/new starts fresh)`, `Linked folders: ${folders.length ? folders.map((f) => basename(f.path)).join(", ") : "none"}`].join("\n") };
+        const listed = chosen.model ? (await modelsFor(owner).catch(() => [])).find((m) => m.id === chosen.model) : undefined;
+        const model = listed?.name || (chosen.model ? chosen.model.replace(/^[a-z]+:/i, "").replace(/[-_]/g, " ") : "your default AI");
+        const thinking = chosen.reasoning ? `, thinking ${effortName(chosen.reasoning).toLowerCase()}` : "";
+        return { text: [`Space: ${here}`, `AI: ${model}${thinking} (${chosen.picked ? "chosen here" : "the one you last used in Mowr"}; /model and /thinking change it)`, `Conversation: ${Math.floor(history.length / 2)} exchanges (/new starts fresh)`, `Linked folders: ${folders.length ? folders.map((f) => basename(f.path)).join(", ") : "none"}`].join("\n") };
       }
     }
     return undefined;
@@ -609,7 +652,7 @@ void app.whenReady().then(async () => {
       let text = "", work = 0;
       const replyFiles = new ReplyFiles(undefined, unwritten);
       await selectProvider(owner);
-      const chosen = await vault.read<{ model?: string; reasoning?: string }>(lastModelKey(owner), {});
+      const chosen = await telegramChoice(owner);
       await answerWith(
         owner,
         id,
@@ -652,6 +695,26 @@ void app.whenReady().then(async () => {
       pendingAttachments.delete(id);
       if (imagePath) await unlink(imagePath).catch(() => {});
     }
+  }, async (owner, _scope, data) => {
+    // A tap on the /model or /thinking picker: the choice is made and the picker shows it ticked.
+    const user = await auth.user();
+    if (user?.id !== owner) return undefined;
+    const models = await modelsFor(owner);
+    if (data.startsWith(MODEL_PICK)) {
+      const model = models.find((m) => m.id === data.slice(MODEL_PICK.length));
+      if (!model) return { ...modelMenu(models, (await telegramChoice(owner)).model), note: "That model is no longer available." };
+      const note = await chooseForTelegram(owner, { model }, models);
+      return { ...modelMenu(models, model.id), text: note + " Send /thinking to choose how long it thinks.", note };
+    }
+    if (data.startsWith(THINKING_PICK)) {
+      const now = await telegramChoice(owner);
+      const model = models.find((m) => m.id === now.model);
+      const level = pickEffort(data.slice(THINKING_PICK.length), model);
+      if (level === undefined) return { ...thinkingMenu(model, now.reasoning), note: "That level is not offered by this model." };
+      const note = await chooseForTelegram(owner, { reasoning: level }, models);
+      return { ...thinkingMenu(model, level), text: note, note };
+    }
+    return undefined;
   });
   // A launch in the tray (--background) has no workspace asking for the session, so the signed-in person's
   // services (Telegram, folder watching, provider sign-ins) start here once the saved session is restored.
@@ -867,7 +930,7 @@ void app.whenReady().then(async () => {
     if (url.pathname === "/api/models") {
       const user = await auth.user();
       // Every list comes from the provider itself (Codex's model/list, Claude Code's model handshake, grok models), so a model added to the person's plan shows up here without a Mowr update.
-      try{if(!user)return Response.json([]);const claude=await claudeFor(user.id);const [codexModels,claudeList,grok]=await Promise.all([(await selectProvider(user.id)).models().catch(()=>[]),claude.status().then(s=>s.connected?claude.models():[]).catch(()=>[]),grokFor(user.id).then(g=>g.status()).catch(()=>null)]);return Response.json([...codexModels,...claudeList,...(grok?.connected?grokModels(grok):[])]);}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
+      try{if(!user)return Response.json([]);return Response.json(await modelsFor(user.id));}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
     }
     if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection") || (request.method === "POST" && url.pathname === "/api/drive/upload")) {
       try {
@@ -1595,19 +1658,24 @@ void app.whenReady().then(async () => {
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
         if (revise && !documents.has(revise)) throw Error(`No file with id "${revise}" in this conversation. Use an id from the files list, or leave out "revise" to make a new file.`);
         if (revise && !sameFormat(action, documents.get(revise)!)) throw Error(`"${documents.get(revise)}" is a .${documents.get(revise)!.split(".").pop()} file: revise it with the action that made it, or leave out "revise" to make a new ${action} file.`);
-        const { revise: _revise, change, action: _action, append, ...rest } = spec || {};
+        const { revise: _revise, change, action: _action, append, patch, ...rest } = spec || {};
         let clean = rest;
         const key = partsKey[action];
-        // A long file is written in parts: "append" adds sections (or slides, or sheets) to the end of the same file.
-        if (append) {
-          if (!revise) throw Error('"append" needs "revise": the id of the file to add to.');
-          if (!key) throw Error('"append" works for pdf, docx, pptx and xlsx files; send the complete file instead.');
+        // A long file is written in parts: "append" adds sections (or slides, or sheets) to the end of the same file, and
+        // "patch" changes only the parts it names, so a fix (one figure's place, one paragraph) never resends the rest.
+        if (append || patch !== undefined) {
+          const verb = append ? "append" : "patch";
+          if (!revise) throw Error(`"${verb}" needs "revise": the id of the file to ${append ? "add to" : "change"}.`);
+          if (!key) throw Error(`"${verb}" works for pdf, docx, pptx and xlsx files; send the complete file instead.`);
           const current = await disk.readFile(user.id, "spec-" + revise);
-          if (!current) throw Error("That file's source is missing, so nothing can be added to it.");
+          if (!current) throw Error(`That file's source is missing, so it cannot be ${append ? "added to" : "changed in parts"}.`);
           const { action: _made, ...base } = JSON.parse(current.toString("utf8"));
-          if (!Array.isArray(rest[key]) || !rest[key].length) throw Error(`"append" needs the new "${key}" to add.`);
-          clean = { ...base, ...Object.fromEntries(Object.entries(rest).filter(([k]) => k !== key)), [key]: [...(base[key] || []), ...rest[key]] };
-          if (key === "sections") {
+          const parts = patch === undefined ? [...(base[key] || [])] : patchParts(base[key] || [], patch, key);
+          if (append && (!Array.isArray(rest[key]) || !rest[key].length)) throw Error(`"append" needs the new "${key}" to add.`);
+          if (!append && rest[key] !== undefined) throw Error(`Send changed ${key} inside "patch" ({"at":N,…}), or the whole file without "patch".`);
+          clean = { ...base, ...Object.fromEntries(Object.entries(rest).filter(([k]) => k !== key)), [key]: append ? [...parts, ...rest[key]] : parts };
+          // Appended parts bring their own citations; a patch that sends "references" replaces the list.
+          if (append && key === "sections") {
             clean.references = [...new Set([...(base.references || []), ...(rest.references || [])])];
             if (!clean.references.length) delete clean.references;
           }
@@ -1732,7 +1800,7 @@ void app.whenReady().then(async () => {
         },
         typeset: typesetBlock,
       };
-      const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF") => (await windowTask("render", { bytes, pages, name })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
+      const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
         const read = fileTool(library, tool);
         if (read) return read;

@@ -49,3 +49,31 @@ test('/files and /get match every word of the name, an exact name first', () => 
   assert.deepEqual(matchFiles(files, 'Lecture 3.pdf').map((f) => f.path), ['Lecture 3.pdf']);
   assert.deepEqual(matchFiles(files, 'nodal').map((f) => f.path), ['Lectures/Lecture 3 - Nodal.pdf']);
 });
+
+test("/model and /thinking pick from the models the accounts offer, by tap, number, name or level", async () => {
+  const { pickModel, pickEffort, modelMenu, thinkingMenu, MODEL_PICK, THINKING_PICK, telegramCommand } = await import("../core/telegram-commands.ts");
+  const models = [
+    { id: "gpt-5.5", name: "GPT-5.5", reasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "medium" }, { reasoningEffort: "high" }, { reasoningEffort: "xhigh" }], defaultReasoningEffort: "medium" },
+    { id: "claude:opus", name: "Claude Opus 5.5", reasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }], defaultReasoningEffort: "high" },
+    { id: "claude:haiku", name: "Claude Haiku 4.5", reasoningEfforts: [] },
+  ];
+  assert.deepEqual(telegramCommand("/model opus"), { name: "model", arg: "opus" });
+  assert.deepEqual(telegramCommand("/thinking"), { name: "thinking", arg: "" });
+  assert.equal(pickModel("2", models)?.id, "claude:opus");
+  assert.equal(pickModel("opus", models)?.id, "claude:opus");
+  assert.equal(pickModel("gpt-5.5", models)?.id, "gpt-5.5");
+  assert.equal(pickModel("gemini", models), undefined);
+  assert.equal(pickEffort("extra high", models[0]), "xhigh");
+  assert.equal(pickEffort("High", models[1]), "high");
+  assert.equal(pickEffort("medium", models[1]), undefined, "a level the model does not offer");
+  assert.equal(pickEffort("default", models[1]), "");
+  const menu = modelMenu(models, "claude:opus");
+  assert.match(menu.text, /2\. Claude Opus 5\.5 ← current/);
+  assert.deepEqual(menu.buttons.flat().map((b) => b.data), models.map((m) => MODEL_PICK + m.id));
+  assert.ok(menu.buttons.flat().some((b) => b.text === "✓ Claude Opus 5.5"));
+  const levels = thinkingMenu(models[0], "high");
+  assert.deepEqual(levels.buttons.flat().map((b) => b.data), [THINKING_PICK + "default", THINKING_PICK + "low", THINKING_PICK + "medium", THINKING_PICK + "high", THINKING_PICK + "xhigh"]);
+  assert.ok(levels.buttons.flat().some((b) => b.text === "✓ High"));
+  assert.equal(thinkingMenu(models[2], undefined).buttons.length, 0, "a model without levels has nothing to pick");
+  assert.match(modelMenu([], undefined).text, /Connect ChatGPT, Claude or Grok/);
+});

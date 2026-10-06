@@ -10,7 +10,8 @@ async function packageFiles(blob:Blob,all=false){
 function xml(bytes:Uint8Array){const doc=new DOMParser().parseFromString(strFromU8(bytes),'application/xml');if(doc.querySelector('parsererror')||doc.doctype)throw Error('This Office document contains unsupported XML.');return doc;}
 const elements=(node:Element|Document,name:string)=>Array.from(node.getElementsByTagNameNS('*',name));
 const value=(node:Element|Document,name:string)=>elements(node,name).map(n=>n.textContent||'').join('');
-export async function readOffice(blob:Blob):Promise<OfficeBlock[]>{
+/** `reading`: only to read the text (no edits), so a long deck or document is read whole instead of refused. */
+export async function readOffice(blob:Blob,reading=false):Promise<OfficeBlock[]>{
  const files=await packageFiles(blob);
  const shared=files['xl/sharedStrings.xml']?elements(xml(files['xl/sharedStrings.xml']),'si').map(n=>value(n,'t')):[];
  const blocks:OfficeBlock[]=[];
@@ -24,7 +25,7 @@ export async function readOffice(blob:Blob):Promise<OfficeBlock[]>{
    blocks.push({part,index,text,label:section+(sheet?' · '+node.getAttribute('r'):' · Paragraph '+(index+1)),editable:sheet?elements(node,'f').length===0:elements(node,'t').length>0});
   });
  }
- if(blocks.length>5000||blocks.reduce((n,b)=>n+b.text.length,0)>200000)throw Error('Choose a shorter document excerpt.');
+ if(!reading&&(blocks.length>5000||blocks.reduce((n,b)=>n+b.text.length,0)>200000))throw Error('Choose a shorter document excerpt.');
  if(!blocks.some(b=>b.text.trim()))throw Error('This Office document has no readable text.');
  return blocks;
 }
@@ -32,7 +33,17 @@ export function applyOfficePatches(blocks:OfficeBlock[],patches:OfficePatch[]){
  const map=new Map(patches.map(p=>[p.part+':'+p.index,p.text]));
  return blocks.map(block=>({...block,text:map.get(block.part+':'+block.index)??block.text}));
 }
-export async function officeText(blob:Blob,_name:string){return(await readOffice(blob)).map(b=>b.text).join('\n');}
+/** A file's text to read. Each slide of a deck starts with a "[name, page N]" marker, as PDF pages do, so the model
+ *  can read a slide by its number. */
+export async function officeText(blob:Blob,name:string){
+ let last='';const lines:string[]=[];
+ for(const b of await readOffice(blob,true)){
+  const slide=b.part.match(/^ppt\/slides\/slide(\d+)\.xml$/)?.[1];
+  if(slide&&b.part!==last){lines.push(`[${name}, page ${slide}]`);last=b.part;}
+  lines.push(b.text);
+ }
+ return lines.join('\n');
+}
 export async function exportOffice(blob:Blob,patches:OfficePatch[]){
  const files=await packageFiles(blob,true),docs=new Map<string,Document>();
  if(patches.length>500||patches.reduce((n,p)=>n+p.text.length,0)>200000)throw Error('Too many document edits.');

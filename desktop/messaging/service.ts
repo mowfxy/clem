@@ -5,12 +5,15 @@ import {
   pairing,
   verifyPairing,
   telegramEnvelope,
+  telegramTap,
   type Pairing,
   type TelegramRoute,
   type TelegramEnvelope,
 } from "./telegram";
 import type { Vault } from "../vault";
-import { TELEGRAM_COMMANDS } from "../../core/telegram-commands.ts";
+import { TELEGRAM_COMMANDS, type TelegramButton } from "../../core/telegram-commands.ts";
+/** What a tap on a picker button changes it to: the message's new text and buttons, and a short note for the tap. */
+export type TelegramTapReply = { text: string; buttons?: TelegramButton[][]; note?: string };
 type Config = {
   token: string;
   offset: number;
@@ -37,7 +40,11 @@ export class TelegramService {
       /** Answer from this space from now on (/space). */
       scope?: string;
       documents?: { name: string; mime: string; bytes: Uint8Array; photo?: boolean }[];
+      /** Tap buttons under the reply (the /model and /thinking pickers). */
+      buttons?: TelegramButton[][];
     }>,
+    /** A tap on one of those buttons, from the paired chat (its space's scope and the button's data). */
+    private tapped: (owner: string, scope: string, data: string) => Promise<TelegramTapReply | undefined> = async () => undefined,
   ) {}
   stop() {
     this.controller?.abort();
@@ -137,6 +144,19 @@ export class TelegramService {
             );
             continue;
           }
+          // A tap on a picker: the choice is made and the picker updated in place; nothing goes to the AI.
+          if (update.callback_query) {
+            const tap = telegramTap(update, config.routes);
+            if (tap) {
+              const reply = await this.tapped(owner, tap.scope, tap.data).catch(() => undefined);
+              await client.answerTap(tap.id, reply?.note);
+              if (reply) await client.editText(tap.chatId, tap.messageId, reply.text, reply.buttons);
+            }
+            config.offset = update.update_id + 1;
+            signal.throwIfAborted();
+            await this.vault.write(key, config);
+            continue;
+          }
           let envelope;
           try {
             envelope = telegramEnvelope(update, config.routes);
@@ -165,6 +185,8 @@ export class TelegramService {
                 await client.sendText(
                   envelope.chatId,
                   result.text.slice(i, i + 4000),
+                  // A picker's buttons go under the last part of its message.
+                  i + 4000 >= result.text.length ? result.buttons : undefined,
                 );
               // One file failing (a photo Telegram refuses, a dropped connection) does not stop the others; the person is told which.
               const unsent: string[] = [];

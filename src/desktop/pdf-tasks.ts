@@ -180,7 +180,7 @@ function render(args: any): Promise<TaskResult> {
     for (const n of pages) {
       const page = await pdf.getPage(n);
       try {
-        const base = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale: Math.min(2.5, 1600 / Math.max(base.width, base.height)) });
+        const base = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale: Math.min(2.5, Math.min(1600, Math.max(600, Number(args.size) || 1600)) / Math.max(base.width, base.height)) });
         const canvas = kit.create(Math.round(viewport.width), Math.round(viewport.height)), ctx = canvas.getContext("2d");
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);

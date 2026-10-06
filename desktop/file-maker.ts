@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { illustratedPdf } from "./illustrated-pdf.ts";
 import { wordDocument } from "./docx-document.ts";
 import { powerpointDeck } from "./pptx-deck.ts";
@@ -6,13 +7,13 @@ import { kinetraCall } from "./kinetra-runtime.ts";
 import { rasterizer } from "./rasterize.ts";
 import { unsafeSvg } from "./svg-safety.ts";
 import { documentFigures, figureCheck, figurePictures, FIGURES_PER_RESULT, type DrawnFigure } from "./figure-review.ts";
-import { resolveAssets, figurePages, type ReadAsset, type CropSpot } from "./pdf-assets.ts";
+import { resolveAssets, figurePages, placementKey, type ReadAsset, type CropSpot } from "./pdf-assets.ts";
 import { withDesign } from "./pdf-document.ts";
 import { editPdf, type EditHelpers } from "./pdf-edit-tools.ts";
 
 /** The tool actions that make a file (desktop/file-guides.ts). Each one also revises a file it made earlier ("revise": id). */
 import { textFormats } from "./file-guides.ts";
-export { FILE_ACTIONS, partsKey, sameFormat } from "./file-guides.ts";
+export { FILE_ACTIONS, partsKey, patchParts, sameFormat } from "./file-guides.ts";
 export const MIME: Record<string, string> = {
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -29,6 +30,8 @@ const safeName = (name: string) => name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "").re
 /** `previews`: pictures of the file (a deck's slides, the figures drawn in it) for the model to check before it answers (PNG or JPEG). */
 /** `spec`: what to keep as the file's source when it differs from the request (an edit list with its files resolved). */
 export type Made = { bytes: Uint8Array; name: string; type: string; info?: Record<string, unknown>; previews?: { name: string; image: Uint8Array }[]; spec?: any };
+/** How large a page picture for the placement check is, in pixels on its long side. */
+const PAGE_PREVIEW_SIZE = 1280;
 /** Pictures of the changed pages of an edited PDF, at most this many per result. */
 const EDIT_PREVIEWS = 6;
 
@@ -40,7 +43,7 @@ function across(s: CropSpot) {
 /** What the model is asked to judge on the pages its figures printed on, with where each one landed. */
 function placementCheck(spots: CropSpot[], shown: number[]) {
   const where = spots.slice(0, 12).map((s) => `Figure ${s.figure}${s.id === "figure" ? "" : ` (${s.id})`} on page ${s.page}, ${Math.round(s.rect[2] - s.rect[0])} × ${Math.round(s.rect[3] - s.rect[1])} pt, ${across(s)}`).join("; ");
-  return `Pictures of page${shown.length === 1 ? "" : "s"} ${shown.join(", ")}, where the figures printed, are attached (${where}). Judge each figure's place as a book designer would, on the page as a whole, and change what does not look right: does it sit well with the text around it (a small figure beside its paragraph with the text wrapping round it, "align":"wrap-right" or "wrap-left"; a large or detailed one across the column; flush "left" or "right" where that suits the page better; "center" centres the drawing as the eye sees it, "box" its picture box); is it the right size next to the text, its labels about the size of the body text ("width": 0.2–1 of the column); is it on the same page as, or right after, the paragraph that discusses it (a figure is placed after its section's text, or before it when beside the text: give it to a section without a heading that splits the text where it belongs); has it been pushed to the next page, leaving an empty gap (make it smaller, put it beside the text, or move it); is its crop clean (nothing from around the original, no old caption or number). Revise the file until every page looks designed.`;
+  return `Pictures of page${shown.length === 1 ? "" : "s"} ${shown.join(", ")}, where the figures printed, are attached (${where}). Judge each figure's place as a book designer would, on the page as a whole, and change what does not look right: does it sit well with the text around it (a small figure beside its paragraph with the text wrapping round it, "align":"wrap-right" or "wrap-left"; a large or detailed one across the column; flush "left" or "right" where that suits the page better; "center" centres the drawing as the eye sees it, "box" its picture box); is it the right size next to the text, its labels about the size of the body text ("width": 0.2–1 of the column); is it on the same page as, or right after, the paragraph that discusses it (a figure is placed after its section's text, or before it when beside the text: give it to a section without a heading that splits the text where it belongs); has it been pushed to the next page, leaving an empty gap (make it smaller, put it beside the text, or move it); is its crop clean (nothing from around the original, no old caption or number). Fix what does not look right with "revise" and "patch" on just the sections concerned (their figure's "align" or "width", or where the text splits), until every page looks designed; a page that already looks right needs no change.`;
 }
 
 /** Pictures of the figures the model has not seen yet in this answer, and the note asking it to check them against their source. */
@@ -58,6 +61,14 @@ async function withFigures(made: Made, figures: DrawnFigure[], seen: Set<string>
   }
 }
 
+/** Whether this picture is new to the model in this answer (and marks it seen): the same picture is never sent twice. */
+function fresh(seen: Set<string>, kind: string, image: Uint8Array) {
+  const key = kind + ":" + createHash("sha256").update(image).digest("hex");
+  if (seen.has(key)) return false;
+  seen.add(key);
+  return true;
+}
+
 /** The file name for a request: its own name or title, with the extension of what it is. */
 export function fileName(action: string, spec: any, fallback = "Mowr file") {
   if (action === "file" || action === "image") {
@@ -72,7 +83,7 @@ export function fileName(action: string, spec: any, fallback = "Mowr file") {
  *  `preview`: also return pictures of the result for the model to look at (decks: contact sheets of the slides; pdf,
  *  docx and pptx: the figures drawn in it that are not in `seen`, the figures already shown in this answer).
  *  `assets` reads the crops that pdf, docx and pptx figures may name ({"asset":"crop-…"}, desktop/pdf-assets.ts). */
-export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>(), assets, edit, render }: { preview?: boolean; seen?: Set<string>; assets?: ReadAsset; edit?: EditHelpers; render?: (bytes: Uint8Array, pages: number[], name?: string) => Promise<{ name: string; image: Uint8Array }[]> } = {}): Promise<Made> {
+export async function makeFile(action: string, spec: any, { preview = false, seen = new Set<string>(), assets, edit, render }: { preview?: boolean; seen?: Set<string>; assets?: ReadAsset; edit?: EditHelpers; render?: (bytes: Uint8Array, pages: number[], name?: string, size?: number) => Promise<{ name: string; image: Uint8Array }[]> } = {}): Promise<Made> {
   // A document's design is worked out from what it is about when nobody described one (desktop/pdf-design.ts) and
   // kept with the file, so every revision and every appended part looks the same. A malformed design is left for the
   // document maker to report.
@@ -99,10 +110,21 @@ export async function makeFile(action: string, spec: any, { preview = false, see
         made.info = { design: { font: designed.font, headingFont: designed.headingFont, ...design }, designNote: 'Worked out for this document from its subject, kind and length where not given, and kept with the file. Change any part with "font", "headingFont" or "design" only when the person asks for a different look.' };
       }
       // The pages the figures printed on, so the model sees how each sits in the document, not only the figure itself.
+      // Pictures of a figure's page go to the model when the figure is new in this answer or has moved (another page,
+      // size or side), not again on every append: a long document's parts used to resend the same pages, and every
+      // later step read them all again. Text reflowing by a line above a figure does not count as a move.
       if (preview && render && spots.length) {
-        const shown = figurePages(spots);
-        const pictures = await render(made.bytes, shown, made.name).catch(() => []);
-        if (pictures.length) { made.previews = [...(made.previews || []), ...pictures]; made.info = { ...made.info, placementCheck: placementCheck(spots, shown) }; }
+        const moved = spots.filter((s) => !seen.has(placementKey(s)));
+        if (moved.length) {
+          const shown = figurePages(moved);
+          // 1280 px on the long side: what the models see of a page anyway (Claude scales pictures to about 1.15 megapixels).
+          const pages = await render(made.bytes, shown, made.name, PAGE_PREVIEW_SIZE).catch(() => []);
+          if (pages.length) {
+            for (const s of moved) seen.add(placementKey(s));
+            made.previews = [...(made.previews || []), ...pages];
+            made.info = { ...made.info, placementCheck: placementCheck(moved, shown) };
+          }
+        } else made.info = { ...made.info, placementCheck: "Every figure sits where the page pictures already attached in this answer showed it (same page, size and side), so they are not attached again." };
       }
       return preview ? withFigures(made, documentFigures(spec, drawn), seen, FIGURES_PER_RESULT) : made;
     }
@@ -110,9 +132,11 @@ export async function makeFile(action: string, spec: any, { preview = false, see
       const deck = await powerpointDeck(spec, { preview });
       const made: Made = {
         bytes: deck.bytes, name: fileName("pptx", spec), type: MIME.pptx,
-        info: { slides: deck.slides, design: deck.design, ...(deck.review.length ? { review: deck.review, next: "Fix what matters in the review with a revise before answering." } : { review: "The slides were drawn, measured and checked: nothing to fix." }) },
-        previews: deck.sheets.map((s) => ({ name: `${fileName("pptx", spec)} — ${s.name}`, image: s.jpeg })),
+        info: { slides: deck.slides, design: deck.design, ...(deck.review.length ? { review: deck.review, next: "Fix what matters in the review with a revise (\"patch\" for the slides concerned) before answering." } : { review: "The slides were drawn, measured and checked: nothing to fix." }) },
+        // A contact sheet the model already saw in this answer, unchanged, is not sent again.
+        previews: deck.sheets.filter((s) => !preview || fresh(seen, "sheet", s.jpeg)).map((s) => ({ name: `${fileName("pptx", spec)} — ${s.name}`, image: s.jpeg })),
       };
+      if (preview && deck.sheets.length && !made.previews!.length) made.info = { ...made.info, sheets: "Every slide looks exactly as in the contact sheets already attached in this answer." };
       // The contact sheets show every slide small; the figures come close up as well, within the same picture budget.
       return preview ? withFigures(made, deck.figures, seen, Math.max(2, FIGURES_PER_RESULT + 2 - deck.sheets.length)) : made;
     }

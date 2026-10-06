@@ -1,5 +1,5 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import {mkdir,readdir,rm,writeFile} from 'node:fs/promises';
+import {mkdir,readdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath,signInWindow} from './cli-install.ts';
@@ -51,6 +51,21 @@ export function parseRateLimit(event:any):ClaudeLimit|null{
   const resets=Number(info?.resetsAt??info?.resets_at);
   return {type,status:typeof info?.status==='string'?info.status:undefined,utilization,resetsAt:Number.isFinite(resets)&&resets>0?(resets>1e12?Math.round(resets/1000):resets):undefined};
 }
+/**
+ * The plan windows from Claude's own usage endpoint (what Claude Code's /usage shows): `five_hour` and `seven_day`,
+ * each with `utilization` in percent and `resets_at` as an ISO time. Kept as fractions, like Claude Code's events.
+ */
+export function parsePlanUsage(body:any):ClaudeLimit[]{
+  const out:ClaudeLimit[]=[];
+  for(const type of ['five_hour','seven_day']){
+    const window=body?.[type];
+    const percent=Number(window?.utilization);
+    if(!window||!Number.isFinite(percent))continue;
+    const resets=Date.parse(String(window.resets_at||''));
+    out.push({type,status:percent>=100?'rejected':'allowed',utilization:Math.max(0,Math.min(100,percent))/100,resetsAt:Number.isFinite(resets)?Math.round(resets/1000):undefined});
+  }
+  return out;
+}
 /** Claude's plan windows in the same shape as ChatGPT's, so both show and switch the same way. Utilization is a
  *  fraction (0–1) when Claude Code reports it; a window it refused is shown as used up until it resets. */
 export function claudeUsage(limits:ClaudeLimit[],now=Date.now()/1000):UsageSnapshot|undefined{
@@ -58,7 +73,8 @@ export function claudeUsage(limits:ClaudeLimit[],now=Date.now()/1000):UsageSnaps
   const window=(limit:ClaudeLimit|undefined,minutes:number):UsageWindow|null=>{
     if(!limit)return null;
     const expired=!!limit.resetsAt&&limit.resetsAt<=now;
-    const used=expired?0:typeof limit.utilization==='number'?Math.max(0,Math.min(100,limit.utilization<=1?limit.utilization*100:limit.utilization)):limit.status==='rejected'?100:null;
+    // Utilization is a fraction (Claude Code's events and parsePlanUsage both give one), so 1 is a full window, not 1%.
+    const used=expired?0:typeof limit.utilization==='number'?Math.max(0,Math.min(100,limit.utilization*100)):limit.status==='rejected'?100:null;
     return {usedPercent:used,windowDurationMins:minutes,resetsAt:expired?null:limit.resetsAt??null};
   };
   const short=limits.find(l=>/five|5h|hour|session/i.test(l.type));
@@ -171,6 +187,39 @@ export class ClaudeProvider {
   private limits=new Map<string,ClaudeLimit>();
   private limitsAt=0;
   usage(){const usage=claudeUsage([...this.limits.values()]);return usage?{usage,checkedAt:this.limitsAt}:{};}
+  /** Claude Code's events usually leave out how much is used (they carry it only near a limit): a window's last known
+   *  share is kept while the window is the same, so an event without it does not blank the meter. */
+  private noteLimit(limit:ClaudeLimit){
+    const before=this.limits.get(limit.type);
+    const same=before&&(!limit.resetsAt||!before.resetsAt||limit.resetsAt===before.resetsAt);
+    this.limits.set(limit.type,limit.utilization===undefined&&same&&before.utilization!==undefined?{...limit,utilization:before.utilization,resetsAt:limit.resetsAt??before.resetsAt}:limit);
+    this.limitsAt=Date.now();
+  }
+  private planRead:Promise<void>|null=null;
+  private planAt=0;
+  /**
+   * Reads how much of the plan's session and weekly windows is used from Claude's usage endpoint, with this account's
+   * own sign-in (the one Claude Code keeps in its folder), at most once a minute unless `force`. An expired sign-in is
+   * left for Claude Code to renew; the windows Claude Code reported with its answers are shown meanwhile.
+   */
+  async readUsage(force=false){
+    if(!force&&Date.now()-this.planAt<60_000)return this.usage();
+    this.planRead??=(async()=>{
+      try{
+        const saved=JSON.parse(await readFile(join(this.root,'.credentials.json'),'utf8'))?.claudeAiOauth;
+        const token=typeof saved?.accessToken==='string'?saved.accessToken:'';
+        if(!token||Number(saved.expiresAt)&&Number(saved.expiresAt)<Date.now()+30_000)return;
+        const response=await fetch('https://api.anthropic.com/api/oauth/usage',{headers:{Authorization:'Bearer '+token,'anthropic-beta':'oauth-2025-04-20','Content-Type':'application/json'},signal:AbortSignal.timeout(10_000)});
+        if(!response.ok)return;
+        const windows=parsePlanUsage(await response.json());
+        if(!windows.length)return;
+        for(const limit of windows)this.limits.set(limit.type,limit);
+        this.limitsAt=Date.now();this.planAt=Date.now();
+      }catch{}
+    })().finally(()=>{this.planRead=null;});
+    await this.planRead;
+    return this.usage();
+  }
   /** Whether a request is running on this account (an account is never switched or removed mid-answer). */
   get busy(){return this.active.size>0;}
   private configured:string;
@@ -322,7 +371,7 @@ export class ClaudeProvider {
           if(event.type==='result'){result=event;return;}
           live(event);
           const limit=parseRateLimit(event);
-          if(limit){this.limits.set(limit.type,limit);this.limitsAt=Date.now();}
+          if(limit)this.noteLimit(limit);
           const status=claudeStatus(event);
           if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
         };
@@ -355,7 +404,7 @@ export class ClaudeProvider {
       // Nothing ran: the same step again, with the rules in the message instead.
       if(error instanceof NoSystemFile)return this.run(id,prompt,model,effort,emit,images,session,native,{system});
       throw error;
-    }finally{this.active.delete(id);endpoint?.close();this.recheck();await removeFiles();}
+    }finally{this.active.delete(id);endpoint?.close();this.recheck();void this.readUsage(true);await removeFiles();}
   }
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk. */
   async endSession(sessionId:string){
@@ -368,7 +417,7 @@ export class ClaudeProvider {
   }
   /** Signs this Claude Code out (its own command), so the account's sign-in is cleared from this PC. */
   async logout(){
-    this.statusCache=null;this.limits.clear();
+    this.statusCache=null;this.limits.clear();this.planAt=0;
     const child=await this.start(['auth','logout']).catch(()=>null);
     if(!child)return;
     await new Promise<void>(resolve=>{const timer=setTimeout(()=>{child.kill();resolve();},20000);child.stdout.resume();child.stderr.resume();child.on('error',()=>{clearTimeout(timer);resolve();});child.on('close',()=>{clearTimeout(timer);resolve();});child.stdin.end();});
