@@ -71,14 +71,33 @@ const effortNames:Record<string,string>={low:'Low',medium:'Medium',high:'High',x
 const levels=(names:string[])=>names.map(reasoningEffort=>({reasoningEffort,description:effortNames[reasoningEffort]||reasoningEffort}));
 /** Used only until Claude Code has said which models the person's plan has (or when it cannot say). */
 export const claudeModels:ClaudeModel[] = [
-  {id:'claude:sonnet',name:'Claude Sonnet',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Sonnet on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'medium'},
-  {id:'claude:opus',name:'Claude Opus',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'high'},
-  {id:'claude:haiku',name:'Claude Haiku',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
+  {id:'claude:sonnet',name:'Claude Sonnet 5.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Sonnet on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'medium'},
+  {id:'claude:opus',name:'Claude Opus 5.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'high'},
+  {id:'claude:haiku',name:'Claude Haiku 4.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
 ];
 /** A failure that looks like a lapsed sign-in: the next request checks the sign-in again instead of trusting the last check. */
 const signedOut=/not logged in|log ?in|unauthori[sz]ed|\b401\b|authenticat|oauth token|invalid api key/i;
 /** Model names Mowr passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
 const MODEL_NAME=/^[A-Za-z0-9._-]{1,80}(?:\[[a-z0-9]{1,8}\])?$/;
+
+/**
+ * Claude Code names its models by family only ("Opus", "Fable"); the version sits at the start of the description
+ * ("Opus 5.5 · Best for…") and in `resolvedModel` (claude-opus-5-5). Mowr shows both, as "Claude Opus 5.5",
+ * keeping a qualifier such as "(1M context)".
+ */
+export function claudeModelName(m:any,value:string){
+  const shown=String(m?.displayName||value).replace(/\s*\((?:recommended|default)\)\s*$/i,'').trim().slice(0,80)||value;
+  const tail=shown.match(/\s*\([^)]*\)\s*$/)?.[0]||'';
+  const family=shown.slice(0,shown.length-tail.length).replace(/^claude\s+/i,'').trim();
+  let description=String(m?.description||'').trim();
+  let version='';
+  const lead=description.match(/^([A-Za-z]+)\s+(\d+(?:\.\d+)*)\s*(?:·|—|-|$)\s*/);
+  const resolved=String(m?.resolvedModel||value).match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(?:\[|$)/i);
+  if(lead&&lead[1].toLowerCase()===family.toLowerCase()){version=lead[2];description=description.slice(lead[0].length);}
+  else if(resolved&&resolved[1].toLowerCase()===family.toLowerCase())version=resolved[2]+(resolved[3]?'.'+resolved[3]:'');
+  const base=/\d/.test(family)?family:[family,version].filter(Boolean).join(' ');
+  return {name:['Claude',base,tail.trim()].filter(Boolean).join(' ').slice(0,80),description:(description||'On your Claude subscription').slice(0,200)};
+}
 
 /**
  * The models Claude Code offers this account, from its own startup handshake (the list its model picker shows),
@@ -94,9 +113,9 @@ export function parseClaudeModels(list:any):ClaudeModel[]{
     const listed=(Array.isArray(m.supportedEffortLevels)?m.supportedEffortLevels:[]).filter((e:any)=>typeof e==='string'&&/^[a-z]{2,12}$/.test(e));
     // A model that supports effort without naming its levels gets Claude Code's standard three, so Claude has a thinking picker like ChatGPT.
     const efforts=m.supportsEffort===false||/haiku/i.test(value)&&!listed.length?[]:listed.length?listed:['low','medium','high'];
-    const name=String(m.displayName||value).replace(/\s*\((?:recommended|default)\)\s*$/i,'').trim().slice(0,80)||value;
-    models.push({id:'claude:'+value,name:/^claude\b/i.test(name)?name:'Claude '+name,provider:'Anthropic',connected:true,context:/\[1m\]$/i.test(value)?1_000_000:32000,specialties:[],tools:[],
-      description:String(m.description||'On your Claude subscription').slice(0,200),reasoningEfforts:levels(efforts),defaultReasoningEffort:efforts.includes('high')&&/opus/i.test(value)?'high':efforts.includes('medium')?'medium':efforts[0]||''});
+    const {name,description}=claudeModelName(m,value);
+    models.push({id:'claude:'+value,name,provider:'Anthropic',connected:true,context:/\[1m\]$/i.test(value)?1_000_000:32000,specialties:[],tools:[],
+      description,reasoningEfforts:levels(efforts),defaultReasoningEffort:efforts.includes('high')&&/opus/i.test(value)?'high':efforts.includes('medium')?'medium':efforts[0]||''});
   }
   return models;
 }
