@@ -1218,6 +1218,7 @@ void app.whenReady().then(async () => {
     if (request.action === "driveUpdate") return driveLive.update(request.id,request.type,request.data);
     if (request.action === "driveRename") return driveLive.rename(request.id,request.name);
     if (request.action === "driveTrash") return driveLive.trash(request.id);
+    if (request.action === "driveMove") return driveLive.move(request.root,request.id,request.to);
     if (request.action === "driveFolder") return driveLive.folder(request.folder,request.query||"",request.refresh);
     if (request.action === "driveMediaUrl") return {url:await driveMedia.url(request.id)};
     if (request.action === "driveText") return {text:await driveLive.text(request.id)};

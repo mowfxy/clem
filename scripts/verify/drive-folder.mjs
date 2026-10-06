@@ -37,6 +37,7 @@ const driveScript = () => {
         case "driveUpload": { await new Promise((ok) => setTimeout(ok, 1500)); const id = "drive-new-" + window.driveCalls.length.toString().padStart(6, "0"); const parent = items.find((i) => i.id === r.folder); items.push({ id, name: r.name, mimeType: r.type, size: r.data.length, modified: new Date().toISOString(), ...(parent ? { path: parent.name } : {}) }); return { id, modifiedTime: new Date().toISOString() }; }
         case "driveUpdate": { await new Promise((ok) => setTimeout(ok, 800)); const f = items.find((i) => i.id === r.id); f.modified = new Date().toISOString(); return { id: r.id, modifiedTime: f.modified }; }
         case "driveRename": { const f = items.find((i) => i.id === r.id); f.name = r.name; f.modified = new Date().toISOString(); return { id: r.id, name: r.name, modifiedTime: f.modified }; }
+        case "driveMove": { await new Promise((ok) => setTimeout(ok, 300)); const full = (i) => (i.path ? i.path + " / " : "") + i.name; const m = items.find((i) => i.id === r.id), to = items.find((i) => i.id === r.to); const own = full(m), dest = to ? full(to) : ""; for (const i of items) if (m.folder && i.path && (i.path === own || i.path.startsWith(own + " / "))) i.path = (dest ? dest + " / " : "") + m.name + i.path.slice(own.length); if (dest) m.path = dest; else delete m.path; return { ok: true }; }
         case "driveTrash": items.splice(items.findIndex((i) => i.id === r.id), 1); return { ok: true };
         default: return {};
       }
@@ -176,6 +177,35 @@ try {
   await row("Osmosis lab handout.pdf").locator(".gd-sync.is-synced").waitFor({ timeout: 8000 });
   await page.screenshot({ path: "artifacts/drive-drag-from-pc.png" });
 
+  // Drag to move inside Drive: a file onto a folder card, a folder into another folder, and back up by the path.
+  await page.setViewportSize({ width: 1440, height: 1500 });
+  const card = (name) => drive.locator(".sp-folder", { hasText: name });
+  await row("Lecture notes").dragTo(card("Past papers"));
+  await page.waitForFunction(() => window.driveCalls.some((c) => c.action === "driveMove"));
+  assert.deepEqual((await calls("driveMove")).map((c) => [c.id, c.to, c.root]), [["drive-doc-000001", "drive-sub-000001", DRIVE.folderId]]);
+  await page.waitForFunction(() => !document.querySelector(".gd-space > .sp-file-list")?.textContent?.includes("Lecture notes"), null, { timeout: 3000 });
+  await card("AI Notes").dragTo(card("Personal Notes"));
+  await page.waitForFunction(() => window.driveCalls.filter((c) => c.action === "driveMove").length === 2);
+  assert.deepEqual((await calls("driveMove"))[1].to, "drive-sub-000004");
+  await card("AI Notes").waitFor({ state: "detached", timeout: 3000 });
+  await card("Personal Notes").click();
+  await card("AI Notes").waitFor({ timeout: 3000 });
+  await page.screenshot({ path: "artifacts/drive-moved-into-folder.png" });
+  await card("AI Notes").dragTo(drive.locator(".gd-trail .gd-crumb").first());
+  await page.waitForFunction(() => window.driveCalls.filter((c) => c.action === "driveMove").length === 3);
+  assert.equal((await calls("driveMove"))[2].to, DRIVE.folderId, "dropped on the path, back to the top");
+  await drive.locator(".gd-trail .gd-crumb").first().click();
+  await card("AI Notes").waitFor({ timeout: 3000 });
+  await card("Past papers").click();
+  await row("Lecture notes").waitFor({ timeout: 3000 });
+  await drive.locator(".gd-trail .gd-crumb").first().click();
+  // A file from On this PC dropped on a Drive folder card goes into that folder (and stays on this PC).
+  const uploadsBefore = (await calls("driveUpload")).length;
+  await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Biology 101 syllabus.txt" }).dragTo(card("Personal Notes"));
+  await page.waitForFunction((n) => window.driveCalls.filter((c) => c.action === "driveUpload").length === n + 1, uploadsBefore, { timeout: 5000 });
+  assert.equal((await calls("driveUpload"))[uploadsBefore].folder, "drive-sub-000004");
+  await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Biology 101 syllabus.txt" }).waitFor();
+
   // "Add files" under On this PC keeps a file here only: named like any added file, listed under On this PC, never sent to Drive.
   const local = page.locator(".sp-local-head");
   assert.equal(await page.getByRole("menuitem", { name: "Upload to this PC" }).count(), 0);
@@ -183,7 +213,7 @@ try {
   await chooser.setFiles({ name: "Lec05.txt", mimeType: "text/plain", buffer: Buffer.from("Lecture 5: natural selection.") });
   await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Lecture 5.txt" }).waitFor({ timeout: 8000 });
   await page.waitForTimeout(1500);
-  assert.equal((await calls("driveUpload")).length, 3, "a file added on this PC is not uploaded to Drive");
+  assert.equal((await calls("driveUpload")).length, 4, "a file added on this PC is not uploaded to Drive");
   assert.equal(await drive.locator(".sp-file", { hasText: "Lecture 5.txt" }).count(), 0, "not listed in the Drive folder");
   // Its edits approved later stay local too, even with "Save Mowr's files" on.
   await saved(page);
@@ -197,7 +227,7 @@ try {
   await page.screenshot({ path: "artifacts/drive-on-this-pc.png" });
 
   assert.deepEqual(errors, []);
-  console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits, drag from On this PC, local-only Add files all pass.");
+  console.log("Drive folder: listed like local files, drops sync with ring then check, sources, rename, approval-gated edits, drag from On this PC, drag to move inside Drive, local-only Add files all pass.");
 } catch (e) { await page.screenshot({ path: "artifacts/drive-folder-failure.png" }).catch(() => {}); throw e; } finally {
   await close();
   await browser.close();

@@ -68,6 +68,8 @@ export async function updateInDrive(id: string, file: Blob) {
 export const renameInDrive = (id: string, name: string) => desktop!.invoke({ action: "driveRename", id, name }) as Promise<{ id: string; name: string; modifiedTime?: string }>;
 /** Moves a file to Drive's trash (restorable there for 30 days). */
 export const trashInDrive = (id: string) => desktop!.invoke({ action: "driveTrash", id }) as Promise<{ ok: true }>;
+/** Moves a file or folder into another folder inside the linked folder `root`. */
+export const moveInDrive = (root: string, id: string, to: string) => desktop!.invoke({ action: "driveMove", root, id, to }) as Promise<{ ok: true }>;
 /** A Drive file's bytes, so Mowr can keep a working copy to edit; Google Docs, Slides and Sheets come as PDF. */
 export async function driveBytes(id: string) {
   const r = await fetch("/api/drive/live/" + id);

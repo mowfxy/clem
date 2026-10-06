@@ -5,7 +5,7 @@ import { FileGlyph } from "../files/FileGlyph";
 import { RenameField, PencilIcon } from "../files/RenameField";
 import { Menu, FolderIcon } from "../space/SpaceMenu";
 import { sizeLabel } from "../store";
-import { connectDrive, driveFolder, isGoogleFormat, useDrive, type DriveItem, type DriveSyncState } from "./drive";
+import { connectDrive, driveFolder, isGoogleFormat, moveInDrive, useDrive, type DriveItem, type DriveSyncState } from "./drive";
 import type { SpaceActions } from "../space/SpacePage";
 import type { Space, StoredFile } from "../../core/types";
 import "./drive.css";
@@ -92,7 +92,22 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   }
   /** Every Drive file inside a folder, with the folders it sits in (starting with the folder itself), for "Save on this PC". */
   const inside = (folder: DriveItem) => { const root = full(folder); return (items || []).filter((i) => !i.folder && (i.path === root || i.path?.startsWith(root + " / "))).map((item) => ({ item, dirs: [folder.name, ...(item.path!.slice(root.length).split(" / ").filter(Boolean))] })); };
-  const accepts = (e: DragEvent) => e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/x-mowr-file");
+  const DRIVE_ITEM = "application/x-mowr-drive";
+  const accepts = (e: DragEvent) => e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/x-mowr-file") || e.dataTransfer.types.includes(DRIVE_ITEM);
+  /** Drive files and folders are dragged by id onto another folder (a card, the path above, or the folder shown). */
+  const dragItem = (i: DriveItem) => ({ draggable: true, onDragStart: (e: DragEvent) => { e.stopPropagation(); e.dataTransfer.setData(DRIVE_ITEM, i.id); e.dataTransfer.effectAllowed = "move"; } });
+  /** Moves a Drive file or folder into `to`: shown there at once (a folder with everything in it), undone if Drive refuses. */
+  function move(id: string, to: string) {
+    const all = items || [], moving = all.find((i) => i.id === id);
+    if (!moving) return;
+    const from = moving.path || "", dest = pathOf(to), own = full(moving);
+    if (from === dest || moving.id === to) return;
+    if (moving.folder && (dest === own || dest.startsWith(own + " / "))) { setError("A folder can't go inside itself."); return; }
+    const moved = (dest ? dest + " / " : "") + moving.name;
+    const next = all.map((i) => i.id === id ? { ...i, path: dest || undefined } : moving.folder && (i.path === own || i.path?.startsWith(own + " / ")) ? { ...i, path: moved + i.path!.slice(own.length) } : i);
+    setItems(next); onItems?.(next); setError("");
+    void moveInDrive(folderId, id, to).then(() => void load(true), (e) => { setError(`${moving.name} was not moved: ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "")}`); void load(true); });
+  }
   // What is dropped is read during the drop itself; the browser empties it right after.
   const dropped = (e: DragEvent) => {
     const folders = Array.from(e.dataTransfer.items || []).filter((i) => i.kind === "file" && i.webkitGetAsEntry?.()?.isDirectory).length;
@@ -104,9 +119,12 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   const target = (key: string) => ({
     onDragOver: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation();
       // A file from this space's own list is dragged as a move; the drop effect has to match or the browser cancels the drop.
-      e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-mowr-file") ? "move" : "copy"; setOver(key); },
+      e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-mowr-file") || e.dataTransfer.types.includes(DRIVE_ITEM) ? "move" : "copy"; setOver(key); },
     onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === key ? null : o)); },
-    onDrop: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation(); setOver(null); const { local, mowr } = dropped(e); save(key, local, mowr); },
+    onDrop: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation(); setOver(null);
+      const driveId = e.dataTransfer.getData(DRIVE_ITEM);
+      if (driveId) { move(driveId, key); return; }
+      const { local, mowr } = dropped(e); save(key, local, mowr); },
   });
 
   const isSource = (i: DriveItem, copy?: StoredFile) => space.sources.includes(copy ? copy.id : "drive:" + i.id);
@@ -138,8 +156,9 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
       </div>
     </header>
     {parts.length > 0 && <nav className="gd-trail" aria-label="Folder path">
-      <button className="gd-crumb" onClick={() => setAt("")}>{folderName}</button>
-      {parts.map((p, i) => <span className="gd-crumb-wrap" key={i}><span className="gd-chev"><Icon name="right" size={12} /></span><button className={"gd-crumb" + (i === parts.length - 1 ? " here" : "")} onClick={() => setAt(parts.slice(0, i + 1).join(" / "))}>{p}</button></span>)}
+      <button className={"gd-crumb" + (over === folderId ? " over" : "")} onClick={() => setAt("")} {...target(folderId)}>{folderName}</button>
+      {parts.map((p, i) => { const path = parts.slice(0, i + 1).join(" / "), id = (items || []).find((x) => x.folder && full(x) === path)?.id || folderId;
+        return <span className="gd-crumb-wrap" key={i}><span className="gd-chev"><Icon name="right" size={12} /></span><button className={"gd-crumb" + (i === parts.length - 1 ? " here" : "") + (over === id && i < parts.length - 1 ? " over" : "")} onClick={() => setAt(path)} {...(i < parts.length - 1 ? target(id) : {})}>{p}</button></span>; })}
     </nav>}
     {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Settings → Connectors to see this folder.</p>}
     {error && <p className="gd-error">{error}</p>}
@@ -147,7 +166,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
       <button onClick={() => void connectDrive().then(() => failed.forEach(send)).catch((e) => setError((e as Error).message))}>Reconnect Google Drive</button></p>}
     {!items && !error && connected !== false && <div className="sp-file-list">{Array.from({ length: 3 }, (_, i) => <div key={i} className="gd-skeleton" />)}</div>}
     {folders.length > 0 && <div className="sp-folders">
-      {folders.map((f) => <div key={f.id} className={"sp-folder" + (over === f.id ? " over" : "")} role="button" tabIndex={0} onClick={() => setAt(full(f))} onKeyDown={(e) => { if (e.key === "Enter") setAt(full(f)); }} {...target(f.id)}>
+      {folders.map((f) => <div key={f.id} className={"sp-folder" + (over === f.id ? " over" : "")} role="button" tabIndex={0} onClick={() => setAt(full(f))} onKeyDown={(e) => { if (e.key === "Enter") setAt(full(f)); }} {...target(f.id)} {...dragItem(f)}>
         <FolderIcon /><div><strong>{f.name}</strong><small>{count(full(f))} file{count(full(f)) === 1 ? "" : "s"}</small></div>
         {uploads.some((u) => u.folder === f.id && !u.error) && <SyncMark state="uploading" />}
         <Menu label={`${f.name} options`} items={[{ label: "Save on this PC", run: () => actions.onSaveOnPc(inside(f)) }, { label: "Open in Google Drive", run: () => actions.onOpenDriveWeb(f) }]} />
@@ -162,7 +181,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
       {driveFiles.map((i) => { const copy = copyOf(i.id), state = syncOf(copy), google = isGoogleFormat(i.mimeType), name = copy?.name || i.name;
         const meta = state === "failed" ? driveSync[copy!.id]?.error || "Not saved to Google Drive" : state === "pending" ? "Edited here · approve the change to save it to Drive" : state === "uploading" ? "Saving to Google Drive…"
           : [i.size ? sizeLabel(i.size) : google ? "Google " + i.mimeType.replace("application/vnd.google-apps.", "") : "", (copy?.updated ? "edited " : "") + ago(i.modified), copy?.versions?.length ? `${copy.versions.length} earlier version${copy.versions.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
-        return <div key={i.id} className={"sp-file gd-file is-" + state}>
+        return <div key={i.id} className={"sp-file gd-file is-" + state} {...(renaming === i.id ? {} : dragItem(i))}>
           {renaming === i.id ? <div className="sp-file-open"><FileGlyph file={{ name: glyphName({ name, mimeType: i.mimeType }), type: i.mimeType }} /><RenameField name={name} onSave={(n) => void rename(i, copy, n)} onCancel={() => setRenaming(null)} /></div>
             : <button className="sp-file-open" onClick={() => state === "pending" && copy ? actions.onEditFile(copy) : open(i, copy)}><FileGlyph file={{ name: glyphName({ name, mimeType: i.mimeType }), type: i.mimeType }} size={36} /><span><strong>{name}</strong><small>{meta}</small></span></button>}
           <SyncMark state={state} error={copy && driveSync[copy.id]?.error} />
