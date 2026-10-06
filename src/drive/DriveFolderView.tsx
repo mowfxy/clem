@@ -29,8 +29,10 @@ function SyncMark({ state, error }: { state: Sync; error?: string }) {
  * folder they land on, showing a turning ring until Drive has them and a check after. Edits made here go back to the
  * same Drive file once approved.
  */
-export function DriveFolderView({ space, files, driveSync, actions, onItems }: {
+export function DriveFolderView({ space, files, driveSync, actions, onItems, more = [] }: {
   space: Space; files: StoredFile[]; driveSync: Record<string, DriveSyncState>; actions: SpaceActions; onItems?: (items: DriveItem[]) => void;
+  /** Extra entries for the header's menu, from the page around it. */
+  more?: { label: string; run: () => void }[];
 }) {
   const { folderId, folderName } = space.drive!;
   const { connected } = useDrive();
@@ -122,11 +124,14 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems }: {
       <DriveLogo size={16} />
       <div><strong>{folderName}</strong><small>{items ? `${allFiles.length} file${allFiles.length === 1 ? "" : "s"} in Google Drive` : "Google Drive"}</small></div>
       <div className="gd-space-actions">
-        {allFiles.length > 0 && <button onClick={() => actions.onAskDrive(allFiles)} aria-description="Ask Mowr about this folder"><Icon name="chat" size={13} /> Ask about it</button>}
         {connected !== false && <button onClick={() => picker.current?.click()} aria-description={`Add files from this PC to ${at ? parts[parts.length - 1] : folderName} in Drive`}><Icon name="plus" size={13} /> Add files</button>}
         <input ref={picker} type="file" multiple hidden onChange={(e) => { const chosen = Array.from(e.target.files || []); e.target.value = ""; save(hereId, chosen, []); }} />
-        <button onClick={() => void load(true)} disabled={busy} aria-label="Refresh" aria-description="Refresh"><Icon name="undo" size={13} /></button>
-        <Menu label="Google Drive folder options" items={[{ label: "Open in Google Drive", run: () => actions.onOpenDriveWeb({ id: hereId, name: folderName, mimeType: "application/vnd.google-apps.folder" }) }, { label: "Link another folder", run: actions.onLinkDrive }, { label: "Unlink folder", danger: true, run: actions.onUnlinkDrive }]} />
+        <Menu label="Google Drive folder options" items={[
+          ...(allFiles.length > 0 ? [{ label: "Ask about it", run: () => actions.onAskDrive(allFiles) }] : []),
+          ...(busy ? [] : [{ label: "Refresh", run: () => void load(true) }]),
+          { label: "Open in Google Drive", run: () => actions.onOpenDriveWeb({ id: hereId, name: folderName, mimeType: "application/vnd.google-apps.folder" }) },
+          ...more,
+          { label: "Link another folder", run: actions.onLinkDrive }, { label: "Unlink folder", danger: true, run: actions.onUnlinkDrive }]} />
       </div>
     </header>
     {parts.length > 0 && <nav className="gd-trail" aria-label="Folder path">
