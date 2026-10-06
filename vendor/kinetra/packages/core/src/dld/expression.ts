@@ -84,6 +84,11 @@ export function walk(e: BoolExpr, visit: (n: BoolExpr) => void): void {
 
 // --- Parser -----------------------------------------------------------------
 
+/** A spelled-out operator (or, and, xor, not, in any case) standing alone at p: "A or B", "A AND (B)", "NOT A". */
+function keywordAt(s: string, p: number, kw: string): boolean {
+  return s.slice(p, p + kw.length).toLowerCase() === kw && !/[A-Za-z0-9_]/.test(s[p - 1] ?? " ") && !/[A-Za-z0-9_]/.test(s[p + kw.length] ?? " ");
+}
+
 class Parser {
   pos = 0;
   src: string;
@@ -103,8 +108,8 @@ class Parser {
     while (true) {
       this.skipWs();
       const c = this.src[this.pos];
-      if (c === "+" || (c === "o" && this.src.startsWith("or", this.pos))) {
-        if (c === "o") this.pos += 2; else this.pos += 1;
+      if (c === "+" || keywordAt(this.src, this.pos, "or")) {
+        if (c !== "+") this.pos += 2; else this.pos += 1;
         const right = this.parseXor();
         if (left.type === "or") left.args.push(right);
         else left = or(left, right);
@@ -122,7 +127,7 @@ class Parser {
         const right = this.parseAnd();
         if (left.type === "xor") left.args.push(right);
         else left = xor(left, right);
-      } else if (this.src.startsWith("xor", this.pos) && /[A-Za-z(]/.test(this.src[this.pos + 3] ?? " ")) {
+      } else if (keywordAt(this.src, this.pos, "xor")) {
         this.pos += 3;
         const right = this.parseAnd();
         if (left.type === "xor") left.args.push(right);
@@ -146,7 +151,7 @@ class Parser {
         else left = and(left, right);
         continue;
       }
-      if (c === "a" && this.src.startsWith("and", this.pos) && /[A-Za-z(]/.test(this.src[this.pos + 3] ?? " ")) {
+      if (keywordAt(this.src, this.pos, "and")) {
         this.pos += 3;
         const right = this.parseNot();
         if (left.type === "and") left.args.push(right);
@@ -157,9 +162,10 @@ class Parser {
       const startsWithNot = (s: string, p: number) => {
         const cc = s[p];
         if (cc === "!" || cc === "~") return true;
-        if (cc === "n" && s.startsWith("not", p) && !/[A-Za-z0-9_]/.test(s[p + 3] ?? "")) return true;
-        return false;
+        return keywordAt(s, p, "not");
       };
+      // "or" and "xor" end this product; without this check their letters were read as variables (A·O·R·B).
+      if (keywordAt(this.src, this.pos, "or") || keywordAt(this.src, this.pos, "xor")) break;
       // Implicit AND: anything that begins a new term continues the AND
       // chain. After parseNot, c is either a letter, an opening paren, or a
       // NOT-prefix - all of these mean a new term is starting.
@@ -182,7 +188,7 @@ class Parser {
       this.pos += 1;
       return not(this.parseNot());
     }
-    if (c === "n" && this.src.startsWith("not", this.pos) && !/[A-Za-z0-9_]/.test(this.src[this.pos + 3] ?? "")) {
+    if (keywordAt(this.src, this.pos, "not")) {
       this.pos += 3;
       return not(this.parseNot());
     }

@@ -118,6 +118,10 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const [current, setCurrent] = useState(file);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => { setCurrent(file); }, [file.id]);
+  // Every PDF this panel opens runs in a pdf.js worker of its own: all of them are closed when the panel goes.
+  const docs = useRef({ open: new Set<PDFDocumentProxy>(), gone: false });
+  const track = (pdf: PDFDocumentProxy) => { if (docs.current.gone) void pdf.loadingTask.destroy().catch(() => {}); else docs.current.open.add(pdf); return pdf; };
+  useEffect(() => { const d = docs.current; d.gone = false; return () => { d.gone = true; d.open.forEach((pdf) => void pdf.loadingTask.destroy().catch(() => {})); d.open.clear(); }; }, []);
 
   async function load() {
     setError("");
@@ -131,7 +135,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     const data = await getBlob(file.id);
     if (!data) throw Error("This file is missing from this PC.");
     setBlob(data);
-    if (kind === "pdf") setView({ kind: "pdf", pdf: await openPdf(new Uint8Array(await data.arrayBuffer())), boxes: [] });
+    if (kind === "pdf") setView({ kind: "pdf", pdf: track(await openPdf(new Uint8Array(await data.arrayBuffer()))), boxes: [] });
     else if (kind === "office") setView({ kind: "office", blocks: await readOffice(data), changed: new Set(), blob: data });
     else if (kind === "text") { if (data.size > 1_000_000) throw Error("Text preview is limited to 1 MB."); setView({ kind: "text", text: await data.text(), changed: new Set() }); }
     else if (kind === "image") setImageUrl(URL.createObjectURL(data));
@@ -148,7 +152,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       const data = await getBlob(file.id); if (!data) return;
       setBlob(data);
       if (kind === "pdf" && before.kind === "pdf") {
-        const next = await openPdf(new Uint8Array(await data.arrayBuffer()));
+        const next = track(await openPdf(new Uint8Array(await data.arrayBuffer())));
         const after: View = { kind: "pdf", pdf: next, boxes: await changedLines(before.pdf, next) };
         setView(after); setSaved({ summary: file.versions?.[0]?.summary || "Updated by Mowr", before: { ...before, boxes: [] }, after }); setCompare("after");
       } else await load();
@@ -166,7 +170,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const p = await proposePdfEdit({ file: current, bytes, instruction, context, scope, selection, signal, onProgress: progress });
       setWorking("Setting the new pages…");
-      const next = await openPdf(p.bytes);
+      const next = track(await openPdf(p.bytes));
       return { summary: p.summary, after: { kind: "pdf", pdf: next, boxes: await changedLines(view.pdf, next) }, commit: () => commitPdfEdit(current, bytes, p) };
     }
     if (view.kind === "office") {

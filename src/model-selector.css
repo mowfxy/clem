@@ -100,3 +100,11 @@
 .effort-pip::after{content:"";position:absolute;inset:0 auto 0 0;width:calc(6px + 12px * var(--p));border-radius:99px;background:linear-gradient(90deg,#8d8c86,#f2f1ec)}
 .effort-pop .effort-head{padding:0 0 10px}
 @media(prefers-reduced-motion:reduce){.effort-track,.effort-pip,.effort-knob{transition:none}.effort-fill::after,.effort-lane,.effort-petal{animation:none}.effort-lane{opacity:0}}
+/* The model list scrolls inside the panel: at most about ten rows tall, and never taller than the window allows. */
+.model-pop{max-height:min(460px,calc(100dvh - 16px))}
+.picker-model-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#ffffff2e transparent;margin-right:-2px;padding-right:2px}
+.picker-model-list::-webkit-scrollbar{width:8px}
+.picker-model-list::-webkit-scrollbar-thumb{background:#ffffff2e;border-radius:99px;border:2px solid #1c1c1b}
+.picker-model-list::-webkit-scrollbar-thumb:hover{background:#ffffff4a}
+.picker-model-list::-webkit-scrollbar-track{background:transparent}
+.model-pop .picker-connect{flex:none}

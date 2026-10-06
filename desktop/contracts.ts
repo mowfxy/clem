@@ -97,7 +97,13 @@ export const requestSchema = z.discriminatedUnion("action", [
     /** Documents Mowr made in this conversation; a change to one updates that same file. */
     documents: z.array(z.object({ id: z.string().uuid(), name: z.string().max(200) })).max(20).optional(),
     /** What the model looks at: attached pictures, PDF pages with drawings or scans, pictures inside Office files (src/desktop/page-images.ts). */
-    images: z.array(z.object({ name: z.string().max(300), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(20).optional(),
+    images: z.array(z.object({ name: z.string().max(300), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(80).optional(),
+    /** PDFs handed to the model as files (src/desktop/page-images.ts pdfView): Claude reads them as document blocks (its
+     *  request is capped at 32 MB), Grok opens their pages with its own read_file. */
+    pdfs: z.array(z.object({ name: z.string().min(1).max(400), data: z.instanceof(Uint8Array) })).max(20).optional()
+      .refine((l) => !l || l.reduce((n, f) => n + f.data.length, 0) <= 150_000_000, "These PDFs are too large to send at once."),
+    /** How each PDF reached the model (whole, which pages) and how to read the rest. */
+    pdfNotes: z.array(z.string().max(2000)).max(40).optional(),
     /** The full text of the chat's files (attached, in its subject or project), read by the model's file tools only. */
     library: z.array(z.object({ name: z.string().min(1).max(400), text: z.string().max(8_000_000) })).max(400).optional()
       .refine((l) => !l || l.reduce((n, f) => n + f.text.length, 0) <= 40_000_000, "Too much file text for one request."),
@@ -162,7 +168,8 @@ export const requestSchema = z.discriminatedUnion("action", [
     action: z.literal("unlinkGoogle"),
     password: z.string().min(1).max(128),
   }),
-  z.object({ action: z.literal("telegramStatus") }),
+  /** Scanned pages drawn by the window, read with Windows' own OCR (desktop/ocr.ts). */
+  z.object({ action: z.literal("ocr"), pictures: z.array(z.instanceof(Uint8Array).refine((d) => d.length <= 12_000_000)).min(1).max(12) }),
   z.object({
     action: z.literal("fileName"),
     original: z.string().min(1).max(260),
@@ -170,22 +177,8 @@ export const requestSchema = z.discriminatedUnion("action", [
     lines: z.array(z.string().max(400)).max(60),
     place: z.string().max(200).optional(),
     suggestion: z.string().min(1).max(260),
-  }),
-  z.object({
-    action: z.literal("telegramSpaces"),
-    spaces: z.array(z.object({ scope: scopeSchema, name: z.string().max(200), kind: z.enum(["subject", "project"]) })).max(500),
-  }),
-  z.object({
-    action: z.literal("telegramConnect"),
-    token: z.string().regex(/^\d+:[A-Za-z0-9_-]{20,100}$/),
-    scope: scopeSchema,
-  }),
-  z.object({ action: z.literal("telegramDisconnect") }),
-  z.object({
-    action: z.literal("attachmentResult"),
-    id: z.string().uuid(),
-    text: z.string().max(40000).optional(),
-    error: z.boolean().optional(),
+    /** A PDF's first page, as each AI reads a PDF (src/pdf/pdf-name.ts): a one-page PDF (Claude, Grok) and its picture (ChatGPT). */
+    page: z.object({ pdf: z.instanceof(Uint8Array).refine((d) => d.length <= 15_000_000), picture: z.string().max(4_000_000).regex(/^[A-Za-z0-9+/=]+$/) }).optional(),
   }),
   /** Pictures of the pages the model asked to look at (desktop/main.ts "look"). */
   z.object({
@@ -221,14 +214,6 @@ export type DesktopStatus = {
 };
 export type DesktopBridge = {
   onAuth: (listener: () => void) => () => void;
-  onAttachment: (
-    listener: (event: {
-      id: string;
-      bytes: Uint8Array;
-      name: string;
-      mime: string;
-    }) => void,
-  ) => () => void;
   invoke: (request: DesktopRequest) => Promise<any>;
   onCapture?: (listener: (event: { bytes: Uint8Array; name: string; mime: string }) => void) => () => void;
   onFolder?: (listener: (event: FolderEvent) => void) => () => void;

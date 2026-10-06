@@ -15,9 +15,12 @@ The model is a film that looks through an eyepiece at archival plates (birds, bo
 a swelling orchestral sound and a quiet ending. Keep **the same feel, not the same film**: never copy its shots, its bird or
 its sky. Mowr's version:
 
-- **Opening:** darkness, then an engraved navy iris inside the lens clicks open in three ratchet steps; the focus racks onto
-  a cream notebook page where a navy ink pen finishes Mowr's four-petal flower (line boil on twos, see the ink-illustration
-  memory). The flower's centre becomes a second lens that grows until it fills the first, and the run starts on the hit.
+- **Opening:** darkness, then four engraved navy shutter blades click back in three ratchet steps to a widening card on a
+  cream notebook page and slide away; the focus racks onto the page where a navy ink pen finishes Mowr's four-petal flower
+  (line boil on twos, see the ink-illustration memory). The flower's centre opens as a window that grows until it fills the
+  frame, and the run starts on the hit. (The earlier round-iris cut is kept as `ads/mowr-announcement-circle.mp4`.)
+- **Not always a circle.** The window changes shape only on a cut: full bleed, a tall card, a wide plate, a slit, a rounded
+  square, now and then the round lens (`FRAMES`, `BARS`, `CLIMAX` in `stage.js`). The moon is always round.
 - **The run must never feel like a slideshow.** Many, many things (the current film has about 50 subjects in 62 shots).
   Every shot keeps moving while it is on screen (push, pan, turn) and as many as possible are alive (a butterfly crossing,
   gears turning, current in a circuit, a helix, a pendulum drawing its wave, a harmonograph, a Mandelbrot zoom, orbits).
@@ -34,7 +37,8 @@ its sky. Mowr's version:
 - **Look:** cream paper `#f1ebde`-ish, navy ink `#16224a`, Mowr red `#d9473e`, the logo petal path from `public/logo.svg`;
   hand-coloured engraving with a print pass (soft edges, pigment grain, slight misregistration); a dark engraved lens barrel.
 - **Format:** 1080×1080, 24 fps, about 32 s, −14 LUFS, H.264 capped at 12 Mbps. Save the finished film alone in `ads/`
-  (no previews, stills or WAVs there; working files go to `.work/eyepiece/`). Never overwrite `ads/mowr-announcement-original.mp4`.
+  (no previews, stills or WAVs there; working files go to `.work/eyepiece/`). Never overwrite `ads/mowr-announcement-original.mp4`
+  or `ads/mowr-announcement-circle.mp4`; before replacing an approved cut, ask whether to keep it under its own name.
 
 ## The sound (keep it matching the picture)
 

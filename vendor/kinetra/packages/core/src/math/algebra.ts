@@ -27,33 +27,49 @@ export function factorCommonCoefficient(p: Poly): { coef: number; poly: Poly } {
 }
 
 export function findPolynomialRoots(p: Poly): { real: number[]; complex: { re: number; im: number }[] } {
-  // Reduce to polynomial in one variable x by fixing all other variables at 0.
-  const xPoly: number[] = [];
-  let max = -1;
-  for (const k of p.keys()) {
-    if (k === "1") continue;
-    const v = k.split("*");
-    if (v.length !== 1) continue;
-    max = Math.max(max, 1);
+  // Reduce to polynomial in one variable x by fixing all other variables at 0: a key of n x's is the x^n term.
+  const a: number[] = [];
+  for (const [k, c] of p) {
+    const vars = k === "1" ? [] : k.split("*");
+    if (vars.some((name) => name !== "x")) continue;
+    while (a.length <= vars.length) a.push(0);
+    a[vars.length] += c;
   }
-  for (let i = 0; i <= max; i++) {
-    const key = i === 0 ? "1" : "x";
-    xPoly.push(p.get(key) ?? 0);
-  }
-  if (xPoly.length === 0) return { real: [], complex: [] };
   // Strip leading zeros
-  while (xPoly.length > 0 && xPoly[xPoly.length - 1] === 0) xPoly.pop();
-  if (xPoly.length <= 1) return { real: [], complex: [] };
-  // Use companion matrix eigen decomposition
-  const n = xPoly.length - 1;
-  const a = xPoly;
+  while (a.length > 0 && a[a.length - 1] === 0) a.pop();
   const real: number[] = [];
-  for (let x = -10; x <= 10; x += 0.001) {
-    let v = 0;
-    for (let i = n; i >= 0; i--) v = v * x + a[i];
-    if (Math.abs(v) < 1e-3) real.push(x);
+  const complex: { re: number; im: number }[] = [];
+  // Zero roots, then Durand-Kerner on the rest (all roots, real and complex, of any degree).
+  while (a.length > 1 && a[0] === 0) { a.shift(); real.push(0); }
+  const n = a.length - 1;
+  if (n < 1) return { real, complex };
+  const monic = a.map((c) => c / a[n]);
+  const radius = 1 + Math.max(...monic.slice(0, n).map(Math.abs));
+  let z = Array.from({ length: n }, (_, k) => ({ re: radius * Math.cos(0.4 + (2 * Math.PI * k) / n), im: radius * Math.sin(0.4 + (2 * Math.PI * k) / n) }));
+  for (let iter = 0; iter < 1000; iter++) {
+    let moved = 0;
+    z = z.map((zk, k) => {
+      let pr = monic[n], pi = 0; // p(zk) by Horner
+      for (let i = n - 1; i >= 0; i--) [pr, pi] = [pr * zk.re - pi * zk.im + monic[i], pr * zk.im + pi * zk.re];
+      let dr = 1, di = 0; // prod over j != k of (zk - zj)
+      for (let j = 0; j < n; j++) {
+        if (j === k) continue;
+        const wr = zk.re - z[j].re, wi = zk.im - z[j].im;
+        [dr, di] = [dr * wr - di * wi, dr * wi + di * wr];
+      }
+      const den = dr * dr + di * di || 1e-300;
+      const qr = (pr * dr + pi * di) / den, qi = (pi * dr - pr * di) / den;
+      moved = Math.max(moved, Math.hypot(qr, qi));
+      return { re: zk.re - qr, im: zk.im - qi };
+    });
+    if (moved <= 1e-15 * radius) break;
   }
-  return { real, complex: [] };
+  for (const r of z) {
+    if (Math.abs(r.im) <= 1e-9 * Math.max(1, Math.abs(r.re))) real.push(r.re);
+    else complex.push(r);
+  }
+  real.sort((x, y) => x - y);
+  return { real, complex };
 }
 
 export function expand(e: Expr): Poly {

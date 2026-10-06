@@ -96,21 +96,26 @@ export class DesktopAuth {
       throw Error("Complete authenticator verification before continuing.");
     return user;
   }
-  async cloud(path: string, body?: unknown,signal?:AbortSignal) {
+  /** A signed-in request to the account service that hands back the raw response (files, form uploads). */
+  async cloudFetch(path: string, init: { method?: string; body?: BodyInit; headers?: Record<string, string> } = {}, signal?: AbortSignal, timeout = 15000) {
     if (!this.config.service)
       throw Error("Account service is not configured in this build.");
     if (!(await this.user())) throw Error("Sign in again to continue.");
     const { data } = await this.client!.auth.getSession();
     if (!data.session) throw Error("Mowr could not reach the account service. Check your connection and try again.");
-    const response = await fetch(this.config.service + path, {
-      method: body === undefined ? "GET" : "POST",
-      headers: {
-        Authorization: "Bearer " + data.session!.access_token,
-        "Content-Type": "application/json",
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000),
+    return fetch(this.config.service + path, {
+      method: init.method || "GET",
+      headers: { Authorization: "Bearer " + data.session!.access_token, ...init.headers },
+      body: init.body,
+      signal: signal?AbortSignal.any([signal,AbortSignal.timeout(timeout)]):AbortSignal.timeout(timeout),
     });
+  }
+  async cloud(path: string, body?: unknown,signal?:AbortSignal) {
+    const response = await this.cloudFetch(path, body === undefined ? {} : {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }, signal);
     // A gateway error page is HTML, not JSON: the person is told the service is unavailable, never a parser message.
     const result = (await response.json().catch(() => {
       if (response.ok) throw Error("Account service is unavailable.");

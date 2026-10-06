@@ -16,6 +16,10 @@ export type ChatOptions = {
   /** The person picked the thinking level; otherwise it is the model's default, which Mowr may raise for tool work. */
   reasoningChosen?: boolean;
   images?: { name: string; data: string }[];
+  /** PDFs handed to the model as files: Claude reads them, Grok opens their pages itself (src/desktop/page-images.ts pdfView). */
+  pdfs?: { name: string; data: Uint8Array }[];
+  /** How each PDF of the conversation reached the model (whole, which pages) and how to read the rest. */
+  pdfNotes?: string[];
   /** Documents Mowr made in this conversation, so a change updates that same file. */
   documents?: { id: string; name: string }[];
   /** The full text of the chat's files, for the model's file tools (core/file-tools.ts); not added to the prompt. */
@@ -108,7 +112,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.reasoning && options.reasoningChosen ? { reasoningChosen: true } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.chat && /^[a-zA-Z0-9_-]{1,80}$/.test(options.chat) ? { chat: options.chat } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.reasoning && options.reasoningChosen ? { reasoningChosen: true } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.pdfs?.length ? { pdfs: options.pdfs.slice(0, 20) as { name: string; data: Uint8Array<ArrayBuffer> }[] } : {}), ...(options.pdfNotes?.length ? { pdfNotes: options.pdfNotes.slice(0, 40).map((n) => n.slice(0, 2000)) } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.chat && /^[a-zA-Z0-9_-]{1,80}$/.test(options.chat) ? { chat: options.chat } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);

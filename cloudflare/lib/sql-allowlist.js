@@ -22,14 +22,27 @@ export function allowedStatement(sql) {
   const kind = /^\s*(\w+)/.exec(text)?.[1].toUpperCase();
   if (!["SELECT", "INSERT", "UPDATE", "DELETE"].includes(kind)) return false;
   if (/\b(pragma|attach|detach|vacuum|drop|alter|create|reindex|load_extension|sqlite_\w*)\b/i.test(text)) return false;
-  // A comma join ("FROM a, b") would name a table without FROM or JOIN in front of it.
-  if (/\b(FROM|JOIN)\s+\w+(\s+(AS\s+)?\w+)?\s*,/i.test(text)) return false;
+  // A parenthesised source ("FROM (desktop_admins)") would hide the table name from the checks below: only subqueries.
+  if (/\b(FROM|JOIN)\s*\((?!\s*SELECT\b)/i.test(text)) return false;
+  // A comma join ("FROM a, b", also after a subquery, NOT INDEXED or an ON/USING constraint) would name a table without
+  // FROM or JOIN in front of it, so a comma anywhere in a FROM clause is refused, at every parenthesis depth.
+  // WINDOW and RETURNING can also be aliases, so they do not end a FROM clause here (a comma after them is refused too).
+  const inFrom = [false];
+  for (const [token] of text.matchAll(/\w+|[(),]/g)) {
+    if (token === "(") inFrom.push(false);
+    else if (token === ")") { inFrom.pop(); if (!inFrom.length) return false; }
+    else if (token === ",") { if (inFrom.at(-1)) return false; }
+    else if (/^FROM$/i.test(token)) inFrom[inFrom.length - 1] = true;
+    else if (/^(WHERE|GROUP|HAVING|ORDER|LIMIT|UNION|INTERSECT|EXCEPT)$/i.test(token)) inFrom[inFrom.length - 1] = false;
+  }
   if (kind === "DELETE" && !writableTables.has(/^\s*DELETE\s+FROM\s+(\w+)/i.exec(text)?.[1].toLowerCase())) return false;
   for (const [, keyword, name] of text.matchAll(/\b(FROM|INTO|UPDATE|JOIN)\s+(\w+)/gi)) {
     const word = keyword.toUpperCase(), table = name.toLowerCase();
     if (word === "UPDATE" && table === "set") continue; // ON CONFLICT … DO UPDATE SET
     const allowed = word === "FROM" || word === "JOIN" ? readableTables : word === "INTO" ? insertableTables : writableTables;
     if (!allowed.has(table)) return false;
+    // Add-only tables: an upsert or INSERT OR REPLACE would change an existing entry.
+    if (word === "INTO" && !writableTables.has(table) && /\b(REPLACE|DO\s+UPDATE)\b/i.test(text)) return false;
   }
   return true;
 }

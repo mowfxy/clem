@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {distinctNames,fileTool,fileToolsGuide,findFile,readFile,searchFiles,READ_LIMIT,type LibraryFile} from '../core/file-tools.ts';
+import {distinctNames,fileTool,fileToolsGuide,findFile,readFile,relevantPages,searchFiles,READ_LIMIT,type LibraryFile} from '../core/file-tools.ts';
 
 const lecture=(n:number,pages:string[])=>({name:`Lecture_0${n}.pdf`,text:pages.map((p,i)=>`\n[Lecture_0${n}.pdf, page ${i+1}]\n${p}\n`).join('')});
 const files:LibraryFile[]=[
@@ -43,11 +43,13 @@ test('search ranks the passage with the rare words and gives its page',()=>{
   assert.match((searchFiles(files,{query:'  '}) as any).error,/query/);
 });
 
-test('only file actions are handled, and the guide appears only when there are files',()=>{
+test('only file actions are handled; the guide always offers finding other files, and the file tools only with files',()=>{
   assert.equal(fileTool(files,{action:'pdf'}),undefined);
   assert.equal((fileTool(files,{action:'files'}) as any).files.length,3);
   assert.equal((fileTool(files,{action:'files'}) as any).files[1].pages,3);
-  assert.equal(fileToolsGuide([]),'');
+  assert.match(fileToolsGuide([]),/"action":"find"/);
+  assert.doesNotMatch(fileToolsGuide([]),/"action":"read"/);
+  assert.match(fileToolsGuide(files),/"action":"attach"/);
   assert.match(fileToolsGuide(files),/"action":"read"/);
 });
 
@@ -74,4 +76,15 @@ test('a citation of "notes.pdf (2)" opens the second file of that name',async()=
   assert.equal(matchSource(stored,'notes.pdf (2)')?.id,'b');
   assert.equal(matchSource(stored,'notes.pdf')?.id,'a');
   assert.equal(matchSource([{id:'c',name:'Report (2)'}],'Report (2)')?.id,'c','a real name ending in (2) still matches itself');
+});
+
+test('a long PDF is seen by the pages a question is about, rarer words first',()=>{
+  const book=lecture(9,Array.from({length:300},(_,i)=>i===141?'The Thevenin equivalent of a circuit: open-circuit voltage and Thevenin resistance.':i===220?'Norton and Thevenin are related by source transformation.':`Chapter text about circuits on page ${i+1}.`));
+  const pages=relevantPages(book.text,'Explain the Thevenin equivalent of this circuit',4);
+  assert.equal(pages[0],142);
+  assert.ok(pages.includes(221));
+  // Words on every page say nothing about where to look.
+  assert.deepEqual(relevantPages(book.text,'explain the circuits please',4).length<=4,true);
+  assert.deepEqual(relevantPages(book.text,'the and for',4),[]);
+  assert.deepEqual(relevantPages('no page markers here','Thevenin',4),[]);
 });

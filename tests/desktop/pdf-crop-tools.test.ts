@@ -68,7 +68,9 @@ test("regions and crop are Kinetra actions in text and native calls, with a stat
   assert.match(guide, /"action":"crop"/);
   // A chat with only pictures still learns how to crop them.
   assert.match(fileToolsGuide([], true), /"action":"crop"/);
-  assert.equal(fileToolsGuide([]), "");
+  // A chat without files still learns to find the person's other files, but not the tools for files it does not have.
+  assert.match(fileToolsGuide([]), /"action":"find"/);
+  assert.doesNotMatch(fileToolsGuide([]), /"action":"crop"/);
 });
 
 test("editpdf is a file action like pdf: routed to file making, revised and appended to by its edit list, explained in the guide", async () => {

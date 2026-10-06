@@ -41,12 +41,14 @@ export function workbookProblems(spec: any): string[] {
   const names = new Set<string>();
   spec.sheets.forEach((s: any, i: number) => {
     const at = `Sheet ${i + 1}`;
-    if (typeof s?.name !== "string" || !s.name.trim() || s.name.length > 31 || /[\\/?*[\]:]/.test(s.name)) problems.push(`${at}: "name" must be 1–31 characters without \\ / ? * [ ] :.`);
+    // Excel also repairs a file whose sheet name starts or ends with an apostrophe, or is its reserved "History".
+    if (typeof s?.name !== "string" || !s.name.trim() || s.name.length > 31 || /[\\/?*[\]:]/.test(s.name) || /^'|'$/.test(s.name) || s.name.toLowerCase() === "history") problems.push(`${at}: "name" must be 1–31 characters without \\ / ? * [ ] :, not start or end with ', and not be "History".`);
     else if (names.has(s.name.toLowerCase())) problems.push(`${at}: the name "${s.name}" is used twice.`);
     else names.add(s.name.toLowerCase());
     if (!Array.isArray(s?.columns) || !s.columns.length || s.columns.some((c: any) => typeof c?.header !== "string")) problems.push(`${at}: "columns" must be [{"header":…}, …].`);
     if (!Array.isArray(s?.rows) || s.rows.some((r: any) => !Array.isArray(r))) problems.push(`${at}: "rows" must be a list of rows (lists of values).`);
     else if (s.rows.length > 100_000) problems.push(`${at}: at most 100,000 rows.`);
+    if (s?.totals && (typeof s.totals.columns !== "object" || !s.totals.columns || Array.isArray(s.totals.columns))) problems.push(`${at}: "totals" must be {"label"?, "columns": {"<header>": "sum" | "average" | "min" | "max" | "count"}}.`);
     for (const c of s?.columns || []) if (c?.format && !formats[String(c.format).toLowerCase()] && !/^[#0.,%$€£¥"\[\]\-\s:;@a-zA-Z/\\()]+$/.test(c.format)) problems.push(`${at}: unknown format "${c.format}". Use ${Object.keys(formats).join(", ")} or an Excel format code.`);
     for (const chart of s?.charts || []) {
       if (!["column", "bar", "line", "area", "pie", "doughnut", "scatter"].includes(chart?.type)) problems.push(`${at}: chart "type" must be column, bar, line, area, pie, doughnut or scatter.`);

@@ -26,7 +26,8 @@ export function lines(items: TextItem[]): Line[] {
         const prev = row[i - 1], gap = item.x - (prev.x + prev.width);
         if (gap > item.size * 0.18 && !text.endsWith(" ") && !item.str.startsWith(" ")) { text += " "; owners.push(i - 1); }
       }
-      for (const _ of item.str) owners.push(i);
+      // One owner per UTF-16 unit, as `text` is indexed: a glyph outside the BMP (Word's 𝑥, an emoji) takes two.
+      for (let k = 0; k < item.str.length; k++) owners.push(i);
       text += item.str;
     });
     return { items: row, text, owners };
@@ -109,7 +110,8 @@ function edges(line: Line, advance: (ch: string, item: TextItem) => number) {
   const sums = new Map<TextItem, number[]>();
   const sum = (item: TextItem) => {
     let s = sums.get(item);
-    if (!s) { s = [0]; for (const ch of item.str) s.push(s[s.length - 1] + Math.max(0.05, advance(ch, item) || 0)); sums.set(item, s); }
+    // Per UTF-16 unit, like the owners: both halves of a surrogate pair end where the whole letter does.
+    if (!s) { s = [0]; for (const ch of item.str) { const end = s[s.length - 1] + Math.max(0.05, advance(ch, item) || 0); for (let k = 0; k < ch.length; k++) s.push(end); } sums.set(item, s); }
     return s;
   };
   return (c: number, after: boolean) => {
@@ -128,9 +130,12 @@ export function textInside(items: TextItem[], [x0, y0, x1, y1]: [number, number,
     const at = edges(line, advance);
     let run = "";
     for (let c = 0; c < line.owners.length; c++) {
-      const item = line.items[line.owners[c]], cx = (at(c, false) + at(c, true)) / 2, cy = item.y + item.size * 0.28;
-      if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) run += line.text[c];
+      // A surrogate pair is one letter: placed and taken whole.
+      const wide = line.text.codePointAt(c)! > 0xffff ? 1 : 0;
+      const item = line.items[line.owners[c]], cx = (at(c, false) + at(c + wide, true)) / 2, cy = item.y + item.size * 0.28;
+      if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) run += line.text.slice(c, c + 1 + wide);
       else { if (run.trim()) out.push(run.trim()); run = ""; }
+      c += wide;
     }
     if (run.trim()) out.push(run.trim());
   }

@@ -34,3 +34,14 @@ Installer/
 /ads/
 release-next/
 release-build/
+
+# Google OAuth verification demo: recordings and raw takes stay local
+docs/verification/*.mp4
+docs/verification/takes/
+docs/verification/build/
+docs/verification/frames/
+
+# Output of scripts/verify/{pdf-crops,export-answer,office-files}.mjs
+.verify-crops/
+.verify-export/
+.verify-office/

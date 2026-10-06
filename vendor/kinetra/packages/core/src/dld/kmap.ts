@@ -81,6 +81,11 @@ export function buildKMap(spec: KMapSpec): KMap {
     throw new KinetraError("validation", "K-map supports 2-4 variables", { n: spec.variables.length });
   }
   const ctx = context(spec.variables);
+  for (const i of [...spec.minterms, ...(spec.dontCares ?? [])]) {
+    if (!Number.isInteger(i) || i < 0 || i >= ctx.totalAssignments) {
+      throw new KinetraError("validation", `K-map cell ${i} is out of range 0-${ctx.totalAssignments - 1} for ${spec.variables.length} variables`, { index: i });
+    }
+  }
   const { rows: rowVariables, cols: colVariables } = splitVariablesForMap(spec.variables);
   const rowOrder = grayCode(rowVariables.length);
   const colOrder = grayCode(colVariables.length);
@@ -91,9 +96,14 @@ export function buildKMap(spec: KMapSpec): KMap {
     return ((mintermMask >> BigInt(idx)) & 1n) === 1n ? 1 : 0;
   };
   const cells: KMap["cells"] = [];
+  const n = spec.variables.length;
   for (let r = 0; r < rowOrder.length; r++) {
     for (let c = 0; c < colOrder.length; c++) {
-      const index = (rowOrder[r] << colVariables.length) | colOrder[c];
+      // The row/column codes read variables first to last (AB = 01 is A=0, B=1), while a minterm index has the
+      // first variable as bit 0 (truth_table, minimize): reverse the bits so each cell holds its own minterm.
+      const code = (rowOrder[r] << colVariables.length) | colOrder[c];
+      let index = 0;
+      for (let v = 0; v < n; v++) index |= ((code >> (n - 1 - v)) & 1) << v;
       cells.push({ index, row: r, col: c, value: cellValue(index) });
     }
   }
@@ -118,7 +128,7 @@ export function buildKMap(spec: KMapSpec): KMap {
   // (targetMask == 0). For POS, an "all-ones" function (no zeros) also
   // has targetMask == 0 in the dual, which is correctly handled here.
   const simplified = implicants.length === 0
-    ? constant(0)
+    ? constant(form === "pos" ? 1 : 0) // POS with no zeros to cover (every other cell a don't-care) is 1
     : form === "sop"
       ? or(...implicants)
       : and(...implicants);
@@ -181,8 +191,9 @@ function minimize(
   // SOP(!F)=0, the AND collapses to 1).
   const totalAssignments = 1 << variables.length;
   const allMask = (1n << BigInt(totalAssignments)) - 1n;
-  const workMask = form === "sop" ? mintermMask : (~mintermMask & allMask);
-  const workDont = form === "sop" ? dontCareMask : 0n;
+  // POS covers the zeros; don't-cares stay free in both forms (they are not zeros to cover).
+  const workMask = form === "sop" ? mintermMask : (~(mintermMask | dontCareMask) & allMask);
+  const workDont = dontCareMask;
   const active = workMask | workDont;
   const targetMask = workMask;
 
@@ -217,11 +228,13 @@ function minimize(
         const dontMask = standardMerge ? (a.dontMask | xor) : (a.dontMask | b.dontMask);
         const cells = [...a.cells, ...b.cells].sort((x, y) => x - y);
         const key = `${pattern.toString(16)}|${dontMask.toString(16)}`;
+        // Both halves are covered by the merged cube even when another pair already produced it;
+        // marking them only on first sight left non-prime implicants (A!B!D beside AD') in the cover.
+        a.combined = true;
+        b.combined = true;
         if (seen.has(key)) continue;
         seen.add(key);
         next.push({ cells, mask: a.mask | b.mask, pattern, dontMask, combined: false });
-        a.combined = true;
-        b.combined = true;
       }
     }
     for (const c of current) {
@@ -308,6 +321,27 @@ function minimize(
     }
   }
 
+  // The greedy cover is not always minimal (about 1 map in 13 with don't-cares: 5 terms where 4 do). Search the
+  // exact cover with fewest terms, then fewest literals, branching on the first uncovered cell; keep the greedy
+  // cover when nothing beats it.
+  const literals = (p: PrimeImplicant) => variables.filter((_, v) => ((p.dontMask >> BigInt(v)) & 1n) === 0n).length;
+  const usable = primes.filter((p) => (p.expandedMask & targetMask) !== 0n && (p.expandedMask & ~allowedMask & allMask) === 0n);
+  let bestCover = chosen;
+  let bestLiterals = chosen.reduce((s, p) => s + literals(p), 0);
+  const search = (picked: PrimeImplicant[], covered: bigint, lits: number): void => {
+    const left = targetMask & ~covered;
+    if (left === 0n) {
+      if (picked.length < bestCover.length || (picked.length === bestCover.length && lits < bestLiterals)) { bestCover = [...picked]; bestLiterals = lits; }
+      return;
+    }
+    if (picked.length + 1 > bestCover.length || (picked.length + 1 === bestCover.length && lits >= bestLiterals)) return;
+    let t = 0n;
+    while (((left >> t) & 1n) === 0n) t += 1n;
+    for (const p of usable) if (((p.expandedMask >> t) & 1n) === 1n) search([...picked, p], covered | p.expandedMask, lits + literals(p));
+  };
+  if ((chosen.reduce((m, p) => m | p.expandedMask, 0n) & targetMask) === targetMask) search([], 0n, 0);
+  chosen.splice(0, chosen.length, ...bestCover);
+
   // Build groups + implicants.
   const groups: KMapGroup[] = chosen.map((p) => {
     const positives: string[] = [];
@@ -349,7 +383,7 @@ export function formatExpr(e: BoolExpr, form: "sop" | "pos"): string {
     case "const": return e.value === 1 ? "1" : "0";
     case "var": return e.name;
     case "not": return "!" + formatExpr(e.arg, form);
-    case "and": return e.args.map((a) => formatExpr(a, form)).join(form === "sop" ? "" : " + ");
+    case "and": return e.args.map((a) => formatExpr(a, form)).join(""); // POS: (A + B)(!C + D), a product of sums
     case "or": return "(" + e.args.map((a) => formatExpr(a, form)).join(" + ") + ")";
     case "xor": return "(" + e.args.map((a) => formatExpr(a, form)).join(" ⊕ ") + ")";
   }

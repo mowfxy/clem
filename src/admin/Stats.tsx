@@ -9,7 +9,7 @@ type Stats={range:number;turns:number;images:number;people:number;perPerson:numb
   links:{kind:string;people:number}[];sync:{kind:string;people:number}[]};
 
 const providerName:Record<string,string>={chatgpt:'ChatGPT',claude:'Claude',grok:'Grok'};
-const linkName:Record<string,string>={codex:'ChatGPT',claude:'Claude',telegram:'Telegram'};
+const linkName:Record<string,string>={codex:'ChatGPT',claude:'Claude'};
 const syncName:Record<string,string>={skills:'Skills',memory:'Memory',notes:'Notes'};
 const weekdays=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const modelName=(m:Row)=>m.model==='default'?`${providerName[m.provider]||m.provider} default`:m.model.replace(/^gpt/i,'GPT').replace(/^./,c=>c.toUpperCase());

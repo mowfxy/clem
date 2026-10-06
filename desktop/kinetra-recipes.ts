@@ -60,7 +60,7 @@ export const kinetraRecipes: KinetraRecipe[] = [
     name: "logic circuit",
     use: "gate-level diagram of a Boolean expression",
     figure: { module: "mowr", fn: "logicDiagram", args: ["A B + !C", "F", "F = AB + C′"] },
-    notes: "Operators: juxtaposition or * for AND, + for OR, ! or ' for NOT, ^ for XOR. Simplify first with dld/simplify if the user asked for a minimal circuit.",
+    notes: "Operators: juxtaposition or * for AND, + for OR, ! or ' for NOT, ^ for XOR. Simplify first with dld/simplify if the user asked for a minimal circuit. dld/kmap buildKMap counts the first variable as the lowest minterm bit, so for a textbook F(A,B,C) = Σm(…) pass variables reversed ([\"C\",\"B\",\"A\"]).",
   },
 ];
 

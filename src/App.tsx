@@ -22,7 +22,7 @@ import {BackgroundSettings} from "./settings/BackgroundSettings";
 import {UsageSettings} from "./settings/UsageSettings";
 import {ProfileAvatar} from "./ProfileAvatar";
 import "./settings.css";
-import {localSourceContext} from "./source-context";
+import {cachedFileText,localSourceContext} from "./source-context";
 import {contextBudget} from "../core/context-budget";
 import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
@@ -32,13 +32,13 @@ import {LinkifiedText} from "./chat/Links";
 import {youtubeReferences} from "./youtube";
 import {isMediaType, videoContentIntent, videoContext, type VideoCaptions} from "../core/captions";
 import {desktop,desktopChat} from './desktop/bridge';
-import {conversationPictures,pageImages} from './desktop/page-images';
+import {conversationPictures,NO_PDF_VIEW,pageImages,pdfView,type PdfView} from './desktop/page-images';
+import type {Finder} from './files/finder';
 import {LinkedFolders} from './desktop/LinkedFolders';
 import type {OpenFolderFile} from './local/SearchEverything';
 import type {OpenedPack} from './local/StudyPack';
 import type {SpaceTab} from './space/SpacePage';
 import {PACK_EXTENSION} from '../core/study-pack';
-import {TelegramCommands,TelegramPanel} from './desktop/TelegramPanel';
 import {FileCard,DocumentCard} from './FileCard';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
@@ -311,7 +311,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [apiReady, setApiReady] = useState(false);
   const [settingsTab, setSettingsTab] = useState("General");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Which project, subject or chat Settings → Linked folders / Telegram acts on: always one the person chose.
+  // Which project, subject or chat Settings → Linked folders acts on: always one the person chose.
   const [settingsScope, setSettingsScope] = useState("");
   const [accountRevision,setAccountRevision]=useState(0);
   const [accountData,setAccountData]=useState<AccountsData|undefined>();
@@ -345,11 +345,6 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const saveQueue = useRef(Promise.resolve());
   const ownerRef = useRef("guest");
   const sessionVersion = useRef(0);
-  // The Telegram bot's /spaces and /space read the subjects and projects by name from here.
-  const spaceDirectory = desktop ? JSON.stringify(state.spaces.map((x) => ({ scope: `${x.kind}:${x.id}`, name: x.name.slice(0, 200), kind: x.kind }))) : "";
-  useEffect(() => {
-    if (desktop && ownerRef.current !== "guest") void desktop.invoke({ action: "telegramSpaces", spaces: JSON.parse(spaceDirectory) }).catch(() => {});
-  }, [spaceDirectory]);
   const navigate = (path: string) => {
     location.hash = path;
     setSidebar(false);
@@ -708,12 +703,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
     images?:{name:string;data:string}[],
-    extra:{chat?:string;documents?:{id:string;name:string}[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>;pdfTask?:(op:string,args:any)=>Promise<any>}={},
+    extra:{chat?:string;documents?:{id:string;name:string}[];pdfs?:{name:string;data:Uint8Array}[];pdfNotes?:string[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>;pdfTask?:(op:string,args:any)=>Promise<any>}={},
   ) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,reasoningChosen:!!effort||mode!=="step"&&reasoningChosen,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,reasoningChosen:!!effort||mode!=="step"&&reasoningChosen,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,...(extra.pdfs?.length?{pdfs:extra.pdfs}:{}),...(extra.pdfNotes?.length?{pdfNotes:extra.pdfNotes}:{}),library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -972,11 +967,16 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       // Every readable file's full text also goes to the desktop app, which lets the model read what the excerpts left out.
       const library: { name: string; text: string }[] = [];
       // The pictures and the text of the files are read side by side: neither needs the other.
+      // PDFs are read the way each AI reads a PDF itself (chatPdfs): Claude takes the files, Grok opens their pages, ChatGPT sees them.
+      const pdfs = isVisual ? NO_PDF_VIEW() : await chatPdfs(next, prompt, model, controller.signal, [...user.attachments, ...(user.drive || []).map((r) => "drive_" + r.id), ...(user.context || [])]);
+      const whole = pdfs.whole;
       const [images, fileText] = await Promise.all([
-        desktop && !isVisual ? conversationPictures({ files: stateRef.current.files, attached: user.attachments, open: user.context?.[0], earlier: earlierFiles, prompt, limit: 16 - pointerImages.length, signal: controller.signal }).catch((e) => { if (controller.signal.aborted) throw e; return []; }) : Promise.resolve([] as Awaited<ReturnType<typeof conversationPictures>>),
-        chatSources(next,prompt,controller.signal,model,library),
+        desktop && !isVisual ? conversationPictures({ files: stateRef.current.files, attached: user.attachments, open: user.context?.[0], earlier: earlierFiles, prompt, limit: 16 - pointerImages.length, skip: pdfs.handled, signal: controller.signal }).catch((e) => { if (controller.signal.aborted) throw e; return []; }) : Promise.resolve([] as Awaited<ReturnType<typeof conversationPictures>>),
+        chatSources(next,prompt,controller.signal,model,library,undefined,whole),
       ]);
       images.unshift(...pointerImages);
+      // ChatGPT sees the chat's PDFs as page pictures (pdfView); conversationPictures left those PDFs out.
+      images.push(...pdfs.pictures);
       // Google Drive, live: files picked for this chat, the space's linked folder and a Drive search when asked about.
       // The model links them as [name](drive:ID); videos play in the chat and documents open in the viewer.
       const driveNotes: string[] = [];
@@ -1055,12 +1055,25 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       // The Drive files read for this request can be looked at and cropped like files on this PC: streamed from Drive
       // when asked for (getBlob's "drive_" ids), never saved here. Google Slides and Docs come as PDF.
       const fromDrive = [...linkable.values()].filter((r) => !isMediaType(r.mimeType)).map((r): StoredFile => ({ id: "drive_" + r.id, name: r.name, size: r.size || 0, type: isGoogleFormat(r.mimeType) ? "application/pdf" : r.mimeType, created: Date.now(), spaceId: null }));
-      const lookable = () => { const here = sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id))); return here.concat(fromDrive.filter((d) => !here.some((f) => f.name.toLowerCase() === d.name.toLowerCase()))); };
+      // The AI can find any of the person's files on its own and attach them to this answer (src/files/finder.ts).
+      const finder: Finder = { files: () => stateRef.current.files, spaces: () => stateRef.current.spaces, text: (file) => cachedFileText(file, ownerRef.current, controller.signal), opened: [], found: new Map(), signal: controller.signal };
+      const lookable = () => { const here = sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id)), finder.opened); return here.concat(fromDrive.filter((d) => !here.some((f) => f.name.toLowerCase() === d.name.toLowerCase()))); };
+      // Drive PDFs found for this question (the linked folder's best matches, a Drive search) show the pages that match it,
+      // as the subject's own PDFs do, within what this request has left (pdfView's `after`).
+      const driveFound = isVisual ? [] : fromDrive.filter((f) => f.type === "application/pdf" && !pdfs.handled.includes(f.id));
+      if (driveFound.length) {
+        status(id)("Looking at your Drive files…");
+        const more = await pdfView({ files: driveFound, current: [], earlier: [], related: driveFound.map((f) => ({ id: f.id, where: "in Google Drive" })), prompt, provider: model.startsWith("claude:") ? "claude" : model.startsWith("grok:") ? "grok" : "codex", model, text: (file) => cachedFileText(file, ownerRef.current, controller.signal), after: pdfs, signal: controller.signal })
+          .catch((e) => { if (controller.signal.aborted) throw e; return NO_PDF_VIEW(); });
+        pdfs.files.push(...more.files); pdfs.notes.push(...more.notes); pdfs.handled.push(...more.handled); pdfs.pictures.push(...more.pictures);
+        images.push(...more.pictures);
+        if (more.notes.length) pdfs.spent = more.spent;
+      }
       status(id)("");
       const studyKind=activeSpace?.kind==='subject'?studyRequest(prompt):null;
       if(studyKind){
         status(id)(studyKind==='quiz'?'Writing the quiz…':'Writing the flashcards…');
-        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:boundedConversation(next.messages.filter(m=>m.content).map(m=>({role:m.role,content:m.content})),24000)})}],model,controller.signal,()=>{},'chat',undefined,undefined,{chat:id});
+        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:boundedConversation(next.messages.filter(m=>m.content).map(m=>({role:m.role,content:m.content})),24000)})}],model,controller.signal,()=>{},'chat',undefined,images,{chat:id,pdfs:pdfs.files,pdfNotes:pdfs.notes});
         const parsed=(await import('../core/study')).parseStudy(raw,studyKind);
         patch(s=>({...s,studySets:[...s.studySets,{...parsed,id:uid(),spaceId:activeSpace!.id,chatId:id,kind:studyKind,created:Date.now(),attempts:[]}]}));
         updateChat(id,c=>({...c,messages:c.messages.map(m=>m.id===messageId?{...m,content:`${parsed.title} is ready: ${parsed.items.length} ${studyKind==='quiz'?'questions':'flashcards'}. Open ${activeSpace!.name} in Subjects to study and track your progress.`}:m)}));
@@ -1107,7 +1120,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             ),
           }));
         },
-        "chat", undefined, images, { chat: id, documents: documentsIn(next), library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => pageImages(lookable(), name, pages), pdfTask: isVisual ? undefined : (op, args) => import("./desktop/pdf-tasks").then((m) => m.pdfTask(lookable(), op, args)) },
+        "chat", undefined, images, { chat: id, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => pageImages(lookable(), name, pages), pdfTask: isVisual ? undefined : (op, args) => op === "find" || op === "attach" ? import("./files/finder").then((m) => m.findTask(finder, op, args)) : import("./desktop/pdf-tasks").then((m) => m.pdfTask(lookable(), op, args)) },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
       // A reply that used tools: the notes written on the way fold under "Task completed in …" and the answer stands below it.
@@ -1191,10 +1204,29 @@ In this subject the learner keeps missing these questions in review; connect to 
     const files=await chatSources(chat,query,signal);
     return [recent&&`Recent conversation:\n${recent}`,files&&`Files:\n${files}`].filter(Boolean).join('\n\n');
   }
+  /**
+   * The chat's PDFs as `forModel` reads a PDF itself (src/desktop/page-images.ts pdfView): Claude takes the files, Grok
+   * opens their pages with its own reader, ChatGPT sees each page as a picture beside its text. Drive PDFs added to the
+   * chat (Google Docs and Slides come as PDF) go the same way. `current`: this message's files, seen first; a long PDF is
+   * seen by the pages that match `query`. The subject's or project's other PDFs need no attaching: the few that match
+   * the question show the pages that match it (`related`, more of them through `extraRelated`, e.g. Drive's).
+   * Never fails a request: an unreadable PDF is read from its text as before.
+   */
+  async function chatPdfs(chat:Chat,query:string,forModel:string,signal?:AbortSignal,current:string[]=[],wholePages?:number,{extraFiles=[],extraRelated=[],after}:{extraFiles?:StoredFile[];extraRelated?:{id:string;where:string}[];after?:PdfView}={}):Promise<PdfView>{
+    if(!desktop)return NO_PDF_VIEW();
+    const driveFiles=chat.messages.flatMap(m=>(m.role==='user'&&m.drive)||[]).filter(r=>!isMediaType(r.mimeType)).map((r):StoredFile=>({id:'drive_'+r.id,name:r.name,size:r.size||0,type:isGoogleFormat(r.mimeType)?'application/pdf':r.mimeType,created:Date.now(),spaceId:null}));
+    const space=stateRef.current.spaces.find(s=>s.id===chat.spaceId);
+    const earlier=[...[...chat.messages].reverse().flatMap(m=>[...(m.attachments||[]),...(m.context||[])]),...driveFiles.map(f=>f.id).reverse(),...(space?.sources||[])];
+    const inSpace=space?stateRef.current.files.filter(f=>f.spaceId===space.id&&!f.remote).map(f=>({id:f.id,where:`saved in the ${space.kind} "${space.name}"`})):[];
+    const provider=forModel.startsWith('claude:')?'claude':forModel.startsWith('grok:')?'grok':'codex';
+    return pdfView({files:[...stateRef.current.files,...driveFiles,...extraFiles],current,earlier,related:[...inSpace,...extraRelated],prompt:query,provider,model:forModel,text:(file)=>cachedFileText(file,ownerRef.current,signal),wholePages,after,signal})
+      .catch((e):PdfView=>{if(signal?.aborted)throw e;return NO_PDF_VIEW();});
+  }
   /** Every file this chat can see, read for each request so nothing sent earlier is forgotten: files attached
    *  anywhere in the chat, the file open beside it, Mowr-made documents in it, and all files of its subject or project.
-   *  The latest message's files come first and are read whole whenever they fit. */
-  async function chatSources(chat:Chat,query:string,signal?:AbortSignal,forModel=model,library?:{name:string;text:string}[],budget=contextBudget(forModel).sources){
+   *  The latest message's files come first and are read whole whenever they fit.
+   *  `whole`: PDFs sent to the model as files, kept out of the excerpts (their text stays in the library for the file tools). */
+  async function chatSources(chat:Chat,query:string,signal?:AbortSignal,forModel=model,library?:{name:string;text:string}[],budget=contextBudget(forModel).sources,whole:string[]=[]){
     const latest=[...chat.messages].reverse().find(m=>m.role==='user');
     const focus=[...(latest?.attachments||[]),...(latest?.context||[])];
     const space=stateRef.current.spaces.find(s=>s.id===chat.spaceId);
@@ -1204,7 +1236,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     const listed=ids.map(id=>files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f);
     const inSpace=chat.spaceId?files.filter(f=>f.spaceId===chat.spaceId&&!ids.includes(f.id)).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created)):[];
     const readable=[...listed,...inSpace].filter(f=>!f.type.startsWith("image/")&&!f.remote).slice(0,MAX_CHAT_SOURCES);
-    return localSourceContext(readable,query,ownerRef.current,signal,{focus,related:inChat,budget,library});
+    return localSourceContext(readable,query,ownerRef.current,signal,{focus,related:inChat,budget,library,whole});
   }
   /** Model-drawn visuals join the Visuals page history, like the built-in ones. */
   /** A drawn visual stays in its chat; the Save button on it adds it to the Visuals page, or takes it off again. */
@@ -1247,8 +1279,9 @@ In this subject the learner keeps missing these questions in review; connect to 
     const controller=begin(chat.id);
     try{
       // Chosen for this question within the review's room, so every file gets its share instead of only the first ones.
-      const sources=await chatSources(chat,question.content,controller.signal,reviewer,undefined,16000);
-      const text=await streamChat([{role:"system",content:reviewInstructions},{role:"user",content:JSON.stringify({question:question.content.slice(0,12000),answer:answer.content.slice(0,24000),sources:sources.slice(0,16000)})}],reviewer,controller.signal,t=>patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:t,status:"running"}})),"step",models.find(m=>m.id===reviewer)?.defaultReasoningEffort,undefined,{chat:chat.id});
+      // The reviewing AI sees the chat's PDFs as it reads them, beside the excerpts.
+      const [sources,pdfs]=await Promise.all([chatSources(chat,question.content,controller.signal,reviewer,undefined,16000),chatPdfs(chat,question.content,reviewer,controller.signal)]);
+      const text=await streamChat([{role:"system",content:reviewInstructions},{role:"user",content:JSON.stringify({question:question.content.slice(0,12000),answer:answer.content.slice(0,24000),sources:sources.slice(0,16000)})}],reviewer,controller.signal,t=>patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:t,status:"running"}})),"step",models.find(m=>m.id===reviewer)?.defaultReasoningEffort,pdfs.pictures,{chat:chat.id,pdfs:pdfs.files,pdfNotes:pdfs.notes});
       patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:text,status:"done"}}));
     }catch(e){
       patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:m.review?.content||"",status:"error"}}));
@@ -1263,9 +1296,9 @@ In this subject the learner keeps missing these questions in review; connect to 
     patchMessage(chat.id,messageId,m=>({...m,verify:{status:"running"}}));
     const controller=begin(chat.id);
     try{
-      const sources=await chatSources(chat,answer.content,controller.signal,connected.id,undefined,20000);
-      if(!sources.trim())throw Error("This conversation has no readable sources to check against.");
-      const raw=await streamChat([{role:"system",content:verifyInstructions},{role:"user",content:JSON.stringify({answer:answer.content.replace(/```(?:visual|check|edit|automation)[\s\S]*?```/g,"").slice(0,20000),sources:sources.slice(0,20000)})}],connected.id,controller.signal,()=>{},"step",undefined,undefined,{chat:chat.id});
+      const [sources,pdfs]=await Promise.all([chatSources(chat,answer.content,controller.signal,connected.id,undefined,20000),chatPdfs(chat,answer.content,connected.id,controller.signal)]);
+      if(!sources.trim()&&!pdfs.notes.length)throw Error("This conversation has no readable sources to check against.");
+      const raw=await streamChat([{role:"system",content:verifyInstructions},{role:"user",content:JSON.stringify({answer:answer.content.replace(/```(?:visual|check|edit|automation)[\s\S]*?```/g,"").slice(0,20000),sources:sources.slice(0,20000)})}],connected.id,controller.signal,()=>{},"step",undefined,pdfs.pictures,{chat:chat.id,pdfs:pdfs.files,pdfNotes:pdfs.notes});
       const claims=parseClaims(raw);
       patchMessage(chat.id,messageId,m=>({...m,verify:{status:"done",claims}}));
     }catch(e){
@@ -1377,6 +1410,8 @@ In this subject the learner keeps missing these questions in review; connect to 
               notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':'Claude'),detail:'Completed steps and their outputs are preserved.'});
             }
           }
+          // The chat's PDFs as this step's AI reads them: short ones whole, the pages of longer ones that fit the step.
+          const pdfs = planChat ? await chatPdfs(planChat, plan.goal + "\n" + task.instructions, task.model, signal, [], 12) : NO_PDF_VIEW();
           return streamChat(
             [
               {
@@ -1399,7 +1434,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             ],
             task.model,
             signal,
-            () => {}, "step", task.reasoning, undefined, { chat: id, library },
+            () => {}, "step", task.reasoning, pdfs.pictures, { chat: id, library, pdfs: pdfs.files, pdfNotes: pdfs.notes },
           );
         },
         controller.signal,
@@ -1597,10 +1632,10 @@ In this subject the learner keeps missing these questions in review; connect to 
     if(panelFile?.id===file.id)setPanelFile(null);
     return true;
   }
-  /** Settings acts on a scope the person picks (never a throwaway draft chat): the whole workspace (Telegram only),
-   *  the open chat when it is a real one outside a space, or a project or subject. */
-  function settingsScopes(workspace:boolean){
-    const options=[...(workspace?[{value:'user:me',label:'Your whole workspace'}]:[]),...(chatId&&activeChat&&!activeSpace?[{value:`chat:${chatId}`,label:scopeLabel(`chat:${chatId}`)}]:[]),...state.spaces.map(x=>({value:`${x.kind}:${x.id}`,label:scopeLabel(`${x.kind}:${x.id}`)}))];
+  /** Settings acts on a scope the person picks (never a throwaway draft chat): the open chat when it is a real one
+   *  outside a space, or a project or subject. */
+  function settingsScopes(){
+    const options=[...(chatId&&activeChat&&!activeSpace?[{value:`chat:${chatId}`,label:scopeLabel(`chat:${chatId}`)}]:[]),...state.spaces.map(x=>({value:`${x.kind}:${x.id}`,label:scopeLabel(`${x.kind}:${x.id}`)}))];
     const fallback=activeSpace?`${activeSpace.kind}:${activeSpace.id}`:options[0]?.value||'';
     const value=options.some(o=>o.value===settingsScope)?settingsScope:fallback;
     const picker=options.length>1?<label>For<select value={value} onChange={e=>setSettingsScope(e.target.value)}>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>:null;
@@ -1802,7 +1837,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     ...(desktop?[{id:'browse-folders',group:'Actions',label:'Browse folders on this PC',icon:'projects',keywords:'files local linked read change',run:()=>setFolderView({})}]:[]),
     {id:'open-pack',group:'Actions',label:'Open a study pack',icon:'import',keywords:'import share mowrpack flashcards',run:()=>archiveUploader.current?.click()},
     ...nav.filter(([icon])=>icon!=='new').map(([icon,label])=>({id:'go-'+icon,group:'Go to',label,icon,run:()=>navigate(`/app/${icon}`)})),
-    ...["Profile","General","Security","Models","Memory","Skills","Automations","Connectors","Linked folders","Telegram","Usage","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
+    ...["Profile","General","Security","Models","Memory","Skills","Automations","Connectors","Linked folders","Usage","Data & privacy","Help & support"].map(tab=>({id:'settings-'+tab,group:'Settings',label:tab,hint:'Settings',icon:tab==='Help & support'?'chat':'settings',keywords:'settings preferences',run:()=>openSettings(tab)})),
     ...state.spaces.map(space=>({id:'space-'+space.id,group:space.kind==='project'?'Projects':'Subjects',label:space.name,icon:space.kind==='project'?'projects':'subjects',keywords:space.description,run:()=>newChat(space.id)})),
     ...[...savedChats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
   ];
@@ -2042,9 +2077,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                         <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Docs, Slides and videos, read live. Nothing is copied to this PC."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
                       </SettingsCard>
                     ) : settingsTab === "Linked folders" ? (
-                      <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes(false))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
-                    ) : settingsTab === "Telegram" ? (
-                      <><SettingsCard note="Send a question, photo or PDF from your phone. Replies come back in the chat.">{desktop ? <SettingsPopup title="Your bot" description="Pair your own Telegram bot with this workspace." action="Connect">{(({value,picker})=><>{picker}<TelegramPanel scope={value} labelFor={scope=>scope==='user:me'?'your whole workspace':scopeLabel(scope)}/></>)(settingsScopes(true))}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Commands" note="Send these to your bot. Telegram also lists them when you type /."><TelegramCommands/></SettingsCard>}</>
+                      <><SettingsCard note="Mowr indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes())}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Mowr made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
                     ) : settingsTab === "Memory" ? (
                       <SettingsCard note="Projects and subjects keep their own memory.">
                         {desktop ? <SettingsPopup title="Memory" description="What Mowr remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}

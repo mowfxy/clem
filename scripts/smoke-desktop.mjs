@@ -67,8 +67,9 @@ try {
   await page.getByRole("button", { name: "Open browser again" }).waitFor();
   const opened = await app.evaluate(() => globalThis.__openedUrl);
   assert.ok(opened.startsWith("https://mowrai.com/#/desktop-signin?callback="));
-  // Exercise the real Electron popup handler, including host-spoofing rejection.
-  for (const url of ["https://auth.openai.com/codex/device", "https://auth.openai.com.evil.example/codex/device", "http://auth.openai.com/codex/device"]) {
+  // Exercise the real Electron popup handler: links in answers open in the browser when they are https (any host, by
+  // design), never plain http or https carrying a user name and password.
+  for (const url of ["https://auth.openai.com/codex/device", "https://auth.openai.com.evil.example/codex/device", "http://auth.openai.com/codex/device", "https://user:pass@example.com/"]) {
     await app.evaluate(() => { globalThis.__openedUrl = null; });
     await page.evaluate((href) => {
       const link = document.createElement("a");
@@ -79,7 +80,7 @@ try {
       link.remove();
     }, url);
     await page.waitForTimeout(200);
-    assert.equal(await app.evaluate(() => globalThis.__openedUrl), url.startsWith("https://auth.openai.com/") ? url : null);
+    assert.equal(await app.evaluate(() => globalThis.__openedUrl), url.startsWith("https://") && !url.includes("@") ? url : null);
   }
   const titlebar = await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];

@@ -37,7 +37,7 @@ function stripBom(text) {
 
 function parseFrontmatter(text) {
   const cleaned = stripBom(text);
-  const m = cleaned.match(/^---\n([\s\S]*?)\n---/);
+  const m = cleaned.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return {};
   const fm = {};
   for (const line of m[1].split(/\r?\n/)) {

@@ -24,8 +24,10 @@ export type VideoCaptions = {
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'" };
 export function decodeEntities(s: string) {
   // Twice: YouTube's XML sometimes double-encodes (&amp;#39;).
+  // A number past Unicode ("&#x110000;") stays as written: String.fromCodePoint would throw and lose the whole transcript.
+  const char = (n: number, m: string) => (n <= 0x10ffff ? String.fromCodePoint(n) : m);
   const once = (t: string) => t.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: string) =>
-    e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITIES[e.toLowerCase()] ?? m);
+    e[0] === "#" ? char(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1)), m) : ENTITIES[e.toLowerCase()] ?? m);
   return once(once(s));
 }
 const clean = (s: string) => decodeEntities(s.replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim();

@@ -50,7 +50,6 @@ try {
             google: true,
             password: true,
           };
-        if (r.action === "telegramStatus") return { connected: false };
         if (r.action === "chat") {
           setTimeout(() => {
             for (const fn of listeners) {
@@ -168,7 +167,6 @@ try {
   });
   for (const [name, button] of [
     ["Linked folders", "Manage folders"],
-    ["Telegram", "Connect"],
     ["Memory", "Open memory"],
   ]) {
     await page
@@ -176,17 +174,11 @@ try {
       .getByRole("button", { name, exact: true })
       .click();
     assert.equal(await page.getByLabel("Space", { exact: true }).count(), 0);
-    if (name === "Telegram") {
-      // Every bot command is listed with what it does.
-      for (const command of ["/help", "/new", "/spaces", "/space <name or number>", "/files [words]", "/get <file name>", "/pdf <request>", "/memory", "/status"])
-        await page.locator(".tg-commands code", { hasText: command }).first().waitFor();
-      await page.locator(".tg-commands").screenshot({ path: "artifacts/settings-telegram-commands.png" });
-    }
     await page
       .locator(".st-body")
       .getByRole("button", { name: button, exact: true })
       .click();
-    await page.locator(name==="Memory"?".settings-dialog .memory-panel":name==="Telegram"?".settings-dialog .tg":".settings-dialog .desktop-folder-panel").waitFor();
+    await page.locator(name==="Memory"?".settings-dialog .memory-panel":".settings-dialog .desktop-folder-panel").waitFor();
     await page.keyboard.press("Escape");
   }
   await page

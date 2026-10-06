@@ -24,7 +24,7 @@ export function renderSvg(root: SvgElement, opts: { viewBox?: string; width?: nu
   const w = opts.width ?? root.attrs.width ?? 600;
   const h = opts.height ?? root.attrs.height ?? 400;
   const vb = opts.viewBox ?? root.attrs.viewBox ?? `0 0 ${w} ${h}`;
-  const bg = opts.background ? `<rect x="0" y="0" width="${w}" height="${h}" fill="${opts.background}"/>` : "";
+  const bg = opts.background ? `<rect x="0" y="0" width="${w}" height="${h}" fill="${escapeXml(opts.background)}"/>` : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${w}" height="${h}">
 ${defs}

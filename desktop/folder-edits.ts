@@ -14,7 +14,8 @@ function cleanRelative(path: string) {
   const trimmed = path.trim().replace(/^(?:\.[\\/])+/, "");
   if (!trimmed || isAbsolute(path) || /^[a-z]:/i.test(path)) throw Error("Use a path inside a linked folder.");
   const parts = normalize(trimmed).split(/[\\/]+/).filter(Boolean);
-  if (!parts.length || parts.some((p) => p === ".." || !safeName(p))) throw Error("This path is outside what Mowr may change.");
+  // A colon inside a name would reach an NTFS alternate data stream instead of the file.
+  if (!parts.length || parts.some((p) => p === ".." || p.includes(":") || !safeName(p))) throw Error("This path is outside what Mowr may change.");
   if (!supportedText.has(extname(parts[parts.length - 1]).toLowerCase())) throw Error("Mowr only changes text and code files it can index.");
   return parts;
 }

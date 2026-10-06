@@ -1,4 +1,4 @@
-import { PDFDocument, PDFPage, PDFName, PDFHexString, PDFArray, PDFDict, StandardFonts, rgb, degrees, PDFTextField, PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFOptionList, type PDFFont } from "pdf-lib";
+import { PDFDocument, PDFPage, PDFName, PDFHexString, PDFArray, PDFDict, PDFRef, PDFStream, StandardFonts, rgb, degrees, PDFTextField, PDFCheckBox, PDFDropdown, PDFRadioGroup, PDFOptionList, type PDFFont } from "pdf-lib";
 import { textBoxes, textInside, type TextItem } from "../core/pdf-edit.ts";
 import { assetCaption, type CropAsset } from "./pdf-assets.ts";
 import { redactPage, collectGarbage, scrubText, dropAttachments, Unclean } from "./pdf-redact.ts";
@@ -256,6 +256,9 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
     fresh.drawImage(await doc.embedJpg(jpeg), { x: crop.x, y: crop.y, width: crop.width, height: crop.height });
     fresh.setRotation(degrees(turn));
     doc.removePage(n);
+    // Bookmarks, links, named destinations, tags and fields that went to the old page go to the picture: the old page,
+    // with everything that was under the boxes, must not stay reachable in the file.
+    retarget(doc, old.ref, fresh.ref);
     snapshot = null;
   };
   /** Text written in a box, upright as the page is shown, shrunk to fit; any script, through Chromium, when the standard fonts cannot set it. */
@@ -602,6 +605,19 @@ function stickyNote(doc: PDFDocument, page: PDFPage, x: number, y: number, text:
   const ap = doc.context.register(doc.context.stream(`${r} ${g} ${b} rg 0.45 0.35 0 RG 1 w 0.5 0.5 17 17 re B 0.45 0.35 0 RG 0.8 w 4 12 m 14 12 l 4 9 m 14 9 l 4 6 m 11 6 l S`, { Type: "XObject", Subtype: "Form", BBox: [0, 0, 18, 18] }));
   const annot = doc.context.obj({ Type: "Annot", Subtype: "Text", Rect: [x, y - 18, x + 18, y], Contents: PDFHexString.fromText(text), Name: "Comment", C: [r, g, b], F: 4 + 8 + 16, T: PDFHexString.fromText("Mowr"), AP: { N: ap } });
   attach(doc, page, annot);
+}
+
+/** Every reference to `from`, in every object of the document, made a reference to `to`. */
+function retarget(doc: PDFDocument, from: PDFRef, to: PDFRef) {
+  const seen = new Set<unknown>();
+  const visit = (v: unknown): void => {
+    if (v instanceof PDFStream) return visit(v.dict);
+    if (seen.has(v)) return;
+    seen.add(v);
+    if (v instanceof PDFDict) for (const [key, x] of v.entries()) { if (x === from) v.set(key, to); else if (!(x instanceof PDFRef)) visit(x); }
+    else if (v instanceof PDFArray) for (let i = 0; i < v.size(); i++) { const x = v.get(i); if (x === from) v.set(i, to); else if (!(x instanceof PDFRef)) visit(x); }
+  };
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) visit(obj);
 }
 
 function attach(doc: PDFDocument, page: PDFPage, annot: PDFDict) {

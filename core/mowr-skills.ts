@@ -145,17 +145,6 @@ export const mowrSkills: MowrSkill[] = [
     ],
   },
   {
-    // desktop/messaging (TelegramService, pairing); src/App.tsx Settings → Telegram.
-    id: "telegram", name: "Mowr on Telegram", description: "Asking Mowr from a phone through the person's own Telegram bot.",
-    when: /\btelegram\b/i,
-    steps: [
-      "The person can message Mowr from their phone through their own Telegram bot: in Settings → Telegram they connect a bot made with Telegram's @BotFather, choose which space it answers for, and pair it by sending the bot the /start code Mowr shows within five minutes. Only private chats with the paired account are answered.",
-      "Mowr on the PC answers those messages, so it has to be open and signed in; messages sent while it is closed are answered when it opens only if Telegram still holds them (for a limited time). Replies use the model last chosen in Mowr, the space's memory and linked PC folders, and keep their own running conversation.",
-      "They can send text, a photo or a document. Commands (listed in Settings → Telegram and in Telegram's / menu): /help; /new starts a fresh conversation so earlier messages are no longer sent; /undo forgets the last exchange; /spaces lists subjects and projects and /space <name or number> switches to one (its files, memory and conversation; /space workspace for everything); /files [words] lists the space's linked PC folder files and /get <name> sends one; /pdf, /word, /slides and /sheet answer as that kind of file; /brief answers in a few lines; /memory shows what Mowr remembers; /status shows the space, AI and conversation length. Replies are plain text in Telegram: no rendered Markdown, maths, visuals or players.",
-      "You cannot set this up or send Telegram messages yourself: give the steps and never claim a message was sent.",
-    ],
-  },
-  {
     // core/answer-format.ts editLanguage; src/chat/EditProposal.tsx; core/diff.ts applyEdit; desktop/folder-edits.ts; desktop/folders.ts supportedText.
     id: "folders", name: "Changing files in linked folders", description: "Proposed edits that the person applies with one click.",
     when: /\b(file|files|folder|code|script|config|readme|edit|change|fix|refactor|rename|bug|function|class|component)\b/i,
@@ -419,5 +408,3 @@ export function documentsNote(documents: { id: string; name: string }[]) {
   return `\n\nFILES IN THIS CONVERSATION (made by Mowr; change them in place, never as a new file):\n${documents.map((d) => `- id=${d.id} · ${d.name}`).join("\n")}\nTo change one: {"kinetra":{"action":"open","id":"<id>"}} returns its current specification and the action that made it; then {"kinetra":{"action":<that action>,"revise":"<id>","change":"one short sentence",…the complete revised specification…}} updates that same file and keeps the earlier version for undo; for a change to a few parts, send "patch":[{"at":N,…only the changed fields…}] in place of the full specification. Make a new file only when the person asks for a separate one.`;
 }
 
-/** Telegram shows replies as plain text, so the chat-only formats must not be used there. */
-export const telegramInstructions = "This reply goes to Telegram, which shows plain text only: no Markdown headings, bold, tables or code fences, no LaTeX (write formulas in plain words or simple symbols like x^2 and sqrt(2)), and no ```visual, ```check, ```edit or ```automation blocks, [[file]] citations or drive: links, since none of them render there. Keep paragraphs short and write links as full https:// addresses. Messages over 4000 characters are split, so be concise. For a document, make one file with a Kinetra file action (pdf by default; docx, pptx, xlsx or a text file when asked); it is sent as a file. A reply can carry several files (up to 10, 20 MB each): make each with its own file action, and send {\"action\":…,\"revise\":\"<id from the result>\"} to correct one you already made in this reply instead of making a second copy. A picture made with the image action is sent as a photo.";

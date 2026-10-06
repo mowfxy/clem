@@ -39,6 +39,8 @@ export function toolStatus(request: any) {
   if (request?.action === "editpdf") return request.revise ? "Updating the edited PDF…" : "Editing the PDF…";
   if (request?.action === "read" && typeof request.file === "string") return `Reading ${request.file.split(/[\\/]/).pop()!.slice(0, 60)}${Number(request.page) > 0 ? `, page ${Math.floor(Number(request.page))}` : ""}…`;
   if (request?.action === "search") return "Searching your files…";
+  if (request?.action === "find") return "Looking through all your files…";
+  if (request?.action === "attach") return "Opening the file…";
   if (request?.action === "files") return "Looking through your files…";
   if (request?.action === "call" && typeof request.module === "string" && /^diagram\/|^mowr$/.test(request.module) && /^render|plot|flowchart|chart|timeline|cycle|mindmap|diagram|table|venn|illustration|visual/i.test(String(request.fn))) return "Drawing the figure…";
   if (request?.action === "call") return "Calculating…";
@@ -541,13 +543,14 @@ export class Codex {
     }finally{endpoint?.close();if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
   }
   /** A short internal request (memory notes): never blocks the user's turn or streams to the screen. */
-  async quick(prompt:string,selection?:{model?:string;reasoning?:string},timeoutMs=45000){
+  /** `images`: pictures on this PC the request is about (a PDF's first page, when naming it). */
+  async quick(prompt:string,selection?:{model?:string;reasoning?:string},timeoutMs=45000,images:string[]=[]){
     this.retireWorn();
     this.quicks++;
     try{
       const server=await this.connection();
       let output="";
-      await streamTurn(server,{},prompt,selection,[],text=>{output+=text;},()=>false,{},timeoutMs);
+      await streamTurn(server,{},prompt,selection,images,text=>{output+=text;},()=>false,{},timeoutMs);
       return output;
     }finally{this.quicks--;this.scheduleIdle();}
   }

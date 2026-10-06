@@ -72,16 +72,14 @@ class Parser {
     while (true) {
       this.skip();
       const c = this.src[this.pos];
-      const next = this.src[this.pos + 1] ?? " ";
       if (c === "*" || c === "×" || c === "·" || c === "/") {
         this.pos += 1;
         const right = this.parseUnary();
         left = c === "/" ? { type: "div", left, right } : { type: "mul", args: [left, right] };
         continue;
       }
-      // Implicit multiplication
-      if ((/[A-Za-z0-9(]/.test(c ?? "") && /[A-Za-z0-9(]/.test(next) && left.type !== "num" && left.type !== "const") ||
-          (/[A-Za-z(π]/.test(c ?? "") && left.type === "num")) {
+      // Implicit multiplication: 2x, (x+1)x, x y, πr^2 (a digit only after a non-number)
+      if ((/[0-9]/.test(c ?? "") && left.type !== "num") || /[A-Za-z(π]/.test(c ?? "")) {
         const right = this.parsePow();
         left = { type: "mul", args: [left, right] };
         continue;
@@ -187,12 +185,11 @@ class Parser {
       this.pos += 1;
       return this.parseSigmaBody("prod");
     }
-    if (c === "d" && this.src[this.pos + 1] === "/") {
-      this.pos += 2;
-      const v = this.readIdent();
-      this.skip();
-      if (this.src[this.pos] !== "(") throw new KinetraError("parse", "Expected ( after d/dx");
-      this.pos += 1;
+    const dd = c === "d" ? /^d\/d([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(this.src.slice(this.pos)) : null;
+    if (dd) {
+      // d/dx(body): differentiate with respect to x; d/t without "d<var>(" is a plain division
+      this.pos += dd[0].length;
+      const v = dd[1];
       const body = this.parseAdd();
       this.skip();
       if (this.src[this.pos] !== ")") throw new KinetraError("parse", "Expected )");
@@ -206,8 +203,9 @@ class Parser {
       while (j < this.src.length) {
         const x = this.src[j];
         if (/[0-9]/.test(x)) { j += 1; continue; }
-        if (x === "." && !seenDot) { seenDot = true; j += 1; continue; }
-        if ((x === "e" || x === "E") && !seenE) {
+        if (x === "." && !seenDot && this.src[j + 1] !== ".") { seenDot = true; j += 1; continue; }
+        // an exponent needs digits (1e-3); a bare e is Euler's number (2e, 2exp(x))
+        if ((x === "e" || x === "E") && !seenE && /^[+-]?[0-9]/.test(this.src.slice(j + 1, j + 3))) {
           seenE = true;
           j += 1;
           if (this.src[j] === "+" || this.src[j] === "-") j += 1;
@@ -224,7 +222,8 @@ class Parser {
     if (/[A-Za-z]/.test(c ?? "")) {
       const name = this.readIdent();
       this.skip();
-      if (this.src[this.pos] === "(") {
+      // A single letter before ( is a variable times the bracket (x(x+1), a(b+c)); longer names are calls.
+      if (this.src[this.pos] === "(" && name.length > 1) {
         this.pos += 1;
         const args: Expr[] = [];
         this.skip();
@@ -252,18 +251,16 @@ class Parser {
     this.skip();
     if (this.src[this.pos] !== "=") throw new KinetraError("parse", "Expected = in sum");
     this.pos += 1;
-    const from = this.parseAdd();
+    // Bounds are single factors (1, n, -2, (2n)) so implicit multiplication cannot swallow "to" or the "(" body.
+    const from = this.parseUnary();
     this.skip();
-    if (this.src[this.pos] !== "to" && this.src[this.pos + 1] !== " ") {
-      // accept "to" or "..."
-    }
     let to: Expr;
     if (this.src[this.pos] === "." && this.src[this.pos + 1] === "." && this.src[this.pos + 2] === ".") {
       this.pos += 3;
-      to = this.parseAdd();
+      to = this.parseUnary();
     } else if (this.src.startsWith("to", this.pos)) {
       this.pos += 2;
-      to = this.parseAdd();
+      to = this.parseUnary();
     } else {
       throw new KinetraError("parse", "Expected `to` or `...` in sum");
     }

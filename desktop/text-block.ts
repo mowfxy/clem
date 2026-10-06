@@ -24,7 +24,8 @@ export async function typesetBlock(text: string, { width, height, size, font, bo
   const file = join(tmpdir(), "mowr-block-" + randomUUID() + ".html");
   const ink = `rgb(${color.map((c) => Math.round(c * 255)).join(",")})`;
   try {
-    for (let s = size, tries = 0; tries < 12; tries++, s *= 0.88) {
+    // Enough tries to get from the largest size (72 pt) below 4 pt.
+    for (let s = size, tries = 0; tries < 24; tries++, s *= 0.88) {
       const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><style>@page{size:${width}pt ${height}pt;margin:0}html,body{margin:0;padding:0;background:transparent}body{width:${width}pt;padding:1pt 2pt;box-sizing:border-box;font:${bold ? 700 : 400} ${s.toFixed(2)}pt/1.2 ${FAMILIES[font] || FAMILIES.sans};color:${ink};text-align:${align === "center" || align === "right" ? align : "start"};overflow-wrap:anywhere;white-space:pre-wrap}</style></head><body dir="auto">${escape(text)}</body></html>`;
       await writeFile(file, html, "utf8");
       await page.loadFile(file);
