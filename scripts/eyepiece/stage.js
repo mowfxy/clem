@@ -1,6 +1,5 @@
-// The film: a shutter opens on the notebook page, the pen finishes the flower, its centre opens onto a
-// gathering run of plates (everything you could study) in windows that change shape on the cut, the moon
-// in the round lens, and back out to the page for the title.
+// The film: a bird on a branch under an evening sky, a dive into an eyepiece, a gathering run of
+// plates (everything you could study), the moon, and back out to the sky for the title.
 
 const DURATION = 32;
 
@@ -56,7 +55,7 @@ void main(){
 
 const COMPOSITE_FS = `
 uniform sampler2D scene, over;
-uniform vec2 ap, shift, innerC, box, shut; uniform float rc, R, eye, blur, spin, ca, tube, flash, fade, time, distort, grain, vign, innerFade, pageAmt, innerR, pageBlur, punch;
+uniform vec2 ap, shift, innerC; uniform float R, eye, blur, spin, ca, tube, flash, fade, time, distort, grain, vign, innerFade, pageAmt, innerR, iris, pageBlur, punch;
 vec3 S(vec2 v){ return texture(scene, .5 + (v - .5) / 1.2).rgb; }
 vec2 rotA(vec2 v, vec2 c, float a){ float co = cos(a), si = sin(a); v -= c; return c + mat2(co, -si, si, co) * v; }
 float tubeL(float s, float th){
@@ -69,10 +68,7 @@ float tubeL(float s, float th){
 }
 void main(){
   vec2 v = uv;
-  // the aperture is a rounded box: a circle when rc = box = R, a card, a slit or the whole frame otherwise.
-  // r is 1 on its edge and grows outward in rings that follow the shape.
-  vec2 d = (v - ap) / R, bq = abs(v - ap) - box + rc;
-  float r = 1. + (length(max(bq, 0.)) + min(max(bq.x, bq.y), 0.) - rc) / R, th = atan(d.y, d.x);
+  vec2 d = (v - ap) / R; float r = length(d), th = atan(d.y, d.x);
   float k = distort * eye;
   vec2 vd = ap + (v - ap) * (1. + k * (r * r - 1.) * .5) / (1. + punch);
   vec3 acc = vec3(0);
@@ -86,26 +82,26 @@ void main(){
     acc += vec3(S(q + cad).r, S(q).g, S(q - cad).b);
   }
   vec3 col = acc / float(N);
-  // a round lens darkens softly toward its rim; a card or slit only gets a thin inner shadow
-  float rnd = rc / R, rim = mix(.9, .6, rnd);
-  col *= mix(1., 1. - (mix(.35, .5, rnd) + punch * 3.) * smoothstep(rim - punch * 2., 1.02, r), eye);
-  col += vec3(1., .97, .92) * mix(.03, .07, rnd) * eye * smoothstep(mix(.97, .92, rnd), 1., r) * (1. - smoothstep(.99, 1.02, r));
+  col *= mix(1., 1. - (.5 + punch * 3.) * smoothstep(.6 - punch * 2., 1.02, r), eye);
+  col += vec3(1., .97, .92) * .07 * eye * smoothstep(.92, 1., r) * (1. - smoothstep(.99, 1.02, r));
   vec3 page = texture(over, v, pageBlur).rgb;
   float inC = innerR > 0. ? 1. - smoothstep(innerR - .0015, innerR + .0015, length(v - innerC)) : 0.;
   col = mix(col, page, innerFade * (1. - inC));
   col += vec3(1., .97, .9) * .08 * inC * smoothstep(innerR * .8, innerR, length(v - innerC));
-  // the shutter: four engraved navy blades that slide back to a widening window
-  if (shut.y < .6){
-    vec2 a = abs(v - .5) - shut;
-    float bx = smoothstep(-.0012, .0012, a.x), by = smoothstep(-.0012, .0012, a.y);
-    float hy = abs(fract(v.y * 1080. / 5.5 + .2 * vnoise(v * 40.)) - .5) * 2.;
-    float hx = abs(fract(v.x * 1080. / 5.5 + .2 * vnoise(v * 40. + 7.)) - .5) * 2.;
-    vec3 bc = vec3(.055, .07, .13);
-    vec3 cy = bc * (.72 + .45 * smoothstep(.35, .7, hy)) + vec3(.45, .5, .64) * .55 * exp(-max(a.y, 0.) * 1080. / 2.5);
-    vec3 cx = bc * (.8 + .45 * smoothstep(.35, .7, hx)) + vec3(.45, .5, .64) * .55 * exp(-max(a.x, 0.) * 1080. / 2.5);
-    cy *= .8 + .3 * smoothstep(.6, .05, a.y); cx *= .8 + .3 * smoothstep(.6, .05, a.x);
-    col = mix(col, cy, by);
-    col = mix(col * (1. - .5 * exp(-max(-a.x, 0.) * 1080. / 8.) * bx), cx, bx);
+  // the iris: nine engraved blades that turn open
+  if (iris < 1.){
+    float sec = TAU / 9., rot = (1. - iris) * 1.4;
+    float a = th + rot + r * .7;
+    float m = mod(a, sec) - sec * .5;
+    float poly = r * cos(m) / cos(sec * .5);
+    float blade = smoothstep(iris * 1.03 - .004, iris * 1.03 + .004, poly);
+    float bid = floor(a / sec);
+    vec3 bc = vec3(.05, .065, .12) * (.75 + .5 * hash12(vec2(bid, 3.)));
+    float eng = abs(fract(r * R * 1080. / 6. + m * 10.) - .5);
+    bc *= .75 + .5 * smoothstep(.25, .05, eng);
+    bc = mix(bc, vec3(.5, .54, .66), smoothstep(.012, .0, mod(a, sec)) * .7);
+    bc *= .7 + .4 * smoothstep(1., .2, r);
+    col = mix(col, bc, blade);
   }
   // the barrel: navy, engraved with fine turned rings whose weight follows the light
   float px = r * R * 1080.;
@@ -276,27 +272,14 @@ const RUN = [
   sh("feather", C(1500, 520, 800, 0.2), C(1520, 500, 700, 0.25)),
   sh("snow", C(1024, 1024, 900, 0.3), C(1024, 1024, 800, 0.4), BLACK),
 ];
-// The window changes shape with the music: the whole frame, a tall card, a wide plate, a slit, a
-// rounded square, now and then the round lens. It only ever changes on a cut.
-const FRAMES = {
-  full: { box: [0.62, 0.62], rc: 0.02 },
-  tall: { box: [0.3, 0.45], rc: 0.012 },
-  wide: { box: [0.46, 0.3], rc: 0.012 },
-  slit: { box: [0.47, 0.19], rc: 0.01 },
-  square: { box: [0.4, 0.4], rc: 0.07 },
-  round: { box: [0.47, 0.47], rc: 0.47 },
-};
-// one frame per bar of quarter shots (four cuts), then one per pair of eighths
-const BARS = ["tall", "full", "wide", "round", "full", "square", "slit", "full", "tall", "round", "full"];
-const CLIMAX = ["full", "tall", "full", "wide", "full", "square", "full", "round"];
-const SEG = [{ src: "herbal", live: "herbal", from: C(1350, 900, 2000, -0.04), to: C(1720, 540, 900, 0.02), start: DIVE0, end: HIT, dive: true, frame: "full" }];
+const SEG = [{ src: "herbal", live: "herbal", from: C(1350, 900, 2000, -0.04), to: C(1720, 540, 900, 0.02), start: DIVE0, end: HIT, dive: true, R: 0.47 }];
 {
-  let t = HIT, q = 0, e = 0;
-  RUN.forEach((s) => {
+  let t = HIT;
+  const radii = [0.5, 0.56, 0.6, 0.62, 0.58, 0.54, 0.5];
+  RUN.forEach((s, i) => {
     if (t >= MOON - 0.01) return;
     const d = t < HIT + 0.99 ? 0.5 : t < HIT2 - 0.01 ? 0.25 : 0.125;
-    const frame = d === 0.5 ? "full" : d === 0.25 ? BARS[Math.floor(q++ / 4) % BARS.length] : CLIMAX[Math.floor(e++ / 2) % CLIMAX.length];
-    SEG.push({ ...s, start: t, end: Math.min(t + d, MOON), frame });
+    SEG.push({ ...s, start: t, end: Math.min(t + d, MOON), R: radii[Math.floor(i / 6) % radii.length] });
     t += d;
   });
   t = MOON;
@@ -317,7 +300,7 @@ const KEYS = [
 function pageCam(t) {
   if (t > DIVE0 && t < OUTOF - 0.5) {
     const k = clamp((t - DIVE0) / (HIT - 0.1 - DIVE0)), e = Math.pow(k, 1.7);
-    const span = Math.exp(lerp(Math.log(1300), Math.log(34 / 0.75), e));
+    const span = Math.exp(lerp(Math.log(1300), Math.log(34 / 0.47), e));
     return [lerp(FLOWER.x + 10, FLOWER.x, smooth(0, 0.4, k)), FLOWER.y, span];
   }
   let i = 0; while (i < KEYS.length - 2 && t > KEYS[i + 1][0]) i++;
@@ -362,12 +345,8 @@ function paintSeg(s, t, slot, camOverride) {
   return slot.tex;
 }
 
-function frameU(name) {
-  const f = FRAMES[name];
-  return { box: f.box, rc: f.rc, R: Math.min(f.box[0], f.box[1]) };
-}
 function renderAt(t) {
-  const U = { eye: 1, R: 0.47, ap: [0.5, 0.5], blur: 0, spin: 0, shift: [0, 0], ca: 0.012, tube: 0, flash: 0, fade: 0, time: t, distort: 0.14, grain: 0.07, vign: 0.25, innerFade: 0, pageAmt: 0, innerR: 0, innerC: [0.5, 0.5], shut: [1, 1], box: null, rc: 0, pageBlur: 0, punch: 0 };
+  const U = { eye: 1, R: 0.47, ap: [0.5, 0.5], blur: 0, spin: 0, shift: [0, 0], ca: 0.012, tube: 0, flash: 0, fade: 0, time: t, distort: 0.14, grain: 0.07, vign: 0.25, innerFade: 0, pageAmt: 0, innerR: 0, innerC: [0.5, 0.5], iris: 1, pageBlur: 0, punch: 0 };
   const cam = pageCam(t);
   const fv = [0.5 + (FLOWER.x - cam[0]) / cam[2], 0.5 - (FLOWER.y - cam[1]) / cam[2]];
   if (t < HIT || t > PULL) {
@@ -375,12 +354,11 @@ function renderAt(t) {
     upload(overC, overTex);
   }
   if (t < DIVE0) {
-    // the opening: four shutter blades closed in the dark click back three times to a widening
-    // window on the page, then slide away while the focus racks onto it
-    let o = 0;
-    for (const it of IRIS) o += 0.085 * easeOut(clamp((t - it) / 0.09));
-    o += (0.62 - 0.255) * sineInOut(clamp((t - 1.3) / 0.65));
-    Object.assign(U, { innerFade: 1, shut: [o * 1.42, o], pageBlur: 5 * (1 - smooth(1.15, 2.2, t)), ...frameU("full") });
+    // the opening: a closed iris in the dark clicks open three times, then the page racks into focus
+    let iris = 0;
+    IRIS.forEach((it, k) => { iris += 0.17 * easeOut(clamp((t - it) / 0.09)); });
+    iris += (1 - 0.51) * sineInOut(clamp((t - 1.3) / 0.65));
+    Object.assign(U, { innerFade: 1, iris, pageBlur: 5 * (1 - smooth(1.15, 2.2, t)), R: 0.47 });
     U.fade = 1 - smooth(0, 0.35, t);
     for (const it of IRIS) if (t >= it) U.flash += 0.06 * Math.exp(-(t - it) * 20);
     const w = RNG(Math.floor(t * 24) + 1);
@@ -389,19 +367,18 @@ function renderAt(t) {
     return;
   }
   if (t >= CLOSE_END) {
-    Object.assign(U, { ...frameU("full"), eye: 0, innerFade: 1, ca: 0.003, distort: 0, vign: 0.3, grain: 0.05 });
+    Object.assign(U, { eye: 0, innerFade: 1, ca: 0.003, distort: 0, vign: 0.3, grain: 0.05 });
     U.fade = t < 1 ? 1 - smooth(0, 0.4, t) : smooth(DURATION - 0.5, DURATION - 0.02, t);
     run(PROG.comp, null, { scene: { tex: sceneT.tex }, over: { tex: overTex }, ...U });
     return;
   }
   let i = SEG.findIndex((s) => t < s.end); if (i < 0) i = SEG.length - 1;
   const s = SEG[i];
-  Object.assign(U, frameU(s.frame || "full"));
+  U.R = s.R;
   let moonCam = null;
   if (s.close) {
     const pp = smooth(PULL, OUTOF, t);
     U.R = t < OUTOF ? lerp(0.36, 0.07, easeIn(pp)) : 34 / cam[2];
-    Object.assign(U, { box: [U.R, U.R], rc: U.R });
     if (t >= OUTOF) U.ap = fv;
     U.tube = pp;
     U.pageAmt = smooth(PULL + 0.25, OUTOF + 0.1, t);
@@ -416,7 +393,7 @@ function renderAt(t) {
   run(PROG.trans, sceneT, { A: { tex }, B: { tex }, mode: 0, p: 0, ang: 1, shutter: 0, dir: [1, 0], zc: [0.5, 0.5] });
   if (s.dive) {
     // inside the lens, the flower's centre opens as a second lens and grows until it fills the first
-    U.innerFade = 1; U.innerC = fv; U.innerR = Math.min(0.75, 34 / cam[2]);
+    U.innerFade = 1; U.innerC = fv; U.innerR = Math.min(0.5, 34 / cam[2]);
     U.blur = 2 * smooth(3.6, 4.0, t) * (1 - smooth(4.1, 4.4, t));
   }
   // the hits land as a punch of the lens, not a flash: a quick push in that settles back
@@ -425,8 +402,7 @@ function renderAt(t) {
   if (!s.dive && !(s.close && t > OUTOF)) {
     const w = RNG(Math.floor(t * 24) + 1);
     U.ap = [U.ap[0] + w.range(-0.0007, 0.0007), U.ap[1] + w.range(-0.0007, 0.0007)];
-    const b = 1 + 0.004 * Math.sin(t * 7);
-    U.R *= b; U.box = U.box.map((v) => v * b); U.rc *= b;
+    U.R *= 1 + 0.004 * Math.sin(t * 7);
   }
   run(PROG.comp, null, { scene: { tex: sceneT.tex }, over: { tex: overTex }, ...U });
 }
