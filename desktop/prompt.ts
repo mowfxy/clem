@@ -15,6 +15,21 @@ export function systemPrompt(tools = "") {
   return `${mowrIdentity}\n\n${coreRules}${tools ? "\n\n" + tools : ""}`;
 }
 
+/**
+ * What goes after a CLI's own system prompt when it runs as itself in a working folder of the person's files
+ * (desktop/ai-workspace.ts): its prompt, tools and way of working stay as they are, and this says where it is and who
+ * reads the reply. The same text every time, so the CLI's prompt cache keeps it.
+ */
+export const cliIdentity =
+  "IN MOWR: you are answering inside Mowr, a desktop app for learning and professional work, used by students, teachers and professionals rather than developers. Your final reply is shown to the person as Markdown in Mowr's chat (maths as $LaTeX$), so write it for them: no talk of tools, paths or your working folder unless it helps them. Your working directory holds the person's files for this conversation (the message says which are the sources); work with them as you would with any project, using your own tools. Make documents, figures, calculations and Office files through Kinetra, described below.";
+/** Claude and Grok have no shell here; Codex reads and writes its files through its shell, which its sandbox keeps to the folder. */
+const NO_COMMANDS = "Run no commands or programs.";
+const SHELL = "Your shell is for working with the files in your working folder (listing, searching, reading text, writing your drafts and outputs): no installing, no network, nothing outside the folder.";
+const cliRules = coreRules.replace(" Do not execute commands, and read no files except those Mowr supplies or its file tools return.", " Read only files in your working folder and the folders the message names.");
+export function cliSystemPrompt(tools = "", { shell = false }: { shell?: boolean } = {}) {
+  return `${cliIdentity} ${shell ? SHELL : NO_COMMANDS}\n\n${cliRules}${tools ? "\n\n" + tools : ""}`;
+}
+
 /** Untrusted text cannot open or close one of Mowr's sections. */
 const guard = (text: string) => text.replace(/<(\/?)(mowr-[a-z-]+)/gi, "‹$1$2");
 

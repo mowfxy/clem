@@ -81,7 +81,8 @@ export class Codex {
     if (this.server && !this.server.dead) return this.server;
     if (this.serverStart) return this.serverStart;
     this.serverStart = (async () => {
-      const server = new AppServer(await this.start(["app-server", "-c", 'cli_auth_credentials_store="file"', "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", `web_search="${WEB_SEARCH}"`]));
+      // The shell is off unless a thread turns it on for its folder (codex-stream.ts folderThread).
+      const server = new AppServer(await this.start(["app-server", "-c", 'cli_auth_credentials_store="file"', "-c", 'forced_login_method="chatgpt"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", 'windows.sandbox="unelevated"', "-c", `web_search="${WEB_SEARCH}"`]));
       this.server = server;
       try { await server.ready; } catch (error) { server.close(); if (this.server === server) this.server = null; throw error; }
       return server;
@@ -502,11 +503,12 @@ export class Codex {
     this.server?.close();
     this.server = null;
   }
-  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,unfinished?:()=>string|undefined,stats?:TurnStats){
+  /** `folder`: the conversation's folder of files, which Codex works in as itself (codex-stream.ts folderThread). */
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,unfinished?:()=>string|undefined,stats?:TurnStats,folder?:{root:string;instructions:string}){
     if(this.turns.has(id))throw Error("This chat is already answering.");
     this.retireWorn();
     const turn={cancelled:false};this.turns.set(id,turn);
-    const session:TurnSession={};
+    const session:TurnSession=folder?{folder}:{};
     // Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools: one endpoint for the whole
     // answer, added to its thread. A plain request (no files, no tools) stays text only.
     let endpoint:NativeEndpoint|undefined;
