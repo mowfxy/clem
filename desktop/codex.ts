@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
-import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn} from "./kinetra-turn.ts";
+import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn,type AnswerGates} from "./kinetra-turn.ts";
 import type {TurnStats} from "./turn-timing.ts";
 import {kinetraMcp,codexMcpConfig,inlinePictures,keepingAlive,NATIVE_NOTE,type NativeEndpoint} from "./kinetra-mcp.ts";
 
@@ -503,8 +503,9 @@ export class Codex {
     this.server?.close();
     this.server = null;
   }
-  /** `folder`: the conversation's folder of files, which Codex works in as itself (codex-stream.ts folderThread). */
-  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,unfinished?:()=>string|undefined,stats?:TurnStats,folder?:{root:string;instructions:string}){
+  /** `gates`: what holds the final answer back (desktop/kinetra-turn.ts runKinetraTurn's unfinished and review).
+   *  `folder`: the conversation's folder of files, which Codex works in as itself (codex-stream.ts folderThread). */
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,gates:AnswerGates={},stats?:TurnStats,folder?:{root:string;instructions:string}){
     if(this.turns.has(id))throw Error("This chat is already answering.");
     this.retireWorn();
     const turn={cancelled:false};this.turns.set(id,turn);
@@ -540,7 +541,7 @@ export class Codex {
         emit({id,type:"worked"});
         emit({id,type:"status",text:toolStatus(request)});
         return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
-      },()=>turn.cancelled,{stateful:true,unfinished,stats});
+      },()=>turn.cancelled,{stateful:true,...gates,sentBack:()=>emit({id,type:"worked"}),stats});
       emit({id,type:"done"});
     }finally{endpoint?.close();if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
   }

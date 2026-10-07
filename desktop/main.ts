@@ -3,7 +3,8 @@ import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
 import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "./file-maker";
 import { ATTACHMENTS, mirrorFor, newOutputs, syncMirror, workspaceKey, workspaceLane, workspaceNote, workspacePath } from "./ai-workspace";
-import { withMarkdownSource } from "./markdown-source";
+import { withMarkdownSource, uncheckedExamples } from "./markdown-source";
+import { answerReview, calculationIntent } from "./answer-review";
 import { inflight, stoppedRuns } from "./inflight";
 import { wordDocument } from "./docx-document";
 import { powerpointDeck } from "./pptx-deck";
@@ -57,7 +58,7 @@ import {GrokProvider,grokModels,grokPdfPath,grokUsage,GROK_PREFIX} from './grok'
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
-import {runKinetraTurn,SessionLost,UsageLimit} from './kinetra-turn';
+import {runKinetraTurn,SessionLost,UsageLimit,type AnswerGates} from './kinetra-turn';
 import {LiveScreen} from './live-reply';
 import {inlinePictures} from './kinetra-mcp';
 import {CropAssets,cropTools,memoryIo,readAsset,temporaryStores,type AssetIo} from './pdf-assets';
@@ -325,7 +326,7 @@ void app.whenReady().then(async () => {
   /** `workspace`: the folder of the person's files each AI runs in as itself (desktop/ai-workspace.ts), the linked folders
    *  it may read, and what Claude's document writers are told (desktop/claude.ts claudeWriters). `finish`: work done once
    *  the answer is final, before it is marked done; a failure there never costs the answer. */
-  type AnswerOptions = { images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined; workspace?: { root: string; readOnly: string[]; writer?: string }; finish?: () => Promise<void> };
+  type AnswerOptions = { images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined; review?: AnswerGates["review"]; workspace?: { root: string; readOnly: string[]; writer?: string }; finish?: () => Promise<void> };
   /**
    * One answer from whichever AI the person chose (ChatGPT through Codex, Claude or Grok), with Mowr's
    * Kinetra tools, documents and pictures. Chat and memory notes all go through here, so a
@@ -342,7 +343,7 @@ void app.whenReady().then(async () => {
     }
   }
   async function answerTimed(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
-    { images = [], pdfs = [], pdf, instructions = kinetraInstructions, notes = "", tools, unfinished, workspace, finish }: AnswerOptions, stats: TurnStats) {
+    { images = [], pdfs = [], pdf, instructions = kinetraInstructions, notes = "", tools, unfinished, review, workspace, finish }: AnswerOptions, stats: TurnStats) {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:");
     // Stop pressed while the request was being prepared (folders, memory, account choice): nothing starts.
     if (cancelledRuns.has(id)) throw Error("Request cancelled");
@@ -350,7 +351,7 @@ void app.whenReady().then(async () => {
     if (!grok && !claude) {
       // Codex says it is done itself: the files written in its folder are collected first, so they arrive with the answer.
       let ended = false;
-      await codex.run(id, prompt, (event) => { if (event.type === "done") ended = true; else emit(event); }, images.map((i) => i.path), { model, reasoning }, pdf, instructions + notes, tools, unfinished, stats, workspace ? { root: workspace.root, instructions: cliSystemPrompt("", { shell: true }) } : undefined);
+      await codex.run(id, prompt, (event) => { if (event.type === "done") ended = true; else emit(event); }, images.map((i) => i.path), { model, reasoning }, pdf, instructions + notes, tools, { unfinished, review }, stats, workspace ? { root: workspace.root, instructions: cliSystemPrompt("", { shell: true }) } : undefined);
       if (ended) { await finishing(); emit({ id, type: "done" }); }
       return;
     }
@@ -412,7 +413,7 @@ void app.whenReady().then(async () => {
       emit({ id, type: "worked" });
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, stats }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); if (grok && pdfs.length) void groks.all(owner).then((all) => all.forEach((g) => void g.dropPdfs(id))).catch(() => {}); });
+    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: () => emit({ id, type: "worked" }), stats }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); if (grok && pdfs.length) void groks.all(owner).then((all) => all.forEach((g) => void g.dropPdfs(id))).catch(() => {}); });
     await finishing();
     screen.answer(answer);
     emit({ id, type: "done" });
@@ -1408,19 +1409,29 @@ void app.whenReady().then(async () => {
       // Figures the model has already been shown pictures of in this answer (desktop/figure-review.ts): each is sent once.
       const figuresSeen = new Set<string>();
       const before = new Map<string, { blob: string; at: number; summary: string; size: number }>();
-      // Planned sections each document made in this answer still lacks (for one made from a Markdown file, also those
-      // still a stub, and that file's path); the answer waits until they are written.
-      const gaps = new Map<string, { missing: string[]; draft?: string }>();
+      // Planned sections each document made in this answer still lacks; for one made from a Markdown file, also those
+      // still a stub, its worked examples whose numbers have no check (their lines), and that file's path. The answer
+      // waits until they are written.
+      const gaps = new Map<string, { missing: string[]; draft?: string; unchecked?: number[] }>();
       const unfinished = () => {
-        const open = [...gaps].filter(([, gap]) => gap.missing.length);
+        const open = [...gaps].filter(([, gap]) => gap.missing.length || gap.unchecked?.length);
         if (!open.length) return undefined;
-        return open.map(([doc, { missing, draft }]) => {
+        return open.map(([doc, { missing, draft, unchecked = [] }]) => {
           const action = documents.get(doc)!.split(".").pop()!.toLowerCase(), key = partsKey[action] || "sections";
           const list = `${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}`;
-          if (draft) return `"${documents.get(doc)}" is not finished: ${missing.length} planned section${missing.length === 1 ? " is" : "s are"} missing from ${draft} or only a stub (${list}). Write ${missing.length === 1 ? "it" : "them"} in the file now, in full depth, then send {"action":"${action}","revise":"${doc}","markdown":"${draft}"}. To change the plan instead, send a new "plan" with that request.`;
+          if (draft) {
+            const parts = [
+              missing.length ? `${missing.length} planned section${missing.length === 1 ? " is" : "s are"} missing from ${draft} or only a stub (${list})` : "",
+              unchecked.length ? `${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 20).join(", ")}${unchecked.length > 20 ? ", …" : ""})` : "",
+            ].filter(Boolean).join(", and ");
+            return `"${documents.get(doc)}" is not finished: ${parts}. ${missing.length ? "Write the missing sections in the file now, in full depth" : ""}${missing.length && unchecked.length ? "; " : ""}${unchecked.length ? "verify each of those examples' numbers (a Kinetra call where a module computes them) and add its ```check block after it" : ""}. Then send {"action":"${action}","revise":"${doc}","markdown":"${draft}"}. To change the plan instead, send a new "plan" with that request.`;
+          }
           return `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten ${key === "slides" ? "slide" : "section"}${missing.length === 1 ? "" : "s"} (${list}). Write them now with {"action":"${action}","revise":"${doc}","append":true,"${key}":[…the next ${key}, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`;
         }).join(" ") + " Answer the person only when every planned part is written.";
       };
+      // The answer's own numbers (desktop/answer-review.ts): its checks recomputed, and a calculation's results verified.
+      const calculation = calculationIntent(query);
+      const review: AnswerGates["review"] = (answer, history) => answerReview(answer, history, { calculation });
       const known = await Promise.all((request.documents || []).map((doc) => disk.hasFile(user.id, "spec-" + doc.id)));
       (request.documents || []).forEach((doc, i) => { if (known[i]) documents.set(doc.id, doc.name); });
       // The Markdown file each document was last made from (kept with its source): written back when it is missing from
@@ -1455,6 +1466,8 @@ void app.whenReady().then(async () => {
         // it, and a change is a small edit to the file instead of the whole document sent again.
         const sourced = typeof spec?.markdown === "string";
         let draft: { path: string; text: string } | undefined;
+        // Worked examples in the draft whose numbers nothing checks (desktop/markdown-source.ts uncheckedExamples).
+        let unchecked: number[] = [];
         if (sourced) {
           if (action !== "pdf" && action !== "docx") throw Error('"markdown" makes pdf and docx files; send this file\'s content in the request instead.');
           const full = work ? workspacePath(work.root, spec.markdown) : null;
@@ -1472,6 +1485,7 @@ void app.whenReady().then(async () => {
             throw Error(`Send "plan" with this request: every heading the finished document will have, taken from the source's structure (each topic, worked example and exercise, in order). Mowr checks ${spec.markdown} against it.`);
           spec = withMarkdownSource(spec, text);
           draft = { path: relative(work!.root, full).split(sep).join("/"), text };
+          unchecked = uncheckedExamples(text);
         }
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
         if (revise && !documents.has(revise)) throw Error(`No file with id "${revise}" in this conversation. Use an id from the files list, or leave out "revise" to make a new file.`);
@@ -1510,6 +1524,7 @@ void app.whenReady().then(async () => {
         // Pictures of the result (a deck's slides, its new figures) go back to the model with this result, so it checks what it made.
         const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.image).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
         const missing = key === "sections" ? unwritten(clean, { stubs: sourced }) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
+        const checks = unchecked.length ? { unchecked: `${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 20).join(", ")}). Verify those numbers (a Kinetra call where a module computes them), add a check block after each example, and send the request again.` } : {};
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
         const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
         const words = key === "sections" ? String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0) : undefined;
@@ -1533,7 +1548,7 @@ void app.whenReady().then(async () => {
           } else if (earlier && change) before.get(revise)!.summary = String(change).slice(0, 200);
           await disk.writeFile(user.id, revise, made.bytes);
           await disk.writeFile(user.id, "spec-" + revise, specBytes);
-          gaps.set(revise, { missing, draft: draft?.path });
+          gaps.set(revise, { missing, draft: draft?.path, unchecked });
           if (earlier) {
             const file = { id: revise, name: documents.get(revise)!, size: made.bytes.byteLength, type: made.type, created: Date.now(), updated: Date.now(), spaceId: null, made: true };
             delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope, revised: { version: before.get(revise) } });
@@ -1542,7 +1557,7 @@ void app.whenReady().then(async () => {
             madeNow.set(revise, file);
             delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope });
           }
-          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
+          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, ...checks, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
         }
         const id = randomUUID();
         const file = { id, name: made.name, size: made.bytes.byteLength, type: made.type, created: Date.now(), spaceId: spaceOf, made: true };
@@ -1550,9 +1565,9 @@ void app.whenReady().then(async () => {
         await disk.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
         madeNow.set(id, file);
-        gaps.set(id, { missing, draft: draft?.path });
+        gaps.set(id, { missing, draft: draft?.path, unchecked });
         delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
-        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
+        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...checks, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
       };
       /** A stopped answer leaves no trace: files it made are removed and files it changed get their earlier contents back. */
       const rollback = async () => {
@@ -1715,7 +1730,7 @@ void app.whenReady().then(async () => {
         }
       };
       const workspace = work ? { root: work.root, readOnly: folders.map((f) => f.path), writer: extras } : undefined;
-      const run = answerWith(user.id, request.id, request.model, reasoning, prompt, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished, workspace, finish: collectOutputs });
+      const run = answerWith(user.id, request.id, request.model, reasoning, prompt, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs });
       // A folder for one request outside any chat is removed with its answer.
       if (work?.key.startsWith("once-")) void run.finally(() => rm(work!.root, { recursive: true, force: true }).catch(() => {})).catch(() => {});
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
