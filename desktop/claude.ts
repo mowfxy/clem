@@ -45,7 +45,7 @@ export const WRITER='mowr-writer';
 export function claudeWriters(prompt:string){
   return JSON.stringify({[WRITER]:{
     description:'Writes ONE complete document (pdf or docx) for the person from given source files, at full depth, and makes it with Kinetra. Use one per document when a request needs two or more documents; start them together.',
-    prompt:`${prompt}\n\nYOU ARE A MOWR DOCUMENT WRITER: Mowr's main assistant started you for ONE document. Your task says what the person asked (word for word), which document you write, its sources and its draft file. Read those sources yourself (a PDF's text first, then every page whose drawing you need), check every number with Kinetra, write the draft at full depth (everything the request and the sources call for; nothing summarised away), make the file with one pdf or docx request, look at what comes back and fix what is wrong. Then reply in a few lines: the file's id and name, what it covers, and anything you could not do. The document is for the person, not for the assistant.`,
+    prompt:`${prompt}\n\nYOU ARE A MOWR DOCUMENT WRITER: Mowr's main assistant started you for ONE document. Your task says what the person asked (word for word), which document you write, its sources and its draft file. Read those sources yourself (a PDF's text first, then every page whose drawing you need), check every number with Kinetra, write the draft at full depth (everything the request and the sources call for; nothing summarised away), make the file with one pdf or docx request (with its "plan" and a check after every worked example), look at what comes back and fix what is wrong; until the result says every planned part is written, keep writing. Then reply in a few lines: the file's id and name, what it covers, and anything you could not do. The document is for the person, not for the assistant.`,
     tools:WRITER_TOOLS,model:'inherit'}});
 }
 /** What the answer itself is told about its writers (the guide in its prompt explains documents; this, when to delegate). */
@@ -193,20 +193,6 @@ export function parseClaudeModels(list:any):ClaudeModel[]{
       description,reasoningEfforts:levels(efforts),defaultReasoningEffort:efforts.includes('high')&&/opus/i.test(value)?'high':efforts.includes('medium')?'medium':efforts[0]||''});
   }
   return models;
-}
-
-const EFFORT_ORDER=['low','medium','high','xhigh','max'];
-/**
- * The thinking level for one request. A model's default stays medium (high for Opus) so chat stays quick, but a
- * multi-step tool or document task at medium plans less: a document stops at a sketch, numbers go unverified, broken
- * requests repeat. When the level is still the default and the request may use tools (needsKinetra), it goes up to
- * high. A level the person picked is never changed, nor one the model does not list.
- */
-export function toolEffort(models:ClaudeModel[],model:string,effort:string|undefined,chosen:boolean,toolWork:boolean){
-  if(chosen||!toolWork)return effort;
-  const levels=models.find(m=>m.id===model)?.reasoningEfforts.map(e=>e.reasoningEffort)||[];
-  if(!levels.includes('high'))return effort;
-  return EFFORT_ORDER.indexOf(effort||'')>=EFFORT_ORDER.indexOf('high')?effort:'high';
 }
 
 export function claudeSubscriptionStatus(raw:string,code:number|null) {

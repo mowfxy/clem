@@ -119,7 +119,8 @@ test("a document's Markdown source becomes the pdf specification, figures and re
   assert.equal("markdown" in spec, false);
   // The file is the whole document: parts sent beside it are ignored rather than added twice.
   const whole = withMarkdownSource({ action: "pdf", markdown: "Drafts/n.md", revise: "id1", append: true, patch: [{ at: 0 }], plan: ["x"] }, md);
-  assert.equal("append" in whole || "patch" in whole || "plan" in whole, false);
+  assert.equal("append" in whole || "patch" in whole, false);
+  assert.deepEqual(whole.plan, ["x"], "the plan stays: the file is checked against it");
   assert.equal(whole.sections.length, source.sections.length);
   assert.throws(() => markdownSource("## A\n```figure\n{broken\n```\n"), /line 2 is not valid JSON/);
   assert.throws(() => withMarkdownSource({ action: "pdf" }, "# Only a title\n"), /no content/);

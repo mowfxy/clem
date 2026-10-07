@@ -9,6 +9,7 @@ import { wordDocument } from "./docx-document";
 import { powerpointDeck } from "./pptx-deck";
 import { markdownDeck } from "./markdown-deck";
 import {markdownDocument, unwritten} from "./pdf-document";
+import { failureMemory } from "./repeat-guard";
 import {memoryQuery,retrievalQuery} from "../core/chat-context";
 import {condenseConversation,briefKey,type Brief} from "./chat-condense";
 import {contextBudget} from "../core/context-budget";
@@ -51,7 +52,7 @@ import { cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
 import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
-import {ClaudeProvider,toolEffort} from './claude';
+import {ClaudeProvider} from './claude';
 import {GrokProvider,grokModels,grokPdfPath,grokUsage,GROK_PREFIX} from './grok';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
@@ -1407,14 +1408,17 @@ void app.whenReady().then(async () => {
       // Figures the model has already been shown pictures of in this answer (desktop/figure-review.ts): each is sent once.
       const figuresSeen = new Set<string>();
       const before = new Map<string, { blob: string; at: number; summary: string; size: number }>();
-      // Planned sections each document made in this answer still lacks; the answer waits until they are written.
-      const gaps = new Map<string, string[]>();
+      // Planned sections each document made in this answer still lacks (for one made from a Markdown file, also those
+      // still a stub, and that file's path); the answer waits until they are written.
+      const gaps = new Map<string, { missing: string[]; draft?: string }>();
       const unfinished = () => {
-        const open = [...gaps].filter(([, missing]) => missing.length);
+        const open = [...gaps].filter(([, gap]) => gap.missing.length);
         if (!open.length) return undefined;
-        return open.map(([doc, missing]) => {
+        return open.map(([doc, { missing, draft }]) => {
           const action = documents.get(doc)!.split(".").pop()!.toLowerCase(), key = partsKey[action] || "sections";
-          return `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten ${key === "slides" ? "slide" : "section"}${missing.length === 1 ? "" : "s"} (${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}). Write them now with {"action":"${action}","revise":"${doc}","append":true,"${key}":[…the next ${key}, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`;
+          const list = `${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}`;
+          if (draft) return `"${documents.get(doc)}" is not finished: ${missing.length} planned section${missing.length === 1 ? " is" : "s are"} missing from ${draft} or only a stub (${list}). Write ${missing.length === 1 ? "it" : "them"} in the file now, in full depth, then send {"action":"${action}","revise":"${doc}","markdown":"${draft}"}. To change the plan instead, send a new "plan" with that request.`;
+          return `"${documents.get(doc)}" is not finished: its plan still has ${missing.length} unwritten ${key === "slides" ? "slide" : "section"}${missing.length === 1 ? "" : "s"} (${list}). Write them now with {"action":"${action}","revise":"${doc}","append":true,"${key}":[…the next ${key}, as many as fit…]}, in full depth. To change the plan instead, send "plan" again with the append.`;
         }).join(" ") + " Answer the person only when every planned part is written.";
       };
       const known = await Promise.all((request.documents || []).map((doc) => disk.hasFile(user.id, "spec-" + doc.id)));
@@ -1435,7 +1439,17 @@ void app.whenReady().then(async () => {
       const fileWork = inflight();
       /** Makes a file (pdf, docx, pptx, xlsx, any text format, or an image), or revises one made earlier in this conversation. */
       const makeOrRevise = (spec: any, cancelled: () => boolean) => fileWork.run((stopped) => makeOrReviseNow(spec, stopped), cancelled);
+      // A request that failed is not run again unchanged (desktop/repeat-guard.ts): the model is told to fix it first.
+      const failures = failureMemory();
       const makeOrReviseNow = async (spec: any, cancelled: () => boolean) => {
+        const full = typeof spec?.markdown === "string" && work ? workspacePath(work.root, spec.markdown) : null;
+        const text = full ? await readDiskFile(full, "utf8").catch(() => undefined) : undefined;
+        const repeated = failures.repeated(spec, text);
+        if (repeated) throw Error(repeated);
+        try { return await makeOrReviseOnce(spec, cancelled); }
+        catch (error) { if (!cancelled()) failures.failed(spec, text, (error as Error).message); throw error; }
+      };
+      const makeOrReviseOnce = async (spec: any, cancelled: () => boolean) => {
         const action = FILE_ACTIONS.has(String(spec?.action)) ? String(spec.action) : "pdf";
         // A document written as a Markdown file in the working folder (desktop/markdown-source.ts): one short call makes
         // it, and a change is a small edit to the file instead of the whole document sent again.
@@ -1447,6 +1461,15 @@ void app.whenReady().then(async () => {
           if (!full) throw Error(`"${spec.markdown}" is not a file in your working folder.`);
           const text = await readDiskFile(full, "utf8").catch(() => null);
           if (text === null) throw Error(`${spec.markdown} is not in your working folder: write it first.`);
+          // A revision keeps the plan the document was made with, unless the request sends a new one.
+          if (spec.plan === undefined && typeof spec.revise === "string" && documents.has(spec.revise)) {
+            const stored = JSON.parse((await disk.readFile(user.id, "spec-" + spec.revise))?.toString("utf8") || "{}");
+            if (Array.isArray(stored.plan)) spec = { ...spec, plan: stored.plan };
+          }
+          // A document built from the person's sources (a lecture, a chapter) is planned from their structure first, so
+          // the file is checked against every topic, example and exercise rather than stopping at a sketch.
+          if (spec.plan === undefined && spec.revise === undefined && (library.length > 0 || pdfs.length > 0))
+            throw Error(`Send "plan" with this request: every heading the finished document will have, taken from the source's structure (each topic, worked example and exercise, in order). Mowr checks ${spec.markdown} against it.`);
           spec = withMarkdownSource(spec, text);
           draft = { path: relative(work!.root, full).split(sep).join("/"), text };
         }
@@ -1486,12 +1509,12 @@ void app.whenReady().then(async () => {
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
         // Pictures of the result (a deck's slides, its new figures) go back to the model with this result, so it checks what it made.
         const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.image).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
-        const missing = key === "sections" ? unwritten(clean) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
+        const missing = key === "sections" ? unwritten(clean, { stubs: sourced }) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
         const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
         const words = key === "sections" ? String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0) : undefined;
         const length = key === "sections" || key === "slides"
-          ? { ...(pages ? { pages } : {}), ...(words !== undefined ? { words } : {}), [key]: clean[key].length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? `Keep going: append the next ${key} now. The file is only finished when every planned part is written in full depth.` : "Every planned part is written." } : key === "sections" && !sourced ? { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." } : {}) }
+          ? { ...(pages ? { pages } : {}), ...(words !== undefined ? { words } : {}), [key]: clean[key].length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? sourced ? `Keep going: write the missing or stub sections into ${draft!.path} in full depth, then send it again.` : `Keep going: append the next ${key} now. The file is only finished when every planned part is written in full depth.` : "Every planned part is written." } : key === "sections" ? { check: sourced ? `No plan was sent. If the request or the source needs more than this, add the missing sections to ${draft!.path} and send it again with "plan": every heading the finished document will have.` : "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." } : {}) }
           : {};
         const specBytes = new TextEncoder().encode(JSON.stringify({ action, ...(made.spec ?? clean), ...(draft ? { draft } : {}) }));
         if (cancelled()) throw Error("Request cancelled");
@@ -1510,7 +1533,7 @@ void app.whenReady().then(async () => {
           } else if (earlier && change) before.get(revise)!.summary = String(change).slice(0, 200);
           await disk.writeFile(user.id, revise, made.bytes);
           await disk.writeFile(user.id, "spec-" + revise, specBytes);
-          gaps.set(revise, missing);
+          gaps.set(revise, { missing, draft: draft?.path });
           if (earlier) {
             const file = { id: revise, name: documents.get(revise)!, size: made.bytes.byteLength, type: made.type, created: Date.now(), updated: Date.now(), spaceId: null, made: true };
             delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope, revised: { version: before.get(revise) } });
@@ -1527,7 +1550,7 @@ void app.whenReady().then(async () => {
         await disk.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
         madeNow.set(id, file);
-        gaps.set(id, missing);
+        gaps.set(id, { missing, draft: draft?.path });
         delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
         return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
       };
@@ -1673,8 +1696,9 @@ void app.whenReady().then(async () => {
       // This conversation's files come before what this message chose (recipes, a design guide), so the prompt cache keeps more.
       const extras = request.plain ? "" : kinetraExtrasFor(query, documents.size > 0, topic);
       const notes = request.plain || !cli && !work ? "" : [fileNotes.trim(), extras].filter(Boolean).join("\n\n");
-      // Claude at its default level thinks harder for tool and document work (desktop/claude.ts toolEffort); a level the person picked stays.
-      const reasoning = request.model?.startsWith("claude:") && !request.plain ? toolEffort((await claudeFor(user.id)).listed, request.model, request.reasoning, !!request.reasoningChosen, needsKinetra(query, documents.size > 0)) : request.reasoning;
+      // Every model runs at the level the person chose, or its default: document quality is guarded by makeOrReviseNow
+      // (a plan every section must meet, checks recomputed before a file is made, a failure never sent twice), not by more thinking.
+      const reasoning = request.reasoning;
       // Once per answer: on success before it is marked done, or on a failure before the finished files are delivered.
       let collected = false;
       const collectOutputs = async () => {
