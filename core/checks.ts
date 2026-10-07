@@ -57,6 +57,47 @@ export function parseChecks(body: string): CheckResult[] {
   return runChecks(data);
 }
 
+/** A ```check block: the line it starts on (1-based) and the lines of its body. */
+export type CheckBlock = { at: number; lines: string[] };
+
+/** The ```check blocks of an answer, outside other code fences. */
+export function checkBlocks(markdown: string): CheckBlock[] {
+  const blocks: CheckBlock[] = [];
+  let fence: string | null = null, block: CheckBlock | null = null;
+  markdown.replace(/\r\n?/g, '\n').split('\n').forEach((line, index) => {
+    if (block) { if (/^\s*```\s*$/.test(line)) { blocks.push(block); block = null; } else block.lines.push(line); return; }
+    const mark = /^\s*(```+|~~~+)/.exec(line)?.[1];
+    if (fence) { if (mark && mark[0] === fence[0] && mark.length >= fence.length) fence = null; return; }
+    if (/^\s*```\s*check\s*$/i.test(line)) block = { at: index + 1, lines: [] };
+    else if (mark) fence = mark;
+  });
+  return blocks;
+}
+
+/**
+ * Every check recomputed: one line per stated value that differs from what its formula gives, or that cannot be
+ * computed. `lines` names the line each is on (a draft file); an answer in chat names only the label.
+ */
+export function checkProblems(blocks: CheckBlock[] = [], { lines = true }: { lines?: boolean } = {}) {
+  const problems: string[] = [];
+  for (const block of blocks) {
+    let results;
+    try { results = parseChecks(block.lines.join('\n')); } catch (error) {
+      problems.push(`${lines ? `Line ${block.at}: ` : 'A check block: '}${(error as Error).message.replace(/\.$/, '')} (a check block holds {"checks":[{"label":…,"expr":…,"vars":{…},"claimed":…}]}, at most 12 per block).`);
+      continue;
+    }
+    for (const result of results) {
+      // The check's own line, found by its label; the block's first line when the label is not on a line of its own.
+      const offset = block.lines.findIndex(l => l.includes(JSON.stringify(result.label)));
+      const where = lines ? `Line ${offset >= 0 ? block.at + 1 + offset : block.at}: ` : '';
+      const unit = result.unit ? ' ' + result.unit : '';
+      if (result.status === 'differs') problems.push(`${where}"${result.label}" states ${showNumber(result.claimed)}${unit}, but ${result.expr} gives ${showNumber(result.computed)}${unit}.`);
+      else if (result.status === 'error') problems.push(`${where}"${result.label}" cannot be computed (${result.error}).`);
+    }
+  }
+  return problems;
+}
+
 /** Round for display without trailing noise. */
 export function showNumber(v: number) {
   if (!Number.isFinite(v)) return '—';

@@ -1,5 +1,6 @@
 import { parseRequest } from "./kinetra-turn.ts";
-import { parseChecks, showNumber } from "../core/checks.ts";
+import { checkProblems, type CheckBlock } from "../core/checks.ts";
+export { checkProblems, type CheckBlock };
 
 /**
  * A document's source as a Markdown file the AI writes in its working folder (Drafts/…), read into the same
@@ -18,8 +19,6 @@ import { parseChecks, showNumber } from "../core/checks.ts";
  *   ```
  */
 export type SourceSection = { heading?: string; text?: string; figure?: Record<string, unknown>; caption?: string };
-/** A ```check block: the line it starts on and the lines of its body. */
-export type CheckBlock = { at: number; lines: string[] };
 export type MarkdownSource = { title?: string; summary?: string; sections: SourceSection[]; references?: string[]; checks?: CheckBlock[] };
 
 const REFERENCES = /^(references|bibliography|works cited|sources|reference list)$/i;
@@ -91,28 +90,28 @@ export function markdownSource(markdown: string): MarkdownSource {
   return { ...(title ? { title } : {}), ...(summary ? { summary } : {}), sections: sections.filter((s) => s.heading || s.text?.trim() || s.figure), ...(references ? { references } : {}), ...(checks.length ? { checks } : {}) };
 }
 
+/** Where a worked example or solution starts: a > [!EXAMPLE] / [!SOLUTION] / [!ANSWER] block, or a ###–##### heading. */
+const EXAMPLE_START = /^\s*>\s*\[!(?:EXAMPLE|SOLUTION|ANSWER)\]|^#{3,5}\s+(?:worked\s+)?(?:example|solution)s?\b/i;
+/** A computed result: a chain worked through to a number (V/R = 12/4 = 3) or an approximation (≈ 3.2). */
+const RESULT = /=[^=\n]*=\s*\$?\s*-?\d|(?:≈|\\approx)\s*\$?\s*-?\d/;
 /**
- * Every ```check in the file recomputed with the code chat answers use (core/checks.ts): one line per stated value that
- * differs from what its formula gives, or that cannot be computed, naming the line it is on.
+ * The lines where a worked example or solution states computed results with no ```check after it (before the next
+ * example or ## section). Mowr can only recompute what is checked, so these are the numbers nothing verified.
  */
-export function checkProblems(blocks: CheckBlock[] = []) {
-  const problems: string[] = [];
-  for (const block of blocks) {
-    let results;
-    try { results = parseChecks(block.lines.join("\n")); } catch (error) {
-      problems.push(`Line ${block.at}: ${(error as Error).message.replace(/\.$/, "")} (a check block holds {"checks":[{"label":…,"expr":…,"vars":{…},"claimed":…}]}, at most 12 per block).`);
-      continue;
-    }
-    for (const result of results) {
-      // The check's own line, found by its label; the block's first line when the label is not on a line of its own.
-      const offset = block.lines.findIndex((l) => l.includes(JSON.stringify(result.label)));
-      const line = offset >= 0 ? block.at + 1 + offset : block.at;
-      const unit = result.unit ? " " + result.unit : "";
-      if (result.status === "differs") problems.push(`Line ${line}: "${result.label}" states ${showNumber(result.claimed)}${unit}, but ${result.expr} gives ${showNumber(result.computed)}${unit}.`);
-      else if (result.status === "error") problems.push(`Line ${line}: "${result.label}" cannot be computed (${result.error}).`);
-    }
-  }
-  return problems;
+export function uncheckedExamples(markdown: string) {
+  const unchecked: number[] = [];
+  let region: { at: number; result: boolean; checked: boolean } | null = null, fence: string | null = null;
+  const close = () => { if (region?.result && !region.checked) unchecked.push(region.at); region = null; };
+  markdown.replace(/\r\n?/g, "\n").split("\n").forEach((line, index) => {
+    const mark = /^\s*(```+|~~~+)/.exec(line)?.[1];
+    if (fence) { if (mark && mark[0] === fence[0] && mark.length >= fence.length) fence = null; return; }
+    if (mark) { if (region && /^\s*```\s*check\s*$/i.test(line)) region.checked = true; fence = mark; return; }
+    if (/^##\s/.test(line)) return close();
+    if (EXAMPLE_START.test(line)) { close(); region = { at: index + 1, result: false, checked: false }; }
+    if (region && RESULT.test(line)) region.result = true;
+  });
+  close();
+  return unchecked;
 }
 
 /**

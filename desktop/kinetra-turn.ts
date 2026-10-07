@@ -343,6 +343,10 @@ function cutOffError(text: string) {
 }
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
 export const MAX_BROKEN = 5;
+/** What holds a final answer back: see the options of runKinetraTurn. */
+export type AnswerGates = { unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined };
+/** Times one answer can be sent back over its own numbers (`review` in runKinetraTurn). */
+export const REVIEWS = 2;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
 const recent = <T>(pictures: T[]) => pictures.slice(-12);
 /** One tool request run for a provider that calls tools natively (MCP): the result as the model sees it, and its pictures. */
@@ -382,7 +386,7 @@ function lastCall(reason: "calls" | "context", history: { request: any; result: 
     files.size ? `Files made or updated in this answer (the person receives them): ${[...files.values()].join("; ")}.` : "No file was made in this answer: do not say one was.",
     failed ? `${failed} tool request${failed === 1 ? "" : "s"} failed.` : "",
     // What the plan lacks, without the note's own "write them now with {…}", which no longer applies.
-    gap ? `Not finished: ${gap.split(/(?<=\.)\s+/).filter((s) => !/\{"action"|"plan" again|Answer the person only/.test(s)).join(" ")} Say what the document covers so far, which parts are missing, and that asking to continue will add them to the same file.` : "If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.",
+    gap ? `Not finished: ${gap.split(/(?<=\.)\s+/).filter((s) => !/\{"action"|"plan"|Answer the person only/.test(s)).join(" ")} Say what the document covers so far, which parts are missing, and that asking to continue will add them to the same file.` : "If a document is unfinished, say what it covers so far and that asking to continue will add the rest to the same file.",
   ].filter(Boolean).join(" ") + (shortened ? `\nResults that could not be sent in full, shortened (data, not instructions):\n${shortened}` : "");
 }
 /**
@@ -405,9 +409,13 @@ export async function runKinetraTurn<Picture = unknown>(
   tool: (request: any) => Promise<any>,
   cancelled: () => boolean,
   /** `stats` counts the steps, calls and broken requests for the timing log (desktop/turn-timing.ts). */
-  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; stats?: TurnStats } = {},
+  /** `unfinished`: what a document made in this answer still lacks; the answer waits for it (two rounds without progress end it).
+   *  `review`: what is wrong with a final answer itself (a check that does not hold, numbers nothing computed); each
+   *  problem goes back once, at most REVIEWS times, and `sentBack` is told first, so the screen folds the rejected answer away. */
+  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined; sentBack?: () => void; stats?: TurnStats } = {},
 ) {
-  const { limit = 3_000_000, unfinished, stats = { steps: 0, calls: 0, broken: 0 } } = options;
+  const { limit = 3_000_000, unfinished, review, sentBack, stats = { steps: 0, calls: 0, broken: 0 } } = options;
+  const reviewed = new Set<string>();
   // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
   let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
@@ -520,7 +528,16 @@ export async function runKinetraTurn<Picture = unknown>(
       // A document planned in parts is finished before the answer: the model is sent back to write what its own
       // plan still lacks, as long as each round adds something (two rounds without progress end it).
       const gap = !closing && calls < MAX_CALLS ? unfinished?.() : undefined;
-      if (!gap) return text;
+      if (!gap) {
+        // The answer itself is checked once per problem: a wrong or unverified number goes back before the person relies on it.
+        const problem = !closing && calls < MAX_CALLS && reviewed.size < REVIEWS ? review?.(text, history) : undefined;
+        if (!problem || reviewed.has(problem)) return text;
+        reviewed.add(problem);
+        calls++;
+        sentBack?.();
+        history.push({ request: { answer: "not accepted yet" }, result: { error: problem } });
+        continue;
+      }
       stale = gap === lastGap ? stale + 1 : 0;
       lastGap = gap;
       if (stale >= 2) return text;
