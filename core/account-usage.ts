@@ -41,3 +41,15 @@ export function resetWindows(previous?: UsageSnapshot | null, current?: UsageSna
   if(!windows.length&&previous?.ordinaryUsageAllowed===false&&current?.ordinaryUsageAllowed===true)windows.push('codex hourly');
   return windows;
 }
+
+/**
+ * When a plan that refused a request can be used again, in milliseconds: the latest reset among the windows that are
+ * used up (all of them must reset), else the soonest reset still ahead. Undefined when the provider does not say.
+ */
+export function resumeAt(usage?: UsageSnapshot | null, now = Date.now()): number | undefined {
+  const ahead = usageWindows(usage).filter(({ window }) => typeof window.resetsAt === 'number' && window.resetsAt * 1000 > now);
+  const spent = ahead.filter(({ left }) => left !== null && left <= 0);
+  const times = (spent.length ? spent : ahead).map(({ window }) => window.resetsAt! * 1000);
+  if (!times.length) return undefined;
+  return spent.length ? Math.max(...times) : Math.min(...times);
+}

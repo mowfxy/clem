@@ -52,6 +52,11 @@ export function newestWithin<T extends { role: string; content: string }>(messag
   const kept = new Set(rest.slice(rest.length - keep));
   return messages.filter((m) => m.role === "system" || kept.has(m));
 }
+/** The plan's usage limit stopped an answer part-way: its unfinished files were not sent. `resetsAt` (ms) when the provider says. */
+export class LimitReached extends Error {
+  resetsAt?: number;
+  constructor(message: string, resetsAt?: number) { super(message); this.name = "LimitReached"; this.resetsAt = resetsAt; }
+}
 export async function desktopChat(
   messages: { role: string; content: string }[],
   scope: string,
@@ -101,7 +106,7 @@ export async function desktopChat(
       }
       if (event.type === "error") {
         cleanup();
-        reject(Error(event.error));
+        reject(event.limit ? new LimitReached(event.error || "Usage limit reached.", event.limit.resetsAt) : Error(event.error));
       }
     });
     signal.addEventListener("abort", cancel, { once: true });
