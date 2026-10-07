@@ -2,7 +2,7 @@ import { get, set } from "idb-keyval";
 import { extractFiles } from "./documents";
 import { OCR_PENDING } from "./desktop/ocr";
 import { loadEdits } from "./document-state";
-import { sourceExcerpts } from "../core/source-context";
+import { fileIndex, sourceExcerpts } from "../core/source-context";
 import { distinctNames } from "../core/file-tools";
 import type { StoredFile } from "../core/types";
 import { contextBudget } from "../core/context-budget";
@@ -19,14 +19,18 @@ export async function cachedFileText(file: StoredFile, owner: string, signal?: A
   if (!text.includes(OCR_PENDING)) await set(key, { stamp, text });
   return text;
 }
+/** Characters of the files a request is not about (earlier in the chat, the rest of the subject): their best passages;
+ *  the model reads the rest with its file tools (core/source-context.ts sourceExcerpts). */
+export const OTHER_FILES = 24_000;
 /** The text of the given files for one request. `focus` (files attached to this message or open beside the
- *  chat) get the largest share when everything cannot be sent whole, then `related` (used earlier in the chat). */
+ *  chat) get the largest share when everything cannot be sent whole, then `related` (used earlier in the chat).
+ *  `index`: the files as a list only (core/source-context.ts fileIndex), for a request whose model has the file tools. */
 export async function localSourceContext(
   files: StoredFile[],
   query: string,
   owner: string,
   signal?: AbortSignal,
-  { focus = [], related = [], budget = contextBudget().sources, library, whole = [] }: { focus?: string[]; related?: string[]; budget?: number; library?: { name: string; text: string }[]; whole?: string[] } = {},
+  { focus = [], related = [], budget = contextBudget().sources, library, whole = [], others = OTHER_FILES, index = false }: { focus?: string[]; related?: string[]; budget?: number; library?: { name: string; text: string }[]; whole?: string[]; others?: number; index?: boolean } = {},
 ) {
   const sources: { name: string; text: string; id: string }[] = [], skipped: string[] = [];
   for (const file of files) {
@@ -45,9 +49,14 @@ export async function localSourceContext(
   const named = distinctNames(sources);
   // The whole text goes along too, so the model can read what did not fit (core/file-tools.ts).
   library?.push(...named.map(({ name, text }) => ({ name, text })));
+  if (index) {
+    const at = (ids: string[]) => named.flatMap((s, i) => (ids.includes(s.id) ? [i] : []));
+    const list = fileIndex(named, at(focus), at(related.filter((id) => !focus.includes(id))));
+    return skipped.length ? `${list}\n(Could not read: ${skipped.join(", ")}.)`.trim() : list;
+  }
   // PDFs sent to the model whole (`whole`) are read from the files themselves, not from excerpts of their text.
   const excerpted = named.filter((s) => !whole.includes(s.id));
   const at = (ids: string[]) => excerpted.flatMap((s, i) => (ids.includes(s.id) ? [i] : []));
-  const text = sourceExcerpts(excerpted.map(({ name, text }) => ({ name, text })), query, budget, at(focus), at(related.filter((id) => !focus.includes(id))));
+  const text = sourceExcerpts(excerpted.map(({ name, text }) => ({ name, text })), query, budget, at(focus), at(related.filter((id) => !focus.includes(id))), others);
   return skipped.length ? `${text}\n(Could not read: ${skipped.join(", ")}.)`.trim() : text;
 }

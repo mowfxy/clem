@@ -373,7 +373,7 @@ export class GrokProvider {
   async dropPdfs(turn:string){if(/^[0-9a-f-]{36}$/i.test(turn))await rm(join(this.workspace(),'.pdfs-'+turn),{recursive:true,force:true}).catch(()=>{});}
   /** Grok keeps headless sessions under ~/.grok/sessions; the ones a finished tool loop made are removed (best effort: its layout is not documented). */
   async endSession(sessionId:string){
-    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!this.home&&!process.env.USERPROFILE)return;
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!this.home&&!process.env.USERPROFILE||process.env.MOWR_KEEP_SESSIONS)return;
     const base=join(this.home||join(process.env.USERPROFILE!,'.grok'),'sessions');
     const sweep=async(folder:string,depth:number):Promise<void>=>{
       for(const entry of await readdir(folder,{withFileTypes:true}).catch(()=>[])){

@@ -14,6 +14,32 @@ export function namedSources(names: string[], query: string) {
   }).filter((i) => i >= 0);
 }
 
+/**
+ * The files of a request as a list, not their contents, as Claude's Cowork works: the model searches, reads and looks
+ * at what the request needs with its file tools, so files nobody asked about cost nothing, and what it read is in its
+ * own context once instead of in every step's request. Each line: where the file is from, its size and pages, and how
+ * it begins, so the model can tell which files matter without opening them.
+ */
+export function fileIndex(sources: { name: string; text: string }[], focus: number[] = [], related: number[] = []) {
+  if (!sources.length) return "";
+  const pages = (text: string) => [...text.matchAll(/\n\[[^\n]*?, page (\d+)\]\n/g)].reduce((n, m) => Math.max(n, Number(m[1])), 0);
+  const size = (n: number) => n >= 10_000 ? `${Math.round(n / 1000)}k characters` : `${n} characters`;
+  const order = [...sources.keys()].sort((a, b) => Number(focus.includes(b)) - Number(focus.includes(a)) || Number(related.includes(b)) - Number(related.includes(a)));
+  const lines = order.map((i, n) => {
+    const { name, text } = sources[i];
+    const count = pages(text);
+    const start = text.replace(/\[[^\]\n]*\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+    const where = focus.includes(i) ? "attached to this request" : related.includes(i) ? "from earlier in this chat" : "in this subject, project or linked folder";
+    return `${n + 1}. ${name} — ${where} · ${count ? `${count} page${count === 1 ? "" : "s"} · ` : ""}${size(text.length)}${start ? ` · begins: "${start}${text.length > 160 ? "…" : ""}"` : ""}`;
+  });
+  // A short file attached to this request goes along whole: reading it would cost a step of its own.
+  const small = order.filter((i) => focus.includes(i) && sources[i].text.length <= SMALL_FILE).map((i) => `[Source: ${sources[i].name}; complete file]\n${sources[i].text}`);
+  return `[Files available (${sources.length}), listed, not loaded${small.length ? " (short attached files are included whole below)" : ""}: read, search and look at what this request needs with the file tools before relying on it. A file attached to this request is what the person is asking about: read it through (in parallel reads) unless only a part of it is asked about.
+${lines.join("\n")}]${small.length ? "\n\n" + small.join("\n\n") : ""}`;
+}
+/** Characters up to which an attached file goes with the request whole instead of being listed. */
+const SMALL_FILE = 8000;
+
 /** Words too common to tell files or passages apart. */
 const common = new Set("the and for with that this from are was were has have had not but you your all any can will each into about make create explain fully detail detailed please write give pdf pdfs file files document lecture lectures notes summary summarise summarize every them their there what which when how why also more".split(" "));
 const CHUNK = 1800, STEP = 1600;
@@ -21,10 +47,13 @@ const CHUNK = 1800, STEP = 1600;
 /**
  * The text of the sources that fits the budget, organised for the model: an index of every file and how
  * much of it is included, then each file in turn.
- * - Files are sent whole whenever they fit, so the model reads every lecture rather than a few passages.
- * - When they cannot all fit, each file gets a weighted share: focus files (attached to this message, open
- *   beside the chat or named in it) the most, files used earlier in the chat next, then the rest by how
- *   well they match the request. Files smaller than their share give the remainder back.
+ * - Focus files (attached to this message, open beside the chat or named in it) are sent whole whenever they fit.
+ * - The other files (earlier in the chat, the rest of the subject) share at most `others` characters: the passages
+ *   that match the request, and the index for the rest, which the model reads with its file tools when it needs
+ *   them, as Claude's Cowork does. Every step of a tool loop reads the whole request again, so files nobody asked
+ *   about used to fill most of every step.
+ * - When they cannot all fit, each file gets a weighted share: focus files the most, files used earlier in the chat
+ *   next, then the rest by how well they match the request. Files smaller than their share give the remainder back.
  * - A file too long for its share is cut to its most relevant passages (rarer request words count more),
  *   spread across the whole file, in document order.
  */
@@ -34,6 +63,7 @@ export function sourceExcerpts(
   budget = 20000,
   focus: number[] = [],
   related: number[] = [],
+  others = Infinity,
 ) {
   if (!sources.length) return "";
   const terms = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || [])].filter((t) => !common.has(t));
@@ -51,17 +81,25 @@ export function sourceExcerpts(
   // Room for the index when not everything fits.
   const index = 500 + sources.reduce((n, s) => n + s.name.length + 100, 0);
   const allowance = new Array<number>(sources.length).fill(0);
-  let open = sources.map((_, i) => i), room = whole + index <= budget ? budget : budget - index;
-  while (open.length && room > 0) {
-    const total = open.reduce((n, i) => n + weight(i), 0);
-    const fits = open.filter((i) => sources[i].text.length + header(sources[i].name) <= (room * weight(i)) / total);
-    if (!fits.length) {
-      for (const i of open) allowance[i] = Math.floor((room * weight(i)) / total);
-      break;
+  const room = whole + index <= budget ? budget : budget - index;
+  /** Shares `space` among `open` by weight; returns what is left. */
+  const share = (open: number[], space: number) => {
+    while (open.length && space > 0) {
+      const total = open.reduce((n, i) => n + weight(i), 0);
+      const fits = open.filter((i) => sources[i].text.length + header(sources[i].name) <= (space * weight(i)) / total);
+      if (!fits.length) {
+        for (const i of open) allowance[i] = Math.floor((space * weight(i)) / total);
+        return 0;
+      }
+      for (const i of fits) { allowance[i] = sources[i].text.length + header(sources[i].name); space -= allowance[i]; }
+      open = open.filter((i) => !fits.includes(i));
     }
-    for (const i of fits) { allowance[i] = sources[i].text.length + header(sources[i].name); room -= allowance[i]; }
-    open = open.filter((i) => !fits.includes(i));
-  }
+    return space;
+  };
+  const all = [...sources.keys()];
+  // Focus files first, whole when they fit; the others within what is left, at most `others`.
+  if (Number.isFinite(others)) share(all.filter((i) => !focused.has(i)), Math.min(share(all.filter((i) => focused.has(i)), room), others));
+  else share(all, room);
 
   const status: string[] = [], parts: string[] = [];
   let cut = false;

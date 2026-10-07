@@ -26,6 +26,12 @@ export function claudeArgs(model:string,effort:string|undefined,session:{id:stri
 }
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 
+/** One answer's tokens in the console (counts only, never content), to measure efficiency work before and after a change. */
+function logUsage(model:string,result:any){
+  const u=result?.usage;if(!u)return;
+  const n=(x:unknown)=>Number(x)||0;
+  console.log(`[mowr tokens] ${model} steps=${n(result.num_turns)} input=${n(u.input_tokens)} cache-write=${n(u.cache_creation_input_tokens)} cache-read=${n(u.cache_read_input_tokens)} output=${n(u.output_tokens)} ms=${n(result.duration_ms)}`);
+}
 export type ClaudeImage = { mime: string; data: string };
 export type ClaudePdf = { name: string; data: string };
 /** A Claude Code too old for --system-prompt-file: the step is run again with the rules in the message. */
@@ -372,7 +378,7 @@ export class ClaudeProvider {
         const read=(line:string)=>{
           if(!line.trim())return;
           let event:any;try{event=JSON.parse(line);}catch{return;}
-          if(event.type==='result'){result=event;return;}
+          if(event.type==='result'){result=event;logUsage(model,event);return;}
           live(event);
           const limit=parseRateLimit(event);
           if(limit)this.noteLimit(limit);
@@ -412,9 +418,10 @@ export class ClaudeProvider {
       throw error;
     }finally{this.active.delete(id);endpoint?.close();this.recheck();void this.readUsage(true);await removeFiles();}
   }
-  /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk. */
+  /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk.
+   *  MOWR_KEEP_SESSIONS=1 keeps them, to see afterwards what every step sent and cost. */
   async endSession(sessionId:string){
-    if(!/^[0-9a-f-]{36}$/i.test(sessionId))return;
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||process.env.MOWR_KEEP_SESSIONS)return;
     const projects=join(this.root,'projects');
     for(const folder of await readdir(projects).catch(()=>[] as string[])){
       await rm(join(projects,folder,sessionId+'.jsonl'),{force:true}).catch(()=>{});
