@@ -11,7 +11,24 @@ export const THREAD_START_MS = 60_000;
 export const WEB_SEARCH = "live";
 
 /** `mcp`: thread configuration that adds Kinetra as a native tool (desktop/kinetra-mcp.ts codexMcpConfig). */
-export type TurnSession = { threadId?: string; mcp?: Record<string, unknown> };
+/** `folder`: the thread works in the conversation's folder of files (desktop/ai-workspace.ts) as Codex itself: its own base
+ *  instructions (Mowr's go in as developer instructions) and its shell, sandboxed to write only there with no network. */
+export type TurnSession = { threadId?: string; mcp?: Record<string, unknown>; folder?: { root: string; instructions: string } };
+
+/**
+ * A folder thread's settings. On Windows only the unelevated sandbox runs without an administrator's setup; it keeps
+ * writes inside the folder and blocks the network, but cannot confine reads (it refuses to start when asked to), so
+ * reads stay as Codex's workspace-write mode has them. The sandbox's own default (elevated, which needs that setup)
+ * came up read-only on a PC without it and refused even to read a file.
+ */
+export function folderThread(folder: { root: string; instructions: string }) {
+  return {
+    cwd: folder.root,
+    sandbox: "workspace-write",
+    developerInstructions: folder.instructions,
+    config: { "features.shell_tool": true, "features.unified_exec": false, "windows.sandbox": "unelevated", "sandbox_workspace_write.network_access": false, "sandbox_workspace_write.exclude_tmpdir_env_var": true, "sandbox_workspace_write.exclude_slash_tmp": true },
+  };
+}
 
 /**
  * A few words on what the model is doing, taken from the bold headline that opens each reasoning
@@ -46,15 +63,16 @@ export async function streamTurn(
   await server.ready;
   if (cancelled()) throw Error("Request cancelled");
   if (!session.threadId) {
+    const folder = session.folder ? folderThread(session.folder) : undefined;
     const started = await server.request("thread/start", {
       model: selection?.model,
       ephemeral: true,
       approvalPolicy: "never",
-      sandbox: "read-only",
-      baseInstructions,
+      ...(folder ? { cwd: folder.cwd, sandbox: folder.sandbox, developerInstructions: folder.developerInstructions } : { sandbox: "read-only", baseInstructions }),
       config: {
         "features.shell_tool": false,
         "features.unified_exec": false,
+        ...folder?.config,
         web_search: WEB_SEARCH,
         project_doc_max_bytes: 0,
         ...session.mcp,

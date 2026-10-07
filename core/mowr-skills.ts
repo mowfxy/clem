@@ -402,9 +402,15 @@ export function mowrSkillText(request: string, context: SkillContext = {}) {
 /** The linked-folders playbook. The desktop adds it with FILE CHANGES, since only it knows whether a folder is linked. */
 export const foldersPlaybook = guide(mowrSkills.find((s) => s.id === "folders")!);
 
-/** Tells the model which documents it made in this conversation and how to change them in place. */
-export function documentsNote(documents: { id: string; name: string }[]) {
+/** Tells the model which documents it made in this conversation and how to change them in place. `draft`: the Markdown
+ *  file in the AI's working folder a document was made from (desktop/markdown-source.ts). */
+export function documentsNote(documents: { id: string; name: string; draft?: string }[]) {
   if (!documents.length) return "";
-  return `\n\nFILES IN THIS CONVERSATION (made by Mowr; change them in place, never as a new file):\n${documents.map((d) => `- id=${d.id} · ${d.name}`).join("\n")}\nTo change one: {"kinetra":{"action":"open","id":"<id>"}} returns its current specification and the action that made it; then {"kinetra":{"action":<that action>,"revise":"<id>","change":"one short sentence",…the complete revised specification…}} updates that same file and keeps the earlier version for undo; for a change to a few parts, send "patch":[{"at":N,…only the changed fields…}] in place of the full specification. Make a new file only when the person asks for a separate one.`;
+  const list = documents.map((d) => `- id=${d.id} · ${d.name}${d.draft ? ` · made from ${d.draft}` : ""}`).join("\n");
+  // A document made from a Markdown file is changed by editing that file: the request stays a few words long.
+  const drafted = documents.some((d) => d.draft)
+    ? 'To change one made from a Markdown file: edit only the lines that change in that file, then send {"kinetra":{"action":"pdf" (or "docx"),"revise":"<id>","markdown":"<that file>","change":"one short sentence"}}. To change any other: '
+    : "To change one: ";
+  return `\n\nFILES IN THIS CONVERSATION (made by Mowr; change them in place, never as a new file):\n${list}\n${drafted}{"kinetra":{"action":"open","id":"<id>"}} returns its current specification and the action that made it; then {"kinetra":{"action":<that action>,"revise":"<id>","change":"one short sentence",…the complete revised specification…}} updates that same file and keeps the earlier version for undo; for a change to a few parts, send "patch":[{"at":N,…only the changed fields…}] in place of the full specification. Make a new file only when the person asks for a separate one.`;
 }
 

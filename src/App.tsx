@@ -1066,7 +1066,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       const fromDrive = [...linkable.values()].filter((r) => !isMediaType(r.mimeType)).map((r): StoredFile => ({ id: "drive_" + r.id, name: r.name, size: r.size || 0, type: isGoogleFormat(r.mimeType) ? "application/pdf" : r.mimeType, created: Date.now(), spaceId: null }));
       // The AI can find any of the person's files on its own and attach them to this answer (src/files/finder.ts).
       const finder: Finder = { files: () => stateRef.current.files, spaces: () => stateRef.current.spaces, text: (file) => cachedFileText(file, ownerRef.current, controller.signal), opened: [], found: new Map(), signal: controller.signal };
-      const lookable = () => { const here = sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id)), finder.opened); return here.concat(fromDrive.filter((d) => !here.some((f) => f.name.toLowerCase() === d.name.toLowerCase()))); };
+      // The chat's files first, then the rest of its subject or project (the AI sees them all in its working folder), then Drive.
+      const lookable = () => { const chatFiles = sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id)), finder.opened); const here = chatFiles.concat(activeSpace ? stateRef.current.files.filter((f) => f.spaceId === activeSpace.id && !chatFiles.some((c) => c.id === f.id)) : []); return here.concat(fromDrive.filter((d) => !here.some((f) => f.name.toLowerCase() === d.name.toLowerCase()))); };
       // Drive PDFs found for this question (the linked folder's best matches, a Drive search) show the pages that match it,
       // as the subject's own PDFs do, within what this request has left (pdfView's `after`).
       const driveFound = isVisual || cowork ? [] : fromDrive.filter((f) => f.type === "application/pdf" && !pdfs.handled.includes(f.id));

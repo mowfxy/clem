@@ -127,8 +127,8 @@ export const GROK_RULES_MAX=24_000;
  * Mowr's system prompt as Grok's --rules (added to Grok's own system prompt; replacing that prompt made Grok fetch pages
  * instead of searching). A prompt too long for the command line returns undefined and goes at the top of the message.
  */
-export function grokRules(system?:string){
-  const rules=system?system+'\n\n'+GROK_NOTE:undefined;
+export function grokRules(system?:string,inFolder=false){
+  const rules=system?system+'\n\n'+(inFolder?GROK_FOLDER_NOTE:GROK_NOTE):undefined;
   return rules&&rules.length<=GROK_RULES_MAX?rules:undefined;
 }
 /**
@@ -145,6 +145,14 @@ export const grokPdfPath=(turn:string,index:number,name:string)=>`.pdfs-${turn}/
  * cost about 10k input tokens on every step. web_fetch is left out: in dontAsk mode a call to it cancelled the run.
  */
 export const GROK_TOOLS='read_file,web_search';
+/**
+ * In a working folder of the person's files (desktop/ai-workspace.ts) Grok works as itself: it lists, searches, reads
+ * and writes files there with its own tools. Still left out: the terminal and code, subagents, schedulers, media and
+ * the rest. Every name must be one Grok knows: a single unknown name makes Grok ignore the list and load all of its
+ * tools, the terminal included (checked against the tool_definitions.json of the sessions it records).
+ */
+export const GROK_FOLDER_TOOLS='read_file,list_dir,grep,search_replace,write,web_search,todo_write';
+export const GROK_FOLDER_NOTE='IN MOWR: your working folder holds the person\'s files; list, search, read and write them with your own file tools, as in any project. Run no commands. Never read Grok\'s own skills (SKILL.md) or files outside the working folder. When you need several files or page ranges, open them in the same step (one call each, sent together).';
 
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
 const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
@@ -201,7 +209,7 @@ export class GrokProvider {
     return env;
   }
   // Test seam: tests swap this for a fake grok.
-  async start(args:string[]){await mkdir(this.workspace(),{recursive:true});if(this.home)await mkdir(this.home,{recursive:true});return spawn(this.executable(),args,{cwd:this.workspace(),env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});}
+  async start(args:string[],cwd=this.workspace()){await mkdir(cwd,{recursive:true});if(this.home)await mkdir(this.home,{recursive:true});return spawn(this.executable(),args,{cwd,env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});}
   private async capture(args:string[],timeout:number,input?:string){
     let child:ChildProcessWithoutNullStreams;
     try{child=await this.start(args);}catch{return null;}
@@ -287,9 +295,11 @@ export class GrokProvider {
   }
   /** Pictures are copied into Grok's own workspace and named in the prompt, so Grok opens them with its file tool. */
   /** `pdfs`: the conversation's PDFs, saved where read_file opens them (grokPdfPath) until dropPdfs ends the turn. */
-  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system,pdfs=[]}:{system?:string;pdfs?:{name:string;data:Uint8Array}[]}={}){
-    const rules=grokRules(system);
-    if(system&&!rules)prompt=system+'\n\n'+GROK_NOTE+'\n\n'+prompt;
+  /** `workspace`: the conversation's folder of files Grok runs in as itself (its PDFs are there, so none are copied). */
+  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system,pdfs=[],workspace}:{system?:string;pdfs?:{name:string;data:Uint8Array}[];workspace?:{root:string}}={}){
+    const rules=grokRules(system,!!workspace);
+    if(system&&!rules)prompt=system+'\n\n'+(workspace?GROK_FOLDER_NOTE:GROK_NOTE)+'\n\n'+prompt;
+    const cwd=workspace?.root||this.workspace();
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
     if(this.noSessions)session=undefined;
     const slug=model.slice(GROK_PREFIX.length);
@@ -302,9 +312,9 @@ export class GrokProvider {
     if(effort&&!/^[a-z]{2,12}$/.test(effort))effort=undefined;
     if(effort&&status.efforts&&!status.efforts[slug]?.levels.includes(effort))effort=undefined;
     // The prompt goes in a file so long conversations don't hit Windows' command-line length limit.
-    const file=join(this.workspace(),'.prompt-'+randomUUID()+'.txt');
-    const pictures=join(this.workspace(),'.images-'+randomUUID());
-    await mkdir(this.workspace(),{recursive:true});
+    const file=join(cwd,'.prompt-'+randomUUID()+'.txt');
+    const pictures=join(cwd,'.images-'+randomUUID());
+    await mkdir(cwd,{recursive:true});
     if(pdfs.length){
       await mkdir(join(this.workspace(),'.pdfs-'+id),{recursive:true});
       // Written on the turn's first step; later steps find them there.
@@ -314,11 +324,13 @@ export class GrokProvider {
     if(images.length){
       await mkdir(pictures,{recursive:true});
       named.push(...images.map((path,index)=>basename(pictures)+'/'+(index+1)+extname(path)));
-      await Promise.all(images.map((path,index)=>copyFile(path,join(this.workspace(),named[index]))));
+      await Promise.all(images.map((path,index)=>copyFile(path,join(cwd,named[index]))));
     }
     await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering'+(named.length>1?', all in one step (one read_file call each, sent together)':'')+'.':prompt);
     try{
-      const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk','--no-subagents',...(this.noToolList?[]:['--no-plan','--tools',GROK_TOOLS]),'--no-auto-update','--cwd',this.workspace(),...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])];
+      // In a folder Grok may write there and only there: dontAsk runs only what is allowed, and Edit(./**) (which covers
+      // its write tool too) is the working folder. Reading needs no rule.
+      const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk',...(workspace?['--allow','Edit(./**)']:[]),'--no-subagents',...(this.noToolList?[]:['--no-plan','--tools',workspace?GROK_FOLDER_TOOLS:GROK_TOOLS]),'--no-auto-update','--cwd',cwd,...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])];
       let result=await this.attempt(id,args(),emit);
       // A Grok build without partial messages still answers, in one piece.
       if(!this.noPartial&&unsupportedFlag.test(result.err)&&/include-partial-messages/.test(result.err)){this.noPartial=true;result=await this.attempt(id,args(),emit);}

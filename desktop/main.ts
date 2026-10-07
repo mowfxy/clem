@@ -1,7 +1,9 @@
 import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
-import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat } from "./file-maker";
+import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "./file-maker";
+import { ATTACHMENTS, mirrorFor, newOutputs, syncMirror, workspaceKey, workspaceLane, workspaceNote, workspacePath } from "./ai-workspace";
+import { withMarkdownSource } from "./markdown-source";
 import { inflight, stoppedRuns } from "./inflight";
 import { wordDocument } from "./docx-document";
 import { powerpointDeck } from "./pptx-deck";
@@ -36,7 +38,7 @@ import { captureRegion } from "./capture";
 import { spawn } from "node:child_process";
 import { applyChange, undoChange, locate, readText, type Change } from "./folder-edits";
 import { editLanguage } from "../core/answer-format";
-import { join, resolve, basename } from "node:path";
+import { join, resolve, basename, dirname, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { mkdir, writeFile, unlink, rm, readdir } from "node:fs/promises";
 import { browserLogin } from "./browser-login";
@@ -45,8 +47,8 @@ import { requestSchema, type DesktopStatus } from "./contracts";
 import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
-import { composePrompt, systemPrompt } from "./prompt";
-import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
+import { cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
+import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
 import {ClaudeProvider,toolEffort} from './claude';
@@ -68,7 +70,7 @@ import {cleanAiName,namingPrompt} from '../core/file-naming';
 import {readPictures} from './ocr';
 import {installCli} from './cli-install';
 import {CodexEngine,daily} from './engines';
-import {distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
+import {cliFileToolsGuide,distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
 import {
   inside,
   link,
@@ -319,7 +321,10 @@ void app.whenReady().then(async () => {
     for (const provider of [...await claudes.all(owner), ...await groks.all(owner)]) provider.cancel(id);
   }
   type Picture = { path: string; mime: string };
-  type AnswerOptions = { images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined };
+  /** `workspace`: the folder of the person's files each AI runs in as itself (desktop/ai-workspace.ts), the linked folders
+   *  it may read, and what Claude's document writers are told (desktop/claude.ts claudeWriters). `finish`: work done once
+   *  the answer is final, before it is marked done; a failure there never costs the answer. */
+  type AnswerOptions = { images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined; workspace?: { root: string; readOnly: string[]; writer?: string }; finish?: () => Promise<void> };
   /**
    * One answer from whichever AI the person chose (ChatGPT through Codex, Claude or Grok), with Mowr's
    * Kinetra tools, documents and pictures. Chat and memory notes all go through here, so a
@@ -336,18 +341,27 @@ void app.whenReady().then(async () => {
     }
   }
   async function answerTimed(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
-    { images = [], pdfs = [], pdf, instructions = kinetraInstructions, notes = "", tools, unfinished }: AnswerOptions, stats: TurnStats) {
+    { images = [], pdfs = [], pdf, instructions = kinetraInstructions, notes = "", tools, unfinished, workspace, finish }: AnswerOptions, stats: TurnStats) {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:");
     // Stop pressed while the request was being prepared (folders, memory, account choice): nothing starts.
     if (cancelledRuns.has(id)) throw Error("Request cancelled");
-    if (!grok && !claude) return codex.run(id, prompt, emit, images.map((i) => i.path), { model, reasoning }, pdf, instructions + notes, tools, unfinished, stats);
-    // Claude and Grok get Mowr's rules and tool guide as their system prompt; only this turn's notes (its files) go with the request.
-    const system = systemPrompt(instructions);
+    const finishing = async () => { try { await finish?.(); } catch (error) { console.warn("[answer] finishing:", (error as Error).message); } };
+    if (!grok && !claude) {
+      // Codex says it is done itself: the files written in its folder are collected first, so they arrive with the answer.
+      let ended = false;
+      await codex.run(id, prompt, (event) => { if (event.type === "done") ended = true; else emit(event); }, images.map((i) => i.path), { model, reasoning }, pdf, instructions + notes, tools, unfinished, stats, workspace ? { root: workspace.root, instructions: cliSystemPrompt("", { shell: true }) } : undefined);
+      if (ended) { await finishing(); emit({ id, type: "done" }); }
+      return;
+    }
+    // Claude and Grok get Mowr's rules and tool guide in their system prompt; only this turn's notes (its files) go with the request.
+    // In a working folder they keep their own system prompt, and Mowr's follows it.
+    const system = workspace ? cliSystemPrompt(instructions) : systemPrompt(instructions);
     const cancelled = () => cancelledRuns.has(id);
     emit({ id, type: "status", text: grok ? "Grok is working on it…" : "Claude is working on it…" });
     const pictures = claude ? await Promise.all(images.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))) : [];
     // Claude reads the conversation's PDFs as document blocks; Grok opens them from its folder (desktop/grok.ts grokPdfPath).
-    const claudePdfs = claude ? pdfs.map((f) => ({ name: f.name, data: Buffer.from(f.data).toString("base64") })) : [];
+    // In a working folder the PDFs are files there, opened when needed, instead of going whole with every step.
+    const claudePdfs = claude && !workspace ? pdfs.map((f) => ({ name: f.name, data: Buffer.from(f.data).toString("base64") })) : [];
     const accounts = (grok ? groks : claudes) as unknown as CliAccounts<ClaudeProvider | GrokProvider>;
     const autoSwitch = await providerAccounts.autoSwitchEnabled(owner);
     let current = await accounts.selected(owner);
@@ -372,8 +386,8 @@ void app.whenReady().then(async () => {
       const once = async () => {
         text = "";
         screen.step();
-        if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system, pdfs });
-        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined, { system, pdfs: followUp ? [] : claudePdfs });
+        if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system, pdfs: workspace ? [] : pdfs, workspace });
+        else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined, { system, pdfs: followUp ? [] : claudePdfs, workspace });
       };
       try {
         await once();
@@ -398,6 +412,7 @@ void app.whenReady().then(async () => {
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
     }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, stats }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); if (grok && pdfs.length) void groks.all(owner).then((all) => all.forEach((g) => void g.dropPdfs(id))).catch(() => {}); });
+    await finishing();
     screen.answer(answer);
     emit({ id, type: "done" });
   }
@@ -1337,6 +1352,22 @@ void app.whenReady().then(async () => {
         return saved;
       };
       const pictures = await savePictures(request.images || []);
+      // Every AI answers with tools as its own CLI, in a folder of the person's files (desktop/ai-workspace.ts): the
+      // subject's or project's files under their real names and folders, the chat's attachments, and the files Mowr made.
+      // Only what changed since the last answer is copied. A plain request (no tools) needs none.
+      const started = Date.now();
+      let work: { root: string; key: string; lane: string; note: string } | undefined;
+      if (!request.plain) {
+        send({ id: request.id, type: "status", text: "Getting your files ready…" });
+        const key = workspaceKey(request.scope, request.temporary ? undefined : request.chat, request.id);
+        const lane = workspaceLane(key, request.temporary ? undefined : request.chat, request.id);
+        const root = join(local, user.id, "work", key);
+        const state = await disk.readState(user.id).catch(() => null);
+        const mirror = mirrorFor({ state, scope: request.scope, chat: request.temporary ? undefined : request.chat, blob: (id) => disk.blobPath(user.id, id), library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [] });
+        const paths = await syncMirror(root, mirror, key.startsWith("space-") ? [ATTACHMENTS] : [], lane);
+        const sources = mirror.filter((m) => m.source && paths.includes(m.path)).map((m) => m.path);
+        work = { root, key, lane, note: workspaceNote(root, paths, sources, { folders: folders.map((f) => ({ name: basename(f.path), path: f.path })), lane }) };
+      }
       // The model is told what each picture is (which file, which page), in the order they are attached.
       const pictureNote = request.images?.length
         ? `\n\nPICTURES ATTACHED TO THIS REQUEST (look at them; they are part of the person's files, not decoration), in order:\n${request.images.map((image, i) => `${i + 1}. ${image.name}`).join("\n")}\nDiagrams, circuits, graphs, tables, handwriting and scanned pages in them are only in the pictures: read them there, not from the extracted text alone.`
@@ -1345,7 +1376,9 @@ void app.whenReady().then(async () => {
       // files, Grok opens their pages with its own read_file from its folder, ChatGPT has their pages among the pictures.
       const grokTurn = !!request.model?.startsWith(GROK_PREFIX);
       const pdfs = request.model?.startsWith("claude:") || grokTurn ? request.pdfs || [] : [];
-      const how = request.model?.startsWith("claude:")
+      const how = work
+        ? ", saved in your working folder: open them with your own file tools"
+        : request.model?.startsWith("claude:")
         ? ", attached as PDF files: you see each page as it is drawn, with its text, as when the person uploads a PDF to Claude"
         : grokTurn
           ? `, saved for you to open with read_file: ${pdfs.map((f, i) => grokPdfPath(request.id, i, f.name)).join(", ")}. read_file shows each page as it is drawn (figures, tables, handwriting, scans); "pages" picks a range, at most 20 a call`
@@ -1358,8 +1391,8 @@ void app.whenReady().then(async () => {
         memories,
         name: memoryState.enabled ? setup.displayName : undefined,
         // Claude and Grok have coreRules in their system prompt (answerWith).
-        rulesInSystem: cli,
-        extra: (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : "") + pictureNote + pdfNote,
+        rulesInSystem: cli || !!work,
+        extra: (work ? work.note + "\n\n" : "") + (folders.length ? editLanguage + "\n\n" + foldersPlaybook : "") + (unavailable.length ? "\nThese linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : "") + pictureNote + pdfNote,
       });
       // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
       // times on the way, and the person should get the final file, not every draft (and not one card per tool call).
@@ -1386,6 +1419,16 @@ void app.whenReady().then(async () => {
       };
       const known = await Promise.all((request.documents || []).map((doc) => disk.hasFile(user.id, "spec-" + doc.id)));
       (request.documents || []).forEach((doc, i) => { if (known[i]) documents.set(doc.id, doc.name); });
+      // The Markdown file each document was last made from (kept with its source): written back when it is missing from
+      // the folder, so a change is still a small edit to it rather than the whole document again.
+      const drafts = new Map<string, string>();
+      if (work) await Promise.all([...documents.keys()].map(async (id) => {
+        const draft = JSON.parse((await disk.readFile(user.id, "spec-" + id))?.toString("utf8") || "{}")?.draft;
+        const full = typeof draft?.path === "string" && typeof draft.text === "string" ? workspacePath(work!.root, draft.path) : null;
+        if (!full) return;
+        drafts.set(id, draft.path);
+        if (!existsSync(full)) { await mkdir(dirname(full), { recursive: true }); await writeFile(full, draft.text); }
+      }).map((p) => p.catch(() => {})));
       const spaceOf = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined;
       // File work still running when the answer stops: rollback waits for it (desktop/inflight.ts), so a draft
       // finishing late can neither overwrite the restored file nor leave an orphan behind.
@@ -1394,6 +1437,19 @@ void app.whenReady().then(async () => {
       const makeOrRevise = (spec: any, cancelled: () => boolean) => fileWork.run((stopped) => makeOrReviseNow(spec, stopped), cancelled);
       const makeOrReviseNow = async (spec: any, cancelled: () => boolean) => {
         const action = FILE_ACTIONS.has(String(spec?.action)) ? String(spec.action) : "pdf";
+        // A document written as a Markdown file in the working folder (desktop/markdown-source.ts): one short call makes
+        // it, and a change is a small edit to the file instead of the whole document sent again.
+        const sourced = typeof spec?.markdown === "string";
+        let draft: { path: string; text: string } | undefined;
+        if (sourced) {
+          if (action !== "pdf" && action !== "docx") throw Error('"markdown" makes pdf and docx files; send this file\'s content in the request instead.');
+          const full = work ? workspacePath(work.root, spec.markdown) : null;
+          if (!full) throw Error(`"${spec.markdown}" is not a file in your working folder.`);
+          const text = await readDiskFile(full, "utf8").catch(() => null);
+          if (text === null) throw Error(`${spec.markdown} is not in your working folder: write it first.`);
+          spec = withMarkdownSource(spec, text);
+          draft = { path: relative(work!.root, full).split(sep).join("/"), text };
+        }
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
         if (revise && !documents.has(revise)) throw Error(`No file with id "${revise}" in this conversation. Use an id from the files list, or leave out "revise" to make a new file.`);
         if (revise && !sameFormat(action, documents.get(revise)!)) throw Error(`"${documents.get(revise)}" is a .${documents.get(revise)!.split(".").pop()} file: revise it with the action that made it, or leave out "revise" to make a new ${action} file.`);
@@ -1408,7 +1464,8 @@ void app.whenReady().then(async () => {
           if (!key) throw Error(`"${verb}" works for pdf, docx, pptx and xlsx files; send the complete file instead.`);
           const current = await disk.readFile(user.id, "spec-" + revise);
           if (!current) throw Error(`That file's source is missing, so it cannot be ${append ? "added to" : "changed in parts"}.`);
-          const { action: _made, ...base } = JSON.parse(current.toString("utf8"));
+          // A change made without the Markdown file leaves the file behind the document, so it is no longer its source.
+          const { action: _made, draft: _draft, ...base } = JSON.parse(current.toString("utf8"));
           const parts = patch === undefined ? [...(base[key] || [])] : patchParts(base[key] || [], patch, key);
           if (append && (!Array.isArray(rest[key]) || !rest[key].length)) throw Error(`"append" needs the new "${key}" to add.`);
           if (!append && rest[key] !== undefined) throw Error(`Send changed ${key} inside "patch" ({"at":N,…}), or the whole file without "patch".`);
@@ -1434,9 +1491,9 @@ void app.whenReady().then(async () => {
         const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
         const words = key === "sections" ? String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0) : undefined;
         const length = key === "sections" || key === "slides"
-          ? { ...(pages ? { pages } : {}), ...(words !== undefined ? { words } : {}), [key]: clean[key].length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? `Keep going: append the next ${key} now. The file is only finished when every planned part is written in full depth.` : "Every planned part is written." } : key === "sections" ? { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." } : {}) }
+          ? { ...(pages ? { pages } : {}), ...(words !== undefined ? { words } : {}), [key]: clean[key].length, ...(clean.plan ? { planned: clean.plan.length, remaining: missing.slice(0, 40), next: missing.length ? `Keep going: append the next ${key} now. The file is only finished when every planned part is written in full depth.` : "Every planned part is written." } : key === "sections" && !sourced ? { check: "No plan was sent. If the request or the source needs more than this, send the full plan and keep appending sections before answering." } : {}) }
           : {};
-        const specBytes = new TextEncoder().encode(JSON.stringify({ action, ...(made.spec ?? clean) }));
+        const specBytes = new TextEncoder().encode(JSON.stringify({ action, ...(made.spec ?? clean), ...(draft ? { draft } : {}) }));
         if (cancelled()) throw Error("Request cancelled");
         if (revise) {
           const earlier = !madeNow.has(revise);
@@ -1462,7 +1519,7 @@ void app.whenReady().then(async () => {
             madeNow.set(revise, file);
             delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope });
           }
-          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, ...look, note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
+          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
         }
         const id = randomUUID();
         const file = { id, name: made.name, size: made.bytes.byteLength, type: made.type, created: Date.now(), spaceId: spaceOf, made: true };
@@ -1472,7 +1529,7 @@ void app.whenReady().then(async () => {
         madeNow.set(id, file);
         gaps.set(id, missing);
         delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
-        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...look, note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
+        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
       };
       /** A stopped answer leaves no trace: files it made are removed and files it changed get their earlier contents back. */
       const rollback = async () => {
@@ -1525,6 +1582,12 @@ void app.whenReady().then(async () => {
             if (!bytes) throw Error(`${documents.get(ref)} is missing.`);
             return { bytes: new Uint8Array(bytes), source: await keepSource("id:" + ref, new Uint8Array(bytes)), name: documents.get(ref) };
           }
+          // A PDF in the working folder, by its path there.
+          const there = work ? workspacePath(work.root, ref) : null;
+          if (there && /\.pdf$/i.test(there)) {
+            const bytes = await readDiskFile(there).catch(() => null);
+            if (bytes) return { bytes: new Uint8Array(bytes), source: await keepSource("path:" + there, new Uint8Array(bytes)), name: basename(there) };
+          }
           // A PDF of the conversation, by name: only the window has it.
           const { data, files } = await windowTask("bytes", { file: ref });
           if (!files[0]) throw Error(`${ref} could not be read.`);
@@ -1541,6 +1604,9 @@ void app.whenReady().then(async () => {
       };
       const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
+        // A file named by its path in the working folder ("Files/Week 1/notes.pdf") is the file of that name.
+        if (typeof tool?.file === "string" && /[\\/]/.test(tool.file) && !findFile(library, tool.file)) tool = { ...tool, file: basename(tool.file.replace(/\\/g, "/")) };
+        if (tool?.action === "help" && work) return grokTurn ? kinetraFiles : kinetraCli;
         const read = fileTool(library, tool);
         if (read) return read;
         if (tool?.action === "regions" || tool?.action === "crop") {
@@ -1594,20 +1660,40 @@ void app.whenReady().then(async () => {
         if (!documents.has(tool.id)) return { error: `No Mowr-made file with id "${tool.id}" in this conversation.` };
         const spec = await disk.readFile(user.id, "spec-" + tool.id);
         if (!spec) return { error: "That file's source is missing, so it can only be edited in the file panel." };
-        const { action, ...specification } = JSON.parse(spec.toString("utf8"));
-        return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification };
+        const { action, draft, ...specification } = JSON.parse(spec.toString("utf8"));
+        // A document made from a Markdown file is changed there: its path, not its text again.
+        return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification, ...(typeof draft?.path === "string" ? { madeFrom: draft.path, note: `Made from ${draft.path}: edit that file and send {"action":"${action || "pdf"}","revise":"${tool.id}","markdown":"${draft.path}","change":…}.` } : {}) };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
       // Claude and Grok always see the whole tool guide (kinetraCompact, the same in every system prompt); what this request
       // adds to it (recipes, a file design guide) and this conversation's files change from turn to turn, so they go in the message.
-      const fileNotes = documentsNote([...documents].map(([id, name]) => ({ id, name }))) + fileToolsGuide(library, pictures.length > 0);
+      const fileNotes = documentsNote([...documents].map(([id, name]) => ({ id, name, draft: drafts.get(id) }))) + (work ? cliFileToolsGuide() : fileToolsGuide(library, pictures.length > 0));
       const topic = { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0 };
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0, { ...topic, notes: fileNotes });
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : work ? (grokTurn ? kinetraFiles : cli || needsKinetra(query, documents.size > 0) ? kinetraCli : kinetraBrief) : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0, { ...topic, notes: fileNotes });
       // This conversation's files come before what this message chose (recipes, a design guide), so the prompt cache keeps more.
-      const notes = request.plain || !cli ? "" : [fileNotes.trim(), kinetraExtrasFor(query, documents.size > 0, topic)].filter(Boolean).join("\n\n");
+      const extras = request.plain ? "" : kinetraExtrasFor(query, documents.size > 0, topic);
+      const notes = request.plain || !cli && !work ? "" : [fileNotes.trim(), extras].filter(Boolean).join("\n\n");
       // Claude at its default level thinks harder for tool and document work (desktop/claude.ts toolEffort); a level the person picked stays.
       const reasoning = request.model?.startsWith("claude:") && !request.plain ? toolEffort((await claudeFor(user.id)).listed, request.model, request.reasoning, !!request.reasoningChosen, needsKinetra(query, documents.size > 0)) : request.reasoning;
-      const run = answerWith(user.id, request.id, request.model, reasoning, prompt, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished });
+      // Once per answer: on success before it is marked done, or on a failure before the finished files are delivered.
+      let collected = false;
+      const collectOutputs = async () => {
+        if (!work || collected) return;
+        collected = true;
+        for (const out of await newOutputs(work.root, started, work.lane)) {
+          const bytes = await readDiskFile(out.path).catch(() => null);
+          if (!bytes) continue;
+          const id = randomUUID(), name = basename(out.name);
+          const file = { id, name, size: bytes.byteLength, type: MIME[name.split(".").pop()!.toLowerCase()] || "application/octet-stream", created: Date.now(), spaceId: spaceOf, made: true };
+          await disk.writeFile(user.id, id, new Uint8Array(bytes));
+          madeNow.set(id, file);
+          delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
+        }
+      };
+      const workspace = work ? { root: work.root, readOnly: folders.map((f) => f.path), writer: extras } : undefined;
+      const run = answerWith(user.id, request.id, request.model, reasoning, prompt, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, notes, tools: (tool) => tools(tool), unfinished, workspace, finish: collectOutputs });
+      // A folder for one request outside any chat is removed with its answer.
+      if (work?.key.startsWith("once-")) void run.finally(() => rm(work!.root, { recursive: true, force: true }).catch(() => {})).catch(() => {});
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       // A request outside any chat has no later turn to use its crops.
@@ -1619,7 +1705,7 @@ void app.whenReady().then(async () => {
         .catch(async (error) => {
           // Stopped: nothing it made is kept. Failed part-way: the files already finished are still delivered.
           if (cancelledRuns.has(request.id) || /Request cancelled/.test(String((error as Error)?.message))) await rollback().catch(() => {});
-          else deliver();
+          else { await collectOutputs().catch(() => {}); deliver(); }
           send({
             id: request.id,
             type: "error",

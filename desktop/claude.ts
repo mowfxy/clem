@@ -24,6 +24,58 @@ export function claudeArgs(model:string,effort:string|undefined,session:{id:stri
   if(effort)args.push('--effort',effort);
   return args;
 }
+/**
+ * Claude Code's own tools that an answer in a working folder keeps (desktop/ai-workspace.ts): reading, searching and
+ * writing files, the web, and its task list for long work. Left out: anything that runs commands or code, subagents,
+ * schedules, notifications, worktrees, artifacts, the browser and computer use. (Older and newer Claude Code name the
+ * task list differently; a name this one does not know is ignored.)
+ */
+export const CLAUDE_CLI_TOOLS='Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,TodoWrite,TaskCreate,TaskUpdate,TaskList,TaskGet,ToolSearch';
+/** With a writer (claudeWriters), the tool that starts it too ("Task" in older Claude Code, "Agent" in newer). */
+export const CLAUDE_AGENT_TOOLS='Task,Agent';
+/** The tools a writer has: its own file tools, the web and Kinetra. It starts no further subagents. */
+const WRITER_TOOLS=['Read','Write','Edit','Glob','Grep','WebSearch','WebFetch','ToolSearch',CLAUDE_TOOL];
+export const WRITER='mowr-writer';
+/**
+ * Claude Code's subagent for one document of several (--agents, one file per answer). A request for a document per
+ * lecture used to read every lecture into one conversation, and every later step re-read all of them; a writer reads
+ * only its own sources, so each step carries a third of that, and the documents are written side by side. It has the
+ * same rules, tool guide and recipes as the answer itself (`prompt`), and reports back in a few lines.
+ */
+export function claudeWriters(prompt:string){
+  return JSON.stringify({[WRITER]:{
+    description:'Writes ONE complete document (pdf or docx) for the person from given source files, at full depth, and makes it with Kinetra. Use one per document when a request needs two or more documents; start them together.',
+    prompt:`${prompt}\n\nYOU ARE A MOWR DOCUMENT WRITER: Mowr's main assistant started you for ONE document. Your task says what the person asked (word for word), which document you write, its sources and its draft file. Read those sources yourself (a PDF's text first, then every page whose drawing you need), check every number with Kinetra, write the draft at full depth (everything the request and the sources call for; nothing summarised away), make the file with one pdf or docx request, look at what comes back and fix what is wrong. Then reply in a few lines: the file's id and name, what it covers, and anything you could not do. The document is for the person, not for the assistant.`,
+    tools:WRITER_TOOLS,model:'inherit'}});
+}
+/** What the answer itself is told about its writers (the guide in its prompt explains documents; this, when to delegate). */
+export const WRITERS_NOTE=`SEVERAL DOCUMENTS: when the request needs two or more documents (one per lecture, chapter or file), give each one to a ${WRITER} subagent and start them all in the same turn (parallel calls), rather than reading every source yourself: each writer reads only its own sources, so the work is faster and uses far less of the person's plan. Tell each writer: the person's request word for word, the one document it writes (title, kind, everything it must cover), its source files (paths in your working folder) and pages, and its draft file (in your drafts folder, one file each). Read a source yourself only as far as you need to divide the work. When the writers finish, check each report (the file was made, nothing was left out), fix or redo what is missing, then answer the person. One document: write it yourself.`;
+/**
+ * Claude Code as itself, for an answer with tools: its own system prompt (Mowr's rules are appended to it), its own
+ * file tools working in the conversation's folder, and Kinetra as its one MCP server. --restricted removes every tool
+ * that runs commands or code, keeps the file tools inside the working directories (the folder and `addDirs`), and
+ * ignores the person's own Claude Code settings; `settingsFile` adds the rules for this answer (linked folders are
+ * read-only). acceptEdits lets it write in its folder without asking; anything else that would ask is refused.
+ */
+export function claudeCliArgs(model:string,effort:string|undefined,session:{id:string;resume:boolean}|undefined,{mcpConfig,addDirs=[],settingsFile,agentsFile}:{mcpConfig?:string;addDirs?:string[];settingsFile?:string;agentsFile?:string}={}){
+  const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model,
+    '--restricted','--no-chrome','--strict-mcp-config','--tools',agentsFile?CLAUDE_CLI_TOOLS+','+CLAUDE_AGENT_TOOLS:CLAUDE_CLI_TOOLS,'--allowedTools',`WebSearch,WebFetch${mcpConfig?','+CLAUDE_TOOL:''}${agentsFile?','+CLAUDE_AGENT_TOOLS:''}`,
+    '--permission-mode','acceptEdits','--permission-prompts','none','--disable-slash-commands','--max-turns',String(MAX_CALLS+10),
+    ...(mcpConfig?['--mcp-config',mcpConfig]:[]),...(settingsFile?['--settings',settingsFile]:[]),...(agentsFile?['--agents',agentsFile]:[]),...addDirs.flatMap(dir=>['--add-dir',dir])];
+  args.push(...(session?(session.resume?['--resume',session.id]:['--session-id',session.id]):['--no-session-persistence']));
+  if(effort)args.push('--effort',effort);
+  return args;
+}
+/** A path as Claude Code's permission rules name it: "//c/Users/…" for C:\Users\… (an absolute path from the root). */
+export const rulePath=(path:string)=>'//'+path.replace(/\\/g,'/').replace(/^([A-Za-z]):/,(_,d:string)=>d.toLowerCase()).replace(/^\/+/,'').replace(/\/+$/,'');
+/** The settings for one answer: the linked folders it may read but never change itself (edits to them are proposed). */
+export function claudeCliSettings(readOnly:string[]){
+  return JSON.stringify({permissions:{deny:readOnly.flatMap(dir=>[`Edit(${rulePath(dir)}/**)`,`Write(${rulePath(dir)}/**)`,`NotebookEdit(${rulePath(dir)}/**)`])}});
+}
+/** Where one answer runs as Claude Code itself: its working folder and the linked folders it may read. `writer`: what a
+ *  document writer is told beyond the system prompt (this request's figure recipes and design guides); with it, the
+ *  answer may hand documents to writers (claudeWriters). */
+export type ClaudeWorkspace={root:string;readOnly?:string[];writer?:string};
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 
 /** One answer's tokens in the console (counts only, never content), to measure efficiency work before and after a change. */
@@ -163,13 +215,19 @@ export function claudeSubscriptionStatus(raw:string,code:number|null) {
   catch{return {installed:true,connected:false};}
 }
 
-/** Claude Code is invoked with web search as its only built-in tool: no files, shell, plugins or project settings, and no MCP server but Mowr's own Kinetra one (desktop/kinetra-mcp.ts). */
+/**
+ * Claude Code on the person's plan. An answer with tools runs it as itself in the conversation's working folder
+ * (claudeCliArgs: its own prompt and file tools, no commands or code); short internal requests run it with web search
+ * only. Either way no plugins or settings of the person's own, and no MCP server but Mowr's Kinetra one (desktop/kinetra-mcp.ts).
+ */
 export class ClaudeProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
   /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
   /** Set when this Claude Code refused --system-prompt-file: Mowr's rules then go at the top of the message. */
   private noSystemFile=false;
+  /** Set when this Claude Code refused --agents: answers then write every document themselves. */
+  private noAgents=false;
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
   /** The last sign-in check while it is recent: each step of a tool loop reuses it instead of starting `claude auth status` again. */
   private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
@@ -246,7 +304,7 @@ export class ClaudeProvider {
     env.MAX_MCP_OUTPUT_TOKENS=String(TOOL_OUTPUT_TOKENS);
     return env;
   }
-  private async start(args:string[]){await mkdir(this.root,{recursive:true});const child=spawn(this.executable,args,{cwd:join(this.root,'workspace'),env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});return child;}
+  private async start(args:string[],cwd=join(this.root,'workspace')){await mkdir(this.root,{recursive:true});await mkdir(cwd,{recursive:true});const child=spawn(this.executable,args,{cwd,env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});return child;}
   private statusRequest:Promise<ReturnType<typeof claudeSubscriptionStatus>>|null=null;
   /** One check at a time: callers that arrive while one runs share it. */
   async status(force=false){
@@ -330,7 +388,7 @@ export class ClaudeProvider {
    */
   /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. `system`: Mowr's system prompt.
    *  `pdfs`: PDFs read whole as document blocks, as claude.ai takes an upload (every page as drawn plus its text). */
-  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall,{system,pdfs=[]}:{system?:string;pdfs?:ClaudePdf[]}={}):Promise<void>{
+  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall,{system,pdfs=[],workspace}:{system?:string;pdfs?:ClaudePdf[];workspace?:ClaudeWorkspace}={}):Promise<void>{
     // The request as asked: a step run again (NoSystemFile below) adds its own notes to it, not to this one's.
     const asked=prompt;
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
@@ -352,16 +410,25 @@ export class ClaudeProvider {
     // Mowr's own system prompt replaces Claude Code's coding-agent one (a file: it is far past Windows' command-line limit).
     // A resumed session reuses the one it recorded; it is passed again for a Claude Code that does not record it.
     const systemFile=system?join(this.root,'workspace','.system-'+randomUUID()+'.txt'):undefined;
+    // In a working folder Claude Code keeps its own prompt and Mowr's rules follow it; the linked folders it may only read go in its settings.
+    const settingsFile=workspace?.readOnly?.length?join(this.root,'workspace','.settings-'+randomUUID()+'.json'):undefined;
+    if(settingsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(settingsFile,claudeCliSettings(workspace!.readOnly!));}
+    // Writers need Kinetra, so they come only with the native tool; a Claude Code too old for --agents runs without them.
+    const agentsFile=workspace&&native&&system&&workspace.writer!==undefined&&!this.noAgents?join(this.root,'workspace','.agents-'+randomUUID()+'.json'):undefined;
+    if(agentsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(agentsFile,claudeWriters(system+(workspace!.writer?'\n\n'+workspace!.writer:'')));}
+    if(agentsFile&&!session?.resume)prompt=WRITERS_NOTE+'\n\n'+prompt;
     if(systemFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(systemFile,system!);}
     const endpoint=native?await kinetraMcp.open(request=>keepingAlive(()=>native(request),()=>alive())):undefined;
     // The endpoint's token goes in a file in this account's own folder (owner-only), never on the command line, which
     // other programs and process listings can read.
     const mcpFile=endpoint?join(this.root,'workspace','.mcp-'+randomUUID()+'.json'):undefined;
-    const removeFiles=async()=>{for(const file of [systemFile,mcpFile])if(file)await rm(file,{force:true}).catch(()=>{});};
+    const removeFiles=async()=>{for(const file of [systemFile,mcpFile,settingsFile,agentsFile])if(file)await rm(file,{force:true}).catch(()=>{});};
     let child:ChildProcessWithoutNullStreams;
     try{
       if(mcpFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(mcpFile,claudeMcpConfig(endpoint!),{mode:0o600});}
-      child=await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile),...(systemFile?['--system-prompt-file',systemFile]:[])]);
+      child=workspace
+        ?await this.start([...claudeCliArgs(model.slice(7),effort,session,{mcpConfig:mcpFile,addDirs:workspace.readOnly,settingsFile,agentsFile}),...(systemFile?['--append-system-prompt-file',systemFile]:[])],workspace.root)
+        :await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile),...(systemFile?['--system-prompt-file',systemFile]:[])]);
     }
     catch(error){endpoint?.close();await removeFiles();throw error;}
     this.active.set(id,child);
@@ -401,6 +468,8 @@ export class ClaudeProvider {
           if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&code===0){finish(result.result);return;}
           const detail=String(result?.result||'')+' '+error;
           if(systemFile&&unsupportedFlag.test(detail)&&/system-prompt/i.test(detail)){this.noSystemFile=true;return finish(undefined,new NoSystemFile());}
+          // Nothing ran: the same step again without writers.
+          if(agentsFile&&unsupportedFlag.test(detail)&&/agents/i.test(detail)){this.noAgents=true;return finish(undefined,new NoSystemFile());}
           if(session&&unsupportedFlag.test(detail)){this.noSessions=true;return finish(undefined,new SessionLost('This Claude Code does not keep sessions.'));}
           if(session?.resume&&/no conversation found|session.{0,40}(not found|does not exist|missing)/i.test(detail+JSON.stringify(result?.errors||'')))return finish(undefined,new SessionLost('Claude Code no longer has this session.'));
           if(usage(detail))return finish(undefined,new UsageLimit('Claude subscription usage is unavailable right now.'));
@@ -414,7 +483,7 @@ export class ClaudeProvider {
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
     }catch(error){
       // Nothing ran: the same step again, with the rules in the message instead.
-      if(error instanceof NoSystemFile)return this.run(id,asked,model,effort,emit,images,session,native,{system,pdfs});
+      if(error instanceof NoSystemFile)return this.run(id,asked,model,effort,emit,images,session,native,{system,pdfs,workspace});
       throw error;
     }finally{this.active.delete(id);endpoint?.close();this.recheck();void this.readUsage(true);await removeFiles();}
   }

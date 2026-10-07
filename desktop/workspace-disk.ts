@@ -39,6 +39,10 @@ export class WorkspaceDisk {
       throw e;
     }
   }
+  /** Where a file's bytes are kept on this PC (copied into an AI's working folder, desktop/ai-workspace.ts). */
+  blobPath(owner: string, id: string) {
+    return this.file(owner, id);
+  }
   /** Whether a file is there, without reading it. */
   async hasFile(owner: string, id: string) {
     return stat(this.file(owner, id)).then((info) => info.isFile(), () => false);
