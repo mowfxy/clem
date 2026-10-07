@@ -697,13 +697,29 @@ export function cropPlacement(crop: { width: number; height: number; units?: "pt
 }
 
 const headingKey = (heading: string) => cleanHeading(heading).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-/** The planned headings a specification does not have yet (each matched to a written heading or ### subheading). */
-export function unwritten(spec: Pick<DocumentSpec, "plan" | "sections">) {
+/** Text that marks a part as not written yet: "TODO", "TBD", "[to be written]", or a line holding only "…". */
+const PLACEHOLDER = /\b(?:TODO|TBD|FIXME)\b|\[(?:to be (?:written|added|completed|filled)|placeholder|more (?:here|to come))[^\]]*\]|^\s*(?:…|\.{3})\s*$/im;
+/** Fewer words than this under a planned heading, with no figure, is a stub: the heading is there but not its section. */
+export const STUB_WORDS = 30;
+/**
+ * The planned headings a specification does not have yet (each matched to a written heading or ### subheading).
+ * `stubs`: a planned section that holds only a placeholder or a line or two (under STUB_WORDS, no figure) counts as
+ * unwritten too, so a document written as a file (desktop/markdown-source.ts) cannot pass with its headings alone.
+ */
+export function unwritten(spec: Pick<DocumentSpec, "plan" | "sections">, { stubs = false }: { stubs?: boolean } = {}) {
   if (!Array.isArray(spec.plan) || !spec.plan.length) return [];
-  const written = spec.sections.flatMap((s) => [s.heading || "", ...[...String(s.text || "").matchAll(/^#{1,4}\s+(.+)$/gm)].map((m) => m[1])]).map(headingKey).filter(Boolean);
+  const written: { key: string; stub: boolean }[] = [];
+  spec.sections.forEach((s, i) => {
+    // A section's text continues in the sections without a heading after it (the text after a figure).
+    let body = String(s.text || ""), figure = !!s.figure;
+    for (let j = i + 1; j < spec.sections.length && !spec.sections[j].heading; j++) { body += "\n" + String(spec.sections[j].text || ""); figure ||= !!spec.sections[j].figure; }
+    const placeholder = stubs && PLACEHOLDER.test(body);
+    if (s.heading) written.push({ key: headingKey(s.heading), stub: placeholder || (stubs && !figure && body.split(/\s+/).filter(Boolean).length < STUB_WORDS) });
+    for (const m of String(s.text || "").matchAll(/^#{1,4}\s+(.+)$/gm)) written.push({ key: headingKey(m[1]), stub: placeholder });
+  });
   return spec.plan.filter((planned) => {
     const key = headingKey(planned);
-    return key && !written.some((w) => w === key || (w.length > 3 && key.length > 3 && (w.startsWith(key) || key.startsWith(w))));
+    return key && !written.some((w) => !w.stub && w.key && (w.key === key || (w.key.length > 3 && key.length > 3 && (w.key.startsWith(key) || key.startsWith(w.key)))));
   });
 }
 

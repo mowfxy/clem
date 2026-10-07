@@ -90,8 +90,6 @@ export const requestSchema = z.discriminatedUnion("action", [
     // Claude Code ids can end in a context tag, e.g. claude:opus[1m].
     model:z.string().regex(/^[a-zA-Z0-9._:-]{1,100}(?:\[[a-z0-9]{1,8}\])?$/).optional(),
     reasoning:z.enum(["none","minimal","low","medium","high","xhigh","max","ultra"]).optional(),
-    /** The person picked the thinking level; without it, it is the model's default (desktop/claude.ts toolEffort). */
-    reasoningChosen: z.boolean().optional(),
     id: z.string().uuid(),
     scope: scopeSchema,
     /** Documents Mowr made in this conversation; a change to one updates that same file. */
