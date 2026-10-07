@@ -56,6 +56,8 @@ export function within(root: string, path: string) {
 /** A path the AI named, resolved inside the workspace (forward or back slashes, absolute or relative); null outside it. */
 export function workspacePath(root: string, path: unknown) {
   if (typeof path !== "string" || !path.trim()) return null;
+  // A drive or UNC path is never inside the workspace, on any platform.
+  if (/^([a-z]:|[\\/]{2})/i.test(path.trim())) return null;
   const full = resolve(root, path.trim().replace(/^\.[\\/]+/, ""));
   return within(root, full) && resolve(full) !== resolve(root) ? full : null;
 }
