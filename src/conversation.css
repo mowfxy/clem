@@ -57,3 +57,13 @@ button.work-summary .drawn-icon{transition:transform .18s}
 button.work-summary[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
 .work-notes{margin:12px 0 0;padding:2px 0 2px 16px;border-left:2px solid #ffffff14;color:#a9a8a0;font-size:15px}
 .work-notes .message-text,.work-notes p{font-size:15px}
+.limit-notice{margin:6px 0 14px;padding:12px 14px;border:1px solid #ffffff14;border-radius:12px;background:#ffffff06;font:13px/1.5 var(--sans);color:#c9c7bf;max-width:560px}
+.limit-notice p{margin:0}
+.limit-head{display:flex;align-items:center;gap:7px;color:#ece9df;font-weight:500}
+.limit-body{margin-top:4px!important;color:#a9a79f}
+.limit-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px}
+.limit-auto{display:flex;align-items:center;gap:8px;cursor:pointer;color:#dcd9cf}
+.limit-auto input{accent-color:#e9e5d8;width:15px;height:15px;margin:0}
+.limit-foot{color:#8f8f8f;font-size:12px}
+.limit-now{margin-left:auto;padding:5px 12px;border-radius:99px;border:1px solid #ffffff1f;background:#ffffff0a;color:#e4e2da;font:12px/1.4 var(--sans)}
+.limit-now:hover{background:#ffffff14}

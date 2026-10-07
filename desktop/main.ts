@@ -316,6 +316,8 @@ void app.whenReady().then(async () => {
   }
   /** Chats the person stopped; a Claude or Grok tool loop checks this between steps. */
   const cancelledRuns = stoppedRuns();
+  /** Working folders (root|lane) whose answer a usage limit stopped, from when that answer started: its files wait for the next one. */
+  const heldOutputs = new Map<string, number>();
   /** Stops one answer wherever it runs: Codex, or any of the person's Claude and Grok accounts. */
   async function stopRun(owner: string, id: string) {
     cancelledRuns.add(id);
@@ -1719,7 +1721,10 @@ void app.whenReady().then(async () => {
       const collectOutputs = async () => {
         if (!work || collected) return;
         collected = true;
-        for (const out of await newOutputs(work.root, started, work.lane)) {
+        // Files written before a usage limit stopped an earlier answer in this folder arrive with the answer that finishes the task.
+        const held = heldOutputs.get(work.root + "|" + work.lane);
+        heldOutputs.delete(work.root + "|" + work.lane);
+        for (const out of await newOutputs(work.root, Math.min(started, held ?? started), work.lane)) {
           const bytes = await readDiskFile(out.path).catch(() => null);
           if (!bytes) continue;
           const id = randomUUID(), name = basename(out.name);
@@ -1742,15 +1747,24 @@ void app.whenReady().then(async () => {
           if (!cancelledRuns.has(request.id) && !request.temporary) learnFromTurn(user.id, request.scope, request.id, "chat:" + (request.chat || request.id), query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
         })
         .catch(async (error) => {
+          const stopped = cancelledRuns.has(request.id) || /Request cancelled/.test(String((error as Error)?.message));
+          // The plan ran out mid-task: the files are unfinished, so none is sent. Like a stop, made and changed files go
+          // back; what the AI wrote in its working folder stays there for the answer that continues the task.
+          const limited = !stopped && (error instanceof UsageLimit || (!claude && /429|usage.limit|rate.limit|quota/i.test(String((error as Error)?.message))));
           // Stopped: nothing it made is kept. Failed part-way: the files already finished are still delivered.
-          if (cancelledRuns.has(request.id) || /Request cancelled/.test(String((error as Error)?.message))) await rollback().catch(() => {});
+          if (stopped || limited) await rollback().catch(() => {});
           else { await collectOutputs().catch(() => {}); deliver(); }
+          if (limited && work) heldOutputs.set(work.root + "|" + work.lane, Math.min(started, heldOutputs.get(work.root + "|" + work.lane) ?? started));
+          const resetsAt = limited
+            ? await (request.model?.startsWith(GROK_PREFIX) ? groks.resumeAt(user.id) : claude ? claudes.resumeAt(user.id) : providerAccounts.resumeAt(user.id)).catch(() => undefined)
+            : undefined;
           send({
             id: request.id,
             type: "error",
             error: claude
               ? (error instanceof Error ? error.message : 'This model could not complete this request.')
               : codexFailureMessage(error),
+            ...(limited ? { limit: { resetsAt } } : {}),
           });
         })
         .finally(() => cancelledRuns.end(request.id));

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import type { Vault } from "./vault";
-import { isBelowSwitchThreshold, type UsageSnapshot } from "../core/account-usage.ts";
+import { isBelowSwitchThreshold, resumeAt, type UsageSnapshot } from "../core/account-usage.ts";
 
 /** One Claude or Grok sign-in, in the shape Settings shows for ChatGPT accounts. */
 export type CliAccount = { id: string; connected: boolean; installed?: boolean; pending?: boolean; email?: string; plan?: string; usage?: UsageSnapshot; checkedAt?: number; error?: string };
@@ -180,6 +180,13 @@ export class CliAccounts<P extends CliProvider> {
       await this.save(owner, { ...r, active: next.id });
       return { id: next.id, email: next.email, provider: this.provider(owner, next.id) };
     });
+  }
+  /** When the active account can answer again after its plan refused a request (ms), if known. */
+  async resumeAt(owner: string) {
+    const r = await this.registry(owner);
+    const account = await this.describe(owner, r.active, false).catch(() => null);
+    const until = this.exhausted.get(owner + ":" + r.active);
+    return resumeAt(account?.usage) ?? (until && until > Date.now() ? until : undefined);
   }
   /** Accounts restored from the Mowr account (their sign-ins were just written back to this PC). */
   async adopt(owner: string, ids: string[]) {

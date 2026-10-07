@@ -31,7 +31,7 @@ import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
 import {youtubeReferences} from "./youtube";
 import {isMediaType, videoContentIntent, videoContext, type VideoCaptions} from "../core/captions";
-import {desktop,desktopChat} from './desktop/bridge';
+import {desktop,desktopChat,LimitReached} from './desktop/bridge';
 import {conversationPictures,NO_PDF_VIEW,pageImages,pdfView,type PdfView} from './desktop/page-images';
 import type {Finder} from './files/finder';
 import {LinkedFolders} from './desktop/LinkedFolders';
@@ -54,6 +54,10 @@ import {SavedFilePicker} from './files/SavedFilePicker';
 import {Toast} from './Toast';
 import {RenameField,PencilIcon} from './files/RenameField';
 const REPLY_SOURCE = "reply";
+/** Sent to carry on a task the plan's usage limit stopped; the conversation and the working folder hold what was done. */
+const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
+/** Whose plan a model runs on, for the usage-limit notice. */
+const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : "ChatGPT";
 /** Files of a chat and its subject or project read for each request; the budget decides how much of each is sent. */
 const MAX_CHAT_SOURCES = 400;
 /** The longest a change waits before the workspace is written (streamed answers change it on every token). */
@@ -101,6 +105,7 @@ import { PlanEditor } from "./PlanEditor";
 import { ChatMenu } from "./ChatMenu";
 import { MessageBody, type BodyHandlers } from "./chat/MessageBody";
 import { WorkSummary } from "./chat/WorkSummary";
+import { LimitNotice, resumeTime } from "./chat/LimitNotice";
 import { MessageTools, ReviewPanel, VerifyPanel, UserMessageTools, UserMessageEdit, parseClaims } from "./chat/MessageExtras";
 import { FOLDER_FILE_CHANGED, type EditBlock } from "./chat/EditProposal";
 import { answerInstructions, visualOnlyInstructions, reviewInstructions, verifyInstructions } from "../core/answer-format";
@@ -328,6 +333,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // A message waiting to be sent, bound to the chat it was written in (none: the chat on screen).
   // `from`: a sent message answered again by Retry or Edit; it and everything after it are replaced.
   const [queued,setQueued]=useState<{prompt:string;chat?:string;from?:string}|null>(null);
+  /** Chats whose running answer continues a task after a usage limit by itself: another limit keeps it continuing. */
+  const autoContinued=useRef(new Set<string>());
   const [editingMessage,setEditingMessage]=useState<string|null>(null);
   const accountDataRef=useRef(accountData);accountDataRef.current=accountData;
   const observedActiveAccount=useRef<string|null>(null);
@@ -1150,6 +1157,12 @@ In this subject the learner keeps missing these questions in review; connect to 
       const markSpace = chat.spaceId, picked = "mark" in named ? named.mark : undefined;
       if (markSpace && picked && markKeys.includes(picked)) patch((s) => ({ ...s, spaces: s.spaces.map((x) => x.id === markSpace ? { ...x, mark: { key: picked, for: x.name } } : x) }));
     } catch (e) {
+      // Out of usage mid-task: the unfinished files were held back; a notice offers to continue when the plan resets.
+      if (e instanceof LimitReached) {
+        const auto = autoContinued.current.delete(id);
+        updateChat(id, (c) => ({ ...c, messages: c.messages.map((m) => m.id === messageId ? { ...m, limit: { at: Date.now(), ...(e.resetsAt ? { resetsAt: e.resetsAt } : {}), ...(auto ? { auto: true } : {}) } } : m) }));
+        return;
+      }
       updateChat(id, (c) => ({
         ...c,
         messages: c.messages.map((m) =>
@@ -1165,6 +1178,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         ),
       }));
     } finally {
+      autoContinued.current.delete(id);
       end(id, controller);
     }
   }
@@ -1682,6 +1696,24 @@ In this subject the learner keeps missing these questions in review; connect to 
     }
     if(!running){const prompt=queued.prompt;setQueued(null);void send(undefined,prompt);}
   },[queued,running,conversationTarget,runs]);
+  /** Continues a task a usage limit stopped, in its own chat; `auto` when the reset time came rather than the person asking. */
+  function continueAfterLimit(chat:string,messageId:string,auto=false){
+    updateChat(chat,c=>({...c,messages:c.messages.map(m=>m.id===messageId&&m.limit?{...m,limit:{...m.limit,done:true}}:m)}));
+    if(auto)autoContinued.current.add(chat);
+    setQueued({prompt:CONTINUE_AFTER_LIMIT,chat});
+  }
+  // A task set to continue after its limit resets is continued then (at once if Mowr was closed at the time).
+  useEffect(()=>{
+    // Another answer or a queued message goes first: when it ends, this runs again.
+    // So is a message the person is writing: sending would take its text and attachments.
+    if(!ready||!desktop||queued||Object.keys(runs).length||draft.trim()||attachments.length)return;
+    const due=state.chats.flatMap(c=>{const m=c.messages.at(-1);return m?.role==='assistant'&&m.limit?.auto&&!m.limit.done?[{chat:c.id,message:m.id,at:resumeTime(m.limit)}]:[];});
+    if(!due.length)return;
+    const next=due.reduce((a,b)=>a.at<=b.at?a:b);
+    // A minute after the reset, so the plan has its usage back.
+    const timer=setTimeout(()=>continueAfterLimit(next.chat,next.message,true),Math.min(Math.max(next.at+60_000-Date.now(),1000),2**31-1));
+    return ()=>clearTimeout(timer);
+  },[state.chats,ready,runs,queued,draft,attachments]);
   function resend(chatId:string,messageId:string,prompt:string){
     if(!prompt.trim())return;
     setEditingMessage(null);
@@ -2233,13 +2265,15 @@ In this subject the learner keeps missing these questions in review; connect to 
                                 <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
                               )
                             ) : (
-                              m.role === "assistant" && !streaming && !(m === activeChat.messages.at(-1) && activeChat.id in runs) && !m.plan && !m.visual && !m.attachments?.length
+                              m.limit ? null
+                              : m.role === "assistant" && !streaming && !(m === activeChat.messages.at(-1) && activeChat.id in runs) && !m.plan && !m.visual && !m.attachments?.length
                                 // Nothing is answering this chat, so the run that left this empty answer ended with the app.
                                 ? <span className="closed-note">Mowr was closed unexpectedly before this answer finished. Send your message again to continue.</span>
                                 : <span className="thinking">{(streaming && runs[activeChat.id]) || "Thinking…"}</span>
                             )}
                             {streaming && m.content && runs[activeChat.id] ? <span className="work-status" role="status"><span className="work-dot" />{runs[activeChat.id]}</span> : null}
                           </div>}
+                          {m.limit && !streaming && <LimitNotice limit={m.limit} model={planOf(m.model)} latest={m.id === activeChat.messages.at(-1)?.id} onAuto={(auto) => updateChat(activeChat.id, (c) => ({ ...c, messages: c.messages.map((x) => x.id === m.id && x.limit ? { ...x, limit: { ...x.limit, auto } } : x) }))} onContinue={() => continueAfterLimit(activeChat.id, m.id)} />}
                           {m.role === "user" && !!m.drive?.length && <div className="message-drive">{m.drive.map((d) => <button type="button" key={d.id} className="drive-attached" onClick={() => openDrive(d)} aria-description={"Open " + d.name}><DriveIcon mime={d.mimeType} name={d.name} size={18} /><span>{d.name}</span></button>)}</div>}
                           {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=>{const Card=m.role==='assistant'?DocumentCard:FileCard;return <Card key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>;})}
                           {/* Visuals from older chats, drawn by the ready-made models Mowr used to have. */}

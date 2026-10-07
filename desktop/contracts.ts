@@ -230,6 +230,8 @@ export type DesktopBridge = {
       file?: import("../core/types").StoredFile;
       scope?: string;
       error?: string;
+      /** type "error": the plan's usage limit stopped the answer; no files were sent. `resetsAt` (ms) when known. */
+      limit?: { resetsAt?: number };
       /** type "memory": what Mowr noted about the person after this answer. */
       memories?: { id: string; text: string; confirmed: boolean }[];
       /** An artifact that replaced an existing file's contents (a revised document) rather than a new file. */

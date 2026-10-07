@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Codex } from "./codex.ts";
 import type { Vault } from "./vault";
-import { hasCapacity, isBelowSwitchThreshold, resetWindows } from "../core/account-usage.ts";
+import { hasCapacity, isBelowSwitchThreshold, resetWindows, resumeAt } from "../core/account-usage.ts";
 type Registry = { active: string; ids: string[] };
 type AccountStatus = {id:string;connected:boolean;email?:string;usage?:any;checkedAt?:number;[key:string]:any};
 /** Each account has its own Codex home and credential file, which ProviderLink keeps with the Mowr account. */
@@ -91,6 +91,12 @@ export class ProviderAccounts {
       }
     }
     return { active: r.active, accounts, resets, autoSwitch: await this.autoSwitchEnabled(owner) };
+  }
+  /** When the active account can answer again after its plan refused a request (ms), if Codex says. */
+  async resumeAt(owner:string) {
+    const r = await this.registry(owner);
+    const account = await this.client(owner,r.active).account(0).catch(() => null);
+    return resumeAt(account?.usage);
   }
   async autoSwitchEnabled(owner:string) {
     return this.vault.read<boolean>('provider-auto-switch-' + owner, false);
