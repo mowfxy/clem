@@ -1,7 +1,7 @@
 // Shared by scripts/build-emails.mjs (templates handed to Supabase) and server/emails.ts (mail the server sends itself).
 export const BASE='https://mowrai.com',APP='https://mowrai.com/#/app';
 // Bumped whenever the fonts or art change: mail clients and Gmail's image proxy cache these by URL.
-const ASSETS='v=20261008';
+const ASSETS='v=20261009';
 const LINK='{{ .ConfirmationURL }}';
 const sans="'Mowafy Sans',Arial,Helvetica,sans-serif",serif="'Mowafy Serif',Georgia,'Times New Roman',serif";
 // Clients that load web fonts (Apple Mail, iOS, Outlook for Mac) use Mowr's own; the rest fall back to Arial and Georgia.
