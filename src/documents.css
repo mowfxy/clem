@@ -17,3 +17,7 @@
 .document-card-open::after{content:"";position:absolute;inset:0;border-radius:inherit}
 .document-card:has(.document-card-open:focus-visible){outline:2px solid #9fb4ff99;outline-offset:2px}
 .document-card>.icon-button{position:relative;z-index:1}
+
+/* The icon stays put whatever the name's length; a long name ends in an ellipsis instead. */
+.document-card .document-card-open{justify-content:flex-start}
+.document-card-open>span:last-child{flex:1}
