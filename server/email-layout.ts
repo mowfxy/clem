@@ -1,9 +1,11 @@
 // Shared by scripts/build-emails.mjs (templates handed to Supabase) and server/emails.ts (mail the server sends itself).
 export const BASE='https://mowrai.com',APP='https://mowrai.com/#/app';
+// Bumped whenever the fonts or art change: mail clients and Gmail's image proxy cache these by URL.
+const ASSETS='v=20261008';
 const LINK='{{ .ConfirmationURL }}';
 const sans="'Mowafy Sans',Arial,Helvetica,sans-serif",serif="'Mowafy Serif',Georgia,'Times New Roman',serif";
 // Clients that load web fonts (Apple Mail, iOS, Outlook for Mac) use Mowr's own; the rest fall back to Arial and Georgia.
-const faces="@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Regular.woff2) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Bold.woff2) format('woff2');font-weight:700}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Regular.woff2) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Bold.woff2) format('woff2');font-weight:700}";
+const faces=`@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Regular.woff2?${ASSETS}) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Bold.woff2?${ASSETS}) format('woff2');font-weight:700}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Regular.woff2?${ASSETS}) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Bold.woff2?${ASSETS}) format('woff2');font-weight:700}`;
 export type EmailParts={art?:string;title:string;body:string;label?:string;url?:string;note?:string;code?:string;preheader?:string;footer?:string};
 /** The one layout every Mowr email uses: animated ink art, rising text, a glowing button. `footer` adds a line (e.g. unsubscribe) under the card. */
 export function layout({art,title,body,label,url,note,code,preheader=body,footer}:EmailParts){
@@ -21,9 +23,9 @@ export function layout({art,title,body,label,url,note,code,preheader=body,footer
 </style></head><body style="margin:0;padding:0;background:#121211"><div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#121211">${preheader}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#121211" style="background:#121211"><tr><td align="center" style="padding:36px 14px 40px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
-<tr><td style="padding:0 4px 18px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle"><img src="${BASE}/email/mowr-mark.gif" width="30" height="30" alt="Mowr" style="display:block;border:0"></td><td style="padding-left:10px;vertical-align:middle;font-family:${serif};font-size:22px;color:#f0efeb">mowr</td></tr></table></td></tr>
+<tr><td style="padding:0 4px 18px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle"><img src="${BASE}/email/mowr-mark.gif?${ASSETS}" width="30" height="30" alt="Mowr" style="display:block;border:0"></td><td style="padding-left:10px;vertical-align:middle;font-family:${serif};font-size:22px;color:#f0efeb">mowr</td></tr></table></td></tr>
 <tr><td class="mw-card" bgcolor="#1b1b19" style="background:#1b1b19;border:1px solid #2e2e2b;border-radius:20px;padding:34px 36px 32px;text-align:center">
-${art?`<img class="mw-rise" src="${BASE}/email/${art}.gif" width="240" height="195" alt="" style="display:block;margin:0 auto 14px;width:240px;max-width:100%;height:auto;border:0">`:''}
+${art?`<img class="mw-rise" src="${BASE}/email/${art}.gif?${ASSETS}" width="240" height="195" alt="" style="display:block;margin:0 auto 14px;width:240px;max-width:100%;height:auto;border:0">`:''}
 <h1 class="mw-rise mw-d1 mw-title" style="margin:0 0 12px;font-family:${serif};font-weight:400;font-size:30px;line-height:1.2;word-spacing:.06em;color:#f0efeb">${title}</h1>
 <p class="mw-rise mw-d2" style="margin:0 auto;max-width:400px;font-family:${sans};font-size:15px;line-height:1.65;color:#b5b4ad;white-space:pre-wrap">${body}</p>
 ${token}${button}${fallback}${small}
