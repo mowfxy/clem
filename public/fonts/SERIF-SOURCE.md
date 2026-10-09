@@ -1,11 +1,13 @@
-Mowafy Serif is imported byte for byte from https://github.com/mowfxy/serif at
-revision 94ed6c7 (Newsreader figures, O and Q; clearly bold Bold, cleaned outlines): the original Latin Regular and Bold,
-and nothing else. No Source Serif 4, Soft Ink, Noto or STIX faces are loaded,
-and the serif stack names no fallback font.
+Mowafy Serif comes from https://github.com/mowfxy/serif at revision 218f62f (Mowafy Serif 2.2: six weights
+with italics, built from Source Serif 4, covering Latin, Greek, Cyrillic, Arabic and math). Import a newer
+revision with `python scripts/import-serif.py <serif checkout>`.
 
-`src/type.css` declares Regular at weights 300-500 and Bold at 600-800. There is
-no italic (browsers slant the Regular). Native MathML uses the separate
-`MowafyMath-Regular.woff2` (STIX-derived, with the Mowafy Latin outlines, from the same revision) and only for `<math>`.
+Mowr ships Light, Regular, Bold, Italic and Bold Italic. Each is split in two:
+`MowafySerif-<style>.woff2` is a Latin cut (about 60 kB) that the app, emails, server pages and films load,
+and `MowafySerifFull-<style>.woff2` is the upstream file unchanged, declared in `src/type.css` with a
+unicode-range of only what the Latin cut leaves out, so it is fetched only for other scripts and symbols.
+CSS weights: Light 300, Regular 400-500, Bold 600-800; italics 300-500 and 600-800.
 
-The desktop's external pages embed both weights through `desktop/brand-fonts.ts`.
-Licenses are in `licenses/`.
+Native MathML uses `MowafyMath-Regular.woff2` from the same revision, only for `<math>`.
+The desktop's external pages inline the Latin cuts through `desktop/brand-fonts.ts`.
+The license is `Mowafy-OFL.txt`.

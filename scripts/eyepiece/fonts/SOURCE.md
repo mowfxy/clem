@@ -1,4 +1,3 @@
-Mowafy Serif Regular and Bold for the films, copied byte for byte from https://github.com/mowfxy/serif
-at revision 94ed6c7 (Newsreader figures, O and Q; clearly bold Bold, cleaned outlines). Pinned here so the films
-keep their type even when the app's fonts change. To update: copy fonts/MowafySerif-*.woff2 from the
-newer revision and note it here.
+Mowafy Serif Regular and Bold (Latin cuts) for the films, written by scripts/import-serif.py from
+https://github.com/mowfxy/serif at revision 218f62f (Mowafy Serif 2.2). Pinned here so the films keep their
+type even when the app's fonts change. To update: run the import script, or copy the two files and note it here.

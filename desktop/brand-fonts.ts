@@ -6,8 +6,8 @@ import { serifFaces } from "../core/serif-fonts.ts";
 const faces: [family: string, file: string, weight: string, range?: string, style?: string][] = [
   ["Mowafy Sans", "MowafySans-Regular", "400"],
   ["Mowafy Sans", "MowafySans-Bold", "700"],
-  // Mowafy Serif is only a few kB, so both weights are inlined.
-  ...serifFaces.map(face => ["Mowafy Serif", face.file, String(face.weight), face.range, face.style] as [string, string, string, string, string]),
+  // The Latin cuts of Mowafy Serif are small enough to inline; the full-coverage files are not.
+  ...serifFaces.filter(face => !("full" in face)).map(face => ["Mowafy Serif", face.file, String(face.weight), face.range, face.style] as [string, string, string, string, string]),
 ];
 let css: string | undefined;
 
