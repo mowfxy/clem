@@ -11,7 +11,7 @@
 .message-text .md ul,.message-text .md ol{margin:0 0 .9em;padding-left:1.35em}
 .message-text .md li{margin:.28em 0;padding-left:.2em}
 .message-text .md li::marker{color:var(--c-muted)}
-.message-text .md strong{font-weight:700;color:#fff}
+.message-text .md strong{font-weight:500;color:#fff}
 .message-text .md a{color:var(--c-ink);text-decoration:underline;text-decoration-color:#5a5a55;text-underline-offset:3px}
 .message-text .md a:hover{text-decoration-color:var(--c-ink)}
 .message-text .md blockquote{margin:1em 0;padding:.1em 0 .1em 1em;border-left:2px solid var(--c-line-2);color:var(--c-soft)}

@@ -15,8 +15,9 @@ root = pathlib.Path(__file__).resolve().parent.parent
 fonts = root / "public" / "fonts"
 
 # style file, CSS weight band, CSS style
-STYLES = [("Light", "300", "normal"), ("Regular", "400 500", "normal"), ("Bold", "600 800", "normal"),
-          ("Italic", "300 500", "italic"), ("BoldItalic", "600 800", "italic")]
+# Medium is the bold inside running text (answers, file previews); Bold is for headings and display.
+STYLES = [("Light", "300", "normal"), ("Regular", "400", "normal"), ("Medium", "500", "normal"), ("Bold", "600 800", "normal"),
+          ("Italic", "300 400", "italic"), ("MediumItalic", "500", "italic"), ("BoldItalic", "600 800", "italic")]
 LATIN = "U+20-7E,U+A0-17F,U+192,U+218-21B,U+237,U+2BB-2BC,U+2C6-2C7,U+2D8-2DD,U+300-30C,U+323-328,U+1E9E,U+2013-2014,U+2018-201E,U+2020-2022,U+2026,U+2030,U+2032-2033,U+2039-203A,U+2044,U+2070,U+2074-2079,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+221E,U+2248,U+2260,U+2264-2265,U+FB01-FB02"
 
 def codepoints(spec):
@@ -57,7 +58,7 @@ for name in ("Regular", "Bold"):
 
 css_path = root / "src" / "type.css"
 css = css_path.read_text(encoding="utf-8")
-block = (f"/* Mowafy Serif (mowfxy/serif {rev}), from scripts/import-serif.py: Light, Regular, Bold and italics. Each style is a\n"
+block = (f"/* Mowafy Serif (mowfxy/serif {rev}), from scripts/import-serif.py: Light, Regular, Medium, Bold and italics. Each style is a\n"
          "   small Latin cut plus its full-coverage file, which only loads for Greek, Cyrillic, Arabic and symbols. */\n"
          + "".join(f"@font-face{{font-family:'Mowafy Serif';src:url('/fonts/{f['file']}.woff2') format('woff2');font-weight:{f['weight']};font-style:{f['style']};font-display:swap;unicode-range:{f['range']}}}\n" for f in faces))
 css, n = re.subn(r"/\* Mowafy Serif \(mowfxy/serif [^)]*\).*?\*/\n(?:@font-face\{font-family:'Mowafy Serif';[^\n]*\n)+", lambda _: block, css, count=1, flags=re.S)
