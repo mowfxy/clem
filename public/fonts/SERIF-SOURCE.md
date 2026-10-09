@@ -1,4 +1,4 @@
-Mowafy Serif comes from https://github.com/mowfxy/serif at revision 218f62f (Mowafy Serif 2.2: six weights
+Mowafy Serif comes from https://github.com/mowfxy/serif at revision 68dca33 (Mowafy Serif 2.4: six weights
 with italics, built from Source Serif 4, covering Latin, Greek, Cyrillic, Arabic and math). Import a newer
 revision with `python scripts/import-serif.py <serif checkout>`.
 
