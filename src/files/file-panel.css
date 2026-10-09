@@ -38,7 +38,7 @@
 @keyframes fp-sweep{from{background-position:-40% 0}to{background-position:140% 0}}
 .fp-paper{margin:22px auto 70px;width:calc(100% - 36px);max-width:760px;box-sizing:border-box;padding:44px 52px;border-radius:4px;background:#fbfaf7;color:#1d1d1b;box-shadow:0 18px 50px -14px #000c}
 .fp-doc p{margin:0 0 12px;font:15px/1.7 var(--serif);white-space:pre-wrap;overflow-wrap:anywhere}
-.fp-prose{font:15px/1.75 var(--serif)}
+.fp-prose{font:15px/1.75 var(--serif)}.fp-prose strong,.fp-prose b{font-weight:500}
 .fp-prose h1,.fp-prose h2,.fp-prose h3{font-family:var(--sans);font-weight:700;letter-spacing:-.01em;line-height:1.25;margin:1.2em 0 .5em}
 .fp-prose h1:first-child,.fp-prose h2:first-child{margin-top:0}
 .fp-prose code{font:13px ui-monospace,var(--mono);background:#0000000c;padding:1px 4px;border-radius:4px}
