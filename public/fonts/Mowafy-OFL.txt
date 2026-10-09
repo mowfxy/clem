@@ -1,10 +1,13 @@
-Mowafy Serif: Copyright 2026 Mohamed Mowafy. Latin and Greek derived from Source Serif 4 (Copyright 2014-2023 Adobe, SIL OFL 1.1; "Source" reserved name not used), from mowfxy/serif: Soft Ink Serif Book (2967d3c) for Regular text, with the fuller Mowafy Serif (cb34d94, Arabic, math and symbols merged from the Noto and STIX Two OFL fonts) for everything else. Full copyright notices and SIL OFL 1.1 licenses for each face are in fonts/licenses/.
+Copyright 2026 Mohamed Mowafy (https://github.com/mowfxy/serif).
 
-Mowafy Sans: Copyright 2023 The Schibsted Grotesk Project Authors (https://github.com/schibsted/schibsted-grotesk). Modified 2026: instanced from Schibsted Grotesk, refitted to new proportions, weights set by stem thickness, spacing adjusted, outlines softened, renamed Mowafy.
+Mowafy Serif is derived from:
+  Source Serif 4, Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+  Noto Serif, Noto Sans Math, Noto Sans Symbols, Noto Sans Coptic and Noto Naskh Arabic, Copyright 2022 The Noto Project Authors (https://github.com/notofonts).
+  STIX Two Math, Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts), with Reserved Font Name "TM Math".
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-https://scripts.sil.org/OFL
+https://openfontlicense.org
 
 
 -----------------------------------------------------------
