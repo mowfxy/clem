@@ -8,7 +8,7 @@
 @font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
 
-/* Mowafy Serif (mowfxy/serif fd88229): the original Latin Regular and Bold only, no borrowed or fallback faces. */
+/* Mowafy Serif (mowfxy/serif 94ed6c7): the original Latin Regular and Bold only, no borrowed or fallback faces. */
 @font-face{font-family:'Mowafy Serif';src:url('/fonts/MowafySerif-Regular.woff2') format('woff2');font-weight:300 500;font-style:normal;font-display:swap}
 @font-face{font-family:'Mowafy Serif';src:url('/fonts/MowafySerif-Bold.woff2') format('woff2');font-weight:600 800;font-style:normal;font-display:swap}
 @font-face{font-family:'Mowafy Math';src:url('/fonts/MowafyMath-Regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
@@ -54,3 +54,7 @@ code,kbd,pre,samp{font-family:var(--mono)}
 
 /* Eyebrows: the small capital labels above a title or group. */
 .eyebrow{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase}
+
+/* The greeting is set large, where Mowafy Serif Regular's stems read heavy: a stroke in the page colour
+   pares each one back by about 0.01em a side, to the weight the serif had at reading sizes. */
+.new-chat-content .greeting-row h1{-webkit-text-stroke:.02em #141414}
