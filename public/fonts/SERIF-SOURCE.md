@@ -1,5 +1,5 @@
 Mowafy Serif is imported byte for byte from https://github.com/mowfxy/serif at
-revision fd88229 (Newsreader figures, O and Q; lighter, more open Bold): the original Latin Regular and Bold,
+revision 94ed6c7 (Newsreader figures, O and Q; clearly bold Bold, cleaned outlines): the original Latin Regular and Bold,
 and nothing else. No Source Serif 4, Soft Ink, Noto or STIX faces are loaded,
 and the serif stack names no fallback font.
 
