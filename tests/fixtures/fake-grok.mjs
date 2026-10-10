@@ -31,6 +31,18 @@ else {
   // A reply written in two pipe chunks that cut through a multi-byte character.
   if(mode==='split'){const bytes=Buffer.from(line({type:'result',subtype:'success',is_error:false,result:'Caf\u00e9 \u2014 \u0645\u0631\u062d\u0628\u0627'})),cut=bytes.indexOf(0xc3)+1;stdout.write(bytes.subarray(0,cut),()=>setTimeout(()=>stdout.write(bytes.subarray(cut),()=>exit(0)),50));}
   // Grok's own agent may note what it is doing and use its tools before the reply: only the last message is the reply.
+  // native: like Grok with a trusted folder, read .grok/config.toml in --cwd (expanding ${VAR} from the environment) and
+  // call its MCP server's tool once over Streamable HTTP, then reply with the tool's text.
+  else if(mode==='native'){
+    const cwd=args[args.indexOf('--cwd')+1],config=readFileSync(cwd+'/.grok/config.toml','utf8').replace(/\$\{(\w+)\}/g,(_,k)=>env[k]||'');
+    const url=/url = "([^"]+)"/.exec(config)[1],auth=/Authorization = "([^"]+)"/.exec(config)[1];
+    const flags={trust:args.includes('--trust'),allow:args.includes('MCPTool(kinetra__kinetra)'),denyMcpJson:args.includes('Edit(./.mcp.json)')};
+    fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:auth},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'kinetra',arguments:{action:'help'}}})}).then(r=>r.json()).then(r=>{
+      const text=JSON.stringify({tool:r.result.content[0].text,flags});
+      stdout.write(line({type:'system',subtype:'init'})+said(text,[{type:'tool_use',id:'t1',name:'use_tool',input:{tool_name:'kinetra__kinetra',tool_input:{action:'help'}}}])+line({type:'result',subtype:'success',is_error:false,result:text}),()=>exit(0));
+    },e=>{stderr.write(String(e));exit(3);});
+  }
+  else if(mode==='notrust'&&args.includes('--trust')){stderr.write("error: unexpected argument '--trust' found\n");exit(2);}
   else if(mode==='steps'){stdout.write(line({type:'system',subtype:'init'})+said("I'll read the pages.",[{type:'tool_use',id:'t1',name:'read_file',input:{}}])+line({type:'user',message:{role:'user',content:[{type:'tool_result',tool_use_id:'t1'}]}})+said('The pages are in.')+said('{"kinetra":{"action":"help"}}')+line({type:'result',subtype:'success',is_error:false,result:'{"kinetra":{"action":"help"}}'}),()=>exit(0));}
   // With --include-partial-messages each message also arrives as stream_event pieces: a note, a tool use, then the reply.
   else if(mode==='stream'&&args.includes('--include-partial-messages')){

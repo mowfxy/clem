@@ -375,7 +375,8 @@ void app.whenReady().then(async () => {
     const sessions: { id: string; provider: ClaudeProvider | GrokProvider }[] = [];
     // Their text streams as it is written; tool requests never show, and nothing shows twice (desktop/live-reply.ts).
     const screen = new LiveScreen((text) => emit({ id, type: "delta", text }));
-    // Claude Code gets Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; Grok keeps the text protocol.
+    // Claude Code and Grok get Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; the text
+    // protocol stays as the fallback (a CLI without the tool, or a model that writes {"kinetra":…} anyway).
     const native = !!(pdf || tools);
     const answer = await runKinetraTurn<Picture>(prompt, notes.trim(), async (input, followUp, looked, call) => {
       // A first step (or a resend after a lost session) starts a new session; the others continue the latest one.
@@ -390,7 +391,7 @@ void app.whenReady().then(async () => {
       const once = async () => {
         text = "";
         screen.step();
-        if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system, pdfs: workspace ? [] : pdfs, workspace });
+        if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(followUp ? [] : images), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system, pdfs: workspace ? [] : pdfs, workspace, native: native ? call : undefined });
         else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(followUp ? [] : pictures), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined, { system, pdfs: followUp ? [] : claudePdfs, workspace });
       };
       try {

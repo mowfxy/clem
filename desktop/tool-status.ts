@@ -24,6 +24,8 @@ const quoted = (text: unknown) => { const t = String(text || "").trim().replace(
 
 export function describeTool(name: string, input: any): string | null {
   const n = String(name || ""), i = input && typeof input === "object" ? input : {};
+  // Grok reaches MCP tools through use_tool {tool_name, tool_input}.
+  if (n === "use_tool" && typeof i.tool_name === "string") return describeTool(i.tool_name, i.tool_input);
   const path = i.file_path ?? i.path ?? i.target_file ?? i.filename ?? i.file;
   if (/kinetra/i.test(n)) {
     const request = typeof i.action === "string" ? i : (Object.values(i)[0] as any) || {};
@@ -32,7 +34,9 @@ export function describeTool(name: string, input: any): string | null {
     if ((action === "read" || action === "look") && (request.file || request.path || request.name)) return `${action === "look" ? "Looking at" : "Reading"} ${shortPath(request.file || request.path || request.name)}…`;
     return KINETRA[action] || "Working with Kinetra…";
   }
-  if (/^(Read|read_file|view|open_file)$/i.test(n)) return path ? `Reading ${shortPath(path)}…` : "Reading a file…";
+  // A page picture Kinetra handed Grok as a file (desktop/grok.ts picturesAsFiles).
+  if (/^(Read|read_file|view|open_file)$/i.test(n) && /(^|[\\/])\.kinetra-[^\\/]+[\\/][^\\/]+$/.test(String(path || ""))) return "Looking at the page…";
+  if (/^(Read|read_file|view|open_file)$/i.test(n)) return path ?`Reading ${shortPath(path)}…` : "Reading a file…";
   if (/^(Write|write|write_file|create_file)$/i.test(n)) return path ? `Writing ${shortPath(path)}…` : "Writing a file…";
   if (/^(Edit|MultiEdit|edit|edit_file|str_replace|NotebookEdit)$/i.test(n)) return path ? `Editing ${shortPath(path)}…` : "Editing a file…";
   if (/^(Grep|grep|search|search_files|ripgrep)$/i.test(n)) return i.pattern || i.query ? `Searching the files for ${quoted(i.pattern ?? i.query)}…` : "Searching the files…";

@@ -19,6 +19,8 @@ test("Kinetra calls say what is being made", () => {
   assert.equal(describeTool("mcp__kinetra__kinetra", { action: "pdf", title: "Week 3 worksheet" }), "Typesetting “Week 3 worksheet”…");
   assert.equal(describeTool("kinetra", { kinetra: { action: "call" } }), "Working it out with Kinetra…");
   assert.equal(describeTool("kinetra", { action: "look", file: "Files/handout.pdf" }), "Looking at handout.pdf…");
+  assert.equal(describeTool("use_tool", { tool_name: "kinetra__kinetra", tool_input: { action: "pptx" } }), "Building the slides…");
+  assert.equal(describeTool("read_file", { path: ".kinetra-r1/2.png" }), "Looking at the page…");
 });
 
 test("Claude and Grok status lines use them", () => {

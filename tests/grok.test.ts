@@ -163,3 +163,51 @@ test('the model list and the agent handshake are read side by side, and callers 
   assert.equal(grok.args[0][0],'agent','the handshake starts without waiting for the model list');
   assert.equal(a.connected,true);assert.equal(a.usage?.plan,'SUPERGROK');
 });
+
+test('Kinetra is a native tool for Grok: a guarded folder config, trust, and the call reaches this answer\'s endpoint',async()=>{
+  const {grokNativeFolder,grokNativeArgs}=await import('../desktop/grok.ts');
+  const {mkdtempSync:temp,writeFileSync:put,mkdirSync:dir,existsSync:exists,readFileSync:read}=await import('node:fs');
+  const folder=temp(join(tmpdir(),'grok-native-'));
+  // What a folder may have picked up (an AI's earlier writes, a mirrored file) never loads under trust.
+  for(const f of ['.mcp.json','AGENTS.md','.envrc'])put(join(folder,f),'x');
+  dir(join(folder,'.grok','hooks'),{recursive:true});put(join(folder,'.grok','hooks','h.json'),'{}');
+  dir(join(folder,'Files'));put(join(folder,'Files','AGENTS.md'),'a mirrored file stays');
+  await grokNativeFolder(folder);
+  assert.ok(!exists(join(folder,'.mcp.json'))&&!exists(join(folder,'AGENTS.md'))&&!exists(join(folder,'.envrc'))&&!exists(join(folder,'.grok','hooks')));
+  assert.ok(exists(join(folder,'Files','AGENTS.md')));
+  const config=read(join(folder,'.grok','config.toml'),'utf8');
+  assert.match(config,/url = "\$\{MOWR_KINETRA_URL\}"/);
+  assert.ok(!/[0-9a-f]{64}/.test(config),'no token on disk');
+  const args=grokNativeArgs();
+  for(const rule of ['--trust','MCPTool(kinetra__kinetra)','Edit(./.grok/**)','Edit(./.mcp.json)','Edit(./AGENTS.md)'])assert.ok(args.includes(rule),rule);
+
+  class Native extends GrokProvider{mode:string;constructor(mode:string){super(mkdtempSync(join(tmpdir(),"grok-")));this.mode=mode;}
+    async start(args:string[],_cwd?:string,extraEnv:Record<string,string>={}){return spawn(process.execPath,[join(import.meta.dirname,'fixtures','fake-grok.mjs'),...args],{env:{...process.env,...extraEnv,XAI_API_KEY:'',FAKE_GROK:this.mode},stdio:'pipe'}) as any;}}
+  const calls:any[]=[],events:any[]=[];
+  const native=async(request:Record<string,unknown>)=>{calls.push(request);return {result:{ok:'pong'},pictures:[]};};
+  await new Native('native').run('r','hi','grok:grok-4.6',e=>events.push(e),[],undefined,undefined,{workspace:{root:folder},native});
+  assert.deepEqual(calls,[{action:'help'}]);
+  const reply=JSON.parse(events.find(e=>e.type==='delta').text);
+  assert.deepEqual(JSON.parse(reply.tool),{ok:'pong'});
+  assert.deepEqual(reply.flags,{trust:true,allow:true,denyMcpJson:true});
+  // An older Grok without --trust answers through the text protocol instead of failing.
+  const old:any[]=[];
+  await new Native('notrust').run('r','hi','grok:grok-4.6',e=>old.push(e),[],undefined,undefined,{workspace:{root:folder},native});
+  assert.match(old.find(e=>e.type==='delta').text,/hi/);
+});
+
+test('Kinetra pictures reach Grok as files in its folder, named in the result, never as base64 text',async()=>{
+  const {picturesAsFiles}=await import('../desktop/grok.ts');
+  const {mkdtempSync:temp,writeFileSync:put,readFileSync:read}=await import('node:fs');
+  const folder=temp(join(tmpdir(),'grok-pics-')),png=join(folder,'..','page-'+Date.now()+'.png');
+  put(png,'PNG');
+  const call=picturesAsFiles(async()=>({result:{ok:true,note:'Page 2. These pictures are attached: look at them now.'},pictures:[{path:png,mime:'image/png'}]}),folder,'r9');
+  const out:any=await call({action:'look'});
+  assert.deepEqual(out.pictures,[]);
+  assert.deepEqual(out.result.pictures,['.kinetra-r9/1.png']);
+  assert.equal(out.result.note,'Page 2.');
+  assert.match(out.result.look,/read_file.*\.kinetra-r9\/1\.png/);
+  assert.equal(read(join(folder,'.kinetra-r9','1.png'),'utf8'),'PNG');
+  const plain:any=await picturesAsFiles(async()=>({result:'text',pictures:[]}),folder,'r9')({});
+  assert.equal(plain.result,'text');
+});

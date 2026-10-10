@@ -1,11 +1,14 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {describeTool} from './tool-status.ts';
-import {copyFile, mkdir, readdir, rm, stat, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, readdir, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
 import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
 import {liveText} from './live-reply.ts';
+import {kinetraMcp,keepingAlive,GROK_MCP_CONFIG,GROK_NATIVE_NOTE,GROK_TOOL,grokMcpEnv,type NativeCall} from './kinetra-mcp.ts';
+/** One Kinetra request for Grok's native tool: its result, and pictures (files on this PC) that go with it. */
+export type GrokNative=(request:Record<string,unknown>)=>Promise<{result:unknown;pictures:{path:string;mime?:string}[]}>;
 import type {UsageSnapshot} from '../core/account-usage.ts';
 
 // Grok through the person's own SuperGrok or X Premium+ plan, by running xAI's official, open-source Grok Build CLI
@@ -90,6 +93,42 @@ export function grokStatus(event:any):string|null{
   if(event?.type==='user'&&(event.message?.content||[]).some((p:any)=>p?.type==='tool_result'))return 'Reading what it found…';
   return null;
 }
+/**
+ * Native Kinetra needs the working folder trusted (--trust), since Grok loads a folder's MCP servers only then. Trust
+ * also loads a folder's hooks, instruction files and other MCP sources, and Grok may write in its folder, so before each
+ * answer Mowr removes any it finds and writes its own .grok/config.toml, and the answer may not write them (grokNativeArgs).
+ */
+const GUARDED_FOLDERS=['.grok','.claude','.cursor','.agents'],GUARDED_FILES=['.mcp.json','.envrc','AGENTS.md','AGENT.md','GROK.md','CLAUDE.md'];
+export async function grokNativeFolder(cwd:string){
+  await Promise.all([...GUARDED_FOLDERS.filter(name=>name!=='.grok'),...GUARDED_FILES].map(name=>rm(join(cwd,name),{recursive:true,force:true}).catch(()=>{})));
+  // Everything in .grok but its config goes (hooks, skills, rules); the config is replaced whole. Two answers in one folder
+  // write the same file, so neither can leave the other without its server.
+  await mkdir(join(cwd,'.grok'),{recursive:true});
+  for(const entry of await readdir(join(cwd,'.grok')).catch(()=>[]))if(entry!=='config.toml')await rm(join(cwd,'.grok',entry),{recursive:true,force:true}).catch(()=>{});
+  const temp=join(cwd,'.grok','config.toml.'+randomUUID());
+  await writeFile(temp,GROK_MCP_CONFIG);
+  await rename(temp,join(cwd,'.grok','config.toml')).catch(async()=>{await rm(temp,{force:true}).catch(()=>{});await writeFile(join(cwd,'.grok','config.toml'),GROK_MCP_CONFIG);});
+}
+/**
+ * Grok passes an MCP tool's pictures to the model as base64 text, which it cannot see: a Kinetra result's pictures
+ * (pages it asked to look at) are copied into its folder instead and named in the result, to open with read_file, as the
+ * text protocol does.
+ */
+export function picturesAsFiles(native:GrokNative,cwd:string,id:string):NativeCall{
+  let n=0;
+  return async(request)=>{
+    const {result,pictures}=await native(request);
+    if(!pictures.length)return {result,pictures:[]};
+    const folder='.kinetra-'+id.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,40);
+    await mkdir(join(cwd,folder),{recursive:true});
+    const names=await Promise.all(pictures.map(async picture=>{const name=`${folder}/${++n}${extname(picture.path)||'.png'}`;await copyFile(picture.path,join(cwd,name));return name;}));
+    const look=`Open ${names.length===1?'this picture':'these '+names.length+' pictures'} with read_file now to see ${names.length===1?'it':'them'}${names.length>1?' (all in one step, one read_file call each)':''}: ${names.join(', ')}`;
+    const base:Record<string,unknown>=result&&typeof result==='object'&&!Array.isArray(result)?{...(result as Record<string,unknown>)}:{result};
+    if(typeof base.note==='string')base.note=base.note.replace('These pictures are attached: look at them now.','').trim()||undefined;
+    return {result:{...base,pictures:names,look},pictures:[]};
+  };
+}
+export const grokNativeArgs=()=>['--trust','--allow',`MCPTool(${GROK_TOOL})`,...GUARDED_FOLDERS.flatMap(name=>['--deny',`Edit(./${name}/**)`]),...GUARDED_FILES.flatMap(name=>['--deny',`Edit(./${name})`])];
 /** Grok's reasoning levels, lowest first, as its agent lists them for each model. */
 const EFFORT_ORDER=['minimal','low','medium','high','xhigh','max'];
 export type GrokEfforts=Record<string,{levels:string[];default?:string}>;
@@ -170,6 +209,10 @@ export class GrokProvider {
   private noSessions=false;
   /** Set when this CLI refused --include-partial-messages: replies then arrive in one piece. */
   private noPartial=false;
+  /** Restarts a running answer's inactivity limit, by request id. */
+  private alive=new Map<string,()=>void>();
+  /** Set when this CLI refused --trust or an MCPTool rule (an older build): Kinetra then goes through the text protocol. */
+  private noNative=false;
   /** Set when this CLI refused --tools or --no-plan (an older build): it then runs with its default tools. */
   private noToolList=false;
   private statusCache:{at:number;value:GrokStatus}|null=null;
@@ -210,7 +253,7 @@ export class GrokProvider {
     return env;
   }
   // Test seam: tests swap this for a fake grok.
-  async start(args:string[],cwd=this.workspace()){await mkdir(cwd,{recursive:true});if(this.home)await mkdir(this.home,{recursive:true});return spawn(this.executable(),args,{cwd,env:this.env(),shell:false,windowsHide:true,stdio:'pipe'});}
+  async start(args:string[],cwd=this.workspace(),extraEnv:Record<string,string>={}){await mkdir(cwd,{recursive:true});if(this.home)await mkdir(this.home,{recursive:true});return spawn(this.executable(),args,{cwd,env:{...this.env(),...extraEnv},shell:false,windowsHide:true,stdio:'pipe'});}
   private async capture(args:string[],timeout:number,input?:string){
     let child:ChildProcessWithoutNullStreams;
     try{child=await this.start(args);}catch{return null;}
@@ -297,7 +340,9 @@ export class GrokProvider {
   /** Pictures are copied into Grok's own workspace and named in the prompt, so Grok opens them with its file tool. */
   /** `pdfs`: the conversation's PDFs, saved where read_file opens them (grokPdfPath) until dropPdfs ends the turn. */
   /** `workspace`: the conversation's folder of files Grok runs in as itself (its PDFs are there, so none are copied). */
-  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system,pdfs=[],workspace}:{system?:string;pdfs?:{name:string;data:Uint8Array}[];workspace?:{root:string}}={}){
+  /** `native`: Kinetra's tool calls for this reply, offered as a native MCP tool (desktop/kinetra-mcp.ts) instead of the
+   *  {"kinetra":…} text protocol, so a Kinetra request no longer ends Grok's turn and costs a re-read of the conversation. */
+  async run(id:string,prompt:string,model:string,emit:(event:any)=>void,images:string[]=[],session?:{id:string;resume:boolean},effort?:string,{system,pdfs=[],workspace,native}:{system?:string;pdfs?:{name:string;data:Uint8Array}[];workspace?:{root:string};native?:GrokNative}={}){
     const rules=grokRules(system,!!workspace);
     if(system&&!rules)prompt=system+'\n\n'+(workspace?GROK_FOLDER_NOTE:GROK_NOTE)+'\n\n'+prompt;
     const cwd=workspace?.root||this.workspace();
@@ -327,16 +372,21 @@ export class GrokProvider {
       named.push(...images.map((path,index)=>basename(pictures)+'/'+(index+1)+extname(path)));
       await Promise.all(images.map((path,index)=>copyFile(path,join(cwd,named[index]))));
     }
+    const endpoint=native&&!this.noNative?await kinetraMcp.open(request=>keepingAlive(()=>picturesAsFiles(native,cwd,id)(request),()=>this.alive.get(id)?.())):undefined;
+    if(endpoint){await grokNativeFolder(cwd);if(!session?.resume)prompt=GROK_NATIVE_NOTE+prompt;}
     await writeFile(file,named.length?prompt+'\n\nThe user attached '+(named.length===1?'a picture':named.length+' pictures')+' to this message, saved in the working folder as: '+named.join(', ')+'. Open and look at '+(named.length===1?'it':'them')+' before answering'+(named.length>1?', all in one step (one read_file call each, sent together)':'')+'.':prompt);
     try{
       // In a folder Grok may write there and only there: dontAsk runs only what is allowed, and Edit(./**) (which covers
       // its write tool too) is the working folder. Reading needs no rule.
-      const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk',...(workspace?['--allow','Edit(./**)']:[]),'--no-subagents',...(this.noToolList?[]:['--no-plan','--tools',workspace?GROK_FOLDER_TOOLS:GROK_TOOLS]),'--no-auto-update','--cwd',cwd,...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[])];
-      let result=await this.attempt(id,args(),emit);
+      const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk',...(workspace?['--allow','Edit(./**)']:[]),'--no-subagents',...(this.noToolList?[]:['--no-plan','--tools',workspace?GROK_FOLDER_TOOLS:GROK_TOOLS]),'--no-auto-update','--cwd',cwd,...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[]),...(endpoint&&!this.noNative?grokNativeArgs():[])];
+      const env=endpoint?grokMcpEnv(endpoint):{};
+      let result=await this.attempt(id,args(),emit,env);
+      // A Grok without folder trust answers with the text protocol, which the instructions still describe.
+      if(endpoint&&!this.noNative&&unsupportedFlag.test(result.err)&&/--trust|MCPTool/.test(result.err)){this.noNative=true;result=await this.attempt(id,args(),emit,env);}
       // A Grok build without partial messages still answers, in one piece.
-      if(!this.noPartial&&unsupportedFlag.test(result.err)&&/include-partial-messages/.test(result.err)){this.noPartial=true;result=await this.attempt(id,args(),emit);}
+      if(!this.noPartial&&unsupportedFlag.test(result.err)&&/include-partial-messages/.test(result.err)){this.noPartial=true;result=await this.attempt(id,args(),emit,env);}
       // An older Grok without the tool list still answers, with all of its own tools.
-      if(!this.noToolList&&unsupportedFlag.test(result.err)&&/--tools|no-plan/.test(result.err)){this.noToolList=true;result=await this.attempt(id,args(),emit);}
+      if(!this.noToolList&&unsupportedFlag.test(result.err)&&/--tools|no-plan/.test(result.err)){this.noToolList=true;result=await this.attempt(id,args(),emit,env);}
       const reply=parseGrokReply(result.out);
       if(session&&(reply.error||!reply.text)&&unsupportedFlag.test((reply.error||'')+result.err)){this.noSessions=true;throw new SessionLost('This Grok CLI does not keep sessions.');}
       if(session?.resume&&(reply.error||!reply.text)&&/session/i.test((reply.error||'')+result.err)&&/not found|no such|unknown|does not exist|invalid/i.test((reply.error||'')+result.err))throw new SessionLost('Grok no longer has this session.');
@@ -345,16 +395,16 @@ export class GrokProvider {
       if(reply.error||!reply.text)throw Error(friendly(reply.error||result.err||String(result.code)));
       this.usageStale=true;
       emit({id,type:'delta',text:reply.text});emit({id,type:'done'});
-    }finally{this.recheck();await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
+    }finally{endpoint?.close();if(endpoint)await rm(join(cwd,'.kinetra-'+id.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,40)),{recursive:true,force:true}).catch(()=>{});this.recheck();await rm(file,{force:true}).catch(()=>{});await rm(pictures,{recursive:true,force:true}).catch(()=>{});}
   }
   /**
    * One headless run. Each streamed line says what Grok is doing (thinking, searching, writing), and the reply streams
    * as `partial` events while it is written (desktop/live-reply.ts). Those lines are not kept: `out` holds the whole
    * messages and the result, which parseGrokReply reads.
    */
-  private async attempt(id:string,args:string[],emit:(event:any)=>void){
+  private async attempt(id:string,args:string[],emit:(event:any)=>void,env:Record<string,string>={}){
     let child:ChildProcessWithoutNullStreams;
-    try{child=await this.start(args);}
+    try{child=await this.start(args,undefined,env);}
     catch{throw Error('Grok could not start. Install it in Settings → Models.');}
     this.active.set(id,child);
     return new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
@@ -364,6 +414,8 @@ export class GrokProvider {
       let timer:ReturnType<typeof setTimeout>;
       const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},600000);};
       touch();
+      // While a native Kinetra call runs Grok prints nothing; the call keeps this limit from firing (keepingAlive).
+      this.alive.set(id,touch);
       // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
       child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
       let pending='',last='',bytes=0;
@@ -380,7 +432,7 @@ export class GrokProvider {
       child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
       child.on('close',code=>{read(pending);pending='';finish({code,out,err});});
       child.stdin.end();
-    }).finally(()=>this.active.delete(id));
+    }).finally(()=>{this.active.delete(id);this.alive.delete(id);});
   }
   /** Removes a turn's PDFs from the working folder once its answer is done. */
   async dropPdfs(turn:string){if(/^[0-9a-f-]{36}$/i.test(turn))await rm(join(this.workspace(),'.pdfs-'+turn),{recursive:true,force:true}).catch(()=>{});}
