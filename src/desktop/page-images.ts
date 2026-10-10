@@ -227,6 +227,8 @@ export type PdfFile = { name: string; data: Uint8Array<ArrayBuffer> };
  * and pages set as formulas, plus any page the person names. A page drawn costs two to three times its text, and every
  * step of a tool loop reads the request again: a 10-page PDF sent whole cost about 24k tokens a step, its text about 9k.
  * Any other page is a look away. A PDF whose every page needs seeing goes whole.
+ * None of this applies to an AI working in its own folder (`listOnly`, every chat answer with tools): it opens each PDF
+ * itself and reads its pages as drawn, as a PDF sent to its CLI is read.
  * `handled`: PDFs dealt with here, which conversationPictures leaves out. `whole`: PDFs Claude has whole, whose text
  * excerpts would only repeat them.
  */
@@ -291,8 +293,8 @@ export async function pdfView({ files, current, earlier, related = [], prompt, p
   /** What an earlier view of this same request already sent: its room is used up, and its files are not shown again. */
   after?: PdfView;
   signal?: AbortSignal;
-  /** A model with the file tools: no pages go with the request, only which pages of each PDF its text cannot show
-   *  (drawings, scans, formulas), for it to look at when they matter, as Claude's Cowork works. */
+  /** An AI working in a folder of the person's files: no pages go with the request, only each PDF's name and length;
+   *  it reads the PDF itself, as drawn. */
   listOnly?: boolean;
 }): Promise<PdfView> {
   const view = NO_PDF_VIEW();
@@ -343,7 +345,8 @@ export async function pdfView({ files, current, earlier, related = [], prompt, p
   const open = async (file: StoredFile, use: (data: Uint8Array<ArrayBuffer>, pdf: any, count: number) => Promise<unknown>) => {
     try {
       const blob = given?.get(file.id) ?? (await getBlob(file.id));
-      if (!blob || blob.size > FILE_BYTES[provider]) return;
+      // Only a PDF whose bytes go with the request must fit what this AI takes in one.
+      if (!blob || !listOnly && blob.size > FILE_BYTES[provider]) return;
       const data = new Uint8Array(await blob.arrayBuffer());
       const lib = await pdfjs();
       // A copy: pdf.js takes ownership of the bytes it is given.
@@ -365,6 +368,13 @@ export async function pdfView({ files, current, earlier, related = [], prompt, p
     if (!file || !isPdfFile(file) || done.has(id)) continue;
     const isCurrent = current.includes(id);
     await open(file, async (data, pdf, count) => {
+      // Every AI with its own folder reads a PDF there as drawn (Claude Code and Grok open it natively; Codex looks at its
+      // pages), as when a PDF is sent to the CLI: it is only told the PDF is there, never which pages to trust its text for.
+      if (listOnly) {
+        view.notes.push(`"${file.name}" (${plural(count)})`);
+        view.handled.push(file.id);
+        return;
+      }
       const info = await survey(file, pdf, await pdfjs(), signal).catch((e) => { if (signal?.aborted) throw e; return null; });
       const body = await text(file).catch(() => "");
       // The pages whose text cannot stand in for them. A PDF without usable text (a scan not read yet) is all such pages.
@@ -372,13 +382,6 @@ export async function pdfView({ files, current, earlier, related = [], prompt, p
       const drawn = !info || words < 40 * count
         ? Array.from({ length: count }, (_, i) => i + 1)
         : [...new Set([...info.textless, ...info.formulas, ...info.visual.map((v) => v.page)])].sort((a, b) => a - b);
-      if (listOnly) {
-        const unsurveyed = info ? count - info.surveyed : 0;
-        const it = drawn.length === 1;
-        view.notes.push(`"${file.name}" (${plural(count)}): ${drawn.length ? `${pagesNamed(drawn)} ${it ? "holds" : "hold"} drawings, scans or formulas that its text cannot show: look at ${it ? "it" : "them"} (up to 8 a call, calls sent together) whenever the answer depends on ${it ? "it" : "them"}` : "text only, no drawings, scans or formulas found"}.${unsurveyed ? ` Pages after ${count - unsurveyed} were not checked for drawings.` : ""}`);
-        view.handled.push(file.id);
-        return;
-      }
       const room = Math.max(0, isCurrent ? wholeRoom : Math.min(focusRoom, 4));
       let pages: number[];
       if (isCurrent) {

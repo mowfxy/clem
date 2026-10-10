@@ -8,6 +8,7 @@ const KINETRA: Record<string, string> = {
   xlsx: "Building the spreadsheet…", file: "Saving the file…", image: "Drawing the figure…", look: "Looking at the page…",
   crop: "Cropping a figure…", regions: "Finding the figures…", editpdf: "Editing the PDF…", read: "Reading a file…",
   search: "Searching your files…", files: "Listing your files…", find: "Finding the file…", recipes: "Checking figure recipes…",
+  batch: "Running several Kinetra requests…",
 };
 
 /** The last two parts of a path ("Lectures/Week 3.pdf"), without Mowr's own folders in front. */
@@ -46,4 +47,29 @@ export function describeTool(name: string, input: any): string | null {
   if (/^(WebFetch|web_fetch|fetch)$/i.test(n)) { try { return `Reading ${new URL(String(i.url)).hostname.replace(/^www\./, "")}…`; } catch { return "Reading a web page…"; } }
   if (/web_?search|search_web/i.test(n)) return i.query ? `Searching the web for ${quoted(i.query)}…` : "Searching the web…";
   return null;
+}
+
+/**
+ * How a CLI used its turns: model steps that asked for tools, and the tool calls in them. Every step re-reads the
+ * whole conversation, so calls per step is the number that says whether the model batches. Counted the same way for
+ * every CLI from its own stream: Claude Code and Grok send each step's tool calls under one message id; Codex marks
+ * each new model output (its reasoning or a message) before the calls it makes.
+ */
+export class StepCounter {
+  steps = 0;
+  calls = 0;
+  private step = "";
+  private seen = new Set<string>();
+  /** One tool call in step `step`; `call` (its id) keeps a call sent twice in the stream from counting twice. */
+  add(step: string, call?: string) {
+    if (call) { if (this.seen.has(call)) return; this.seen.add(call); }
+    if (step !== this.step) { this.step = step; this.steps++; }
+    this.calls++;
+  }
+  /** Claude Code's and Grok's stream: tool calls in a top-level assistant message (a subagent's are its own work). */
+  read(event: any) {
+    if (event?.type !== "assistant" || event.parent_tool_use_id) return;
+    const id = String(event.message?.id || "");
+    for (const part of event.message?.content || []) if (part?.type === "tool_use" || part?.type === "server_tool_use") this.add(id || String(part.id), part.id);
+  }
 }

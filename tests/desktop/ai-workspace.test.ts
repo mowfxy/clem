@@ -31,6 +31,10 @@ test("the working folder mirrors the space's files in their folders, marks the s
   // A PDF's text is there too: it is read first, and only the pages whose drawings matter are opened.
   assert.deepEqual(paths.sort(), ["Attachments/photo.png", "Files/Notes.docx", "Files/Term 1/Week_ 1/Lecture 1.pdf", "_text/Lecture 1.pdf.txt", "_text/Notes.docx.txt"]);
   assert.deepEqual(files.filter((f) => f.source).map((f) => f.path).sort(), ["Attachments/photo.png", "Files/Term 1/Week_ 1/Lecture 1.pdf"]);
+  // Claude Code and Grok open the PDF itself, as a PDF sent to the CLI; a Word file still needs its text.
+  const native = mirrorFor({ state, scope: "subject:s1", chat: "chat1", blob: (id) => id, library: [{ name: "Notes.docx", text: "Word text" }, { name: "Lecture 1.pdf", text: "[OCR] pdf text" }], pdfText: false }).map((f) => f.path);
+  assert.ok(native.includes("_text/Notes.docx.txt") && !native.includes("_text/Lecture 1.pdf.txt"));
+  assert.doesNotMatch(workspaceNote("C:/w", ["Files/a.pdf", "_text/c.docx.txt"], []), /no PDF viewer/);
   // A text file's own text is not copied again; a picture's is only when Mowr read it by OCR.
   assert.ok(!mirrorFor({ state, scope: "subject:s1", chat: "chat1", blob: (id) => id, library: [{ name: "photo.png", text: "words" }] }).some((f) => f.path.startsWith("_text/")));
   assert.ok(mirrorFor({ state, scope: "subject:s1", chat: "chat1", blob: (id) => id, library: [{ name: "photo.png", text: "[OCR] words" }] }).some((f) => f.path === "_text/photo.png.txt"));
@@ -91,7 +95,8 @@ test("the note names the sources first and lists the other files", () => {
   const laned = workspaceNote("C:/w", ["_text/a.pdf.txt"], [], { lane: "chat-1234abcd" });
   assert.match(laned, /Drafts\/chat-1234abcd\/: your own working files/);
   assert.match(laned, /Outputs\/chat-1234abcd\/: any file you write here/);
-  assert.match(laned, /Read a PDF's text there first/);
+  // Codex, with no PDF viewer of its own, looks at a PDF's pages; its text is for searching.
+  assert.match(workspaceNote("C:/w", ["_text/a.pdf.txt"], [], { nativePdf: false }), /looking at its pages/);
 });
 
 test("documents made from a Markdown file are listed with it, and changed by editing it", () => {

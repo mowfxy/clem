@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
  *   Attachments/  files attached in the chat that are not files of the subject or project
  *   Made/         files Mowr made earlier in the chat (outside a subject or project)
  *   _text/        the text Mowr read from each document, page by page (Word, PowerPoint, Excel, PDFs, OCR of scans):
- *                 a long PDF is read from its text first and only the pages whose drawings matter are opened
+ *                 PDFs only for Codex, which has no PDF viewer (Claude Code and Grok open the PDFs themselves)
  *   Drafts/       the AI's own working files (a document's Markdown source); kept between answers
  *   Outputs/      files the AI writes for the person: each new or changed one is delivered with the answer
  *
@@ -168,8 +168,11 @@ export function workspaceLane(key: string, chat: string | undefined, request: st
  * `attached`: PDFs the window sent with the request, which the saved workspace may not list yet (attached a moment ago).
  * `documents`: files Mowr made in this conversation.
  */
-export function mirrorFor({ state, scope, chat, blob, library = [], attached = [], documents = [] }: {
+export function mirrorFor({ state, scope, chat, blob, library = [], attached = [], documents = [], pdfText = true }: {
   state: WorkspaceState;
+  /** Whether a PDF here also gets its text in _text/. Off for Claude Code and Grok, which open PDFs natively (every page
+   *  as drawn, with its text), so they read them exactly as a PDF sent to the CLI; on for Codex, which cannot. */
+  pdfText?: boolean;
   scope: string;
   chat?: string;
   blob: (id: string) => string;
@@ -205,12 +208,13 @@ export function mirrorFor({ state, scope, chat, blob, library = [], attached = [
     if (known) known.source = true;
     else out.push({ path: `${ATTACHMENTS}/${name}`, stamp: `bytes:${pdf.data.byteLength}`, from: { bytes: pdf.data }, source: true });
   }
-  // Every document's text, PDFs included: reading a long PDF's text first and opening only the pages whose drawings
-  // matter keeps far fewer page pictures in the conversation than opening every page.
+  // Every document's text the CLI cannot read itself. PDFs only for a CLI without a native PDF reader (or with no copy
+  // here, such as a Drive file read for this answer).
   for (const item of library) {
     const name = safeName(item.name.split(/[\\/]/).pop() || item.name);
     const here = named(name);
-    if (!item.text?.trim() || here && readable(name) && !/\.pdf$/i.test(name) && !/\bOCR\b/.test(item.text.slice(0, 4000))) continue;
+    const pdf = /\.pdf$/i.test(name);
+    if (!item.text?.trim() || here && pdf && !pdfText || here && readable(name) && !pdf && !/\bOCR\b/.test(item.text.slice(0, 4000))) continue;
     out.push({ path: `${TEXT}/${name}.txt`, stamp: `text:${item.text.length}:${hash(item.text)}`, from: { bytes: item.text } });
   }
   return distinctPaths(out);
@@ -226,17 +230,20 @@ function hash(text: string) {
  * What the AI is told about its folder: this answer's sources first, then the layout and the other files. A long list
  * is cut (the AI can list the folder itself), so the note stays small for a large subject.
  */
-export function workspaceNote(root: string, paths: string[], sources: string[], { folders = [], lane = "" }: { folders?: { name: string; path: string }[]; lane?: string } = {}) {
+/** `nativePdf`: the CLI opens PDFs itself (Claude Code, Grok); Codex has no PDF viewer, so it looks at a PDF's pages through
+ *  Kinetra and has the text in _text/ to search. */
+export function workspaceNote(root: string, paths: string[], sources: string[], { folders = [], lane = "", nativePdf = true }: { folders?: { name: string; path: string }[]; lane?: string; nativePdf?: boolean } = {}) {
   const drafts = lane ? `${DRAFTS}/${lane}/` : `${DRAFTS}/`, outputs = lane ? `${OUTPUTS}/${lane}/` : `${OUTPUTS}/`;
   const of = (top: string) => paths.filter((p) => p.startsWith(top + "/"));
   const list = (items: string[], limit: number) => items.slice(0, limit).map((p) => "- " + p).join("\n") + (items.length > limit ? `\n- … and ${items.length - limit} more (list the folder to see them)` : "");
   const files = of(FILES).filter((p) => !sources.includes(p)), made = of(MADE), text = of(TEXT);
   return [
-    `YOUR WORKING FOLDER (${root}) holds the person's files as real files. Open, search and read them with your own file tools (PDFs and pictures open natively; from a long PDF read the pages you need). They are copies: changing them changes nothing for the person.`,
+    `YOUR WORKING FOLDER (${root}) holds the person's files as real files. Open, search and read them with your own file tools (${nativePdf ? "PDFs and pictures open natively, every page as drawn with its text; from a long PDF open the pages you need, several ranges at once" : "pictures open natively; PDFs as below"}). They are copies: changing them changes nothing for the person.`,
     sources.length ? `SOURCES OF THIS ANSWER (attached in the chat or chosen as sources); base the answer on these and cite them as [[file name, p. N]]:\n${list(sources, 80)}` : "No file is attached to this conversation.",
     files.length ? `Files/: ${sources.length ? "the other files" : "the files"} of this subject or project, in the person's folders; use them when the request needs or mentions them:\n${list(files, 120)}` : "",
     made.length ? `Made/: files Mowr made earlier in this chat:\n${list(made, 40)}` : "",
-    text.length ? `_text/: the text Mowr read from ${text.length} document${text.length === 1 ? "" : "s"}, page by page ("[name, page N]" markers; scanned pages read by OCR), named after the document with .txt added. Read a PDF's text there first, then open with your file tools only the pages you need to see: circuits, diagrams, graphs, tables drawn as pictures, formulas, handwriting and scans (slides with little or no text are usually pictures). Never guess what a drawing shows from the text: open its page. Word, PowerPoint and Excel files are read only from here.` : "",
+    text.length ? `_text/: the text Mowr read from ${text.length} document${text.length === 1 ? "" : "s"}, page by page ("[name, page N]" markers; scanned pages read by OCR), named after the document with .txt added. Word, PowerPoint and Excel files are read only from here.` : "",
+    nativePdf ? "" : `PDFs: you have no PDF viewer of your own, so read a PDF as drawn by looking at its pages with Kinetra's look (up to 8 pages a call; ask for every page you need at once, as parallel calls or one batch), the way a PDF sent to a chat is seen. Its text in _text/ is for searching and quoting; never take a page's drawings, tables, formulas or layout from the text alone.`,
     `${drafts}: your own working files for this chat, such as a document's Markdown source; kept for later answers.`,
     `${outputs}: any file you write here (.csv, .py, .tex, .html, .txt…) is delivered to the person with your answer. Make PDF, Word, PowerPoint and Excel files with Kinetra instead, so they are typeset properly.`,
     folders.length ? `Linked folders on this PC (read only; changes to their files are proposed as edits the person applies):\n${folders.map((f) => `- ${f.name}: ${f.path}`).join("\n")}` : "",

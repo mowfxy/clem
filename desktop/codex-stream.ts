@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { describeTool, shortPath } from "./tool-status.ts";
+import { describeTool, shortPath, type StepCounter } from "./tool-status.ts";
 import { AppServer } from "./app-server.ts";
 
 export const baseInstructions =
@@ -14,7 +14,8 @@ export const WEB_SEARCH = "live";
 /** `mcp`: thread configuration that adds Kinetra as a native tool (desktop/kinetra-mcp.ts codexMcpConfig). */
 /** `folder`: the thread works in the conversation's folder of files (desktop/ai-workspace.ts) as Codex itself: its own base
  *  instructions (Mowr's go in as developer instructions) and its shell, sandboxed to write only there with no network. */
-export type TurnSession = { threadId?: string; mcp?: Record<string, unknown>; folder?: { root: string; instructions: string } };
+/** `steps`: counts the answer's tool steps across its turns (desktop/tool-status.ts StepCounter). */
+export type TurnSession = { threadId?: string; mcp?: Record<string, unknown>; folder?: { root: string; instructions: string }; steps?: StepCounter };
 
 /**
  * A folder thread's settings. On Windows only the unelevated sandbox runs without an administrator's setup; it keeps
@@ -41,8 +42,11 @@ export function reasoningHeadline(summary: string): string | null {
   const words = bold[1].trim().replace(/[.:…]+$/, "").split(/\s+/);
   return words.slice(0, 6).join(" ") + "…";
 }
-/** `alive` restarts the inactivity limit: a native tool call that is still working counts as activity. */
-export type TurnControl = { interrupt?: () => void; alive?: () => void };
+/** What Codex runs as tools (anything else in a turn is its reasoning or a message). */
+const TOOL_ITEMS = new Set(["mcpToolCall", "dynamicToolCall", "fileChange", "webSearch", "commandExecution"]);
+/** `alive` restarts the inactivity limit: a native tool call that is still working counts as activity. `steps` counts
+ *  the model steps that asked for tools and the calls in each (desktop/tool-status.ts StepCounter). */
+export type TurnControl = { interrupt?: () => void; alive?: () => void; steps?: StepCounter };
 
 /**
  * Runs one turn on a shared app-server. The first turn opens an ephemeral, read-only thread;
@@ -90,6 +94,8 @@ export async function streamTurn(
   // progress, not the answer: shown as status only, so they never merge into the reply or hide a Kinetra envelope.
   const commentary = new Set<string>();
   let lastItem = "";
+  // Each model output (its reasoning or a message) starts a new step; the tool calls after it belong to that step.
+  let step = 0;
   const answer = (itemId: string, text: string) => {
     if (!text) return;
     // Separate answer messages are paragraphs, never glued together mid-sentence.
@@ -124,6 +130,8 @@ export async function streamTurn(
       onFail: (error) => finish(cancelled() ? Error("Request cancelled") : error),
       onMessage: (method, p) => {
         if (!ended) touch();
+        if (method === "item/started" && (p.item?.type === "reasoning" || p.item?.type === "agentMessage")) step++;
+        else if (method === "item/started" && TOOL_ITEMS.has(p.item?.type)) control.steps?.add(`${turnId}:${step}`, String(p.item.id || ""));
         try {
           if (method === "item/agentMessage/delta") {
             bytes += String(p.delta || "").length;
