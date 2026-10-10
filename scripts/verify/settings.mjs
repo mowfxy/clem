@@ -269,27 +269,33 @@ try {
   await page.getByText('58% left',{exact:true}).waitFor();
   assert.equal(await page.getByRole('meter').count(),2);
   assert.equal(await page.locator('.st-nav button.active').innerText(),'Models');
-  // Background tasks: automatic until a model is chosen; the thinking level follows the chosen model's own levels.
-  const helper=page.getByLabel('Model for background tasks',{exact:true}),thinking=page.getByLabel('Thinking level for background tasks',{exact:true});
+  // Background tasks: the composer's picker with an Automatic choice; the thinking level follows the chosen model's levels.
+  const helperRow=page.locator('.helper-model-setting'),helper=helperRow.getByRole('button',{name:'Model for background tasks'});
+  const pickHelper=async(name)=>{await helper.click();await page.getByRole('menuitemradio',{name,exact:true}).click();};
   await helper.waitFor();
-  assert.equal(await helper.inputValue(),'');
-  assert.ok(await thinking.isDisabled());
-  await helper.selectOption('claude:sonnet');
+  assert.match(await helper.innerText(),/Automatic/);
+  assert.equal(await helperRow.getByRole('button',{name:'Thinking level'}).count(),0);
+  await pickHelper('Sonnet 5.5');
   await page.waitForFunction(()=>window.helper?.model==='claude:sonnet');
-  assert.ok(!(await thinking.isDisabled()));
-  assert.match(await thinking.locator('option').first().innerText(),/Default \(Medium\)/);
-  await thinking.selectOption('high');
+  const thinking=helperRow.getByRole('button',{name:'Thinking level'});
+  assert.match(await thinking.innerText(),/Medium/);
+  await thinking.click();
+  await page.getByRole('slider',{name:'Reasoning effort'}).press('End');
   await page.waitForFunction(()=>window.helper?.reasoning==='high');
+  await page.keyboard.press('Escape');
   // A model without levels has nothing to adjust; changing the model drops the old level.
-  await helper.selectOption('claude:haiku');
+  await pickHelper('Haiku 4.5');
   await page.waitForFunction(()=>window.helper?.model==='claude:haiku'&&!window.helper.reasoning);
-  assert.ok(await thinking.isDisabled());
-  await helper.selectOption('claude:sonnet');
+  assert.equal(await thinking.count(),0);
+  await pickHelper('Sonnet 5.5');
   await page.waitForFunction(()=>window.helper?.model==='claude:sonnet');
   await page.waitForTimeout(450);
   await page.screenshot({path:'artifacts/settings-models.png'});
-  await page.locator('.helper-model-setting').screenshot({path:'artifacts/settings-helper-model.png'});
-  await helper.selectOption('');
+  await helperRow.screenshot({path:'artifacts/settings-helper-model.png'});
+  await helper.click();
+  await page.waitForTimeout(250);
+  await page.screenshot({path:'artifacts/settings-helper-menu.png'});
+  await page.getByRole('menuitemradio',{name:'Automatic',exact:true}).click();
   await page.waitForFunction(()=>window.helper&&!window.helper.model);
   await page.getByRole('button',{name:'Use',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.activeAccount),'11111111-1111-4111-8111-111111111111');

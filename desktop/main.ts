@@ -2,7 +2,8 @@ import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
 import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "./file-maker";
-import { ATTACHMENTS, mirrorFor, newOutputs, syncMirror, workspaceKey, workspaceLane, workspaceNote, workspacePath } from "./ai-workspace";
+import { LIBRARY, TEXT, laneFolders, mirrorFor, mirroredId, newOutputs, removeOldFolders, spaceFolders, syncMirror, workspaceLane, workspaceNote, workspacePath, workspaceRelative, type MirrorFile, type WorkspaceState } from "./ai-workspace";
+import { officeText } from "./office-text";
 import { withMarkdownSource, uncheckedExamples } from "./markdown-source";
 import { answerReview, calculationIntent } from "./answer-review";
 import { inflight, stoppedRuns } from "./inflight";
@@ -73,7 +74,7 @@ import {cleanAiName,namingPrompt} from '../core/file-naming';
 import {readPictures} from './ocr';
 import {installCli} from './cli-install';
 import {CodexEngine,daily} from './engines';
-import {cliFileToolsGuide,distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
+import {MOWR_FILE,cliFileToolsGuide,distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
 import {
   inside,
   link,
@@ -325,6 +326,8 @@ void app.whenReady().then(async () => {
   app.on("before-quit", () => chatSessions.clear());
   /** Working folders (root|lane) whose answer a usage limit stopped, from when that answer started: its files wait for the next one. */
   const heldOutputs = new Map<string, number>();
+  /** People whose old per-subject and per-chat folders were removed this run (desktop/ai-workspace.ts removeOldFolders). */
+  const oldFoldersRemoved = new Set<string>();
   /** Stops one answer wherever it runs: Codex, or any of the person's Claude and Grok accounts. */
   async function stopRun(owner: string, id: string) {
     cancelledRuns.add(id);
@@ -335,7 +338,7 @@ void app.whenReady().then(async () => {
   /** `workspace`: the folder of the person's files each AI runs in as itself (desktop/ai-workspace.ts), the linked folders
    *  it may read, and what Claude's document writers are told (desktop/claude.ts claudeWriters). `finish`: work done once
    *  the answer is final, before it is marked done; a failure there never costs the answer. */
-  type AnswerOptions = { images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined; review?: AnswerGates["review"]; workspace?: { root: string; readOnly: string[]; writer?: string }; finish?: () => Promise<void>; keep?: KeepChat };
+  type AnswerOptions = { images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined; review?: AnswerGates["review"]; workspace?: { root: string; readOnly: string[]; protect?: string[]; writer?: string }; finish?: () => Promise<void>; keep?: KeepChat };
   /** A chat's answer that may go on, and is kept as, the chat's CLI session (desktop/chat-sessions.ts): `history` is the
    *  conversation before this message, `after` the one after its answer, `continuation(sent)` this message alone for a
    *  session that has already been sent the given context blocks. */
@@ -1368,9 +1371,8 @@ void app.whenReady().then(async () => {
       prepareFor(user.id, request.model);
       void vault.write(lastModelKey(user.id), { model: request.model, reasoning: request.reasoning }).catch(() => {});
       const budget = contextBudget(request.model);
-      const folders = (await vault.read<Folder[]>(key, [])).filter(
-        (f) => f.scope === request.scope,
-      );
+      const linked = await vault.read<Folder[]>(key, []);
+      const folders = linked.filter((f) => f.scope === request.scope);
       const unavailable: string[] = [];
       // Every file the model may read on demand: the chat's own (sent by the window) and its linked folders' (indexed here).
       const library: LibraryFile[] = (request.library || []).map((f) => ({ name: f.name, text: f.text, kind: "file" as const }));
@@ -1427,21 +1429,28 @@ void app.whenReady().then(async () => {
         return saved;
       };
       const pictures = await savePictures(request.images || []);
-      // Every AI answers with tools as its own CLI, in a folder of the person's files (desktop/ai-workspace.ts): the
-      // subject's or project's files under their real names and folders, the chat's attachments, and the files Mowr made.
+      // Every AI answers with tools as its own CLI, in a folder of all the person's files (desktop/ai-workspace.ts): every
+      // subject's and project's files under their real names and folders, the chat's attachments, and the files Mowr made.
       // Only what changed since the last answer is copied. A plain request (no tools) needs none.
       const started = Date.now();
-      let work: { root: string; key: string; lane: string; note: string } | undefined;
+      let work: { root: string; lane: string; note: string; once: boolean; files: MirrorFile[] } | undefined;
       if (!request.plain) {
         send({ id: request.id, type: "status", text: "Getting your files ready…" });
-        const key = workspaceKey(request.scope, request.temporary ? undefined : request.chat, request.id);
-        const lane = workspaceLane(key, request.temporary ? undefined : request.chat, request.id);
-        const root = join(local, user.id, "work", key);
+        // One folder of all the person's files for every chat (desktop/ai-workspace.ts); each chat has its own lane in it.
+        const chatId = request.temporary ? undefined : request.chat;
+        const lane = workspaceLane(chatId, request.id);
+        const root = join(local, user.id, "work", "mowr");
+        if (!oldFoldersRemoved.has(user.id)) { oldFoldersRemoved.add(user.id); void removeOldFolders(join(local, user.id, "work")); }
         const state = await disk.readState(user.id).catch(() => null);
-        const mirror = mirrorFor({ state, scope: request.scope, chat: request.temporary ? undefined : request.chat, blob: (id) => disk.blobPath(user.id, id), library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !request.model?.startsWith("claude:") && !request.model?.startsWith(GROK_PREFIX) });
-        const paths = await syncMirror(root, mirror, key.startsWith("space-") ? [ATTACHMENTS] : [], lane);
-        const sources = mirror.filter((m) => m.source && paths.includes(m.path)).map((m) => m.path);
-        work = { root, key, lane, note: workspaceNote(root, paths, sources, { folders: folders.map((f) => ({ name: basename(f.path), path: f.path })), lane, nativePdf: !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX) }) };
+        const nativePdf = !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX);
+        const plan = mirrorFor({ state, scope: request.scope, chat: chatId, lane, blob: (id) => disk.blobPath(user.id, id), officeText, library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !nativePdf });
+        const paths = await syncMirror(root, plan.files, plan.keep, lane);
+        const sources = plan.files.filter((m) => m.source && paths.includes(m.path)).map((m) => m.path);
+        const places = spaceFolders(state?.spaces || []);
+        const spaceId = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : "";
+        const scopeName = (scope: string) => { const id = scope.split(":")[1]; const s = state?.spaces?.find((x: { id: string }) => x.id === id) as { kind?: string; name?: string } | undefined; return s ? `${s.kind === "project" ? "project" : "subject"} ${s.name}` : "the workspace"; };
+        const otherFolders = linked.filter((f) => f.scope !== request.scope).map((f) => ({ name: basename(f.path), path: f.path, of: scopeName(f.scope) }));
+        work = { root, lane, once: !chatId, files: plan.files, note: workspaceNote(root, paths, sources, { folders: folders.map((f) => ({ name: basename(f.path), path: f.path })), otherFolders, lane, here: places.get(spaceId) || "", nativePdf }) };
       }
       // The model is told what each picture is (which file, which page), in the order they are attached.
       const pictureNote = request.images?.length
@@ -1726,8 +1735,15 @@ void app.whenReady().then(async () => {
       };
       const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
-        // A file named by its path in the working folder ("Files/Week 1/notes.pdf") is the file of that name.
-        if (typeof tool?.file === "string" && /[\\/]/.test(tool.file) && !findFile(library, tool.file)) tool = { ...tool, file: basename(tool.file.replace(/\\/g, "/")) };
+        // A file named by its path in the working folder ("Subjects/Physics/Week 1/notes.pdf") is that Mowr file, whichever
+        // subject or project it is in: the window opens it by its id. Any other path is the file of that name.
+        if (typeof tool?.file === "string" && /[\\/]/.test(tool.file) && !findFile(library, tool.file)) {
+          const at = work ? workspaceRelative(work.root, tool.file) : null, id = at && work ? mirroredId(work.files, at) : undefined;
+          tool = { ...tool, file: id ? MOWR_FILE + id : basename(tool.file.replace(/\\/g, "/")) };
+        }
+        // Every file is in the working folder: the AI finds files with its own tools, not with Mowr's search.
+        if ((tool?.action === "find" || tool?.action === "attach") && work)
+          return { error: "Every file the person keeps in Mowr is already in your working folder (Subjects/, Projects/, Files/): find it there with your own file tools (list, glob, grep) and open it by its path." };
         if (tool?.action === "help" && work) return grokTurn ? kinetraFiles : kinetraCli;
         const read = fileTool(library, tool);
         if (read) return read;
@@ -1824,10 +1840,11 @@ void app.whenReady().then(async () => {
           delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
         }
       };
-      const workspace = work ? { root: work.root, readOnly: folders.map((f) => f.path), writer: extras } : undefined;
+      // The person's files in the working folder are copies the AI reads and never changes (Claude Code refuses edits there).
+      const workspace = work ? { root: work.root, readOnly: linked.map((f) => f.path), protect: [...LIBRARY, TEXT].map((top) => join(work!.root, top)), writer: extras } : undefined;
       const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
       // A folder for one request outside any chat is removed with its answer.
-      if (work?.key.startsWith("once-")) void run.finally(() => rm(work!.root, { recursive: true, force: true }).catch(() => {})).catch(() => {});
+      if (work?.once) void run.finally(() => Promise.all(laneFolders(work!.root, work!.lane).map((dir) => rm(dir, { recursive: true, force: true }).catch(() => {})))).catch(() => {});
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       // A request outside any chat has no later turn to use its crops.

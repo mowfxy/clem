@@ -17,10 +17,17 @@
 .message-text .md blockquote{margin:1em 0;padding:.1em 0 .1em 1em;border-left:2px solid var(--c-line-2);color:var(--c-soft)}
 .message-text .md hr{border:0;border-top:1px solid var(--c-line);margin:1.6em 0}
 .message-text .md :not(pre)>code{font-family:var(--mono);font-size:.84em;padding:.14em .4em;border-radius:6px;background:#ffffff0d;border:1px solid #ffffff0a;color:#e8e6df}
-.message-text .md .table-wrap{margin:1.1em 0;overflow-x:auto;border:1px solid var(--c-line);border-radius:12px}
+.message-text .md .table-wrap{margin:1.1em 0;overflow-x:auto;border:1px solid var(--c-line);border-radius:12px;scrollbar-width:thin;scrollbar-color:#4a4a46 transparent}
+/* As wide as its columns need, centred on the text column: at least the column, at most a little beyond it and never
+   past the workspace (--room, measured in MessageBody's TableWrap); wider than that, it scrolls inside its frame. */
+.message-text .md .table-wrap{width:max-content;min-width:100%;max-width:min(var(--room,100%),calc(100% + 360px));position:relative;left:50%;transform:translateX(-50%)}
 .message-text .md table{width:100%;border-collapse:collapse;font-family:var(--sans);font-size:13px;line-height:1.5}
 .message-text .md th{text-align:left;font-weight:400;font-size:12px;letter-spacing:.02em;color:var(--c-muted);background:#ffffff05;padding:10px 14px;border:0;border-bottom:1px solid var(--c-line)}
 .message-text .md td{padding:10px 14px;border:0;border-top:1px solid #ffffff08;color:#dedcd5;vertical-align:top}
+/* Words stay whole in a table (the answer text may break anywhere, which turned a narrow "Day" header into D/a/y);
+   text columns keep a readable width, and a table that still does not fit scrolls. */
+.message-text .md th,.message-text .md td{overflow-wrap:normal;word-break:normal;hyphens:manual}
+.message-text .md th:not(:first-child),.message-text .md td:not(:first-child){min-width:8.5em}
 .message-text .md tr:first-child td{border-top:0}
 .message-text .md .katex{font-size:1.06em}
 .message-text .md .katex-display{margin:1em 0;padding:.35em 0;overflow-x:auto;overflow-y:hidden}

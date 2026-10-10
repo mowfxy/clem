@@ -75,7 +75,7 @@ export function claudeCliSettings(readOnly:string[]){
 /** Where one answer runs as Claude Code itself: its working folder and the linked folders it may read. `writer`: what a
  *  document writer is told beyond the system prompt (this request's figure recipes and design guides); with it, the
  *  answer may hand documents to writers (claudeWriters). */
-export type ClaudeWorkspace={root:string;readOnly?:string[];writer?:string};
+export type ClaudeWorkspace={root:string;readOnly?:string[];protect?:string[];writer?:string};
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
 import {describeTool,StepCounter} from './tool-status.ts';
 
@@ -400,8 +400,8 @@ export class ClaudeProvider {
     // A resumed session reuses the one it recorded; it is passed again for a Claude Code that does not record it.
     const systemFile=system?join(this.root,'workspace','.system-'+randomUUID()+'.txt'):undefined;
     // In a working folder Claude Code keeps its own prompt and Mowr's rules follow it; the linked folders it may only read go in its settings.
-    const settingsFile=workspace?.readOnly?.length?join(this.root,'workspace','.settings-'+randomUUID()+'.json'):undefined;
-    if(settingsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(settingsFile,claudeCliSettings(workspace!.readOnly!));}
+    const settingsFile=workspace?.readOnly?.length||workspace?.protect?.length?join(this.root,'workspace','.settings-'+randomUUID()+'.json'):undefined;
+    if(settingsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(settingsFile,claudeCliSettings([...(workspace!.readOnly||[]),...(workspace!.protect||[])]));}
     // Writers need Kinetra, so they come only with the native tool; a Claude Code too old for --agents runs without them.
     const agentsFile=workspace&&native&&system&&workspace.writer!==undefined&&!this.noAgents?join(this.root,'workspace','.agents-'+randomUUID()+'.json'):undefined;
     if(agentsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(agentsFile,claudeWriters(system+(workspace!.writer?'\n\n'+workspace!.writer:'')));}
@@ -416,7 +416,7 @@ export class ClaudeProvider {
     try{
       if(mcpFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(mcpFile,claudeMcpConfig(endpoint!),{mode:0o600});}
       child=workspace
-        ?await this.start([...claudeCliArgs(model.slice(7),effort,session,{mcpConfig:mcpFile,addDirs:workspace.readOnly,settingsFile,agentsFile}),...(systemFile?['--append-system-prompt-file',systemFile]:[])],workspace.root)
+        ?await this.start([...claudeCliArgs(model.slice(7),effort,session,{mcpConfig:mcpFile,addDirs:workspace.readOnly||[],settingsFile,agentsFile}),...(systemFile?['--append-system-prompt-file',systemFile]:[])],workspace.root)
         :await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile),...(systemFile?['--system-prompt-file',systemFile]:[])]);
     }
     catch(error){endpoint?.close();await removeFiles();throw error;}

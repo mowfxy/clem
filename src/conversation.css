@@ -14,6 +14,7 @@
 .chat-options:popover-open{display:grid}
 .chat-options button{justify-content:flex-start;font-size:13px;padding:10px 12px}
 .chat-options button:hover{background:#ffffff0d}
+.chat-options button.danger{color:#ff5a4e}.chat-options button.danger:hover:not(:disabled){background:#ff5a4e1f;color:#ff6b60}
 @media(max-width:760px){.messages .message{padding-left:36px}.messages .message.assistant .message-text{font-size:16px}.messages .message.user .message-text{max-width:90%}.message-mark{top:1.1px}.message-mark svg{width:25px;height:25px}}
 
 /* A sidebar chat is one row: the whole row highlights, and its ··· sits inside it on hover. */
@@ -67,3 +68,5 @@ button.work-summary[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
 .limit-foot{color:#8f8f8f;font-size:12px}
 .limit-now{margin-left:auto;padding:5px 12px;border-radius:99px;border:1px solid #ffffff1f;background:#ffffff0a;color:#e4e2da;font:12px/1.4 var(--sans)}
 .limit-now:hover{background:#ffffff14}
+/* Long messages scroll inside the composer without a scrollbar (its arrows looked like a dropdown beside the text). */
+.composer textarea{scrollbar-width:none}.composer textarea::-webkit-scrollbar{display:none}

@@ -4,7 +4,9 @@ import { mkdtemp, readFile, writeFile, utimes, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mirrorFor, syncMirror, workspaceKey, workspaceLane, workspaceNote, workspacePath, newOutputs, safeName, ATTACHMENTS } from "../../desktop/ai-workspace.ts";
+import { mirrorFor, mirroredId, syncMirror, workspaceLane, workspaceNote, workspacePath, workspaceRelative, newOutputs, safeName, spaceFolders, ATTACHMENTS } from "../../desktop/ai-workspace.ts";
+import { officeText } from "../../desktop/office-text.ts";
+import { zipSync, strToU8 } from "fflate";
 import { markdownSource, withMarkdownSource } from "../../desktop/markdown-source.ts";
 import { claudeCliArgs, claudeCliSettings, claudeWriters, rulePath, CLAUDE_CLI_TOOLS, WRITER, WRITERS_NOTE } from "../../desktop/claude.ts";
 import { folderThread } from "../../desktop/codex-stream.ts";
@@ -21,33 +23,53 @@ const state = {
     { id: "d", name: "talk.mp4", size: 6, type: "video/mp4", created: 1, spaceId: "s1" },
     { id: "e", name: "other.pdf", size: 7, type: "application/pdf", created: 1, spaceId: "s2" },
   ],
-  spaces: [{ id: "s1", sources: ["a"], folders: [{ id: "f1", name: "Term 1", parentId: null }, { id: "f2", name: "Week: 1", parentId: "f1" }] }],
-  chats: [{ id: "chat1", messages: [{ role: "user", attachments: ["c"] }] }],
+  spaces: [{ id: "s1", name: "Physics", kind: "subject", sources: ["a"], folders: [{ id: "f1", name: "Term 1", parentId: null }, { id: "f2", name: "Week: 1", parentId: "f1" }] }, { id: "s2", name: "Thesis", kind: "project" }],
+  chats: [{ id: "chat1", messages: [{ role: "user", attachments: ["c"] }] }, { id: "chat2", messages: [] }],
 };
 
-test("the working folder mirrors the space's files in their folders, marks the sources and keeps others' files out", () => {
-  const files = mirrorFor({ state, scope: "subject:s1", chat: "chat1", blob: (id) => `/blobs/${id}.blob`, library: [{ name: "Notes.docx", text: "Word text" }, { name: "Lecture 1.pdf", text: "pdf text" }] });
-  const paths = files.map((f) => f.path);
-  // A PDF's text is there too: it is read first, and only the pages whose drawings matter are opened.
-  assert.deepEqual(paths.sort(), ["Attachments/photo.png", "Files/Notes.docx", "Files/Term 1/Week_ 1/Lecture 1.pdf", "_text/Lecture 1.pdf.txt", "_text/Notes.docx.txt"]);
-  assert.deepEqual(files.filter((f) => f.source).map((f) => f.path).sort(), ["Attachments/photo.png", "Files/Term 1/Week_ 1/Lecture 1.pdf"]);
-  // Claude Code and Grok open the PDF itself, as a PDF sent to the CLI; a Word file still needs its text.
-  const native = mirrorFor({ state, scope: "subject:s1", chat: "chat1", blob: (id) => id, library: [{ name: "Notes.docx", text: "Word text" }, { name: "Lecture 1.pdf", text: "[OCR] pdf text" }], pdfText: false }).map((f) => f.path);
-  assert.ok(native.includes("_text/Notes.docx.txt") && !native.includes("_text/Lecture 1.pdf.txt"));
-  assert.doesNotMatch(workspaceNote("C:/w", ["Files/a.pdf", "_text/c.docx.txt"], []), /no PDF viewer/);
-  // A text file's own text is not copied again; a picture's is only when Mowr read it by OCR.
-  assert.ok(!mirrorFor({ state, scope: "subject:s1", chat: "chat1", blob: (id) => id, library: [{ name: "photo.png", text: "words" }] }).some((f) => f.path.startsWith("_text/")));
-  assert.ok(mirrorFor({ state, scope: "subject:s1", chat: "chat1", blob: (id) => id, library: [{ name: "photo.png", text: "[OCR] words" }] }).some((f) => f.path === "_text/photo.png.txt"));
-  // Short, stable folder names: one per subject, per chat, per request; a lane per chat only in a shared subject folder.
-  assert.match(workspaceKey("subject:s1", "chat1", "r"), /^space-[0-9a-f]{12}$/);
-  assert.equal(workspaceKey("subject:s1", "chat2", "r"), workspaceKey("subject:s1", "chat1", "q"));
-  assert.match(workspaceKey("workspace", "chat1", "r"), /^chat-[0-9a-f]{12}$/);
-  assert.match(workspaceKey("workspace", undefined, "r"), /^once-/);
-  assert.match(workspaceLane(workspaceKey("subject:s1", "chat1", "r"), "chat1", "r"), /^chat-[0-9a-f]{8}$/);
-  assert.notEqual(workspaceLane("space-x", "chat1", "r"), workspaceLane("space-x", "chat2", "r"));
-  assert.equal(workspaceLane(workspaceKey("workspace", "chat1", "r"), "chat1", "r"), "");
+test("the working folder holds every file the person keeps, organised by subject, project and folder", () => {
+  const plan = mirrorFor({ state, scope: "subject:s1", chat: "chat1", lane: "chat-1", blob: (id) => `/blobs/${id}.blob`, officeText: async () => "word text", library: [{ name: "Lecture 1.pdf", text: "pdf text" }] });
+  const paths = plan.files.map((f) => f.path);
+  // Every subject's and project's files, not only this one's; Word text extracted here for every file.
+  assert.deepEqual(paths.sort(), ["Files/photo.png", "Projects/Thesis/other.pdf", "Subjects/Physics/Notes.docx", "Subjects/Physics/Term 1/Week_ 1/Lecture 1.pdf", "_text/Subjects/Physics/Notes.docx.txt", "_text/Subjects/Physics/Term 1/Week_ 1/Lecture 1.pdf.txt"]);
+  assert.deepEqual(plan.files.filter((f) => f.source).map((f) => f.path).sort(), ["Files/photo.png", "Subjects/Physics/Term 1/Week_ 1/Lecture 1.pdf"]);
+  assert.equal(mirroredId(plan.files, "Projects/Thesis/other.pdf"), "e");
+  assert.equal(mirroredId(plan.files, "_text/Subjects/Physics/Notes.docx.txt"), "b");
+  // Claude Code and Grok open the PDF itself; a Word file still has its text.
+  const native = mirrorFor({ state, scope: "workspace", chat: "chat1", lane: "chat-1", blob: (id) => id, officeText: async () => "t", library: [{ name: "Lecture 1.pdf", text: "pdf text" }], pdfText: false }).files.map((f) => f.path);
+  assert.ok(native.includes("_text/Subjects/Physics/Notes.docx.txt") && !native.some((p) => p.endsWith("Lecture 1.pdf.txt")));
+  // A picture's text only when Mowr read it by OCR; an attachment not saved yet goes in the chat's own lane.
+  assert.ok(!mirrorFor({ state, scope: "workspace", lane: "l", blob: (id) => id, library: [{ name: "photo.png", text: "words" }] }).files.some((f) => f.path.startsWith("_text/")));
+  assert.ok(mirrorFor({ state, scope: "workspace", lane: "l", blob: (id) => id, library: [{ name: "photo.png", text: "[OCR] words" }] }).files.some((f) => f.path === "_text/Files/photo.png.txt"));
+  assert.ok(mirrorFor({ state, scope: "workspace", lane: "l", blob: (id) => id, attached: [{ name: "new.pdf", data: new Uint8Array(3) }] }).files.some((f) => f.path === "Attachments/l/new.pdf" && f.source));
+  // Other chats' lanes stay while those chats exist; a deleted chat's go; a file's OCR text stays while the file is unchanged.
+  const lanes = mirrorFor({ state, scope: "workspace", chat: "chat1", lane: workspaceLane("chat1", "r"), blob: (id) => id });
+  assert.equal(lanes.keep(`Attachments/${workspaceLane("chat2", "r")}/x.pdf`, "1|1|1"), true);
+  assert.equal(lanes.keep(`Attachments/${workspaceLane("gone", "r")}/x.pdf`, "1|1|1"), false);
+  assert.equal(lanes.keep("_text/Files/photo.png.txt", "text:5:1:5:abc|5|1"), true);
+  assert.equal(lanes.keep("_text/Files/photo.png.txt", "text:4:1:5:abc|5|1"), false);
+  // Two subjects of one name get their own folders.
+  assert.deepEqual([...spaceFolders([{ id: "x", name: "Maths", kind: "subject" }, { id: "y", name: "Maths", kind: "subject" }]).values()], ["Subjects/Maths", "Subjects/Maths (2)"]);
+  assert.match(workspaceLane("chat1", "r"), /^chat-[0-9a-f]{8}$/);
+  assert.notEqual(workspaceLane("chat1", "r"), workspaceLane("chat2", "r"));
+  assert.match(workspaceLane(undefined, "r"), /^once-/);
+  assert.equal(workspaceRelative("C:/w", "C:/w/Subjects/a.pdf"), "Subjects/a.pdf");
   assert.equal(safeName("con.txt"), "_con.txt");
   assert.equal(safeName("a/b:c?.pdf"), "a_b_c_.pdf");
+});
+
+test("Word, PowerPoint and Excel files are read here, slide by slide and sheet by sheet", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "mowr-office-"));
+  try {
+    await writeFile(join(dir, "a.docx"), zipSync({ "word/document.xml": strToU8('<w:document><w:body><w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:t xml:space="preserve"> world &amp; more</w:t></w:r></w:p><w:p><w:r><w:t>Second</w:t></w:r></w:p></w:body></w:document>') }));
+    assert.equal(await officeText(join(dir, "a.docx"), "a.docx"), "Hello world & more\nSecond");
+    await writeFile(join(dir, "b.pptx"), zipSync({ "ppt/slides/slide2.xml": strToU8("<p:sld><a:p><a:r><a:t>Two</a:t></a:r></a:p></p:sld>"), "ppt/slides/slide1.xml": strToU8("<p:sld><a:p><a:r><a:t>One</a:t></a:r></a:p></p:sld>") }));
+    assert.equal(await officeText(join(dir, "b.pptx"), "b.pptx"), "[b.pptx, slide 1]\nOne\n\n[b.pptx, slide 2]\nTwo");
+    await writeFile(join(dir, "c.xlsx"), zipSync({ "xl/workbook.xml": strToU8('<workbook><sheets><sheet name="Marks" sheetId="1"/></sheets></workbook>'), "xl/sharedStrings.xml": strToU8("<sst><si><t>Name</t></si><si><t>Ali</t></si></sst>"), "xl/worksheets/sheet1.xml": strToU8('<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1"><v>7</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row></sheetData></worksheet>') }));
+    assert.equal(await officeText(join(dir, "c.xlsx"), "c.xlsx"), '[c.xlsx, sheet "Marks"]\nName\t\t7\nAli');
+    await writeFile(join(dir, "bad.docx"), "not a zip");
+    assert.match(await officeText(join(dir, "bad.docx"), "bad.docx"), /could not be read/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test("syncing copies only what changed, restores copies the AI changed, removes deleted files and keeps Drafts and Outputs", async () => {
@@ -67,12 +89,13 @@ test("syncing copies only what changed, restores copies the AI changed, removes 
     assert.equal(existsSync(join(root, "Files", "sub")), false, "a deleted file and its emptied folder are gone");
     assert.equal(await readFile(join(root, "Drafts", "doc.md"), "utf8"), "# mine");
     // Another chat's attachment in a shared subject folder is kept.
-    await syncMirror(root, [...first.slice(0, 1), { path: `${ATTACHMENTS}/x.txt`, stamp: "1", from: { bytes: "x" } }], [ATTACHMENTS]);
-    await syncMirror(root, first.slice(0, 1), [ATTACHMENTS]);
-    assert.equal(await readFile(join(root, ATTACHMENTS, "x.txt"), "utf8"), "x");
+    const keepOthers = (path: string) => path.startsWith(`${ATTACHMENTS}/chat-other/`);
+    await syncMirror(root, [...first.slice(0, 1), { path: `${ATTACHMENTS}/chat-other/x.txt`, stamp: "1", from: { bytes: "x" } }], keepOthers);
+    await syncMirror(root, first.slice(0, 1), keepOthers);
+    assert.equal(await readFile(join(root, ATTACHMENTS, "chat-other", "x.txt"), "utf8"), "x");
     // Each chat's outputs are its own: another chat's lane is never delivered.
-    await syncMirror(root, first.slice(0, 1), [], "chat-a");
-    await syncMirror(root, first.slice(0, 1), [], "chat-b");
+    await syncMirror(root, first.slice(0, 1), undefined, "chat-a");
+    await syncMirror(root, first.slice(0, 1), undefined, "chat-b");
     const since = Date.now();
     await writeFile(join(root, "Outputs", "chat-a", "table.csv"), "a,b");
     await writeFile(join(root, "Outputs", "chat-b", "other.csv"), "c");
@@ -86,17 +109,26 @@ test("syncing copies only what changed, restores copies the AI changed, removes 
   }
 });
 
-test("the note names the sources first and lists the other files", () => {
-  const note = workspaceNote("C:/w", ["Files/a.pdf", "Files/b.pdf", "_text/c.docx.txt"], ["Files/a.pdf"]);
-  assert.match(note, /SOURCES OF THIS ANSWER[^]*- Files\/a\.pdf/);
-  assert.match(note, /Files\/: the other files[^]*- Files\/b\.pdf/);
-  assert.doesNotMatch(note.split("Files/: the other files")[1], /a\.pdf/);
-  assert.match(note, /Outputs\//);
-  const laned = workspaceNote("C:/w", ["_text/a.pdf.txt"], [], { lane: "chat-1234abcd" });
-  assert.match(laned, /Drafts\/chat-1234abcd\/: your own working files/);
-  assert.match(laned, /Outputs\/chat-1234abcd\/: any file you write here/);
+test("the note says where everything is, counts each subject's files and names the sources first", () => {
+  const paths = ["Subjects/Physics/a.pdf", "Subjects/Physics/b.pdf", "Subjects/Maths/c.pdf", "Projects/Thesis/d.docx", "Files/e.png", "_text/Projects/Thesis/d.docx.txt"];
+  const note = workspaceNote("C:/w", paths, ["Subjects/Physics/a.pdf"], { here: "Subjects/Physics", lane: "chat-1234abcd" });
+  assert.match(note, /every file the person keeps in Mowr/);
+  assert.match(note, /- Subjects\/Physics\/ \(2 files\)\n- Subjects\/Maths\/ \(1 file\)|- Projects\/Thesis\/ \(1 file\)/);
+  assert.match(note, /- Subjects\/Maths\/ \(1 file\)/);
+  assert.match(note, /THIS CONVERSATION IS IN Subjects\/Physics\//);
+  assert.match(note, /SOURCES OF THIS ANSWER[^]*- Subjects\/Physics\/a\.pdf/);
+  assert.match(note, /The other files:[^]*- Subjects\/Maths\/c\.pdf/);
+  assert.match(note, /Drafts\/chat-1234abcd\/: your own working files/);
+  assert.match(note, /Outputs\/chat-1234abcd\/: any file you write here/);
+  // A large library lists this subject's files and counts the rest.
+  const many = Array.from({ length: 250 }, (_, i) => `Subjects/Maths/f${i}.pdf`).concat("Subjects/Physics/a.pdf");
+  const big = workspaceNote("C:/w", many, [], { here: "Subjects/Physics" });
+  assert.match(big, /- Subjects\/Maths\/ \(250 files\)/);
+  assert.match(big, /The files of Subjects\/Physics\/[^]*- Subjects\/Physics\/a\.pdf/);
+  assert.doesNotMatch(big, /f12\.pdf/);
   // Codex, with no PDF viewer of its own, looks at a PDF's pages; its text is for searching.
-  assert.match(workspaceNote("C:/w", ["_text/a.pdf.txt"], [], { nativePdf: false }), /looking at its pages/);
+  assert.match(workspaceNote("C:/w", paths, [], { nativePdf: false }), /looking at its pages/);
+  assert.match(workspaceNote("C:/w", [], []), /no files in Mowr yet/);
 });
 
 test("documents made from a Markdown file are listed with it, and changed by editing it", () => {
