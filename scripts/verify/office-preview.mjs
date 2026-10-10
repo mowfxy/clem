@@ -7,7 +7,8 @@ import { resolve, join, basename } from "node:path";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 
-const [file, outDir, width = "1000"] = process.argv.slice(2);
+// With no file given (as in verify:all) it draws the briefing in tests/fixtures/office.
+const [file = "tests/fixtures/office/brief.docx", outDir = "test-results/office-preview", width = "1000"] = process.argv.slice(2);
 const out = join(tmpdir(), "mowr-verify-preview");
 await mkdir(out, { recursive: true });
 await mkdir(resolve(outDir), { recursive: true });

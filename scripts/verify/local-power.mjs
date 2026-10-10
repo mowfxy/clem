@@ -37,9 +37,10 @@ try {
   await page.evaluate((f) => window.fireFolder({ folderId: f.id, scope: f.scope, folder: "Biology 101", added: ["week4-genetics.md"], changed: ["glossary.md"], removed: [] }), FOLDER);
   await page.getByText("2 files changed in Biology 101").waitFor();
   await page.getByRole("button", { name: "Update flashcards" }).click();
-  // The /flashcards command shows as a chip in front of the words.
-  await page.locator(".composer .command-chip", { hasText: "Flashcards" }).waitFor();
-  assert.match(await page.locator(".composer textarea").inputValue(), /^Update this subject's flashcards/);
+  // The /flashcards command stays in the words, drawn as a pill behind them (src/chat/SlashField.tsx).
+  await page.locator(".composer .slash-mirror mark", { hasText: "flashcards" }).waitFor();
+  assert.equal(await page.locator(".composer textarea.has-command").count(), 1);
+  assert.match(await page.locator(".composer textarea").inputValue(), /^\/flashcards Update this subject's flashcards/);
   await page.locator(".composer textarea").fill("");
 
   // Search everything.

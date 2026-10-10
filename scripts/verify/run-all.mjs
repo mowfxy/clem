@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const skip = new Set(["run-all.mjs", "fixture-docs.mjs", "fixture-local-storage.mjs", "local-power-fixture.mjs", ...(process.argv.includes("--live") ? [] : ["installer-download.mjs"])]);
+// pdf-crops.mjs is a helper: tests/desktop/pdf-crops-render.test.ts writes its jobs and runs it.
+const skip = new Set(["run-all.mjs", "fixture-docs.mjs", "fixture-local-storage.mjs", "local-power-fixture.mjs", "pdf-crops.mjs", ...(process.argv.includes("--live") ? [] : ["installer-download.mjs"])]);
 const checks = (await readdir(here)).filter((f) => f.endsWith(".mjs") && !skip.has(f)).sort();
 const failed = [];
 for (const check of checks) {

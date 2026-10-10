@@ -9,7 +9,8 @@ import { resolve, join } from "node:path";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 
-const photo = resolve(process.argv[2] || "");
+// With no photo given (as in verify:all) it converts the small test photo in tests/fixtures.
+const photo = resolve(process.argv[2] || "tests/fixtures/photos/red-q7.heic");
 const jpeg = resolve(process.argv[3] || join(tmpdir(), "mowr-heic-out.jpg"));
 const out = join(tmpdir(), "mowr-verify-heic");
 await mkdir(out, { recursive: true });
