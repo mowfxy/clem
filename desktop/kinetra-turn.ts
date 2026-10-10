@@ -47,7 +47,7 @@ export function toolRequest(text: string): Record<string, unknown> | null {
   }
 }
 // Kinetra's own actions and the file tools (core/file-tools.ts).
-export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop", "editpdf", "find", "attach"]);
+export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop", "editpdf", "find", "attach", "batch"]);
 const START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
 /** Index just past the JSON object that opens at `start`, or -1 when it never closes. Strings are skipped. */
 function objectEnd(text: string, start: number) {
@@ -328,6 +328,25 @@ function withoutBroken(text: string) {
 }
 /** Actions that make or change a file, or attach pictures of pages, run in the order they were asked for. */
 export const MAX_PARALLEL = 4;
+/**
+ * {"action":"batch","requests":[…]}: several requests in one call, for a CLI that sends one tool call per step. Each one
+ * runs and counts as if it had been sent on its own; a batch inside a batch is not one.
+ */
+export function batchParts(request: any): Record<string, unknown>[] | null {
+  if (request?.action !== "batch") return null;
+  return (Array.isArray(request.requests) ? request.requests : []).filter((r: any) => r && typeof r === "object" && !Array.isArray(r) && typeof r.action === "string" && r.action !== "batch");
+}
+/** Calls closer together than this (ms) were asked for in the same model step: a new step needs the model to write again. */
+export const STEP_GAP_MS = 400;
+/** Steps in a row that each asked for only one quick request before the model is reminded to batch (BATCH_NOTE). */
+export const LONE_STEPS = 2;
+/** Reminders per answer at most: a model whose next request depends on the last result is not nagged. */
+export const BATCH_NOTES = 3;
+export const BATCH_NOTE = "Your last steps each asked for one request. Each step re-reads the whole conversation: when you already know several things you need (files or pages to open, searches, calculations, crops, checks), ask for all of them in the same turn as parallel tool calls, or as one kinetra call {\"action\":\"batch\",\"requests\":[…]}. Only a request that needs this result must wait for it. This changes how many steps the work takes, never how much is done.";
+/** Requests that only read or compute: quick, and never depend on a file being made. */
+/** A result with a note for the model added to it. */
+const withNote = (r: any, note: string) => r && typeof r === "object" && !Array.isArray(r) ? { ...r, note: typeof r.note === "string" ? r.note + " " + note : note } : { result: r, note };
+const QUICK = new Set(["call", "read", "search", "files", "look", "regions", "crop", "recipes", "find", "help", "api", "skill", "open"]);
 // editpdf makes or revises a file like the others: two at once would both read the same stored edits and Undo copy.
 const IN_ORDER = new Set(["pdf", "docx", "pptx", "xlsx", "file", "image", "editpdf", "look", "open", "attach"]);
 /**
@@ -412,15 +431,20 @@ export async function runKinetraTurn<Picture = unknown>(
   /** `unfinished`: what a document made in this answer still lacks; the answer waits for it (two rounds without progress end it).
    *  `review`: what is wrong with a final answer itself (a check that does not hold, numbers nothing computed); each
    *  problem goes back once, at most REVIEWS times, and `sentBack` is told first, so the screen folds the rejected answer away. */
-  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined; sentBack?: () => void; stats?: TurnStats } = {},
+  /** `continued`: the first step goes on a session the provider already has (the chat's kept session,
+   *  desktop/chat-sessions.ts), so `prompt` holds only this message; `fresh` is the whole prompt, sent instead if that
+   *  session is gone (with `freshInstructions` in place of `instructions`, which a kept session may not need again). */
+  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined; sentBack?: () => void; stats?: TurnStats; continued?: boolean; fresh?: string; freshInstructions?: string } = {},
 ) {
   const { limit = 3_000_000, unfinished, review, sentBack, stats = { steps: 0, calls: 0, broken: 0 } } = options;
+  let continued = !!(options.continued && options.stateful);
   const reviewed = new Set<string>();
   // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
   let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
   // `instructions` may be empty: a provider with Mowr's rules in its system prompt sends only this turn's notes here.
-  const opening = (instructions ? instructions + "\n\n" : "") + "Original request and context:\n" + prompt;
+  const openingFor = (text: string, guide = instructions) => (guide ? guide + "\n\n" : "") + "Original request and context:\n" + text;
+  let opening = openingFor(prompt);
   const check = () => {
     if (cancelled()) throw Error("Request cancelled");
   };
@@ -475,7 +499,41 @@ export async function runKinetraTurn<Picture = unknown>(
     return run;
   };
   const settled = () => Promise.all([barrier, ...running]);
-  const native: NativeTool<Picture> = (request) => schedule(request);
+  /** One request as the model asked for it: a batch runs its parts as if each had been sent on its own. */
+  const runAsked = async (request: Record<string, unknown>) => {
+    const parts = batchParts(request);
+    if (!parts) return schedule(request);
+    if (!parts.length) return { result: { error: 'A batch needs "requests": a list of request objects, each with its own "action".' } as unknown, pictures: [] as Picture[] };
+    const done = await Promise.all(parts.map(schedule));
+    return { result: { results: done.map((d) => d.result) } as unknown, pictures: done.flatMap((d) => d.pictures) };
+  };
+  // Steps are told apart by time: the calls of one step arrive together (or one right after another, for a CLI that
+  // runs them in turn), while a new step needs the model to write first. A model that keeps asking for one quick
+  // request per step is reminded, in that request's result, to ask for what it already knows it needs together.
+  let inFlight = 0, lastEnd = 0, stepCalls = 0, stepQuick = true, lone = 0, reminders = 0;
+  const native: NativeTool<Picture> = async (request) => {
+    if (!inFlight && Date.now() - lastEnd > STEP_GAP_MS) {
+      lone = stepCalls === 1 && stepQuick ? lone + 1 : 0;
+      stepCalls = 0;
+      stepQuick = true;
+    }
+    const parts = batchParts(request) || [request];
+    stepCalls += parts.length;
+    stepQuick &&= parts.every((r) => QUICK.has(String(r?.action)));
+    const remind = stepCalls === 1 && stepQuick && lone >= LONE_STEPS && reminders < BATCH_NOTES;
+    inFlight++;
+    try {
+      const answer = await runAsked(request);
+      // Another call of the same step arrived meanwhile: the model is batching after all.
+      if (!remind || stepCalls !== 1) return answer;
+      reminders++;
+      lone = 0;
+      return { ...answer, result: withNote(answer.result, BATCH_NOTE) };
+    } finally {
+      inFlight--;
+      lastEnd = Date.now();
+    }
+  };
   for (let replies = 0; ; replies++) {
     check();
     const left = MAX_CALLS - calls;
@@ -503,11 +561,18 @@ export async function runKinetraTurn<Picture = unknown>(
     try {
       // With a thread only the new pictures go, but still within the same per-message limit.
       stats.steps++;
-      text = await model(input, stateful && replies > 0, recent(stateful ? newPictures : looked), native);
+      text = await model(input, stateful && (replies > 0 || continued), recent(stateful ? newPictures : looked), native);
+      continued = false;
     } catch (error) {
       if (!(error instanceof SessionLost) || !stateful) throw error;
       check();
-      stateful = false;
+      // The chat's kept session is gone (the CLI restarted, or the account changed): this message starts a new session
+      // with the whole prompt. Any other lost session leaves the rest of the answer resending everything each step.
+      if (continued) {
+        continued = false;
+        stats.continued = false;
+        opening = openingFor(options.fresh ?? prompt, options.freshInstructions ?? instructions);
+      } else stateful = false;
       input = closing ? opening + "\n" + finish(history) : full();
       if (input.length > limit && compact(history, input.length - limit)) input = full();
       sent += input.length;
@@ -571,7 +636,7 @@ export async function runKinetraTurn<Picture = unknown>(
     brokenInRow = 0;
     lastBroken = "";
     const from = history.length;
-    for (const { pictures } of await Promise.all(requests!.map(schedule))) newPictures.push(...pictures);
+    for (const { pictures } of await Promise.all(requests!.map(runAsked))) newPictures.push(...pictures);
     if (closed && history.length > from) {
       const entry = history[history.length - 1], r = entry.result;
       entry.result = r && typeof r === "object" && !Array.isArray(r) ? { ...r, note: typeof r.note === "string" ? r.note + " " + CLOSED_NOTE : CLOSED_NOTE } : { result: r, note: CLOSED_NOTE };

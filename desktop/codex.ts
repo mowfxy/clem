@@ -5,9 +5,13 @@ import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
-import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn,type AnswerGates} from "./kinetra-turn.ts";
+import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn,SessionLost,type AnswerGates} from "./kinetra-turn.ts";
+import {blockPrint,type ChatSessions} from "./chat-sessions.ts";
 import type {TurnStats} from "./turn-timing.ts";
-import {kinetraMcp,codexMcpConfig,inlinePictures,keepingAlive,NATIVE_NOTE,type NativeEndpoint} from "./kinetra-mcp.ts";
+import {StepCounter} from "./tool-status.ts";
+import {kinetraMcp,codexMcpConfig,inlinePictures,keepingAlive,NATIVE_NOTE,type NativeEndpoint,type NativeCall} from "./kinetra-mcp.ts";
+/** A chat answer that may go on, and is kept as, the chat's thread (desktop/main.ts KeepChat, with the store and account). */
+export type KeepCodex={key:string;history:string;after:string;blocks:string[];continuation:(sent:Set<string>)=>string;store:ChatSessions;account:string};
 
 /** While a reply might still turn out to be a tool envelope, hold it instead of streaming it. */
 export function mayBeTool(text: string) {
@@ -76,6 +80,8 @@ export class Codex {
   private serverStart: Promise<AppServer> | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private controls = new Map<string, TurnControl>();
+  /** Chats' kept threads (desktop/chat-sessions.ts): the app-server that holds each, and its Kinetra endpoint and route. */
+  private threads = new Map<string, { server: AppServer; endpoint?: NativeEndpoint; route?: { call?: NativeCall }; mcp?: Record<string, unknown> }>();
   /** A warm, shared app-server. Starting the CLI is the slowest part of a request, so it is reused. */
   private async connection(): Promise<AppServer> {
     if (this.server && !this.server.dead) return this.server;
@@ -505,35 +511,58 @@ export class Codex {
   }
   /** `gates`: what holds the final answer back (desktop/kinetra-turn.ts runKinetraTurn's unfinished and review).
    *  `folder`: the conversation's folder of files, which Codex works in as itself (codex-stream.ts folderThread). */
-  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,gates:AnswerGates={},stats?:TurnStats,folder?:{root:string;instructions:string}){
+  async run(id:string,prompt:string,emit:(event:any)=>void,images:string[]=[],selection?:{model?:string;reasoning?:string},pdf?:(spec:any,cancelled:()=>boolean)=>Promise<any>,instructions=kinetraInstructions,tools?:(request:any,cancelled:()=>boolean)=>Promise<any>,gates:AnswerGates={},stats?:TurnStats,folder?:{root:string;instructions:string},keep?:KeepCodex){
     if(this.turns.has(id))throw Error("This chat is already answering.");
     this.retireWorn();
     const turn={cancelled:false};this.turns.set(id,turn);
-    const session:TurnSession=folder?{folder}:{};
-    // Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools: one endpoint for the whole
-    // answer, added to its thread. A plain request (no files, no tools) stays text only.
-    let endpoint:NativeEndpoint|undefined;
+    // Every model step that asked for tools and the calls in it, across the answer's turns (the timing log).
+    const steps=new StepCounter();
+    const session:TurnSession=folder?{folder,steps}:{steps};
+    // Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools: one endpoint for the thread,
+    // added to it when it starts. Each answer on the thread routes the endpoint's calls to its own tool loop.
+    // A plain request (no files, no tools) stays text only.
+    let endpoint:NativeEndpoint|undefined,route:{call?:NativeCall}|undefined;
+    // The chat's kept thread (desktop/chat-sessions.ts), when this message can go on it: only on the app-server that has it.
+    let kept=keep?keep.store.take(keep.key,{provider:"codex",account:keep.account,model:selection?.model||"",history:keep.history}):undefined;
+    const thread=kept?this.threads.get(kept.session):undefined;
+    if(kept&&(!thread||!this.server||thread.server!==this.server)){kept.end();kept=undefined;}
+    if(kept&&thread){session.threadId=kept.session;session.mcp=thread.mcp;endpoint=thread.endpoint;route=thread.route;if(stats)stats.continued=true;}
+    // On a kept thread the tool guide is sent again only when it changed.
+    const guide=kept&&kept.sent.has(blockPrint(instructions))?"":instructions;
+    let ownSent=false,keepIt=false;
     try{
       let shown=false;
-      await runKinetraTurn<{path:string}>(prompt,instructions,async(input,followUp,looked,call)=>{
+      const answer=await runKinetraTurn<{path:string}>(kept?keep!.continuation(kept.sent):prompt,guide,async(input,followUp,looked,call)=>{
         if((pdf||tools)&&!endpoint){
-          // While a call runs Codex sends nothing, so the turn's inactivity limit is kept from firing.
-          const native=inlinePictures(call,path=>readFile(path));
-          endpoint=await kinetraMcp.open(request=>keepingAlive(()=>native(request),()=>this.controls.get(id)?.alive?.()));
+          const r:{call?:NativeCall}={};
+          endpoint=await kinetraMcp.open(request=>r.call?r.call(request):Promise.resolve({result:{error:"This answer has finished."},pictures:[]}));
+          route=r;
           session.mcp=codexMcpConfig(endpoint);
         }
+        // While a call runs Codex sends nothing, so the turn's inactivity limit is kept from firing.
+        if(route){const native=inlinePictures(call,path=>readFile(path));route.call=request=>keepingAlive(()=>native(request),()=>this.controls.get(id)?.alive?.());}
+        // A first step (or one after a lost thread) opens a new thread; the others go on the current one.
+        if(!followUp)session.threadId=undefined;
+        const continuing=!!session.threadId&&!ownSent;
         // A new thread learns that requests go to the tool (a continued one already has it in its history).
         if(endpoint&&!session.threadId)input=NATIVE_NOTE+input;
         let output="",delivered=0;
         // A lead-in shown before a tool ran ("Let me calculate that.") is its own paragraph, never glued to the answer.
         const show=(end:number)=>{if(end<=delivered)return;emit({id,type:"delta",text:(shown&&!delivered?"\n\n":"")+output.slice(delivered,end)});delivered=end;shown=true;};
-        await this.runOnce(id,input,event=>{
-          if(event.type==="status"){emit({id,...event});return;}
-          if(event.type!=="delta")return;
-          output+=event.text||"";
-          // Hold tool envelopes (and anything that may still become one), but stream ordinary prose immediately.
-          if(!mayBeTool(output))show(shownLength(output));
-        },[...(followUp?[]:images),...looked.map(p=>p.path)],selection,session,turn);
+        try{
+          await this.runOnce(id,input,event=>{
+            if(event.type==="status"){emit({id,...event});return;}
+            if(event.type!=="delta")return;
+            output+=event.text||"";
+            // Hold tool envelopes (and anything that may still become one), but stream ordinary prose immediately.
+            if(!mayBeTool(output))show(shownLength(output));
+          },[...(ownSent&&followUp?[]:images),...looked.map(p=>p.path)],selection,session,turn);
+        }catch(error){
+          // The kept thread is gone (the app-server restarted or forgot it): the message starts a new one with everything.
+          if(continuing&&!turn.cancelled&&!output)throw new SessionLost((error as Error)?.message||"Codex no longer has this thread.");
+          throw error;
+        }
+        ownSent=true;
         if(!toolRequests(output)&&!brokenToolRequest(output))show(output.length);
         return output;
       },async request=>{
@@ -541,9 +570,26 @@ export class Codex {
         emit({id,type:"worked"});
         emit({id,type:"status",text:toolStatus(request)});
         return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
-      },()=>turn.cancelled,{stateful:true,...gates,sentBack:()=>emit({id,type:"worked"}),stats});
+      },()=>turn.cancelled,{stateful:true,...gates,sentBack:()=>emit({id,type:"worked"}),stats,continued:!!kept,fresh:prompt,freshInstructions:instructions});
+      void answer;
+      // The thread that wrote the answer stays for the chat's next message, with its endpoint (routed to nothing between answers).
+      const threadId=session.threadId,server=this.server;
+      if(keep&&threadId&&server&&!turn.cancelled){
+        const sent=new Set([...(stats?.continued&&kept?kept.sent:[]),...keep.blocks.map(blockPrint),blockPrint(instructions)]);
+        const ep=endpoint,mcp=session.mcp;
+        this.threads.set(threadId,{server,endpoint:ep,route,mcp});
+        keep.store.keep(keep.key,{provider:"codex",account:keep.account,model:selection?.model||"",session:threadId,history:keep.after,sent,end:()=>{this.threads.delete(threadId);ep?.close();}});
+        keepIt=true;
+      }
       emit({id,type:"done"});
-    }finally{endpoint?.close();if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();}
+    }finally{
+      if(stats&&steps.calls){stats.cliSteps=(stats.cliSteps||0)+steps.steps;stats.cliCalls=(stats.cliCalls||0)+steps.calls;}
+      if(route)route.call=undefined;
+      // A kept thread that this answer did not keep (it failed, or moved to a new thread) goes with its endpoint.
+      if(kept&&!keepIt)kept.end();
+      if(!keepIt&&endpoint&&endpoint!==thread?.endpoint)endpoint.close();
+      if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();
+    }
   }
   /** A short internal request (memory notes): never blocks the user's turn or streams to the screen. */
   /** `images`: pictures on this PC the request is about (a PDF's first page, when naming it). */
@@ -593,7 +639,7 @@ export class Codex {
     } finally {
       this.starting = Math.max(0, Number(this.starting) - 1);
     }
-    const control: TurnControl = {};
+    const control: TurnControl = { steps: session.steps };
     this.controls.set(id, control);
     try {
       await streamTurn(server,session,prompt,selection,images,text=>emit({id,type:"delta",text}),()=>turn.cancelled,control,undefined,status=>emit({id,type:"status",text:status}));

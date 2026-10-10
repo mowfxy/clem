@@ -108,7 +108,12 @@ test("with the rules in the system prompt, the message carries only this convers
   const messages = [{ role: "system", content: "Answer in French." }, { role: "user", content: "Bonjour" }];
   const inSystem = composePrompt({ messages, rulesInSystem: true, extra: "FOLDER NOTE" });
   assert.equal(inSystem.includes(coreRules), false);
-  assert.match(inSystem, /<mowr-instructions>\nFOLDER NOTE\n\nAnswer in French\.\n<\/mowr-instructions>/);
+  assert.match(inSystem, /<mowr-instructions>\nAnswer in French\.\n<\/mowr-instructions>/);
+  // This message's own notes come after the conversation, so the start of the prompt stays the same between messages.
+  assert.match(inSystem, /<mowr-context[^>]*>\nFOLDER NOTE\n<\/mowr-context>\n\n<mowr-request>/);
+  // On a kept session only what this message adds is sent.
+  const more = composePrompt({ messages: [...messages, { role: "assistant", content: "Salut" }, { role: "user", content: "Encore" }], rulesInSystem: true, extra: "FOLDER NOTE", continued: true });
+  assert.equal(more, `<mowr-context note="this message's files and notes">\nFOLDER NOTE\n</mowr-context>\n\n<mowr-request>\nEncore\n</mowr-request>`);
   // Nothing of its own: no empty instructions section at all.
   assert.match(composePrompt({ messages: [{ role: "user", content: "hi" }], rulesInSystem: true }), /^<mowr-request>\nhi\n<\/mowr-request>$/);
   // Codex still reads the rules in the message.

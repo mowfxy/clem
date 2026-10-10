@@ -45,7 +45,7 @@ export const WRITER='mowr-writer';
 export function claudeWriters(prompt:string){
   return JSON.stringify({[WRITER]:{
     description:'Writes ONE complete document (pdf or docx) for the person from given source files, at full depth, and makes it with Kinetra. Use one per document when a request needs two or more documents; start them together.',
-    prompt:`${prompt}\n\nYOU ARE A MOWR DOCUMENT WRITER: Mowr's main assistant started you for ONE document. Your task says what the person asked (word for word), which document you write, its sources and its draft file. Read those sources yourself (a PDF's text first, then every page whose drawing you need), check every number with Kinetra, write the draft at full depth (everything the request and the sources call for; nothing summarised away), make the file with one pdf or docx request (with its "plan" and a check after every worked example), look at what comes back and fix what is wrong; until the result says every planned part is written, keep writing. Then reply in a few lines: the file's id and name, what it covers, and anything you could not do. The document is for the person, not for the assistant.`,
+    prompt:`${prompt}\n\nYOU ARE A MOWR DOCUMENT WRITER: Mowr's main assistant started you for ONE document. Your task says what the person asked (word for word), which document you write, its sources and its draft file. Read those sources yourself (open each PDF and read its pages as drawn, several page ranges at once), check every number with Kinetra, write the draft at full depth (everything the request and the sources call for; nothing summarised away), make the file with one pdf or docx request (with its "plan" and a check after every worked example), look at what comes back and fix what is wrong; until the result says every planned part is written, keep writing. Then reply in a few lines: the file's id and name, what it covers, and anything you could not do. The document is for the person, not for the assistant.`,
     tools:WRITER_TOOLS,model:'inherit'}});
 }
 /** What the answer itself is told about its writers (the guide in its prompt explains documents; this, when to delegate). */
@@ -77,7 +77,7 @@ export function claudeCliSettings(readOnly:string[]){
  *  answer may hand documents to writers (claudeWriters). */
 export type ClaudeWorkspace={root:string;readOnly?:string[];writer?:string};
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
-import {describeTool} from './tool-status.ts';
+import {describeTool,StepCounter} from './tool-status.ts';
 
 /** One answer's tokens in the console (counts only, never content), to measure efficiency work before and after a change. */
 function logUsage(model:string,result:any){
@@ -380,7 +380,8 @@ export class ClaudeProvider {
     // The request as asked: a step run again (NoSystemFile below) adds its own notes to it, not to this one's.
     const asked=prompt;
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
-    if(this.noSessions)session=undefined;
+    // A session to go on cannot be resumed by a CLI that keeps none: the message is sent again with everything instead.
+    if(this.noSessions){if(session?.resume)throw new SessionLost('This Claude Code does not keep sessions.');session=undefined;}
     // One without --system-prompt-file gets Mowr's rules ahead of the request, as before, rather than not at all.
     if(system&&this.noSystemFile){prompt=system+'\n\n'+prompt;system=undefined;}
     if(!model.startsWith('claude:')||!MODEL_NAME.test(model.slice(7)))throw Error('Choose a supported Claude model.');
@@ -430,11 +431,14 @@ export class ClaudeProvider {
         touch();alive=touch;
         let last='';
         const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
+        // How many model steps asked for tools, and how many calls each carried (the timing log; desktop/tool-status.ts).
+        const steps=new StepCounter();
         const read=(line:string)=>{
           if(!line.trim())return;
           let event:any;try{event=JSON.parse(line);}catch{return;}
           if(event.type==='result'){result=event;logUsage(model,event);return;}
           live(event);
+          steps.read(event);
           const limit=parseRateLimit(event);
           if(limit)this.noteLimit(limit);
           const status=claudeStatus(event);
@@ -452,6 +456,7 @@ export class ClaudeProvider {
         child.on('error',()=>finish(undefined,Error('Claude Code could not start. Install its native CLI.')));
         child.on('close',code=>{
           read(buffer);
+          if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});
           const usage=(text:string)=>/limit|quota|429/i.test(text);
           if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&code===0){finish(result.result);return;}
           const detail=String(result?.result||'')+' '+error;

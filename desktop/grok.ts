@@ -1,5 +1,5 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
-import {describeTool} from './tool-status.ts';
+import {describeTool,StepCounter} from './tool-status.ts';
 import {copyFile, mkdir, readdir, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -347,7 +347,8 @@ export class GrokProvider {
     if(system&&!rules)prompt=system+'\n\n'+(workspace?GROK_FOLDER_NOTE:GROK_NOTE)+'\n\n'+prompt;
     const cwd=workspace?.root||this.workspace();
     // A Grok CLI that refused the session flags once runs every later step without them (the tool loop resends everything).
-    if(this.noSessions)session=undefined;
+    // A session to go on cannot be resumed by a CLI that keeps none: the message is sent again with everything instead.
+    if(this.noSessions){if(session?.resume)throw new SessionLost('This Grok CLI does not keep sessions.');session=undefined;}
     const slug=model.slice(GROK_PREFIX.length);
     let status=this.knownStatus()||await this.status();
     if(!status.connected||!status.models.includes(slug))status=await this.status(true);
@@ -420,9 +421,12 @@ export class GrokProvider {
       child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
       let pending='',last='',bytes=0;
       const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
+      // How many model steps asked for tools, and how many calls each carried (the timing log; desktop/tool-status.ts).
+      const steps=new StepCounter();
       const read=(line:string)=>{
         if(!line.trim())return;
         let event:any;try{event=JSON.parse(line);}catch{out+=line+'\n';return;}
+        steps.read(event);
         const status=grokStatus(event);if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
         if(event?.type==='stream_event')live(event);else out+=line+'\n';
       };
@@ -430,7 +434,7 @@ export class GrokProvider {
         pending+=p;let nl;while((nl=pending.indexOf('\n'))>=0){read(pending.slice(0,nl));pending=pending.slice(nl+1);}});
       child.stderr.on('data',(p:string)=>{if(!done)touch();err=(err+p).slice(-5000);});
       child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
-      child.on('close',code=>{read(pending);pending='';finish({code,out,err});});
+      child.on('close',code=>{read(pending);pending='';if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});finish({code,out,err});});
       child.stdin.end();
     }).finally(()=>{this.active.delete(id);this.alive.delete(id);});
   }
