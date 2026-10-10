@@ -235,3 +235,35 @@ export function codexMcpConfig(endpoint: NativeEndpoint) {
     tool_output_token_limit: TOOL_OUTPUT_TOKENS,
   };
 }
+
+/** How the tool appears to Grok (server__tool, reached through its use_tool). */
+export const GROK_TOOL = `${SERVER_NAME}__${TOOL_NAME}`;
+/** The most of one tool result Grok passes to the model, in bytes (its default is 20 kB, which would cut a guide or a
+ *  passage of a file that the text protocol sends whole). */
+export const GROK_MAX_OUTPUT_BYTES = 4_000_000;
+/**
+ * Grok reads MCP servers only from config files, so a native answer writes this as the working folder's
+ * .grok/config.toml. The address and token come from the environment Grok is started with (grokMcpEnv): the file holds
+ * no secret, and two answers running in one subject's folder at once each reach their own endpoint.
+ */
+export const GROK_MCP_CONFIG = [
+  "# Written by Mowr before each Grok answer: Kinetra, reached through this answer's local endpoint.",
+  "[mcp]",
+  `max_output_bytes = ${GROK_MAX_OUTPUT_BYTES}`,
+  "",
+  `[mcp_servers.${SERVER_NAME}]`,
+  'url = "${MOWR_KINETRA_URL}"',
+  "enabled = true",
+  "startup_timeout_sec = 30",
+  `tool_timeout_sec = ${TOOL_TIMEOUT_SECONDS}`,
+  "",
+  `[mcp_servers.${SERVER_NAME}.headers]`,
+  'Authorization = "Bearer ${MOWR_KINETRA_TOKEN}"',
+  "",
+].join("\n");
+export const grokMcpEnv = (endpoint: NativeEndpoint) => ({ MOWR_KINETRA_URL: endpoint.url, MOWR_KINETRA_TOKEN: endpoint.token });
+/** NATIVE_NOTE for Grok, which reaches MCP tools through use_tool: naming the tool saves it a search step. */
+export const GROK_NATIVE_NOTE = NATIVE_NOTE.replace(
+  `call the ${TOOL_NAME} tool with X as its arguments instead (for example {"kinetra":{"action":"help"}} becomes a ${TOOL_NAME} call with {"action":"help"})`,
+  `call use_tool with tool_name "${GROK_TOOL}" and X as tool_input instead (for example {"kinetra":{"action":"help"}} becomes use_tool with {"tool_name":"${GROK_TOOL}","tool_input":{"action":"help"}}); you need not search for the tool first`,
+);
