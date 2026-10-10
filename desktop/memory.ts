@@ -191,14 +191,16 @@ export function retrieveMemory(
   const share: Record<Group, number> = { preference: 0.4, profile: 0.35, space: 0.35 };
   const usedBy: Record<Group, number> = { preference: 0, profile: 0, space: 0 };
   let used = 0;
-  const seen = new Set<string>();
+  const seen = new Set<string>(), kept: string[] = [];
   return ranked.flatMap(({ memory, group, matched }) => {
     const text = memory.text.trim().toLowerCase(), size = memory.text.length;
-    if (seen.has(text) || used + size > budget) return [];
+    // The same thing under two keys (said in two chats) is sent once: the higher-ranked one.
+    if (seen.has(text) || used + size > budget || kept.some((k) => similarity(k, text) >= 0.8)) return [];
     if (!matched && usedBy[group] + size > budget * share[group]) return [];
     used += size;
     usedBy[group] += size;
     seen.add(text);
+    kept.push(text);
     const { embedding, ...record } = memory;
     return [record];
   });
@@ -325,7 +327,13 @@ export function learnMemories(state: MemoryState, items: Learned[], context: { s
     const key = item.kind === "preference" && !item.key.startsWith("pref:") ? ("pref:" + item.key).slice(0, 100) : item.key;
     const expiresAt = item.until && Date.parse(item.until) > Date.parse(now) ? new Date(item.until).toISOString() : undefined;
     const live = state.records.filter((m) => m.scope === scope && !m.supersededBy && (!m.expiresAt || Date.parse(m.expiresAt) > Date.parse(now)));
-    if (live.some((m) => m.key === key && m.text.trim().toLowerCase() === item.text.toLowerCase())) continue;
+    // Said again: the memory is still true, so it stays fresh (recency ranks it and pruning keeps it) and a learned one
+    // grows more certain. Nothing new is stored.
+    const same = live.find((m) => m.key === key && m.text.trim().toLowerCase() === item.text.toLowerCase());
+    if (same) {
+      state = { ...state, records: state.records.map((m) => (m.id === same.id ? { ...m, updatedAt: now, ...(m.confirmed ? {} : { confidence: Math.min(0.95, m.confidence + 0.1) }) } : m)) };
+      continue;
+    }
     // The same thing said differently under another key updates that memory instead of sitting beside it.
     const similar = live.find((m) => m.key !== key && !m.confirmed && isPreference(m) === (item.kind === "preference") && similarity(m.text, item.text) >= 0.6);
     state = { ...state, records: state.records.filter((m) => !(m.scope === scope && m.key === key && !m.confirmed && !m.supersededBy)) };

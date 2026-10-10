@@ -101,3 +101,19 @@ test("a device whose clock runs ahead does not win every sync conflict", () => {
   // Ordinary edits still go to the newest.
   assert.equal(mergeSync(base, [record("a", "2026-02-01T00:00:00.000Z")], [record("b", "2026-03-01T00:00:00.000Z")])[0].text, "b");
 });
+
+test("saying a learned fact again keeps it fresh instead of storing it twice", () => {
+  const item = { key: "year", text: "The user is a second-year physics student.", kind: "fact" as const, about: "user" as const };
+  let state = learnMemories(base, [item], { scope: "chat:a", sourceId: "chat:a", explicit: false, now: "2026-01-01T00:00:00.000Z" });
+  state = learnMemories(state, [item], { scope: "chat:b", sourceId: "chat:b", explicit: false, now: "2026-06-01T00:00:00.000Z" });
+  assert.equal(state.records.length, 1);
+  assert.equal(state.records[0].updatedAt, "2026-06-01T00:00:00.000Z");
+  assert.ok(state.records[0].confidence > 0.7 && state.records[0].confidence <= 0.95);
+});
+
+test("the same memory under two keys is sent to the model once", () => {
+  let state = learnMemories(base, [{ key: "units", text: "The user wants answers in SI units.", kind: "fact", about: "user" }], { scope: "chat:a", sourceId: "chat:a", explicit: true, now: "2026-09-01T00:00:00.000Z" });
+  state = learnMemories(state, [{ key: "si", text: "The user wants answers in SI units!", kind: "fact", about: "user" }], { scope: "chat:b", sourceId: "chat:b", explicit: true, now: "2026-09-02T00:00:00.000Z" });
+  const found = retrieveMemory(state, "chat:c", "convert this speed", { now: Date.parse("2026-09-03") });
+  assert.equal(found.filter((m) => /SI units/.test(m.text)).length, 1);
+});
