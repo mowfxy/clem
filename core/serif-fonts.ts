@@ -1,4 +1,4 @@
-// Mowafy Serif imported from mowfxy/serif at 9ccc131 by scripts/import-serif.py. `full` faces carry the
+// Mowafy Serif imported from mowfxy/serif at a551b81 by scripts/import-serif.py. `full` faces carry the
 // non-Latin coverage and are only fetched when a page uses those characters; pages that inline fonts skip them.
 export const serifFaces = [
   {
