@@ -70,3 +70,8 @@ button.work-summary[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
 .limit-now:hover{background:#ffffff14}
 /* Long messages scroll inside the composer without a scrollbar (its arrows looked like a dropdown beside the text). */
 .composer textarea{scrollbar-width:none}.composer textarea::-webkit-scrollbar{display:none}
+/* The chat box sits on the page's own background across the whole workspace, so a table wider than the text column
+   passes under it instead of showing beside it: the backdrop's colour is repeated sideways by a clipped shadow (no
+   extra width, so the page never scrolls sideways), and the box stays above the messages. */
+.chat-composer{z-index:6}
+.chat-composer::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--bg);box-shadow:0 0 0 100vw var(--bg);clip-path:inset(0 -100vw);-webkit-mask:linear-gradient(transparent,#000 12px) repeat-x;mask:linear-gradient(transparent,#000 12px) repeat-x;-webkit-mask-clip:no-clip;mask-clip:no-clip}
