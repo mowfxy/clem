@@ -174,3 +174,26 @@ test("the folder guides write documents as Markdown files instead of in parts, a
   assert.match(kinetraCli, /not to compose the document's text before writing it/);
   assert.match(grokRules("rules", true)!, /working folder holds the person's files/);
 });
+
+test("an unchanged answer copies nothing and leaves the manifest alone", async () => {
+  const { mkdtemp, stat: st, rm: remove, writeFile: write } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join: at } = await import("node:path");
+  const root = await mkdtemp(at(tmpdir(), "mowr-mirror-"));
+  try {
+    const source = at(root, "..", "src-" + Date.now() + ".txt");
+    await write(source, "hello");
+    const files = [{ path: "Files/a.txt", stamp: "1", from: { file: source } }];
+    await syncMirror(root, files);
+    const manifest = (await st(at(root, ".mowr-mirror.json"))).mtimeMs, copy = (await st(at(root, "Files/a.txt"))).mtimeMs;
+    await new Promise((r) => setTimeout(r, 30));
+    assert.deepEqual(await syncMirror(root, files), ["Files/a.txt"]);
+    assert.equal((await st(at(root, ".mowr-mirror.json"))).mtimeMs, manifest);
+    assert.equal((await st(at(root, "Files/a.txt"))).mtimeMs, copy);
+    // A copy the AI changed is copied again.
+    await write(at(root, "Files/a.txt"), "changed by the AI");
+    await syncMirror(root, files);
+    assert.equal(await (await import("node:fs/promises")).readFile(at(root, "Files/a.txt"), "utf8"), "hello");
+    await remove(source, { force: true });
+  } finally { await remove(root, { recursive: true, force: true }); }
+});

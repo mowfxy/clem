@@ -1,4 +1,5 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
+import {describeTool} from './tool-status.ts';
 import {copyFile, mkdir, readdir, rm, stat, writeFile} from 'node:fs/promises';
 import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -82,7 +83,7 @@ export function grokStatus(event:any):string|null{
   if(event?.type==='assistant'){
     const parts:any[]=event.message?.content||[];
     const tool=parts.find(p=>p?.type==='tool_use');
-    if(tool)return /web_?search|search_web/i.test(tool.name||'')?'Searching the web…':'Using a tool…';
+    if(tool)return describeTool(tool.name,tool.input)||'Using a tool…';
     if(parts.some(p=>p?.type==='text'&&String(p.text||'').trim()))return 'Writing the answer…';
     if(parts.some(p=>p?.type==='thinking'))return 'Thinking it through…';
   }

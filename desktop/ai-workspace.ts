@@ -84,16 +84,18 @@ export async function syncMirror(root: string, files: MirrorFile[], keep: string
   await mkdir(root, { recursive: true });
   await Promise.all([DRAFTS, OUTPUTS].map((d) => mkdir(join(root, d, lane), { recursive: true })));
   // Each copy is recorded as "stamp|size|mtime": a copy the AI changed no longer matches and is copied again.
-  let before: Record<string, string> = {};
-  try { before = JSON.parse(await readFile(join(root, MANIFEST), "utf8")); } catch { /* the first answer here */ }
+  let before: Record<string, string> = {}, first = false;
+  try { before = JSON.parse(await readFile(join(root, MANIFEST), "utf8")); } catch { first = true; /* the first answer here */ }
   const after: Record<string, string> = {};
   const wanted = new Set(files.map((f) => f.path.toLowerCase()));
+  const gone: string[] = [];
   for (const old of Object.keys(before)) {
     if (wanted.has(old.toLowerCase())) continue;
     if (keep.some((k) => old.startsWith(k + "/"))) { after[old] = before[old]; continue; }
     const full = workspacePath(root, old);
-    if (full) await rm(full, { force: true }).catch(() => {});
+    if (full) gone.push(full);
   }
+  await Promise.all(gone.map((full) => rm(full, { force: true }).catch(() => {})));
   // A few at a time: a subject may hold hundreds of files.
   const queue = [...files];
   const work = async () => {
@@ -102,21 +104,24 @@ export async function syncMirror(root: string, files: MirrorFile[], keep: string
       if (!full) continue;
       const was = before[f.path]?.split("|") || [];
       try {
-        const present = was[0] === f.stamp && (await stat(full).then((s) => s.isFile() && String(s.size) === was[1] && String(Math.round(s.mtimeMs)) === was[2], () => false));
-        if (!present) {
-          await mkdir(dirname(full), { recursive: true });
-          if ("file" in f.from) await copyFile(f.from.file, full);
-          else await writeFile(full, f.from.bytes);
-        }
+        // A copy that is still as Mowr left it is not read again: one stat per file on an unchanged answer.
+        const here = was[0] === f.stamp ? await stat(full).catch(() => null) : null;
+        const present = !!here && here.isFile() && String(here.size) === was[1] && String(Math.round(here.mtimeMs)) === was[2];
+        if (present) { after[f.path] = before[f.path]; continue; }
+        await mkdir(dirname(full), { recursive: true });
+        if ("file" in f.from) await copyFile(f.from.file, full);
+        else await writeFile(full, f.from.bytes);
         const copy = await stat(full);
         after[f.path] = [f.stamp, copy.size, Math.round(copy.mtimeMs)].join("|");
       } catch { /* a file missing from this PC is left out, not fatal */ }
     }
   };
   await Promise.all(Array.from({ length: 6 }, work));
-  await writeFile(join(root, MANIFEST), JSON.stringify(after));
-  // Folders the mirror emptied go too, so the AI does not see folders the person deleted.
-  for (const top of [ATTACHMENTS, FILES, MADE, TEXT]) await pruneEmpty(join(root, top));
+  const sorted = (m: Record<string, string>) => JSON.stringify(Object.keys(m).sort().map((k) => [k, m[k]]));
+  if (first || sorted(after) !== sorted(before)) await writeFile(join(root, MANIFEST), JSON.stringify(after));
+  // Folders the mirror emptied go too, so the AI does not see folders the person deleted. Only removals empty a
+  // folder, so an answer that removed nothing skips walking the tree (a subject may hold hundreds of files).
+  if (first || gone.length) for (const top of [ATTACHMENTS, FILES, MADE, TEXT]) await pruneEmpty(join(root, top));
   return Object.keys(after).sort((a, b) => a.localeCompare(b));
 }
 async function pruneEmpty(folder: string): Promise<boolean> {
