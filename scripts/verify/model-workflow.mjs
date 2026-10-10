@@ -236,7 +236,8 @@ try {
   assert.ok(after.time>before.time,'the drift continues instead of restarting');
   await page.waitForTimeout(600);
   await page.screenshot({path:'artifacts/reasoning-picker.png'});
-  await page.getByRole('button',{name:'Reset thinking level',exact:true}).click();
+  // The reset button was removed (preview.52): the lowest level is one key away on the slider.
+  await page.keyboard.press('Home');
   assert.equal(await efforts.getAttribute('aria-valuetext'),'Light');
   await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('dialog',{name:'Thinking level'}).count(),0);
