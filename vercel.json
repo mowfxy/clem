@@ -54,7 +54,7 @@
   "redirects": [
     {
       "source": "/download/windows",
-      "destination": "https://github.com/mowfxy/mowr-releases/releases/download/v0.2.0-preview.87/Mowr-Setup-0.2.0-preview.87.exe",
+      "destination": "https://github.com/mowfxy/mowr-releases/releases/download/v0.2.0-preview.89/Mowr-Setup-0.2.0-preview.89.exe",
       "permanent": false
     }
   ]
