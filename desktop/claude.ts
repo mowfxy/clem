@@ -77,6 +77,7 @@ export function claudeCliSettings(readOnly:string[]){
  *  answer may hand documents to writers (claudeWriters). */
 export type ClaudeWorkspace={root:string;readOnly?:string[];writer?:string};
 import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
+import {describeTool} from './tool-status.ts';
 
 /** One answer's tokens in the console (counts only, never content), to measure efficiency work before and after a change. */
 function logUsage(model:string,result:any){
@@ -97,6 +98,7 @@ export function claudeStatus(event:any):string|null{
   if(event?.type==='assistant')for(const part of event.message?.content||[])if((part.type==='tool_use'||part.type==='server_tool_use')&&/web_?search/i.test(part.name||'')){
     const query=String(part.input?.query||'').trim();return query?`Searching the web for “${query.slice(0,80)}”…`:'Searching the web…';
   }
+  if(event?.type==='assistant')for(const part of event.message?.content||[])if(part.type==='tool_use'){const said=describeTool(part.name,part.input);if(said)return said;}
   if(event?.type==='user'&&(event.message?.content||[]).some((part:any)=>part.type==='tool_result'))return 'Reading what it found…';
   return null;
 }

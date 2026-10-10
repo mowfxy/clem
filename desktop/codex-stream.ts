@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { describeTool, shortPath } from "./tool-status.ts";
 import { AppServer } from "./app-server.ts";
 
 export const baseInstructions =
@@ -142,7 +143,11 @@ export async function streamTurn(
             if (p.item.phase === "commentary") commentary.add(p.item.id);
             else onStatus("Writing the answer…");
           } else if (method === "item/started" && (p.item?.type === "mcpToolCall" || p.item?.type === "dynamicToolCall")) {
-            onStatus("Using a tool…");
+            const args = typeof p.item.arguments === "string" ? (() => { try { return JSON.parse(p.item.arguments); } catch { return {}; } })() : p.item.arguments;
+            onStatus(describeTool(String(p.item.tool || p.item.name || ""), args) || "Using a tool…");
+          } else if (method === "item/started" && p.item?.type === "fileChange") {
+            const path = p.item.changes?.[0]?.path;
+            onStatus(path ? `Writing ${shortPath(path)}…` : "Writing a file…");
           } else if (method === "item/started" && p.item?.type === "webSearch") {
             const query = String(p.item.query || p.item.action?.query || "").trim();
             onStatus(query ? `Searching the web for “${query.slice(0, 80)}”…` : "Searching the web…");
