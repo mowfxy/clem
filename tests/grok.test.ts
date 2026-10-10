@@ -88,7 +88,7 @@ test('only Grok’s final message is the reply, and the chosen thinking level is
   const events:any[]=[];
   await new FakeGrok('steps').run('r','hi','grok:grok-4.6',e=>events.push(e));
   assert.equal(events.find(e=>e.type==='delta').text,'{"kinetra":{"action":"help"}}');
-  assert.ok(events.some(e=>e.type==='status'&&e.text==='Using a tool…'));
+  assert.ok(events.some(e=>e.type==='status'&&e.text==='Reading a file…'));
   const chosen:any[]=[];
   await new FakeGrok('ok').run('r','hi','grok:grok-4.6',e=>chosen.push(e),[],undefined,'xhigh');
   assert.equal(chosen.find(e=>e.type==='delta').text,'[grok-4.6 xhigh] hi');
