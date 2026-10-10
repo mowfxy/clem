@@ -90,7 +90,7 @@ export const handoutEdits = { summary: "Moved the due date to Monday and made qu
 
 
 /** Starts Vite, installs the fake desktop bridge and opens the workspace. Returns helpers. */
-export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1 } = {}) {
+export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1, extraChats = [] } = {}) {
   const server = await createServer({ server: { host: "127.0.0.1", port, strictPort: true }, logLevel: "error" });
   await server.listen();
   const print = await specPrinter(browser);
@@ -196,7 +196,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
     const { default: App } = await import("/src/App.tsx");
     window.__root = ReactDOM.createRoot(document.getElementById("root"));
     window.__root.render(React.createElement(App, {}));
-  }, { workspace, worksheet: Array.from(worksheet), handout: Array.from(handout), worksheetSpec });
+  }, { workspace: { ...workspace, chats: [...workspace.chats, ...extraChats] }, worksheet: Array.from(worksheet), handout: Array.from(handout), worksheetSpec });
   await page.locator(".greeting-row").waitFor();
   return { page, context, errors, t0, close: async () => { await context.close(); await server.close(); } };
 }
