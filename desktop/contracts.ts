@@ -34,6 +34,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("checkout") }),
   z.object({ action: z.literal("providerAccounts"), refresh:z.boolean().optional() }),
   z.object({ action: z.literal("providerAutoSwitch"), enabled:z.boolean() }),
+  // The model (and thinking level) for Mowr's own side jobs: naming files, memory notes, condensing a long chat. None: automatic.
+  z.object({ action: z.literal("helperModel"), set: z.object({ model: z.string().regex(/^[a-zA-Z0-9._:-]{1,100}(?:\[[a-z0-9]{1,8}\])?$/).optional(), reasoning: z.string().regex(/^[a-z]{2,12}$/).optional() }).optional() }),
   z.object({ action: z.literal("claudeStatus") }),
   z.object({ action: z.literal("claudeLogin") }),
   z.object({ action: z.literal("cliAccounts"), kind:z.enum(["claude","grok"]), refresh:z.boolean().optional() }),
@@ -175,6 +177,8 @@ export const requestSchema = z.discriminatedUnion("action", [
     lines: z.array(z.string().max(400)).max(60),
     place: z.string().max(200).optional(),
     suggestion: z.string().min(1).max(260),
+    /** The names of the other files where it goes, so the new name follows their pattern ("… – Lecture 5"). */
+    siblings: z.array(z.string().max(160)).max(40).optional(),
     /** A PDF's first page, as each AI reads a PDF (src/pdf/pdf-name.ts): a one-page PDF (Claude, Grok) and its picture (ChatGPT). */
     page: z.object({ pdf: z.instanceof(Uint8Array).refine((d) => d.length <= 15_000_000), picture: z.string().max(4_000_000).regex(/^[A-Za-z0-9+/=]+$/) }).optional(),
   }),

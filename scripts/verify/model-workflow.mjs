@@ -87,6 +87,7 @@ try {
                   tools: [],
                 },
                 ...["Sol", "Luna", "Terra", "GPT-5.5"].map(name=>({id:name,name,connected:true,provider:"OpenAI",context:32000,specialties:[],tools:[]})),
+                {id:"claude:sonnet",name:"Claude Sonnet 5.5",connected:true,provider:"Anthropic",context:200000,specialties:[],tools:[],defaultReasoningEffort:"medium",reasoningEfforts:["low","medium","high"].map(reasoningEffort=>({reasoningEffort,description:reasoningEffort}))},
               ]
             : {},
     });
@@ -241,6 +242,18 @@ try {
   assert.equal(await efforts.getAttribute('aria-valuetext'),'Light');
   await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('dialog',{name:'Thinking level'}).count(),0);
+  // With a Claude model the thinking picker is Claude's orange, its fill and the button's pip alike.
+  await page.getByRole('button',{name:'Choose model',exact:true}).click();
+  await page.getByRole('menuitemradio',{name:'Claude Sonnet 5.5',exact:true}).click();
+  assert.match(await page.locator('.picker-trigger-effort .effort-pip').evaluate(el=>getComputedStyle(el,'::after').backgroundImage),/rgb\(232, 147, 111\)/);
+  await page.getByRole('button',{name:'Thinking level',exact:true}).click();
+  assert.match(await page.locator('.effort-pop .effort-fill').evaluate(el=>getComputedStyle(el).backgroundImage),/rgb\(185, 96, 63\)/);
+  await page.waitForTimeout(700);
+  await page.locator('.effort-pop').screenshot({path:'artifacts/reasoning-picker-claude.png'});
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Choose model',exact:true}).click();
+  await page.getByRole('menuitemradio',{name:'Astra',exact:true}).click();
+  assert.doesNotMatch(await page.locator('.picker-trigger-effort .effort-pip').evaluate(el=>getComputedStyle(el,'::after').backgroundImage),/232, 147, 111/);
   await page.setViewportSize({width:860,height:600});
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
   const bounds=await page.getByRole('menu',{name:'Select model'}).boundingBox();

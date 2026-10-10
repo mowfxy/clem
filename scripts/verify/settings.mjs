@@ -30,6 +30,7 @@ try {
         if(r.action==='providerAccounts'&&window.recovery)return {active:'default',accounts:[{id:'22222222-2222-4222-8222-222222222222',connected:false,loginError:'Sign-in expired. Start again to get a new code.'}]};
         if(r.action==='providerAccounts')return {active:window.activeAccount,accounts:[{id:'default',connected:true,email:'personal@example.com',plan:'plus',checkedAt:Date.now(),usage:{rateLimitsByLimitId:{codex:{primary:{usedPercent:42,windowDurationMins:300,resetsAt:Date.now()/1000+9000},secondary:{usedPercent:18,windowDurationMins:10080,resetsAt:Date.now()/1000+86400}}}}},{id:'11111111-1111-4111-8111-111111111111',connected:true,email:'work@example.com',plan:'pro',usageError:'Usage is unavailable from the provider.'}]};
         if(r.action==='providerAccountSelect'){window.activeAccount=r.id;return {ok:true};}
+        if(r.action==='helperModel'){if(r.set)window.helper=r.set.model?r.set:{};return window.helper||{};}
         if(r.action==='claudeStatus')return {installed:true,connected:true,email:'me@example.com',plan:'max'};
         if(r.action==='grokStatus')return {installed:true,connected:true,models:['grok-4.7']};
         if(r.action==='cliAccounts'&&r.kind==='claude')return {active:window.claudeActive||'default',autoSwitch:true,accounts:[{id:'default',connected:true,email:'me@example.com',plan:'max',checkedAt:Date.now(),usage:{rateLimits:{primary:{usedPercent:64,windowDurationMins:300,resetsAt:Date.now()/1000+5000},secondary:{usedPercent:93,windowDurationMins:10080,resetsAt:Date.now()/1000+300000}}}},{id:'33333333-3333-4333-8333-333333333333',connected:true,email:'team@example.com',plan:'pro'}].concat(window.claudeAdded?[{id:'44444444-4444-4444-8444-444444444444',connected:false,pending:true}]:[])};
@@ -98,6 +99,8 @@ try {
                   specialties: [],
                   tools: [],
                 },
+                { id: "claude:haiku", name: "Haiku 4.5", provider: "Anthropic", connected: true, context: 200000, specialties: [], tools: [], reasoningEfforts: [] },
+                { id: "claude:sonnet", name: "Sonnet 5.5", provider: "Anthropic", connected: true, context: 200000, specialties: [], tools: [], defaultReasoningEffort: "medium", reasoningEfforts: [{ reasoningEffort: "low", description: "Low" }, { reasoningEffort: "medium", description: "Medium" }, { reasoningEffort: "high", description: "High" }] },
               ]
             : {},
     });
@@ -266,8 +269,28 @@ try {
   await page.getByText('58% left',{exact:true}).waitFor();
   assert.equal(await page.getByRole('meter').count(),2);
   assert.equal(await page.locator('.st-nav button.active').innerText(),'Models');
+  // Background tasks: automatic until a model is chosen; the thinking level follows the chosen model's own levels.
+  const helper=page.getByLabel('Model for background tasks',{exact:true}),thinking=page.getByLabel('Thinking level for background tasks',{exact:true});
+  await helper.waitFor();
+  assert.equal(await helper.inputValue(),'');
+  assert.ok(await thinking.isDisabled());
+  await helper.selectOption('claude:sonnet');
+  await page.waitForFunction(()=>window.helper?.model==='claude:sonnet');
+  assert.ok(!(await thinking.isDisabled()));
+  assert.match(await thinking.locator('option').first().innerText(),/Default \(Medium\)/);
+  await thinking.selectOption('high');
+  await page.waitForFunction(()=>window.helper?.reasoning==='high');
+  // A model without levels has nothing to adjust; changing the model drops the old level.
+  await helper.selectOption('claude:haiku');
+  await page.waitForFunction(()=>window.helper?.model==='claude:haiku'&&!window.helper.reasoning);
+  assert.ok(await thinking.isDisabled());
+  await helper.selectOption('claude:sonnet');
+  await page.waitForFunction(()=>window.helper?.model==='claude:sonnet');
   await page.waitForTimeout(450);
   await page.screenshot({path:'artifacts/settings-models.png'});
+  await page.locator('.helper-model-setting').screenshot({path:'artifacts/settings-helper-model.png'});
+  await helper.selectOption('');
+  await page.waitForFunction(()=>window.helper&&!window.helper.model);
   await page.getByRole('button',{name:'Use',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.activeAccount),'11111111-1111-4111-8111-111111111111');
   // Claude and Grok have the same accounts, usage and switching as ChatGPT.

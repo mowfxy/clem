@@ -137,7 +137,7 @@
 .sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:190px;padding:5px;border-radius:12px;background:#1c1c1b;border:1px solid var(--sp-line-2);box-shadow:0 18px 50px -10px #000c;animation:sp-in .16s ease-out both}
 .space-page .sp-menu-list button{width:100%;display:flex;align-items:center;gap:9px;justify-content:flex-start;padding:8px 10px;border:0;border-radius:8px;background:none;font:400 var(--t-small)/1.2 var(--sans);color:var(--sp-ink);text-align:left;white-space:nowrap}
 .space-page .sp-menu-list button:hover{background:#ffffff0d}
-.space-page .sp-menu-list button.danger{color:#f0a594}
+.space-page .sp-menu-list button.danger{color:#ff5a4e}
 .sp-move{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;width:min(380px,calc(100vw - 32px));max-height:70vh;overflow:auto;padding:14px;border-radius:16px;background:#1d1d1b;border:1px solid var(--sp-line-2);box-shadow:0 40px 120px -20px #000e;display:flex;flex-direction:column;gap:3px}
 .sp-move strong{font:400 20px/1.2 var(--serif);margin:4px 6px 10px}
 .space-page .sp-move button{display:flex;align-items:center;gap:10px;justify-content:flex-start;padding:8px;border:0;border-radius:9px;background:none;font-size:var(--t-small);color:var(--sp-ink)}
@@ -200,3 +200,17 @@
 .sp-folder:has(>.sp-menu>.sp-menu-list){transform:none}
 /* The menu button keeps its own width at the card's right edge; the name takes the rest. */
 .sp-folder>.sp-menu{flex:none;margin-left:auto;margin-right:-2px}
+/* Cards reordered by their ☰ handle (src/space/reorder.ts): the one moving is lifted out of the flow's look. */
+.sp-folder[data-reordering],.sp-file[data-reordering]{opacity:.55;outline:1px dashed #6d6d6d;outline-offset:2px}
+[data-reorder-handle]:active{cursor:grabbing}
+.sp-local-actions .sp-new-folder{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center}
+/* Files picked with "Select" (moved or dragged together). */
+.sp-pick-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px;padding:10px 14px;border:1px solid var(--line,#363636);border-radius:10px;background:#1c1c1c;font-size:13px}
+.sp-pick-bar span{color:var(--muted,#a3a3a0);flex:1 1 200px}
+.sp-pick-bar button{padding:6px 11px;font-size:12px}
+.sp-file.picked{background:#2a2a2a}
+.sp-file .sp-pick{width:16px;height:16px;margin:0 4px 0 0;flex:none;padding:0;accent-color:#e9e9e7}
+.sp-drag-count{position:fixed;top:-100px;left:-100px;padding:6px 12px;border-radius:8px;background:#e9e9e7;color:#141414;font:500 13px var(--sans,sans-serif)}
+/* Delete and other destructive items read clearly red, in every place these menus appear. */
+.sp-menu-list button.danger,.space-page .sp-menu-list button.danger{color:#ff5a4e}
+.sp-menu-list button.danger:hover,.space-page .sp-menu-list button.danger:hover{background:#ff5a4e1f;color:#ff6b60}

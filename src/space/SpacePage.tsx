@@ -2,6 +2,7 @@ import {useEffect,useMemo,useRef,useState,type DragEvent,type MouseEvent as Reac
 import {Icon} from '../Icons';
 import {SpaceMark} from './SpaceMark';
 import {Menu,FolderIcon} from './SpaceMenu';
+import {useReorder,arranged} from './reorder';
 import {RenameField,PencilIcon} from '../files/RenameField';
 import {FileGlyph} from '../files/FileGlyph';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
@@ -86,7 +87,7 @@ function ChatContextMenu({at,onClose,items}:{at:{x:number;y:number};onClose:()=>
     root.current?.querySelector('button')?.focus();
     return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',key);window.removeEventListener('blur',onClose);window.removeEventListener('scroll',onClose,true);};},[onClose]);
   return <div className="sp-menu-list sp-context" role="menu" ref={root} style={{position:'fixed',left:Math.min(at.x,window.innerWidth-210),top:Math.min(at.y,window.innerHeight-60*items.length),right:'auto'}}>
-    {items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={()=>{onClose();i.run();}}>{i.icon&&<Icon name={i.icon} size={15}/>}{i.label}</button>)}</div>;
+    {items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={()=>{onClose();i.run();}}>{i.label}</button>)}</div>;
 }
 /** Right-clicking a chat row opens its menu; returns the handler and the menu to render. */
 function useChatMenu(onDelete:(chat:Chat)=>void){
@@ -235,26 +236,45 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
   useEffect(()=>{if(!desktop)return;void desktop.invoke({action:'folders',scope:`${space.kind}:${space.id}`}).then(setLinked).catch(()=>{});},[space.id]);
   useEffect(()=>{if(at&&!folders.some(f=>f.id===at))setAt(null);},[folders,at]);
   const path=useMemo(()=>{const out:SpaceFolder[]=[];let id=at;while(id){const f=folders.find(x=>x.id===id);if(!f)break;out.unshift(f);id=f.parentId;}return out;},[at,folders]);
-  const here=folders.filter(f=>(f.parentId||null)===at).sort((a,b)=>a.name.localeCompare(b.name));
+  const here=arranged(folders.filter(f=>(f.parentId||null)===at),(a,b)=>a.name.localeCompare(b.name));
   // Files kept in the linked Drive folder are listed there, with their sync state, not again under "On this PC".
   const [driveIds,setDriveIds]=useState<Set<string>>(()=>new Set());
   const inDrive=(f:StoredFile)=>!!space.drive&&!f.folderId&&(!!f.driveFolder||!!f.driveId&&driveIds.has(f.driveId));
-  const inHere=files.filter(f=>(f.folderId||null)===at&&!inDrive(f)).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
+  const inHere=arranged(files.filter(f=>(f.folderId||null)===at&&!inDrive(f)),(a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const countIn=(id:string):number=>files.filter(f=>f.folderId===id).length+folders.filter(f=>f.parentId===id).reduce((n,f)=>n+countIn(f.id),0);
   const setFolders=(next:SpaceFolder[])=>actions.onUpdateSpace({...space,folders:next});
+  // The person's own arrangement, by dragging a card's ☰ handle: folders among folders, files among files, in this folder.
+  const ranked=<T extends {id:string}>(ids:string[])=>(x:T)=>{const i=ids.indexOf(x.id);return i<0?x:{...x,rank:i+1};};
+  const folderOrder=useReorder('folders:'+(at||'top'),here.map(f=>f.id),ids=>setFolders(folders.map(ranked<SpaceFolder>(ids))));
+  const fileOrder=useReorder('files:'+(at||'top'),inHere.map(f=>f.id),ids=>actions.onUpdateFiles(all=>all.map(ranked<StoredFile>(ids))));
+  const shownFolders=folderOrder.order.flatMap(id=>here.filter(f=>f.id===id));
+  const shownFiles=fileOrder.order.flatMap(id=>inHere.filter(f=>f.id===id));
   const saveName=()=>{if(!naming)return;const name=naming.name.trim().slice(0,80);if(!name){setNaming(null);return;}
     if(folders.some(f=>f.id!==naming.id&&(f.parentId||null)===at&&f.name.toLowerCase()===name.toLowerCase())){setNaming(null);return;}
     setFolders(naming.id?folders.map(f=>f.id===naming.id?{...f,name}:f):[...folders,{id:crypto.randomUUID(),name,parentId:at,created:Date.now()}]);setNaming(null);};
-  const move=(fileId:string,folderId:string|null)=>actions.onUpdateFiles(all=>all.map(f=>f.id===fileId?{...f,folderId}:f));
+  const move=(ids:string[],folderId:string|null)=>actions.onUpdateFiles(all=>all.map(f=>ids.includes(f.id)?{...f,folderId}:f));
   const removeFolder=async(folder:SpaceFolder)=>{
     if(!await confirmDialog({title:`Remove “${folder.name}”?`,message:'Its files and folders move up one level. Nothing is deleted.',confirm:'Remove folder'}))return;
     actions.onUpdateFiles(all=>all.map(f=>f.folderId===folder.id?{...f,folderId:folder.parentId}:f));
     setFolders(folders.filter(f=>f.id!==folder.id).map(f=>f.parentId===folder.id?{...f,parentId:folder.parentId}:f));
   };
-  const drop=(folderId:string|null)=>(e:DragEvent)=>{e.preventDefault();e.stopPropagation();setOver(null);const id=e.dataTransfer.getData('application/x-mowr-file');if(id)move(id,folderId);else if(e.dataTransfer.files.length)actions.onUpload(e.dataTransfer.files,folderId);};
+  const drop=(folderId:string|null)=>(e:DragEvent)=>{e.preventDefault();e.stopPropagation();setOver(null);const ids=e.dataTransfer.getData('application/x-mowr-file').split(',').filter(Boolean);if(ids.length){move(ids,folderId);setPicked(new Set());}else if(e.dataTransfer.files.length)actions.onUpload(e.dataTransfer.files,folderId);};
   const dragTarget=(id:string)=>({onDragOver:(e:DragEvent)=>{e.preventDefault();setOver(id);},onDragLeave:()=>setOver(o=>o===id?null:o)});
   const destinations=(file:StoredFile)=>[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==(file.folderId||null));
   const [moving,setMoving]=useState<StoredFile|null>(null);
+  // Files picked with "Select": dragged (or moved) together. Leaving the folder clears the pick.
+  const [picked,setPicked]=useState<Set<string>>(()=>new Set());
+  const [movingPicked,setMovingPicked]=useState(false);
+  useEffect(()=>{setPicked(new Set());setMovingPicked(false);},[at,space.id]);
+  const pick=(id:string)=>setPicked(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n;});
+  const pickedHere=shownFiles.filter(f=>picked.has(f.id)).map(f=>f.id);
+  /** What a drag from a file carries: every picked file when it is one of them, otherwise just itself. A drag of several
+   *  shows how many go. */
+  const dragFiles=(f:StoredFile,e:DragEvent)=>{
+    const ids=picked.has(f.id)?pickedHere:[f.id];
+    e.dataTransfer.setData('application/x-mowr-file',ids.join(','));e.dataTransfer.effectAllowed='move';
+    if(ids.length>1){const tag=document.createElement('div');tag.className='sp-drag-count';tag.textContent=`${ids.length} files`;document.body.appendChild(tag);e.dataTransfer.setDragImage(tag,16,16);setTimeout(()=>tag.remove(),0);}
+  };
   const [renaming,setRenaming]=useState<string|null>(null);
   /** A file of this PC to copy into the Drive folder shown ("Save copy in Drive"); the Drive view uploads it. */
   const [toDrive,setToDrive]=useState<{key:string;id:string}|null>(null);
@@ -282,29 +302,32 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     {space.drive&&!at&&<div className="sp-local-head"><span className="sp-eyebrow">On this PC</span>
       <div className="sp-local-actions">
         <button onClick={()=>input.current?.click()} aria-description="Add files from this PC, kept here only"><Icon name="plus" size={13}/> Add files</button>
-        <Menu label="On this PC options" items={[{label:'New folder',run:()=>setNaming({name:''})}]}/>
+        <button className="icon-button sp-new-folder" aria-label="New folder" title="New folder" onClick={()=>setNaming({name:''})}><Icon name="folder-plus" size={18}/></button>
       </div>
     </div>}
     {space.drive&&!at&&!inHere.length&&!here.length&&!naming&&<p className="sp-empty-line sp-local-empty">Files you add here stay on this PC and aren’t saved to Google Drive.</p>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
-      {here.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
-        :<div key={f.id} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
+      {shownFolders.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
+        :<div key={f.id} {...folderOrder.item(f.id)} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
           <FolderIcon/><div><strong>{f.name}</strong><small>{countIn(f.id)} item{countIn(f.id)===1?'':'s'}</small></div>
-          <Menu label={`${f.name} options`} items={[{label:'Rename',run:()=>setNaming({id:f.id,name:f.name})},{label:'Share folder',icon:'import',run:()=>actions.onShare(f.id)},{label:'Remove folder',icon:'trash',danger:true,run:()=>void removeFolder(f)}]}/>
+          <Menu label={`${f.name} options`} handle={folderOrder.handle(f.id)} items={[{label:'Rename',icon:'rename',run:()=>setNaming({id:f.id,name:f.name})},{label:'Share folder',icon:'import',run:()=>actions.onShare(f.id)},{label:'Remove folder',icon:'trash',danger:true,run:()=>void removeFolder(f)}]}/>
         </div>)}
       {naming&&!naming.id&&<div className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} placeholder="Folder name" aria-label="New folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>}
     </div>}
+    {picked.size>0&&<div className="sp-pick-bar" role="toolbar" aria-label="Selected files"><strong>{picked.size} selected</strong><span>Drag any of them to a folder to move them together.</span>
+      <button onClick={()=>setPicked(new Set(shownFiles.map(f=>f.id)))}>Select all</button><button onClick={()=>setMovingPicked(true)}>Move to…</button><button onClick={()=>setPicked(new Set())}>Clear</button></div>}
     <div className="sp-file-list">
-      {inHere.map(f=><div key={f.id} className="sp-file" draggable onDragStart={e=>{e.dataTransfer.setData('application/x-mowr-file',f.id);e.dataTransfer.effectAllowed='move';}}>
-        {renaming===f.id?<div className="sp-file-open"><FileGlyph file={f}/><RenameField name={f.name} onSave={name=>{actions.onRenameFile(f,name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>:<button className="sp-file-open" onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f} size={36}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>}
+      {shownFiles.map(f=><div key={f.id} {...fileOrder.item(f.id)} className={`sp-file${picked.has(f.id)?' picked':''}`} draggable onDragStart={e=>{if(fileOrder.pressing()){e.preventDefault();return;}dragFiles(f,e);}}>
+        {renaming===f.id?<div className="sp-file-open"><FileGlyph file={f}/><RenameField name={f.name} onSave={name=>{actions.onRenameFile(f,name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>:<button className="sp-file-open" onClick={()=>picked.size?pick(f.id):actions.onOpenFile(f)}>{picked.size>0&&<input type="checkbox" className="sp-pick" aria-label={`Select ${f.name}`} checked={picked.has(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>pick(f.id)}/>}<FileGlyph file={f} size={36}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>}
         <button className="icon-button sp-rename" aria-label={`Rename ${f.name}`} aria-description="Rename" onClick={()=>setRenaming(f.id)}><PencilIcon size={15}/></button>
         <label className="sp-source" aria-description="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
-        <Menu label={`${f.name} options`} items={[{label:'Open',run:()=>actions.onOpenFile(f)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+        <Menu label={`${f.name} options`} handle={fileOrder.handle(f.id)} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
       </div>)}
       {!inHere.length&&!here.length&&!(space.drive&&!at)&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
         <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}
     </div>
-    {moving&&<div className="sp-move" role="dialog" aria-label={`Move ${moving.name}`}><strong>Move “{moving.name}” to</strong>{destinations(moving).map(d=><button key={d.id||'root'} onClick={()=>{move(moving.id,d.id);setMoving(null);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMoving(null)}>Cancel</button></div>}
+    {moving&&<div className="sp-move" role="dialog" aria-label={`Move ${moving.name}`}><strong>Move “{moving.name}” to</strong>{destinations(moving).map(d=><button key={d.id||'root'} onClick={()=>{move([moving.id],d.id);setMoving(null);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMoving(null)}>Cancel</button></div>}
+    {movingPicked&&picked.size>0&&<div className="sp-move" role="dialog" aria-label={`Move ${picked.size} files`}><strong>Move {picked.size} file{picked.size===1?'':'s'} to</strong>{[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==at).map(d=><button key={d.id||'root'} onClick={()=>{move([...picked],d.id);setPicked(new Set());setMovingPicked(false);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMovingPicked(false)}>Cancel</button></div>}
     {desktop&&<div className="sp-linked"><div className="sp-card-head"><span className="sp-eyebrow">{space.drive?'Linked folders':'On this PC'}</span><button onClick={()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{})}>Link a folder</button></div>
       {linked.map(l=><button key={l.id} className="sp-row" onClick={()=>actions.onBrowseLinked(l.id)}><Icon name="projects" size={16}/><span>{l.path.split(/[\\/]/).pop()}</span><small>{l.path}</small></button>)}
       {!linked.length&&<p className="sp-empty-line">Link a folder on your PC and Mowr can read and change its files, with your approval.</p>}</div>}

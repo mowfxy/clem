@@ -85,7 +85,8 @@ async function firstPage(file: Blob): Promise<{ pdf: Uint8Array<ArrayBuffer>; pi
   const { PDFDocument } = await import('pdf-lib');
   const source = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   const one = await PDFDocument.create();
-  one.addPage((await one.copyPages(source, [0]))[0]);
+  // The first two pages: a cover page alone often says only the course, the second what this file covers.
+  for (const page of await one.copyPages(source, source.getPageIndices().slice(0, 2))) one.addPage(page);
   const pdf = new Uint8Array(await one.save());
   if (pdf.length > 15_000_000) return undefined;
   const lib = await import('pdfjs-dist');
@@ -117,20 +118,21 @@ export async function readableName(file: File, place?: string) {
 }
 
 /**
- * The file's name at once from the rules (`name`), and `refine`: the AI's name, read from the first page, when the
- * file's own name does not already say what it is (worksheets, sheets, assignments, labs and project documents as
- * much as lectures). `refine` resolves to undefined when there is nothing better, or outside the desktop app.
+ * The file's name from the rules (`name`, the fallback), and `refine`: the AI's name when the file's own name does not
+ * already say what it is (worksheets, sheets, assignments, labs and project documents as much as lectures). A PDF is
+ * read as it is drawn, its first pages themselves, never from Mowr's text of it; Word and PowerPoint files from their
+ * text. `siblings`: the names of the other files where it goes, so the name follows the pattern they share ("… –
+ * Lecture 5"). `refine` resolves to undefined when there is nothing better, or outside the desktop app.
  */
-export async function namedFile(file: File, place?: string) {
+export async function namedFile(file: File, place?: string, siblings: string[] = []) {
   const source = await Promise.race([nameSource(file).catch(() => undefined), new Promise<undefined>((r) => setTimeout(r, 6000))]);
   const name = betterFileName(file.name, source, place);
   const refine = async () => {
     const pdf = /\.pdf$/i.test(file.name);
-    // A scanned PDF has no lines to read, but its first page can still be seen.
-    if (!desktop || !source || (!source.lines.length && !pdf) || saysEnough(file.name, place)) return undefined;
+    if (!desktop || saysEnough(file.name, place) || (!pdf && !source?.lines.length)) return undefined;
     const page = pdf ? await firstPage(file).catch(() => undefined) : undefined;
-    if (!source.lines.length && !page) return undefined;
-    const result = await desktop.invoke({ action: 'fileName', original: file.name.slice(0, 260), title: source.title?.slice(0, 300), lines: source.lines.slice(0, 40).map((l) => l.text.slice(0, 400)), place: place?.slice(0, 200), suggestion: name.slice(0, 260), ...(page ? { page } : {}) }).catch(() => undefined);
+    if (pdf && !page) return undefined;
+    const result = await desktop.invoke({ action: 'fileName', original: file.name.slice(0, 260), ...(pdf ? { lines: [] } : { title: source!.title?.slice(0, 300), lines: source!.lines.slice(0, 40).map((l) => l.text.slice(0, 400)) }), place: place?.slice(0, 200), suggestion: name.slice(0, 260), siblings: siblings.slice(0, 40).map((s) => s.slice(0, 160)), ...(page ? { page } : {}) }).catch(() => undefined);
     const better = typeof result?.name === 'string' ? result.name : undefined;
     return better && better !== name ? better : undefined;
   };

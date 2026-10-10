@@ -605,6 +605,10 @@ export class Codex {
   }
   /** Whether the model is one of this ChatGPT account's models (as last listed). */
   catalogHas(model:string){return !!this.catalog?.models.some((m:any)=>m.id===model);}
+  /** The thinking levels the model offers (as last listed). */
+  levels(model:string):string[]{return (this.catalog?.models.find((m:any)=>m.id===model)?.reasoningEfforts||[]).map((e:any)=>e.reasoningEffort);}
+  /** Lists the models once if they never were, so a side job can check its chosen one (never throws). */
+  async ensureCatalog(){if(!this.catalog)await this.models().catch(()=>null);}
   /** Lowest reasoning level the model offers, for internal requests. */
   lightest(model?:string){
     const efforts=this.catalog?.models.find((m:any)=>m.id===model)?.reasoningEfforts||[];
