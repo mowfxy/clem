@@ -5,6 +5,7 @@ import { desktop } from "./desktop/bridge";
 import {LocalProvider} from "./desktop/LocalProvider";
 import { Icon } from "./Icons";
 import { OpenAILogo, ClaudeLogo, GrokLogo } from "./BrandLogos";
+import { ModelSelector } from "./ModelSelector";
 import "./models-settings.css";
 type WindowUsage = {
   usedPercent?: number | null;
@@ -262,7 +263,7 @@ export function ModelsSettings({
           </div>}
         </div>
       </section>
-      {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>When an account is nearly out of usage (below 10% of its short window or 5% of its weekly one), or its plan refuses a request, Mowr moves to another connected account of the same service. A running answer finishes on its current account.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
+      {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>Moves to another account when one runs low.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
       {desktop && <HelperModelSetting models={models} locked={locked} />}
       {retryId&&<Reconnect id={retryId} onClose={()=>setRetryId(null)} onDone={()=>{setRetryId(null);void refresh(true);}}/>}
       {error && <p role="alert">{error}</p>}
@@ -279,60 +280,39 @@ export function ModelsSettings({
                 <span key={m.id}>{m.name}</span>
               ))}
           </div>
-          <p>Choose a model and thinking level in the chat composer.</p>
         </details>
       )}
-      <p className="models-footnote">
-        Usage covers the whole account, including other apps signed in to it. Each account keeps its own limits.
-      </p>
     </section>
   );
 }
 
 type HelperChoice = { model?: string; reasoning?: string };
-const SERVICE: Partial<Record<Model["provider"], string>> = { OpenAI: "ChatGPT", Anthropic: "Claude", xAI: "Grok" };
 /**
  * The model for Mowr's side jobs (naming uploaded files, memory notes, condensing a long chat), never the person's own
  * tasks. Automatic keeps them on the AI being chatted with, at its lightest; a chosen model that later cannot answer
  * (signed out, off the plan) falls back to automatic for that job (desktop/main.ts quickAsk).
  */
 function HelperModelSetting({ models, locked }: { models: Model[]; locked: boolean }) {
-  const [choice, setChoice] = useState<HelperChoice | null>(null), [saving, setSaving] = useState(false), [error, setError] = useState("");
+  const [choice, setChoice] = useState<HelperChoice | null>(null), [error, setError] = useState("");
   useEffect(() => { let live = true; desktop!.invoke({ action: "helperModel" }).then((c) => { if (live) setChoice((c as HelperChoice) || {}); }, () => { if (live) setChoice({}); }); return () => { live = false; }; }, []);
-  const connected = models.filter((m) => m.connected);
-  const picked = choice?.model ? models.find((m) => m.id === choice.model) : undefined;
-  const missing = !!choice?.model && !connected.some((m) => m.id === choice.model);
-  const levels = picked?.reasoningEfforts || [];
+  const missing = !!choice?.model && !models.some((m) => m.connected && m.id === choice.model);
   const save = async (next: HelperChoice) => {
     const before = choice;
-    setChoice(next); setSaving(true); setError("");
+    setChoice(next); setError("");
     try { setChoice((await desktop!.invoke({ action: "helperModel", set: next })) as HelperChoice); }
     catch (e) { setChoice(before); setError((e as Error).message || "Could not save the choice."); }
-    finally { setSaving(false); }
   };
-  const groups = (["OpenAI", "Anthropic", "xAI", "Google"] as const).map((p) => ({ p, list: connected.filter((m) => m.provider === p) })).filter((g) => g.list.length);
-  const off = !choice || saving || locked;
   return <div className="setting-row helper-model-setting">
     <div>
-      <h3>Model for background tasks</h3>
-      <p>Mowr's own side jobs, such as naming files you upload, noting what to remember and condensing a long chat. Your chats and tasks always use the model you pick in the composer. If the model chosen here can't answer, Mowr uses the automatic choice for that job.</p>
-      {missing && <p className="helper-model-note">The chosen model isn't available on your connected accounts right now, so the automatic choice is used.</p>}
+      <h3>Background tasks</h3>
+      <p>{missing ? "Your chosen model isn't available right now, so Automatic is used." : "Naming files, memory and condensing long chats."}</p>
       {error && <p role="alert">{error}</p>}
     </div>
-    <div className="helper-model-pickers">
-      <label><span>Model</span>
-        <select aria-label="Model for background tasks" value={choice?.model || ""} disabled={off} onChange={(e) => void save(e.target.value ? { model: e.target.value } : {})}>
-          <option value="">Automatic (your chat's AI, lightest)</option>
-          {missing && <option value={choice!.model}>{picked?.name || choice!.model} (not available)</option>}
-          {groups.map((g) => <optgroup key={g.p} label={SERVICE[g.p] || g.p}>{g.list.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</optgroup>)}
-        </select>
-      </label>
-      <label><span>Thinking</span>
-        <select aria-label="Thinking level for background tasks" value={choice?.reasoning || ""} disabled={off || !picked || !levels.length} onChange={(e) => void save({ model: choice!.model, ...(e.target.value ? { reasoning: e.target.value } : {}) })}>
-          <option value="">{!choice?.model ? "Lightest" : !levels.length ? "Not adjustable" : `Default${picked?.defaultReasoningEffort ? ` (${levels.find((l) => l.reasoningEffort === picked.defaultReasoningEffort)?.description || picked.defaultReasoningEffort})` : ""}`}</option>
-          {levels.map((l) => <option key={l.reasoningEffort} value={l.reasoningEffort}>{l.description || l.reasoningEffort}</option>)}
-        </select>
-      </label>
+    {/* The composer's own picker, so choosing here looks and works the same; Automatic keeps the chat's AI, at its lightest. */}
+    <div className="helper-model-picker">
+      <ModelSelector models={models} value={missing ? "" : choice?.model || ""} auto="Automatic" label="Model for background tasks" disabled={!choice || locked}
+        onChange={(id) => void save(id ? { model: id } : {})}
+        effort={choice?.reasoning} onEffort={choice?.model ? (level) => void save({ model: choice.model, reasoning: level }) : undefined} />
     </div>
   </div>;
 }

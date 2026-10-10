@@ -148,9 +148,9 @@ test("PDFs are read as drawn by every CLI: no PDF text pasted in, and Codex is t
   assert.match(index, /\[Source: notes\.txt; complete file\]/);
   const state: any = { files: [{ id: "p", name: "Lab.pdf", size: 10, type: "application/pdf", created: 1, spaceId: null }], spaces: [], chats: [{ id: "c", messages: [{ role: "user", attachments: ["p"] }] }] };
   const library = [{ name: "Lab.pdf", text: "[Lab.pdf, page 1]\ntext" }];
-  const codex = mirrorFor({ state, scope: "workspace", chat: "c", blob: (id) => id, library }).map((f) => f.path);
-  const claude = mirrorFor({ state, scope: "workspace", chat: "c", blob: (id) => id, library, pdfText: false }).map((f) => f.path);
-  assert.ok(codex.includes("_text/Lab.pdf.txt") && !claude.includes("_text/Lab.pdf.txt"));
+  const codex = mirrorFor({ state, scope: "workspace", chat: "c", lane: "l", blob: (id) => id, library }).files.map((f) => f.path);
+  const claude = mirrorFor({ state, scope: "workspace", chat: "c", lane: "l", blob: (id) => id, library, pdfText: false }).files.map((f) => f.path);
+  assert.ok(codex.includes("_text/Files/Lab.pdf.txt") && !claude.includes("_text/Files/Lab.pdf.txt"));
   assert.match(workspaceNote("C:/w", codex, [], { nativePdf: false }), /no PDF viewer of your own[^]*look/);
   assert.match(workspaceNote("C:/w", claude, []), /PDFs and pictures open natively, every page as drawn/);
   assert.doesNotMatch(workspaceNote("C:/w", claude, []), /no PDF viewer/);

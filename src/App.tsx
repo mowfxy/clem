@@ -1,6 +1,7 @@
 import {bootDone} from "./boot";
 import {ModelsSettings} from "./ModelsSettings";
 import {confirmDialog} from './dialogs';
+import {MOWR_FILE} from '../core/file-tools';
 import {relevantSkills,skillText,documentGuidance,builtinSkills} from '../core/skills';
 import {readCommand,expandCommand,leadingCommand} from '../core/commands';
 import type {AccountsData} from "./ModelsSettings";
@@ -1095,6 +1096,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       const finder: Finder = { files: () => stateRef.current.files, spaces: () => stateRef.current.spaces, text: (file) => cachedFileText(file, ownerRef.current, controller.signal), opened: [], found: new Map(), signal: controller.signal };
       // The chat's files first, then the rest of its subject or project (the AI sees them all in its working folder), then Drive.
       const lookable = () => { const chatFiles = sourceFiles(next).concat(stateRef.current.files.filter((f) => user.context?.includes(f.id)), finder.opened); const here = chatFiles.concat(activeSpace ? stateRef.current.files.filter((f) => f.spaceId === activeSpace.id && !chatFiles.some((c) => c.id === f.id)) : []); return here.concat(fromDrive.filter((d) => !here.some((f) => f.name.toLowerCase() === d.name.toLowerCase()))); };
+      // A file the AI named by its path in its working folder (any subject or project): the desktop app sends its id.
+      const byId = (name: unknown) => typeof name === "string" && name.startsWith(MOWR_FILE) ? stateRef.current.files.find((f) => f.id === name.slice(MOWR_FILE.length) && !f.remote) : undefined;
       // Drive PDFs found for this question (the linked folder's best matches, a Drive search) show the pages that match it,
       // as the subject's own PDFs do, within what this request has left (pdfView's `after`).
       const driveFound = isVisual || cowork ? [] : fromDrive.filter((f) => f.type === "application/pdf" && !pdfs.handled.includes(f.id));
@@ -1156,7 +1159,7 @@ In this subject the learner keeps missing these questions in review; connect to 
             ),
           }));
         },
-        "chat", undefined, images, { chat: id, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => pageImages(lookable(), name, pages), pdfTask: isVisual ? undefined : (op, args) => op === "find" || op === "attach" ? import("./files/finder").then((m) => m.findTask(finder, op, args)) : import("./desktop/pdf-tasks").then((m) => m.pdfTask(lookable(), op, args)) },
+        "chat", undefined, images, { chat: id, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => { const at = byId(name); return at ? pageImages([at], at.name, pages) : pageImages(lookable(), name, pages); }, pdfTask: isVisual ? undefined : (op, args) => { if (op === "find" || op === "attach") return import("./files/finder").then((m) => m.findTask(finder, op, args)); const at = byId(args?.file); return import("./desktop/pdf-tasks").then((m) => at ? m.pdfTask([at], op, { ...args, file: at.name }) : m.pdfTask(lookable(), op, args)); } },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
       // A reply that used tools: the notes written on the way fold under "Task completed in …" and the answer stands below it.
@@ -1982,7 +1985,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                     setAttach(false);
                   }}
                 >
-                  <Icon name="files" />
                   Upload files
                 </button>
                 <button
@@ -1992,10 +1994,9 @@ In this subject the learner keeps missing these questions in review; connect to 
                     setAttach(false);
                   }}
                 >
-                  <DriveLogo size={18} />
                   Add from Drive
                 </button>
-                {desktop&&<button type="button" onClick={()=>{setAttach(false);void desktop!.invoke({action:"captureScreen"}).catch(e=>setToast(cleanError(e)));}}><Icon name="capture"/>Capture screen<span className="popover-hint">Ctrl Shift Space</span></button>}
+                {desktop&&<button type="button" onClick={()=>{setAttach(false);void desktop!.invoke({action:"captureScreen"}).catch(e=>setToast(cleanError(e)));}}>Capture screen<span className="popover-hint">Ctrl Shift Space</span></button>}
                 <button
                   type="button"
                   onClick={() => {
@@ -2003,7 +2004,6 @@ In this subject the learner keeps missing these questions in review; connect to 
                     setAttach(false);
                   }}
                 >
-                  <Icon name="attach" />
                   Choose a saved file
                 </button>
               </div>

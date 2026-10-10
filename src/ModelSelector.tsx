@@ -78,7 +78,14 @@ function usePopover(trigger: RefObject<HTMLButtonElement | null>, open: boolean,
     place();
     const observer = new ResizeObserver(place); if (panel.current) observer.observe(panel.current);
     const outside = (e: PointerEvent) => { if (!panel.current?.contains(e.target as Node) && !trigger.current?.contains(e.target as Node)) close(); };
-    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); trigger.current?.focus(); } };
+    // Escape closes only this menu: inside a modal dialog (Settings) the dialog's own "cancel" that follows is swallowed.
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault(); e.stopPropagation();
+      const dialog = trigger.current?.closest("dialog");
+      if (dialog) { const swallow = (c: Event) => { c.preventDefault(); c.stopImmediatePropagation(); }; dialog.addEventListener("cancel", swallow, { capture: true, once: true }); setTimeout(() => dialog.removeEventListener("cancel", swallow, { capture: true }), 200); }
+      close(); trigger.current?.focus();
+    };
     addEventListener("resize", place); addEventListener("scroll", place, true);
     document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape, true);
     return () => { observer.disconnect(); removeEventListener("resize", place); removeEventListener("scroll", place, true); document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape, true); };
@@ -86,14 +93,17 @@ function usePopover(trigger: RefObject<HTMLButtonElement | null>, open: boolean,
   return { panel, position };
 }
 
-/** Two small controls: which model, and how hard it thinks. */
-export function ModelSelector({ models, value, onChange, onConnect, effort, onEffort, disabled = false }: {
-  models: Model[]; value: string; onChange: (id: string) => void; onConnect: () => void;
-  effort?: string; onEffort?: (effort: string) => void; disabled?: boolean;
+/** Two small controls: which model, and how hard it thinks. `auto`: the name of a first choice that picks no model
+ *  (value ""), such as Settings' automatic model for background tasks. */
+export function ModelSelector({ models, value, onChange, onConnect, effort, onEffort, disabled = false, auto, label = "Choose model" }: {
+  models: Model[]; value: string; onChange: (id: string) => void; onConnect?: () => void;
+  effort?: string; onEffort?: (effort: string) => void; disabled?: boolean; auto?: string; label?: string;
 }) {
   const [open, setOpen] = useState<"model" | "effort" | null>(null);
   const modelButton = useRef<HTMLButtonElement>(null), effortButton = useRef<HTMLButtonElement>(null);
   const close = () => setOpen(null);
+  // Inside a modal dialog (Settings) the menu goes in the dialog: anywhere else it would sit under the dialog's top layer.
+  const host = () => modelButton.current?.closest("dialog") || document.body;
   const modelPop = usePopover(modelButton, open === "model", close), effortPop = usePopover(effortButton, open === "effort", close);
   const available = models.filter((m) => m.connected), selected = available.find((m) => m.id === value);
   const levels = selected?.reasoningEfforts || [];
@@ -111,9 +121,9 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
     rows[key === "Home" ? 0 : key === "End" ? rows.length - 1 : current < 0 ? 0 : (current + (key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus();
   };
   return <div className="model-selector unified-model-picker">
-    <button ref={modelButton} type="button" className="picker-trigger" disabled={disabled} aria-label="Choose model" aria-haspopup="menu" aria-expanded={open === "model"} aria-description={selected?.name || "Choose a model"} onClick={() => setOpen(open === "model" ? null : "model")}>
+    <button ref={modelButton} type="button" className="picker-trigger" disabled={disabled} aria-label={label} aria-haspopup="menu" aria-expanded={open === "model"} aria-description={selected?.name || (auto && !value ? auto : "Choose a model")} onClick={() => setOpen(open === "model" ? null : "model")}>
       {selected && <ProviderMark provider={selected.provider} />}
-      <span className="picker-trigger-name">{selected?.name || "Choose model"}</span>
+      <span className="picker-trigger-name">{selected?.name || (auto && !value ? auto : "Choose model")}</span>
       <Icon name="down" size={12} />
     </button>
     {level && onEffort && levels.length > 0 && <button ref={effortButton} type="button" className="picker-trigger picker-trigger-effort" data-level={level} data-provider={selected?.provider} disabled={disabled} aria-label="Thinking level" aria-haspopup="dialog" aria-expanded={open === "effort"} aria-description={effortName(level) + " thinking"} onClick={() => setOpen(open === "effort" ? null : "effort")}>
@@ -124,6 +134,10 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
     {open === "model" && createPortal(<div ref={modelPop.panel} className="unified-picker-panel model-pop" role="menu" aria-label="Select model" style={modelPop.position} onKeyDown={(e) => { if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) { e.preventDefault(); moveRow(e.key); } }}>
       {/* The models scroll in their own list, so a long one never runs off the window; "Manage connections" stays in view. */}
       <div className="picker-model-list">
+      {auto && <button className="picker-model-row picker-model-auto" type="button" role="menuitemradio" aria-checked={!value} aria-label={auto} onClick={() => { onChange(""); close(); modelButton.current?.focus(); }}>
+        <span className="picker-model-name">{auto}</span>
+        {!value && <Icon name="check" size={13} />}
+      </button>}
       {available.map((m, i) => <div key={m.id}>
         {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "xAI" ? "Grok" : m.provider}</div>}
         <button className="picker-model-row" type="button" role="menuitemradio" aria-checked={value === m.id} aria-label={m.name} onClick={() => { onChange(m.id); close(); modelButton.current?.focus(); }}>
@@ -134,10 +148,10 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
       </div>)}
       {!available.length && <p className="picker-empty">Connect ChatGPT, Claude or Grok to see your models.</p>}
       </div>
-      <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>
-    </div>, document.body)}
+      {onConnect && <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>}
+    </div>, host())}
     {open === "effort" && onEffort && level && createPortal(<div ref={effortPop.panel} className="unified-picker-panel effort-pop" data-provider={selected?.provider} role="dialog" aria-label="Thinking level" style={effortPop.position}>
       <EffortSlider levels={levels.map((l) => l.reasoningEffort)} level={level} onChange={onEffort} />
-    </div>, document.body)}
+    </div>, host())}
   </div>;
 }

@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, memo, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { VisualSaveContext } from './visual-save';
 import { LinkChip, YouTubeEmbed, videosIn } from './Links';
 import { DriveAudio, DriveCard, DriveChip, DriveVideo } from './DriveCards';
@@ -168,7 +168,7 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
         // A paragraph that mentions a YouTube video is followed by the video, ready to play.
         p: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <>{<p>{children}</p>}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</>; },
         li: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <li>{children}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</li>; },
-        table: ({ children }) => <div className="table-wrap"><table>{children}</table></div>,
+        table: ({ children }) => <TableWrap>{children}</TableWrap>,
         pre: ({ children }) => {
           const child = (Array.isArray(children) ? children[0] : children) as { props?: { className?: string; children?: ReactNode } } | undefined;
           const lang = /language-([\w-]+)/.exec(child?.props?.className || '')?.[1] || '';
@@ -195,3 +195,20 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
 }
 // Handlers read live state through refs in the workspace, so only content changes need a re-render.
 export const MessageBody = memo(MessageBodyImpl, (a, b) => a.content === b.content && a.streaming === b.streaming && a.handlers?.edits === b.handlers?.edits && a.handlers?.scope === b.handlers?.scope);
+
+/** A table in an answer: as wide as the text column, or wider when its columns need it and the window has room (up
+ *  to the workspace's width less its margins); wider still, it scrolls sideways inside its frame (chat.css). */
+function TableWrap({ children }: { children: ReactNode }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = wrap.current, area = el?.closest<HTMLElement>('.workspace');
+    if (!el) return;
+    const room = () => el.style.setProperty('--room', Math.max(0, (area || document.documentElement).clientWidth - 72) + 'px');
+    room();
+    if (!area) return;
+    const watch = new ResizeObserver(room);
+    watch.observe(area);
+    return () => watch.disconnect();
+  }, []);
+  return <div ref={wrap} className="table-wrap"><table>{children}</table></div>;
+}
