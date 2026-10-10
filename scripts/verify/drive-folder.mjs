@@ -219,12 +219,67 @@ try {
   await saved(page);
   const localFile = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).files.find((x) => x.name === "Lecture 5.txt"));
   assert.ok(localFile && !localFile.driveId && !localFile.driveFolder && !localFile.made, "kept on this PC only");
-  await local.getByRole("button", { name: "On this PC options" }).click();
-  await page.getByRole("menuitem", { name: "New folder" }).click();
+  // A folder button beside Add files makes a folder on this PC (no menu to open first).
+  await local.getByRole("button", { name: "New folder", exact: true }).click();
   await page.getByLabel("New folder name").fill("Worksheets");
   await page.getByLabel("New folder name").press("Enter");
   await page.locator(".sp-files > .sp-folders .sp-folder", { hasText: "Worksheets" }).waitFor();
   await page.screenshot({ path: "artifacts/drive-on-this-pc.png" });
+  // Reordering by a card's ☰ handle: press and drag places it among its neighbours; a plain click still opens the menu.
+  await local.getByRole("button", { name: "New folder", exact: true }).click();
+  await page.getByLabel("New folder name").fill("Archive");
+  await page.getByLabel("New folder name").press("Enter");
+  const pcFolders = page.locator(".sp-files > .sp-folders .sp-folder");
+  const names = async () => (await pcFolders.locator("strong").allInnerTexts());
+  await pcFolders.filter({ hasText: "Archive" }).waitFor();
+  const before = await names();
+  assert.ok(before.indexOf("Archive") < before.indexOf("Worksheets"), "by name until arranged");
+  const movesBefore = (await calls("driveMove")).length, uploadsNow = (await calls("driveUpload")).length;
+  const handle = pcFolders.filter({ hasText: "Worksheets" }).getByRole("button", { name: "Worksheets options" });
+  await pcFolders.filter({ hasText: "Worksheets" }).scrollIntoViewIfNeeded();
+  const to = await pcFolders.filter({ hasText: "Archive" }).boundingBox();
+  const from = await handle.boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + (to.x + 40 - from.x) * i / 8, from.y + (to.y + to.height / 2 - from.y) * i / 8);
+  await page.mouse.up();
+  await page.waitForFunction(() => { const n = [...document.querySelectorAll(".sp-files > .sp-folders .sp-folder strong")].map((x) => x.textContent); return n.indexOf("Worksheets") < n.indexOf("Archive"); }, null, { timeout: 3000 });
+  assert.equal(await page.getByRole("menuitem").count(), 0, "a drag does not open the menu");
+  assert.equal((await calls("driveMove")).length, movesBefore, "reordering never moves anything in Drive");
+  assert.equal((await calls("driveUpload")).length, uploadsNow);
+  await saved(page);
+  const ranks = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).spaces.flatMap((x) => x.folders || []).filter((f) => ["Worksheets", "Archive"].includes(f.name)).map((f) => [f.name, f.rank, f.parentId]));
+  assert.deepEqual(ranks.sort().map((r) => r[2]), [null, null], "both stay where they were");
+  assert.ok(ranks.find((r) => r[0] === "Worksheets")[1] < ranks.find((r) => r[0] === "Archive")[1], "the order is kept");
+  // A click on the same ☰ opens its menu: words only, no icons on the left.
+  await handle.click();
+  await page.getByRole("menuitem", { name: "Rename" }).waitFor();
+  assert.equal(await page.locator(".sp-menu-list svg").count(), 0, "menu items carry no icons");
+  await page.screenshot({ path: "artifacts/folder-menu.png" });
+  await page.keyboard.press("Escape");
+  await page.mouse.click(5, 5);
+
+  // Select: picked files drag together onto a folder, and move together.
+  await page.getByRole("button", { name: "Lecture 5.txt options" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).waitFor();
+  assert.equal(await page.getByRole("menuitem", { name: "Delete" }).evaluate((el) => getComputedStyle(el).color), "rgb(255, 90, 78)");
+  await page.locator(".sp-menu-list").last().screenshot({ path: "artifacts/file-menu.png" });
+  await page.keyboard.press("Escape");
+  await page.mouse.click(5, 5);
+  const pcFile = (name) => page.locator(".sp-files > .sp-file-list .sp-file", { hasText: name });
+  for (const name of ["Biology 101 syllabus.txt", "Lecture 5.txt"]) {
+    await page.getByRole("button", { name: `${name} options` }).click();
+    await page.getByRole("menuitem", { name: "Select" }).click();
+  }
+  await page.getByText("2 selected", { exact: true }).waitFor();
+  await page.screenshot({ path: "artifacts/on-this-pc-selected.png" });
+  await pcFile("Lecture 5.txt").dragTo(pcFolders.filter({ hasText: "Archive" }));
+  await page.waitForFunction(() => !document.querySelector(".sp-files > .sp-file-list")?.textContent?.includes("Lecture 5.txt") && !document.querySelector(".sp-files > .sp-file-list")?.textContent?.includes("Biology 101 syllabus.txt"), null, { timeout: 3000 });
+  assert.equal(await page.getByText("2 selected", { exact: true }).count(), 0, "the pick clears after the move");
+  await saved(page);
+  const moved = await page.evaluate(async () => { const st = await (await import("/src/store.ts")).loadState(); const archive = st.spaces.flatMap((x) => x.folders || []).find((f) => f.name === "Archive"); return st.files.filter((f) => f.folderId === archive.id).map((f) => f.name).sort(); });
+  assert.deepEqual(moved, ["Biology 101 syllabus.txt", "Lecture 5.txt"]);
+  assert.equal((await calls("driveUpload")).length, uploadsNow, "moving on this PC sends nothing to Drive");
 
   // A PDF Mowr makes lands under On this PC, even with the old "Save Mowr's files" setting on: nothing goes to Drive by itself.
   const uploadsMade = (await calls("driveUpload")).length;

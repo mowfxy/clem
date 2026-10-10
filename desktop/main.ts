@@ -453,12 +453,31 @@ void app.whenReady().then(async () => {
     screen.answer(answer);
     emit({ id, type: "done" });
   }
+  /** The model the person chose for Mowr's side jobs in Settings → Models (none: automatic). */
+  const helperKey = (owner: string) => "helper-model-" + owner;
+  type HelperChoice = { model?: string; reasoning?: string };
   /**
-   * A short internal request (memory notes, file names) on the same AI the person is using, at its lightest setting.
+   * A short internal request, a side job rather than the person's task (memory notes, file names, condensing a long
+   * chat): on the model chosen for side jobs in Settings → Models, at its chosen thinking level. Automatic (or when the
+   * chosen one cannot answer: signed out, no longer on the plan, a level it lacks) it runs as before, on the AI the
+   * person is chatting with at its lightest setting, so a side job never fails because of the choice.
    * `pdf`: a PDF it is about, read as each AI reads one (as in chat): Claude takes the file, Grok opens it with
    * read_file, ChatGPT gets `picture` (the page drawn) instead.
    */
-  async function quickAsk(owner: string, model: string | undefined, prompt: string, { pdf, picture }: { pdf?: { name: string; data: Uint8Array }; picture?: string } = {}) {
+  async function quickAsk(owner: string, model: string | undefined, prompt: string, about: { pdf?: { name: string; data: Uint8Array }; picture?: string } = {}) {
+    const chosen = await vault.read<HelperChoice>(helperKey(owner), {}).catch((): HelperChoice => ({}));
+    if (chosen.model) {
+      try {
+        return await askOn(owner, chosen.model, prompt, about, { exact: true, reasoning: chosen.reasoning });
+      } catch (error) {
+        console.warn("[side job] the chosen model could not answer, so the automatic one does:", (error as Error).message);
+      }
+    }
+    return askOn(owner, model, prompt, about);
+  }
+  /** One side job on `model`. `exact`: that model at `reasoning` (its default when unset), or an error; otherwise the
+   *  lightest model and level of that AI. */
+  async function askOn(owner: string, model: string | undefined, prompt: string, { pdf, picture }: { pdf?: { name: string; data: Uint8Array }; picture?: string }, { exact = false, reasoning }: { exact?: boolean; reasoning?: string } = {}) {
     if (model?.startsWith(GROK_PREFIX) || model?.startsWith("claude:")) {
       let text = "";
       const collect = (event: any) => { if (event.type === "delta") text += event.text || ""; };
@@ -466,19 +485,30 @@ void app.whenReady().then(async () => {
       if (model.startsWith("claude:")) {
         const claude = await claudeFor(owner);
         // Haiku when the account's plan lists it; otherwise the model the person chats with (run refuses unlisted models).
-        const light = claude.listed.some((m) => m.id === "claude:haiku") ? "claude:haiku" : model;
-        await claude.run(id, prompt, light, undefined, collect, [], undefined, undefined, pdf ? { pdfs: [{ name: pdf.name, data: Buffer.from(pdf.data).toString("base64") }] } : {});
+        const light = exact ? model : claude.listed.some((m) => m.id === "claude:haiku") ? "claude:haiku" : model;
+        await claude.run(id, prompt, light, exact ? reasoning : undefined, collect, [], undefined, undefined, pdf ? { pdfs: [{ name: pdf.name, data: Buffer.from(pdf.data).toString("base64") }] } : {});
       } else {
         const grok = await grokFor(owner);
-        try { await grok.run(id, pdf ? `${prompt}\n\nThe PDF is saved for you as ${grokPdfPath(id, 0, pdf.name)}: open it with read_file first.` : prompt, model, collect, [], undefined, undefined, pdf ? { pdfs: [pdf] } : {}); }
+        try { await grok.run(id, pdf ? `${prompt}\n\nThe PDF is saved for you as ${grokPdfPath(id, 0, pdf.name)}: open it with read_file first.` : prompt, model, collect, [], undefined, exact ? reasoning : undefined, pdf ? { pdfs: [pdf] } : {}); }
         finally { if (pdf) await grok.dropPdfs(id); }
       }
+      if (exact && !text.trim()) throw Error("No reply.");
       return text;
     }
-    if (model && !codex.catalogHas(model)) model = undefined;
+    // ChatGPT: the chosen model must be one this account offers, at a level it has.
+    const provider = codex;
+    if (exact) {
+      await provider.ensureCatalog();
+      if (!model || !provider.catalogHas(model)) throw Error("That ChatGPT model is not available on this account.");
+      if (reasoning && !provider.levels(model).includes(reasoning)) throw Error("That thinking level is not available for this model.");
+    } else if (model && !provider.catalogHas(model)) model = undefined;
     let path: string | undefined;
     if (picture) { const folder = join(local, "scratch", "images"); await mkdir(folder, { recursive: true }); path = join(folder, randomUUID() + ".jpg"); await writeFile(path, Buffer.from(picture, "base64")); }
-    try { return await codex.quick(prompt, { model, reasoning: codex.lightest(model) }, 45000, path ? [path] : []); }
+    try {
+      const text = await provider.quick(prompt, { model, reasoning: exact && reasoning ? reasoning : provider.lightest(model) }, 45000, path ? [path] : []);
+      if (exact && !text.trim()) throw Error("No reply.");
+      return text;
+    }
     finally { if (path) await unlink(path).catch(() => {}); }
   }
   /**
@@ -993,7 +1023,8 @@ void app.whenReady().then(async () => {
       const chosen = await vault.read<{ model?: string }>(lastModelKey(user.id), {});
       const reply = await Promise.race([
         quickAsk(user.id, chosen.model, namingPrompt({ ...request, page: !!request.page }), request.page ? { pdf: { name: request.original.replace(/\.[^.\s]{1,6}$/, "") + " (first page).pdf", data: request.page.pdf }, picture: request.page.picture } : {}).catch(() => ""),
-        new Promise<string>((done) => setTimeout(() => done(""), 25000)),
+        // Reading the pages and naming the file to fit its neighbours can take a slower chosen model a while.
+        new Promise<string>((done) => setTimeout(() => done(""), 60000)),
       ]);
       return { name: cleanAiName(reply, ext, request.place) || request.suggestion };
     }
@@ -1031,6 +1062,11 @@ void app.whenReady().then(async () => {
       return listed;
     }
     if (request.action === "providerAutoSwitch") return providerAccounts.setAutoSwitch(user.id,request.enabled);
+    if (request.action === "helperModel") {
+      // Choosing nothing goes back to automatic; a level only means something with a model.
+      if (request.set) await vault.write(helperKey(user.id), request.set.model ? { model: request.set.model, ...(request.set.reasoning ? { reasoning: request.set.reasoning } : {}) } : {});
+      return vault.read<HelperChoice>(helperKey(user.id), {});
+    }
     if (request.action === "claudeStatus") {
       const {id,provider}=await claudes.selected(user.id);
       const status=await provider.status(true);

@@ -28,6 +28,8 @@ try {
           return { skills: r.skills, notes: r.notes };
         if (r.action === "memoryList") return { enabled: true, records: [] };
         if (r.action === "folders") return [];
+        // The AI's names for uploaded files, from their contents (slowly, as a real model answers).
+        if (r.action === "fileName") return new Promise((done) => setTimeout(() => done({ name: "Named " + r.original.replace(/\.pdf$/, "") }), 300));
         if (r.action === "chat") {
           setTimeout(() => {
             for (const fn of listeners) {
@@ -169,6 +171,29 @@ try {
     "Project file upload, local persistence, scoped source retrieval and cloud payload exclusion passed.",
   );
   await page.screenshot({ path: "artifacts/local-project-source.png" });
+  // Files named from their contents: one notice for the whole upload, never one per file.
+  const toasts = [];
+  await page.exposeFunction("noteToast", (t) => toasts.push(t));
+  await page.evaluate(() => new MutationObserver(() => { for (const el of document.querySelectorAll(".toast")) if (el.dataset.seen !== el.textContent) { el.dataset.seen = el.textContent; window.noteToast(el.textContent); } }).observe(document.body, { childList: true, subtree: true, characterData: true }));
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const pdfBytes = async (name) => { const doc = await PDFDocument.create(); const font = await doc.embedFont(StandardFonts.Helvetica); const pg = doc.addPage([400, 300]); pg.drawText("Nodal Analysis " + name, { x: 40, y: 250, size: 18, font }); pg.drawText("Kirchhoff's current law: currents into a node sum to zero.", { x: 40, y: 220, size: 10, font }); return Buffer.from(await doc.save()); };
+  const upload = async (files) => page.locator("input[type=file][multiple]").first().setInputFiles(await Promise.all(files.map(async (name) => ({ name, mimeType: "application/pdf", buffer: await pdfBytes(name) }))));
+  await upload(["scan1.pdf", "scan2.pdf"]);
+  await page.getByText("Renamed 2 files based on their content.", { exact: true }).waitFor({ timeout: 15000 }).catch(async (e) => { console.log("toasts", toasts, await page.evaluate(() => JSON.stringify({ names: window.requests.filter((r) => r.action === "fileName").map((r) => r.original), toast: document.querySelector(".toast")?.textContent }))); throw e; });
+  await page.waitForTimeout(800);
+  assert.deepEqual(toasts.filter((t) => /Renamed|Named|Saved as/.test(t)), ["Renamed 2 files based on their content."]);
+  await page.getByRole("button", { name: "Dismiss" }).first().click().catch(() => {});
+  // Every name the new file shows on the way: only the one it came with, then its final one.
+  await page.evaluate(() => { window.shownNames = new Set(); const look = () => { for (const el of document.querySelectorAll("button, strong, span")) { const t = el.textContent || ""; if (/scan3/i.test(t) && t.length < 60) window.shownNames.add(t.trim()); } }; new MutationObserver(look).observe(document.body, { childList: true, subtree: true, characterData: true }); });
+  await upload(["scan3.pdf"]);
+  await page.getByText("Renamed to “Named scan3” based on its content.", { exact: true }).waitFor({ timeout: 15000 });
+  const naming = await page.evaluate(() => { const r = window.requests.filter((x) => x.action === "fileName").at(-1); return { lines: r.lines.length, title: r.title, page: !!r.page?.pdf, siblings: r.siblings, shown: [...window.shownNames] }; });
+  assert.equal(naming.lines, 0, "a PDF is named from its pages, not from extracted text");
+  assert.equal(naming.title, undefined);
+  assert.ok(naming.page, "its first pages go to the AI");
+  assert.ok(naming.siblings.includes("Named scan1") && naming.siblings.includes("Named scan2"), "it sees the names beside it");
+  assert.deepEqual(naming.shown.filter((t) => !/^scan3\.pdf$|^Named scan3$|Renamed to/.test(t)), [], "never a rough name first: " + naming.shown.join(" | "));
+  console.log("Uploaded files named from their contents: one notice per upload.");
 } finally {
   await browser.close();
   await server.close();

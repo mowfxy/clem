@@ -4,7 +4,8 @@ export type Subtask = { reasoning?:string; id: string; title: string; instructio
 export type Plan = { id: string; goal: string; lead: string; tasks: Subtask[]; approved: boolean; revision: number; kind?: 'long'|'skill'; origin?: 'starter'|'lead'|'skill'; skillId?:string };
 export type Skill = { id: string; name: string; description: string; category: string; icon: string; steps: string[]; builtin: boolean };
 /** A folder made inside Mowr to organise a space's files; `parentId` nests it. */
-export type SpaceFolder = { id: string; name: string; parentId: string | null; created: number };
+/** `rank`: where the person placed it among its neighbours by dragging its handle (none: the usual order). */
+export type SpaceFolder = { id: string; name: string; parentId: string | null; created: number; rank?: number };
 export type Space = { id: string; name: string; kind: 'project' | 'subject'; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[]; drive?: SpaceDrive; /** Sidebar mark the model picked for this name (see src/space/SpaceMark.tsx); asked again once the name changes. */ mark?: { key: string; for: string } };
 /** A Google Drive folder linked to a space. It is read live from Drive whenever it is shown or asked about; nothing is
  *  downloaded. `seen` remembers each file's last modified time so new and changed files can be pointed out; `fresh`
@@ -20,7 +21,7 @@ export type Chat = { /** A temporary chat: never saved, never remembered; it dis
 /** An earlier version of an edited file, kept on this PC so the edit can be undone. */
 export type FileVersion = { blob: string; at: number; summary: string; size: number };
 /** `made` marks PDFs Mowr generated; their source is kept beside them so edits re-typeset the page. */
-export type StoredFile = { remote?:boolean; id: string; name: string; size: number; type: string; created: number; spaceId: string | null; folderId?: string | null; made?: boolean; versions?: FileVersion[]; updated?: number; /** Its copy in the Google Drive folder linked to its subject or project, kept in step after approved edits. */ driveId?: string;
+export type StoredFile = { remote?:boolean; /** Where the person placed it in its folder by dragging its handle (none: newest first). */ rank?: number; id: string; name: string; size: number; type: string; created: number; spaceId: string | null; folderId?: string | null; made?: boolean; versions?: FileVersion[]; updated?: number; /** Its copy in the Google Drive folder linked to its subject or project, kept in step after approved edits. */ driveId?: string;
   /** The Drive folder it is being saved into (a file dropped into Drive shows there while it uploads). */ driveFolder?: string;
   /** Drive's modified time of the copy this file matches, so a change made in Drive is fetched again. */ driveModified?: string;
   /** Changed here since its Drive copy was saved; goes to Drive once the change is approved. */ drivePending?: boolean };

@@ -48,6 +48,12 @@ test('the AI is asked only about names that do not already say what the file is'
   const prompt = namingPrompt({ original: 'sheet4.pdf', lines: ['Worksheet 4', 'Thevenin and Norton'], place: 'Electric Circuits', suggestion: 'Thevenin and Norton – Sheet 4' });
   assert.match(prompt, /Electric Circuits/);
   assert.match(prompt, /Worksheet 4/);
+  // A PDF is named from its pages themselves, with the names beside it so the new one fits their pattern.
+  const pdf = namingPrompt({ original: 'scan_0042.pdf', lines: [], place: 'Electric Circuits', suggestion: 'Scan 0042', page: true, siblings: ['Nodal Analysis – Lecture 3.pdf', 'Mesh Analysis – Lecture 4.pdf'] });
+  assert.match(pdf, /first pages are attached/);
+  assert.match(pdf, /same naming pattern|share one naming pattern/);
+  assert.match(pdf, /"otherFilesHere":\["Nodal Analysis – Lecture 3\.pdf","Mesh Analysis – Lecture 4\.pdf"\]/);
+  assert.doesNotMatch(pdf, /firstPage/);
 });
 
 test("the AI's name is cleaned, keeps the extension and never just repeats the subject", () => {

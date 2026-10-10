@@ -548,11 +548,29 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const syncOf=(id:string):DriveSyncState['state']|'pending'|undefined=>{const f=state.files.find(x=>x.id===id);const now=driveSync[id]?.state;return now==='uploading'?now:f?.drivePending?'pending':now;};
   /** A file changed here (by Mowr or in the file panel): if it lives in Drive, the change waits for approval before it goes there. */
   const changedFile=(next:StoredFile)=>patch(s=>({...s,files:s.files.map(f=>f.id!==next.id?f:{...next,driveId:f.driveId,driveFolder:f.driveFolder,driveModified:f.driveModified,drivePending:f.drivePending||(!!f.driveId&&next.updated!==f.updated)})}));
+  /** Files being added to Drive from this PC, and the ones renamed from their content so far (one notice per batch). */
+  const driveNaming=useRef({pending:0,renamed:[] as string[]});
   /** Files added to a linked Drive folder go to Google Drive only: nothing is kept on this PC unless the person picks
    *  "Save on this PC". A file from this PC is named from its contents first ("Thevenin and Norton – Worksheet 4");
    *  a Mowr file dragged in is copied to Drive and stays here too. Each becomes a source of the space as a Drive file,
    *  and is marked as seen so it is not reported as new in Drive. Resolves to the file as Drive lists it. */
   const addToDrive=async(space:Space,folder:string,input:File|string):Promise<DriveItem>=>{
+    const local=typeof input!=='string';
+    if(local)driveNaming.current.pending++;
+    try{return await addOneToDrive(space,folder,input);}
+    finally{
+      // One notice for files dropped together, once they are all in Drive: the new name for one, how many for several.
+      if(local){
+        const batch=driveNaming.current;
+        if(--batch.pending===0){
+          const names=batch.renamed.splice(0);
+          if(names.length===1)setToast(`Saved to Drive as “${names[0]}”, named from its content.`);
+          else if(names.length>1)setToast(`Renamed ${names.length} files based on their content.`);
+        }
+      }
+    }
+  };
+  const addOneToDrive=async(space:Space,folder:string,input:File|string):Promise<DriveItem>=>{
     let blob:Blob,name:string;
     if(typeof input==='string'){
       const have=fileNow(input);
@@ -562,14 +580,14 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       blob=stored;name=have.name;
     }else{
       blob=input;
-      const named=await (await import('./pdf/pdf-name')).namedFile(input,space.name).catch(()=>({name:input.name,refine:async()=>undefined}));
+      const named=await (await import('./pdf/pdf-name')).namedFile(input,space.name,stateRef.current.files.filter(f=>f.spaceId===space.id).map(f=>f.name)).catch(()=>({name:input.name,refine:async()=>undefined}));
       name=(await named.refine().catch(()=>undefined))||named.name;
     }
     let saved:{id:string;modifiedTime?:string};
     try{saved=await uploadToDrive(folder,blob,name);}catch(e){throw Error(driveError(e));}
     const modified=saved.modifiedTime||new Date().toISOString();
     patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id&&x.drive?{...x,sources:[...new Set([...x.sources,'drive:'+saved.id])],drive:{...x.drive,seen:{...(x.drive.seen||{}),[saved.id]:modified}}}:x)}));
-    if(typeof input!=='string'&&name!==input.name)setToast(`Saved to Drive as “${name}”.`);
+    if(typeof input!=='string'&&name!==input.name)driveNaming.current.renamed.push(name);
     return {id:saved.id,name,mimeType:blob.type||'application/octet-stream',size:blob.size,modified};
   };
   /** Copies Drive files onto this PC ("Save on this PC"): each lands under "On this PC" as a file of its own, in folders
@@ -1524,8 +1542,7 @@ In this subject the learner keeps missing these questions in review; connect to 
     fileQueue.current = fileQueue.current.then(async () => {
       const added: StoredFile[] = [];
       const reused: StoredFile[] = [];
-      const renamed: string[] = [];
-      const refining: { id: string; name: string; refine: () => Promise<string | undefined> }[] = [];
+      const refining: { id: string; name: string; original: string; refine: () => Promise<string | undefined> }[] = [];
       for (let file of batch) {
         if(owner!==ownerRef.current)return;
         const id = uid();
@@ -1537,10 +1554,12 @@ In this subject the learner keeps missing these questions in review; connect to 
           const existing = await sameFile(file, destination, added);
           if (existing) { if (!reused.includes(existing) && !added.includes(existing)) reused.push(existing); continue; }
           // Named by what it covers; inside a subject or project its name is not repeated ("Nodal Analysis – Lecture 3").
-          const named = await (await import('./pdf/pdf-name')).namedFile(file, stateRef.current.spaces.find((x) => x.id === destination)?.name);
-          const name = named.name;
-          if (name !== file.name) renamed.push(name);
-          refining.push({ id, name, refine: named.refine });
+          // The other files where it goes, so its name can follow their pattern ("… – Lecture 5").
+          const siblings = stateRef.current.files.filter((f) => f.spaceId === destination && (f.folderId ?? null) === (target?.folderId ?? null)).sort((a, b) => (b.updated || b.created) - (a.updated || a.created)).map((f) => f.name);
+          const named = await (await import('./pdf/pdf-name')).namedFile(file, stateRef.current.spaces.find((x) => x.id === destination)?.name, siblings);
+          // It keeps the name it came with until its final name is known: renamed once, never a rough name first.
+          const name = file.name;
+          refining.push({ id, name: named.name, original: file.name, refine: named.refine });
           await storeBlob(id, file);
           added.push({
             id,
@@ -1563,20 +1582,31 @@ In this subject the learner keeps missing these questions in review; connect to 
         patch((s) => ({ ...s, files: [...added, ...s.files],spaces:s.spaces.map(x=>x.id===destination?{...x,sources:[...x.sources,...added.map(f=>f.id)]}:x) }));
         if (!target && (route === "/app" || attachNow))
           setAttachments((a) => [...a, ...added.map((f) => f.id)]);
-        if (renamed.length) setToast(renamed.length === 1 ? `Saved as “${renamed[0]}”.` : `${added.length} files saved · ${renamed.length} renamed from their contents.`);
         // Saving is silent: the files appear where they were added, including whole folders.
         // Then the AI reads each first page and gives a better name where it can, one file at a time, in the background.
-        // A file the person renamed or removed meanwhile is left alone.
-        const kept = new Set(added.map((f) => f.id));
+        // A file the person renamed or removed meanwhile is left alone. One notice says what was renamed, once the whole
+        // batch is named: the new name for a single file, how many for several.
+        const kept = refining.filter((r) => added.some((f) => f.id === r.id));
         void (async () => {
-          for (const item of refining.filter((r) => kept.has(r.id))) {
-            if (owner !== ownerRef.current) return;
-            const better = await item.refine().catch(() => undefined);
-            if (!better || owner !== ownerRef.current) continue;
-            if (!stateRef.current.files.some((f) => f.id === item.id && f.name === item.name)) continue;
-            patch((s) => ({ ...s, files: s.files.map((f) => (f.id === item.id && f.name === item.name ? { ...f, name: better } : f)) }));
-            setToast(`Named “${better}” from its contents.`);
-          }
+          // Each file gets its one final name: the AI's, read from the file, or the rules' when the AI has none. A few
+          // are named at a time; a file the person renamed or removed meanwhile is left alone.
+          const final = new Map<string, string>();
+          const queue = [...kept];
+          const nameNext = async (): Promise<void> => {
+            const item = queue.shift();
+            if (!item || owner !== ownerRef.current) return;
+            const chosen = (await item.refine().catch(() => undefined)) || item.name;
+            if (owner === ownerRef.current && chosen !== item.original && stateRef.current.files.some((f) => f.id === item.id && f.name === item.original)) {
+              patch((s) => ({ ...s, files: s.files.map((f) => (f.id === item.id && f.name === item.original ? { ...f, name: chosen } : f)) }));
+              final.set(item.id, chosen);
+            }
+            return nameNext();
+          };
+          await Promise.all(Array.from({ length: Math.min(3, queue.length) }, nameNext));
+          if (owner !== ownerRef.current) return;
+          const renamed = kept.filter((item) => final.has(item.id) && stateRef.current.files.some((f) => f.id === item.id && f.name === final.get(item.id)));
+          if (renamed.length === 1) setToast(`Renamed to “${final.get(renamed[0].id)}” based on its content.`);
+          else if (renamed.length > 1) setToast(`Renamed ${renamed.length} files based on their content.`);
         })();
       }
       if (reused.length && owner===ownerRef.current && !target && (route === "/app" || attachNow))

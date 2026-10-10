@@ -240,3 +240,10 @@
 @media(max-width:600px){.account-usage,.account-recovery,.account-note{padding-left:12px}.account-recovery{flex-direction:column;align-items:flex-start}.provider-head{flex-wrap:wrap}}
 .provider-head{flex-wrap:wrap}.provider-head .provider-title{flex:1;min-width:0}
 .provider-head .provider-hint{flex-basis:100%;order:5;margin:0;padding-left:46px}
+.helper-model-setting{display:flex;gap:24px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.helper-model-setting>div:first-child{flex:1 1 320px;min-width:0}
+.helper-model-note{color:#d9b46c}
+.helper-model-pickers{display:flex;gap:10px;flex-wrap:wrap;flex:0 1 auto}
+.helper-model-pickers label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.helper-model-pickers select{min-width:180px;max-width:260px;padding:8px 10px;font-size:13px}
+.helper-model-pickers select:disabled{opacity:.55;cursor:default}

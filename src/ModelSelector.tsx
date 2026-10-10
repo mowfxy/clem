@@ -116,7 +116,7 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
       <span className="picker-trigger-name">{selected?.name || "Choose model"}</span>
       <Icon name="down" size={12} />
     </button>
-    {level && onEffort && levels.length > 0 && <button ref={effortButton} type="button" className="picker-trigger picker-trigger-effort" data-level={level} disabled={disabled} aria-label="Thinking level" aria-haspopup="dialog" aria-expanded={open === "effort"} aria-description={effortName(level) + " thinking"} onClick={() => setOpen(open === "effort" ? null : "effort")}>
+    {level && onEffort && levels.length > 0 && <button ref={effortButton} type="button" className="picker-trigger picker-trigger-effort" data-level={level} data-provider={selected?.provider} disabled={disabled} aria-label="Thinking level" aria-haspopup="dialog" aria-expanded={open === "effort"} aria-description={effortName(level) + " thinking"} onClick={() => setOpen(open === "effort" ? null : "effort")}>
       <span className="effort-pip" aria-hidden="true" style={{ "--p": levels.length > 1 ? levels.findIndex((l) => l.reasoningEffort === level) / (levels.length - 1) : 1 } as CSSProperties} />
       {/* Every name sits in the same cell so the button keeps the widest one's width and the model button never shifts. */}
       <span className="effort-label">{[...new Set([...EFFORT_NAMES, ...levels.map((l) => l.reasoningEffort)])].map((l) => <span key={l} aria-hidden={l !== level || undefined} className={l === level ? "is-on" : undefined}>{effortName(l)}</span>)}</span>
@@ -136,7 +136,7 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
       </div>
       <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>
     </div>, document.body)}
-    {open === "effort" && onEffort && level && createPortal(<div ref={effortPop.panel} className="unified-picker-panel effort-pop" role="dialog" aria-label="Thinking level" style={effortPop.position}>
+    {open === "effort" && onEffort && level && createPortal(<div ref={effortPop.panel} className="unified-picker-panel effort-pop" data-provider={selected?.provider} role="dialog" aria-label="Thinking level" style={effortPop.position}>
       <EffortSlider levels={levels.map((l) => l.reasoningEffort)} level={level} onChange={onEffort} />
     </div>, document.body)}
   </div>;

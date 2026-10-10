@@ -118,7 +118,8 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
     const local = Array.from(e.dataTransfer.files).filter((f, i) => !(e.dataTransfer.items?.[i]?.webkitGetAsEntry?.()?.isDirectory));
     const mowr = e.dataTransfer.getData("application/x-mowr-file");
     if (folders) setError("Folders are not copied to Drive yet; drop the files inside them.");
-    return { local, mowr: mowr ? [mowr] : [] };
+    // Several selected Mowr files travel together as one comma-separated list.
+    return { local, mowr: mowr ? mowr.split(",").filter(Boolean) : [] };
   };
   const target = (key: string) => ({
     onDragOver: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation();
