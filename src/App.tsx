@@ -24,6 +24,8 @@ import {ProfileAvatar} from "./ProfileAvatar";
 import "./settings.css";
 import {cachedFileText,localSourceContext} from "./source-context";
 import {contextBudget} from "../core/context-budget";
+import {groupHistory} from "../core/history-groups";
+import {HistoryFilter} from "./HistoryFilter";
 import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
 import {FileGlyph} from "./files/FileGlyph";
@@ -263,6 +265,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [sidebar, setSidebar] = useState(false);
+  // Sidebar history: which space's chats are listed ("all", "none" for chats outside a space, or a space id), and how many.
+  const [historyScope, setHistoryScope] = useState<string>(() => { try { return localStorage.getItem("mowr-history-scope") || "all"; } catch { return "all"; } });
+  const [historyLimit, setHistoryLimit] = useState(30);
+  useEffect(() => { try { localStorage.setItem("mowr-history-scope", historyScope); } catch {} }, [historyScope]);
   const [attach, setAttach] = useState(false);
   // A file open beside the conversation; requests to change it edit it in place.
   const [panelFile, setPanelFile] = useState<StoredFile | null>(null);
@@ -2061,37 +2067,48 @@ In this subject the learner keeps missing these questions in review; connect to 
               ))}
             </nav>
             <div className="sidebar-history">
-              <div className="history-label">
-                <span>Recent thoughts</span>
-                <button
-                  className="icon-button"
-                  aria-label="Search chats" aria-description="Search chats · Ctrl K for everything"
-                  onClick={() => setEverything("")}
-                >
-                  <Icon name="research" size={17} />
-                </button>
-              </div>
-              {savedChats.length ? (
-                [...savedChats].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||b.updated-a.updated).slice(0, 12).map((c) => (
+              {(() => {
+                const shown = historyScope === "all" ? savedChats : savedChats.filter((c) => (historyScope === "none" ? !c.spaceId : c.spaceId === historyScope));
+                const groups = groupHistory(shown, Date.now(), historyLimit);
+                const more = shown.filter((c) => !c.pinned).length > historyLimit;
+                const scopeName = historyScope === "all" ? "" : historyScope === "none" ? "Not in a space" : state.spaces.find((x) => x.id === historyScope)?.name || "";
+                const tools = <HistoryFilter scope={historyScope} spaces={state.spaces.filter((x) => savedChats.some((c) => c.spaceId === x.id))} onScope={(v) => { setHistoryScope(v); setHistoryLimit(30); }} onSearch={() => setEverything("")} />;
+                if (!savedChats.length) return null;
+                return <>
+                  {scopeName && <div className="history-scope"><span>{scopeName}</span><button className="history-scope-clear" onClick={() => setHistoryScope("all")}>Show all</button></div>}
+                  {!groups.length && <div className="history-group"><div className="history-label"><span>No chats here yet</span>{tools}</div></div>}
+                  {groups.map((g, gi) => (
+                    <section className="history-group" key={g.label} aria-label={g.label}>
+                      <div className="history-label"><span>{g.label}</span>{gi === 0 && tools}</div>
+                      {g.items.map((c) => (
                   <div className={`history-row ${c.id === chatId && route === "/app" ? "chosen" : ""} ${c.id in runs ? "is-working" : ""} ${unseen.has(c.id) ? "is-unseen" : ""}`} key={c.id}><button
                     className={`history-item ${c.id === chatId && route === "/app" ? "chosen" : ""}`}
                     onClick={() => {
                       setChatId(c.id);
                       setSpaceId(c.spaceId);
                       navigate("/app");
+                      setSidebar(false);
                     }}
                   >
                     {(() => { const space = c.spaceId ? state.spaces.find((x) => x.id === c.spaceId) : undefined; return space ? <SpaceMark space={space} /> : null; })()}
                     <span className="history-title">{c.title}</span>
                     {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" aria-description={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" aria-label="New reply" aria-description="New reply" /> : null}
                   </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={c.id in runs} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
-                ))
-              ) : (
+                      ))}
+                    </section>
+                  ))}
+                  {more && <button className="history-more-chats" onClick={() => setHistoryLimit((n) => n + 30)}>Show older chats</button>}
+                </>;
+              })()}
+              {savedChats.length ? null : (
+                <>
+                <div className="history-label"><span>Recent thoughts</span></div>
                 <p className="history-empty">
                   A thought starts a conversation.
                   <br />
                   Yours will find a home here.
                 </p>
+                </>
               )}
             </div>
 

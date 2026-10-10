@@ -33,3 +33,29 @@ body :is(.primary,.send-button,.danger,.sp-share,.visual-save.saved,.app-confirm
 body .send-button{color:#1b1b19}
 body .send-button:disabled{color:#6f6e68}
 
+
+/* Sidebar history grouped by day: quiet grey day labels, bright titles that fade out at the edge instead of an ellipsis. */
+body .sidebar-history{overflow-y:auto;overflow-x:hidden;scrollbar-width:none;min-height:0;padding-bottom:12px;mask-image:linear-gradient(#000 calc(100% - 18px),transparent)}
+body .sidebar-history::-webkit-scrollbar{display:none}
+body .history-group{margin-bottom:18px}
+body .history-group .history-label{margin:0 0 4px;min-height:30px;font-size:13px}
+body .history-group .history-label,body .history-group .history-label span{color:#94938d}
+body .history-filter{margin-right:-4px;color:#e6e5df}
+body .history-filter.is-filtered{color:#fff;background:#ffffff12}
+body .history-group .history-item{color:#e1e0da;font-size:14px;height:36px}
+body .history-group .history-title{text-overflow:clip;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+body .history-scope{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px 10px;font-size:12px;color:#cfcec8}
+body .history-scope span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body .history-scope-clear,body .history-more-chats{font-size:12px;padding:6px 10px;color:#bdbcb5}
+body .history-more-chats{width:100%;justify-content:flex-start}
+body .history-more-chats:hover,body .history-scope-clear:hover{color:#fff}
+body .history-filter-menu{min-width:220px;max-height:min(420px,70vh);overflow:auto}
+body .history-filter-menu hr{border:0;border-top:1px solid #333;margin:4px 6px}
+body .history-filter-menu kbd{margin-left:auto;font:inherit;font-size:11px;color:#8f8e88}
+body .history-filter-check{width:14px;flex:none;color:#fff}
+body .history-group .history-row .history-item{padding-left:10px;padding-right:8px}
+body .history-group .history-row:is(:hover,:focus-within,.chosen) .history-item{padding-right:34px}
+body .history-group .history-row:is(.is-working,.is-unseen) .history-item{padding-right:30px}
+body .history-group .history-row:is(.is-working,.is-unseen):is(:hover,:focus-within,.chosen) .history-item{padding-right:52px}
+body .history-group .history-label{padding:0 6px 0 10px}
+body .history-group .history-title{flex:1 1 auto;font-weight:400}
