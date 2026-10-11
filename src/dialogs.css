@@ -1,25 +1,27 @@
 /* In-app confirm dialog and Contact us popups. Palette follows settings dialogs. */
-.app-confirm,.contact-dialog{padding:0;border:1px solid #41413b;border-radius:16px;background:#1b1b19;color:#eeece5;box-shadow:0 30px 110px #000a,0 0 0 1px #ffffff05 inset;font-family:var(--sans)}
-.app-confirm::backdrop,.contact-dialog::backdrop{background:#000a;backdrop-filter:blur(3px)}
+.app-confirm,.contact-dialog{padding:0;border:1px solid #3c3c39;border-radius:16px;background:#232322;color:#eeece5;box-shadow:0 30px 110px #000a,0 0 0 1px #ffffff05 inset;font-family:var(--sans)}
+.app-confirm::backdrop,.contact-dialog::backdrop{background:#000000a6;backdrop-filter:none}
 .app-confirm[open],.contact-dialog[open]{animation:dialog-in .22s cubic-bezier(.2,.9,.3,1)}
 .app-confirm[open]::backdrop,.contact-dialog[open]::backdrop{animation:dialog-fade .2s ease-out}
 @keyframes dialog-in{from{opacity:0;transform:translateY(8px) scale(.985)}}
 @keyframes dialog-fade{from{opacity:0}}
 @media(prefers-reduced-motion:reduce){.app-confirm[open],.contact-dialog[open],.app-confirm[open]::backdrop,.contact-dialog[open]::backdrop{animation:none}}
 
-.app-confirm{width:min(400px,calc(100vw - 32px))}
-.app-confirm-body{padding:22px 22px 18px}
-.app-confirm h2{margin:0;font:400 18px/1.35 var(--sans);color:#f1f0ea}
-.app-confirm p{white-space:pre-line;margin:8px 0 0;font-size:13px;line-height:1.6;color:#a9a8a0}
-.app-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
-.app-confirm-actions button,.contact-dialog footer button,.contact-sent button{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 15px;border-radius:9px;font:400 13px var(--sans);cursor:pointer;transition:background .15s,border-color .15s,opacity .15s}
-.app-confirm-cancel,.contact-secondary{border:1px solid #44443d;background:#252522;color:#dddcd5}
-.app-confirm-cancel:hover,.contact-secondary:hover{background:#2d2d29}
-.app-confirm-ok,.contact-primary{border:1px solid #e8e7e0;background:#e8e7e0;color:#1b1b19}
+/* Confirm: after Claude's — a quiet sheet, bold title, readable message, filled Cancel beside a filled action. */
+.app-confirm{width:min(420px,calc(100vw - 32px))}
+.app-confirm-body{padding:24px 24px 22px}
+.app-confirm h2{margin:0;font:700 17px/1.35 var(--sans);letter-spacing:var(--track-title,0);color:#f3f2ed}
+.app-confirm p{white-space:pre-line;margin:10px 0 0;font-size:15px;line-height:1.55;color:#dcdbd5}
+.app-confirm-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:26px}
+.app-confirm-actions button,.contact-dialog footer button,.contact-sent button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 17px;border-radius:10px;font:400 15px var(--sans);cursor:pointer;transition:background .15s,border-color .15s,opacity .15s}
+.app-confirm-cancel,.contact-secondary{border:1px solid transparent;background:#353533;color:#eeede8}
+.app-confirm-cancel:hover,.contact-secondary:hover{background:#3f3f3c}
+.app-confirm-ok,.contact-primary{border:1px solid #ecebe5;background:#ecebe5;color:#1b1b19}
 .app-confirm-ok:hover,.contact-primary:hover{background:#fff}
-.app-confirm-ok.danger{background:#d9644f;border-color:#d9644f;color:#fff}
-.app-confirm-ok.danger:hover{background:#e5705b}
+.app-confirm-ok.danger{background:#c4473c;border-color:#c4473c;color:#fff}
+.app-confirm-ok.danger:hover{background:#d0544a;border-color:#d0544a}
 .app-confirm button:focus-visible,.contact-dialog button:focus-visible,.contact-option:focus-visible{outline:2px solid #d6d5cf;outline-offset:2px}
+.app-confirm-ok.danger:focus-visible{outline-color:#e0675d}
 .contact-primary:disabled,.contact-secondary:disabled{opacity:.55;cursor:default}
 
 /* The three request kinds */
@@ -82,13 +84,13 @@
 .password-change .primary{background:#e8e7e0!important;color:#1b1b19!important;border-color:#e8e7e0!important;justify-self:start}
 
 /* All popups share one design: settings popups, app modals and connection dialogs. */
-dialog.settings-dialog,dialog.app-modal{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:0;border:1px solid #3b3b36;border-radius:18px;background:#1c1c1a;color:#eeede7;box-shadow:0 30px 120px #000b,0 0 0 1px #ffffff06 inset;font-family:var(--sans);overflow:auto;overscroll-behavior:contain}
+dialog.settings-dialog,dialog.app-modal{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:0;border:1px solid #3c3c39;border-radius:16px;background:#232322;color:#eeede7;box-shadow:0 30px 120px #000b,0 0 0 1px #ffffff06 inset;font-family:var(--sans);overflow:auto;overscroll-behavior:contain}
 dialog.app-modal{padding:22px}
 dialog.settings-dialog[open],dialog.app-modal[open]{animation:dialog-in .22s cubic-bezier(.2,.9,.3,1)}
 dialog.settings-dialog::backdrop,dialog.app-modal::backdrop{background:#000a;backdrop-filter:blur(4px)}
 dialog.settings-dialog[open]::backdrop,dialog.app-modal[open]::backdrop{animation:dialog-fade .2s ease-out}
 @media(prefers-reduced-motion:reduce){dialog.settings-dialog[open],dialog.app-modal[open],dialog.settings-dialog[open]::backdrop,dialog.app-modal[open]::backdrop{animation:none}}
-dialog.settings-dialog>header{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;padding:20px 22px 14px;border-bottom:0;background:linear-gradient(#1c1c1a 80%,#1c1c1a00)}
+dialog.settings-dialog>header{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;padding:20px 22px 14px;border-bottom:0;background:linear-gradient(#232322 80%,#23232200)}
 dialog.settings-dialog>header h2,dialog.app-modal .modal-heading h2{flex:1;margin:0;font:700 20px/1.2 var(--sans);color:#f3f2ec;letter-spacing:var(--track-title)}
 dialog.app-modal .modal-heading{margin-bottom:14px}
 .dialog-logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#0d0d0d;color:#fff;border:1px solid #ffffff14}
@@ -103,8 +105,8 @@ dialog.settings-dialog .settings-dialog-body label:has(input[type=checkbox]),dia
 dialog.settings-dialog .settings-dialog-body input:not([type=checkbox]):not([type=radio]),dialog.settings-dialog .settings-dialog-body textarea,dialog.settings-dialog .settings-dialog-body select,dialog.app-modal input:not([type=checkbox]):not([type=radio]),dialog.app-modal textarea,dialog.app-modal select{width:100%;box-sizing:border-box;min-height:40px;padding:9px 12px;border:1px solid #3d3d38;border-radius:10px;background:#141413;color:#eeede7;font:13px var(--sans);transition:border-color .15s,box-shadow .15s}
 dialog.settings-dialog .settings-dialog-body input:focus,dialog.settings-dialog .settings-dialog-body textarea:focus,dialog.settings-dialog .settings-dialog-body select:focus,dialog.app-modal input:focus,dialog.app-modal textarea:focus{outline:none;border-color:#7a7a72;box-shadow:0 0 0 3px #ffffff0d}
 dialog.settings-dialog .settings-dialog-body input::placeholder,dialog.app-modal input::placeholder{color:#6f6e68}
-dialog.settings-dialog .settings-dialog-body button,dialog.app-modal .modal-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 15px;margin:4px 8px 4px 0;border-radius:9px;border:1px solid #44443d;background:#262623;color:#e3e2db;font:400 12px var(--sans);cursor:pointer;transition:background .15s,border-color .15s}
-dialog.settings-dialog .settings-dialog-body button:hover,dialog.app-modal .modal-actions button:hover{background:#2e2e2a;border-color:#55554d}
+dialog.settings-dialog .settings-dialog-body button,dialog.app-modal .modal-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 15px;margin:4px 8px 4px 0;border-radius:10px;border:1px solid transparent;background:#353533;color:#eeede8;font:400 13px var(--sans);cursor:pointer;transition:background .15s,border-color .15s}
+dialog.settings-dialog .settings-dialog-body button:hover,dialog.app-modal .modal-actions button:hover{background:#3f3f3c;border-color:transparent}
 dialog.settings-dialog .settings-dialog-body form button:not([type=button]),dialog.settings-dialog .settings-dialog-body button.primary,dialog.app-modal .modal-actions button.primary{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
 dialog.settings-dialog .settings-dialog-body form button:not([type=button]):hover,dialog.settings-dialog .settings-dialog-body button.primary:hover,dialog.app-modal .modal-actions button.primary:hover{background:#fff}
 dialog.settings-dialog .settings-dialog-body button:disabled,dialog.app-modal button:disabled{opacity:.5;cursor:default}
