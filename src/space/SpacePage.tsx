@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
+import {Fragment,useEffect,useMemo,useRef,useState,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {Icon} from '../Icons';
 import {SpaceMark} from './SpaceMark';
 import {Menu,FolderIcon} from './SpaceMenu';
@@ -87,7 +87,7 @@ function ChatContextMenu({at,onClose,items}:{at:{x:number;y:number};onClose:()=>
     root.current?.querySelector('button')?.focus();
     return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',key);window.removeEventListener('blur',onClose);window.removeEventListener('scroll',onClose,true);};},[onClose]);
   return <div className="sp-menu-list sp-context" role="menu" ref={root} style={{position:'fixed',left:Math.min(at.x,window.innerWidth-210),top:Math.min(at.y,window.innerHeight-60*items.length),right:'auto'}}>
-    {items.map(i=><button type="button" role="menuitem" key={i.label} className={i.danger?'danger':''} onClick={()=>{onClose();i.run();}}>{i.label}</button>)}</div>;
+    {items.map((i,n)=><Fragment key={i.label}>{i.danger&&n>0&&!items[n-1].danger&&<hr/>}<button type="button" role="menuitem" className={i.danger?'danger':''} onClick={()=>{onClose();i.run();}}>{i.label}</button></Fragment>)}</div>;
 }
 /** Right-clicking a chat row opens its menu; returns the handler and the menu to render. */
 function useChatMenu(onDelete:(chat:Chat)=>void){
