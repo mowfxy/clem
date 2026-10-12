@@ -72,8 +72,14 @@ button.work-summary[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
 /* The box grows with the message up to a cap, then scrolls with the app's thin bar. The word layer behind it keeps the
    same gutter (hidden) so both wrap at the same width. */
 html body .composer .slash-field textarea{max-height:min(264px,38vh);overflow-y:auto}
-.composer :is(textarea,.slash-mirror){scrollbar-gutter:stable}
-.composer .slash-mirror{scrollbar-color:transparent transparent}
+/* Drawn with ::-webkit-scrollbar instead of the global thin bar so it has no arrow buttons (they read as a dropdown). */
+.composer :is(textarea,.slash-mirror){scrollbar-gutter:stable;scrollbar-width:auto;scrollbar-color:auto}
+.composer :is(textarea,.slash-mirror)::-webkit-scrollbar{width:10px}
+.composer :is(textarea,.slash-mirror)::-webkit-scrollbar-button{display:none}
+.composer :is(textarea,.slash-mirror)::-webkit-scrollbar-track{background:transparent}
+.composer textarea::-webkit-scrollbar-thumb{background:#454540;border:3px solid transparent;background-clip:padding-box;border-radius:10px}
+.composer textarea::-webkit-scrollbar-thumb:hover{background-color:#5c5c55}
+.composer .slash-mirror::-webkit-scrollbar-thumb{background:transparent}
 /* The chat box sits on the page's own background across the whole workspace, so a table wider than the text column
    passes under it instead of showing beside it: the backdrop's colour is repeated sideways by a clipped shadow (no
    extra width, so the page never scrolls sideways), and the box stays above the messages. */
