@@ -262,7 +262,7 @@ try {
   // Select: picked files drag together onto a folder, and move together.
   await page.getByRole("button", { name: "Lecture 5.txt options" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).waitFor();
-  assert.equal(await page.getByRole("menuitem", { name: "Delete" }).evaluate((el) => getComputedStyle(el).color), "rgb(255, 90, 78)");
+  assert.equal(await page.getByRole("menuitem", { name: "Delete" }).evaluate((el) => getComputedStyle(el).color), "rgb(236, 122, 111)");
   await page.locator(".sp-menu-list").last().screenshot({ path: "artifacts/file-menu.png" });
   await page.keyboard.press("Escape");
   await page.mouse.click(5, 5);

@@ -45,6 +45,11 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
     // The words are painted by this layer (so the command can be tinted); the box keeps only the caret.
     m.style.color = el.dataset.ink ||= css.color;
     el.style.caretColor = el.dataset.ink;
+    // Grows with the message; the stylesheet's max-height caps it and the box scrolls past that.
+    const top = el.scrollTop;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + parseFloat(css.borderTopWidth) + parseFloat(css.borderBottomWidth)}px`;
+    el.scrollTop = top;
     m.scrollTop = el.scrollTop;
   });
   // Puts the caret back after the text is rewritten, unless more was typed in the meantime.

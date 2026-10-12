@@ -229,6 +229,16 @@
 .setup-navigation button:hover {
   color: #fff;
 }
+/* These are text buttons; the global .primary:hover must not fill them white on hover or while "Checking…". */
+.setup-navigation button:is(.primary, :hover, :active, :disabled) {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.setup-navigation button.primary { color: inherit; }
+.setup-navigation button.primary:hover:not(:disabled) { color: #fff; }
+.setup-navigation button:disabled { opacity: 0.6; cursor: progress; }
 .setup-card .inline-error {
   color: #eda699;
   margin-top: 16px;

@@ -168,7 +168,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       },
     };
   }, { FOLDER, notes, replies, harderWorksheet, handoutEdits, worksheetSpec });
-  await page.route("**/fixture", (r) => r.fulfill({ contentType: "text/html", body: '<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/type.css"><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/desktop/desktop.css">' }));
+  await page.route("**/fixture", (r) => r.fulfill({ contentType: "text/html", body: '<!doctype html><div class="desktop-titlebar"></div><div class="desktop-content"><div id="root"></div></div><link rel="stylesheet" href="/src/type.css"><link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/revamp.css"><link rel="stylesheet" href="/src/production.css"><link rel="stylesheet" href="/src/popups.css"><link rel="stylesheet" href="/src/desktop/desktop.css">' }));
   await page.route("**/api/**", (r) => {
     const path = new URL(r.request().url()).pathname;
     if (path.includes("/api/local/")) return r.fallback();
