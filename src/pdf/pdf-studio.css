@@ -5,10 +5,12 @@
 .ps-num{position:absolute;right:-30px;bottom:4px;font-size:11px;color:#6f6e68}
 .ps-mark{position:absolute;border-radius:3px;background:#f0c35b3d;box-shadow:inset 0 -2px 0 #e0a92e;mix-blend-mode:multiply;animation:ps-mark .7s cubic-bezier(.2,1,.3,1) both;pointer-events:none}
 .ps-text{position:absolute;inset:0;overflow:clip;line-height:1;text-align:initial;transform-origin:0 0;--scale-round-x:1px;--scale-round-y:1px;--min-font-size:1;--text-scale-factor:calc(var(--total-scale-factor) * var(--min-font-size));--min-font-size-inv:calc(1 / var(--min-font-size))}
-.ps-text :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0 0;user-select:text}
+.ps-text :is(span,br){z-index:1;color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0 0;user-select:text}
 .ps-text>:not(.markedContent),.ps-text .markedContent span:not(.markedContent){--font-height:0;font-size:calc(var(--text-scale-factor) * var(--font-height));--scale-x:1;--rotate:0deg;transform:rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv))}
 .ps-text .markedContent{display:contents}
 .ps-text ::selection{background:#8b80cf66}
+.ps-text .endOfContent{display:block;position:absolute;inset:100% 0 0;z-index:0;cursor:default;user-select:none}
+.ps-text.selecting .endOfContent{top:0}
 @keyframes ps-mark{from{opacity:0;transform:scaleX(.2);transform-origin:left}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.ps-mark{animation:none}}
 [data-quiet=true] .ps-mark{animation:none}

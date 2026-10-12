@@ -668,7 +668,8 @@ app.post("/api/drive/upload", express.raw({ type: () => true, limit: "4mb" }), a
   if (!Buffer.isBuffer(body) || !body.length) { res.status(400).json({ error: "The file is empty." }); return; }
   const token = (await driveToken(u.id)).access_token;
   const boundary = "mowr" + randomUUID().replace(/-/g, "");
-  const type = String(req.headers["content-type"] || "application/octet-stream").split(";")[0].replace(/[^\w.+/-]/g, "") || "application/octet-stream";
+  // A PDF sent with no type or as text would show in Drive as raw text.
+  const type = body.subarray(0, 5).toString("latin1") === "%PDF-" ? "application/pdf" : String(req.headers["content-type"] || "application/octet-stream").split(";")[0].replace(/[^\w.+/-]/g, "") || "application/octet-stream";
   const payload = Buffer.concat([
     Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [folder] })}\r\n--${boundary}\r\nContent-Type: ${type}\r\n\r\n`),
     body,

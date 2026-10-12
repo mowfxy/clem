@@ -129,11 +129,11 @@ export class DriveLive {
   /** Saves a new file into a Drive folder (resumable, so large files go too); the folder is read fresh next time. */
   async upload(folderId:string,name:string,type:string,data:Uint8Array){
     await this.canWrite();
-    const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
+    const mime=uploadType(type,name,data);
     const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,modifiedTime",{
       method:"POST",signal:AbortSignal.timeout(30000),
       headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
-      body:JSON.stringify({name:name.replace(/[\x00-\x1f]/g,"").slice(0,200),parents:[folderId]}),
+      body:JSON.stringify({name:name.replace(/[\x00-\x1f]/g,"").slice(0,200),parents:[folderId],mimeType:mime}),
     });
     if(start.status===403)throw Error(await refusal(start));
     const session=start.headers.get("Location");
@@ -147,11 +147,12 @@ export class DriveLive {
   /** Replaces the contents of a file Mowr saved to Drive earlier (after an approved edit), keeping its id, name and place. */
   async update(fileId:string,type:string,data:Uint8Array){
     await this.canWrite();
-    const mime=type.split(";")[0].replace(/[^\w.+/-]/g,"")||"application/octet-stream";
+    const mime=uploadType(type,(await this.info(fileId).catch(()=>null))?.name||"",data);
     const start=await this.google(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable&supportsAllDrives=true&fields=id,modifiedTime`,{
       method:"PATCH",signal:AbortSignal.timeout(30000),
       headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
-      body:"{}",
+      // The type goes with the new version too, so a file saved earlier under a wrong type is put right.
+      body:JSON.stringify({mimeType:mime}),
     });
     if(start.status===404)throw Object.assign(Error("The file is no longer in Drive."),{code:"missing"});
     if(start.status===403)throw Error(await refusal(start));
@@ -412,6 +413,31 @@ export function findUrl(value:unknown,depth=0):string|undefined{
     const inner=findUrl(v,depth+1);if(inner)return inner;
   }
   return undefined;
+}
+
+const BY_NAME: Record<string, string> = {
+  pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+  mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", zip: "application/zip",
+  txt: "text/plain", md: "text/markdown", csv: "text/csv", html: "text/html", json: "application/json",
+};
+/**
+ * The type a file is saved to Drive as. A file kept on this PC can come with no type or a wrong one (a PDF labelled as
+ * text), and Drive then shows its raw bytes as text, so what the bytes start with and the file's name come before
+ * what the file says it is.
+ */
+export function uploadType(type: string, name: string, data: Uint8Array) {
+  const given = type.split(";")[0].replace(/[^\w.+/-]/g, "").toLowerCase();
+  const head = String.fromCharCode(...data.subarray(0, 8));
+  if (head.startsWith("%PDF-")) return "application/pdf";
+  if (head.startsWith("\x89PNG")) return "image/png";
+  if (head.startsWith("\xff\xd8\xff")) return "image/jpeg";
+  const byName = BY_NAME[name.toLowerCase().split(".").pop() || ""];
+  // Word, PowerPoint and Excel files are zip archives underneath; their name says which.
+  if (head.startsWith("PK\x03\x04") && byName && /officedocument|zip/.test(byName)) return byName;
+  const generic = !given || given === "application/octet-stream" || given.startsWith("text/") && !!byName && !byName.startsWith("text/");
+  return generic ? byName || given || "application/octet-stream" : given;
 }
 
 /** Chromium plays MP4/WebM/Ogg. Drive sometimes labels them generically, which makes <video> refuse to start. */

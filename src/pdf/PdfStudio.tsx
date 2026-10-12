@@ -25,6 +25,30 @@ export function Pages({pdf,highlights,onSelect}:{pdf:PDFDocumentProxy;highlights
 
 type Later=(job:()=>Promise<void>)=>void;
 
+/** Dragging a text selection over the blank space between lines makes the browser pick the nearest text in the page's
+ *  order, often its very end, so one drag selected the whole page. As in pdf.js's own viewer, each text layer ends in
+ *  an empty box that covers the layer while selecting and sits right after the point the selection reached, so blank
+ *  space extends the selection to where the pointer is instead. */
+let lastRange:Range|null=null;
+function followSelection(){
+  const sel=getSelection();
+  if(!sel?.rangeCount){lastRange=null;return;}
+  const range=sel.getRangeAt(0);
+  const start=!!lastRange&&(range.compareBoundaryPoints(Range.END_TO_END,lastRange)===0||range.compareBoundaryPoints(Range.START_TO_END,lastRange)===0);
+  let at:Node|null=start?range.startContainer:range.endContainer;
+  if(at?.nodeType===Node.TEXT_NODE)at=at.parentNode;
+  const layer=(at as Element|null)?.parentElement?.closest('.ps-text'),end=layer?.querySelector(':scope .endOfContent');
+  if(layer&&end&&at&&at!==end&&at.parentElement)at.parentElement.insertBefore(end,start?at:at.nextSibling);
+  lastRange=range.cloneRange();
+}
+let selecting=0;
+function startSelecting(layer:HTMLElement){
+  layer.classList.add('selecting');
+  if(selecting++===0)document.addEventListener('selectionchange',followSelection);
+  const done=()=>{layer.classList.remove('selecting');removeEventListener('pointerup',done);removeEventListener('blur',done);if(--selecting===0)document.removeEventListener('selectionchange',followSelection);lastRange=null;};
+  addEventListener('pointerup',done);addEventListener('blur',done);
+}
+
 /** Every page is drawn sharp, as before. Pages near the view stay live canvases; a page further away is kept as a
  *  lossless PNG of the same pixels, so it shows at once when scrolled back to while holding a fraction of the
  *  memory (35 pages at 2× were ~640 MB of live bitmaps). The pages scroll inside the viewer, so its scroll box is
@@ -46,6 +70,7 @@ function Page({pdf,n,w,h,scale,boxes,later}:{pdf:PDFDocumentProxy;n:number;w:num
       texted.current=true;
       const {TextLayer}=await import('pdfjs-dist');text.current.replaceChildren();text.current.style.setProperty('--total-scale-factor',String(scale));
       await new TextLayer({textContentSource:await page.getTextContent(),container:text.current,viewport}).render();
+      const end=document.createElement('div');end.className='endOfContent';text.current.append(end);
     }
     return true;
   };
@@ -90,7 +115,7 @@ function Page({pdf,n,w,h,scale,boxes,later}:{pdf:PDFDocumentProxy;n:number;w:num
   return <div className="ps-page" data-page={n} style={{width:w,height:viewportH}}>
     {still&&<img className="ps-still" src={still} alt="" style={{position:'absolute',left:0,top:0,width:w,height:viewportH}}/>}
     <canvas ref={canvas} style={{position:'relative',width:w,height:viewportH}} aria-label={`Page ${n}`}/>
-    <div className="ps-text textLayer" ref={text}/>
+    <div className="ps-text textLayer" ref={text} onPointerDown={e=>{if(e.button===0)startSelecting(e.currentTarget);}}/>
     {boxes.map((b,i)=><span key={i} className="ps-mark" style={{left:b.x*scale,top:viewportH-(b.y+b.h)*scale,width:b.w*scale,height:b.h*scale,animationDelay:`${i*70}ms`}}/>)}
     <span className="ps-num">{n}</span>
   </div>;

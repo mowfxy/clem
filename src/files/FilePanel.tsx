@@ -82,10 +82,14 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const openWait = () => { let resolve = () => {}, reject: (e: unknown) => void = () => {}; const promise = new Promise<void>((r, j) => { resolve = r; reject = j; }); promise.catch(() => {}); opened.current = { promise, resolve, reject }; };
   if (!opened.current) openWait();
   const [compare, setCompare] = useState<"before" | "after">("after");
-  // Escape closes the popup viewer.
+  // Escape closes the popup viewer, once no menu or selected area is open in it (those close first).
   useEffect(() => {
     if (variant !== "modal") return;
-    const key = (e: KeyboardEvent) => { if (e.key !== "Escape" || document.querySelector("dialog[open]:not(.fp-dialog)")) return; e.preventDefault(); onClose(); };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector("dialog[open]:not(.fp-dialog)") || document.querySelector(".fp-menu")) return;
+      e.preventDefault();
+      if (document.querySelector(".fp-area")) setArea(null); else onClose();
+    };
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, [variant]);
@@ -93,7 +97,19 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const [menu, setMenu] = useState<{ x: number; y: number; text?: string; page?: number; area?: boolean } | null>(null);
   const [area, setArea] = useState<Area | null>(null);
   const [areaMode, setAreaMode] = useState(false);
-  const drag = useRef<{ page: HTMLElement; n: number; x0: number; y0: number } | null>(null);
+  // Left-drag selects text; an area is drawn by dragging with the right button (or with the left after "Select an area…").
+  // A right-drag that moved draws an area and swallows the menu that would follow it; a still right-click opens the menu.
+  const drag = useRef<{ page: HTMLElement; n: number; x0: number; y0: number; right: boolean; moved: boolean } | null>(null);
+  const drewArea = useRef(false);
+  /** The menu opens at the pointer. Inside the popup viewer a fixed box is placed from the viewer's corner rather than the
+   *  window's, so the menu is measured where it lands and moved by the difference, then kept on screen. */
+  const placeMenu = (el: HTMLDivElement | null) => {
+    if (!el || !menu) return;
+    el.style.left = "0px"; el.style.top = "0px";
+    const o = el.getBoundingClientRect();
+    el.style.left = Math.max(8, Math.min(menu.x, innerWidth - o.width - 8)) - o.left + "px";
+    el.style.top = Math.max(8, Math.min(menu.y, innerHeight - o.height - 8)) - o.top + "px";
+  };
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(null);
@@ -323,27 +339,37 @@ export const FilePanel = forwardRef<FilePanelHandle, {
         const inside = !!sel?.anchorNode && e.currentTarget.contains(sel.anchorNode);
         const target = (e.target as Element).closest<HTMLElement>(".ps-page");
         e.preventDefault();
+        if (drewArea.current) { drewArea.current = false; return; }
         if (text && inside) { const pageEl = (sel!.anchorNode!.parentElement as Element | null)?.closest<HTMLElement>(".ps-page"); setMenu({ x: e.clientX, y: e.clientY, text: text.slice(0, 4000), page: pageEl ? Number(pageEl.dataset.page) : undefined }); }
         else if (area && target === area.page) setMenu({ x: e.clientX, y: e.clientY, area: true, page: area.n });
         else setMenu({ x: e.clientX, y: e.clientY, page: target ? Number(target.dataset.page) : undefined });
       }}
       onPointerDown={(e) => {
-        if (e.button !== 0) return;
+        const right = e.button === 2;
+        if (e.button !== 0 && !right) return;
+        drewArea.current = false;
         const target = e.target as Element, pageEl = target.closest<HTMLElement>(".ps-page");
-        if (!pageEl || (!areaMode && target.closest(".ps-text span"))) { if (!target.closest(".fp-area")) setArea(null); return; }
-        e.preventDefault();
+        if (!pageEl || (!right && !areaMode)) { if (!right && !target.closest(".fp-area")) setArea(null); return; }
+        // A right press waits to see if it drags, so a right-click on selected text still opens its menu.
+        if (!right) { e.preventDefault(); window.getSelection()?.removeAllRanges(); setArea(null); }
         const box = pageEl.getBoundingClientRect();
-        drag.current = { page: pageEl, n: Number(pageEl.dataset.page), x0: e.clientX - box.left, y0: e.clientY - box.top };
+        drag.current = { page: pageEl, n: Number(pageEl.dataset.page), x0: e.clientX - box.left, y0: e.clientY - box.top, right, moved: !right };
         e.currentTarget.setPointerCapture(e.pointerId);
-        window.getSelection()?.removeAllRanges();
-        setArea(null);
       }}
       onPointerMove={(e) => {
         const d = drag.current; if (!d) return;
         const box = d.page.getBoundingClientRect(), x = Math.max(0, Math.min(box.width, e.clientX - box.left)), y = Math.max(0, Math.min(box.height, e.clientY - box.top));
+        if (!d.moved) { if (Math.hypot(x - d.x0, y - d.y0) < 6) return; d.moved = true; window.getSelection()?.removeAllRanges(); setMenu(null); }
         setArea({ page: d.page, n: d.n, x: Math.min(x, d.x0), y: Math.min(y, d.y0), w: Math.abs(x - d.x0), h: Math.abs(y - d.y0) });
       }}
-      onPointerUp={() => { if (!drag.current) return; drag.current = null; setAreaMode(false); setArea((a) => (a && a.w > 12 && a.h > 12 ? a : null)); }}>
+      onPointerUp={() => {
+        const d = drag.current; if (!d) return;
+        drag.current = null;
+        if (!d.moved) return;
+        if (d.right) drewArea.current = true;
+        // A fresh object, so the panel draws again now the drag (a ref) is over and the Add to chat button shows.
+        setAreaMode(false); setArea((a) => (a && a.w > 12 && a.h > 12 ? { ...a } : null));
+      }}>
       {error && <p className="fp-error" role="alert">{error}</p>}
       {!shown && !imageUrl && !mediaSrc && !error && kind !== "other" && <p className="fp-note">Opening…</p>}
       {kind === "other" && <div className="fp-empty"><p>Mowr can’t show this format here.</p><button className="fp-ghost" onClick={() => onOpenExternally(current)}>Open with its app</button></div>}
@@ -359,9 +385,10 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     {working && <div className="fp-working" role="status"><Logo size={18} thinking /><div><strong>{working}</strong><small>Editing live · you can keep reading</small></div><button className="fp-ghost" onClick={() => abort.current?.abort()}>Stop</button></div>}
     {area && !drag.current && createPortal(<div className="fp-area" style={{ left: area.x, top: area.y, width: area.w, height: area.h }}><button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => { const image = crop(area); point({ page: area.n, image, text: areaText(area) || undefined }); setArea(null); }}>Add to chat</button></div>, area.page)}
     {area && drag.current && createPortal(<div className="fp-area drawing" style={{ left: area.x, top: area.y, width: area.w, height: area.h }} />, area.page)}
-    {menu && <div className="fp-menu" role="menu" style={{ left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 140) }} onPointerDown={(e) => e.stopPropagation()}>
+    {menu && <div className="fp-menu" role="menu" ref={placeMenu} onPointerDown={(e) => e.stopPropagation()}>
       {menuRows.map((row, i) => <button key={row.label} role="menuitem" aria-keyshortcuts={menuLetters[i] || undefined} onClick={row.run}>{row.label}{menuLetters[i] && <span className="menu-key" aria-hidden="true">{menuLetters[i]}</span>}</button>)}
       {!menu.text && !menu.area && shown?.kind !== "pdf" && <p>Select text first, then right-click to add it.</p>}
+      {!menu.text && !menu.area && shown?.kind === "pdf" && <p>Or drag with the right button to select an area.</p>}
     </div>}
     {flash && <div className="fp-flash" role="status"><Icon name="check" size={14} />{flash}</div>}
   </aside>;

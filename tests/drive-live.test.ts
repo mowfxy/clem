@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {driveIntent,driveTerms,driveQuery,viewFormat,driveContext,linkedDriveIds} from '../core/drive-search.ts';
-import {DriveLive} from '../desktop/drive-live.ts';
+import {DriveLive,uploadType} from '../desktop/drive-live.ts';
 
 test('Drive questions are recognised and turned into a Drive search',()=>{
   assert.equal(driveIntent('Which file in my drive explains partial derivatives?'),true);
@@ -168,4 +168,19 @@ test('a saved file reports Drive’s modified time, so Mowr knows its own upload
     return Response.json({id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});}) as any,'https://x.example');
   assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});
   assert.deepEqual(await drive.update('new-file-id-123','text/plain',new Uint8Array([2])),{id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});
+});
+
+test('a file goes to Drive under the type its bytes and name show, so a PDF kept without a type is not shown as raw text',async()=>{
+  const pdf=new TextEncoder().encode('%PDF-1.7 rest');
+  assert.equal(uploadType('','Notes.pdf',pdf),'application/pdf');
+  assert.equal(uploadType('text/plain','Notes.pdf',pdf),'application/pdf');
+  assert.equal(uploadType('application/octet-stream','Deck.pptx',new Uint8Array([0x50,0x4b,3,4])),'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  assert.equal(uploadType('text/markdown','a.md',new TextEncoder().encode('# Hi')),'text/markdown');
+  let sent='',meta:any;
+  const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const url=String(input);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    if(url.includes('uploadType=resumable')){sent=init.headers['X-Upload-Content-Type'];meta=JSON.parse(init.body);return new Response('{}',{headers:{Location:'https://upload.example/session'}});}
+    return Response.json({id:'new-file-id-123'});}) as any,'https://x.example');
+  await drive.upload('folder-id-12345','Notes.pdf','',pdf);
+  assert.equal(sent,'application/pdf');assert.equal(meta.mimeType,'application/pdf');
 });
