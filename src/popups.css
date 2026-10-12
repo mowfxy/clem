@@ -6,15 +6,15 @@
 /* Small menus, one look everywhere (after Claude's): a quiet raised sheet sized to its words, compact 28px rows, soft hover, inset hairline
    separators, muted shortcut hints on the right, a soft red for destructive rows. */
 :root{--menu-bg:#252524;--menu-line:#3a3a37;--menu-ink:#ecebe6;--menu-hint:#8e8d87;--menu-hover:#ffffff10;--menu-danger:#ec7a6f}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu){width:max-content;min-width:132px;max-width:280px;padding:4px;border:1px solid var(--menu-line);border-radius:10px;background:var(--menu-bg);color:var(--menu-ink);font:400 14px/1.2 var(--sans)}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;height:28px;min-height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--menu-ink);font:400 14px/1.2 var(--sans);letter-spacing:0;text-align:left;white-space:nowrap;transition:none}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button:is(:hover,:focus-visible,.active,.on):not(:disabled){background:var(--menu-hover);color:#fff;outline:none}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger{color:var(--menu-danger)}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger:is(:hover,:focus-visible):not(:disabled){background:#ec7a6f17;color:#f48a80}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) :is(hr,.menu-sep){display:block;height:1px;margin:4px 8px;border:0;background:#ffffff14}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) :is(kbd,.popover-hint,.menu-key,button small){margin-left:auto;padding-left:20px;font:400 12.5px/1 var(--sans);letter-spacing:.02em;color:var(--menu-hint)}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger .menu-key{color:#ec7a6fa6}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.fp-menu,.review-menu,.adm-select-menu)>p{margin:4px 8px 6px;font:400 12px/1.4 var(--sans);color:var(--menu-hint);white-space:normal}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu){width:max-content;min-width:132px;max-width:280px;padding:4px;border:1px solid var(--menu-line);border-radius:10px;background:var(--menu-bg);color:var(--menu-ink);font:400 14px/1.2 var(--sans)}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;height:28px;min-height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--menu-ink);font:400 14px/1.2 var(--sans);letter-spacing:0;text-align:left;white-space:nowrap;transition:none}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button:is(:hover,:focus-visible,.active,.on):not(:disabled){background:var(--menu-hover);color:#fff;outline:none}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger{color:var(--menu-danger)}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger:is(:hover,:focus-visible):not(:disabled){background:#ec7a6f17;color:#f48a80}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) :is(hr,.menu-sep){display:block;height:1px;margin:4px 8px;border:0;background:#ffffff14}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) :is(kbd,.popover-hint,.menu-key,button small){margin-left:auto;padding-left:20px;font:400 12.5px/1 var(--sans);letter-spacing:.02em;color:var(--menu-hint)}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger .menu-key{color:#ec7a6fa6}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu)>p{margin:4px 8px 6px;font:400 12px/1.4 var(--sans);color:var(--menu-hint);white-space:normal}
 html body .chat-options:popover-open{display:block}
 html body .history-filter-menu .history-filter-check{width:14px;margin-right:-2px;color:var(--menu-ink)}
 /* Every pop-up window, one finish (after Claude's dialogs): a flat warm sheet, hairline border, one soft deep shadow,

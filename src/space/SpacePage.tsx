@@ -19,6 +19,7 @@ import {DriveFolderView} from '../drive/DriveFolderView';
 import {PlanView,PlanOverviewCard,type PlanActions,type PlanDraftView} from './PlanView';
 import {planStatus,type SpacePlan} from '../../core/plans';
 import type {DriveItem,DriveSyncState} from '../drive/drive';
+import {menuKeys,useMenuKeys} from '../menuKeys';
 import './space.css';
 
 export type SpaceTab='overview'|'chats'|'plan'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
@@ -88,8 +89,10 @@ function ChatContextMenu({at,onClose,items}:{at:{x:number;y:number};onClose:()=>
     document.addEventListener('pointerdown',close);document.addEventListener('keydown',key);window.addEventListener('blur',onClose);window.addEventListener('scroll',onClose,true);
     root.current?.querySelector('button')?.focus();
     return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',key);window.removeEventListener('blur',onClose);window.removeEventListener('scroll',onClose,true);};},[onClose]);
+  const keys=menuKeys(items),choose=(n:number)=>{onClose();items[n].run();};
+  useMenuKeys(true,keys,choose);
   return <div className="sp-menu-list sp-context" role="menu" ref={root} style={{position:'fixed',left:Math.min(at.x,window.innerWidth-210),top:Math.min(at.y,window.innerHeight-60*items.length),right:'auto'}}>
-    {items.map((i,n)=><Fragment key={i.label}>{i.danger&&n>0&&!items[n-1].danger&&<hr/>}<button type="button" role="menuitem" className={i.danger?'danger':''} onClick={()=>{onClose();i.run();}}>{i.label}</button></Fragment>)}</div>;
+    {items.map((i,n)=><Fragment key={i.label}>{i.danger&&n>0&&!items[n-1].danger&&<hr/>}<button type="button" role="menuitem" className={i.danger?'danger':''} aria-keyshortcuts={keys[n]||undefined} onClick={()=>choose(n)}>{i.label}{keys[n]&&<span className="menu-key" aria-hidden="true">{keys[n]}</span>}</button></Fragment>)}</div>;
 }
 /** Right-clicking a chat row opens its menu; returns the handler and the menu to render. */
 function useChatMenu(onDelete:(chat:Chat)=>void){

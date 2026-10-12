@@ -69,7 +69,11 @@ button.work-summary[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
 .limit-now{margin-left:auto;padding:5px 12px;border-radius:99px;border:1px solid #ffffff1f;background:#ffffff0a;color:#e4e2da;font:12px/1.4 var(--sans)}
 .limit-now:hover{background:#ffffff14}
 /* Long messages scroll inside the composer without a scrollbar (its arrows looked like a dropdown beside the text). */
-.composer textarea{scrollbar-width:none}.composer textarea::-webkit-scrollbar{display:none}
+/* The box grows with the message up to a cap, then scrolls with the app's thin bar. The word layer behind it keeps the
+   same gutter (hidden) so both wrap at the same width. */
+html body .composer .slash-field textarea{max-height:min(264px,38vh);overflow-y:auto}
+.composer :is(textarea,.slash-mirror){scrollbar-gutter:stable}
+.composer .slash-mirror{scrollbar-color:transparent transparent}
 /* The chat box sits on the page's own background across the whole workspace, so a table wider than the text column
    passes under it instead of showing beside it: the backdrop's colour is repeated sideways by a clipped shadow (no
    extra width, so the page never scrolls sideways), and the box stays above the messages. */

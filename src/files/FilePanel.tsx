@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import type { FileVersion, StoredFile } from "../../core/types";
 import { Icon, Logo } from "../Icons";
 import { copyText } from "../clipboard";
+import { menuKeys, useMenuKeys } from "../menuKeys";
 import { getBlob, storeBlob, deleteBlob, download, addVersion } from "../store";
 import { desktop, desktopChat } from "../desktop/bridge";
 import { confirmDialog } from "../dialogs";
@@ -280,6 +281,14 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const shown = saved ? (compare === "before" ? saved.before : saved.after) : proposal && compare === "after" ? proposal.after : view;
   const pages = shown?.kind === "pdf" ? shown.pdf.numPages : 0;
   const detail = kind === "pdf" ? (pages ? `${pages} page${pages === 1 ? "" : "s"}` : "PDF") : kind === "office" ? (/\.pptx$/i.test(file.name) ? "Presentation" : /\.xlsx$/i.test(file.name) ? "Workbook" : "Document") : kind === "text" ? "Text" : kind === "image" ? "Image" : "File";
+  // The right-click menu's rows, each with a letter that runs it while the menu is open.
+  const menuRows = !menu ? [] : [
+    ...(menu.text ? [{ label: "Add selection to chat", run: () => point({ page: menu.page, text: menu.text }) }, { label: "Copy", run: () => { void copyText(menu.text!); setMenu(null); } }] : []),
+    ...(menu.area && area ? [{ label: "Add this area to chat", run: () => { point({ page: area.n, image: crop(area), text: areaText(area) || undefined }); setArea(null); } }] : []),
+    ...(shown?.kind === "pdf" ? [{ label: "Select an area…", run: () => { setAreaMode(true); setArea(null); setMenu(null); } }] : []),
+  ];
+  const menuLetters = menuKeys(menuRows);
+  useMenuKeys(!!menu, menuLetters, (i) => menuRows[i]?.run());
   const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
     <header className="fp-head">
       <div className="fp-title"><span className="fp-crumb">Files /</span><strong aria-description={file.name}>{file.name}</strong></div>
@@ -351,10 +360,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     {area && !drag.current && createPortal(<div className="fp-area" style={{ left: area.x, top: area.y, width: area.w, height: area.h }}><button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => { const image = crop(area); point({ page: area.n, image, text: areaText(area) || undefined }); setArea(null); }}>Add to chat</button></div>, area.page)}
     {area && drag.current && createPortal(<div className="fp-area drawing" style={{ left: area.x, top: area.y, width: area.w, height: area.h }} />, area.page)}
     {menu && <div className="fp-menu" role="menu" style={{ left: Math.min(menu.x, innerWidth - 220), top: Math.min(menu.y, innerHeight - 140) }} onPointerDown={(e) => e.stopPropagation()}>
-      {menu.text && <button role="menuitem" onClick={() => point({ page: menu.page, text: menu.text })}>Add selection to chat</button>}
-      {menu.text && <button role="menuitem" onClick={() => { void copyText(menu.text!); setMenu(null); }}>Copy</button>}
-      {menu.area && area && <button role="menuitem" onClick={() => { point({ page: area.n, image: crop(area), text: areaText(area) || undefined }); setArea(null); }}>Add this area to chat</button>}
-      {shown?.kind === "pdf" && <button role="menuitem" onClick={() => { setAreaMode(true); setArea(null); setMenu(null); }}>Select an area…</button>}
+      {menuRows.map((row, i) => <button key={row.label} role="menuitem" aria-keyshortcuts={menuLetters[i] || undefined} onClick={row.run}>{row.label}{menuLetters[i] && <span className="menu-key" aria-hidden="true">{menuLetters[i]}</span>}</button>)}
       {!menu.text && !menu.area && shown?.kind !== "pdf" && <p>Select text first, then right-click to add it.</p>}
     </div>}
     {flash && <div className="fp-flash" role="status"><Icon name="check" size={14} />{flash}</div>}
