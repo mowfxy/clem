@@ -22,7 +22,7 @@ export function Illustration({
     paint(0);
     // The first frame is the finished pose; a scene without a loop stays on it.
     if (!animated.has(scene)) return;
-    let raf = 0,
+    let timer = 0,
       last = 0,
       elapsed = 0,
       lastCel = 0,
@@ -30,20 +30,22 @@ export function Illustration({
     const quiet = () =>
       media.matches || document.documentElement.dataset.quiet === "true";
     const stop = () => {
-      cancelAnimationFrame(raf);
-      raf = 0;
+      clearTimeout(timer);
+      timer = 0;
       last = 0;
     };
-    const tick = (now: number) => {
+    // Drawn on twos: twelve drawings a second, like hand animation. Each drawing is scheduled for when it is due
+    // rather than checked for on every display frame (120 a second on a fast screen), and lands on the same frame.
+    const tick = () => {
+      const now = performance.now();
       if (last) elapsed += Math.min(now - last, 100) / 1000;
       last = now;
-      // Drawn on twos: twelve drawings a second, like hand animation.
       const cel = Math.floor(elapsed * 12);
       if (cel !== lastCel) {
         paint(cel / 12);
         lastCel = cel;
       }
-      raf = requestAnimationFrame(tick);
+      timer = window.setTimeout(tick, Math.max(1, ((cel + 1) / 12 - elapsed) * 1000));
     };
     const sync = () => {
       stop();
@@ -51,7 +53,7 @@ export function Illustration({
         paint(0);
         return;
       }
-      if (visible && !document.hidden) raf = requestAnimationFrame(tick);
+      if (visible && !document.hidden) timer = window.setTimeout(tick, 0);
     };
     const observer = new IntersectionObserver(
       (entries) => {

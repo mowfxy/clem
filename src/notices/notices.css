@@ -12,7 +12,7 @@
   background:#1f1f1d;border:1px solid #ffffff17;box-shadow:0 16px 36px -10px #000b;
   transform-origin:50% 100%;transform:translateY(calc(var(--depth) * -12px)) scale(calc(1 - var(--depth) * .05));opacity:calc(1 - var(--depth) * .35);
   transition:transform .38s cubic-bezier(.2,.9,.3,1),opacity .3s;
-  animation:notice-in .5s cubic-bezier(.2,.9,.3,1) both}
+  animation:notice-in .5s cubic-bezier(.2,.9,.3,1) backwards}
 .expanded .notice-card{transform:none;opacity:1}
 .notice-card.leaving{animation:notice-out .26s cubic-bezier(.5,0,.75,0) forwards}
 .notice-art{flex:none;width:50px;height:50px;margin:-3px 0 -3px -2px;display:grid;place-items:center}
@@ -33,7 +33,7 @@
 
 /* The long-task handoff shares the same material. */
 .account-handoff{position:fixed;left:13px;bottom:78px;z-index:46;width:min(300px,calc(100vw - 26px));padding:15px;border-radius:16px;color:#f1f2ed;font-size:12px;font-family:var(--sans);
-  background:#1f1f1d;border:1px solid #ffffff17;box-shadow:0 24px 60px -12px #000c;animation:notice-in .5s cubic-bezier(.2,.9,.3,1) both}
+  background:#1f1f1d;border:1px solid #ffffff17;box-shadow:0 24px 60px -12px #000c;animation:notice-in .5s cubic-bezier(.2,.9,.3,1) backwards}
 .handoff-heading{display:flex;gap:11px;align-items:flex-start;margin-bottom:12px}
 .handoff-heading .notice-art{width:52px;height:52px}
 .handoff-heading strong{display:block;font-size:13px;font-weight:400}
@@ -50,4 +50,4 @@
 
 /* Unread support replies on the settings button. */
 .profile-settings{position:relative}
-.settings-badge{position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:99px;display:grid;place-items:center;font:400 10px/1 var(--sans);background:#ec8a74;color:#2a120c;box-shadow:0 0 0 2px #111;animation:notice-pop .45s cubic-bezier(.3,1.6,.5,1) both}
+.settings-badge{position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:99px;display:grid;place-items:center;font:400 10px/1 var(--sans);background:#ec8a74;color:#2a120c;box-shadow:0 0 0 2px #111;animation:notice-pop .45s cubic-bezier(.3,1.6,.5,1) backwards}

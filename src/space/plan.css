@@ -64,7 +64,7 @@
 .pl-view .pl-box-send:disabled{background:#2b2b28;color:var(--pl-muted);opacity:1}
 .pl-spin{width:13px;height:13px;border-radius:50%;border:2px solid #14141355;border-top-color:#141413;animation:pl-spin .8s linear infinite}
 .pl-box.busy .pl-box-send{background:var(--pl-ink)}
-.pl-reply{display:flex;align-items:flex-start;gap:8px;margin:0;padding:9px 8px 9px 12px;border-radius:10px;background:var(--pl-well);border:1px solid var(--pl-line);font-size:12.5px;line-height:1.5;color:var(--pl-soft);animation:pl-in .3s var(--pl-ease) both}
+.pl-reply{display:flex;align-items:flex-start;gap:8px;margin:0;padding:9px 8px 9px 12px;border-radius:10px;background:var(--pl-well);border:1px solid var(--pl-line);font-size:12.5px;line-height:1.5;color:var(--pl-soft);animation:pl-in .3s var(--pl-ease) backwards}
 .pl-reply.working{color:var(--pl-muted);background:none;border-color:transparent;padding:0 4px}
 .pl-reply.error{color:#ecc3b2}
 .pl-reply button{flex:none;margin-left:auto;padding:3px;border-radius:6px;color:var(--pl-muted)}
@@ -140,7 +140,7 @@ button.pl-check:active{transform:scale(.88)}
 @media (prefers-reduced-motion:reduce){.pl-reply,.pl-ring .fill{animation:none;transition:none}}
 
 /* Plan cards in a chat */
-.pl-proposal{margin:16px 0;padding:16px 16px 14px;border-radius:16px;background:var(--pl-card);border:1px solid var(--pl-line-2);font-family:var(--sans);white-space:normal;animation:pl-in .35s var(--pl-ease) both}
+.pl-proposal{margin:16px 0;padding:16px 16px 14px;border-radius:16px;background:var(--pl-card);border:1px solid var(--pl-line-2);font-family:var(--sans);white-space:normal;animation:pl-in .35s var(--pl-ease) backwards}
 .pl-proposal.superseded,.pl-proposal.dismissed{opacity:.6}
 .pl-proposal-top{display:flex;align-items:center;gap:12px}
 .pl-proposal-art{flex:none;width:58px;height:52px}
@@ -152,7 +152,7 @@ button.pl-check:active{transform:scale(.88)}
 .pl-proposal .pl-preview{margin-top:6px}
 .pl-proposal .pl-head{display:none}
 .pl-proposal .pl-figures{margin-top:24px}
-.pl-preview-tasks{margin-top:14px;animation:pl-in .3s var(--pl-ease) both}
+.pl-preview-tasks{margin-top:14px;animation:pl-in .3s var(--pl-ease) backwards}
 .pl-preview-tasks .pl-sections{grid-template-columns:1fr}
 .pl-preview-tasks .pl-section{background:var(--pl-well)}
 .pl-proposal footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;flex-wrap:wrap}

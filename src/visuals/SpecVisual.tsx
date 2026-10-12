@@ -54,9 +54,9 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
     let raf = 0, last = 0, visible = true, lastReadout = 0;
     const resize = () => { if (!el) return; const dpr = Math.min(devicePixelRatio || 1, 2), w = el.clientWidth; el.width = Math.round(w * dpr); el.height = Math.round(w * H / W * dpr); dirty.current = true; };
     const frame = (now: number) => {
+      // While filming, frames keep coming even if the card is scrolled out of view; otherwise the loop sleeps until it is back.
+      if ((!visible || document.hidden) && !filming.current) { raf = 0; last = 0; return; }
       raf = requestAnimationFrame(frame);
-      // While filming, frames keep coming even if the card is scrolled out of view.
-      if ((!visible || document.hidden) && !filming.current) { last = 0; return; }
       // Still pictures get a short entrance (charts grow in) and then stop redrawing.
       const intro = !moving && !figure && time.current < 1;
       if ((playing && moving) || intro) { if (last) time.current += Math.min(now - last, 80) / 1000 * (intro ? 1 : rate); dirty.current = true; }
@@ -77,9 +77,11 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
       if (now - lastReadout > 110) { lastReadout = now; if (visual.spec.readouts?.length) setReadouts(visual.readouts(valuesRef.current, t)); if (looped) setProgress(t / visual.period); }
     };
     const observer = new ResizeObserver(resize); observer.observe(watched); resize();
-    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; dirty.current = true; }); io.observe(watched);
+    const wake = () => { if (!raf) raf = requestAnimationFrame(frame); };
+    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; dirty.current = true; wake(); }); io.observe(watched);
+    document.addEventListener('visibilitychange', wake);
     raf = requestAnimationFrame(frame);
-    return () => { cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); };
+    return () => { cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', wake); };
   }, [visual, playing, rate, moving, looped, use3d]);
   useEffect(() => { if (!moving || !playing) setReadouts(visual.readouts(values, local())); }, [values]);
 

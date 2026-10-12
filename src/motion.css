@@ -1,19 +1,21 @@
 /* Workspace motion. Short, interruptible and only on entry, so nothing loops for attention.
+   Entrances fill backwards, not both: a finished animation held in effect keeps its element on a
+   GPU layer of its own, and a long chat then carries one per message.
    Turned off by reduced-motion and by Settings → General → "A quieter workspace". */
 :root{--ease-out:cubic-bezier(.2,.8,.2,1);--ease-spring:cubic-bezier(.2,1.25,.35,1)}
 
 /* Views arrive instead of popping in. */
-.workspace>.page,.workspace>.chat-view{animation:m-rise .38s var(--ease-out) both}
-.page-heading{animation:m-rise .42s var(--ease-out) both}
+.workspace>.page,.workspace>.chat-view{animation:m-rise .38s var(--ease-out) backwards}
+.page-heading{animation:m-rise .42s var(--ease-out) backwards}
 
 /* New messages settle into the conversation. */
-.messages .message{animation:m-message .42s var(--ease-out) both}
+.messages .message{animation:m-message .42s var(--ease-out) backwards}
 .messages .message.user{transform-origin:100% 100%}
 
 /* Sidebar history and suggestion cards cascade on first paint. */
-.history-row{animation:m-slide .34s var(--ease-out) both}
+.history-row{animation:m-slide .34s var(--ease-out) backwards}
 .history-row:nth-child(2){animation-delay:30ms}.history-row:nth-child(3){animation-delay:60ms}.history-row:nth-child(4){animation-delay:90ms}.history-row:nth-child(5){animation-delay:120ms}.history-row:nth-child(n+6){animation-delay:150ms}
-.suggestions>*{animation:m-rise .45s var(--ease-out) both}
+.suggestions>*{animation:m-rise .45s var(--ease-out) backwards}
 .suggestions>*:nth-child(2){animation-delay:50ms}.suggestions>*:nth-child(3){animation-delay:100ms}.suggestions>*:nth-child(4){animation-delay:150ms}
 .suggestions>button{transition:transform .22s var(--ease-spring),border-color .2s,background .2s}
 .suggestions>button:hover{transform:translateY(-2px)}
@@ -28,9 +30,9 @@
 /* The account corner responds to the pointer. */
 
 /* Dialogs and the toast rise with a little weight. */
-dialog[open]{animation:m-dialog .32s var(--ease-spring) both}
-dialog[open]::backdrop{animation:m-fade .25s ease-out both}
-.toast{animation:m-toast .45s var(--ease-spring) both}
+dialog[open]{animation:m-dialog .32s var(--ease-spring) backwards}
+dialog[open]::backdrop{animation:m-fade .25s ease-out backwards}
+.toast{animation:m-toast .45s var(--ease-spring) backwards}
 
 /* The composer glows softly while focused. */
 .composer{transition:border-color .2s,box-shadow .3s}

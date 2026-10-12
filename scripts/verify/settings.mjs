@@ -336,7 +336,9 @@ try {
   for(const tab of ['General','Security']){
    await page.locator('.st-nav').getByRole('button',{name:tab,exact:true}).click();
    const art=page.locator('.st-art svg');await art.waitFor();
-   const before=await art.innerHTML();await page.waitForTimeout(600);assert.notEqual(await art.innerHTML(),before);
+   // The line boils through three drawings six times a second (it repeats every 0.5s) and poses hold, so one sample
+   // 600ms later can land on the same drawing: look at a few moments instead.
+   const seen=new Set();for(let i=0;i<5;i++){seen.add(await art.innerHTML());await page.waitForTimeout(110);}assert.ok(seen.size>1,'the drawing moves');
    await page.screenshot({path:'artifacts/settings-'+tab.toLowerCase()+'.png'});
    await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(400);const still=await art.innerHTML();await page.waitForTimeout(200);assert.equal(await art.innerHTML(),still);await page.emulateMedia({reducedMotion:'no-preference'});
   }

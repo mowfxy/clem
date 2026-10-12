@@ -126,7 +126,7 @@
 
 .provider-dot{display:flex;color:#8fd497}
 .provider-dot .drawn-icon{color:inherit}
-.provider-panel .provider-card{animation:provider-in .25s ease both}
+.provider-panel .provider-card{animation:provider-in .25s ease backwards}
 @keyframes provider-in{from{opacity:0;transform:translateY(4px)}}
 .provider-title{flex:1;min-width:0;display:grid;gap:2px}
 .provider-title small{font-size:12px;color:#8f8e87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -191,7 +191,7 @@
 .setting-row button.secondary.danger {color:#f0a594;border-color:#6b3a31}.setting-row button.secondary.danger:hover:not(:disabled){background:#3a1f1d;color:#ffc3b5}
 
 /* A service's accounts: a compact header with the add action, then one row per account with its usage. */
-.provider-group{display:grid;gap:8px;animation:provider-in .22s ease both}
+.provider-group{display:grid;gap:8px;animation:provider-in .22s ease backwards}
 @media (prefers-reduced-motion:reduce){.provider-group{animation:none}}
 .provider-head{display:flex;align-items:center;gap:12px;padding:12px 12px 12px 14px;border:1px solid var(--st-line,#2c2c29);border-radius:14px;background:var(--st-card,#1d1d1b)}
 .provider-head .provider-logo{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;border:1px solid #ffffff12;background:#ffffff06}

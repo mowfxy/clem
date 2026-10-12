@@ -53,10 +53,10 @@
 .study-review-head{display:flex;align-items:center;gap:14px;font-size:12px;color:#85847e}
 .study-bar{flex:1;height:3px;border-radius:9px;background:#2d2d2a;overflow:hidden}
 .study-bar i{display:block;height:100%;background:#f0efeb;transition:width .4s cubic-bezier(.2,.8,.2,1)}
-.review-card{display:grid;gap:14px;min-height:230px;align-content:start;padding:24px 24px 18px;border:1px solid #2e2e2b;border-radius:16px;background:#1a1a18;animation:m-rise .3s cubic-bezier(.2,.8,.2,1) both}
+.review-card{display:grid;gap:14px;min-height:230px;align-content:start;padding:24px 24px 18px;border:1px solid #2e2e2b;border-radius:16px;background:#1a1a18;animation:m-rise .3s cubic-bezier(.2,.8,.2,1) backwards}
 .review-card small{font-size:11px;color:#6f6e68;letter-spacing:.03em}
 .review-card h4{margin:0;font:400 22px/1.4 var(--serif);color:#f0efeb}
-.review-answer{margin:0;padding-top:14px;border-top:1px solid #ffffff0d;font-size:15px;line-height:1.6;color:#dcdad3;animation:m-rise .25s cubic-bezier(.2,.8,.2,1) both}
+.review-answer{margin:0;padding-top:14px;border-top:1px solid #ffffff0d;font-size:15px;line-height:1.6;color:#dcdad3;animation:m-rise .25s cubic-bezier(.2,.8,.2,1) backwards}
 .review-reveal{justify-self:start;margin-top:auto;display:inline-flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:11px;font-size:13px}
 .review-reveal kbd,.review-grades small{font:400 11px var(--sans);color:#85847e}
 .review-reveal kbd{padding:2px 6px;border-radius:5px;border:1px solid #3a3a36}

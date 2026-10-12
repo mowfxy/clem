@@ -223,12 +223,15 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
     let raf = 0, needs = true, visible = true, film: HTMLCanvasElement | null = null;
     controls.addEventListener('change', () => { needs = true; });
     const observer = new ResizeObserver(resize); observer.observe(element); resize();
-    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; needs = true; }); io.observe(element);
+    // Out of view (or the window hidden) the loop sleeps instead of ticking at the display rate; coming back wakes it.
+    const wake = () => { if (!raf) raf = requestAnimationFrame(tick); };
+    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; needs = true; wake(); }); io.observe(element);
+    document.addEventListener('visibilitychange', wake);
     const quiet = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (quiet) controls.autoRotate = false;
     const tick = () => {
+      if ((!visible || document.hidden) && !film) { raf = 0; return; }
       raf = requestAnimationFrame(tick);
-      if ((!visible || document.hidden) && !film) return;
       if (clock.current.dirty) { clock.current.dirty = false; try { sync(); } catch { /* a failing formula leaves the last good frame */ } needs = true; }
       if (controls.update()) needs = true;
       if (controls.autoRotate) needs = true;
@@ -252,7 +255,7 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
       }),
       // Films what is on screen with its labels; a still model turns once around while recording.
       record: (seconds, turntable) => {
-        const out = document.createElement('canvas'); out.width = renderer.domElement.width; out.height = renderer.domElement.height; paint(out); film = out;
+        const out = document.createElement('canvas'); out.width = renderer.domElement.width; out.height = renderer.domElement.height; paint(out); film = out; wake();
         if (turntable) { controls.autoRotate = true; controls.autoRotateSpeed = 60 / seconds; }
         return recordCanvas(out, seconds).finally(() => { film = null; controls.autoRotate = scene.autoRotate && !quiet; controls.autoRotateSpeed = 1.2; });
       },
@@ -273,7 +276,7 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
         });
     }
     return () => {
-      cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); controls.dispose();
+      cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', wake); controls.dispose();
       clear(content); clear(axes); env.dispose(); pmrem.dispose(); renderer.dispose(); handle.current = null; element.replaceChildren();
     };
   }, [scene]);

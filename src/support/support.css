@@ -3,7 +3,7 @@
 .support-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
 .support-head p{margin:6px 0 0;font-size:13px}
 .support-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.support-list li{animation:support-in .35s cubic-bezier(.2,.9,.3,1) both}
+.support-list li{animation:support-in .35s cubic-bezier(.2,.9,.3,1) backwards}
 .support-list button{width:100%;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;gap:4px 12px;justify-items:start;align-items:center;text-align:left;padding:13px 14px;border:1px solid #2d2d2b;border-radius:12px;background:#1b1b1a;transition:border-color .2s,transform .2s,background .2s}
 .support-list button:hover{border-color:#44443f;background:#20201f;transform:translateY(-1px)}
 .support-list small{grid-column:2;color:#8d8c86;font-size:12px}
@@ -19,7 +19,7 @@
 .support-thread-head{display:grid;gap:6px;justify-items:start}
 .support-thread-head p{margin:0;font-size:12px}
 .support-thread{display:grid;gap:12px;max-height:48vh;overflow:auto;padding:4px 2px}
-.support-msg{display:flex;gap:10px;max-width:88%;animation:support-in .35s ease-out both}
+.support-msg{display:flex;gap:10px;max-width:88%;animation:support-in .35s ease-out backwards}
 .support-msg p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:#e8e7e1!important}
 .support-msg small{display:block;margin-top:6px;color:#8d8c86;font-size:11px}
 .support-msg.mine{justify-self:end;flex-direction:column;align-items:flex-end;padding:11px 14px;border-radius:14px 14px 4px 14px;background:#2a2a28;border:1px solid #363633}
