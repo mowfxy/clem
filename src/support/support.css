@@ -12,7 +12,8 @@
 .support-status.status-open{color:#c5ccfb;border-color:#9aa5f540;background:#9aa5f514}
 .support-status.status-pending{color:#a8dcae;border-color:#9fd3a440;background:#9fd3a414}
 .support-status.status-resolved,.support-status.status-closed{color:#8d8c86}
-.support-unread{width:8px;height:8px;border-radius:50%;background:#ec8a74;flex:none;animation:support-pulse 2.2s ease-in-out infinite}
+.support-unread{display:inline-flex;flex:none;color:#ec8a74;animation:support-pulse 2.2s ease-in-out infinite}
+.support-unread .drawn-icon{color:inherit}
 .support-back{justify-self:start;padding:6px 10px 6px 6px;font-size:13px;color:#b4b3ac}
 .support-back svg{transform:scaleX(-1)}
 .support-thread-head{display:grid;gap:6px;justify-items:start}

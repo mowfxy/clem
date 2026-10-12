@@ -92,7 +92,7 @@ export function LocalProvider({ onDone, accountId }: { onDone: () => void; accou
             Open sign-in page
             <Icon name="arrow" size={15} />
           </a>
-          <p className="provider-wait"><span className="cx-pulse" />Waiting for your account…</p>
+          <p className="provider-wait"><Icon name="hourglass" size={14} className="cx-wait" />Waiting for your account…</p>
           <p className="cx-hint">If asked, turn on device-code sign-in in ChatGPT’s security settings.</p>
         </div>
       )}

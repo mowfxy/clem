@@ -102,13 +102,15 @@ function Ring({value}:{value:number}){
   return <svg className="pl-ring" width="46" height="46" viewBox="0 0 46 46" aria-hidden="true"><circle cx="23" cy="23" r={r} className="track"/><circle cx="23" cy="23" r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform="rotate(-90 23 23)"/></svg>;
 }
 
+const StateMark=({s,today}:{s:PlanStatus;today:string})=><span className={`pl-state ${s.state}`}><Icon name={`plan-${s.state}`} size={16}/>{STATE_LABEL(s,today)}</span>;
+
 /** The plan's headline: title, goal, where it stands, the chart and three numbers. */
-export function PlanSummary({plan,today=localDay(),compact=false}:{plan:SpacePlan;today?:string;compact?:boolean}){
+export function PlanSummary({plan,today=localDay(),compact=false,state=true}:{plan:SpacePlan;today?:string;compact?:boolean;state?:boolean}){
   const s=planStatus(plan,today);
   return <>
     <div className="pl-head">
       <div className="pl-head-text">
-        <span className={`pl-state ${s.state}`}><i/>{STATE_LABEL(s,today)}</span>
+        {state&&<StateMark s={s} today={today}/>}
         <h3>{plan.title}</h3>
         {plan.goal&&<p>{plan.goal}</p>}
       </div>
@@ -177,9 +179,8 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
   return <div className="pl-view">
     <section className="pl-card">
       <span className="pl-art" aria-hidden="true"><Illustration scene={s.state==='behind'?'alarm':s.state==='done'?'checklist':'steps'} viewBox="100 70 290 260"/></span>
-      <button type="button" className="icon-button pl-delete" aria-label="Delete plan" title="Delete plan" onClick={()=>void remove()}><Icon name="trash" size={16}/></button>
-      <PlanSummary plan={plan} today={today}/>
-      <p className="pl-pace">{paceLine(s)}</p>
+      <PlanSummary plan={plan} today={today} state={false}/>
+      <div className="pl-foot"><StateMark s={s} today={today}/><p className="pl-pace">{paceLine(s)}</p><button type="button" className="pl-delete" onClick={()=>void remove()}>Delete plan</button></div>
     </section>
     <PlanBox placeholder="Tell Mowr what changed: “finished lecture 3”, “quiz moved to Friday”…" onAsk={actions.onAsk} disabled={disabled}/>
     {(s.overdue.length>0||s.today.length>0)&&<section className="pl-card pl-focus">
@@ -198,7 +199,7 @@ export function PlanOverviewCard({plan,onOpen}:{plan:SpacePlan;onOpen:()=>void})
     <div className="sp-card-head"><span className="sp-eyebrow">Plan</span><button onClick={onOpen}>Open plan</button></div>
     <div className="pl-overview-row">
       <Ring value={s.percent}/>
-      <div><b>{plan.title}</b><small><span className={`pl-state inline ${s.state}`}><i/>{STATE_LABEL(s,today)}</span> · {s.done}/{s.total} done</small></div>
+      <div><b>{plan.title}</b><small><span className={`pl-state inline ${s.state}`}><Icon name={`plan-${s.state}`} size={13}/>{STATE_LABEL(s,today)}</span> · {s.done}/{s.total} done</small></div>
     </div>
     {focus.length>0?<ul className="pl-overview-list">{focus.map(t=><li key={t.id}><span>{t.title}</span><Due task={t} today={today}/></li>)}</ul>
       :s.next&&<p className="pl-overview-next">Next: {s.next.title}{s.next.due?` · ${dayLabel(s.next.due,today)}`:''}</p>}

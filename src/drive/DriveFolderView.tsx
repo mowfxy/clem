@@ -16,11 +16,11 @@ const glyphName = (i: { name: string; mimeType: string }) => i.name + (({ docume
 const editable = /\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i;
 type Sync = DriveSyncState["state"] | "pending";
 
-/** Beside each file: a turning ring while it uploads, a check once Drive has it, a mark if it failed, a dot for an edit
+/** Beside each file: a turning ring while it uploads, a check once Drive has it, a mark if it failed, a cloud for an edit
  *  that waits for approval. */
 function SyncMark({ state, error }: { state: Sync; error?: string }) {
   const label = state === "uploading" ? "Saving to Google Drive" : state === "failed" ? "Not saved to Google Drive" + (error ? ": " + error : "") : state === "pending" ? "Edited here · approve the change to save it to Google Drive" : "In Google Drive";
-  return <span className={"gd-sync is-" + state} role="img" aria-label={label} title={label}>{state === "synced" ? <Icon name="check" size={12} /> : state === "failed" ? "!" : null}</span>;
+  return <span className={"gd-sync is-" + state} role="img" aria-label={label} title={label}>{state === "synced" ? <Icon name="check" size={12} /> : state === "pending" ? <Icon name="cloud-up" size={16} /> : state === "failed" ? "!" : null}</span>;
 }
 
 /** A file on its way into Drive: shown in its folder at once with a turning ring, or with Google's reason if it failed. */

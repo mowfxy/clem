@@ -19,7 +19,7 @@ export function SupportInbox({cases,onChanged}:{cases:SupportCase[];onChanged:()
     {cases.length>0&&<header className="support-head"><div><h3>Your requests</h3><p className="muted">Replies from the Mowr team appear here and in a notice above your account.</p></div></header>}
     {cases.length>0&&<ul className="support-list">{cases.map((c,i)=><li key={c.id} style={{animationDelay:i*40+'ms'}}><button onClick={()=>setOpen(c.id)}>
       <span className={`support-status status-${c.status}`}>{statusLabel[c.status]}</span>
-      <span className="support-subject">{c.unread&&<i className="support-unread" aria-label="New reply"/>}{c.subject}</span>
+      <span className="support-subject">{c.unread&&<span className="support-unread" aria-label="New reply"><Icon name="new-reply" size={13}/></span>}{c.subject}</span>
       <small>{c.category} · {when(c.updated_at||c.created_at)} · {c.messages.length} {c.messages.length===1?'reply':'replies'}</small>
     </button></li>)}</ul>}
   </div>;

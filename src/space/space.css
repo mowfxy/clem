@@ -162,9 +162,6 @@
 [data-quiet=true] :is(.sp-hero,.sp-body){animation:none}
 
 /* Google Drive folder sync */
-.sp-drive-chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#e9e8e2}
-.sp-drive-chip small{color:#8f8e87;font-size:11px}
-.sp-drive-chip.error small{color:#f0a594}
 .drive-glyph{flex:none}
 .sp-drive-news{display:flex;align-items:center;gap:12px;margin:0 0 18px;padding:12px 12px 12px 16px;border-radius:14px;border:1px solid var(--sp-line);background:var(--sp-card);animation:ps-drop .3s ease-out both}
 .sp-drive-news>div{flex:1;min-width:0;display:grid;gap:2px}
@@ -182,8 +179,6 @@
 .sp-local-actions>button:hover{background:#ffffff10;color:#fff}
 .sp-local-actions .sp-menu .icon-button{width:28px;height:28px}
 .sp-local-empty{margin:0 2px 8px}
-.sp-drive-chip small{display:inline-flex;align-items:center;gap:4px}
-.sp-drive-chip small::before{content:"";width:6px;height:6px;border-radius:50%;background:#7fd08a;box-shadow:0 0 0 2px #7fd08a2e}
 .sp-memory{display:grid;gap:12px}
 .sp-memory .memory-panel{gap:14px}
 .sp-memory .memory-add input{width:100%;box-sizing:border-box;border:1px solid #3d3d38;color:#eeede7;font:13px var(--sans)}

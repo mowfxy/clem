@@ -98,7 +98,7 @@ function AccountRow({ account, index, service, active, busy, onUse, onRemove, on
       <span className="account-avatar" aria-hidden="true">{(account.email || NAME[service]).charAt(0).toUpperCase()}</span>
       <div className="account-id">
         <b title={label}>{label}</b>
-        <small>{account.connected ? <>{plan || "Connected"}{active && <span className="account-active">In use</span>}</> : account.pending ? "Waiting for browser sign-in" : "Not signed in"}</small>
+        <small>{account.connected ? <>{plan || "Connected"}{active && <span className="account-active"><Icon name="check" size={11} />In use</span>}</> : account.pending ? "Waiting for browser sign-in" : "Not signed in"}</small>
       </div>
       <div className="account-actions">
         {account.connected && !active && <button type="button" className="account-use" disabled={busy} onClick={onUse}>Use</button>}
@@ -238,7 +238,7 @@ export function ModelsSettings({
       <section className="provider-panel">
         {services.length > 1 && <div className="provider-switch" role="tablist" aria-label="AI services">
           {services.map((x) => <button key={x} type="button" role="tab" aria-selected={x === current} className={"provider-switch-tab provider-" + x + (x === current ? " on" : "")} onClick={() => pick(x)}>
-            <span className="provider-switch-logo">{LOGO[x](16)}</span>{NAME[x]}{counts[x] > 0 && <span className="provider-dot" aria-label="connected" />}
+            <span className="provider-switch-logo">{LOGO[x](16)}</span>{NAME[x]}{counts[x] > 0 && <span className="provider-dot" aria-label="connected"><Icon name="plug" size={13} /></span>}
           </button>)}
         </div>}
         <div key={current} className={"provider-group provider-" + current} role="tabpanel">

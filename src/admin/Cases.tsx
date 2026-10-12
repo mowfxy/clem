@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {adminApi,type CaseRow} from './api';
 import {Avatar,Badge,Empty,ErrorNote,I,PageHead,Skeleton,ago,date,useLoad,useToast,who,Select} from './ui';
+import {Icon} from '../Icons';
 import type {Go} from './AdminApp';
 
 const statuses=[['active','Active'],['open','Open'],['pending','Waiting on person'],['resolved','Resolved'],['closed','Closed'],['all','All']] as const;
@@ -19,7 +20,7 @@ export function Cases({go,selected}:{go:Go;selected?:string}){
         <Select value={status} onChange={setStatus} aria-label="Filter by status" options={statuses.map(([value,label])=>({value,label}))}/></div>
         {list.error?<ErrorNote error={list.error} onRetry={list.reload}/>:list.loading&&!list.data?<Skeleton rows={7}/>:list.data!.cases.length?<ul>{list.data!.cases.map(c=><li key={c.id}><button className={selected===c.id?'on':''} onClick={()=>go('cases',c.id)}>
           <span className="adm-inbox-row-top"><strong>{c.email||c.username||'Unknown person'}</strong><small>{ago(c.updated_at)}</small></span>
-          <span className="adm-inbox-subject">{c.awaiting_staff&&<i className="adm-unread" aria-label="Awaiting reply"/>}{c.subject}</span>
+          <span className="adm-inbox-subject">{c.awaiting_staff&&<span className="adm-unread" aria-label="Awaiting reply"><Icon name="new-reply" size={13}/></span>}{c.subject}</span>
           <span className="adm-chips"><Badge tone={priorityTone[c.priority]}>{c.priority}</Badge><Badge>{c.category.replace('Contact support','Help').replace('Report a bug','Bug').replace('Suggest a feature','Idea')}</Badge>{c.status!=='open'&&<Badge tone="quiet">{c.status}</Badge>}</span>
         </button></li>)}</ul>:<Empty scene="lifebuoy" title="Nothing here">{status==='active'?'Every case has been handled.':'No cases match this filter.'}</Empty>}
       </section>

@@ -124,7 +124,8 @@
 
 
 
-.provider-dot{width:6px;height:6px;border-radius:50%;background:#8fd497;box-shadow:0 0 0 3px #8fd49722}
+.provider-dot{display:flex;color:#8fd497}
+.provider-dot .drawn-icon{color:inherit}
 .provider-panel .provider-card{animation:provider-in .25s ease both}
 @keyframes provider-in{from{opacity:0;transform:translateY(4px)}}
 .provider-title{flex:1;min-width:0;display:grid;gap:2px}
@@ -144,10 +145,6 @@
 .provider-hint{margin:0;font-size:12px;line-height:1.5;color:#a9a8a0}
 .provider-spinner{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:provider-spin .8s linear infinite}
 @keyframes provider-spin{to{transform:rotate(360deg)}}
-.provider-status{display:inline-flex;align-items:center;gap:6px;font:12px var(--sans);color:#8f8e87;padding:4px 9px;border-radius:99px;border:1px solid #ffffff12}
-.provider-status::before{content:"";width:6px;height:6px;border-radius:50%;background:#6b6a64}
-.provider-status.on{color:#b4dcb8;border-color:#a8dcae33;background:#a8dcae0d}
-.provider-status.on::before{background:#8fd497;box-shadow:0 0 0 3px #8fd49722}
 .provider-card h3 {margin:0;font:400 16px var(--sans);color:#f1f0ea}
 .provider-card p {margin:0 0 10px;font-size:12px;line-height:1.55;color:#9d9c95;flex:1}
 .provider-card .provider-action{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:9px;border:1px solid #44443d;background:#262623;color:#e6e5de;font:400 12px var(--sans);cursor:pointer;margin:0}
@@ -185,11 +182,11 @@
 .cx-code span{font-size:11px;color:#8f8e87;padding:3px 8px;border-radius:99px;border:1px solid #ffffff17}
 .cx-challenge .cx-go{width:100%}
 .cx-challenge .provider-wait{display:flex;align-items:center;justify-content:center;gap:8px;color:#b9b8b0!important}
-.cx-pulse{width:7px;height:7px;border-radius:50%;background:#fff;animation:cx-pulse 1.4s ease-in-out infinite}
-@keyframes cx-pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+.provider-wait .cx-wait{flex:none;color:#f3f2ee;animation:cx-wait 2.4s cubic-bezier(.6,0,.3,1) infinite}
+@keyframes cx-wait{0%,40%{transform:rotate(0)}60%,100%{transform:rotate(180deg)}}
 .cx-hint{font-size:11px!important;color:#85847d;margin:6px 0 0!important}
 .cx-connect .provider-note{text-align:center;font-size:11px!important;color:#7f7e78!important}
-@media(prefers-reduced-motion:reduce){.cx-wire i,.cx-pulse{animation:none}.cx-wire i:first-child{opacity:1;left:34px}}
+@media(prefers-reduced-motion:reduce){.cx-wire i,.provider-wait .cx-wait{animation:none}.cx-wire i:first-child{opacity:1;left:34px}}
 .cx-mowr .mowr-mark{color:#141413}
 .setting-row button.secondary.danger {color:#f0a594;border-color:#6b3a31}.setting-row button.secondary.danger:hover:not(:disabled){background:#3a1f1d;color:#ffc3b5}
 
@@ -214,7 +211,7 @@
 .account-id b{font:500 13px/1.35 var(--sans);color:var(--st-ink,#f0efeb);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .account-id small{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--st-muted,#8a8983)}
 .account-active{display:inline-flex;align-items:center;gap:5px;color:#b4dcb8}
-.account-active::before{content:"";width:5px;height:5px;border-radius:50%;background:#8fd497}
+.account-active .drawn-icon{color:#8fd497}
 .account-actions{display:flex;align-items:center;gap:2px}
 .account-actions .account-use{height:28px;padding:0 10px;border-radius:8px;border:1px solid #3c3c37;font-size:11px;color:#dcdbd4}
 .account-actions .account-use:hover:not(:disabled){background:#ffffff0a}

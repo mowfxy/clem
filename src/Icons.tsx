@@ -7,6 +7,8 @@ const box=(x:number,y:number,w:number,h:number,r=2)=>`M${x+r} ${y}h${w-2*r}a${r}
 const page='M8 4h11l7 7v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z';
 const bubble='M16 5C9.4 5 4 9.3 4 14.7c0 2.8 1.4 5.3 3.7 7.1L6.5 27l5.9-2.7c1.1.3 2.3.4 3.6.4 6.6 0 12-4.3 12-9.8S22.6 5 16 5Z';
 const shieldPath='M16 3.5l10.5 4v7.3c0 6.4-4.4 11.1-10.5 13.7C9.9 25.9 5.5 21.2 5.5 14.8V7.5Z';
+const dial='M3 22.5a13 13 0 0 1 26 0',hub='F '+c(16,22.5,2.4);
+const cloud='M9.5 25.5h14a5.5 5.5 0 0 0 .8-10.9A8.5 8.5 0 0 0 8 14.3a5.7 5.7 0 0 0 1.5 11.2Z';
 const drawings:Record<string,string[]>={
 // Slash commands (core/commands.ts): one drawing each, so a command reads at a glance in the menu and its chip.
 'cmd-pdf':['F '+page,'M19 4v7h7','M10.5 17h11','M10.5 22h7'],
@@ -99,10 +101,26 @@ right:['M12.5 8l8 8-8 8'],
 playhead:['F M11 7l14.5 9L11 25Z'],stop:['F '+box(9,9,14,14,2.5)],wrap:['M6 9h20','M6 16h15.5a4 4 0 0 1 0 8H16','M19 21l-3 3 3 3','M6 24h5'],
 pause:['F '+box(8,6,5.5,20,2)+box(18.5,6,5.5,20,2)],
 restart:['M6.5 16a9.5 9.5 0 1 0 3-6.9','M6 4.5v6h6'],
-cube:['F M16 4l11 6v12L16 28 5 22V10Z','M5 10l11 6 11-6','M16 16v12']};
+cube:['F M16 4l11 6v12L16 28 5 22V10Z','M5 10l11 6 11-6','M16 16v12'],
+// Plan states: a pace dial whose needle says how the plan is going (behind leans left, on track stands up, ahead leans
+// right); a plan not started yet is a calendar page, a finished one a planted flag.
+'plan-upcoming':[box(5,7,22,21),'F M5 9a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v4H5Z','M11 4v5M21 4v5','M11 20h.1M16 20h.1M21 20h.1'],
+'plan-behind':[dial,'M16 22.5l-8.7-5',hub],
+'plan-on-track':[dial,'M16 22.5v-10',hub],
+'plan-ahead':[dial,'M16 22.5l8.7-5',hub],
+'plan-done':['M8 28V4.5','F M8 5h15.5l-3.5 5.5 3.5 5.5H8Z'],
+// Small status marks that stand in for coloured dots: something new, Mowr at work, offline, waiting for Drive,
+// connected, waiting for a sign-in, kept on this device.
+'new-reply':['F M16 4.5c1 6 4.5 9.5 11.5 11.5-7 2-10.5 5.5-11.5 11.5-1-6-4.5-9.5-11.5-11.5 7-2 10.5-5.5 11.5-11.5Z'],
+writing:['F M21.5 4.5l6 6L13 25l-7.5 1.5L7 19Z','M18 8l6 6'],
+offline:['F '+cloud,'M5 5l22 22'],
+'cloud-up':['F '+cloud,'M16 22v-7.5','M12.5 18l3.5-3.5 3.5 3.5'],
+plug:['F M10 11h12v4.5a6 6 0 0 1-12 0Z','M13 4.5V11M19 4.5V11','M16 21.5V28'],
+hourglass:['M8 4h16M8 28h16','F M10 4c0 6.5 6 8 6 12s-6 5.5-6 12h12c0-6.5-6-8-6-12s6-5.5 6-12Z'],
+device:['F '+box(6,6,20,14),'M3 25.5h26']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
-export function Icon({name,size=22}:{name:string;size?:number}){return <svg className={`drawn-icon ink-icon icon-${name}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
+export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
 const petal='M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C85 48 75 43 65 48 C55 52 49 43 49 31 C49 22 54 15 64 11Z';
 export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){
  const ref=useRef<SVGSVGElement>(null);

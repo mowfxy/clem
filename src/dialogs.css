@@ -135,7 +135,7 @@ dialog.app-modal .modal-actions button{margin:0}
 .memory-group li+li{border-top:1px solid #2a2a27}
 .memory-text{flex:1;min-width:0;white-space:pre-wrap;font-weight:400!important}
 .memory-group li.learned .memory-text{color:#bdbcb4}
-.memory-group li.learned .memory-text::before{content:'';display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;border-radius:50%;background:#c9b27a;vertical-align:middle}
+.memory-group li.learned .memory-text .drawn-icon{display:inline-block;margin:0 7px -2px 0;color:#c9b27a}
 .memory-actions{display:flex;align-items:center;gap:2px;flex:none}
 .memory-group li:not(.learned) .memory-actions{opacity:0;transition:opacity .15s}
 .memory-group li:hover .memory-actions,.memory-group li:focus-within .memory-actions{opacity:1}

@@ -263,7 +263,8 @@
 .adm-inbox-row-top strong{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adm-inbox-row-top small{color:var(--a-muted);flex:none}
 .adm-inbox-subject{font-size:13px;color:var(--a-soft);display:flex;align-items:center;gap:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.adm-unread{flex:none;width:7px;height:7px;border-radius:50%;background:var(--a-warn);box-shadow:0 0 0 3px #e3c07e22}
+.adm-unread{flex:none;display:inline-flex;color:var(--a-warn)}
+.adm-unread .drawn-icon{color:inherit}
 .adm-inbox-detail{min-width:0;overflow:hidden;display:flex;flex-direction:column}
 .adm-inbox-detail>.adm-empty{margin:auto}
 .adm-case{display:flex;flex-direction:column;height:100%;min-height:0}
