@@ -28,6 +28,6 @@ html body dialog.settings-dialog>header{background:linear-gradient(var(--sheet-b
 @keyframes sheet-in{from{opacity:0;transform:scale(.97)}}
 @keyframes sheet-fade{from{opacity:0}}
 @media (prefers-reduced-motion:no-preference){
- html:not([data-quiet=true]) body dialog[open]:not(.st-dialog,.fp-dialog),html:not([data-quiet=true]) body :is(.st,.file-panel.as-modal){animation:sheet-in .18s cubic-bezier(.2,.9,.3,1) both!important}
- html:not([data-quiet=true]) body dialog[open]::backdrop{animation:sheet-fade .18s ease-out both!important}
+ html:not([data-quiet=true]) body dialog[open]:not(.st-dialog,.fp-dialog),html:not([data-quiet=true]) body :is(.st,.file-panel.as-modal){animation:sheet-in .18s cubic-bezier(.2,.9,.3,1) backwards!important}
+ html:not([data-quiet=true]) body dialog[open]::backdrop{animation:sheet-fade .18s ease-out backwards!important}
 }

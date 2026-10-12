@@ -1,5 +1,5 @@
 dialog.command-palette{width:min(620px,calc(100vw - 32px));max-height:min(560px,80vh);padding:0;border-radius:18px;border:1px solid #3c3c39;background:linear-gradient(180deg,#232322f7,#1b1b1af7);box-shadow:0 1px 0 #ffffff12 inset,0 40px 120px -20px #000e;overflow:hidden;display:flex;flex-direction:column;margin-top:14vh;font-family:var(--sans);backdrop-filter:blur(16px)}
-dialog.command-palette[open]{display:flex;animation:command-in .28s cubic-bezier(.2,1.2,.35,1) both}
+dialog.command-palette[open]{display:flex;animation:command-in .28s cubic-bezier(.2,1.2,.35,1) backwards}
 dialog.command-palette::backdrop{background:#0009;backdrop-filter:blur(4px)}
 .command-input{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid #30302e;color:#8f8e88}
 .command-input input{flex:1;border:0!important;outline:0!important;background:none!important;padding:0!important;font-size:16px;color:#f0efe9}

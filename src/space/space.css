@@ -2,7 +2,7 @@
    drawing beside it over a hairline, quiet cards, one warm ink. */
 .space-page{--sp-card:#1d1d1b;--sp-well:#171716;--sp-line:#2c2c29;--sp-line-2:#3c3c37;--sp-ink:#f0efeb;--sp-soft:#b8b7b0;--sp-muted:#8a8983;--sp-ease:cubic-bezier(.2,.8,.2,1);
   max-width:1000px;margin:0 auto;padding:0 48px 80px;font:400 var(--t-body)/1.5 var(--sans);color:var(--sp-ink)}
-.sp-hero{position:relative;padding:40px 0 0;animation:sp-in .4s var(--sp-ease) both}
+.sp-hero{position:relative;padding:40px 0 0;animation:sp-in .4s var(--sp-ease) backwards}
 .space-page .sp-crumb{display:inline-flex;align-items:center;gap:7px;padding:0;border:0;background:none;font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--sp-muted);cursor:pointer;transition:color .16s}
 .sp-crumb .drawn-icon{transform:rotate(180deg);transition:transform .16s}
 .space-page .sp-crumb:hover{color:var(--sp-ink)}
@@ -52,7 +52,7 @@
 .sp-tabs button.active::after{content:'';position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--sp-ink)}
 .sp-tabs span{font-size:11px;padding:2px 6px;border-radius:999px;background:#ffffff10;color:var(--sp-soft);font-variant-numeric:tabular-nums}
 .sp-tabs span.late{background:#d68a6c24;color:#e7a88f}
-.sp-body{margin-top:24px;animation:sp-in .35s var(--sp-ease) both}
+.sp-body{margin-top:24px;animation:sp-in .35s var(--sp-ease) backwards}
 .sp-eyebrow{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--sp-muted)}
 
 /* Overview */
@@ -136,7 +136,7 @@
 .sp-file-list:has(>.sp-drop-empty){padding:0}
 .sp-files.drop .sp-file-list,.sp-files.drop .sp-drop-empty{outline:2px dashed var(--sp-soft);outline-offset:4px;border-radius:16px}
 .sp-menu{position:relative;flex-shrink:0}
-.sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:190px;padding:5px;border-radius:12px;background:#1c1c1b;border:1px solid var(--sp-line-2);box-shadow:0 18px 50px -10px #000c;animation:sp-in .16s ease-out both}
+.sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:190px;padding:5px;border-radius:12px;background:#1c1c1b;border:1px solid var(--sp-line-2);box-shadow:0 18px 50px -10px #000c;animation:sp-in .16s ease-out backwards}
 .space-page .sp-menu-list button{width:100%;display:flex;align-items:center;gap:9px;justify-content:flex-start;padding:8px 10px;border:0;border-radius:8px;background:none;font:400 var(--t-small)/1.2 var(--sans);color:var(--sp-ink);text-align:left;white-space:nowrap}
 .space-page .sp-menu-list button:hover{background:#ffffff0d}
 .space-page .sp-menu-list button.danger{color:#ff5a4e}

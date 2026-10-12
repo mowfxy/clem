@@ -37,8 +37,9 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
     let raf = 0, last = 0, visible = true, lastReadout = 0;
     const resize = () => { const dpr = Math.min(devicePixelRatio || 1, 2), w = el.clientWidth; el.width = Math.round(w * dpr); el.height = Math.round(w * H / W * dpr); dirty.current = true; };
     const frame = (now: number) => {
+      // Out of view or hidden, the loop sleeps until it is back instead of ticking at the display rate.
+      if (!visible || document.hidden) { raf = 0; last = 0; return; }
       raf = requestAnimationFrame(frame);
-      if (!visible || document.hidden) { last = 0; return; }
       if (playing && !dragging.current) { if (last) time.current += Math.min(now - last, 80) / 1000 * rate; dirty.current = true; }
       last = now;
       if (!dirty.current) return;
@@ -51,9 +52,11 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
       if (now - lastReadout > 110) { lastReadout = now; setReadouts(scene.readouts(p, t)); if (looped) setProgress(t / scene.period(p)); }
     };
     const observer = new ResizeObserver(resize); observer.observe(el); resize();
-    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; dirty.current = true; }); io.observe(el);
+    const wake = () => { if (!raf) raf = requestAnimationFrame(frame); };
+    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; dirty.current = true; wake(); }); io.observe(el);
+    document.addEventListener('visibilitychange', wake);
     raf = requestAnimationFrame(frame);
-    return () => { cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); };
+    return () => { cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', wake); };
   }, [scene, playing, rate, view, looped]);
 
   const toLogical = (e: React.PointerEvent) => { const r = canvas.current!.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H] as const; };

@@ -29,10 +29,14 @@ export default function Projectile3D({ params, onError }: { params: Values; onEr
     scene.add(new THREE.ArrowHelper(new THREE.Vector3(Math.cos(th), Math.sin(th), 0), new THREE.Vector3(), scale * 0.2, 0x8197e2, scale * 0.04, scale * 0.02));
     const observer = new ResizeObserver(() => { const w = element.clientWidth, h = element.clientHeight; renderer.setSize(w, h); labels.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); });
     observer.observe(element);
-    let raf = 0; const start = performance.now(), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const tick = (now: number) => { raf = requestAnimationFrame(tick); const t = still ? T * 0.36 : ((now - start) / 1000) % (T + 1.2); const u = Math.min(t, T); ball.position.set(vx * u, vy * u - 0.5 * params.g * u * u, 0); controls.update(); renderer.render(scene, camera); labels.render(scene, camera); };
+    let raf = 0, visible = true; const start = performance.now(), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Out of view or hidden, the loop sleeps; the ball's place comes from the clock, so it picks up where it would be.
+    const tick = (now: number) => { if (!visible || document.hidden) { raf = 0; return; } raf = requestAnimationFrame(tick); const t = still ? T * 0.36 : ((now - start) / 1000) % (T + 1.2); const u = Math.min(t, T); ball.position.set(vx * u, vy * u - 0.5 * params.g * u * u, 0); controls.update(); renderer.render(scene, camera); labels.render(scene, camera); };
+    const wake = () => { if (!raf) raf = requestAnimationFrame(tick); };
+    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }); io.observe(element);
+    document.addEventListener('visibilitychange', wake);
     raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); observer.disconnect(); controls.dispose(); renderer.dispose(); scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose(); const mat = m.material; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else (mat as THREE.Material | undefined)?.dispose(); }); element.replaceChildren(); };
+    return () => { cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', wake); controls.dispose(); renderer.dispose(); scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose(); const mat = m.material; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else (mat as THREE.Material | undefined)?.dispose(); }); element.replaceChildren(); };
   }, [params.angle, params.speed, params.g]);
   return <div className="visual-3d" ref={host} aria-label="Three-dimensional trajectory. Drag to orbit, scroll to zoom." />;
 }

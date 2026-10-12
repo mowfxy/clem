@@ -48,7 +48,7 @@
 .code-block code{font-family:var(--mono);font-size:13px;line-height:1.65;color:#e3e1da;white-space:pre}
 .code-block.wrapped code{white-space:pre-wrap;word-break:break-word}
 .tk-keyword{color:#e48aa8}.tk-builtin{color:#b39cf0}.tk-call{color:#a9b6f7}.tk-string{color:#a8c995}.tk-number{color:#e6a26e}.tk-comment{color:#6f6e68;font-style:italic}.tk-tag{color:#e48aa8}.tk-attr{color:#e6a26e}
-.code-output{border-top:1px solid var(--c-line);background:#10100f;animation:code-out .25s var(--c-ease) both}
+.code-output{border-top:1px solid var(--c-line);background:#10100f;animation:code-out .25s var(--c-ease) backwards}
 .code-output-head{display:flex;align-items:center;gap:10px;padding:6px 8px 0 18px;font:400 11px/30px var(--sans);letter-spacing:.03em;color:var(--c-muted)}
 .code-output-head>span:first-child{flex:1}
 .code-output.failed .code-output-head>span:first-child{color:var(--c-coral)}
@@ -119,14 +119,14 @@
 .user-edit-actions button.send{border-color:transparent;background:#ecebe6;color:#151515}
 .user-edit-actions button.send:hover:not(:disabled){background:#fff}
 .user-edit-actions button:disabled{opacity:.4;cursor:default}
-.review-menu{position:absolute;left:0;top:36px;z-index:30;min-width:250px;padding:6px;border-radius:12px;border:1px solid #3a3a36;background:#1c1c1b;box-shadow:0 18px 50px -16px #000c;animation:m-rise .18s var(--c-ease) both}
+.review-menu{position:absolute;left:0;top:36px;z-index:30;min-width:250px;padding:6px;border-radius:12px;border:1px solid #3a3a36;background:#1c1c1b;box-shadow:0 18px 50px -16px #000c;animation:m-rise .18s var(--c-ease) backwards}
 .review-menu p{margin:4px 8px 6px;font:400 11px var(--sans);color:var(--c-muted)}
 .review-menu button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:9px 10px;border-radius:8px;border:0;background:none;color:var(--c-ink);font:400 13px var(--sans);text-align:left}
 .review-menu button:hover{background:#ffffff0d}
 .review-menu small{font-size:11px;color:var(--c-muted)}
 
 /* Second opinion and source check */
-.review-panel,.verify-panel{margin:16px 0 0;padding:14px 16px 12px;border:1px solid var(--c-line);border-radius:14px;background:#171716;animation:m-rise .3s var(--c-ease) both}
+.review-panel,.verify-panel{margin:16px 0 0;padding:14px 16px 12px;border:1px solid var(--c-line);border-radius:14px;background:#171716;animation:m-rise .3s var(--c-ease) backwards}
 .review-panel header,.verify-panel header{display:flex;align-items:center;gap:8px;margin-bottom:8px;font:400 12px var(--sans);color:var(--c-soft)}
 .review-panel header small,.verify-panel header small{margin-left:auto;font-weight:400;color:var(--c-muted)}
 .review-panel .md{font-size:15px;line-height:1.65;color:#dcdad3}
@@ -172,7 +172,7 @@
 .edit-proposal footer button{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:9px;font-size:13px}
 
 /* Long Task card */
-.plan-card{--p-line:#2e2e2b;margin:18px 0 6px;max-width:640px;border:1px solid var(--p-line);border-radius:16px;background:#1a1a18;font-family:var(--sans);animation:m-rise .35s var(--c-ease) both}
+.plan-card{--p-line:#2e2e2b;margin:18px 0 6px;max-width:640px;border:1px solid var(--p-line);border-radius:16px;background:#1a1a18;font-family:var(--sans);animation:m-rise .35s var(--c-ease) backwards}
 .plan-card-head{display:flex;align-items:center;gap:10px;padding:15px 18px 6px;color:#cfcec7}
 .plan-card-head strong{font-weight:400;font-size:15px;color:var(--c-ink)}
 .plan-count{font-size:12px;color:var(--c-muted);font-variant-numeric:tabular-nums}
@@ -202,7 +202,7 @@
 .plan-edit{position:absolute;right:-38px;top:8px;width:28px;height:28px;padding:0;border-radius:8px;border:0;background:none;color:var(--c-faint);opacity:0;transition:opacity .15s}
 .plan-step:hover .plan-edit,.plan-edit:focus-visible{opacity:1}
 .plan-edit:hover{color:var(--c-ink);background:#ffffff0b}
-.plan-step-detail{padding:0 16px 12px 42px;font-size:13px;line-height:1.55;color:var(--c-soft);animation:m-rise .2s var(--c-ease) both}
+.plan-step-detail{padding:0 16px 12px 42px;font-size:13px;line-height:1.55;color:var(--c-soft);animation:m-rise .2s var(--c-ease) backwards}
 .plan-step-detail p{margin:0 0 6px}
 .plan-step-output{color:var(--c-muted)}
 .plan-step-detail small{display:block;color:var(--c-faint);font-size:12px}
