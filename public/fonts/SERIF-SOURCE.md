@@ -1,4 +1,4 @@
-Mowafy Serif comes from https://github.com/mowfxy/serif at revision a551b81 (Mowafy Serif 3.0 with the redrawn upright b: Source Serif 4
+Mowafy Serif comes from https://github.com/mowfxy/serif at revision b4064a3 (Mowafy Serif 3.0 with optical spacing, a new b and blunt terminals: Source Serif 4
 with Arabic, Greek, math, science and Coptic companion families).
 Import a newer revision with `python scripts/import-serif.py <serif checkout>`.
 
