@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from "react";
-import { filmFrame, type Scene } from "./vectorFilm";
+import { animated, filmFrame, type Scene } from "./vectorFilm";
 export function Illustration({
   scene,
   className = "",
@@ -16,19 +16,19 @@ export function Illustration({
     const el = ref.current!,
       svg = el.querySelector("svg")!,
       media = matchMedia("(prefers-reduced-motion: reduce)");
+    const paint = (seconds: number) => {
+      svg.innerHTML = filmFrame(scene, seconds, id);
+    };
+    paint(0);
+    // The first frame is the finished pose; a scene without a loop stays on it.
+    if (!animated.has(scene)) return;
     let raf = 0,
       last = 0,
       elapsed = 0,
-      lastCel = -1,
+      lastCel = 0,
       visible = false;
     const quiet = () =>
       media.matches || document.documentElement.dataset.quiet === "true";
-    const paint = (seconds: number) => {
-      // Each scene is a short film: its entrance plays the first time it is seen, then its loop runs.
-      svg.innerHTML = filmFrame(scene, seconds, id);
-      svg.dataset.frame = seconds.toFixed(2);
-      svg.dataset.phase = seconds < 6 ? "action" : "idle";
-    };
     const stop = () => {
       cancelAnimationFrame(raf);
       raf = 0;
@@ -37,10 +37,10 @@ export function Illustration({
     const tick = (now: number) => {
       if (last) elapsed += Math.min(now - last, 100) / 1000;
       last = now;
-      // 24 frames a second, like film.
-      const cel = Math.floor(elapsed * 24);
+      // Drawn on twos: twelve drawings a second, like hand animation.
+      const cel = Math.floor(elapsed * 12);
       if (cel !== lastCel) {
-        paint(cel / 24);
+        paint(cel / 12);
         lastCel = cel;
       }
       raf = requestAnimationFrame(tick);
@@ -48,13 +48,11 @@ export function Illustration({
     const sync = () => {
       stop();
       if (quiet()) {
-        paint(6);
+        paint(0);
         return;
       }
       if (visible && !document.hidden) raf = requestAnimationFrame(tick);
     };
-    // Motion allowed: start on the film's first frame, so its entrance plays from the beginning when seen.
-    paint(quiet() ? 6 : 0);
     const observer = new IntersectionObserver(
       (entries) => {
         visible = entries[0].isIntersecting;

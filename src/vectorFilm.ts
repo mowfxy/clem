@@ -1,56 +1,69 @@
 /**
- * Mowr's illustrations: one simple object per scene, drawn with an even ivory line, flat grey fills and a few
- * small circles, and animated like a short film. Every frame is computed from time. From t=0 to 6 each scene plays
- * its own directed entrance (anticipation, overshoot, squash on landing, follow-through); from t=6 it runs a calm
- * loop in which something small happens every few seconds. A light line boil keeps the drawing hand-made.
+ * Mowr's illustrations: each scene is a small metaphor told in two or three things, drawn with an even ivory pen
+ * line that wanders a little and leaves its ends open, set small in a lot of empty space. Colour sits on one small
+ * element only (a keystone, a keyhole, a tab) and often carries a few thin lines of its own over it; everything else
+ * is bare line.
+ *
+ * Every scene is a short loop animated pose to pose, like cel animation: it holds, then snaps to its next pose in a
+ * few drawings with a small overshoot, and holds again, while the line boils on twos. Motion is cause and effect:
+ * something moves, and the thing it reaches takes the colour (the shackle clicks shut and the keyhole fills, the lens
+ * finds the gem). Each loop starts on its finished pose, so a single painted frame is always the complete drawing.
  */
 export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards';
+/** How long each scene's loop runs, in seconds. A loop's first frame is its finished pose. */
+export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,build:5.5,discover:6,learn:5,orchestrate:7,sprout:6,kite:6,telescope:6,pencil:5.5,bridge:5.5,conversation:5,envelope:5,key:5,door:5.5,swap:5,invite:5,keypad:4.5,shield:5,lock:5,unlock:5,link:5,unlink:5,plane:5,hourglass:7,box:5,jar:5.5,folder:5,plug:5,house:5.5,lifebuoy:5,profile:5,safe:5,expired:5.5,wave:4,cards:5};
+/** Scenes that move: all of them now, each on its own loop. */
+export const animated:ReadonlySet<Scene>=new Set(Object.keys(loopSeconds) as Scene[]);
 type P=[number,number];
-type Style={fill?:string;w?:number;smooth?:boolean;closed?:boolean;dash?:string;offset?:number;opacity?:number;k?:number};
-const INK='#f3f2ec',GREY='#63635e',PAPER='#1a1a19',TAU=Math.PI*2,LINE=7;
+type Style={fill?:string;w?:number;smooth?:boolean;closed?:boolean;opacity?:number;k?:number;holes?:P[][]};
+const INK='#f3f2ec',TAU=Math.PI*2,LINE=4.8,FINE=3.8,THIN=3;
+// The palette: one of these per drawing, on one small element.
+const BLUE='#6a9bcc',GREEN='#8fae8e',LILAC='#cbcadb',PINK='#c46686',SAND='#c8b48c',CLAY='#c27a5f';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
-const ease=(x:number)=>{x=clamp(x);return x*x*(3-2*x)};
 const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
 const n=(v:number)=>v.toFixed(1);
 
-// Frame state: the scene's time and a counter that gives each line its own boil.
-let T=0,seed=0;
+// Frame state: the scene's time, where it is in its loop, a counter that gives each line its own hand, and which of
+// three drawings the boiling line is on.
+let T=0,U=0,seed=0,boil=0;
 
 // ---------- timing ----------
-/** Eased 0→1 between two moments of the entrance. */
-const at=(a:number,b:number)=>ease((T-a)/(b-a));
-/** Linear 0→1 between two moments. */
-const lin=(a:number,b:number)=>clamp((T-a)/(b-a));
-/** Settles on 1 with an overshoot, from `t0`: a pop, a landing, a swing coming to rest. */
-const spring=(t0:number,f=1.6,d=5.5,x=T-t0)=>x<=0?0:1-Math.exp(-d*x)*Math.cos(TAU*f*x);
-/** A fall under gravity from `t0` that lands at `t1` (0 = start height, 1 = ground). */
-const fall=(t0:number,t1:number)=>{const x=clamp((T-t0)/(t1-t0));return x*x;};
-/** Time within the idle loop of `period` seconds, or -1 during the entrance. */
-const loop=(period:number)=>T<6?-1:(T-6)%period;
-/** Eased 0→1 across [a,b] of the loop. */
-const win=(u:number,a:number,b:number)=>u<0?0:ease((u-a)/(b-a));
-/** 0→1→0 across [a,b] (of the loop, or of the entrance when given T). */
-const bump=(u:number,a:number,b:number)=>u<a||u>b?0:Math.sin(Math.PI*(u-a)/(b-a));
-/** A dying wobble set off at `a`: starts at 0, swings to ±1 and settles. */
-const shake=(u:number,a:number,f=1.8,d=3.2)=>u<a?0:Math.exp(-d*(u-a))*Math.sin(TAU*f*(u-a));
-/** Squash `x` seconds after a landing: wider and shorter, then back. */
-const squash=(x:number):[number,number]=>x<=0?[1,1]:[1+.16*Math.exp(-7*x)*Math.cos(TAU*2*x),1-.2*Math.exp(-7*x)*Math.cos(TAU*2*x)];
-/** A slow breath after t=6, for things that should never freeze completely. */
-const breathe=(speed=1,amp=1,phase=0)=>T>6?Math.sin((T-6)*speed+phase)*amp-Math.sin(phase)*amp:0;
+/** Arrives with a small overshoot and settles, the snap at the end of a pose-to-pose move. */
+const back=(x:number)=>{x=clamp(x);const c=1.5;return 1+(c+1)*(x-1)**3+c*(x-1)**2;};
+/** Holds vals[0]; at each key time snaps to the next value over `dur` seconds, overshooting a touch. */
+function pose(u:number,keys:number[],vals:number[],dur=.3){let v=vals[0];keys.forEach((k,i)=>{v+=(vals[i+1]-vals[i])*back((u-k)/dur);});return v;}
+/** 0 before t0, then pops up to 1 with an overshoot: something appearing. */
+const pop=(u:number,t0:number,dur=.3)=>u<t0?0:back((u-t0)/dur);
 
-// ---------- drawing ----------
+// ---------- the pen ----------
 function spline(pts:P[],closed:boolean):P[]{const out:P[]=[],N=pts.length;if(N<3)return pts;for(let i=0;i<(closed?N:N-1);i++){const a=pts[closed?(i-1+N)%N:Math.max(0,i-1)],b=pts[i],c=pts[(i+1)%N],d=pts[closed?(i+2)%N:Math.min(N-1,i+2)];for(let j=0;j<8;j++){const t=j/8,t2=t*t,t3=t2*t;out.push([0,1].map(k=>.5*(2*b[k]+(-a[k]+c[k])*t+(2*a[k]-5*b[k]+4*c[k]-d[k])*t2+(-a[k]+3*b[k]-3*c[k]+d[k])*t3)) as P);}}if(!closed)out.push(pts[N-1]);return out;}
-function densify(pts:P[],closed:boolean):P[]{const out:P[]=[];const N=pts.length;for(let i=0;i<(closed?N:N-1);i++){const a=pts[i],b=pts[(i+1)%N],steps=Math.max(1,Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/24));for(let j=0;j<steps;j++)out.push([a[0]+(b[0]-a[0])*j/steps,a[1]+(b[1]-a[1])*j/steps]);}if(!closed)out.push(pts[N-1]);return out;}
-// The boil: a smooth, low field that shifts every point by under a pixel, stepping through four cels four times a second.
-function wobble(pts:P[],s:number):P[]{const cel=Math.floor(T*4)%4;return pts.map(([x,y])=>[x+.9*Math.sin(y*.043+cel*1.9+s),y+.8*Math.sin(x*.039+cel*1.4+s*1.3)]);}
-/** One element. `k` below 1 draws the line on partway; `opacity` fades it. */
-function draw(pts:P[],{fill='none',w=LINE,smooth=false,closed=false,dash,offset=0,opacity=1,k=1}:Style={}):string{
+function densify(pts:P[],closed:boolean,step=8):P[]{const out:P[]=[];const N=pts.length;for(let i=0;i<(closed?N:N-1);i++){const a=pts[i],b=pts[(i+1)%N],steps=Math.max(1,Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/step));for(let j=0;j<steps;j++)out.push([a[0]+(b[0]-a[0])*j/steps,a[1]+(b[1]-a[1])*j/steps]);}if(!closed)out.push(pts[N-1]);return out;}
+// The hand: a slow, low wander of about a pixel, different for every line. Moving scenes step it through three
+// drawings, six times a second, so their line boils.
+function hand(pts:P[],s:number):P[]{const f=s*2.39+boil*1.9,A=1.15;return pts.map(([x,y])=>[x+A*(.7*Math.sin(y*.031+f)+.3*Math.sin(y*.083+x*.021+f*1.7)),y+A*(.7*Math.sin(x*.029+f*1.3)+.3*Math.sin(x*.077-y*.019+f*2.1))]);}
+const perimeter=(pts:P[])=>pts.reduce((sum,p,i)=>i?sum+Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1]):0,0);
+const svgPath=(pts:P[],close=false)=>'M'+pts.map(p=>n(p[0])+','+n(p[1])).join('L')+(close?'Z':'');
+/** One element: a flat colour under it (optional), then the pen line. `k` below 1 draws the line on partway. */
+function draw(pts:P[],{fill,w=LINE,smooth=false,closed=false,opacity=1,k=1,holes}:Style={}):string{
  if(k<=0||opacity<=.01||pts.length<2)return '';
- const i=seed++,pts2=wobble(smooth?spline(pts,closed):densify(pts,closed),i);
- const d='M'+pts2.map(p=>n(p[0])+','+n(p[1])).join('L')+(closed?'Z':'');
- const on=k<1?` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="${(1-k).toFixed(3)}"`:dash?` stroke-dasharray="${dash}" stroke-dashoffset="${offset.toFixed(1)}"`:'';
- const fillAlpha=fill!=='none'&&k<1?` fill-opacity="${k.toFixed(3)}"`:'';
- return `<path d="${d}" fill="${fill}"${fillAlpha} stroke="${INK}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"${on}${opacity<1?` opacity="${opacity.toFixed(3)}"`:''}/>`;
+ const s=seed++,trace=(p:P[])=>hand(smooth?spline(p,closed):densify(p,closed),s);
+ const o=opacity<1?` opacity="${opacity.toFixed(3)}"`:'';
+ let out='';
+ const rings=[pts,...(holes||[])].map(trace);
+ // The colour is laid in a hair off the line, the way a wash never quite meets the ink.
+ if(fill&&closed)out+=`<path d="${rings.map(r=>svgPath(r.map(([x,y])=>[x+.9,y+.7] as P),true)).join('')}" fill="${fill}" fill-rule="evenodd"${k<1?` fill-opacity="${k.toFixed(3)}"`:''}${o}/>`;
+ for(const ring of w?rings:[]){
+  let line=ring;
+  if(closed&&ring.length>4){
+   // A closed shape is one stroke that starts somewhere along it, drifts a touch and just meets its start again.
+   const L=ring.length,start=Math.floor(((s*0.618)%1)*L),r=[...ring.slice(start),...ring.slice(0,start)];
+   const a=s*1.7,len=perimeter(ring),dx=Math.cos(a)*1.4,dy=Math.sin(a)*1.4,over=len>160?Math.ceil(L*5/len):0;
+   line=[...r,...r.slice(0,over+1)].map(([x,y],i)=>[x+dx*i/L,y+dy*i/L] as P);
+  }
+  const on=k<1?` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="${(1-k).toFixed(3)}"`:'';
+  out+=`<path d="${svgPath(line)}" fill="none" stroke="${INK}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"${on}${o}/>`;
+ }
+ return out;
 }
 const line=(pts:P[],s:Style={})=>draw(pts,s);
 const curve=(pts:P[],s:Style={})=>draw(pts,{smooth:true,...s});
@@ -66,501 +79,403 @@ type Move={x?:number;y?:number;r?:number;s?:number;sx?:number;sy?:number;ox?:num
 function X(pts:P[],{x=0,y=0,r=0,s=1,sx=s,sy=s,ox=240,oy=200}:Move):P[]{const c=Math.cos(r),si=Math.sin(r);return pts.map(([px,py])=>{const dx=(px-ox)*sx,dy=(py-oy)*sy;return [ox+dx*c-dy*si+x,oy+dx*si+dy*c+y];});}
 const pill=(cx:number,cy:number,len:number,h:number,a=0)=>X(rounded(cx-len/2,cy-h/2,len,h,h/2),{r:a,ox:cx,oy:cy});
 function gear(cx:number,cy:number,r:number,teeth:number,a:number):P[]{const out:P[]=[];for(let i=0;i<teeth;i++){const b=a+i*TAU/teeth,s=TAU/teeth;for(const [f,rr] of [[0,r*.8],[.18,r*.8],[.3,r],[.7,r],[.82,r*.8]] as const)out.push([cx+Math.cos(b+s*f)*rr,cy+Math.sin(b+s*f)*rr]);}return out;}
-/** A point along a smooth path, 0→1. */
-function along(pts:P[],f:number):P{const s=spline(pts,false),x=clamp(f)*(s.length-1),i=Math.min(s.length-2,Math.floor(x)),u=x-i;return [lerp(s[i][0],s[i+1][0],u),lerp(s[i][1],s[i+1][1],u)];}
+/** A pointed leaf from its base to its tip. */
+function leaf(b:P,t:P,w:number):P[]{const dx=t[0]-b[0],dy=t[1]-b[1],l=Math.hypot(dx,dy),px=-dy/l*w,py=dx/l*w,out:P[]=[];for(let i=0;i<=12;i++){const u=i/12,h=Math.sin(Math.PI*u)**.8;out.push([b[0]+dx*u+px*h,b[1]+dy*u+py*h]);}for(let i=11;i>0;i--){const u=i/12,h=Math.sin(Math.PI*u)**.8;out.push([b[0]+dx*u-px*h*.85,b[1]+dy*u-py*h*.85]);}return out;}
+const inside=(poly:P[],[x,y]:P)=>{let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const [xi,yi]=poly[i],[xj,yj]=poly[j];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c;}return c;};
+/** The parts of the segment a–b that fall inside the polygon, each pulled in a hair from the edge. */
+function clipSeg(poly:P[],a:P,b:P):[P,P][]{
+ const ts=[0,1],dx=b[0]-a[0],dy=b[1]-a[1];
+ poly.forEach((p,i)=>{const q=poly[(i+1)%poly.length],ex=q[0]-p[0],ey=q[1]-p[1],den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)return;const t=((p[0]-a[0])*ey-(p[1]-a[1])*ex)/den,u=((p[0]-a[0])*dy-(p[1]-a[1])*dx)/den;if(t>0&&t<1&&u>=0&&u<=1)ts.push(t);});
+ ts.sort((m,k)=>m-k);const len=Math.hypot(dx,dy),pad=1.6/len,out:[P,P][]=[];
+ for(let i=0;i<ts.length-1;i++){const m=(ts[i]+ts[i+1])/2;if(ts[i+1]-ts[i]>pad*3&&inside(poly,[a[0]+dx*m,a[1]+dy*m])){const t0=ts[i]+(ts[i]>0?pad:0),t1=ts[i+1]-(ts[i+1]<1?pad:0);out.push([[a[0]+dx*t0,a[1]+dy*t0],[a[0]+dx*t1,a[1]+dy*t1]]);}}
+ return out;
+}
+/** Thin parallel lines over a coloured shape, at angle `a`, `gap` apart, in the pen's fine line. */
+function stripes(poly:P[],a:number,gap:number,w=THIN):string{
+ const cx=poly.reduce((s,p)=>s+p[0],0)/poly.length,cy=poly.reduce((s,p)=>s+p[1],0)/poly.length;
+ const R=Math.max(...poly.map(p=>Math.hypot(p[0]-cx,p[1]-cy)))+4,ux=Math.cos(a),uy=Math.sin(a),vx=-uy,vy=ux;
+ let s='';for(let o=-Math.floor(R/gap)*gap+gap/2*((Math.floor(R/gap)%2)?1:0);o<=R;o+=gap)for(const [p,q] of clipSeg(poly,[cx+vx*o-ux*R,cy+vy*o-uy*R],[cx+vx*o+ux*R,cy+vy*o+uy*R]))s+=line([p,q],{w});
+ return s;
+}
+/** The parts of a closed outline that fall outside the given shapes: what shows of something lying behind them. */
+function behind(outline:P[],covers:P[][],s:Style={}):string{
+ const pts=densify(outline,true,4),runs:P[][]=[];let run:P[]=[];
+ const hidden=(p:P)=>covers.some(c=>inside(c,p));
+ pts.forEach((p,i)=>{const q=pts[(i+1)%pts.length],m:P=[(p[0]+q[0])/2,(p[1]+q[1])/2];if(hidden(m)){if(run.length>1)runs.push(run);run=[];}else{if(!run.length)run.push(p);run.push(q);}});
+ if(run.length>1){if(runs.length&&!hidden(pts[0])&&runs[0][0]===pts[0])runs[0]=[...run,...runs[0].slice(1)];else runs.push(run);}
+ return runs.map(r=>line(r,s)).join('');
+}
+/** A point part way along a polyline, by length. */
+function along(pts:P[],k:number):P{let d=clamp(k)*perimeter(pts);for(let i=1;i<pts.length;i++){const s=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);if(d<=s){const t=s?d/s:0;return [lerp(pts[i-1][0],pts[i][0],t),lerp(pts[i-1][1],pts[i][1],t)];}d-=s;}return pts[pts.length-1];}
+/** The end of a segment pulled back by `by`, so a line stops short of whatever sits at its end. */
+const short=(a:P,b:P,by:number):P=>{const l=Math.hypot(b[0]-a[0],b[1]-a[1])||1;return [b[0]-(b[0]-a[0])/l*by,b[1]-(b[1]-a[1])/l*by];};
 
-// ---------- small effects ----------
-const dot=(cx:number,cy:number,r:number,o=1)=>r>.3?shape(ellipse(cx,cy,r),{w:4.5,opacity:o}):'';
-const bead=(cx:number,cy:number,r:number,o=1)=>r>.3?shape(ellipse(cx,cy,r),{fill:INK,w:2,opacity:o}):'';
-/** A four-point glint; `s` scales it from nothing. */
-const glint=(cx:number,cy:number,r:number,s=1,o=1)=>s<=.02?'':line([[cx,cy-r*s],[cx,cy+r*s]],{w:5,opacity:o})+line([[cx-r*s,cy],[cx+r*s,cy]],{w:5,opacity:o});
-/** Short strokes flying out from a point, 0→1, over `spread` radians centred on `a0`. */
-function burst(cx:number,cy:number,f:number,count=6,r0=18,r1=46,a0=-Math.PI/2,spread=TAU){if(f<=0||f>=1)return '';let s='';const full=spread>=TAU;for(let i=0;i<count;i++){const a=a0+(full?TAU*i/count:count===1?0:spread*(i/(count-1)-.5)),inner=lerp(r0,r1,ease(f)),outer=inner+14*(1-f);s+=line([[cx+Math.cos(a)*inner,cy+Math.sin(a)*inner],[cx+Math.cos(a)*outer,cy+Math.sin(a)*outer]],{w:5,opacity:1-f*f});}return s;}
-/** A ring that grows and fades, 0→1. */
-const ripple=(cx:number,cy:number,r0:number,r1:number,f:number)=>f<=0||f>=1?'':shape(ellipse(cx,cy,lerp(r0,r1,ease(f))),{w:4,opacity:(1-f)*.8});
-const water=(y:number,x0:number,x1:number,ph:number,o:number,f:number)=>curve(Array.from({length:8},(_,i)=>[x0+(x1-x0)*i/7,y+Math.sin(i*1.3+f*1.5+ph)*3.5] as P),{w:5,opacity:o});
+// ---------- small marks ----------
+/** A small open circle: the end of a line, a bead. */
+const ring=(cx:number,cy:number,r:number,s:Style={})=>shape(ellipse(cx,cy,r),{w:FINE,...s});
+const wavy=(y:number,x0:number,x1:number,ph=0,amp=4)=>curve(Array.from({length:9},(_,i)=>[x0+(x1-x0)*i/8,y+Math.sin(i*1.3+ph)*amp] as P),{w:FINE});
 
 // ---------- scenes ----------
+function balance(){
+ // A ring and a square level on a beam. The square is lifted off and the ring's end drops; it is set back and the beam levels.
+ const tilt=pose(U,[2.3,3.5],[0,-.13,0]),lift=pose(U,[2.2,3.4],[0,-90,0],.32);
+ const b=(pts:P[])=>X(pts,{r:tilt,ox:240,oy:200});
+ const fulcrum:P[]=[[240,204],[268,256],[212,256]];
+ let s=shape(fulcrum,{fill:BLUE})+stripes(fulcrum,0,16);
+ s+=line(b([[136,201],[344,199]]));
+ const [rc]=b([[178,177]]);s+=ring(rc[0],rc[1],22,{w:LINE});
+ if(lift>-60)s+=shape(X(b(rounded(288,157,42,42,5)),{y:lift}));
+ return s;
+}
+function untangle(){
+ // A snarled thread is pulled straight through its bead in two tugs, held, then let go so it snarls again.
+ const A=pose(U,[2.3,2.9,4.2],[1,.45,0,1]);
+ const pts:P[]=[];
+ for(let i=0;i<=120;i++){const t=i/120*TAU*2.5,b=(40*(1-i/120)**1.2+1)*A;pts.push([150+t*8.3-b*Math.sin(t)*.95,204-b*(1-Math.cos(t))*.8]);}
+ let s=ring(143,204,6)+curve(pts.filter((_,i)=>i%3===0||i===120),{w:FINE});
+ const bead=ellipse(300,204,15);
+ s+=line([pts[120],[284,204]],{w:FINE})+shape(bead,{fill:PINK})+stripes(bead,Math.PI/2,10);
+ return s+line([[316,204],[344,204]],{w:FINE})+ring(351,204,6);
+}
+function build(){
+ // Two blocks and a roof. The top two are cleared away, then dropped back on, one after the other.
+ const gone=U>=2.6,yU=gone?-90*(1-pop(U,3.4)):0,yR=gone?-90*(1-pop(U,4.0)):0;
+ let s=line([[150,300],[330,300]],{w:FINE})+shape(rounded(194,224,92,76,6));
+ const upper=(pts:P[],y:number)=>X(X(pts,{r:-.07,ox:236,oy:224}),{y});
+ if(!gone||U>=3.4)s+=shape(upper(rounded(204,166,64,58,6),yU));
+ if(!gone||U>=4.0){const roof=upper([[236,118],[268,164],[204,164]],yR);s+=shape(roof,{fill:CLAY})+stripes(roof,-.07,15);}
+ return s;
+}
+function discover(){
+ // A magnifier looks in two empty places, then comes back to the gem, which takes its colour as the lens arrives.
+ const keys=[2.4,3.3,4.3],dx=pose(U,keys,[0,-80,58,0]),dy=pose(U,keys,[0,30,-70,0]);
+ const found=Math.hypot(dx,dy)<6;
+ const gem:P[]=[[222,182],[246,182],[256,193],[234,218],[212,193]];
+ let s=shape(gem,{fill:found?BLUE:undefined});
+ s+=line([[214,193],[254,193]],{w:THIN})+line([[228,194],[234,214]],{w:THIN})+line([[241,194],[235,214]],{w:THIN});
+ const c:P=[234+dx,198+dy],r=48,e=r*Math.SQRT1_2;
+ s+=shape(ellipse(c[0],c[1],r));
+ return s+shape(pill(c[0]+e+26,c[1]+e+26,56,19,Math.PI/4));
+}
+function learn(){
+ // An open book; a page lifts and turns over to the left, and the ribbon flicks.
+ let s=blob([[240,148],[208,134],[166,134],[146,142],[146,256],[176,250],[212,254],[240,266]]);
+ s+=blob([[240,148],[272,134],[314,134],[334,142],[334,256],[304,250],[268,254],[240,266]]);
+ s+=line([[240,150],[240,264]],{w:FINE});
+ s+=line([[166,170],[218,168]],{w:FINE})+line([[166,194],[206,193]],{w:FINE});
+ if(U>2.35&&U<3.4){
+  const w=pose(U,[2.4,2.7,3.0],[94,34,-34,-94],.25),lift=(1-Math.abs(w)/94)*16;
+  if(Math.abs(w)<90)s+=blob([[240,148],[240+w*.55,136-lift],[240+w,140-lift*.6],[240+w,254-lift*.6],[240+w*.55,250-lift],[240,266]],{w:FINE});
+ }
+ const flick=pose(U,[2.6,3.0],[0,.28,0],.25);
+ return s+shape(X([[278,256],[278,302],[287,292],[296,302],[296,254]],{r:flick,ox:287,oy:256}),{fill:PINK,w:FINE});
+}
+function orchestrate(){
+ // Two gears in mesh, ticking round a tooth at a time; the small one in colour with its spokes over it.
+ const k=T/.7,b0=Math.floor(k),a=(b0+back((k-b0)/.35))*TAU/10;
+ const r1=60,r2=36,d=.92*(r1+r2),th=-.62;
+ const c1:P=[208,214],c2:P=[c1[0]+Math.cos(th)*d,c1[1]+Math.sin(th)*d];
+ const a2=-a*r1/r2+th+Math.PI;
+ let s=shape(gear(c2[0],c2[1],r2,6,a2),{fill:LILAC});
+ for(let i=0;i<3;i++){const b=a2+i*TAU/3+Math.PI/6;s+=line([[c2[0]+Math.cos(b)*9,c2[1]+Math.sin(b)*9],[c2[0]+Math.cos(b)*24,c2[1]+Math.sin(b)*24]],{w:THIN});}
+ s+=ring(c2[0],c2[1],6,{w:THIN});
+ return s+shape(gear(c1[0],c1[1],r1,10,a+th-.5*TAU/10))+ring(c1[0],c1[1],12);
+}
 function sprout(){
- // A seed drops into the soil, a stem pushes up and two leaves unfurl. At rest a breeze passes now and then.
- const u=loop(7),gust=shake(u,1.2,1.1,1.6)*.9+breathe(1.2,.06);
- const soil=spring(0,1.4,6);let s=shape(X(arc(240,302,100,36,Math.PI,TAU,24),{sy:soil,sx:lerp(.6,1,soil),ox:240,oy:302}),{fill:PAPER});
- if(T>.3&&T<1.1)s+=shape(ellipse(240,lerp(40,292,fall(.3,1.05)),7,9),{fill:INK,w:3});
- s+=ripple(240,298,6,40,lin(1.05,1.6));
- const grow=at(1.1,2.3),tip:P=[240+gust*10,lerp(300,150,grow)];
- if(grow>0)s+=curve([[240,300],[237+gust,lerp(300,262,grow)],[243+gust*4,lerp(300,205,grow)],tip]);
- const leaf=(pts:P[],base:P,dir:number,t0:number)=>{const o=spring(t0,1.4,4.5);return o<=.02?'':blob(X(pts,{s:o,r:dir*gust*.22+(1-o)*dir*-.8,ox:base[0],oy:base[1],x:gust*3}),{fill:GREY});};
- s+=leaf([[239,232],[206,222],[172,196],[160,160],[198,164],[230,196]],[239,232],1,2.0);
- s+=leaf([[242,196],[258,158],[292,128],[330,122],[326,160],[286,186]],[242,196],-1,2.25);
- const bud=spring(2.6,1.6,5);if(bud>.02)s+=blob(X([[240,152],[230,128],[238,104],[250,126]],{s:bud,ox:240,oy:152,x:gust*10,r:gust*.3}));
- s+=dot(318,262,6*spring(3.0))+dot(166,278,4.5*spring(3.2));
- // A speck of pollen drifts across on the breeze.
- if(u>.8&&u<4.8){const f=(u-.8)/4;s+=bead(lerp(80,420,f),150-60*f+Math.sin(f*9)*10,3.5,Math.sin(Math.PI*f));}
+ // A seedling sways left and right; then it grows again from the soil, stem first, a bare leaf, then the green one.
+ const grow=U>=3.2,g=grow?pose(U,[3.4,3.9],[.15,.55,1]):1;
+ const sway=grow?0:pose(U,[.8,1.8,2.6],[0,.07,-.05,0],.35);
+ const small=grow?pop(U,3.7):1,big=grow?pop(U,4.2):1;
+ const m=(pts:P[])=>X(pts,{r:sway,ox:240,oy:290});
+ let s=curve([[176,292],[208,284],[272,284],[304,292]],{w:FINE});
+ s+=curve(m([[240,286],[236,246],[244,200],[240,164]]),{k:clamp(g)});
+ if(small>.05)s+=shape(m(X(leaf([238,236],[184,206],15),{s:small,ox:238,oy:236})),{w:FINE});
+ if(big>.05){const leafPts=m(X(leaf([241,196],[312,150],24),{s:big,ox:241,oy:196}));s+=shape(leafPts,{fill:GREEN});const [b0,b1]=m(X([[244,194],[296,161]],{s:big,ox:241,oy:196}));s+=line([b0,b1],{w:THIN});}
  return s;
 }
 function kite(){
- // The kite swoops in on the wind and climbs; afterwards gusts lift it and whip its tail.
- const u=loop(7.5),gust=bump(u,1,3.2);
- const enter=at(0,2.2),[ex,ey]=enter<1?along([[40,360],[140,300],[200,120],[250,150]],enter):[250,150];
- const settle=shake(T,2.2,1.2,2.6);
- const cx=ex+breathe(.7,10)+gust*14,cy=ey+breathe(1.1,6,1)-gust*22-settle*8,tilt=(1-enter)*-.9+settle*.15+breathe(.9,.06)+gust*.18;
- const k=(pts:P[])=>X(pts,{x:cx-250,y:cy-150,r:tilt,ox:250,oy:150});
- const top:P=[250,62],right:P=[322,138],bottom:P=[256,246],left:P=[178,142];
- const [tb]=k([bottom]),whip=T*3+gust*u*4,amp=6+gust*14;
- const tail:P[]=[0,1,2,3].map(i=>[tb[0]-i*10+Math.sin(whip+i*1.3)*amp*(i/3),tb[1]+i*36] as P);
- let s=curve(tail,{w:5})+dot(tail[1][0],tail[1][1],6)+dot(tail[2][0],tail[2][1],6);
- s+=shape(k([top,right,bottom,left]),{fill:GREY})+line(k([top,bottom]),{w:5})+line(k([left,right]),{w:5});
- // Wind streaks sweep past on the way in and with each gust.
- const w=T<6?lin(.4,1.8):clamp((u-.8)/2),wo=T<6?bump(T,.4,1.8):bump(u,.8,2.8);
- if(wo>0)for(const [y,x0] of [[110,60],[176,30],[90,290]] as const){const x=x0+w*130;s+=curve([[x,y],[x+34,y-6],[x+64,y]],{w:5,opacity:wo});}
- return s+dot(384,96,5*spring(2.6));
+ // A small delta kite caught by gusts: it holds, jumps to a new lean, holds again; the string follows to its ring.
+ const ks=[1.2,2.4,3.6,4.8];
+ const cx=286+pose(U,ks,[0,14,-8,10,0],.35),cy=124+pose(U,ks,[0,-10,6,-4,0],.35),tilt=pose(U,ks,[.12,.26,-.02,.2,.12],.35);
+ const k=(pts:P[])=>X(pts,{x:cx-286,y:cy-124,r:tilt,ox:286,oy:124});
+ const body=k([[286,76],[330,150],[288,138],[244,150]]);
+ let s=shape(body,{fill:CLAY});
+ for(const [p,q] of [...clipSeg(body,k([[286,76]])[0],k([[287,140]])[0]),...clipSeg(body,k([[256,124]])[0],k([[316,124]])[0])])s+=line([p,q],{w:THIN});
+ const [st]=k([[287,140]]);
+ s+=curve([st,[lerp(st[0],252,.3),st[1]+40],[252,234],[214,246],[204,224],[226,214],[236,240],[206,280],[164,302]],{w:FINE});
+ return s+ring(157,305,6);
 }
 function telescope(){
- // Legs plant, the tube swings up to the sky and the stars come out; now and then a shooting star crosses and
- // the tube turns to follow it.
- const u=loop(8),shoot=win(u,1.5,2.6),follow=bump(u,1.3,4.5)*.12;
- const legs=spring(0,1.4,6),tilt=lerp(.42,0,spring(.5,1.2,4.5))+follow;
- let s='';for(const [x,y] of [[196,322],[312,322],[256,330]] as const)s+=line([[252,182],[lerp(252,x,legs),lerp(182,y,legs)]]);
- const tube=(pts:P[])=>X(pts,{r:tilt,ox:236,oy:160});
- s+=shape(tube(pill(236,150,200,50,-.42)),{fill:GREY});
- s+=shape(tube(X(rounded(318,112,20,70,8),{r:-.42,ox:328,oy:147})),{fill:PAPER});
- s+=shape(tube(X(rounded(132,168,30,34,8),{r:-.42,ox:147,oy:185})),{fill:PAPER});
- const tw=(p:number)=>T>6?1+.28*Math.sin((T-6)*2.1+p):1;
- s+=glint(368,70,12,spring(1.5)*tw(0))+glint(412,138,8,spring(1.8)*tw(2))+dot(318,56,5*spring(2.1))+dot(430,82,4*spring(2.3));
- if(shoot>0&&shoot<1){const hx=lerp(460,300,shoot),hy=lerp(30,96,shoot),len=60*Math.sin(Math.PI*shoot);s+=line([[hx,hy],[hx+len*.92,hy-len*.38]],{w:5,opacity:Math.sin(Math.PI*shoot)});}
- return s;
+ // A telescope looks low, then too high, then finds the moon, which lights up.
+ const aim=pose(U,[2.4,3.2,4.2],[0,.34,-.34,0]),found=Math.abs(aim)<.02;
+ const t=(pts:P[])=>X(pts,{r:aim,ox:234,oy:212});
+ const a=-.5;
+ let s=shape(t(pill(226,196,132,28,a)));
+ s+=shape(t(X(rounded(278,152,16,44,5),{r:a,ox:286,oy:174})))+shape(t(X(rounded(152,222,14,22,4),{r:a,ox:159,oy:233})));
+ for(const f of [[188,304],[282,304],[240,310]] as P[])s+=line([[234,212],f]);
+ // The moon: a crescent cut from one circle by another.
+ const c:P=[338,98],r=22,o:P=[9,-7],r2=19,d=Math.hypot(...o),phi=Math.atan2(o[1],o[0]);
+ const al=Math.acos((r*r+d*d-r2*r2)/(2*r*d)),ga=Math.acos((r2*r2+d*d-r*r)/(2*r2*d));
+ const outer=arc(c[0],c[1],r,r,phi+al,phi+TAU-al,30);let inner=arc(c[0]+o[0],c[1]+o[1],r2,r2,phi+Math.PI-ga,phi+Math.PI+ga,20);
+ const last=outer[outer.length-1];if(Math.hypot(inner[0][0]-last[0],inner[0][1]-last[1])>Math.hypot(inner[inner.length-1][0]-last[0],inner[inner.length-1][1]-last[1]))inner=inner.reverse();
+ return s+shape([...outer,...inner.slice(1,-1)],{fill:found?SAND:undefined,w:FINE});
 }
 function pencil(){
- // The pencil flies in, writes a line, lifts and dots it. At rest it hovers, and every so often underlines its work.
- const u=loop(7),write=at(.8,2.8),under=win(u,1.4,2.6),fade=1-win(u,4.8,5.8);
- const scribble:P[]=[[70,300],[104,278],[128,304],[158,282],[188,306],[220,290],[256,300]];
- const underline:P[]=[[80,332],[164,328],[248,334]];
- let tip:P;
- if(T<.8){const f=at(0,.8);tip=[lerp(460,70,f),lerp(40,300,f)];}
- else if(T<2.8)tip=along(scribble,write);
- else if(T<3.6){const f=at(2.8,3.2),g=at(3.2,3.6);tip=[lerp(256,272,f),300-30*f+26*g];}
- else{const rest:P=[272+breathe(1.1,4),296+breathe(1.4,5,1)];
-  if(u>1.1&&u<1.4)tip=[lerp(rest[0],80,ease((u-1.1)/.3)),lerp(rest[1],332,ease((u-1.1)/.3))];
-  else if(u>=1.4&&u<=2.6)tip=along(underline,(u-1.4)/1.2);
-  else if(u>2.6&&u<3.1)tip=[lerp(248,rest[0],ease((u-2.6)/.5)),lerp(334,rest[1],ease((u-2.6)/.5))];
-  else tip=rest;}
- const writing=(T>.8&&T<2.8)||(u>1.4&&u<2.6),lift=writing?0:10;
- const a=-.62+(writing?Math.sin(T*18)*.03:0);
- // The pencil is built around its point, so it always writes from the tip.
- const body=(pts:P[])=>X(pts,{r:a,s:.8,ox:0,oy:0,x:tip[0],y:tip[1]-lift});
- let s=curve(scribble,{w:6,k:write});
- if(T>3.2)s+=bead(272,300,4*spring(3.5));
- s+=curve(underline,{w:5,k:under,opacity:fade});
- s+=shape(body([[48,-22],[218,-22],[218,22],[48,22]]),{fill:GREY})
-  +shape(body([[218,-22],[250,-22],[250,22],[218,22]]),{fill:PAPER})
-  +shape(body([[48,-22],[0,0],[48,22]]),{fill:PAPER})
-  +shape(body([[16,-8],[0,0],[16,8]]),{fill:INK,w:4})
-  +line(body([[78,0],[198,0]]),{w:4.5});
- return s;
+ // A pencil writes a word in four strokes, rests at the end of it, and starts over.
+ const writing:P[]=[[110,262],[132,250],[150,232],[146,218],[136,230],[146,252],[170,250],[186,226],[180,214],[170,228],[180,250],[204,248],[216,240]];
+ const path=spline(writing,false);
+ const k=U<2.5?1:clamp(pose(U,[2.8,3.3,3.8,4.3],[0,.3,.55,.8,1],.28));
+ const tip=along(path,k);
+ const body=(pts:P[])=>X(pts,{r:-.72,ox:0,oy:0,x:tip[0]+12,y:tip[1]-2});
+ let s=k>.01?curve(writing,{w:FINE,k}):'';
+ s+=shape(body([[30,-13],[150,-13],[150,13],[30,13]]));
+ s+=shape(body([[30,-13],[0,0],[30,13]]))+shape(body([[9,-4],[0,0],[9,4]]),{fill:INK,w:0});
+ s+=shape(body([[150,-13],[160,-13],[160,13],[150,13]]),{w:FINE});
+ return s+shape(body([[160,-13],[182,-13],[186,-8],[186,8],[182,13],[160,13]]),{fill:PINK});
 }
 function bridge(){
- // The two halves of the deck slide in and meet with a knock; the arch rises under them and the water starts to
- // move. At rest the water flows and, now and then, a small boat passes under.
- const u=loop(11),meet=at(0,1.3),knock=lin(1.3,1.8),f=Math.max(0,T-1.5);
- const arch=(x:number)=>318-112*Math.sqrt(Math.max(0,1-((x-240)/124)**2));
- const rise=spring(1.5,1.3,5);
- let s=water(340,120,360,0,at(1.8,2.6),f)+water(362,170,310,1.7,at(2,2.8),f);
- if(u>0&&u<9.9){const b=u/9.9,bx=lerp(60,430,b),by=344+Math.sin(bx*.08-T*1.6)*1.5,o=Math.min(1,Math.sin(Math.PI*b)*4);
-  s+=shape([[bx-16,by],[bx+16,by],[bx+10,by+10],[bx-10,by+10]],{fill:GREY,w:4.5,opacity:o})+line([[bx,by],[bx,by-18]],{w:4,opacity:o})+shape([[bx,by-18],[bx+12,by-6],[bx,by-4]],{fill:INK,w:3,opacity:o});}
- if(rise>.02){s+=line(X(arc(240,318,124,112,Math.PI,TAU,28),{sy:rise,ox:240,oy:318}));
-  [150,184,218,262,296,330].forEach((x,i)=>{const o=spring(2+i*.08,1.6,6);if(o>.02)s+=line([[x,190],[x,lerp(190,arch(x)-4,o)]],{w:5});});}
- s+=line([[88,318],[118,318]])+line([[362,318],[392,318]]);
- const half=lerp(-190,0,meet);
- s+=shape(rounded(78+half,170,162,22,9),{fill:GREY})+shape(rounded(240-half,170,162,22,9),{fill:GREY});
- s+=burst(240,181,knock,6,16,40);
- return s+shape(ellipse(386,92+lerp(40,0,at(2.2,3.4)),16),{w:5,opacity:at(2.2,3)});
+ // The keystone is lifted out of the arch, held, and dropped back into place.
+ const c:P=[240,276],rx=92,ry=58,deck=184,top=c[1]-ry,ky=pose(U,[2.6,3.8],[0,-64,0],.32);
+ const key=X([[225,deck],[255,deck],[249,top+2],[231,top+2]],{y:ky});
+ const off=Math.asin(10/rx);
+ let s=line([[124,276],[148,276]],{w:FINE})+line([[332,276],[356,276]],{w:FINE});
+ s+=line([[136,deck],[226,deck]])+line([[254,deck],[344,deck]]);
+ s+=line(arc(c[0],c[1],rx,ry,Math.PI,Math.PI*1.5-off,18))+line(arc(c[0],c[1],rx,ry,Math.PI*1.5+off,TAU,18));
+ s+=shape(key,{fill:GREEN})+stripes(key,Math.PI/2,10);
+ return s+wavy(298,196,284,0,3);
 }
 function conversation(){
- // A question pops up and its lines write in; a reply pops beside it and starts typing. At rest the reply keeps
- // typing, and now and then the question nods as a new line arrives.
- const u=loop(6.5),nod=shake(u,3.2,1.6,4);
- const a=spring(0,1.5,5),b=spring(1.4,1.5,5);let s='';
- if(a>.02){const q=(pts:P[])=>X(pts,{s:a*(1+nod*.03),ox:132,oy:200});
-  s+=shape(q(rounded(92,82,210,118,30)),{fill:PAPER})+shape(q([[132,196],[116,234],[172,198]]),{fill:PAPER});
-  s+=line(q([[124,126],[256,126]]),{w:5,k:at(.5,1)})+line(q([[124,156],[210,156]]),{w:5,k:at(.8,1.2)});}
- if(b>.02){const r=(pts:P[])=>X(pts,{s:b,ox:364,oy:296});
-  s+=shape(r(rounded(196,186,196,110,30)),{fill:GREY})+shape(r([[346,290],[372,322],[364,288]]),{fill:GREY});
-  // A typing indicator: each dot hops in turn.
-  for(let i=0;i<3;i++){const t=T*1.6-i*.22,hop=T>2.2?Math.max(0,Math.sin((t%1)*TAU))**3:0,o=spring(1.9+i*.12);if(o>.02)s+=shape(r(ellipse(252+i*40,241-hop*10,8*o)),{fill:INK,w:3});}}
+ // A question, and a small reply that pops up and types: its three dots rise in turn.
+ let s=shape(rounded(130,104,152,82,26))+line([[156,186],[146,212],[178,186]]);
+ s+=line([[158,134],[252,134]],{w:FINE})+line([[158,158],[220,158]],{w:FINE});
+ const sc=U<3?1:pop(U,3.4);
+ if(sc>.05){
+  const r=(pts:P[])=>X(pts,{s:sc,ox:336,oy:262});
+  s+=shape(r(rounded(234,204,116,58,24)),{fill:LILAC})+line(r([[318,262],[338,282],[332,260]]));
+  if(sc>.9){const hop=Math.floor(T*5)%5;for(let i=0;i<3;i++)s+=shape(ellipse(268+i*24,233-(hop===i?6:0),4.6),{fill:INK,w:0});}
+ }
  return s;
 }
 function envelope(){
- // The envelope drops in and lands with a squash, its flap folds shut and a seal stamps down. At rest it
- // crouches and hops now and then, as if something inside is eager to get out.
- const u=loop(7),hop=bump(u,1,1.55),crouch=bump(u,.7,1),landAt=u>1.55?u-1.55:T<6?T-.7:-1;
- const drop=T<.7?lerp(-260,0,fall(0,.7)):0,[sx,sy]=squash(landAt);
- const e=(pts:P[])=>X(pts,{sx:sx+crouch*.06,sy:sy-crouch*.1,ox:240,oy:270,y:drop-hop*46});
- const apex=lerp(46,208,at(1.1,1.7))+shake(T,1.7,2,5)*6;
- let s=shape(e(rounded(128,118,224,152,16)),{fill:PAPER})
-  +line(e([[136,272],[216,198]]),{w:5})+line(e([[344,272],[264,198]]),{w:5})
-  +line(e([[134,126],[240,apex],[346,126]]));
- const seal=T<1.8?0:lerp(2.2,1,spring(1.8,1.3,6));
- if(seal>0)s+=shape(e(ellipse(240,208,18*seal)),{fill:GREY});
- s+=burst(240,208,lin(1.9,2.4),6,24,50)+burst(240,284,T>6?clamp(landAt/.5):0,4,20,44,Math.PI/2,Math.PI*1.2);
- return s+dot(384,104,7*spring(2.4))+dot(108,292,5*spring(2.6))+glint(96,110,10,spring(2.8)*(T>6?.8+.2*Math.sin(T*2.4):1));
+ // A sealed envelope: the seal lifts away and the flap opens; the flap closes and the seal is stamped back on.
+ const e=(pts:P[])=>X(pts,{r:-.05,ox:240,oy:200});
+ const apex=pose(U,[2.6,3.6],[199,84,199]),sealS=U<2.6?1:pop(U,3.9,.25),sealed=sealS>.05;
+ const tip:P=[240,apex];
+ let s=shape(e(rounded(150,138,180,124,10)));
+ for(const corner of [[152,142],[328,142]] as P[])s+=line(e([corner,sealed?short(corner,tip,14):tip]));
+ if(sealed){const seal=e(X(ellipse(240,206,14),{s:sealS,ox:240,oy:206}));s+=shape(seal,{fill:PINK})+curve(e(X([[233,207],[240,201],[247,207]],{s:sealS,ox:240,oy:206})),{w:THIN});}
+ return s;
 }
 function key(){
- // The key spins in from the left and settles; at rest it turns now and then as if in a lock, with a click.
- const u=loop(6.5),turn=bump(u,1.2,2.6)*.5,click=clamp((u-1.9)/.45);
- const enter=at(0,1.3),settle=shake(T,1.3,1.5,4);
- const k=(pts:P[])=>X(pts,{r:lerp(-TAU,0,enter)+settle*.2+turn+breathe(1,.03),x:lerp(-300,0,enter),ox:240,oy:200});
- let s=shape(k(ellipse(160,200,50)),{fill:GREY})+shape(k(ellipse(160,200,15)),{fill:PAPER})
-  +shape(k(rounded(206,186,174,28,14)))
-  +line(k([[318,212],[318,246],[340,246],[340,212]]))+line(k([[356,212],[356,236],[372,236],[372,212]]));
- s+=burst(392,200,T>6?click:0,3,14,34,0,Math.PI*.8);
- return s+dot(390,120,6*spring(1.6))+glint(110,112,10,spring(1.8)*(1+bump(u,2,3)*.5));
+ // A key turns over in a lock and back, its tag swinging a beat behind.
+ const turn=pose(U,[2.4,3.4],[0,1,0],.35),c=Math.cos(Math.PI*turn),sq=Math.max(.12,Math.abs(c));
+ const k=(pts:P[])=>X(pts,{r:-.32,ox:196,oy:184});
+ let s=shape(k(ellipse(196,184,30,30*sq)),{holes:[k(ellipse(196,184,9,9*sq))]});
+ s+=line(k([[226,184],[344,184]]))+line(k([[310,184],[310,184+28*c]]))+line(k([[332,184],[332,184+20*c]]));
+ const [knot]=k([[184,184+27*sq]]),swing=pose(U,[2.5,3.5],[.22,-.12,.22],.4);
+ const top:P=[knot[0]-22,knot[1]+34],t=(pts:P[])=>X(pts,{r:swing,ox:158,oy:244,x:top[0]-158,y:top[1]-244});
+ s+=curve([knot,[knot[0]-12,knot[1]+16],t([[158,244]])[0]],{w:FINE});
+ return s+shape(t(rounded(138,244,40,54,8)),{fill:SAND})+ring(...t([[158,256]])[0],4,{w:THIN})+line(t([[148,276],[168,276]]),{w:THIN});
 }
 function door(){
- // The door swings open with a little overshoot and light spills out; at rest a draft moves it and the light breathes.
- const u=loop(8),draft=shake(u,1.5,.7,1.2)*10+breathe(.8,2);
- const open=lerp(174,272,spring(.5,1.1,3.6))+draft,light=clamp((open-180)/90)*(T>6?.75+.25*Math.sin((T-6)*1.3):1);
- let s=line([[110,332],[370,332]])+line([[152,330],[152,70],[330,70],[330,330]]);
- for(const [a,b] of [[[296,346],[344,368]],[[306,326],[370,334]],[[290,364],[316,384]]] as [P,P][])s+=line([a,b],{w:5,opacity:light*.8});
- s+=shape([[154,72],[open,94],[open,316],[154,330]],{fill:GREY});
- s+=shape(ellipse(open-20,210+shake(T,1.2,3,5)*3,8),{fill:PAPER,w:5});
- return s+dot(380,110,6*spring(1.8))+glint(390,160,9,bump(u,4,5));
+ // A door ajar: it shuts, the light goes; it swings wide, and settles back ajar with its sliver of light.
+ const ex=pose(U,[2.4,3.4,4.4],[276,295,250,276]),d=(298-ex)/22*8,top=108+d,bot=298-d;
+ let s='';
+ if(ex<292)s+=shape([[ex,top],[298,108],[298,298],[ex,bot]],{fill:SAND,w:0});
+ s+=line([[136,298],[344,298]],{w:FINE})+line([[182,298],[182,108],[298,108],[298,298]]);
+ s+=shape([[182,108],[ex,top],[ex,bot],[182,298]]);
+ return s+ring(ex-18,206,5);
 }
 function swap(){
- // Two cards pop in, then trade places along curved paths while the arrows turn with them, and trade back.
- const u=loop(9);
- const p=T<6?at(1.6,2.8)-at(3.6,4.8):win(u,1.5,2.7)-win(u,5.5,6.7);
- const card=(x0:number,y0:number,x1:number,y1:number,lift:number,fill:string,pop:number)=>{if(pop<=.02)return '';const x=lerp(x0,x1,p),y=lerp(y0,y1,p)+lift*Math.sin(Math.PI*p),r=Math.sin(Math.PI*p)*.14*Math.sign(lift);const c=(pts:P[])=>X(pts,{s:pop*(1+.06*Math.sin(Math.PI*p)),r,ox:x0+61,oy:y0+75,x:x-x0,y:y-y0});return shape(c(rounded(x0,y0,122,150,18)),{fill})+line(c([[x0+26,y0+40],[x0+92,y0+40]]),{w:5})+line(c([[x0+26,y0+68],[x0+74,y0+68]]),{w:5});};
- // The card travelling over the top is drawn last.
- let s=card(266,140,92,110,60,PAPER,spring(.2,1.5,5))+card(92,110,266,140,-70,GREY,spring(0,1.5,5));
- const ar=(pts:P[])=>X(pts,{r:p*.5,ox:240,oy:200});
- s+=curve(ar([[160,94],[240,62],[318,112]]),{k:at(.6,1.2)})+line(ar([[296,108],[320,114],[318,90]]),{opacity:at(1.1,1.3)});
- s+=curve(ar([[322,306],[240,338],[162,290]]),{k:at(.8,1.4)})+line(ar([[184,292],[160,288],[162,312]]),{opacity:at(1.3,1.5)});
- return s;
+ // A circle and a square trade places, each along its own arrow, and later trade back.
+ const L:P=[174,200],R:P=[304,200],go=pose(U,[2.4],[0,1],.45),ret=pose(U,[3.8],[0,1],.45);
+ const pos=(from:P,to:P,t:number,h:number):P=>[lerp(from[0],to[0],t),lerp(from[1],to[1],t)+h*Math.sin(Math.PI*clamp(t))];
+ // Going, the circle rides the top arrow to the right and the square the bottom one to the left; coming back, the other way round.
+ const circle=U<3.8?pos(L,R,go,-30):pos(R,L,ret,30),square=U<3.8?pos(R,L,go,30):pos(L,R,ret,-30);
+ const sq=rounded(square[0]-26,square[1]-26,52,52,6);
+ let s=ring(circle[0],circle[1],26,{w:LINE})+shape(sq,{fill:BLUE})+stripes(sq,Math.PI/4,17);
+ s+=curve([[180,160],[240,126],[296,160]])+line([[280,158],[298,162],[300,144]]);
+ return s+curve([[300,242],[240,276],[178,242]])+line([[196,244],[178,240],[176,258]]);
 }
 function invite(){
- // The envelope rises, the card slides up out of it with a spring and a little burst celebrates. At rest the card
- // peeks up and down, and now and then jumps out a little higher.
- const u=loop(7),env=spring(0,1.2,5),card=spring(.7,1.1,4);
- const lift=lerp(-40,0,card)+bump(u,2,3)*28+breathe(1.2,4);
- const e=(pts:P[])=>X(pts,{y:lerp(160,0,env)});
- let s=shape(e(rounded(138,176,204,130,14)),{fill:PAPER});
- if(T>.7){s+=shape(e(rounded(166,104-lift,148,140,12)),{fill:GREY});
-  const face=spring(1.3,1.6,5);if(face>.02)s+=shape(e(ellipse(240,146-lift,16*face)),{fill:PAPER,w:5})+curve(e([[210,196-lift],[224,176-lift],[256,176-lift],[270,196-lift]]),{w:5,k:at(1.4,1.8)});}
- s+=shape(e([[138,206],[240,262],[342,206],[342,306],[138,306]]),{fill:PAPER});
- s+=burst(240,80,T<6?lin(1.6,2.3):clamp((u-2.3)/.6),7,40,90,-Math.PI/2,Math.PI*1.3);
- return s+glint(372,120,11,spring(1.8))+dot(108,150,6*spring(2))+dot(378,178,4*spring(2.2));
+ // A card sinks into its envelope, then rises out again.
+ const v=(x:number)=>190+50*(1-Math.abs(x-240)/80),dy=pose(U,[2.6,3.4],[0,74,0]),top=136+dy;
+ let s='';
+ if(top<204){
+  s+=shape([[200,v(200)],[200,top],[280,top],[280,v(280)],[240,240]],{fill:LILAC});
+  for(const [y,x1] of [[160,262],[180,246]] as const)if(y+dy<200)s+=line([[216,y+dy],[x1,y+dy]],{w:THIN});
+ }
+ s+=line([[200,190],[160,190],[160,294],[320,294],[320,190],[280,190]]);
+ return s+line([[162,192],[240,240],[318,192]]);
 }
 function keypad(){
- // The phone pops up and its keys appear one by one; a code is typed, dot by dot. At rest the same small ritual
- // repeats: three presses, three dots, a glint, and the dots clear.
- const u=loop(7),dev=spring(0,1.3,5),clock=T<6?T:u;
- const presses=T<6?[1.6,2.1,2.6]:[1,1.6,2.2],pressed=[4,0,8],clear=T<6?0:win(u,5.2,5.6);
- let s=shape(X(rounded(160,66,160,262,28),{s:dev,ox:240,oy:328}));
- if(dev<.3)return s;
- s+=shape(rounded(184,92,112,40,12),{fill:GREY});
- presses.forEach((p,i)=>{const o=clock>p+.12?spring(0,2,6,clock-p-.12)*(1-clear):0;if(o>.02)s+=shape(ellipse(214+i*26,112,4.5*o),{fill:INK,w:2});});
- for(let r=0;r<3;r++)for(let c=0;c<3;c++){const i=r*3+c,appear=spring(.4+i*.07,1.6,6);if(appear<.02)continue;
-  const j=presses.findIndex((p,j)=>pressed[j]===i&&clock>p&&clock<p+.35),d=j>=0?Math.sin(Math.PI*(clock-presses[j])/.35):0;
-  s+=shape(ellipse(204+c*36,172+r*44,13*appear*(1-.18*d)),{fill:d>.05?GREY:'none',w:5});}
- s+=line([[222,304],[258,304]],{w:5});
- return s+glint(342,96,9,bump(clock,T<6?3.2:2.8,T<6?4:3.6));
+ // A code is typed: the colour hops from key to key, each one pressing in as it lights.
+ const seq=[4,0,8,2,4],keys=[1.0,1.5,2.0,2.5];
+ const i=keys.filter(k=>U>=k).length,lit=seq[i],press=i?.8+.2*pop(U,keys[i-1]+.04,.22):1;
+ let s=shape(rounded(184,92,112,208,22))+line([[226,114],[254,114]],{w:FINE});
+ for(let r=0;r<3;r++)for(let c=0;c<3;c++){const x=212+c*28,y=166+r*32;s+=r*3+c===lit?shape(ellipse(x,y,10*press),{fill:GREEN,w:FINE}):ring(x,y,10);}
+ return s+line([[226,276],[254,276]],{w:FINE});
 }
 function shield(){
- // The shield grows from its centre, the check draws itself and a glint answers. At rest a ripple goes out from
- // it now and then, and the check is drawn again.
- const u=loop(7),grow=spring(0,1.3,5),pulse=shake(u,1.2,1.4,4)*.05;
- const m=(pts:P[])=>X(pts,{s:grow*(1+pulse),ox:240,oy:200});
- let s=ripple(240,195,90,150,T<6?lin(1.4,2.4):clamp((u-1.2)/1.2));
- s+=blob(m([[240,66],[290,86],[334,96],[332,170],[302,252],[240,318],[178,252],[148,170],[146,96],[190,86]]),{fill:GREY});
- const check=T<6?at(.8,1.4):u<1.1?1:u<1.25?1-(u-1.1)/.15:win(u,1.25,1.8);
- s+=line(m([[198,196],[230,230],[288,160]]),{w:10,k:check});
- return s+glint(376,108,11,spring(1.5)*(1+bump(u,1.6,2.4)*.6))+dot(104,130,6*spring(1.7))+dot(372,286,5*spring(1.9));
-}
-function padlock(open:boolean){
- const u=loop(7.5),body=T<.6?lerp(-250,0,fall(0,.6)):0,[sx,sy]=squash(T-.6);
- let lift:number,a=0,tug=0;
- if(open){
-  // The shackle springs up and swings open; at rest it swings on its hinge now and then.
-  lift=lerp(0,30,spring(1,1.3,4.5));a=lerp(0,-.32,spring(1.25,1.1,3.2))+shake(u,1.5,.9,1.4)*.18+breathe(.9,.02);
- }else{
-  // The shackle drops into the body with a click; at rest someone tests it, and it holds.
-  lift=T<1?60:lerp(60,0,fall(1,1.35));tug=shake(u,1.5,3,4)*.05;lift+=bump(u,1.5,1.8)*6;
- }
- const all=(pts:P[])=>X(pts,{sx,sy,ox:240,oy:302,y:body,r:tug});
- const shackle=X([[188,176],...arc(240,132,52,52,Math.PI,TAU,20),[292,176]],{y:-lift});
- let s=line(all(X(shackle,{r:a,ox:188,oy:176})),{w:9});
- s+=shape(all(rounded(160,170,160,132,22)),{fill:GREY})+shape(all(ellipse(240,226,13)),{fill:PAPER,w:5})+line(all([[240,238],[240,264]]),{w:8});
- s+=burst(open?292:240,open?150:176,open?lin(1.05,1.6):lin(1.35,1.9),5,16,42,-Math.PI/2,Math.PI*1.1);
- return s+(open?glint(356,112,10,spring(1.8))+dot(118,130,5*spring(2)):dot(362,118,6*spring(1.9))+dot(116,146,5*spring(2.1)));
-}
-function lock(){return padlock(false);}
-function unlock(){return padlock(true);}
-function links(joined:boolean){
- const u=loop(7),a=-.6;
- // Joined: two links fly in from opposite corners and hook together; at rest they tug apart and snap back.
- // Apart: the joined links pull apart with a spark; at rest they drift, almost meet, and part again.
- const gap=joined?lerp(170,0,spring(0,1.1,4.2))+bump(u,1.2,1.7)*16-shake(u,1.7,2,5)*6:lerp(0,34,spring(1,1.2,4))+breathe(.8,4)-bump(u,2,3.5)*16;
- let s=shape(pill(192-gap,212+gap*.5,160,64,a),{fill:GREY})+shape(pill(192-gap,212+gap*.5,96,10,a),{fill:PAPER,w:5});
- s+=shape(pill(290+gap,150-gap*.5,160,64,a))+shape(pill(290+gap,150-gap*.5,96,10,a),{fill:PAPER,w:5});
- if(joined)return s+burst(241,181,lin(.55,1.1),6,14,40)+glint(372,256,10,spring(1.2))+dot(128,120,6*spring(1.4));
- s+=burst(241,181,T<6?lin(1,1.6):clamp((u-3.3)/.6),5,10,36);
- if(T>1.5)[[[226,150],[210,128]],[[248,176],[276,172]],[[232,208],[244,232]]].forEach((pts,i)=>{s+=line(pts as P[],{w:5,opacity:.55+.45*Math.sin(T*3+i*2)});});
+ // A shield: the boss pops away, comes back in colour, and the tick is drawn on over it.
+ let s=draw([[240,104],[276,118],[310,122],[308,186],[286,244],[240,292],[194,244],[172,186],[170,122],[204,118]],{closed:true,smooth:true});
+ const bs=U<2.8?1:pop(U,3.4),tk=U<2.8?1:clamp(pose(U,[3.8,4.0],[0,.5,1],.2));
+ if(bs>.05)s+=shape(X(ellipse(240,186,22),{s:bs,ox:240,oy:186}),{fill:BLUE});
+ if(bs>.9&&tk>.02)s+=line([[229,187],[237,195],[252,178]],{w:THIN,k:tk});
  return s;
 }
-function link(){return links(true);}
-function unlink(){return links(false);}
+function padlock(o:number,colour:string,on:boolean){
+ const shackle=X([[206,184],...arc(240,150,34,34,Math.PI,TAU,20),[274,184]],{y:-24*o});
+ let s=line(X(shackle,{r:-.36*o,ox:206,oy:184}))+shape(rounded(184,184,112,96,14));
+ return s+shape(ellipse(240,226,14),{fill:on?colour:undefined})+line([[240,224],[240,236]],{w:THIN})+shape(ellipse(240,221,3.2),{fill:INK,w:0});
+}
+// The shackle clicks shut and the keyhole fills; unlocking is the same click the other way.
+function lock(){return padlock(pose(U,[2.4,3.6],[0,1,0]),SAND,U<2.4||U>=3.75);}
+function unlock(){return padlock(pose(U,[2.4,3.6],[1,0,1]),GREEN,U<2.4||U>=3.75);}
+function links(gap:number){
+ // Two rings: overlapping, the part they share is in colour; pulled apart, that shared part splits between them.
+ const R=46,h=28,th=Math.acos(h/R);
+ const g=(pts:P[])=>X(pts,{r:-.28,ox:240,oy:198});
+ const a:P=[212-gap,198],b:P=[268+gap,198];
+ let s='';
+ if(Math.abs(gap)<2){
+  const lens=g([...arc(a[0],a[1],R,R,-th,th,14),...arc(b[0],b[1],R,R,Math.PI-th,Math.PI+th,14).slice(1,-1)]);
+  s+=shape(lens,{fill:LILAC,w:0})+stripes(lens,-.28+Math.PI/2,9);
+ }else if(gap>27)s+=shape(g(arc(a[0],a[1],R,R,-th,th,14)),{fill:LILAC})+shape(g(arc(b[0],b[1],R,R,Math.PI-th,Math.PI+th,14)),{fill:LILAC});
+ return s+shape(g(ellipse(a[0],a[1],R)))+shape(g(ellipse(b[0],b[1],R)));
+}
+function link(){return links(pose(U,[2.4,3.6],[0,30,0],.35));}
+function unlink(){return links(pose(U,[2.4,3.6],[30,0,30],.35));}
 function plane(){
- // The plane loops in, its dashed path appearing behind it, and levels out. At rest it glides and banks, and its
- // trail keeps flowing.
- const u=loop(8),fly=at(0,2.6);
- const path:P[]=[[30,330],[120,300],[150,220],[100,190],[110,250],[200,240],[300,160],[300,168]],rest:P=[300,168];
- const [px,py]=fly<1?along(path,fly):rest,[qx,qy]=fly<1?along(path,Math.min(1,fly+.02)):[rest[0]+1,rest[1]];
- const heading=fly<1?Math.atan2(qy-py,qx-px)+.46:0;
- const bank=breathe(1.1,.08)-bump(u,2,4)*.12,y=breathe(1.2,8)-bump(u,2,4)*20;
- const m=(pts:P[])=>X(pts,{r:heading+bank,ox:rest[0],oy:rest[1],x:px-rest[0],y:py-rest[1]+y});
- let s=curve([[196,246],[150,270],[110,252],[120,222],[152,236],[128,300],[84,330]],{w:5,dash:'14 16',offset:-Math.max(0,T-2.6)*30,opacity:at(2,2.8)});
- if(fly>.05&&fly<1){const [bx,by]=along(path,Math.max(0,fly-.08));s+=curve([[bx,by],along(path,Math.max(0,fly-.04)),[px,py]],{w:5,opacity:.6});}
- s+=shape(m([[368,98],[138,172],[210,196]]),{fill:PAPER})+shape(m([[368,98],[210,196],[238,252]]),{fill:GREY})+line(m([[210,196],[204,230]]),{w:5});
- return s+dot(390,168,6*spring(2.8))+glint(330,262,9,spring(3));
+ // A paper plane rides the air in little jumps, its looping trail behind it.
+ const ks=[1.2,2.4,3.6],ox=pose(U,ks,[0,8,-5,0],.35),oy=pose(U,ks,[0,-10,6,0],.35),r=pose(U,ks,[0,-.06,.05,0],.35);
+ const p=(pts:P[])=>X(pts,{x:ox,y:oy,r,ox:270,oy:160});
+ const [N,L,F,B]=p([[338,112],[210,150],[252,170],[270,210]]);
+ let s=shape([N,L,F])+shape([N,F,B],{fill:BLUE});
+ s+=curve([p([[240,182]])[0],[206+ox*.5,202+oy*.5],[178,236],[188,262],[212,250],[204,224],[170,246],[146,282],[132,296]],{w:FINE});
+ return s+ring(126,301,6);
 }
 function hourglass(){
- // The hourglass lands, turns over and settles. At rest the sand runs down and, when the top is empty, the glass
- // turns over again.
- const u=loop(8.5),land=T<.6?lerp(-260,0,fall(0,.6)):0;
- let flip:number,left:number;
- if(T<6){flip=at(1.4,2.5)+shake(T,2.5,1.4,5)*.04;left=0;}
- else{left=u<6.9?1-u/6.8:0;flip=u>6.9?ease((u-6.9)/1.1)+shake(u,8,1.4,5)*.04:0;}
- const g=(pts:P[])=>X(pts,{r:flip*Math.PI,ox:240,oy:200,y:land});
- let s=curve(g([[184,90],[188,150],[232,200],[188,250],[184,310]]))+curve(g([[296,90],[292,150],[248,200],[292,250],[296,310]]));
- const top=Math.sqrt(clamp(left)),bot=Math.sqrt(1-clamp(left));
- if(top>.05)s+=shape(g(X([[200,136],[280,136],[242,188]],{s:top,ox:242,oy:188})),{fill:GREY,w:5});
- if(bot>.05)s+=shape(g(X([[194,304],[222,272],[240,266],[258,272],[286,304]],{s:bot,ox:240,oy:304})),{fill:GREY,w:5});
- if(left>0&&left<1&&flip===0)s+=line(g([[240,196],[240,300-38*bot]]),{w:3.5,dash:'6 10',offset:-T*60});
- return s+shape(g(rounded(164,70,152,20,10)),{fill:GREY})+shape(g(rounded(164,310,152,20,10)),{fill:GREY})+ripple(240,330,20,60,lin(.6,1.1));
+ // The sand runs down in ticks; when the top is empty the glass snaps over and it starts again.
+ const run=clamp(pose(U,[.8,1.6,2.4,3.2,4.0,4.8],[0,1/6,2/6,3/6,4/6,5/6,1],.25)),flip=U<5.4?0:back((U-5.4)/.6);
+ const g=(pts:P[])=>X(X(pts,{s:.78,ox:240,oy:200}),{r:flip*Math.PI,ox:240,oy:200});
+ let s='';
+ const top=Math.sqrt(1-run),bot=Math.sqrt(run);
+ if(top>.06)s+=shape(g(X([[204,128],[276,128],[262,160],[240,186],[218,160]],{s:top,ox:240,oy:186})),{fill:SAND,w:FINE});
+ if(bot>.06)s+=shape(g(X([[202,300],[214,276],[240,262],[266,276],[278,300]],{s:bot,ox:240,oy:300})),{fill:SAND,w:FINE});
+ if(run<1&&flip===0)s+=line(g([[240,194],[240,lerp(258,294,1-bot)]]),{w:2.4});
+ s+=curve(g([[190,100],[192,150],[232,198],[192,250],[190,300]]))+curve(g([[290,100],[288,150],[248,198],[288,250],[290,300]]));
+ return s+line(g([[170,92],[310,92]]))+line(g([[170,308],[310,308]]));
 }
 function box(){
- // The box drops, its flaps spring open and a few bubbles float up. At rest it hops and something pops out,
- // turns over in the air and drops back in.
- const u=loop(7.5),hop=bump(u,1,1.5)*22,[sx,sy]=squash(u>1.5?u-1.5:T<6?T-.6:-1);
- const b=(pts:P[])=>X(pts,{sx,sy,ox:240,oy:322,y:(T<.6?lerp(-280,0,fall(0,.6)):0)-hop});
- const flapL=lerp(1.2,0,spring(.9,1.5,4.5)),flapR=lerp(-1.2,0,spring(1.05,1.5,4.5));
- let s=shape(b([[140,184],[172,150],[308,150],[340,184]]),{fill:GREY});
- const fly=clamp((u-1.2)/1.6);if(fly>0&&fly<1){const oy=184-Math.sin(Math.PI*fly)*150;s+=shape(X(rounded(226,oy-14,28,28,6),{r:fly*TAU,ox:240,oy}),{fill:INK,w:3});}
- s+=shape(b(X([[140,184],[96,146],[124,122],[172,150]],{r:flapL,ox:156,oy:167})),{fill:PAPER})+shape(b(X([[340,184],[384,146],[356,122],[308,150]],{r:flapR,ox:324,oy:167})),{fill:PAPER});
- s+=shape(b([[140,184],[340,184],[330,322],[150,322]]),{fill:PAPER})+shape(b(rounded(204,232,72,30,6)),{w:5});
- for(let i=0;i<3;i++){const f=T<6?clamp((T-1.4-i*.35)/2.2):((T-6)*.22+i*.33)%1;if(f>0&&f<1)s+=dot(200+i*40+Math.sin(f*7+i)*8,140-f*90,(4+i*1.5)*(1-f*.3),Math.sin(Math.PI*f));}
- return s;
+ // An open box folds its flaps shut, then they spring open again.
+ const o=pose(U,[2.4,3.4],[1,0,1]);
+ const flap=(h0:P,p1:P,p2:P,h3:P):P[]=>[h0,[lerp(h0[0],p1[0],o),lerp(h0[1],p1[1],o)],[lerp(h3[0],p2[0],o),lerp(h3[1],p2[1],o)],h3];
+ let s='';
+ if(o>.08)s+=shape(flap([176,200],[150,166],[214,166],[240,200]),{w:FINE})+shape(flap([240,200],[266,166],[330,166],[304,200]),{w:FINE});
+ s+=shape([[176,200],[304,200],[304,292],[176,292]]);
+ return s+shape(rounded(210,226,60,34,5),{fill:SAND})+line([[222,238],[256,238]],{w:THIN})+line([[222,249],[244,249]],{w:THIN});
 }
 function jar(){
- // The jar lands, fills up with a slosh and its lid screws on. At rest the liquid moves, bubbles rise, and now and
- // then the jar tips and the liquid follows a moment later.
- const u=loop(8),tip=bump(u,1.5,3)*.1,slosh=shake(u,2,1,1.6)*16+shake(T,1.8,1,1.8)*14+breathe(1.6,3);
- const [sx,sy]=squash(T-.6),j=(pts:P[])=>X(pts,{sx,sy,ox:240,oy:320,r:tip,y:T<.6?lerp(-250,0,fall(0,.6)):0});
- const level=lerp(306,206,at(.8,1.9));
- let s=shape(j(rounded(168,106,144,214,36)));
- if(level<304){const top:P[]=Array.from({length:9},(_,i)=>[182+i*14.5,level+Math.sin(i*.8+T*3)*3+(i-4)/4*slosh] as P);s+=blob(j([...top,[298,290],[276,308],[204,308],[182,290]]),{fill:GREY});}
- if(T>2)for(let i=0;i<3;i++){const f=((T-2)*.32+i*.33)%1;s+=dot(214+i*22+Math.sin(f*8+i)*5,lerp(290,level+8,f),4+i*1.3,Math.sin(Math.PI*f));}
- const lid=T<2?-90:lerp(-90,0,spring(2,1.4,5)),twist=T<2?0:(1-at(2,2.8))*.3*Math.sin(T*20);
- s+=shape(j(X(rounded(184,76,112,32,10),{y:lid,r:twist,ox:240,oy:92})),{fill:GREY});
- return s+glint(348,112,10,spring(2.6))+dot(126,150,5*spring(2.8));
+ // The lid lifts, a bean drops in, the level rises, and the lid goes back on.
+ const re=U>=2.4,fillTop=re?pose(U,[3.3],[272,254]):254,lid=pose(U,[2.4,3.8],[0,1,0]);
+ const body=rounded(184,142,112,150,28),keep:P[]=[];
+ body.forEach((p,i)=>{const q=body[(i+1)%body.length];if(p[1]>=fillTop)keep.push(p);if((p[1]-fillTop)*(q[1]-fillTop)<0){const t=(fillTop-p[1])/(q[1]-p[1]);keep.push([p[0]+(q[0]-p[0])*t,fillTop]);}});
+ let s=shape(X(keep,{s:.9,ox:240,oy:286}),{fill:GREEN,w:FINE})+wavy(fillTop+18,216,264,.6,2.5);
+ if(U>=2.8&&U<3.3){const t=clamp((U-2.8)/.45);s+=shape(ellipse(240,lerp(112,fillTop-4,t*t),7,5),{w:THIN});}
+ s+=shape(body)+shape(X(rounded(198,116,84,22,7),{x:36*lid,y:-34*lid,r:.35*lid,ox:282,oy:127}));
+ return s;
 }
 function folder(){
- // The folder opens out, a sheet drops into it and the front closes over it. At rest another sheet drops in now
- // and then, the folder gives a little under it, and the sheet fades back into the pile.
- const u=loop(7.5),back=spring(0,1.3,5),front=spring(1.2,1.3,5);
- const sheet=T<.5?null:lerp(-260,0,fall(.5,1.2)),give=shake(u,1.6,1.8,4)*.05+shake(T,1.2,1.8,4)*.05;
- const extra=u>.8&&u<1.6?lerp(-260,0,((u-.8)/.8)**2):u>=1.6&&u<5.5?0:null,fade=1-win(u,4.5,5.5);
- let s=shape(X([[120,118],[196,118],[218,140],[360,140],[360,302],[120,302]],{sy:back*(1-give),ox:240,oy:302}),{fill:GREY});
- if(sheet!==null)s+=shape(rounded(150,104+sheet,178,130,10),{fill:PAPER})+line([[176,136+sheet],[284,136+sheet]],{w:5})+line([[176,162+sheet],[250,162+sheet]],{w:5});
- if(extra!==null)s+=shape(X(rounded(166,94+extra,160,120,10),{r:-.06,ox:246,oy:154}),{fill:PAPER,opacity:fade})+line([[190,124+extra],[276,120+extra]],{w:5,opacity:fade});
- s+=shape(X([[114,172],[366,172],[354,302],[126,302]],{sy:front*(1-give),ox:240,oy:302}),{fill:PAPER});
- return s+dot(392,110,6*spring(1.8));
+ // A sheet rises out of the folder, held up for a moment, then slips back in.
+ const sy=pose(U,[2.4,3.8],[0,1,0]),top=170-62*sy;
+ const tab:P[]=[[160,146],[166,128],[212,128],[222,146]];
+ const sheet:P[]=[[232,170],[232,top],[306,top],[306,170]];
+ let s=shape(tab,{fill:BLUE})+line([[160,146],[160,170]]);
+ if(sy>.05){
+  s+=behind([[222,146],[320,146],[320,170],[222,170]],[sheet]);
+  s+=line(sheet);
+  for(const [y,x1] of [[top+18,286],[top+34,272]] as const)if(y<164)s+=line([[246,y],[x1,y]],{w:THIN});
+ }else s+=line([[222,146],[320,146],[320,170]]);
+ return s+shape([[152,170],[328,170],[318,284],[162,284]]);
 }
 function plug(){
- // The cable draws itself in and the plug swings up on it, then pushes into the socket with a spark. At rest it
- // pulls out now and then and pushes back in.
- const u=loop(8),cable=at(0,1.1),rise=spring(1,1.1,4),out=bump(u,1.2,2.4)*26;
- const y=lerp(160,20,rise)-44*at(2,2.4)+out,sway=shake(T,1,1,2.5)*.25*(1-at(2,2.4));
- const p=(pts:P[])=>X(pts,{y,r:sway,ox:240,oy:238});
- const sock=at(.6,1);
- const [ex,ey]=p([[240,238]])[0];
- let s=curve([[ex,ey],[ex,ey+38],[208,302],[160,300],[124,326],[104,346]],{k:cable});
- if(T>.9)s+=line(p([[214,122],[214,80]]),{w:9})+line(p([[266,122],[266,80]]),{w:9})+shape(p(rounded(186,118,108,120,24)),{fill:GREY})+line(p([[222,158],[258,158]]),{w:5});
- // The socket is drawn over the prongs, so they disappear into it.
- s+=shape(rounded(170,26,140,40,12),{fill:PAPER,opacity:sock})+line([[214,44],[214,52]],{w:6,opacity:sock})+line([[266,44],[266,52]],{w:6,opacity:sock});
- const spark=T<6?lin(2.4,3):clamp((u-2.4)/.6);
- return s+burst(196,70,spark,3,10,30,Math.PI*1.1,Math.PI*.5)+burst(284,70,spark,3,10,30,-Math.PI*.1,Math.PI*.5);
+ // A plug pulls out of the socket, then pushes home, and its collar lights up.
+ const d=pose(U,[2.4,3.6],[0,24,0]),on=U<2.4||U>=3.75;
+ let s=line([[196,104],[284,104]]);
+ s+=line([[222,136+d],[222,106+d*.9]])+line([[258,136+d],[258,106+d*.9]]);
+ s+=shape(rounded(200,136+d,80,74,18));
+ const collar=rounded(222,210+d,36,20,4);
+ s+=shape(collar,{fill:on?LILAC:undefined})+(on?stripes(collar,Math.PI/2,9):'');
+ s+=curve([[240,230+d],[240,258],[218,278],[180,276],[160,292]],{w:FINE});
+ return s+ring(154,296,6);
 }
 function house(){
- // Walls rise from the ground, the roof drops on with a bounce, the door and windows appear, the lights come on and
- // smoke starts to curl. At rest the smoke keeps curling and the lights go off and on again.
- const u=loop(10),walls=spring(.5,1.3,5),roof=T<1.2?null:lerp(-200,0,fall(1.2,1.6)),[sx,sy]=squash(T-1.6);
- const lit=T<6?T>2.6:!(u>4&&u<6.5);
- const puff=(i:number)=>{if(T<2.6+i*1.2)return '';const f=((T-2.6)*.28+i*.5)%1;return dot(302+f*20+Math.sin(f*6)*6,96-f*56,5+f*8,Math.sin(Math.PI*f));};
- let s=line([[96,322],[384,322]],{k:at(0,.5)});
- if(walls>.02)s+=shape(X([[160,196],[160,322],[320,322],[320,196]],{sy:walls,ox:240,oy:322}),{fill:PAPER});
- if(roof!==null){const r=(pts:P[])=>X(pts,{sx,sy,ox:240,oy:206,y:roof});s+=line(r([[290,156],[290,112],[312,112],[312,176]]))+shape(r([[132,206],[240,114],[348,206]]),{fill:GREY});}
- const d=spring(1.9,1.6,6),w1=spring(2.1,1.6,6),w2=spring(2.2,1.6,6);
- if(d>.02)s+=shape(X(rounded(220,252,42,70,10),{sy:d,ox:241,oy:322}),{fill:GREY});
- if(w1>.02)s+=shape(X(rounded(178,226,28,28,5),{s:w1,ox:192,oy:240}),{w:5,fill:lit?GREY:'none'});
- if(w2>.02)s+=shape(X(rounded(284,226,28,28,5),{s:w2,ox:298,oy:240}),{w:5,fill:lit?GREY:'none'});
- return s+puff(0)+puff(1);
+ // A small house: its door swings open, held, and shuts again.
+ const c=pose(U,[2.4,3.8],[1,.22,1]);
+ let s=shape([[164,206],[240,132],[316,206]])+line([[180,206],[180,292],[300,292],[300,206]]);
+ if(c<.95)s+=line([[225,292],...arc(231,252,6,6,Math.PI,Math.PI*1.5,4),...arc(249,252,6,6,Math.PI*1.5,TAU,4),[255,292]],{w:FINE});
+ s+=shape(rounded(225,246,30*c,46,Math.min(6,15*c)),{fill:CLAY})+shape(ellipse(225+30*c-6,270,2.6),{fill:INK,w:0});
+ return s+ring(240,182,9);
 }
 function lifebuoy(){
- // The ring drops onto the water with a splash and bobs; at rest it rides the swell and turns slowly.
- const u=loop(9),f=Math.max(0,T-1);
- const cy=196+(T<.8?lerp(-320,0,fall(0,.8)):0)+shake(T,.8,.9,1.6)*18+breathe(1.1,6),a=breathe(.35,.25)+shake(T,.8,.5,1)*.4,cx=240;
- let s=water(318,110,370,0,at(.6,1),f)+water(342,160,330,1.4,at(.7,1.1),f);
- for(let i=0;i<4;i++){const b=a+i*Math.PI/2+Math.PI/4;s+=shape([...arc(cx,cy,100,100,b-.36,b+.36,8),...arc(cx,cy,50,50,b+.36,b-.36,8)],{fill:GREY,w:4.5});}
- s+=shape(ellipse(cx,cy,100))+shape(ellipse(cx,cy,50));
- s+=burst(130,300,lin(.8,1.4),3,6,34,-Math.PI*.75,Math.PI*.5)+burst(350,300,lin(.8,1.4),3,6,34,-Math.PI*.25,Math.PI*.5);
- return s+dot(372,86,6*spring(1.6))+glint(98,96,10,spring(1.8)*(1+bump(u,3,4)*.5));
+ // A ring buoy bobbing on the water in little jumps.
+ const ks=[1,2,3,4],dy=pose(U,ks,[0,-7,4,-4,0],.35),rot=pose(U,ks,[0,.12,-.08,.05,0],.35),ph=pose(U,ks,[0,1.3,2.6,1.3,0],.35);
+ const cx=240,cy=188+dy,R=62,r=32,b=.3;
+ let s='';
+ for(const q of [Math.PI/4+rot,Math.PI*5/4+rot])s+=shape([...arc(cx,cy,R,R,q-b,q+b,8),...arc(cx,cy,r,r,q+b,q-b,8)],{fill:PINK,w:0});
+ for(let i=0;i<4;i++){const q=Math.PI/4+i*Math.PI/2+rot;for(const f of [-b,b])s+=line([[cx+Math.cos(q+f)*r,cy+Math.sin(q+f)*r],[cx+Math.cos(q+f)*R,cy+Math.sin(q+f)*R]],{w:FINE});}
+ return s+shape(ellipse(cx,cy,R))+shape(ellipse(cx,cy,r))+wavy(276,150,330,ph,4);
 }
 function profile(){
- // The card swings in on its clip, the photo pops in and the details write themselves. At rest it sways on the
- // clip, and now and then the details are written out again.
- const u=loop(8),swing=lerp(-.5,0,spring(0,.9,2.6))+shake(u,2,.7,1)*.06+breathe(.8,.015);
- const c=(pts:P[])=>X(pts,{r:swing,ox:240,oy:96});
- let s=shape(c(rounded(110,112,260,176,22)),{fill:PAPER})+shape(c(rounded(214,96,52,26,9)),{fill:PAPER});
- const face=spring(1,1.6,5);if(face>.02)s+=shape(c(X(ellipse(180,178,30),{s:face,ox:180,oy:178})),{fill:GREY})+shape(c(X(arc(180,262,52,40,Math.PI,TAU,18),{sy:face,ox:180,oy:262})),{fill:GREY});
- const redo=(d:number)=>T<6?1:u<4.5?1:u<4.7?1-(u-4.5)/.2:win(u,4.7+d,5.3+d);
- s+=line(c([[248,168],[334,168]]),{w:5,k:Math.min(at(1.4,1.9),redo(0))})+line(c([[248,200],[316,200]]),{w:5,k:Math.min(at(1.7,2.2),redo(.2))})+line(c([[248,232],[292,232]]),{w:5,k:Math.min(at(2,2.4),redo(.4))});
- return s;
+ // An ID card fills itself in: the portrait pops in, then its lines are written.
+ const re=U>=2.8,as=re?pop(U,3.2):1,k1=re?clamp((U-3.7)/.25):1,k2=re?clamp((U-4.1)/.25):1;
+ let s=shape(rounded(146,136,188,122,14));
+ if(as>.05){const a=(pts:P[])=>X(pts,{s:as,ox:196,oy:196});s+=shape(a(ellipse(196,196,30)),{fill:LILAC})+shape(a(ellipse(196,186,9)),{w:THIN})+line(a(arc(196,218,16,12,Math.PI,TAU,10)),{w:THIN});}
+ return s+line([[248,182],[306,182]],{w:FINE,k:k1})+line([[248,208],[288,208]],{w:FINE,k:k2});
 }
 function safe(){
- // The safe lands, its dial turns through a combination with a click at each stop, and the handle turns. At rest
- // the combination is dialled again now and then.
- const u=loop(8.5),clock=T<6?T-1:u-1;
- const a=clock<0?0:ease(clock/.8)*2.4-ease((clock-.9)/.7)*3.4+ease((clock-1.8)/.6)*1.4;
- const handle=T<6?at(3.6,4)-at(5,5.4):win(u,3.2,3.5)-win(u,5.5,5.8);
- const land=T<.6?lerp(-280,0,fall(0,.6)):0,[sx,sy]=squash(T-.6);
- const b=(pts:P[])=>X(pts,{sx,sy,ox:240,oy:318,y:land}),cx=222,cy=196;
- let s=shape(b(rounded(128,88,224,214,20)),{fill:PAPER})+shape(b(rounded(150,110,180,170,12)),{fill:GREY});
- s+=shape(b(ellipse(cx,cy,38)),{fill:PAPER})+line(b([[cx,cy],[cx+Math.cos(a-Math.PI/2)*26,cy+Math.sin(a-Math.PI/2)*26]]),{w:6});
- s+=line(b(X([[296,168],[296,224]],{r:handle*Math.PI/2,ox:296,oy:196})),{w:10});
- s+=line(b([[158,302],[158,318]]))+line(b([[322,302],[322,318]]));
- for(const t of [.8,1.6,2.4])s+=burst(cx,cy+land,clamp((clock-t)/.35),2,44,62,-Math.PI/2,.8);
- return s+glint(372,100,10,bump(clock,2.6,3.4));
+ // A safe's dial spins left, right, left to its number; then the handle turns.
+ const dial=pose(U,[1.4,2.0,2.6,3.2],[0,1.5,-.9,.7,0],.28),hd=pose(U,[3.6,4.4],[0,1,0]);
+ let s=shape(rounded(168,120,144,140,14))+line([[186,260],[186,274]])+line([[294,260],[294,274]]);
+ const a=-.86+dial;
+ s+=shape(ellipse(228,190,22),{fill:SAND})+line([[228,190],[228+Math.cos(a)*18,190+Math.sin(a)*18]],{w:THIN})+shape(ellipse(228,190,3),{fill:INK,w:0});
+ const h=Math.PI/2-hd*Math.PI/2;
+ return s+line([[282-Math.cos(h)*18,190-Math.sin(h)*18],[282+Math.cos(h)*18,190+Math.sin(h)*18]]);
 }
 function expired(){
- // The clock pops in and its hands race round, then stop too late; a cross badge drops in and shakes its head.
- // At rest the minute hand ticks on, and the badge shakes now and then.
- const u=loop(7),face=spring(0,1.4,5),race=at(.5,2.4);
- const hour=-Math.PI/2+race*TAU*1.2;
- const minute=race*TAU*6+.5+(T>6?Math.floor(T-6)*.105+shake((T-6)%1,0,4,10)*.03:0);
- const cx=226,cy=208,c=(pts:P[])=>X(pts,{s:face,ox:cx,oy:cy});
- let s=shape(c(ellipse(cx,cy,98)),{fill:PAPER});
- for(let i=0;i<4;i++){const b=i*Math.PI/2;s+=line(c([[cx+Math.cos(b)*80,cy+Math.sin(b)*80],[cx+Math.cos(b)*88,cy+Math.sin(b)*88]]),{w:5});}
- s+=line(c([[cx,cy],[cx+Math.cos(hour)*56,cy+Math.sin(hour)*56]]))+line(c([[cx,cy],[cx+Math.cos(minute)*44,cy+Math.sin(minute)*44]]))+shape(c(ellipse(cx,cy,6)),{fill:INK,w:3});
- const badge=spring(2.6,1.5,4.5),no=shake(T,2.9,2.4,3.5)*.35+shake(u,2,2.4,3.5)*.3;
- if(badge>.02){const b=(pts:P[])=>X(pts,{s:badge,r:no,ox:318,oy:120});s+=shape(b(ellipse(318,120,30)),{fill:GREY})+line(b([[306,108],[330,132]]),{w:6})+line(b([[330,108],[306,132]]),{w:6});}
- return s;
+ // A clock ticks its last few steps to twelve, and the slice of time just gone turns pink.
+ const cx=240,cy=196,R=62,edge=-Math.PI/2-.52,re=U>=2.4;
+ const ang=re?edge+pose(U,[2.9,3.4,3.9],[0,.52/3,.52*2/3,.52],.25):-Math.PI/2,lit=!re||U>=4.0;
+ let s='';
+ if(lit)s+=shape([[cx,cy],...arc(cx,cy,50,50,edge,-Math.PI/2,10)],{fill:PINK,w:0})+line([[cx,cy],[cx+Math.cos(edge)*50,cy+Math.sin(edge)*50]],{w:THIN});
+ s+=shape(ellipse(cx,cy,R));
+ for(const a of [0,Math.PI/2,Math.PI])s+=line([[cx+Math.cos(a)*52,cy+Math.sin(a)*52],[cx+Math.cos(a)*58,cy+Math.sin(a)*58]],{w:FINE});
+ s+=line([[cx,cy],[cx+Math.cos(ang)*50,cy+Math.sin(ang)*50]])+line([[cx,cy],[cx,cy-30]]);
+ return s+ring(cx,cy,4,{fill:INK,w:2});
 }
 function wave(){
- // A hand rises into view and waves hello, trailing motion marks; at rest it waves again now and then.
- const u=loop(6.5),rise=T<.9?lerp(220,0,ease(T/.9)):0,settle=-shake(T,.9,1.5,4)*8;
- const phase=T<6?T-1:u-1,len=T<6?3.2:1.6,amp=T<6?.3:.2,rate=T<6?.95:1.25;
- const on=phase>0&&phase<len,swing=Math.sin(phase*TAU*rate);
- const a=(on?swing*amp*(T<6?1-phase/len:Math.sin(Math.PI*phase/len)):0)+breathe(1.3,.02);
- const h=(pts:P[])=>X(pts,{r:a,ox:240,oy:340,y:rise+settle});
- let s=shape(h(rounded(206,292,68,52,8)),{fill:PAPER});
- for(const [x,top] of [[196,134],[222,112],[248,110],[274,128]] as const)s+=shape(h(rounded(x-12,top,26,130,13)),{fill:GREY});
- s+=shape(h(X(rounded(172,196,28,92,14),{r:-.55,ox:186,oy:282})),{fill:GREY});
- s+=shape(h(rounded(186,196,104,108,34)),{fill:GREY});
- // Motion marks on the side the hand is swinging towards, strongest at the end of each swing.
- const show=on?Math.abs(Math.cos(phase*TAU*rate))*Math.sin(Math.PI*phase/len):0;
- if(show>.05){const right=Math.cos(phase*TAU*rate)>0;s+=curve(right?[[330,98],[346,128],[338,160]]:[[150,98],[134,128],[142,160]],{w:5,opacity:show})+curve(right?[[358,112],[374,146],[364,180]]:[[122,112],[106,146],[116,180]],{w:5,opacity:show*.6});}
- return s;
-}
-function balance(){
- // The stand rises, the beam lands and two weights drop into the pans one after the other; the beam tips and finds
- // its balance. At rest a weight hops now and then and the beam rocks back to level.
- const u=loop(8),post=at(0,.6),beamIn=spring(.5,1.4,5);
- const tilt=T<6?-.16*spring(1.8,1.1,2.8)+.16*spring(3,1.1,2.8):shake(u,1.45,1,1.8)*-.08+shake(u,5.05,1,1.8)*.08;
- let s=line([[200,322],[280,322]])+line([[240,322],[240,lerp(322,112,post)]]);
- if(beamIn>.02){s+=line(X([[128,128],[352,128]],{s:beamIn,r:tilt,ox:240,oy:128}));
-  X([[128,128],[352,128]],{r:tilt,ox:240,oy:128}).forEach(([x,y],i)=>{
-   const py=y+86*spring(.8+i*.1,1.3,4.5),pan=(pts:P[])=>X(pts,{r:shake(T,.8+i*.1,.9,2)*.1,ox:x,oy:y});
-   s+=line(pan([[x,y],[x-34,py]]),{w:4.5})+line(pan([[x,y],[x+34,py]]),{w:4.5})+shape(pan(arc(x,py,46,26,0,Math.PI,16)),{fill:GREY});
-   const t0=i?3:1.8,hopAt=i?5.05:1.45;
-   const by=(T<t0?lerp(-40,py-12,fall(t0-.6,t0)):py-12)-bump(u,hopAt-.55,hopAt)*40;
-   if(T>t0-.6)s+=shape(pan(ellipse(x,by,12)),{fill:INK,w:3});});}
- return s+shape(ellipse(240,104,11*spring(.4)),{fill:GREY,w:5});
-}
-function untangle(){
- // A snarl of thread pulls itself straight as the ball rolls in; at rest the ball rocks and the loose end plays.
- const u=loop(7.5),roll=lerp(-240,0,spring(0,.9,3.4)),spin=roll/82+breathe(.8,.15)+bump(u,2,4)*.6;
- const tidy=at(1,2.8),w=breathe(1.4,6)+bump(u,2,4)*18;
- let s=shape(ellipse(206+roll,206,82),{fill:GREY});
- for(const pts of [[[146,160],[200,138],[258,168]],[[134,214],[206,184],[276,220]],[[156,262],[210,238],[262,268]]] as P[][])s+=curve(X(pts,{r:spin,ox:206,oy:206,x:roll}),{w:5});
- const neat:P[]=[[282,238],[326,272],[364,248],[346,220],[380,288],[410+w,312]];
- const messy:P[]=[[282,238],[340,300],[300,300],[360,210],[330,330],[410,312]];
- s+=curve(neat.map((p,i)=>[lerp(messy[i][0],p[0],tidy)+roll*(1-i/5),lerp(messy[i][1],p[1],tidy)] as P));
- return s+dot(372,118,6*spring(2.6))+glint(120,96,10,spring(2.8));
-}
-function build(){
- // Blocks drop in one after another and land with a squash; the top one gets its mark. At rest the top block
- // lifts, turns a quarter and drops back down.
- const u=loop(7.5);
- const block=(x:number,y:number,t0:number,fill:string,mark:(m:(p:P[])=>P[])=>string,lift=0,rot=0,landed=-1)=>{if(T<t0)return '';const [sx,sy]=squash(landed>=0?landed:T-t0-.5);const m=(pts:P[])=>X(X(pts,{r:rot,ox:x+47,oy:y+47}),{sx,sy,ox:x+47,oy:y+94,y:lerp(-320,0,fall(t0,t0+.5))-lift});return shape(m(rounded(x,y,94,94,12)),{fill})+mark(m);};
- let s=line([[96,322],[384,322]],{k:at(0,.4)});
- s+=block(142,228,.3,'none',m=>shape(m([[166,300],[189,254],[212,300]]),{w:5}));
- s+=block(244,228,.8,GREY,()=>'');
- s+=block(193,130,1.3,PAPER,m=>{const o=spring(2,1.6,5);return o>.02?shape(m(X(ellipse(240,177,20),{s:o,ox:240,oy:177})),{fill:GREY,w:5}):'';},bump(u,1.2,2.8)*70,win(u,1.5,2.5)*Math.PI/2,u>2.8?u-2.8:-1);
- return s+glint(344,112,11,spring(2.4))+dot(128,170,6*spring(2.6));
-}
-function discover(){
- // The magnifier sweeps in and stops over something; a glint answers. At rest it wanders slowly and, now and then,
- // leans in and finds another spark.
- const u=loop(8),enter=at(0,1.6);
- const [ex,ey]=enter<1?along([[480,380],[330,300],[160,160],[214,184]],enter):[214,184];
- const dx=ex-214+breathe(.6,18),dy=ey-184+breathe(.8,10,1);
- const zoom=1+bump(u,3.2,4.6)*.08+bump(T,1.6,2.2)*.08;
- const m=(pts:P[])=>X(pts,{s:zoom,ox:214,oy:184,x:dx,y:dy});
- let s=shape(m(pill(304,262,104,30,Math.PI/4)))+shape(m(ellipse(214,184,72)),{fill:GREY})+curve(m([[172,170],[180,146],[204,134]]),{w:6});
- s+=glint(214+dx,184+dy,14,Math.sin(Math.PI*(T<6?lin(1.8,2.6):clamp((u-3.4)/.9))));
- return s+glint(352,98,12,spring(2.2))+dot(384,152,5*spring(2.4))+dot(118,300,6*spring(2.6));
-}
-function learn(){
- // The closed book opens, its lines write in and the ribbon drops. At rest a page turns over now and then.
- const u=loop(7),open=spring(.3,1,3.6),turn=win(u,1.5,2.7);
- let s=blob([[240,132],[196,112],[140,112],[112,122],[112,292],[150,284],[198,288],[240,306]],{fill:GREY});
- const right=(pts:P[])=>pts.map(([x,y])=>[240+(x-240)*lerp(-1,1,open),y] as P);
- s+=blob(right([[240,132],[284,112],[340,112],[368,122],[368,292],[330,284],[282,288],[240,306]]),{fill:PAPER});
- s+=line([[240,132],[240,306]],{w:5});
- if(open>.9)s+=line([[268,160],[340,154]],{w:5,k:at(1.2,1.6)})+line([[268,190],[340,186]],{w:5,k:at(1.4,1.8)})+line([[268,220],[318,218]],{w:5,k:at(1.6,1.9)});
- if(turn>0&&turn<1){const f=Math.cos(Math.PI*turn),lift=Math.sin(Math.PI*turn)*22;s+=blob([[240,132],[240+100*f,112-lift],[240+128*f,122-lift*.6],[240+128*f,292-lift*.4],[240+90*f,284],[240,306]],{fill:turn<.5?PAPER:GREY});}
- if(T<2)return s;
- const rib=lerp(-60,0,spring(2,1.4,4));
- return s+shape([[296,292],[296,338+rib],[308,326+rib],[320,338+rib],[320,288]],{fill:GREY,w:5});
-}
-function orchestrate(){
- // The two gears pop in, catch each other and start turning together. At rest they run steadily and now and then
- // speed up for a moment, throwing off a spark where they mesh.
- const u=loop(8),a1=spring(0,1.4,5),a2=spring(.3,1.4,5);
- const spin=T<1.2?0:(T-1.2)*.45+(T>6?win(u,2,3.5)*1.4+Math.floor((T-6)/8)*1.4:0);
- let s='';
- if(a1>.02)s+=shape(X(gear(200,214,78,9,spin),{s:a1,ox:200,oy:214}),{fill:GREY})+shape(ellipse(200,214,22*a1),{fill:PAPER});
- if(a2>.02)s+=shape(X(gear(310,128,50,7,-spin*78/50+.2),{s:a2,ox:310,oy:128}),{fill:PAPER})+shape(ellipse(310,128,13*a2),{w:5});
- s+=burst(262,170,T<6?lin(1.1,1.6):clamp((u-2.6)/.6),3,10,34,-Math.PI*.2,Math.PI*.6);
- return s+dot(368,262,6*spring(1.8))+glint(116,104,10,spring(2));
+ // A hand raised to say hello, waving in three quick strokes.
+ const r=pose(U,[1.4,1.75,2.1,2.45],[-.14,-.34,.04,-.3,-.14],.22);
+ const h=(pts:P[])=>X(pts,{r,ox:248,oy:300});
+ const finger=(l:number,rr:number,base:number,tip:number):P[]=>[[l,base],[l,tip+10],[l+2,tip+2],[(l+rr)/2,tip-1],[rr-2,tip+2],[rr,tip+10],[rr,base]];
+ const outline:P[]=[[214,300],[208,262],[196,242],[176,222],[168,206],[176,198],[190,204],[210,224],...finger(210,232,212,136),...finger(234,256,206,122),...finger(258,280,210,132),...finger(282,302,222,156),[302,250],[296,276],[284,300]];
+ const cuff=h(rounded(206,300,86,22,4));
+ return curve(h(outline))+shape(cuff,{fill:BLUE})+stripes(cuff,r+Math.PI/2,19);
 }
 function cards(){
- // Skills: an index box lands and three cards drop into it, the middle one with a tab. At rest the tabbed card is
- // picked out, gives a little wiggle and drops back in, and the box takes its weight.
- const u=loop(7.5),lift=bump(u,1,3.4)*46,wig=shake(u,1.6,2.2,3)*.08,[sx,sy]=squash(T<6?T-.6:u>3.4?u-3.4:-1);
- // Drawn a little under full size so the picked card stays inside the shared frame.
- const b=(pts:P[])=>X(X(pts,{sx,sy,ox:240,oy:322,y:T<.6?lerp(-280,0,fall(0,.6)):0}),{s:.84,ox:240,oy:322,y:-8});
- let s=shape(b([[138,212],[160,186],[320,186],[342,212]]),{fill:GREY});
- for(const [i,x,y] of [[0,148,122],[1,196,92],[2,244,128]] as const){
-  const t0=.8+i*.4;if(T<t0)continue;
-  const drop=lerp(-300,0,fall(t0,t0+.45)),up=i===1?lift:0,c=(pts:P[])=>b(X(pts,{y:drop-up,r:i===1?wig:(i-1)*.04,ox:x+44,oy:y+128}));
-  s+=shape(c(rounded(x,y,88,128,10)),{fill:PAPER})+line(c([[x+16,y+28],[x+64,y+28]]),{w:5})+line(c([[x+16,y+50],[x+52,y+50]]),{w:5});
-  if(i===1)s+=shape(c(rounded(x+52,y-22,28,26,6)),{fill:GREY});
- }
- s+=shape(b([[132,212],[348,212],[336,322],[144,322]]),{fill:PAPER})+shape(b(rounded(208,248,64,26,13)),{w:5});
- return s+glint(348,150,10,spring(2.4))+dot(132,182,5*spring(2.6))+burst(240,122-lift*.84,u<0?0:clamp((u-2)/.7),5,20,40,-Math.PI/2,1.6);
+ // A small stack of cards: the front one slides out to show itself, then tucks back in.
+ const o=pose(U,[2.4,3.6],[0,1,0],.32);
+ const front=X(rounded(174,158,104,120,10),{x:-56*o,y:-6*o,r:-.1*o,ox:226,oy:218});
+ const second=rounded(186,146,104,120,10),third=rounded(198,134,104,120,10);
+ let s=behind(third,[front,second],{w:FINE})+behind(second,[front])+shape(front);
+ const f=(pts:P[])=>X(pts,{x:-56*o,y:-6*o,r:-.1*o,ox:226,oy:218});
+ s+=shape(f(rounded(190,174,26,26,5)),{fill:GREEN});
+ return s+line(f([[226,182],[260,182]]),{w:FINE})+line(f([[190,226],[260,226]]),{w:FINE})+line(f([[190,248],[240,248]]),{w:FINE});
 }
 const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards};
-/** One frame of a scene as SVG markup for a 480×390 stage. */
-export function filmFrame(scene:Scene,seconds:number,_id:string){T=Math.max(0,seconds);seed=0;return scenes[scene]();}
+/** One frame of a scene as SVG markup for a 480×390 stage. At 0 seconds every scene shows its finished pose. */
+export function filmFrame(scene:Scene,seconds:number,_id:string){
+ T=Math.max(0,seconds);U=T%loopSeconds[scene];boil=Math.floor(T*6)%3;seed=0;
+ return scenes[scene]();
+}
