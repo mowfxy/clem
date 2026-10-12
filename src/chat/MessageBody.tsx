@@ -21,6 +21,8 @@ import { runCode, runnable } from './code-run';
 import { EditProposal, type EditBlock } from './EditProposal';
 import { AutomationProposal } from './AutomationProposal';
 import { readAutomationBlock, type AutomationBlock } from '../LocalAutomations';
+import { PlanProposal, type PlanCardInfo } from './PlanProposal';
+import { readPlanBlock, type PlanBlock } from '../../core/plans';
 import type { EditOutcome } from '../../core/types';
 
 const SpecVisual = lazy(() => import('../visuals/SpecVisual'));
@@ -39,6 +41,13 @@ export type BodyHandlers = {
   onUndo?: (key: string, outcome: EditOutcome) => Promise<void>;
   /** A routine proposed with an ```automation block; outcomes share `edits`. */
   onSchedule?: (key: string, block: AutomationBlock, approve: boolean) => Promise<void>;
+  /** ```plan blocks: what the chat knows about each one's subject or project, and the person's decisions. Outcomes share `edits`. */
+  planInfo?: (key: string, block: PlanBlock) => PlanCardInfo;
+  onPlan?: (key: string, block: PlanBlock, approve: boolean) => Promise<void>;
+  onPlanUndo?: (key: string, block: PlanBlock, outcome: EditOutcome) => Promise<void>;
+  onOpenPlan?: (block: PlanBlock) => void;
+  /** Changes whenever any plan changes, so the cards re-render (undo availability, saved state). */
+  planStamp?: string;
   scope?: string;
   /** Drive files found for this reply, looked up by id for [name](drive:ID) links. */
   driveFile?: (id: string) => DriveRef | undefined;
@@ -140,7 +149,7 @@ function CheckBlock({ body, streaming }: { body: string; streaming: boolean }) {
 
 function MessageBodyImpl({ content, streaming = false, handlers = {} }: { content: string; streaming?: boolean; handlers?: BodyHandlers }) {
   const prepared = useMemo(() => prepareMarkdown(content), [content]);
-  let editIndex = 0, automationIndex = 0;
+  let editIndex = 0, automationIndex = 0, planIndex = 0;
   // Drive files linked in a paragraph follow it, like YouTube links: videos and audio play, documents open as cards.
   const drivePlayers = (node: unknown) => driveIdsIn(node).map((id) => handlers.driveFile?.(id)).filter((f): f is DriveRef => !!f)
     .map((f) => driveKind(f.mimeType) === 'video' ? <DriveVideo key={f.id} file={f} onOpenWeb={handlers.onOpenDriveWeb} /> : driveKind(f.mimeType) === 'audio' ? <DriveAudio key={f.id} file={f} /> : <DriveCard key={f.id} file={f} onOpen={(x) => handlers.onOpenDrive?.(x)} />);
@@ -187,6 +196,12 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
             if (!block) return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Preparing a routine…</div> : <details className="block-error"><summary>A proposed routine could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             return <AutomationProposal block={block} streaming={streaming} outcome={handlers.edits?.[key]} onDecide={approve => handlers.onSchedule?.(key, block, approve) ?? Promise.resolve()} />;
           }
+          if (lang === 'plan') {
+            const key = 'plan-' + planIndex++, block = readPlanBlock(code);
+            if (!block) return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Drawing up the plan…</div> : <details className="block-error"><summary>A plan could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
+            const outcome = handlers.edits?.[key];
+            return <PlanProposal block={block} streaming={streaming} outcome={outcome} info={handlers.planInfo?.(key, block) ?? {}} onDecide={approve => handlers.onPlan?.(key, block, approve) ?? Promise.resolve()} onUndo={() => outcome ? handlers.onPlanUndo?.(key, block, outcome) ?? Promise.resolve() : Promise.resolve()} onOpen={() => handlers.onOpenPlan?.(block)} />;
+          }
           return <CodeBlock lang={lang} code={code} streaming={streaming} />;
         },
       }}
@@ -194,7 +209,7 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
   </div>;
 }
 // Handlers read live state through refs in the workspace, so only content changes need a re-render.
-export const MessageBody = memo(MessageBodyImpl, (a, b) => a.content === b.content && a.streaming === b.streaming && a.handlers?.edits === b.handlers?.edits && a.handlers?.scope === b.handlers?.scope);
+export const MessageBody = memo(MessageBodyImpl, (a, b) => a.content === b.content && a.streaming === b.streaming && a.handlers?.edits === b.handlers?.edits && a.handlers?.scope === b.handlers?.scope && a.handlers?.planStamp === b.handlers?.planStamp);
 
 /** A table in an answer: as wide as the text column, or wider when its columns need it and the window has room (up
  *  to the workspace's width less its margins); wider still, it scrolls sideways inside its frame (chat.css). */

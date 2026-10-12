@@ -9,9 +9,9 @@
  * something moves, and the thing it reaches takes the colour (the shackle clicks shut and the keyhole fills, the lens
  * finds the gem). Each loop starts on its finished pose, so a single painted frame is always the complete drawing.
  */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards'|'checklist'|'calendar'|'route'|'bell'|'alarm';
 /** How long each scene's loop runs, in seconds. A loop's first frame is its finished pose. */
-export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,build:5.5,discover:6,learn:5,orchestrate:7,sprout:6,kite:6,telescope:6,pencil:5.5,bridge:5.5,conversation:5,envelope:5,key:5,door:5.5,swap:5,invite:5,keypad:4.5,shield:5,lock:5,unlock:5,link:5,unlink:5,plane:5,hourglass:7,box:5,jar:5.5,folder:5,plug:5,house:5.5,lifebuoy:5,profile:5,safe:5,expired:5.5,wave:4,cards:5};
+export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,build:5.5,discover:6,learn:5,orchestrate:7,sprout:6,kite:6,telescope:6,pencil:5.5,bridge:5.5,conversation:5,envelope:5,key:5,door:5.5,swap:5,invite:5,keypad:4.5,shield:5,lock:5,unlock:5,link:5,unlink:5,plane:5,hourglass:7,box:5,jar:5.5,folder:5,plug:5,house:5.5,lifebuoy:5,profile:5,safe:5,expired:5.5,wave:4,cards:5,checklist:5,calendar:5.5,route:6,bell:5,alarm:5};
 /** Scenes that move: all of them now, each on its own loop. */
 export const animated:ReadonlySet<Scene>=new Set(Object.keys(loopSeconds) as Scene[]);
 type P=[number,number];
@@ -473,7 +473,76 @@ function cards(){
  s+=shape(f(rounded(190,174,26,26,5)),{fill:GREEN});
  return s+line(f([[226,182],[260,182]]),{w:FINE})+line(f([[190,226],[260,226]]),{w:FINE})+line(f([[190,248],[240,248]]),{w:FINE});
 }
-const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards};
+function checklist(){
+ // A short list on a clipboard: the last box empties, a tick is drawn into it, and the box takes the colour.
+ const re=U>=2.4,k=re?clamp((U-3.0)/.3):1,fillS=re?pop(U,3.35,.25):1;
+ const clip=rounded(214,96,52,22,7);
+ let s=behind(rounded(176,108,128,180,14),[clip])+shape(clip,{w:FINE});
+ [150,196,242].forEach((y,i)=>{
+  const box=rounded(198,y-12,24,24,5),last=i===2;
+  s+=last&&fillS>.05?shape(X(box,{s:fillS,ox:210,oy:y}),{fill:GREEN,w:FINE}):shape(box,{w:FINE});
+  if(!last||k>0)s+=line([[203,y],[209,y+6],[220,y-7]],{w:THIN,k:last?k:1});
+  s+=line([[236,y],[i===1?266:284,y]],{w:FINE});
+ });
+ return s;
+}
+function calendar(){
+ // A desk calendar: its page flips up over the binding and falls back, and the day that was marked takes the colour.
+ const sy=pose(U,[2.4,3.3],[1,-.12,1],.34),lit=U<2.4||U>=3.55;
+ const page=(pts:P[])=>X(pts,{sy,ox:240,oy:124});
+ let s=line([[168,124],[196,124]])+line([[212,124],[268,124]])+line([[284,124],[312,124]]);
+ if(Math.abs(sy)>.05){
+  s+=line(page([[168,124],[168,276],[312,276],[312,124]]));
+  s+=line(page([[184,152],[296,152]]),{w:THIN});
+  for(let r=0;r<3;r++)for(let c=0;c<4;c++){
+   const [p]=page([[198+c*28,182+r*30]]);
+   if(r===1&&c===2){const day=page(rounded(242,201,24,22,5));s+=shape(day,{fill:lit?CLAY:undefined,w:FINE});}
+   else s+=shape(X(ellipse(p[0],p[1],3.4),{sy:Math.max(.2,sy),ox:p[0],oy:p[1]}),{fill:INK,w:0});
+  }
+ }
+ for(const x of [204,276])s+=shape(rounded(x-6,108,12,28,6),{w:FINE});
+ return s;
+}
+function route(){
+ // A road to a flag: a bead travels it in three hops, past the stations, and the flag fills when it arrives.
+ const road=spline([[146,300],[196,296],[214,262],[250,246],[286,226],[296,186],[300,162]],false);
+ const k=U<2.2?1:U<2.5?0:clamp(pose(U,[2.9,3.6,4.3],[0,.36,.7,1],.3));
+ let s=curve([[146,300],[196,296],[214,262],[250,246],[286,226],[296,186],[300,162]],{w:FINE});
+ for(const f of [.36,.7]){const [a,b]=[along(road,f-.012),along(road,f+.012)],nx=-(b[1]-a[1]),ny=b[0]-a[0],l=Math.hypot(nx,ny)||1,c=along(road,f);s+=line([[c[0]-nx/l*11,c[1]-ny/l*11],[c[0]+nx/l*11,c[1]+ny/l*11]],{w:FINE});}
+ const at=along(road,k*.9),appear=U<2.2?1:U<2.5?0:pop(U,2.5,.25);
+ if(appear>.05)s+=shape(ellipse(at[0],at[1],8.5*appear),{fill:INK,w:0});
+ s+=ring(139,300,6);
+ const flag:P[]=[[302,104],[350,118],[302,134]];
+ s+=line([[302,164],[302,96]]);
+ return s+shape(flag,{fill:k>.97?GREEN:undefined})+(k>.97?stripes(flag,Math.PI/2,12):'');
+}
+function bell(){
+ // A bell rings: it swings out and back in three strokes, its clapper a beat behind, and settles still.
+ const r=pose(U,[2.2,2.55,2.9,3.25],[0,.32,-.26,.14,0],.22),lag=pose(U,[2.32,2.67,3.02,3.37],[0,-.3,.26,-.12,0],.22);
+ const b=(pts:P[])=>X(pts,{r,ox:240,oy:122});
+ let s=ring(...b([[240,122]])[0],8,{w:FINE});
+ s+=curve(b([[192,252],[200,212],[204,170],[222,140],[240,134],[258,140],[276,170],[280,212],[288,252]]));
+ s+=line(b([[178,256],[302,256]]));
+ const [pivot]=b([[240,256]]),c:P=[pivot[0]+Math.sin(-lag)*20,pivot[1]+Math.cos(-lag)*20];
+ s+=line([pivot,short(pivot,c,9)],{w:THIN});
+ return s+shape(ellipse(c[0],c[1],10),{fill:SAND,w:FINE});
+}
+function alarm(){
+ // An alarm clock goes off: it hops on its feet three times, then the striker between its bells lights up.
+ const ks=[2.2,2.5,2.8,3.1],dy=pose(U,ks,[0,-12,0,-10,0],.16),tilt=pose(U,ks,[0,-.1,.08,-.06,0],.16),lit=U<2.2||U>=3.35;
+ const a=(pts:P[])=>X(pts,{r:tilt,y:dy,ox:240,oy:290});
+ let s=shape(a(ellipse(240,210,58)));
+ for(const side of [-1,1]){
+  // Each bell is a dome turned away from the face, closed by a flat rim toward it.
+  const cx=240+side*50,cy=144,toward=Math.atan2(210-cy,240-cx);
+  s+=shape(a(arc(cx,cy,21,21,toward+Math.PI/2,toward+Math.PI*1.5,16)),{w:FINE});
+  s+=line(a([[240+side*40,262],[240+side*52,288]]),{w:FINE});
+ }
+ s+=line(a([[240,210],[240,172]]))+line(a([[240,210],[266,224]]),{w:FINE})+ring(...a([[240,210]])[0],4,{fill:INK,w:2});
+ const striker=a(rounded(230,128,20,14,4));
+ return s+line(a([[240,142],[240,151]]),{w:FINE})+shape(striker,{fill:lit?CLAY:undefined,w:FINE});
+}
+const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards,checklist,calendar,route,bell,alarm};
 /** One frame of a scene as SVG markup for a 480×390 stage. At 0 seconds every scene shows its finished pose. */
 export function filmFrame(scene:Scene,seconds:number,_id:string){
  T=Math.max(0,seconds);U=T%loopSeconds[scene];boil=Math.floor(T*6)%3;seed=0;

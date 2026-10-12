@@ -16,10 +16,12 @@ import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './Instruct
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet,VisualRecord} from '../../core/types';
 import {SavedVisuals} from '../visuals/SavedVisuals';
 import {DriveFolderView} from '../drive/DriveFolderView';
+import {PlanView,PlanOverviewCard,type PlanActions,type PlanDraftView} from './PlanView';
+import {planStatus,type SpacePlan} from '../../core/plans';
 import type {DriveItem,DriveSyncState} from '../drive/drive';
 import './space.css';
 
-export type SpaceTab='overview'|'chats'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
+export type SpaceTab='overview'|'chats'|'plan'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
 type Linked={id:string;scope:string;path:string};
 export type SpaceActions={
   onAsk:(prompt:string)=>void;
@@ -99,7 +101,7 @@ function useChatMenu(onDelete:(chat:Chat)=>void){
 }
 
 
-export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={}}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>}){
+export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={},plan,planDraft,planActions,canAsk=false}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>;plan?:SpacePlan;planDraft?:PlanDraftView|null;planActions:PlanActions;canAsk?:boolean}){
   const subject=space.kind==='subject';
   const now=Date.now();
   const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
@@ -111,7 +113,8 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   const [ask,setAsk]=useState('');
   const [review,setReview]=useState(0);
   const [instructions,setInstructions]=useState(false),[describing,setDescribing]=useState(false);
-  const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length],['visuals','Visuals',visuals.length]]:[['overview','Overview'],['chats','Chats',chats.length],['files','Files',files.length],['visuals','Visuals',visuals.length]];
+  const late=plan?planStatus(plan).overdue.length:0;
+  const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['plan','Plan',late],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length],['visuals','Visuals',visuals.length]]:[['overview','Overview'],['chats','Chats',chats.length],['plan','Plan',late],['files','Files',files.length],['visuals','Visuals',visuals.length]];
   if(desktop)tabs.push(['memory','Memory']);
   const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
   const chatMenu=useChatMenu(actions.onDeleteChat);
@@ -149,7 +152,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         <button className="primary" disabled={!ask.trim()} aria-label="Start chat"><Icon name="arrow" size={16}/></button>
       </form>
       <nav className="sp-tabs" role="tablist" aria-label={`${space.name} sections`}>
-        {tabs.map(([id,label,count])=><button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}>{label}{count!==undefined&&count>0&&<span>{count}</span>}</button>)}
+        {tabs.map(([id,label,count])=><button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}>{label}{count!==undefined&&count>0&&<span className={id==='plan'?'late':undefined} aria-label={id==='plan'?`${count} overdue`:undefined}>{count}</span>}</button>)}
       </nav>
     </header>
     </div>
@@ -163,6 +166,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         <button className="sp-drive-dismiss" aria-label="Dismiss" onClick={actions.onDriveSeen}><Icon name="close" size={14}/></button>
       </div>}
       {tab==='overview'&&<div className="sp-overview">
+        {plan&&<PlanOverviewCard plan={plan} onOpen={()=>onTab('plan')}/>}
         {subject&&<section className="sp-card today">
           <div><span className="sp-eyebrow">Today</span><h3>{due?`${due} card${due===1?'':'s'} ready for review`:fresh?`${Math.min(fresh,20)} new card${Math.min(fresh,20)===1?'':'s'} to learn`:'You are all caught up'}</h3>
             <p>Mowr brings each card back just before you would forget it.</p></div>
@@ -193,6 +197,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         </section>
       </div>}
 
+      {tab==='plan'&&<PlanView space={space} plan={plan} draft={planDraft} actions={planActions} canAsk={canAsk}/>}
       {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onNew={()=>actions.onAsk('')} onMenu={chatMenu.open}/>}
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}

@@ -26,6 +26,8 @@ export type SkillContext = {
   videos?: boolean;
   /** A PC folder is linked to this chat or space (```edit proposals are available). */
   folders?: boolean;
+  /** Plans are in play: the chat's space has one, or plan blocks were sent earlier in this chat. */
+  plans?: boolean;
 };
 
 /**
@@ -33,6 +35,9 @@ export type SkillContext = {
  * them picks the same renderer for the same idea.
  */
 export const visualChoice = "Pick the renderer from what the person needs to see: a function, motion or anything on axes → plot; a process, cycle, system or concept map → diagram; data or comparisons → chart; physical things as a textbook draws them (blocks, balls, pulleys and ropes, spring scales, inclines, levers, springs, vessels of liquid, charged bodies with their field lines, free-body diagrams, lever arms) → figure; depth itself (a surface z=f(x,y), 3D vectors, solids, molecules, orbitals, or apparatus the person asks to see in 3D or turn around) → 3d. A charged wire and a sphere is a figure on paper and a 3d scene of real objects (q, material, fieldLines) when 3D is asked for, never bare shapes on axes. In a PDF everything is a Kinetra figure: apparatus uses the textbook figure recipes (mowr illustration).";
+
+/** Words that mean the person is planning, reporting progress on a plan, or asking where they stand. */
+export const planIntent = /\b(plans?|planner|planning|schedule|timetable|roadmap|milestones?|deadlines?|due (?:on|by|date|tomorrow|today|friday|monday|tuesday|wednesday|thursday|saturday|sunday)|midterms?|finals?|exams?|on track|behind|ahead of|catch up|overdue|finished|done with|completed?|i did|mark(?:ed)? .{0,30}(?:done|complete)|to-?dos?|tasks?|reschedule|postpone|push .{0,30}back|move .{0,40}to (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next week)|what should i (?:do|study|work on)|today'?s (?:tasks|work|plan))\b/i;
 
 /** A request that asks for something to be made, not only explained. */
 const MAKE = /\b(write|draft|create|make|prepare|produce|generate|compose|build|design|give me|i (?:want|need)|turn .{0,60} into|as a|into a|export|print(?:able)?)\b/i;
@@ -69,6 +74,21 @@ export const mowrSkills: MowrSkill[] = [
       "A run's result is a new chat (named after the routine, in the same subject or project) with an answer in it; it cannot make PDFs, send email, post anywhere or act outside Mowr, so never promise that. Web search works if the person's model has it.",
       "Nothing is scheduled until the person presses Schedule on the card. Runs happen only while Mowr is open on the PC; a run missed while it was closed happens once when Mowr next opens. Only daily and weekly repeats exist (no hourly, monthly or “every other day”); for those, say so and offer the nearest daily or weekly routine.",
       "Never claim a routine is already running or has been created. After the person schedules it, they pause, resume or delete it in Settings → Automations; new routines are only created from a chat like this.",
+    ],
+  },
+  {
+    // core/plans.ts readPlanBlock, applyUpdate, resolveSpace; src/chat/PlanProposal.tsx; src/space/PlanView.tsx; src/App.tsx (plan blocks applied when a reply finishes).
+    id: "plans", name: "Plans", description: "One living plan per subject or project, with dated tasks, milestones and progress.",
+    when: planIntent,
+    steps: [
+      "Every subject and project can have ONE plan, shown in its Plan tab: dated tasks (work to do) and milestones (events and deadlines: a quiz, a midterm, a submission, a launch), with progress, what is overdue, what is due today and whether the person is on track. Any plan is welcome, not only study: a project, a launch, training, a move. The current plans and every subject and project (with their space ids) are listed under PLANS.",
+      "To make a plan, write ONE fenced ```plan block of strict JSON per subject or project: {\"action\":\"create\",\"space\":\"<space id from PLANS>\",\"title\":\"short title\",\"goal\":\"one sentence: what done looks like\",\"tasks\":[{\"id\":\"t1\",\"title\":\"Read lecture 3 and make notes\",\"due\":\"YYYY-MM-DD\",\"time\":\"HH:MM\",\"group\":\"Week 1\",\"kind\":\"task\",\"notes\":\"optional detail\"},{\"id\":\"t9\",\"title\":\"Quiz 2\",\"due\":\"2026-10-20\",\"time\":\"10:00\",\"kind\":\"milestone\"}]}. Use \"replace\" instead of \"create\" when that space already has a plan. Leave \"space\" out in a chat that is inside the subject or project the plan is for.",
+      "Plan like a good coach: work back from each deadline, put the person's quizzes, exams and fixed dates in as milestones on their real days, spread the work so no day is overloaded, leave a buffer before big deadlines, give every task a due day (and a time only when it happens at a set time), keep tasks small enough to finish in one sitting and named so it is obvious what to do (\"Practise 10 recursion problems\", not \"Recursion\"). Group tasks into phases or weeks. Dates are the person's local days; today's date is given under PLANS. Up to 200 items; ids are short and unique (t1, t2, …).",
+      "When the person has several subjects or projects (\"plan my week before the midterms\"), make one block per space so each plan lives in its own subject or project, and make the dates fit together across them. If a plan belongs to something that has no subject or project yet, use \"new\":{\"kind\":\"subject\" or \"project\",\"name\":\"…\"} instead of \"space\"; it is created when the person saves the plan. Ask first only when the dates or what must be done are truly unknown; otherwise make reasonable assumptions and state them in one line.",
+      "A create or replace block is a draft: it appears as a card the person opens, checks and saves. Never say a plan is saved or created; say it is ready to review, and that they can ask for changes. If they ask for changes before saving, send a new create (or replace) block with the whole revised plan.",
+      "When the person reports progress or a change to a saved plan (\"I finished lecture 3\", \"the quiz moved to Friday\", \"add a revision day\", \"I'm sick, push everything back two days\"), send ONE ```plan block per affected plan: {\"action\":\"update\",\"space\":\"<space id>\",\"summary\":\"Marked lecture 3 done\",\"changes\":[{\"op\":\"done\",\"id\":\"t3\"},{\"op\":\"undo\",\"id\":\"t4\"},{\"op\":\"edit\",\"id\":\"t5\",\"due\":\"YYYY-MM-DD\",\"title\":\"…\"},{\"op\":\"add\",\"title\":\"…\",\"due\":\"YYYY-MM-DD\",\"after\":\"t5\"},{\"op\":\"remove\",\"id\":\"t6\"}]}. Use the task ids exactly as listed under PLANS. An edit sends only the fields that change (\"due\":\"\" clears a date). Updates apply at once, with Undo on the card, so say plainly what changed.",
+      "To delete a plan, send {\"action\":\"delete\",\"space\":\"<space id>\"}: the person confirms on the card before anything is removed. Only do this when they ask to delete or remove the plan.",
+      "When asked what to do today or whether they are on track, answer from PLANS: what is overdue, what is due today, the next milestone, and a realistic suggestion. Never invent tasks or dates that are not in the plan, and never send a plan block when the person is only asking.",
     ],
   },
   {
@@ -365,6 +385,7 @@ export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them i
 - Subjects and projects: spaces with their own files, memory and instructions; subjects save flashcards and quizzes (/flashcards, /quiz) for spaced repetition.
 - Memory: Mowr remembers the person's facts and preferences itself (Settings → Memory).
 - Routines: one \`\`\`automation block proposes a daily or weekly task the person schedules with one click.
+- Plans: \`\`\`plan blocks make or update a subject's or project's dated plan.
 - Long tasks: the Long task button plans big jobs as reviewable steps.
 - Making files: PDF, Word, PowerPoint, Excel, CSV, HTML and more, made by Mowr itself; Export saves any answer.`;
 
@@ -383,6 +404,7 @@ function fits(skill: MowrSkill, request: string, context: SkillContext) {
     // Asked for a document file, not merely mentioning notes or a paper.
     case "documents": return documentIntent(request) || (skill.when.test(request) && MAKE.test(request));
     case "files": return !!context.openFile || skill.when.test(request);
+    case "plans": return !!context.plans || skill.when.test(request);
     default: return skill.when.test(request);
   }
 }
@@ -400,6 +422,8 @@ export function mowrSkillText(request: string, context: SkillContext = {}) {
 }
 
 /** The linked-folders playbook. The desktop adds it with FILE CHANGES, since only it knows whether a folder is linked. */
+/** The plans playbook alone, for the Plan tab's box (src/App.tsx askPlan). */
+export const plansPlaybook = () => guide(mowrSkills.find((s) => s.id === "plans")!);
 export const foldersPlaybook = guide(mowrSkills.find((s) => s.id === "folders")!);
 
 /** Tells the model which documents it made in this conversation and how to change them in place. `draft`: the Markdown

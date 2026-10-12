@@ -45,11 +45,13 @@
 .space-page .sp-ask .primary:disabled{background:#2b2b28;color:var(--sp-muted)}
 
 .sp-tabs{display:flex;gap:4px;margin:22px 0 0;border-bottom:1px solid var(--sp-line);overflow-x:auto;scrollbar-width:none}
-.space-page .sp-tabs button{position:relative;display:inline-flex;align-items:center;gap:7px;padding:12px 10px;font:400 var(--t-body)/1 var(--sans);color:var(--sp-muted);border:0;border-radius:0;background:none;white-space:nowrap;transition:color .16s}
+/* The tabs share the whole line evenly, so the bar ends where the hairline under it ends. */
+.space-page .sp-tabs button{flex:1 1 0;min-width:max-content;justify-content:center;position:relative;display:inline-flex;align-items:center;gap:7px;padding:12px 10px;font:400 var(--t-body)/1 var(--sans);color:var(--sp-muted);border:0;border-radius:0;background:none;white-space:nowrap;transition:color .16s}
 .space-page .sp-tabs button:hover{color:var(--sp-ink)}
 .space-page .sp-tabs button.active{color:var(--sp-ink)}
 .sp-tabs button.active::after{content:'';position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--sp-ink)}
 .sp-tabs span{font-size:11px;padding:2px 6px;border-radius:999px;background:#ffffff10;color:var(--sp-soft);font-variant-numeric:tabular-nums}
+.sp-tabs span.late{background:#d68a6c24;color:#e7a88f}
 .sp-body{margin-top:24px;animation:sp-in .35s var(--sp-ease) both}
 .sp-eyebrow{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase;color:var(--sp-muted)}
 

@@ -112,6 +112,8 @@ export const archiveSchema = z.object({
       }),
     )
     .max(1000),
+  /** The subject's plan (core/plans.ts), checked again with readPlanBlock when it is imported. */
+  spacePlan: z.unknown().optional(),
   edits: z.record(
     id,
     z.object({

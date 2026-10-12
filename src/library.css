@@ -108,3 +108,7 @@
 .lib-card.lib-visual footer{padding-top:14px;padding-bottom:12px;align-items:flex-start}
 .lib-card.lib-visual footer>div{gap:6px}
 .lib-card.lib-visual .lib-card-chat{margin-top:-4px}
+/* A subject or project whose plan has overdue tasks: a small clock and the count in the card's corner, opening the plan. */
+.lib-card{position:relative}
+.lib-card .lib-card-late{position:absolute;top:14px;right:14px;z-index:2;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;border-radius:99px;border:1px solid #d68a6c55;background:#d68a6c1a;color:#e7a88f;font:400 11.5px/1 var(--sans);font-variant-numeric:tabular-nums;transition:background .16s,border-color .16s}
+.lib-card .lib-card-late:hover{background:#d68a6c2e;border-color:#d68a6c88}
