@@ -165,7 +165,7 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
   </div>;
   if(!plan||!s)return <div className="pl-view">
     <section className="pl-empty">
-      <Illustration scene="route" viewBox="100 70 290 260" className="pl-empty-art"/>
+      <Illustration scene="steps" viewBox="100 70 290 260" className="pl-empty-art"/>
       <div className="pl-empty-copy">
         <h3>No plan yet</h3>
         <p>Tell Mowr what you’re working toward: the deadline, the quizzes or milestones on the way, how much time you have. It lays out dated tasks, tracks what’s done and keeps the plan up to date as things change.</p>
@@ -176,7 +176,7 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
   </div>;
   return <div className="pl-view">
     <section className="pl-card">
-      <span className="pl-art" aria-hidden="true"><Illustration scene={s.state==='behind'?'alarm':s.state==='done'?'checklist':'route'} viewBox="100 70 290 260"/></span>
+      <span className="pl-art" aria-hidden="true"><Illustration scene={s.state==='behind'?'alarm':s.state==='done'?'checklist':'steps'} viewBox="100 70 290 260"/></span>
       <button type="button" className="icon-button pl-delete" aria-label="Delete plan" title="Delete plan" onClick={()=>void remove()}><Icon name="trash" size={16}/></button>
       <PlanSummary plan={plan} today={today}/>
       <p className="pl-pace">{paceLine(s)}</p>

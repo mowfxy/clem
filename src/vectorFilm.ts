@@ -9,9 +9,9 @@
  * something moves, and the thing it reaches takes the colour (the shackle clicks shut and the keyhole fills, the lens
  * finds the gem). Each loop starts on its finished pose, so a single painted frame is always the complete drawing.
  */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards'|'checklist'|'calendar'|'route'|'bell'|'alarm';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards'|'checklist'|'calendar'|'steps'|'bell'|'alarm';
 /** How long each scene's loop runs, in seconds. A loop's first frame is its finished pose. */
-export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,build:5.5,discover:6,learn:5,orchestrate:7,sprout:6,kite:6,telescope:6,pencil:5.5,bridge:5.5,conversation:5,envelope:5,key:5,door:5.5,swap:5,invite:5,keypad:4.5,shield:5,lock:5,unlock:5,link:5,unlink:5,plane:5,hourglass:7,box:5,jar:5.5,folder:5,plug:5,house:5.5,lifebuoy:5,profile:5,safe:5,expired:5.5,wave:4,cards:5,checklist:5,calendar:5.5,route:6,bell:5,alarm:5};
+export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,build:5.5,discover:6,learn:5,orchestrate:7,sprout:6,kite:6,telescope:6,pencil:5.5,bridge:5.5,conversation:5,envelope:5,key:5,door:5.5,swap:5,invite:5,keypad:4.5,shield:5,lock:5,unlock:5,link:5,unlink:5,plane:5,hourglass:7,box:5,jar:5.5,folder:5,plug:5,house:5.5,lifebuoy:5,profile:5,safe:5,expired:5.5,wave:4,cards:5,checklist:5,calendar:5.5,steps:5.5,bell:5,alarm:5};
 /** Scenes that move: all of them now, each on its own loop. */
 export const animated:ReadonlySet<Scene>=new Set(Object.keys(loopSeconds) as Scene[]);
 type P=[number,number];
@@ -503,18 +503,19 @@ function calendar(){
  for(const x of [204,276])s+=shape(rounded(x-6,108,12,28,6),{w:FINE});
  return s;
 }
-function route(){
- // A road to a flag: a bead travels it in three hops, past the stations, and the flag fills when it arrives.
- const road=spline([[146,300],[196,296],[214,262],[250,246],[286,226],[296,186],[300,162]],false);
- const k=U<2.2?1:U<2.5?0:clamp(pose(U,[2.9,3.6,4.3],[0,.36,.7,1],.3));
- let s=curve([[146,300],[196,296],[214,262],[250,246],[286,226],[296,186],[300,162]],{w:FINE});
- for(const f of [.36,.7]){const [a,b]=[along(road,f-.012),along(road,f+.012)],nx=-(b[1]-a[1]),ny=b[0]-a[0],l=Math.hypot(nx,ny)||1,c=along(road,f);s+=line([[c[0]-nx/l*11,c[1]-ny/l*11],[c[0]+nx/l*11,c[1]+ny/l*11]],{w:FINE});}
- const at=along(road,k*.9),appear=U<2.2?1:U<2.5?0:pop(U,2.5,.25);
- if(appear>.05)s+=shape(ellipse(at[0],at[1],8.5*appear),{fill:INK,w:0});
- s+=ring(139,300,6);
- const flag:P[]=[[302,104],[350,118],[302,134]];
- s+=line([[302,164],[302,96]]);
- return s+shape(flag,{fill:k>.97?GREEN:undefined})+(k>.97?stripes(flag,Math.PI/2,12):'');
+function steps(){
+ // Three steps with a flag on the top one: a bead hops up them one at a time, and the flag fills when it arrives.
+ const at:P[]=[[184,241],[234,201],[272,161]];
+ const hop=U<2.2?2:U<2.5?0:pose(U,[2.9,3.6],[0,1,2],.3),i=Math.min(1,Math.floor(hop)),t=hop-i;
+ const appear=U<2.2?1:U<2.5?0:pop(U,2.5,.25),arrived=U<2.2||U>=3.85;
+ const p:P=[lerp(at[i][0],at[i+1][0],t),lerp(at[i][1],at[i+1][1],t)-Math.sin(Math.PI*clamp(t))*22];
+ let s=line([[150,290],[330,290]],{w:FINE});
+ s+=line([[164,290],[164,250],[212,250],[212,210],[260,210],[260,170],[316,170],[316,290]]);
+ s+=line([[298,170],[298,108]]);
+ const flag:P[]=[[298,108],[336,119],[298,132]];
+ s+=shape(flag,{fill:arrived?GREEN:undefined})+(arrived?stripes(flag,Math.PI/2,10):'');
+ if(appear>.05)s+=shape(ellipse(p[0],p[1],8*appear),{fill:INK,w:0});
+ return s;
 }
 function bell(){
  // A bell rings: it swings out and back in three strokes, its clapper a beat behind, and settles still.
@@ -542,7 +543,7 @@ function alarm(){
  const striker=a(rounded(230,128,20,14,4));
  return s+line(a([[240,142],[240,151]]),{w:FINE})+shape(striker,{fill:lit?CLAY:undefined,w:FINE});
 }
-const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards,checklist,calendar,route,bell,alarm};
+const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards,checklist,calendar,steps,bell,alarm};
 /** One frame of a scene as SVG markup for a 480×390 stage. At 0 seconds every scene shows its finished pose. */
 export function filmFrame(scene:Scene,seconds:number,_id:string){
  T=Math.max(0,seconds);U=T%loopSeconds[scene];boil=Math.floor(T*6)%3;seed=0;

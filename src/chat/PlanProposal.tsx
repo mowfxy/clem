@@ -72,7 +72,7 @@ export function PlanProposal({block,streaming,outcome,info,onDecide,onUndo,onOpe
   const saved=outcome?.status==='applied',dismissed=outcome?.status==='dismissed',replacing=block.action==='replace'||!!info.existing;
   return <div className={`pl-proposal draft ${outcome?.status||''} ${info.superseded&&!outcome?'superseded':''}`}>
     <div className="pl-proposal-top">
-      <span className="pl-proposal-art" aria-hidden="true"><Illustration scene="route" viewBox="100 70 290 260"/></span>
+      <span className="pl-proposal-art" aria-hidden="true"><Illustration scene="steps" viewBox="100 70 290 260"/></span>
       <div className="pl-proposal-title">
         <span className="sp-eyebrow">{saved?'Plan saved':dismissed?'Draft discarded':replacing&&info.existing?`Replaces “${info.existing.title}”`:'New plan'}{where&&` · ${where}`}</span>
         <strong>{block.title}</strong>
