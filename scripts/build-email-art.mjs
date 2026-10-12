@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import {chromium} from 'playwright';
 import gifenc from 'gifenc';
 const {GIFEncoder,quantize,applyPalette}=gifenc;
-import {filmFrame} from '../src/vectorFilm.ts';
+import {filmFrame,loopSeconds} from '../src/vectorFilm.ts';
 
 // Scenes sit on the email card; the mark sits on the page background.
 const OUT='public/email',BG='#1b1b19',PAGE='#121211',INK='#f0efeb';
@@ -43,16 +43,15 @@ function mark(ms){
   encode(frames,size,size,'mowr-mark.gif');
 }
 
-// Ink scenes: complete still → the authored action → a held ending, then loop.
+// Ink scenes: each plays its own loop once on twos and repeats; the first frame is the finished pose.
 const W=360,H=292;
 const SCENES=['envelope','key','door','swap','invite','keypad','shield','link','unlink','lock','unlock','plane','hourglass','untangle','box','wave','build'];
 // --only=wave,build re-renders just those scenes and leaves the rest untouched.
 const only=process.argv.find(a=>a.startsWith('--only='))?.slice(7).split(',');
 for(const scene of process.argv.includes('--mark-only')?[]:SCENES.filter(s=>!only||only.includes(s))){
   const svg=t=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 390"><rect width="480" height="390" fill="${BG}"/>${filmFrame(scene,t,'f')}</svg>`;
-  const frames=[[await raster(svg(6),W,H),1400]];
-  for(let t=0;t<6;t+=.08)frames.push([await raster(svg(t),W,H),80]);
-  frames.push([await raster(svg(6),W,H),2200]);
+  const frames=[];
+  for(let i=0;i<Math.round(loopSeconds[scene]*12);i++)frames.push([await raster(svg(i/12),W,H),83]);
   encode(frames,W,H,`${scene}.gif`);
 }
 // Remove artwork no email uses any more, so the folder mirrors what is sent.
