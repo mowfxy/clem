@@ -11,8 +11,11 @@ import type {
   StudySet,
   FileVersion,
 } from "../core/types";
+import type { SpacePlan } from "../core/plans";
 export type State = {
   studySets: StudySet[];
+  /** One plan per subject or project at most (core/plans.ts). Absent in workspaces saved before plans existed. */
+  plans?: SpacePlan[];
   essentialNotes?: { id: string; text: string }[];
   chats: Chat[];
   spaces: Space[];
@@ -27,6 +30,7 @@ export type State = {
 };
 export const emptyState: State = {
   studySets: [],
+  plans: [],
   chats: [],
   spaces: [],
   files: [],

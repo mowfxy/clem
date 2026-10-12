@@ -1,3 +1,4 @@
+import { readPlanBlock, newPlan, type SpacePlan } from "../core/plans";
 import { set } from "idb-keyval";
 import {
   packSubject,
@@ -31,6 +32,7 @@ export async function exportSubject(state: State, space: Space) {
     files: files.map((f) => ({ ...f, size: blobs[f.id].length })),
     chats,
     studySets: state.studySets.filter((s) => s.spaceId === space.id),
+    spacePlan: planForArchive((state.plans || []).find((p) => p.spaceId === space.id)),
     edits,
   };
   const bytes = await packSubject(manifest, blobs);
@@ -114,5 +116,16 @@ export async function importSubject(file: File, owner: string) {
       spaceId,
       chatId: s.chatId ? chatIds.get(s.chatId) : undefined,
     })),
+    plan: planFromArchive(manifest.spacePlan, spaceId),
   };
+}
+/** A plan as the archive keeps it: the same shape the model writes, with when each task was done. */
+function planForArchive(plan: SpacePlan | undefined) {
+  if (!plan) return undefined;
+  return { action: "create", title: plan.title, goal: plan.goal, start: plan.start, tasks: plan.tasks.map(({ done, ...t }) => ({ ...t, ...(done ? { done: true, doneAt: done } : {}) })) };
+}
+function planFromArchive(raw: unknown, spaceId: string): SpacePlan | undefined {
+  if (!raw) return undefined;
+  const block = readPlanBlock(JSON.stringify(raw));
+  return block?.action === "create" ? newPlan(spaceId, block) : undefined;
 }

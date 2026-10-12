@@ -1,24 +1,26 @@
 import {useEffect,useRef,useState,type CSSProperties} from 'react';
 import {Illustration} from '../Illustrations';
 import {Icon} from '../Icons';
+import type {Scene} from '../vectorFilm';
 import './notices.css';
 
-export type NoticeKind='switch'|'reset'|'handoff'|'announcement'|'support'|'success'|'warning'|'info';
-export type Notice={id:string;kind:NoticeKind;title:string;detail:string;action?:{label:string;run:()=>void};sticky?:boolean};
+export type NoticeKind='switch'|'reset'|'handoff'|'announcement'|'support'|'success'|'warning'|'info'|'reminder';
+/** `art`: a drawing that suits this one notice better than its kind's (a memory gets the jar, changed files the folder). */
+export type Notice={id:string;kind:NoticeKind;title:string;detail:string;action?:{label:string;run:()=>void};sticky?:boolean;art?:Scene};
 
 const LIFETIME=9000;
+/** Each kind of notice has its own small ink drawing, playing its loop; the card itself stays plain. */
+const ART:Record<NoticeKind,Scene>={switch:'swap',reset:'key',handoff:'plane',announcement:'bell',support:'conversation',success:'checklist',warning:'expired',info:'bell',reminder:'alarm'};
 
-/** Every notice arrives as a letter: the app's ink envelope opens, the note rises out and is ticked, then it idles.
- *  `kind` only changes the card's tint (see notices.css). */
-export function NoticeArt(_:{kind:NoticeKind}){
-  return <Illustration scene="envelope" viewBox="92 40 296 296" className="notice-envelope"/>;
+export function NoticeArt({kind,art}:{kind:NoticeKind;art?:Scene}){
+  return <Illustration scene={art||ART[kind]} viewBox="92 40 296 296" className="notice-drawing"/>;
 }
 
 function NoticeCard({notice,depth,onDismiss,paused}:{notice:Notice;depth:number;onDismiss:()=>void;paused:boolean}){
   const [leaving,setLeaving]=useState(false);
   const remaining=useRef(LIFETIME),started=useRef(Date.now());
   const close=useRef(()=>{});
-  close.current=()=>{setLeaving(true);setTimeout(onDismiss,220);};
+  close.current=()=>{setLeaving(true);setTimeout(onDismiss,260);};
   // Only the front card counts down, and hovering the stack pauses it.
   const running=depth===0&&!paused&&!notice.sticky&&!leaving;
   useEffect(()=>{
@@ -28,15 +30,13 @@ function NoticeCard({notice,depth,onDismiss,paused}:{notice:Notice;depth:number;
     return()=>{clearTimeout(timer);remaining.current=Math.max(0,remaining.current-(Date.now()-started.current));};
   },[running]);
   return <aside className={`notice-card kind-${notice.kind} ${depth?'behind':''} ${leaving?'leaving':''}`} style={{'--depth':depth} as CSSProperties} role={depth===0?'status':undefined} aria-live={depth===0?'polite':undefined} aria-hidden={depth>0||undefined}>
-    <span className="notice-sheen" aria-hidden="true"/>
-    <span className="notice-art"><NoticeArt kind={notice.kind}/></span>
+    <span className="notice-art"><NoticeArt kind={notice.kind} art={notice.art}/></span>
     <div className="notice-copy">
       <strong>{notice.title}</strong>
       <p>{notice.detail}</p>
       {notice.action&&<button type="button" className="notice-action" tabIndex={depth?-1:0} onClick={()=>{notice.action!.run();close.current();}}>{notice.action.label}<Icon name="arrow" size={14}/></button>}
     </div>
     <button type="button" className="notice-close" tabIndex={depth?-1:0} aria-label={`Dismiss: ${notice.title}`} onClick={()=>close.current()}><Icon name="close" size={15}/></button>
-    {!notice.sticky&&depth===0&&<span className={`notice-timer ${running?'':'paused'}`} style={{animationDuration:LIFETIME+'ms'}} aria-hidden="true"/>}
   </aside>;
 }
 
