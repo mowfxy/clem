@@ -4,7 +4,7 @@
 .attachment-chips .image-chip img{width:22px;height:22px;border-radius:5px;object-fit:cover}
 
 .offline-banner{position:sticky;top:0;z-index:15;display:flex;align-items:center;justify-content:center;gap:9px;padding:8px 16px;background:#1d1b17;border-bottom:1px solid #3a342a;color:#e3d6bf;font:400 13px var(--sans)}
-.offline-dot{width:7px;height:7px;border-radius:50%;background:#d9b36c}
+.offline-banner .offline-mark{flex:none;color:#d9b36c}
 
 
 

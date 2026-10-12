@@ -292,7 +292,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
     <header className="fp-head">
       <div className="fp-title"><span className="fp-crumb">Files /</span><strong aria-description={file.name}>{file.name}</strong></div>
-      {sync && <span className={"fp-sync is-" + sync} role="status" aria-label={sync === "uploading" ? "Saving the change to Google Drive" : sync === "synced" ? "In sync with Google Drive" : sync === "pending" ? "Changed here · not in Google Drive until approved" : "Not saved to Google Drive"}>{sync === "synced" ? <Icon name="check" size={11} /> : sync === "failed" ? "!" : null}</span>}
+      {sync && <span className={"fp-sync is-" + sync} role="status" aria-label={sync === "uploading" ? "Saving the change to Google Drive" : sync === "synced" ? "In sync with Google Drive" : sync === "pending" ? "Changed here · not in Google Drive until approved" : "Not saved to Google Drive"}>{sync === "synced" ? <Icon name="check" size={11} /> : sync === "pending" ? <Icon name="cloud-up" size={15} /> : sync === "failed" ? "!" : null}</span>}
       <small className="fp-meta">{detail}{current.versions?.length ? ` · edited ${current.versions.length}×` : ""}</small>
       {!!current.versions?.length && !proposal && !working && <button className="fp-icon" aria-description="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}
       {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Mowr</button>}
@@ -301,7 +301,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       <button className="fp-icon" aria-description="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
     </header>
     {saved && !proposal && <div className="fp-proposal is-saved" role="status">
-      <div><strong>{saved.summary}</strong><small>{sync === "pending" ? "Saved here · goes to Google Drive when you press Done" : "Saved · earlier version kept"}</small></div>
+      <div><strong>{saved.summary}</strong><small><Icon name={sync === "pending" ? "cloud-up" : "check"} size={12} className={sync === "pending" ? "is-waiting" : undefined} />{sync === "pending" ? "Saved here · goes to Google Drive when you press Done" : "Saved · earlier version kept"}</small></div>
       <div className="fp-toggle" role="group" aria-label="Compare"><button aria-pressed={compare === "before"} onClick={() => setCompare("before")}>Before</button><button aria-pressed={compare === "after"} onClick={() => setCompare("after")}>After</button></div>
       <button className="fp-ghost" onClick={() => void undo()}>Undo</button>
       <button className="fp-keep" onClick={() => { setSaved(null); setCompare("after"); onApproved?.(current); }}>Done</button>
@@ -313,7 +313,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       <button className="fp-keep" onClick={() => void keep()}>Keep</button>
     </div>}
     {sync === "pending" && !saved && !proposal && !working && <div className="fp-proposal is-saved" role="status">
-      <div><strong>{current.versions?.[0]?.summary || "Edited"}</strong><small>Not in Google Drive yet · approve to save this version there</small></div>
+      <div><strong>{current.versions?.[0]?.summary || "Edited"}</strong><small><Icon name="cloud-up" size={12} className="is-waiting" />Not in Google Drive yet · approve to save this version there</small></div>
       {!!current.versions?.length && <button className="fp-ghost" onClick={() => void undo()}>Undo</button>}
       <button className="fp-keep" onClick={() => onApproved?.(current)}>Approve</button>
     </div>}

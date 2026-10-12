@@ -5,22 +5,19 @@
 .pl-card{position:relative;padding:22px 22px 18px;border-radius:16px;background:var(--pl-card);border:1px solid var(--pl-line);min-width:0}
 
 /* Headline */
-.pl-head{display:flex;align-items:flex-start;gap:18px;padding-right:150px;min-height:92px}
+.pl-head{display:flex;align-items:flex-start;gap:18px;padding-right:160px;min-height:92px}
 .pl-head-text{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .pl-head h3{margin:2px 0 0;font:400 28px/1.12 var(--serif);letter-spacing:var(--track-display,-.01em);color:var(--pl-ink);overflow-wrap:anywhere}
 .pl-head p{margin:0;font-size:var(--t-small,13px);line-height:1.5;color:var(--pl-soft);max-width:560px}
-.pl-art{position:absolute;top:10px;right:46px;width:132px;height:118px;pointer-events:none}
+.pl-art{position:absolute;top:10px;right:22px;width:132px;height:118px;pointer-events:none}
 .pl-art .ink-scene,.pl-art svg{display:block;width:100%;height:100%}
-.pl-view .pl-delete{position:absolute;top:14px;right:14px;width:32px;height:32px;padding:0;display:grid;place-items:center;border-radius:9px;color:var(--pl-muted);transition:color .15s,background .15s}
-.pl-view .pl-delete:hover{color:#ff6b60;background:#ff5a4e14}
 .pl-state{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 10px 0 9px;border-radius:99px;border:1px solid var(--pl-line-2);font:400 11.5px/1 var(--sans);color:var(--pl-soft);white-space:nowrap}
-.pl-state i{width:7px;height:7px;border-radius:50%;background:var(--pl-muted)}
-.pl-state.on-track i,.pl-state.ahead i,.pl-state.done i{background:var(--pl-ok)}
+.pl-state .ink-icon{flex:none;margin:-1px 0 0 -1px;color:var(--pl-muted)}
+.pl-state:is(.on-track,.ahead,.done) .ink-icon{color:var(--pl-ok)}
 .pl-state.behind{color:#ecc3b2;border-color:#d68a6c55}
-.pl-state.behind i{background:var(--pl-late)}
-.pl-state.upcoming i{background:var(--pl-mile)}
+.pl-state.behind .ink-icon{color:var(--pl-late)}
+.pl-state.upcoming .ink-icon{color:var(--pl-mile)}
 .pl-state.inline{height:auto;padding:0;border:0;gap:5px;font-size:12px}
-.pl-state.inline i{width:6px;height:6px}
 
 /* The chart: planned (dashed) against done (solid) */
 .pl-chart{position:relative;margin:20px 0 4px;height:150px}
@@ -52,7 +49,10 @@
 .pl-ring{flex:none}
 .pl-ring .track{fill:none;stroke:#ffffff14;stroke-width:4}
 .pl-ring .fill{fill:none;stroke:var(--pl-ink);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .8s var(--pl-ease)}
-.pl-pace{margin:12px 2px 0;font-size:12.5px;color:var(--pl-soft)}
+.pl-foot{display:flex;align-items:center;gap:12px;margin-top:14px}
+.pl-foot .pl-delete{flex:none;margin-left:auto;height:28px;padding:0 10px;border:0;border-radius:8px;background:none;font:400 12.5px/1 var(--sans);color:var(--pl-muted);cursor:pointer;transition:color .15s,background .15s}
+.pl-foot .pl-delete:hover{color:#ec7a6f;background:#ec7a6f14}
+.pl-pace{margin:0 2px;font-size:12.5px;color:var(--pl-soft)}
 
 /* The small box */
 .pl-box-wrap{display:flex;flex-direction:column;gap:8px}

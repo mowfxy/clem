@@ -92,7 +92,7 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-sync.is-uploading{border:2px solid #ffffff1f;border-top-color:#9fb4ff;animation:gd-turn .8s linear infinite;box-sizing:border-box}
 .gd-sync.is-synced{background:#7fd08a26;color:#9fd8a7;animation:gd-arrive .25s ease-out}
 .gd-sync.is-pending{background:none}
-.gd-sync.is-pending::before{content:"";width:8px;height:8px;border-radius:50%;background:#e9c46a;box-shadow:0 0 0 3px #e9c46a2e}
+.gd-sync.is-pending .drawn-icon{color:#e9c46a}
 .gd-sync.is-failed{background:#e8a39b26;color:#e8a39b;font:700 11px/1 var(--sans)}
 @keyframes gd-turn{to{transform:rotate(360deg)}}
 @keyframes gd-arrive{from{transform:scale(.4);opacity:0}}

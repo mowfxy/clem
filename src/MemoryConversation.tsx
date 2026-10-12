@@ -86,7 +86,7 @@ export function MemoryConversation({
           <ul>
             {items.map((m) => (
               <li key={m.id} className={m.confirmed ? "" : "learned"}>
-                <span className="memory-text">{m.text}</span>
+                <span className="memory-text">{!m.confirmed && <Icon name="idea" size={13} />}{m.text}</span>
                 <span className="memory-actions">
                   {!m.confirmed && <button type="button" className="memory-keep" disabled={busy} aria-description="Learned from a chat. Keep it?" onClick={() => void act("memoryConfirm", m.id)}>Keep</button>}
                   <button type="button" className="memory-icon" disabled={busy} aria-label={"Forget: " + m.text} aria-description="Forget" onClick={() => void act("memoryForget", m.id)}><Icon name="close" size={13} /></button>

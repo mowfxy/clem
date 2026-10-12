@@ -40,7 +40,7 @@ export function FirstProvider({ onConnected }: { onConnected: (connected: boolea
   return <div className="first-provider">
     <div className="provider-switch" role="tablist" aria-label="AI services">
       {services.map((s) => <button key={s.id} type="button" role="tab" aria-selected={s.id === tab} className={"provider-switch-tab provider-" + s.id + (s.id === tab ? " on" : "")} onClick={() => setTab(s.id)}>
-        <span className="provider-switch-logo">{s.logo}</span>{s.name}{connected[s.id] && <span className="provider-dot" aria-label="connected" />}
+        <span className="provider-switch-logo">{s.logo}</span>{s.name}{connected[s.id] && <span className="provider-dot" aria-label="connected"><Icon name="plug" size={13} /></span>}
       </button>)}
     </div>
     <div key={tab} className="first-provider-body" role="tabpanel">

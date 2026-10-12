@@ -35,7 +35,7 @@ export function StorageSummary({ files }: { files: StoredFile[] }) {
         <strong>{total ? sizeLabel(total) : 'Nothing stored yet'}</strong>
         <span>{local.length ? `${local.length} ${local.length === 1 ? 'file' : 'files'}` : 'Uploaded files appear here'}</span>
       </div>
-      <span className="storage-where"><i aria-hidden="true" />Private to this device{free !== null ? ` · ${sizeLabel(free)} free` : ''}</span>
+      <span className="storage-where"><Icon name="device" size={14} />Private to this device{free !== null ? ` · ${sizeLabel(free)} free` : ''}</span>
     </div>
     <div className="storage-bar" role="img" aria-label={groups.map((g) => `${g.label} ${sizeLabel(g.bytes)}`).join(', ') || 'Empty'}>
       {groups.map((g) => <span key={g.id} className={`k-${g.id}`} style={{ flexGrow: Math.max(g.bytes, total * 0.02) }} />)}

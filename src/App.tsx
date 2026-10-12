@@ -2282,7 +2282,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   >
                     {(() => { const space = c.spaceId ? state.spaces.find((x) => x.id === c.spaceId) : undefined; return space ? <SpaceMark space={space} /> : null; })()}
                     <span className="history-title">{c.title}</span>
-                    {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" aria-description={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" aria-label="New reply" aria-description="New reply" /> : null}
+                    {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" aria-description={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" aria-label="New reply" aria-description="New reply"><Icon name="new-reply" size={12} /></span> : null}
                   </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={c.id in runs} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
                       ))}
                     </section>
@@ -2379,7 +2379,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             </div>
           </aside>
           <main className="workspace">
-            {offline&&<div className="offline-banner" role="status"><span className="offline-dot"/>Offline · reading only. Sending returns when you reconnect.</div>}
+            {offline&&<div className="offline-banner" role="status"><Icon name="offline" size={15} className="offline-mark"/>Offline · reading only. Sending returns when you reconnect.</div>}
             <header className="workspace-top">
               <span>
                 {activeSpace && route === "/app" ? (
@@ -2478,7 +2478,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                                 ? <span className="closed-note">Mowr was closed unexpectedly before this answer finished. Send your message again to continue.</span>
                                 : <span className="thinking">{(streaming && runs[activeChat.id]) || "Thinking…"}</span>
                             )}
-                            {streaming && m.content && runs[activeChat.id] ? <span className="work-status" role="status"><span className="work-dot" />{runs[activeChat.id]}</span> : null}
+                            {streaming && m.content && runs[activeChat.id] ? <span className="work-status" role="status"><Icon name="writing" size={13} className="work-mark" />{runs[activeChat.id]}</span> : null}
                           </div>}
                           {m.limit && !streaming && <LimitNotice limit={m.limit} model={planOf(m.model)} latest={m.id === activeChat.messages.at(-1)?.id} onAuto={(auto) => updateChat(activeChat.id, (c) => ({ ...c, messages: c.messages.map((x) => x.id === m.id && x.limit ? { ...x, limit: { ...x.limit, auto } } : x) }))} onContinue={() => continueAfterLimit(activeChat.id, m.id)} />}
                           {m.role === "user" && !!m.drive?.length && <div className="message-drive">{m.drive.map((d) => <button type="button" key={d.id} className="drive-attached" onClick={() => openDrive(d)} aria-description={"Open " + d.name}><DriveIcon mime={d.mimeType} name={d.name} size={18} /><span>{d.name}</span></button>)}</div>}
