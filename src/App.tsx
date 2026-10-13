@@ -2415,11 +2415,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 {route === "/app" ? (<>
                   <span className="top-title">{activeChat ? activeChat.title || "Conversation" : temporaryNext ? "Temporary chat" : "New chat"}</span>
                   {activeSpace && <button className="breadcrumb top-space" title={`Open ${activeSpace.name}`} onClick={() => openSpace(activeSpace.id)}>{activeSpace.name}</button>}
-                </>) : route.startsWith("/app/space/") ? (
-                  ""
-                ) : (
-                  <span className="top-title">{`Your ${route.split("/").at(-1)}`}</span>
-                )}
+                </>) : null}
               </span>
               {route === "/app" && (activeChat?.temporary ? (
                 <div className="temp-controls">

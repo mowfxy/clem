@@ -1,6 +1,6 @@
 :root {
   /* The title bar row, as tall as the caption buttons Windows draws (titleBarOverlay height in desktop/main.ts). */
-  --tb: 32px;
+  --tb: 36px;
 }
 .desktop-titlebar {
   height: var(--tb);
