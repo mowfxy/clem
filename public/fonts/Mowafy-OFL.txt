@@ -2,7 +2,13 @@ Copyright 2026 Mohamed Mowafy (https://github.com/mowfxy/serif).
 
 Mowafy Serif is derived from:
   Source Serif 4, Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
-  Noto Serif, Noto Sans Math, Noto Sans Symbols, Noto Sans Coptic and Noto Naskh Arabic, Copyright 2022 The Noto Project Authors (https://github.com/notofonts).
+  Noto Serif, Noto Serif Hebrew, Devanagari, Bengali, Tamil, Thai, Armenian and Georgian, Noto Sans Math, Noto Sans Symbols,
+  Noto Sans Coptic and Noto Naskh Arabic, Copyright 2022 The Noto Project Authors (https://github.com/notofonts).
+
+Mowafy Sans (https://github.com/mowfxy/sans) is derived from:
+  Schibsted Grotesk, Copyright 2023 The Schibsted Grotesk Project Authors (https://github.com/schibsted/schibsted-grotesk).
+  Its script and math companions and Vietnamese horn and hook: Noto Sans, Noto Sans Arabic, Hebrew, Devanagari, Bengali,
+  Tamil, Thai, Armenian, Georgian and Math, Copyright 2022 The Noto Project Authors (https://github.com/notofonts).
   STIX Two Math, Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts), with Reserved Font Name "TM Math".
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
