@@ -67,3 +67,16 @@ html body .file-panel input.fp-page-field{width:44px;height:29px;font-size:13.5p
 /* Once a chat has begun the box steps back: one line of text over the tools, the way Claude's reply box does */
 .chat-view.has-messages .chat-composer .composer textarea{min-height:44px;padding:12px 16px 2px}
 .chat-view.has-messages .chat-composer .composer-bottom{padding:0 8px 8px}
+
+/* A roomier sidebar, close to Claude's: 300 px on a usual window, never under the old 244 px.
+   The title bar and the header in it start where the sidebar ends. */
+:root{--side:clamp(244px,24vw,300px)}
+@media(min-width:761px){
+  body .desktop-content .sidebar{width:var(--side)}
+  body .desktop-content .workspace{margin-left:var(--side);width:calc(100% - var(--side))}
+  body .desktop-content .workspace-top{left:var(--side)}
+  body .desktop-titlebar:has(+ .desktop-content .sidebar){left:var(--side)}
+}
+
+/* The line under the chat box, readable at a glance */
+body .chat-composer .composer-note{font-size:13px;line-height:1.4;color:#8e8d86;margin:9px 0 0}
