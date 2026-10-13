@@ -184,3 +184,22 @@ test('a file goes to Drive under the type its bytes and name show, so a PDF kept
   await drive.upload('folder-id-12345','Notes.pdf','',pdf);
   assert.equal(sent,'application/pdf');assert.equal(meta.mimeType,'application/pdf');
 });
+
+test('a dropped connection or a busy Google is tried again, and many requests share one token request',async()=>{
+  let tokens=0,lists=0;
+  const fetcher=(async(input:any)=>{
+    const url=String(input);
+    if(url.endsWith('/api/drive/token')){tokens++;await new Promise(r=>setTimeout(r,20));return Response.json({accessToken:'tok',expiresIn:3300});}
+    lists++;
+    if(lists===1)throw new TypeError('fetch failed');
+    if(lists===2)return new Response('{}',{status:503});
+    return Response.json({files:[{id:'doc1234567890',name:'Notes',mimeType:'text/plain'}]});
+  }) as typeof fetch;
+  const drive=new DriveLive(async()=>'session',fetcher,'https://mowrai.example');
+  const [a,b]=await Promise.all([drive.list({folder:'root'}),drive.list({folder:'root'})]);
+  assert.equal(tokens,1);
+  assert.deepEqual([a.files.length,b.files.length],[1,1]);
+  // Never reaching Google ends in a plain message, not "fetch failed".
+  const offline=new DriveLive(async()=>'session',(async(input:any)=>{if(String(input).endsWith('/api/drive/token'))return Response.json({accessToken:'tok',expiresIn:3300});throw new TypeError('fetch failed');}) as typeof fetch,'https://mowrai.example');
+  await assert.rejects(offline.list({folder:'root'}),/couldn't reach Google Drive/);
+});

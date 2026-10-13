@@ -567,18 +567,26 @@ app.get("/api/drive/callback", async (req, res) => {
 async function driveToken(userId: string) {
   const c = await credential(userId, "drive");
   if (!c) throw new Error("Connect Google Drive first.");
-  const r = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      refresh_token: c.key,
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!r.ok) throw new Error("Drive access expired. Reconnect.");
-  return (await r.json()) as { access_token: string; scope?: string };
+  // Only a refused grant (revoked, or expired by Google) needs a reconnect. A dropped connection or a busy Google is
+  // tried once more, then reported as brief, so the app keeps Drive connected instead of asking to reconnect.
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        refresh_token: c.key,
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        grant_type: "refresh_token",
+      }),
+      signal: AbortSignal.timeout(15000),
+    }).catch(() => null);
+    if (r?.ok) return (await r.json()) as { access_token: string; scope?: string };
+    const reason = r ? String(((await r.json().catch(() => ({}))) as { error?: string }).error || "") : "";
+    if (reason === "invalid_grant") throw new Error("Drive access expired. Reconnect.");
+    if (attempt >= 1) throw new Error("Google Drive is unavailable right now. Try again in a moment.");
+    await new Promise((go) => setTimeout(go, 700));
+  }
 }
 // A short-lived access token for the person's own Drive, so the desktop app can search it and stream files (including
 // long videos with seeking) straight from Google instead of through this server. Never stored by the app.

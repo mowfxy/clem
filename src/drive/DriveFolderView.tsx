@@ -49,16 +49,18 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   const [uploads, setUploads] = useState<Upload[]>([]);
   // Only the newest request may update the view, so a slow answer for a previous folder never shows here.
   const request = useRef(0);
-  async function load(refresh = false) {
+  const held = useRef(items); held.current = items;
+  /** `quiet`: the timed refresh. If it fails, the folder already shown stays as it is, with no error. */
+  async function load(refresh = false, quiet = false) {
     const mine = ++request.current;
     setBusy(true);
     try { const r = await driveFolder(folderId, "", refresh); if (mine !== request.current) return; setItems(r.items); setError(""); onItems?.(r.items); }
-    catch (e) { if (mine === request.current) setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "")); }
+    catch (e) { if (mine === request.current && !(quiet && held.current)) setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "")); }
     finally { if (mine === request.current) setBusy(false); }
   }
   // A different folder starts fresh: its own items, from its top level.
   useEffect(() => { request.current++; setItems(null); setAt(""); setError(""); setBusy(false); }, [folderId]);
-  useEffect(() => { if (connected !== false) void load(); const t = setInterval(() => { if (!document.hidden) void load(true); }, 5 * 60_000); return () => clearInterval(t); }, [folderId, connected]);
+  useEffect(() => { if (connected !== false) void load(); const t = setInterval(() => { if (!document.hidden) void load(true, true); }, 5 * 60_000); return () => clearInterval(t); }, [folderId, connected]);
   const full = (i: DriveItem) => (i.path ? i.path + " / " : "") + i.name;
   /** Where a Drive folder sits inside the linked folder, as the rows' `path`. */
   const pathOf = (id: string) => { if (id === folderId) return ""; const f = (items || []).find((i) => i.id === id); return f ? full(f) : ""; };
@@ -166,7 +168,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
         return <span className="gd-crumb-wrap" key={i}><span className="gd-chev"><Icon name="right" size={12} /></span><button className={"gd-crumb" + (i === parts.length - 1 ? " here" : "") + (over === id && i < parts.length - 1 ? " over" : "")} onClick={() => setAt(path)} {...(i < parts.length - 1 ? target(id) : {})}>{p}</button></span>; })}
     </nav>}
     {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Settings → Connectors to see this folder.</p>}
-    {error && <p className="gd-error">{error}</p>}
+    {error && <p className="gd-error">{error} {!busy && <button className="gd-retry" onClick={() => void load(true)}>Try again</button>}</p>}
     {reconnect && <p className="gd-reconnect">Mowr saves into your own Drive folders, which needs one more permission from Google.
       <button onClick={() => void connectDrive().then(() => failed.forEach(send)).catch((e) => setError((e as Error).message))}>Reconnect Google Drive</button></p>}
     {!items && !error && connected !== false && <div className="sp-file-list">{Array.from({ length: 3 }, (_, i) => <div key={i} className="gd-skeleton" />)}</div>}
@@ -205,5 +207,33 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
         </div>; })}
     </div>}
     {items && !here.length && !incoming.length && <div className="gd-space-empty">This folder is empty in Drive. Drop files here to save them to it.</div>}
+  </section>;
+}
+
+/**
+ * Drive files from outside the linked folder (another subject's notes, a doc shared with you) that a subject or project
+ * reads as sources. They stay where they are in Drive; removing one here only stops this space reading it.
+ */
+export function DriveExtras({ space, actions }: { space: Space; actions: SpaceActions }) {
+  const list = space.driveFiles || [];
+  if (!list.length) return null;
+  return <section className="gd-extras" aria-label="Other Google Drive files">
+    <div className="sp-local-head"><span className="sp-eyebrow">From elsewhere in Drive</span>
+      <div className="sp-local-actions"><button onClick={actions.onAddDriveFiles} aria-description={`Use more Drive files in ${space.name}`}><Icon name="plus" size={13} /> Add files</button></div>
+    </div>
+    <div className="sp-file-list">
+      {list.map((f) => { const google = isGoogleFormat(f.mimeType), item: DriveItem = f;
+        const meta = [f.size ? sizeLabel(f.size) : google ? "Google " + f.mimeType.replace("application/vnd.google-apps.", "") : "", ago(f.modified), "always read"].filter(Boolean).join(" · ");
+        return <div key={f.id} className="sp-file gd-file">
+          <button className="sp-file-open" onClick={() => actions.onOpenDrive(item)}><FileGlyph file={{ name: glyphName(f), type: f.mimeType }} size={36} /><span><strong>{f.name}</strong><small>{meta}</small></span></button>
+          <Menu label={`${f.name} options`} items={[
+            { label: "Open", run: () => actions.onOpenDrive(item) },
+            ...(google ? [{ label: "Edit in Google Drive", run: () => actions.onEditDrive(item) }] : editable.test(f.name) ? [{ label: "Edit with Mowr", run: () => actions.onEditDrive(item) }] : []),
+            { label: "Ask about it", run: () => actions.onAskDrive([item]) },
+            ...(!google ? [{ label: "Open in Google Drive", run: () => actions.onOpenDriveWeb(item) }] : []),
+            { label: `Remove from ${space.name}`, danger: true, run: () => actions.onRemoveDriveFile(f.id) },
+          ]} />
+        </div>; })}
+    </div>
   </section>;
 }

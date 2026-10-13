@@ -15,7 +15,7 @@ import {MemoryConversation,warmMemory} from '../MemoryConversation';
 import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './InstructionsDialog';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet,VisualRecord} from '../../core/types';
 import {SavedVisuals} from '../visuals/SavedVisuals';
-import {DriveFolderView} from '../drive/DriveFolderView';
+import {DriveFolderView,DriveExtras} from '../drive/DriveFolderView';
 import {PlanView,PlanOverviewCard,type PlanActions,type PlanDraftView} from './PlanView';
 import {planStatus,type SpacePlan} from '../../core/plans';
 import type {DriveItem,DriveSyncState} from '../drive/drive';
@@ -37,6 +37,8 @@ export type SpaceActions={
   onRenameFile:(file:StoredFile,name:string)=>void;
   /** A Google Drive folder linked to this space, read live (never downloaded). */
   onLinkDrive:()=>void; onUnlinkDrive:()=>void; onDriveSeen:()=>void;
+  /** Files from anywhere in Drive, outside the linked folder, that this space reads too. */
+  onAddDriveFiles:()=>void; onRemoveDriveFile:(id:string)=>void;
   onOpenDrive:(file:DriveItem)=>void; onAskDrive:(files:DriveItem[])=>void; onDriveItems:(items:DriveItem[])=>void;
   /** Saves a file from this PC (or a Mowr file, by id) into a folder of the linked Drive folder, keeping it here too. */
   /** Saves a file from this PC (or a Mowr file, by id) into a Drive folder only; resolves to it as Drive lists it. */
@@ -296,6 +298,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
       <div className="sp-tool-actions">
         {!(space.drive&&!at)&&<>
           {!space.drive&&<button onClick={actions.onLinkDrive}><DriveGlyph/>Link a Drive folder</button>}
+          {!space.drive&&!at&&desktop&&!space.driveFiles?.length&&<button onClick={actions.onAddDriveFiles} aria-description="Use files from anywhere in your Google Drive here"><DriveGlyph/>Add Drive files</button>}
           <button onClick={()=>setNaming({name:''})}><Icon name="plus" size={15}/>New folder</button>
           <button onClick={()=>input.current?.click()}><Icon name="attach" size={15}/>Upload</button>
           {at&&<button onClick={()=>actions.onShare(at)}><Icon name="import" size={15}/>Share folder</button>}
@@ -304,8 +307,9 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
       </div>
     </div>
     {space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
-      copy={toDrive}
+      copy={toDrive} more={[{label:'Add files from elsewhere in Drive',run:actions.onAddDriveFiles}]}
       onItems={items=>{setDriveIds(new Set(items.filter(x=>!x.folder).map(x=>x.id)));actions.onDriveItems(items);}}/>}
+    {!at&&<DriveExtras space={space} actions={actions}/>}
     {/* Files added here are kept on this PC only; they are not sent to the linked Drive folder. */}
     {space.drive&&!at&&<div className="sp-local-head"><span className="sp-eyebrow">On this PC</span>
       <div className="sp-local-actions">
