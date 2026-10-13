@@ -2,7 +2,7 @@
 #   python scripts/import-serif.py <path-to-serif-checkout>
 # Each style ships as a small Latin cut under the plain name (what the app, emails, server pages and films load)
 # plus MowafySerifFull-*, the whole Mowafy Serif file (Greek, Cyrillic, extended Latin), limited by unicode-range
-# to what the Latin cut leaves out. Arabic, math, science and Coptic come from the package's companion families,
+# to what the Latin cut leaves out. Arabic, Hebrew, Indic, Thai, Armenian, Georgian, math, science and Coptic come from the package's companion families,
 # declared under the same 'Mowafy Serif' name with unicode-ranges of only the characters nothing before them
 # covers, so browsers fetch each file only when a page uses those characters.
 # Writes public/fonts, scripts/eyepiece/fonts, core/serif-fonts.ts and the serif block in src/type.css.
@@ -21,7 +21,8 @@ fonts = root / "public" / "fonts"
 STYLES = [("Light", "300", "normal"), ("Regular", "400", "normal"), ("Medium", "500", "normal"), ("Bold", "600 800", "normal"),
           ("Italic", "300 400", "italic"), ("MediumItalic", "500", "italic"), ("BoldItalic", "600 800", "italic")]
 # Companion families in fallback order; the bold file (when there is one) serves the 600-800 band.
-COMPANIONS = [("MowafyGreek", True), ("MowafyArabic", True), ("MowafyMath", False), ("MowafyMathSupplement", False),
+COMPANIONS = [("MowafyGreek", True), ("MowafyArabic", True), ("MowafyHebrew", True), ("MowafyDevanagari", True), ("MowafyBengali", True),
+              ("MowafyTamil", True), ("MowafyThai", True), ("MowafyArmenian", True), ("MowafyGeorgian", True), ("MowafyMath", False), ("MowafyMathSupplement", False),
               ("MowafyScience", False), ("MowafyScienceSupplement", False), ("MowafyCopticSupplement", False)]
 LATIN = "U+20-7E,U+A0-17F,U+192,U+218-21B,U+237,U+2BB-2BC,U+2C6-2C7,U+2D8-2DD,U+300-30C,U+323-328,U+1E9E,U+2013-2014,U+2018-201E,U+2020-2022,U+2026,U+2030,U+2032-2033,U+2039-203A,U+2044,U+2070,U+2074-2079,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+221E,U+2248,U+2260,U+2264-2265,U+FB01-FB02"
 
