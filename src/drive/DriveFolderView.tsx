@@ -45,6 +45,8 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   const [at, setAt] = useState("");
   const [over, setOver] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  // Files added one by one from elsewhere in Drive (before folders could be linked side by side) are one more entry here.
+  const [extras, setExtras] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
   // Only the newest request may update the view, so a slow answer for a previous folder never shows here.
@@ -59,7 +61,8 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
     finally { if (mine === request.current) setBusy(false); }
   }
   // A different folder starts fresh: its own items, from its top level.
-  useEffect(() => { request.current++; setItems(null); setAt(""); setError(""); setBusy(false); }, [folderId]);
+  useEffect(() => { request.current++; setItems(null); setAt(""); setError(""); setBusy(false); setExtras(false); }, [folderId]);
+  useEffect(() => { if (!space.driveFiles?.length) setExtras(false); }, [space.driveFiles?.length]);
   useEffect(() => { if (connected !== false) void load(); const t = setInterval(() => { if (!document.hidden) void load(true, true); }, 5 * 60_000); return () => clearInterval(t); }, [folderId, connected]);
   const full = (i: DriveItem) => (i.path ? i.path + " / " : "") + i.name;
   /** Where a Drive folder sits inside the linked folder, as the rows' `path`. */
@@ -151,9 +154,10 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   return <section className={"gd-space" + (over === hereId ? " is-drop" : "")} aria-label={`Google Drive folder ${folderName}`} {...target(hereId)}>
     <header className="gd-space-head">
       <DriveLogo size={16} />
-      <div><strong>{folderName}</strong><small>{items ? `${allFiles.length} file${allFiles.length === 1 ? "" : "s"} in Google Drive` : "Google Drive"}</small></div>
+      <FolderSwitch space={space} actions={actions} extras={extras} onExtras={setExtras}
+        line={extras ? `${space.driveFiles!.length} file${space.driveFiles!.length === 1 ? "" : "s"} from elsewhere in Drive` : items ? `${allFiles.length} file${allFiles.length === 1 ? "" : "s"} in Google Drive` : "Google Drive"} />
       <div className="gd-space-actions">
-        {connected !== false && <button onClick={() => picker.current?.click()} aria-description={`Add files from this PC to ${at ? parts[parts.length - 1] : folderName} in Drive`}><Icon name="plus" size={13} /> Add files</button>}
+        {!extras && connected !== false && <button onClick={() => picker.current?.click()} aria-description={`Add files from this PC to ${at ? parts[parts.length - 1] : folderName} in Drive`}><Icon name="plus" size={13} /> Add files</button>}
         <input ref={picker} type="file" multiple hidden onChange={(e) => { const chosen = Array.from(e.target.files || []); e.target.value = ""; save(hereId, chosen, []); }} />
         <Menu label="Google Drive folder options" items={[
           ...(busy ? [] : [{ label: "Refresh", run: () => void load(true) }]),
@@ -162,6 +166,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
           { label: "Link another folder", run: actions.onLinkDrive }, { label: "Unlink folder", danger: true, run: actions.onUnlinkDrive }]} />
       </div>
     </header>
+    {extras ? <ExtrasList space={space} actions={actions} /> : <>
     {parts.length > 0 && <nav className="gd-trail" aria-label="Folder path">
       <button className={"gd-crumb" + (over === folderId ? " over" : "")} onClick={() => setAt("")} {...target(folderId)}>{folderName}</button>
       {parts.map((p, i) => { const path = parts.slice(0, i + 1).join(" / "), id = (items || []).find((x) => x.folder && full(x) === path)?.id || folderId;
@@ -207,33 +212,63 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
         </div>; })}
     </div>}
     {items && !here.length && !incoming.length && <div className="gd-space-empty">This folder is empty in Drive. Drop files here to save them to it.</div>}
+    </>}
   </section>;
 }
 
+/** The folder name in the header: opens the list of this space's linked folders, to show another or link one more. */
+function FolderSwitch({ space, actions, extras, onExtras, line }: { space: Space; actions: SpaceActions; extras: boolean; onExtras: (on: boolean) => void; line: string }) {
+  const [open, setOpen] = useState(false), root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", close); document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", key); };
+  }, [open]);
+  const shown = space.drive!, others = space.drives || [], loose = space.driveFiles?.length || 0;
+  const pick = (run: () => void) => { setOpen(false); run(); };
+  return <div className="gd-switch" ref={root}>
+    <button type="button" className="gd-switch-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <span><strong>{extras ? "Other Drive files" : shown.folderName}<Icon name="down" size={12} /></strong><small>{line}</small></span>
+    </button>
+    {open && <div className="sp-menu-list gd-switch-list" role="menu" aria-label="Linked Drive folders">
+      {[shown, ...others].map((d) => <button type="button" role="menuitemradio" aria-checked={!extras && d.folderId === shown.folderId} key={d.folderId}
+        className={!extras && d.folderId === shown.folderId ? "on" : ""} onClick={() => pick(() => { onExtras(false); if (d.folderId !== shown.folderId) actions.onShowDrive(d.folderId); })}>
+        {d.folderName}{!extras && d.folderId === shown.folderId && <small>Shown</small>}</button>)}
+      {loose > 0 && <button type="button" role="menuitemradio" aria-checked={extras} className={extras ? "on" : ""} onClick={() => pick(() => onExtras(true))}>Other Drive files<small>{loose}</small></button>}
+      <hr />
+      <button type="button" role="menuitem" onClick={() => pick(actions.onLinkDrive)}>Link another folder</button>
+    </div>}
+  </div>;
+}
+
+/** The files added one by one from elsewhere in Drive, kept for spaces that have them. */
+function ExtrasList({ space, actions }: { space: Space; actions: SpaceActions }) {
+  return <div className="sp-file-list">
+    {(space.driveFiles || []).map((f) => { const google = isGoogleFormat(f.mimeType), item: DriveItem = f;
+      const meta = [f.size ? sizeLabel(f.size) : google ? "Google " + f.mimeType.replace("application/vnd.google-apps.", "") : "", ago(f.modified), "always read"].filter(Boolean).join(" · ");
+      return <div key={f.id} className="sp-file gd-file">
+        <button className="sp-file-open" onClick={() => actions.onOpenDrive(item)}><FileGlyph file={{ name: glyphName(f), type: f.mimeType }} size={36} /><span><strong>{f.name}</strong><small>{meta}</small></span></button>
+        <Menu label={`${f.name} options`} items={[
+          { label: "Open", run: () => actions.onOpenDrive(item) },
+          ...(google ? [{ label: "Edit in Google Drive", run: () => actions.onEditDrive(item) }] : editable.test(f.name) ? [{ label: "Edit with Mowr", run: () => actions.onEditDrive(item) }] : []),
+          { label: "Ask about it", run: () => actions.onAskDrive([item]) },
+          ...(!google ? [{ label: "Open in Google Drive", run: () => actions.onOpenDriveWeb(item) }] : []),
+          { label: `Remove from ${space.name}`, danger: true, run: () => actions.onRemoveDriveFile(f.id) },
+        ]} />
+      </div>; })}
+  </div>;
+}
+
 /**
- * Drive files from outside the linked folder (another subject's notes, a doc shared with you) that a subject or project
- * reads as sources. They stay where they are in Drive; removing one here only stops this space reading it.
+ * Drive files from outside any linked folder that a subject or project reads as sources (added one by one in earlier
+ * versions). With a folder linked they are an entry in its folder list; without one they are listed here.
  */
 export function DriveExtras({ space, actions }: { space: Space; actions: SpaceActions }) {
-  const list = space.driveFiles || [];
-  if (!list.length) return null;
+  if (!space.driveFiles?.length) return null;
   return <section className="gd-extras" aria-label="Other Google Drive files">
-    <div className="sp-local-head"><span className="sp-eyebrow">From elsewhere in Drive</span>
-      <div className="sp-local-actions"><button onClick={actions.onAddDriveFiles} aria-description={`Use more Drive files in ${space.name}`}><Icon name="plus" size={13} /> Add files</button></div>
-    </div>
-    <div className="sp-file-list">
-      {list.map((f) => { const google = isGoogleFormat(f.mimeType), item: DriveItem = f;
-        const meta = [f.size ? sizeLabel(f.size) : google ? "Google " + f.mimeType.replace("application/vnd.google-apps.", "") : "", ago(f.modified), "always read"].filter(Boolean).join(" · ");
-        return <div key={f.id} className="sp-file gd-file">
-          <button className="sp-file-open" onClick={() => actions.onOpenDrive(item)}><FileGlyph file={{ name: glyphName(f), type: f.mimeType }} size={36} /><span><strong>{f.name}</strong><small>{meta}</small></span></button>
-          <Menu label={`${f.name} options`} items={[
-            { label: "Open", run: () => actions.onOpenDrive(item) },
-            ...(google ? [{ label: "Edit in Google Drive", run: () => actions.onEditDrive(item) }] : editable.test(f.name) ? [{ label: "Edit with Mowr", run: () => actions.onEditDrive(item) }] : []),
-            { label: "Ask about it", run: () => actions.onAskDrive([item]) },
-            ...(!google ? [{ label: "Open in Google Drive", run: () => actions.onOpenDriveWeb(item) }] : []),
-            { label: `Remove from ${space.name}`, danger: true, run: () => actions.onRemoveDriveFile(f.id) },
-          ]} />
-        </div>; })}
-    </div>
+    <div className="sp-local-head"><span className="sp-eyebrow">Other Drive files</span></div>
+    <ExtrasList space={space} actions={actions} />
   </section>;
 }
