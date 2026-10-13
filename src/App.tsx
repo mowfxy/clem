@@ -279,6 +279,15 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [historyLimit, setHistoryLimit] = useState(30);
   useEffect(() => { try { localStorage.setItem("mowr-history-scope", historyScope); } catch {} }, [historyScope]);
   const [attach, setAttach] = useState(false);
+  // The + menu closes with Escape, a press outside it, or leaving the page, like every other menu.
+  useEffect(() => {
+    if (!attach) return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setAttach(false); };
+    const press = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.(".popover-wrap")) setAttach(false); };
+    const leave = () => setAttach(false);
+    addEventListener("keydown", key); addEventListener("pointerdown", press); addEventListener("hashchange", leave);
+    return () => { removeEventListener("keydown", key); removeEventListener("pointerdown", press); removeEventListener("hashchange", leave); };
+  }, [attach]);
   // A file open beside the conversation; requests to change it edit it in place.
   const [panelFile, setPanelFile] = useState<StoredFile | null>(null);
   const [panelEdit, setPanelEdit] = useState(true);
@@ -2415,7 +2424,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 {route === "/app" ? (<>
                   <span className="top-title">{activeChat ? activeChat.title || "Conversation" : temporaryNext ? "Temporary chat" : "New chat"}</span>
                   {activeSpace && <button className="breadcrumb top-space" title={`Open ${activeSpace.name}`} onClick={() => openSpace(activeSpace.id)}>{activeSpace.name}</button>}
-                </>) : null}
+                </>) : pageSpace ? <span className="top-title">{pageSpace.name}</span> : null}
               </span>
               {route === "/app" && (activeChat?.temporary ? (
                 <div className="temp-controls">
