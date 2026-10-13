@@ -79,6 +79,9 @@ function prose(text: string, first: boolean, last: boolean) {
     }
     return part
       .replace(bareEnvironment, (_, pre, env) => pre + display(env))
+      // A superscript or subscript attached to a word (NAD$^+$, H$_2$O, cm$^3$) is maths too; without this its closing
+      // dollar would open a span that runs into the next sentence's maths.
+      .replace(/(\w)\$([\^_][^$\n]{0,60}?[^\s\\$])\$(?!\d)/g, (_, pre, m) => `${pre}$$${m}$$`)
       // Pandoc-style inline math: $x$ when the dollars hug non-space text and no digit follows the closing one,
       // so prices like “$2 and $5” stay prose. One character is enough ($x$).
       .replace(/(^|[^\\$\w])\$(?![\s$])([^$\n]{0,400}?[^\s\\$])\$(?![\d$])/g, (_, pre, m) => `${pre}$$${m}$$`);

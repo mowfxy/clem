@@ -190,7 +190,53 @@ export function compileVisual(raw: unknown): CompiledVisual {
       if (spec.y?.label) pen.text(b.l - 9, b.t - 14, spec.y.label, { size: 11, color: palette.faint });
       const clipY = (y: number) => Math.max(b.t - 2, Math.min(b.b + 2, y));
       let legend = 0;
-      const tag = (label: string | undefined, px: number, py: number, col: string) => { if (label) pen.text(Math.min(px + 8, b.r - 4), Math.max(b.t + 12, Math.min(b.b - 6, py - 8)), label, { size: 12, color: col, align: px + 8 > b.r - 60 ? 'end' : 'start' }); };
+      // Curve labels are placed once every curve is drawn, clear of the ink and of each other: a label never sits on a
+      // line or on another label. Ink is kept as a set of 4 px cells the strokes pass through.
+      const inkCells = new Set<number>(), cell = (x: number, y: number) => Math.floor(x / 4) * 4096 + Math.floor(y / 4);
+      const mark = (x: number, y: number) => inkCells.add(cell(x, y));
+      const plotPen = pen;
+      pen = {
+        w: plotPen.w, h: plotPen.h,
+        path(points, s, closed) {
+          if (s.stroke) for (let k = 1; k < points.length + (closed ? 1 : 0); k++) {
+            const [ax2, ay2] = points[k - 1], [bx, by] = points[k % points.length], steps = Math.max(1, Math.ceil(Math.hypot(bx - ax2, by - ay2) / 3));
+            for (let m = 0; m <= steps; m++) mark(ax2 + (bx - ax2) * m / steps, ay2 + (by - ay2) * m / steps);
+          }
+          plotPen.path(points, s, closed);
+        },
+        circle(x, y, r, s) { for (let dx = -r; dx <= r; dx += 3) for (let dy = -r; dy <= r; dy += 3) if (dx * dx + dy * dy <= r * r) mark(x + dx, y + dy); plotPen.circle(x, y, r, s); },
+        text: (x, y, value, s) => plotPen.text(x, y, value, s),
+      };
+      type Box = [number, number, number, number];
+      const placed: Box[] = [], pending: { label: string; anchors: P[]; col: string; along: boolean }[] = [];
+      const offsets: [number, number, 'start' | 'end' | 'middle'][] = [[8, -8, 'start'], [8, 17, 'start'], [-8, -8, 'end'], [-8, 17, 'end'], [0, -12, 'middle'], [0, 24, 'middle'], [8, -24, 'start'], [-8, -24, 'end'], [8, 33, 'start'], [-8, 33, 'end']];
+      const boxAt = (label: string, px: number, py: number, [dx, dy, align]: typeof offsets[number]) => {
+        const w = textWidth(label, 12), x = px + dx, y = py + dy, left = align === 'start' ? x : align === 'end' ? x - w : x - w / 2;
+        return { x, y, align, box: [left, y - 12, left + w, y + 4] as Box };
+      };
+      const fits = (box: Box) => box[0] >= b.l + 2 && box[2] <= b.r - 2 && box[1] >= b.t + 2 && box[3] <= b.b - 2;
+      const onLabel = (box: Box) => placed.some(p => Math.min(p[2], box[2]) > Math.max(p[0], box[0]) - 4 && Math.min(p[3], box[3]) > Math.max(p[1], box[1]) - 4);
+      const inked = (box: Box) => { let n = 0; for (let x = box[0] - 2; x <= box[2] + 2; x += 4) for (let y = box[1] - 2; y <= box[3] + 2; y += 4) if (inkCells.has(cell(x, y))) n++; return n; };
+      const tag = (label: string | undefined, px: number, py: number, col: string) => { if (label) pending.push({ label, anchors: [[px, py]], col, along: false }); };
+      /** A label that may sit near any of several points of its curve (its end, or anywhere along a contour). */
+      const tagNear = (label: string | undefined, anchors: P[], col: string, along = false) => { if (label && anchors.length) pending.push({ label, anchors, col, along }); };
+      const placeLabels = () => {
+        for (const p of [...pending.filter(q => !q.along), ...pending.filter(q => q.along)]) {
+          let best: ReturnType<typeof boxAt> | undefined, score = -Infinity;
+          p.anchors.forEach(([px, py], i) => offsets.forEach((o, k) => {
+            const at = boxAt(p.label, px, py, o);
+            if (!fits(at.box) || onLabel(at.box)) return;
+            const cx = (at.box[0] + at.box[2]) / 2, cy = (at.box[1] + at.box[3]) / 2;
+            // Clear of ink first; then near its own point (an end label) or far from the other labels (a contour's).
+            const room = Math.min(300, ...placed.map(q => Math.hypot(cx - (q[0] + q[2]) / 2, cy - (q[1] + q[3]) / 2)));
+            const sc = -inked(at.box) * 1000 + (p.along ? room : -i * 2 - k);
+            if (sc > score) { score = sc; best = at; }
+          }));
+          if (!best) { const [px, py] = p.anchors[0]; best = boxAt(p.label, Math.min(Math.max(px, b.l + 10), b.r - 10), Math.min(Math.max(py, b.t + 20), b.b - 10), offsets[0]); }
+          placed.push(best.box);
+          plotPen.text(best.x, best.y, p.label, { size: 12, color: p.col, align: best.align });
+        }
+      };
       for (const item of layers) {
         const l = item.l, col = tone(l.color, l.type === 'function' || l.type === 'parametric' || l.type === 'polar' || l.type === 'implicit' || l.type === 'points' ? series[legend % series.length] as Tone : 'ink');
         if (item.l.type === 'function' && 'f' in item && item.f) {
@@ -198,16 +244,25 @@ export function compileVisual(raw: unknown): CompiledVisual {
           const fl = item as { f: Compiled; from: Compiled | null; to: Compiled | null; l: Extract<typeof l, { type: 'function' }> };
           const a = Math.max(x0, fl.from ? safeEval(fl.from, v) : x0), z1 = Math.min(x1, fl.to ? safeEval(fl.to, v) : x1);
           let run: P[] = [], last: P | null = null;
+          const ends: P[] = [];
           const flush = () => { if (run.length > 1) pen.path(run, { stroke: col, width: fl.l.width ?? 2.2, dash: fl.l.dash ? [5, 6] : undefined }); run = []; };
+          // A curve that leaves the plot stops at the frame (cut where it crosses), never runs along it.
+          let prev: P | null = null;
+          const within = (y: number) => y >= b.t && y <= b.b;
+          const cut = (p: P, q: P): P => { const edge = within(p[1]) ? (q[1] < b.t ? b.t : b.b) : (p[1] < b.t ? b.t : b.b), f = (edge - p[1]) / (q[1] - p[1]); return [p[0] + (q[0] - p[0]) * f, edge]; };
           for (let i = 0; i <= 400; i++) {
             const x = a + (z1 - a) * i / 400, y = safeEval(fl.f, { ...v, x });
-            if (!Number.isFinite(y) || !inside(Y(y))) { flush(); continue; }
-            const pt: P = [X(x), clipY(Y(y))];
-            if (run.length && Math.abs(pt[1] - run[run.length - 1][1]) > (b.b - b.t) * 0.9) flush();
-            run.push(pt); last = pt;
+            if (!Number.isFinite(y) || !inside(Y(y))) { flush(); prev = null; continue; }
+            const pt: P = [X(x), Y(y)];
+            if (run.length && Math.abs(pt[1] - run[run.length - 1][1]) > (b.b - b.t) * 0.9) { flush(); prev = null; }
+            if (within(pt[1])) {
+              if (!run.length && prev && !within(prev[1])) run.push(cut(prev, pt));
+              run.push(pt); ends.push(pt); last = pt;
+            } else if (run.length && prev) { run.push(cut(prev, pt)); flush(); }
+            prev = pt;
           }
           flush();
-          if (last) tag(fl.l.label, last[0], last[1], col);
+          if (last) tagNear(fl.l.label, ends.slice().reverse().filter((_, k) => k % 4 === 0), col);
         } else if (l.type === 'parametric') {
           legend++;
           const pl = item as { fx: Compiled; fy: Compiled; from: Compiled; to: Compiled };
@@ -284,7 +339,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
             const level = safeEval(lv, v);
             if (!Number.isFinite(level)) return;
             const cc = il.levels.length > 1 ? tone(l.color, series[li % series.length] as Tone) : col;
-            let labelled = false;
+            const along: P[] = [];
             for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
               const a = grid[j * (nx + 1) + i] - level, b2 = grid[j * (nx + 1) + i + 1] - level, c2 = grid[(j + 1) * (nx + 1) + i + 1] - level, d = grid[(j + 1) * (nx + 1) + i] - level;
               if (![a, b2, c2, d].every(Number.isFinite)) continue;
@@ -293,11 +348,17 @@ export function compileVisual(raw: unknown): CompiledVisual {
               edge(a, b2, f => [px(i + f), py(j)]); edge(b2, c2, f => [px(i + 1), py(j + f)]); edge(c2, d, f => [px(i + 1 - f), py(j + 1)]); edge(d, a, f => [px(i), py(j + 1 - f)]);
               // A jump of sign across a pole (1/x) is not a contour.
               if (cross.length >= 2 && Math.max(Math.abs(a), Math.abs(b2), Math.abs(c2), Math.abs(d)) < 1e6) {
-                pen.path([cross[0], cross[1]], { stroke: cc, width: 2, dash: l.dash ? [4, 5] : undefined });
-                if (cross.length === 4) pen.path([cross[2], cross[3]], { stroke: cc, width: 2 });
-                if (!labelled && l.label && i > nx * 0.55) { labelled = true; tag(il.levels.length > 1 ? `${l.label} = ${fmt(level, Math.abs(level) < 10 ? 2 : 0)}` : l.label, cross[0][0], cross[0][1], cc); }
+                // The curve is drawn in pieces a cell long, so a dash pattern would restart on each and print solid:
+                // a dashed curve keeps the pieces on alternate squares of a 7 px checkerboard instead, in any direction.
+                const on = (p: P, q: P) => !l.dash || (Math.floor((p[0] + q[0]) / 14) + Math.floor((p[1] + q[1]) / 14)) % 2 === 0;
+                // The gaps of a dashed curve still count as ink, so no label is placed across the line.
+                const piece = (p: P, q: P) => { if (on(p, q)) pen.path([p, q], { stroke: cc, width: 2 }); else { mark(p[0], p[1]); mark((p[0] + q[0]) / 2, (p[1] + q[1]) / 2); mark(q[0], q[1]); } };
+                piece(cross[0], cross[1]);
+                if (cross.length === 4) piece(cross[2], cross[3]);
+                if ((i + j) % 3 === 0) along.push(cross[0]);
               }
             }
+            if (l.label) tagNear(il.levels.length > 1 ? `${l.label} = ${fmt(level, Math.abs(level) < 10 ? 2 : 0).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '').replace(/^-/, '−')}` : l.label, along, cc, true);
           });
         } else if (l.type === 'points') {
           legend++;
@@ -307,9 +368,10 @@ export function compileVisual(raw: unknown): CompiledVisual {
           if (l.label && pts.length) tag(l.label, pts[pts.length - 1][0], pts[pts.length - 1][1], col);
         } else if (l.type === 'text') {
           const tl = item as { x: Compiled; y: Compiled }, px = safeEval(tl.x, v), py = safeEval(tl.y, v);
-          if (Number.isFinite(px) && Number.isFinite(py)) pen.text(X(px), Y(py), l.text, { size: l.size ?? 12.5, color: tone(l.color, 'soft') });
+          if (Number.isFinite(px) && Number.isFinite(py)) { const size = l.size ?? 12.5; placed.push([X(px), Y(py) - size, X(px) + textWidth(l.text, size), Y(py) + 4]); pen.text(X(px), Y(py), l.text, { size, color: tone(l.color, 'soft') }); }
         }
       }
+      placeLabels();
     };
   } else if (spec.kind === 'diagram') {
     const nodes = spec.nodes || [];

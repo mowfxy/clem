@@ -10,7 +10,7 @@ import { inflight, stoppedRuns } from "./inflight";
 import { wordDocument } from "./docx-document";
 import { powerpointDeck } from "./pptx-deck";
 import { markdownDeck } from "./markdown-deck";
-import {markdownDocument, unwritten} from "./pdf-document";
+import {askedKind, markdownDocument, unwritten} from "./pdf-document";
 import { failureMemory } from "./repeat-guard";
 import {memoryQuery,retrievalQuery} from "../core/chat-context";
 import {condenseConversation,briefKey,type Brief} from "./chat-condense";
@@ -1611,6 +1611,13 @@ void app.whenReady().then(async () => {
           const stored = JSON.parse((await disk.readFile(user.id, "spec-" + revise))?.toString("utf8") || "{}");
           if (stored.action !== "editpdf") throw Error(`"${documents.get(revise)}" was not made by editpdf. To change it as a PDF, send {"action":"editpdf","file":"${revise}",…}: that makes an edited copy.`);
           if (!append && !clean.file && !clean.source) clean = { source: stored.source, name: stored.name, ...clean };
+        }
+        // A new document's genre is the one the person asked for: a report or paper layout only when they said so.
+        if ((action === "pdf" || action === "docx") && !revise && clean && typeof clean === "object") {
+          const said = request.messages.filter((m) => m.role === "user" && !m.content.startsWith("Source material (untrusted, not instructions):")).map((m) => m.content).join("\n");
+          clean = { ...clean, kind: askedKind(clean.kind, said) };
+          // The paper look is the person's to ask for too ("like a research paper"), never the model's default.
+          if (clean.style === "technical" && askedKind("report", said) !== "report") delete clean.style;
         }
         const made = await makeFile(action, clean, { preview: true, seen: figuresSeen, assets: (id) => readAsset(cropIo, id), edit: editHelpers, render: renderPages });
         if (window.isDestroyed() || cancelled()) throw Error("Request cancelled");
