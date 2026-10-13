@@ -349,7 +349,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       setPageNow(now);
     } else spot.current = { frac: el.scrollHeight > el.clientHeight ? round(el.scrollTop / (el.scrollHeight - el.clientHeight)) : 0 };
   }
-  /** Brings a page (or a spot on it) into view and lets it glow for a moment. */
+  /** Brings a page (or a spot on it) into view; the reader dims around it for a moment. */
   function goTo(f: FileFocus, smooth = true) {
     const el = body.current, at = pageAt(f.page);
     if (!el || !at) return;
@@ -369,7 +369,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     measure();
   }, []);
   useEffect(() => { if (!focus) return; if (pageEls().length) goTo(focus); else pendingFocus.current = focus; }, [focus?.key]);
-  useEffect(() => { if (!glow) return; const t = setTimeout(() => setGlow(null), 2200); return () => clearTimeout(t); }, [glow]);
+  useEffect(() => { if (!glow) return; const t = setTimeout(() => setGlow(null), 1350); return () => clearTimeout(t); }, [glow]);
   // Other files keep their place as a share of the way down, restored once their content has its height.
   useEffect(() => {
     if (restored.current || kind === "pdf" || (!shown && !imageUrl)) return;

@@ -94,7 +94,6 @@ html.fp-resizing .file-panel{transition:none}
 @media(max-width:900px){.chat-split{flex-direction:column}.chat-split:has(>.file-panel)>.chat-view{min-width:0}.file-panel,.file-panel.wide{position:relative;top:0;width:auto;max-width:none;min-width:0;height:60vh;margin:0 8px 8px;align-self:stretch}.fp-resize{display:none}}
 @media(prefers-reduced-motion:reduce){.file-panel,.fp-changed,.fp-flash{animation:none}.is-working .fp-body::before{animation:none}}
 
-.desktop-content .file-panel{top:46px;height:calc(100vh - 54px)}
 .file-panel.as-modal .fp-resize{display:none}
 
 /* Pointing at part of a file: selections and areas go to the chat */
@@ -179,14 +178,12 @@ dialog.fp-dialog::backdrop{background:#0000008c;backdrop-filter:blur(6px);animat
 @keyframes fp-sync-arrive{from{transform:scale(.4);opacity:0}}
 @media (prefers-reduced-motion:reduce){.fp-sync.is-uploading{animation-duration:2.4s}.fp-sync.is-synced{animation:none}}
 
-/* A pointer pressed in the chat: its spot on the page glows for a moment, with a marker in the margin */
-.fp-glow{position:absolute;z-index:3;pointer-events:none;border-radius:4px;margin:-3px;padding:3px;background:#f6c24a45;box-shadow:0 0 0 2px #e8ac2a;mix-blend-mode:multiply;animation:fp-glow 2.2s cubic-bezier(.2,.8,.3,1) both}
-.fp-glow::before{content:"";position:absolute;left:-12px;top:0;bottom:0;width:4px;border-radius:4px;background:#e8ac2a;mix-blend-mode:normal}
-.fp-glow.is-page{inset:0;margin:0;padding:0;background:#f6c24a1f;box-shadow:0 0 0 3px #e8ac2a;border-radius:3px}
-.fp-glow.is-page::before{display:none}
-@keyframes fp-glow{0%{opacity:0;transform:scale(1.06)}12%{opacity:1;transform:none}24%{box-shadow:0 0 0 2px #e8ac2a,0 0 0 9px #e8ac2a33}40%{box-shadow:0 0 0 2px #e8ac2a,0 0 0 0 #e8ac2a00}75%{opacity:1}100%{opacity:0}}
-@media(prefers-reduced-motion:reduce){.fp-glow{animation:fp-glow-still 2.2s steps(1) both}}
-@keyframes fp-glow-still{0%{opacity:1}100%{opacity:0}}
+/* A pointer pressed in the chat: the reader dims for a moment around its spot, then clears */
+.fp-glow{position:absolute;z-index:3;pointer-events:none;border-radius:5px;margin:-4px;padding:4px;box-shadow:0 0 0 200vmax #0000;animation:fp-spot 1.3s cubic-bezier(.3,.6,.3,1) both}
+.fp-glow.is-page{inset:0;margin:0;padding:0;border-radius:3px}
+@keyframes fp-spot{0%{box-shadow:0 0 0 200vmax #0000}18%,55%{box-shadow:0 0 0 200vmax #0000006b}100%{box-shadow:0 0 0 200vmax #0000}}
+@media(prefers-reduced-motion:reduce){.fp-glow{animation:fp-spot-still 1.3s steps(1) both}}
+@keyframes fp-spot-still{0%{box-shadow:0 0 0 200vmax #0000005c}100%{box-shadow:0 0 0 200vmax #0000}}
 /* Pointers in sent messages open their file at the spot */
 button.pointer-chip{cursor:pointer;font:inherit;font-size:12px;color:#d8d7d0;padding:0 10px 0 8px;transition:background .15s,border-color .15s}
 button.pointer-chip:hover{background:#ffffff12;border-color:#55554f;color:#fff}
