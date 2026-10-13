@@ -56,7 +56,6 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
   const ids = new Set<string>();
   for (const n of nodes) { if (!n || typeof n.id !== "string" || typeof n.label !== "string") throw Error('each node needs "id" and "label"'); if (ids.has(n.id)) throw Error(`duplicate node id "${n.id}"`); ids.add(n.id); }
   for (const e of edges) if (!ids.has(e?.from) || !ids.has(e?.to)) throw Error(`edge ${e?.from} → ${e?.to} refers to a missing node`);
-  const across = spec.direction === "right";
   // Back edges (loops) are found by depth-first search so layering follows the forward flow.
   const out = new Map<string, FlowEdge[]>(nodes.map((n) => [n.id, []]));
   edges.forEach((e) => out.get(e.from)!.push(e));
@@ -75,6 +74,12 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
     const prev = layers[i - 1] || [], pos = (id: string) => { const parents = forward.filter((e) => e.to === id).map((e) => prev.indexOf(e.from)).filter((x) => x >= 0); return parents.length ? parents.reduce((a, b) => a + b, 0) / parents.length : Infinity; };
     layers[i] = (layers[i] || []).slice().sort((a, b) => pos(a) - pos(b));
   }
+  // A long single chain of steps (no branches or loops) is set in rows read left to right, as a textbook does, so it
+  // stays readable at print width without running down a whole page. Branching charts go across only while they
+  // have at most four steps; past that they run down the page.
+  const chain = !back.size && layers.every((ids) => ids?.length === 1);
+  const rows = chain && layers.length > (spec.direction === "right" ? 4 : 6);
+  const across = rows || (spec.direction === "right" && layers.length <= 4);
   const size = 12.5, boxW = across ? 150 : 170;
   const dims = new Map<string, { w: number; h: number; lines: string[] }>();
   for (const n of nodes) {
@@ -83,7 +88,9 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
     const h = Math.max(decision ? 70 : 42, lines.length * size * 1.25 + (decision ? 40 : 20));
     dims.set(n.id, { w: decision ? boxW + 10 : boxW, h, lines });
   }
-  const gapMain = across ? 70 : 54, gapCross = 34;
+  // Across, the gap between steps holds the widest edge label, so a label never covers a box.
+  const labelRoom = Math.max(0, ...edges.map((e) => (e.label ? Math.max(...wrap(e.label, 110, 11, 2).map((l) => textWidth(l, 11))) + 26 : 0)));
+  const gapMain = across ? Math.max(70, labelRoom) : 54, gapCross = 34;
   const layerSize = layers.map((ids) => Math.max(...(ids || []).map((id) => across ? dims.get(id)!.w : dims.get(id)!.h)));
   const crossSize = layers.map((ids) => (ids || []).reduce((s, id) => s + (across ? dims.get(id)!.h : dims.get(id)!.w) + gapCross, -gapCross));
   const crossTotal = Math.max(...crossSize), margin = 34, loopRoom = back.size ? 46 : 0;
@@ -100,8 +107,18 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
     }
     main += layerSize[i] + gapMain;
   });
-  const width = across ? main - gapMain + margin : crossTotal + margin * 2 + loopRoom;
-  const height = across ? crossTotal + margin * 2 + loopRoom : main - gapMain + margin;
+  let width = across ? main - gapMain + margin : crossTotal + margin * 2 + loopRoom;
+  let height = across ? crossTotal + margin * 2 + loopRoom : main - gapMain + margin;
+  const gapRow = 58;
+  if (rows) {
+    const perRow = Math.ceil(layers.length / Math.ceil(layers.length / 4)), rowH: number[] = [];
+    layers.forEach((ids, i) => { const r = Math.floor(i / perRow); rowH[r] = Math.max(rowH[r] || 0, dims.get(ids[0])!.h); });
+    let y = margin;
+    const rowY = rowH.map((h) => { const c = y + h / 2; y += h + gapRow; return c; });
+    layers.forEach((ids, i) => pos.set(ids[0], { x: margin + (i % perRow) * (boxW + gapMain) + boxW / 2 + 5, y: rowY[Math.floor(i / perRow)] }));
+    width = margin * 2 + perRow * boxW + (perRow - 1) * gapMain + 10;
+    height = y - gapRow + margin;
+  }
   const shape = (n: FlowNode) => {
     const { x, y } = pos.get(n.id)!, { w, h, lines } = dims.get(n.id)!, l = x - w / 2, t = y - h / 2;
     const k = n.shape || "process";
@@ -137,6 +154,12 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
         ? `M${num(a.x)} ${num(a.y + da.h / 2)} L${num(a.x)} ${num(side)} L${num(b.x)} ${num(side)} L${num(b.x)} ${num(b.y + db.h / 2 + 2)}`
         : `M${num(a.x + da.w / 2)} ${num(a.y)} L${num(side)} ${num(a.y)} L${num(side)} ${num(b.y)} L${num(b.x + db.w / 2 + 2)} ${num(b.y)}`;
       drawn += `<path d="${path}" fill="none" stroke="${LINE}" stroke-width="1.3" stroke-dasharray="5 3" marker-end="url(#arrow)"/>` + label(e.label, across ? (a.x + b.x) / 2 : side, across ? side : (a.y + b.y) / 2);
+      continue;
+    }
+    if (rows && Math.abs(a.y - b.y) > 1) {
+      // From the end of one row down to the start of the next: down, back along the gap between the rows, down.
+      const s = { x: a.x, y: a.y + dims.get(e.from)!.h / 2 }, t = { x: b.x, y: b.y - dims.get(e.to)!.h / 2 }, m = (s.y + t.y) / 2;
+      drawn += `<path d="M${num(s.x)} ${num(s.y)} L${num(s.x)} ${num(m)} L${num(t.x)} ${num(m)} L${num(t.x)} ${num(t.y)}" fill="none" stroke="${LINE}" stroke-width="1.4" marker-end="url(#arrow)"/>` + label(e.label, (s.x + t.x) / 2, m);
       continue;
     }
     const start = edgePoint(e.from, b), end = edgePoint(e.to, a);

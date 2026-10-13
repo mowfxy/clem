@@ -62,6 +62,36 @@ export const kinetraRecipes: KinetraRecipe[] = [
     figure: { module: "mowr", fn: "logicDiagram", args: ["A B + !C", "F", "F = AB + C′"] },
     notes: "Operators: juxtaposition or * for AND, + for OR, ! or ' for NOT, ^ for XOR. Simplify first with dld/simplify if the user asked for a minimal circuit. dld/kmap buildKMap counts the first variable as the lowest minterm bit, so for a textbook F(A,B,C) = Σm(…) pass variables reversed ([\"C\",\"B\",\"A\"]).",
   },
+  {
+    name: "domain in the plane",
+    use: "the domain of f(x, y) or any region of the plane: shaded set, solid boundary that belongs to it, dashed boundary that does not",
+    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Domain of f(x, y) = √(x + y + 1) / (x − 1)", x: { min: -4, max: 4, label: "x" }, y: { min: -4, max: 4, label: "y" }, equal: true, layers: [{ type: "area", expr: "4", base: "-x-1", from: -4, to: 4, color: "blue" }, { type: "text", x: 2.3, y: 2.5, text: "D", size: 16, color: "blue" }, { type: "function", expr: "-x-1", color: "blue", label: "y = −x − 1" }, { type: "implicit", expr: "x-1", color: "coral", dash: true, label: "x = 1 excluded" }] }] },
+    notes: "kind plot. area fills between expr (top) and base (bottom) for x from \"from\" to \"to\"; set the top to the y-axis maximum for a region above a curve; name the region with a text layer inside it, clear of the axes. implicit expr = 0 draws any boundary g(x, y) = 0 (circles, vertical lines); dash:true for points left out. polygon with fill:true for straight-edged regions. equal:true keeps circles round.",
+  },
+  {
+    name: "contour map / level curves",
+    use: "level curves f(x, y) = k and contour maps, labelled by level; also implicit curves and boundaries",
+    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Level curves of f(x, y) = x² − y²", x: { min: -3, max: 3, label: "x" }, y: { min: -3, max: 3, label: "y" }, equal: true, layers: [{ type: "implicit", expr: "x^2 - y^2", levels: [-4, -1, 0, 1, 4], label: "k" }] }] },
+    notes: "One implicit layer with levels (up to 12) draws every level curve f = k, each labelled \"k = value\". Choose levels evenly in k for a contour map (spacing then shows steepness). Variables x and y; ^ for powers.",
+  },
+  {
+    name: "surface z = f(x, y)",
+    use: "the graph of a function of two variables, a quadric surface, or a surface with a trace curve on it",
+    figure: { module: "mowr", fn: "visual", args: [{ kind: "3d", title: "Graph of z = x² + y² (paraboloid)", x: { min: -2, max: 2, label: "x" }, y: { min: -2, max: 2, label: "y" }, z: { min: 0, max: 8, label: "z" }, objects: [{ type: "surface", expr: "x^2 + y^2", x: [-2, 2], y: [-2, 2], colormap: true, wireframe: true }, { type: "curve", x: "s", y: "1", z: "s^2 + 1", from: -2, to: 2, color: "coral", label: "trace y = 1", width: 3 }], camera: { azimuth: 35, elevation: 25 } }] },
+    notes: "Printed as a still from the camera (azimuth and elevation in degrees). surface expr in x and y; curve is parametric in s (traces: fix x or y). Pair it with a contour map of the same f when the text compares them.",
+  },
+  {
+    name: "polar curve",
+    use: "polar curves r = f(θ), polar regions and the polar form of a limit",
+    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Cardioid r = 1 + cos θ", x: { min: -1, max: 2.5, label: "x" }, y: { min: -1.5, max: 1.5, label: "y" }, equal: true, layers: [{ type: "polar", r: "1 + cos(theta)", from: 0, to: 6.2832, label: "r = 1 + cos θ" }, { type: "segment", x1: 0, y1: 0, x2: 1.207, y2: -1.207, dash: true, label: "r" }, { type: "point", x: 0, y: 0, label: "O" }] }] },
+    notes: "polar r in theta (radians), from/to default 0 to 2π. Add segments for a radius and points for the pole.",
+  },
+  {
+    name: "limit along paths",
+    use: "testing a limit at a point along several paths (lines, parabolas) that approach it",
+    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Paths to the origin for f(x, y) = xy / (x² + y²)", x: { min: -2, max: 2, label: "x" }, y: { min: -2, max: 2, label: "y" }, equal: true, layers: [{ type: "function", expr: "0", label: "y = 0: f → 0" }, { type: "function", expr: "x", label: "y = x: f → 1/2" }, { type: "function", expr: "x^2", dash: true, label: "y = x²: f → 0" }, { type: "point", x: 0, y: 0, color: "coral", label: "(0, 0)" }] }] },
+    notes: "One function layer per path, labelled with the value f approaches along it; a point at the limit point. Different values along two paths show the limit does not exist.",
+  },
 ];
 
 
@@ -146,9 +176,15 @@ export const recipeText = (recipes: KinetraRecipe[] = allRecipes()) =>
  */
 const MECHANICS = "force|newton|mechanic|dynamics|statics|equilibrium|tension|weight|mass|accelerat|friction";
 const ELECTROSTATICS = "electrostat|charge|coulomb|electric field|field lines?|static electric|insulator|conductor|induction";
+const CALCULUS = "calculus|partial derivative|gradient|\\bmaths?\\b|mathematic|graph(?:s|ing)?\\b|sketch";
 const topic = (words: string) => new RegExp(words, "i");
 export const recipeTopics: Record<string, RegExp> = {
   "function plot": /plot|graph|curve|function|f\s*\(\s*x\s*\)|y\s*=|parabol|quadratic|polynomial|trig|\bsin\b|\bcos\b|\btan\b|exponential|logarithm|derivative|differentiat|integral|integrat|calculus|scatter|data points?|asymptot|equation|maths?\b|mathematic/i,
+  "domain in the plane": topic(`domain|region|inequalit|several variables|two variables|multivariable|f\\s*\\(\\s*x\\s*,\\s*y|${CALCULUS}`),
+  "contour map / level curves": topic(`contour|level (?:curve|set|surface)|isoline|implicit|several variables|two variables|multivariable|f\\s*\\(\\s*x\\s*,\\s*y|${CALCULUS}`),
+  "surface z = f(x, y)": topic(`surface|paraboloid|hyperboloid|ellipsoid|quadric|saddle|traces?\\b|z\\s*=|3d graph|several variables|two variables|multivariable|f\\s*\\(\\s*x\\s*,\\s*y|${CALCULUS}`),
+  "polar curve": topic(`polar|cardioid|rose curve|limaçon|limacon|\\btheta\\b|θ|${CALCULUS}`),
+  "limit along paths": topic(`limits?\\b|continu|paths?\\b|approach|squeeze|sandwich|several variables|two variables|multivariable|${CALCULUS}`),
   projectile: topic(`projectile|trajector|launch|thrown|throw|kinematic|free fall|motion|velocity|range|apex|${MECHANICS}`),
   "free-body diagram": topic(`free[- ]?body|fbd|normal|incline|ramp|slope|${MECHANICS}`),
   "pulley (Atwood)": topic(`pulley|atwood|rope|hanging|${MECHANICS}`),

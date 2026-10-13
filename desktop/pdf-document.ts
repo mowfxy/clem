@@ -34,6 +34,12 @@ export function figureLayout(width: number, column: number, { words, columns = 1
 }
 /** The width a drawing (a Kinetra figure's SVG) asks for, in CSS pixels, or undefined. */
 const svgWidth = (svg: string) => { const w = Number(/^<svg[^>]*?\swidth="([\d.]+)(?:px)?"/.exec(svg)?.[1]); return w > 0 ? w : undefined; };
+/** Height over width of a drawing, from its viewBox (or width and height), or undefined. */
+const svgAspect = (svg: string) => {
+  const head = /^<svg[^>]*>/.exec(svg)?.[0] || "", box = /viewBox="[\d.\-]+[ ,]+[\d.\-]+[ ,]+([\d.]+)[ ,]+([\d.]+)"/.exec(head);
+  const w = Number(box?.[1] ?? /\swidth="([\d.]+)/.exec(head)?.[1]), h = Number(box?.[2] ?? /\sheight="([\d.]+)/.exec(head)?.[1]);
+  return w > 0 && h > 0 ? h / w : undefined;
+};
 type Figure = { module: string; fn: string; args: unknown[] } & Placement;
 type Section = { heading?: string; text?: string; figure?: Figure; caption?: string };
 export type DocumentSpec = {
@@ -118,6 +124,18 @@ export const cleanCss = (css: string) =>
 export type Layout = "technical" | "notes" | "business" | "letter";
 const layouts = new Set<Layout>(["technical", "notes", "business", "letter"]);
 const kindLayout: Record<string, Layout> = { report: "technical", paper: "technical", notes: "notes", handout: "notes", manual: "notes", worksheet: "notes", document: "notes", brief: "business", proposal: "business", memo: "business", letter: "letter" };
+/**
+ * The genre the person asked for. A technical report or paper prints only when their own words ask for one ("a
+ * report", "like a research paper", "a lab write-up"); a study guide or an explanation of lectures the model filed as
+ * a report becomes lecture notes (a handout when they asked for a handout or cheat sheet), so no one gets a "Technical
+ * Report" they never wanted.
+ */
+const askedPaper = /\breports?\b|(?<!\b(?:past|exam|question|test|practice|sample) )\bpapers?\b|\bpreprints?\b|\bresearch\b|\bjournal\b|\barxiv\b|\bthes[ie]s\b|\bdissertations?\b|\bwrite-?ups?\b|\bieee\b|\barticles?\b/i;
+export function askedKind(kind: unknown, said: string): string {
+  if (typeof kind === "string" && kind !== "report" && kind !== "paper") return kind;
+  if (askedPaper.test(said)) return typeof kind === "string" ? kind : "report";
+  return /\bhandouts?\b|\bcheat ?sheets?\b|\bone-?pager\b/i.test(said) ? "handout" : "notes";
+}
 export const layoutFor = (spec: Pick<DocumentSpec, "kind" | "style">): Layout =>
   layouts.has(spec.style as Layout) ? (spec.style as Layout) : kindLayout[String(spec.kind || "report")] || "technical";
 
@@ -195,7 +213,7 @@ async function inTurns<T, R>(items: T[], limit: number, work: (item: T, index: n
 export const MAX_SECTIONS = 10000;
 const unsafeSvg = /<script|<foreignObject|\bon\w+\s*=|(?:href|src)\s*=\s*["'](?:https?:|file:|javascript:)/i;
 const kinds = new Set(["report", "paper", "brief", "notes", "proposal", "manual", "handout", "worksheet", "letter", "memo", "document"]);
-const kindLabel: Record<string, string> = { report: "Technical Report", paper: "Preprint", brief: "Briefing", notes: "Notes", proposal: "Proposal", manual: "Guide", handout: "Handout", worksheet: "Worksheet", letter: "Letter", memo: "Memorandum", document: "" };
+const kindLabel: Record<string, string> = { report: "Report", paper: "Preprint", brief: "Briefing", notes: "Notes", proposal: "Proposal", manual: "Guide", handout: "Handout", worksheet: "Worksheet", letter: "Letter", memo: "Memorandum", document: "" };
 const summaryLabel = (kind: string) => (kind === "paper" || kind === "report" ? "Abstract" : kind === "brief" || kind === "proposal" ? "Executive summary" : kind === "memo" ? "Summary" : "Overview");
 /** Mowr numbers sections itself, so manual numbers in headings are removed. */
 export const cleanHeading = (heading: string) => heading.replace(/^\s*(?:(?:\d+(?:\.\d+)*|[IVXLC]+|[A-Z])[.)]|\d+(?:\.\d+)+)\s+/, "").trim();
@@ -285,7 +303,14 @@ const longDate = (value?: string) => {
 };
 /** A CSS string literal (for the running head), safe inside a <style> element. */
 const cssString = (text: string) => '"' + text.replace(/[\\"]/g, "\\$&").replace(/[\r\n]+/g, " ").replace(/</g, "\\3C ").replace(/\{/g, "\\7B ").replace(/\}/g, "\\7D ") + '"';
-const runningTitle = (title: string) => (title.length > 90 ? title.slice(0, 87).replace(/\s+\S*$/, "") + "…" : title);
+/** The running head is one line, like a book's short title: a long title is cut at a natural break (", with",
+ *  " with", " — " or ";") when that leaves at least 15 characters, otherwise at a word, with an ellipsis. */
+export const runningTitle = (title: string) => {
+  if (title.length <= 60) return title;
+  const breaks = [...title.matchAll(/,\s+(?:with|and|including)\s|\s+[—–-]\s+|;\s|\s+with\s/g)].map((m) => m.index!).filter((i) => i >= 15 && i <= 60);
+  if (breaks.length) return title.slice(0, breaks[0]).trim();
+  return title.slice(0, 57).replace(/\s+\S*$/, "") + "…";
+};
 
 /** Page frame per layout: margins, running head (from page 2) and page numbers. Written with literal font stacks,
  *  since page-margin boxes do not see the document's custom properties. */
@@ -369,7 +394,7 @@ figure.align-wrap-right figcaption,figure.align-wrap-left figcaption{display:blo
 figcaption,caption{display:table;margin:0 auto;font-size:9.6pt;line-height:1.35;text-align:justify;color:#111}
 caption{display:table-caption;caption-side:top;margin-bottom:6pt;text-align:center}
 .cap-label{font-weight:400}
-table{border-collapse:collapse;margin:10pt auto 12pt;max-width:100%;font:9.5pt/1.32 var(--body);font-variant-numeric:lining-nums tabular-nums;border-top:1pt solid #111;border-bottom:1pt solid #111}
+table{border-collapse:collapse;margin:10pt auto 12pt;max-width:100%;font:9.5pt/1.32 var(--body);font-variant-numeric:lining-nums tabular-nums;border-top:1pt solid #111;border-bottom:1pt solid #111;break-inside:avoid}
 thead{display:table-header-group}
 tr{break-inside:avoid}
 th{padding:4pt 8pt 3pt;text-align:left;font-weight:700;border-bottom:.6pt solid #111;vertical-align:bottom}
@@ -621,12 +646,16 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
         const img = '<img class="sized" alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(src).toString("base64") + '">';
         picture = slot("asset-slot", `width:${width}px;margin-left:${left};margin-right:0`, SLOT + crop.id + "/" + figureNo + (crop.vector && !pictures ? "" : "/p"), img);
       } else {
-        const natural = svgWidth(svg);
-        const width = share ? share * column : sized(natural);
+        const natural = svgWidth(svg), aspect = svgAspect(svg);
+        // A square or tall drawing (a plot with equal axes, a contour map, a 3D surface) at full width is taller than the
+        // space left under a few paragraphs, so it would jump a page and leave a band of white: like a textbook, it
+        // prints at about half the column unless a width was asked for.
+        const upright = !share && aspect !== undefined && aspect >= 0.8;
+        const width = share ? share * column : upright ? Math.min(sized(natural), column * 0.55) : sized(natural);
         align = asked === "auto" ? figureLayout(width, column, { words, columns: design.columns, layout }) : asked;
         const wrap = align.startsWith("wrap");
-        const style = (share || wrap ? `width:${Math.round(Math.min(width, wrap ? column * 0.5 : column) * 100) / 100}px;` : "") + (align === "left" || wrap ? "margin-left:0;margin-right:0;" : align === "right" ? "margin-left:auto;margin-right:0;" : "");
-        const img = '<img' + (share || wrap ? ' class="sized"' : "") + ' alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(standardFonts(svg, type.body)).toString("base64") + '">';
+        const style = (share || wrap || upright ? `width:${Math.round(Math.min(width, wrap ? column * 0.5 : column) * 100) / 100}px;` : "") + (align === "left" || wrap ? "margin-left:0;margin-right:0;" : align === "right" ? "margin-left:auto;margin-right:0;" : "");
+        const img = '<img' + (share || wrap || upright ? ' class="sized"' : "") + ' alt="' + alt + '" src="data:image/svg+xml;base64,' + Buffer.from(standardFonts(svg, type.body)).toString("base64") + '">';
         picture = slot("figure-slot", style, SLOT + "figure/" + figureNo + "/p", img);
       }
       const figure = '<figure id="' + id + '"' + (align === "center" || align === "box" ? "" : ' class="align-' + align + '"') + ">" + picture + '<figcaption><span class="cap-label">Figure&#160;' + figureNo + ":</span> " + (section.caption ? markdownHtml(section.caption, { inline: true }) : escape(heading)) + "</figcaption></figure>";
@@ -647,7 +676,8 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
     // once it would run to several pages.
     const listed = numbered ? toc : headed.map((s, i) => ({ id: "sec-u" + sections.indexOf(s), num: "", text: cleanHeading(s.heading!), level: 2 as const }));
     const entries = listed.length > 120 ? listed.filter((e) => e.level === 2) : listed;
-    const own = entries.length > 14;
+    // Its own page only when it is long: a short guide's contents stays under the title, so page 1 is not left blank.
+    const own = entries.length > 24;
     const slot = (id: string) => '<span class="toc-page">' + (pages?.get(id) ?? "") + "</span>";
     body += '<nav class="doc-toc' + (own ? " page" : "") + '"><h2 class="toc-head">Contents</h2>' +
       entries.map((e) => `<a class="toc-row toc-l${e.level}" href="#${e.id}"><span class="toc-num">${e.num}</span><span class="toc-text">${e.level === 2 ? escape(e.text) : e.text}</span><span class="toc-fill"></span>${slot(e.id)}</a>`).join("") +
