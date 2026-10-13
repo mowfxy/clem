@@ -1,11 +1,11 @@
-// Lets staff send one person a preset email from the admin portal, on top of the emails the server and scripts send
+// Lets staff send one person a preset or hand-written email from the admin portal, and email support replies, on top of the emails the server and scripts send
 // automatically. Staff access is checked by the account service (/admin/me), the same check every portal call gets,
 // and every send is written to the portal's audit log.
 import express from 'express';
 import {randomUUID} from 'node:crypto';
 import {db,databaseReady} from './db.ts';
 import {mailReady,sendMail} from './mail.ts';
-import {staffEmail,staffPresets,type StaffPreset} from './email-layout.ts';
+import {caseReplyEmail,staffEmail,staffPresets,type StaffPreset} from './email-layout.ts';
 import {unsubscribeToken} from './emails.ts';
 
 type Staff={id:string;email:string;role:'owner'|'admin'|'support'};
@@ -14,14 +14,17 @@ class StaffError extends Error{status:number;constructor(message:string,status:n
 
 const accountService=()=>(process.env.MOWR_ACCOUNT_SERVICE||'https://mowr-accounts.mohamed-khaled011008.workers.dev').replace(/\/$/,'');
 
-async function staffFor(req:express.Request):Promise<Staff>{
+/** Replies from people land in the support inbox, not the address that sends. */
+const replyTo=()=>process.env.SUPPORT_EMAIL||'support@mowrai.com';
+
+async function staffFor(req:express.Request,roles:Staff['role'][]=['admin','owner']):Promise<Staff>{
   const authorization=req.get('authorization')||'';
   if(!/^Bearer \S+$/.test(authorization))throw new StaffError('Sign in to the admin portal first.',401);
   const r=await fetch(accountService()+'/admin/me',{headers:{Authorization:authorization},signal:AbortSignal.timeout(10000)})
     .catch(()=>{throw new StaffError('The account service could not be reached.',502);});
   const me=await r.json().catch(()=>({}));
   if(!r.ok)throw new StaffError(me.error||'This account does not have staff access.',r.status===401?401:403);
-  if(me.role!=='admin'&&me.role!=='owner')throw new StaffError('Sending emails needs the admin role.',403);
+  if(!roles.includes(me.role))throw new StaffError('Sending emails needs the admin role.',403);
   return me;
 }
 
@@ -32,6 +35,12 @@ function preset(value:unknown):StaffPreset{
 }
 
 function fields(body:Record<string,unknown>,kind:StaffPreset){
+  if(kind==='custom'){
+    const subject=String(body.subject||'').replace(/\s+/g,' ').trim(),message=String(body.message||'').replace(/\r\n/g,'\n').trim();
+    if(!subject||subject.length>150)throw new StaffError('Add a subject (up to 150 characters).',400);
+    if(message.length<2||message.length>10000)throw new StaffError('Write the message (up to 10,000 characters).',400);
+    return {version:'',notes:'',subject,message};
+  }
   if(kind!=='update')return {version:'',notes:''};
   const version=String(body.version||'').trim(),notes=String(body.notes||'').trim();
   if(!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(version))throw new StaffError('Enter the version, like 0.3.0.',400);
@@ -39,11 +48,20 @@ function fields(body:Record<string,unknown>,kind:StaffPreset){
   return {version,notes};
 }
 
-async function recipient(userId:unknown){
+const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** A person with a Mowr account (`userId`), or any address typed in (`email`), matched to an account when there is one. */
+async function recipient(userId:unknown,typed?:unknown){
+  if(!userId&&typeof typed==='string'){
+    const email=typed.trim().toLowerCase();
+    if(email.length>254||!emailPattern.test(email))throw new StaffError('Enter a valid email address.',400);
+    const [row]=await db()`SELECT a.user_id,p.display_name,p.username FROM desktop_activity a LEFT JOIN desktop_profiles p ON p.user_id=a.user_id WHERE lower(a.email)=${email} LIMIT 1`;
+    return {id:row?.user_id?String(row.user_id):email,email,name:String(row?.display_name||row?.username||'')};
+  }
   if(typeof userId!=='string'||!/^[\w-]{3,64}$/.test(userId))throw new StaffError('Choose a person.',400);
   const [row]=await db()`SELECT a.email,p.display_name,p.username FROM desktop_activity a LEFT JOIN desktop_profiles p ON p.user_id=a.user_id WHERE a.user_id=${userId}`;
   const email=String(row?.email||'').trim().toLowerCase();
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new StaffError('Mowr has no email address on record for this person.',404);
+  if(!emailPattern.test(email))throw new StaffError('Mowr has no email address on record for this person.',404);
   return {id:userId,email,name:String(row?.display_name||row?.username||'')};
 }
 
@@ -64,8 +82,9 @@ export function staffEmailRouter(send:Send=sendMail){
   router.post('/preview',handle(async(req,res)=>{
     await staffFor(req);
     const kind=preset(req.body?.kind);
-    const person=req.body?.userId?await recipient(req.body.userId).catch(()=>null):null;
-    const extra=kind==='update'?{version:String(req.body?.version||'').trim()||'0.0.0',notes:String(req.body?.notes||'')}:{version:'',notes:''};
+    const person=req.body?.userId||req.body?.email?await recipient(req.body.userId,req.body.email).catch(()=>null):null;
+    const extra=kind==='update'?{version:String(req.body?.version||'').trim()||'0.0.0',notes:String(req.body?.notes||'')}
+      :kind==='custom'?{subject:String(req.body?.subject||'').trim()||'Subject',message:String(req.body?.message||'').trim()||'Your message appears here.'}:{};
     const mail=staffEmail(kind,{...extra,name:person?.name||'',unsubscribe:unsubscribeLink(person?.email||'you@example.com')});
     res.json({subject:mail.subject,html:mail.html,to:person?.email||null});
   }));
@@ -73,10 +92,11 @@ export function staffEmailRouter(send:Send=sendMail){
   router.post('/send',handle(async(req,res)=>{
     const staff=await staffFor(req);
     if(!mailReady()||!databaseReady())throw new StaffError('Email sending is not set up on this server.',503);
-    const kind=preset(req.body?.kind),extra=fields(req.body||{},kind),person=await recipient(req.body?.userId);
+    const kind=preset(req.body?.kind),extra=fields(req.body||{},kind),person=await recipient(req.body?.userId,req.body?.email);
+    const detail=`${kind}${extra.version?' '+extra.version:''} · ${staffEmail(kind,{...extra,name:person.name}).subject} → ${person.email}`;
     // A double click or a second tab should not send the same email twice.
     const since=new Date(Date.now()-60_000).toISOString();
-    const [recent]=await db()`SELECT 1 AS hit FROM desktop_audit_log WHERE action='email.send' AND target=${person.id} AND detail LIKE ${kind+'%'} AND created_at>${since} LIMIT 1`;
+    const [recent]=await db()`SELECT 1 AS hit FROM desktop_audit_log WHERE action='email.send' AND target=${person.id} AND detail=${detail} AND created_at>${since} LIMIT 1`;
     if(recent)throw new StaffError('This email was just sent to them. Wait a minute to send it again.',409);
     let headers:Record<string,string>|undefined,unsubscribe='';
     if(kind==='update'){
@@ -86,14 +106,39 @@ export function staffEmailRouter(send:Send=sendMail){
       headers={'List-Unsubscribe':`<${unsubscribe}>, <mailto:support@mowrai.com?subject=unsubscribe>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'};
     }
     const mail=staffEmail(kind,{...extra,name:person.name,unsubscribe});
-    try{await send(person.email,mail.subject,mail.text,undefined,{html:mail.html,headers});}
+    try{await send(person.email,mail.subject,mail.text,replyTo(),{html:mail.html,headers});}
     catch(error){throw new StaffError((error as Error).message||'The mail server did not accept the email.',502);}
     const at=new Date().toISOString();
     // The automatic senders skip anyone already logged, so a hand-sent welcome or update is not repeated later.
     const logged=kind==='welcome'?'welcome':kind==='update'?'update:'+extra.version:null;
-    if(logged)await db()`INSERT INTO mowr_email_log(owner_id,kind,sent_at) VALUES(${'supabase:'+person.id},${logged},${at}) ON CONFLICT(owner_id,kind) DO NOTHING`;
-    await db()`INSERT INTO desktop_audit_log(id,actor_id,actor_email,action,target,detail,created_at) VALUES(${randomUUID()},${staff.id},${staff.email},'email.send',${person.id},${`${kind}${extra.version?' '+extra.version:''} · ${mail.subject} → ${person.email}`},${at})`;
+    if(logged&&person.id!==person.email)await db()`INSERT INTO mowr_email_log(owner_id,kind,sent_at) VALUES(${'supabase:'+person.id},${logged},${at}) ON CONFLICT(owner_id,kind) DO NOTHING`;
+    await db()`INSERT INTO desktop_audit_log(id,actor_id,actor_email,action,target,detail,created_at) VALUES(${randomUUID()},${staff.id},${staff.email},'email.send',${person.id},${detail},${at})`;
     res.json({ok:true,to:person.email,subject:mail.subject});
+  }));
+
+  // Emails the newest staff reply on a support case to the person who opened it. The case, its address and the reply
+  // all come from the account service under the caller's own staff session, so the portal can't aim it anywhere else.
+  router.post('/case-reply',handle(async(req,res)=>{
+    const staff=await staffFor(req,['support','admin','owner']);
+    if(!mailReady()||!databaseReady())throw new StaffError('Email sending is not set up on this server.',503);
+    const caseId=String(req.body?.caseId||'');
+    if(!/^[\w-]{8,64}$/.test(caseId))throw new StaffError('Choose a case.',400);
+    const r=await fetch(accountService()+'/admin/cases/'+caseId,{headers:{Authorization:req.get('authorization')!},signal:AbortSignal.timeout(10000)})
+      .catch(()=>{throw new StaffError('The account service could not be reached.',502);});
+    const found=await r.json().catch(()=>({}));
+    if(!r.ok)throw new StaffError(found.error||'Case not found.',r.status===404?404:502);
+    const c=found.case||{},email=String(c.email||'').trim().toLowerCase();
+    if(!emailPattern.test(email))throw new StaffError('Mowr has no email address on record for this person.',404);
+    const reply=[...(found.messages||[])].reverse().find((m:{author:string})=>m.author==='staff');
+    if(!reply)throw new StaffError('Send a reply first.',400);
+    const key=`case-reply ${reply.id} · `;
+    const [already]=await db()`SELECT 1 AS hit FROM desktop_audit_log WHERE action='email.send' AND detail LIKE ${key+'%'} LIMIT 1`;
+    if(already)throw new StaffError('This reply was already emailed.',409);
+    const mail=caseReplyEmail(String(c.subject||'Your support request'),String(reply.body),String(c.display_name||c.username||''));
+    try{await send(email,mail.subject,mail.text,replyTo(),{html:mail.html});}
+    catch(error){throw new StaffError((error as Error).message||'The mail server did not accept the email.',502);}
+    await db()`INSERT INTO desktop_audit_log(id,actor_id,actor_email,action,target,detail,created_at) VALUES(${randomUUID()},${staff.id},${staff.email},'email.send',${String(c.owner_id||email)},${`${key}${mail.subject} → ${email}`},${new Date().toISOString()})`;
+    res.json({ok:true,to:email,subject:mail.subject});
   }));
 
   return router;

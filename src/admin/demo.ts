@@ -53,8 +53,9 @@ export async function demoMail(path:string,body?:any):Promise<any>{
   const {staffEmail,staffPresets}=await import('../../server/email-layout.ts');
   await new Promise(r=>setTimeout(r,200));
   if(path==='/presets')return {presets:staffPresets,ready:true};
-  const person=people.find(p=>p.id===body?.userId);
-  const mail=staffEmail(body.kind,{name:person?.display_name||'',version:body.version||'0.0.0',notes:body.notes||'',unsubscribe:'https://mowrai.com/api/email/unsubscribe'});
+  if(path==='/case-reply'){const c=cases.find(x=>x.id===body.caseId)!;return {ok:true,to:c.email,subject:'Re: '+c.subject};}
+  const person=people.find(p=>p.id===body?.userId)||(body?.email?{id:body.email,email:body.email,display_name:''}:undefined);
+  const mail=staffEmail(body.kind,{name:person?.display_name||'',version:body.version||'0.0.0',notes:body.notes||'',subject:body.subject||'Subject',message:body.message||'Your message appears here.',unsubscribe:'https://mowrai.com/api/email/unsubscribe'});
   if(path==='/preview')return {subject:mail.subject,html:mail.html,to:person?.email||null};
   // Nothing leaves the browser in demo mode; the send only lands in the local audit list.
   const entry={id:'audit'+Date.now(),actor_email:'m@mohamedmowafy.com',action:'email.send',target:person!.id,detail:`${body.kind} · ${mail.subject} → ${person!.email}`,created_at:iso(0)};

@@ -300,6 +300,11 @@
 .adm-composer textarea{resize:vertical;min-height:72px;line-height:1.5;width:100%}
 .adm-composer footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .adm-composer footer>div{display:flex;gap:6px}
+.adm-check{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--a-soft);cursor:pointer;min-width:0}
+.adm-root .adm-check input{appearance:none;flex:none;width:15px;height:15px;margin:0;padding:0;border:1.5px solid var(--a-line-2);border-radius:4px;background:none;display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s}
+.adm-root .adm-check input:checked{background:var(--a-ink);border-color:var(--a-ink)}
+.adm-root .adm-check input:checked::after{content:'';width:7px;height:4px;border:solid #141413;border-width:0 0 1.6px 1.6px;transform:translateY(-1px) rotate(-45deg)}
+.adm-root .adm-check input:focus-visible{box-shadow:0 0 0 3px #f0efeb22}
 
 /* Forms and modals */
 .adm-form{display:grid;gap:14px}
@@ -409,13 +414,14 @@
 .adm-mail-to>.adm-mail-who{display:grid;gap:2px;min-width:0;flex:1}
 .adm-mail-to strong{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adm-mail-to small{font-size:12px;color:var(--a-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.adm-mail-picker{display:grid;gap:6px}
-.adm-mail-picker .adm-search{width:100%}
-.adm-mail-results{display:grid;gap:2px;padding:4px 8px;border:1px solid var(--a-line);border-radius:12px;background:#171716}
+.adm-mail-picker{position:relative}
+.adm-form .adm-mail-picker label.adm-search{display:flex;gap:8px;width:100%;max-width:none;font-size:inherit;color:var(--a-muted)}
+.adm-mail-results{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 6px);display:grid;gap:2px;padding:4px 8px;max-height:300px;overflow:auto;border:1px solid var(--a-line-2);border-radius:12px;background:#171716;box-shadow:0 18px 40px #0008;animation:adm-pop .16s var(--a-ease)}
+.adm-mail-at{display:grid;place-items:center;width:28px;height:28px;flex:none;border-radius:50%;background:#262624;color:var(--a-soft);font-size:13px}
 .adm-mail-results .adm-muted{padding:8px 0;font-size:12px}
 .adm-root .adm-mail-results button.adm-person.link{margin:0;padding:7px 8px}
 .adm-root .adm-mail-results button.adm-person.link:disabled{opacity:.45;cursor:not-allowed}
-.adm-mail-presets{display:grid;gap:6px}
+.adm-mail-presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .adm-root .adm-mail-presets button{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;justify-items:start;gap:3px;width:100%;text-align:left;white-space:normal;padding:11px 13px 11px 36px;border-radius:12px;background:var(--a-field);border-color:var(--a-line);position:relative}
 .adm-mail-presets button::before{content:'';position:absolute;left:13px;top:13px;width:12px;height:12px;border-radius:50%;border:1.5px solid var(--a-line-2);transition:border-color .18s,box-shadow .18s,background .18s}
 .adm-root .adm-mail-presets button.on{border-color:#6a6a64;background:#1f1f1d}
@@ -428,4 +434,4 @@
 .adm-mail-subject strong{font-weight:400;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adm-mail-preview iframe{width:100%;height:100%;min-height:420px;border:0;display:block;background:#121211;animation:adm-pop .28s var(--a-ease)}
 .adm-mail-frame-wait{padding:18px}
-@media (max-width:760px){.adm-mail{grid-template-columns:1fr}.adm-mail-preview{min-height:380px}.adm-mail-preview iframe{min-height:360px}}
+@media (max-width:760px){.adm-mail{grid-template-columns:1fr}.adm-mail-presets{grid-template-columns:1fr}.adm-mail-preview{min-height:380px}.adm-mail-preview iframe{min-height:360px}}

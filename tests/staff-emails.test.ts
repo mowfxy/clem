@@ -18,10 +18,16 @@ globalThis.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{
     const role=roles[new Headers(init?.headers).get('authorization')||''];
     return role?Response.json({id:'staff-1',email:'staff@mowrai.com',role}):Response.json({error:'This account does not have staff access.'},{status:403});
   }
+  if(url==='https://accounts.test/admin/cases/case-7f1a2b3c'){
+    if(!roles[new Headers(init?.headers).get('authorization')||''])return Response.json({error:'Staff only.'},{status:403});
+    return Response.json({case:{id:'case-7f1a2b3c',owner_id:user,subject:'PPTX export shows odd symbols',email:'Ava@Studio.co',display_name:'Ava Laurent'},
+      messages:[{id:'m1',author:'staff',body:'Old reply'},{id:'m2',author:'note',body:'Internal only'},{id:'m3',author:'staff',body:'Fixed in the latest version.'}]});
+  }
   if(url==='https://d1.test'){
     const {queries:batch}=JSON.parse(String(init!.body));
     queries.push(...batch);
     const results=batch.map(({sql}:{sql:string})=>{
+      if(sql.includes('lower(a.email)'))return {results:[]};
       if(sql.includes('FROM desktop_activity'))return {results:[{email:'Ava@Studio.co',display_name:'Ava Laurent',username:'ava'}]};
       if(sql.includes('FROM mowr_email_optout'))return {results:optedOut?[{hit:1}]:[]};
       if(sql.includes('FROM desktop_audit_log'))return {results:recent?[{hit:1}]:[]};
@@ -52,7 +58,7 @@ test('only admins and owners can use preset emails',async()=>{
   const ok=await call('/presets',undefined,'owner');
   assert.equal(ok.status,200);
   const body=await ok.json();
-  assert.deepEqual(body.presets.map((p:{id:string})=>p.id),['welcome','update','automation-complete','automation-failed','support-received']);
+  assert.deepEqual(body.presets.map((p:{id:string})=>p.id),['custom','welcome','update','automation-complete','automation-failed','support-received']);
   assert.equal(outbox.length,0);
 });
 
@@ -113,4 +119,40 @@ test('preview renders the email without sending it',async()=>{
   assert.match(body.html,/^<!doctype html>/);
   assert.equal(outbox.length,0);
   assert.ok(!queries.some(q=>q.sql.startsWith('INSERT')));
+});
+
+test('a hand-written email needs a subject and message, and replies go to support',async()=>{
+  assert.equal((await call('/send',{kind:'custom',userId:user,subject:'',message:'Hello'})).status,400);
+  assert.equal((await call('/send',{kind:'custom',userId:user,subject:'Hi',message:''})).status,400);
+  const r=await call('/send',{kind:'custom',userId:user,subject:'Your <files>',message:'Line one\nLine two'});
+  assert.equal(r.status,200);
+  assert.equal(outbox[0].subject,'Your <files>');
+  assert.match(outbox[0].text,/^Hi Ava,\n\nLine one\nLine two/);
+  assert.match(outbox[0].extra.html!,/Your &lt;files&gt;/);
+  assert.ok(!outbox[0].extra.html!.includes('<files>'));
+  assert.ok(!queries.some(q=>q.sql.startsWith('INSERT INTO mowr_email_log')));
+});
+
+test('sends to a typed address that has no account',async()=>{
+  assert.equal((await call('/send',{kind:'custom',email:'not an email',subject:'Hi',message:'Hello'})).status,400);
+  const r=await call('/send',{kind:'custom',email:' Client@Example.com ',subject:'Your order',message:'Thanks!'});
+  assert.equal(r.status,200);
+  assert.equal(outbox[0].to,'client@example.com');
+  assert.match(outbox[0].text,/^Thanks!/);
+  const audit=queries.find(q=>q.sql.startsWith('INSERT INTO desktop_audit_log'))!;
+  assert.equal(audit.params[3],'client@example.com');
+});
+
+test('emails the newest staff reply on a case, once, for any staff role',async()=>{
+  assert.equal((await call('/case-reply',{caseId:'case-7f1a2b3c'},'nobody')).status,403);
+  const r=await call('/case-reply',{caseId:'case-7f1a2b3c'},'support');
+  assert.equal(r.status,200);
+  assert.equal(outbox.length,1);
+  assert.equal(outbox[0].to,'ava@studio.co');
+  assert.equal(outbox[0].subject,'Re: PPTX export shows odd symbols');
+  assert.match(outbox[0].text,/^Hi Ava,\n\nFixed in the latest version\./);
+  assert.ok(!outbox[0].text.includes('Internal only'));
+  recent=true;
+  assert.equal((await call('/case-reply',{caseId:'case-7f1a2b3c'},'support')).status,409);
+  assert.equal(outbox.length,1);
 });
