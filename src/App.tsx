@@ -46,7 +46,7 @@ import {FileCard,DocumentCard} from './FileCard';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
 import {DriveLogo} from './BrandLogos';
-import {FilePanel,canEditInPanel,type FilePanelHandle,type FilePointer} from './files/FilePanel';
+import {FilePanel,canEditInPanel,type FileFocus,type FilePanelHandle,type FilePointer,type PointerBox} from './files/FilePanel';
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {DriveIcon} from './drive/DriveIcon';
@@ -283,6 +283,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [panelEdit, setPanelEdit] = useState(true);
   // Parts of the open file the person pointed at, sent with the next message.
   const [pointers, setPointers] = useState<FilePointer[]>([]);
+  // A spot to show in the open file, asked for by pressing a pointer in the chat.
+  const [panelFocus, setPanelFocus] = useState<FileFocus | null>(null);
   // Text selected in an answer, offered as a quote for the next message.
   const [replyPick, setReplyPick] = useState<{ text: string; x: number; y: number } | null>(null);
   useEffect(() => {
@@ -687,6 +689,22 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(()=>{if(chatId&&route==='/app')setUnseen(u=>{if(!u.has(chatId))return u;const next=new Set(u);next.delete(chatId);return next;});},[chatId,route]);
   // When Mowr revises the file that is open beside the chat, the panel follows it.
   useEffect(()=>{if(!panelFile)return;const f=state.files.find(x=>x.id===panelFile.id);if(f&&f!==panelFile&&(f.updated!==panelFile.updated||f.size!==panelFile.size))setPanelFile(f);},[state.files]);
+  // The file beside a chat belongs to that chat: moving to another chat closes it (or brings back that chat's own file),
+  // and coming back reopens it where the person was reading. A new chat's file carries over when its first message is sent.
+  const panelByChat=useRef(new Map<string,string>());
+  const panelChat=useRef<string|null>(chatId);
+  const carriedChat=useRef<string|null>(null);
+  useEffect(()=>{
+    const prev=panelChat.current;panelChat.current=chatId;
+    if(prev===chatId)return;
+    if(prev===null&&chatId&&carriedChat.current===chatId){carriedChat.current=null;return;}
+    setPanelFocus(null);
+    // newChat() has already cleared the panel, and a file opened into a new chat (from Files or a space) stays.
+    if(!chatId)return;
+    const keep=panelByChat.current.get(chatId),f=keep?stateRef.current.files.find(x=>x.id===keep):undefined;
+    setPanelFile(f||null);setPanelEdit(f?canEditInPanel(f):true);setPointers([]);
+  },[chatId]);
+  useEffect(()=>{if(panelChat.current)panelByChat.current.set(panelChat.current,panelFile?.id||'');},[panelFile?.id]);
   const desktopScope=activeSpace?`${activeSpace.kind}:${activeSpace.id}`:`chat:${chatId||draftChatId.current}`;
   // Built-in workflows apply automatically; Settings → Skills lists only the ones people make.
   const skills = state.skills.filter(s=>!s.builtin);
@@ -699,6 +717,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setAttachments([]);
     // A new chat starts clean: no file from the previous chat stays open, pointed at or attached.
     setPanelFile(null);
+    setPanelFocus(null);
     setPanelEdit(true);
     setPointers([]);
     setDriveRefs([]);
@@ -822,7 +841,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       // The file open beside the chat is read with the message but not shown as a new attachment.
       ...(panelFile && !attachments.includes(panelFile.id) ? { context: [panelFile.id] } : {}),
       ...(pickedDrive.length ? { drive: pickedDrive } : {}),
-      ...(pointed.length ? { pointers: pointed.map((p) => ({ file: p.file, page: p.page, text: p.text?.slice(0, 600), area: !!p.image })) } : {}),
+      ...(pointed.length ? { pointers: pointed.map((p) => ({ file: p.file, ...(p.fileId ? { fileId: p.fileId } : {}), page: p.page, text: p.text?.slice(0, 600), area: !!p.image, ...(p.box ? { box: p.box } : {}) })) } : {}),
     };
     const chat = activeChat || {
       id,
@@ -844,6 +863,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
         ? s.chats.map((c) => (c.id === id ? next : c))
         : [next, ...s.chats],
     }));
+    if (!chatId) { carriedChat.current = id; panelByChat.current.set(id, panelFile?.id || ""); }
     setChatId(id);
     setDraft("");
     setAttachments([]);
@@ -1317,7 +1337,15 @@ In this subject the learner keeps missing these questions in review; connect to 
   const canCite=(c:Citation)=>!!matchSource(stateRef.current.files,c.name);
   const [driveFolderFor,setDriveFolderFor]=useState<string|null>(null);
   /** Chat files open beside the conversation, ready to be edited by it. */
-  const openInPanel=(file:StoredFile)=>{setPanelFile(file);setPanelEdit(canEditInPanel(file));if(route!=='/app')navigate('/app');};
+  const openInPanel=(file:StoredFile)=>{setPanelFile(file);setPanelFocus(null);setPanelEdit(canEditInPanel(file));if(route!=='/app')navigate('/app');};
+  /** A pointer pressed in the chat: its file opens beside the chat, scrolled to the spot, which glows for a moment. */
+  function showPointer(p:{file:string;fileId?:string;page?:number;box?:PointerBox}){
+    if(p.file===REPLY_SOURCE)return;
+    const files=stateRef.current.files,file=(p.fileId&&files.find(f=>f.id===p.fileId))||(panelFile?.name===p.file?panelFile:undefined)||files.find(f=>f.name===p.file&&(!activeSpace||f.spaceId===activeSpace.id))||files.find(f=>f.name===p.file);
+    if(!file){setToast(`${p.file} is no longer in your files.`);return;}
+    if(panelFile?.id!==file.id)openInPanel(file);
+    if(p.page)setPanelFocus({page:p.page,box:p.box,key:Date.now()});
+  }
   /** Files browsed outside a conversation open in the default browser (or their own app). */
   /** Opens a Drive file from chat in the viewer, streamed into memory; Google formats are shown as PDF. */
   function openDrive(ref:DriveRef){
@@ -2083,7 +2111,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   ];
   const composerUI = (
     <form className="composer" onSubmit={send}>
-      {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} aria-description={p.text || "Selected area"}>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
+      {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} aria-description={p.text || "Selected area"}>{(() => { const inner = <>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</>; return p.file !== REPLY_SOURCE && p.page ? <button type="button" className="pc-go" aria-label={`Show in ${p.file}, page ${p.page}`} onClick={() => showPointer(p)}>{inner}</button> : inner; })()}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
       <SlashField
         inputRef={composer}
         inSubject={activeSpace?.kind === "subject"}
@@ -2469,7 +2497,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                               m.role === "assistant" ? (
                                 <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Mowr continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}{m.work && !streaming && <WorkSummary work={m.work} handlers={bodyHandlers(activeChat, m)} />}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(activeChat, m)} /></>
                               ) : (
-                                <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => <span className="pointer-chip" key={i}>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</span>)}</span> : null}</>
+                                <>{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => { const inner = <>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</>; return p.file !== REPLY_SOURCE && p.page ? <button type="button" className="pointer-chip" key={i} aria-label={`Show in ${p.file}, page ${p.page}`} title={`${p.file} · page ${p.page}`} onClick={() => showPointer(p)}>{inner}</button> : <span className="pointer-chip" key={i}>{inner}</span>; })}</span> : null}</>
                               )
                             ) : (
                               m.limit ? null
@@ -2522,8 +2550,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   </>
                 )}
               </div>
-              {panelFile && <FilePanel ref={panelRef} key={panelFile.id} file={panelFile} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
-                onClose={() => { setPanelFile(null); setPointers([]); }} onOpenExternally={(f) => void openExternally(f)}
+              {panelFile && <FilePanel ref={panelRef} key={panelFile.id} file={panelFile} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}} focus={panelFocus}
+                onClose={() => { setPanelFile(null); setPanelFocus(null); setPointers([]); }} onOpenExternally={(f) => void openExternally(f)}
                 onChange={(next) => { changedFile(next); setPanelFile(next); }}
                 onApproved={(f) => void syncToDrive(f)} sync={syncOf(panelFile.id)}
                 onPoint={(p) => { setPointers((all) => [...all, p].slice(-6)); setTimeout(() => composer.current?.focus(), 30); }} />}

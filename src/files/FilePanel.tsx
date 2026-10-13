@@ -1,4 +1,4 @@
-import { forwardRef, lazy, Suspense, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
+import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
@@ -13,6 +13,7 @@ import { confirmDialog } from "../dialogs";
 import { Pages } from "../pdf/PdfStudio";
 import { openPdf, changedLines, proposePdfEdit, commitPdfEdit, restorePrevious } from "../pdf/pdf-edit";
 import { readOffice, exportOffice, applyOfficePatches, type OfficeBlock, type OfficePatch } from "../office";
+import { readingSpot, keepReadingSpot } from "./reading";
 import "../pdf/pdf-studio.css";
 import "./file-panel.css";
 
@@ -20,7 +21,14 @@ const OfficePreview = lazy(() => import("../office-preview"));
 
 export type FilePanelHandle = { /** `context`: the conversation and the chat's files, for edits that add or explain content. */ edit: (instruction: string, context?: string) => Promise<string>; stop: () => void; /** Resolves once the file is open and can be edited. */ ready: () => Promise<void> };
 /** A part of the open file the person pointed at: selected text, or an area cropped as an image. */
-export type FilePointer = { id: string; file: string; page?: number; text?: string; image?: string };
+export type FilePointer = { id: string; file: string; /** The stored file, so the chat can open it again at this spot. */ fileId?: string; page?: number; text?: string; image?: string; box?: PointerBox };
+/** Where on its page a pointer sits, as fractions of the page's width and height. */
+export type PointerBox = { x: number; y: number; w: number; h: number };
+/** A spot to show in the open file: its page scrolls into view and the spot glows for a moment. `key` repeats a jump. */
+export type FileFocus = { page: number; box?: PointerBox; key: number };
+const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+const PANEL_WIDTH = "mowr-panel-width";
+const round = (n: number) => Math.round(n * 10000) / 10000;
 type Area = { page: HTMLElement; n: number; x: number; y: number; w: number; h: number };
 type Kind = "pdf" | "office" | "text" | "image" | "video" | "audio" | "other";
 type Box = { page: number; x: number; y: number; w: number; h: number };
@@ -58,6 +66,8 @@ async function commitBlob(file: StoredFile, previous: Blob, next: Blob, summary:
  *  view, highlighted, and are kept or discarded here. */
 export const FilePanel = forwardRef<FilePanelHandle, {
   file: StoredFile; scope: string; selection?: { model?: string; reasoning?: string }; page?: number;
+  /** A spot the person asked to see (a pointer pressed in the chat). */
+  focus?: FileFocus | null;
   onClose: () => void; onChange: (file: StoredFile) => void; onOpenExternally: (file: StoredFile) => void; onPoint: (pointer: FilePointer) => void;
   /** "modal": a centred viewer over the app (from Files pages); "panel" sits beside a chat. */
   variant?: "panel" | "modal"; onEditInChat?: (file: StoredFile) => void;
@@ -65,7 +75,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
   onApproved?: (file: StoredFile) => void;
   /** Where that Drive copy stands: uploading shows a turning ring, synced a check; pending is a change waiting for approval. */
   sync?: "uploading" | "synced" | "failed" | "pending";
-}>(function FilePanel({ file, scope, selection, onClose, onChange, onOpenExternally, onPoint, variant = "panel", onEditInChat, onApproved, sync }, ref) {
+}>(function FilePanel({ file, scope, selection, focus, onClose, onChange, onOpenExternally, onPoint, variant = "panel", onEditInChat, onApproved, sync }, ref) {
   const kind = kindOf(file.name, file.type);
   const [blob, setBlob] = useState<Blob>();
   const [view, setView] = useState<View>();
@@ -94,7 +104,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     return () => removeEventListener("keydown", key);
   }, [variant]);
   const [flash, setFlash] = useState("");
-  const [menu, setMenu] = useState<{ x: number; y: number; text?: string; page?: number; area?: boolean } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; text?: string; page?: number; area?: boolean; box?: PointerBox } | null>(null);
   const [area, setArea] = useState<Area | null>(null);
   const [areaMode, setAreaMode] = useState(false);
   // Left-drag selects text; an area is drawn by dragging with the right button (or with the left after "Select an area…").
@@ -117,7 +127,18 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     addEventListener("pointerdown", close); addEventListener("keydown", key); addEventListener("wheel", close, { passive: true });
     return () => { removeEventListener("pointerdown", close); removeEventListener("keydown", key); removeEventListener("wheel", close); };
   }, [menu]);
-  const point = (pointer: Omit<FilePointer, "id" | "file">) => { onPoint({ id: crypto.randomUUID(), file: file.name, ...pointer }); setMenu(null); window.getSelection()?.removeAllRanges(); setFlash("Added to chat"); };
+  const point = (pointer: Omit<FilePointer, "id" | "file">) => { onPoint({ id: crypto.randomUUID(), file: file.name, ...(file.id.startsWith("drive_") ? {} : { fileId: file.id }), ...pointer }); setMenu(null); window.getSelection()?.removeAllRanges(); setFlash("Added to chat"); };
+  /** An area drawn on a page, as fractions of that page. */
+  const areaBox = (a: Area): PointerBox => { const w = a.page.clientWidth || 1, h = a.page.clientHeight || 1; return { x: round(a.x / w), y: round(a.y / h), w: round(a.w / w), h: round(a.h / h) }; };
+  /** The selected text's outline on its page, as fractions of that page. */
+  function selectionBox(pageEl: HTMLElement | null | undefined): PointerBox | undefined {
+    const sel = window.getSelection();
+    if (!pageEl || !sel?.rangeCount) return undefined;
+    const box = pageEl.getBoundingClientRect(), r = sel.getRangeAt(0).getBoundingClientRect();
+    const x0 = Math.max(box.left, r.left), y0 = Math.max(box.top, r.top), x1 = Math.min(box.right, r.right), y1 = Math.min(box.bottom, r.bottom);
+    if (x1 <= x0 || y1 <= y0) return undefined;
+    return { x: round((x0 - box.left) / box.width), y: round((y0 - box.top) / box.height), w: round((x1 - x0) / box.width), h: round((y1 - y0) / box.height) };
+  }
   function crop(a: Area) {
     const canvas = a.page.querySelector("canvas");
     if (!canvas) return undefined;
@@ -296,26 +317,138 @@ export const FilePanel = forwardRef<FilePanelHandle, {
 
   const shown = saved ? (compare === "before" ? saved.before : saved.after) : proposal && compare === "after" ? proposal.after : view;
   const pages = shown?.kind === "pdf" ? shown.pdf.numPages : 0;
+
+  // Reading place: the file opens where the person stopped, and the toolbar follows the page in view.
+  const body = useRef<HTMLDivElement>(null);
+  const remembered = useRef(readingSpot(file.id));
+  const spot = useRef<{ page?: number; frac: number }>(remembered.current || { frac: 0 });
+  const [zoom, setZoom] = useState(() => ZOOMS.includes(remembered.current?.zoom as number) ? remembered.current!.zoom! : 1);
+  const zoomRef = useRef(zoom); zoomRef.current = zoom;
+  const [pageNow, setPageNow] = useState(remembered.current?.page || 1);
+  const [pageField, setPageField] = useState<string | null>(null);
+  // Nothing is written back until the remembered place has been restored, so opening a file never overwrites it.
+  const restored = useRef(false);
+  const pendingFocus = useRef<FileFocus | null>(null);
+  const [glow, setGlow] = useState<{ page: HTMLElement; box?: PointerBox; key: number } | null>(null);
+  const pageEls = () => [...(body.current?.querySelectorAll<HTMLElement>(".ps-pages > .ps-page") || [])];
+  const pageAt = (n: number) => { const el = body.current, p = el?.querySelector<HTMLElement>(`.ps-pages > .ps-page[data-page="${n}"]`); return el && p ? { p, top: p.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop } : null; };
+  const remember = () => { if (restored.current) keepReadingSpot(file.id, { ...spot.current, zoom: zoomRef.current }); };
+  function measure() {
+    const el = body.current;
+    if (!el || !restored.current) return;
+    const els = pageEls(), top = el.getBoundingClientRect().top;
+    if (els.length) {
+      const mid = top + el.clientHeight * 0.4;
+      let at: { page: number; frac: number } | null = null, now = 1;
+      for (const p of els) {
+        const r = p.getBoundingClientRect();
+        if (!at && r.bottom > top + 1) at = { page: Number(p.dataset.page), frac: round(Math.max(0, Math.min(1, (top - r.top) / r.height))) };
+        if (r.top <= mid) now = Number(p.dataset.page); else break;
+      }
+      if (at) spot.current = at;
+      setPageNow(now);
+    } else spot.current = { frac: el.scrollHeight > el.clientHeight ? round(el.scrollTop / (el.scrollHeight - el.clientHeight)) : 0 };
+  }
+  /** Brings a page (or a spot on it) into view and lets it glow for a moment. */
+  function goTo(f: FileFocus, smooth = true) {
+    const el = body.current, at = pageAt(f.page);
+    if (!el || !at) return;
+    const h = at.p.offsetHeight, how: ScrollBehavior = smooth ? "smooth" : "auto";
+    const top = Math.max(0, f.box ? at.top + (f.box.y + f.box.h / 2) * h - el.clientHeight / 2 : at.top - 14);
+    const left = f.box && el.scrollWidth > el.clientWidth ? Math.max(0, at.p.offsetLeft + (f.box.x + f.box.w / 2) * at.p.offsetWidth - el.clientWidth / 2) : el.scrollLeft;
+    el.scrollTo({ top, left, behavior: how });
+    setGlow({ page: at.p, box: f.box, key: f.key });
+  }
+  const goToPage = (n: number) => { const page = Math.max(1, Math.min(pages || 1, Math.round(n) || 1)); const at = pageAt(page); if (at) body.current!.scrollTo({ top: Math.max(0, at.top - 14), behavior: Math.abs(page - pageNow) > 6 ? "auto" : "smooth" }); setPageNow(page); };
+  // The pages were laid out (opened, zoomed or resized): go to a spot that was asked for, else keep the reading place.
+  const laidOut = useCallback(() => {
+    const f = pendingFocus.current;
+    restored.current = true;
+    if (f) { pendingFocus.current = null; goTo(f, false); }
+    else if (spot.current.page) { const at = pageAt(spot.current.page); if (at) body.current!.scrollTop = at.top + spot.current.frac * at.p.offsetHeight; }
+    measure();
+  }, []);
+  useEffect(() => { if (!focus) return; if (pageEls().length) goTo(focus); else pendingFocus.current = focus; }, [focus?.key]);
+  useEffect(() => { if (!glow) return; const t = setTimeout(() => setGlow(null), 2200); return () => clearTimeout(t); }, [glow]);
+  // Other files keep their place as a share of the way down, restored once their content has its height.
+  useEffect(() => {
+    if (restored.current || kind === "pdf" || (!shown && !imageUrl)) return;
+    const el = body.current, want = remembered.current?.frac || 0;
+    if (!el || !want) { restored.current = true; return; }
+    let tries = 0;
+    const t = setInterval(() => {
+      const room = el.scrollHeight - el.clientHeight;
+      if (room > 0) el.scrollTop = want * room;
+      if ((room > 40 && Math.abs(el.scrollTop - want * room) < 2) || ++tries > 25) { clearInterval(t); restored.current = true; }
+    }, 120);
+    return () => clearInterval(t);
+  }, [shown, imageUrl]);
+  // The place is written a moment after scrolling stops, and when the file closes.
+  const writeLater = useRef(0);
+  const onScroll = () => { measure(); clearTimeout(writeLater.current); writeLater.current = window.setTimeout(remember, 350); };
+  useEffect(() => () => { clearTimeout(writeLater.current); remember(); }, []);
+  useEffect(() => { remember(); }, [zoom]);
+  const zoomBy = (step: number) => setZoom((z) => ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + step))]);
+  // Ctrl + wheel (or a pinch) zooms the pages.
+  useEffect(() => {
+    const el = body.current;
+    if (!el || kind !== "pdf") return;
+    let sum = 0;
+    const wheel = (e: WheelEvent) => { if (!e.ctrlKey) return; e.preventDefault(); sum += e.deltaY; if (Math.abs(sum) >= 60) { zoomBy(sum > 0 ? -1 : 1); sum = 0; } };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+  }, [kind]);
+
+  // Beside a chat, the reader's left edge drags to make it wider or narrower; double-click returns it to its usual width.
+  const [width, setWidth] = useState<number | null>(() => { try { const n = Number(localStorage.getItem(PANEL_WIDTH)); return n >= 340 ? n : null; } catch { return null; } });
+  const resizing = useRef<{ x: number; w: number; max: number } | null>(null);
+  const keepWidth = (w: number | null) => { setWidth(w); try { if (w) localStorage.setItem(PANEL_WIDTH, String(w)); else localStorage.removeItem(PANEL_WIDTH); } catch {} };
+  const widthLimits = (panel: HTMLElement) => ({ min: 340, max: Math.max(340, (panel.parentElement?.clientWidth || innerWidth) - 380) });
+  const resizer = variant === "panel" && <div className="fp-resize" role="separator" aria-orientation="vertical" aria-label="Resize the file panel" tabIndex={0}
+    onPointerDown={(e) => { if (e.button !== 0) return; const panel = e.currentTarget.parentElement!; resizing.current = { x: e.clientX, w: panel.offsetWidth, max: widthLimits(panel).max }; e.currentTarget.setPointerCapture(e.pointerId); document.documentElement.classList.add("fp-resizing"); }}
+    onPointerMove={(e) => { const r = resizing.current; if (r) setWidth(Math.round(Math.max(340, Math.min(r.max, r.w + r.x - e.clientX)))); }}
+    onPointerUp={(e) => { if (!resizing.current) return; resizing.current = null; document.documentElement.classList.remove("fp-resizing"); keepWidth(e.currentTarget.parentElement!.offsetWidth); }}
+    onDoubleClick={() => keepWidth(null)}
+    onKeyDown={(e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.preventDefault(); const panel = e.currentTarget.parentElement!, { min, max } = widthLimits(panel); keepWidth(Math.max(min, Math.min(max, panel.offsetWidth + (e.key === "ArrowLeft" ? 32 : -32)))); }} />;
   const detail = kind === "pdf" ? (pages ? `${pages} page${pages === 1 ? "" : "s"}` : "PDF") : kind === "office" ? (/\.pptx$/i.test(file.name) ? "Presentation" : /\.xlsx$/i.test(file.name) ? "Workbook" : "Document") : kind === "text" ? "Text" : kind === "image" ? "Image" : "File";
   // The right-click menu's rows, each with a letter that runs it while the menu is open.
   const menuRows = !menu ? [] : [
-    ...(menu.text ? [{ label: "Add selection to chat", run: () => point({ page: menu.page, text: menu.text }) }, { label: "Copy", run: () => { void copyText(menu.text!); setMenu(null); } }] : []),
-    ...(menu.area && area ? [{ label: "Add this area to chat", run: () => { point({ page: area.n, image: crop(area), text: areaText(area) || undefined }); setArea(null); } }] : []),
+    ...(menu.text ? [{ label: "Add selection to chat", run: () => point({ page: menu.page, text: menu.text, box: menu.box }) }, { label: "Copy", run: () => { void copyText(menu.text!); setMenu(null); } }] : []),
+    ...(menu.area && area ? [{ label: "Add this area to chat", run: () => { point({ page: area.n, image: crop(area), text: areaText(area) || undefined, box: areaBox(area) }); setArea(null); } }] : []),
     ...(shown?.kind === "pdf" ? [{ label: "Select an area…", run: () => { setAreaMode(true); setArea(null); setMenu(null); } }] : []),
   ];
   const menuLetters = menuKeys(menuRows);
   useMenuKeys(!!menu, menuLetters, (i) => menuRows[i]?.run());
-  const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}>
+  const panel = <aside className={"file-panel" + (variant === "modal" ? " as-modal" : "") + (working ? " is-working" : "")} aria-label={"File: " + file.name} role={variant === "modal" ? "dialog" : undefined} aria-modal={variant === "modal" || undefined}
+    style={variant === "panel" && width ? { "--fp-w": width + "px" } as CSSProperties : undefined}>
+    {resizer}
     <header className="fp-head">
-      <div className="fp-title"><span className="fp-crumb">Files /</span><strong aria-description={file.name}>{file.name}</strong></div>
+      <div className="fp-title">{variant === "modal" && <span className="fp-crumb">Files /</span>}<strong aria-description={file.name}>{file.name}</strong></div>
       {sync && <span className={"fp-sync is-" + sync} role="status" aria-label={sync === "uploading" ? "Saving the change to Google Drive" : sync === "synced" ? "In sync with Google Drive" : sync === "pending" ? "Changed here · not in Google Drive until approved" : "Not saved to Google Drive"}>{sync === "synced" ? <Icon name="check" size={11} /> : sync === "pending" ? <Icon name="cloud-up" size={15} /> : sync === "failed" ? "!" : null}</span>}
-      <small className="fp-meta">{detail}{current.versions?.length ? ` · edited ${current.versions.length}×` : ""}</small>
+      {(kind !== "pdf" || !!current.versions?.length) && <small className="fp-meta">{[kind === "pdf" ? "" : detail, current.versions?.length ? `edited ${current.versions.length}×` : ""].filter(Boolean).join(" · ")}</small>}
       {!!current.versions?.length && !proposal && !working && <button className="fp-icon" aria-description="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}
       {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Mowr</button>}
       <button className="fp-icon" aria-description="Open in browser" aria-label="Open in browser" onClick={() => onOpenExternally(current)}><Icon name="arrow" size={16} /></button>
       <button className="fp-icon" aria-description="Download" aria-label="Download" disabled={!blob} onClick={() => blob && download(blob, file.name)}><Icon name="download" size={16} /></button>
       <button className="fp-icon" aria-description="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
     </header>
+    {kind === "pdf" && <div className="fp-tools" role="toolbar" aria-label="Pages">
+      <div className="fp-pager">
+        <button className="fp-tool is-prev" aria-label="Previous page" disabled={!pages || pageNow <= 1} onClick={() => goToPage(pageNow - 1)}><Icon name="chevron" size={15} /></button>
+        <input className="fp-page-field" inputMode="numeric" aria-label="Page" value={pageField ?? (pages ? String(pageNow) : "")} disabled={!pages}
+          onFocus={(e) => { setPageField(String(pageNow)); const el = e.currentTarget; requestAnimationFrame(() => el.select()); }}
+          onChange={(e) => setPageField(e.target.value.replace(/\D/g, "").slice(0, 5))}
+          onKeyDown={(e) => { if (e.key === "Enter") { goToPage(Number(pageField)); e.currentTarget.blur(); } else if (e.key === "Escape") e.currentTarget.blur(); }}
+          onBlur={() => setPageField(null)} />
+        <span className="fp-of">of {pages || "…"}</span>
+        <button className="fp-tool is-next" aria-label="Next page" disabled={!pages || pageNow >= pages} onClick={() => goToPage(pageNow + 1)}><Icon name="chevron" size={15} /></button>
+      </div>
+      <div className="fp-zoom">
+        <button className="fp-tool" aria-label="Zoom out" disabled={zoom <= ZOOMS[0]} onClick={() => zoomBy(-1)}><svg viewBox="0 0 32 32" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M7 16h18" /></svg></button>
+        <button className="fp-zoom-level" aria-label={zoom === 1 ? "Zoom: fit to width" : "Zoom " + Math.round(zoom * 100) + "%: fit to width"} onClick={() => setZoom(1)}>{zoom === 1 ? "Fit" : Math.round(zoom * 100) + "%"}</button>
+        <button className="fp-tool" aria-label="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]} onClick={() => zoomBy(1)}><Icon name="plus" size={15} /></button>
+      </div>
+    </div>}
     {saved && !proposal && <div className="fp-proposal is-saved" role="status">
       <div><strong>{saved.summary}</strong><small><Icon name={sync === "pending" ? "cloud-up" : "check"} size={12} className={sync === "pending" ? "is-waiting" : undefined} />{sync === "pending" ? "Saved here · goes to Google Drive when you press Done" : "Saved · earlier version kept"}</small></div>
       <div className="fp-toggle" role="group" aria-label="Compare"><button aria-pressed={compare === "before"} onClick={() => setCompare("before")}>Before</button><button aria-pressed={compare === "after"} onClick={() => setCompare("after")}>After</button></div>
@@ -333,14 +466,14 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       {!!current.versions?.length && <button className="fp-ghost" onClick={() => void undo()}>Undo</button>}
       <button className="fp-keep" onClick={() => onApproved?.(current)}>Approve</button>
     </div>}
-    <div className={"fp-body" + (areaMode ? " area-mode" : "")}
+    <div className={"fp-body" + (areaMode ? " area-mode" : "")} ref={body} onScroll={onScroll}
       onContextMenu={(e) => {
         const sel = window.getSelection(), text = sel?.toString().trim();
         const inside = !!sel?.anchorNode && e.currentTarget.contains(sel.anchorNode);
         const target = (e.target as Element).closest<HTMLElement>(".ps-page");
         e.preventDefault();
         if (drewArea.current) { drewArea.current = false; return; }
-        if (text && inside) { const pageEl = (sel!.anchorNode!.parentElement as Element | null)?.closest<HTMLElement>(".ps-page"); setMenu({ x: e.clientX, y: e.clientY, text: text.slice(0, 4000), page: pageEl ? Number(pageEl.dataset.page) : undefined }); }
+        if (text && inside) { const pageEl = (sel!.anchorNode!.parentElement as Element | null)?.closest<HTMLElement>(".ps-page"); setMenu({ x: e.clientX, y: e.clientY, text: text.slice(0, 4000), page: pageEl ? Number(pageEl.dataset.page) : undefined, box: selectionBox(pageEl) }); }
         else if (area && target === area.page) setMenu({ x: e.clientX, y: e.clientY, area: true, page: area.n });
         else setMenu({ x: e.clientX, y: e.clientY, page: target ? Number(target.dataset.page) : undefined });
       }}
@@ -376,14 +509,15 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       {imageUrl && <div className="fp-image"><img src={imageUrl} alt={file.name} /></div>}
       {mediaSrc && kind === "video" && <div className="fp-media"><video src={mediaSrc} controls autoPlay playsInline controlsList="nodownload" onError={() => setError("This video could not be played here. Open it in Drive instead.")} /></div>}
       {mediaSrc && kind === "audio" && <div className="fp-media is-audio"><audio src={mediaSrc} controls autoPlay /></div>}
-      {shown?.kind === "pdf" && <Pages key={(saved || proposal) && compare === "after" ? "after" + (current.updated || "") : "before"} pdf={shown.pdf} highlights={shown.boxes} />}
+      {shown?.kind === "pdf" && <Pages key={(saved || proposal) && compare === "after" ? "after" + (current.updated || "") : "before"} pdf={shown.pdf} highlights={shown.boxes} zoom={zoom} onLayout={laidOut} />}
       {shown?.kind === "office" && <OfficeView name={file.name} blocks={shown.blocks} changed={shown.changed} blob={shown.blob} />}
       {shown?.kind === "text" && (/\.(md|markdown)$/i.test(file.name) && !shown.changed.size
         ? <article className="fp-paper fp-prose"><ReactMarkdown remarkPlugins={[remarkGfm]}>{shown.text}</ReactMarkdown></article>
         : <article className="fp-paper fp-code">{shown.text.split("\n").map((line, i) => <div key={i} className={shown.changed.has(i) ? "fp-changed" : undefined}>{line || " "}</div>)}</article>)}
     </div>
     {working && <div className="fp-working" role="status"><Logo size={18} thinking /><div><strong>{working}</strong><small>Editing live · you can keep reading</small></div><button className="fp-ghost" onClick={() => abort.current?.abort()}>Stop</button></div>}
-    {area && !drag.current && createPortal(<div className="fp-area" style={{ left: area.x, top: area.y, width: area.w, height: area.h }}><button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => { const image = crop(area); point({ page: area.n, image, text: areaText(area) || undefined }); setArea(null); }}>Add to chat</button></div>, area.page)}
+    {area && !drag.current && createPortal(<div className="fp-area" style={{ left: area.x, top: area.y, width: area.w, height: area.h }}><button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => { const image = crop(area); point({ page: area.n, image, text: areaText(area) || undefined, box: areaBox(area) }); setArea(null); }}>Add to chat</button></div>, area.page)}
+    {glow && glow.page.isConnected && createPortal(<span key={glow.key} className={"fp-glow" + (glow.box ? "" : " is-page")} aria-hidden="true" style={glow.box ? { left: glow.box.x * 100 + "%", top: glow.box.y * 100 + "%", width: glow.box.w * 100 + "%", height: glow.box.h * 100 + "%" } : undefined} />, glow.page)}
     {area && drag.current && createPortal(<div className="fp-area drawing" style={{ left: area.x, top: area.y, width: area.w, height: area.h }} />, area.page)}
     {menu && <div className="fp-menu" role="menu" ref={placeMenu} onPointerDown={(e) => e.stopPropagation()}>
       {menuRows.map((row, i) => <button key={row.label} role="menuitem" aria-keyshortcuts={menuLetters[i] || undefined} onClick={row.run}>{row.label}{menuLetters[i] && <span className="menu-key" aria-hidden="true">{menuLetters[i]}</span>}</button>)}

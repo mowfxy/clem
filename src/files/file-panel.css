@@ -2,18 +2,40 @@
 
 .chat-split{display:flex;min-height:0;flex:1}
 .chat-split>.chat-view{flex:1;min-width:0}
-.file-panel{position:relative;flex:none;width:clamp(380px,46%,820px);position:sticky;top:10px;align-self:flex-start;height:calc(100vh - 20px);display:flex;flex-direction:column;margin:10px 10px 10px 0;border:1px solid #2f2f2c;border-radius:16px;background:#1a1a19;color:#eeede7;font-family:var(--sans);overflow:hidden;box-sizing:border-box;animation:fp-in .28s cubic-bezier(.2,.9,.3,1)}
+/* A file open beside the chat: the conversation becomes a column that reflows to its width, the reader a framed pane */
+.chat-split:has(>.file-panel)>.chat-view{container:chat/inline-size;overflow-x:clip;min-width:340px}
+.file-panel{position:relative;flex:none;width:var(--fp-w,clamp(400px,44%,760px));max-width:calc(100% - 380px);min-width:340px;position:sticky;top:8px;align-self:flex-start;height:calc(100vh - 16px);display:flex;flex-direction:column;margin:8px 8px 8px 0;border:1px solid #2c2c2a;border-radius:14px;background:#1b1b1a;color:#eeede7;font-family:var(--sans);overflow:hidden;box-sizing:border-box;box-shadow:0 1px 0 #ffffff08 inset,0 24px 60px -30px #000;animation:fp-in .28s cubic-bezier(.2,.9,.3,1)}
 .file-panel.wide{width:min(72%,1200px)}
 @keyframes fp-in{from{opacity:0;transform:translateX(18px)}}
-.fp-head{display:flex;align-items:center;gap:4px;padding:10px 10px 10px 18px;border-bottom:1px solid #2a2a28;min-height:52px;box-sizing:border-box}
-.fp-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;font-size:14px}
+.fp-head{display:flex;align-items:center;gap:2px;padding:0 8px 0 16px;min-height:46px;box-sizing:border-box}
+.fp-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;font-size:13.5px}
 .fp-crumb{color:#8f8e87;flex:none}
-.fp-title strong{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fp-meta{font-size:11px;color:#7d7c76;margin-right:8px;white-space:nowrap}
-.fp-icon{width:32px;height:32px;display:grid;place-items:center;flex:none;border-radius:8px;border:0;background:transparent;color:#b5b4ad;cursor:pointer;padding:0}
-.fp-icon:hover{background:#ffffff0d;color:#fff}
+.fp-title strong{font-weight:400;color:#f2f1ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-meta{font-size:11px;color:#7d7c76;margin:0 6px;white-space:nowrap}
+.fp-icon{width:30px;height:30px;display:grid;place-items:center;flex:none;border-radius:8px;border:0;background:transparent;color:#a9a8a1;cursor:pointer;padding:0;transition:background .15s,color .15s}
+.fp-icon:hover{background:#ffffff0f;color:#fff}
 .fp-icon:disabled{opacity:.4}
 .fp-icon[aria-label="Open in browser"] svg{transform:rotate(-45deg)}
+/* The reader's toolbar: page x of y on the left, zoom on the right */
+.fp-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;height:40px;padding:0 8px;margin:0 8px 8px;border-radius:10px;background:#141413;border:1px solid #262624;flex:none}
+.fp-pager,.fp-zoom{display:flex;align-items:center;gap:2px}
+.fp-tool{width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:7px;background:none;color:#b3b2ab;cursor:pointer;padding:0;transition:background .15s,color .15s}
+.fp-tool:hover:not(:disabled){background:#ffffff10;color:#fff}
+.fp-tool:disabled{opacity:.35;cursor:default}
+.fp-tool.is-prev svg{transform:rotate(90deg)}
+.fp-tool.is-next svg{transform:rotate(-90deg)}
+html body input.fp-page-field{width:40px;height:26px;margin:0 2px 0 4px;padding:0;border-radius:7px;border:1px solid #33332f;background:#1e1e1d;color:#f2f1ec;font:12.5px var(--sans);font-variant-numeric:tabular-nums;text-align:center;box-shadow:none;outline:none}
+html body input.fp-page-field:focus{border-color:#6b6b63;background:#232322}
+.fp-of{font-size:12.5px;color:#8f8e87;font-variant-numeric:tabular-nums;margin-right:4px;white-space:nowrap}
+.fp-zoom-level{min-width:46px;height:26px;padding:0 6px;border:0;border-radius:7px;background:none;color:#cfcec7;font:12px var(--sans);font-variant-numeric:tabular-nums;cursor:pointer}
+.fp-zoom-level:hover{background:#ffffff10;color:#fff}
+/* Dragging the reader's edge changes its width */
+.fp-resize{position:absolute;left:0;top:0;bottom:0;width:9px;z-index:5;cursor:col-resize;touch-action:none;outline:none}
+.fp-resize::after{content:"";position:absolute;left:3px;top:50%;width:3px;height:44px;margin-top:-22px;border-radius:3px;background:#ffffff26;opacity:0;transition:opacity .15s,background .15s}
+.fp-resize:hover::after,.fp-resize:focus-visible::after,.fp-resizing .fp-resize::after{opacity:1}
+.fp-resizing .fp-resize::after{background:#ffffffa0}
+html.fp-resizing,html.fp-resizing *{cursor:col-resize!important;user-select:none!important}
+html.fp-resizing .file-panel{transition:none}
 .fp-proposal{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 18px;border-bottom:1px solid #2a2a28;background:linear-gradient(90deg,#ffffff0d,transparent);animation:ps-drop .3s ease-out both}
 .fp-proposal>div:first-child{flex:1;min-width:0}
 .fp-proposal strong{display:block;font-weight:400;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -25,8 +47,9 @@
 .fp-ghost:hover{border-color:#5a5a55;color:#fff}
 .fp-keep{height:30px;padding:0 14px;border-radius:8px;border:0;background:#f2f1ec;color:#141413;font:400 12px var(--sans);cursor:pointer}
 .fp-keep:hover{background:#fff}
-.fp-body{position:relative;flex:1;min-height:0;overflow:auto;background:#141413}
-.fp-body .ps-pages{padding:22px 18px 70px;gap:16px}
+.fp-body{position:relative;flex:1;min-height:0;overflow:auto;background:#121211;border-top:1px solid #242422;scrollbar-width:thin;scrollbar-color:#3c3c38 transparent}
+.file-panel:has(.fp-tools) .fp-body{border-top:0;margin:0 8px 8px;border-radius:10px;border:1px solid #232321}
+.fp-body .ps-pages{padding:18px 16px 64px;gap:14px}
 .fp-body .ps-num{display:none}
 .is-working .fp-body>:not(.fp-working){filter:saturate(.5) brightness(.7);transition:filter .4s}
 .fp-working{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);display:flex;align-items:center;gap:11px;padding:10px 10px 10px 14px;border-radius:14px;background:#1f1f1df2;border:1px solid #42423d;box-shadow:0 18px 50px -12px #000d;backdrop-filter:blur(10px);z-index:2}
@@ -68,10 +91,11 @@
 
 
 .fp-flash{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:99px;background:#f2f1ec;color:#141413;font-size:12px;white-space:nowrap;box-shadow:0 10px 30px #0008;animation:ps-drop .3s ease-out both}
-@media(max-width:900px){.chat-split{flex-direction:column}.file-panel,.file-panel.wide{position:relative;top:0;width:auto;height:60vh;margin:0 8px 8px;align-self:stretch}}
+@media(max-width:900px){.chat-split{flex-direction:column}.chat-split:has(>.file-panel)>.chat-view{min-width:0}.file-panel,.file-panel.wide{position:relative;top:0;width:auto;max-width:none;min-width:0;height:60vh;margin:0 8px 8px;align-self:stretch}.fp-resize{display:none}}
 @media(prefers-reduced-motion:reduce){.file-panel,.fp-changed,.fp-flash{animation:none}.is-working .fp-body::before{animation:none}}
 
-.desktop-content .file-panel{top:46px;height:calc(100vh - 56px)}
+.desktop-content .file-panel{top:46px;height:calc(100vh - 54px)}
+.file-panel.as-modal .fp-resize{display:none}
 
 /* Pointing at part of a file: selections and areas go to the chat */
 .fp-body.area-mode .ps-page,.fp-body.area-mode .ps-text span{cursor:crosshair!important}
@@ -154,3 +178,41 @@ dialog.fp-dialog::backdrop{background:#0000008c;backdrop-filter:blur(6px);animat
 @keyframes fp-sync-turn{to{transform:rotate(360deg)}}
 @keyframes fp-sync-arrive{from{transform:scale(.4);opacity:0}}
 @media (prefers-reduced-motion:reduce){.fp-sync.is-uploading{animation-duration:2.4s}.fp-sync.is-synced{animation:none}}
+
+/* A pointer pressed in the chat: its spot on the page glows for a moment, with a marker in the margin */
+.fp-glow{position:absolute;z-index:3;pointer-events:none;border-radius:4px;margin:-3px;padding:3px;background:#f6c24a45;box-shadow:0 0 0 2px #e8ac2a;mix-blend-mode:multiply;animation:fp-glow 2.2s cubic-bezier(.2,.8,.3,1) both}
+.fp-glow::before{content:"";position:absolute;left:-12px;top:0;bottom:0;width:4px;border-radius:4px;background:#e8ac2a;mix-blend-mode:normal}
+.fp-glow.is-page{inset:0;margin:0;padding:0;background:#f6c24a1f;box-shadow:0 0 0 3px #e8ac2a;border-radius:3px}
+.fp-glow.is-page::before{display:none}
+@keyframes fp-glow{0%{opacity:0;transform:scale(1.06)}12%{opacity:1;transform:none}24%{box-shadow:0 0 0 2px #e8ac2a,0 0 0 9px #e8ac2a33}40%{box-shadow:0 0 0 2px #e8ac2a,0 0 0 0 #e8ac2a00}75%{opacity:1}100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.fp-glow{animation:fp-glow-still 2.2s steps(1) both}}
+@keyframes fp-glow-still{0%{opacity:1}100%{opacity:0}}
+/* Pointers in sent messages open their file at the spot */
+button.pointer-chip{cursor:pointer;font:inherit;font-size:12px;color:#d8d7d0;padding:0 10px 0 8px;transition:background .15s,border-color .15s}
+button.pointer-chip:hover{background:#ffffff12;border-color:#55554f;color:#fff}
+button.pointer-chip .drawn-icon{flex:none}
+.composer .pointer-chip .pc-go{display:inline-flex;align-items:center;gap:7px;min-width:0;height:100%;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
+.composer .pointer-chip .pc-go:hover{color:#fff}
+
+/* The conversation column beside a file: type and spacing follow the column's width, not the window's */
+@container chat (max-width:820px){
+  .new-chat-content{width:calc(100% - 48px)}
+  .new-chat-content .greeting-row h1{font-size:clamp(26px,5cqi,38px)}
+  .new-chat-content .greeting-row>.mowr-mark{width:clamp(30px,5.4cqi,42px);height:clamp(30px,5.4cqi,42px)}
+  .messages,.chat-composer{width:calc(100% - 44px)}
+  .suggestions{gap:7px}
+  .message-tools button,.long-toggle{white-space:nowrap}
+}
+@container chat (max-width:600px){
+  .new-chat-content{width:calc(100% - 32px)}
+  .messages,.chat-composer{width:calc(100% - 28px)}
+  .messages .message{padding-left:34px}
+  .messages .message.user .message-text{max-width:90%}
+  .suggestions button{font-size:11.5px;padding:7px 10px}
+  .composer textarea{font-size:15px}
+  .message-tools>button>span{display:none}
+}
+@container chat (max-width:470px){
+  .long-toggle>span:not(.long-switch){display:none}
+}
+.file-panel:has(.fp-tools) .fp-proposal{margin:0 8px 8px;border:1px solid #2a2a28;border-radius:10px;padding-left:14px}
