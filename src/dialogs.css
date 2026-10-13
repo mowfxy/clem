@@ -30,7 +30,7 @@
 .contact-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 @media(max-width:760px){.contact-options{grid-template-columns:1fr}}
 .contact-option{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-width:0;padding:16px;text-align:left;white-space:normal;border:1px solid #2f2f2c;border-radius:14px;background:#1c1c1b;color:#ecebe6;cursor:pointer;transition:border-color .2s,background .2s,transform .2s}
-.contact-option:hover{border-color:#4a4a44;background:#222220;transform:translateY(-1px)}
+.contact-option:hover{border-color:#4a4a44;background:#222220}
 .contact-option>svg{position:absolute;top:18px;right:16px;color:#6f6e68;transition:transform .2s,color .2s}
 .contact-option:hover>svg{color:#dddcd5;transform:translateX(2px)}
 .contact-option-text{display:grid;gap:4px;min-width:0}

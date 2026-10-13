@@ -150,3 +150,16 @@ body .sidebar-bottom{border-top-color:transparent}
 body .account-button{border-radius:10px;transition:background .3s var(--pm-ease)}
 body .account-button:hover{background:#1d1d1c}
 body .account-button>span:not(.avatar){font-size:14px;font-weight:500}
+
+/* Lists arrive in a short cascade: cards, file rows and folders fade up one after another, the first eight staggered
+   and the rest together, so a long list never waits. Only on arrival; filtering or re-rendering doesn't replay it. */
+body :is(.lib-card,.file-row,.sp-file,.sp-folder){animation:pm-in .55s var(--pm-ease) backwards}
+body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(2){animation-delay:40ms}
+body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(3){animation-delay:80ms}
+body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(4){animation-delay:120ms}
+body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(5){animation-delay:160ms}
+body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(6){animation-delay:200ms}
+body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(7){animation-delay:240ms}
+body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(n+8){animation-delay:280ms}
+@media (prefers-reduced-motion:reduce){body :is(.lib-card,.file-row,.sp-file,.sp-folder){animation:none!important}}
+html[data-quiet=true] body :is(.lib-card,.file-row,.sp-file,.sp-folder){animation:none!important}

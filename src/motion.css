@@ -18,7 +18,6 @@
 .suggestions>*{animation:m-rise .45s var(--ease-out) backwards}
 .suggestions>*:nth-child(2){animation-delay:50ms}.suggestions>*:nth-child(3){animation-delay:100ms}.suggestions>*:nth-child(4){animation-delay:150ms}
 .suggestions>button{transition:transform .22s var(--ease-spring),border-color .2s,background .2s}
-.suggestions>button:hover{transform:translateY(-2px)}
 
 /* Tactile controls. */
 .primary{transition:background .16s,transform .16s var(--ease-spring),box-shadow .2s}

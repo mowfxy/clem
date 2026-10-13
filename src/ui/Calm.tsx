@@ -32,12 +32,10 @@ export type Template={
   title:string;
   line:string;
   meta?:string;
-  /** The small card that peeks up from the corner on hover: a coloured dot and its label. */
-  peek?:{label:string;tone:'blue'|'green'|'lilac'|'pink'|'sand'|'clay'};
   run:()=>void;
 };
 
-/** Starting points, two to a row. Hovering one turns its icon into a plus and lifts a small card into view. */
+/** Starting points, two to a row. Hovering one turns its icon into a plus. */
 export function Templates({items,label}:{items:Template[];label?:string}){
   return <section className="calm-templates" aria-label={label}>
     {items.map((t,i)=><button type="button" key={t.key} className="calm-template" style={{'--i':i} as CSSProperties} onClick={t.run}>
@@ -47,7 +45,6 @@ export function Templates({items,label}:{items:Template[];label?:string}){
         <span>{t.line}</span>
         {t.meta&&<small><Icon name="clock" size={15}/>{t.meta}</small>}
       </span>
-      {t.peek&&<span className={`calm-peek tone-${t.peek.tone}`} aria-hidden="true"><em><i/>{t.peek.label}</em><span/><span/></span>}
     </button>)}
   </section>;
 }

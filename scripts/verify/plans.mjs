@@ -119,7 +119,7 @@ try {
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${out}/plan-tab.png` });
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.locator(".pl-focus").getByRole("checkbox", { name: /Mark done: Review lecture 2/ }).click();
+  await page.locator(".pl-sections").getByRole("checkbox", { name: /Mark done: Review lecture 2/ }).click();
   await saved(page);
   check(await page.locator(".pl-state").first().textContent() !== "Behind · 1 overdue", "ticking the late task catches the plan up");
   check(await page.locator(".sp-tabs .late").count() === 0, "the Plan tab's overdue count clears");

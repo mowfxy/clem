@@ -1,8 +1,13 @@
-.messages .message{position:relative;margin:0 0 38px;padding:0 0 0 46px}
+.messages .message{position:relative;margin:0 0 38px;padding:0}
 .messages .message.user{display:flex;flex-direction:column;align-items:flex-end;padding:0;margin-bottom:40px}
 .messages .message.user .message-text{width:fit-content;max-width:80%;padding:13px 19px;border-radius:21px;background:#242424;white-space:pre-wrap;font-size:15px;line-height:1.65}
 .messages .message.assistant .message-text{font-family:var(--serif);font-size:var(--t-read);line-height:1.7;background:none;padding:0}
-.message-mark{position:absolute;left:0;top:-1.4px;line-height:0;color:#eeece4}
+.message-mark{display:block;width:fit-content;margin:22px 0 0;line-height:0;color:#eeece4;animation:mark-settle .7s cubic-bezier(.16,1,.3,1) backwards}
+/* Waiting for the first words: the mark sits beside "Thinking…" on one line. */
+.messages .message.assistant.waiting{display:flex;align-items:center;gap:14px}
+.messages .message.assistant.waiting .message-mark{margin:0}
+@keyframes mark-settle{from{opacity:0;transform:translateY(-6px) scale(.85)}}
+@media(prefers-reduced-motion:reduce){.message-mark{animation:none}}
 .messages .message.assistant .message-text p{line-height:inherit}
 .messages .message.assistant .thinking{display:inline-block;font-family:var(--sans);font-size:16px;line-height:1.7;color:#b5b4ac;background:linear-gradient(105deg,#92918b 0%,#92918b 35%,#f4f2e9 48%,#92918b 61%,#92918b 100%);background-size:250% 100%;background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:thinking-light 2.6s ease-in-out infinite}
 @keyframes thinking-light{0%,12%{background-position:100% 0}88%,100%{background-position:0% 0}}
@@ -15,7 +20,7 @@
 .chat-options button{justify-content:flex-start;font-size:13px;padding:10px 12px}
 .chat-options button:hover{background:#ffffff0d}
 .chat-options button.danger{color:#ff5a4e}.chat-options button.danger:hover:not(:disabled){background:#ff5a4e1f;color:#ff6b60}
-@media(max-width:760px){.messages .message{padding-left:36px}.messages .message.assistant .message-text{font-size:16px}.messages .message.user .message-text{max-width:90%}.message-mark{top:1.1px}.message-mark svg{width:25px;height:25px}}
+@media(max-width:760px){.messages .message.assistant .message-text{font-size:16px}.messages .message.user .message-text{max-width:90%}.message-mark svg{width:24px;height:24px}}
 
 /* A sidebar chat is one row: the whole row highlights, and its ··· sits inside it on hover. */
 .history-row{position:relative;border-radius:8px;transition:background .16s}
