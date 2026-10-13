@@ -115,7 +115,7 @@ export function SubjectStudy({
           <div className="review-done">
             <Icon name="check" size={28} />
             <h4>All caught up.</h4>
-            <p>{reviewed} {reviewed === 1 ? "card" : "cards"} reviewed. Mowr will bring each one back just before you are likely to forget it.</p>
+            <p>{reviewed} {reviewed === 1 ? "card" : "cards"} reviewed. Each comes back just before you’d forget it.</p>
           </div>
         )}
       </section>
@@ -140,7 +140,7 @@ export function SubjectStudy({
         <div className="study-weak">
           <h4>Keeps slipping</h4>
           <ul>{weak.slice(0, 3).map((q) => <li key={q}>{q}</li>)}</ul>
-          <p className="fine">Answers in this subject will connect back to these.</p>
+          
         </div>
       )}
       <div className="study-sets-head">
@@ -196,7 +196,7 @@ export function SubjectStudy({
               </article>
             );
           })}
-          {!sets.length && <p className="fine">Ask for flashcards or a quiz in a subject chat, or create one here. Every card joins your review schedule.</p>}
+          {!sets.length && <p className="fine">No sets yet. Ask for one in a chat, or make one here.</p>}
         </div>
       )}
     </section>

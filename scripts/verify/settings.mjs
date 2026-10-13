@@ -346,9 +346,9 @@ try {
   await page.evaluate(()=>location.hash='/app/visuals');
   assert.equal(await page.locator('.kinetra-grid').count(),0);
   await page.evaluate(()=>location.hash='/app/subjects');
-  const importer=page.locator('.lib-actions').getByRole('button',{name:/^Import a (subject ZIP or )?study pack$/});
+  const importer=page.locator('.calm-empty-actions').getByRole('button',{name:/^Import a (subject ZIP or )?study pack$/});
   await importer.waitFor();
-  assert.equal(await page.locator('.lib-actions').getByRole('button').count(),2);
+  assert.equal(await page.locator('.calm-empty-actions').getByRole('button').count(),2);
   const chooser=page.waitForEvent('filechooser');await importer.click();await chooser;
   await page.mouse.move(800,300);
   assert.ok(await importer.locator('svg path').count()>=2,'Import icon is drawn');

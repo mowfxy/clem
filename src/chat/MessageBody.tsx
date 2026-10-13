@@ -1,3 +1,4 @@
+import { Illustration } from '../Illustrations';
 import { lazy, memo, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { VisualSaveContext } from './visual-save';
 import { LinkChip, YouTubeEmbed, videosIn } from './Links';
@@ -26,6 +27,10 @@ import { readPlanBlock, type PlanBlock } from '../../core/plans';
 import type { EditOutcome } from '../../core/types';
 
 const SpecVisual = lazy(() => import('../visuals/SpecVisual'));
+/** While a block is still arriving: the pencil at work for a visual, a quiet line for the rest. */
+function Drafting({ art = false, children }: { art?: boolean; children: ReactNode }) {
+  return <div className={`visual-drafting ${art ? 'with-art' : 'line'}`} role="status">{art && <Illustration scene="pencil" viewBox="60 30 360 300" className="drafting-art" />}<span className="drafting-text">{children}</span></div>;
+}
 
 /** Every maths dialect becomes remark-math's $$…$$ (see core/math-markdown), then citations become links. */
 export function prepareMarkdown(text: string) {
@@ -118,12 +123,12 @@ function VisualBlock({ body, streaming }: { body: string; streaming: boolean }) 
   if (result.visual) {
     const saved = !!saves?.saved(result.spec);
     return <div className="visual-frame">
-      <Suspense fallback={<div className="visual-drafting">Drawing…</div>}><SpecVisual visual={result.visual} headerAction={saves && !streaming && <button type="button" className={`visual-save ${saved ? "saved" : ""}`} aria-pressed={saved} aria-description={saved ? "Saved to Visuals · click to remove" : "Save to Visuals"} onClick={() => saves.toggle(result.spec)}>
+      <Suspense fallback={<Drafting art>Drawing…</Drafting>}><SpecVisual visual={result.visual} headerAction={saves && !streaming && <button type="button" className={`visual-save ${saved ? "saved" : ""}`} aria-pressed={saved} aria-description={saved ? "Saved to Visuals · click to remove" : "Save to Visuals"} onClick={() => saves.toggle(result.spec)}>
         <Icon name={saved ? "check" : "pin"} size={16} /><span>{saved ? "Saved" : "Save"}</span>
       </button>} /></Suspense>
     </div>;
   }
-  if (streaming) return <div className="visual-drafting" role="status"><span className="drafting-dot" />Drawing the visual…</div>;
+  if (streaming) return <Drafting art>Drawing the visual…</Drafting>;
   return <details className="block-error"><summary><Icon name="visuals" size={15} />This visual could not be drawn. {result.error}</summary><pre>{body.slice(0, 4000)}</pre></details>;
 }
 
@@ -188,17 +193,17 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
             const key = 'edit-' + editIndex++;
             let block: EditBlock | null = null;
             try { block = JSON.parse(code); } catch { /* still streaming or malformed */ }
-            if (!block || typeof block.path !== 'string') return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Preparing a file change…</div> : <details className="block-error"><summary>A proposed file change could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
+            if (!block || typeof block.path !== 'string') return streaming ? <Drafting>Preparing a file change…</Drafting> : <details className="block-error"><summary>A proposed file change could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             return <EditProposal block={block} streaming={streaming} scope={handlers.scope} outcome={handlers.edits?.[key]} onDecide={(approve, base) => handlers.onEdit?.(key, block!, approve, base) ?? Promise.resolve()} onUndo={outcome => handlers.onUndo?.(key, outcome) ?? Promise.resolve()} />;
           }
           if (lang === 'automation') {
             const key = 'automation-' + automationIndex++, block = readAutomationBlock(code);
-            if (!block) return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Preparing a routine…</div> : <details className="block-error"><summary>A proposed routine could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
+            if (!block) return streaming ? <Drafting>Preparing a routine…</Drafting> : <details className="block-error"><summary>A proposed routine could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             return <AutomationProposal block={block} streaming={streaming} outcome={handlers.edits?.[key]} onDecide={approve => handlers.onSchedule?.(key, block, approve) ?? Promise.resolve()} />;
           }
           if (lang === 'plan') {
             const key = 'plan-' + planIndex++, block = readPlanBlock(code);
-            if (!block) return streaming ? <div className="visual-drafting" role="status"><span className="drafting-dot" />Drawing up the plan…</div> : <details className="block-error"><summary>A plan could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
+            if (!block) return streaming ? <Drafting>Drawing up the plan…</Drafting> : <details className="block-error"><summary>A plan could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             const outcome = handlers.edits?.[key];
             return <PlanProposal block={block} streaming={streaming} outcome={outcome} info={handlers.planInfo?.(key, block) ?? {}} onDecide={approve => handlers.onPlan?.(key, block, approve) ?? Promise.resolve()} onUndo={() => outcome ? handlers.onPlanUndo?.(key, block, outcome) ?? Promise.resolve() : Promise.resolve()} onOpen={() => handlers.onOpenPlan?.(block)} />;
           }
