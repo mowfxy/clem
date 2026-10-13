@@ -1,4 +1,4 @@
-.ps-pages{display:flex;flex-direction:column;align-items:center;gap:22px;padding:28px 24px 60px}
+.ps-pages{display:flex;flex-direction:column;align-items:safe center;gap:22px;padding:28px 24px 60px}
 .ps-page{position:relative;background:#fff;border-radius:3px;box-shadow:0 18px 50px -14px #000c,0 0 0 1px #0000002e}
 .ps-page canvas{display:block;border-radius:3px}
 .ps-page .ps-still{display:block;border-radius:3px;pointer-events:none;user-select:none}

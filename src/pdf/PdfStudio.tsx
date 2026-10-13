@@ -1,20 +1,25 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {PDFDocumentProxy} from 'pdfjs-dist';
 import './pdf-studio.css';
 
 type Box={page:number;x:number;y:number;w:number;h:number};
 
-/** Continuous pages, rendered sharp for the screen, with optional highlight boxes. */
-export function Pages({pdf,highlights,onSelect}:{pdf:PDFDocumentProxy;highlights:Box[];onSelect?:(text:string)=>void}){
+/** Continuous pages, rendered sharp for the screen, with optional highlight boxes. `zoom` scales the fitted width;
+ *  `onLayout` runs once the pages are laid out at a new size, before they paint, so the reader can keep its place. */
+export function Pages({pdf,highlights,onSelect,zoom=1,onLayout}:{pdf:PDFDocumentProxy;highlights:Box[];onSelect?:(text:string)=>void;zoom?:number;onLayout?:()=>void}){
   const host=useRef<HTMLDivElement>(null);
-  const [width,setWidth]=useState(0);
-  useEffect(()=>{const el=host.current;if(!el)return;const ro=new ResizeObserver(()=>setWidth(Math.min(920,el.clientWidth-48)));ro.observe(el);return()=>ro.disconnect();},[]);
+  const [fit,setFit]=useState(0);
+  // Resizing the reader (dragging its edge) lays the pages out again once the size settles, not on every pixel.
+  useEffect(()=>{const el=host.current;if(!el)return;let t=0,first=true;const measure=()=>setFit(Math.max(160,Math.min(920,el.clientWidth-48)));const ro=new ResizeObserver(()=>{clearTimeout(t);if(first){first=false;measure();}else t=window.setTimeout(measure,140);});ro.observe(el);return()=>{clearTimeout(t);ro.disconnect();};},[]);
+  const width=Math.round(fit*zoom);
   const [pages,setPages]=useState<{n:number;w:number;h:number;scale:number}[]>([]);
   useEffect(()=>{
     if(!width)return;let cancelled=false;
     void (async()=>{const out=[];for(let n=1;n<=pdf.numPages;n++){const p=await pdf.getPage(n);const base=p.getViewport({scale:1});const scale=width/base.width;out.push({n,w:width,h:base.height*scale,scale});}if(!cancelled)setPages(out);})();
     return()=>{cancelled=true;};
   },[pdf,width]);
+  const layout=useRef(onLayout);layout.current=onLayout;
+  useLayoutEffect(()=>{if(pages.length)layout.current?.();},[pages]);
   // Pages away from the view are drawn one after another in the background, never all at once.
   const queue=useRef<Promise<void>>(Promise.resolve());
   const later=(job:()=>Promise<void>)=>{queue.current=queue.current.then(job).catch(()=>{});};
@@ -55,13 +60,17 @@ function startSelecting(layer:HTMLElement){
  *  the root the distances are measured from. */
 function Page({pdf,n,w,h,scale,boxes,later}:{pdf:PDFDocumentProxy;n:number;w:number;h:number;scale:number;boxes:Box[];later:Later}){
   const canvas=useRef<HTMLCanvasElement>(null),text=useRef<HTMLDivElement>(null);
-  const [viewportH,setViewportH]=useState(h);
+  // The page's height is known before it is drawn (the same viewport), so the layout never shifts as pages draw.
+  const viewportH=h;
   const [near,setNear]=useState(false),[still,setStill]=useState('');
   const nearRef=useRef(false),stillRef=useRef(''),texted=useRef(false);
+  // pdf.js refuses a second render on a canvas that is still drawing, which left a page half drawn at its old size
+  // after a resize: draws on the live canvas wait for the one before them (a cancelled one ends within 50 ms).
+  const live=useRef<Promise<unknown>>(Promise.resolve());
   const ratio=Math.min(window.devicePixelRatio||1,2);
   const draw=async(target:HTMLCanvasElement,alive:()=>boolean)=>{
     const page=await pdf.getPage(n);if(!alive())return false;const viewport=page.getViewport({scale});
-    target.width=Math.floor(viewport.width*ratio);target.height=Math.floor(viewport.height*ratio);setViewportH(viewport.height);
+    target.width=Math.floor(viewport.width*ratio);target.height=Math.floor(viewport.height*ratio);
     const task=page.render({canvas:target,viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]}) as unknown as {cancel:()=>void;promise:Promise<void>};
     const stop=setInterval(()=>{if(!alive())task.cancel();},50);
     try{await task.promise;}finally{clearInterval(stop);}
@@ -101,7 +110,7 @@ function Page({pdf,n,w,h,scale,boxes,later}:{pdf:PDFDocumentProxy;n:number;w:num
   useEffect(()=>{
     if(!near)return;
     let cancelled=false,drawn=false;const c=canvas.current!;
-    void draw(c,()=>!cancelled).then(ok=>{drawn=ok;}).catch(()=>{});
+    const run=live.current.catch(()=>{}).then(()=>cancelled?false:draw(c,()=>!cancelled)).then(ok=>{drawn=!!ok;}).catch(()=>{});live.current=run;
     return()=>{
       cancelled=true;
       // Still in view: a new size or file is about to redraw this canvas, so there is nothing to keep.
