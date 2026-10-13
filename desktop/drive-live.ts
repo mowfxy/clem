@@ -33,6 +33,31 @@ const resolve = <T extends Meta>(f: T): T => f.mimeType === SHORTCUT && f.shortc
 export type DriveItem = {id:string;name:string;mimeType:string;size?:number;modified?:string;thumbnail?:boolean;durationMs?:number;path?:string;folder?:boolean};
 const FIELDS = "id,name,mimeType,size,modifiedTime,thumbnailLink,hasThumbnail,webViewLink,iconLink,videoMediaMetadata(durationMillis),shortcutDetails(targetId,targetMimeType)";
 const quote = (s: string) => "'" + s.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
+const OFFLINE = "Mowr couldn't reach Google Drive. Check your connection and try again.";
+const wait = (ms: number) => new Promise((go) => setTimeout(go, ms));
+/** A dropped connection or a timeout, rather than an answer from the server. */
+const unreached = (e: unknown) => e instanceof TypeError || /^(TimeoutError|AbortError)$/.test((e as Error)?.name || "") || /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network/i.test(String((e as Error)?.message || e));
+/** Google asks for a moment: 429, a 5xx, or a 403 whose reason is a rate limit. */
+const busy = async (r: Response) => r.status === 429 || r.status >= 500 ||
+  (r.status === 403 && /rateLimitExceeded|userRateLimitExceeded|backendError/i.test(await r.clone().text().catch(() => "")));
+/**
+ * One request, tried again (up to four times in all, waiting longer each time) when the connection drops, it times out or
+ * Google is briefly busy. A fresh timeout is made for each try, so one slow answer does not use up the others.
+ */
+async function sturdy(fetcher: typeof fetch, url: string, init: RequestInit & {timeout?: number} = {}): Promise<Response> {
+  const {timeout, ...rest} = init;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetcher(url, {...rest, ...(timeout ? {signal: AbortSignal.timeout(timeout)} : {})});
+      if (attempt < 3 && await busy(r)) { void r.body?.cancel().catch(() => {}); await wait(500 * 3 ** attempt); continue; }
+      return r;
+    } catch (error) {
+      if (!unreached(error)) throw error;
+      if (attempt >= 3) throw Object.assign(Error(OFFLINE), {code: "offline"});
+      await wait(500 * 3 ** attempt);
+    }
+  }
+}
 const item = (f: Meta & {hasThumbnail?:boolean}, path?: string): DriveItem => ({
   id: f.id, name: f.name, mimeType: f.mimeType, size: f.size ? Number(f.size) : undefined, modified: f.modifiedTime,
   thumbnail: !!f.thumbnailLink || !!f.hasThumbnail, durationMs: f.videoMediaMetadata?.durationMillis ? Number(f.videoMediaMetadata.durationMillis) : undefined,
@@ -52,10 +77,18 @@ export class DriveLive {
   /** null means Drive isn't connected for this account. */
   private async token(force=false):Promise<string|null>{
     if(!force&&this.cached&&Date.now()<this.cached.until)return this.cached.token;
+    // A folder read starts many requests at once; they share one token request instead of each asking for its own.
+    if(!force&&this.asking)return this.asking;
+    const asking=this.fresh().finally(()=>{if(this.asking===asking)this.asking=null;});
+    this.asking=asking;
+    return asking;
+  }
+  private asking:Promise<string|null>|null=null;
+  private async fresh():Promise<string|null>{
     const session=await this.session();if(!session)return null;
     // A sign-out or account switch during this request must not leave the previous person's token behind.
     const generation=this.generation;
-    const r=await this.fetcher(this.service+"/api/drive/token",{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",signal:AbortSignal.timeout(20000)});
+    const r=await sturdy(this.fetcher,this.service+"/api/drive/token",{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",timeout:20000});
     if(r.status===400||r.status===404||r.status===401||r.status===500){const body=await r.json().catch(()=>({}));if(/connect google drive|reconnect|expired/i.test(body.error||"")){if(generation===this.generation){this.cached=null;this.known={connected:false,at:Date.now()};}return null;}throw Error(body.error||"Google Drive is unavailable right now.");}
     if(!r.ok)throw Error("Google Drive is unavailable right now.");
     const {accessToken,expiresIn,scope}=await r.json();
@@ -64,9 +97,9 @@ export class DriveLive {
     this.known={connected:true,at:Date.now()};
     return accessToken;
   }
-  private async google(url:string,init:RequestInit={},retry=true):Promise<Response>{
+  private async google(url:string,init:RequestInit&{timeout?:number}={},retry=true):Promise<Response>{
     const token=await this.token();if(!token)throw Object.assign(Error("Connect Google Drive in Settings → Connectors first."),{code:"not_connected"});
-    const r=await this.fetcher(url,{...init,headers:{...(init.headers as Record<string,string>||{}),Authorization:"Bearer "+token}});
+    const r=await sturdy(this.fetcher,url,{...init,headers:{...(init.headers as Record<string,string>||{}),Authorization:"Bearer "+token}});
     if(r.status===401&&retry){this.cached=null;return this.google(url,init,false);}
     return r;
   }
@@ -88,14 +121,14 @@ export class DriveLive {
   }
   private generation=0;
   /** Drops everything held for the signed-in person (token, connection state, folder trees, file details). */
-  forget(){this.generation++;this.cached=null;this.known=null;this.trees.clear();this.meta.clear();}
+  forget(){this.generation++;this.cached=null;this.asking=null;this.known=null;this.trees.clear();this.meta.clear();}
 
   async search(question:string):Promise<{connected:boolean;files:DriveHit[]}>{
     if(!await this.token())return {connected:false,files:[]};
     const url=new URL(API);
     url.search=new URLSearchParams({q:driveQuery(question),pageSize:"12",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
       fields:`files(${FIELDS})`}).toString();
-    const r=await this.google(url.href,{signal:AbortSignal.timeout(20000)});
+    const r=await this.google(url.href,{timeout:20000});
     if(!r.ok)throw Error("Google Drive search failed. Try again.");
     const files=(((await r.json()).files||[]) as Meta[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&f.mimeType!==FOLDER);
     for(const f of files)this.meta.set(f.id,f);
@@ -117,7 +150,7 @@ export class DriveLive {
     const url=new URL(API);
     url.search=new URLSearchParams({q:clauses.join(" and "),pageSize:"100",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
       ...(words?{}:{orderBy:"folder,name_natural"}),fields:`nextPageToken,files(${FIELDS})`,...(page?{pageToken:page}:{})}).toString();
-    const r=await this.google(url.href,{signal:AbortSignal.timeout(20000)});
+    const r=await this.google(url.href,{timeout:20000});
     if(!r.ok)throw Error(r.status===404?"This Drive folder is no longer available.":"Google Drive could not list these files.");
     const body=await r.json() as {files?:Meta[];nextPageToken?:string};
     const resolved=(body.files||[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&(kind!=="folders"||f.mimeType===FOLDER));
@@ -131,7 +164,7 @@ export class DriveLive {
     await this.canWrite();
     const mime=uploadType(type,name,data);
     const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,modifiedTime",{
-      method:"POST",signal:AbortSignal.timeout(30000),
+      method:"POST",timeout:30000,
       headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
       body:JSON.stringify({name:name.replace(/[\x00-\x1f]/g,"").slice(0,200),parents:[folderId],mimeType:mime}),
     });
@@ -149,7 +182,7 @@ export class DriveLive {
     await this.canWrite();
     const mime=uploadType(type,(await this.info(fileId).catch(()=>null))?.name||"",data);
     const start=await this.google(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable&supportsAllDrives=true&fields=id,modifiedTime`,{
-      method:"PATCH",signal:AbortSignal.timeout(30000),
+      method:"PATCH",timeout:30000,
       headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(data.length)},
       // The type goes with the new version too, so a file saved earlier under a wrong type is put right.
       body:JSON.stringify({mimeType:mime}),
@@ -167,7 +200,7 @@ export class DriveLive {
   /** Renames a file or folder in Drive, in place. */
   async rename(fileId:string,name:string){
     await this.canWrite();
-    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id,name,modifiedTime`,{method:"PATCH",signal:AbortSignal.timeout(20000),
+    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id,name,modifiedTime`,{method:"PATCH",timeout:20000,
       headers:{"Content-Type":"application/json; charset=UTF-8"},body:JSON.stringify({name:name.replace(/[\x00-\x1f]/g,"").slice(0,200)})});
     if(r.status===404)throw Error("The file is no longer in Drive.");
     if(r.status===403)throw Error(await refusal(r));
@@ -184,12 +217,12 @@ export class DriveLive {
     if(!moving||!(to===root||tree.folders.includes(to)))throw Error("That is not in the linked Drive folder.");
     const own=(moving.path?moving.path+" / ":"")+moving.name,target=to===root?"":(()=>{const f=tree.items.find(i=>i.id===to)!;return (f.path?f.path+" / ":"")+f.name;})();
     if(moving.folder&&(to===fileId||target===own||target.startsWith(own+" / ")))throw Error("A folder can't go inside itself.");
-    const meta=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=parents`,{signal:AbortSignal.timeout(15000)});
+    const meta=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=parents`,{timeout:15000});
     if(meta.status===404)throw Error("The file is no longer in Drive.");
     if(!meta.ok)throw Error("Google Drive could not find the file.");
     const from=((await meta.json()) as {parents?:string[]}).parents||[];
     if(from.includes(to))return {ok:true};
-    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id,modifiedTime&addParents=${encodeURIComponent(to)}&removeParents=${encodeURIComponent(from.join(","))}`,{method:"PATCH",signal:AbortSignal.timeout(20000),
+    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id,modifiedTime&addParents=${encodeURIComponent(to)}&removeParents=${encodeURIComponent(from.join(","))}`,{method:"PATCH",timeout:20000,
       headers:{"Content-Type":"application/json; charset=UTF-8"},body:"{}"});
     if(r.status===404)throw Error("The file is no longer in Drive.");
     if(r.status===403)throw Error(await refusal(r));
@@ -200,7 +233,7 @@ export class DriveLive {
   /** Moves a file to Drive’s trash, where it can be restored for 30 days; nothing is deleted for good. */
   async trash(fileId:string){
     await this.canWrite();
-    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id`,{method:"PATCH",signal:AbortSignal.timeout(20000),
+    const r=await this.google(`${API}/${fileId}?supportsAllDrives=true&fields=id`,{method:"PATCH",timeout:20000,
       headers:{"Content-Type":"application/json; charset=UTF-8"},body:JSON.stringify({trashed:true})});
     if(r.status===403)throw Error(await refusal(r));
     if(!r.ok&&r.status!==404)throw Error("Google Drive did not move the file to the trash.");
@@ -226,7 +259,7 @@ export class DriveLive {
           const url=new URL(API);
           url.search=new URLSearchParams({q:`trashed = false and (${group.map(id=>`${quote(id)} in parents`).join(" or ")})`,pageSize:"200",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
             fields:`nextPageToken,files(${FIELDS},parents)`,...(page?{pageToken:page}:{})}).toString();
-          const r=await this.google(url.href,{signal:AbortSignal.timeout(25000)});
+          const r=await this.google(url.href,{timeout:25000});
           if(!r.ok)throw Error(r.status===404?"The linked Drive folder is no longer available.":"Google Drive could not list the linked folder.");
           const body=await r.json() as {files?:(Meta&{parents?:string[]})[];nextPageToken?:string};
           for(const raw of body.files||[]){
@@ -263,7 +296,7 @@ export class DriveLive {
       for(let i=0;i<tree.folders.length&&i<60;i+=20){
         const url=new URL(API);
         url.search=new URLSearchParams({q:`trashed = false and (${text}) and (${tree.folders.slice(i,i+20).map(id=>`${quote(id)} in parents`).join(" or ")})`,pageSize:"30",supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"files(id)"}).toString();
-        const r=await this.google(url.href,{signal:AbortSignal.timeout(15000)}).catch(()=>null);
+        const r=await this.google(url.href,{timeout:15000}).catch(()=>null);
         if(!r?.ok)continue;
         for(const f of ((await r.json()).files||[]) as {id:string}[])score.set(f.id,(score.get(f.id)||0)+2);
       }
@@ -285,13 +318,13 @@ export class DriveLive {
     const plain=/^text\/|json|csv|markdown/.test(m.mimeType)&&Number(m.size||0)<2_000_000;
     if(!google&&!plain)return undefined;
     const as=m.mimeType.endsWith("spreadsheet")?"text/csv":"text/plain";
-    const r=await this.google(google?`${API}/${id}/export?mimeType=${encodeURIComponent(as)}`:`${API}/${id}?alt=media&supportsAllDrives=true`,{headers:plain?{Range:`bytes=0-${limit}`}:{},signal:AbortSignal.timeout(20000)});
+    const r=await this.google(google?`${API}/${id}/export?mimeType=${encodeURIComponent(as)}`:`${API}/${id}?alt=media&supportsAllDrives=true`,{headers:plain?{Range:`bytes=0-${limit}`}:{},timeout:20000});
     if(!r.ok&&r.status!==206)return undefined;
     return (await r.text()).slice(0,limit);
   }
   private async info(id:string){
     const known=this.meta.get(id);if(known)return known;
-    const r=await this.google(`${API}/${id}?fields=${FIELDS}&supportsAllDrives=true`,{signal:AbortSignal.timeout(15000)});
+    const r=await this.google(`${API}/${id}?fields=${FIELDS}&supportsAllDrives=true`,{timeout:15000});
     if(!r.ok)throw Error("This Drive file is unavailable.");
     const m=await r.json() as Meta;this.meta.set(id,m);return m;
   }
@@ -321,7 +354,7 @@ export class DriveLive {
   async thumbnail(id:string,size=640):Promise<Response>{
     const m=await this.info(id).catch(()=>null);
     if(!m?.thumbnailLink)return new Response(null,{status:404});
-    const r=await this.google(m.thumbnailLink.replace(/=s\d+$/,"=s"+size),{signal:AbortSignal.timeout(15000)}).catch(()=>null);
+    const r=await this.google(m.thumbnailLink.replace(/=s\d+$/,"=s"+size),{timeout:15000}).catch(()=>null);
     if(!r?.ok)return new Response(null,{status:404});
     return new Response(r.body,{headers:{"Content-Type":r.headers.get("Content-Type")||"image/jpeg","Cache-Control":"private, max-age=600"}});
   }
@@ -332,7 +365,7 @@ export class DriveLive {
    */
   async captions(id:string,languages:string[]=["en"]):Promise<VideoCaptions>{
     const result:VideoCaptions={source:"drive",id,transcript:""};
-    const r=await this.google(`${API}/${id}?fields=id,name,mimeType,parents,videoMediaMetadata(durationMillis)&supportsAllDrives=true`,{signal:AbortSignal.timeout(15000)});
+    const r=await this.google(`${API}/${id}?fields=id,name,mimeType,parents,videoMediaMetadata(durationMillis)&supportsAllDrives=true`,{timeout:15000});
     if(!r.ok)return {...result,error:r.status===404?"This Drive file is no longer available.":"This Drive file couldn't be read."};
     const m=await r.json() as Meta&{parents?:string[]};
     Object.assign(result,{title:m.name,durationSec:m.videoMediaMetadata?.durationMillis?Math.round(Number(m.videoMediaMetadata.durationMillis)/1000):undefined});
@@ -347,7 +380,7 @@ export class DriveLive {
   private async ownCaptions(id:string,languages:string[]){
     const headers={Referer:"https://drive.google.com/"};
     // Signed in first (the person's own private videos), then as the public player (videos shared by link).
-    const attempts=[()=>this.google(`${PLAYBACK}/${id}/playback`,{headers,signal:AbortSignal.timeout(15000)}),()=>this.fetcher(`${PLAYBACK}/${id}/playback?key=${PLAYER_KEY}`,{headers,signal:AbortSignal.timeout(15000)})];
+    const attempts=[()=>this.google(`${PLAYBACK}/${id}/playback`,{headers,timeout:15000}),()=>this.fetcher(`${PLAYBACK}/${id}/playback?key=${PLAYER_KEY}`,{headers,signal:AbortSignal.timeout(15000)})];
     let base="";
     for(const attempt of attempts){
       const r=await attempt().catch(()=>null);
@@ -358,7 +391,7 @@ export class DriveLive {
     if(!base)return null;
     const get=async(url:string)=>{
       for(const signed of [false,true]){
-        const r=await (signed?this.google(url,{headers,signal:AbortSignal.timeout(15000)}):this.fetcher(url,{headers,signal:AbortSignal.timeout(15000)})).catch(()=>null);
+        const r=await (signed?this.google(url,{headers,timeout:15000}):this.fetcher(url,{headers,signal:AbortSignal.timeout(15000)})).catch(()=>null);
         if(r?.ok)return r.text();
       }
       return "";
@@ -384,7 +417,7 @@ export class DriveLive {
     if(!parents.length||stem.length<2)return null;
     const url=new URL(API);
     url.search=new URLSearchParams({q:`trashed = false and name contains ${quote(stem.slice(0,100))} and (${parents.slice(0,5).map(p=>`${quote(p)} in parents`).join(" or ")})`,pageSize:"30",supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"files(id,name,mimeType,size)"}).toString();
-    const r=await this.google(url.href,{signal:AbortSignal.timeout(15000)});
+    const r=await this.google(url.href,{timeout:15000});
     if(!r.ok)return null;
     const lower=stem.toLowerCase();
     const files=(((await r.json()).files||[]) as Meta[]).filter(f=>f.name.toLowerCase().startsWith(lower)&&!isMediaType(f.mimeType)&&Number(f.size||0)<5_000_000&&(CAPTION_FILE.test(f.name)||(f.mimeType==="application/vnd.google-apps.document"&&/transcript|captions?|subtitles?/i.test(f.name))))
@@ -392,7 +425,7 @@ export class DriveLive {
       .sort((a,b)=>Number(untimed(a))-Number(untimed(b)));
     for(const f of files.slice(0,3)){
       const doc=f.mimeType==="application/vnd.google-apps.document";
-      const got=await this.google(doc?`${API}/${f.id}/export?mimeType=text%2Fplain`:`${API}/${f.id}?alt=media&supportsAllDrives=true`,{signal:AbortSignal.timeout(20000)}).catch(()=>null);
+      const got=await this.google(doc?`${API}/${f.id}/export?mimeType=text%2Fplain`:`${API}/${f.id}?alt=media&supportsAllDrives=true`,{timeout:20000}).catch(()=>null);
       if(!got?.ok)continue;
       const raw=(await got.text()).slice(0,2_000_000);
       const cues=parseCaptions(raw);

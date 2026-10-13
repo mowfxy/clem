@@ -46,6 +46,7 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-empty small{font-size:12px}
 .gd-more{align-self:center;margin:8px 0;height:32px;padding:0 16px;border-radius:9px;border:1px solid #ffffff1a;background:#ffffff08;color:#e7e5de;cursor:pointer}
 .gd-error{margin:0;padding:9px 12px;border-radius:10px;background:#ff6b5a14;border:1px solid #ff6b5a33;color:#ffb4a8;font-size:12px}
+.gd-retry{margin-left:6px;padding:0;border:0;background:none;color:inherit;font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .gd-foot{display:flex;align-items:center;gap:12px;padding-top:12px;border-top:1px solid #ffffff0d}
 .gd-count{flex:1;font-size:12px;color:#9a988f}
 .gd-count b{font-weight:700;color:#d9d7cf}
@@ -107,3 +108,4 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-space .gd-skeleton{margin:10px 0}
 .gd-space-head .sp-menu .icon-button{width:28px;height:28px}
 .gd-crumb.over{background:#ffffff14;color:#f5f4ee;box-shadow:inset 0 0 0 1px #8a897f}
+.gd-extras{margin:4px 0 10px}
