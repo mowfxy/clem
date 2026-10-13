@@ -811,7 +811,7 @@ void app.whenReady().then(async () => {
     title: "Mowr",
     backgroundColor: "#141414",
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#141414", symbolColor: "#eeece4", height: 36 },
+    titleBarOverlay: { color: "#141414", symbolColor: "#eeece4", height: 38 },
     autoHideMenuBar: true,
     icon: join(__dirname, "../desktop/icon.ico"),
     webPreferences: {
@@ -909,7 +909,7 @@ void app.whenReady().then(async () => {
   };
   ipcMain.on("mowr:tone", (event, tone) => {
     if (event.sender !== window.webContents || !tones[tone]) return;
-    try { window.setTitleBarOverlay({ ...tones[tone], height: 36 }); } catch {}
+    try { window.setTitleBarOverlay({ ...tones[tone], height: 38 }); } catch {}
   });
   ipcMain.on("mowr:drag", (event, path) => {
     if (event.sender !== window.webContents || typeof path !== "string" || !sharedFiles.has(path)) return;

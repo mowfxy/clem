@@ -4,8 +4,8 @@
 /* Where you are: the chat's name and a chip for its subject or project */
 .workspace-top{gap:12px;min-width:0}
 .workspace-top .top-where{display:flex;align-items:center;gap:9px;min-width:0}
-.workspace-top .top-title{font:400 14.5px/1.3 var(--sans);color:#f2f1ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(52vw,560px)}
-body .workspace-top .top-space{display:inline-flex;align-items:center;flex:none;height:24px;padding:0 9px;border:0;border-radius:6px;background:#ffffff14;color:#dddcd5;font:400 13px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
+.workspace-top .top-title{font:400 15.5px/1.3 var(--sans);color:#f2f1ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(52vw,560px)}
+body .workspace-top .top-space{display:inline-flex;align-items:center;flex:none;height:26px;padding:0 10px;border:0;border-radius:6px;background:#ffffff14;color:#dddcd5;font:400 13.5px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
 .workspace-top .temp-controls .secondary{padding:3px 10px;font-size:12.5px}
 .workspace-top .temp-pill{font-size:12.5px}
@@ -13,8 +13,8 @@ body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
 /* On the desktop the header lives in the title bar, beside the window buttons, and gives its height to the chat */
 .desktop-content .workspace-top{position:fixed!important;top:0!important;left:244px;right:150px;height:var(--tb)!important;display:flex!important;align-items:center!important;padding:1px 8px 0 20px!important;z-index:10001!important;background:transparent!important;box-sizing:border-box;-webkit-app-region:drag;app-region:drag}
 .desktop-content .workspace-top :is(button,a,input,select){-webkit-app-region:no-drag;app-region:no-drag}
-.desktop-content .workspace-top .icon-button{width:32px;height:32px;color:#e6e5df}
-.desktop-content .workspace-top .icon-button svg{width:21px;height:21px}
+.desktop-content .workspace-top .icon-button{width:34px;height:34px;color:#e6e5df}
+.desktop-content .workspace-top .icon-button svg{width:22px;height:22px}
 @media(max-width:760px){.desktop-content .workspace-top{left:56px}}
 
 /* In the browser the header stays put while a file is open, so the reader fits beneath it */
@@ -23,21 +23,31 @@ body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
 .desktop-content .file-panel{top:8px;height:calc(100dvh - var(--tb) - 16px)}
 
 /* Sidebar, a size smaller (the account row at the bottom stays as it is) */
-body .sidebar>.brand{font-size:28px;margin:0 8px 20px}
-body .sidebar>.brand svg{width:25px;height:25px}
+body .sidebar>.brand{font-size:30px;margin:0 8px 22px}
+body .sidebar>.brand svg{width:27px;height:27px}
 body .sidebar nav{gap:1px}
-body .sidebar .nav-item{height:34px;font-size:13.5px;padding:6px 10px;gap:11px}
-body .sidebar .nav-item .drawn-icon{width:18px;height:18px}
+body .sidebar .nav-item{height:37px;font-size:14.5px;padding:7px 11px;gap:12px}
+body .sidebar .nav-item .drawn-icon{width:19px;height:19px}
 body .sidebar .sidebar-history{margin-top:20px}
 body .sidebar .history-group{margin-bottom:12px}
-body .sidebar .history-group .history-label{font-size:12px;min-height:28px}
-body .sidebar .history-item{font-size:13px;height:33px;padding:7px 10px}
+body .sidebar .history-group .history-label{font-size:12.5px;min-height:30px}
+body .sidebar .history-item{font-size:14px;height:35px;padding:8px 11px}
 /* The settings button no longer animates its sliders when pressed or focused */
 body .profile-settings .icon-settings .stroke{animation:none!important}
 
 /* The conversation, a size smaller */
-:root:root{--t-read:15.5px}
-.messages .message.user .message-text{font-size:14.5px;padding:12px 18px}
+:root:root{--t-read:16.5px}
+.messages .message.user .message-text{font-size:15.5px;padding:12px 18px}
+html body .composer textarea{font-size:16px}
 .messages .message-text .md h1{font-size:1.32em}
 .messages .message-text .md h2{font-size:1.18em}
 .messages .message-text .md h3{font-size:1.06em}
+
+/* The reader beside the chat, a step larger to match */
+.file-panel .fp-title{font-size:14.5px}
+.file-panel .fp-head{min-height:50px}
+.file-panel .fp-icon svg{width:18px;height:18px}
+.file-panel .fp-tools{height:44px}
+.file-panel .fp-tool{width:31px;height:31px}
+html body .file-panel input.fp-page-field{width:44px;height:29px;font-size:13.5px}
+.file-panel .fp-of,.file-panel .fp-zoom-level{font-size:13.5px}
