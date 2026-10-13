@@ -19,7 +19,7 @@ fonts = root / "public" / "fonts"
 # style file, CSS weight band, CSS style
 # Medium is the bold inside running text (answers, file previews); Bold is for headings and display.
 STYLES = [("Light", "300", "normal"), ("Regular", "400", "normal"), ("Medium", "500", "normal"), ("Bold", "600 800", "normal"),
-          ("Italic", "300 400", "italic"), ("MediumItalic", "500", "italic"), ("BoldItalic", "600 800", "italic")]
+          ("LightItalic", "300", "italic"), ("Italic", "400", "italic"), ("MediumItalic", "500", "italic"), ("BoldItalic", "600 800", "italic")]
 # Companion families in fallback order; the bold file (when there is one) serves the 600-800 band.
 COMPANIONS = [("MowafyGreek", True), ("MowafyArabic", True), ("MowafyHebrew", True), ("MowafyDevanagari", True), ("MowafyBengali", True),
               ("MowafyTamil", True), ("MowafyThai", True), ("MowafyArmenian", True), ("MowafyGeorgian", True), ("MowafyMath", False), ("MowafyMathSupplement", False),
