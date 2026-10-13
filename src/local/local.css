@@ -1,5 +1,5 @@
 /* Search everything */
-dialog.search-everything{width:min(760px,calc(100vw - 32px));height:min(640px,84vh);padding:0;border-radius:18px;border:1px solid #3c3c39;background:linear-gradient(180deg,#232322fa,#1a1a19fa);box-shadow:0 1px 0 #ffffff12 inset,0 40px 120px -20px #000e;overflow:hidden;flex-direction:column;margin-top:9vh;font-family:var(--sans)}
+dialog.search-everything{width:min(760px,calc(100vw - 32px));height:min(640px,84vh);padding:0;border-radius:18px;border:1px solid #3c3c39;background:linear-gradient(180deg,#232322fa,#1a1a19fa);box-shadow:0 1px 0 #ffffff12 inset,0 40px 120px -20px #000e;overflow:hidden;flex-direction:column;margin:auto;font-family:var(--sans)}
 dialog.search-everything[open]{display:flex;animation:se-in .28s cubic-bezier(.2,1.2,.35,1) backwards}
 dialog.search-everything::backdrop,dialog.folder-browser::backdrop{background:#0009;backdrop-filter:blur(4px)}
 .se-input{display:flex;align-items:center;gap:12px;padding:17px 18px;border-bottom:1px solid #30302e;color:#8f8e88}

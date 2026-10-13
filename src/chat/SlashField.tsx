@@ -84,6 +84,7 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
       </div>
       <textarea
         ref={inputRef}
+        rows={1}
         className={command ? "has-command" : undefined}
         aria-label="Your message"
         aria-autocomplete="list"
