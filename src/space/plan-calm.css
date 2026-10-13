@@ -1,0 +1,73 @@
+/* Plans, calmer: a progress ring with its number, the title, and one line that fills as time passes and as work
+   gets done. Milestones sit on the line as small marks. Tasks read as plain lists. Loaded after plan.css. */
+:is(.pl-view,.pl-proposal,.pl-overview,.pl-preview){--pl-ease:cubic-bezier(.16,1,.3,1);--pl-card:#1a1a19;--pl-line:#262624}
+.pl-view{gap:22px}
+.pl-view .pl-card{padding:26px 26px 22px;border-color:#262624;background:#1a1a19}
+
+.pl-head{align-items:center;gap:20px;padding-right:0;min-height:0}
+.pl-progress{position:relative;flex:none;display:grid;place-items:center}
+.pl-progress b{position:absolute;font:500 15px/1 var(--sans);color:var(--pl-ink);font-variant-numeric:tabular-nums}
+.pl-progress b small{font-size:10px;color:var(--pl-muted);margin-left:1px}
+.pl-ring .track{stroke:#ffffff10}
+.pl-ring .fill{transition:stroke-dashoffset 1.2s var(--pl-ease)}
+.pl-head h3{font-size:28px}
+.pl-head p{font-size:14.5px;color:#9a9993}
+.pl-head .pl-state{margin-top:4px}
+.pl-state{height:auto;padding:0;border:0;font-size:13px;color:#9a9993}
+
+/* The line. */
+.pl-track{position:relative;margin:30px 0 4px;padding-bottom:40px}
+.pl-track.compact{margin:18px 0 0;padding-bottom:14px}
+.pl-rail{position:relative;height:6px;border-radius:6px;background:#262624;overflow:hidden}
+.pl-rail span{position:absolute;inset:0;transform-origin:0 50%;border-radius:6px;transition:transform 1.2s var(--pl-ease)}
+.pl-time{background:repeating-linear-gradient(90deg,#3a3a36 0 2px,transparent 2px 6px)}
+.pl-done{background:var(--pl-ink)}
+.pl-track.behind .pl-done{background:#e7a88f}
+.pl-now{position:absolute;top:-5px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.pl-now i{width:2px;height:16px;border-radius:2px;background:var(--pl-ink)}
+.pl-now em{font:500 11.5px/1 var(--sans);font-style:normal;color:var(--pl-ink)}
+.pl-track .pl-mile{top:-4px;gap:7px}
+.pl-track .pl-mile i{width:10px;height:10px;border-radius:3px;background:#c8b48c;box-shadow:0 0 0 3px #1a1a19}
+.pl-track .pl-mile.past i{background:#1a1a19;border:1.5px solid #6d6c66}
+.pl-track .pl-mile em{display:grid;justify-items:center;gap:3px;margin-top:2px;background:none;font:400 12px/1.2 var(--sans);color:#cfcec8;max-width:130px}
+.pl-track .pl-mile em small{font-size:11px;color:#7d7c76}
+.pl-track .pl-mile.end em{justify-items:end}.pl-track .pl-mile.start em{justify-items:start}
+.pl-now.end{align-items:flex-end;transform:translateX(calc(-100% + 1px))}.pl-now.start{align-items:flex-start;transform:translateX(-1px)}
+.pl-track.compact .pl-mile i{width:8px;height:8px}
+
+.pl-facts{display:flex;flex-wrap:wrap;gap:6px 22px;margin:6px 0 0;font-size:13.5px;color:#8f8e88}
+.pl-facts b{font-weight:500;color:var(--pl-ink);font-variant-numeric:tabular-nums}
+.pl-proposal .pl-facts{margin-top:4px}
+
+/* The box: same as the composer. */
+.pl-box{border-radius:16px;border-color:#2f2f2c;background:#1f1f1e}
+
+/* Tasks: plain lists under small headings. */
+.pl-view .pl-focus{padding:0;border:0;background:none}
+.pl-focus h4,.pl-section header .sp-eyebrow{margin:0 0 4px;font:500 13.5px/1.3 var(--sans);letter-spacing:0;text-transform:none;color:#8f8e88}
+.pl-focus h4{color:#e7a88f}
+.pl-sections{gap:16px 36px}
+.pl-section{padding:0;border:0;background:none}
+.pl-task{padding:11px 0;border-bottom-color:#222220;font-size:14.5px}
+.pl-check{width:20px;height:20px;border-color:#55544f;transition:background .3s var(--pl-ease),border-color .3s var(--pl-ease),color .3s var(--pl-ease),transform .3s var(--pl-ease)}
+.pl-task.done .pl-task-text>span{transition:color .4s var(--pl-ease)}
+.pl-view>.pl-delete{justify-self:start;align-self:flex-start;margin-top:4px;padding:6px 0;border:0;background:none;color:#7d7c76;font-size:13px;transition:color .3s var(--pl-ease)}
+.pl-view>.pl-delete:hover{color:#ec7a6f}
+
+/* The plan on Overview. */
+.sp-card.pl-overview{padding:20px 22px;border-color:#262624;background:#1a1a19;border-radius:16px}
+.pl-overview .sp-card-head .sp-eyebrow{font:500 13.5px/1.3 var(--sans);letter-spacing:0;text-transform:none;color:#8f8e88}
+.space-page .pl-overview .sp-card-head button{border:0;background:none;color:#cfcec8;font-size:13px}
+.space-page .pl-overview .sp-card-head button:hover{color:var(--pl-ink);background:#1f1f1e}
+
+/* Empty plan */
+.pl-empty p{font-size:15px;color:#8f8e88}
+
+@media (max-width:820px){.pl-sections{grid-template-columns:1fr}}
+.pl-overview-top{display:flex;align-items:center;gap:16px}
+.pl-overview-title{flex:1;min-width:0;display:grid;gap:4px}
+.pl-overview-title b{font:400 21px/1.2 var(--serif);color:var(--pl-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.space-page .pl-overview .pl-overview-open{display:inline-flex;align-items:center;gap:6px;flex:none;height:32px;padding:0 10px;border:0;border-radius:9px;background:none;color:#cfcec8;font-size:13.5px;transition:background .3s var(--pl-ease),color .3s var(--pl-ease)}
+.space-page .pl-overview .pl-overview-open:hover{background:#222220;color:var(--pl-ink)}
+.pl-overview .pl-overview-list li{border-top-color:#222220}
+.pl-proposal .sp-eyebrow{font:500 12.5px/1.2 var(--sans);letter-spacing:0;text-transform:none;color:#8f8e88}

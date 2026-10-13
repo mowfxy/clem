@@ -99,11 +99,10 @@ export function PcFolders({scopeLabel,onBrowse}:{scopeLabel:(scope:string)=>stri
   const [folders,setFolders]=useState<Folder[]|null>(null);
   const [watch,setWatch]=useState(true);
   useEffect(()=>{void desktop!.invoke({action:'foldersAll'}).then(setFolders).catch(()=>setFolders([]));void desktop!.invoke({action:'folderWatch'}).then(r=>setWatch(r.enabled)).catch(()=>{});},[]);
-  if(!folders)return null;
+  if(!folders?.length)return null;
   return <section className="pc-folders">
     <h2>Folders on this PC</h2>
-    <p>{folders.length?'Read any file here, then tell Mowr what to change. Files stay in place.':'Link a folder from a chat, project or subject (Settings → Linked folders) to read and change its files here.'}</p>
-    {folders.map(f=><div className="pc-folder-row" key={f.id}><Icon name="projects" size={22}/><div><strong>{baseName(f.path)}</strong><small aria-description={f.path}>{f.path} · {scopeLabel(f.scope)}</small></div>{watch&&<span className="watch-badge">Watching for changes</span>}<button className="secondary" onClick={()=>onBrowse(f.id)}>Browse</button></div>)}
+    {folders.map(f=><div className="pc-folder-row" key={f.id}><Icon name="projects" size={22}/><div><strong>{baseName(f.path)}</strong><small aria-description={f.path}>{f.path} · {scopeLabel(f.scope)}</small></div>{watch&&<span className="watch-badge">Live</span>}<button className="secondary" onClick={()=>onBrowse(f.id)}>Browse</button></div>)}
   </section>;
 }
 

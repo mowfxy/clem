@@ -174,7 +174,8 @@ try {
     .click();
   await page.getByText("last 1/1", { exact: false }).waitFor();
   // The quiz answer joined the review schedule, so nothing is due or new today.
-  await page.locator(".sp-stat.due", { hasText: "All caught up" }).waitFor();
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await page.locator(".sp-today", { hasText: "All caught up" }).waitFor();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "More", exact: true }).click();
   await page

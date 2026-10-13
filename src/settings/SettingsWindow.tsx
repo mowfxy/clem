@@ -3,7 +3,7 @@ import {createPortal} from 'react-dom';
 import {Icon} from '../Icons';
 import {Illustration} from '../Illustrations';
 import {ProfileAvatar} from '../ProfileAvatar';
-import {settingsGroups, settingsGroupOf, settingsTab} from './SettingsParts';
+import {settingsGroups, settingsTab} from './SettingsParts';
 
 /** The drawings share one centred frame; the header shows the middle of the 480×390 stage. The plug's socket sits
  *  higher on the stage, so its frame starts higher to keep the socket in. */
@@ -43,7 +43,6 @@ export function SettingsWindow({tab,onTab,onClose,me,unread=0,children}:{tab:str
    <section className="st-main">
     <header className="st-head" key={t.name}>
      <div className="st-head-text">
-      <span className="st-eyebrow">{settingsGroupOf(t.name)}</span>
       <h1 id="st-title">{t.name}</h1>
       <p>{t.line}</p>
      </div>

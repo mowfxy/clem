@@ -56,7 +56,7 @@ try {
   await page.locator(".space-page .sp-name", { hasText: "Biology 101" }).waitFor();
   assert.equal(await page.locator("dialog[open]").count(), 0, "no pop-up");
   assert.match(page.url(), /#\/app\/space\/bio$/);
-  await page.locator(".sp-stat.due", { hasText: "5 new" }).waitFor();
+  await page.locator(".sp-today", { hasText: "5 new card" }).waitFor();
   await page.screenshot({ path: "artifacts/subject-overview.png" });
   for (const tab of ["Chats", "Flashcards", "Quizzes", "Files", "Overview"]) await page.getByRole("tab", { name: new RegExp("^" + tab) }).click();
   await page.getByRole("tab", { name: /^Flashcards/ }).click();
@@ -82,7 +82,7 @@ try {
 
   // "Make a worksheet" saves the PDF Mowr makes into Worksheets.
   await page.getByRole("tab", { name: "Overview" }).click();
-  await page.locator(".sp-make button", { hasText: "Worksheet" }).click();
+  await page.locator(".calm-template", { hasText: "Worksheet" }).click();
   await page.getByText("I saved it as a PDF.").waitFor();
   const saved = await page.evaluate(async () => { for (let i = 0; i < 60; i++) { const s = await (await fetch("/api/local/state", { headers: { "X-Mowr-Owner": "fixture-owner" } })).json(); const f = s?.files.find((x) => x.name === "Week 3 worksheet.pdf"); if (f) return f; await new Promise((r) => setTimeout(r, 150)); } });
   assert.equal(saved?.folderId, "f-worksheets", "the worksheet lands in Worksheets");

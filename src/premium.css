@@ -1,0 +1,152 @@
+/* Premium pass, loaded after every other workspace sheet. Fewer boxes, quieter greys, one accent of white for
+   what is chosen, and motion that eases out slowly so things seem to settle rather than pop.
+   "body" raises specificity over the older layered sheets. */
+:root{--pm-ease:cubic-bezier(.16,1,.3,1);--pm-ink:#f2f1ec;--pm-soft:#c9c8c1;--pm-muted:#8f8e88;--pm-line:#2a2a27;--pm-raise:#232321;--pm-hover:#1e1e1d}
+
+/* ---------- Sidebar ---------- */
+body .sidebar .nav-item{height:36px;border-radius:9px;font-size:14.5px;color:#e4e3dd;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
+body .sidebar .nav-item .drawn-icon{color:#bdbcb5;transition:color .3s var(--pm-ease)}
+body .sidebar .nav-item:hover{background:#1d1d1c}
+body .sidebar .nav-item.active{background:#252523;color:var(--pm-ink)}
+body .sidebar .nav-item.active .drawn-icon,body .sidebar .nav-item:hover .drawn-icon{color:var(--pm-ink)}
+body .sidebar .nav-shortcut{opacity:0;transition:opacity .25s var(--pm-ease)}
+body .sidebar .nav-item:hover .nav-shortcut{opacity:1}
+/* History reads like a list of titles: no marks, no slide, a soft row on hover. */
+body .history-item{font-size:14px;color:#d8d7d1;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
+body .history-item:hover{padding-left:12px;color:var(--pm-ink)}
+body .history-item .space-mark{display:none}
+body .history-label,body .history-label span{font-size:12.5px;color:#8f8e88}
+
+/* ---------- Top bar ---------- */
+body .workspace-top .top-title{font-weight:500;color:#cfcec8}
+
+/* ---------- Home ---------- */
+body .new-chat-content .greeting-row h1{font-size:46px}
+body .new-chat-content .suggestions{gap:8px}
+body .new-chat-content .suggestions button{height:36px;padding:0 14px;border:1px solid #2c2c29;border-radius:10px;background:transparent;color:#cfcec8;font-size:13.5px;box-shadow:none;transition:background .3s var(--pm-ease),border-color .3s var(--pm-ease),color .3s var(--pm-ease)}
+body .new-chat-content .suggestions button .drawn-icon{color:#a9a8a1;transition:color .3s var(--pm-ease)}
+body .new-chat-content .suggestions button:hover{transform:none;background:#1d1d1c;border-color:#3a3a36;color:var(--pm-ink)}
+body .new-chat-content .suggestions button:hover .drawn-icon{color:var(--pm-ink)}
+
+/* ---------- Composer ---------- */
+body .composer{border-radius:20px;border-color:#2f2f2c;background:#1f1f1e;transition:border-color .35s var(--pm-ease),box-shadow .5s var(--pm-ease)}
+body .composer:focus-within{border-color:#3d3d39;box-shadow:0 0 0 1px #ffffff06,0 24px 60px -28px #000}
+body .chat-composer .composer-note{color:#7d7c76}
+
+/* ---------- Conversation ---------- */
+body .messages .message.user .message-text{background:#232321}
+body .messages .message{animation:pm-message .6s var(--pm-ease) backwards}
+
+/* ---------- Library pages ---------- */
+body .page.lib{max-width:960px}
+body .lib-card{border-color:#262624;background:#1a1a19;transition:background .35s var(--pm-ease),border-color .35s var(--pm-ease)}
+body .lib-card:hover{transform:none;background:#1e1e1d;border-color:#33332f}
+body .lib-card footer{border-top-color:#262624}
+body .lib .lib-btn{height:36px;border-radius:10px;font-size:13px;transition:background .3s var(--pm-ease),border-color .3s var(--pm-ease)}
+body .lib .lib-btn.strong{font-weight:600}
+body .lib-ask{margin:0 0 40px;border-radius:16px;border-color:#2f2f2c;background:#1f1f1e;animation:pm-in .7s var(--pm-ease) .08s backwards}
+body .lib-ask:focus-within{border-color:#3d3d39}
+body .lib-section{margin-bottom:8px}
+
+/* Files */
+body .files-page .file-row{border-radius:12px;transition:background .3s var(--pm-ease)}
+body .files-page .file-row:hover{background:#1c1c1b}
+body .files-page .file-row>.icon-button{opacity:0;transition:opacity .25s var(--pm-ease),background .25s}
+body .files-page .file-row:hover>.icon-button,body .files-page .file-row:focus-within>.icon-button{opacity:1}
+body .files-page .pc-folders h2{font:500 13.5px/1.3 var(--sans)!important;letter-spacing:0;color:#8f8e88;margin:30px 0 10px}
+body .files-page .watch-badge{border:0;background:#8fae8e1f;color:#a9c4a8}
+
+/* ---------- Motion ---------- */
+/* Views settle in: a long, soft ease-out. */
+body .workspace>.page,body .workspace>.space-page{animation:pm-view .65s var(--pm-ease) backwards}
+/* Fade only: a transform here would briefly re-anchor the fixed composer and file panel. */
+body .workspace>.chat-split{animation:pm-fade .5s var(--pm-ease) backwards}
+dialog[open]{animation:pm-dialog .5s var(--pm-ease) backwards}
+dialog[open]::backdrop{animation:pm-fade .4s var(--pm-ease) backwards}
+body .primary,body .lib-btn,body .secondary{transition:background .3s var(--pm-ease),border-color .3s var(--pm-ease),color .3s var(--pm-ease),transform .2s var(--pm-ease)}
+body :is(.primary,.lib-btn,.secondary):active:not(:disabled){transform:scale(.97)}
+
+@keyframes pm-view{from{opacity:0;transform:translateY(6px)}}
+@keyframes pm-in{from{opacity:0;transform:translateY(8px)}}
+@keyframes pm-message{from{opacity:0;transform:translateY(10px)}}
+@keyframes pm-dialog{from{opacity:0;transform:translateY(12px) scale(.98)}}
+@keyframes pm-fade{from{opacity:0}}
+
+@media (prefers-reduced-motion:reduce){
+  body .workspace>.page,body .workspace>.chat-split,body .workspace>.space-page,body .messages .message,body .lib-ask,dialog[open],dialog[open]::backdrop{animation:none!important}
+}
+html[data-quiet=true] body :is(.workspace>.page,.workspace>.chat-split,.workspace>.space-page,.messages .message,.lib-ask){animation:none!important}
+
+/* No shouting labels: every eyebrow reads in sentence case, quietly. */
+body :is(.eyebrow,.lib-eyebrow,.sp-eyebrow,.st-eyebrow,.sh-eyebrow,.command-results h3,.memory-group h4,.study-sets-head h4,.activity-graph figcaption){font:500 13px/1.3 var(--sans);letter-spacing:0;text-transform:none;color:#8f8e88}
+
+/* ---------- Visuals in a reply ---------- */
+/* One soft frame, no inner rules shouting; the label is a quiet word; exports appear when you reach for them. */
+body .visual-engine.v2{--v-line:#262624;border-radius:18px;background:#191918;animation:pm-visual .8s var(--pm-ease) backwards}
+body .v2 .visual-heading{border-bottom-color:transparent;padding:16px 16px 6px 20px}
+body .v2 .visual-subject{font-size:12.5px;letter-spacing:0;text-transform:none;color:#8f8e88}
+body .v2 .visual-title strong{font-weight:500}
+body .v2 .spec-steps,body .v2 .visual-body{border-top-color:#222220}
+@media (hover:hover){
+  body .v2 .visual-exports{opacity:0;transform:translateY(4px);transition:opacity .35s var(--pm-ease),transform .45s var(--pm-ease)}
+  body .visual-engine.v2:hover .visual-exports,body .visual-engine.v2:focus-within .visual-exports{opacity:1;transform:none}
+}
+body .v2 .visual-exports{border-top-color:#222220}
+@keyframes pm-visual{from{opacity:0;transform:translateY(10px) scale(.99)}}
+
+/* ---------- Space lists ---------- */
+body .space-page .sp-list .sp-row{justify-content:flex-start}
+body .space-page .sp-list .sp-row span{text-align:left}
+@media (prefers-reduced-motion:reduce){body .visual-engine.v2{animation:none}}
+html[data-quiet=true] body .visual-engine.v2{animation:none}
+
+/* Files: storage as one thin line, rows without boxes. */
+body .files-page .storage-card{gap:12px;padding:0 0 6px;margin:0 0 8px;border:0;border-radius:0;background:none}
+body .files-page .storage-emblem{display:none}
+body .files-page .storage-figure strong{font-size:15px}
+body .files-page .storage-where{background:none;padding:0}
+body .files-page .storage-bar{height:4px;gap:2px}
+body .files-page .file-list{border:0;background:none}
+body .files-page .file-row{border:0;border-bottom:1px solid #222220;border-radius:0;padding-left:8px;padding-right:8px}
+body .files-page .file-row:hover{border-radius:12px;border-bottom-color:transparent}
+body .files-page .pc-folder-row{border-color:#262624;background:#1a1a19;border-radius:14px}
+
+/* The sidebar highlight glides to the page you open. */
+body .sidebar nav.glide-nav{position:relative}
+body .sidebar nav.glide-nav::before{content:'';position:absolute;left:0;right:0;top:0;height:var(--glide-h,36px);border-radius:9px;background:#252523;opacity:var(--glide-o,0);transform:translateY(var(--glide-y,0));pointer-events:none}
+body .sidebar nav.glide-nav[data-ready]::before{transition:transform .55s var(--pm-ease),opacity .3s var(--pm-ease),height .3s var(--pm-ease)}
+body .sidebar nav.glide-nav .nav-item{position:relative}
+body .sidebar nav.glide-nav .nav-item.active{background:transparent}
+@media (prefers-reduced-motion:reduce){body .sidebar nav.glide-nav[data-ready]::before{transition:none}}
+body .study-weak h4{font:500 13px/1.3 var(--sans);letter-spacing:0;text-transform:none}
+
+/* ---------- Dialogs ---------- */
+body .app-modal{border-radius:20px;border-color:#2f2f2c;background:#1c1c1b;box-shadow:0 40px 120px -40px #000,0 0 0 1px #ffffff05}
+body .app-modal .modal-heading h2{font:400 26px/1.15 var(--serif);letter-spacing:-.02em}
+body .app-modal .field{font-size:13px;color:#a9a8a1}
+body .app-modal .field .optional{display:inline;margin-left:6px;color:#6f6e68;font-size:12px}
+body .app-modal :is(input,textarea){border-radius:12px;border-color:#2f2f2c;background:#161615;transition:border-color .3s var(--pm-ease)}
+body .app-modal :is(input,textarea):focus{border-color:#4a4a45}
+body .app-modal form>.primary{border-radius:11px}
+
+/* ---------- Type finish ---------- */
+body :is(h1,h2,h3){text-wrap:balance}
+body :is(p,li){text-wrap:pretty}
+body ::selection{background:#6a9bcc4d}
+
+/* ---------- Something is still arriving ---------- */
+body .visual-drafting{background:#191918;border-color:#262624;border-radius:18px;animation:pm-in .6s var(--pm-ease) backwards}
+body .visual-drafting.with-art{flex-direction:column;gap:6px}
+body .visual-drafting.line{aspect-ratio:auto;justify-content:flex-start;height:52px;padding:0 18px}
+body .visual-drafting .drafting-art{width:120px;height:100px}
+body .visual-drafting .drafting-art svg{display:block;width:100%;height:100%}
+body .visual-drafting .drafting-text{font:400 14px var(--sans);background:linear-gradient(105deg,#7d7c76 0%,#7d7c76 35%,#f2f1ec 48%,#7d7c76 61%,#7d7c76 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:pm-shimmer 2.2s linear infinite}
+@keyframes pm-shimmer{from{background-position:100% 0}to{background-position:-150% 0}}
+@media (prefers-reduced-motion:reduce){body .visual-drafting .drafting-text{animation:none;-webkit-text-fill-color:#8f8e88}}
+html[data-quiet=true] body .visual-drafting .drafting-text{animation:none;-webkit-text-fill-color:#8f8e88}
+
+/* The account corner: your picture and your name, nothing else. */
+body .sidebar-bottom{border-top-color:transparent}
+body .account-button{border-radius:10px;transition:background .3s var(--pm-ease)}
+body .account-button:hover{background:#1d1d1c}
+body .account-button>span:not(.avatar){font-size:14px;font-weight:500}

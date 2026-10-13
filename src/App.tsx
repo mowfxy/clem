@@ -29,6 +29,7 @@ import {groupHistory} from "../core/history-groups";
 import {HistoryFilter} from "./HistoryFilter";
 import {essentials,applyEssentials} from "./essential-state";
 import {Illustration} from "./Illustrations";
+import {PageHead,EmptyState,Squiggle,Templates,type Template} from "./ui/Calm";
 import {FileGlyph} from "./files/FileGlyph";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
@@ -72,7 +73,7 @@ import {SecuritySettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
 import {Legal} from './site/Legal';
 import {Login} from './Login';
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type {
   Chat,
@@ -134,6 +135,7 @@ import "./visuals/visuals-page.css";
 import "./contrast.css";
 import "./library.css";
 import "./compact.css";
+import "./premium.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -265,6 +267,16 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // The next new chat is temporary: the model still reads files and memory, but the chat is never saved or remembered.
   const [temporaryNext,setTemporaryNext]=useState(false);
   const [modal, setModal] = useState<string | null>(null);
+  const [spacePreset, setSpacePreset] = useState<{ name: string; description: string } | null>(null);
+  // The sidebar's highlight glides between pages instead of jumping.
+  const navBar = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const bar = navBar.current; if (!bar) return;
+    const b = bar.querySelector<HTMLElement>(".nav-item.active");
+    if (!b) { bar.style.setProperty("--glide-o", "0"); return; }
+    bar.style.setProperty("--glide-y", b.offsetTop + "px"); bar.style.setProperty("--glide-h", b.offsetHeight + "px"); bar.style.setProperty("--glide-o", "1");
+    requestAnimationFrame(() => { bar.dataset.ready = "1"; });
+  });
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [toast, setToast] = useState("");
   const [renamingFile, setRenamingFile] = useState<string | null>(null);
@@ -2289,7 +2301,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               <Logo size={33} />
               mowr<span className="brand-period">.</span>
             </a>
-            <nav aria-label="Workspace">
+            <nav aria-label="Workspace" ref={navBar} className="glide-nav">
               {nav.map(([icon, label]) => (
                 <button
                   key={icon}
@@ -2416,7 +2428,6 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 <span className="avatar"><ProfileAvatar value={state.avatar} size={30}/></span>
                 <span>
                   {state.name}
-                  <small>{session.user ? "Signed in" : "Your workspace"}</small>
                 </span>
                 <Icon name="down" size={15} />
               </button>
@@ -2582,22 +2593,27 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 const all = state.spaces.filter((s) => s.kind === kind);
                 const lateBySpace = new Map(overdueByPlan(state.plans || []).map(({ plan, overdue }) => [plan.spaceId, overdue.length]));
                 const shown = all.filter((s) => (s.name + " " + (s.description || "")).toLowerCase().includes(search.trim().toLowerCase()));
-                const create = () => setModal(projects ? "project-create" : "subject-create");
+                const create = (preset?: { name: string; description: string }) => { setSpacePreset(preset || null); setModal(projects ? "project-create" : "subject-create"); };
+                const starters: Template[] = ((projects ? [
+                  { key: "paper", icon: "research", title: "Research paper", line: "Sources, outline and drafts in one place.", peek: { label: "Draft 2", tone: "lilac" }, preset: { name: "Research paper", description: "Sources, outline and drafts for my paper." } },
+                  { key: "launch", icon: "cmd-plan", title: "Launch plan", line: "A dated plan from first idea to launch day.", peek: { label: "Launch · Nov 15", tone: "blue" }, preset: { name: "Launch", description: "Everything up to launch day." } },
+                  { key: "side", icon: "idea", title: "Side project", line: "Ideas, tasks and decisions as it grows.", peek: { label: "Next step", tone: "green" }, preset: { name: "Side project", description: "" } },
+                  { key: "jobs", icon: "mail", title: "Job search", line: "Applications, letters and interview prep.", peek: { label: "Interview Friday", tone: "clay" }, preset: { name: "Job search", description: "Applications, cover letters and interview prep." } },
+                ] : [
+                  { key: "exam", icon: "cmd-plan", title: "Exam prep", line: "Notes in. Flashcards and a dated plan out.", peek: { label: "Midterm · 12 days", tone: "pink" }, preset: { name: "Exam prep", description: "" } },
+                  { key: "course", icon: "subjects", title: "A course", line: "Every lecture summarised, then quizzed.", peek: { label: "Lecture 4", tone: "blue" }, preset: { name: "", description: "" } },
+                  { key: "language", icon: "cmd-flashcards", title: "A new language", line: "A few cards a day, just before you forget.", peek: { label: "12 due today", tone: "green" }, preset: { name: "A new language", description: "" } },
+                  { key: "curious", icon: "cmd-explain", title: "Something curious", line: "Learn anything, one question at a time.", peek: { label: "Why?", tone: "sand" }, preset: { name: "", description: "" } },
+                ]) as (Omit<Template, "run"> & { preset: { name: string; description: string } })[]).map(({ preset, ...t }) => ({ ...t, run: () => create(preset) }));
                 return <div className="page lib">
-                  <header className="lib-head">
-                    <div className="lib-head-text">
-                      <span className="lib-eyebrow">Spaces</span>
-                      <h1>{projects ? "Projects" : "Subjects"}</h1>
-                      <p>{projects ? "Keep a body of work together, from first thought to final draft." : "A dedicated space for each subject you’re making sense of."}</p>
-                    </div>
-                    <Illustration scene={projects ? "build" : "learn"} viewBox="60 30 360 300" className="lib-art"/>
-                  </header>
-                  {all.length > 0 && <div className="lib-bar">
-                    <label className="lib-find"><Icon name="research" size={17}/><input aria-label={`Search ${projects ? "projects" : "subjects"}`} placeholder={`Find a ${kind}`} value={search} onChange={(e) => setSearch(e.target.value)}/></label>
-                    <div className="lib-actions">
+                  <PageHead title={projects ? "Projects" : "Subjects"} line={projects ? "Your work, kept together." : "A space for each thing you’re learning."}>
+                    {all.length > 0 && <>
                       {!projects && <button type="button" className="lib-btn" aria-label="Import a subject ZIP or study pack" aria-description="Import a subject ZIP or study pack" onClick={() => archiveUploader.current?.click()}><Icon name="import" size={16}/>Import</button>}
-                      <button type="button" className="lib-btn strong" onClick={create}><Icon name="plus" size={16}/>New {kind}</button>
-                    </div>
+                      <button type="button" className="lib-btn strong" onClick={() => create()}><Icon name="plus" size={16}/>New {kind}</button>
+                    </>}
+                  </PageHead>
+                  {all.length > 6 && <div className="lib-bar">
+                    <label className="lib-find"><Icon name="research" size={17}/><input aria-label={`Search ${projects ? "projects" : "subjects"}`} placeholder={`Find a ${kind}`} value={search} onChange={(e) => setSearch(e.target.value)}/></label>
                   </div>}
                   {all.length > 0 && <div className="lib-grid">
                     {shown.map((s) => {
@@ -2619,14 +2635,11 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     })}
                     {!shown.length && <p className="lib-none">Nothing matches “{search.trim()}”.</p>}
                   </div>}
-                  {!all.length && <div className="lib-empty">
-                    <h2>Some ideas deserve their own space.</h2>
-                    <p>Bring related chats, files and memory together. What happens here stays in this context.</p>
-                    <div className="lib-actions">
-                      <button type="button" className="lib-btn strong" onClick={create}><Icon name="plus" size={16}/>New {kind}</button>
-                      {!projects && <button type="button" className="lib-btn" onClick={() => archiveUploader.current?.click()}><Icon name="import" size={16}/>Import a study pack</button>}
-                    </div>
-                  </div>}
+                  {!all.length && <EmptyState scene={projects ? "build" : "learn"} line={projects ? "No projects yet." : "No subjects yet."}>
+                    <button type="button" className="lib-btn strong" onClick={() => create()}><Icon name="plus" size={16}/>New {kind}</button>
+                    {!projects && <button type="button" className="lib-btn" onClick={() => archiveUploader.current?.click()}><Icon name="import" size={16}/>Import a study pack</button>}
+                  </EmptyState>}
+                  {all.length < 4 && <><Squiggle/><Templates items={starters} label="Start from"/></>}
                 </div>;
               })()
             ) : route === "/app/visuals" ? (
@@ -2634,15 +2647,14 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 const saved = state.visuals.filter((v) => savedChats.some((c) => c.id === v.chatId));
                 const open = (chat: string) => { const c = state.chats.find((x) => x.id === chat)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); };
                 const draw = (topic: string) => { newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + topic), 60); };
+                const ideas: Template[] = [
+                  { key: "water", icon: "visuals", title: "The water cycle", line: "From sea to cloud to rain, step by step.", peek: { label: "Condensation", tone: "blue" }, run: () => draw("The water cycle") },
+                  { key: "transistor", icon: "diagram", title: "How a transistor switches", line: "Watch a small current open the gate.", peek: { label: "Gate on", tone: "sand" }, run: () => draw("How a transistor switches") },
+                  { key: "interest", icon: "analysis", title: "Compound interest", line: "Thirty years of growth on one slider.", peek: { label: "7% a year", tone: "green" }, run: () => draw("Compound interest over 30 years") },
+                  { key: "orbits", icon: "globe", title: "Orbits and Kepler’s laws", line: "Equal areas swept in equal times.", peek: { label: "Perihelion", tone: "lilac" }, run: () => draw("Orbits and Kepler’s laws") },
+                ];
                 return <div className="page lib">
-                  <header className="lib-head">
-                    <div className="lib-head-text">
-                      <span className="lib-eyebrow">Visuals</span>
-                      <h1>See it move.</h1>
-                      <p>Describe any idea and Mowr draws a visual you can play with. Save the ones worth keeping and they live here.</p>
-                    </div>
-                    <Illustration scene="pencil" viewBox="60 30 360 300" className="lib-art"/>
-                  </header>
+                  <PageHead title="Visuals" line="Describe an idea. Mowr draws it."/>
                   <form className="lib-ask" onSubmit={(e) => { e.preventDefault(); const topic = String(new FormData(e.currentTarget).get("topic") || "").trim(); if (topic) draw(topic); }}>
                     <Icon name="visuals" size={18}/>
                     <input name="topic" aria-label="What would you like to see?" placeholder="Photosynthesis, supply and demand, a Fourier series…" autoComplete="off"/>
@@ -2651,33 +2663,18 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   {saved.length ? <section className="lib-section" aria-label="Saved visuals">
                     <h2 className="lib-section-title">Saved <span>{saved.length}</span></h2>
                     <Suspense fallback={null}><SavedVisuals visuals={saved} chats={savedChats} spaces={state.spaces} onOpen={open} onRemove={(id) => patch((s) => ({ ...s, visuals: s.visuals.filter((x) => x.id !== id) }))} /></Suspense>
-                  </section> : <section className="lib-section">
-                    <h2 className="lib-section-title">Try one</h2>
-                    <p className="lib-note">Visuals stay in their chat. Press <b>Save</b> on the top right of one to keep it here.</p>
-                    <div className="lib-ideas">{["The water cycle", "How a transistor switches", "Compound interest over 30 years", "Orbits and Kepler’s laws"].map((idea) => <button type="button" key={idea} onClick={() => draw(idea)}><span>{idea}</span><Icon name="arrow" size={15}/></button>)}</div>
-                  </section>}
+                  </section> : <EmptyState scene="pencil" line="Visuals you save appear here."/>}
+                  <Squiggle/>
+                  <Templates items={ideas} label="Try one"/>
                 </div>;
               })()
             ) : route === "/app/files" ? (
-              <div className="page">
-                <div className="page-heading">
-                  <div>
-                    <span className="eyebrow">
-                      The material behind the thought
-                    </span>
-                    <h1>Your files.</h1>
-                    <p>A home for the documents you bring to your work.</p>
-                  </div>
-                  <button
-                    className="primary"
-                    onClick={() => uploader.current?.click()}
-                  >
-                    <Icon name="plus" size={18} />
-                    Upload files
-                  </button>
-                </div>
-                <StorageSummary files={state.files} />
-                <div className="search-field">
+              <div className="page lib files-page">
+                <PageHead title="Files" line="Everything you’ve added, kept on this PC.">
+                  <button className="lib-btn strong" onClick={() => uploader.current?.click()}><Icon name="plus" size={16} />Upload</button>
+                </PageHead>
+                {state.files.length > 0 && <StorageSummary files={state.files} />}
+                {state.files.length > 6 && <div className="search-field">
                   <Icon name="research" size={19} />
                   <input
                     aria-label="Search files"
@@ -2685,7 +2682,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
-                </div>
+                </div>}
                 {desktop&&<Suspense fallback={null}><PcFolders scopeLabel={scopeLabel} onBrowse={folderId=>setFolderView({folderId})}/></Suspense>}
                 <div className="file-list">
                   {state.files
@@ -2733,19 +2730,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       </div>
                     ))}
                 </div>
-                {!state.files.length && (
-                  <button
-                    className="upload-empty"
-                    onClick={() => uploader.current?.click()}
-                  >
-                    <Icon name="files" size={48} />
-                    <h2>Every good thought starts somewhere.</h2>
-                    <p>Add a PDF, notes, or a document to keep it close.</p>
-                    <span>
-                      Choose files <Icon name="plus" size={16} />
-                    </span>
-                  </button>
-                )}
+                {!state.files.length && <EmptyState scene="folder" line="No files yet.">
+                  <button className="lib-btn strong" onClick={() => uploader.current?.click()}><Icon name="plus" size={16} />Upload files</button>
+                </EmptyState>}
               </div>
             ) : (
               <div className="empty-state">
@@ -2799,7 +2786,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                                     ? "Choose a saved file"
                                     : "A thought for later"
           }
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); setSpacePreset(null); }}
         >
           {modal === "connect-model" ? (
             <ProviderConnection
@@ -2879,6 +2866,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 };
                 patch((st) => ({ ...st, spaces: [s, ...st.spaces] }));
                 setModal(null);
+                setSpacePreset(null);
                 openSpace(s.id);
               }}
             >
@@ -2889,6 +2877,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   required
                   maxLength={100}
                   autoFocus
+                  defaultValue={spacePreset?.name || ""}
                   placeholder={
                     modal === "project-create"
                       ? "A book, a business, a big idea…"
@@ -2900,13 +2889,14 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 Description <small className="optional">optional</small>
                 <textarea
                   name="description"
+                  defaultValue={spacePreset?.description || ""}
                   rows={3}
                   maxLength={400}
                   placeholder={modal === "project-create" ? "What is this project about?" : "What are you learning, and why?"}
                 />
               </label>
               <button className="primary">
-                Create space <Icon name="arrow" size={18} />
+                Create {modal === "project-create" ? "project" : "subject"} <Icon name="arrow" size={18} />
               </button>
             </form>
           ) : modal === "skill-detail" && editingSkill ? (

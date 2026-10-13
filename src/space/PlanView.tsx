@@ -5,6 +5,7 @@ import {confirmDialog} from '../dialogs';
 import {planStatus,planSections,daysBetween,addDays,dayLabel,localDay,workItems,type SpacePlan,type PlanTask,type PlanStatus} from '../../core/plans';
 import type {Space} from '../../core/types';
 import './plan.css';
+import './plan-calm.css';
 
 /** A plan Mowr proposed from the Plan tab's box, waiting for Save (create) or Replace. */
 export type PlanDraftView={plan:SpacePlan;replaces?:string};
@@ -31,42 +32,20 @@ function paceLine(s:PlanStatus){
   return 'Right on pace with the plan.';
 }
 
-/** The plan over time: the work planned by each day (dashed) against the work done (solid), today, and the milestones. */
+/** The plan as one calm line: time passing (faint), work done (bright), today, and the milestones under it. */
 export function PlanChart({plan,today=localDay(),compact=false}:{plan:SpacePlan;today?:string;compact?:boolean}){
-  const s=planStatus(plan,today),work=workItems(plan);
+  const s=planStatus(plan,today);
   const span=Math.max(1,daysBetween(s.start,s.end));
-  const step=span>140?7:span>60?2:1;
-  const W=600,H=compact?92:150,top=compact?10:18,bottom=H-(compact?8:14);
-  const x=(day:string)=>Math.max(0,Math.min(1,daysBetween(s.start,day)/span))*W;
-  const max=Math.max(1,work.length);
-  const y=(n:number)=>bottom-(n/max)*(bottom-top);
-  const doneDay=(t:PlanTask)=>t.done?(()=>{const d=localDay(t.done);return d<s.start?s.start:d;})():undefined;
-  const days:string[]=[];for(let i=0;i<=span;i+=step)days.push(addDays(s.start,i));if(days[days.length-1]!==s.end)days.push(s.end);
-  const planned=days.map(d=>work.filter(t=>t.due&&t.due<=d).length);
-  const plannedPath='M'+days.map((d,i)=>`${x(d).toFixed(1)},${y(planned[i]).toFixed(1)}`).join('L');
-  const shown=today<s.start?[]:days.filter(d=>d<=today).concat(today<s.end&&today>s.start?[today]:[]);
-  const done=shown.map(d=>work.filter(t=>{const dd=doneDay(t);return dd&&dd<=d;}).length);
-  const donePath=shown.length?'M'+shown.map((d,i)=>`${x(d).toFixed(1)},${y(done[i]).toFixed(1)}`).join('L'):'';
-  const area=shown.length?donePath+`L${x(shown[shown.length-1]).toFixed(1)},${bottom}L0,${bottom}Z`:'';
-  const inRange=today>=s.start&&today<=s.end;
+  const at=(day:string)=>Math.max(0,Math.min(1,daysBetween(s.start,day)/span));
+  const now=today<s.start?0:today>s.end?1:at(today);
   const milestones=plan.tasks.filter(t=>t.kind==='milestone'&&t.due).sort((a,b)=>a.due!<b.due!?-1:1);
-  // Labels for milestones only where they fit; the rest keep their marker and a tooltip.
-  let last=-1;const labelled=new Set(milestones.filter(m=>{const p=x(m.due!)/W;if(p-last<.16)return false;last=p;return true;}).map(m=>m.id));
-  return <div className={`pl-chart ${compact?'compact':''}`} role="img" aria-label={`${s.done} of ${s.total} done; ${s.expected} were planned by today. ${paceLine(s)}`}>
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-      {[.5,1].map(f=><line key={f} x1="0" x2={W} y1={y(max*f)} y2={y(max*f)} className="grid"/>)}
-      <line x1="0" x2={W} y1={bottom} y2={bottom} className="axis"/>
-      {milestones.map(m=><line key={m.id} x1={x(m.due!)} x2={x(m.due!)} y1={top-6} y2={bottom} className={`mile ${m.done?'past':''}`}/>)}
-      {area&&<path d={area} className="done-area"/>}
-      <path d={plannedPath} className="planned"/>
-      {donePath&&<path d={donePath} className="done-line"/>}
-      {inRange&&<line x1={x(today)} x2={x(today)} y1={top-6} y2={bottom} className="today"/>}
-    </svg>
-    {milestones.map(m=><span key={m.id} className={`pl-mile ${m.done?'past':''} ${x(m.due!)/W>.88?'end':x(m.due!)/W<.08?'start':''}`} style={{left:`${x(m.due!)/W*100}%`}} title={`${m.title} · ${dayLabel(m.due!,today)}${m.time?' '+m.time:''}`}><i/>{!compact&&labelled.has(m.id)&&<em>{m.title}</em>}</span>)}
-    {inRange&&<span className="pl-today" style={{left:`${x(today)/W*100}%`}}>Today</span>}
-    {shown.length>0&&<span className="pl-dot" style={{left:`${x(shown[shown.length-1])/W*100}%`,top:`${y(done[done.length-1])/H*100}%`}}/>}
-    {/* The first and last days, unless "Today" stands where one of them would. */}
-    {!compact&&<div className="pl-axis"><span>{inRange&&x(today)/W<.14?'':dayLabel(s.start,today)}</span><span>{inRange&&x(today)/W>.86?'':dayLabel(s.end,today)}</span></div>}
+  // Labels only where they fit; the rest keep their mark and a tooltip.
+  let last=-1;const labelled=new Set(milestones.filter(m=>{const p=at(m.due!);if(p-last<.18)return false;last=p;return true;}).map(m=>m.id));
+  const edge=(p:number)=>p>.86?'end':p<.1?'start':'';
+  return <div className={`pl-track ${compact?'compact':''} ${s.state}`} role="img" aria-label={`${s.done} of ${s.total} done; ${s.expected} were planned by today. ${paceLine(s)}`}>
+    <div className="pl-rail"><span className="pl-time" style={{transform:`scaleX(${now})`}}/><span className="pl-done" style={{transform:`scaleX(${s.percent})`}}/></div>
+    {now>0&&now<1&&<span className={`pl-now ${edge(now)}`} style={{left:`${now*100}%`}}><i/>{!compact&&<em>Today</em>}</span>}
+    {milestones.map(m=>{const p=at(m.due!);return <span key={m.id} className={`pl-mile ${m.done?'past':''} ${edge(p)}`} style={{left:`${p*100}%`}} title={`${m.title} · ${dayLabel(m.due!,today)}${m.time?' '+m.time:''}`}><i/>{!compact&&labelled.has(m.id)&&<em>{m.title}<small>{dayLabel(m.due!,today)}</small></em>}</span>;})}
   </div>;
 }
 
@@ -97,30 +76,36 @@ export function PlanTasks({plan,today=localDay(),onToggle}:{plan:SpacePlan;today
   </div>;
 }
 
-function Ring({value}:{value:number}){
-  const r=19,c=2*Math.PI*r;
-  return <svg className="pl-ring" width="46" height="46" viewBox="0 0 46 46" aria-hidden="true"><circle cx="23" cy="23" r={r} className="track"/><circle cx="23" cy="23" r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform="rotate(-90 23 23)"/></svg>;
+function Ring({value,size=46}:{value:number;size?:number}){
+  const r=size/2-4,c=2*Math.PI*r,m=size/2;
+  return <svg className="pl-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={m} cy={m} r={r} className="track"/><circle cx={m} cy={m} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform={`rotate(-90 ${m} ${m})`}/></svg>;
 }
 
 const StateMark=({s,today}:{s:PlanStatus;today:string})=><span className={`pl-state ${s.state}`}><Icon name={`plan-${s.state}`} size={16}/>{STATE_LABEL(s,today)}</span>;
 
-/** The plan's headline: title, goal, where it stands, the chart and three numbers. */
+/** Where the plan stands in one line: next milestone and the finish. */
+function Facts({s,today}:{s:PlanStatus;today:string}){
+  return <p className="pl-facts">
+    <span><b>{s.done}/{s.total}</b> done</span>
+    {s.nextMilestone?<span>{s.nextMilestone.title} · {dayLabel(s.nextMilestone.due!,today)}{s.nextMilestone.time?' '+s.nextMilestone.time:''}</span>:s.next?<span>Next: {s.next.title}</span>:null}
+    <span>{s.state==='done'?'Finished':s.daysLeft>0?`${plural(s.daysLeft,'day')} left`:s.daysLeft===0?'Finishes today':`Ended ${plural(-s.daysLeft,'day')} ago`}</span>
+  </p>;
+}
+
+/** The plan's headline: progress, title, goal, the timeline and a line of facts. */
 export function PlanSummary({plan,today=localDay(),compact=false,state=true}:{plan:SpacePlan;today?:string;compact?:boolean;state?:boolean}){
   const s=planStatus(plan,today);
   return <>
     <div className="pl-head">
+      <span className="pl-progress"><Ring value={s.percent} size={compact?44:56}/><b>{Math.round(s.percent*100)}<small>%</small></b></span>
       <div className="pl-head-text">
-        {state&&<StateMark s={s} today={today}/>}
         <h3>{plan.title}</h3>
         {plan.goal&&<p>{plan.goal}</p>}
+        {state&&<StateMark s={s} today={today}/>}
       </div>
     </div>
     <PlanChart plan={plan} today={today} compact={compact}/>
-    <div className="pl-figures">
-      <div><Ring value={s.percent}/><span><b>{Math.round(s.percent*100)}% done</b><small>{s.done} of {plural(s.total,'task')}</small></span></div>
-      <div><span><b>{s.nextMilestone?s.nextMilestone.title:s.next?s.next.title:'Nothing left'}</b><small>{s.nextMilestone?`Next milestone · ${dayLabel(s.nextMilestone.due!,today)}${s.nextMilestone.time?' '+s.nextMilestone.time:''}`:s.next?`Next up${s.next.due?' · '+dayLabel(s.next.due,today):''}`:'All caught up'}</small></span></div>
-      <div><span><b>{dayLabel(s.end,today)}</b><small>{s.state==='done'?'Finished':s.daysLeft>0?`Finish · ${plural(s.daysLeft,'day')} left`:s.daysLeft===0?'Finishes today':`Ended ${plural(-s.daysLeft,'day')} ago`}</small></span></div>
-    </div>
+    <Facts s={s} today={today}/>
   </>;
 }
 
@@ -170,7 +155,7 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
       <Illustration scene="steps" viewBox="100 70 290 260" className="pl-empty-art"/>
       <div className="pl-empty-copy">
         <h3>No plan yet</h3>
-        <p>Tell Mowr what you’re working toward: the deadline, the quizzes or milestones on the way, how much time you have. It lays out dated tasks, tracks what’s done and keeps the plan up to date as things change.</p>
+        <p>Say what you’re working toward and by when.</p>
         <PlanBox placeholder={space.kind==='subject'?'e.g. Midterm on Oct 28, quizzes every Thursday, 2 hours a day':'e.g. Launch on Nov 15: design, build, test and a beta week'} onAsk={actions.onAsk} disabled={disabled}/>
         <button type="button" className="pl-link" onClick={()=>actions.onDraftChat('/plan ')}>Or plan it in a full chat<Icon name="arrow" size={13}/></button>
       </div>
@@ -178,16 +163,15 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
   </div>;
   return <div className="pl-view">
     <section className="pl-card">
-      <span className="pl-art" aria-hidden="true"><Illustration scene={s.state==='behind'?'alarm':s.state==='done'?'checklist':'steps'} viewBox="100 70 290 260"/></span>
-      <PlanSummary plan={plan} today={today} state={false}/>
-      <div className="pl-foot"><StateMark s={s} today={today}/><p className="pl-pace">{paceLine(s)}</p><button type="button" className="pl-delete" onClick={()=>void remove()}>Delete plan</button></div>
+      <PlanSummary plan={plan} today={today}/>
     </section>
     <PlanBox placeholder="Tell Mowr what changed: “finished lecture 3”, “quiz moved to Friday”…" onAsk={actions.onAsk} disabled={disabled}/>
-    {(s.overdue.length>0||s.today.length>0)&&<section className="pl-card pl-focus">
-      <span className="sp-eyebrow">{s.overdue.length?'Needs attention':'Today'}</span>
+    {(s.overdue.length>0||s.today.length>0)&&<section className="pl-focus">
+      <h4>{s.overdue.length?'Needs attention':'Today'}</h4>
       <ul>{[...s.overdue,...s.today].map(t=><TaskRow key={t.id} task={t} today={today} onToggle={actions.onToggle}/>)}</ul>
     </section>}
     <PlanTasks plan={plan} today={today} onToggle={actions.onToggle}/>
+    <button type="button" className="pl-delete" onClick={()=>void remove()}>Delete plan</button>
   </div>;
 }
 
@@ -196,11 +180,12 @@ export function PlanOverviewCard({plan,onOpen}:{plan:SpacePlan;onOpen:()=>void})
   const today=localDay(),s=planStatus(plan,today);
   const focus=[...s.overdue,...s.today].slice(0,3);
   return <section className="sp-card pl-overview">
-    <div className="sp-card-head"><span className="sp-eyebrow">Plan</span><button onClick={onOpen}>Open plan</button></div>
-    <div className="pl-overview-row">
-      <Ring value={s.percent}/>
-      <div><b>{plan.title}</b><small><span className={`pl-state inline ${s.state}`}><Icon name={`plan-${s.state}`} size={13}/>{STATE_LABEL(s,today)}</span> · {s.done}/{s.total} done</small></div>
+    <div className="pl-overview-top">
+      <span className="pl-progress"><Ring value={s.percent} size={44}/><b>{Math.round(s.percent*100)}<small>%</small></b></span>
+      <div className="pl-overview-title"><b>{plan.title}</b><StateMark s={s} today={today}/></div>
+      <button type="button" className="pl-overview-open" onClick={onOpen}>Open plan<Icon name="arrow" size={14}/></button>
     </div>
+    <PlanChart plan={plan} today={today} compact/>
     {focus.length>0?<ul className="pl-overview-list">{focus.map(t=><li key={t.id}><span>{t.title}</span><Due task={t} today={today}/></li>)}</ul>
       :s.next&&<p className="pl-overview-next">Next: {s.next.title}{s.next.due?` · ${dayLabel(s.next.due,today)}`:''}</p>}
   </section>;

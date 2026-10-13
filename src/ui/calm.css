@@ -1,0 +1,68 @@
+/* Calm: the shared quiet pieces every page is built from. A serif title with one short line, a drawing in the
+   middle when there is nothing yet, a hand-drawn wavy rule, and starting points two to a row.
+   Motion is slow-out and short: things arrive, settle, and then stay still. */
+:root{--calm-ease:cubic-bezier(.16,1,.3,1);--calm-ink:#f2f1ec;--calm-soft:#c9c8c1;--calm-muted:#8f8e88;--calm-line:#2b2b28;--calm-tile:#232321;--calm-hover:#1d1d1c}
+
+/* The serif's fl and fi ligatures draw only the f ("flows" read "fows"); spell them out instead. */
+body{font-variant-ligatures:no-common-ligatures}
+
+/* ---------- Page head ---------- */
+.calm-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:56px 0 30px;animation:calm-in .7s var(--calm-ease) backwards}
+.calm-head-text{min-width:0}
+body .calm-head h1{margin:0;font:400 40px/1.08 var(--serif);letter-spacing:-.025em;color:var(--calm-ink)}
+.calm-head p{margin:12px 0 0;max-width:560px;font:400 17px/1.45 var(--sans);color:var(--calm-muted)}
+.calm-head-actions{display:flex;align-items:center;gap:10px;flex:none}
+
+/* ---------- Empty state ---------- */
+.calm-empty{display:grid;justify-items:center;gap:10px;padding:56px 0 64px;text-align:center}
+.calm-empty-art{width:176px;height:146px;animation:calm-art .9s var(--calm-ease) .08s backwards}
+.calm-empty-art svg{display:block;width:100%;height:100%;overflow:visible}
+.calm-empty p{margin:6px 0 0;font:400 16px/1.5 var(--sans);color:var(--calm-muted);animation:calm-in .7s var(--calm-ease) .18s backwards}
+.calm-empty-actions{display:flex;gap:10px;margin-top:14px;animation:calm-in .7s var(--calm-ease) .26s backwards}
+
+/* ---------- The wavy rule ---------- */
+.calm-squiggle{height:8px;margin:8px 0 44px;color:#3a3a36;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8' viewBox='0 0 16 8'%3E%3Cpath d='M0 4.6C2.6 4.6 3.2 2 5.6 2S8.4 5.8 10.8 5.8 13.4 4.6 16 4.6' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") 0 0/16px 8px repeat-x;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8' viewBox='0 0 16 8'%3E%3Cpath d='M0 4.6C2.6 4.6 3.2 2 5.6 2S8.4 5.8 10.8 5.8 13.4 4.6 16 4.6' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") 0 0/16px 8px repeat-x;
+  animation:calm-draw 1.4s var(--calm-ease) .2s backwards}
+
+/* ---------- Starting points ---------- */
+.calm-templates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 28px}
+body .calm-template{position:relative;display:flex;align-items:flex-start;justify-content:flex-start;gap:20px;width:100%;min-width:0;height:auto;padding:18px 18px 34px;border:0;border-radius:16px;background:transparent;color:var(--calm-ink);text-align:left;cursor:pointer;overflow:hidden;box-shadow:none;
+  transition:background .35s var(--calm-ease);animation:calm-in .8s var(--calm-ease) backwards;animation-delay:calc(.28s + var(--i,0) * 60ms)}
+body .calm-template:hover,body .calm-template:focus-visible{background:var(--calm-hover)}
+.calm-template:active{transform:scale(.99)}
+.calm-tile{position:relative;flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:12px;background:var(--calm-tile);transition:background .35s var(--calm-ease)}
+.calm-template:hover .calm-tile{background:#2b2b29}
+.calm-tile>span{position:absolute;inset:0;display:grid;place-items:center;transition:opacity .3s var(--calm-ease),transform .45s var(--calm-ease)}
+body .calm-tile .drawn-icon{color:#d9d8d2}
+.calm-tile-plus{opacity:0;transform:rotate(-45deg) scale(.6)}
+.calm-template:hover .calm-tile-icon,.calm-template:focus-visible .calm-tile-icon{opacity:0;transform:scale(.6)}
+.calm-template:hover .calm-tile-plus,.calm-template:focus-visible .calm-tile-plus{opacity:1;transform:none}
+.calm-template-text{display:grid;gap:5px;min-width:0;padding-top:1px}
+.calm-template-text b{font:500 17px/1.3 var(--sans);letter-spacing:-.01em;color:var(--calm-ink)}
+.calm-template-text>span{font:400 16px/1.45 var(--sans);color:var(--calm-soft)}
+.calm-template-text small{display:flex;align-items:center;gap:8px;margin-top:4px;font:400 15px/1.3 var(--sans);color:var(--calm-muted)}
+body .calm-template-text small .drawn-icon{color:var(--calm-muted)}
+
+/* The small card that rises from the corner on hover. */
+.calm-peek{position:absolute;right:18px;bottom:-12px;display:grid;gap:7px;width:168px;padding:12px 14px 22px;border:1px solid #3a3a36;border-radius:12px;background:#252523;box-shadow:0 18px 40px -18px #000;pointer-events:none;
+  opacity:0;transform:translateY(70%) rotate(6deg);transition:opacity .3s var(--calm-ease),transform .6s var(--calm-ease)}
+.calm-template:hover .calm-peek,.calm-template:focus-visible .calm-peek{opacity:1;transform:translateY(52%) rotate(-3deg)}
+.calm-peek em{display:flex;align-items:center;gap:8px;margin-bottom:3px;font:500 13px/1 var(--sans);font-style:normal;color:var(--calm-ink)}
+.calm-peek em i{width:8px;height:8px;border-radius:50%;background:var(--tone)}
+.calm-peek>span{height:7px;border-radius:4px;background:#363633}
+.calm-peek>span+span{width:62%}
+.tone-blue{--tone:#6a9bcc}.tone-green{--tone:#8fae8e}.tone-lilac{--tone:#cbcadb}.tone-pink{--tone:#c46686}.tone-sand{--tone:#c8b48c}.tone-clay{--tone:#c27a5f}
+
+@media (max-width:820px){.calm-templates{grid-template-columns:1fr}.calm-head{padding-top:36px}body .calm-head h1{font-size:34px}}
+
+@keyframes calm-in{from{opacity:0;transform:translateY(8px)}}
+@keyframes calm-art{from{opacity:0;transform:translateY(10px) scale(.94)}}
+@keyframes calm-draw{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+
+@media (prefers-reduced-motion:reduce){
+  .calm-head,.calm-empty-art,.calm-empty p,.calm-empty-actions,.calm-squiggle,.calm-template{animation:none!important}
+  .calm-peek,.calm-tile>span{transition:none}
+}
+html[data-quiet=true] :is(.calm-head,.calm-empty-art,.calm-empty p,.calm-empty-actions,.calm-squiggle,.calm-template){animation:none!important}

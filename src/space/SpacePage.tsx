@@ -20,7 +20,9 @@ import {PlanView,PlanOverviewCard,type PlanActions,type PlanDraftView} from './P
 import {planStatus,type SpacePlan} from '../../core/plans';
 import type {DriveItem,DriveSyncState} from '../drive/drive';
 import {menuKeys,useMenuKeys} from '../menuKeys';
+import {Squiggle,Templates} from '../ui/Calm';
 import './space.css';
+import './space-calm.css';
 
 export type SpaceTab='overview'|'chats'|'plan'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
 type Linked={id:string;scope:string;path:string};
@@ -126,6 +128,13 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
   useEffect(()=>warmMemory(),[]);
+  // The underline glides to the chosen tab instead of jumping.
+  const tabBar=useRef<HTMLElement>(null);
+  useEffect(()=>{
+    const bar=tabBar.current;if(!bar)return;
+    const place=()=>{const b=bar.querySelector<HTMLElement>('[aria-selected=true]');if(!b)return;bar.style.setProperty('--tab-x',b.offsetLeft+'px');bar.style.setProperty('--tab-w',b.offsetWidth+'px');bar.dataset.ready='1';};
+    place();const ro=new ResizeObserver(place);ro.observe(bar);return()=>ro.disconnect();
+  },[tab,tabs.length]);
 
   return <div className={`space-page ${subject?'is-subject':'is-project'}`}>
     <div className="sp-top">
@@ -135,28 +144,19 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         <div className="sp-title">
           <Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/>
           {space.description&&<p className="sp-desc">{space.description}</p>}
+        </div>
         <div className="sp-actions">
           <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} aria-description={space.memory.trim()?'Edit the instructions Mowr follows here':'Tell Mowr how to work here'}><InstructionsGlyph/>Instructions</button>
           <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
           <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
-        </div>
-        <span className="sp-art" aria-hidden="true"><SpaceMark space={space} size={92} bare/></span>
       </div>
-      {subject&&<div className="sp-stats">
-        <button className={`sp-stat due ${due?'hot':''}`} onClick={startReview} disabled={!due&&!fresh}>
-          <span className="sp-stat-icon"><Icon name="subjects" size={16}/></span>
-          <span><b>{due?`${due} due`:fresh?`${fresh} new`:'All caught up'}</b><small>{due||fresh?'Review now':'Nothing to review'}</small></span>
-        </button>
-        <div className="sp-stat mastery"><Ring value={mastery} size={40}/><span><b>{Math.round(mastery*100)}% mastered</b><small>{Math.round(seen*100)}% seen · {cards.length} cards</small></span></div>
-        <div className="sp-stat streak"><span className={`sp-stat-icon flame ${days?'lit':''}`}><Icon name="flame" size={16}/></span><span><b>{days} day streak</b><small>{days?'Keep it going today':'Review to start one'}</small></span></div>
-      </div>}
       <form className="sp-ask" onSubmit={e=>{e.preventDefault();if(ask.trim()){actions.onAsk(ask.trim());setAsk('');}}}>
         <Icon name="chat" size={18}/>
         <input value={ask} onChange={e=>setAsk(e.target.value)} placeholder={subject?`Ask anything about ${space.name}…`:`Work on ${space.name}…`} aria-label={`Ask about ${space.name}`}/>
         <button className="primary" disabled={!ask.trim()} aria-label="Start chat"><Icon name="arrow" size={16}/></button>
       </form>
-      <nav className="sp-tabs" role="tablist" aria-label={`${space.name} sections`}>
+      <nav className="sp-tabs" role="tablist" aria-label={`${space.name} sections`} ref={tabBar}>
         {tabs.map(([id,label,count])=><button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}>{label}{count!==undefined&&count>0&&<span className={id==='plan'?'late':undefined} aria-label={id==='plan'?`${count} overdue`:undefined}>{count}</span>}</button>)}
       </nav>
     </header>
@@ -171,35 +171,37 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         <button className="sp-drive-dismiss" aria-label="Dismiss" onClick={actions.onDriveSeen}><Icon name="close" size={14}/></button>
       </div>}
       {tab==='overview'&&<div className="sp-overview">
-        {plan&&<PlanOverviewCard plan={plan} onOpen={()=>onTab('plan')}/>}
-        {subject&&<section className="sp-card today">
-          <div><span className="sp-eyebrow">Today</span><h3>{due?`${due} card${due===1?'':'s'} ready for review`:fresh?`${Math.min(fresh,20)} new card${Math.min(fresh,20)===1?'':'s'} to learn`:'You are all caught up'}</h3>
-            <p>Mowr brings each card back just before you would forget it.</p></div>
-          <button className="primary" disabled={!due&&!fresh} onClick={startReview}>Start review<Icon name="arrow" size={16}/></button>
-        </section>}
-        <section className="sp-card make">
-          <span className="sp-eyebrow">Make something</span>
-          <div className="sp-make">
-            {subject&&<button onClick={()=>actions.onMake('flashcards')}><span className="mk mk-cards"><Icon name="subjects" size={20}/></span><b>Flashcards</b><small>From your files and chats</small></button>}
-            {subject&&<button onClick={()=>actions.onMake('quiz')}><span className="mk mk-quiz"><Icon name="check" size={20}/></span><b>Quiz</b><small>Checked, then scheduled</small></button>}
-            <button onClick={()=>actions.onMake('worksheet')}><span className="mk mk-sheet"><Icon name="files" size={20}/></span><b>Worksheet</b><small>A PDF, saved to Worksheets</small></button>
-            <button onClick={()=>actions.onMake('summary')}><span className="mk mk-sum"><Icon name="long" size={20}/></span><b>Summary</b><small>Every topic, complete and accurate</small></button>
+        {subject&&<section className="sp-today" aria-label="Today">
+          <div className="sp-today-text">
+            <b>{due?`${due} card${due===1?'':'s'} to review`:fresh?`${Math.min(fresh,20)} new card${Math.min(fresh,20)===1?'':'s'} to learn`:'All caught up'}</b>
+            <span className="sp-today-meta"><Ring value={mastery} size={18}/>{Math.round(mastery*100)}% mastered<i aria-hidden="true">·</i><span className={`sp-flame ${days?'lit':''}`}><Icon name="flame" size={14}/></span>{days?`${days} day streak`:'No streak yet'}<i aria-hidden="true">·</i>{cards.length} cards</span>
           </div>
-        </section>
-        {subject&&weak.length>0&&<section className="sp-card weak">
-          <span className="sp-eyebrow">Keeps slipping</span>
+          <button className="primary sp-review" disabled={!due&&!fresh} onClick={startReview}>Start review<Icon name="arrow" size={16}/></button>
+        </section>}
+        {plan&&<PlanOverviewCard plan={plan} onOpen={()=>onTab('plan')}/>}
+        {subject&&weak.length>0&&<section className="sp-list weak">
+          <h3>Keeps slipping</h3>
           <ul>{weak.slice(0,4).map(q=><li key={q}><span>{q}</span><button onClick={()=>actions.onAsk(`Explain this again in a different way, then check me with one question: ${q}`)}>Explain again</button></li>)}</ul>
         </section>}
-        <section className="sp-card recent">
-          <div className="sp-card-head"><span className="sp-eyebrow">Recent chats</span><button onClick={()=>onTab('chats')}>All chats</button></div>
-          {recentChats.slice(0,4).map(c=><button className="sp-row" key={c.id} onClick={()=>actions.onOpenChat(c)} onContextMenu={chatMenu.open(c)}><Icon name="chat" size={16}/><span>{c.title}</span><small>{ago(c.updated)}</small></button>)}
-          {!chats.length&&<p className="sp-empty-line">Ask your first question above.</p>}
-        </section>
-        <section className="sp-card recent">
-          <div className="sp-card-head"><span className="sp-eyebrow">Recent files</span><button onClick={()=>onTab('files')}>All files</button></div>
-          {recentFiles.slice(0,4).map(f=><button className="sp-row" key={f.id} onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f} size={26}/><span>{f.name}</span><small>{ago(f.updated||f.created)}</small></button>)}
-          {!files.length&&<p className="sp-empty-line">Add notes, slides or worksheets in Files.</p>}
-        </section>
+        <div className="sp-lists">
+          <section className="sp-list recent">
+            <div className="sp-list-head"><h3>Recent chats</h3>{chats.length>4&&<button onClick={()=>onTab('chats')}>All chats</button>}</div>
+            {recentChats.slice(0,4).map(c=><button className="sp-row" key={c.id} onClick={()=>actions.onOpenChat(c)} onContextMenu={chatMenu.open(c)}><span>{c.title}</span><small>{ago(c.updated)}</small></button>)}
+            {!chats.length&&<p className="sp-empty-line">Ask your first question above.</p>}
+          </section>
+          <section className="sp-list recent">
+            <div className="sp-list-head"><h3>Recent files</h3>{files.length>4&&<button onClick={()=>onTab('files')}>All files</button>}</div>
+            {recentFiles.slice(0,4).map(f=><button className="sp-row" key={f.id} onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f} size={22}/><span>{f.name}</span><small>{ago(f.updated||f.created)}</small></button>)}
+            {!files.length&&<p className="sp-empty-line">Nothing added yet.</p>}
+          </section>
+        </div>
+        <Squiggle/>
+        <Templates label="Make something" items={[
+          ...(subject?[{key:'cards',icon:'cmd-flashcards',title:'Flashcards',line:'From your files and chats.',peek:{label:'12 cards',tone:'green' as const},run:()=>actions.onMake('flashcards')},
+            {key:'quiz',icon:'cmd-quiz',title:'Quiz',line:'Checked, then scheduled.',peek:{label:'8 of 10',tone:'blue' as const},run:()=>actions.onMake('quiz')}]:[]),
+          {key:'sheet',icon:'cmd-pdf',title:'Worksheet',line:'A PDF, saved to Worksheets.',peek:{label:'Worksheet.pdf',tone:'clay' as const},run:()=>actions.onMake('worksheet')},
+          {key:'sum',icon:'cmd-summarize',title:'Summary',line:'Every topic, complete and accurate.',peek:{label:'Summary',tone:'lilac' as const},run:()=>actions.onMake('summary')},
+        ]}/>
       </div>}
 
       {tab==='plan'&&<PlanView space={space} plan={plan} draft={planDraft} actions={planActions} canAsk={canAsk}/>}
@@ -207,7 +209,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
-      {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals saved in this {space.kind}'s chats appear here. Press <b>Save</b> on the top right of one to keep it.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
+      {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals you save in this {space.kind} appear here.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
       {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
@@ -316,7 +318,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
         <button className="icon-button sp-new-folder" aria-label="New folder" title="New folder" onClick={()=>setNaming({name:''})}><Icon name="folder-plus" size={18}/></button>
       </div>
     </div>}
-    {space.drive&&!at&&!inHere.length&&!here.length&&!naming&&<p className="sp-empty-line sp-local-empty">Files you add here stay on this PC and aren’t saved to Google Drive.</p>}
+    {space.drive&&!at&&!inHere.length&&!here.length&&!naming&&<p className="sp-empty-line sp-local-empty">Files added here stay on this PC.</p>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
       {shownFolders.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
         :<div key={f.id} {...folderOrder.item(f.id)} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
@@ -341,7 +343,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     {movingPicked&&picked.size>0&&<div className="sp-move" role="dialog" aria-label={`Move ${picked.size} files`}><strong>Move {picked.size} file{picked.size===1?'':'s'} to</strong>{[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==at).map(d=><button key={d.id||'root'} onClick={()=>{move([...picked],d.id);setPicked(new Set());setMovingPicked(false);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMovingPicked(false)}>Cancel</button></div>}
     {desktop&&<div className="sp-linked"><div className="sp-card-head"><span className="sp-eyebrow">{space.drive?'Linked folders':'On this PC'}</span><button onClick={()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{})}>Link a folder</button></div>
       {linked.map(l=><button key={l.id} className="sp-row" onClick={()=>actions.onBrowseLinked(l.id)}><Icon name="projects" size={16}/><span>{l.path.split(/[\\/]/).pop()}</span><small>{l.path}</small></button>)}
-      {!linked.length&&<p className="sp-empty-line">Link a folder on your PC and Mowr can read and change its files, with your approval.</p>}</div>}
+      {!linked.length&&<p className="sp-empty-line">Link a folder and Mowr can read it. Changes wait for your approval.</p>}</div>}
   </section>;
 }
 
