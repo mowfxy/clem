@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {adminApi,type CaseRow} from './api';
+import {adminApi,mailApi,type CaseRow} from './api';
 import {Avatar,Badge,Empty,ErrorNote,I,PageHead,Skeleton,ago,date,useLoad,useToast,who,Select} from './ui';
 import {Icon} from '../Icons';
 import type {Go} from './AdminApp';
@@ -35,11 +35,22 @@ type Detail={case:CaseRow&{message:string;display_name?:string;last_seen_at?:str
 function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
   const toast=useToast();
   const {data,error,loading,reload}=useLoad(()=>adminApi<Detail>('/admin/cases/'+id),[id]);
-  const [body,setBody]=useState('');const [internal,setInternal]=useState(false);const [busy,setBusy]=useState(false);
+  const [body,setBody]=useState('');const [internal,setInternal]=useState(false);const [busy,setBusy]=useState(false);const [byEmail,setByEmail]=useState(true);
   const end=useRef<HTMLDivElement>(null);
   useEffect(()=>{end.current?.scrollIntoView({block:'end'});},[data?.messages.length]);
   async function update(fields:Record<string,unknown>,done:string){setBusy(true);try{await adminApi(`/admin/cases/${id}/update`,fields);toast(done);await reload();onChanged();}catch(e){toast((e as Error).message,'error');}finally{setBusy(false);}}
-  async function send(status?:string){if(body.trim().length<2)return;setBusy(true);try{await adminApi(`/admin/cases/${id}/reply`,{body,internal,...(status?{status}:{})});toast(internal?'Note added':'Reply sent to the app');setBody('');await reload();onChanged();}catch(e){toast((e as Error).message,'error');}finally{setBusy(false);}}
+  async function send(status?:string){
+    if(body.trim().length<2)return;setBusy(true);
+    try{
+      await adminApi(`/admin/cases/${id}/reply`,{body,internal,...(status?{status}:{})});
+      setBody('');
+      // The reply is saved for the app first; the email is a second copy, so a mail failure doesn't lose it.
+      const email=!internal&&byEmail&&data?.case.email;
+      if(email)await mailApi('/case-reply',{caseId:id}).then(()=>toast('Reply sent to the app and by email'),e=>toast(`Reply sent to the app, but the email failed: ${(e as Error).message}`,'error'));
+      else toast(internal?'Note added':'Reply sent to the app');
+      await reload();onChanged();
+    }catch(e){toast((e as Error).message,'error');}finally{setBusy(false);}
+  }
   if(error)return <ErrorNote error={error} onRetry={reload}/>;
   if(loading&&!data)return <Skeleton rows={8}/>;
   const {case:c,messages,otherCases,team}=data!;
@@ -65,14 +76,13 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
         <button className="adm-person link" onClick={()=>go('users',c.owner_id)}><Avatar person={{id:c.owner_id,email:c.email,username:c.username}}/><span><strong>{who({email:c.email,username:c.username,display_name:c.display_name})}</strong><small>{c.email}</small></span></button>
         <dl className="adm-facts single"><div><dt>Last seen</dt><dd>{ago(c.last_seen_at)}</dd></div><div><dt>Cases</dt><dd>{otherCases.length+1}</dd></div></dl>
         {!!otherCases.length&&<><h3>Other cases</h3>{otherCases.map(o=><button key={o.id} className="adm-row link" onClick={()=>go('cases',o.id)}><div><strong>{o.subject}</strong><small>{o.status} · {date(o.created_at)}</small></div></button>)}</>}
-        {c.email&&<a className="adm-ghost" href={`mailto:${c.email}?subject=${encodeURIComponent('Re: '+c.subject)}`}><I name="external"/>Email instead</a>}
       </aside>
     </div>
     <form className={`adm-composer ${internal?'internal':''}`} onSubmit={e=>{e.preventDefault();void send();}}>
       <div className="adm-composer-tabs"><button type="button" className={!internal?'on':''} onClick={()=>setInternal(false)}>Reply</button><button type="button" className={internal?'on':''} onClick={()=>setInternal(true)}>Internal note</button>
         {!internal&&<Select aria-label="Insert a saved reply" className="saved" value="" placeholder="Saved replies…" onChange={v=>setBody(b=>(b?b+'\n\n':'')+v)} options={replies.map(r=>({value:r,label:r.slice(0,60)+'…'}))}/>}</div>
-      <textarea value={body} onChange={e=>setBody(e.target.value)} rows={4} maxLength={10000} placeholder={internal?'Only the team can see this.':'Write a reply. It appears in the person\'s Mowr app under Support.'} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))void send();}}/>
-      <footer><small className="adm-muted">Ctrl + Enter to send</small><div>{!internal&&<button type="button" disabled={busy||body.trim().length<2} onClick={()=>void send('resolved')}>Send & resolve</button>}<button className="adm-primary" disabled={busy||body.trim().length<2}><I name="send" size={15}/>{internal?'Add note':'Send reply'}</button></div></footer>
+      <textarea value={body} onChange={e=>setBody(e.target.value)} rows={4} maxLength={10000} placeholder={internal?'Only the team can see this.':`Write a reply. It appears in the person's Mowr app under Help & support${c.email&&byEmail?' and is emailed to them':''}.`} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))void send();}}/>
+      <footer>{!internal&&c.email?<label className="adm-check"><input type="checkbox" checked={byEmail} onChange={e=>setByEmail(e.target.checked)}/>Also email it to {c.email}</label>:<small className="adm-muted">Ctrl + Enter to send</small>}<div>{!internal&&<button type="button" disabled={busy||body.trim().length<2} onClick={()=>void send('resolved')}>Send & resolve</button>}<button className="adm-primary" disabled={busy||body.trim().length<2}><I name="send" size={15}/>{internal?'Add note':'Send reply'}</button></div></footer>
     </form>
   </div>;
 }

@@ -1,14 +1,17 @@
 // Shared by scripts/build-emails.mjs (templates handed to Supabase) and server/emails.ts (mail the server sends itself).
 export const BASE='https://mowrai.com',APP='https://mowrai.com/#/app';
 // Bumped whenever the fonts or art change: mail clients and Gmail's image proxy cache these by URL.
-const ASSETS='v=20261012b';
+const ASSETS='v=20261013';
 const LINK='{{ .ConfirmationURL }}';
 const sans="'Mowafy Sans',Arial,Helvetica,sans-serif",serif="'Mowafy Serif',Georgia,'Times New Roman',serif";
 // Clients that load web fonts (Apple Mail, iOS, Outlook for Mac) use Mowr's own; the rest fall back to Arial and Georgia.
-const faces=`@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Regular.woff2?${ASSETS}) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Bold.woff2?${ASSETS}) format('woff2');font-weight:700}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Regular.woff2?${ASSETS}) format('woff2');font-weight:400}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Bold.woff2?${ASSETS}) format('woff2');font-weight:700}`;
-export type EmailParts={art?:string;title:string;body:string;label?:string;url?:string;note?:string;code?:string;preheader?:string;footer?:string};
-/** The one layout every Mowr email uses: animated ink art, rising text, a glowing button. `footer` adds a line (e.g. unsubscribe) under the card. */
-export function layout({art,title,body,label,url,note,code,preheader=body,footer}:EmailParts){
+const faces=`@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Regular.woff2?${ASSETS}) format('woff2');font-weight:400;font-display:swap}@font-face{font-family:'Mowafy Sans';src:url(https://mowrai.com/fonts/MowafySans-Bold.woff2?${ASSETS}) format('woff2');font-weight:700;font-display:swap}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Regular.woff2?${ASSETS}) format('woff2');font-weight:400;font-display:swap}@font-face{font-family:'Mowafy Serif';src:url(https://mowrai.com/fonts/MowafySerif-Bold.woff2?${ASSETS}) format('woff2');font-weight:700;font-display:swap}`;
+export type EmailParts={art?:string;title:string;body:string;label?:string;url?:string;note?:string;code?:string;preheader?:string;footer?:string;letter?:boolean};
+/**
+ * The one layout every Mowr email uses: animated ink art, rising text, a glowing button. `footer` adds a line (e.g. unsubscribe)
+ * under the card. `letter` sets a written message left-aligned at full width, for staff messages and replies.
+ */
+export function layout({art,title,body,label,url,note,code,preheader=body,footer,letter}:EmailParts){
  const button=label?`<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:30px auto 0"><tr><td class="mw-btn mw-rise mw-d3" bgcolor="#f0efeb" style="border-radius:12px"><a href="${url}" style="display:inline-block;padding:15px 28px;font-family:${sans};font-size:15px;font-weight:bold;color:#141413;text-decoration:none;border-radius:12px">${label}&nbsp;&rarr;</a></td></tr></table>`:'';
  const fallback=url===LINK?`<p style="margin:22px auto 0;max-width:400px;font-family:${sans};font-size:11.5px;line-height:1.6;color:#6f6e68">Button not working? Paste this into your browser:<br><a href="${url}" style="color:#85847e;word-break:break-all">${url}</a></p>`:'';
  const token=code?`<div class="mw-rise mw-d3" style="margin:28px auto 0;display:inline-block;padding:16px 24px;border:1px solid #373733;border-radius:14px;background:#141413;font-family:'Courier New',monospace;font-size:30px;letter-spacing:8px;color:#f0efeb">${code}</div>`:'';
@@ -26,8 +29,8 @@ export function layout({art,title,body,label,url,note,code,preheader=body,footer
 <tr><td style="padding:0 4px 18px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle"><img src="${BASE}/email/mowr-mark.gif?${ASSETS}" width="30" height="30" alt="Mowr" style="display:block;border:0"></td><td style="padding-left:10px;vertical-align:middle;font-family:${serif};font-size:22px;color:#f0efeb">mowr</td></tr></table></td></tr>
 <tr><td class="mw-card" bgcolor="#1b1b19" style="background:#1b1b19;border:1px solid #2e2e2b;border-radius:20px;padding:34px 36px 32px;text-align:center">
 ${art?`<img class="mw-rise" src="${BASE}/email/${art}.gif?${ASSETS}" width="240" height="195" alt="" style="display:block;margin:0 auto 14px;width:240px;max-width:100%;height:auto;border:0">`:''}
-<h1 class="mw-rise mw-d1 mw-title" style="margin:0 0 12px;font-family:${serif};font-weight:400;font-size:30px;line-height:1.2;word-spacing:.06em;color:#f0efeb">${title}</h1>
-<p class="mw-rise mw-d2" style="margin:0 auto;max-width:400px;font-family:${sans};font-size:15px;line-height:1.65;color:#b5b4ad;white-space:pre-wrap">${body}</p>
+<h1 class="mw-rise mw-d1 mw-title" style="${letter?'text-align:left;':''}margin:0 0 12px;font-family:${serif};font-weight:400;font-size:30px;line-height:1.2;word-spacing:.06em;color:#f0efeb">${title}</h1>
+<p class="mw-rise mw-d2" style="margin:0 auto;max-width:${letter?'none':'400px'};font-family:${sans};font-size:15px;line-height:1.65;color:${letter?'#cfcec7':'#b5b4ad'};white-space:pre-wrap${letter?';text-align:left':''}">${body}</p>
 ${token}${button}${fallback}${small}
 </td></tr>
 <tr><td style="padding:22px 8px 0;text-align:center;font-family:${sans};font-size:12px;line-height:1.8;color:#6f6e68">Your space to think.<br><a href="mailto:support@mowrai.com" style="color:#a3a3a0;text-decoration:none">support@mowrai.com</a> &nbsp;·&nbsp; <a href="${BASE}" style="color:#a3a3a0;text-decoration:none">mowrai.com</a>${footer?`<br>${footer}`:''}</td></tr>
@@ -97,6 +100,7 @@ export function templateEmail(file:string):Email{
  * Supabase sends those when the person acts, and their links only work in the browser that asked.
  */
 export const staffPresets=[
+ {id:'custom',label:'Write your own',about:'A message from you, in the same design.'},
  {id:'welcome',label:'Welcome to Mowr',about:'The welcome email new accounts get.'},
  {id:'update',label:'New version',about:'A new desktop version is out, with what changed.'},
  {id:'automation-complete',label:'Routine ready',about:'A routine finished and its result is in Mowr.'},
@@ -105,7 +109,24 @@ export const staffPresets=[
 ] as const;
 export type StaffPreset=typeof staffPresets[number]['id'];
 
-export function staffEmail(kind:StaffPreset,{name='',version='',notes='',unsubscribe=''}:{name?:string;version?:string;notes?:string;unsubscribe?:string}):Email{
+/** A message staff write themselves. Replies go to support@mowrai.com (the sender sets Reply-To). */
+export function customEmail(subject:string,message:string,name=''):Email{
+ const first=name.trim().split(/\s+/)[0],hello=first?`Hi ${first},\n\n`:'';
+ const note='Reply to this email and it reaches Mowr support.';
+ return {subject,text:`${hello}${message}\n\n${note}`,
+  html:layout({title:escape(subject),body:escape(hello+message),preheader:escape(message.slice(0,140)),note,letter:true})};
+}
+
+/** A support reply, sent alongside the copy that appears in the person's app under Help & support. */
+export function caseReplyEmail(caseSubject:string,reply:string,name=''):Email{
+ const first=name.trim().split(/\s+/)[0],hello=first?`Hi ${first},\n\n`:'';
+ const note='Reply to this email, or answer in Mowr under Settings → Help & support.';
+ return {subject:`Re: ${caseSubject}`.slice(0,200),text:`${hello}${reply}\n\n— Mowr support\n\n${note}`,
+  html:layout({title:escape(caseSubject),body:escape(`${hello}${reply}\n\n— Mowr support`),preheader:escape(reply.slice(0,140)),note,letter:true})};
+}
+
+export function staffEmail(kind:StaffPreset,{name='',version='',notes='',unsubscribe='',subject='',message=''}:{name?:string;version?:string;notes?:string;unsubscribe?:string;subject?:string;message?:string}):Email{
+ if(kind==='custom')return customEmail(subject||'A note from Mowr',message,name);
  if(kind==='welcome')return welcomeEmail(name);
  if(kind==='update')return updateEmail(version,notes,unsubscribe);
  return templateEmail(kind);
