@@ -133,6 +133,7 @@ import "./motion.css";
 import "./visuals/visuals-page.css";
 import "./contrast.css";
 import "./library.css";
+import "./compact.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -2409,19 +2410,15 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           <main className="workspace">
             {offline&&<div className="offline-banner" role="status"><Icon name="offline" size={15} className="offline-mark"/>Offline · reading only. Sending returns when you reconnect.</div>}
             <header className="workspace-top">
-              <span>
-                {activeSpace && route === "/app" ? (
-                  <button
-                    className="breadcrumb"
-                    onClick={() => openSpace(activeSpace.id)}
-                  >
-                    {activeSpace.name} <span>/</span>{" "}
-                    {activeChat ? "Conversation" : "New thought"}
-                  </button>
-                ) : route === "/app" || route.startsWith("/app/space/") ? (
+              {/* Where you are, in one line: the chat's name and the subject or project it belongs to (on the desktop this row is the title bar). */}
+              <span className="top-where">
+                {route === "/app" ? (<>
+                  <span className="top-title">{activeChat ? activeChat.title || "Conversation" : temporaryNext ? "Temporary chat" : "New chat"}</span>
+                  {activeSpace && <button className="breadcrumb top-space" title={`Open ${activeSpace.name}`} onClick={() => openSpace(activeSpace.id)}>{activeSpace.name}</button>}
+                </>) : route.startsWith("/app/space/") ? (
                   ""
                 ) : (
-                  `Your ${route.split("/").at(-1)}`
+                  <span className="top-title">{`Your ${route.split("/").at(-1)}`}</span>
                 )}
               </span>
               {route === "/app" && (activeChat?.temporary ? (
@@ -2431,7 +2428,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 </div>
               ) : !activeChat ? (
                 <div className="temp-controls">
-                  <button className={`icon-button temp-toggle ${temporaryNext ? "on" : ""}`} aria-pressed={temporaryNext} aria-label="Temporary chat" title={temporaryNext ? "Temporary chat is on" : "Start a temporary chat"} onClick={() => setTemporaryNext(!temporaryNext)}><Icon name="temp" size={21} /></button>
+                  <button className={`icon-button temp-toggle ${temporaryNext ? "on" : ""}`} aria-pressed={temporaryNext} aria-label="Temporary chat" title={temporaryNext ? "Temporary chat is on" : "Start a temporary chat"} onClick={() => setTemporaryNext(!temporaryNext)}><Icon name="temp" size={18} /></button>
                 </div>
               ) : null)}
             </header>

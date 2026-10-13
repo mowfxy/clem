@@ -41,6 +41,15 @@ try {
   await page.waitForTimeout(800);
   const drawn = await page.locator('.ps-page[data-page="1"] canvas').evaluate((c) => { const d = c.getContext("2d").getImageData(Math.floor(c.width * 0.8), Math.floor(c.height * 0.8), 4, 4).data; return d[3] > 0 && d[0] > 200; });
   assert.ok(drawn, "the whole first page is drawn");
+  // Resizing while pages draw (the reader settling, a scrollbar appearing, the edge dragged) never leaves a page drawn
+  // at its old size, flipped or on black: every live canvas is white in its margins once drawing settles.
+  for (const w of [1300, 1180, 1420, 1240, 1440]) { await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(60); }
+  await page.waitForTimeout(4000);
+  const bad = await page.evaluate(() => [...document.querySelectorAll(".file-panel .ps-page canvas")].filter((c) => c.width > 0 && !(c.width === 300 && c.height === 150)).flatMap((c) => {
+    const g = c.getContext("2d"), spots = [[0.03, 0.03], [0.97, 0.03], [0.03, 0.97], [0.97, 0.97], [0.5, 0.2]];
+    return spots.filter(([x, y]) => { const d = g.getImageData(Math.floor(c.width * x), Math.floor(c.height * y), 1, 1).data; return !(d[3] > 250 && d[0] > 240 && d[1] > 240 && d[2] > 240); }).map(([x, y]) => `${c.getAttribute("aria-label")} at ${x},${y} ${Array.from(g.getImageData(Math.floor(c.width * x), Math.floor(c.height * y), 1, 1).data)} ${c.width}x${c.height} css ${c.clientWidth}`);
+  }));
+  assert.deepEqual(bad, [], "pages are drawn whole after resizing");
 
   // The chat column and the reader share the width; nothing spills under the reader.
   const box = await page.evaluate(() => { const c = document.querySelector(".chat-split > .chat-view").getBoundingClientRect(), f = document.querySelector(".file-panel").getBoundingClientRect(), comp = document.querySelector(".composer").getBoundingClientRect(); return { chatRight: c.right, panelLeft: f.left, composerRight: comp.right }; });

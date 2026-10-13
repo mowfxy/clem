@@ -1,5 +1,9 @@
+:root {
+  /* The title bar row: Windows draws its caption buttons 32 px tall; the page is shown at 90 %, so in page pixels it is 32 / 0.9. */
+  --tb: 35.5px;
+}
 .desktop-titlebar {
-  height: 40px;
+  height: var(--tb);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -13,23 +17,23 @@
   position: fixed;
   inset: 0 0 auto;
   z-index: 10000;
-  padding-right: 150px;
+  padding-right: 160px;
 }
 .desktop-content {
-  height: calc(100vh - 40px);
-  margin-top: 40px;
+  height: calc(100vh - var(--tb));
+  margin-top: var(--tb);
   overflow: auto;
   background: #141414;
 }
 .desktop-content .app {
-  height: calc(100vh - 40px);
+  height: calc(100vh - var(--tb));
 }
 .browser-signin {
   width: 100%;
   margin-top: 24px;
 }
 .desktop-setup {
-  min-height: calc(100vh - 40px);
+  min-height: calc(100vh - var(--tb));
   padding: 40px 5vw;
   display: grid;
   place-items: center;
@@ -216,7 +220,7 @@
   
 }
 .desktop-content .app-shell {
-  height: calc(100vh - 40px);
+  height: calc(100vh - var(--tb));
   min-height: 0;
 }
 
@@ -295,7 +299,7 @@ body:has(.desktop-content) {
   overflow: hidden;
 }
 .desktop-content {
-  height: calc(100dvh - 40px);
+  height: calc(100dvh - var(--tb));
   overflow: hidden;
 }
 .desktop-content .app {
@@ -321,10 +325,10 @@ body:has(.desktop-content) {
   overflow-x: hidden;
 }
 .desktop-content .chat-view {
-  min-height: calc(100dvh - 92px);
+  min-height: calc(100dvh - var(--tb));
 }
 .desktop-content .chat-view:not(.has-messages) {
-  height: calc(100dvh - 92px);
+  height: calc(100dvh - var(--tb));
   min-height: 0;
   overflow: auto;
 }

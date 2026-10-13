@@ -66,12 +66,13 @@ function Page({pdf,n,w,h,scale,boxes,later}:{pdf:PDFDocumentProxy;n:number;w:num
   const nearRef=useRef(false),stillRef=useRef(''),texted=useRef(false);
   // pdf.js refuses a second render on a canvas that is still drawing, which left a page half drawn at its old size
   // after a resize: draws on the live canvas wait for the one before them (a cancelled one ends within 50 ms).
-  const live=useRef<Promise<unknown>>(Promise.resolve());
+  const live=useRef<Promise<unknown>>(Promise.resolve()),liveTask=useRef<{cancel:()=>void}|null>(null);
   const ratio=Math.min(window.devicePixelRatio||1,2);
   const draw=async(target:HTMLCanvasElement,alive:()=>boolean)=>{
     const page=await pdf.getPage(n);if(!alive())return false;const viewport=page.getViewport({scale});
     target.width=Math.floor(viewport.width*ratio);target.height=Math.floor(viewport.height*ratio);
     const task=page.render({canvas:target,viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]}) as unknown as {cancel:()=>void;promise:Promise<void>};
+    if(target===canvas.current)liveTask.current=task;
     const stop=setInterval(()=>{if(!alive())task.cancel();},50);
     try{await task.promise;}finally{clearInterval(stop);}
     if(!alive())return false;
@@ -112,7 +113,7 @@ function Page({pdf,n,w,h,scale,boxes,later}:{pdf:PDFDocumentProxy;n:number;w:num
     let cancelled=false,drawn=false;const c=canvas.current!;
     const run=live.current.catch(()=>{}).then(()=>cancelled?false:draw(c,()=>!cancelled)).then(ok=>{drawn=!!ok;}).catch(()=>{});live.current=run;
     return()=>{
-      cancelled=true;
+      cancelled=true;liveTask.current?.cancel();liveTask.current=null;
       // Still in view: a new size or file is about to redraw this canvas, so there is nothing to keep.
       if(nearRef.current)return;
       // Keep the exact pixels before letting the live canvas go; a page that never finished is drawn in the background.
