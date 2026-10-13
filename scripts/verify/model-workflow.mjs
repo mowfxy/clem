@@ -193,9 +193,9 @@ try {
   await page.screenshot({ path: "artifacts/plan-editor.png", fullPage: true });
   assert.equal(await page.locator('.message-author,.artifact-actions,.chat-actions').count(),0);
   await page.getByRole('button',{name:'Chat options for Research plan',exact:true}).click();
-  await page.getByRole('button',{name:'Pin chat',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Pin',exact:true}).click();
   await page.getByRole('button',{name:'Chat options for Research plan',exact:true}).click();
-  await page.getByRole('button',{name:'Unpin chat',exact:true}).waitFor();
+  await page.getByRole('menuitem',{name:'Unpin',exact:true}).waitFor();
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('.chat-options:popover-open').count(),0);
   const bubble=await page.locator('.message.user .message-text').boundingBox();
@@ -204,7 +204,7 @@ try {
   assert.ok(Math.abs(bubble.x+bubble.width-messages.x-messages.width)<2);
   await page.screenshot({path:'artifacts/conversation-layout.png',fullPage:true});
   await page.getByRole('button',{name:'Chat options for Research plan',exact:true}).click();
-  await page.getByRole('button',{name:'Delete chat',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Delete',exact:true}).click();
   await page
     .getByRole("button", { name: "Delete conversation", exact: true })
     .click();
@@ -263,6 +263,7 @@ try {
   await page.locator('.composer textarea').fill('Make a PDF about charged rods');
   await page.getByRole('button',{name:'Send message',exact:true}).click();
   await page.locator('.thinking').waitFor();
+  await page.locator('.message.assistant .message-mark').last().evaluate(e=>e.getAnimations().forEach(a=>a.finish()));
   const thinking=await page.locator('.thinking').boundingBox();
   const mark=await page.locator('.message.assistant .message-mark').last().boundingBox();
   assert.ok(Math.abs(thinking.y+thinking.height/2-mark.y-mark.height/2)<2);

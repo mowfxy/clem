@@ -2516,9 +2516,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         const streaming = activeChat.id in runs && m.id === activeChat.messages.at(-1)?.id && m.role === "assistant";
                         const latest = m.role === "assistant" && index === activeChat.messages.length - 1;
                         const sources = m.role === "assistant" ? sourceFiles(activeChat) : [];
+                        // One mark per chat, like Claude: beside "Thinking…" while Mowr starts, then under the latest answer.
+                        const waiting = latest && !m.content && !m.limit;
+                        const mark = latest && <div className="message-mark" key="mark"><Logo size={waiting ? 30 : 26} thinking={streaming}/></div>;
                         return (
-                        <article key={m.id} data-message-id={m.id} className={`message ${m.role} ${latest ? "latest" : ""}`}>
-                          {m.role === "assistant" && <div className="message-mark"><Logo size={30} thinking={streaming}/></div>}
+                        <article key={m.id} data-message-id={m.id} className={`message ${m.role} ${latest ? "latest" : ""} ${waiting ? "waiting" : ""}`}>
+                          {waiting && mark}
                           {m.role === "user" && editingMessage === m.id ? <UserMessageEdit content={m.content} onCancel={() => setEditingMessage(null)} onSend={(text) => resend(activeChat.id, m.id, text)} /> : <div className="message-text">
                             {m.content ? (
                               m.role === "assistant" ? (
@@ -2561,6 +2564,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                           {m.role === "assistant" && m.content && !streaming && !m.plan && !m.visual && m.review?.status !== "running" && m.verify?.status !== "running" && (
                             <MessageTools content={m.content} title={activeChat.title} onExport={exportAnswer} models={models} model={m.model || model} busy={activeChat.id in runs} canVerify={sources.length > 0} onReview={(reviewer) => void secondOpinion(activeChat, m.id, reviewer)} onVerify={() => void verifySources(activeChat, m.id)} />
                           )}
+                          {!waiting && mark}
                           {m.role === "user" && m.content && editingMessage !== m.id && <UserMessageTools content={m.content} onRetry={() => resend(activeChat.id, m.id, m.content)} onEdit={() => setEditingMessage(m.id)} />}
                         </article>
                         );
@@ -2595,15 +2599,15 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 const shown = all.filter((s) => (s.name + " " + (s.description || "")).toLowerCase().includes(search.trim().toLowerCase()));
                 const create = (preset?: { name: string; description: string }) => { setSpacePreset(preset || null); setModal(projects ? "project-create" : "subject-create"); };
                 const starters: Template[] = ((projects ? [
-                  { key: "paper", icon: "research", title: "Research paper", line: "Sources, outline and drafts in one place.", peek: { label: "Draft 2", tone: "lilac" }, preset: { name: "Research paper", description: "Sources, outline and drafts for my paper." } },
-                  { key: "launch", icon: "cmd-plan", title: "Launch plan", line: "A dated plan from first idea to launch day.", peek: { label: "Launch · Nov 15", tone: "blue" }, preset: { name: "Launch", description: "Everything up to launch day." } },
-                  { key: "side", icon: "idea", title: "Side project", line: "Ideas, tasks and decisions as it grows.", peek: { label: "Next step", tone: "green" }, preset: { name: "Side project", description: "" } },
-                  { key: "jobs", icon: "mail", title: "Job search", line: "Applications, letters and interview prep.", peek: { label: "Interview Friday", tone: "clay" }, preset: { name: "Job search", description: "Applications, cover letters and interview prep." } },
+                  { key: "paper", icon: "research", title: "Research paper", line: "Sources, outline and drafts in one place.", preset: { name: "Research paper", description: "Sources, outline and drafts for my paper." } },
+                  { key: "launch", icon: "cmd-plan", title: "Launch plan", line: "A dated plan from first idea to launch day.", preset: { name: "Launch", description: "Everything up to launch day." } },
+                  { key: "side", icon: "idea", title: "Side project", line: "Ideas, tasks and decisions as it grows.", preset: { name: "Side project", description: "" } },
+                  { key: "jobs", icon: "mail", title: "Job search", line: "Applications, letters and interview prep.", preset: { name: "Job search", description: "Applications, cover letters and interview prep." } },
                 ] : [
-                  { key: "exam", icon: "cmd-plan", title: "Exam prep", line: "Notes in. Flashcards and a dated plan out.", peek: { label: "Midterm · 12 days", tone: "pink" }, preset: { name: "Exam prep", description: "" } },
-                  { key: "course", icon: "subjects", title: "A course", line: "Every lecture summarised, then quizzed.", peek: { label: "Lecture 4", tone: "blue" }, preset: { name: "", description: "" } },
-                  { key: "language", icon: "cmd-flashcards", title: "A new language", line: "A few cards a day, just before you forget.", peek: { label: "12 due today", tone: "green" }, preset: { name: "A new language", description: "" } },
-                  { key: "curious", icon: "cmd-explain", title: "Something curious", line: "Learn anything, one question at a time.", peek: { label: "Why?", tone: "sand" }, preset: { name: "", description: "" } },
+                  { key: "exam", icon: "cmd-plan", title: "Exam prep", line: "Notes in. Flashcards and a dated plan out.", preset: { name: "Exam prep", description: "" } },
+                  { key: "course", icon: "subjects", title: "A course", line: "Every lecture summarised, then quizzed.", preset: { name: "", description: "" } },
+                  { key: "language", icon: "cmd-flashcards", title: "A new language", line: "A few cards a day, just before you forget.", preset: { name: "A new language", description: "" } },
+                  { key: "curious", icon: "cmd-explain", title: "Something curious", line: "Learn anything, one question at a time.", preset: { name: "", description: "" } },
                 ]) as (Omit<Template, "run"> & { preset: { name: string; description: string } })[]).map(({ preset, ...t }) => ({ ...t, run: () => create(preset) }));
                 return <div className="page lib">
                   <PageHead title={projects ? "Projects" : "Subjects"} line={projects ? "Your work, kept together." : "A space for each thing you’re learning."}>
@@ -2648,10 +2652,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 const open = (chat: string) => { const c = state.chats.find((x) => x.id === chat)!; setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); };
                 const draw = (topic: string) => { newChat(); setTimeout(() => void sendRef.current(undefined, "/visual " + topic), 60); };
                 const ideas: Template[] = [
-                  { key: "water", icon: "visuals", title: "The water cycle", line: "From sea to cloud to rain, step by step.", peek: { label: "Condensation", tone: "blue" }, run: () => draw("The water cycle") },
-                  { key: "transistor", icon: "diagram", title: "How a transistor switches", line: "Watch a small current open the gate.", peek: { label: "Gate on", tone: "sand" }, run: () => draw("How a transistor switches") },
-                  { key: "interest", icon: "analysis", title: "Compound interest", line: "Thirty years of growth on one slider.", peek: { label: "7% a year", tone: "green" }, run: () => draw("Compound interest over 30 years") },
-                  { key: "orbits", icon: "globe", title: "Orbits and Kepler’s laws", line: "Equal areas swept in equal times.", peek: { label: "Perihelion", tone: "lilac" }, run: () => draw("Orbits and Kepler’s laws") },
+                  { key: "water", icon: "visuals", title: "The water cycle", line: "From sea to cloud to rain, step by step.", run: () => draw("The water cycle") },
+                  { key: "transistor", icon: "diagram", title: "How a transistor switches", line: "Watch a small current open the gate.", run: () => draw("How a transistor switches") },
+                  { key: "interest", icon: "analysis", title: "Compound interest", line: "Thirty years of growth on one slider.", run: () => draw("Compound interest over 30 years") },
+                  { key: "orbits", icon: "globe", title: "Orbits and Kepler’s laws", line: "Equal areas swept in equal times.", run: () => draw("Orbits and Kepler’s laws") },
                 ];
                 return <div className="page lib">
                   <PageHead title="Visuals" line="Describe an idea. Mowr draws it."/>

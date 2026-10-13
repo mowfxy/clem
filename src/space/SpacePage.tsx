@@ -142,7 +142,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       <button className="sp-crumb" onClick={actions.onBack}><Icon name="arrow" size={13}/>{subject?'Subjects':'Projects'}</button>
       <div className="sp-title-row">
         <div className="sp-title">
-          <Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/>
+          <div className="sp-name-row"><span className="sp-hero-mark"><SpaceMark space={space} size={30} bare decorative/></span><Editable className="sp-name" value={space.name} max={100} label="Name" onSave={name=>actions.onUpdateSpace({...space,name})}/></div>
           {space.description&&<p className="sp-desc">{space.description}</p>}
         </div>
         <div className="sp-actions">
@@ -197,10 +197,10 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         </div>
         <Squiggle/>
         <Templates label="Make something" items={[
-          ...(subject?[{key:'cards',icon:'cmd-flashcards',title:'Flashcards',line:'From your files and chats.',peek:{label:'12 cards',tone:'green' as const},run:()=>actions.onMake('flashcards')},
-            {key:'quiz',icon:'cmd-quiz',title:'Quiz',line:'Checked, then scheduled.',peek:{label:'8 of 10',tone:'blue' as const},run:()=>actions.onMake('quiz')}]:[]),
-          {key:'sheet',icon:'cmd-pdf',title:'Worksheet',line:'A PDF, saved to Worksheets.',peek:{label:'Worksheet.pdf',tone:'clay' as const},run:()=>actions.onMake('worksheet')},
-          {key:'sum',icon:'cmd-summarize',title:'Summary',line:'Every topic, complete and accurate.',peek:{label:'Summary',tone:'lilac' as const},run:()=>actions.onMake('summary')},
+          ...(subject?[{key:'cards',icon:'cmd-flashcards',title:'Flashcards',line:'From your files and chats.',run:()=>actions.onMake('flashcards')},
+            {key:'quiz',icon:'cmd-quiz',title:'Quiz',line:'Checked, then scheduled.',run:()=>actions.onMake('quiz')}]:[]),
+          {key:'sheet',icon:'cmd-pdf',title:'Worksheet',line:'A PDF, saved to Worksheets.',run:()=>actions.onMake('worksheet')},
+          {key:'sum',icon:'cmd-summarize',title:'Summary',line:'Every topic, complete and accurate.',run:()=>actions.onMake('summary')},
         ]}/>
       </div>}
 
@@ -291,7 +291,8 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
   /** A file of this PC to copy into the Drive folder shown ("Save copy in Drive"); the Drive view uploads it. */
   const [toDrive,setToDrive]=useState<{key:string;id:string}|null>(null);
   return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
-    <div className="sp-toolbar">
+    {/* At the top of a Drive-linked space the toolbar would only repeat the tab's name, so it stays out of the way. */}
+    <div className={`sp-toolbar${space.drive&&!at?' is-empty':''}`}>
       <nav className="sp-path" aria-label="Folder path">
         <button className={over==='crumb-root'?'over':''} onClick={()=>setAt(null)} onDrop={drop(null)} {...dragTarget('crumb-root')}><Icon name="files" size={15}/>Files</button>
         {path.map(f=><span key={f.id}><i>/</i><button className={over==='crumb-'+f.id?'over':''} onClick={()=>setAt(f.id)} onDrop={drop(f.id)} {...dragTarget('crumb-'+f.id)}>{f.name}</button></span>)}

@@ -5,7 +5,7 @@
 .support-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .support-list li{animation:support-in .35s cubic-bezier(.2,.9,.3,1) backwards}
 .support-list button{width:100%;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;gap:4px 12px;justify-items:start;align-items:center;text-align:left;padding:13px 14px;border:1px solid #2d2d2b;border-radius:12px;background:#1b1b1a;transition:border-color .2s,transform .2s,background .2s}
-.support-list button:hover{border-color:#44443f;background:#20201f;transform:translateY(-1px)}
+.support-list button:hover{border-color:#44443f;background:#20201f}
 .support-list small{grid-column:2;color:#8d8c86;font-size:12px}
 .support-subject{display:flex;align-items:center;gap:8px;font-size:14px;color:#ecebe6;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%}
 .support-status{grid-row:1/3;font-size:11px;font-weight:400;padding:3px 9px;border-radius:99px;border:1px solid #ffffff1a;color:#b4b3ac;white-space:nowrap}

@@ -15,7 +15,7 @@
 .au-card input:focus{outline:0;border-color:#8b8a83;background:#1d1d1b;box-shadow:0 0 0 4px #f0efeb10}
 .au-card .au-code{font-size:26px;letter-spacing:.5em;text-align:center;padding:14px;font-variant-numeric:tabular-nums}
 .au-submit{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:4px;padding:14px 18px;border-radius:12px;background:#f0efeb;color:#141413!important;font:400 15px/1 var(--sans);border:0;text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),background .2s,box-shadow .25s;box-shadow:0 12px 30px -16px #f0efeb88}
-.au-submit:hover{background:#fff;transform:translateY(-1px)}
+.au-submit:hover{background:#fff}
 .au-submit:active{transform:scale(.98)}
 .au-submit:disabled{opacity:.75;cursor:progress}
 .au-submit .mowr-mark{color:#141413}
@@ -37,7 +37,7 @@
 .au-inbox-main{text-decoration:none}
 .au-inbox-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
 .au-inbox-grid a{padding:11px 10px;border-radius:11px;border:1px solid #373733;background:#181817;color:#e3e2dc;font-size:13px;text-decoration:none;transition:background .2s,border-color .2s,transform .2s}
-.au-inbox-grid a:hover{background:#1f1f1d;border-color:#4a4a45;transform:translateY(-1px)}
+.au-inbox-grid a:hover{background:#1f1f1d;border-color:#4a4a45}
 .au-fine{font-size:13px!important;margin:18px 0 0!important}
 .au-inline{padding:0;background:none;border:0;color:#f0efeb;text-decoration:underline;text-underline-offset:3px;font:inherit;cursor:pointer}
 .au-check{display:grid;place-items:center;margin:4px 0 18px}

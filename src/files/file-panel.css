@@ -203,7 +203,7 @@ button.pointer-chip .drawn-icon{flex:none}
 @container chat (max-width:600px){
   .new-chat-content{width:calc(100% - 32px)}
   .messages,.chat-composer{width:calc(100% - 28px)}
-  .messages .message{padding-left:34px}
+  .messages .message{padding-left:0}
   .messages .message.user .message-text{max-width:90%}
   .suggestions button{font-size:11.5px;padding:7px 10px}
   .composer textarea{font-size:15px}

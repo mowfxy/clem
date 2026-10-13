@@ -9,31 +9,44 @@
 .pl-progress b{position:absolute;font:500 15px/1 var(--sans);color:var(--pl-ink);font-variant-numeric:tabular-nums}
 .pl-progress b small{font-size:10px;color:var(--pl-muted);margin-left:1px}
 .pl-ring .track{stroke:#ffffff10}
-.pl-ring .fill{transition:stroke-dashoffset 1.2s var(--pl-ease)}
+.pl-ring .fill{transition:stroke-dashoffset 1.2s var(--pl-ease);animation:pl-sweep 1.3s var(--pl-ease) .15s backwards}
 .pl-head h3{font-size:28px}
 .pl-head p{font-size:14.5px;color:#9a9993}
 .pl-head .pl-state{margin-top:4px}
 .pl-state{height:auto;padding:0;border:0;font-size:13px;color:#9a9993}
 
-/* The line. */
-.pl-track{position:relative;margin:30px 0 4px;padding-bottom:40px}
+/* The line: Today rides above it, milestone labels sit under it on up to two rows (placed in PlanChart). */
+.pl-track{position:relative;margin:40px 0 4px;padding-bottom:58px;transition:padding-bottom .5s var(--pl-ease)}
+.pl-track[data-rows="0"]{padding-bottom:18px}
+.pl-track[data-rows="2"]{padding-bottom:94px}
 .pl-track.compact{margin:18px 0 0;padding-bottom:14px}
 .pl-rail{position:relative;height:6px;border-radius:6px;background:#262624;overflow:hidden}
-.pl-rail span{position:absolute;inset:0;transform-origin:0 50%;border-radius:6px;transition:transform 1.2s var(--pl-ease)}
+.pl-rail span{position:absolute;inset:0;transform-origin:0 50%;border-radius:6px;transition:transform 1.2s var(--pl-ease);animation:pl-grow 1.4s var(--pl-ease) backwards}
+.pl-rail .pl-done{animation-delay:.25s}
 .pl-time{background:repeating-linear-gradient(90deg,#3a3a36 0 2px,transparent 2px 6px)}
 .pl-done{background:var(--pl-ink)}
 .pl-track.behind .pl-done{background:#e7a88f}
-.pl-now{position:absolute;top:-5px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+
+.pl-now{position:absolute;top:-5px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none;animation:pl-drop .7s var(--pl-ease) .5s backwards}
+.pl-track:not(.compact) .pl-now{bottom:auto;top:-31px}
 .pl-now i{width:2px;height:16px;border-radius:2px;background:var(--pl-ink)}
-.pl-now em{font:500 11.5px/1 var(--sans);font-style:normal;color:var(--pl-ink)}
-.pl-track .pl-mile{top:-4px;gap:7px}
-.pl-track .pl-mile i{width:10px;height:10px;border-radius:3px;background:#c8b48c;box-shadow:0 0 0 3px #1a1a19}
-.pl-track .pl-mile.past i{background:#1a1a19;border:1.5px solid #6d6c66}
-.pl-track .pl-mile em{display:grid;justify-items:center;gap:3px;margin-top:2px;background:none;font:400 12px/1.2 var(--sans);color:#cfcec8;max-width:130px}
-.pl-track .pl-mile em small{font-size:11px;color:#7d7c76}
-.pl-track .pl-mile.end em{justify-items:end}.pl-track .pl-mile.start em{justify-items:start}
-.pl-now.end{align-items:flex-end;transform:translateX(calc(-100% + 1px))}.pl-now.start{align-items:flex-start;transform:translateX(-1px)}
+.pl-now em{padding:4px 8px 5px;border-radius:99px;background:#2a2a27;font:500 11px/1 var(--sans);font-style:normal;color:var(--pl-ink);white-space:nowrap}
+.pl-now.start{align-items:flex-start;transform:translateX(-1px)}
+.pl-now.end{align-items:flex-end;transform:translateX(calc(-100% + 1px))}
+
+.pl-track .pl-mile{top:-2px;transform:translateX(-50%);animation:pl-pop .6s var(--pl-ease) backwards;animation-delay:calc(.45s + var(--i,0) * 90ms)}
+.pl-track .pl-mile i{width:10px;height:10px;border-radius:3px;background:#c8b48c;box-shadow:0 0 0 3px var(--pl-card,#1a1a19);transition:transform .35s var(--pl-ease),background .35s var(--pl-ease)}
+.pl-track .pl-mile:hover i{transform:rotate(45deg) scale(1.3)}
+.pl-track .pl-mile.past i{background:var(--pl-card,#1a1a19);border:1.5px solid #6d6c66}
 .pl-track.compact .pl-mile i{width:8px;height:8px}
+.pl-view .pl-card .pl-track .pl-mile i{box-shadow:0 0 0 3px #1a1a19}
+
+.pl-mile-label{position:absolute;display:grid;justify-items:center;gap:3px;text-align:center;pointer-events:none;animation:pl-in .6s var(--pl-ease) backwards;animation-delay:calc(.55s + var(--i,0) * 90ms)}
+.pl-mile-label b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 12px/1.25 var(--sans);color:#d8d7d1}
+.pl-mile-label small{font-size:11px;line-height:1.2;color:#7d7c76;white-space:nowrap}
+.pl-mile-label.past b{color:#7d7c76}
+/* A label on the second row hangs from a faint stem so it still reads as its mark's. */
+.pl-mile-label[data-row="1"]::before{content:"";position:absolute;left:var(--stem);bottom:100%;width:1px;height:28px;margin-bottom:3px;background:linear-gradient(#ffffff00,#ffffff22)}
 
 .pl-facts{display:flex;flex-wrap:wrap;gap:6px 22px;margin:6px 0 0;font-size:13.5px;color:#8f8e88}
 .pl-facts b{font-weight:500;color:var(--pl-ink);font-variant-numeric:tabular-nums}
@@ -71,3 +84,28 @@
 .space-page .pl-overview .pl-overview-open:hover{background:#222220;color:var(--pl-ink)}
 .pl-overview .pl-overview-list li{border-top-color:#222220}
 .pl-proposal .sp-eyebrow{font:500 12.5px/1.2 var(--sans);letter-spacing:0;text-transform:none;color:#8f8e88}
+
+@keyframes pl-grow{from{transform:scaleX(0)}}
+@keyframes pl-sweep{from{stroke-dashoffset:var(--c)}}
+@keyframes pl-pop{from{opacity:0;scale:.3}}
+@keyframes pl-drop{from{opacity:0;translate:0 -6px}}
+@media (prefers-reduced-motion:reduce){.pl-rail span,.pl-ring .fill,.pl-now,.pl-track .pl-mile,.pl-mile-label{animation:none}}
+
+/* Ticking a task: the circle fills with a small pop, the tick draws, and a line sweeps through the title. */
+.pl-task-text>span{width:fit-content;max-width:100%;background:linear-gradient(#ffffff40,#ffffff40) 0 58%/0 1px no-repeat;-webkit-box-decoration-break:clone;box-decoration-break:clone;transition:background-size .5s var(--pl-ease),color .4s var(--pl-ease)}
+.pl-task.done .pl-task-text>span{text-decoration:none;background-size:100% 1px}
+.pl-task.done .pl-check{animation:pl-tick .45s var(--pl-ease)}
+.pl-task.milestone.done .pl-check{animation:none}
+.pl-check svg{transition:opacity .2s var(--pl-ease),transform .35s var(--pl-ease);transform:scale(.4)}
+.pl-task.done .pl-check svg{transform:none}
+.pl-task.milestone .pl-check svg,.pl-task.milestone.done .pl-check svg{transform:rotate(-45deg)}
+button.pl-check:hover{border-color:#a8a7a0;background:#ffffff08}
+.pl-task.done button.pl-check:hover{background:#fff}
+.pl-task{transition:opacity .4s var(--pl-ease)}
+/* Rows arrive in a short cascade the first time the list shows. */
+.pl-view .pl-section,.pl-view .pl-focus{animation:pl-in .5s var(--pl-ease) backwards}
+.pl-view .pl-section:nth-child(2){animation-delay:.06s}.pl-view .pl-section:nth-child(3){animation-delay:.12s}.pl-view .pl-section:nth-child(n+4){animation-delay:.18s}
+.pl-view>.pl-card{animation:pl-in .5s var(--pl-ease) backwards}
+@keyframes pl-tick{40%{transform:scale(1.18)}}
+@media (prefers-reduced-motion:reduce){.pl-task.done .pl-check,.pl-view .pl-section,.pl-view .pl-focus,.pl-view>.pl-card{animation:none}}
+.pl-task:not(.done):has(.pl-due.late) .pl-check{border-color:#d68a6c}

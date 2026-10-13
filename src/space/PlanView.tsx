@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState,type FormEvent} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,type FormEvent} from 'react';
 import {Icon} from '../Icons';
 import {Illustration} from '../Illustrations';
 import {confirmDialog} from '../dialogs';
@@ -32,20 +32,71 @@ function paceLine(s:PlanStatus){
   return 'Right on pace with the plan.';
 }
 
-/** The plan as one calm line: time passing (faint), work done (bright), today, and the milestones under it. */
+/** Text width in px for the chart's labels, measured once per string with the app's own sans face. */
+let measureCtx:CanvasRenderingContext2D|null|undefined;
+const widths=new Map<string,number>();
+function textWidth(text:string,size:number){
+  const key=size+'|'+text;const hit=widths.get(key);if(hit!==undefined)return hit;
+  if(measureCtx===undefined)measureCtx=typeof document==='undefined'?null:document.createElement('canvas').getContext('2d');
+  let w=text.length*size*.56;
+  if(measureCtx){measureCtx.font=`400 ${size}px ${getComputedStyle(document.body).getPropertyValue('--sans')||'sans-serif'}`;w=measureCtx.measureText(text).width;}
+  widths.set(key,w);return w;
+}
+
+const LABEL_MAX=170,LABEL_GAP=16,ROW=36;
+type Placed={id:string;x:number;left:number;width:number;row:number};
+/** Milestone labels under the line: centred on their mark, kept inside the chart, dropped to a second row when two
+    would touch, and left as a mark with a tooltip only when neither row has room. */
+function placeLabels(items:{id:string;x:number;title:string;date:string}[],width:number):Map<string,Placed>{
+  const placed=new Map<string,Placed>(),rowsEnd=[-Infinity,-Infinity];
+  for(const m of items){
+    const w=Math.min(LABEL_MAX,Math.max(textWidth(m.title,12),textWidth(m.date,11))+2);
+    const left=Math.max(0,Math.min(width-w,m.x-w/2));
+    const row=rowsEnd.findIndex(end=>left>=end+LABEL_GAP);
+    if(row<0)continue;
+    rowsEnd[row]=left+w;placed.set(m.id,{id:m.id,x:m.x,left,width:w,row});
+  }
+  return placed;
+}
+
+/** Counts a number up from zero the first time it shows, then follows changes directly. */
+function useCountUp(value:number,ms=1100){
+  const [shown,setShown]=useState(()=>reduceMotion()?value:0);
+  const first=useRef(true);
+  useEffect(()=>{
+    if(!first.current||reduceMotion()){setShown(value);return;}
+    first.current=false;let raf=0;const t0=performance.now();
+    const step=(t:number)=>{const k=Math.min(1,(t-t0)/ms);setShown(Math.round(value*(1-Math.pow(1-k,4))));if(k<1)raf=requestAnimationFrame(step);};
+    raf=requestAnimationFrame(step);return()=>cancelAnimationFrame(raf);
+  },[value,ms]);
+  return shown;
+}
+const reduceMotion=()=>typeof matchMedia!=='undefined'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** The plan as one calm line: time passing (faint), work done (bright), a Today pill above it, milestones under it. */
 export function PlanChart({plan,today=localDay(),compact=false}:{plan:SpacePlan;today?:string;compact?:boolean}){
   const s=planStatus(plan,today);
+  const ref=useRef<HTMLDivElement>(null);const [width,setWidth]=useState(0);
+  useLayoutEffect(()=>{
+    const el=ref.current;if(!el)return;setWidth(el.clientWidth);
+    const ro=new ResizeObserver(([e])=>setWidth(Math.round(e.contentRect.width)));ro.observe(el);return()=>ro.disconnect();
+  },[]);
   const span=Math.max(1,daysBetween(s.start,s.end));
   const at=(day:string)=>Math.max(0,Math.min(1,daysBetween(s.start,day)/span));
   const now=today<s.start?0:today>s.end?1:at(today);
   const milestones=plan.tasks.filter(t=>t.kind==='milestone'&&t.due).sort((a,b)=>a.due!<b.due!?-1:1);
-  // Labels only where they fit; the rest keep their mark and a tooltip.
-  let last=-1;const labelled=new Set(milestones.filter(m=>{const p=at(m.due!);if(p-last<.18)return false;last=p;return true;}).map(m=>m.id));
-  const edge=(p:number)=>p>.86?'end':p<.1?'start':'';
-  return <div className={`pl-track ${compact?'compact':''} ${s.state}`} role="img" aria-label={`${s.done} of ${s.total} done; ${s.expected} were planned by today. ${paceLine(s)}`}>
+  const when=(m:PlanTask)=>`${dayLabel(m.due!,today)}${m.time?' · '+m.time:''}`;
+  const placed=compact||!width?new Map<string,Placed>():placeLabels(milestones.map(m=>({id:m.id,x:at(m.due!)*width,title:m.title,date:when(m)})),width);
+  const rows=Math.max(0,...[...placed.values()].map(p=>p.row+1));
+  // The Today pill stays inside the chart near either end.
+  const nowShift=now<.06?'start':now>.94?'end':'';
+  return <div ref={ref} className={`pl-track ${compact?'compact':''} ${s.state}`} data-rows={rows} role="img" aria-label={`${s.done} of ${s.total} done; ${s.expected} were planned by today. ${paceLine(s)}`}>
     <div className="pl-rail"><span className="pl-time" style={{transform:`scaleX(${now})`}}/><span className="pl-done" style={{transform:`scaleX(${s.percent})`}}/></div>
-    {now>0&&now<1&&<span className={`pl-now ${edge(now)}`} style={{left:`${now*100}%`}}><i/>{!compact&&<em>Today</em>}</span>}
-    {milestones.map(m=>{const p=at(m.due!);return <span key={m.id} className={`pl-mile ${m.done?'past':''} ${edge(p)}`} style={{left:`${p*100}%`}} title={`${m.title} · ${dayLabel(m.due!,today)}${m.time?' '+m.time:''}`}><i/>{!compact&&labelled.has(m.id)&&<em>{m.title}<small>{dayLabel(m.due!,today)}</small></em>}</span>;})}
+    {now>0&&now<1&&<span className={`pl-now ${nowShift}`} style={{left:`${now*100}%`}}>{!compact&&<em>Today</em>}<i/></span>}
+    {milestones.map((m,i)=><span key={m.id} className={`pl-mile ${m.done?'past':''}`} style={{left:`${at(m.due!)*100}%`,['--i' as string]:i}} title={`${m.title} · ${when(m)}`}><i/></span>)}
+    {milestones.map((m,i)=>{const p=placed.get(m.id);if(!p)return null;
+      return <span key={m.id} className={`pl-mile-label ${m.done?'past':''}`} style={{left:p.left,width:p.width,top:22+p.row*ROW,['--i' as string]:i,['--stem' as string]:`${p.x-p.left}px`}} data-row={p.row}>
+        <b>{m.title}</b><small>{when(m)}</small></span>;})}
   </div>;
 }
 
@@ -78,16 +129,23 @@ export function PlanTasks({plan,today=localDay(),onToggle}:{plan:SpacePlan;today
 
 function Ring({value,size=46}:{value:number;size?:number}){
   const r=size/2-4,c=2*Math.PI*r,m=size/2;
-  return <svg className="pl-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={m} cy={m} r={r} className="track"/><circle cx={m} cy={m} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform={`rotate(-90 ${m} ${m})`}/></svg>;
+  return <svg className="pl-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={m} cy={m} r={r} className="track"/><circle cx={m} cy={m} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} style={{['--c' as string]:c}} transform={`rotate(-90 ${m} ${m})`}/></svg>;
+}
+/** The ring with its percentage counting up inside it. */
+function Progress({value,size}:{value:number;size:number}){
+  const n=useCountUp(Math.round(value*100));
+  return <span className="pl-progress"><Ring value={value} size={size}/><b>{n}<small>%</small></b></span>;
 }
 
 const StateMark=({s,today}:{s:PlanStatus;today:string})=><span className={`pl-state ${s.state}`}><Icon name={`plan-${s.state}`} size={16}/>{STATE_LABEL(s,today)}</span>;
 
 /** Where the plan stands in one line: next milestone and the finish. */
-function Facts({s,today}:{s:PlanStatus;today:string}){
+function Facts({s,today,compact}:{s:PlanStatus;today:string;compact?:boolean}){
+  // The full chart already names the milestones under the line, so the facts point at the next task instead.
+  const next=!compact&&s.next&&s.next.kind!=='milestone'?s.next:null;
   return <p className="pl-facts">
     <span><b>{s.done}/{s.total}</b> done</span>
-    {s.nextMilestone?<span>{s.nextMilestone.title} · {dayLabel(s.nextMilestone.due!,today)}{s.nextMilestone.time?' '+s.nextMilestone.time:''}</span>:s.next?<span>Next: {s.next.title}</span>:null}
+    {next?<span>Next: {next.title}</span>:s.nextMilestone?<span>{s.nextMilestone.title} · {dayLabel(s.nextMilestone.due!,today)}{s.nextMilestone.time?' '+s.nextMilestone.time:''}</span>:s.next?<span>Next: {s.next.title}</span>:null}
     <span>{s.state==='done'?'Finished':s.daysLeft>0?`${plural(s.daysLeft,'day')} left`:s.daysLeft===0?'Finishes today':`Ended ${plural(-s.daysLeft,'day')} ago`}</span>
   </p>;
 }
@@ -97,7 +155,7 @@ export function PlanSummary({plan,today=localDay(),compact=false,state=true}:{pl
   const s=planStatus(plan,today);
   return <>
     <div className="pl-head">
-      <span className="pl-progress"><Ring value={s.percent} size={compact?44:56}/><b>{Math.round(s.percent*100)}<small>%</small></b></span>
+      <Progress value={s.percent} size={compact?44:56}/>
       <div className="pl-head-text">
         <h3>{plan.title}</h3>
         {plan.goal&&<p>{plan.goal}</p>}
@@ -105,7 +163,7 @@ export function PlanSummary({plan,today=localDay(),compact=false,state=true}:{pl
       </div>
     </div>
     <PlanChart plan={plan} today={today} compact={compact}/>
-    <Facts s={s} today={today}/>
+    <Facts s={s} today={today} compact={compact}/>
   </>;
 }
 
@@ -166,10 +224,6 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
       <PlanSummary plan={plan} today={today}/>
     </section>
     <PlanBox placeholder="Tell Mowr what changed: “finished lecture 3”, “quiz moved to Friday”…" onAsk={actions.onAsk} disabled={disabled}/>
-    {(s.overdue.length>0||s.today.length>0)&&<section className="pl-focus">
-      <h4>{s.overdue.length?'Needs attention':'Today'}</h4>
-      <ul>{[...s.overdue,...s.today].map(t=><TaskRow key={t.id} task={t} today={today} onToggle={actions.onToggle}/>)}</ul>
-    </section>}
     <PlanTasks plan={plan} today={today} onToggle={actions.onToggle}/>
     <button type="button" className="pl-delete" onClick={()=>void remove()}>Delete plan</button>
   </div>;
@@ -181,7 +235,7 @@ export function PlanOverviewCard({plan,onOpen}:{plan:SpacePlan;onOpen:()=>void})
   const focus=[...s.overdue,...s.today].slice(0,3);
   return <section className="sp-card pl-overview">
     <div className="pl-overview-top">
-      <span className="pl-progress"><Ring value={s.percent} size={44}/><b>{Math.round(s.percent*100)}<small>%</small></b></span>
+      <Progress value={s.percent} size={44}/>
       <div className="pl-overview-title"><b>{plan.title}</b><StateMark s={s} today={today}/></div>
       <button type="button" className="pl-overview-open" onClick={onOpen}>Open plan<Icon name="arrow" size={14}/></button>
     </div>

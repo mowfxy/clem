@@ -62,7 +62,7 @@
 .review-reveal kbd{padding:2px 6px;border-radius:5px;border:1px solid #3a3a36}
 .review-grades{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
 .review-grades button{display:grid;gap:3px;justify-items:center;padding:9px 6px;border-radius:11px;border:1px solid #33332f;background:#1f1f1d;font-size:13px;color:#f0efeb;transition:border-color .15s,background .15s,transform .15s}
-.review-grades button:hover{background:#262624;transform:translateY(-1px)}
+.review-grades button:hover{background:#262624}
 .review-grades .grade-again:hover{border-color:#6b4038}.review-grades .grade-hard:hover{border-color:#6b5a38}.review-grades .grade-good:hover{border-color:#4f5a52}.review-grades .grade-easy:hover{border-color:#3f5243}
 .review-done{display:grid;justify-items:center;gap:8px;padding:34px 20px;text-align:center;color:#b5b4ad}
 .review-done svg{color:#8fbf98}
