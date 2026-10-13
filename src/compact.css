@@ -4,16 +4,17 @@
 /* Where you are: the chat's name and a chip for its subject or project */
 .workspace-top{gap:12px;min-width:0}
 .workspace-top .top-where{display:flex;align-items:center;gap:9px;min-width:0}
-.workspace-top .top-title{font:400 13px var(--sans);color:#e6e5df;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(52vw,560px)}
-body .workspace-top .top-space{display:inline-flex;align-items:center;flex:none;height:22px;padding:0 8px;border:0;border-radius:6px;background:#ffffff12;color:#cfcec7;font:400 11.5px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
+.workspace-top .top-title{font:700 14px var(--sans);letter-spacing:-.005em;color:#f2f1ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(52vw,560px)}
+body .workspace-top .top-space{display:inline-flex;align-items:center;flex:none;height:23px;padding:0 9px;border:0;border-radius:6px;background:#ffffff14;color:#dddcd5;font:400 12.5px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
-.workspace-top .temp-controls .secondary{padding:3px 10px;font-size:11.5px}
-.workspace-top .temp-pill{font-size:11.5px}
+.workspace-top .temp-controls .secondary{padding:3px 10px;font-size:12.5px}
+.workspace-top .temp-pill{font-size:12.5px}
 
 /* On the desktop the header lives in the title bar, beside the window buttons, and gives its height to the chat */
-.desktop-content .workspace-top{position:fixed!important;top:0!important;left:244px;right:160px;height:var(--tb)!important;padding:0 6px 0 18px;z-index:10001!important;background:transparent!important;box-sizing:border-box;-webkit-app-region:drag;app-region:drag}
+.desktop-content .workspace-top{position:fixed!important;top:0!important;left:244px;right:150px;height:var(--tb)!important;padding:0 6px 0 18px;z-index:10001!important;background:transparent!important;box-sizing:border-box;-webkit-app-region:drag;app-region:drag}
 .desktop-content .workspace-top :is(button,a,input,select){-webkit-app-region:no-drag;app-region:no-drag}
-.desktop-content .workspace-top .icon-button{width:28px;height:28px}
+.desktop-content .workspace-top .icon-button{width:30px;height:30px;color:#e6e5df}
+.desktop-content .workspace-top .icon-button svg{width:20px;height:20px}
 @media(max-width:760px){.desktop-content .workspace-top{left:56px}}
 
 /* In the browser the header stays put while a file is open, so the reader fits beneath it */
@@ -40,4 +41,3 @@ body .profile-settings .icon-settings .stroke{animation:none!important}
 .messages .message-text .md h1{font-size:1.32em}
 .messages .message-text .md h2{font-size:1.18em}
 .messages .message-text .md h3{font-size:1.06em}
-html body .composer textarea{font-size:14.5px}
