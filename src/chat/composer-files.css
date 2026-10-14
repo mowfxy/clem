@@ -1,0 +1,26 @@
+/* Attached files in the chat box: pictures as small photos, files as cards whose tile carries the file's kind and colour.
+   The remove button shows on hover or focus, at the corner, as Claude's does. */
+.composer-files{display:flex;gap:8px;overflow-x:auto;padding:4px 14px 10px;margin:2px 0 0;scrollbar-width:thin;scrollbar-color:#3e3e3b transparent}
+.composer-files>*{position:relative;flex:0 0 auto;animation:cf-in .32s cubic-bezier(.16,1,.3,1) backwards}
+@keyframes cf-in{from{opacity:0;transform:scale(.94)}}
+@media(prefers-reduced-motion:reduce){.composer-files>*{animation:none}}
+
+.cf-photo{width:62px;height:62px;border-radius:12px;overflow:hidden;background:#2a2a28;box-shadow:inset 0 0 0 1px #ffffff14}
+.cf-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.cf-photo::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px #ffffff14;pointer-events:none}
+.cf-wait{display:block;width:100%;height:100%;background:linear-gradient(100deg,#2a2a28 30%,#33332f 50%,#2a2a28 70%) 0 0/200% 100%;animation:cf-shine 1.2s linear infinite}
+@keyframes cf-shine{to{background-position:-200% 0}}
+
+.cf-card{display:flex;align-items:center;gap:11px;width:226px;height:62px;padding:8px 30px 8px 8px;border-radius:12px;background:#262624;box-shadow:inset 0 0 0 1px #ffffff12;transition:background .15s}
+.cf-card:hover{background:#2c2c2a}
+.cf-tile{display:grid;place-items:center;flex:0 0 auto;width:38px;height:46px;border-radius:7px;background:linear-gradient(160deg,var(--dc-a),var(--dc-b));box-shadow:inset 0 0 0 1px var(--dc-edge);color:var(--dc-ink)}
+.cf-tile b{font:600 9.5px/1 var(--sans);letter-spacing:.04em}
+.cf-tile svg{width:20px;height:20px}
+.cf-text{min-width:0;display:flex;flex-direction:column;gap:3px}
+.cf-text strong{font:400 13.5px/1.25 var(--sans);color:#ecebe6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-text small{font:400 11.5px/1.2 var(--sans);color:#8f8e88;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+body .composer .cf-remove{position:absolute;top:5px;right:5px;display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:#141413e6;color:#e6e4dd;box-shadow:0 0 0 1px #ffffff1a;opacity:0;transition:opacity .15s,background .15s;cursor:pointer}
+.composer-files>*:hover .cf-remove,body .composer .cf-remove:focus-visible{opacity:1}
+body .composer .cf-remove:hover{background:#000}
+@media(hover:none){body .composer .cf-remove{opacity:1}}

@@ -41,9 +41,9 @@ try {
     const data = new DataTransfer(); data.items.add(new File([blob], "image.png", { type: "image/png" }));
     document.querySelector(".composer textarea").dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
   });
-  const chip = page.locator(".attachment-chips .image-chip");
+  const chip = page.locator(".composer-files .cf-photo");
   await chip.first().waitFor({ timeout: 8000 });
-  check(/^Pasted image \d{4}-\d\d-\d\d \d\d\.\d\d\.\d\d\.png/.test((await chip.first().innerText()).trim()), "a pasted screenshot is attached with a dated name");
+  check(/^Pasted image \d{4}-\d\d-\d\d \d\d\.\d\d\.\d\d\.png/.test((await chip.first().getAttribute("title")) || ""), "a pasted screenshot is attached with a dated name");
   check((await box.inputValue()) === "", "the picture is not pasted as text");
   // Text pastes as text, and does not ask the desktop app for files.
   await page.evaluate(() => {
@@ -53,8 +53,8 @@ try {
   check(!(await page.evaluate(() => window.clipboardAsked)), "a text paste does not read files");
   // File Explorer's copy: nothing in the paste itself.
   await page.evaluate(() => document.querySelector(".composer textarea").dispatchEvent(new ClipboardEvent("paste", { clipboardData: new DataTransfer(), bubbles: true, cancelable: true })));
-  await page.locator(".attachment-chips button", { hasText: "Results.csv" }).waitFor({ timeout: 8000 });
-  check(await page.locator(".attachment-chips button", { hasText: "Lecture notes.md" }).isVisible(), "files copied in File Explorer are attached");
+  await page.locator(".composer-files .cf-card", { hasText: "Results.csv" }).waitFor({ timeout: 8000 });
+  check(await page.locator(".composer-files .cf-card", { hasText: "Lecture notes.md" }).isVisible(), "files copied in File Explorer are attached");
   await page.screenshot({ path: out + "/pasted.png" });
   check(!errors.length, "no page errors" + (errors.length ? ": " + errors.join("; ") : ""));
 } finally {

@@ -128,6 +128,7 @@ import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } f
 import { Chapters } from "./chat/Chapters";
 import { SlashField, CommandChip } from "./chat/SlashField";
 import { pastedFiles, pasteTarget } from "./chat/paste";
+import { ComposerFiles } from "./chat/ComposerFiles";
 import { VisualSaveContext } from "./chat/visual-save";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
@@ -137,6 +138,7 @@ import "./contrast.css";
 import "./library.css";
 import "./compact.css";
 import "./premium.css";
+import "./chat/reply.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -2186,30 +2188,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         value={draft}
         onChange={setDraft}
       />
-      {driveRefs.length > 0 && (
-        <div className="attachment-chips drive-chips">
-          {driveRefs.map((ref) => <button type="button" key={ref.id} aria-label={`Remove ${ref.name}`} aria-description={`${ref.name} · read live from Google Drive`} onClick={() => setDriveRefs((all) => all.filter((x) => x.id !== ref.id))}><DriveIcon mime={ref.mimeType} name={ref.name} size={16} />{ref.name}<Icon name="close" size={12} /></button>)}
-        </div>
-      )}
-      {attachments.length > 0 && (
-        <div className="attachment-chips">
-          {attachments.map((id) => {
-            const file = state.files.find((f) => f.id === id);
-            return (
-            <button
-              type="button"
-              key={id}
-              className={file?.type.startsWith("image/") ? "image-chip" : undefined}
-              aria-label={`Remove ${file?.name || "attachment"}`}
-              onClick={() => setAttachments((a) => a.filter((x) => x !== id))}
-            >
-              {file?.type.startsWith("image/") ? <ImageThumb id={id}/> : <Icon name="attach" size={14} />}
-              {file?.name}
-              <Icon name="close" size={12} />
-            </button>
-          );})}
-        </div>
-      )}
+      <ComposerFiles items={[
+        ...attachments.map((id) => { const file = state.files.find((f) => f.id === id); return { key: id, fileId: id, name: file?.name || "Attachment", type: file?.type, size: file?.size, onRemove: () => setAttachments((a) => a.filter((x) => x !== id)) }; }),
+        ...driveRefs.map((ref) => ({ key: "drive:" + ref.id, name: ref.name, type: ref.mimeType, note: "Google Drive · read live", icon: <DriveIcon mime={ref.mimeType} name={ref.name} size={20} />, onRemove: () => setDriveRefs((all) => all.filter((x) => x.id !== ref.id)) })),
+      ]} />
       <div className="composer-bottom">
         <div className="composer-tools">
           <div className="popover-wrap">
@@ -3111,11 +3093,6 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
 
 
 /** Small preview for an attached image. */
-function ImageThumb({id}:{id:string}){
-  const [url,setUrl]=useState("");
-  useEffect(()=>{let live=true,made="";void getBlob(id).then(b=>{if(b&&live){made=URL.createObjectURL(b);setUrl(made);}});return()=>{live=false;if(made)URL.revokeObjectURL(made);};},[id]);
-  return url?<img src={url} alt=""/>:<Icon name="capture" size={14}/>;
-}
 type ChangeRow={id:string;path:string;at:number;summary:string;added:number;removed:number;undone?:boolean};
 /** Recent approved file changes, newest first, each with undo. */
 function FolderChanges({onError}:{onError:(message:string)=>void}){

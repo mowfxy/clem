@@ -89,7 +89,7 @@ try {
 
   // A capture arrives as an image attachment in the composer.
   await page.evaluate(() => window.fireCapture());
-  await page.locator(".attachment-chips .image-chip").waitFor();
+  await page.locator(".composer-files .cf-photo").waitFor();
   await page.getByRole("button", { name: /Remove Screen capture/ }).click();
 
   await page.getByRole("button", { name: "Add attachment" }).click();
