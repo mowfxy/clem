@@ -2172,6 +2172,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   const composerUI = (
     <form className="composer" onSubmit={send}>
       {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} aria-description={p.text || "Selected area"}>{(() => { const inner = <>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</>; return p.file !== REPLY_SOURCE && p.page ? <button type="button" className="pc-go" aria-label={`Show in ${p.file}, page ${p.page}`} onClick={() => showPointer(p)}>{inner}</button> : inner; })()}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
+      <ComposerFiles items={[
+        ...attachments.map((id) => { const file = state.files.find((f) => f.id === id); return { key: id, fileId: id, name: file?.name || "Attachment", type: file?.type, size: file?.size, onRemove: () => setAttachments((a) => a.filter((x) => x !== id)) }; }),
+        ...driveRefs.map((ref) => ({ key: "drive:" + ref.id, name: ref.name, type: ref.mimeType, note: "Drive", icon: <DriveIcon mime={ref.mimeType} name={ref.name} size={13} />, onRemove: () => setDriveRefs((all) => all.filter((x) => x.id !== ref.id)) })),
+      ]} />
       <SlashField
         inputRef={composer}
         inSubject={activeSpace?.kind === "subject"}
@@ -2188,10 +2192,6 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         value={draft}
         onChange={setDraft}
       />
-      <ComposerFiles items={[
-        ...attachments.map((id) => { const file = state.files.find((f) => f.id === id); return { key: id, fileId: id, name: file?.name || "Attachment", type: file?.type, size: file?.size, onRemove: () => setAttachments((a) => a.filter((x) => x !== id)) }; }),
-        ...driveRefs.map((ref) => ({ key: "drive:" + ref.id, name: ref.name, type: ref.mimeType, note: "Google Drive · read live", icon: <DriveIcon mime={ref.mimeType} name={ref.name} size={20} />, onRemove: () => setDriveRefs((all) => all.filter((x) => x.id !== ref.id)) })),
-      ]} />
       <div className="composer-bottom">
         <div className="composer-tools">
           <div className="popover-wrap">

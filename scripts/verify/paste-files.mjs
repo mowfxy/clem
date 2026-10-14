@@ -53,8 +53,8 @@ try {
   check(!(await page.evaluate(() => window.clipboardAsked)), "a text paste does not read files");
   // File Explorer's copy: nothing in the paste itself.
   await page.evaluate(() => document.querySelector(".composer textarea").dispatchEvent(new ClipboardEvent("paste", { clipboardData: new DataTransfer(), bubbles: true, cancelable: true })));
-  await page.locator(".composer-files .cf-card", { hasText: "Results.csv" }).waitFor({ timeout: 8000 });
-  check(await page.locator(".composer-files .cf-card", { hasText: "Lecture notes.md" }).isVisible(), "files copied in File Explorer are attached");
+  await page.locator(".composer-files .cf-file", { hasText: "Results.csv" }).waitFor({ timeout: 8000 });
+  check(await page.locator(".composer-files .cf-file", { hasText: "Lecture notes.md" }).isVisible(), "files copied in File Explorer are attached");
   await page.screenshot({ path: out + "/pasted.png" });
   check(!errors.length, "no page errors" + (errors.length ? ": " + errors.join("; ") : ""));
 } finally {
