@@ -9,8 +9,15 @@ import { createHash } from "node:crypto";
  * conversation (no message edited, retried or deleted since). Any difference starts a new session with the whole
  * conversation, as before, so continuing is never a way to lose or confuse context. A session idle longer than the
  * providers keep a prompt cache is not continued either: replaying it then would cost more than the text it replaces.
+ * One whose context has grown past COMPACT_AT_TOKENS is compacted first (desktop/main.ts).
  */
 export const KEEP_MS = 55 * 60_000;
+/**
+ * The context (tokens) past which a kept session is compacted before the next message goes on it. Every step of a
+ * continued session re-reads all of it — a finished document task leaves its sources, the whole draft and every page
+ * picture there (one measured at 271k) — while Claude Code's /compact leaves a summary of a few thousand.
+ */
+export const COMPACT_AT_TOKENS = 100_000;
 /** Chats whose sessions are kept at once; the least recently used goes first. */
 export const MAX_KEPT = 40;
 
@@ -25,6 +32,8 @@ export type KeptSession = {
   history: string;
   /** Fingerprints of the context blocks already sent on this session (blockPrint): an unchanged one is not sent again. */
   sent: Set<string>;
+  /** Tokens of context the session's last step read, when the CLI reports it. */
+  context?: number;
   at: number;
   /** Removes the session (its transcript, or its thread's endpoint) when it will not be continued. */
   end: () => void;

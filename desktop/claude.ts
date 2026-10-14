@@ -1,6 +1,7 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {mkdir,readdir,readFile,rm,writeFile} from 'node:fs/promises';
-import {join} from 'node:path';
+import {delimiter,join} from 'node:path';
+import {existsSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {installedPath,signInWindow} from './cli-install.ts';
 import {SessionLost,UsageLimit,Transient,unsupportedFlag,MAX_CALLS} from './kinetra-turn.ts';
@@ -84,6 +85,16 @@ function logUsage(model:string,result:any){
   const u=result?.usage;if(!u)return;
   const n=(x:unknown)=>Number(x)||0;
   console.log(`[mowr tokens] ${model} steps=${n(result.num_turns)} input=${n(u.input_tokens)} cache-write=${n(u.cache_creation_input_tokens)} cache-read=${n(u.cache_read_input_tokens)} output=${n(u.output_tokens)} ms=${n(result.duration_ms)}`);
+}
+/**
+ * Whether Claude Code can open a PDF's pages itself: its Read renders page ranges with poppler's pdftoppm, which it
+ * looks for on the PATH it inherits from Mowr. Without it every page read fails ("pdftoppm is not installed"), so the
+ * working folder treats Claude like Codex: PDF text in _text/ and pages through Kinetra's look.
+ */
+let pdfPages:boolean|undefined;
+export function claudeOpensPdfPages(path=process.env.PATH||''){
+  if(pdfPages===undefined)pdfPages=path.split(delimiter).some(dir=>dir&&['pdftoppm.exe','pdftoppm'].some(name=>existsSync(join(dir,name))));
+  return pdfPages;
 }
 export type ClaudeImage = { mime: string; data: string };
 export type ClaudePdf = { name: string; data: string };
@@ -474,6 +485,10 @@ export class ClaudeProvider {
             return;
           }
           if(event.type==='stream_event'&&event.event?.type==='content_block_delta')streamed=true;
+          // How much context the session's latest step read (a writer's steps are its own): the chat's next message
+          // compacts this session first when that is large (desktop/chat-sessions.ts COMPACT_AT_TOKENS).
+          const used=event.type==='assistant'&&!event.parent_tool_use_id?event.message?.usage:undefined;
+          if(used)emit({id,type:'context',tokens:(Number(used.input_tokens)||0)+(Number(used.cache_read_input_tokens)||0)+(Number(used.cache_creation_input_tokens)||0)+(Number(used.output_tokens)||0)});
           live(event);
           steps.read(event);
           const limit=parseRateLimit(event);
@@ -523,6 +538,33 @@ export class ClaudeProvider {
       }
       throw error;
     }finally{this.active.delete(id);endpoint?.close();this.recheck();void this.readUsage(true);await removeFiles();}
+  }
+  /**
+   * Compacts a kept session in place with Claude Code's own /compact, so the chat's next message goes on a summary of
+   * the work instead of re-reading every source, draft and picture of it at each step. Resolves with the tokens the
+   * session holds afterwards; throws when it did not compact (the caller then starts a new session instead).
+   * Slash commands are on for this one step only: answers run with them off.
+   */
+  async compact(sessionId:string,model:string,cwd?:string):Promise<number>{
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!model.startsWith('claude:'))throw Error('Nothing to compact.');
+    const child=await this.start(['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--model',model.slice(7),'--strict-mcp-config','--tools','','--resume',sessionId],cwd);
+    return new Promise<number>((resolve,reject)=>{
+      let buffer='',after:number|undefined,done=false,said='',stderr='';
+      const finish=(error?:Error)=>{if(done)return;done=true;clearTimeout(timer);if(after!==undefined&&!error)resolve(after);else reject(error||Error(('Claude Code did not compact the session. '+said+' '+stderr).trim().slice(0,600)));};
+      const timer=setTimeout(()=>{child.kill();finish(Error('Compacting took too long.'));},5*60_000);
+      const read=(line:string)=>{
+        let event:any;try{event=JSON.parse(line);}catch{return;}
+        if(event.type==='system'&&event.subtype==='compact_boundary')after=Number(event.compact_metadata?.post_tokens)||0;
+        if(event.type==='result')said=String(event.result||'')+' '+(Array.isArray(event.errors)?event.errors.join(' '):'');
+      };
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data',(part:string)=>{buffer+=part;let newline;while((newline=buffer.indexOf('\n'))>=0){read(buffer.slice(0,newline));buffer=buffer.slice(newline+1);}});
+      child.stderr.setEncoding('utf8');child.stderr.on('data',(part:string)=>{stderr=(stderr+part).slice(-2000);});
+      child.on('error',()=>finish(Error('Claude Code could not start.')));
+      child.on('close',()=>{read(buffer);finish();});
+      child.stdin.on('error',()=>{});
+      child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:'/compact'}]}})+'\n');
+    });
   }
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk.
    *  MOWR_KEEP_SESSIONS=1 keeps them, to see afterwards what every step sent and cost. */

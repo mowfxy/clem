@@ -110,10 +110,19 @@ export async function makeFile(action: string, spec: any, { preview = false, see
       // The pages the figures printed on, so the model sees how each sits in the document, not only the figure itself.
       // Sent with every result, at full size: text appended or reflowed round a figure changes how its page looks even
       // when the figure itself has not moved.
+      // A page that looks exactly as one already shown in this answer is not sent again: it stays in the model's context
+      // anyway, and re-sending it with every revision only made each later step read it once more.
       if (preview && render && spots.length) {
-        const shown = figurePages(spots);
-        const pictures = await render(made.bytes, shown, made.name).catch(() => []);
-        if (pictures.length) { made.previews = [...(made.previews || []), ...pictures]; made.info = { ...made.info, placementCheck: placementCheck(spots, shown) }; }
+        const pages = figurePages(spots);
+        type Page = { name: string; image: Uint8Array };
+        const rendered: Page[] = await render(made.bytes, pages, made.name).catch(() => []);
+        const same: number[] = [], shown: number[] = [], pictures: Page[] = [];
+        rendered.forEach((p, i) => {
+          const page = Number(/page (\d+) of/.exec(p.name)?.[1]) || pages[i];
+          if (fresh(seen, "page", p.image)) { pictures.push(p); shown.push(page); } else same.push(page);
+        });
+        if (pictures.length) { made.previews = [...(made.previews || []), ...pictures]; made.info = { ...made.info, placementCheck: placementCheck(spots, shown) + (same.length ? ` Page${same.length === 1 ? "" : "s"} ${same.join(", ")} look exactly as in the pictures already attached in this answer.` : "") }; }
+        else if (same.length) made.info = { ...made.info, placementCheck: `Page${same.length === 1 ? "" : "s"} ${same.join(", ")}, where the figures printed, look exactly as in the pictures already attached in this answer.` };
       }
       return preview ? withFigures(made, documentFigures(spec, drawn), seen, FIGURES_PER_RESULT) : made;
     }

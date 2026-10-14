@@ -52,11 +52,11 @@ import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
-import { ChatSessions, blockPrint, conversationPrint } from "./chat-sessions";
+import { ChatSessions, COMPACT_AT_TOKENS, blockPrint, conversationPrint } from "./chat-sessions";
 import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
-import {ClaudeProvider} from './claude';
+import {ClaudeProvider,claudeOpensPdfPages} from './claude';
 import {GrokProvider,grokModels,grokPdfPath,grokUsage,GROK_PREFIX} from './grok';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
@@ -393,10 +393,19 @@ void app.whenReady().then(async () => {
     const sessions: { id: string; provider: ClaudeProvider | GrokProvider }[] = [];
     // The chat's kept session, when this message can go on it: only the message itself is sent, the CLI has the rest.
     const kind = grok ? "grok" : "claude";
-    const kept = keep ? chatSessions.take(keep.key, { provider: kind, account: accountOf(current.provider), model: model!, history: keep.history }) : undefined;
+    let kept = keep ? chatSessions.take(keep.key, { provider: kind, account: accountOf(current.provider), model: model!, history: keep.history }) : undefined;
+    // A kept session grown large (a finished document task) is compacted first: every step would re-read all of it.
+    // When that fails, the message starts a new session with the conversation as text instead.
+    if (kept && !grok && (kept.context ?? 0) > COMPACT_AT_TOKENS) {
+      emit({ id, type: "status", text: "Summarising the work so far…" });
+      try { kept.context = await (current.provider as ClaudeProvider).compact(kept.session, model!, workspace?.root); }
+      catch { kept.end(); kept = undefined; }
+    }
     if (kept) { sessions.push({ id: kept.session, provider: current.provider }); stats.continued = true; }
     // The message's own pictures go with the first step that runs, on whichever session it opens.
     let delivered = false;
+    // The context the latest step read (Claude reports it): a session grown large is compacted before the next message.
+    let context: number | undefined;
     // Their text streams as it is written; tool requests never show, and nothing shows twice (desktop/live-reply.ts).
     const screen = new LiveScreen((text) => emit({ id, type: "delta", text }));
     // Claude Code and Grok get Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; the text
@@ -411,6 +420,7 @@ void app.whenReady().then(async () => {
         if (event.type === "delta") text += event.text || "";
         else if (event.type === "partial") screen.partial(event.text || "", !!event.fresh);
         else if (event.type === "status") emit({ ...event, id });
+        else if (event.type === "context") context = event.tokens;
         else if (event.type === "toolsteps") { stats.cliSteps = (stats.cliSteps || 0) + (event.steps || 0); stats.cliCalls = (stats.cliCalls || 0) + (event.calls || 0); }
       };
       const own = !delivered || !followUp;
@@ -462,7 +472,7 @@ void app.whenReady().then(async () => {
       const last = sessions.at(-1);
       if (keep && last && !cancelled()) {
         const sent = new Set([...(stats.continued && kept ? kept.sent : []), ...keep.blocks.map(blockPrint)]);
-        chatSessions.keep(keep.key, { provider: kind, account: accountOf(last.provider), model: model!, session: last.id, history: keep.after, sent, end: () => void last.provider.endSession(last.id).catch(() => {}) });
+        chatSessions.keep(keep.key, { provider: kind, account: accountOf(last.provider), model: model!, session: last.id, history: keep.after, sent, context, end: () => void last.provider.endSession(last.id).catch(() => {}) });
         sessions.pop();
       }
       return text;
@@ -1458,7 +1468,8 @@ void app.whenReady().then(async () => {
         const root = join(local, user.id, "work", "mowr");
         if (!oldFoldersRemoved.has(user.id)) { oldFoldersRemoved.add(user.id); void removeOldFolders(join(local, user.id, "work")); }
         const state = await disk.readState(user.id).catch(() => null);
-        const nativePdf = !!request.model?.startsWith("claude:") || !!request.model?.startsWith(GROK_PREFIX);
+        // Claude Code opens PDF pages only with poppler on the PATH (claudeOpensPdfPages); without it, as Codex does.
+        const nativePdf = (!!request.model?.startsWith("claude:") && claudeOpensPdfPages()) || !!request.model?.startsWith(GROK_PREFIX);
         const plan = mirrorFor({ state, scope: request.scope, chat: chatId, lane, blob: (id) => disk.blobPath(user.id, id), officeText, library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !nativePdf });
         const paths = await syncMirror(root, plan.files, plan.keep, lane);
         const sources = plan.files.filter((m) => m.source && paths.includes(m.path)).map((m) => m.path);
@@ -1531,7 +1542,7 @@ void app.whenReady().then(async () => {
           if (draft) {
             const parts = [
               missing.length ? `${missing.length} planned section${missing.length === 1 ? " is" : "s are"} missing from ${draft} or only a stub (${list})` : "",
-              unchecked.length ? `${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 20).join(", ")}${unchecked.length > 20 ? ", …" : ""})` : "",
+              unchecked.length ? `${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 200).join(", ")})` : "",
             ].filter(Boolean).join(", and ");
             return `"${documents.get(doc)}" is not finished: ${parts}. ${missing.length ? "Write the missing sections in the file now, in full depth" : ""}${missing.length && unchecked.length ? "; " : ""}${unchecked.length ? "verify each of those examples' numbers (a Kinetra call where a module computes them) and add its ```check block after it" : ""}. Then send {"action":"${action}","revise":"${doc}","markdown":"${draft}"}. To change the plan instead, send a new "plan" with that request.`;
           }
@@ -1640,7 +1651,7 @@ void app.whenReady().then(async () => {
         // Pictures of the result (a deck's slides, its new figures) go back to the model with this result, so it checks what it made.
         const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.image).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
         const missing = key === "sections" ? unwritten(clean, { stubs: sourced }) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
-        const checks = unchecked.length ? { unchecked: `${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 20).join(", ")}). Verify those numbers (a Kinetra call where a module computes them), add a check block after each example, and send the request again.` } : {};
+        const checks = unchecked.length ? { unchecked: `${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 200).join(", ")}). Verify those numbers (a Kinetra call where a module computes them), add a check block after each example, and send the request again.` } : {};
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
         const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
         const words = key === "sections" ? String(clean.summary || "").split(/\s+/).filter(Boolean).length + clean.sections.reduce((n: number, s: any) => n + String(s?.text || "").split(/\s+/).filter(Boolean).length, 0) : undefined;

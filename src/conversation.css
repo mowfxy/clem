@@ -27,7 +27,6 @@
 .history-row:hover,.history-row:focus-within{background:#ffffff0b}
 .history-row.chosen{background:#292929}
 .history-row .history-item,.history-row .history-item:hover,.history-row .history-item.chosen{background:transparent!important;padding-right:34px}
-.history-row.is-working .history-item,.history-row.is-unseen .history-item{padding-right:52px!important}
 .history-row .history-more{position:absolute;right:4px;top:50%;transform:translateY(-50%);height:28px;padding:0 7px;border-radius:6px;background:transparent!important;color:#8f8e87;opacity:0;transition:opacity .15s,color .15s}
 .history-row:hover .history-more,.history-row:focus-within .history-more,.history-row.chosen .history-more{opacity:1}
 .history-row .history-more:hover{color:#f0efeb}
@@ -35,13 +34,15 @@
 .history-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* A chat that lives in a subject or project wears a small drawn mark in the space's colour */
-/* Mowr is working in this chat: three breathing dots; a finished reply you haven't seen: one soft dot */
-.history-live{flex:none;width:12px;height:12px;margin-left:auto;border-radius:50%;border:1.7px solid #9fb4ff33;border-top-color:#e3e8ff;animation:history-spin .8s linear infinite}
+/* Mowr is working in this chat: a small spinner; a finished reply you haven't seen: one soft dot. Both sit at the row's
+   right edge, in the slot the "···" menu takes on hover, so the title keeps its full width and nothing doubles up. */
+.history-live,.history-new{position:absolute;right:13px;top:50%;margin-top:-6px;pointer-events:none;transition:opacity .15s}
+.history-row:is(:hover,:focus-within,.chosen) :is(.history-live,.history-new){opacity:0}
+.history-live{width:12px;height:12px;border-radius:50%;border:1.6px solid #ffffff1f;border-top-color:#e8e7e1;animation:history-spin .8s linear infinite}
 .history-live i{display:none}
 @keyframes history-spin{to{transform:rotate(360deg)}}
 @keyframes history-live{0%,100%{opacity:.35}50%{opacity:1}}
-.history-new{flex:none;display:flex;margin-left:auto;color:#9fb4ff}
-.history-new .drawn-icon{color:inherit}
+.history-new{width:7px;height:7px;margin-top:-3.5px;right:15.5px;border-radius:50%;background:#9fb4ff;box-shadow:0 0 0 3px #9fb4ff1a}
 .history-row.is-working .history-title{color:#f4f3ee}
 .history-row.is-unseen .history-title{color:#f4f3ee;font-weight:400}
 /* What Mowr is doing right now, under a reply that is still being written */

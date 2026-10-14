@@ -55,7 +55,6 @@ body .history-filter-menu kbd{margin-left:auto;font:inherit;font-size:11px;color
 body .history-filter-check{width:14px;flex:none;color:#fff}
 body .history-group .history-row .history-item{padding-left:10px;padding-right:8px}
 body .history-group .history-row:is(:hover,:focus-within,.chosen) .history-item{padding-right:34px}
-body .history-group .history-row:is(.is-working,.is-unseen) .history-item{padding-right:30px}
-body .history-group .history-row:is(.is-working,.is-unseen):is(:hover,:focus-within,.chosen) .history-item{padding-right:52px}
+body .history-group .history-row:is(.is-working,.is-unseen) .history-item{padding-right:34px}
 body .history-group .history-label{padding:0 6px 0 10px}
 body .history-group .history-title{flex:1 1 auto;font-weight:400}

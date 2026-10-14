@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ChatSessions, KEEP_MS, MAX_KEPT, blockPrint, conversationPrint } from "../../desktop/chat-sessions.ts";
+import { ChatSessions, COMPACT_AT_TOKENS, KEEP_MS, MAX_KEPT, blockPrint, conversationPrint } from "../../desktop/chat-sessions.ts";
 import { runKinetraTurn, SessionLost, BATCH_NOTE, LONE_STEPS, batchParts } from "../../desktop/kinetra-turn.ts";
 import { StepCounter } from "../../desktop/tool-status.ts";
 import { fileIndex } from "../../core/source-context.ts";
@@ -29,6 +29,9 @@ test("a chat's next message goes on its kept session only when nothing about it 
   now += KEEP_MS;
   assert.equal(store.take("u:c1", want), undefined);
   assert.equal(ended.at(-1), "old");
+  // A session whose context grew large is still continued, with its size, so the caller compacts it first.
+  store.keep("u:c1", session({ session: "big", context: COMPACT_AT_TOKENS + 1 }, ended));
+  assert.equal(store.take("u:c1", want)?.context, COMPACT_AT_TOKENS + 1);
 });
 
 test("kept sessions are ended when idle, beyond the limit, on delete and on sign-out", () => {
