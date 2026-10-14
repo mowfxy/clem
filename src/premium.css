@@ -164,3 +164,11 @@ body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(7){animation-delay:2
 body :is(.lib-card,.file-row,.sp-file,.sp-folder):nth-child(n+8){animation-delay:280ms}
 @media (prefers-reduced-motion:reduce){body :is(.lib-card,.file-row,.sp-file,.sp-folder){animation:none!important}}
 html[data-quiet=true] body :is(.lib-card,.file-row,.sp-file,.sp-folder){animation:none!important}
+
+/* Sans weights: reading text stays Regular; things you press read Medium; the one main action on a screen is SemiBold. */
+body :is(.secondary,.lib-btn,.pl-btn,.sx-btn,.command-chip,.link-chip,.pointer-chip,.contact-secondary,[role=tab]){font-weight:500}
+body :is(.primary,.lib-btn.strong,.adm-primary,.contact-primary){font-weight:600}
+body .new-chat-content .suggestions button{font-weight:500}
+body .composer .mode-button.long-toggle,body .picker-trigger .picker-trigger-name,body .picker-trigger .effort-label{font-weight:500}
+body .sidebar .nav-item.active{font-weight:500}
+body .history-label,body .history-label span{font-weight:500}

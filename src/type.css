@@ -294,8 +294,6 @@ code,kbd,pre,samp{font-family:var(--mono)}
 /* Voice: the one serif headline a screen gets, and Mowr talking in an empty or finished state. */
 .empty-state h2,.upload-empty h2,.vp-empty h2,.sh-done h2,.contact-sent h3,.adm-empty h3,
 .new-chat-content .greeting-row h1{font-family:var(--serif);font-weight:400;letter-spacing:var(--track-display)}
-/* Set this large, the Regular reads heavy; the greeting uses the Light cut. */
-.new-chat-content .greeting-row h1{font-weight:300}
 
 /* Numbers that are read as values line up. */
 .adm-stat strong,.study-numbers strong,.sp-stat strong{font-variant-numeric:tabular-nums}
