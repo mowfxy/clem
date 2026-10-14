@@ -1606,6 +1606,10 @@ void app.whenReady().then(async () => {
           spec = withMarkdownSource(spec, text);
           draft = { path: relative(work!.root, full).split(sep).join("/"), text };
           unchecked = uncheckedExamples(text);
+          // Refused before anything is built, like any other problem with the text: building it anyway sent every page
+          // picture back, the answer was then held as unfinished, and the whole document was built again (measured as
+          // over a quarter of one document task's usage).
+          if (unchecked.length) throw Error(`${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it in ${draft.path} (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 200).join(", ")}). Verify each one's numbers (a Kinetra call where a module computes them), add its \`\`\`check block after it — all of them in one go, with parallel edits — then send this request again. Nothing was built.`);
         }
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
         if (revise && !documents.has(revise)) throw Error(`No file with id "${revise}" in this conversation. Use an id from the files list, or leave out "revise" to make a new file.`);
