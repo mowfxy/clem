@@ -1776,8 +1776,14 @@ void app.whenReady().then(async () => {
         // A file named by its path in the working folder ("Subjects/Physics/Week 1/notes.pdf") is that Mowr file, whichever
         // subject or project it is in: the window opens it by its id. Any other path is the file of that name.
         if (typeof tool?.file === "string" && /[\\/]/.test(tool.file) && !findFile(library, tool.file)) {
-          const at = work ? workspaceRelative(work.root, tool.file) : null, id = at && work ? mirroredId(work.files, at) : undefined;
-          tool = { ...tool, file: id ? MOWR_FILE + id : basename(tool.file.replace(/\\/g, "/")) };
+          const named = basename(tool.file.replace(/\\/g, "/"));
+          // read and search work on this answer's texts by name (only the window knows Mowr file ids): a path to one of
+          // them is that name, or the request fails and costs the model another step.
+          if ((tool.action === "read" || tool.action === "search") && findFile(library, named)) tool = { ...tool, file: named };
+          else {
+            const at = work ? workspaceRelative(work.root, tool.file) : null, id = at && work ? mirroredId(work.files, at) : undefined;
+            tool = { ...tool, file: id ? MOWR_FILE + id : named };
+          }
         }
         // Every file is in the working folder: the AI finds files with its own tools, not with Mowr's search.
         if ((tool?.action === "find" || tool?.action === "attach") && work)
@@ -1844,7 +1850,13 @@ void app.whenReady().then(async () => {
       // Claude and Grok always see the whole tool guide (kinetraCompact, the same in every system prompt); what this request
       // adds to it (recipes, a file design guide) and this conversation's files change from turn to turn, so they go in the message.
       const fileNotes = documentsNote([...documents].map(([id, name]) => ({ id, name, draft: drafts.get(id) }))) + (work ? cliFileToolsGuide() : fileToolsGuide(library, pictures.length > 0));
-      const topic = { context: prompt + "\n" + library.map((f) => f.name).join("\n"), pictures: pictures.length > 0 };
+      // The topic is what the person said and this answer's own sources, never Mowr's rules (which name pulleys, inclines and
+      // charges) or the working folder's list of every file the person keeps: with those, a Math chat carried the circuit,
+      // mechanics and optics recipes (~7k tokens re-read at every step). Recipes left out stay one {"action":"recipes"} away.
+      const topic = {
+        context: [...messages.filter((m) => m.role !== "system").map((m) => m.content), ...sources.map((s) => s.text), pdfNote, ...library.map((f) => f.name)].join("\n"),
+        pictures: pictures.length > 0,
+      };
       const instructions = request.plain ? "Answer with text only; no tools are available for this request." : work ? (grokTurn ? kinetraFiles : cli || needsKinetra(query, documents.size > 0) ? kinetraCli : kinetraBrief) : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0, { ...topic, notes: fileNotes });
       // This conversation's files come before what this message chose (recipes, a design guide), so the prompt cache keeps more.
       const extras = request.plain ? "" : kinetraExtrasFor(query, documents.size > 0, topic);

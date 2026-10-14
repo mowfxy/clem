@@ -28,7 +28,14 @@ export type SkillContext = {
   folders?: boolean;
   /** Plans are in play: the chat's space has one, or plan blocks were sent earlier in this chat. */
   plans?: boolean;
+  /** The answer runs as the AI's own CLI in a working folder (desktop/ai-workspace.ts), whose system prompt carries the
+   *  Kinetra guide for that way of working: documents are a Markdown draft made with one request and changed with small
+   *  edits. The playbooks for the older way (the whole document as JSON, 3–5 pages a reply, every field resent on a
+   *  change) are left out: they contradicted it, and the model wrote and revised documents in many costly steps. */
+  cli?: boolean;
 };
+/** Playbooks the CLI tool guide replaces (SkillContext.cli). */
+const CLI_GUIDED = new Set(["documents", "revise"]);
 
 /**
  * Which renderer draws what. Every playbook that draws repeats this rule word for word, so a model given any one of
@@ -391,6 +398,7 @@ export const capabilityIndex = `MOWR FEATURES YOU CAN USE (they work; use them i
 
 /** Whether a playbook fits this request, given what the request carries. */
 function fits(skill: MowrSkill, request: string, context: SkillContext) {
+  if (context.cli && CLI_GUIDED.has(skill.id)) return false;
   switch (skill.id) {
     // Only meaningful when the conversation has a Mowr-made document to change.
     case "revise": return !!context.documents && skill.when.test(request);
@@ -411,7 +419,7 @@ function fits(skill: MowrSkill, request: string, context: SkillContext) {
 
 /** The full playbooks that fit this request, most specific first, at most `limit` of them. */
 export function mowrSkillsFor(request: string, context: SkillContext = {}, limit = 6) {
-  const forced = mowrSkills.filter((skill) => context.force?.includes(skill.id));
+  const forced = mowrSkills.filter((skill) => context.force?.includes(skill.id) && !(context.cli && CLI_GUIDED.has(skill.id)));
   return [...forced, ...mowrSkills.filter((skill) => !forced.includes(skill) && fits(skill, request, context))].slice(0, limit);
 }
 

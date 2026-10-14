@@ -121,3 +121,12 @@ test('built-in workflows are not triggered by passing words',()=>{
   assert.ok(!ids('revise the document with a new intro').includes('tutor'));
   assert.equal(ids('make a pdf study guide on cell biology')[0],'study-guide');
 });
+
+test('an answer in a CLI working folder gets no playbook that contradicts its Markdown-draft tool guide',()=>{
+  const ids=(context:SkillContext)=>mowrSkillsFor('make a pdf of lecture 3 notes and then fix the intro',{documents:true,...context}).map(s=>s.id);
+  assert.ok(ids({}).includes('documents')&&ids({}).includes('revise'));
+  assert.ok(!ids({cli:true}).includes('documents')&&!ids({cli:true}).includes('revise'));
+  // A slash command that forces the playbook does not bring it back either.
+  assert.ok(!mowrSkillsFor('/pdf lecture 3',{cli:true,force:['documents']}).some(s=>s.id==='documents'));
+  assert.ok(!mowrSkillText('make a pdf study guide',{cli:true}).includes('one reply holds about 3–5 pages'));
+});
