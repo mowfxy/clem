@@ -70,10 +70,12 @@ button.work-summary[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
 .limit-head{display:flex;align-items:center;gap:7px;color:#ece9df;font-weight:500}
 .limit-body{margin-top:4px!important;color:#a9a79f}
 .limit-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px}
-.limit-auto{display:flex;align-items:center;gap:8px;cursor:pointer;color:#dcd9cf}
-.limit-auto input{accent-color:#e9e5d8;width:15px;height:15px;margin:0}
+.limit-ask{color:#dcd9cf;flex-basis:100%}
+.limit-set{display:flex;align-items:center;gap:6px;color:#dcd9cf;flex-basis:100%}
+.limit-yes{padding:5px 12px;border-radius:99px;border:0;background:#ece9df;color:#1a1a1a;font:500 12px/1.4 var(--sans);cursor:pointer}
+.limit-yes:hover{background:#fff}
 .limit-foot{color:#8f8f8f;font-size:12px}
-.limit-now{margin-left:auto;padding:5px 12px;border-radius:99px;border:1px solid #ffffff1f;background:#ffffff0a;color:#e4e2da;font:12px/1.4 var(--sans)}
+.limit-now{padding:5px 12px;cursor:pointer;border-radius:99px;border:1px solid #ffffff1f;background:#ffffff0a;color:#e4e2da;font:12px/1.4 var(--sans)}
 .limit-now:hover{background:#ffffff14}
 /* Long messages scroll inside the composer without a scrollbar (its arrows looked like a dropdown beside the text). */
 /* The box grows with the message up to a cap, then scrolls with the app's thin bar. The word layer behind it keeps the

@@ -27,12 +27,16 @@ export function LimitNotice({ limit, model, latest, onAuto, onContinue }: { limi
     {limit.done
       ? <p className="limit-foot">Continued below.</p>
       : latest && <div className="limit-actions">
-          <label className="limit-auto">
-            <input type="checkbox" checked={!!limit.auto} onChange={(e) => onAuto(e.target.checked)} />
-            <span>Continue this task automatically when the limit resets</span>
-          </label>
-          {limit.auto && <span className="limit-foot">Mowr will continue {when(resumeTime(limit))}.</span>}
-          <button type="button" className="limit-now" onClick={onContinue}>Continue now</button>
+          {limit.auto
+            ? <>
+                <span className="limit-set"><Icon name="check" size={14} />Mowr will continue this task {when(resumeTime(limit))}.</span>
+                <button type="button" className="limit-now" onClick={() => onAuto(false)}>Don’t continue</button>
+              </>
+            : <>
+                <span className="limit-ask">Continue this task when the limit resets?</span>
+                <button type="button" className="limit-yes" onClick={() => onAuto(true)}>Continue {when(resumeTime(limit))}</button>
+              </>}
+          <button type="button" className="limit-now" onClick={onContinue}>Try now</button>
         </div>}
   </div>;
 }

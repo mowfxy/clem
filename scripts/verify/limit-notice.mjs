@@ -1,5 +1,5 @@
 // Checks the usage-limit notice against the real App with a scripted desktop bridge: an answer stopped by the plan's
-// limit shows the notice (no file card), auto-continue can be turned on, and "Continue now" sends the continuation.
+// limit shows the notice (no file card), auto-continue can be turned on, and "Try now" sends the continuation.
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { openFixture } from "./local-power-fixture.mjs";
@@ -42,14 +42,15 @@ try {
   check(/files it was working on were not sent/.test(await notice.innerText()), "notice says the files were held back");
   check(await page.locator(".message.assistant .document-card, .message.assistant .file-card").count() === 0, "no file card on the stopped answer");
   check(!(await page.locator(".closed-note").count()), "no 'closed unexpectedly' note");
-  await notice.getByRole("checkbox").check();
+  check(await notice.getByText("Continue this task when the limit resets?").isVisible(), "notice asks whether to continue at the reset");
+  await notice.getByRole("button", { name: /^Continue (at|tomorrow)/ }).click();
   await notice.getByText("Mowr will continue").waitFor();
   check(true, "auto-continue turned on shows when it continues");
   await page.screenshot({ path: out + "/notice.png" });
-  await notice.getByRole("button", { name: "Continue now" }).click();
+  await notice.getByRole("button", { name: "Try now" }).click();
   await page.getByText("All chapters are written.").waitFor({ timeout: 8000 });
   const sent = await page.evaluate(() => window.requests.filter((r) => r.action === "chat").map((r) => r.messages.at(-1)?.content || ""));
-  check(sent.length === 2 && /Continue the task from where you stopped/.test(sent[1]), "Continue now sends the continuation in the same chat");
+  check(sent.length === 2 && /Continue the task from where you stopped/.test(sent[1]), "Try now sends the continuation in the same chat");
   check(await page.getByText("Continued below.").isVisible(), "notice marks the task as continued");
   await page.screenshot({ path: out + "/continued.png" });
   check(!errors.length, "no page errors" + (errors.length ? ": " + errors.join("; ") : ""));

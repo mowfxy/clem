@@ -83,6 +83,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderSearch"), query: z.string().trim().min(1).max(200) }),
   z.object({ action: z.literal("folderWatch"), enabled: z.boolean().optional() }),
   z.object({ action: z.literal("captureScreen") }),
+  /** Ctrl+V of files copied in File Explorer: the page sees only text, so the files are read here (desktop/clipboard-files.ts). */
+  z.object({ action: z.literal("clipboardFiles") }),
   z.object({ action: z.literal("openInBrowser"), name: z.string().min(1).max(200), data: z.instanceof(Uint8Array).refine((d) => d.length <= 300_000_000, "Files are limited to 300 MB.") }),
   z.object({ action: z.literal("documentPdf"), title: z.string().trim().min(1).max(160), markdown: z.string().min(1).max(1_000_000) }),
   /** Export → Word or PowerPoint: the answer built by the same builders the AI's own files use (desktop/docx-document.ts, pptx-deck.ts). */

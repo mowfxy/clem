@@ -127,6 +127,7 @@ import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } from "../core/chat-title";
 import { Chapters } from "./chat/Chapters";
 import { SlashField, CommandChip } from "./chat/SlashField";
+import { pastedFiles, pasteTarget } from "./chat/paste";
 import { VisualSaveContext } from "./chat/visual-save";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
 import "./conversation.css";
@@ -704,6 +705,27 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       setTimeout(()=>composer.current?.focus(),80);
     });
   },[spaceId]);
+  // Ctrl+V of a screenshot, a copied picture or files copied in File Explorer attaches them, as the attach button would.
+  const pasteFiles=useRef<(files:File[])=>void>(()=>{});
+  pasteFiles.current=files=>{
+    if(!files.length)return;
+    const dt=new DataTransfer();for(const file of files)dt.items.add(file);
+    upload(dt.files,true);
+    setTimeout(()=>composer.current?.focus(),80);
+  };
+  useEffect(()=>{
+    const onPaste=(e:ClipboardEvent)=>{
+      const data=e.clipboardData;
+      if(!data||!document.querySelector('.composer')||!pasteTarget(e.target))return;
+      const files=pastedFiles(data);
+      if(files.length){e.preventDefault();pasteFiles.current(files);return;}
+      // File Explorer's copy reaches the page with no text and (in Electron) no files: the desktop app reads the copied files.
+      if(desktop&&!data.getData('text/plain')&&!data.getData('text/html'))
+        void desktop.invoke({action:'clipboardFiles'}).then((r:any)=>pasteFiles.current((r?.files||[]).map((f:{name:string;type:string;bytes:Uint8Array})=>new File([f.bytes as BlobPart],f.name,{type:f.type})))).catch(()=>{});
+    };
+    window.addEventListener('paste',onPaste);
+    return()=>window.removeEventListener('paste',onPaste);
+  },[]);
   const conversationTarget=chatId||draftChatId.current;
   const running=conversationTarget in runs;
   const anyRunning=Object.keys(runs).length>0;

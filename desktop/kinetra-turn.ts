@@ -3,7 +3,14 @@ import type { TurnStats } from "./turn-timing.ts";
  *  the loop resends everything instead, for the rest of the turn. */
 export class SessionLost extends Error {}
 /** Thrown by a provider whose plan has no usage left: Mowr can move the request to another connected account. */
-export class UsageLimit extends Error {}
+export class UsageLimit extends Error {
+  /** When the plan can be used again (ms), when the provider said so with the refusal. */
+  resetsAt?: number;
+  constructor(message: string, resetsAt?: number) { super(message); this.resetsAt = resetsAt; }
+}
+/** Thrown by a provider whose service failed for a moment (overloaded, a server error, the connection dropped) before
+ *  the step produced anything: the same step can simply be run again after a short wait. */
+export class Transient extends Error {}
 /** A CLI that does not know a flag it was given (a build without sessions): the provider then stops sending session flags. */
 export const unsupportedFlag = /unknown (?:option|argument|flag)|unexpected (?:argument|option)|unrecognized (?:option|argument)|no such option|invalid option/i;
 /** LaTeX commands whose first letter is also a JSON escape: "\frac" parses as a form feed and "rac", "\theta" as a tab and "heta". */

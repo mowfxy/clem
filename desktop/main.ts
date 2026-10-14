@@ -38,6 +38,7 @@ import {
   Tray,
 } from "electron";
 import { captureRegion } from "./capture";
+import { clipboardFiles } from "./clipboard-files";
 import { spawn } from "node:child_process";
 import { applyChange, undoChange, locate, readText, type Change } from "./folder-edits";
 import { editLanguage } from "../core/answer-format";
@@ -60,7 +61,7 @@ import {GrokProvider,grokModels,grokPdfPath,grokUsage,GROK_PREFIX} from './grok'
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions} from './video-captions';
-import {runKinetraTurn,SessionLost,UsageLimit,type AnswerGates} from './kinetra-turn';
+import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
 import {LiveScreen} from './live-reply';
 import {inlinePictures} from './kinetra-mcp';
 import {CropAssets,cropTools,memoryIo,readAsset,temporaryStores,type AssetIo} from './pdf-assets';
@@ -420,8 +421,22 @@ void app.whenReady().then(async () => {
         else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(own ? pictures : []), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined, { system, pdfs: own ? claudePdfs : [], workspace });
         delivered = true;
       };
+      // A service that failed for a moment before the step wrote anything (overloaded, a dropped connection) is tried
+      // again after a short wait, as Claude Code itself retries, instead of ending the task.
+      const steady = async () => {
+        for (let attempt = 0; ; attempt++) {
+          try { return await once(); } catch (error) {
+            if (!(error instanceof Transient) || cancelled() || attempt >= 3) throw error;
+            emit({ id, type: "status", text: `${grok ? "Grok" : "Claude"} is busy; trying again in a moment…` });
+            await new Promise((done) => setTimeout(done, [5_000, 15_000, 40_000][attempt]));
+            if (cancelled()) throw error;
+            // A first step's session may already be recorded under its id: the retry starts a new one.
+            if (!followUp) session.id = randomUUID();
+          }
+        }
+      };
       try {
-        await once();
+        await steady();
       } catch (error) {
         // Out of usage: with automatic switching the request moves to another connected account, as ChatGPT's do.
         if (!(error instanceof UsageLimit) || cancelled()) throw error;
@@ -432,7 +447,7 @@ void app.whenReady().then(async () => {
         // The new account has none of this turn's session: a later step resends everything there, a first step simply runs again.
         if (followUp) throw new SessionLost("Moved to another account.");
         session.provider = current.provider;
-        await once();
+        await steady();
       }
       // Notes written before a tool request show while the tool runs, each its own paragraph, as ChatGPT's do.
       screen.reply(text);
@@ -1352,6 +1367,7 @@ void app.whenReady().then(async () => {
       if (failed) throw Error(failed);
       return { opened: "app" };
     }
+    if (request.action === "clipboardFiles") return { files: await clipboardFiles() };
     if (request.action === "captureScreen") {
       await capture(true);
       return { ok: true };
@@ -1870,7 +1886,7 @@ void app.whenReady().then(async () => {
           else { await collectOutputs().catch(() => {}); deliver(); }
           if (limited && work) heldOutputs.set(work.root + "|" + work.lane, Math.min(started, heldOutputs.get(work.root + "|" + work.lane) ?? started));
           const resetsAt = limited
-            ? await (request.model?.startsWith(GROK_PREFIX) ? groks.resumeAt(user.id) : claude ? claudes.resumeAt(user.id) : providerAccounts.resumeAt(user.id)).catch(() => undefined)
+            ? (error instanceof UsageLimit ? error.resetsAt : undefined) ?? await (request.model?.startsWith(GROK_PREFIX) ? groks.resumeAt(user.id) : claude ? claudes.resumeAt(user.id) : providerAccounts.resumeAt(user.id)).catch(() => undefined)
             : undefined;
           send({
             id: request.id,

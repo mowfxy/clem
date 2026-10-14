@@ -3,7 +3,7 @@ import {mkdir,readdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath,signInWindow} from './cli-install.ts';
-import {SessionLost,UsageLimit,unsupportedFlag,MAX_CALLS} from './kinetra-turn.ts';
+import {SessionLost,UsageLimit,Transient,unsupportedFlag,MAX_CALLS} from './kinetra-turn.ts';
 import {kinetraMcp,claudeMcpConfig,keepingAlive,NATIVE_NOTE,CLAUDE_TOOL,TOOL_TIMEOUT_SECONDS,TOOL_OUTPUT_TOKENS,type NativeCall} from './kinetra-mcp.ts';
 import {liveText} from './live-reply.ts';
 
@@ -76,7 +76,7 @@ export function claudeCliSettings(readOnly:string[]){
  *  document writer is told beyond the system prompt (this request's figure recipes and design guides); with it, the
  *  answer may hand documents to writers (claudeWriters). */
 export type ClaudeWorkspace={root:string;readOnly?:string[];protect?:string[];writer?:string};
-import type {UsageSnapshot,UsageWindow} from '../core/account-usage.ts';
+import {resumeAt,type UsageSnapshot,type UsageWindow} from '../core/account-usage.ts';
 import {describeTool,StepCounter} from './tool-status.ts';
 
 /** One answer's tokens in the console (counts only, never content), to measure efficiency work before and after a change. */
@@ -135,7 +135,8 @@ export function claudeUsage(limits:ClaudeLimit[],now=Date.now()/1000):UsageSnaps
     if(!limit)return null;
     const expired=!!limit.resetsAt&&limit.resetsAt<=now;
     // Utilization is a fraction (Claude Code's events and parsePlanUsage both give one), so 1 is a full window, not 1%.
-    const used=expired?0:typeof limit.utilization==='number'?Math.max(0,Math.min(100,limit.utilization*100)):limit.status==='rejected'?100:null;
+    // A window that refused a request is used up, whatever share was last reported for it.
+    const used=expired?0:limit.status==='rejected'?100:typeof limit.utilization==='number'?Math.max(0,Math.min(100,limit.utilization*100)):null;
     return {usedPercent:used,windowDurationMins:minutes,resetsAt:expired?null:limit.resetsAt??null};
   };
   const short=limits.find(l=>/five|5h|hour|session/i.test(l.type));
@@ -152,6 +153,34 @@ export const claudeModels:ClaudeModel[] = [
   {id:'claude:opus',name:'Claude Opus 5.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'high'},
   {id:'claude:haiku',name:'Claude Haiku 4.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
 ];
+/**
+ * What went wrong when Claude Code ended without an answer, from everything it said: the `error` kind on its synthetic
+ * assistant message (rate_limit, billing_error, authentication_failed, overloaded, server_error, max_output_tokens…),
+ * that message's text ("You've hit your session limit · resets 3pm"), the result's text or `errors` list (an
+ * error_during_execution result has no `result` at all), a `rate_limit_event` that refused the request, and stderr.
+ * Earlier only the result text and stderr were read, so a limit reported anywhere else became "could not complete".
+ */
+export type ClaudeFailure={kind:'limit'|'signin'|'busy'|'turns'|'length'|'model'|'context'|'other';message:string};
+export function claudeFailure({result,apiError,apiText='',stderr='',refused=false,streamed=false}:{result?:any;apiError?:string;apiText?:string;stderr?:string;refused?:boolean;streamed?:boolean}):ClaudeFailure{
+  const errors=Array.isArray(result?.errors)?result.errors.map((e:unknown)=>typeof e==='string'?e:JSON.stringify(e)).join(' '):'';
+  const said=[apiText,typeof result?.result==='string'?result.result:'',errors].filter(Boolean).join(' ').trim();
+  const detail=said+' '+stderr;
+  const line=said.split(/\r?\n/).map(s=>s.trim()).find(Boolean)?.slice(0,240)||'';
+  if(result?.subtype==='error_max_turns'&&!apiError&&!refused)return {kind:'turns',message:'The task took more steps than one answer allows. Say “continue” and Claude carries on from here.'};
+  if(apiError==='rate_limit'||apiError==='billing_error'||refused||/hit your .{0,40}limit|usage limit|limit reached|reached your .{0,40}limit|out of (?:usage|extra usage|credits)|usage credits|spend limit|shared budget|rate.?limit|quota|\b429\b/i.test(detail))
+    return {kind:'limit',message:line||'Claude usage limit reached.'};
+  if(apiError==='authentication_failed'||apiError==='oauth_org_not_allowed'||/not logged in|please run \/login|invalid (?:api key|credential)|oauth token (?:has )?expired|\b401\b/i.test(detail))
+    return {kind:'signin',message:'Sign in to Claude again in Settings → Models.'};
+  if(apiError==='account_on_hold')return {kind:'other',message:'Your Claude account is on hold. Check it at claude.ai.'};
+  if(apiError==='max_output_tokens'||/output token maximum|max_output_tokens/i.test(detail))return {kind:'length',message:'Claude’s reply ran past the longest reply it can write at once. Say “continue” and it carries on.'};
+  if(apiError==='model_not_found'||/model.{0,40}(?:not found|not available|does not exist|no access)|not_found_error/i.test(detail))return {kind:'model',message:'That Claude model is not available on this account. Pick another one.'};
+  if(/prompt is too long|context (?:window|length)|too many tokens|exceeds? the (?:context|maximum)/i.test(detail))return {kind:'context',message:'This chat is too long for Claude to read at once. Use /compact, or continue in a new chat.'};
+  // A step that failed before writing anything can be run again; one that streamed would repeat itself.
+  if(!streamed&&(apiError==='overloaded'||apiError==='server_error'||/overloaded|\b5(?:00|02|03|04|29)\b|internal server error|api_error|connection (?:error|reset|refused)|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|network/i.test(detail)))
+    return {kind:'busy',message:'Claude’s servers are busy right now. Try again in a moment.'};
+  if(apiError==='overloaded'||apiError==='server_error')return {kind:'other',message:'Claude’s servers failed part-way through this reply. Try again in a moment.'};
+  return {kind:'other',message:line?`Claude could not complete this request: ${line}`:'Claude could not complete this request. Try again, or check its sign-in in Settings → Models.'};
+}
 /** A failure that looks like a lapsed sign-in: the next request checks the sign-in again instead of trusting the last check. */
 const signedOut=/not logged in|log ?in|unauthori[sz]ed|\b401\b|authenticat|oauth token|invalid api key/i;
 /** Model names Mowr passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
@@ -424,6 +453,8 @@ export class ClaudeProvider {
     try{
       const answer=await new Promise<string>((resolve,reject)=>{
         let buffer='',bytes=0,error='',done=false,result:any=null;
+        // What Claude Code said about a failure besides its result (claudeFailure): its synthetic error message, and a refused window.
+        let apiError:string|undefined,apiText='',refused:ClaudeLimit|undefined,streamed=false;
         const finish=(value?:string,failure?:Error)=>{if(done)return;done=true;clearTimeout(timer);failure?reject(failure):resolve(value||'');};
         // An inactivity limit: any output from Claude Code restarts it, so a long answer that keeps streaming is never cut off.
         let timer:ReturnType<typeof setTimeout>;
@@ -437,10 +468,16 @@ export class ClaudeProvider {
           if(!line.trim())return;
           let event:any;try{event=JSON.parse(line);}catch{return;}
           if(event.type==='result'){result=event;logUsage(model,event);return;}
+          if(event.type==='assistant'&&(typeof event.error==='string'||event.isApiErrorMessage||event.message?.model==='<synthetic>')){
+            if(typeof event.error==='string')apiError=event.error;
+            apiText=(event.message?.content||[]).filter((part:any)=>part?.type==='text').map((part:any)=>String(part.text||'')).join(' ').slice(0,2000)||apiText;
+            return;
+          }
+          if(event.type==='stream_event'&&event.event?.type==='content_block_delta')streamed=true;
           live(event);
           steps.read(event);
           const limit=parseRateLimit(event);
-          if(limit)this.noteLimit(limit);
+          if(limit){this.noteLimit(limit);if(limit.status==='rejected')refused=limit;else if(refused&&limit.type===refused.type)refused=undefined;}
           const status=claudeStatus(event);
           if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
         };
@@ -457,17 +494,19 @@ export class ClaudeProvider {
         child.on('close',code=>{
           read(buffer);
           if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});
-          const usage=(text:string)=>/limit|quota|429/i.test(text);
-          if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&code===0){finish(result.result);return;}
-          const detail=String(result?.result||'')+' '+error;
+          // A finished answer is kept even when Claude Code's exit code says otherwise (a fault while shutting down).
+          if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&!apiError){finish(result.result);return;}
+          const detail=String(result?.result||'')+' '+(Array.isArray(result?.errors)?result.errors.join(' '):'')+' '+apiText+' '+error;
           if(systemFile&&unsupportedFlag.test(detail)&&/system-prompt/i.test(detail)){this.noSystemFile=true;return finish(undefined,new NoSystemFile());}
           // Nothing ran: the same step again without writers.
           if(agentsFile&&unsupportedFlag.test(detail)&&/agents/i.test(detail)){this.noAgents=true;return finish(undefined,new NoSystemFile());}
           if(session&&unsupportedFlag.test(detail)){this.noSessions=true;return finish(undefined,new SessionLost('This Claude Code does not keep sessions.'));}
           if(session?.resume&&/no conversation found|session.{0,40}(not found|does not exist|missing)/i.test(detail+JSON.stringify(result?.errors||'')))return finish(undefined,new SessionLost('Claude Code no longer has this session.'));
-          if(usage(detail))return finish(undefined,new UsageLimit('Claude subscription usage is unavailable right now.'));
-          if(signedOut.test(detail))this.statusCache=null;
-          finish(undefined,Error(/not logged in|login/i.test(detail)?'Sign in to Claude again in Settings > Models.':'Claude could not complete this request. Check its sign-in and model access.'));
+          const failure=claudeFailure({result,apiError,apiText,stderr:error,refused:!!refused,streamed});
+          if(failure.kind==='limit')return finish(undefined,new UsageLimit(failure.message,refused?.resetsAt?refused.resetsAt*1000:undefined));
+          if(failure.kind==='signin'||signedOut.test(detail))this.statusCache=null;
+          if(failure.kind==='busy')return finish(undefined,new Transient(failure.message));
+          finish(undefined,Error(failure.message));
         });
         // A Claude Code that exits without reading the message (a flag it refuses) fails the pending write: its exit says why, above.
         child.stdin.on('error',()=>{});
@@ -477,6 +516,11 @@ export class ClaudeProvider {
     }catch(error){
       // Nothing ran: the same step again, with the rules in the message instead.
       if(error instanceof NoSystemFile)return this.run(id,asked,model,effort,emit,images,session,native,{system,pdfs,workspace});
+      // Out of usage: the plan's own windows are read now, so the meter shows it and the notice knows when it resets.
+      if(error instanceof UsageLimit){
+        await this.readUsage(true).catch(()=>{});
+        error.resetsAt??=resumeAt(this.usage().usage);
+      }
       throw error;
     }finally{this.active.delete(id);endpoint?.close();this.recheck();void this.readUsage(true);await removeFiles();}
   }
