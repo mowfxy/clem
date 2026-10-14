@@ -1,6 +1,7 @@
 // Checks Ctrl+V into the chat against the real App: a pasted screenshot becomes an image attachment with a dated name,
 // pasted text stays text, and files copied in File Explorer (no files in the paste, only on the desktop clipboard)
-// are fetched from the desktop app and attached.
+// are fetched from the desktop app and attached. Attached files join the person's files only once they are sent; one
+// taken off the chat box is never kept.
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { openFixture } from "./local-power-fixture.mjs";
@@ -56,6 +57,14 @@ try {
   await page.locator(".composer-files .cf-file", { hasText: "Results.csv" }).waitFor({ timeout: 8000 });
   check(await page.locator(".composer-files .cf-file", { hasText: "Lecture notes.md" }).isVisible(), "files copied in File Explorer are attached");
   await page.screenshot({ path: out + "/pasted.png" });
+  const kept = async () => { await page.waitForTimeout(900); return page.evaluate(async () => ((await (await fetch("/api/local/state", { headers: { "X-Mowr-Owner": "fixture-owner" } })).json())?.files || []).map((f) => f.name)); };
+  check(!(await kept()).some((n) => /Results|Lecture notes|Pasted image/.test(n)), "attached files are not in Files before they are sent");
+  await page.getByRole("button", { name: "Remove Lecture notes.md" }).click();
+  await box.fill("Look at these"); await box.press("Enter");
+  await page.locator(".message.user", { hasText: "Look at these" }).waitFor({ timeout: 8000 });
+  const after = await kept();
+  check(after.some((n) => /Results/.test(n)) && after.some((n) => /Pasted image/.test(n)), "sent files are in Files");
+  check(!after.some((n) => /Lecture notes/.test(n)), "a file taken off before sending is not kept");
   check(!errors.length, "no page errors" + (errors.length ? ": " + errors.join("; ") : ""));
 } finally {
   await fixture.close();

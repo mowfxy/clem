@@ -171,7 +171,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         <button className="sp-drive-dismiss" aria-label="Dismiss" onClick={actions.onDriveSeen}><Icon name="close" size={14}/></button>
       </div>}
       {tab==='overview'&&<div className="sp-overview">
-        {subject&&<section className="sp-today" aria-label="Today">
+        {subject&&cards.length>0&&<section className="sp-today" aria-label="Today">
           <div className="sp-today-text">
             <b>{due?`${due} card${due===1?'':'s'} to review`:fresh?`${Math.min(fresh,20)} new card${Math.min(fresh,20)===1?'':'s'} to learn`:'All caught up'}</b>
             <span className="sp-today-meta"><Ring value={mastery} size={18}/>{Math.round(mastery*100)}% mastered<i aria-hidden="true">·</i><span className={`sp-flame ${days?'lit':''}`}><Icon name="flame" size={14}/></span>{days?`${days} day streak`:'No streak yet'}<i aria-hidden="true">·</i>{cards.length} cards</span>

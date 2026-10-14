@@ -1,8 +1,8 @@
-import {useEffect,useLayoutEffect,useMemo,useRef,useState,type FormEvent} from 'react';
+import {useEffect,useMemo,useRef,useState,type FormEvent} from 'react';
 import {Icon} from '../Icons';
 import {Illustration} from '../Illustrations';
 import {confirmDialog} from '../dialogs';
-import {planStatus,planSections,daysBetween,addDays,dayLabel,localDay,workItems,type SpacePlan,type PlanTask,type PlanStatus} from '../../core/plans';
+import {planStatus,daysBetween,dayLabel,localDay,workItems,type SpacePlan,type PlanTask,type PlanStatus} from '../../core/plans';
 import type {Space} from '../../core/types';
 import './plan.css';
 import './plan-calm.css';
@@ -22,45 +22,10 @@ export type PlanActions={
 
 const STATE_LABEL=(s:PlanStatus,today:string)=>s.state==='done'?'Complete':s.state==='behind'?`Behind · ${s.overdue.length} overdue`:s.state==='ahead'?'Ahead of plan':s.state==='upcoming'?`Starts ${dayLabel(s.start,today)}`:'On track';
 const plural=(n:number,one:string,many=one+'s')=>`${n} ${n===1?one:many}`;
-/** How far the work done is from the work planned by today, in words. */
-function paceLine(s:PlanStatus){
-  if(s.state==='done')return 'Every task is done.';
-  const gap=s.done-s.expected;
-  if(s.state==='upcoming')return `Nothing is due yet. ${plural(s.total,'task')} planned.`;
-  if(gap<0)return `${plural(-gap,'task')} behind the plan${s.overdue.length?`, ${s.overdue.length} overdue`:''}.`;
-  if(gap>0)return `${plural(gap,'task')} ahead of the plan.`;
-  return 'Right on pace with the plan.';
-}
-
-/** Text width in px for the chart's labels, measured once per string with the app's own sans face. */
-let measureCtx:CanvasRenderingContext2D|null|undefined;
-const widths=new Map<string,number>();
-function textWidth(text:string,size:number){
-  const key=size+'|'+text;const hit=widths.get(key);if(hit!==undefined)return hit;
-  if(measureCtx===undefined)measureCtx=typeof document==='undefined'?null:document.createElement('canvas').getContext('2d');
-  let w=text.length*size*.56;
-  if(measureCtx){measureCtx.font=`400 ${size}px ${getComputedStyle(document.body).getPropertyValue('--sans')||'sans-serif'}`;w=measureCtx.measureText(text).width;}
-  widths.set(key,w);return w;
-}
-
-const LABEL_MAX=170,LABEL_GAP=16,ROW=36;
-type Placed={id:string;x:number;left:number;width:number;row:number};
-/** Milestone labels under the line: centred on their mark, kept inside the chart, dropped to a second row when two
-    would touch, and left as a mark with a tooltip only when neither row has room. */
-function placeLabels(items:{id:string;x:number;title:string;date:string}[],width:number):Map<string,Placed>{
-  const placed=new Map<string,Placed>(),rowsEnd=[-Infinity,-Infinity];
-  for(const m of items){
-    const w=Math.min(LABEL_MAX,Math.max(textWidth(m.title,12),textWidth(m.date,11))+2);
-    const left=Math.max(0,Math.min(width-w,m.x-w/2));
-    const row=rowsEnd.findIndex(end=>left>=end+LABEL_GAP);
-    if(row<0)continue;
-    rowsEnd[row]=left+w;placed.set(m.id,{id:m.id,x:m.x,left,width:w,row});
-  }
-  return placed;
-}
+const byDue=(a:PlanTask,b:PlanTask)=>((a.due||'9999')+(a.time||'99')).localeCompare((b.due||'9999')+(b.time||'99'));
 
 /** Counts a number up from zero the first time it shows, then follows changes directly. */
-function useCountUp(value:number,ms=1100){
+function useCountUp(value:number,ms=900){
   const [shown,setShown]=useState(()=>reduceMotion()?value:0);
   const first=useRef(true);
   useEffect(()=>{
@@ -73,30 +38,22 @@ function useCountUp(value:number,ms=1100){
 }
 const reduceMotion=()=>typeof matchMedia!=='undefined'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** The plan as one calm line: time passing (faint), work done (bright), a Today pill above it, milestones under it. */
-export function PlanChart({plan,today=localDay(),compact=false}:{plan:SpacePlan;today?:string;compact?:boolean}){
+/** The plan as one strip: a short segment per task in date order (done, late or still to do), a sand diamond for
+    each milestone, and a thin mark where today falls. Nothing to label, so nothing can overlap. */
+export function PlanStrip({plan,today=localDay()}:{plan:SpacePlan;today?:string}){
   const s=planStatus(plan,today);
-  const ref=useRef<HTMLDivElement>(null);const [width,setWidth]=useState(0);
-  useLayoutEffect(()=>{
-    const el=ref.current;if(!el)return;setWidth(el.clientWidth);
-    const ro=new ResizeObserver(([e])=>setWidth(Math.round(e.contentRect.width)));ro.observe(el);return()=>ro.disconnect();
-  },[]);
-  const span=Math.max(1,daysBetween(s.start,s.end));
-  const at=(day:string)=>Math.max(0,Math.min(1,daysBetween(s.start,day)/span));
-  const now=today<s.start?0:today>s.end?1:at(today);
-  const milestones=plan.tasks.filter(t=>t.kind==='milestone'&&t.due).sort((a,b)=>a.due!<b.due!?-1:1);
-  const when=(m:PlanTask)=>`${dayLabel(m.due!,today)}${m.time?' · '+m.time:''}`;
-  const placed=compact||!width?new Map<string,Placed>():placeLabels(milestones.map(m=>({id:m.id,x:at(m.due!)*width,title:m.title,date:when(m)})),width);
-  const rows=Math.max(0,...[...placed.values()].map(p=>p.row+1));
-  // The Today pill stays inside the chart near either end.
-  const nowShift=now<.06?'start':now>.94?'end':'';
-  return <div ref={ref} className={`pl-track ${compact?'compact':''} ${s.state}`} data-rows={rows} role="img" aria-label={`${s.done} of ${s.total} done; ${s.expected} were planned by today. ${paceLine(s)}`}>
-    <div className="pl-rail"><span className="pl-time" style={{transform:`scaleX(${now})`}}/><span className="pl-done" style={{transform:`scaleX(${s.percent})`}}/></div>
-    {now>0&&now<1&&<span className={`pl-now ${nowShift}`} style={{left:`${now*100}%`}}>{!compact&&<em>Today</em>}<i/></span>}
-    {milestones.map((m,i)=><span key={m.id} className={`pl-mile ${m.done?'past':''}`} style={{left:`${at(m.due!)*100}%`,['--i' as string]:i}} title={`${m.title} · ${when(m)}`}><i/></span>)}
-    {milestones.map((m,i)=>{const p=placed.get(m.id);if(!p)return null;
-      return <span key={m.id} className={`pl-mile-label ${m.done?'past':''}`} style={{left:p.left,width:p.width,top:22+p.row*ROW,['--i' as string]:i,['--stem' as string]:`${p.x-p.left}px`}} data-row={p.row}>
-        <b>{m.title}</b><small>{when(m)}</small></span>;})}
+  const work=new Set(workItems(plan).map(t=>t.id));
+  const items=[...plan.tasks].sort(byDue);
+  const nowAt=items.filter(t=>t.due&&t.due<=today).length;
+  const showNow=nowAt>0&&nowAt<items.length&&today>=s.start&&today<=s.end;
+  let n=0;
+  return <div className="pl-strip" role="img" aria-label={`${s.done} of ${s.total} done${s.overdue.length?`, ${s.overdue.length} overdue`:''}.`}>
+    {items.map((t,i)=>{
+      const now=showNow&&i===nowAt?<i key="now" className="pl-strip-now" title="Today"/>:null;
+      if(!work.has(t.id))return [now,<b key={t.id} className={`pl-strip-mile ${t.done||(t.due&&t.due<today)?'past':''}`} title={`${t.title}${t.due?' · '+dayLabel(t.due,today):''}`} style={{['--i' as string]:Math.min(n,48)}}/>];
+      const late=!t.done&&!!t.due&&t.due<today;
+      return [now,<span key={t.id} className={`pl-seg ${t.done?'done':late?'late':t.due===today?'today':''}`} title={t.title} style={{['--i' as string]:Math.min(n++,48)}}/>];
+    })}
   </div>;
 }
 
@@ -106,64 +63,77 @@ function Due({task,today}:{task:PlanTask;today:string}){
   return <span className={`pl-due ${late?'late':''} ${task.due===today&&!task.done?'now':''}`}>{late?(d===1?'1 day late':`${d} days late`):dayLabel(task.due,today)}{task.time&&!late?' · '+task.time:''}</span>;
 }
 
-function TaskRow({task,today,onToggle}:{task:PlanTask;today:string;onToggle?:(id:string)=>void}){
+function TaskRow({task,today,group,onToggle}:{task:PlanTask;today:string;group?:boolean;onToggle?:(id:string)=>void}){
   const milestone=task.kind==='milestone';
+  const meta=[group?task.group:'',task.notes].filter(Boolean).join(' · ');
   return <li className={`pl-task ${task.done?'done':''} ${milestone?'milestone':''}`}>
     {onToggle?<button type="button" className="pl-check" role="checkbox" aria-checked={!!task.done} aria-label={`${task.done?'Mark not done':'Mark done'}: ${task.title}`} onClick={()=>onToggle(task.id)}><Icon name="check" size={12}/></button>
       :<span className="pl-check" aria-hidden="true">{task.done&&<Icon name="check" size={12}/>}</span>}
-    <span className="pl-task-text"><span>{task.title}</span>{task.notes&&<small>{task.notes}</small>}</span>
+    <span className="pl-task-text"><span>{task.title}</span>{meta&&<small>{meta}</small>}</span>
     <Due task={task} today={today}/>
   </li>;
 }
 
-/** Every task, in the plan's own sections (or by week). */
+type Bucket='late'|'today'|'tomorrow'|'week'|'later'|'any'|'done';
+const BUCKETS:[Bucket,string][]=[['late','Overdue'],['today','Today'],['tomorrow','Tomorrow'],['week','This week'],['later','Later'],['any','Any time'],['done','Done']];
+function bucketOf(t:PlanTask,today:string,held:boolean):Bucket{
+  if(t.done&&!held)return 'done';
+  if(!t.due)return 'any';
+  const d=daysBetween(today,t.due);
+  if(d<0)return t.kind==='milestone'?'done':'late';
+  return d===0?'today':d===1?'tomorrow':d<7?'week':'later';
+}
+
+/** Every task, by when it is due: overdue, today, tomorrow, this week, later. A task just ticked stays where it was for a
+    moment, struck through, before it joins Done, which stays folded away. */
 export function PlanTasks({plan,today=localDay(),onToggle}:{plan:SpacePlan;today?:string;onToggle?:(id:string)=>void}){
-  return <div className="pl-sections">{planSections(plan).map(section=>{
-    const done=section.tasks.filter(t=>t.done).length;
-    return <section key={section.title} className="pl-section">
-      <header><span className="sp-eyebrow">{section.title}</span><small>{done}/{section.tasks.length}</small></header>
-      <ul>{section.tasks.map(t=><TaskRow key={t.id} task={t} today={today} onToggle={onToggle}/>)}</ul>
+  const [held,setHeld]=useState<Set<string>>(()=>new Set());
+  const [showDone,setShowDone]=useState(false);
+  const timers=useRef<number[]>([]);useEffect(()=>()=>timers.current.forEach(clearTimeout),[]);
+  const toggle=onToggle&&((id:string)=>{
+    const t=plan.tasks.find(x=>x.id===id);
+    if(t&&!t.done){setHeld(h=>new Set(h).add(id));timers.current.push(window.setTimeout(()=>setHeld(h=>{const n=new Set(h);n.delete(id);return n;}),1300));}
+    onToggle(id);
+  });
+  const groups=new Set(plan.tasks.map(t=>t.group).filter(Boolean)).size>1;
+  const sorted=[...plan.tasks].sort(byDue);
+  const lists=BUCKETS.map(([key,title])=>({key,title,tasks:sorted.filter(t=>bucketOf(t,today,held.has(t.id))===key)})).filter(b=>b.tasks.length);
+  const onlyDone=lists.length===1&&lists[0].key==='done';
+  return <div className="pl-sections">{lists.map(b=>{
+    const fold=b.key==='done'&&!onlyDone&&!!onToggle;
+    return <section key={b.key} className={`pl-section is-${b.key}`}>
+      <header>{fold?<button type="button" className="pl-fold" aria-expanded={showDone} onClick={()=>setShowDone(v=>!v)}>{b.title}<small>{b.tasks.length}</small><Icon name="chevron" size={13}/></button>:<><h4>{b.title}</h4><small>{b.tasks.length}</small></>}</header>
+      {(!fold||showDone)&&<ul>{b.tasks.map(t=><TaskRow key={t.id} task={t} today={today} group={groups} onToggle={toggle||undefined}/>)}</ul>}
     </section>;})}
   </div>;
 }
 
-function Ring({value,size=46}:{value:number;size?:number}){
-  const r=size/2-4,c=2*Math.PI*r,m=size/2;
-  return <svg className="pl-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={m} cy={m} r={r} className="track"/><circle cx={m} cy={m} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} style={{['--c' as string]:c}} transform={`rotate(-90 ${m} ${m})`}/></svg>;
-}
-/** The ring with its percentage counting up inside it. */
-function Progress({value,size}:{value:number;size:number}){
-  const n=useCountUp(Math.round(value*100));
-  return <span className="pl-progress"><Ring value={value} size={size}/><b>{n}<small>%</small></b></span>;
-}
-
 const StateMark=({s,today}:{s:PlanStatus;today:string})=><span className={`pl-state ${s.state}`}><Icon name={`plan-${s.state}`} size={16}/>{STATE_LABEL(s,today)}</span>;
 
-/** Where the plan stands in one line: next milestone and the finish. */
-function Facts({s,today,compact}:{s:PlanStatus;today:string;compact?:boolean}){
-  // The full chart already names the milestones under the line, so the facts point at the next task instead.
-  const next=!compact&&s.next&&s.next.kind!=='milestone'?s.next:null;
+/** One quiet line under the strip: where it stands, the next milestone and the finish. */
+function Facts({s,today}:{s:PlanStatus;today:string}){
+  const m=s.nextMilestone;
   return <p className="pl-facts">
-    <span><b>{s.done}/{s.total}</b> done</span>
-    {next?<span>Next: {next.title}</span>:s.nextMilestone?<span>{s.nextMilestone.title} · {dayLabel(s.nextMilestone.due!,today)}{s.nextMilestone.time?' '+s.nextMilestone.time:''}</span>:s.next?<span>Next: {s.next.title}</span>:null}
+    <StateMark s={s} today={today}/>
+    {m&&<span>{m.title} <em>{dayLabel(m.due!,today)}{m.time?' · '+m.time:''}</em></span>}
     <span>{s.state==='done'?'Finished':s.daysLeft>0?`${plural(s.daysLeft,'day')} left`:s.daysLeft===0?'Finishes today':`Ended ${plural(-s.daysLeft,'day')} ago`}</span>
   </p>;
 }
 
-/** The plan's headline: progress, title, goal, the timeline and a line of facts. */
-export function PlanSummary({plan,today=localDay(),compact=false,state=true}:{plan:SpacePlan;today?:string;compact?:boolean;state?:boolean}){
+/** The plan's headline: title and goal with the share done beside them, then the strip and one line of facts. */
+export function PlanSummary({plan,today=localDay(),compact=false}:{plan:SpacePlan;today?:string;compact?:boolean;state?:boolean}){
   const s=planStatus(plan,today);
+  const pct=useCountUp(Math.round(s.percent*100));
   return <>
-    <div className="pl-head">
-      <Progress value={s.percent} size={compact?44:56}/>
+    {!compact&&<div className="pl-head">
       <div className="pl-head-text">
         <h3>{plan.title}</h3>
         {plan.goal&&<p>{plan.goal}</p>}
-        {state&&<StateMark s={s} today={today}/>}
       </div>
-    </div>
-    <PlanChart plan={plan} today={today} compact={compact}/>
-    <Facts s={s} today={today} compact={compact}/>
+      <div className="pl-score" aria-label={`${Math.round(s.percent*100)}% done`}><b>{pct}<small>%</small></b><span>{s.done} of {plural(s.total,'task')}</span></div>
+    </div>}
+    <PlanStrip plan={plan} today={today}/>
+    <Facts s={s} today={today}/>
   </>;
 }
 
@@ -200,7 +170,7 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
   const disabled=canAsk?undefined:'Connect an AI in Settings → Models to plan with Mowr';
   const remove=async()=>{if(await confirmDialog({title:`Delete “${plan!.title}”?`,message:`The plan and its progress are removed from ${space.name}. This can’t be undone.`,confirm:'Delete plan',danger:true}))actions.onDelete();};
   if(draft)return <div className="pl-view">
-    <section className="pl-card pl-draft">
+    <section className="pl-card pl-hero pl-draft">
       <div className="pl-draft-bar"><span className="sp-eyebrow">{draft.replaces?`Draft · replaces “${draft.replaces}”`:'Draft plan'}</span>
         <div><button type="button" className="pl-btn" onClick={actions.onDiscardDraft}>Discard</button><button type="button" className="pl-btn solid" onClick={actions.onSaveDraft}>{draft.replaces?'Replace plan':'Save plan'}</button></div></div>
       <PlanSummary plan={draft.plan} today={today}/>
@@ -220,7 +190,7 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
     </section>
   </div>;
   return <div className="pl-view">
-    <section className="pl-card">
+    <section className="pl-card pl-hero">
       <PlanSummary plan={plan} today={today}/>
     </section>
     <PlanBox placeholder="Tell Mowr what changed: “finished lecture 3”, “quiz moved to Friday”…" onAsk={actions.onAsk} disabled={disabled}/>
@@ -232,14 +202,15 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
 /** The plan on a space's Overview: where it stands and what is next, one click from the Plan tab. */
 export function PlanOverviewCard({plan,onOpen}:{plan:SpacePlan;onOpen:()=>void}){
   const today=localDay(),s=planStatus(plan,today);
+  const pct=useCountUp(Math.round(s.percent*100));
   const focus=[...s.overdue,...s.today].slice(0,3);
   return <section className="sp-card pl-overview">
     <div className="pl-overview-top">
-      <Progress value={s.percent} size={44}/>
       <div className="pl-overview-title"><b>{plan.title}</b><StateMark s={s} today={today}/></div>
+      <span className="pl-overview-score">{pct}<small>%</small></span>
       <button type="button" className="pl-overview-open" onClick={onOpen}>Open plan<Icon name="arrow" size={14}/></button>
     </div>
-    <PlanChart plan={plan} today={today} compact/>
+    <PlanStrip plan={plan} today={today}/>
     {focus.length>0?<ul className="pl-overview-list">{focus.map(t=><li key={t.id}><span>{t.title}</span><Due task={t} today={today}/></li>)}</ul>
       :s.next&&<p className="pl-overview-next">Next: {s.next.title}{s.next.due?` · ${dayLabel(s.next.due,today)}`:''}</p>}
   </section>;

@@ -1,4 +1,5 @@
-// Plan timeline labels: Today never collides with a milestone, close milestones drop to a second row, nothing overlaps.
+// The plan strip: one segment per task, a diamond per milestone, a Today mark, nothing leaving the page; a long chat
+// title on Overview stays inside its column.
 // node scripts/verify/plan-track.mjs [out-dir]
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
@@ -27,14 +28,13 @@ const { page, close, errors } = await openFixture(browser, { replies: [exam, cro
 const send = async (t) => { await page.getByLabel("Your message").fill(t); await page.getByLabel("Your message").press("Enter"); };
 let bad = 0;
 const overlaps = () => page.evaluate(() => {
-  const r = (e) => e.getBoundingClientRect();
-  const track = document.querySelector(".pl-view .pl-track"); if (!track) return ["no track"];
-  const boxes = [...track.querySelectorAll(".pl-mile-label, .pl-now em")].map((e) => ({ t: e.textContent, b: r(e) }));
-  const t = r(track), hits = [];
-  for (let i = 0; i < boxes.length; i++) {
-    const a = boxes[i].b; if (a.left < t.left - 1 || a.right > t.right + 1) hits.push(`${boxes[i].t} leaves the chart`);
-    for (let j = i + 1; j < boxes.length; j++) { const b = boxes[j].b; if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) hits.push(`${boxes[i].t} × ${boxes[j].t}`); }
-  }
+  const r = (e) => e.getBoundingClientRect(), hits = [];
+  const strip = document.querySelector(".pl-view .pl-strip"); if (!strip) return ["no strip"];
+  const s = r(strip), page = r(document.querySelector(".pl-view"));
+  if (s.right > page.right + 1) hits.push("strip leaves the page");
+  for (const e of strip.children) { const b = r(e); if (b.left < s.left - 1 || b.right > s.right + 1) hits.push(e.className + " leaves the strip"); }
+  const head = [...document.querySelectorAll(".pl-view .pl-head-text, .pl-view .pl-score")].map(r);
+  if (head.length === 2 && head[0].right > head[1].left && head[0].bottom > head[1].top) hits.push("title × score");
   return hits;
 });
 for (const [i, ask] of [["1", "Plan EC"], ["2", "Plan crowded"]]) {
@@ -48,7 +48,7 @@ for (const [i, ask] of [["1", "Plan EC"], ["2", "Plan crowded"]]) {
   for (const w of [1440, 900]) {
     await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(500);
     const hits = await overlaps(); if (hits.length) { bad++; console.log(`plan ${i} @${w}: overlap`, hits); }
-    await page.locator(".pl-view .pl-card").first().screenshot({ path: `${out}/plan${i}-${w}.png` });
+    await page.locator(".pl-view").first().screenshot({ path: `${out}/plan${i}-${w}.png` });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => { location.hash = "/app"; }); await page.waitForTimeout(400);

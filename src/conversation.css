@@ -92,5 +92,6 @@ html body .composer .slash-field textarea{max-height:min(264px,38vh);overflow-y:
 /* The chat box sits on the page's own background across the whole workspace, so a table wider than the text column
    passes under it instead of showing beside it: the backdrop's colour is repeated sideways by a clipped shadow (no
    extra width, so the page never scrolls sideways), and the box stays above the messages. */
-.chat-composer{z-index:6}
-.chat-composer::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--bg);box-shadow:0 0 0 100vw var(--bg);clip-path:inset(0 -100vw);-webkit-mask:linear-gradient(transparent,#000 12px) repeat-x;mask:linear-gradient(transparent,#000 12px) repeat-x;-webkit-mask-clip:no-clip;mask-clip:no-clip}
+/* A clean edge, no fade: messages simply end where the backdrop starts. */
+.chat-composer{z-index:6;background:none}
+.chat-composer::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--bg);box-shadow:0 0 0 100vw var(--bg);clip-path:inset(0 -100vw)}

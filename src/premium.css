@@ -95,7 +95,8 @@ body .v2 .visual-exports{border-top-color:#222220}
 @keyframes pm-visual{from{opacity:0;transform:translateY(10px) scale(.99)}}
 
 /* ---------- Space lists ---------- */
-body .space-page .sp-list .sp-row{justify-content:flex-start}
+/* A long chat title is cut with an ellipsis instead of widening its row past the column. */
+body .space-page .sp-list .sp-row{justify-content:flex-start;min-width:0;max-width:calc(100% + 20px)}
 body .space-page .sp-list .sp-row span{text-align:left}
 @media (prefers-reduced-motion:reduce){body .visual-engine.v2{animation:none}}
 html[data-quiet=true] body .visual-engine.v2{animation:none}

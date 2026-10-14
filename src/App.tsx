@@ -326,6 +326,15 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   }, []);
   const panelRef = useRef<FilePanelHandle>(null);
   const [attachments, setAttachments] = useState<string[]>([]);
+  /** Files added in the chat box that have not been sent. They join the person's files (and the subject's or project's
+   *  sources) only with the message that carries them; taken off the box, or left when the chat changes, they are
+   *  deleted. The ids are remembered on disk so one left behind by a closed app is cleared at the next start. */
+  const [pendingFiles, setPendingFiles] = useState<(StoredFile & { owner: string })[]>([]);
+  const pendingRef = useRef<(StoredFile & { owner: string })[]>([]);
+  const setPending = (fn: (p: (StoredFile & { owner: string })[]) => (StoredFile & { owner: string })[]) => {
+    pendingRef.current = fn(pendingRef.current); setPendingFiles(pendingRef.current);
+    try { localStorage.setItem("mowr-pending-attachments", JSON.stringify(pendingRef.current.map((f) => [f.owner, f.id]))); } catch { /* best effort */ }
+  };
   // Google Drive files picked for the next message: read live from Drive when needed, never copied to this PC.
   const [driveRefs, setDriveRefs] = useState<DriveItem[]>([]);
   // Chats answering right now and what each is doing. Chats run side by side; stopping one never stops another.
@@ -755,6 +764,21 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // Built-in workflows apply automatically; Settings → Skills lists only the ones people make.
   const skills = state.skills.filter(s=>!s.builtin);
   const bytes = state.files.reduce((n, f) => n + f.size, 0);
+  useEffect(() => {
+    const gone = pendingRef.current.filter((f) => !attachments.includes(f.id));
+    if (!gone.length) return;
+    setPending((p) => p.filter((f) => !gone.includes(f)));
+    for (const f of gone) void deleteBlob(f.id, f.owner).catch(() => {});
+  }, [attachments]);
+  // Attachments a closed app left unsent are removed once the workspace is open.
+  useEffect(() => {
+    if (!ready) return;
+    let left: [string, string][] = [];
+    try { left = JSON.parse(localStorage.getItem("mowr-pending-attachments") || "[]"); } catch { /* none */ }
+    const known = new Set(stateRef.current.files.map((f) => f.id));
+    for (const [owner, id] of left) if (owner === ownerRef.current && !known.has(id) && !pendingRef.current.some((f) => f.id === id)) void deleteBlob(id, owner).catch(() => {});
+    setPending((p) => p);
+  }, [ready]);
   function newChat(id: string | null = null) {
     setChatId(null);
     setTemporaryNext(false);
@@ -889,6 +913,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       ...(pickedDrive.length ? { drive: pickedDrive } : {}),
       ...(pointed.length ? { pointers: pointed.map((p) => ({ file: p.file, ...(p.fileId ? { fileId: p.fileId } : {}), page: p.page, text: p.text?.slice(0, 600), area: !!p.image, ...(p.box ? { box: p.box } : {}) })) } : {}),
     };
+    const sending = pendingRef.current.filter((f) => user.attachments.includes(f.id));
+    if (sending.length) {
+      setPending((p) => p.filter((f) => !sending.includes(f)));
+      const kept = sending.map(({ owner: _owner, ...f }) => f);
+      patch((s) => ({ ...s, files: [...kept, ...s.files], spaces: s.spaces.map((x) => kept.some((f) => f.spaceId === x.id) ? { ...x, sources: [...new Set([...x.sources, ...kept.filter((f) => f.spaceId === x.id).map((f) => f.id)])] } : x) }));
+    }
     const chat = activeChat || {
       id,
       title: prompt.replace(/^\/visual\s*/, "").slice(0, 70),
@@ -1786,6 +1816,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     const destination = target ? target.spaceId : spaceId;
     const batch = Array.from(files);
     const owner=ownerRef.current;
+    const toBox = !target && (route === "/app" || attachNow);
     fileQueue.current = fileQueue.current.then(async () => {
       const added: StoredFile[] = [];
       const reused: StoredFile[] = [];
@@ -1826,9 +1857,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         }
       }
       if (added.length && owner===ownerRef.current) {
-        patch((s) => ({ ...s, files: [...added, ...s.files],spaces:s.spaces.map(x=>x.id===destination?{...x,sources:[...x.sources,...added.map(f=>f.id)]}:x) }));
-        if (!target && (route === "/app" || attachNow))
+        if (toBox) {
+          setPending((p) => [...added.map((f) => ({ ...f, owner })), ...p]);
           setAttachments((a) => [...a, ...added.map((f) => f.id)]);
+        } else patch((s) => ({ ...s, files: [...added, ...s.files],spaces:s.spaces.map(x=>x.id===destination?{...x,sources:[...x.sources,...added.map(f=>f.id)]}:x) }));
         // Saving is silent: the files appear where they were added, including whole folders.
         // Then the AI reads each first page and gives a better name where it can, one file at a time, in the background.
         // A file the person renamed or removed meanwhile is left alone. One notice says what was renamed, once the whole
@@ -1843,7 +1875,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             const item = queue.shift();
             if (!item || owner !== ownerRef.current) return;
             const chosen = (await item.refine().catch(() => undefined)) || item.name;
-            if (owner === ownerRef.current && chosen !== item.original && stateRef.current.files.some((f) => f.id === item.id && f.name === item.original)) {
+            if (owner === ownerRef.current && chosen !== item.original && pendingRef.current.some((f) => f.id === item.id && f.name === item.original)) {
+              setPending((p) => p.map((f) => (f.id === item.id ? { ...f, name: chosen } : f)));
+              final.set(item.id, chosen);
+            } else if (owner === ownerRef.current && chosen !== item.original && stateRef.current.files.some((f) => f.id === item.id && f.name === item.original)) {
               patch((s) => ({ ...s, files: s.files.map((f) => (f.id === item.id && f.name === item.original ? { ...f, name: chosen } : f)) }));
               final.set(item.id, chosen);
             }
@@ -1851,12 +1886,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           };
           await Promise.all(Array.from({ length: Math.min(3, queue.length) }, nameNext));
           if (owner !== ownerRef.current) return;
-          const renamed = kept.filter((item) => final.has(item.id) && stateRef.current.files.some((f) => f.id === item.id && f.name === final.get(item.id)));
+          const renamed = kept.filter((item) => final.has(item.id) && [...stateRef.current.files, ...pendingRef.current].some((f) => f.id === item.id && f.name === final.get(item.id)));
           if (renamed.length === 1) setToast(`Renamed to “${final.get(renamed[0].id)}” based on its content.`);
           else if (renamed.length > 1) setToast(`Renamed ${renamed.length} files based on their content.`);
         })();
       }
-      if (reused.length && owner===ownerRef.current && !target && (route === "/app" || attachNow))
+      if (reused.length && owner===ownerRef.current && toBox)
         setAttachments((a) => [...a, ...reused.map((f) => f.id).filter((id) => !a.includes(id))]);
     });
   }
@@ -2173,7 +2208,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     <form className="composer" onSubmit={send}>
       {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} aria-description={p.text || "Selected area"}>{(() => { const inner = <>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</>; return p.file !== REPLY_SOURCE && p.page ? <button type="button" className="pc-go" aria-label={`Show in ${p.file}, page ${p.page}`} onClick={() => showPointer(p)}>{inner}</button> : inner; })()}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
       <ComposerFiles items={[
-        ...attachments.map((id) => { const file = state.files.find((f) => f.id === id); return { key: id, fileId: id, name: file?.name || "Attachment", type: file?.type, size: file?.size, onRemove: () => setAttachments((a) => a.filter((x) => x !== id)) }; }),
+        ...attachments.map((id) => { const file = state.files.find((f) => f.id === id) || pendingFiles.find((f) => f.id === id); return { key: id, fileId: id, name: file?.name || "Attachment", type: file?.type, size: file?.size, onRemove: () => setAttachments((a) => a.filter((x) => x !== id)) }; }),
         ...driveRefs.map((ref) => ({ key: "drive:" + ref.id, name: ref.name, type: ref.mimeType, note: "Drive", icon: <DriveIcon mime={ref.mimeType} name={ref.name} size={13} />, onRemove: () => setDriveRefs((all) => all.filter((x) => x.id !== ref.id)) })),
       ]} />
       <SlashField
