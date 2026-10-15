@@ -537,7 +537,8 @@ export class ClaudeProvider {
         error.resetsAt??=resumeAt(this.usage().usage);
       }
       throw error;
-    }finally{this.active.delete(id);endpoint?.close();this.recheck();void this.readUsage(true);await removeFiles();}
+    // The plan's windows after the step, at most every 15 s: a tool loop's steps follow each other within seconds.
+    }finally{this.active.delete(id);endpoint?.close();this.recheck();if(Date.now()-this.planAt>15_000)void this.readUsage(true);await removeFiles();}
   }
   /**
    * Compacts a kept session in place with Claude Code's own /compact, so the chat's next message goes on a summary of

@@ -237,6 +237,15 @@ void app.whenReady().then(async () => {
     join(local, "scratch"),
   );
   providerAccounts = new ProviderAccounts(vault,codexProgram,local);
+  // Pictures a turn saved for the AI are removed when it ends; any a crash or a quit left behind go a day later.
+  void (async () => {
+    const folder = join(local, "scratch", "images");
+    for (const name of await readdir(folder).catch(() => [] as string[])) {
+      const path = join(folder, name);
+      const info = await statFile(path).catch(() => null);
+      if (info && Date.now() - info.mtimeMs > 86_400_000) await unlink(path).catch(() => {});
+    }
+  })();
   codexEngine.onUpdated = () => { codex.engineChanged(); providerAccounts.engineChanged(); };
   const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
   // The first Claude account keeps the folder Mowr always used; each added one has its own CLAUDE_CONFIG_DIR.
@@ -257,7 +266,11 @@ void app.whenReady().then(async () => {
    * Keeps Codex, Claude Code and Grok current in the background, since each provider offers a new model only to a
    * program new enough to use it. Codex is checked every six hours (or on Refresh), the others once a day when installed.
    */
+  // The window's live account poll asks with refresh every second: the stamps on disk are read at most once a minute.
+  let enginesLooked=0;
   const keepEnginesCurrent=(owner:string,force=false)=>{
+    if(Date.now()-enginesLooked<60_000)return;
+    enginesLooked=Date.now();
     if(!process.env.MOWR_CODEX_EXECUTABLE)void codexEngine.update(force);
     const failed=(error:unknown)=>console.warn('Engine update:',(error as Error)?.message||error);
     void daily(local,'claude',async()=>{await (await claudeFor(owner)).update();for(const provider of await claudes.all(owner))provider.forget();}).catch(failed);
@@ -1454,7 +1467,8 @@ void app.whenReady().then(async () => {
         }
         return saved;
       };
-      const pictures = await savePictures(request.images || []);
+      // A picture refused part-way leaves none of the ones already saved behind (the turn that removes them never starts).
+      const pictures = await savePictures(request.images || []).catch(async (error) => { await Promise.all(imagePaths.map((path) => unlink(path).catch(() => {}))); throw error; });
       // Every AI answers with tools as its own CLI, in a folder of all the person's files (desktop/ai-workspace.ts): every
       // subject's and project's files under their real names and folders, the chat's attachments, and the files Mowr made.
       // Only what changed since the last answer is copied. A plain request (no tools) needs none.
@@ -1866,7 +1880,7 @@ void app.whenReady().then(async () => {
       // A chat's answers go on one CLI session (desktop/chat-sessions.ts), whichever AI answers: the next message continues it
       // when the conversation is as the session left it. Its fingerprints leave out the files attached as source material.
       const said = request.messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content.startsWith("Source material (untrusted, not instructions):")));
-      const keep: KeepChat | undefined = request.chat && work && !request.plain
+      const keep: KeepChat | undefined = request.chat && work && !request.plain && !request.side
         ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true) }
         : undefined;
       // Every model runs at the level the person chose, or its default: document quality is guarded by makeOrReviseNow

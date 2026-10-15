@@ -587,6 +587,8 @@ export class Codex {
       if(route)route.call=undefined;
       // A kept thread that this answer did not keep (it failed, or moved to a new thread) goes with its endpoint.
       if(kept&&!keepIt)kept.end();
+      // The answer moved off a lost kept thread onto a new one: the old one's entry goes, and its endpoint unless the new thread uses it.
+      else if(kept&&session.threadId!==kept.session){this.threads.delete(kept.session);if(thread?.endpoint&&thread.endpoint!==endpoint)thread.endpoint.close();}
       if(!keepIt&&endpoint&&endpoint!==thread?.endpoint)endpoint.close();
       if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();
     }

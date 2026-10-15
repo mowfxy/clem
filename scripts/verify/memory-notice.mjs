@@ -51,7 +51,7 @@ try {
 
   // Deleting a chat forgets what was only learned from it.
   await page.getByRole("button", { name: "Chat options for Krebs cycle in plain words" }).click();
-  await page.locator(".chat-options:popover-open").getByRole("button", { name: "Delete chat" }).click();
+  await page.locator(".chat-options:popover-open").getByRole("menuitem", { name: "Delete" }).click();
   const modal = page.getByRole("dialog").filter({ hasText: "Delete conversation?" });
   await modal.waitFor({ timeout: 5000 });
   check(await modal.getByText("memory you kept stay").isVisible(), "delete dialog explains what is forgotten");

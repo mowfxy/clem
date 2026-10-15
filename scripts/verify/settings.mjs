@@ -145,13 +145,14 @@ try {
     await page.getByText("Download Mowr", { exact: true }).count(),
     0,
   );
-  const bounds = await page.locator(".greeting-row").evaluate((el) =>
-    Array.from(el.children).map((c) => {
-      const r = c.getBoundingClientRect();
-      return r.y + r.height / 2;
-    }),
-  );
-  assert.ok(Math.abs(bounds[0] - bounds[1]) < 2, "Greeting aligns with logo");
+  // The mark leads the heading's first line (src/premium.css): inside the heading, centred on that line.
+  const mark = await page.locator(".greeting-row h1").evaluate((h) => {
+    const m = h.querySelector(".mowr-mark"), r = h.getBoundingClientRect(), line = parseFloat(getComputedStyle(h).lineHeight) || r.height;
+    if (!m) return null;
+    const b = m.getBoundingClientRect();
+    return { offset: b.y + b.height / 2 - (r.y + line / 2), line };
+  });
+  assert.ok(mark && Math.abs(mark.offset) < mark.line * 0.2, "Greeting mark sits on the heading's first line: " + JSON.stringify(mark));
   assert.equal(await page.locator(".sidebar .desktop-folder-panel").count(), 0);
   await page.evaluate(() => (location.hash = "/app/settings"));
   // Settings opens as a window over the page; General has no text fields.

@@ -36,6 +36,8 @@ export type ChatOptions = {
   pdfTask?: (op: string, args: any) => Promise<{ data?: unknown; images?: { name: string; data: string }[]; files?: Uint8Array[] }>;
   /** The conversation, so crops the model cuts stay available to later answers in it. */
   chat?: string;
+  /** A request beside the chat (plan, review, source check, study set, plan step): it leaves the chat's kept CLI session alone. */
+  side?: boolean;
 };
 /** Within the request's limits (desktop/contracts.ts): at most 400 files (as many as a chat reads, MAX_CHAT_SOURCES) and 40 MB of text, the first files first. */
 function fitLibrary(files: { name: string; text: string }[]) {
@@ -57,6 +59,7 @@ export class LimitReached extends Error {
   resetsAt?: number;
   constructor(message: string, resetsAt?: number) { super(message); this.name = "LimitReached"; this.resetsAt = resetsAt; }
 }
+const STREAM_MS = 40;
 export async function desktopChat(
   messages: { role: string; content: string }[],
   scope: string,
@@ -70,13 +73,20 @@ export async function desktopChat(
   messages=condense?newestWithin(messages,2000,MAX_CHAT_CHARACTERS):boundedConversation(messages,contextBudget(options.model).conversation);
   const id = crypto.randomUUID();
   let result = "", work: number | undefined;
+  // Streamed text reaches the window at most every STREAM_MS: each update re-renders the conversation and its Markdown,
+  // and a model writes far faster than that can be seen. A finished, failed or stopped answer drops the pending one.
+  let paint: ReturnType<typeof setTimeout> | undefined;
   return new Promise<string>((resolve, reject) => {
     const cleanup = () => {
+      clearTimeout(paint);
+      paint = undefined;
       unsubscribe();
       signal.removeEventListener("abort", cancel);
     };
     const cancel = () => {
       void desktop!.invoke({ action: "cancel", id });
+      // A stopped answer keeps everything it had written.
+      if (paint) onText(result, work);
       cleanup();
       reject(new DOMException("Cancelled", "AbortError"));
     };
@@ -85,7 +95,7 @@ export async function desktopChat(
       if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
       if (event.type === "status" && event.text) onStatus?.(event.text);
       if (event.type === "condensed") onCondensed?.();
-      if (event.type === "worked") { work = result.length; onText(result, work); }
+      if (event.type === "worked") { clearTimeout(paint); paint = undefined; work = result.length; onText(result, work); }
       if (event.type === "look" && event.look) {
         const reply = (result: { images?: { name: string; data: string }[]; error?: string }) => void desktop!.invoke({ action: "pageImages", id: event.look!, ...result }).catch(() => {});
         if (!look) reply({ error: "Pages cannot be looked at in this conversation." });
@@ -98,13 +108,14 @@ export async function desktopChat(
       }
       if (event.type === "delta") {
         result += event.text || "";
-        onText(result, work);
+        paint ??= setTimeout(() => { paint = undefined; onText(result, work); }, STREAM_MS);
       }
       if (event.type === "done") {
         cleanup();
         resolve(result);
       }
       if (event.type === "error") {
+        if (paint) onText(result, work);
         cleanup();
         reject(event.limit ? new LimitReached(event.error || "Usage limit reached.", event.limit.resetsAt) : Error(event.error));
       }
@@ -115,7 +126,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.pdfs?.length ? { pdfs: options.pdfs.slice(0, 20) as { name: string; data: Uint8Array<ArrayBuffer> }[] } : {}), ...(options.pdfNotes?.length ? { pdfNotes: options.pdfNotes.slice(0, 40).map((n) => n.slice(0, 2000)) } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.chat && /^[a-zA-Z0-9_-]{1,80}$/.test(options.chat) ? { chat: options.chat } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.pdfs?.length ? { pdfs: options.pdfs.slice(0, 20) as { name: string; data: Uint8Array<ArrayBuffer> }[] } : {}), ...(options.pdfNotes?.length ? { pdfNotes: options.pdfNotes.slice(0, 40).map((n) => n.slice(0, 2000)) } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.chat && /^[a-zA-Z0-9_-]{1,80}$/.test(options.chat) ? { chat: options.chat } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.side ? { side: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);

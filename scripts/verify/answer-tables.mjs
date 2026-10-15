@@ -1,6 +1,6 @@
 // Answer tables use the room they need: a narrow header never breaks inside its word, a table with many columns grows
 // beyond the text column when the window has room (never past the workspace), and one that still does not fit scrolls
-// inside its frame. Also: a long message in the composer shows no scrollbar, and the chat menu is text only with a red Delete.
+// inside its frame. Also: a long message scrolls inside the composer behind a thin scrollbar, and the chat menu is text only with a red Delete.
 import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { openFixture } from "./local-power-fixture.mjs";
@@ -84,10 +84,10 @@ for (const width of [1920, 1100]) {
     check(under.same, `${width}: the chat box's backdrop is the page's own colour`);
     await page.screenshot({ path: `${out}/under-composer-${width}.png` });
     await page.screenshot({ path: `${out}/answer-${width}.png` });
-    // A long message: no scrollbar beside the composer's text.
+    // A long message scrolls inside the composer, behind a thin scrollbar without arrows (src/conversation.css), never the page.
     await page.locator(".composer textarea").fill("g".repeat(1400));
     const bar = await page.locator(".composer textarea").evaluate((t) => ({ scrolls: t.scrollHeight > t.clientHeight, bar: t.offsetWidth - t.clientWidth - parseFloat(getComputedStyle(t).borderLeftWidth) - parseFloat(getComputedStyle(t).borderRightWidth) }));
-    check(bar.scrolls && bar.bar === 0, `${width}: a long message scrolls in the composer with no scrollbar`);
+    check(bar.scrolls && bar.bar <= 12, `${width}: a long message scrolls in the composer behind a thin scrollbar (${bar.bar}px)`);
     await page.locator(".chat-composer").screenshot({ path: `${out}/composer-${width}.png` });
     if (width === 1920) {
       await page.locator(".composer textarea").fill("");
@@ -97,8 +97,8 @@ for (const width of [1920, 1100]) {
       const menu = page.locator(".chat-options:popover-open");
       await menu.waitFor();
       check(await menu.locator("svg").count() === 0, "the chat menu has no icons");
-      const red = await menu.getByRole("button", { name: "Delete chat" }).evaluate((b) => getComputedStyle(b).color);
-      check(red === "rgb(255, 90, 78)", "Delete chat is red (" + red + ")");
+      const red = await menu.getByRole("menuitem", { name: "Delete" }).evaluate((b) => getComputedStyle(b).color);
+      check(red === "rgb(236, 122, 111)", "Delete chat is red, --menu-danger (" + red + ")");
       await menu.screenshot({ path: `${out}/chat-menu.png` });
     }
     check(!errors.length, `${width}: no page errors` + (errors.length ? ": " + errors.join("; ") : ""));

@@ -113,6 +113,9 @@ export const requestSchema = z.discriminatedUnion("action", [
     plain: z.boolean().optional(),
     /** A temporary chat: the model reads memory and files as usual, but nothing from it is remembered or kept. */
     temporary: z.boolean().optional(),
+    /** A request Mowr makes beside the chat (a plan, a review, a source check, a study set, a plan step): it neither goes
+     *  on nor replaces the chat's kept CLI session (desktop/chat-sessions.ts). */
+    side: z.boolean().optional(),
     /** The conversation: crops the model cuts are kept with it (desktop/pdf-assets.ts). */
     chat: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
     // Sized to the largest context budget (core/context-budget.ts): one message may carry whole files.

@@ -242,6 +242,14 @@ function edgeScroll(e:DragEvent){
   }
 }
 
+/** A chat's title and messages in lower case, for Search everything: worked out once per version of the chat. */
+const chatTexts=new WeakMap<object,string>();
+function searchableText(c:{title:string;messages:{content:string}[]}){
+  let text=chatTexts.get(c);
+  if(text===undefined){text=(c.title+" "+c.messages.map((m)=>m.content).join(" ")).toLowerCase();chatTexts.set(c,text);}
+  return text;
+}
+
 /** Overdue in a plan: a small clock, on subject and project cards. */
 function PlanLateGlyph(){return <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="6" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M8 5.5v3.2l2 1.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;}
 
@@ -827,12 +835,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
     images?:{name:string;data:string}[],
-    extra:{chat?:string;documents?:{id:string;name:string}[];pdfs?:{name:string;data:Uint8Array}[];pdfNotes?:string[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>;pdfTask?:(op:string,args:any)=>Promise<any>}={},
+    extra:{chat?:string;side?:boolean;documents?:{id:string;name:string}[];pdfs?:{name:string;data:Uint8Array}[];pdfNotes?:string[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>;pdfTask?:(op:string,args:any)=>Promise<any>}={},
   ) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,...(extra.pdfs?.length?{pdfs:extra.pdfs}:{}),...(extra.pdfNotes?.length?{pdfNotes:extra.pdfNotes}:{}),library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,...(extra.pdfs?.length?{pdfs:extra.pdfs}:{}),...(extra.pdfNotes?.length?{pdfNotes:extra.pdfNotes}:{}),library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,side:extra.side,condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -1026,7 +1034,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
           ],
           model,
           controller.signal,
-          () => {}, "plan", undefined, undefined, { chat: id },
+          () => {}, "plan", undefined, undefined, { chat: id, side: true },
         );
         const plan = parseLeadPlan(raw, prompt, model, models);
         updateChat(id, (c) => ({
@@ -1225,7 +1233,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       status(id)("");
       if(studyKind){
         status(id)(studyKind==='quiz'?'Writing the quiz…':'Writing the flashcards…');
-        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:boundedConversation(next.messages.filter(m=>m.content).map(m=>({role:m.role,content:m.content})),24000)})}],model,controller.signal,()=>{},'chat',undefined,images,{chat:id,pdfs:pdfs.files,pdfNotes:pdfs.notes});
+        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:boundedConversation(next.messages.filter(m=>m.content).map(m=>({role:m.role,content:m.content})),24000)})}],model,controller.signal,()=>{},'chat',undefined,images,{chat:id,side:true,pdfs:pdfs.files,pdfNotes:pdfs.notes});
         const parsed=(await import('../core/study')).parseStudy(raw,studyKind);
         patch(s=>({...s,studySets:[...s.studySets,{...parsed,id:uid(),spaceId:activeSpace!.id,chatId:id,kind:studyKind,created:Date.now(),attempts:[]}]}));
         updateChat(id,c=>({...c,messages:c.messages.map(m=>m.id===messageId?{...m,content:`${parsed.title} is ready: ${parsed.items.length} ${studyKind==='quiz'?'questions':'flashcards'}. Open ${activeSpace!.name} in Subjects to study and track your progress.`}:m)}));
@@ -1577,7 +1585,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       // Chosen for this question within the review's room, so every file gets its share instead of only the first ones.
       // The reviewing AI sees the chat's PDFs as it reads them, beside the excerpts.
       const [sources,pdfs]=await Promise.all([chatSources(chat,question.content,controller.signal,reviewer,undefined,16000),chatPdfs(chat,question.content,reviewer,controller.signal)]);
-      const text=await streamChat([{role:"system",content:reviewInstructions},{role:"user",content:JSON.stringify({question:question.content.slice(0,12000),answer:answer.content.slice(0,24000),sources:sources.slice(0,16000)})}],reviewer,controller.signal,t=>patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:t,status:"running"}})),"step",models.find(m=>m.id===reviewer)?.defaultReasoningEffort,pdfs.pictures,{chat:chat.id,pdfs:pdfs.files,pdfNotes:pdfs.notes});
+      const text=await streamChat([{role:"system",content:reviewInstructions},{role:"user",content:JSON.stringify({question:question.content.slice(0,12000),answer:answer.content.slice(0,24000),sources:sources.slice(0,16000)})}],reviewer,controller.signal,t=>patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:t,status:"running"}})),"step",models.find(m=>m.id===reviewer)?.defaultReasoningEffort,pdfs.pictures,{chat:chat.id,side:true,pdfs:pdfs.files,pdfNotes:pdfs.notes});
       patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:text,status:"done"}}));
     }catch(e){
       patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:m.review?.content||"",status:"error"}}));
@@ -1594,7 +1602,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     try{
       const [sources,pdfs]=await Promise.all([chatSources(chat,answer.content,controller.signal,connected.id,undefined,20000),chatPdfs(chat,answer.content,connected.id,controller.signal)]);
       if(!sources.trim()&&!pdfs.notes.length)throw Error("This conversation has no readable sources to check against.");
-      const raw=await streamChat([{role:"system",content:verifyInstructions},{role:"user",content:JSON.stringify({answer:answer.content.replace(/```(?:visual|check|edit|automation|plan)[\s\S]*?```/g,"").slice(0,20000),sources:sources.slice(0,20000)})}],connected.id,controller.signal,()=>{},"step",undefined,pdfs.pictures,{chat:chat.id,pdfs:pdfs.files,pdfNotes:pdfs.notes});
+      const raw=await streamChat([{role:"system",content:verifyInstructions},{role:"user",content:JSON.stringify({answer:answer.content.replace(/```(?:visual|check|edit|automation|plan)[\s\S]*?```/g,"").slice(0,20000),sources:sources.slice(0,20000)})}],connected.id,controller.signal,()=>{},"step",undefined,pdfs.pictures,{chat:chat.id,side:true,pdfs:pdfs.files,pdfNotes:pdfs.notes});
       const claims=parseClaims(raw);
       patchMessage(chat.id,messageId,m=>({...m,verify:{status:"done",claims}}));
     }catch(e){
@@ -1758,7 +1766,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             ],
             task.model,
             signal,
-            () => {}, "step", task.reasoning, pdfs.pictures, { chat: id, library, pdfs: pdfs.files, pdfNotes: pdfs.notes },
+            () => {}, "step", task.reasoning, pdfs.pictures, { chat: id, side: true, library, pdfs: pdfs.files, pdfNotes: pdfs.notes },
           );
         },
         controller.signal,
@@ -1833,7 +1841,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           if (existing) { if (!reused.includes(existing) && !added.includes(existing)) reused.push(existing); continue; }
           // Named by what it covers; inside a subject or project its name is not repeated ("Nodal Analysis – Lecture 3").
           // The other files where it goes, so its name can follow their pattern ("… – Lecture 5").
-          const siblings = stateRef.current.files.filter((f) => f.spaceId === destination && (f.folderId ?? null) === (target?.folderId ?? null)).sort((a, b) => (b.updated || b.created) - (a.updated || a.created)).map((f) => f.name);
+          // Files waiting in the chat box (kept once sent) and the ones added before it in this batch count too.
+          const beside = (f: StoredFile) => f.spaceId === destination && (f.folderId ?? null) === (target?.folderId ?? null);
+          const siblings = [...added, ...pendingRef.current, ...stateRef.current.files].filter(beside).sort((a, b) => (b.updated || b.created) - (a.updated || a.created)).map((f) => f.name);
           const named = await (await import('./pdf/pdf-name')).namedFile(file, stateRef.current.spaces.find((x) => x.id === destination)?.name, siblings);
           // It keeps the name it came with until its final name is known: renamed once, never a rough name first.
           const name = file.name;
@@ -2190,7 +2200,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     window.addEventListener('keydown',onKey);
     return()=>window.removeEventListener('keydown',onKey);
   },[route]);
-  const searchMatches=modal==="search"?savedChats.filter((c)=>(c.title+" "+c.messages.map((m)=>m.content).join(" ")).toLowerCase().includes(search.toLowerCase())):[];
+  const searchQuery=search.toLowerCase();
+  const searchMatches=modal==="search"?savedChats.filter((c)=>searchableText(c).includes(searchQuery)):[];
   const commands:Command[]=[
     {id:'new-chat',group:'Actions',label:'New chat',hint:'Ctrl N',icon:'new',run:()=>newChat()},
     {id:'long-task',group:'Actions',label:'Start a long task',icon:'long',keywords:'plan workflow steps',run:()=>{newChat();setLong(true);}},
