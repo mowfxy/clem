@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in Mowr is broken or behaves unexpectedly.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a subject
+        2. Drop in a PDF
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: Mowr version
+      description: Settings → About
+      placeholder: 0.2.0-preview.119
+    validations:
+      required: true
+  - type: dropdown
+    id: ai
+    attributes:
+      label: Which AI were you using?
+      multiple: true
+      options: [ChatGPT (Codex), Claude, Grok, Not related]
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs
+      description: Leave out anything private from your files or chats.

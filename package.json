@@ -17,7 +17,6 @@
     "desktop:build": "npm run build && tsc -p desktop/tsconfig.json && node scripts/build-desktop.mjs",
     "desktop:dev": "npm run desktop:build && electron desktop-dist/main.cjs",
     "desktop:pack": "npm run desktop:build && electron-builder --config electron-builder.cjs --win --dir",
-    "desktop:store": "npm run desktop:build && electron-builder --config electron-builder.store.cjs --win",
     "desktop:installer": "npm run desktop:build && electron-builder --config electron-builder.cjs --win && node scripts/publish-installer.mjs",
     "test:desktop": "node scripts/build-kinetra.mjs && node --experimental-strip-types --test tests/desktop/*.test.ts",
     "desktop:smoke": "node scripts/smoke-desktop.mjs",
@@ -84,7 +83,17 @@
     "typescript": "^5.9.0",
     "vite": "^7.1.0"
   },
-  "description": "Mowr local desktop workspace and marketing website",
+  "description": "Mowr: a calm, local-first Windows workspace for projects, study and documents, powered by the AI plan you already have.",
+  "license": "MIT",
+  "author": "Mohamed Mowafy",
+  "homepage": "https://mowrai.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mowfxy/mowr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mowfxy/mowr/issues"
+  },
   "overrides": {
     "image-size": "2.0.4"
   }

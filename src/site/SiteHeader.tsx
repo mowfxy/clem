@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {Icon,Logo} from '../Icons';
 import './site.css';
+import {REPO} from './sections';
 
 const links=[['#/features','Features'],['#/#visuals','Visuals'],['#/support','Support'],['#/about','About']];
 
@@ -12,6 +13,7 @@ export function SiteHeader(){
   return <header className={`sx-header ${scrolled?'scrolled':''} ${open?'open':''}`}>
     <a className="sx-brand" href="#/" aria-label="Mowr home"><Logo size={24}/><span>mowr</span></a>
     <nav aria-label="Site">{links.map(([href,label])=><a key={href} href={href} onClick={e=>{if(href.includes('#/#')){e.preventDefault();jump(href.split('#/#')[1]);}}}>{label}</a>)}</nav>
+    <a className="sx-header-git" href={REPO} aria-label="Mowr on GitHub" title="Mowr is open source"><Icon name="github" size={18}/><span>GitHub</span></a>
     <a className="sx-btn sx-btn-primary sx-header-cta" href="/download/windows">Download</a>
     <button className="sx-menu" aria-label={open?'Close menu':'Open menu'} aria-expanded={open} onClick={()=>setOpen(!open)}><Icon name={open?'close':'menu'} size={20}/></button>
   </header>;
@@ -29,10 +31,10 @@ export function SiteFooter(){
     <div className="sx-footer-top">
       <a className="sx-brand" href="#/"><Logo size={24}/><span>mowr</span></a>
       <nav aria-label="Footer">
-        <a href="#/features">Features</a><a href="/download/windows">Download</a><a href="#/support">Support</a><a href="#/about">About</a>
+        <a href="#/features">Features</a><a href="/download/windows">Download</a><a href="#/support">Support</a><a href="#/about">About</a><a href={REPO}>GitHub</a>
         <a href="mailto:support@mowrai.com">Contact</a><a href="#/privacy">Privacy</a><a href="#/terms">Terms</a>
       </nav>
     </div>
-    <div className="sx-footer-bottom"><span>© {new Date().getFullYear()} Mowr</span><span>Your space to think.</span></div>
+    <div className="sx-footer-bottom"><span>© {new Date().getFullYear()} Mowr</span><span>Free and open source under the <a href={REPO+'/blob/main/LICENSE'}>MIT License</a>.</span></div>
   </footer>;
 }

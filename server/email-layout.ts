@@ -72,7 +72,7 @@ export function welcomeEmail(name:string):Email{
 export function updateEmail(version:string,notes:string,unsubscribe:string):Email{
  const lines=notes.split(/\r?\n/).map(l=>l.replace(/^[-*•]\s*/,'').trim()).filter(Boolean).slice(0,8);
  const download=BASE+'/download/windows';
- const note='The Microsoft Store updates Mowr for you, or open its page to update now. Your chats, files and subjects stay exactly as they are.';
+ const note='Download the new version and run it over the old one. Your chats, files and subjects stay exactly as they are.';
  const intro='A new version of Mowr is ready.';
  return {subject:`Mowr ${version} is here`,
   text:`Mowr ${version} is here.\n\n${lines.map(l=>'- '+l).join('\n')||intro}\n\nGet the update: ${download}\n\n${note}\n\nStop update emails: ${unsubscribe}`,

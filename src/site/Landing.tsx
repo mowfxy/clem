@@ -4,7 +4,7 @@ import {Icon,Logo} from '../Icons';
 import {Illustration} from '../Illustrations';
 import type {Scene} from '../vectorFilm';
 import {Reveal} from './Reveal';
-import {Faq,PayPalCard} from './sections';
+import {Faq,OpenSource,PayPalCard,REPO} from './sections';
 
 const SpecDemo=lazy(()=>import('./SpecDemo'));
 
@@ -47,9 +47,9 @@ export function Landing(){
           <p className="sx-lede">One calm place for your projects, study and documents.</p>
           <div className="sx-cta-row">
             <a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a>
-            <a className="sx-btn sx-btn-ghost sx-btn-lg" href="#/features">Explore</a>
+            <a className="sx-btn sx-btn-ghost sx-btn-lg" href={REPO}><Icon name="github" size={18}/>View source</a>
           </div>
-          <p className="sx-fine">Free to download · Free to use</p>
+          <p className="sx-fine">Free · Open source · MIT licensed</p>
         </div>
       </section>
 
@@ -78,6 +78,10 @@ export function Landing(){
             </ul>
           </div>
         </Reveal>
+      </section>
+
+      <section className="sx-section" id="open-source">
+        <OpenSource/>
       </section>
 
       <section className="sx-section" id="support">

@@ -25,6 +25,8 @@
 .sx-header.scrolled{background:#121211d9;backdrop-filter:blur(16px) saturate(1.2);border-color:#ffffff0d;padding-top:11px;padding-bottom:11px}
 .sx-brand{display:inline-flex;align-items:center;gap:9px;font-family:var(--serif);font-size:22px;color:var(--sx-ink,#f0efeb)!important;text-decoration:none}
 .sx-header nav{display:flex;gap:2px;margin-left:auto}
+.sx-header-git{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;margin-right:6px;border-radius:9px;color:#b5b4ad;font-size:14px;text-decoration:none;transition:color .2s,background .2s}
+.sx-header-git:hover{color:#fff;background:#ffffff0a}
 .sx-header nav a{padding:8px 13px;border-radius:9px;color:#b5b4ad;font-size:14px;text-decoration:none;transition:color .2s,background .2s}
 .sx-header nav a:hover{color:#fff;background:#ffffff0a}
 .sx-header .sx-btn{padding:9px 16px;font-size:14px;border-radius:11px}
@@ -127,6 +129,9 @@
 .sx-checks{list-style:none;margin:0;padding:0;display:grid;gap:14px}
 .sx-checks li{display:flex;gap:12px;align-items:center;color:var(--sx-ink);font-size:18px}
 .sx-checks li svg{flex:none;color:var(--sx-muted)}
+.sx-open{background:radial-gradient(60% 110% at 100% 0,#d8796812,transparent 60%),var(--sx-bg-2)}
+.sx-open .sx-cta-row{margin-top:30px;justify-content:flex-start}
+.sx-footer-bottom a{color:inherit;text-decoration:underline;text-underline-offset:3px}
 
 /* Pricing */
 
@@ -229,6 +234,7 @@
 }
 @media (max-width:760px){
   .sx-header nav,.sx-header-cta{display:none!important}
+  .sx-header-git{margin-left:auto;margin-right:2px}.sx-header-git span{display:none}.sx-header-git~.sx-menu{margin-left:0}
   .sx-menu{display:inline-flex!important;margin-left:auto}
   .sx-header.open{background:#121211f5;backdrop-filter:blur(16px);flex-wrap:wrap;padding-bottom:18px}
   .sx-header.open nav{display:flex!important;flex-direction:column;width:100%;order:3;margin:6px 0 0}

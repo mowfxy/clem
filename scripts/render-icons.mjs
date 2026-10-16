@@ -1,14 +1,12 @@
 // Draws Mowr's Windows icons straight from the vector logo, one image per size, so none is a scaled-down copy:
 //   desktop/icon.ico               the app, window, taskbar and shortcut icon (16–256 px, PNG entries)
-//   build/appx/Square44x44Logo.targetsize-*.png   the Store build's taskbar, Start and title-bar icons
-//   public/logo.png                a large copy for the Store tiles (scripts/store-assets.py) and drag previews
-// Run: node scripts/render-icons.mjs  (needs Playwright's Chromium). Then run scripts/store-assets.py for the tiles and Store logos.
+//   public/logo.png                a large copy for drag previews
+// Run: node scripts/render-icons.mjs  (needs Playwright's Chromium).
 import { chromium } from "@playwright/test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 const svg = await readFile("public/logo.svg", "utf8");
 const icoSizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
-const targetSizes = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256];
 // The petals' extent inside the 144-unit viewBox, so the mark can be sized by what is actually drawn.
 const drawn = 124 / 144;
 // Small icons get a larger mark: at 16 px every pixel of petal counts; large ones keep a little breathing room.
@@ -40,15 +38,7 @@ images.forEach(({ size, png }, i) => {
 });
 await writeFile("desktop/icon.ico", Buffer.concat([header, ...images.map((x) => x.png)]));
 
-// Store taskbar icons: light petals for dark taskbars ("unplated"), ink petals for light ones ("lightunplated").
-await mkdir("build/appx", { recursive: true });
-for (const size of targetSizes) {
-  const light = await render(size, "#f5f4f0"), dark = await render(size, "#121211");
-  await writeFile(`build/appx/Square44x44Logo.targetsize-${size}.png`, light);
-  await writeFile(`build/appx/Square44x44Logo.targetsize-${size}_altform-unplated.png`, light);
-  await writeFile(`build/appx/Square44x44Logo.targetsize-${size}_altform-lightunplated.png`, dark);
-}
-// A large copy of the same mark for the tiles and drag previews.
+// A large copy of the same mark for drag previews.
 {
   const size = 1254, mark = svg.replace("<svg ", `<svg width="${size}" height="${size}" `);
   await page.setViewportSize({ width: size, height: size });
@@ -56,4 +46,4 @@ for (const size of targetSizes) {
   await writeFile("public/logo.png", await page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } }));
 }
 await browser.close();
-console.log(`Wrote desktop/icon.ico (${icoSizes.join(", ")} px) and ${targetSizes.length * 3} taskbar icons.`);
+console.log(`Wrote desktop/icon.ico (${icoSizes.join(", ")} px) and public/logo.png.`);

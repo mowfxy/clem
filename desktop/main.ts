@@ -186,8 +186,7 @@ void app.whenReady().then(async () => {
   await mkdir(durableSession,{recursive:true});
   const migrationMarker=join(durableSession,'.migration-complete');
   try{await access(migrationMarker);}catch{for(const name of ['IndexedDB','Local Storage','Session Storage']){const source=join(previousSession,name);try{await access(source);}catch{continue;}await cp(source,join(durableSession,name),{recursive:true,force:false,errorOnExist:false});}await writeFile(migrationMarker,'1');}
-  // A Store (MSIX) install already has the package's own ID; overriding it splits the window from its Start and taskbar pin.
-  if (!process.windowsStore) app.setAppUserModelId("com.mowrai.desktop");
+  app.setAppUserModelId("com.mowrai.desktop");
   await afterUpdate(workspaceRoot,app.getVersion(),async()=>{await session.defaultSession.clearCache();await session.defaultSession.clearCodeCaches({});}).catch(()=>{});
   // Copies of files opened in the browser from earlier runs.
   void rm(join(app.getPath("temp"),"Mowr","view"),{recursive:true,force:true}).catch(()=>{});
@@ -863,9 +862,7 @@ void app.whenReady().then(async () => {
   type Background = { keepRunning: boolean; startWithWindows: boolean };
   const backgroundKey = "background-settings";
   let background = await vault.read<Background>(backgroundKey, { keepRunning: true, startWithWindows: true }).catch(() => ({ keepRunning: true, startWithWindows: true }) as Background);
-  // A Store (MSIX) install can't register itself to start with Windows this way (Windows ignores it), so the option is hidden there.
-  const startupSupported = !process.windowsStore;
-  const applyLogin = () => { if (app.isPackaged && startupSupported) app.setLoginItemSettings({ openAtLogin: background.keepRunning && background.startWithWindows, args: ["--background"] }); };
+  const applyLogin = () => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: background.keepRunning && background.startWithWindows, args: ["--background"] }); };
   applyLogin();
   const showWindow = () => { if (window.isDestroyed()) return; if (window.isMinimized()) window.restore(); window.show(); window.focus(); };
   tray = new Tray(nativeImage.createFromPath(join(__dirname, "../desktop/icon.ico")));
@@ -889,7 +886,7 @@ void app.whenReady().then(async () => {
       await vault.write(backgroundKey, background);
       applyLogin();
     }
-    return { keepRunning: background.keepRunning, startWithWindows: background.startWithWindows, startupSupported };
+    return { keepRunning: background.keepRunning, startWithWindows: background.startWithWindows };
   });
   window.webContents.session.webRequest.onBeforeSendHeaders(
     {urls:["https://www.youtube-nocookie.com/embed/*"]},

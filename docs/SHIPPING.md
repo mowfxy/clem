@@ -15,7 +15,7 @@ This flow is implemented, but a real user's authorization and subsequent inferen
 - Exercise a clean-machine install, sign-in, password reset, MFA, Codex authorization and a real streamed answer; confirm cancellation, expired login, usage-limit errors and relaunch persistence.
 - Verify live Google Drive consent and DOCX/XLSX/PPTX import with a non-owner account. Confirm consent-screen publishing/allowlists. Legacy email-MFA accounts still require a scoped proof handoff for desktop Drive.
 - Verify support/reset email delivery.
-- Sign the Windows executable/installer and establish a tested update and rollback process. The unsigned preview has a public installer download; source remains private.
+- Sign the Windows executable/installer and establish a tested update and rollback process. The unsigned preview has a public installer download; the source is public under the MIT License.
 - Configure and test Lemon Squeezy checkout, webhook, renewals and portal before a paid launch. Payments remain deferred at the owner's request; non-exempt accounts still require entitlement.
 - Finish offline workspace access. The startup entitlement check still needs a connection.
 - Subject ZIP export/import now includes chats, source files, document edits, quizzes, flashcards and attempt history. Workspace-wide JSON still excludes file contents. Verify the Documents migration and keep/delete uninstall choices on a clean Windows machine, plus storage-full recovery.

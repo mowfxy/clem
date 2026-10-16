@@ -6,6 +6,7 @@ import type {Scene} from '../vectorFilm';
 import {Icon} from '../Icons';
 import {features} from '../features';
 import {Reveal} from './Reveal';
+import {REPO} from './sections';
 
 const scenes:Record<string,Scene>={'financial-analysis':'balance','physics-diagrams':'telescope','technical-reports':'build',research:'discover',learning:'learn',presentations:'conversation','professional-documents':'pencil','connected-work':'folder'};
 // Provider-specific pages are not part of the product story.
@@ -19,7 +20,7 @@ function MarketingPage({route}:{route:string}){
   useEffect(()=>{window.scrollTo(0,0);document.title=feature?`${feature.title} — Mowr`:route==='/about'?'About Mowr':'Mowr features';},[route,feature]);
   return <div className="sx-site"><SiteHeader/><main>
     {route==='/about'?<section className="sx-page-hero">
-      <Reveal><h1>A place for<br/>serious curiosity.</h1><p className="sx-lede">Mowr is a calm desktop workspace for learning, research and professional work. Your files stay yours.</p><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
+      <Reveal><h1>A place for<br/>serious curiosity.</h1><p className="sx-lede">Mowr is a calm desktop workspace for learning, research and professional work. Your files stay yours, and the code is open for anyone to read.</p><div className="sx-cta-row"><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a><a className="sx-btn sx-btn-ghost sx-btn-lg" href={REPO}><Icon name="github" size={18}/>View on GitHub</a></div></Reveal>
     </section>:feature?<>
       <section className="sx-feature-hero">
         <Reveal><a className="sx-back" href="#/features"><Icon name="arrow" size={14}/>Features</a><h1>{feature.line}</h1><p className="sx-lede">{feature.intro}</p><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
