@@ -39,3 +39,18 @@ test("visual blocks are found in Markdown with their captions; unreadable ones a
   const blocks = documentBlocks(md);
   assert.deepEqual(blocks.map((b) => b.kind), ["paragraph", "visual", "paragraph", "paragraph"]);
 });
+
+test('a diagram edge that would run through another node bows around it instead of hiding behind it', async () => {
+  const { routeEdges } = await import('../core/visual-spec.ts');
+  const box = (x: number) => ({ x, y: 220, w: 100, h: 42, r: 40, lines: [''], shape: 'box' as const });
+  const layout = new Map([['sea', box(100)], ['cloud', box(400)], ['rain', box(700)]]);
+  const [forward, , back] = routeEdges(layout, [{ from: 'sea', to: 'cloud' }, { from: 'cloud', to: 'rain' }, { from: 'rain', to: 'sea' }]);
+  assert.equal(forward.points.length, 2, 'a clear edge stays straight');
+  assert.ok(back.points.length > 2, 'the back edge is curved');
+  const apex = back.at(0.5);
+  assert.ok(Math.abs(apex[1] - 220) > 40, 'its middle clears the row of nodes: ' + apex);
+  for (const [x, y] of back.points.slice(1, -1)) assert.ok(!(Math.abs(x - 400) < 56 && Math.abs(y - 220) < 27), 'it never passes through the middle node');
+  // Two edges between the same nodes in opposite directions part to either side.
+  const twins = routeEdges(new Map([['a', box(100)], ['b', box(400)]]), [{ from: 'a', to: 'b' }, { from: 'b', to: 'a' }]);
+  assert.ok(Math.sign(twins[0].at(0.5)[1] - 220) === -Math.sign(twins[1].at(0.5)[1] - 220));
+});

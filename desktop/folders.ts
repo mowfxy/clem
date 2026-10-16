@@ -1,5 +1,5 @@
 import { opendir, lstat, readFile, realpath } from "node:fs/promises";
-import { relative, resolve, join, extname, isAbsolute } from "node:path";
+import { relative, join, extname, isAbsolute } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import ignore, { type Ignore } from "ignore";
 

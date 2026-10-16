@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {SiteFooter,SiteHeader} from './SiteHeader';
 import {Icon,Logo} from '../Icons';
 import {SecuritySettings} from '../AccountSettings';
+import {getSupabase} from '../supabase';
 import {REPO} from './sections';
 
 type Release={url:string;version:string;signed:boolean;sha256?:string;size?:number;released?:string;notes?:string};
@@ -11,6 +12,17 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
   const [release,setRelease]=useState<Release|null>(null);
   const [failed,setFailed]=useState(false);
   const [started,setStarted]=useState(false);
+  // Account settings appear only for someone signed in on the web; a visitor sees the download alone.
+  const [signedIn,setSignedIn]=useState(false);
+  useEffect(()=>{
+    if(!account){setSignedIn(false);return;}
+    const client=getSupabase();
+    if(!client)return;
+    let live=true;
+    void client.auth.getSession().then(({data})=>{if(live)setSignedIn(!!data.session);}).catch(()=>{});
+    const {data:{subscription}}=client.auth.onAuthStateChange((_event,session)=>{if(live)setSignedIn(!!session);});
+    return()=>{live=false;subscription.unsubscribe();};
+  },[account]);
   const link=release?.url;
   const wantsStart=()=>/[?&]start\b/.test(location.hash);
   const autostart=useRef(wantsStart()),releaseRef=useRef<Release|null>(null);
@@ -44,7 +56,7 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
           </div>:failed?<p role="alert" className="sx-download-meta">We couldn’t load the latest release. <a className="sx-link" href="/download/windows">Try the direct link</a> or email support@mowrai.com.</p>:<p role="status" className="sx-download-meta">Finding the latest version…</p>}
         </>}
       </section>
-      {account&&<section className="sx-section sx-account"><SecuritySettings/></section>}
+      {account&&signedIn&&<section className="sx-section sx-account"><SecuritySettings/></section>}
     </main>
     <SiteFooter/>
   </div>;

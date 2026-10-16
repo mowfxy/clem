@@ -2,7 +2,7 @@ import { submitSupport } from "./support";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
 import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "./file-maker";
-import { LIBRARY, TEXT, laneFolders, mirrorFor, mirroredId, newOutputs, removeOldFolders, spaceFolders, syncMirror, workspaceLane, workspaceNote, workspacePath, workspaceRelative, type MirrorFile, type WorkspaceState } from "./ai-workspace";
+import { LIBRARY, TEXT, laneFolders, mirrorFor, mirroredId, newOutputs, removeOldFolders, spaceFolders, syncMirror, workspaceLane, workspaceNote, workspacePath, workspaceRelative, type MirrorFile } from "./ai-workspace";
 import { officeText } from "./office-text";
 import { withMarkdownSource, uncheckedExamples } from "./markdown-source";
 import { answerReview, calculationIntent } from "./answer-review";
@@ -1542,7 +1542,6 @@ void app.whenReady().then(async () => {
         extra: blocks.join("\n\n"),
         continued,
       });
-      const prompt = promptWith(contextBlocks);
       // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
       // times on the way, and the person should get the final file, not every draft (and not one card per tool call).
       const delivery = new Map<string, any>();

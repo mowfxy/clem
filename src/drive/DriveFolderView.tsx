@@ -119,8 +119,12 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   }
   // What is dropped is read during the drop itself; the browser empties it right after.
   const dropped = (e: DragEvent) => {
-    const folders = Array.from(e.dataTransfer.items || []).filter((i) => i.kind === "file" && i.webkitGetAsEntry?.()?.isDirectory).length;
-    const local = Array.from(e.dataTransfer.files).filter((f, i) => !(e.dataTransfer.items?.[i]?.webkitGetAsEntry?.()?.isDirectory));
+    // `items` also holds the drag's text entries, so files are read from the file items themselves, not by position.
+    const entries = Array.from(e.dataTransfer.items || []).filter((i) => i.kind === "file");
+    const folders = entries.filter((i) => i.webkitGetAsEntry?.()?.isDirectory).length;
+    const local = entries.length
+      ? entries.filter((i) => !i.webkitGetAsEntry?.()?.isDirectory).map((i) => i.getAsFile()).filter((f): f is File => !!f)
+      : Array.from(e.dataTransfer.files);
     const mowr = e.dataTransfer.getData("application/x-mowr-file");
     if (folders) setError("Folders are not copied to Drive yet; drop the files inside them.");
     // Several selected Mowr files travel together as one comma-separated list.

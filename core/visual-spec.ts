@@ -382,19 +382,23 @@ export function compileVisual(raw: unknown): CompiledVisual {
     hasFlow = edges.some(e => e.flow);
     for (const s of spec.steps || []) for (const f of s.focus || []) if (!ids.has(f)) throw Error(`A step highlights an unknown node “${f}”.`);
     const layout = layoutDiagram(nodes, edges, spec.direction || 'right');
+    const routes = routeEdges(layout, edges);
     draw = (pen, _values, t, step) => {
       const focus = step !== undefined && spec.steps?.[step]?.focus ? new Set(spec.steps[step].focus) : null;
       const dim = (id: string) => (focus && !focus.has(id) ? 0.32 : 1);
       edges.forEach((e, i) => {
-        const a = layout.get(e.from)!, b = layout.get(e.to)!;
-        const [p1, p2] = clipEdge(a, b), alpha = Math.min(dim(e.from), dim(e.to));
+        const { points, at } = routes[i], alpha = Math.min(dim(e.from), dim(e.to));
         const hot = focus && focus.has(e.from) && focus.has(e.to);
-        arrow(pen, p1[0], p1[1], p2[0], p2[1], { stroke: hot ? palette.ink : palette.soft, width: hot ? 1.8 : 1.4, dash: e.dashed ? [5, 5] : undefined, alpha: alpha * (hot ? 1 : 0.8) }, 8);
+        const style = { stroke: hot ? palette.ink : palette.soft, width: hot ? 1.8 : 1.4, dash: e.dashed ? [5, 5] : undefined, alpha: alpha * (hot ? 1 : 0.8) };
+        // A curved edge is drawn as a line up to its last stretch, which carries the arrowhead.
+        const tail = Math.max(0, points.length - 4);
+        if (tail > 0) pen.path(points.slice(0, tail + 1), { ...style, fill: undefined });
+        arrow(pen, points[tail][0], points[tail][1], points[points.length - 1][0], points[points.length - 1][1], style, 8);
         if (e.flow && alpha === 1) {
-          for (const k of [0, 0.5]) { const f = ((t * 0.45 + k + i * 0.137) % 1 + 1) % 1; const x = p1[0] + (p2[0] - p1[0]) * f, y = p1[1] + (p2[1] - p1[1]) * f; pen.circle(x, y, 7, { fill: palette.coral, alpha: 0.14 }); pen.circle(x, y, 3.2, { fill: palette.coral }); }
+          for (const k of [0, 0.5]) { const f = ((t * 0.45 + k + i * 0.137) % 1 + 1) % 1; const [x, y] = at(f); pen.circle(x, y, 7, { fill: palette.coral, alpha: 0.14 }); pen.circle(x, y, 3.2, { fill: palette.coral }); }
         }
         if (e.label) {
-          const mx = (p1[0] + p2[0]) / 2, my = (p1[1] + p2[1]) / 2, w = textWidth(e.label, 11) + 12;
+          const [mx, my] = at(0.5), w = textWidth(e.label, 11) + 12;
           pen.path(roundRect(mx - w / 2, my - 10, w, 19, 6), { fill: palette.bg, alpha: 0.92 * alpha }, true);
           pen.text(mx, my + 4, e.label, { size: 11, color: palette.soft, align: 'middle', alpha });
         }
@@ -484,15 +488,41 @@ export function compileVisual(raw: unknown): CompiledVisual {
 }
 
 type Box = { x: number; y: number; w: number; h: number; r: number; lines: string[]; shape: 'box' | 'pill' | 'circle' };
+export type DiagramBox = Box;
 function circlePoints(x: number, y: number, r: number): P[] { return Array.from({ length: 49 }, (_, i) => { const a = Math.PI * 2 * i / 48; return [x + r * Math.cos(a), y + r * Math.sin(a)] as P; }); }
-function clipEdge(a: Box, b: Box): [P, P] {
-  const cut = (from: Box, to: Box): P => {
-    const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy) || 1;
-    if (from.shape === 'circle') return [from.x + dx / len * (from.r + 3), from.y + dy / len * (from.r + 3)];
-    const sx = Math.abs(dx) > 1e-9 ? (from.w / 2 + 4) / Math.abs(dx) : Infinity, sy = Math.abs(dy) > 1e-9 ? (from.h / 2 + 4) / Math.abs(dy) : Infinity, s = Math.min(sx, sy);
-    return [from.x + dx * s, from.y + dy * s];
-  };
-  return [cut(a, b), cut(b, a)];
+/** Where a line from the middle of `from` towards `to` leaves its outline. */
+function cut(from: Box, to: P): P {
+  const dx = to[0] - from.x, dy = to[1] - from.y, len = Math.hypot(dx, dy) || 1;
+  if (from.shape === 'circle') return [from.x + dx / len * (from.r + 3), from.y + dy / len * (from.r + 3)];
+  const sx = Math.abs(dx) > 1e-9 ? (from.w / 2 + 4) / Math.abs(dx) : Infinity, sy = Math.abs(dy) > 1e-9 ? (from.h / 2 + 4) / Math.abs(dy) : Infinity, s = Math.min(sx, sy);
+  return [from.x + dx * s, from.y + dy * s];
+}
+/** Whether the segment p→q passes through a box (with a small margin), tested by sampling along it. */
+function crosses(p: P, q: P, box: Box) {
+  const hw = (box.shape === 'circle' ? box.r : box.w / 2) + 6, hh = (box.shape === 'circle' ? box.r : box.h / 2) + 6;
+  for (let k = 1; k < 24; k++) { const x = p[0] + (q[0] - p[0]) * k / 24, y = p[1] + (q[1] - p[1]) * k / 24; if (Math.abs(x - box.x) < hw && Math.abs(y - box.y) < hh) return true; }
+  return false;
+}
+export type EdgeRoute = { points: P[]; at: (f: number) => P };
+/** Each edge's path. Straight when nothing is in the way; an edge that would run through another node, or that has
+ *  a twin going the other way, bows to one side (forward edges one way, back edges the other) so every edge shows. */
+export function routeEdges(layout: Map<string, DiagramBox>, edges: { from: string; to: string }[]): EdgeRoute[] {
+  const pairs = new Set(edges.map(e => JSON.stringify([e.from, e.to])));
+  return edges.map(e => {
+    const a = layout.get(e.from)!, b = layout.get(e.to)!;
+    const blocked = [...layout].some(([id, box]) => id !== e.from && id !== e.to && crosses([a.x, a.y], [b.x, b.y], box));
+    const twin = pairs.has(JSON.stringify([e.to, e.from]));
+    if (!blocked && !twin) {
+      const p1 = cut(a, [b.x, b.y]), p2 = cut(b, [a.x, a.y]);
+      return { points: [p1, p2], at: (f: number): P => [p1[0] + (p2[0] - p1[0]) * f, p1[1] + (p2[1] - p1[1]) * f] };
+    }
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    const bend = blocked ? Math.max(64, Math.min(150, len * 0.3)) : 26;
+    const c: P = [(a.x + b.x) / 2 - dy / len * bend, (a.y + b.y) / 2 + dx / len * bend];
+    const p1 = cut(a, c), p2 = cut(b, c);
+    const at = (f: number): P => { const u = 1 - f; return [u * u * p1[0] + 2 * u * f * c[0] + f * f * p2[0], u * u * p1[1] + 2 * u * f * c[1] + f * f * p2[1]]; };
+    return { points: Array.from({ length: 29 }, (_, k) => at(k / 28)), at };
+  });
 }
 /** Places nodes: explicit 0–100 coordinates when every node has them, otherwise layered by dependency. */
 function layoutDiagram(nodes: NonNullable<VisualSpec['nodes']>, edges: NonNullable<VisualSpec['edges']>, direction: 'right' | 'down') {

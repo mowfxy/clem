@@ -62,7 +62,7 @@ const light = (c: string, f: number) => mix(c, '#ffffff', f), dark = (c: string,
 /* ── Vectors (world, y up) ── */
 const add = (a: V, b: V): V => [a[0] + b[0], a[1] + b[1]], sub = (a: V, b: V): V => [a[0] - b[0], a[1] - b[1]], mul = (a: V, k: number): V => [a[0] * k, a[1] * k];
 const len = (a: V) => Math.hypot(a[0], a[1]), unit = (a: V): V => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; }, left = (a: V): V => [-a[1], a[0]];
-const dot = (a: V, b: V) => a[0] * b[0] + a[1] * b[1], cross = (a: V, b: V) => a[0] * b[1] - a[1] * b[0];
+const dot = (a: V, b: V) => a[0] * b[0] + a[1] * b[1];
 const polar = (deg: number, r = 1): V => [Math.cos(deg * Math.PI / 180) * r, Math.sin(deg * Math.PI / 180) * r];
 const lerp = (a: V, b: V, f: number): V => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
 

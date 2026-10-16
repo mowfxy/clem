@@ -15,7 +15,7 @@ import express from "express";
 import { once } from "node:events";
 import { createHash, timingSafeEqual, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { modelCatalog, generate } from "./providers.ts";
+import { modelCatalog } from "./providers.ts";
 import { diagram } from "./diagram.ts";
 import { capabilities } from "./config.ts";
 import { db, ensureUser } from "./db.ts";

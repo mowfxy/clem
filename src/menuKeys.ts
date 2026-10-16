@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
  *  label. Destructive rows pick first so Delete/Remove keep their D/R. */
 export function menuKeys(rows: { label: string; danger?: boolean }[]): (string | null)[] {
   const used = new Set<string>(), keys: (string | null)[] = rows.map(() => null);
-  const order = rows.map((r, i) => i).sort((a, b) => Number(!!rows[b].danger) - Number(!!rows[a].danger));
+  const order = rows.map((_, i) => i).sort((a, b) => Number(!!rows[b].danger) - Number(!!rows[a].danger));
   for (const i of order) {
     const label = rows[i].label.toUpperCase();
     const pick = [...label.split(/\s+/).map((w) => w[0] || ""), ...label].find((c) => /^[A-Z]$/.test(c) && !used.has(c));
