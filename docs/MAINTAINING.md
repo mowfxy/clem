@@ -12,7 +12,6 @@ The website's download page reads `public/desktop-release.json`. Releases are pu
 
 - `npm run deploy` builds and deploys the website to Vercel.
 - `npm run deploy:accounts` deploys the account Worker in `cloudflare/`.
-- Donations: set `PAYPAL_URL` in `src/support-link.tsx`. Until it is set, the Support button shows but does nothing.
 
 ## Admin portal
 

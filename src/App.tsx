@@ -121,7 +121,6 @@ import { matchSource, type Citation } from "../core/citations";
 import { weakConcepts } from "./SubjectStudy";
 import "./chat/chat.css";
 import "./chat/workspace.css";
-import { SupportLink, PayPalMark } from "./support-link";
 import { StorageSummary } from './files/StorageSummary';
 import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } from "../core/chat-title";
@@ -2453,7 +2452,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     ) : settingsTab === "Usage" ? (
                       <UsageSettings chats={savedChats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
                     ) : settingsTab === "Help & support" ? (
-                      <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Keep Mowr free" description="Mowr costs nothing. If it helps you, a donation keeps it that way."><SupportLink className="secondary support-paypal"><PayPalMark size={16}/>Support with PayPal</SupportLink></SettingRow></SettingsCard></>
+                      <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Open source" description="Mowr is free and open source. Read the code, report a bug or suggest an idea on GitHub."><a className="secondary" href="https://github.com/mowfxy/mowr" target="_blank" rel="noreferrer">GitHub</a></SettingRow></SettingsCard></>
                     ) : (<>
                       <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>

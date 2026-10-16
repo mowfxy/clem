@@ -81,5 +81,4 @@ Final verification: 51 automated tests, frontend/server/desktop typechecks, pack
 
 - Mowr is free. The account Worker grants access to every signed-in, non-suspended account (`reason: "free"`; owner and complimentary reasons remain for records) and checkout answers "already have access". Deployed.
 - Desktop setup is three steps (username, name, memory) with no plan step; accounts parked on the old plan step open straight into the workspace.
-- A PayPal support link appears on the pricing card and in Settings → Help & support. `PAYPAL_URL` in `src/support-link.tsx` is empty, so the link looks normal but does nothing; set it and redeploy the site (and ship a new installer for the in-app link) to switch it on.
-- Website copy, FAQ and terms now describe a free product with voluntary donations.
+- Website copy, FAQ and terms now describe a free, open-source product with no donations or paid plan.

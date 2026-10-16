@@ -4,7 +4,7 @@ import {Icon,Logo} from '../Icons';
 import {Illustration} from '../Illustrations';
 import type {Scene} from '../vectorFilm';
 import {Reveal} from './Reveal';
-import {Faq,OpenSource,PayPalCard,REPO} from './sections';
+import {Faq,OpenSource,REPO} from './sections';
 
 const SpecDemo=lazy(()=>import('./SpecDemo'));
 
@@ -82,11 +82,6 @@ export function Landing(){
 
       <section className="sx-section" id="open-source">
         <OpenSource/>
-      </section>
-
-      <section className="sx-section" id="support">
-        <Reveal className="sx-head"><h2>Support</h2></Reveal>
-        <PayPalCard/>
       </section>
 
       <section className="sx-section" id="faq">

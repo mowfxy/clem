@@ -1,4 +1,4 @@
-Mowafy Serif comes from https://github.com/mowfxy/serif at revision e5e2dfc (Mowafy Serif 3.1: lighter, evenly spaced weights, natural italics, Source Serif 4
+Mowafy Serif comes from https://github.com/mowfxy/serif at revision e5e2dfc (Mowafy Serif 3.1: lighter, evenly spaced weights, natural italics, built on Source Serif 4,
 with Arabic, Greek, Hebrew, Devanagari, Bengali, Tamil, Thai, Armenian,
 Georgian, math, science and Coptic companion families).
 Import a newer revision with `python scripts/import-serif.py <serif checkout>`.

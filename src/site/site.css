@@ -133,23 +133,13 @@
 .sx-open .sx-cta-row{margin-top:30px;justify-content:flex-start}
 .sx-footer-bottom a{color:inherit;text-decoration:underline;text-underline-offset:3px}
 
-/* Pricing */
-
-
-
-
-
-
-
-.sx-paypal{display:grid;grid-template-columns:auto 1fr auto;gap:26px;align-items:center;max-width:860px;padding:34px 36px;border-radius:26px;border:1px solid var(--sx-line-2);background:radial-gradient(70% 120% at 0 0,#009cde12,transparent 60%),var(--sx-bg-2)}
-.sx-paypal-mark{width:72px;height:72px;border-radius:20px;display:grid;place-items:center;background:#f0efeb}
-.sx-site .sx-paypal h2{font:700 22px/1.2 var(--sans);letter-spacing:var(--track-title);margin-bottom:6px}
-.sx-paypal p{margin:0;font-size:18px}
-.sx-paypal .sx-btn svg{margin-right:-2px}
-.sx-paypal+.sx-fine{margin-top:22px}
-.sx-paypal+.sx-fine a{color:var(--sx-ink)}
-@media (max-width:760px){.sx-paypal{grid-template-columns:1fr;padding:26px}.sx-paypal .sx-btn{width:100%}}
-.support-pending,.support-pending:hover,.support-pending:active{cursor:default;transform:none}
+/* Help */
+.sx-help{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.sx-help-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:28px;border-radius:22px;border:1px solid var(--sx-line);background:var(--sx-bg-2)}
+.sx-help-card>svg{color:var(--sx-soft);margin-bottom:6px}
+.sx-site .sx-help-card h2{font:600 20px/1.2 var(--sans);letter-spacing:var(--track-title);margin:0}
+.sx-help-card p{margin:0 0 12px;font-size:16px;flex:1}
+@media (max-width:860px){.sx-help{grid-template-columns:1fr}.sx-help-card .sx-btn{width:100%}}
 
 
 

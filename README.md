@@ -168,9 +168,9 @@ The full map is in [Architecture → Find the code](docs/ARCHITECTURE.md#find-th
 
 Bug reports, fixes and ideas are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) to get set up, and open an issue before large changes. Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
-## Support Mowr
+## Spread the word
 
-Mowr is free and stays free. If it helps you, you can support it from the [website](https://mowrai.com/#/support) or in Settings, or star this repo. For help with the app, email [support@mowrai.com](mailto:support@mowrai.com).
+Mowr is free and stays free. If it helps you, star this repo, share it, or send a fix. For help with the app, email [support@mowrai.com](mailto:support@mowrai.com).
 
 ## License
 
