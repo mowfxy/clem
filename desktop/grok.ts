@@ -1,6 +1,6 @@
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {describeTool,StepCounter} from './tool-status.ts';
-import {copyFile, mkdir, readdir, rename, rm, stat, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
@@ -441,6 +441,19 @@ export class GrokProvider {
   /** Removes a turn's PDFs from the working folder once its answer is done. */
   async dropPdfs(turn:string){if(/^[0-9a-f-]{36}$/i.test(turn))await rm(join(this.workspace(),'.pdfs-'+turn),{recursive:true,force:true}).catch(()=>{});}
   /** Grok keeps headless sessions under ~/.grok/sessions; the ones a finished tool loop made are removed (best effort: its layout is not documented). */
+  /** The tokens a session has used so far, from Grok's own usage.json (its input counts the cached part too); undefined when there is none. */
+  async sessionTokens(sessionId:string):Promise<{input:number;cacheRead:number;cacheWrite:number;output:number}|undefined>{
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId))return undefined;
+    const base=join(this.home||join(process.env.USERPROFILE||'','.grok'),'sessions');
+    for(const folder of await readdir(base).catch(()=>[] as string[])){
+      const s=(JSON.parse(await readFile(join(base,folder,sessionId,'usage.json'),'utf8').catch(()=>'null')) as any)?.session;
+      if(!s||typeof s!=='object')continue;
+      const n=(v:unknown)=>Math.max(0,Number(v)||0);
+      const read=n(s.cachedReadTokens),write=n(s.cacheCreationTokens);
+      return {input:Math.max(0,n(s.inputTokens)-read-write),cacheRead:read,cacheWrite:write,output:n(s.outputTokens)};
+    }
+    return undefined;
+  }
   async endSession(sessionId:string){
     if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!this.home&&!process.env.USERPROFILE||process.env.MOWR_KEEP_SESSIONS)return;
     const base=join(this.home||join(process.env.USERPROFILE!,'.grok'),'sessions');

@@ -7,11 +7,11 @@ import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-s
 import {AppServer} from "./app-server.ts";
 import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn,SessionLost,type AnswerGates} from "./kinetra-turn.ts";
 import {blockPrint,type ChatSessions} from "./chat-sessions.ts";
-import type {TurnStats} from "./turn-timing.ts";
+import {addTokens,type TurnStats} from "./turn-timing.ts";
 import {StepCounter} from "./tool-status.ts";
 import {kinetraMcp,codexMcpConfig,inlinePictures,keepingAlive,NATIVE_NOTE,type NativeEndpoint,type NativeCall} from "./kinetra-mcp.ts";
 /** A chat answer that may go on, and is kept as, the chat's thread (desktop/main.ts KeepChat, with the store and account). */
-export type KeepCodex={key:string;history:string;after:string;blocks:string[];continuation:(sent:Set<string>)=>string;store:ChatSessions;account:string};
+export type KeepCodex={key:string;history:string;after:string;blocks:string[];prints?:string[];continuation:(sent:Set<string>)=>string;store:ChatSessions;account:string};
 
 /** While a reply might still turn out to be a tool envelope, hold it instead of streaming it. */
 export function mayBeTool(text: string) {
@@ -517,7 +517,8 @@ export class Codex {
     const turn={cancelled:false};this.turns.set(id,turn);
     // Every model step that asked for tools and the calls in it, across the answer's turns (the timing log).
     const steps=new StepCounter();
-    const session:TurnSession=folder?{folder,steps}:{steps};
+    const tokens=stats?(t:{input:number;cacheRead:number;cacheWrite:number;output:number})=>addTokens(stats,t):undefined;
+    const session:TurnSession=folder?{folder,steps,tokens}:{steps,tokens};
     // Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools: one endpoint for the thread,
     // added to it when it starts. Each answer on the thread routes the endpoint's calls to its own tool loop.
     // A plain request (no files, no tools) stays text only.
@@ -575,7 +576,7 @@ export class Codex {
       // The thread that wrote the answer stays for the chat's next message, with its endpoint (routed to nothing between answers).
       const threadId=session.threadId,server=this.server;
       if(keep&&threadId&&server&&!turn.cancelled){
-        const sent=new Set([...(stats?.continued&&kept?kept.sent:[]),...keep.blocks.map(blockPrint),blockPrint(instructions)]);
+        const sent=new Set([...(stats?.continued&&kept?kept.sent:[]),...keep.blocks.map(blockPrint),...(keep.prints||[]),blockPrint(instructions)]);
         const ep=endpoint,mcp=session.mcp;
         this.threads.set(threadId,{server,endpoint:ep,route,mcp});
         keep.store.keep(keep.key,{provider:"codex",account:keep.account,model:selection?.model||"",session:threadId,history:keep.after,sent,end:()=>{this.threads.delete(threadId);ep?.close();}});

@@ -15,9 +15,11 @@ import {liveText} from './live-reply.ts';
  * prompt, and one reply may make as many calls as the tool loop allows. Safe mode is left out then, since it turns off
  * every MCP server; Claude Code runs in Mowr's own configuration folder and workspace either way.
  */
-export function claudeArgs(model:string,effort:string|undefined,session:{id:string;resume:boolean}|undefined,mcpConfig?:string){
+export function claudeArgs(model:string,effort:string|undefined,session:{id:string;resume:boolean}|undefined,mcpConfig?:string,bare=false){
   const tools=mcpConfig
     ?['--tools','WebSearch','--allowedTools',`WebSearch,${CLAUDE_TOOL}`,'--mcp-config',mcpConfig,'--strict-mcp-config','--disable-slash-commands','--max-turns',String(MAX_CALLS+10)]
+    // A side job (a memory note, a file name, a chat brief) is one reply from the text it is given: no tools, one turn.
+    :bare?['--tools','','--disallowedTools','mcp__*','--strict-mcp-config','--disable-slash-commands','--max-turns','1','--safe-mode']
     :['--tools','WebSearch','--allowedTools','WebSearch','--disallowedTools','mcp__*','--max-turns','6','--safe-mode'];
   const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model,...tools,'--permission-prompts','none'];
   // A tool loop keeps one Claude Code session across its steps: later steps send only the new results and Claude Code supplies the history.
@@ -96,6 +98,11 @@ export function claudeOpensPdfPages(path=process.env.PATH||''){
   if(pdfPages===undefined)pdfPages=path.split(delimiter).some(dir=>dir&&['pdftoppm.exe','pdftoppm'].some(name=>existsSync(join(dir,name))));
   return pdfPages;
 }
+/**
+ * The whole system prompt of a side job (desktop/main.ts quickAsk): in place of Claude Code's own, which describes a
+ * coding agent's tools and ways of working and is several thousand tokens read again by every memory note and file name.
+ */
+export const SIDE_JOB_SYSTEM='You are a helper inside Mowr, a desktop app for learning and professional work. Do exactly the task the message gives, from the text (and any file) it includes, and reply with only what the task asks for, in the format it names. You have no tools.';
 export type ClaudeImage = { mime: string; data: string };
 export type ClaudePdf = { name: string; data: string };
 /** A Claude Code too old for --system-prompt-file: the step is run again with the rules in the message. */
@@ -162,7 +169,7 @@ const levels=(names:string[])=>names.map(reasoningEffort=>({reasoningEffort,desc
 export const claudeModels:ClaudeModel[] = [
   {id:'claude:sonnet',name:'Claude Sonnet 5.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Sonnet on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'medium'},
   {id:'claude:opus',name:'Claude Opus 5.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Opus on your Claude subscription',reasoningEfforts:levels(['low','medium','high']),defaultReasoningEffort:'high'},
-  {id:'claude:haiku',name:'Claude Haiku 4.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
+  {id:'claude:haiku',name:'Claude Haiku 5.5',provider:'Anthropic',connected:true,context:32000,specialties:[],tools:[],description:'Current Haiku on your Claude subscription',reasoningEfforts:[],defaultReasoningEffort:''},
 ];
 /**
  * What went wrong when Claude Code ended without an answer, from everything it said: the `error` kind on its synthetic
@@ -416,7 +423,9 @@ export class ClaudeProvider {
    */
   /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. `system`: Mowr's system prompt.
    *  `pdfs`: PDFs read whole as document blocks, as claude.ai takes an upload (every page as drawn plus its text). */
-  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall,{system,pdfs=[],workspace}:{system?:string;pdfs?:ClaudePdf[];workspace?:ClaudeWorkspace}={}):Promise<void>{
+  async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall,{system,pdfs=[],workspace,bare=false}:{system?:string;pdfs?:ClaudePdf[];workspace?:ClaudeWorkspace;bare?:boolean}={}):Promise<void>{
+    // A side job replaces Claude Code's coding-agent prompt (and its tools) with a few lines: it answers from the text it is given.
+    if(bare&&!session&&!native&&!workspace)system??=SIDE_JOB_SYSTEM;else bare=false;
     // The request as asked: a step run again (NoSystemFile below) adds its own notes to it, not to this one's.
     const asked=prompt;
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
@@ -457,7 +466,7 @@ export class ClaudeProvider {
       if(mcpFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(mcpFile,claudeMcpConfig(endpoint!),{mode:0o600});}
       child=workspace
         ?await this.start([...claudeCliArgs(model.slice(7),effort,session,{mcpConfig:mcpFile,addDirs:workspace.readOnly||[],settingsFile,agentsFile}),...(systemFile?['--append-system-prompt-file',systemFile]:[])],workspace.root)
-        :await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile),...(systemFile?['--system-prompt-file',systemFile]:[])]);
+        :await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile,bare),...(systemFile?['--system-prompt-file',systemFile]:[])]);
     }
     catch(error){endpoint?.close();await removeFiles();throw error;}
     this.active.set(id,child);
@@ -478,7 +487,12 @@ export class ClaudeProvider {
         const read=(line:string)=>{
           if(!line.trim())return;
           let event:any;try{event=JSON.parse(line);}catch{return;}
-          if(event.type==='result'){result=event;logUsage(model,event);return;}
+          if(event.type==='result'){
+            result=event;logUsage(model,event);
+            const u=event.usage;
+            if(u)emit({id,type:'tokens',input:Number(u.input_tokens)||0,cacheRead:Number(u.cache_read_input_tokens)||0,cacheWrite:Number(u.cache_creation_input_tokens)||0,output:Number(u.output_tokens)||0});
+            return;
+          }
           if(event.type==='assistant'&&(typeof event.error==='string'||event.isApiErrorMessage||event.message?.model==='<synthetic>')){
             if(typeof event.error==='string')apiError=event.error;
             apiText=(event.message?.content||[]).filter((part:any)=>part?.type==='text').map((part:any)=>String(part.text||'')).join(' ').slice(0,2000)||apiText;
@@ -530,7 +544,7 @@ export class ClaudeProvider {
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
     }catch(error){
       // Nothing ran: the same step again, with the rules in the message instead.
-      if(error instanceof NoSystemFile)return this.run(id,asked,model,effort,emit,images,session,native,{system,pdfs,workspace});
+      if(error instanceof NoSystemFile)return this.run(id,asked,model,effort,emit,images,session,native,{system,pdfs,workspace,bare});
       // Out of usage: the plan's own windows are read now, so the meter shows it and the notice knows when it resets.
       if(error instanceof UsageLimit){
         await this.readUsage(true).catch(()=>{});

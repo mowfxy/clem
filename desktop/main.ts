@@ -52,7 +52,7 @@ import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
-import { ChatSessions, COMPACT_AT_TOKENS, blockPrint, conversationPrint } from "./chat-sessions";
+import { ChatSessions, COMPACT_AT_TOKENS, blockPrint, conversationPrint, memoryPrint, sourcePrint } from "./chat-sessions";
 import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
@@ -68,7 +68,8 @@ import {CropAssets,cropTools,memoryIo,readAsset,temporaryStores,type AssetIo} fr
 import type {EditHelpers} from './pdf-edit-tools';
 import {typesetBlock} from './text-block';
 import {kinetraTool} from './kinetra-runtime';
-import {turnTimer,type TurnStats} from './turn-timing';
+import {turnTimer,addTokens,type TurnStats} from './turn-timing';
+import {answerLedger} from './answer-ledger';
 import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook} from '../core/mowr-skills';
 import {cleanAiName,namingPrompt} from '../core/file-naming';
@@ -218,6 +219,8 @@ void app.whenReady().then(async () => {
     if (owner === watchOwner) folderWatcher!.sync(folders);
   }
   const local = join(app.getPath("userData"), "runtime");
+  /** What every answer cost, in counts only (desktop/answer-ledger.ts; scripts/answer-ledger.mjs prints it). */
+  const ledger = answerLedger(join(app.getPath("userData"), "logs"));
   await mkdir(local, { recursive: true });
   const codexExecutable =
     process.env.MOWR_CODEX_EXECUTABLE ||
@@ -355,7 +358,7 @@ void app.whenReady().then(async () => {
   /** A chat's answer that may go on, and is kept as, the chat's CLI session (desktop/chat-sessions.ts): `history` is the
    *  conversation before this message, `after` the one after its answer, `continuation(sent)` this message alone for a
    *  session that has already been sent the given context blocks. */
-  type KeepChat = { key: string; history: string; after: string; blocks: string[]; continuation: (sent: Set<string>) => string };
+  type KeepChat = { key: string; history: string; after: string; blocks: string[]; prints?: string[]; continuation: (sent: Set<string>) => string };
   /** Each provider account's own name for the session store (an account switch never continues another's session). */
   const accountIds = new WeakMap<object, string>();
   const accountOf = (provider: object) => { let id = accountIds.get(provider); if (!id) { id = randomUUID(); accountIds.set(provider, id); } return id; };
@@ -365,7 +368,7 @@ void app.whenReady().then(async () => {
    * feature never works on one provider only. Each answer logs its timings (desktop/turn-timing.ts).
    */
   async function answerWith(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void, options: AnswerOptions = {}) {
-    const timer = turnTimer(model?.startsWith(GROK_PREFIX) ? "grok" : model?.startsWith("claude:") ? "claude" : "codex");
+    const timer = turnTimer(model?.startsWith(GROK_PREFIX) ? "grok" : model?.startsWith("claude:") ? "claude" : "codex", { model, record: (entry) => void ledger.record(entry) });
     try {
       await answerTimed(owner, id, model, reasoning, prompt, timer.watch(emit), options, timer.stats);
       timer.end();
@@ -410,10 +413,13 @@ void app.whenReady().then(async () => {
     // When that fails, the message starts a new session with the conversation as text instead.
     if (kept && !grok && (kept.context ?? 0) > COMPACT_AT_TOKENS) {
       emit({ id, type: "status", text: "Summarising the work so far…" });
-      try { kept.context = await (current.provider as ClaudeProvider).compact(kept.session, model!, workspace?.root); }
+      // A summary keeps the work, not every guide and note word for word: they all go again with this message.
+      try { kept.context = await (current.provider as ClaudeProvider).compact(kept.session, model!, workspace?.root); kept.sent = new Set(); stats.compacted = true; }
       catch { kept.end(); kept = undefined; }
     }
     if (kept) { sessions.push({ id: kept.session, provider: current.provider }); stats.continued = true; }
+    // Grok counts a session's tokens in its own usage.json: a kept session's count so far is taken off this answer's.
+    const grokBefore = grok && kept ? await (current.provider as GrokProvider).sessionTokens(kept.session).catch(() => undefined) : undefined;
     // The message's own pictures go with the first step that runs, on whichever session it opens.
     let delivered = false;
     // The context the latest step read (Claude reports it): a session grown large is compacted before the next message.
@@ -433,6 +439,7 @@ void app.whenReady().then(async () => {
         else if (event.type === "partial") screen.partial(event.text || "", !!event.fresh);
         else if (event.type === "status") emit({ ...event, id });
         else if (event.type === "context") context = event.tokens;
+        else if (event.type === "tokens") addTokens(stats, event);
         else if (event.type === "toolsteps") { stats.cliSteps = (stats.cliSteps || 0) + (event.steps || 0); stats.cliCalls = (stats.cliCalls || 0) + (event.calls || 0); }
       };
       const own = !delivered || !followUp;
@@ -479,11 +486,16 @@ void app.whenReady().then(async () => {
       emit({ id, type: "worked" });
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: () => emit({ id, type: "worked" }), stats, continued: !!kept, fresh: prompt }).then((text) => {
+    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: () => emit({ id, type: "worked" }), stats, continued: !!kept, fresh: prompt }).then(async (text) => {
+      if (grok) for (const [i, session] of sessions.entries()) {
+        const used = await (session.provider as GrokProvider).sessionTokens(session.id).catch(() => undefined);
+        const before = i === 0 && stats.continued ? grokBefore : undefined;
+        if (used) addTokens(stats, before ? { input: used.input - before.input, cacheRead: used.cacheRead - before.cacheRead, cacheWrite: used.cacheWrite - before.cacheWrite, output: used.output - before.output } : used);
+      }
       // The session that wrote the answer stays for the chat's next message; the context it was sent is remembered.
       const last = sessions.at(-1);
       if (keep && last && !cancelled()) {
-        const sent = new Set([...(stats.continued && kept ? kept.sent : []), ...keep.blocks.map(blockPrint)]);
+        const sent = new Set([...(stats.continued && kept ? kept.sent : []), ...keep.blocks.map(blockPrint), ...(keep.prints || [])]);
         chatSessions.keep(keep.key, { provider: kind, account: accountOf(last.provider), model: model!, session: last.id, history: keep.after, sent, context, end: () => void last.provider.endSession(last.id).catch(() => {}) });
         sessions.pop();
       }
@@ -526,7 +538,7 @@ void app.whenReady().then(async () => {
         const claude = await claudeFor(owner);
         // Haiku when the account's plan lists it; otherwise the model the person chats with (run refuses unlisted models).
         const light = exact ? model : claude.listed.some((m) => m.id === "claude:haiku") ? "claude:haiku" : model;
-        await claude.run(id, prompt, light, exact ? reasoning : undefined, collect, [], undefined, undefined, pdf ? { pdfs: [{ name: pdf.name, data: Buffer.from(pdf.data).toString("base64") }] } : {});
+        await claude.run(id, prompt, light, exact ? reasoning : undefined, collect, [], undefined, undefined, { bare: true, ...(pdf ? { pdfs: [{ name: pdf.name, data: Buffer.from(pdf.data).toString("base64") }] } : {}) });
       } else {
         const grok = await grokFor(owner);
         try { await grok.run(id, pdf ? `${prompt}\n\nThe PDF is saved for you as ${grokPdfPath(id, 0, pdf.name)}: open it with read_file first.` : prompt, model, collect, [], undefined, exact ? reasoning : undefined, pdf ? { pdfs: [pdf] } : {}); }
@@ -1516,11 +1528,15 @@ void app.whenReady().then(async () => {
         pictureNote.trim(),
         pdfNote.trim(),
       ].filter(Boolean);
-      const promptWith = (blocks: string[], continued = false) => composePrompt({
+      // On a chat's kept session the memory and each source excerpt also go once, and again only when they change: the
+      // session already holds them from an earlier message (`sent`, desktop/chat-sessions.ts).
+      const shownName = memoryState.enabled ? setup.displayName : undefined;
+      const memorySent = memoryPrint(shownName, memories);
+      const promptWith = (blocks: string[], continued = false, sent?: Set<string>) => composePrompt({
         messages,
-        sources,
-        memories,
-        name: memoryState.enabled ? setup.displayName : undefined,
+        sources: sent ? sources.filter((s) => !sent.has(sourcePrint(s))) : sources,
+        memories: sent?.has(memorySent) ? [] : memories,
+        name: sent?.has(memorySent) ? undefined : shownName,
         // Claude and Grok have coreRules in their system prompt (answerWith).
         rulesInSystem: cli || !!work,
         extra: blocks.join("\n\n"),
@@ -1878,7 +1894,7 @@ void app.whenReady().then(async () => {
       // when the conversation is as the session left it. Its fingerprints leave out the files attached as source material.
       const said = request.messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content.startsWith("Source material (untrusted, not instructions):")));
       const keep: KeepChat | undefined = request.chat && work && !request.plain && !request.side
-        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true) }
+        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, prints: [memorySent, ...sources.map(sourcePrint)], continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true, sent) }
         : undefined;
       // Every model runs at the level the person chose, or its default: document quality is guarded by makeOrReviseNow
       // (a plan every section must meet, checks recomputed before a file is made, a failure never sent twice), not by more thinking.

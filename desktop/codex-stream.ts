@@ -15,7 +15,15 @@ export const WEB_SEARCH = "live";
 /** `folder`: the thread works in the conversation's folder of files (desktop/ai-workspace.ts) as Codex itself: its own base
  *  instructions (Mowr's go in as developer instructions) and its shell, sandboxed to write only there with no network. */
 /** `steps`: counts the answer's tool steps across its turns (desktop/tool-status.ts StepCounter). */
-export type TurnSession = { threadId?: string; mcp?: Record<string, unknown>; folder?: { root: string; instructions: string }; steps?: StepCounter };
+export type TurnSession = { threadId?: string; mcp?: Record<string, unknown>; folder?: { root: string; instructions: string }; steps?: StepCounter; tokens?: (t: { input: number; cacheRead: number; cacheWrite: number; output: number }) => void };
+/** One model response's tokens from Codex's thread/tokenUsage/updated (its `last`): its input counts the cached and cache-written parts too. */
+export function codexTokens(params: any) {
+  const last = params?.tokenUsage?.last ?? params?.tokenUsage?.last_token_usage ?? params?.info?.last_token_usage;
+  if (!last || typeof last !== "object") return undefined;
+  const n = (v: unknown) => Math.max(0, Number(v) || 0);
+  const input = n(last.inputTokens ?? last.input_tokens), cached = n(last.cachedInputTokens ?? last.cached_input_tokens), written = n(last.cacheWriteInputTokens);
+  return { input: Math.max(0, input - cached - written), cacheRead: cached, cacheWrite: written, output: n(last.outputTokens ?? last.output_tokens) };
+}
 
 /**
  * A folder thread's settings. On Windows only the unelevated sandbox runs without an administrator's setup; it keeps
@@ -130,6 +138,7 @@ export async function streamTurn(
       onFail: (error) => finish(cancelled() ? Error("Request cancelled") : error),
       onMessage: (method, p) => {
         if (!ended) touch();
+        if (method === "thread/tokenUsage/updated") { const t = codexTokens(p); if (t) session.tokens?.(t); return; }
         if (method === "item/started" && (p.item?.type === "reasoning" || p.item?.type === "agentMessage")) step++;
         else if (method === "item/started" && TOOL_ITEMS.has(p.item?.type)) control.steps?.add(`${turnId}:${step}`, String(p.item.id || ""));
         try {

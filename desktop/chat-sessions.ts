@@ -53,6 +53,11 @@ export function conversationPrint(turns: { role: string; content: string }[]) {
 }
 /** A fingerprint of one context block (a folder note, a file guide), to send each one once per session. */
 export const blockPrint = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 24);
+/** The fingerprint of what Mowr knows about the person as one message carries it (their name and the memories chosen
+ *  for it): on a kept session it goes again only when it changed. */
+export const memoryPrint = (name: string | undefined, memories: { text: string }[]) => blockPrint("memory\u0000" + (name || "") + "\u0000" + JSON.stringify(memories.map((m) => m.text)));
+/** The fingerprint of one source excerpt (a passage of a linked file): sent once per kept session. */
+export const sourcePrint = (s: { source: string; text: string }) => blockPrint("source\u0000" + s.source + "\u0000" + s.text);
 
 export class ChatSessions {
   private kept = new Map<string, KeptSession>();
