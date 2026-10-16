@@ -78,7 +78,7 @@ export function SubjectStudy({
   useEffect(() => {
     if (!card) return;
     const key = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest("input,textarea")) return;
+      if ((e.target as HTMLElement).closest("input,textarea") || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
       if (!revealed && (e.key === " " || e.key === "Enter")) { e.preventDefault(); setRevealed(true); }
       else if (revealed && ["1", "2", "3", "4"].includes(e.key)) grade(Number(e.key) as Grade);
     };

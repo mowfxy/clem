@@ -41,16 +41,19 @@ export function useChatScroll(chatId: string | null, messageCount: number, lastQ
     // up with when it comes to rest (or after a moment, where scrollend is not supported).
     const target: HTMLElement | Window = el === document.scrollingElement ? window : el;
     let done = false;
+    const finish = () => { done = true; target.removeEventListener("scrollend", land); for (const t of ["wheel", "touchmove", "keydown"]) el.removeEventListener(t, takeOver); };
     const land = () => {
       if (done) return;
-      done = true;
-      target.removeEventListener("scrollend", land);
+      finish();
       settling.current = 0;
       follow.current = true;
       setAway(false);
       el.scrollTop = el.scrollHeight;
     };
+    // The person scrolling during the glide takes over: it stops where they leave it, without a snap at the end.
+    const takeOver = () => { if (done) return; finish(); settling.current = 0; el.scrollTo({ top: el.scrollTop }); };
     target.addEventListener("scrollend", land, { once: true });
+    for (const t of ["wheel", "touchmove", "keydown"]) el.addEventListener(t, takeOver, { passive: true });
     setTimeout(land, 1500);
   }, []);
 

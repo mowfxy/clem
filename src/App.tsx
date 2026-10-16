@@ -286,7 +286,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(() => {
     const before = shownDraft.current;
     if (before.key === draftKey) { drafts.current.set(draftKey, draft); shownDraft.current = { key: draftKey, text: draft }; return; }
-    const restored = draft === before.text ? drafts.current.get(draftKey) ?? "" : draft;
+    // A cleared box on arrival is the new chat starting clean; an unsent draft waiting for this chat comes back then too.
+    const restored = draft === before.text || !draft ? drafts.current.get(draftKey) ?? "" : draft;
     shownDraft.current = { key: draftKey, text: restored };
     drafts.current.set(draftKey, restored);
     if (restored !== draft) setDraft(restored);
@@ -2277,7 +2278,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       else if(key==='-'||key==='_'){e.preventDefault();setTextSize(size=>size==='large'?'default':'small');}
       else if(key==='0'&&!e.shiftKey){e.preventDefault();setTextSize('default');}
       else if(!e.shiftKey&&/^[1-5]$/.test(key)){
-        e.preventDefault();setPalette(false);setSettingsOpen(false);
+        e.preventDefault();e.stopImmediatePropagation();setPalette(false);setSettingsOpen(false);
         const [page]=nav[Number(key)-1];
         if(page==='new')newChat();else navigate(`/app/${page}`);
       }
@@ -2306,11 +2307,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   usePlaceHistory({ route, chatId: route === "/app" ? chatId : null, spaceId }, (place) => {
     if (place.route === "/app") { setChatId(place.chatId); setSpaceId(place.spaceId); }
     if (workspaceRoute() !== place.route) navigate(place.route);
-  }, (id) => stateRef.current.chats.some((c) => c.id === id), ready && route.startsWith("/app"));
+  }, (id) => stateRef.current.chats.some((c) => c.id === id), ready && route.startsWith("/app"), workspaceRoute);
   // The open chat's row stays in view in the sidebar, however it was opened (palette, keys, Back).
   useEffect(() => { if (route === "/app" && chatId) requestAnimationFrame(() => document.querySelector<HTMLElement>(".sidebar-history .history-item.chosen")?.scrollIntoView({ block: "nearest" })); }, [chatId, route]);
   // The conversation opens at its latest message and follows a streaming answer while the person stays at the end.
-  const lastQuestion = activeChat ? [...activeChat.messages].reverse().find((m) => m.role === "user")?.id : undefined;
+  let lastQuestion: string | undefined;
+  for (let i = (activeChat?.messages.length ?? 0) - 1; i >= 0 && !lastQuestion; i--) if (activeChat!.messages[i].role === "user") lastQuestion = activeChat!.messages[i].id;
   const chatScroll = useChatScroll(route === "/app" ? activeChat?.id ?? null : null, activeChat?.messages.length ?? 0, lastQuestion);
   const composerUI = (
     <form className="composer" onSubmit={send}>
@@ -2487,7 +2489,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     <section className="history-group" key={g.label} aria-label={g.label}>
                       <div className="history-label"><span>{g.label}</span>{gi === 0 && tools}</div>
                       {g.items.map((c) => (
-                  <div className={`history-row ${c.id === chatId && route === "/app" ? "chosen" : ""} ${c.id in runs ? "is-working" : ""} ${unseen.has(c.id) ? "is-unseen" : ""}`} key={c.id}>{renamingChat === c.id ? <form className="history-rename" onSubmit={(e) => { e.preventDefault(); renameChat(c.id, String(new FormData(e.currentTarget).get("title") || "")); }}><input name="title" aria-label={`New name for ${c.title}`} defaultValue={c.title} maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()} onBlur={(e) => renameChat(c.id, e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setRenamingChat(null); } }} /></form> : <><button
+                  <div className={`history-row ${c.id === chatId && route === "/app" ? "chosen" : ""} ${c.id in runs ? "is-working" : ""} ${unseen.has(c.id) ? "is-unseen" : ""}`} key={c.id}>{renamingChat === c.id ? <form className="history-rename" onSubmit={(e) => { e.preventDefault(); renameChat(c.id, String(new FormData(e.currentTarget).get("title") || "")); }}><input name="title" aria-label={`New name for ${c.title}`} defaultValue={c.title} maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()} onBlur={(e) => { if (e.currentTarget.dataset.cancelled !== "1") renameChat(c.id, e.currentTarget.value); }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.currentTarget.dataset.cancelled = "1"; setRenamingChat(null); } }} /></form> : <><button
                     className={`history-item ${c.id === chatId && route === "/app" ? "chosen" : ""}`}
                     onClick={() => {
                       setChatId(c.id);
@@ -2845,14 +2847,15 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 {desktop&&<Suspense fallback={null}><PcFolders scopeLabel={scopeLabel} onBrowse={folderId=>setFolderView({folderId})}/></Suspense>}
                 {(() => {
                   // Kinds present in the workspace, for the filter chips; a filter whose files are all gone resets to All.
+                  const kindById = new Map(state.files.map((f) => [f.id, kindOf(f)]));
                   const counts = new Map<FileKind, number>();
-                  for (const f of state.files) counts.set(kindOf(f), (counts.get(kindOf(f)) || 0) + 1);
+                  for (const k of kindById.values()) counts.set(k, (counts.get(k) || 0) + 1);
                   const kind = fileKind !== "all" && counts.has(fileKind) ? fileKind : "all";
                   const q = search.trim().toLowerCase();
                   const spaceName = (f: StoredFile) => state.spaces.find((s) => s.id === f.spaceId)?.name || "Personal workspace";
                   const when = (f: StoredFile) => f.updated || f.created;
                   const shown = state.files
-                    .filter((f) => (kind === "all" || kindOf(f) === kind) && (!q || f.name.toLowerCase().includes(q) || spaceName(f).toLowerCase().includes(q)))
+                    .filter((f) => (kind === "all" || kindById.get(f.id) === kind) && (!q || f.name.toLowerCase().includes(q) || spaceName(f).toLowerCase().includes(q)))
                     .sort((a, b) => fileSort === "name" ? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) : fileSort === "size" ? b.size - a.size : fileSort === "oldest" ? when(a) - when(b) : when(b) - when(a));
                   if (!state.files.length) return null;
                   return <>

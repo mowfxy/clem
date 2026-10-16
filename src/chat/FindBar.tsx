@@ -3,7 +3,7 @@ import { Icon } from "../Icons";
 
 /** Matches are painted with the CSS Custom Highlight API, so the page's own elements are never rewritten. */
 const ALL = "mowr-find", CURRENT = "mowr-find-current";
-const MAX = 2000;
+const MAX = 1000;
 type Highlights = { set(name: string, value: unknown): void; delete(name: string): void };
 const registry = (): Highlights | undefined => (globalThis.CSS as unknown as { highlights?: Highlights } | undefined)?.highlights;
 const HighlightClass = (globalThis as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight;
@@ -47,11 +47,12 @@ export function FindBar({ scope, focusKey = 0, onClose }: { scope: string; focus
   // Search again as the query changes and as the page changes (a streaming answer, a new message).
   useEffect(() => {
     const area = document.querySelector(scope);
-    if (!area) { setRanges([]); return; }
+    if (!area || !query.trim()) { setRanges([]); return; }
     let timer: ReturnType<typeof setTimeout> | undefined;
     const run = () => { timer = undefined; setRanges(findRanges(area, query.trim())); };
     run();
-    const observer = new MutationObserver(() => { timer ??= setTimeout(run, 150); });
+    // Recounted at most a few times a second while the page changes (an answer streaming in).
+    const observer = new MutationObserver(() => { timer ??= setTimeout(run, 400); });
     observer.observe(area, { subtree: true, childList: true, characterData: true });
     return () => { observer.disconnect(); clearTimeout(timer); };
   }, [query, scope]);

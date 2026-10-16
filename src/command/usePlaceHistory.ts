@@ -10,14 +10,14 @@ const LIMIT = 60;
  * forward buttons. Conversations are not in the address, so the workspace keeps its own trail. `exists` drops places
  * whose chat was deleted since.
  */
-export function usePlaceHistory(here: Place, go: (place: Place) => void, exists: (chatId: string) => boolean, enabled: boolean) {
+export function usePlaceHistory(here: Place, go: (place: Place) => void, exists: (chatId: string) => boolean, enabled: boolean, liveRoute: () => string) {
   const trail = useRef<Place[]>([]);
   const at = useRef(-1);
   // The place being travelled to by Back or Forward; the steps on the way there (the chat changes before the page
   // does) are not new places.
   const moving = useRef<{ place: Place; until: number } | null>(null);
-  const latest = useRef({ go, exists, enabled });
-  latest.current = { go, exists, enabled };
+  const latest = useRef({ go, exists, enabled, here, liveRoute });
+  latest.current = { go, exists, enabled, here, liveRoute };
 
   // Every new place joins the trail (dropping anything ahead of it), unless it was reached by going back or forward.
   useEffect(() => {
@@ -37,9 +37,12 @@ export function usePlaceHistory(here: Place, go: (place: Place) => void, exists:
   }, [here.route, here.chatId, here.spaceId, enabled]);
 
   useEffect(() => {
-    const step = (by: -1 | 1) => {
-      const { go, exists, enabled } = latest.current;
+    const step = (by: -1 | 1, tries = 0): boolean => {
+      const { go, exists, enabled, here, liveRoute } = latest.current;
       if (!enabled || document.querySelector("dialog[open]")) return false;
+      // A page change still on its way (the address has moved, the workspace has not caught up) is waited for, so the
+      // step starts from where the person really is.
+      if ((liveRoute() !== here.route || (moving.current && performance.now() < moving.current.until)) && tries < 20) { setTimeout(() => step(by, tries + 1), 25); return true; }
       const list = trail.current;
       for (let i = at.current + by; i >= 0 && i < list.length; i += by) {
         const place = list[i];

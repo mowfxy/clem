@@ -14,9 +14,11 @@ const browser = await chromium.launch();
 const { page, close, errors } = await openFixture(browser, { port: 5191, replies: [reply], extraChats: [{ id: "c-long", title: "A long chat", spaceId: null, updated: Date.now(), messages: long }] });
 const at = () => page.evaluate(() => { const w = document.querySelector(".workspace"); return { gap: w.scrollHeight - w.clientHeight - w.scrollTop, jump: !!document.querySelector(".jump-latest") }; });
 const title = () => page.locator(".top-title").textContent();
+// A sidebar chat by its title (a "new reply" mark can join the button's name).
+const row = (name) => page.locator(".sidebar-history .history-item").filter({ has: page.locator(".history-title", { hasText: new RegExp("^" + name + "$") }) });
 try {
   // The sidebar marks the open chat once; "New chat" is not highlighted as well.
-  await page.getByRole("button", { name: "A long chat", exact: true }).click();
+  await row("A long chat").click();
   await page.waitForTimeout(500);
   assert.equal(await page.locator(".nav-item.active").count(), 0, "no page is marked while a chat is open");
   assert.ok((await at()).gap < 4, "a chat opens at its latest message");
@@ -37,8 +39,8 @@ try {
   await page.waitForTimeout(800);
   assert.ok((await at()).gap > 300, "the view stays where the person is reading");
   await page.locator(".jump-latest").click();
-  await page.waitForTimeout(1600);
-  assert.deepEqual(await at().then((p) => [p.gap < 4, p.jump]), [true, false], "Jump to latest lands at the end");
+  await page.waitForFunction(() => { const w = document.querySelector(".workspace"); return w.scrollHeight - w.clientHeight - w.scrollTop < 4 && !document.querySelector(".jump-latest"); }, null, { timeout: 4000 })
+    .catch(async () => assert.fail("Jump to latest lands at the end: " + JSON.stringify(await at())));
 
   // Find on this page counts matches and steps through them.
   await page.keyboard.press("Control+f");
@@ -95,12 +97,12 @@ try {
 
   // Rename a chat in place; Mowr never renames it after that.
   await page.keyboard.press("Control+1");
-  await page.getByRole("button", { name: "Osmosis lab write-up", exact: true }).dblclick();
+  await row("Osmosis lab write-up").dblclick();
   await page.locator(".history-rename input").waitFor();
   await page.keyboard.press("Control+a");
   await page.keyboard.type("Potato osmosis");
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Potato osmosis", exact: true }).waitFor({ timeout: 5000 });
+  await row("Potato osmosis").waitFor({ timeout: 5000 });
 
   // The palette lists recent conversations first and marks what matched.
   await page.keyboard.press("Control+k");
@@ -116,7 +118,7 @@ try {
   await page.waitForTimeout(450);
   assert.ok(await page.evaluate(() => document.querySelector(".workspace").getBoundingClientRect().left > 200), "the sidebar is back");
   // Ctrl + and Ctrl 0 change how large answers read.
-  await page.getByRole("button", { name: "A long chat", exact: true }).click();
+  await row("A long chat").click();
   const read = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector(".message.assistant .message-text")).fontSize));
   const normal = await read();
   await page.keyboard.press("Control+=");
@@ -126,7 +128,7 @@ try {
 
   // Each chat keeps its own unsent message; a sent one never comes back.
   const box = page.getByLabel("Your message");
-  await page.getByRole("button", { name: "A long chat", exact: true }).click();
+  await row("A long chat").click();
   await box.fill("half a thought");
   await page.keyboard.press("Alt+ArrowDown");
   await page.waitForTimeout(300);
