@@ -3,13 +3,15 @@ import { desktop } from "./bridge";
 export function LinkedFolders({ scope }: { scope: string }) {
   const [folders, setFolders] = useState<{ id: string; path: string }[]>([]),
     [error, setError] = useState("");
+  // Electron prefixes errors from the main process; the person sees only the reason.
+  const fail = (e: unknown) => setError(String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") || "Linked folders could not be read.");
   const refresh = () =>
-    desktop!.invoke({ action: "folders", scope }).then(setFolders);
+    desktop!.invoke({ action: "folders", scope }).then((f) => { setFolders(f); setError(""); });
   useEffect(() => {
     let active = true;
     void desktop!.invoke({ action: "folders", scope }).then((f) => {
-      if (active) setFolders(f);
-    });
+      if (active) { setFolders(f); setError(""); }
+    }, (e) => { if (active) fail(e); });
     return () => {
       active = false;
     };
@@ -21,6 +23,7 @@ export function LinkedFolders({ scope }: { scope: string }) {
         Selected text excerpts are sent to your AI provider when you ask a
         question in this space.
       </p>
+      {!folders.length && !error && <p className="fine">No folders linked yet.</p>}
       {folders.map((folder) => (
         <p key={folder.id}>
           {folder.path}{" "}
@@ -30,7 +33,7 @@ export function LinkedFolders({ scope }: { scope: string }) {
               void desktop!
                 .invoke({ action: "unlinkFolder", id: folder.id })
                 .then(refresh)
-                .catch((e) => setError(e.message))
+                .catch(fail)
             }
           >
             Unlink
@@ -42,7 +45,7 @@ export function LinkedFolders({ scope }: { scope: string }) {
           void desktop!
             .invoke({ action: "linkFolder", scope })
             .then(refresh)
-            .catch((e) => setError(e.message))
+            .catch(fail)
         }
       >
         Link a local folder

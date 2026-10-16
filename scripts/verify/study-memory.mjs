@@ -240,17 +240,29 @@ try {
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await page.getByText("Paused", { exact: true }).waitFor();
   await saved(page);
-  await page.evaluate(async () => {
-    const store = await import("/src/store.ts");
-    const current = await store.loadState();
-    current.automations = current.automations.map((a) => ({
-      ...a,
-      enabled: true,
-      nextRun: Date.now() - 1000,
-    }));
-    await store.saveState(current);
-    window.dispatchEvent(new Event("mowr-auth"));
-  });
+  // The app's own save of "Paused" must have landed before the workspace is rewritten below, or it lands last.
+  await page.waitForFunction(async () => (await (await import("/src/store.ts")).loadState()).automations[0]?.enabled === false, null, { polling: 200, timeout: 10000 });
+  await page.waitForTimeout(300);
+  // The workspace is rewritten behind the app; reopening it flushes any change the app still holds, which can land
+  // over this one, so the write is repeated until the reopened workspace has the routine due.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const due = await page.evaluate(async () => {
+      const store = await import("/src/store.ts");
+      const current = await store.loadState();
+      // Due now, or already run (it has a last run): either way the write held.
+      if (current.automations[0]?.enabled && (current.automations[0].nextRun <= Date.now() || current.automations[0].lastRun)) return true;
+      current.automations = current.automations.map((a) => ({
+        ...a,
+        enabled: true,
+        nextRun: Date.now() - 1000,
+      }));
+      await store.saveState(current);
+      window.dispatchEvent(new Event("mowr-auth"));
+      return false;
+    });
+    if (due) break;
+    await page.waitForTimeout(2500);
+  }
   await page
     .locator(".sidebar")
     .getByRole("button", { name: "Daily review", exact: true })

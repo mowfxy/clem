@@ -175,7 +175,9 @@ export const sizeLabel = (bytes: number) =>
     ? `${(bytes / 1e9).toFixed(2)} GB`
     : bytes >= 1e6
       ? `${(bytes / 1e6).toFixed(1)} MB`
-      : `${(bytes / 1e3).toFixed(1)} KB`;
+      : bytes >= 1e3
+        ? `${(bytes / 1e3).toFixed(1)} KB`
+        : `${Math.max(0, Math.round(bytes))} bytes`;
 
 export async function downloadMade(blob: Blob, name: string) {
   const { markContent } = await import("../core/provenance");
