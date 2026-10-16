@@ -17,6 +17,12 @@ test('the model is only asked to rename when the subject has moved on',()=>{
   assert.match(titleInstruction(null),/End your reply with/);
   assert.match(titleInstruction('Partial Derivatives'),/Only if the conversation as a whole has clearly moved on/);
 });
+test('a chat the person named is never retitled, but still gets its chapters and summary',()=>{
+  const fixed=titleInstruction('My exam notes',undefined,[],true);
+  assert.doesNotMatch(fixed,/<!--title/);
+  assert.match(fixed,/^Also add <!--chapter: Name-->/);
+  assert.match(fixed,/<!--summary/);
+});
 test('the model can pick the mark of the chat\'s subject or project',()=>{
   assert.deepEqual(takeTitle('Answer.\n<!--title: Limits-->\n<!--summary: How limits describe approach.-->\n<!--mark: Maths-->'),{content:'Answer.',title:'Limits',summary:'How limits describe approach.',mark:'maths'});
   assert.equal(hideTitleMarker('Answer.\n<!--ma'),'Answer.');

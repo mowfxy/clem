@@ -10,6 +10,8 @@ import {AccountHandoff} from "./notices/AccountHandoff";
 import {useWorkspaceSignals} from "./notices/useWorkspaceSignals";
 import {SupportInbox} from "./support/SupportInbox";
 import {CommandPalette,type Command} from "./command/CommandPalette";
+import {ShortcutsSheet} from "./command/ShortcutsSheet";
+import {usePlaceHistory} from "./command/usePlaceHistory";
 import {hasCapacity,isBelowSwitchThreshold} from '../core/account-usage';
 import {studyRequest,studyInstructions} from '../core/study-request';
 import {MemoryConversation} from "./MemoryConversation";
@@ -28,8 +30,8 @@ import {contextBudget} from "../core/context-budget";
 import {groupHistory} from "../core/history-groups";
 import {HistoryFilter} from "./HistoryFilter";
 import {essentials,applyEssentials} from "./essential-state";
-import {Illustration} from "./Illustrations";
 import {PageHead,EmptyState,Squiggle,Templates,type Template} from "./ui/Calm";
+import {PickMenu} from "./ui/PickMenu";
 import {FileGlyph} from "./files/FileGlyph";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
@@ -53,7 +55,7 @@ import {DrivePicker} from './drive/DrivePicker';
 import {DriveIcon} from './drive/DriveIcon';
 import {refreshDrive,driveSources,driveFolder,driveList as driveListText,uploadToDrive,updateInDrive,renameInDrive,trashInDrive,driveBytes,driveError,isGoogleFormat,type DriveItem,type DriveSyncState} from './drive/drive';
 import {mowrSkillText,plansPlaybook,planIntent} from '../core/mowr-skills';
-import {readPlanBlock,resolveSpace,newPlan,applyUpdate,undoUpdate,canUndo,toggleTask,planContext,planBlocksIn,withoutPlanBlocks,overdueByPlan,localDay,type PlanBlock,type SpacePlan} from '../core/plans';
+import {resolveSpace,newPlan,applyUpdate,undoUpdate,canUndo,toggleTask,planContext,planBlocksIn,withoutPlanBlocks,overdueByPlan,localDay,type PlanBlock,type SpacePlan} from '../core/plans';
 import type {PlanDraftView,PlanActions} from './space/PlanView';
 import type {PlanCardInfo} from './chat/PlanProposal';
 import {boundedConversation,compressReply,SOURCE_PREFIX} from '../core/chat-context';
@@ -121,10 +123,12 @@ import { matchSource, type Citation } from "../core/citations";
 import { weakConcepts } from "./SubjectStudy";
 import "./chat/chat.css";
 import "./chat/workspace.css";
-import { StorageSummary } from './files/StorageSummary';
+import { StorageSummary, kinds as fileKinds, kindOf, type FileKind } from './files/StorageSummary';
 import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } from "../core/chat-title";
 import { Chapters } from "./chat/Chapters";
+import { useChatScroll } from "./chat/useChatScroll";
+import { FindBar } from "./chat/FindBar";
 import { SlashField, CommandChip } from "./chat/SlashField";
 import { pastedFiles, pasteTarget } from "./chat/paste";
 import { ComposerFiles } from "./chat/ComposerFiles";
@@ -138,6 +142,7 @@ import "./library.css";
 import "./compact.css";
 import "./premium.css";
 import "./chat/reply.css";
+import "./enhance.css";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -249,6 +254,16 @@ function searchableText(c:{title:string;messages:{content:string}[]}){
   return text;
 }
 
+/** A date as Mowr writes it elsewhere: "today", "yesterday", "3 days ago", then "Sep 15" (with the year when it differs). */
+function shortWhen(t: number) {
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const then = new Date(t), days = Math.round((day(new Date()) - day(then)) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return then.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(then.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
+}
+
 /** Overdue in a plan: a small clock, on subject and project cards. */
 function PlanLateGlyph(){return <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="6" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M8 5.5v3.2l2 1.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;}
 
@@ -263,6 +278,19 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(()=>{if(chatId)draftChatId.current=crypto.randomUUID();},[chatId]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // Each conversation keeps its own unsent message: switching chats puts the other chat's draft back, and returning
+  // brings this one back. Text set on purpose while moving (a cleared new chat, a suggested prompt) is kept as it is.
+  const drafts = useRef(new Map<string, string>());
+  const draftKey = chatId || "new";
+  const shownDraft = useRef({ key: draftKey, text: draft });
+  useEffect(() => {
+    const before = shownDraft.current;
+    if (before.key === draftKey) { drafts.current.set(draftKey, draft); shownDraft.current = { key: draftKey, text: draft }; return; }
+    const restored = draft === before.text ? drafts.current.get(draftKey) ?? "" : draft;
+    shownDraft.current = { key: draftKey, text: restored };
+    drafts.current.set(draftKey, restored);
+    if (restored !== draft) setDraft(restored);
+  }, [draftKey, draft]);
   const [long, setLong] = useState(false);
   const [models, setModels] = useState<Model[]>(modelPlaceholders);
   // Memoized message handlers read the latest models through this.
@@ -274,6 +302,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const model=savedSelection?.model ?? defaultModel;
   const reasoning=savedSelection?.reasoning ?? (savedSelection?.model ? models.find(m=>m.id===model)?.defaultReasoningEffort || "" : defaultReasoning);
   const [deleteChatId,setDeleteChatId]=useState<string|null>(null);
+  // A chat being renamed in the sidebar (from its menu, or by double-clicking its title).
+  const [renamingChat,setRenamingChat]=useState<string|null>(null);
+  const renameChat=(id:string,title:string)=>{const next=title.replace(/\s+/g," ").trim().slice(0,120);if(next)updateChat(id,c=>c.title===next?c:{...c,title:next,titled:true,renamed:true});setRenamingChat(null);};
   // The next new chat is temporary: the model still reads files and memory, but the chat is never saved or remembered.
   const [temporaryNext,setTemporaryNext]=useState(false);
   const [modal, setModal] = useState<string | null>(null);
@@ -294,7 +325,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [viewer, setViewer] = useState<StoredFile | null>(null);
   const renameFile = (id: string, name: string) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === id ? { ...f, name, updated: Date.now() } : f)) })); setRenamingFile(null); };
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("All");
+  // Files page: which kind of file is shown and in what order (remembered between visits).
+  const [fileKind, setFileKind] = useState<FileKind | "all">("all");
+  const [fileSort, setFileSort] = useState<"newest" | "oldest" | "name" | "size">(() => { try { const v = localStorage.getItem("mowr-file-sort"); return v === "oldest" || v === "name" || v === "size" ? v : "newest"; } catch { return "newest"; } });
+  useEffect(() => { try { localStorage.setItem("mowr-file-sort", fileSort); } catch {} }, [fileSort]);
   const [sidebar, setSidebar] = useState(false);
   // Sidebar history: which space's chats are listed ("all", "none" for chats outside a space, or a space id), and how many.
   const [historyScope, setHistoryScope] = useState<string>(() => { try { return localStorage.getItem("mowr-history-scope") || "all"; } catch { return "all"; } });
@@ -379,6 +413,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // Long tasks waiting on the person to choose whether to hand off to another model; shown one at a time, oldest first.
   const [handoffs,setHandoffs]=useState<{key:string;task:string;resolve:(choice:{model:string;reasoning?:string}|null)=>void}[]>([]);
   const [palette,setPalette]=useState(false);
+  const [shortcuts,setShortcuts]=useState(false);
+  // Find on this page (Ctrl+F): open, and a count that brings the caret back to it when pressed again.
+  const [finding,setFinding]=useState(0);
   // Search everything (query to start with), folder browser (file to open), study packs.
   const [everything,setEverything]=useState<string|null>(null);
   const [folderView,setFolderView]=useState<{file?:OpenFolderFile;folderId?:string}|null>(null);
@@ -409,7 +446,6 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     location.hash = path;
     setSidebar(false);
     setSearch("");
-    setFilter("All");
   };
   useEffect(() => {
     const cb = () => setRoute(workspaceRoute());
@@ -453,9 +489,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     addEventListener("pagehide", flush); addEventListener("beforeunload", flush); document.addEventListener("visibilitychange", hidden);
     return () => { removeEventListener("pagehide", flush); removeEventListener("beforeunload", flush); document.removeEventListener("visibilitychange", hidden); flush(); };
   }, []);
+  // A notice stays long enough to be read: longer messages (often a reason something failed) stay longer.
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(""), 4500);
+    const t = setTimeout(() => setToast(""), Math.min(10000, 3500 + toast.length * 45));
     return () => clearTimeout(t);
   }, [toast]);
   useEffect(() => {
@@ -801,7 +838,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setAttach(false);
     setLong(false);
     navigate("/app");
-    setTimeout(() => composer.current?.focus(), 50);
+    // The message box takes the caret, unless the person has already started typing somewhere else.
+    setTimeout(() => { const typing = document.activeElement?.closest?.("input,textarea,[contenteditable=true]"); if (!typing || typing === composer.current) composer.current?.focus(); }, 50);
   }
   function updateChat(id: string, fn: (c: Chat) => Chat) {
     patch((s) => ({
@@ -861,6 +899,17 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     let result = "",
       buffer = "",
       doneEvent = false;
+    const handle = (line: string) => {
+      if (!line.trim()) return;
+      let event: { type?: string; text?: string; error?: string };
+      try { event = JSON.parse(line); } catch { return; }
+      if (event.type === "error") throw new Error(event.error || "The provider request failed.");
+      if (event.type === "done") doneEvent = true;
+      if (event.type === "delta" && event.text) {
+        result += event.text;
+        onText(result);
+      }
+    };
     for (;;) {
       const { done, value } = await reader.read();
       buffer += decoder.decode(value, { stream: !done });
@@ -868,16 +917,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       while ((newline = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        if (event.type === "error") throw new Error(event.error);
-        if (event.type === "done") doneEvent = true;
-        if (event.type === "delta") {
-          result += event.text;
-          onText(result);
-        }
+        handle(line);
       }
-      if (done) break;
+      // The last event may arrive without a closing newline.
+      if (done) { handle(buffer); break; }
     }
     if (!doneEvent) throw new Error("The response was interrupted. Try again.");
     return result;
@@ -949,6 +992,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!chatId) { carriedChat.current = id; panelByChat.current.set(id, panelFile?.id || ""); }
     setChatId(id);
     setDraft("");
+    // The message has gone, so the box it was typed in keeps no draft of it.
+    drafts.current.delete(chatId || "new");
     setAttachments([]);
     setDriveRefs([]);
     setAttach(false);
@@ -1255,7 +1300,7 @@ User-authorized memory for this scope: ${memory}` : ""}${planNote ? `
 
 ${planNote}` : ""}
 
-${titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined, chat.messages.some((m) => m.chapter) ? chaptersOf(chat).map((c) => c.title).slice(-12) : [])}${struggling.length ? `
+${titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined, chat.messages.some((m) => m.chapter) ? chaptersOf(chat).map((c) => c.title).slice(-12) : [], !!chat.renamed)}${struggling.length ? `
 
 In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : ""}`,
           },
@@ -1293,7 +1338,8 @@ In this subject the learner keeps missing these questions in review; connect to 
       if (done?.answer) named.content = done.answer;
       updateChat(id, (c) => ({
         ...c,
-        ...(named.title ? { title: named.title, titled: true } : {}),
+        // A name the person gave the chat stays; the model's suggestion is only for chats it named.
+        ...(named.title && !c.renamed ? { title: named.title, titled: true } : {}),
         ...("summary" in named && named.summary ? { summary: named.summary } : {}),
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
         messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...(done ? { work: done.work } : {}),...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
@@ -2078,6 +2124,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   function openSpace(id:string,tab:SpaceTab='overview'){setSpaceId(id);setChatId(null);setSpaceTab(tab);navigate('/app/space/'+id);}
   const spaceRoute=route.match(/^\/app\/space\/([\w-]+)$/)?.[1];
   const pageSpace=spaceRoute?state.spaces.find(x=>x.id===spaceRoute):undefined;
+  // The window's title names where the person is (shown in the taskbar and when switching windows).
+  const placeName=route==="/app"?(activeChat?activeChat.title||"Conversation":temporaryNext?"Temporary chat":"New chat"):pageSpace?pageSpace.name:nav.find(([icon])=>route===`/app/${icon}`)?.[1];
+  useEffect(()=>{if(route.startsWith("/app"))document.title=placeName?`${placeName} · Mowr`:"Mowr";},[route,placeName]);
   useEffect(()=>{if(spaceRoute&&spaceRoute!==spaceId){setSpaceId(spaceRoute);setChatId(null);}},[spaceRoute]);
   function spaceActions(space:Space):import('./space/SpacePage').SpaceActions{
     const ensureFolder=(name:string)=>{const current=stateRef.current.spaces.find(x=>x.id===space.id)||space;const found=(current.folders||[]).find(f=>!f.parentId&&f.name.toLowerCase()===name.toLowerCase());if(found)return found;const folder={id:crypto.randomUUID(),name,parentId:null,created:Date.now()};patch(s=>({...s,spaces:s.spaces.map(x=>x.id===space.id?{...x,folders:[...(x.folders||[]),folder]}:x)}));return folder;};
@@ -2186,15 +2235,35 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     }}:undefined});
   };
   useEffect(()=>{if(!desktop?.onFolder)return;return desktop.onFolder(event=>folderEvent.current(event));},[]);
-  // Workspace shortcuts: Ctrl+K palette, Ctrl+Shift+F search everything, Ctrl+N new chat, Ctrl+, settings.
+  // Workspace shortcuts (all listed in the shortcuts sheet, Ctrl+/): Ctrl+K palette, Ctrl+Shift+F search everything,
+  // Ctrl+N new chat, Ctrl+Shift+N temporary chat, Ctrl+1–5 the sidebar's pages, Ctrl+, settings, Alt+↑/↓ the next chat.
   useEffect(()=>{
     const onKey=(e:KeyboardEvent)=>{
-      if(!(e.ctrlKey||e.metaKey)||e.altKey||!route.startsWith('/app'))return;
+      if(!route.startsWith('/app')||e.defaultPrevented)return;
+      // Alt+↑/↓ moves through the sidebar's chats in the order they are listed, unless a window is open over them.
+      if(e.altKey&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&(e.key==='ArrowUp'||e.key==='ArrowDown')){
+        if(document.querySelector('dialog[open]'))return;
+        const rows=[...document.querySelectorAll<HTMLButtonElement>('.sidebar-history .history-item')];
+        if(!rows.length)return;
+        e.preventDefault();
+        const at=rows.findIndex(b=>b.classList.contains('chosen'));
+        const next=at<0?(e.key==='ArrowDown'?0:rows.length-1):Math.max(0,Math.min(rows.length-1,at+(e.key==='ArrowDown'?1:-1)));
+        if(next!==at){rows[next].click();rows[next].scrollIntoView({block:'nearest'});}
+        return;
+      }
+      if(!(e.ctrlKey||e.metaKey)||e.altKey)return;
       const key=e.key.toLowerCase();
-      if(key==='k'){e.preventDefault();setSettingsOpen(false);setPalette(open=>!open);}
+      if(key==='k'){e.preventDefault();setSettingsOpen(false);setShortcuts(false);setPalette(open=>!open);}
       else if(key==='f'&&e.shiftKey){e.preventDefault();setPalette(false);setSettingsOpen(false);setEverything(q=>q===null?'':null);}
-      else if(key==='n'&&!e.shiftKey){e.preventDefault();setSettingsOpen(false);newChat();}
+      else if(key==='f'){if(document.querySelector('dialog[open]'))return;e.preventDefault();setFinding(n=>n+1);}
+      else if(key==='n'){e.preventDefault();setSettingsOpen(false);setPalette(false);newChat();if(e.shiftKey)setTemporaryNext(true);}
       else if(key===','){e.preventDefault();openSettings();}
+      else if(key==='/'){e.preventDefault();setPalette(false);setShortcuts(open=>!open);}
+      else if(!e.shiftKey&&/^[1-5]$/.test(key)){
+        e.preventDefault();setPalette(false);setSettingsOpen(false);
+        const [page]=nav[Number(key)-1];
+        if(page==='new')newChat();else navigate(`/app/${page}`);
+      }
     };
     window.addEventListener('keydown',onKey);
     return()=>window.removeEventListener('keydown',onKey);
@@ -2203,6 +2272,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   const searchMatches=modal==="search"?savedChats.filter((c)=>searchableText(c).includes(searchQuery)):[];
   const commands:Command[]=[
     {id:'new-chat',group:'Actions',label:'New chat',hint:'Ctrl N',icon:'new',run:()=>newChat()},
+    {id:'temporary-chat',group:'Actions',label:'New temporary chat',hint:'Ctrl Shift N',icon:'temp',keywords:'private incognito not saved',run:()=>{newChat();setTemporaryNext(true);}},
+    {id:'shortcuts',group:'Actions',label:'Keyboard shortcuts',hint:'Ctrl /',icon:'cmd-explain',keywords:'keys hotkeys help',run:()=>setShortcuts(true)},
     {id:'long-task',group:'Actions',label:'Start a long task',icon:'long',keywords:'plan workflow steps',run:()=>{newChat();setLong(true);}},
     {id:'new-project',group:'Actions',label:'New project',icon:'projects',run:()=>setModal('project-create')},
     {id:'new-subject',group:'Actions',label:'New subject',icon:'subjects',keywords:'study course class',run:()=>setModal('subject-create')},
@@ -2214,6 +2285,16 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     ...state.spaces.map(space=>({id:'space-'+space.id,group:space.kind==='project'?'Projects':'Subjects',label:space.name,icon:space.kind==='project'?'projects':'subjects',keywords:space.description,run:()=>newChat(space.id)})),
     ...[...savedChats].sort((a,b)=>b.updated-a.updated).map(chat=>({id:'chat-'+chat.id,group:'Recent conversations',label:chat.title,icon:'chat',keywords:chat.messages.slice(0,6).map(m=>m.content.slice(0,300)).join(' '),run:()=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}})),
   ];
+  // Back and forward through the places visited (Alt+←/→, the mouse's back and forward buttons).
+  usePlaceHistory({ route, chatId: route === "/app" ? chatId : null, spaceId }, (place) => {
+    if (place.route === "/app") { setChatId(place.chatId); setSpaceId(place.spaceId); }
+    if (workspaceRoute() !== place.route) navigate(place.route);
+  }, (id) => stateRef.current.chats.some((c) => c.id === id), ready && route.startsWith("/app"));
+  // The open chat's row stays in view in the sidebar, however it was opened (palette, keys, Back).
+  useEffect(() => { if (route === "/app" && chatId) requestAnimationFrame(() => document.querySelector<HTMLElement>(".sidebar-history .history-item.chosen")?.scrollIntoView({ block: "nearest" })); }, [chatId, route]);
+  // The conversation opens at its latest message and follows a streaming answer while the person stays at the end.
+  const lastQuestion = activeChat ? [...activeChat.messages].reverse().find((m) => m.role === "user")?.id : undefined;
+  const chatScroll = useChatScroll(route === "/app" ? activeChat?.id ?? null : null, activeChat?.messages.length ?? 0, lastQuestion);
   const composerUI = (
     <form className="composer" onSubmit={send}>
       {pointers.length > 0 && <div className="pointer-chips">{pointers.map((p) => <span className="pointer-chip" key={p.id} aria-description={p.text || "Selected area"}>{(() => { const inner = <>{p.image && <img src={"data:image/png;base64," + p.image} alt="" />}{p.text && !p.image && <span className="pc-quote">“{p.text.slice(0, 60)}{p.text.length > 60 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</>; return p.file !== REPLY_SOURCE && p.page ? <button type="button" className="pc-go" aria-label={`Show in ${p.file}, page ${p.page}`} onClick={() => showPointer(p)}>{inner}</button> : inner; })()}<button type="button" aria-label="Remove" onClick={() => setPointers((all) => all.filter((x) => x.id !== p.id))}><Icon name="close" size={12} /></button></span>)}</div>}
@@ -2230,6 +2311,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             ? pointers.length ? "What should Mowr do with this?" : "Ask about this file, or say what to change…"
             : long
             ? "Describe the whole task. Mowr plans the steps for you to review first…"
+            : activeChat?.messages.length
+            ? "Reply to Mowr…"
             : activeSpace
             ? `Think through ${activeSpace.name}…`
             : "How can I help you today?"
@@ -2354,7 +2437,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               {nav.map(([icon, label]) => (
                 <button
                   key={icon}
-                  className={`nav-item ${(icon === "new" && route === "/app") || route === `/app/${icon}` ? "active" : ""}`}
+                  className={`nav-item ${(icon === "new" && route === "/app" && !activeChat) || route === `/app/${icon}` ? "active" : ""}`}
+                  aria-current={(icon === "new" && route === "/app" && !activeChat) || route === `/app/${icon}` ? "page" : undefined}
                   onClick={() =>
                     icon === "new" ? newChat() : navigate(`/app/${icon}`)
                   }
@@ -2384,7 +2468,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     <section className="history-group" key={g.label} aria-label={g.label}>
                       <div className="history-label"><span>{g.label}</span>{gi === 0 && tools}</div>
                       {g.items.map((c) => (
-                  <div className={`history-row ${c.id === chatId && route === "/app" ? "chosen" : ""} ${c.id in runs ? "is-working" : ""} ${unseen.has(c.id) ? "is-unseen" : ""}`} key={c.id}><button
+                  <div className={`history-row ${c.id === chatId && route === "/app" ? "chosen" : ""} ${c.id in runs ? "is-working" : ""} ${unseen.has(c.id) ? "is-unseen" : ""}`} key={c.id}>{renamingChat === c.id ? <form className="history-rename" onSubmit={(e) => { e.preventDefault(); renameChat(c.id, String(new FormData(e.currentTarget).get("title") || "")); }}><input name="title" aria-label={`New name for ${c.title}`} defaultValue={c.title} maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()} onBlur={(e) => renameChat(c.id, e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setRenamingChat(null); } }} /></form> : <><button
                     className={`history-item ${c.id === chatId && route === "/app" ? "chosen" : ""}`}
                     onClick={() => {
                       setChatId(c.id);
@@ -2392,11 +2476,13 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       navigate("/app");
                       setSidebar(false);
                     }}
+                    onDoubleClick={() => setRenamingChat(c.id)}
+                    aria-current={c.id === chatId && route === "/app" ? "page" : undefined}
                   >
                     {(() => { const space = c.spaceId ? state.spaces.find((x) => x.id === c.spaceId) : undefined; return space ? <SpaceMark space={space} /> : null; })()}
                     <span className="history-title">{c.title}</span>
                     {c.id in runs ? <span className="history-live" role="status" aria-label="Mowr is working on this chat" aria-description={runs[c.id] || "Working…"}><i /><i /><i /></span> : unseen.has(c.id) ? <span className="history-new" role="img" aria-label="New reply" /> : null}
-                  </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={c.id in runs} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></div>
+                  </button><ChatMenu title={c.title} pinned={!!c.pinned} disabled={c.id in runs} onPin={()=>patch(s=>({...s,chats:s.chats.map(chat=>chat.id===c.id?{...chat,pinned:!chat.pinned}:chat)}))} onRename={()=>setRenamingChat(c.id)} onDelete={()=>setDeleteChatId(c.id)} onExport={()=>void downloadMade(new Blob([c.messages.map(m=>`${m.role === "user" ? state.name : "Mowr"}\n\n${m.content}`).join("\n\n---\n\n")],{type:"text/markdown"}),`${c.title.replace(/[<>:"/\\|?*]/g,"-").slice(0,40)}.md`).catch(()=>setToast("Conversation export failed. Try again."))}/></>}</div>
                       ))}
                     </section>
                   ))}
@@ -2424,9 +2510,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       </SettingsCard>
                       <BackgroundSettings/>
                       <SettingsCard title="Shortcuts">
-                        <SettingRow title="Search everything"><Keys keys={["Ctrl","K"]}/></SettingRow>
+                        <SettingRow title="Command palette" description="Jump to any chat, space, page or setting."><Keys keys={["Ctrl","K"]}/></SettingRow>
+                        <SettingRow title="Search everything"><Keys keys={["Ctrl","Shift","F"]}/></SettingRow>
                         <SettingRow title="New chat"><Keys keys={["Ctrl","N"]}/></SettingRow>
                         <SettingRow title="Open settings"><Keys keys={["Ctrl",","]}/></SettingRow>
+                        <SettingRow title="Previous or next chat"><Keys keys={["Alt","↑ ↓"]}/></SettingRow>
+                        <SettingRow title="Every shortcut" description="The full list, from anywhere in Mowr."><button className="secondary" onClick={()=>{setSettingsOpen(false);setShortcuts(true);}}>Show <Keys keys={["Ctrl","/"]}/></button></SettingRow>
                         <SettingRow title="Capture screen" description="Works from any app while Mowr is open."><Keys keys={["Ctrl","Shift","Space"]}/></SettingRow>
                       </SettingsCard>
                     </>) : settingsTab === "Security" ? (
@@ -2467,6 +2556,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     </>)}
             </SettingsWindow>}
             {palette&&<CommandPalette commands={commands} onClose={()=>setPalette(false)}/>}
+            {shortcuts&&<ShortcutsSheet onClose={()=>setShortcuts(false)}/>}
             {!handoffs.length&&<NoticeStack notices={accountNotices} onDismiss={id=>setAccountNotices(items=>items.filter(n=>n.id!==id))}/>}
             {handoffs[0]&&<AccountHandoff key={handoffs[0].key} task={handoffs[0].task} models={models} onChoose={(model,reasoning)=>handoffs[0].resolve({model,reasoning})} onStay={()=>handoffs[0].resolve(null)}/>}
             <div className="sidebar-bottom">
@@ -2491,6 +2581,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             </div>
           </aside>
           <main className="workspace">
+            {finding > 0 && <FindBar scope=".workspace" focusKey={finding} onClose={() => setFinding(0)} />}
             {offline&&<div className="offline-banner" role="status"><Icon name="offline" size={15} className="offline-mark"/>Offline · reading only. Sending returns when you reconnect.</div>}
             <header className="workspace-top">
               {/* Where you are, in one line: the chat's name and the subject or project it belongs to (on the desktop this row is the title bar). */}
@@ -2561,7 +2652,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   <>
                     <Chapters chapters={chaptersOf(activeChat)} />
                     <VisualSaveContext.Provider value={visualSaves(activeChat.id)}>
-                    <div className="messages">
+                    <div className="messages" ref={chatScroll.messages}>
                       {activeChat.messages.map((m, index) => {
                         const streaming = activeChat.id in runs && m.id === activeChat.messages.at(-1)?.id && m.role === "assistant";
                         const latest = m.role === "assistant" && index === activeChat.messages.length - 1;
@@ -2623,6 +2714,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     </div>
                     </VisualSaveContext.Provider>
                     <div className="chat-composer">
+                      {chatScroll.away && <button type="button" className="jump-latest" onClick={() => chatScroll.toEnd(true)}><Icon name="down" size={15} />{running ? "Mowr is writing" : "Jump to latest"}</button>}
                       {composerUI}
                       <p className="composer-note">
                         {activeChat?.temporary ? "Temporary chat: not saved and never remembered. It disappears when you leave unless you save it." : "Make room for doubt. Check the things that matter."}
@@ -2682,7 +2774,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                           <span className="lib-card-desc">{s.description || (projects ? "No description yet." : "Nothing noted about it yet.")}</span>
                         </button>
                         <footer>
-                          <span>{n} {n === 1 ? "chat" : "chats"}{last ? " · " + new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}</span>
+                          <span>{n} {n === 1 ? "chat" : "chats"}{last ? " · " + shortWhen(last) : ""}</span>
                           <button type="button" className="lib-card-chat" aria-label={`New chat in ${s.name}`} aria-description="New chat here" onClick={() => newChat(s.id)}><Icon name="arrow" size={16}/></button>
                         </footer>
                       </article>;
@@ -2728,30 +2820,41 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   <button className="lib-btn strong" onClick={() => uploader.current?.click()}><Icon name="plus" size={16} />Upload</button>
                 </PageHead>
                 {state.files.length > 0 && <StorageSummary files={state.files} />}
-                {state.files.length > 6 && <div className="search-field">
-                  <Icon name="research" size={19} />
-                  <input
-                    aria-label="Search files"
-                    placeholder="Find a file…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>}
                 {desktop&&<Suspense fallback={null}><PcFolders scopeLabel={scopeLabel} onBrowse={folderId=>setFolderView({folderId})}/></Suspense>}
+                {(() => {
+                  // Kinds present in the workspace, for the filter chips; a filter whose files are all gone resets to All.
+                  const counts = new Map<FileKind, number>();
+                  for (const f of state.files) counts.set(kindOf(f), (counts.get(kindOf(f)) || 0) + 1);
+                  const kind = fileKind !== "all" && counts.has(fileKind) ? fileKind : "all";
+                  const q = search.trim().toLowerCase();
+                  const spaceName = (f: StoredFile) => state.spaces.find((s) => s.id === f.spaceId)?.name || "Personal workspace";
+                  const when = (f: StoredFile) => f.updated || f.created;
+                  const shown = state.files
+                    .filter((f) => (kind === "all" || kindOf(f) === kind) && (!q || f.name.toLowerCase().includes(q) || spaceName(f).toLowerCase().includes(q)))
+                    .sort((a, b) => fileSort === "name" ? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) : fileSort === "size" ? b.size - a.size : fileSort === "oldest" ? when(a) - when(b) : when(b) - when(a));
+                  if (!state.files.length) return null;
+                  return <>
+                  <div className="files-tools">
+                    {state.files.length > 6 && <div className="search-field">
+                      <Icon name="research" size={19} />
+                      <input aria-label="Search files" placeholder="Find a file or a subject…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" && search) { e.preventDefault(); setSearch(""); } }} />
+                    </div>}
+                    {counts.size > 1 && <div className="files-kinds" role="group" aria-label="Show">
+                      <button type="button" aria-pressed={kind === "all"} onClick={() => setFileKind("all")}>All<small>{state.files.length}</small></button>
+                      {fileKinds.filter((k) => counts.has(k.id)).map((k) => <button type="button" key={k.id} aria-pressed={kind === k.id} onClick={() => setFileKind(k.id)}>{k.label}<small>{counts.get(k.id)}</small></button>)}
+                    </div>}
+                    {state.files.length > 1 && <span className="files-sort"><PickMenu label="Sort files" value={fileSort} onChange={setFileSort} options={[{ value: "newest", label: "Newest first" }, { value: "oldest", label: "Oldest first" }, { value: "name", label: "Name" }, { value: "size", label: "Largest first" }]} /></span>}
+                  </div>
+                  {!shown.length && <p className="files-none" role="status">No files match{q ? ` “${search.trim()}”` : ""}{kind !== "all" ? ` in ${fileKinds.find((k) => k.id === kind)?.label}` : ""}.<button type="button" onClick={() => { setSearch(""); setFileKind("all"); }}>Show all files</button></p>}
                 <div className="file-list">
-                  {state.files
-                    .filter((f) =>
-                      f.name.toLowerCase().includes(search.toLowerCase()),
-                    )
+                  {shown
                     .map((f) => (
                       <div className="file-row" key={f.id}>
                         <FileGlyph file={f} size={32} />
                         <div>
                           {renamingFile === f.id ? <RenameField name={f.name} onSave={(name) => renameFile(f.id, name)} onCancel={() => setRenamingFile(null)} /> : <button className="file-open" onClick={()=>setViewer(f)}>{f.name}</button>}
                           <small>
-                            {state.spaces.find((s) => s.id === f.spaceId)
-                              ?.name || "Personal workspace"}{" "}
-                            · {new Date(f.created).toLocaleDateString()}
+                            {spaceName(f)} · <time dateTime={new Date(when(f)).toISOString()} title={new Date(when(f)).toLocaleString()}>{shortWhen(when(f))}</time>
                           </small>
                         </div>
                         <span>{sizeLabel(f.size)}</span>
@@ -2784,6 +2887,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       </div>
                     ))}
                 </div>
+                  </>;
+                })()}
                 {!state.files.length && <EmptyState scene="folder" line="No files yet.">
                   <button className="lib-btn strong" onClick={() => uploader.current?.click()}><Icon name="plus" size={16} />Upload files</button>
                 </EmptyState>}
@@ -3132,7 +3237,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         onChange={(next) => { if (next.id.startsWith("drive_")) return; changedFile(next); setViewer(next); }}
         onApproved={(f) => { if (!f.id.startsWith("drive_")) void syncToDrive(f); }} sync={syncOf(viewer.id)}
         onEditInChat={viewer.id.startsWith("drive_") ? undefined : (f) => { setViewer(null); newChat(f.spaceId); openInPanel(f); }} />}
-      {toast && <Toast message={toast} onDismiss={() => setToast("")} />}
+      <Toast message={toast} onDismiss={() => setToast("")} />
     </>
   );
 }

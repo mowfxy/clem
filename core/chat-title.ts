@@ -5,15 +5,17 @@ import type { Chat } from './types.ts';
 
 const MARKER = /<!--\s*(title|summary|mark|chapter):\s*([\s\S]*?)-->/gi;
 
-/** Appended to the system prompt. `current` is null before the chat has a model-made title. `mark` asks the model to pick the sidebar mark of the chat's subject or project. */
-export function titleInstruction(current: string | null, mark?: { kind: string; name: string; description: string; keys: readonly string[] }, chapters: string[] = []) {
-  const title = current
+/** Appended to the system prompt. `current` is null before the chat has a model-made title. `mark` asks the model to pick the sidebar mark of the chat's subject or project. `fixed`: the person named the chat, so no title is asked for. */
+export function titleInstruction(current: string | null, mark?: { kind: string; name: string; description: string; keys: readonly string[] }, chapters: string[] = [], fixed = false) {
+  const title = fixed
+    ? ""
+    : current
     ? `This chat is titled “${current}”. Only if the conversation as a whole has clearly moved on to a different subject, end your reply with <!--title: New Title--> (2–6 words naming what the whole chat is now about).`
     : `End your reply with <!--title: Short Title--> (2–6 words naming what this chat is about, in the user's language, no quotes).`;
   const chapter = chapters.length
     ? ` This chat is divided into chapters by topic: ${chapters.map((c) => `“${c}”`).join(", ")}. Only if the user's latest message starts a clearly different topic or task from the current chapter “${chapters.at(-1)}” (not a follow-up, clarification or next step of it), also add <!--chapter: Name--> (2–5 words naming the new topic).`
     : ` Also add <!--chapter: Name--> (2–5 words naming the topic of the user's request).`;
-  return `${title}${chapter} Then always add <!--summary: …--> with one plain sentence (at most 25 words, in the user's language, no Markdown, LaTeX or dollar signs) saying what the whole conversation so far covers, written so the person can recognise the chat in a list, for example “Why partial derivatives are slopes along the x and y directions, with a worked example at (1, 1).”${mark ? ` Also add <!--mark: key--> naming the discipline of this ${mark.kind} “${mark.name}”${mark.description ? ` (${mark.description.slice(0, 200)})` : ""}, judged from its name, description and this conversation, as exactly one of: ${mark.keys.join(", ")}. Use “other” when none fits.` : ""} Never mention the title, summary, chapter or mark.`;
+  return `${title}${title ? chapter : chapter.trimStart()} Then always add <!--summary: …--> with one plain sentence (at most 25 words, in the user's language, no Markdown, LaTeX or dollar signs) saying what the whole conversation so far covers, written so the person can recognise the chat in a list, for example “Why partial derivatives are slopes along the x and y directions, with a worked example at (1, 1).”${mark ? ` Also add <!--mark: key--> naming the discipline of this ${mark.kind} “${mark.name}”${mark.description ? ` (${mark.description.slice(0, 200)})` : ""}, judged from its name, description and this conversation, as exactly one of: ${mark.keys.join(", ")}. Use “other” when none fits.` : ""} Never mention the title, summary, chapter or mark.`;
 }
 
 function clean(title: string) {

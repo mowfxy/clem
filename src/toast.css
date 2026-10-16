@@ -8,4 +8,8 @@
 .toast-close{width:26px;height:26px;flex:none;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:none;color:#8f8e87;cursor:pointer}
 .toast-close:hover{background:#ffffff12;color:#fff}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,-10px) scale(.97)}to{opacity:1;transform:translate(-50%,0)}}
-@media(prefers-reduced-motion:reduce){.toast.toast{animation:none!important}}
+/* Leaving: a short fade upward, the way it came */
+.toast.toast.is-leaving{animation:toast-out .19s ease-in forwards;pointer-events:none}
+@keyframes toast-out{to{opacity:0;transform:translate(-50%,-8px) scale(.97)}}
+@media(prefers-reduced-motion:reduce){.toast.toast{animation:none!important}.toast.toast.is-leaving{opacity:0}}
+html[data-quiet=true] .toast.toast.is-leaving{animation:none;opacity:0}

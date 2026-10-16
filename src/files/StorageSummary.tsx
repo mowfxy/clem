@@ -4,13 +4,16 @@ import { sizeLabel } from '../store';
 import type { StoredFile } from '../../core/types';
 import './storage-summary.css';
 
-const kinds = [
+export const kinds = [
   { id: 'pdf', label: 'PDFs', test: (f: StoredFile) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name) },
   { id: 'doc', label: 'Documents', test: (f: StoredFile) => /word|presentation|spreadsheet|officedocument|text\/|json|csv|markdown/.test(f.type) || /\.(docx?|pptx?|xlsx?|txt|md|csv|rtf|odt)$/i.test(f.name) },
   { id: 'image', label: 'Images', test: (f: StoredFile) => f.type.startsWith('image/') },
   { id: 'media', label: 'Audio & video', test: (f: StoredFile) => f.type.startsWith('audio/') || f.type.startsWith('video/') },
   { id: 'other', label: 'Other', test: () => true },
 ] as const;
+export type FileKind = (typeof kinds)[number]['id'];
+/** The first kind a file belongs to: the same grouping the storage bar and the Files page filters use. */
+export const kindOf = (f: StoredFile): FileKind => kinds.find((k) => k.test(f))!.id;
 
 /** How much the person keeps in Mowr, what kind of files it is, and how much room the device has left. */
 export function StorageSummary({ files }: { files: StoredFile[] }) {

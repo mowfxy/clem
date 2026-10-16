@@ -9,10 +9,19 @@ dialog.command-palette::backdrop{background:#0009;backdrop-filter:blur(4px)}
 .command-results button{width:100%;justify-content:flex-start;gap:12px;padding:10px 12px;border-radius:10px;font-size:14px;color:#cfcec7;text-align:left}
 .command-results button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .command-results button small{color:#7f7e78;font-size:12px}
+.command-results button{position:relative;transition:background-color .12s ease,color .12s ease}
+.command-results button:hover:not(.active){background:transparent}
 .command-results button.active{background:#ffffff0f;color:#fff}
+.command-results button.active::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:2px;border-radius:2px;background:#a9b3f7;animation:command-bar .18s ease-out}
+.command-results mark{background:none;color:#fff;font-weight:600;text-decoration:underline;text-decoration-color:#a9b3f780;text-underline-offset:3px}
+.command-results section{animation:command-group .22s ease-out backwards}
+.command-results section:nth-child(2){animation-delay:.03s}.command-results section:nth-child(3){animation-delay:.06s}.command-results section:nth-child(n+4){animation-delay:.09s}
 .command-results button.active svg{color:#a9b3f7}
 .command-empty{padding:30px;text-align:center;color:#8f8e88;margin:0}
 .command-palette footer{display:flex;gap:16px;padding:10px 16px;border-top:1px solid #30302e;color:#7f7e78;font-size:11px}
 .command-palette footer span{display:flex;align-items:center;gap:4px}
+@keyframes command-bar{from{transform:scaleY(0)}}
+@keyframes command-group{from{opacity:0;transform:translateY(4px)}}
 @keyframes command-in{from{opacity:0;transform:translateY(-10px) scale(.97)}}
-@media (prefers-reduced-motion:reduce){dialog.command-palette[open]{animation:none}}
+@media (prefers-reduced-motion:reduce){dialog.command-palette[open],.command-results section,.command-results button.active::before{animation:none}}
+:root[data-quiet=true] dialog.command-palette[open],:root[data-quiet=true] .command-results section,:root[data-quiet=true] .command-results button.active::before{animation:none}

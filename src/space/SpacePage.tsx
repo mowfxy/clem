@@ -114,7 +114,6 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
   const due=cards.filter(c=>c?.reps&&isDue(c,now)).length,fresh=cards.filter(c=>!c?.reps).length;
   const mastery=cards.length?cards.filter(c=>c&&c.stability>=21).length/cards.length:0;
-  const seen=cards.length?cards.filter(c=>c?.reps).length/cards.length:0;
   const days=streak(sets,now);
   const weak=weakConcepts(sets);
   const [ask,setAsk]=useState('');
@@ -133,7 +132,11 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   useEffect(()=>{
     const bar=tabBar.current;if(!bar)return;
     const place=()=>{const b=bar.querySelector<HTMLElement>('[aria-selected=true]');if(!b)return;bar.style.setProperty('--tab-x',b.offsetLeft+'px');bar.style.setProperty('--tab-w',b.offsetWidth+'px');bar.dataset.ready='1';};
-    place();const ro=new ResizeObserver(place);ro.observe(bar);return()=>ro.disconnect();
+    place();const ro=new ResizeObserver(place);ro.observe(bar);
+    // On a narrow window the chosen tab is scrolled into the bar's view.
+    const chosen=bar.querySelector<HTMLElement>('[aria-selected=true]');
+    if(chosen&&bar.scrollWidth>bar.clientWidth){const left=chosen.offsetLeft-bar.clientWidth/2+chosen.offsetWidth/2;bar.scrollTo({left:Math.max(0,left),behavior:'smooth'});}
+    return()=>ro.disconnect();
   },[tab,tabs.length]);
 
   return <div className={`space-page ${subject?'is-subject':'is-project'}`}>
@@ -157,7 +160,9 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
         <button className="primary" disabled={!ask.trim()} aria-label="Start chat"><Icon name="arrow" size={16}/></button>
       </form>
       <nav className="sp-tabs" role="tablist" aria-label={`${space.name} sections`} ref={tabBar}>
-        {tabs.map(([id,label,count])=><button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}>{label}{count!==undefined&&count>0&&<span className={id==='plan'?'late':undefined} aria-label={id==='plan'?`${count} overdue`:undefined}>{count}</span>}</button>)}
+        {tabs.map(([id,label,count],i)=><button key={id} role="tab" aria-selected={tab===id} tabIndex={tab===id?0:-1} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}
+          // Arrow keys move along the tabs (Home and End to the ends), as tab lists do everywhere.
+          onKeyDown={e=>{const to=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i-1+tabs.length)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;if(to<0)return;e.preventDefault();setReview(0);onTab(tabs[to][0]);requestAnimationFrame(()=>tabBar.current?.querySelectorAll<HTMLButtonElement>('[role=tab]')[to]?.focus());}}>{label}{count!==undefined&&count>0&&<span className={id==='plan'?'late':undefined} aria-label={id==='plan'?`${count} overdue`:undefined}>{count}</span>}</button>)}
       </nav>
     </header>
     </div>
