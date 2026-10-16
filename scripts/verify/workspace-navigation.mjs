@@ -108,6 +108,22 @@ try {
   await page.keyboard.type("potato");
   assert.equal(await page.locator(".command-results mark").first().textContent(), "Potato");
   await page.keyboard.press("Escape");
+  // Ctrl+B puts the sidebar away and the workspace takes the room; the corner button brings it back.
+  await page.keyboard.press("Control+b");
+  await page.waitForTimeout(450);
+  assert.equal(await page.evaluate(() => Math.round(document.querySelector(".workspace").getBoundingClientRect().left)), 0);
+  await page.getByLabel("Open navigation").click();
+  await page.waitForTimeout(450);
+  assert.ok(await page.evaluate(() => document.querySelector(".workspace").getBoundingClientRect().left > 200), "the sidebar is back");
+  // Ctrl + and Ctrl 0 change how large answers read.
+  await page.getByRole("button", { name: "A long chat", exact: true }).click();
+  const read = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector(".message.assistant .message-text")).fontSize));
+  const normal = await read();
+  await page.keyboard.press("Control+=");
+  assert.ok((await read()) > normal, "Ctrl + makes answers larger");
+  await page.keyboard.press("Control+0");
+  assert.equal(await read(), normal);
+
   // Each chat keeps its own unsent message; a sent one never comes back.
   const box = page.getByLabel("Your message");
   await page.getByRole("button", { name: "A long chat", exact: true }).click();

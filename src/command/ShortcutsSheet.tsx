@@ -10,6 +10,7 @@ export const SHORTCUTS: { group: string; items: [string, string[]][] }[] = [
     ["New temporary chat", ["Ctrl", "Shift", "N"]],
     ["New chat · Visuals · Projects · Subjects · Files", ["Ctrl", "1–5"]],
     ["Back · Forward", ["Alt", "← / →"]],
+    ["Show or hide the sidebar", ["Ctrl", "B"]],
     ["Settings", ["Ctrl", ","]],
   ] },
   { group: "Conversations", items: [
@@ -19,6 +20,10 @@ export const SHORTCUTS: { group: string; items: [string, string[]][] }[] = [
     ["New line", ["Shift", "Enter"]],
     ["Commands", ["/"]],
     ["Capture screen", ["Ctrl", "Shift", "Space"]],
+  ] },
+  { group: "Reading", items: [
+    ["Larger · smaller text", ["Ctrl", "+ / −"]],
+    ["Default text size", ["Ctrl", "0"]],
   ] },
   { group: "Help", items: [
     ["Show these shortcuts", ["Ctrl", "/"]],

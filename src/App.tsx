@@ -330,6 +330,19 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [fileSort, setFileSort] = useState<"newest" | "oldest" | "name" | "size">(() => { try { const v = localStorage.getItem("mowr-file-sort"); return v === "oldest" || v === "name" || v === "size" ? v : "newest"; } catch { return "newest"; } });
   useEffect(() => { try { localStorage.setItem("mowr-file-sort", fileSort); } catch {} }, [fileSort]);
   const [sidebar, setSidebar] = useState(false);
+  // On a wide window the sidebar can be put away (Ctrl+B) for more room; this device remembers the choice.
+  const [sideClosed, setSideClosed] = useState(() => { try { return localStorage.getItem("mowr-sidebar") === "closed"; } catch { return false; } });
+  const sideFirst = useRef(true);
+  useEffect(() => {
+    const root = document.documentElement;
+    // The slide plays when the person opens or closes it, not when the app starts with it closed.
+    if (!sideFirst.current) { root.dataset.sidebarMoving = ""; const t = setTimeout(() => { delete root.dataset.sidebarMoving; }, 360); root.dataset.sidebar = sideClosed ? "closed" : "open"; try { localStorage.setItem("mowr-sidebar", sideClosed ? "closed" : "open"); } catch {} return () => clearTimeout(t); }
+    sideFirst.current = false;
+    root.dataset.sidebar = sideClosed ? "closed" : "open";
+  }, [sideClosed]);
+  // How large answers and messages read (Settings → General, or Ctrl + / Ctrl − / Ctrl 0); kept on this device.
+  const [textSize, setTextSize] = useState<"small" | "default" | "large">(() => { try { const v = localStorage.getItem("mowr-text-size"); return v === "small" || v === "large" ? v : "default"; } catch { return "default"; } });
+  useEffect(() => { document.documentElement.dataset.text = textSize; try { localStorage.setItem("mowr-text-size", textSize); } catch {} }, [textSize]);
   // Sidebar history: which space's chats are listed ("all", "none" for chats outside a space, or a space id), and how many.
   const [historyScope, setHistoryScope] = useState<string>(() => { try { return localStorage.getItem("mowr-history-scope") || "all"; } catch { return "all"; } });
   const [historyLimit, setHistoryLimit] = useState(30);
@@ -2259,6 +2272,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       else if(key==='n'){e.preventDefault();setSettingsOpen(false);setPalette(false);newChat();if(e.shiftKey)setTemporaryNext(true);}
       else if(key===','){e.preventDefault();openSettings();}
       else if(key==='/'){e.preventDefault();setPalette(false);setShortcuts(open=>!open);}
+      else if(key==='b'&&!e.shiftKey){e.preventDefault();setSideClosed(closed=>!closed);}
+      else if(key==='='||key==='+'){e.preventDefault();setTextSize(size=>size==='small'?'default':'large');}
+      else if(key==='-'||key==='_'){e.preventDefault();setTextSize(size=>size==='large'?'default':'small');}
+      else if(key==='0'&&!e.shiftKey){e.preventDefault();setTextSize('default');}
       else if(!e.shiftKey&&/^[1-5]$/.test(key)){
         e.preventDefault();setPalette(false);setSettingsOpen(false);
         const [page]=nav[Number(key)-1];
@@ -2421,9 +2438,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           <button
             className="mobile-menu icon-button"
             aria-label="Open navigation"
-            onClick={() => setSidebar(!sidebar)}
+            aria-keyshortcuts="Control+B"
+            onClick={() => { if (sideClosed && matchMedia("(min-width: 761px)").matches) setSideClosed(false); else setSidebar(!sidebar); }}
           >
-            <Icon name="menu" />
+            <Icon name={sideClosed ? "sidebar" : "menu"} />
           </button>
           {sidebar && (
             <div className="sidebar-scrim" onClick={() => setSidebar(false)} />
@@ -2433,6 +2451,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               <Logo size={33} />
               mowr<span className="brand-period">.</span>
             </a>
+            <button type="button" className="icon-button side-close" aria-label="Close sidebar" aria-keyshortcuts="Control+B" aria-description="Ctrl B" onClick={() => setSideClosed(true)}><Icon name="sidebar" size={19} /></button>
             <nav aria-label="Workspace" ref={navBar} className="glide-nav">
               {nav.map(([icon, label]) => (
                 <button
@@ -2507,6 +2526,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     ) : settingsTab === "General" ? (<>
                       <SettingsCard title="Appearance">
                         <SettingRow title="Quiet mode" description="Keep drawings still and reduce motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
+                        <SettingRow title="Text size" description="How large answers and messages read."><span className="text-size" role="radiogroup" aria-label="Text size">{([["small","Small"],["default","Default"],["large","Large"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={textSize===value} onClick={()=>setTextSize(value)}>{label}</button>)}</span></SettingRow>
+                        <SettingRow title="Sidebar" description="Put it away for more room."><Switch label="Show the sidebar" checked={!sideClosed} onChange={show=>setSideClosed(!show)}/></SettingRow>
                       </SettingsCard>
                       <BackgroundSettings/>
                       <SettingsCard title="Shortcuts">
@@ -2515,6 +2536,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         <SettingRow title="New chat"><Keys keys={["Ctrl","N"]}/></SettingRow>
                         <SettingRow title="Open settings"><Keys keys={["Ctrl",","]}/></SettingRow>
                         <SettingRow title="Previous or next chat"><Keys keys={["Alt","↑ ↓"]}/></SettingRow>
+                        <SettingRow title="Show or hide the sidebar"><Keys keys={["Ctrl","B"]}/></SettingRow>
                         <SettingRow title="Every shortcut" description="The full list, from anywhere in Mowr."><button className="secondary" onClick={()=>{setSettingsOpen(false);setShortcuts(true);}}>Show <Keys keys={["Ctrl","/"]}/></button></SettingRow>
                         <SettingRow title="Capture screen" description="Works from any app while Mowr is open."><Keys keys={["Ctrl","Shift","Space"]}/></SettingRow>
                       </SettingsCard>

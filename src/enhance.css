@@ -11,6 +11,35 @@
 /* Keyboard focus in the history reads like the pointer's hover. */
 .history-item:focus-visible{outline:none;background:#222220;box-shadow:inset 0 0 0 1px #5c5c57}
 
+/* Putting the sidebar away (Ctrl+B): the button sits at its top corner and shows while the pointer is over it. */
+.side-close{position:absolute;top:19px;right:12px;width:32px;height:32px;padding:0;border-radius:8px;color:#bdbcb5;opacity:0;transition:opacity .2s,background .15s,color .15s;-webkit-app-region:no-drag;app-region:no-drag}
+.sidebar:hover .side-close,.side-close:focus-visible{opacity:1}
+.side-close:hover{background:#ffffff0d;color:#fff}
+@media(max-width:760px){.side-close{display:none}}
+@media(min-width:761px){
+  /* Only while it is being opened or put away; resizing the window never animates. */
+  html[data-sidebar-moving] body .sidebar{transition:transform .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)),visibility 0s}
+  html[data-sidebar-moving] body .workspace,html[data-sidebar-moving] body .desktop-content .workspace-top,html[data-sidebar-moving] body .desktop-titlebar{transition:margin-left .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)),width .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)),left .3s var(--ease-out,cubic-bezier(.2,.8,.2,1))}
+  html[data-sidebar=closed] body .sidebar{transform:translateX(-100%);visibility:hidden}
+  html[data-sidebar=closed][data-sidebar-moving] body .sidebar{transition:transform .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)),visibility 0s .3s}
+  html[data-sidebar=closed] body .workspace,html[data-sidebar=closed] body .desktop-content .workspace{margin-left:0;width:100%}
+  html[data-sidebar=closed] body .desktop-content .workspace-top{left:56px}
+  html[data-sidebar=closed] body .desktop-titlebar:has(+ .desktop-content .sidebar){left:0}
+  html[data-sidebar=closed] .mobile-menu{display:flex;position:fixed;top:14px;left:14px;z-index:20;animation:en-rise .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)) .1s backwards}
+  html[data-sidebar=closed] .desktop-content .mobile-menu{top:calc((var(--tb,38px) - 34px) / 2);width:34px;height:34px;z-index:10002;border-radius:9px;background:#1f1f1e;-webkit-app-region:no-drag;app-region:no-drag}
+}
+
+/* ── Reading size (Settings → General, Ctrl +/−) ── */
+:root:root[data-text=small]{--t-read:15px}
+:root:root[data-text=large]{--t-read:18.5px}
+:root[data-text=small] .messages .message.user .message-text{font-size:14.5px}
+:root[data-text=large] .messages .message.user .message-text{font-size:17.5px}
+:root[data-text=large] .messages .message-text .md table{font-size:15.5px}
+.text-size{display:inline-flex;padding:3px;gap:2px;border-radius:10px;background:#1b1b1a;border:1px solid #30302e}
+.text-size button{height:28px;padding:0 12px;border-radius:7px;font-size:12.5px;color:#a9a8a1}
+.text-size button:hover{color:#ecebe5;background:#ffffff08}
+.text-size button[aria-checked=true]{background:#2e2e2c;color:#fff;box-shadow:0 1px 0 #ffffff10 inset}
+
 /* ── Composer ── */
 .send-button:not(:disabled){transition:background .16s,transform .18s var(--ease-spring,cubic-bezier(.2,1.25,.35,1))}
 .send-button:not(:disabled):active{transform:scale(.9)}
@@ -77,6 +106,8 @@ dialog.shortcuts-sheet{width:min(560px,calc(100vw - 32px));padding:0;border-radi
 @keyframes en-rise{from{opacity:0;transform:translateY(6px)}}
 
 @media (prefers-reduced-motion:reduce){
+  html[data-sidebar-moving] :is(body .sidebar,body .workspace,body .workspace-top,body .desktop-titlebar){transition:none!important}
+  html[data-sidebar=closed] .mobile-menu{animation:none}
   .find-bar,.jump-latest,.shortcuts-sheet .sheet-row,.file-list .file-row{animation:none!important}
   .send-button:not(:disabled):active{transform:none}
 }
