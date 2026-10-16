@@ -32,6 +32,7 @@ import {HistoryFilter} from "./HistoryFilter";
 import {essentials,applyEssentials} from "./essential-state";
 import {PageHead,EmptyState,Squiggle,Templates,type Template} from "./ui/Calm";
 import {PickMenu} from "./ui/PickMenu";
+import {shortWhen} from "./ui/when";
 import {FileGlyph} from "./files/FileGlyph";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
@@ -252,16 +253,6 @@ function searchableText(c:{title:string;messages:{content:string}[]}){
   let text=chatTexts.get(c);
   if(text===undefined){text=(c.title+" "+c.messages.map((m)=>m.content).join(" ")).toLowerCase();chatTexts.set(c,text);}
   return text;
-}
-
-/** A date as Mowr writes it elsewhere: "today", "yesterday", "3 days ago", then "Sep 15" (with the year when it differs). */
-function shortWhen(t: number) {
-  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const then = new Date(t), days = Math.round((day(new Date()) - day(then)) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days} days ago`;
-  return then.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(then.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
 }
 
 /** Overdue in a plan: a small clock, on subject and project cards. */
@@ -971,6 +962,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       id: uid(),
       role: "user" as const,
       content: prompt,
+      at: Date.now(),
       attachments: [...new Set(attachments)],
       // The file open beside the chat is read with the message but not shown as a new attachment.
       ...(panelFile && !attachments.includes(panelFile.id) ? { context: [panelFile.id] } : {}),
@@ -1117,7 +1109,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
                   ...m,
                   content:
                     "Planning did not complete: " +
-                    (e as Error).message +
+                    cleanError(e) +
                     ". This starter workflow is available to edit.",
                   plan: draftPlan(prompt, model),
                 }
@@ -1356,7 +1348,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         ...(named.title && !c.renamed ? { title: named.title, titled: true } : {}),
         ...("summary" in named && named.summary ? { summary: named.summary } : {}),
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
-        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, ...(done ? { work: done.work } : {}),...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
+        messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, at: Date.now(), ...(done ? { work: done.work } : {}),...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
       if (!isVisual) applyPlanUpdates(id, messageId, named.content, chat.spaceId);
       const run = readCommand(prompt)?.command.id;
@@ -1386,7 +1378,7 @@ In this subject the learner keeps missing these questions in review; connect to 
                 content:
                   (e as Error).name === "AbortError"
                     ? m.content ? m.content + "\n\n*Interrupted.*" : "Stopped. Your request is saved."
-                    : m.content ? m.content + "\n\n*The reply was cut off: " + (e as Error).message + "*" : (e as Error).message,
+                    : m.content ? m.content + "\n\n*The reply was cut off: " + cleanError(e) + "*" : cleanError(e),
               }
             : m,
         ),
@@ -1427,7 +1419,7 @@ In this subject the learner keeps missing these questions in review; connect to 
         const bytes:Uint8Array=await desktop.invoke({action:'documentExport',format,title,markdown:clean});
         download(new Blob([new Uint8Array(bytes)],{type:format==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/vnd.openxmlformats-officedocument.presentationml.presentation'}),name+'.'+format);
       }else{const docs=await import('./documents');await (format==='docx'?docs.exportDocx(clean,title):docs.exportSlides(clean,title));}
-    }catch(e){setToast((e as Error).message||'Could not export this answer.');}
+    }catch(e){setToast(cleanError(e)||'Could not export this answer.');}
   }
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -1648,7 +1640,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:text,status:"done"}}));
     }catch(e){
       patchMessage(chat.id,messageId,m=>({...m,review:{model:reviewer,content:m.review?.content||"",status:"error"}}));
-      if((e as Error).name!=="AbortError")setToast((e as Error).message);
+      if((e as Error).name!=="AbortError")setToast(cleanError(e));
     }finally{end(chat.id,controller);}
   }
   async function verifySources(chat:Chat,messageId:string){
@@ -1665,7 +1657,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       const claims=parseClaims(raw);
       patchMessage(chat.id,messageId,m=>({...m,verify:{status:"done",claims}}));
     }catch(e){
-      patchMessage(chat.id,messageId,m=>({...m,verify:(e as Error).name==="AbortError"?undefined:{status:"error",error:(e as Error).message}}));
+      patchMessage(chat.id,messageId,m=>({...m,verify:(e as Error).name==="AbortError"?undefined:{status:"error",error:cleanError(e)}}));
     }finally{end(chat.id,controller);}
   }
   /** Where a memory applies, in words: the person, a space by name, or the chat it came from. */
@@ -1755,7 +1747,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         const context=stateRef.current,space=context.spaces.find(s=>s.id===task.spaceId);
         const result=await desktopChat([{role:'system',content:'Complete this user-scheduled task. Do not claim external actions you cannot perform. User memory: '+(space?space.memory:context.memory)},{role:'user',content:task.prompt}],space?`${space.kind}:${space.id}`:`chat:${task.id}`,controller.signal,()=>{},{model:chosen.id});
         if(owner===ownerRef.current)patch(s=>({...s,chats:[{id:uid(),title:task.name,spaceId:task.spaceId,updated:Date.now(),messages:[{id:uid(),role:'user',content:task.prompt},{id:uid(),role:'assistant',content:result}]},...s.chats]}));
-      }catch(e){if(owner===ownerRef.current)patch(s=>({...s,automations:s.automations.map(a=>a.id===task.id?{...a,lastError:(e as Error).message}:a)}));}
+      }catch(e){if(owner===ownerRef.current)patch(s=>({...s,automations:s.automations.map(a=>a.id===task.id?{...a,lastError:cleanError(e)}:a)}));}
       finally{automationBusy.current=false;}
     };
     const timer=setInterval(()=>void tick(),15000);void tick();return()=>clearInterval(timer);
@@ -1849,7 +1841,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       setToast(
         (e as Error).name === "AbortError"
           ? "Task stopped. Completed steps are preserved."
-          : (e as Error).message,
+          : cleanError(e),
       );
     } finally {
       end(id, controller);
@@ -1919,10 +1911,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             remote: false,
           });
         } catch (error) {
-          setToast(
-            (error as Error).message ||
-              "Your browser does not have enough storage for this file.",
-          );
+          setToast(cleanError(error) || "There is not enough storage for this file.");
         }
       }
       if (added.length && owner===ownerRef.current) {
@@ -1962,13 +1951,17 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       }
       if (reused.length && owner===ownerRef.current && toBox)
         setAttachments((a) => [...a, ...reused.map((f) => f.id).filter((id) => !a.includes(id))]);
-    });
+      // Outside the chat box a file that is already kept there is not stored twice; say so rather than do nothing.
+      else if (reused.length && owner===ownerRef.current && !added.length)
+        setToast(reused.length === 1 ? `${reused[0].name} is already in your files.` : `These ${reused.length} files are already in your files.`);
+    // One failed batch never stops the uploads after it.
+    }).catch((e) => setToast(cleanError(e) || "Those files could not be added. Try again."));
   }
   async function importCourse(file:File){
     const owner=ownerRef.current;
-    try{const {importSubject}=await import('./subject-archive');const imported=await importSubject(file,owner);if(owner!==ownerRef.current)throw Error('Account changed. Reopen the archive in your account.');patch(s=>({...s,spaces:[...s.spaces,imported.space],files:[...s.files,...imported.files],chats:[...s.chats,...imported.chats],studySets:[...s.studySets,...imported.studySets],plans:[...(s.plans||[]),...(imported.plan?[imported.plan]:[])]}));setToast('Subject imported, including files and study history.');}catch(e){setToast((e as Error).message);}
+    try{const {importSubject}=await import('./subject-archive');const imported=await importSubject(file,owner);if(owner!==ownerRef.current)throw Error('Account changed. Reopen the archive in your account.');patch(s=>({...s,spaces:[...s.spaces,imported.space],files:[...s.files,...imported.files],chats:[...s.chats,...imported.chats],studySets:[...s.studySets,...imported.studySets],plans:[...(s.plans||[]),...(imported.plan?[imported.plan]:[])]}));setToast('Subject imported, including files and study history.');}catch(e){setToast(cleanError(e));}
   }
-  async function archiveCourse(space:Space){try{await (await import('./subject-archive')).exportSubject(stateRef.current,space);setToast('Subject ZIP prepared. Keep the ZIP before removing the local subject.');}catch(e){setToast((e as Error).message);}}
+  async function archiveCourse(space:Space){try{await (await import('./subject-archive')).exportSubject(stateRef.current,space);setToast('Subject ZIP prepared. Keep the ZIP before removing the local subject.');}catch(e){setToast(cleanError(e));}}
   async function deleteCourse(space:Space){
     if(!await confirmDialog({title:`Delete ${space.name}?`,message:'Its chats, study sets and files are removed from this device. Export a ZIP first if you want to keep or share it.',confirm:'Delete',danger:true}))return;
     const owner=ownerRef.current,current=stateRef.current,ids=new Set(current.files.filter(f=>f.spaceId===space.id).map(f=>f.id));
@@ -1987,7 +1980,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       // Projects and subjects each keep memory and linked folders under their own scope.
       if(desktop){const scope=`${space.kind}:${space.id}`;await desktop.invoke({action:'memoryClear',scope});const folders=await desktop.invoke({action:'folders',scope});for(const folder of folders)await desktop.invoke({action:'unlinkFolder',id:folder.id});}
       setToast(removed.some(x=>x.status==='rejected')?'Subject removed. Some unused files could not be deleted; check disk permissions.':'Subject and its local data removed.');
-    }catch(e){setToast((e as Error).message);}
+    }catch(e){setToast(cleanError(e));}
   }
   function exportWorkspace() {
     download(
@@ -2108,7 +2101,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     stopChat(chatId);
   }
   async function openPackBytes(bytes:Uint8Array,name:string){
-    try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast((e as Error).message);}
+    try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast(cleanError(e));}
   }
   async function addPack(target:Space|null){
     if(!packOpen)return;
@@ -2122,7 +2115,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       const cards=added.studySets.reduce((n,x)=>n+x.items.length,0);
       setToast(`Added ${[cards?`${cards} cards`:'',added.files.length?`${added.files.length} files`:''].filter(Boolean).join(' and ')} to ${added.space?.name||target?.name}.`);
       openSpace(added.spaceId);
-    }catch(e){setToast((e as Error).message);}
+    }catch(e){setToast(cleanError(e));}
   }
   useEffect(()=>{if(!desktop?.onPack)return;return desktop.onPack(({bytes,name})=>void openPackBytes(bytes,name));},[]);
   // A study pack dropped anywhere on the window opens for review. While anything is dragged, holding it near the top or
@@ -2727,10 +2720,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                           {m.review && <ReviewPanel review={m.review} models={models}/>}
                           {m.verify && <VerifyPanel verify={m.verify} onCite={openCitation} canCite={canCite}/>}
                           {m.role === "assistant" && m.content && !streaming && !m.plan && !m.visual && m.review?.status !== "running" && m.verify?.status !== "running" && (
-                            <MessageTools content={m.content} title={activeChat.title} onExport={exportAnswer} models={models} model={m.model || model} busy={activeChat.id in runs} canVerify={sources.length > 0} onReview={(reviewer) => void secondOpinion(activeChat, m.id, reviewer)} onVerify={() => void verifySources(activeChat, m.id)} />
+                            <MessageTools content={m.content} title={activeChat.title} onExport={exportAnswer} models={models} model={m.model || model} busy={activeChat.id in runs} canVerify={sources.length > 0} at={m.at} onReview={(reviewer) => void secondOpinion(activeChat, m.id, reviewer)} onVerify={() => void verifySources(activeChat, m.id)} />
                           )}
                           {!waiting && mark}
-                          {m.role === "user" && m.content && editingMessage !== m.id && <UserMessageTools content={m.content} onRetry={() => resend(activeChat.id, m.id, m.content)} onEdit={() => setEditingMessage(m.id)} />}
+                          {m.role === "user" && m.content && editingMessage !== m.id && <UserMessageTools at={m.at} content={m.content} onRetry={() => resend(activeChat.id, m.id, m.content)} onEdit={() => setEditingMessage(m.id)} />}
                         </article>
                         );
                       })}

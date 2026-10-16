@@ -1,3 +1,4 @@
+import {shortWhen,dayBefore} from '../ui/when';
 import {Fragment,useEffect,useMemo,useRef,useState,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {Icon} from '../Icons';
 import {SpaceMark} from './SpaceMark';
@@ -70,16 +71,15 @@ export type SpaceActions={
   onBack:()=>void;
 };
 
-const DAY=86_400_000;
 const dayKey=(t:number)=>new Date(t).toDateString();
 /** Days in a row, ending today or yesterday, on which at least one card was reviewed. */
 function streak(sets:StudySet[],now:number){
   const days=new Set(sets.flatMap(s=>(s.cards||[]).flatMap(c=>c?.reps?[dayKey(c.last)]:[])).concat(sets.flatMap(s=>s.attempts.map(a=>dayKey(a.at)))));
-  let n=0,t=days.has(dayKey(now))?now:now-DAY;
-  while(days.has(dayKey(t))){n++;t-=DAY;}
+  let n=0,t=days.has(dayKey(now))?now:dayBefore(now);
+  while(days.has(dayKey(t))){n++;t=dayBefore(t);}
   return n;
 }
-const ago=(t:number)=>{const d=Math.floor((Date.now()-t)/DAY);return d<=0?'today':d===1?'yesterday':d<7?`${d} days ago`:new Date(t).toLocaleDateString([], {month:'short',day:'numeric'});};
+const ago=(t:number)=>shortWhen(t);
 
 function Ring({value,size=58}:{value:number;size?:number}){
   const r=size/2-5,c=2*Math.PI*r;

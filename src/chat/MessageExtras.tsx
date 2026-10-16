@@ -18,7 +18,7 @@ export function exportTitle(content: string, fallback: string) {
   return (heading || fallback || 'Mowr document').replace(/[*_`#]/g, '').trim().slice(0, 120);
 }
 
-export function MessageTools({ content, models, model, onReview, onVerify, canVerify, busy, title = '', onExport }: { content: string; models: Model[]; model?: string; onReview: (model: string) => void; onVerify?: () => void; canVerify: boolean; busy: boolean; title?: string; onExport?: (format: 'pdf' | 'docx' | 'pptx', content: string, title: string) => Promise<void> }) {
+export function MessageTools({ content, models, model, onReview, onVerify, canVerify, busy, title = '', onExport, at }: { at?: number; content: string; models: Model[]; model?: string; onReview: (model: string) => void; onVerify?: () => void; canVerify: boolean; busy: boolean; title?: string; onExport?: (format: 'pdf' | 'docx' | 'pptx', content: string, title: string) => Promise<void> }) {
   const [copied, setCopied] = useState(false), [menu, setMenu] = useState(false), [exporting, setExporting] = useState<'menu' | 'pdf' | 'docx' | 'pptx' | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   // Menus open upward when the answer sits low in the window, so they are never hidden under the composer.
@@ -43,6 +43,7 @@ export function MessageTools({ content, models, model, onReview, onVerify, canVe
       <p>Ask another model to review this answer</p>
       {reviewers.slice(0, 6).map((m, i) => <button key={m.id} role="menuitem" onClick={() => { setMenu(false); onReview(m.id); }}><span>{m.name}</span>{i === 0 && <small>{m.provider !== models.find(x => x.id === model)?.provider ? 'Different provider' : m.id !== model ? 'Different model' : 'Fresh context'}</small>}</button>)}
     </div>}
+    <MessageTime at={at} />
   </div>;
 }
 
@@ -95,10 +96,20 @@ export function parseClaims(raw: string) {
   }));
 }
 
+/** When a message was sent or an answer finished: the time today, else the day and time; the full date on hover. */
+export function MessageTime({ at }: { at?: number }) {
+  if (!at) return null;
+  const when = new Date(at), today = new Date().toDateString() === when.toDateString();
+  const time = when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const day = when.toLocaleDateString([], { month: 'short', day: 'numeric', ...(when.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+  return <time className="message-time" dateTime={when.toISOString()} title={when.toLocaleString([], { dateStyle: 'full', timeStyle: 'short' })}>{today ? time : `${day}, ${time}`}</time>;
+}
+
 /** Copy, retry and edit under a message the person sent. Retry and Edit answer it again, interrupting a running answer. */
-export function UserMessageTools({ content, onRetry, onEdit }: { content: string; onRetry: () => void; onEdit: () => void }) {
+export function UserMessageTools({ content, onRetry, onEdit, at }: { content: string; onRetry: () => void; onEdit: () => void; at?: number }) {
   const [copied, setCopied] = useState(false);
   return <div className="message-tools user-tools">
+    <MessageTime at={at} />
     <button type="button" aria-label={copied ? 'Copied' : 'Copy message'} aria-description="Copy" onClick={() => void copyText(content).then(ok => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1400); })}><Icon name={copied ? 'check' : 'copy'} size={16} /></button>
     <button type="button" aria-label="Retry" aria-description="Answer this again" onClick={onRetry}><Icon name="refresh" size={16} /></button>
     <button type="button" aria-label="Edit" aria-description="Edit and send again" onClick={onEdit}><Icon name="rename" size={16} /></button>

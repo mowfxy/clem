@@ -1,3 +1,4 @@
+import { shortWhen } from "../ui/when";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Icon } from "../Icons";
 import { DriveLogo } from "../BrandLogos";
@@ -10,7 +11,7 @@ import type { SpaceActions } from "../space/SpacePage";
 import type { Space, StoredFile } from "../../core/types";
 import "./drive.css";
 
-const ago = (iso?: string) => { if (!iso) return ""; const d = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 7 ? `${d} days ago` : new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" }); };
+const ago = (iso?: string) => (iso ? shortWhen(Date.parse(iso)) : "");
 /** Google's own formats get the glyph of the Office file they stand for. */
 const glyphName = (i: { name: string; mimeType: string }) => i.name + (({ document: ".docx", presentation: ".pptx", spreadsheet: ".xlsx" } as Record<string, string>)[i.mimeType.replace("application/vnd.google-apps.", "")] || "");
 const editable = /\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i;
