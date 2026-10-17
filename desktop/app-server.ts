@@ -1,4 +1,4 @@
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 
 export const WORN_BYTES = 64_000_000;
@@ -102,6 +102,9 @@ export class AppServer {
   }
   close() {
     this.fail(Error("Codex connection closed."));
-    this.child.kill();
+    // On Windows killing Codex alone leaves the shell commands it started running: the whole tree goes.
+    const pid = this.child.pid;
+    if (process.platform === "win32" && pid && this.child.exitCode === null) spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }).on("error", () => this.child.kill());
+    else this.child.kill();
   }
 }

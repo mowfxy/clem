@@ -48,7 +48,7 @@ const redirect=JSON.parse(vercel).redirects?.find(r=>r.source==='/download/windo
 if(!redirect)throw Error(`${vercelFile} has no /download/windows redirect; nothing was changed.`);
 const releaseFile='public/desktop-release.json';
 const release=JSON.parse(await readFile(releaseFile,'utf8').catch(()=>'{}'));
-Object.assign(release,{version:pkg.version,url:'/download/windows',sha256,size:info.size,released:new Date(info.mtime).toISOString().slice(0,10)});
+Object.assign(release,{version:pkg.version,url:'/download/windows',signed:process.env.MOWR_REQUIRE_SIGNING==='true',sha256,size:info.size,released:new Date(info.mtime).toISOString().slice(0,10)});
 // Replace only the destination string so the rest of vercel.json keeps its formatting.
 const updated=vercel.replace(JSON.stringify(redirect.destination),JSON.stringify(asset));
 if(JSON.parse(updated).redirects.find(r=>r.source==='/download/windows').destination!==asset)throw Error(`Could not update the /download/windows redirect in ${vercelFile}; nothing was changed.`);

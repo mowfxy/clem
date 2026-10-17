@@ -60,10 +60,22 @@ export class FolderWatcher {
     return entry && entry.folder.path === path && entry.baseline && !entry.timer && !entry.checking && Date.now() - (entry.at || 0) < SETTLED_MS ? entry.baseline : undefined;
   }
 
+  /** A request walked a watched folder itself: an unchanged index keeps the baseline current, a changed one is
+   *  left to a check so the watcher still reports it. */
+  refresh(folderId: string, path: string, files: IndexedFile[]) {
+    const entry = this.live.get(folderId);
+    if (!entry || entry.folder.path !== path || entry.timer || entry.checking) return;
+    if (!entry.baseline) { entry.baseline = files; entry.at = Date.now(); return; }
+    const delta = diffIndex(entry.baseline, files);
+    if (delta.added.length + delta.changed.length + delta.removed.length) this.schedule(folderId);
+    else entry.at = Date.now();
+  }
+
   private start(folder: Folder) {
     const entry: Entry = { folder };
     this.live.set(folder.id, entry);
-    entry.running = this.index(folder, []).then((files) => { entry.baseline = files; entry.at = Date.now(); }).catch(() => { entry.baseline = []; });
+    // A failed first read leaves no baseline: the next successful one is adopted without a notice.
+    entry.running = this.index(folder, []).then((files) => { entry.baseline = files; entry.at = Date.now(); }).catch(() => {});
     try {
       entry.watcher = this.open(folder.path, (_event, name) => {
         if (name && !relevant(name)) return;
@@ -100,7 +112,8 @@ export class FolderWatcher {
       let next: IndexedFile[];
       try { next = await this.index(entry.folder, entry.baseline || []); } catch { entry.at = 0; return; } finally { entry.checking = false; }
       if (this.live.get(id) !== entry) return;
-      const delta = diffIndex(entry.baseline || [], next);
+      if (!entry.baseline) { entry.baseline = next; entry.at = Date.now(); entry.silent = false; return; }
+      const delta = diffIndex(entry.baseline, next);
       entry.baseline = next;
       entry.at = Date.now();
       const silent = entry.silent;

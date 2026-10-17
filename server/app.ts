@@ -344,7 +344,13 @@ app.post("/api/chat", async (req, res) => {
     }
     res.end(JSON.stringify({ type: "done" }) + "\n");
   } catch (e) {
-    if (!controller.signal.aborted) {
+    if (controller.signal.aborted) {
+      // Timed out with the person still waiting: end the response instead of leaving it open.
+      if (!res.writableEnded && !res.destroyed) {
+        const message = "This answer took too long. Try a shorter request.";
+        if (!started) res.status(504).json({ error: message }); else res.end(JSON.stringify({ type: "error", error: message }) + "\n");
+      }
+    } else {
       const message = exposable(e) ? e.message : "The model could not be reached. Try again.";
       if (!started) res.status(502).json({ error: message });
       else

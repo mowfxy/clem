@@ -36,3 +36,31 @@ test("watcher debounces, reports outside changes and absorbs Mowr's own edits", 
   watcher.sync([]);
   assert.deepEqual(watcher.watching(), []);
 });
+
+test("a request's own walk keeps a quiet folder settled, and a failed first read is adopted silently", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let disk = [file("a.md", "1")], fail = true;
+  const emitted: FolderEvent[] = [];
+  const fake = new EventEmitter() as EventEmitter & { close(): void };
+  fake.close = () => {};
+  const watcher = new FolderWatcher(async () => { if (fail) throw Error("unreadable"); return disk; }, (e) => emitted.push(e), () => fake as never);
+  watcher.sync([{ id: "f", scope: "subject:bio", path: "C:/Bio" }]);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(watcher.settled("f", "C:/Bio"), undefined);
+  fail = false;
+  await watcher.check("f");
+  assert.equal(emitted.length, 0, "files are not all reported as added after a failed first read");
+  assert.deepEqual(watcher.settled("f", "C:/Bio"), disk);
+  t.mock.timers.tick(11 * 60_000);
+  assert.equal(watcher.settled("f", "C:/Bio"), undefined);
+  watcher.refresh("f", "C:/Bio", disk);
+  assert.deepEqual(watcher.settled("f", "C:/Bio"), disk, "an unchanged walk keeps the index settled");
+  disk = [file("a.md", "2")];
+  watcher.refresh("f", "C:/Bio", disk);
+  assert.equal(watcher.settled("f", "C:/Bio"), undefined, "a changed walk waits for the watcher's check");
+  t.mock.timers.tick(1500);
+  await watcher.check("f");
+  assert.equal(emitted.length, 1);
+  assert.deepEqual(emitted[0].changed, ["a.md"]);
+  watcher.stop();
+});

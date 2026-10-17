@@ -77,4 +77,6 @@ test("chats are keyed by space and first message", () => {
   assert.equal(briefKey("project:a", "hello"), briefKey("project:a", "hello"));
   assert.notEqual(briefKey("project:a", "hello"), briefKey("project:b", "hello"));
   assert.notEqual(briefKey("project:a", "hello"), briefKey("project:a", "hello!"));
+  // Two chats that start the same way keep their own briefs.
+  assert.notEqual(briefKey("project:a", "hello", "chat-1"), briefKey("project:a", "hello", "chat-2"));
 });

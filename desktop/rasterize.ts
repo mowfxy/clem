@@ -53,8 +53,15 @@ export async function rasterizer() {
     webPreferences: { offscreen: true, sandbox: true, nodeIntegration: false, contextIsolation: true, javascript: false },
   });
   const file = join(tmpdir(), "mowr-raster-" + randomUUID() + ".html");
+  // One page and one file: captures run one at a time (a docx table builds its cells concurrently).
+  let queue: Promise<unknown> = Promise.resolve();
+  function capture(html: string, width: number, height: number, scale = 2) {
+    const run = queue.then(() => draw(html, width, height, scale));
+    queue = run.catch(() => {});
+    return run;
+  }
   /** `html` is laid out in a box of `width`×`height` CSS pixels and captured at `scale`. */
-  async function capture(html: string, width: number, height: number, scale = 2) {
+  async function draw(html: string, width: number, height: number, scale: number) {
     width = Math.max(1, Math.ceil(width));
     height = Math.max(1, Math.ceil(height));
     const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${DRAWING_CSP}"><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}body{width:${width}px;height:${height}px;zoom:${scale}}</style></head><body>${html}</body></html>`;

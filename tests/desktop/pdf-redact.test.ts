@@ -398,3 +398,15 @@ test("the content reader keeps inline images whole and the marked-content altern
   assert.match(raw, /Kept/);
   assert.ok(new Unclean("x") instanceof Error);
 });
+
+test("text found by its words is removed exactly: the punctuation touching it stays", async () => {
+  const src = new Uint8Array(await fixture("two-column.pdf"));
+  const before = await textOf(src);
+  const r = await editPdf({ file: "paper.pdf", ops: [{ op: "redact", page: 1, find: "resistor" }] }, helpers({ "paper.pdf": src }));
+  assert.doesNotMatch(r.done[0], /picture/);
+  const text = await textOf(r.bytes);
+  assert.doesNotMatch(text, /resistor/);
+  // "resistor," keeps its comma: nothing but the word's own glyphs is taken.
+  assert.equal(text.split(",").length, before.split(",").length);
+  assert.equal(text.replace(/\s/g, "").length, before.replace(/\s/g, "").length - "resistor".length * r.spec.ops[0].regions.length);
+});

@@ -24,7 +24,7 @@ function sections(code: string) {
 }
 /** Whether a code formats dates or times (a "d", "m", "y", "h" or "s" outside quotes, brackets and literals). */
 export function isDateFormat(code: string) {
-  const bare = code.replace(/"[^"]*"/g, "").replace(/\[[^\]]*\]/g, "").replace(/\\./g, "").replace(/_./g, "");
+  const bare = code.replace(/"[^"]*"/g, "").replace(/\[(?![hms]+\])[^\]]*\]/gi, "").replace(/\\./g, "").replace(/_./g, "");
   return /[dmyhs]/i.test(bare) && !/^\s*(general|@)\s*$/i.test(bare);
 }
 const pad = (n: number, width = 2) => String(n).padStart(width, "0");
@@ -32,6 +32,8 @@ const pad = (n: number, width = 2) => String(n).padStart(width, "0");
 export const serialDate = (serial: number, date1904 = false) => new Date(Math.round((serial - (date1904 ? 24107 : 25569)) * 86400000));
 
 function formatDate(value: number, code: string, date1904: boolean) {
+  // Without a fraction of a second on show, times round to the nearest second, as Excel does.
+  if (!/\.0/.test(code)) value = Math.round(value * 86400) / 86400;
   const d = serialDate(value, date1904);
   const y = d.getUTCFullYear(), mo = d.getUTCMonth(), day = d.getUTCDate(), wd = d.getUTCDay(), h = d.getUTCHours(), mi = d.getUTCMinutes(), s = d.getUTCSeconds();
   const twelve = /am\/pm|a\/p/i.test(code);
@@ -44,7 +46,7 @@ function formatDate(value: number, code: string, date1904: boolean) {
     if (t[0] === '"') out += t.slice(1, -1);
     else if (t[0] === "\\") out += t.slice(1);
     else if (t[0] === "_") out += " ";
-    else if (t[0] === "[") { const m = /^\[([hms]+)\]$/i.exec(t); if (m) { const total = Math.floor(value * 86400); out += m[1][0].toLowerCase() === "h" ? Math.floor(total / 3600) : m[1][0].toLowerCase() === "m" ? Math.floor(total / 60) : total; } }
+    else if (t[0] === "[") { const m = /^\[([hms]+)\]$/i.exec(t); if (m) { const total = Math.floor(Math.round(value * 86400000) / 1000); out += m[1][0].toLowerCase() === "h" ? Math.floor(total / 3600) : m[1][0].toLowerCase() === "m" ? Math.floor(total / 60) : total; } }
     else if (l === "yyyy") out += pad(y, 4);
     else if (l === "yy") out += pad(y % 100);
     else if (l === "mmmmm") out += MONTHS[mo][0];

@@ -38,12 +38,13 @@ const SURVEY_MS = 8000;
 /** The pages that carry pictures or drawings (many path operations: circuits, graphs, diagrams), those with no text, and those set as formulas. */
 async function survey(file: StoredFile, pdf: any, lib: any, signal?: AbortSignal): Promise<Survey> {
   const key = `${file.id}:${file.size}:${file.updated || file.created}`;
-  const known = surveys.get(key);
-  if (known) return known;
-  const visual: { page: number; weight: number }[] = [], textless: number[] = [], formulas: number[] = [];
-  const last = Math.min(pdf.numPages, 150), until = Date.now() + SURVEY_MS;
-  let surveyed = 0;
-  for (let p = 1; p <= last; p++) {
+  const known = surveys.get(key), last = Math.min(pdf.numPages, 150);
+  if (known?.surveyed === last) return known;
+  // A survey cut short is kept as far as it went, and the next message goes on from the next page.
+  const visual = [...(known?.visual || [])], textless = [...(known?.textless || [])], formulas = [...(known?.formulas || [])];
+  const until = Date.now() + SURVEY_MS;
+  let surveyed = known?.surveyed || 0;
+  for (let p = surveyed + 1; p <= last; p++) {
     signal?.throwIfAborted();
     if (Date.now() > until) break;
     surveyed = p;
@@ -79,8 +80,7 @@ async function survey(file: StoredFile, pdf: any, lib: any, signal?: AbortSignal
     }
   }
   const result = { pages: pdf.numPages, surveyed, visual, textless, formulas };
-  // A survey cut short is not kept, so the next message can look further.
-  if (surveyed === last) surveys.set(key, result);
+  surveys.set(key, result);
   return result;
 }
 
@@ -113,7 +113,7 @@ async function renderPage(file: StoredFile, pdf: any, n: number) {
 async function pdfPictures(file: StoredFile, blob: Blob, want: number[], limit: number, signal?: AbortSignal): Promise<Picture[]> {
   const lib = await pdfjs();
   const loading = lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: false });
-  const pdf = await loading.promise;
+  const pdf = await loading.promise.catch(async (e) => { await loading.destroy(); throw e; });
   try {
     const info = await survey(file, pdf, lib, signal);
     const order: number[] = [];
@@ -263,10 +263,12 @@ const pageList = (pages: number[]) => {
 const pagesNamed = (pages: number[]) => (pages.length === 1 ? "page " : "pages ") + pageList(pages);
 const plural = (n: number) => `${n} page${n === 1 ? "" : "s"}`;
 
-/** A few pages of a PDF, as a PDF: what Claude reads of a long one. */
+/** A few pages of a PDF, as a PDF: what Claude reads of a long one. Null for an encrypted PDF: pdf-lib cannot decrypt,
+ *  so its copied pages would still be encrypted and unreadable. */
 async function excerptPdf(bytes: Uint8Array, pages: number[]) {
   const { PDFDocument } = await import("pdf-lib");
   const source = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  if (source.isEncrypted) return null;
   const out = await PDFDocument.create();
   for (const page of await out.copyPages(source, pages.map((p) => p - 1))) out.addPage(page);
   return new Uint8Array(await out.save());
@@ -311,18 +313,24 @@ export async function pdfView({ files, current, earlier, related = [], prompt, p
     const from = where ? `, ${where}, not attached: only its pages that match the question are shown` : "";
     // Within what one request may carry; a PDF past it is read from its text as before.
     if (view.notes.length + (after?.notes.length || 0) >= MAX_NOTES || (provider !== "codex" && view.files.length + (after?.files.length || 0) >= MAX_FILES)) return false;
+    // An encrypted PDF cannot be cut into pages: Claude gets it whole when it fits, otherwise its pages as pictures.
+    let sent: Uint8Array<ArrayBuffer> | null = null;
+    if (provider === "claude" && pages.length) {
+      sent = whole ? data : await excerptPdf(data, pages);
+      if (!sent && !where && bytes + data.length <= FILE_BYTES.claude) sent = data;
+    }
     if (!pages.length) {
       if (where) return false;
       view.notes.push(`"${file.name}" (${plural(count)}): text only (no drawings, scans or formulas found), so its text with the sources is all of it. ${rest}`);
-    } else if (provider === "claude") {
-      const sent = whole ? data : await excerptPdf(data, pages);
+    } else if (sent) {
       if (bytes + sent.length > FILE_BYTES.claude) return false;
       bytes += sent.length;
-      view.files.push({ name: whole ? file.name : `${file.name} — ${pagesNamed(pages)} of ${count}`, data: sent });
-      view.notes.push(whole
+      const all = sent === data;
+      view.files.push({ name: all ? file.name : `${file.name} — ${pagesNamed(pages)} of ${count}`, data: sent });
+      view.notes.push(all
         ? `"${file.name}" (${plural(count)}): attached whole as a PDF file.`
         : `"${file.name}" (${plural(count)}${from}): a PDF of ${pagesNamed(pages)}${where ? "" : ", the pages with drawings, scans or formulas,"} is attached (its pages are those pages of the original, in that order). ${rest}`);
-      if (whole) view.whole.push(file.id);
+      if (all) view.whole.push(file.id);
     } else if (provider === "grok") {
       if (bytes + data.length > FILE_BYTES.grok) return false;
       bytes += data.length;
@@ -435,7 +443,7 @@ export async function pageImages(files: StoredFile[], name: string, pages: numbe
   if (!blob) throw Error(`${file.name} is missing from this PC.`);
   const lib = await pdfjs();
   const loading = lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: false });
-  const pdf = await loading.promise;
+  const pdf = await loading.promise.catch(async (e) => { await loading.destroy(); throw e; });
   try {
     const valid = pages.filter((p) => p >= 1 && p <= pdf.numPages).slice(0, 8);
     if (!valid.length) throw Error(`${file.name} has ${pdf.numPages} pages.`);

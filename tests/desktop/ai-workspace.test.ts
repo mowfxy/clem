@@ -67,6 +67,23 @@ test("Word, PowerPoint and Excel files are read here, slide by slide and sheet b
     assert.equal(await officeText(join(dir, "b.pptx"), "b.pptx"), "[b.pptx, slide 1]\nOne\n\n[b.pptx, slide 2]\nTwo");
     await writeFile(join(dir, "c.xlsx"), zipSync({ "xl/workbook.xml": strToU8('<workbook><sheets><sheet name="Marks" sheetId="1"/></sheets></workbook>'), "xl/sharedStrings.xml": strToU8("<sst><si><t>Name</t></si><si><t>Ali</t></si></sst>"), "xl/worksheets/sheet1.xml": strToU8('<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1"><v>7</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row></sheetData></worksheet>') }));
     assert.equal(await officeText(join(dir, "c.xlsx"), "c.xlsx"), '[c.xlsx, sheet "Marks"]\nName\t\t7\nAli');
+    // Order and names come from presentation.xml and workbook.xml through their relationships, not from file numbers.
+    const slide = (text: string) => strToU8(`<p:sld><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:sld>`);
+    await writeFile(join(dir, "d.pptx"), zipSync({
+      "ppt/presentation.xml": strToU8('<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId3"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst></p:presentation>'),
+      "ppt/_rels/presentation.xml.rels": strToU8('<Relationships><Relationship Id="rId2" Type="slide" Target="slides/slide1.xml"/><Relationship Id="rId3" Type="slide" Target="/ppt/slides/slide2.xml"/></Relationships>'),
+      "ppt/slides/slide1.xml": slide("Moved last"), "ppt/slides/slide2.xml": slide("Moved first"),
+      "ppt/slides/_rels/slide2.xml.rels": strToU8('<Relationships><Relationship Id="rId1" Type="notesSlide" Target="../notesSlides/notesSlide7.xml"/></Relationships>'),
+      "ppt/notesSlides/notesSlide7.xml": slide("Say this"),
+    }));
+    assert.equal(await officeText(join(dir, "d.pptx"), "d.pptx"), "[d.pptx, slide 1]\nMoved first\nSpeaker notes: Say this\n\n[d.pptx, slide 2]\nMoved last");
+    const sheet = (text: string) => strToU8(`<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>${text}</t></is></c></row></sheetData></worksheet>`);
+    await writeFile(join(dir, "e.xlsx"), zipSync({
+      "xl/workbook.xml": strToU8('<workbook><sheets><sheet name="Summary" sheetId="2" r:id="rId9"/><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+      "xl/_rels/workbook.xml.rels": strToU8('<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId9" Target="worksheets/sheet2.xml"/></Relationships>'),
+      "xl/worksheets/sheet1.xml": sheet("rows"), "xl/worksheets/sheet2.xml": sheet("totals"),
+    }));
+    assert.equal(await officeText(join(dir, "e.xlsx"), "e.xlsx"), '[e.xlsx, sheet "Summary"]\ntotals\n\n[e.xlsx, sheet "Data"]\nrows');
     await writeFile(join(dir, "bad.docx"), "not a zip");
     assert.match(await officeText(join(dir, "bad.docx"), "bad.docx"), /could not be read/);
   } finally { await rm(dir, { recursive: true, force: true }); }

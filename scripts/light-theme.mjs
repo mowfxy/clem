@@ -9,7 +9,7 @@
 const PREFIX = ":root[data-theme=light]";
 // Colours that mean something on their own: a rendered Office document, a diagram on white, the logo.
 const SKIP_FILES = [/office-preview/, /[\\/]theme[\\/]light\.css$/];
-const SKIP_SELECTORS = [/\.kinetra-diagram/, /\.mowr-mark/, /\.brand-logo/, /\.office-/];
+const SKIP_SELECTORS = [/\.kinetra-diagram/, /\.mowr-mark/, /\.brand-logo/, /\.office-/, /\.yt-thumb i/];
 const COLOUR_PROPS = /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|text-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?|scrollbar-color|filter|--.+)$/;
 const SHADOW_PROPS = /^(box-shadow|text-shadow|filter)$/;
 const NAMED = { white: "#ffffff", black: "#000000" };

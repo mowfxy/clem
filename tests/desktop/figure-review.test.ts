@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { documentFigures, figureCheck, figurePictures, newFigures, FIGURES_PER_RESULT, FIGURE_PIXELS, FIGURE_BYTES } from "../../desktop/figure-review.ts";
+import { deckSheets, documentFigures, figureCheck, figurePictures, newFigures, FIGURES_PER_RESULT, FIGURE_PIXELS, FIGURE_BYTES } from "../../desktop/figure-review.ts";
 import { kinetraInstructions } from "../../desktop/kinetra-runtime.ts";
 
 const svg = (n: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><text>${n}</text></svg>`;
@@ -55,4 +55,24 @@ test("the model is asked to compare each figure with its source and revise when 
   assert.match(note, /"revise"/);
   assert.match(note, /2 more new figures were not attached/);
   assert.match(kinetraInstructions, /pictures of its new figures come back with the result/);
+});
+
+test("a deck's changed sheets go first, and slides never pictured are named, not claimed as checked", () => {
+  const sheet = (first: number, last: number, tag = "") => ({ name: `slides ${first}–${last}`, first, last, jpeg: new TextEncoder().encode(`${first}-${last}${tag}`) });
+  const seen = new Set<string>();
+  const deck = { slides: 160, sheets: Array.from({ length: 12 }, (_, i) => sheet(i * 12 + 1, i * 12 + 12)) };
+  const first = deckSheets(deck, seen);
+  assert.deepEqual(first.shown.map((s) => s.first), [1, 13, 25, 37]);
+  assert.match(first.note, /Slides 49–60, .*133–144, 145–160 are not pictured/);
+  // Slides 61–72 changed: their sheet goes, not the unchanged ones already seen.
+  const changed = { ...deck, sheets: deck.sheets.map((s) => (s.first === 61 ? sheet(61, 72, "x") : s)) };
+  const second = deckSheets(changed, seen);
+  assert.equal(second.shown[0].first, 49);
+  assert.ok(second.shown.some((s) => s.first === 61));
+  assert.match(second.note, /Slides 1–12, 13–24, 25–36, 37–48 look exactly as/);
+  assert.doesNotMatch(second.note, /Every slide/);
+  // Every sheet seen and the whole deck covered: only then is every slide said to be unchanged.
+  const small = { slides: 2, sheets: [sheet(1, 2)] };
+  deckSheets(small, seen);
+  assert.equal(deckSheets(small, seen).note, "Every slide looks exactly as in the contact sheets already attached in this answer.");
 });

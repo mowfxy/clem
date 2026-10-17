@@ -213,7 +213,8 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
         for (const b of boxes) p.drawRectangle({ x: b[0], y: b[1], width: b[2] - b[0], height: b[3] - b[1], color: rgb(...fill) });
         snapshot = null;
         // Checked the way anyone would try to read it back: no text pdf.js can extract may remain under a region.
-        const left = (await helpers.words(await current(), n)).filter((i) => i.str.trim() && boxes.some((b) => overlaps(b, [i.x, i.y - i.size * 0.2, i.x + i.width, i.y + i.size * 0.75])));
+        // Text that only touches a box's side (the comma after a word found by its text) is beside it, not under it.
+        const left = (await helpers.words(await current(), n)).filter((i) => i.str.trim() && boxes.some((b) => overlaps([b[0] + 0.25, b[1], b[2] - 0.25, b[3]], [i.x, i.y - i.size * 0.2, i.x + i.width, i.y + i.size * 0.75])));
         if (left.length) throw new Unclean("text still under the box");
       } catch (error) {
         if (!(error instanceof Unclean)) throw error;
@@ -424,11 +425,12 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
           if (Array.isArray(op.regions)) regions = op.regions.map((r: any) => ({ page: Number(r.page), box: boxOf(r.box, "regions") }));
           else if (op.bbox) regions = [{ page: Number(op.page), box: boxOf(op.bbox) }];
           else if (typeof op.find === "string" && op.find.trim()) {
+            // Exactly the found words across: padding would take the comma or letter that touches them.
             const pages = op.pages !== undefined ? pageList(op.pages, count, "all") : [Number(op.page)];
             regions = [];
             for (const n of pages) {
               page(n);
-              for (const b of textBoxes(await helpers.words(await current(), n), op.find, advance)) regions.push({ page: n, box: [b.x0 - 1, b.y0 - 0.5, b.x1 + 1, b.y1 + 0.5] });
+              for (const b of textBoxes(await helpers.words(await current(), n), op.find, advance)) regions.push({ page: n, box: [b.x0, b.y0 - 0.5, b.x1, b.y1 + 0.5] });
             }
             if (!regions.length) throw Error(`“${op.find.slice(0, 60)}” is not printed on ${pages.length === 1 ? "page " + pages[0] : "those pages"}. Quote it exactly as printed (one line at a time), or give "bbox".`);
             op.regions = regions.map((r) => ({ page: r.page, box: r.box.map((v) => Math.round(v * 100) / 100) }));

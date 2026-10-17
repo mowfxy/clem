@@ -3,6 +3,7 @@ import {planEdits,lines,type TextItem,type PdfTextEdit} from '../../core/pdf-edi
 import {desktop,desktopChat} from '../desktop/bridge';
 import {SOURCE_PREFIX} from '../../core/chat-context';
 import {getBlob,storeBlob,deleteBlob,addVersion} from '../store';
+import type {Box} from '../../desktop/pdf-redact';
 import type {StoredFile,FileVersion} from '../../core/types';
 
 /** Real edits to a PDF file: Mowr-made PDFs are re-typeset from their source; any other PDF has
@@ -11,7 +12,8 @@ import type {StoredFile,FileVersion} from '../../core/types';
 export async function openPdf(bytes:Uint8Array){
   const lib=await import('pdfjs-dist');
   lib.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).href;
-  return lib.getDocument({data:bytes.slice()}).promise;
+  const loading=lib.getDocument({data:bytes.slice()});
+  return loading.promise.catch(async e=>{await loading.destroy();throw e;});
 }
 
 async function itemsOf(page:PDFPageProxy):Promise<TextItem[]>{
@@ -68,6 +70,12 @@ export async function applyTextEdits(bytes:Uint8Array,edits:PdfTextEdit[]){
     const placements=planEdits(await pageItems(source),edits);
     const {PDFDocument,StandardFonts,rgb}=await import('pdf-lib');
     const doc=await PDFDocument.load(bytes);
+    const {redactPage,Unclean}=await import('../../desktop/pdf-redact');
+    // The old words are taken out of the page, not only painted over, so they are not still there to select, search or edit.
+    for(const n of new Set(placements.map(p=>p.page))){
+      const boxes=placements.filter(p=>p.page===n).map(({cover:c}):Box=>[c.x,c.y,c.x+c.w,c.y+c.h]);
+      try{redactPage(doc,doc.getPage(n-1),boxes);}catch(e){if(!(e instanceof Unclean))throw e;}
+    }
     const fonts=new Map<string,Awaited<ReturnType<typeof doc.embedFont>>>();
     const font=async(name:string)=>{if(!fonts.has(name))fonts.set(name,await doc.embedFont(name));return fonts.get(name)!;};
     for(const p of placements){

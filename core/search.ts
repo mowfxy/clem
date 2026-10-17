@@ -7,6 +7,8 @@ export type SearchHit = { doc: SearchDoc; score: number; snippet: Snippet };
 
 /** Lowercases without changing string length, so match offsets map back onto the original text. */
 export function fold(text: string) {
+  const lower = text.toLowerCase();
+  if (lower.length === text.length) return lower;
   let out = '';
   for (const c of text) { const l = c.toLowerCase(); out += l.length === c.length ? l : c; }
   return out;
@@ -44,11 +46,11 @@ export function scoreDoc(doc: SearchDoc, terms: string[], phrase: string, now = 
 /** A window of text around the densest cluster of matches, with the matched ranges marked. */
 export function snippet(text: string, terms: string[], radius = 80): Snippet {
   const folded = fold(text);
-  const hits: [number, number][] = [];
-  for (const term of terms) {
+  const hits: [number, number, number][] = [];
+  terms.forEach((term, t) => {
     let i = folded.indexOf(term);
-    for (let n = 0; i >= 0 && n < 200; n++) { hits.push([i, i + term.length]); i = folded.indexOf(term, i + term.length); }
-  }
+    for (let n = 0; i >= 0 && n < 200; n++) { hits.push([i, i + term.length, t]); i = folded.indexOf(term, i + term.length); }
+  });
   hits.sort((a, b) => a[0] - b[0]);
   if (!hits.length) {
     const clean = text.slice(0, radius * 2).replace(/\s+/g, ' ').trim();
@@ -56,8 +58,9 @@ export function snippet(text: string, terms: string[], radius = 80): Snippet {
   }
   // Choose the start that covers the most distinct terms within the window.
   let best = hits[0][0], bestCount = 0;
-  for (const [start] of hits) {
-    const covered = new Set(hits.filter(([s, e]) => s >= start && e <= start + radius * 2).map(([s, e]) => folded.slice(s, e)));
+  for (let i = 0; i < hits.length; i++) {
+    const start = hits[i][0], end = start + radius * 2, covered = new Set<number>();
+    for (let j = i; j < hits.length && hits[j][0] <= end; j++) if (hits[j][1] <= end) covered.add(hits[j][2]);
     if (covered.size > bestCount) { bestCount = covered.size; best = start; }
   }
   let from = Math.max(0, best - Math.floor(radius / 2));

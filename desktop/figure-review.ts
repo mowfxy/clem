@@ -70,3 +70,30 @@ export function figureCheck(names: string[], more: number) {
   if (!names.length) return undefined;
   return `Pictures of the figures just drawn are attached (${names.join("; ")}). Look at each one and compare it with the source it was copied from: the problem, the person's picture or page, the netlist or data you computed with. If any connection or topology, label, value, unit or direction differs, or anything is missing or extra, correct that figure's spec and send the file again with "revise" before answering; if they all match, say nothing about this check.${more ? ` ${more} more new figure${more === 1 ? " was" : "s were"} not attached (at most ${FIGURES_PER_RESULT} per file result); they are attached the next time this file is revised.` : ""}`;
 }
+
+/** Contact sheets sent with one deck result. */
+const SHEETS_PER_RESULT = 4;
+type Sheet = { name: string; first: number; last: number; jpeg: Uint8Array };
+/**
+ * The deck's contact sheets to send (marked seen): those the model has not seen in this answer (changed or added slides)
+ * first, at most SHEETS_PER_RESULT; and what it is told about the slides they leave out, said plainly when some were
+ * never pictured.
+ */
+export function deckSheets(deck: { slides: number; sheets: Sheet[] }, seen: Set<string>) {
+  const range = (a: number, b: number) => (a === b ? `${a}` : `${a}–${b}`);
+  const shown: Sheet[] = [], same: string[] = [], missing: string[] = [];
+  for (const s of deck.sheets) {
+    const key = "sheet:" + createHash("sha256").update(s.jpeg).digest("hex");
+    if (seen.has(key)) same.push(range(s.first, s.last));
+    else if (shown.length < SHEETS_PER_RESULT) { shown.push(s); seen.add(key); }
+    else missing.push(range(s.first, s.last));
+  }
+  const covered = deck.sheets.at(-1)?.last ?? 0;
+  if (deck.slides > covered) missing.push(range(covered + 1, deck.slides));
+  const slides = (list: string[]) => `Slide${list.length === 1 && !list[0].includes("–") ? "" : "s"} ${list.join(", ")}`;
+  const note = !shown.length && !missing.length ? "Every slide looks exactly as in the contact sheets already attached in this answer." : [
+    same.length ? `${slides(same)} look exactly as in the contact sheets already attached in this answer.` : "",
+    missing.length ? `${slides(missing)} are not pictured in this result (too many slides to show at once): they were only measured for overflow, contrast and overlaps, not looked at.` : "",
+  ].filter(Boolean).join(" ");
+  return { shown, note };
+}

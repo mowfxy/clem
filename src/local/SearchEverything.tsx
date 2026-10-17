@@ -70,15 +70,18 @@ export function SearchEverything({chats,spaces,studySets,files,owner,initialQuer
     return()=>{live=false;clearTimeout(timer);};
   },[query]);
 
-  const docs=useMemo(()=>{
-    const out:(SearchDoc&{open:()=>void;where:string})[]=[];
-    const spaceName=(id:string|null)=>spaces.find(s=>s.id===id)?.name;
+  type Doc=SearchDoc&{open:()=>void;where:string};
+  const spaceName=(id:string|null)=>spaces.find(s=>s.id===id)?.name;
+  // Files' text arrives one file at a time while the panel reads them; the chats, subjects and cards are not rebuilt for it.
+  const chatDocs=useMemo(()=>{
+    const out:Doc[]=[];
     for(const chat of chats)out.push({id:'chat:'+chat.id,kind:'chat',title:chat.title,text:chat.messages.map(m=>m.content).join('\n\n'),updated:chat.updated,where:spaceName(chat.spaceId)||'Conversation',open:()=>onOpenChat(chat)});
     for(const space of spaces)out.push({id:'space:'+space.id,kind:'space',title:space.name,text:[space.description,space.memory].filter(Boolean).join('\n'),where:space.kind==='project'?'Project':'Subject',open:()=>onOpenSpace(space)});
     for(const set of studySets){const space=spaces.find(s=>s.id===set.spaceId);set.items.forEach((item,i)=>out.push({id:`card:${set.id}:${i}`,kind:'card',title:item.question,text:item.answer+(item.choices?'\n'+item.choices.join(' · '):''),meta:set.title,updated:set.created,where:`${set.title} · ${space?.name||'Subject'}`,open:()=>space&&onOpenSpace(space)}));}
-    for(const file of files)out.push({id:'file:'+file.id,kind:'file',title:file.name,text:texts[file.id]||'',updated:file.created,where:spaceName(file.spaceId)||'Your files',open:()=>onOpenFile(file)});
     return out;
-  },[chats,spaces,studySets,files,texts]);
+  },[chats,spaces,studySets]);
+  const fileDocs=useMemo(()=>files.map((file):Doc=>({id:'file:'+file.id,kind:'file',title:file.name,text:texts[file.id]||'',updated:file.created,where:spaceName(file.spaceId)||'Your files',open:()=>onOpenFile(file)})),[files,texts,spaces]);
+  const docs=useMemo(()=>[...chatDocs,...fileDocs],[chatDocs,fileDocs]);
 
   const rows=useMemo<Row[]>(()=>{
     if(!query.trim())return [];

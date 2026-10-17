@@ -113,6 +113,8 @@ function criterion(c: Value): (v: Value) => boolean {
   const m = s ? /^(<=|>=|<>|<|>|=)?(.*)$/.exec(s)! : null;
   const op = m?.[1] || "=", raw = m ? m[2] : c;
   const target: Value = typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw)) ? Number(raw) : (raw as Value);
+  // "" and "<>" ask whether a cell is blank, and an empty cell counts as blank.
+  if (target === "" && (op === "=" || op === "<>")) return (v) => (v === null || v === "") === (op === "=");
   return (v) => {
     if (typeof target === "string" && /[*?]/.test(target) && (op === "=" || op === "<>")) { const hit = new RegExp("^" + target.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i").test(text(v)); return op === "=" ? hit : !hit; }
     if (op !== "=" && op !== "<>" && rank(v) !== rank(target)) return false;
@@ -130,13 +132,15 @@ export class Calculator {
   private active = new Set<string>();
   private sheets = new Map<string, string>();
   private grid: Grid;
-  constructor(grid: Grid) { this.grid = grid; for (const name of grid.keys()) this.sheets.set(name.toLowerCase(), name); }
+  private stored: boolean;
+  /** `stored`: a formula cell the file saved a result for shows that result, as Excel would, instead of being worked out again. */
+  constructor(grid: Grid, { stored = false } = {}) { this.grid = grid; this.stored = stored; for (const name of grid.keys()) this.sheets.set(name.toLowerCase(), name); }
   /** The value of one cell: its formula's result, or the value the file stores. */
   value(sheet: string, row: number, col: number): Value {
     const name = this.sheets.get(sheet.toLowerCase());
     const cell = name ? this.grid.get(name)?.get(cellKey(row, col)) : undefined;
     if (!cell) return null;
-    if (cell.formula === undefined) return cell.value ?? null;
+    if (cell.formula === undefined || (this.stored && cell.value !== undefined && cell.value !== null)) return cell.value ?? null;
     const key = name + "!" + row + "," + col;
     if (this.done.has(key)) return this.done.get(key)!;
     if (this.active.has(key)) return err("#REF!");
@@ -237,7 +241,8 @@ export class Calculator {
         const x = numberArg(0), d = numberArg(1, 0);
         if (isError(x)) return x;
         if (isError(d)) return d;
-        const k = 10 ** d, scaled = Math.abs(x) * k, r = name === "ROUND" ? Math.round(scaled + 1e-9) : name === "ROUNDUP" ? Math.ceil(scaled - 1e-9) : Math.floor(scaled + 1e-9);
+        // Rounded to 15 significant digits first, as Excel does, so 2.675 rounds up but 0.9999999999 is not pushed to 1.
+        const k = 10 ** d, scaled = Number((Math.abs(x) * k).toPrecision(15)), r = name === "ROUND" ? Math.round(scaled) : name === "ROUNDUP" ? Math.ceil(scaled) : Math.floor(scaled);
         return (Math.sign(x) * r) / k;
       }
       case "IF": { const c = truth(arg(0)); if (isError(c)) return c; return c ? (args[1] ? this.run(args[1], sheet) : true) : args[2] ? this.run(args[2], sheet) : false; }

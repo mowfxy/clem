@@ -98,3 +98,32 @@ test("number formats show what Excel shows", () => {
   assert.equal(showValue(true), "TRUE");
   assert.equal(showValue({ error: "#N/A" }), "#N/A");
 });
+
+test("COUNTIF's blank criteria treat empty cells as blank", () => {
+  const rows = [[5], [null], ["x"], [null]];
+  assert.equal(calc(rows, '=COUNTIF(A1:A4,"<>")'), 2);
+  assert.equal(calc(rows, '=COUNTIF(A1:A4,"")'), 2);
+});
+
+test("rounding works on 15 significant digits, without pushing values across a boundary", () => {
+  assert.equal(calc([], "=ROUNDDOWN(0.9999999999,0)"), 0);
+  assert.equal(calc([], "=ROUND(0.4999999999,0)"), 0);
+  assert.equal(calc([], "=ROUND(2.675,2)"), 2.68);
+  assert.equal(calc([], "=ROUNDUP(1.1,1)"), 1.1);
+});
+
+test("the preview keeps a result the file saved instead of working it out again", () => {
+  const g: Grid = new Map([["Sheet1", new Map([[cellKey(1, 1), { value: 7, formula: 'VLOOKUP("app*",B1:C1,2,FALSE)' }], [cellKey(2, 1), { value: null, formula: "1+1" }]])]]);
+  const stored = new Calculator(g, { stored: true });
+  assert.equal(stored.value("Sheet1", 1, 1), 7);
+  assert.equal(stored.value("Sheet1", 2, 1), 2);
+});
+
+test("elapsed and clock times round to the second the way Excel shows them", () => {
+  let hour = 0;
+  for (let i = 0; i < 60; i++) hour += 1 / 1440;
+  assert.equal(showValue(hour, "[h]:mm:ss", false), "1:00:00");
+  assert.equal(showValue(0.5 + 0.6 / 86400, "hh:mm:ss", false), "12:00:01");
+  assert.equal(showValue(2, "[h]", false), "48");
+  assert.ok(isDateFormat("[h]"));
+});

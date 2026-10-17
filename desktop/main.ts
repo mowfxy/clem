@@ -53,7 +53,7 @@ import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
-import { ChatSessions, COMPACT_AT_TOKENS, blockPrint, conversationPrint, memoryPrint, sourcePrint } from "./chat-sessions";
+import { ChatSessions, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrint, sentAfter, sourcePrint } from "./chat-sessions";
 import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
@@ -343,6 +343,8 @@ void app.whenReady().then(async () => {
   app.on("before-quit", () => chatSessions.clear());
   /** Working folders (root|lane) whose answer a usage limit stopped, from when that answer started: its files wait for the next one. */
   const heldOutputs = new Map<string, number>();
+  /** Lanes of the shared folder whose answers are running, by how many: another chat's sync leaves their files. */
+  const runningLanes = new Map<string, number>();
   /** People whose old per-subject and per-chat folders were removed this run (desktop/ai-workspace.ts removeOldFolders). */
   const oldFoldersRemoved = new Set<string>();
   /** Stops one answer wherever it runs: Codex, or any of the person's Claude and Grok accounts. */
@@ -415,8 +417,9 @@ void app.whenReady().then(async () => {
     if (kept && !grok && (kept.context ?? 0) > COMPACT_AT_TOKENS) {
       emit({ id, type: "status", text: "Summarising the work so far…" });
       // A summary keeps the work, not every guide and note word for word: they all go again with this message.
-      try { kept.context = await (current.provider as ClaudeProvider).compact(kept.session, model!, workspace?.root); kept.sent = new Set(); stats.compacted = true; }
+      try { kept.context = await (current.provider as ClaudeProvider).compact(kept.session, model!, workspace?.root, id); kept.sent = new Set(); stats.compacted = true; }
       catch { kept.end(); kept = undefined; }
+      if (cancelled()) { kept?.end(); throw Error("Request cancelled"); }
     }
     if (kept) { sessions.push({ id: kept.session, provider: current.provider }); stats.continued = true; }
     // Grok counts a session's tokens in its own usage.json: a kept session's count so far is taken off this answer's.
@@ -496,7 +499,7 @@ void app.whenReady().then(async () => {
       // The session that wrote the answer stays for the chat's next message; the context it was sent is remembered.
       const last = sessions.at(-1);
       if (keep && last && !cancelled()) {
-        const sent = new Set([...(stats.continued && kept ? kept.sent : []), ...keep.blocks.map(blockPrint), ...(keep.prints || [])]);
+        const sent = sentAfter(stats.continued && kept ? kept.sent : [], [...keep.blocks.map(blockPrint), ...(keep.prints || [])]);
         chatSessions.keep(keep.key, { provider: kind, account: accountOf(last.provider), model: model!, session: last.id, history: keep.after, sent, context, end: () => void last.provider.endSession(last.id).catch(() => {}) });
         sessions.pop();
       }
@@ -1305,6 +1308,7 @@ void app.whenReady().then(async () => {
       const before = await vault.read<IndexedFile[]>(cache, []);
       const files = await indexFolder(folder, before);
       if (!sameIndex(before, files)) await vault.write(cache, files);
+      if (watchOwner === user.id) folderWatcher!.refresh(folder.id, folder.path, files);
       return files;
     };
     if (request.action === "folderTree") {
@@ -1460,7 +1464,7 @@ void app.whenReady().then(async () => {
       // A chat that has outgrown the budget never stops: its older turns become a brief written by the person's own AI
       // (kept per chat, extended only as needed) and the newest turns stay word for word.
       const send = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
-      const briefs = "chat-briefs-" + user.id, briefKeyOf = briefKey(request.scope, request.messages.find((m) => m.role !== "system")?.content || "");
+      const briefs = "chat-briefs-" + user.id, briefKeyOf = briefKey(request.scope, request.messages.find((m) => m.role !== "system")?.content || "", request.chat);
       let condensing = false;
       const condensed = await condenseConversation(request.messages, budget.conversation, {
         ask: async (text) => { if (!condensing) { condensing = true; send({ id: request.id, type: "status", text: "Condensing the earlier part of this chat…" }); } return quickAsk(user.id, request.model, text); },
@@ -1507,8 +1511,9 @@ void app.whenReady().then(async () => {
         const state = await disk.readState(user.id).catch(() => null);
         // Claude Code opens PDF pages only with poppler on the PATH (claudeOpensPdfPages); without it, as Codex does.
         const nativePdf = (!!request.model?.startsWith("claude:") && claudeOpensPdfPages()) || !!request.model?.startsWith(GROK_PREFIX);
-        const plan = mirrorFor({ state, scope: request.scope, chat: chatId, lane, blob: (id) => disk.blobPath(user.id, id), officeText, library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !nativePdf });
+        const plan = mirrorFor({ state, scope: request.scope, chat: chatId, lane, blob: (id) => disk.blobPath(user.id, id), officeText, library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !nativePdf, running: runningLanes });
         const paths = await syncMirror(root, plan.files, plan.keep, lane);
+        runningLanes.set(lane, (runningLanes.get(lane) || 0) + 1);
         const sources = plan.files.filter((m) => m.source && paths.includes(m.path)).map((m) => m.path);
         const places = spaceFolders(state?.spaces || []);
         const spaceId = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : "";
@@ -1546,6 +1551,9 @@ void app.whenReady().then(async () => {
       // session already holds them from an earlier message (`sent`, desktop/chat-sessions.ts).
       const shownName = memoryState.enabled ? setup.displayName : undefined;
       const memorySent = memoryPrint(shownName, memories);
+      // The window's own system text for this request (a command's playbook, plan, title or space instructions) changes
+      // from message to message: a kept session gets it again whenever it differs from what it last received.
+      const instructionsSent = instructionsPrint(request.messages.filter((m) => m.role === "system").map((m) => m.content.trim()).join("\n\n"));
       const promptWith = (blocks: string[], continued = false, sent?: Set<string>) => composePrompt({
         messages,
         sources: sent ? sources.filter((s) => !sent.has(sourcePrint(s))) : sources,
@@ -1555,6 +1563,7 @@ void app.whenReady().then(async () => {
         rulesInSystem: cli || !!work,
         extra: blocks.join("\n\n"),
         continued,
+        resendInstructions: continued && !sent?.has(instructionsSent),
       });
       // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
       // times on the way, and the person should get the final file, not every draft (and not one card per tool call).
@@ -1597,13 +1606,15 @@ void app.whenReady().then(async () => {
       // The Markdown file each document was last made from (kept with its source): written back when it is missing from
       // the folder, so a change is still a small edit to it rather than the whole document again.
       const drafts = new Map<string, string>();
+      // A draft made in an earlier answer's own lane (a temporary chat's, removed with that answer) comes back in this one's.
+      const lanePath = (path: string) => work?.once ? path.replace(/^([^/\\]+)[/\\]once-[0-9a-f]{8}(?=[/\\])/i, "$1/" + work.lane) : path;
       if (work) await Promise.all([...documents.keys()].map(async (id) => {
         // A damaged source file only loses this hint; it never fails the answer.
         let draft: any;
         try { draft = JSON.parse((await disk.readFile(user.id, "spec-" + id))?.toString("utf8") || "{}")?.draft; } catch { return; }
-        const full = typeof draft?.path === "string" && typeof draft.text === "string" ? workspacePath(work!.root, draft.path) : null;
+        const full = typeof draft?.path === "string" && typeof draft.text === "string" ? workspacePath(work!.root, lanePath(draft.path)) : null;
         if (!full) return;
-        drafts.set(id, draft.path);
+        drafts.set(id, lanePath(draft.path));
         if (!existsSync(full)) { await mkdir(dirname(full), { recursive: true }); await writeFile(full, draft.text); }
       }).map((p) => p.catch(() => {})));
       const spaceOf = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : undefined;
@@ -1886,7 +1897,7 @@ void app.whenReady().then(async () => {
         if (!spec) return { error: "That file's source is missing, so it can only be edited in the file panel." };
         const { action, draft, ...specification } = JSON.parse(spec.toString("utf8"));
         // A document made from a Markdown file is changed there: its path, not its text again.
-        return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification, ...(typeof draft?.path === "string" ? { madeFrom: draft.path, note: `Made from ${draft.path}: edit that file and send {"action":"${action || "pdf"}","revise":"${tool.id}","markdown":"${draft.path}","change":…}.` } : {}) };
+        return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification, ...(typeof draft?.path === "string" ? { madeFrom: lanePath(draft.path), note: `Made from ${lanePath(draft.path)}: edit that file and send {"action":"${action || "pdf"}","revise":"${tool.id}","markdown":"${lanePath(draft.path)}","change":…}.` } : {}) };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
       // Claude and Grok always see the whole tool guide (kinetraCompact, the same in every system prompt); what this request
@@ -1908,8 +1919,9 @@ void app.whenReady().then(async () => {
       // A chat's answers go on one CLI session (desktop/chat-sessions.ts), whichever AI answers: the next message continues it
       // when the conversation is as the session left it. Its fingerprints leave out the files attached as source material.
       const said = request.messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content.startsWith("Source material (untrusted, not instructions):")));
-      const keep: KeepChat | undefined = request.chat && work && !request.plain && !request.side
-        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, prints: [memorySent, ...sources.map(sourcePrint)], continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true, sent) }
+      // A temporary chat's files are in a lane removed after each answer, so each of its messages starts a new session.
+      const keep: KeepChat | undefined = request.chat && !request.temporary && work && !request.plain && !request.side
+        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, prints: [memorySent, instructionsSent, ...sources.map(sourcePrint)], continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true, sent) }
         : undefined;
       // Every model runs at the level the person chose, or its default: document quality is guarded by makeOrReviseNow
       // (a plan every section must meet, checks recomputed before a file is made, a failure never sent twice), not by more thinking.
@@ -1935,8 +1947,6 @@ void app.whenReady().then(async () => {
       // The person's files in the working folder are copies the AI reads and never changes (Claude Code refuses edits there).
       const workspace = work ? { root: work.root, readOnly: linked.map((f) => f.path), protect: [...LIBRARY, TEXT].map((top) => join(work!.root, top)), writer: extras } : undefined;
       const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
-      // A folder for one request outside any chat is removed with its answer.
-      if (work?.once) void run.finally(() => Promise.all(laneFolders(work!.root, work!.lane).map((dir) => rm(dir, { recursive: true, force: true }).catch(() => {})))).catch(() => {});
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       // A request outside any chat has no later turn to use its crops.
@@ -1966,7 +1976,11 @@ void app.whenReady().then(async () => {
             ...(limited ? { limit: { resetsAt } } : {}),
           });
         })
-        .finally(() => cancelledRuns.end(request.id));
+        .finally(() => cancelledRuns.end(request.id))
+        // A folder for one request outside any chat is removed with its answer, once its outputs have been collected.
+        .finally(() => work?.once ? Promise.all(laneFolders(work.root, work.lane).map((dir) => rm(dir, { recursive: true, force: true }).catch(() => {}))) : undefined)
+        .finally(() => { if (!work) return; const left = (runningLanes.get(work.lane) || 1) - 1; if (left) runningLanes.set(work.lane, left); else runningLanes.delete(work.lane); })
+        .catch(() => {});
       return { started: true };
     }
   };

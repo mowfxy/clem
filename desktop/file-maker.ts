@@ -6,7 +6,7 @@ import { excelWorkbook } from "./xlsx-workbook.ts";
 import { kinetraCall } from "./kinetra-runtime.ts";
 import { rasterizer } from "./rasterize.ts";
 import { unsafeSvg } from "./svg-safety.ts";
-import { documentFigures, figureCheck, figurePictures, FIGURES_PER_RESULT, type DrawnFigure } from "./figure-review.ts";
+import { deckSheets, documentFigures, figureCheck, figurePictures, FIGURES_PER_RESULT, type DrawnFigure } from "./figure-review.ts";
 import { resolveAssets, figurePages, type ReadAsset, type CropSpot } from "./pdf-assets.ts";
 import { withDesign } from "./pdf-document.ts";
 import { editPdf, type EditHelpers } from "./pdf-edit-tools.ts";
@@ -128,15 +128,16 @@ export async function makeFile(action: string, spec: any, { preview = false, see
     }
     case "pptx": {
       const deck = await powerpointDeck(spec, { preview });
+      const sheets = preview && deck.sheets.length ? deckSheets(deck, seen) : { shown: deck.sheets, note: "" };
       const made: Made = {
         bytes: deck.bytes, name: fileName("pptx", spec), type: MIME.pptx,
         info: { slides: deck.slides, design: deck.design, ...(deck.review.length ? { review: deck.review, next: "Fix what matters in the review with a revise (\"patch\" for the slides concerned) before answering." } : { review: "The slides were drawn, measured and checked: nothing to fix." }) },
-        // A contact sheet the model already saw in this answer, unchanged, is not sent again.
-        previews: deck.sheets.filter((s) => !preview || fresh(seen, "sheet", s.jpeg)).map((s) => ({ name: `${fileName("pptx", spec)} — ${s.name}`, image: s.jpeg })),
+        // A contact sheet the model already saw in this answer, unchanged, is not sent again: the changed ones go first.
+        previews: sheets.shown.map((s) => ({ name: `${fileName("pptx", spec)} — ${s.name}`, image: s.jpeg })),
       };
-      if (preview && deck.sheets.length && !made.previews!.length) made.info = { ...made.info, sheets: "Every slide looks exactly as in the contact sheets already attached in this answer." };
+      if (sheets.note) made.info = { ...made.info, sheets: sheets.note };
       // The contact sheets show every slide small; the figures come close up as well, within the same picture budget.
-      return preview ? withFigures(made, deck.figures, seen, Math.max(2, FIGURES_PER_RESULT + 2 - deck.sheets.length)) : made;
+      return preview ? withFigures(made, deck.figures, seen, Math.max(2, FIGURES_PER_RESULT + 2 - Math.min(4, deck.sheets.length))) : made;
     }
     case "editpdf": {
       // An edit of a PDF the person sent (desktop/pdf-edit-tools.ts); the result is a new PDF, the original untouched.

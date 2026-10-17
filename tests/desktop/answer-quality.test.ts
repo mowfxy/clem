@@ -114,6 +114,9 @@ test("with the rules in the system prompt, the message carries only this convers
   // On a kept session only what this message adds is sent.
   const more = composePrompt({ messages: [...messages, { role: "assistant", content: "Salut" }, { role: "user", content: "Encore" }], rulesInSystem: true, extra: "FOLDER NOTE", continued: true });
   assert.equal(more, `<mowr-context note="this message's files and notes">\nFOLDER NOTE\n</mowr-context>\n\n<mowr-request>\nEncore\n</mowr-request>`);
+  // Instructions changed since the session last received them (a command's playbook, a plan) go again before the request.
+  const changed = composePrompt({ messages: [{ role: "system", content: "Follow the /quiz playbook." }, ...messages.slice(1), { role: "assistant", content: "Salut" }, { role: "user", content: "Encore" }], rulesInSystem: true, continued: true, resendInstructions: true });
+  assert.equal(changed, `<mowr-instructions>\nFollow the /quiz playbook.\n</mowr-instructions>\n\n<mowr-request>\nEncore\n</mowr-request>`);
   // Nothing of its own: no empty instructions section at all.
   assert.match(composePrompt({ messages: [{ role: "user", content: "hi" }], rulesInSystem: true }), /^<mowr-request>\nhi\n<\/mowr-request>$/);
   // Codex still reads the rules in the message.

@@ -35,6 +35,8 @@ export function allowedStatement(sql) {
     else if (/^FROM$/i.test(token)) inFrom[inFrom.length - 1] = true;
     else if (/^(WHERE|GROUP|HAVING|ORDER|LIMIT|UNION|INTERSECT|EXCEPT)$/i.test(token)) inFrom[inFrom.length - 1] = false;
   }
+  // `x IN table` and the pragma_* table functions read a table without FROM.
+  if (/\bIN\s+(?!\()\w+|\bpragma_\w*/i.test(text)) return false;
   if (kind === "DELETE" && !writableTables.has(/^\s*DELETE\s+FROM\s+(\w+)/i.exec(text)?.[1].toLowerCase())) return false;
   for (const [, keyword, name] of text.matchAll(/\b(FROM|INTO|UPDATE|JOIN)\s+(\w+)/gi)) {
     const word = keyword.toUpperCase(), table = name.toLowerCase();

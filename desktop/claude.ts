@@ -560,12 +560,14 @@ export class ClaudeProvider {
    * session holds afterwards; throws when it did not compact (the caller then starts a new session instead).
    * Slash commands are on for this one step only: answers run with them off.
    */
-  async compact(sessionId:string,model:string,cwd?:string):Promise<number>{
+  async compact(sessionId:string,model:string,cwd?:string,id?:string):Promise<number>{
     if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!model.startsWith('claude:'))throw Error('Nothing to compact.');
     const child=await this.start(['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--model',model.slice(7),'--strict-mcp-config','--tools','','--resume',sessionId],cwd);
+    // Under the answer's id, so Stop (cancel) and quitting (stop) end it too.
+    if(id)this.active.set(id,child);
     return new Promise<number>((resolve,reject)=>{
       let buffer='',after:number|undefined,done=false,said='',stderr='';
-      const finish=(error?:Error)=>{if(done)return;done=true;clearTimeout(timer);if(after!==undefined&&!error)resolve(after);else reject(error||Error(('Claude Code did not compact the session. '+said+' '+stderr).trim().slice(0,600)));};
+      const finish=(error?:Error)=>{if(done)return;done=true;clearTimeout(timer);if(id&&this.active.get(id)===child)this.active.delete(id);if(after!==undefined&&!error)resolve(after);else reject(error||Error(('Claude Code did not compact the session. '+said+' '+stderr).trim().slice(0,600)));};
       const timer=setTimeout(()=>{child.kill();finish(Error('Compacting took too long.'));},5*60_000);
       const read=(line:string)=>{
         let event:any;try{event=JSON.parse(line);}catch{return;}

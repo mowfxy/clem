@@ -36,7 +36,8 @@ export function compressReply(text: string, limit = 1400) {
 
 /**
  * Fits a conversation into the model's budget without losing what the user asked for.
- * - Instructions and the current request (with its attached sources) are always kept whole.
+ * - Instructions and the current request (with its attached sources) are always kept whole; with clipRequest
+ *   (side calls with a small budget) a request that cannot fit keeps its start and end instead of failing.
  * - The whole chat is sent word for word when it fits. Otherwise recent turns stay word for word; older answers are compressed to outlines; older user
  *   messages are kept close to verbatim because they carry the requirements.
  * - When anything was shortened or left out, a brief lists every earlier request in order,
@@ -47,6 +48,7 @@ export function boundedConversation(
   budget = 320000,
   recentFull = 12,
   maxHistory = 100,
+  { clipRequest = false } = {},
 ) {
   const system = messages.filter((m) => m.role === "system");
   const history = messages.filter((m) => m.role !== "system" && m.content.trim());
@@ -86,6 +88,14 @@ export function boundedConversation(
       required = required.map((m) => isSource(m)
         ? { ...m, content: clip(m.content, Math.floor(m.content.length * share)) + "\n[Source material shortened to fit this request: the middle of the longer part was left out, so a file marked complete above may not be. Read what is missing with the FILE TOOLS when your instructions list them; otherwise say so if the answer needs it.]" }
         : m);
+      used = fixed + required.reduce((n, m) => n + cost(m), 0);
+    }
+    // Clipped requests leave some room for the notes and recent turns added below.
+    const ask = required.findIndex((m) => !isSource(m)), text = required[ask]?.content || "", target = Math.floor(budget * 0.85);
+    for (let limit = text.length; clipRequest && ask >= 0 && used > target; ) {
+      limit -= used - target + 40;
+      if (limit < 200) break;
+      required = required.map((m, i) => i === ask ? { ...m, content: clip(text, limit) } : m);
       used = fixed + required.reduce((n, m) => n + cost(m), 0);
     }
     if (used > budget)

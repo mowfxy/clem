@@ -172,16 +172,17 @@ export function retrieveFiles(
     ...new Set(query.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) || []),
   ];
   const ranked = files
-    .map((file) => ({
-      file,
-      score: terms.reduce(
-        (n, t) =>
-          n +
-          (file.path.toLowerCase().includes(t) ? 4 : 0) +
-          (file.text.toLowerCase().includes(t) ? 1 : 0),
-        0,
-      ),
-    }))
+    .map((file) => {
+      if (!terms.length) return { file, score: 0 };
+      const path = file.path.toLowerCase(), text = file.text.toLowerCase();
+      return {
+        file,
+        score: terms.reduce(
+          (n, t) => n + (path.includes(t) ? 4 : 0) + (text.includes(t) ? 1 : 0),
+          0,
+        ),
+      };
+    })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
   let used = 0;

@@ -18,8 +18,8 @@ const compactWords = slashCommands.find((c) => c.id === "compact")!.instruction!
 /** The most one summarising request carries (characters), under every provider's window with room for the brief. */
 const CHUNK = 120_000;
 
-/** Which chat these turns belong to: its space and its first message (a chat's start never changes). */
-export const briefKey = (scope: string, first: string) => scope + ":" + createHash("sha256").update(first.slice(0, 2000)).digest("hex").slice(0, 24);
+/** Which chat these turns belong to: its space, its id when it has one, and its first message (a chat's start never changes). */
+export const briefKey = (scope: string, first: string, chat?: string) => scope + ":" + (chat ? chat + ":" : "") + createHash("sha256").update(first.slice(0, 2000)).digest("hex").slice(0, 24);
 
 /** Older turns as a transcript for the summary: requests near whole (they carry the requirements), answers as outlines. */
 function transcript(turns: ContextMessage[]) {
