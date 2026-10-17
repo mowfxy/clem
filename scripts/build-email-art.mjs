@@ -6,6 +6,7 @@ import {chromium} from 'playwright';
 import gifenc from 'gifenc';
 const {GIFEncoder,quantize,applyPalette}=gifenc;
 import {filmFrame,loopSeconds} from '../src/vectorFilm.ts';
+import {markSvg,MARK_LOOP} from '../src/brand/mark.ts';
 
 // Scenes sit on the email card; the mark sits on the page background.
 const OUT='public/email',BG='#1b1b19',PAGE='#121211',INK='#f0efeb',MARK='#d9473e';
@@ -28,18 +29,14 @@ function encode(frames,w,h,file){
   console.log(`${file}: ${frames.length} frames, ${Math.round(gif.bytes().length/1024)} KB`);
 }
 
-// Mowr mark: each petal gathers toward the centre and opens again, staggered, as in the app's thinking state.
-const petal='M96.7 10.8 C100.6 19.9 103.2 29.6 102.1 38.9 C101.1 48.1 95.8 55.7 89.5 60.7 C84.8 64.2 80 65.5 74.2 66.4 C70.7 61.8 68.2 57.5 67.2 51.7 C66.2 43.8 67.7 34.7 73.4 27.3 C79.1 19.8 87.6 14.7 96.7 10.8Z';
-const gathered='M78.7 18.3 C85.8 21.2 90.4 28.2 90 35.9 C89.6 44.3 83.3 51.3 75 52.7 C71.7 53.3 68.3 52.9 65.2 51.7 C62.2 50.4 59.5 48.4 57.5 45.7 C52.5 38.9 52.9 29.5 58.5 23.1 C63.5 17.4 71.6 15.4 78.7 18.3Z'.match(/-?\d*\.?\d+/g).map(Number);
-const ease=t=>{const x=Math.max(0,Math.min(1,t));return x*x*(3-2*x);};
+// Mowr mark: the pen writes the m, holds and lifts it, as in the app's thinking state.
 function mark(ms){
-  const paths=[0,1,2,3].map(i=>{const t=((ms%3600)-i*100)/2600,blend=t<.12?0:t<.4?ease((t-.12)/.28):t<.54?1:1-ease((t-.54)/.34);let j=0;const d=petal.replace(/-?\d*\.?\d+/g,v=>{const f=Number(v);return (f+(gathered[j++]-f)*blend).toFixed(2);});return `<path transform="rotate(${i*90} 72 72)" d="${d}" fill="${MARK}"/>`;}).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><rect width="144" height="144" fill="${PAGE}"/>${paths}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><rect width="144" height="144" fill="${PAGE}"/>${markSvg(ms,MARK)}</svg>`;
 }
 {
   const size=96,frames=[];
-  frames.push([await raster(mark(0),size,size),900]);
-  for(let ms=0;ms<3600;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
+  frames.push([await raster(mark(),size,size),900]);
+  for(let ms=0;ms<MARK_LOOP;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
   encode(frames,size,size,'mowr-mark.gif');
 }
 

@@ -1,4 +1,5 @@
 import { useEffect,useRef } from 'react';
+import { markSvg } from './brand/mark';
 // Icons: one even line on a 32-unit grid, rounded ends, and at most one soft grey fill per icon.
 // A drawing is a list of strokes; a stroke starting with "F " is also filled. Hover motion in CSS
 // targets strokes by index (`.icon-<name> .stroke-<i>`), so keep each icon's stroke order.
@@ -121,24 +122,17 @@ device:['F '+box(6,6,20,14),'M3 25.5h26']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
 export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
-const petal='M96.7 10.8 C100.6 19.9 103.2 29.6 102.1 38.9 C101.1 48.1 95.8 55.7 89.5 60.7 C84.8 64.2 80 65.5 74.2 66.4 C70.7 61.8 68.2 57.5 67.2 51.7 C66.2 43.8 67.7 34.7 73.4 27.3 C79.1 19.8 87.6 14.7 96.7 10.8Z';
 export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){
  const ref=useRef<SVGSVGElement>(null);
- useEffect(()=>{const el=ref.current!;const media=matchMedia('(prefers-reduced-motion: reduce)');let frame=0,last=-1;const paths=Array.from(el.querySelectorAll('.mark-petal path'));
- const reset=()=>{cancelAnimationFrame(frame);frame=0;paths.forEach(p=>p.setAttribute('d',petal));};
- // Authored matching Bezier poses keep contours smooth throughout the morph.
- const gathered='M78.7 18.3 C85.8 21.2 90.4 28.2 90 35.9 C89.6 44.3 83.3 51.3 75 52.7 C71.7 53.3 68.3 52.9 65.2 51.7 C62.2 50.4 59.5 48.4 57.5 45.7 C52.5 38.9 52.9 29.5 58.5 23.1 C63.5 17.4 71.6 15.4 78.7 18.3Z'.match(/-?\d*\.?\d+/g)!.map(Number);
+ useEffect(()=>{const el=ref.current!;const media=matchMedia('(prefers-reduced-motion: reduce)');let frame=0,last=-1;
+ const reset=()=>{cancelAnimationFrame(frame);frame=0;el.innerHTML=markSvg();};
+ // The pen writes on twos-ish cels (every 24 ms is plenty for a stroke), so the line moves like ink, not a tween.
  const started=performance.now();
- const ease=(t:number)=>{const x=Math.max(0,Math.min(1,t));return x*x*(3-2*x);};
- const tick=(now:number)=>{const cel=Math.floor(now/24);if(cel!==last){last=cel;paths.forEach((path,i)=>{
-   const t=((now-started)%3600-i*100)/2600;
-   const blend=t<.12?0:t<.4?ease((t-.12)/.28):t<.54?1:1-ease((t-.54)/.34);
-   let j=0;path.setAttribute('d',petal.replace(/-?\d*\.?\d+/g,value=>{const from=Number(value);return (from+(gathered[j++]-from)*blend).toFixed(2);}));
- });}if(frame)frame=requestAnimationFrame(tick);};
+ const tick=(now:number)=>{const cel=Math.floor(now/24);if(cel!==last){last=cel;el.innerHTML=markSvg(now-started);}if(frame)frame=requestAnimationFrame(tick);};
  const sync=()=>{reset();if(thinking&&!document.hidden&&!media.matches&&document.documentElement.dataset.quiet!=='true')frame=requestAnimationFrame(tick);};
  sync();media.addEventListener('change',sync);document.addEventListener('visibilitychange',sync);const observer=new MutationObserver(sync);observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-quiet']});return()=>{reset();observer.disconnect();media.removeEventListener('change',sync);document.removeEventListener('visibilitychange',sync);};
  },[thinking]);
- return <svg ref={ref} width={size} height={size} viewBox="0 0 144 144" className={`mowr-mark ${thinking?'is-thinking':''}`} role={thinking?'img':undefined} aria-label={thinking?'Mowr is thinking':undefined} aria-hidden={thinking?undefined:true}>{[0,90,180,270].map((angle,i)=><g key={angle} transform={`rotate(${angle} 72 72)`}><g className={`mark-petal petal-${i}`}><path d={petal} fill="currentColor"/></g></g>)}</svg>;
+ return <svg ref={ref} width={size} height={size} viewBox="0 0 144 144" className={`mowr-mark ${thinking?'is-thinking':''}`} role={thinking?'img':undefined} aria-label={thinking?'Mowr is thinking':undefined} aria-hidden={thinking?undefined:true} dangerouslySetInnerHTML={{__html:markSvg()}}/>;
 }
 
 export function GoogleLogo(){return <svg width="21" height="21" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M44 24.5c0-1.5-.1-3-.4-4.5H24v8.5h11.2c-.5 2.7-2 5-4.2 6.5v5.4h6.8C41.8 36.7 44 31.1 44 24.5Z"/><path fill="#34A853" d="M24 45c5.6 0 10.3-1.8 13.8-5.1L31 34.5c-1.9 1.3-4.3 2-7 2-5.4 0-10-3.6-11.6-8.5h-7v5.6A21 21 0 0 0 24 45Z"/><path fill="#FBBC05" d="M12.4 28a12.7 12.7 0 0 1 0-8v-5.6h-7a21 21 0 0 0 0 19.2Z"/><path fill="#EA4335" d="M24 11.5c3 0 5.6 1 7.7 3l5.8-5.8A20 20 0 0 0 24 3 21 21 0 0 0 5.4 14.4l7 5.6C14 15.1 18.6 11.5 24 11.5Z"/></svg>}

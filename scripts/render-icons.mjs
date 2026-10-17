@@ -7,16 +7,16 @@ import { readFile, writeFile } from "node:fs/promises";
 
 const svg = await readFile("public/logo.svg", "utf8");
 const icoSizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
-// The petals' extent inside the 144-unit viewBox, so the mark can be sized by what is actually drawn.
-const drawn = 124 / 144;
-// Small icons get a larger mark: at 16 px every pixel of petal counts; large ones keep a little breathing room.
+// The stroke's widest extent inside the 144-unit viewBox, so the mark can be sized by what is actually drawn.
+const drawn = 133 / 144;
+// Small icons get a larger mark: at 16 px every pixel of stroke counts; large ones keep a little breathing room.
 const share = (size) => (size <= 24 ? 0.96 : size <= 48 ? 0.9 : 0.84);
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ deviceScaleFactor: 1 });
 async function render(size, ink) {
   const box = Math.round((size * share(size)) / drawn);
-  const mark = svg.replace('fill="#d9473e"', `fill="${ink}"`).replace("<svg ", `<svg width="${box}" height="${box}" `);
+  const mark = svg.replace('stroke="#d9473e"', `stroke="${ink}"`).replace("<svg ", `<svg width="${box}" height="${box}" `);
   await page.setViewportSize({ width: size, height: size });
   await page.setContent(`<html><body style="margin:0;width:${size}px;height:${size}px;display:grid;place-items:center;background:transparent">${mark}</body></html>`);
   return page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } });

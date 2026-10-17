@@ -1,10 +1,9 @@
 // The desktop app's opening screen: Mowr's mark, drawn before any of the app has loaded and kept until the workspace
-// is ready (the app calls window.mowrBoot.done()). Plain script so it paints on the first frame. The petal shapes and
-// the gather-and-open motion match the Logo component in src/Icons.tsx.
+// is ready (the app calls window.mowrBoot.done()). Plain script so it paints on the first frame. The stroke and the
+// writing motion match src/brand/mark.ts.
 (function () {
   if (location.protocol !== "mowr:") return;
-  var petal = "M96.7 10.8 C100.6 19.9 103.2 29.6 102.1 38.9 C101.1 48.1 95.8 55.7 89.5 60.7 C84.8 64.2 80 65.5 74.2 66.4 C70.7 61.8 68.2 57.5 67.2 51.7 C66.2 43.8 67.7 34.7 73.4 27.3 C79.1 19.8 87.6 14.7 96.7 10.8Z";
-  var gathered = "M78.7 18.3 C85.8 21.2 90.4 28.2 90 35.9 C89.6 44.3 83.3 51.3 75 52.7 C71.7 53.3 68.3 52.9 65.2 51.7 C62.2 50.4 59.5 48.4 57.5 45.7 C52.5 38.9 52.9 29.5 58.5 23.1 C63.5 17.4 71.6 15.4 78.7 18.3Z".match(/-?\d*\.?\d+/g).map(Number);
+  var stroke = "M15 113 V63 C15 43 25 31 40 31 C55 31 65 43 65 63 V105 V63 C65 43 75 31 90 31 C105 31 115 43 115 63 V93 C115 105 121 113 129 109";
   var theme = "dark";
   try { var chosen = localStorage.getItem("mowr-theme"); theme = chosen === "light" || (chosen === "system" && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark"; } catch (e) {}
   var paper = theme === "light" ? "#faf8f3" : "#141414", trace = theme === "light" ? "32,37,58" : "245,244,240";
@@ -13,14 +12,13 @@
     "#mowr-boot{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:" + paper + ";color:#d9473e;transition:opacity .45s ease,visibility 0s linear .45s}" +
     "#mowr-boot .boot-stage{position:relative;display:grid;place-items:center;width:160px;height:160px}" +
     "#mowr-boot .boot-glow{position:absolute;inset:18px;border-radius:50%;background:radial-gradient(circle,rgba(217,71,62,.16),rgba(217,71,62,0) 68%);animation:mowr-boot-breathe 3.6s ease-in-out infinite}" +
-    "#mowr-boot svg{position:relative;width:64px;height:64px;overflow:visible;animation:mowr-boot-in .7s cubic-bezier(.2,.7,.2,1) both,mowr-boot-turn 14.4s linear infinite}" +
+    "#mowr-boot svg{position:relative;width:64px;height:64px;overflow:visible;animation:mowr-boot-in .7s cubic-bezier(.2,.7,.2,1) both}" +
     "#mowr-boot .boot-line{position:absolute;bottom:14px;width:56px;height:2px;border-radius:2px;background:rgba(" + trace + ",.12);overflow:hidden;opacity:0;animation:mowr-boot-fade .4s ease 1.2s forwards}" +
     "#mowr-boot .boot-line i{position:absolute;inset:0;width:40%;border-radius:2px;background:rgba(" + trace + ",.55);animation:mowr-boot-run 1.4s ease-in-out infinite}" +
     "#mowr-boot.is-leaving{opacity:0;visibility:hidden}" +
     "#mowr-boot.is-leaving svg{transform:scale(1.08);transition:transform .45s cubic-bezier(.2,.7,.2,1)}" +
     "@keyframes mowr-boot-in{from{opacity:0;scale:.82}to{opacity:1;scale:1}}" +
-    "@keyframes mowr-boot-turn{to{rotate:360deg}}" +
-    "@keyframes mowr-boot-breathe{0%,100%{opacity:.35;transform:scale(.86)}45%{opacity:1;transform:scale(1.06)}}" +
+        "@keyframes mowr-boot-breathe{0%,100%{opacity:.35;transform:scale(.86)}45%{opacity:1;transform:scale(1.06)}}" +
     "@keyframes mowr-boot-fade{to{opacity:1}}" +
     "@keyframes mowr-boot-run{from{transform:translateX(-100%)}to{transform:translateX(250%)}}" +
     "@media (prefers-reduced-motion:reduce){#mowr-boot *{animation:none!important}#mowr-boot .boot-line{opacity:1}}";
@@ -29,16 +27,13 @@
   root.id = "mowr-boot";
   root.setAttribute("role", "status");
   root.setAttribute("aria-label", "Opening Mowr");
-  var ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg"), paths = [];
+  var ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg"), path = document.createElementNS(ns, "path");
   svg.setAttribute("viewBox", "0 0 144 144");
   svg.setAttribute("aria-hidden", "true");
-  [0, 90, 180, 270].forEach(function (angle) {
-    var g = document.createElementNS(ns, "g"), path = document.createElementNS(ns, "path");
-    g.setAttribute("transform", "rotate(" + angle + " 72 72)");
-    path.setAttribute("d", petal);
-    path.setAttribute("fill", "currentColor");
-    g.appendChild(path); svg.appendChild(g); paths.push(path);
-  });
+  path.setAttribute("d", stroke);
+  path.setAttribute("pathLength", "1");
+  ["fill", "none", "stroke", "currentColor", "stroke-width", "19", "stroke-linecap", "round", "stroke-linejoin", "round"].forEach(function (v, i, a) { if (i % 2 === 0) path.setAttribute(v, a[i + 1]); });
+  svg.appendChild(path);
   var stage = document.createElement("div"), glow = document.createElement("span"), line = document.createElement("span");
   stage.className = "boot-stage"; glow.className = "boot-glow"; line.className = "boot-line";
   line.appendChild(document.createElement("i"));
@@ -47,15 +42,15 @@
 
   var still = matchMedia("(prefers-reduced-motion: reduce)").matches, started = performance.now(), frame = 0, last = -1;
   var ease = function (t) { var x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
+  // The pen writes the m, holds, lifts it from the start, and writes it again (3.2 s a loop).
   function tick(now) {
     var cel = Math.floor(now / 24);
     if (cel !== last) {
       last = cel;
-      paths.forEach(function (path, i) {
-        var t = ((now - started) % 3600 - i * 100) / 2600;
-        var blend = t < .12 ? 0 : t < .4 ? ease((t - .12) / .28) : t < .54 ? 1 : 1 - ease((t - .54) / .34), j = 0;
-        path.setAttribute("d", petal.replace(/-?\d*\.?\d+/g, function (value) { var from = Number(value); return (from + (gathered[j++] - from) * blend).toFixed(2); }));
-      });
+      var t = ((now - started) % 3200) / 3200, from = t < .62 ? 0 : ease((t - .62) / .38), to = t < .5 ? ease(t / .5) : 1;
+      path.setAttribute("stroke-dasharray", (to - from).toFixed(3) + " 2");
+      path.setAttribute("stroke-dashoffset", (-from).toFixed(3));
+      path.setAttribute("opacity", to - from < .01 ? "0" : "1");
     }
     frame = requestAnimationFrame(tick);
   }
@@ -65,7 +60,7 @@
   function done() {
     if (finished) return;
     finished = true;
-    // Always show at least one gather-and-open, so a fast start still reads as an opening rather than a flicker.
+    // Always show the pen at work for a moment, so a fast start still reads as an opening rather than a flicker.
     setTimeout(function () {
       root.classList.add("is-leaving");
       setTimeout(function () { cancelAnimationFrame(frame); root.remove(); style.remove(); }, 500);
