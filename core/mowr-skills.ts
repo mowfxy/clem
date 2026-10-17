@@ -426,7 +426,11 @@ export function mowrSkillsFor(request: string, context: SkillContext = {}, limit
 const guide = (s: MowrSkill) => `${s.name.toUpperCase()}:\n${s.steps.map((step, i) => `${i + 1}. ${step}`).join("\n")}`;
 
 export function mowrSkillText(request: string, context: SkillContext = {}) {
-  return [capabilityIndex, ...mowrSkillsFor(request, context).map(guide)].join("\n\n");
+  return [capabilityIndex, mowrPlaybooks(request, context)].filter(Boolean).join("\n\n");
+}
+/** This request's playbooks alone, without the capability index (which is the same for every request). */
+export function mowrPlaybooks(request: string, context: SkillContext = {}) {
+  return mowrSkillsFor(request, context).map(guide).join("\n\n");
 }
 
 /** The linked-folders playbook. The desktop adds it with FILE CHANGES, since only it knows whether a folder is linked. */

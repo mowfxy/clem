@@ -19,8 +19,15 @@ export function requestSpec(id:string,messages:ChatInput[],credential?:ProviderC
  const server=!credential?.key&&serverKeysAllowed();const key=credential?.key||(server?process.env[`${c.prefix}_API_KEY`]:undefined),model=credential?.model||(server?process.env[`${c.prefix}_MODEL`]:undefined);if(!key||!model)throw new Error('Add the provider API key and model identifier to .env.local, or connect your own model in Settings.');
  const anthropic=c.id==='anthropic';const headers:Record<string,string>={'Content-Type':'application/json'};
  if(anthropic){headers['x-api-key']=key;headers['anthropic-version']='2023-06-01';}else headers.Authorization=`Bearer ${key}`;
- const body=anthropic?{model,stream:true,max_tokens:4096,system:messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),messages:messages.filter(m=>m.role!=='system')}:{model,messages,stream:true,...(c.id==='openai'?{max_completion_tokens:4096}:{max_tokens:4096})};
+ const body=anthropic?anthropicBody(model,messages):{model,messages,stream:true,...(c.id==='openai'?{max_completion_tokens:4096}:{max_tokens:4096})};
  return {url:c.url,headers,body};
+}
+/** Anthropic's request with prompt caching: the system prompt (the same on every request) and the conversation up to the
+ *  latest message are cached, so a chat's next request reads them from the cache instead of paying for them again. */
+const cached={type:'ephemeral'} as const;
+function anthropicBody(model:string,messages:ChatInput[]){
+ const system=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),turns=messages.filter(m=>m.role!=='system');
+ return {model,stream:true,max_tokens:4096,...(system?{system:[{type:'text',text:system,cache_control:cached}]}:{}),messages:turns.map((m,i)=>i===turns.length-1&&m.role==='user'?{role:m.role,content:[{type:'text',text:m.content,cache_control:cached}]}:m)};
 }
 export async function* parseProviderStream(body:ReadableStream<Uint8Array>,signal:AbortSignal):AsyncGenerator<string>{
  const reader=body.getReader(),decoder=new TextDecoder();let buffer='';let doneMarker=false;

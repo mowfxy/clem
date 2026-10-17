@@ -2,6 +2,7 @@ import { opendir, lstat, readFile, realpath } from "node:fs/promises";
 import { relative, join, extname, isAbsolute } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import ignore, { type Ignore } from "ignore";
+import { common } from "../core/source-context.ts";
 
 const ignored = new Set([
   "node_modules",
@@ -163,17 +164,14 @@ export async function indexFolder(
   await walk(root, 0);
   return files;
 }
-export function retrieveFiles(
-  files: IndexedFile[],
-  query: string,
-  budget = 16000,
-) {
+/** The files that share a word with the query, best first; words too common to tell files apart are left out. */
+function rankFiles(files: IndexedFile[], query: string) {
   const terms = [
-    ...new Set(query.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) || []),
+    ...new Set((query.toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) || []).filter((t) => !common.has(t))),
   ];
-  const ranked = files
+  if (!terms.length) return [];
+  return files
     .map((file) => {
-      if (!terms.length) return { file, score: 0 };
       const path = file.path.toLowerCase(), text = file.text.toLowerCase();
       return {
         file,
@@ -185,6 +183,22 @@ export function retrieveFiles(
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
+}
+/** The matching files' paths alone, for an AI that opens them itself (a working folder with the linked folders readable). */
+export function matchingFiles(files: IndexedFile[], query: string, limit = 20) {
+  const hashes = new Set<string>();
+  return rankFiles(files, query).flatMap(({ file }) => {
+    if (hashes.has(file.hash)) return [];
+    hashes.add(file.hash);
+    return [file];
+  }).slice(0, limit);
+}
+export function retrieveFiles(
+  files: IndexedFile[],
+  query: string,
+  budget = 16000,
+) {
+  const ranked = rankFiles(files, query);
   let used = 0;
   const hashes = new Set<string>();
   return ranked.flatMap(({ file }) => {

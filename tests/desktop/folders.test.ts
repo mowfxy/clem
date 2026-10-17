@@ -7,6 +7,7 @@ import {
   indexFolder,
   link,
   retrieveFiles,
+  matchingFiles,
   inside,
   safeName,
 } from "../../desktop/folders.ts";
@@ -34,4 +35,11 @@ test("boundary checks reject sibling prefixes and sensitive names", () => {
   assert.ok(!inside("C:\\allowed", "C:\\allowed-other\\x"));
   assert.ok(!safeName("credentials.json"));
   assert.ok(!safeName(".ssh"));
+});
+test("folder matching ignores common words and can list the matches without their text", () => {
+  const file = (path: string, text: string) => ({ path, text, mtime: 0, size: text.length, hash: path });
+  const files = [file("a.md", "what the notes say about this"), file("thermo.md", "Entropy and heat"), file("b.md", "Heat engines")];
+  assert.deepEqual(retrieveFiles(files, "what are the notes about"), []);
+  assert.deepEqual(matchingFiles(files, "explain thermo heat").map((f) => f.path), ["thermo.md", "b.md"]);
+  assert.equal(matchingFiles(files, "heat", 1).length, 1);
 });

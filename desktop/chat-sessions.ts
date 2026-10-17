@@ -59,13 +59,16 @@ export const memoryPrint = (name: string | undefined, memories: { text: string }
 /** The fingerprint of one source excerpt (a passage of a linked file): sent once per kept session. */
 export const sourcePrint = (s: { source: string; text: string }) => blockPrint("source\u0000" + s.source + "\u0000" + s.text);
 
-/** The fingerprint of a conversation's own instructions (the system messages the window sends with each request): on a
- *  kept session they go again whenever they differ from the ones it last received. */
-export const instructionsPrint = (text: string) => "instructions:" + blockPrint(text);
-/** What a session has been sent after this message: what it had, with the instructions it last received replaced by these. */
+/** The fingerprint of one part of a conversation's own instructions (the window sends the part that is the same on every
+ *  message first, then this message's own): on a kept session each part goes again whenever it differs from the one it
+ *  last received. */
+export const instructionsPrint = (text: string, part = 0) => `instructions:${part}:` + blockPrint(text);
+const instructionsPart = (print: string) => print.match(/^instructions:\d+:/)?.[0];
+/** What a session has been sent after this message: what it had, with each part of the instructions it last received
+ *  replaced by the one sent now. */
 export function sentAfter(before: Iterable<string>, now: string[]) {
-  const replaced = now.some((p) => p.startsWith("instructions:"));
-  return new Set([...[...before].filter((p) => !replaced || !p.startsWith("instructions:")), ...now]);
+  const replaced = new Set(now.map(instructionsPart).filter(Boolean));
+  return new Set([...[...before].filter((p) => !replaced.has(instructionsPart(p))), ...now]);
 }
 
 export class ChatSessions {

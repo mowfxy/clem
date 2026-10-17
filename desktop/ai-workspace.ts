@@ -312,8 +312,8 @@ export function mirroredId(files: MirrorFile[], path: string) {
 
 /**
  * What the AI is told about its folder: where everything is, which subjects and projects there are (with how many
- * files each holds), this answer's sources, then the files themselves. A long list is cut (the AI lists the folder
- * itself), so the note stays small for a large library.
+ * files each holds), this answer's sources, then the files of this conversation's subject or project. The others' files
+ * are not listed (the AI lists those folders itself), so the note stays small for a large library.
  */
 export function workspaceNote(root: string, paths: string[], sources: string[], { folders = [], otherFolders = [], lane = "", here = "", nativePdf = true }: {
   /** Linked PC folders of this conversation's subject or project (edits to them are proposed). */
@@ -335,16 +335,16 @@ export function workspaceNote(root: string, paths: string[], sources: string[], 
   for (const p of library) { const [top, name] = p.split("/"); const key = top === FILES ? FILES + "/" : `${top}/${name}/`; counts.set(key, (counts.get(key) || 0) + 1); }
   const overview = [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([k, n]) => `- ${k} (${n} file${n === 1 ? "" : "s"})`);
   const others = library.filter((p) => !sources.includes(p));
-  // The whole list when it is short; otherwise this conversation's subject or project, and the AI lists the rest.
-  const shown = library.length <= 200 ? others : here ? others.filter((p) => p.startsWith(here + "/")) : [];
+  // This conversation's subject or project file by file; the others by name and count (overview), listed when needed.
+  const shown = here ? others.filter((p) => p.startsWith(here + "/")) : [];
   const attachments = paths.filter((p) => p.startsWith(`${ATTACHMENTS}/${lane}/`)), made = paths.filter((p) => p.startsWith(`${MADE}/${lane}/`));
   const text = paths.filter((p) => p.startsWith(TEXT + "/"));
   return [
     `YOUR WORKING FOLDER (${root}) holds every file the person keeps in Mowr, as real files, organised as in Mowr: Subjects/<subject>/ and Projects/<project>/ (each with the folders the person made in it) and Files/ (files in no subject or project). Find, list, search, read and open them with your own file tools (${nativePdf ? "PDFs and pictures open natively, every page as drawn with its text; from a long PDF open the pages you need, several ranges at once" : "pictures open natively; PDFs as below"}). This is the complete set: when the person asks about their files, subjects or projects, answer from these folders (list them; never guess, never say you cannot see them). They are copies kept in step with Mowr: read them, never change them (a change here changes nothing for the person).`,
     here ? `THIS CONVERSATION IS IN ${here}/: start there, and use the other subjects' and projects' files whenever the request needs or mentions them.` : "This conversation is in no subject or project; every subject's and project's files are still here for you to use.",
-    overview.length ? `What is here:\n${overview.join("\n")}` : "The person has no files in Mowr yet.",
+    overview.length ? `What is here (list or search a folder to see its files):\n${overview.join("\n")}` : "The person has no files in Mowr yet.",
     sources.length ? `SOURCES OF THIS ANSWER (attached in the chat or chosen as sources); base the answer on these and cite them as [[file name, p. N]]:\n${list(sources, 80)}` : "No file is attached to this conversation.",
-    shown.length ? `${library.length <= 200 ? (sources.length ? "The other files" : "Every file") : `The files of ${here}/ (the ${library.length} files in all are too many to list here: list or search the folders for the rest)`}:\n${list(shown, 200)}` : library.length > 200 ? `The ${library.length} files are too many to list here: list or search the folders above.` : "",
+    shown.length ? `${sources.length ? "The other files" : "The files"} of ${here}/:\n${list(shown, 200)}` : "",
     attachments.length ? `${lanePath(ATTACHMENTS)}: files attached in this chat that are not saved in Mowr yet:\n${list(attachments, 40)}` : "",
     made.length ? `${lanePath(MADE)}: files Mowr made earlier in this chat:\n${list(made, 40)}` : "",
     text.length ? `${TEXT}/: text Mowr read from files your tools cannot open, at each file's own path with .txt added (the text of Subjects/X/notes.docx is ${TEXT}/Subjects/X/notes.docx.txt): every Word, PowerPoint and Excel file (read them only from here)${nativePdf ? "" : ", PDFs"} and scanned pages read by OCR. Pages and slides are marked "[name, page N]" or "[name, slide N]".` : "",

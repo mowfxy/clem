@@ -52,7 +52,7 @@ import { requestSchema, type DesktopStatus } from "./contracts";
 import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
-import { cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
+import { attachedSources, cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
 import { ChatSessions, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrint, sentAfter, sourcePrint } from "./chat-sessions";
 import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
@@ -82,6 +82,7 @@ import {
   inside,
   link,
   indexFolder,
+  matchingFiles,
   retrieveFiles,
   sameIndex,
   type Folder,
@@ -412,6 +413,8 @@ void app.whenReady().then(async () => {
     // The chat's kept session, when this message can go on it: only the message itself is sent, the CLI has the rest.
     const kind = grok ? "grok" : "claude";
     let kept = keep ? chatSessions.take(keep.key, { provider: kind, account: accountOf(current.provider), model: model!, history: keep.history }) : undefined;
+    // Grok cannot compact a session: one grown large ends, and the message starts a new one with the conversation as text.
+    if (kept && grok && (kept.context ?? 0) > COMPACT_AT_TOKENS) { kept.end(); kept = undefined; }
     // A kept session grown large (a finished document task) is compacted first: every step would re-read all of it.
     // When that fails, the message starts a new session with the conversation as text instead.
     if (kept && !grok && (kept.context ?? 0) > COMPACT_AT_TOKENS) {
@@ -493,6 +496,8 @@ void app.whenReady().then(async () => {
     }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: () => emit({ id, type: "worked" }), stats, continued: !!kept, fresh: prompt }).then(async (text) => {
       if (grok) for (const [i, session] of sessions.entries()) {
         const used = await (session.provider as GrokProvider).sessionTokens(session.id).catch(() => undefined);
+        // Grok reports no context per step: what entered the session uncached (new input, cache writes, output) is about its size.
+        if (used && i === sessions.length - 1) context = used.input + used.cacheWrite + used.output;
         const before = i === 0 && stats.continued ? grokBefore : undefined;
         if (used) addTokens(stats, before ? { input: used.input - before.input, cacheRead: used.cacheRead - before.cacheRead, cacheWrite: used.cacheWrite - before.cacheWrite, output: used.output - before.output } : used);
       }
@@ -1444,6 +1449,7 @@ void app.whenReady().then(async () => {
       const library: LibraryFile[] = (request.library || []).map((f) => ({ name: f.name, text: f.text, kind: "file" as const }));
       // Where each linked-folder file is on this PC, so the model can look at a folder PDF's pages as well as read its text.
       const folderFiles = new Map<string, { folder: string; path: string }>();
+      const folderMatches: string[] = [];
       // Everything a request needs is prepared together, not one network call after another.
       const [entitlement, , sources, memoryState, setup] = await Promise.all([
         cachedEntitlement(user.id),
@@ -1452,7 +1458,15 @@ void app.whenReady().then(async () => {
           : providerAccounts.selectForTask(user.id,{model:request.model,reasoning:request.reasoning}).then(async (selection) => { if (selection.switched) await selectProvider(user.id); }),
         // A folder that is missing, moved or unreadable is left out; the others still answer.
         Promise.all(folders.map(async (folder) => {
-          try { const index = await freshIndex(folder); for (const file of index) if (file.text) { library.push({ name: file.path, text: file.text, kind: "folder" }); folderFiles.set(file.path, { folder: folder.path, path: resolve(folder.path, file.path) }); } return retrieveFiles(index, query, Math.floor((budget.sources * 0.15) / Math.max(1, folders.length))); }
+          try {
+            const index = await freshIndex(folder);
+            for (const file of index) if (file.text) { library.push({ name: file.path, text: file.text, kind: "folder" }); folderFiles.set(file.path, { folder: folder.path, path: resolve(folder.path, file.path) }); }
+            // A side call (a second opinion, a source check) brings its own sources. An answer in the working folder opens
+            // the linked folders itself: it gets the matching files' paths, not their text.
+            if (request.side) return [];
+            if (!request.plain) { folderMatches.push(...matchingFiles(index, query).map((f) => `- ${f.path}: ${resolve(folder.path, f.path)}`)); return []; }
+            return retrieveFiles(index, query, Math.floor((budget.sources * 0.15) / Math.max(1, folders.length)));
+          }
           catch { unavailable.push(basename(folder.path)); return []; }
         })).then((lists) => lists.flat()),
         loadMemory(),
@@ -1543,6 +1557,7 @@ void app.whenReady().then(async () => {
       const contextBlocks = [
         work?.note || "",
         folders.length ? editLanguage + "\n\n" + foldersPlaybook : "",
+        folderMatches.length ? `LINKED-FOLDER FILES THAT MATCH THIS REQUEST (listed, not loaded: open the ones it needs by their path, or read them with Kinetra's read by the name before the colon):\n${folderMatches.slice(0, 20).join("\n")}` : "",
         unavailable.length ? "These linked folders could not be read right now, so nothing from them is included: " + JSON.stringify(unavailable) + ". Say so if the answer depends on them." : "",
         pictureNote.trim(),
         pdfNote.trim(),
@@ -1553,17 +1568,19 @@ void app.whenReady().then(async () => {
       const memorySent = memoryPrint(shownName, memories);
       // The window's own system text for this request (a command's playbook, plan, title or space instructions) changes
       // from message to message: a kept session gets it again whenever it differs from what it last received.
-      const instructionsSent = instructionsPrint(request.messages.filter((m) => m.role === "system").map((m) => m.content.trim()).join("\n\n"));
+      // Each part (the same text on every message, then this message's own) is fingerprinted alone, so only the part that changed goes again.
+      const instructionsSent = messages.filter((m) => m.role === "system").map((m) => m.content.trim()).filter(Boolean).map(instructionsPrint);
       const promptWith = (blocks: string[], continued = false, sent?: Set<string>) => composePrompt({
         messages,
-        sources: sent ? sources.filter((s) => !sent.has(sourcePrint(s))) : sources,
+        sources,
+        unsent: sent && ((s) => !sent.has(sourcePrint(s))),
         memories: sent?.has(memorySent) ? [] : memories,
         name: sent?.has(memorySent) ? undefined : shownName,
         // Claude and Grok have coreRules in their system prompt (answerWith).
         rulesInSystem: cli || !!work,
         extra: blocks.join("\n\n"),
         continued,
-        resendInstructions: continued && !sent?.has(instructionsSent),
+        resendInstructions: continued ? instructionsSent.flatMap((p, i) => sent?.has(p) ? [] : [i]) : false,
       });
       // Files reach the chat once, finished, when the answer ends: the model may draft, check and correct a file several
       // times on the way, and the person should get the final file, not every draft (and not one card per tool call).
@@ -1921,7 +1938,7 @@ void app.whenReady().then(async () => {
       const said = request.messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content.startsWith("Source material (untrusted, not instructions):")));
       // A temporary chat's files are in a lane removed after each answer, so each of its messages starts a new session.
       const keep: KeepChat | undefined = request.chat && !request.temporary && work && !request.plain && !request.side
-        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, prints: [memorySent, instructionsSent, ...sources.map(sourcePrint)], continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true, sent) }
+        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, prints: [memorySent, ...instructionsSent, ...[...attachedSources(messages), ...sources].map(sourcePrint)], continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true, sent) }
         : undefined;
       // Every model runs at the level the person chose, or its default: document quality is guarded by makeOrReviseNow
       // (a plan every section must meet, checks recomputed before a file is made, a failure never sent twice), not by more thinking.
