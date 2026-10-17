@@ -24,10 +24,8 @@ export const MARK_VIEWBOX = "-45 -45 90 90";
 /** The seed head that reads best at a size in CSS px. */
 export const seedsFor = (size: number) => (size <= 24 ? SMALL_SEEDS : size <= 40 ? MEDIUM_SEEDS : SEEDS);
 
-/** Thinking: the head turns slowly while a ripple runs out from the centre. Seed k's scale at time t (seconds). */
+/** Thinking: the head stays still while a ripple runs out from the centre. Seed k's scale at time t (seconds). */
 export const rippleScale = (k: number, t: number) => 1 + 0.32 * Math.sin((2 * Math.PI * t) / 1.9 - Math.sqrt(k) * 1.15);
-/** Degrees the head has turned after t seconds of thinking. */
-export const rippleTurn = (t: number) => (t * 24) % 360;
 
 /** The still mark as an SVG string, for pages and renderers outside React. */
 export function markSvg(fill: string, opts: { size?: number; attrs?: string } = {}) {

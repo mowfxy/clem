@@ -1,5 +1,5 @@
 import { useEffect,useRef } from 'react';
-import { MARK_VIEWBOX,seedsFor,rippleScale,rippleTurn } from '../core/mark';
+import { MARK_VIEWBOX,seedsFor,rippleScale } from '../core/mark';
 // Icons: one even line on a 32-unit grid, rounded ends, and at most one soft grey fill per icon.
 // A drawing is a list of strokes; a stroke starting with "F " is also filled. Hover motion in CSS
 // targets strokes by index (`.icon-<name> .stroke-<i>`), so keep each icon's stroke order.
@@ -130,12 +130,11 @@ export const MARK={viewBox:MARK_VIEWBOX,seedsFor} as const;
 export function Mark({size=24,className}:{size?:number;className?:string}){return <svg width={size} height={size} viewBox={MARK_VIEWBOX} className={className} fill="currentColor" aria-hidden="true">{seedsFor(size).map(([x,y,r],i)=><circle key={i} cx={x} cy={y} r={r}/>)}</svg>;}
 export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){
  const ref=useRef<SVGSVGElement>(null),seeds=seedsFor(size);
- useEffect(()=>{const el=ref.current!;const media=matchMedia('(prefers-reduced-motion: reduce)');let frame=0,last=-1;const head=el.querySelector('.mark-turn')!;const dots=Array.from(el.querySelectorAll('circle'));
- const reset=()=>{cancelAnimationFrame(frame);frame=0;head.removeAttribute('transform');dots.forEach((d,k)=>d.setAttribute('r',String(seeds[k][2])));};
- // Thinking: the head turns slowly while a ripple runs out from the centre, seed by seed. Drawn on 24 ms cels.
+ useEffect(()=>{const el=ref.current!;const media=matchMedia('(prefers-reduced-motion: reduce)');let frame=0,last=-1;const dots=Array.from(el.querySelectorAll('circle'));
+ const reset=()=>{cancelAnimationFrame(frame);frame=0;dots.forEach((d,k)=>d.setAttribute('r',String(seeds[k][2])));};
+ // Thinking: the head stays put while a ripple runs out from the centre, seed by seed. Drawn on 24 ms cels.
  const started=performance.now();
  const tick=(now:number)=>{const cel=Math.floor(now/24);if(cel!==last){last=cel;const t=(now-started)/1000;
-   head.setAttribute('transform',`rotate(${rippleTurn(t).toFixed(2)})`);
    dots.forEach((d,k)=>d.setAttribute('r',(seeds[k][2]*rippleScale(k,t)).toFixed(2)));
  }if(frame)frame=requestAnimationFrame(tick);};
  const sync=()=>{reset();if(thinking&&!document.hidden&&!media.matches&&document.documentElement.dataset.quiet!=='true')frame=requestAnimationFrame(tick);};

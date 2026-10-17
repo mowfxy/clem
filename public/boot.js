@@ -1,6 +1,6 @@
 // The desktop app's opening screen: Mowr's mark, drawn before any of the app has loaded and kept until the workspace
 // is ready (the app calls window.mowrBoot.done()). Plain script so it paints on the first frame. The seed head and its
-// ripple repeat SEEDS, rippleScale and rippleTurn from core/mark.ts (the Logo component in src/Icons.tsx).
+// ripple repeat SEEDS and rippleScale from core/mark.ts (the Logo component in src/Icons.tsx).
 (function () {
   var seeds = [], step = 39 / Math.sqrt(61.5);
   for (var k = 0; k < 61; k++) seeds.push([step * Math.sqrt(k + .5) * Math.cos(k * 2.39996323), step * Math.sqrt(k + .5) * Math.sin(k * 2.39996323), step * (.3 + .48 * Math.pow((k + 1) / 61, 1.3))]);
@@ -53,7 +53,6 @@
     if (cel !== last) {
       last = cel;
       var t = (now - started) / 1000;
-      turn.setAttribute("transform", "rotate(" + (t * 24 % 360).toFixed(2) + ")");
       dots.forEach(function (dot, k) { dot.setAttribute("r", (seeds[k][2] * (1 + .32 * Math.sin(2 * Math.PI * t / 1.9 - Math.sqrt(k) * 1.15))).toFixed(2)); });
     }
     frame = requestAnimationFrame(tick);
