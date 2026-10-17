@@ -83,3 +83,11 @@ test("pdf edits find text on one line and re-set only the items they touch", () 
   assert.throws(() => planEdits([page], [{ page: 1, find: "thrown at 20", replace: "kicked at 25" }, { page: 1, find: "m/s at", replace: "km/h at" }]), /same line/);
   assert.equal(planEdits([page], [{ page: 1, find: "A ball", replace: "One ball" }, { page: 1, find: "at 30", replace: "at 45" }]).length, 2, "separate runs on one line are fine");
 });
+
+test("snippets pick the window covering the most terms, even with thousands of matches", () => {
+  const text = "alpha ".repeat(3000) + "beta gamma alpha " + "gamma ".repeat(3000);
+  const started = Date.now();
+  const s = snippet(text, ["alpha", "beta", "gamma"], 40);
+  assert.ok(Date.now() - started < 500);
+  assert.match(s.text, /beta gamma/);
+});

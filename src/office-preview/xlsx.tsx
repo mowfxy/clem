@@ -99,7 +99,7 @@ export function parseXlsx(pkg: Pkg): XlsxModel {
     grid.set(entry.name, cells);
     return { ...entry, doc, raw };
   });
-  const calc = new Calculator(grid);
+  const calc = new Calculator(grid, { stored: true });
   const lookup = (sheet: string, r1: number, c1: number, r2: number, c2: number) => { const out: (string | number | null)[] = []; for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) { const v = calc.value(sheet, r, c); out.push(isError(v) ? null : typeof v === "boolean" ? String(v) : v); } return out; };
   const sheets = parsed.map(({ name, part, doc, raw }): SheetModel => {
     const cols = new Map<number, { px: number; hidden: boolean }>(), rows = new Map<number, { px: number; hidden: boolean }>();
