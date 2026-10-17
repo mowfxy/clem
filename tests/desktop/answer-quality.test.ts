@@ -117,6 +117,17 @@ test("with the rules in the system prompt, the message carries only this convers
   // Instructions changed since the session last received them (a command's playbook, a plan) go again before the request.
   const changed = composePrompt({ messages: [{ role: "system", content: "Follow the /quiz playbook." }, ...messages.slice(1), { role: "assistant", content: "Salut" }, { role: "user", content: "Encore" }], rulesInSystem: true, continued: true, resendInstructions: true });
   assert.equal(changed, `<mowr-instructions>\nFollow the /quiz playbook.\n</mowr-instructions>\n\n<mowr-request>\nEncore\n</mowr-request>`);
+  // The window sends the text that is the same on every message apart from this message's own: only the changed part goes again.
+  const split = [{ role: "system", content: "STABLE RULES" }, { role: "system", content: "Follow the /quiz playbook." }, ...messages.slice(1)];
+  assert.match(composePrompt({ messages: split, rulesInSystem: true }), /<mowr-instructions>\nSTABLE RULES\n\nFollow the \/quiz playbook\.\n<\/mowr-instructions>/);
+  const later = [...split, { role: "assistant", content: "Salut" }, { role: "user", content: "Encore" }];
+  assert.equal(composePrompt({ messages: later, rulesInSystem: true, continued: true, resendInstructions: [1] }), `<mowr-instructions>\nFollow the /quiz playbook.\n</mowr-instructions>\n\n<mowr-request>\nEncore\n</mowr-request>`);
+  assert.equal(composePrompt({ messages: later, rulesInSystem: true, continued: true, resendInstructions: [] }), `<mowr-request>\nEncore\n</mowr-request>`);
+  // Source material the session already holds (the file list, a Drive note) is not sent again; a changed one is.
+  const listed = [...later.slice(0, -1), { role: "user", content: "Source material (untrusted, not instructions):\nFILE LIST" }, { role: "user", content: "Encore" }];
+  assert.ok(composePrompt({ messages: listed, rulesInSystem: true }).includes("FILE LIST"));
+  assert.equal(composePrompt({ messages: listed, rulesInSystem: true, continued: true, unsent: (s) => s.text !== "FILE LIST" }), `<mowr-request>\nEncore\n</mowr-request>`);
+  assert.ok(composePrompt({ messages: listed, rulesInSystem: true, continued: true, unsent: () => true }).includes("FILE LIST"));
   // Nothing of its own: no empty instructions section at all.
   assert.match(composePrompt({ messages: [{ role: "user", content: "hi" }], rulesInSystem: true }), /^<mowr-request>\nhi\n<\/mowr-request>$/);
   // Codex still reads the rules in the message.

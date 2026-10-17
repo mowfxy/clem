@@ -95,6 +95,10 @@ test("a deployment uses the server's own provider keys only when it opts in", as
     Object.assign(process.env, { ANTHROPIC_API_KEY: "sk-test-server-key", ANTHROPIC_MODEL: "claude-test" });
     assert.equal(serverKeysAllowed(), true); // local development
     assert.equal(requestSpec("anthropic", [{ role: "user", content: "hi" }]).headers["x-api-key"], "sk-test-server-key");
+    // The system prompt and the conversation up to the latest message are cached between requests.
+    const body = requestSpec("anthropic", [{ role: "system", content: "RULES" }, { role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: "c" }]).body as any;
+    assert.deepEqual(body.system, [{ type: "text", text: "RULES", cache_control: { type: "ephemeral" } }]);
+    assert.deepEqual(body.messages, [{ role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: [{ type: "text", text: "c", cache_control: { type: "ephemeral" } }] }]);
     process.env.VERCEL = "1";
     assert.equal(serverKeysAllowed(), false);
     assert.throws(() => requestSpec("anthropic", [{ role: "user", content: "hi" }]), /connect your own model/);

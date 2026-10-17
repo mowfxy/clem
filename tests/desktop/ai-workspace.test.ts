@@ -134,7 +134,9 @@ test("the note says where everything is, counts each subject's files and names t
   assert.match(note, /- Subjects\/Maths\/ \(1 file\)/);
   assert.match(note, /THIS CONVERSATION IS IN Subjects\/Physics\//);
   assert.match(note, /SOURCES OF THIS ANSWER[^]*- Subjects\/Physics\/a\.pdf/);
-  assert.match(note, /The other files:[^]*- Subjects\/Maths\/c\.pdf/);
+  // This subject's other files are listed; the other subjects' only by name and count.
+  assert.match(note, /The other files of Subjects\/Physics\/:\n- Subjects\/Physics\/b\.pdf/);
+  assert.doesNotMatch(note, /- Subjects\/Maths\/c\.pdf/);
   assert.match(note, /Drafts\/chat-1234abcd\/: your own working files/);
   assert.match(note, /Outputs\/chat-1234abcd\/: any file you write here/);
   // A large library lists this subject's files and counts the rest.

@@ -42,7 +42,7 @@ ${lines.join("\n")}]${small.length ? "\n\n" + small.join("\n\n") : ""}`;
 const SMALL_FILE = 8000;
 
 /** Words too common to tell files or passages apart. */
-const common = new Set("the and for with that this from are was were has have had not but you your all any can will each into about make create explain fully detail detailed please write give pdf pdfs file files document lecture lectures notes summary summarise summarize every them their there what which when how why also more".split(" "));
+export const common = new Set("the and for with that this from are was were has have had not but you your all any can will each into about make create explain fully detail detailed please write give pdf pdfs file files document lecture lectures notes summary summarise summarize every them their there what which when how why also more".split(" "));
 const CHUNK = 1800, STEP = 1600;
 
 /**

@@ -61,6 +61,16 @@ test("a kept session remembers only the instructions it last received", () => {
   assert.equal(sentAfter(second, [note]).has(b), true);
 });
 
+test("each part of the instructions is remembered on its own, so only the part that changed goes again", () => {
+  const stable = instructionsPrint("RULES", 0), quiz = instructionsPrint("Quiz playbook", 1), plan = instructionsPrint("Plan playbook", 1);
+  assert.notEqual(instructionsPrint("Same", 0), instructionsPrint("Same", 1));
+  const first = sentAfter([], [stable, quiz]);
+  // The next message changes only its own part: the stable part stays as received, the old playbook is forgotten.
+  const second = sentAfter(first, [stable, plan]);
+  assert.deepEqual([...second].sort(), [stable, plan].sort());
+  assert.equal(second.has(quiz), false);
+});
+
 test("the conversation fingerprint follows the person's words and the order of answers, not how answers are shown", () => {
   const before = [{ role: "user", content: "Explain RC circuits" }];
   const after = conversationPrint([...before, { role: "assistant", content: "" }]);
