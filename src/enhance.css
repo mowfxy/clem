@@ -10,6 +10,17 @@
 .message-tools.user-tools .message-time{order:-1}
 .message:hover .message-time,.message:focus-within .message-time{opacity:1}
 
+/* Files held over a conversation: one calm sheet with a dashed edge, never covering the sidebar. */
+.drop-overlay{position:fixed;top:var(--tb,0px);right:0;bottom:0;left:var(--side,280px);z-index:45;display:grid;place-items:center;padding:24px;background:#141414c4;backdrop-filter:blur(3px);pointer-events:none;animation:en-fade .18s ease-out backwards}
+.drop-card{display:flex;flex-direction:column;align-items:center;gap:8px;width:min(520px,100%);padding:42px 24px;border:1.5px dashed #6a6a64;border-radius:18px;background:#1d1d1cf0;color:#ecebe5;text-align:center;animation:en-pop-in .3s var(--ease-spring,cubic-bezier(.2,1.25,.35,1)) backwards}
+.drop-card strong{font:500 17px/1.3 var(--sans)}
+.drop-card span{font-size:13px;color:#9a9992}
+html[data-sidebar=closed] .drop-overlay{left:0}
+@media(max-width:760px){.drop-overlay{left:0}}
+
+/* Copying confirms itself: the button gives one small pop as its icon turns to a tick. */
+.message-tools button[aria-label=Copied],.code-icon[aria-label=Copied]{animation:en-copied .32s var(--ease-spring,cubic-bezier(.2,1.25,.35,1));color:#f2f1ec}
+
 /* ── Sidebar ── */
 /* The chat on screen is marked once: the chat row, never "New chat" as well. */
 .sidebar .nav-item[aria-current=page]{font-weight:500}
@@ -106,6 +117,9 @@ dialog.shortcuts-sheet{width:min(560px,calc(100vw - 32px));padding:0;border-radi
   .find-bar input{flex:1;width:auto;min-width:0}
 }
 
+@keyframes en-copied{40%{transform:scale(1.18)}}
+@keyframes en-fade{from{opacity:0}}
+@keyframes en-pop-in{from{opacity:0;transform:scale(.96)}}
 @keyframes en-drop{from{opacity:0;transform:translateY(-8px) scale(.97)}}
 @keyframes en-pop{from{opacity:0;transform:translate(-50%,8px) scale(.92)}}
 @keyframes en-rise{from{opacity:0;transform:translateY(6px)}}
@@ -113,7 +127,7 @@ dialog.shortcuts-sheet{width:min(560px,calc(100vw - 32px));padding:0;border-radi
 @media (prefers-reduced-motion:reduce){
   html[data-sidebar-moving] :is(body .sidebar,body .workspace,body .workspace-top,body .desktop-titlebar){transition:none!important}
   html[data-sidebar=closed] .mobile-menu{animation:none}
-  .find-bar,.jump-latest,.shortcuts-sheet .sheet-row,.file-list .file-row{animation:none!important}
+  .find-bar,.jump-latest,.shortcuts-sheet .sheet-row,.file-list .file-row,.drop-overlay,.drop-card,.message-tools button,.code-icon{animation:none!important}
   .send-button:not(:disabled):active{transform:none}
 }
-html[data-quiet=true] :is(.find-bar,.jump-latest,.shortcuts-sheet .sheet-row,.file-list .file-row){animation:none!important}
+html[data-quiet=true] :is(.message-tools button,.code-icon,.drop-overlay,.drop-card,.find-bar,.jump-latest,.shortcuts-sheet .sheet-row,.file-list .file-row){animation:none!important}

@@ -255,6 +255,9 @@ function searchableText(c:{title:string;messages:{content:string}[]}){
   return text;
 }
 
+/** The welcome's opening word for the hour: the small hours are not "morning". */
+const greeting = (hour: number) => hour < 5 ? "Late night" : hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening";
+
 /** Overdue in a plan: a small clock, on subject and project cards. */
 function PlanLateGlyph(){return <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="6" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M8 5.5v3.2l2 1.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;}
 
@@ -2127,6 +2130,33 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     window.addEventListener('dragover',over);window.addEventListener('drop',drop);window.addEventListener('dragover',edgeScroll,true);
     return()=>{window.removeEventListener('dragover',over);window.removeEventListener('drop',drop);window.removeEventListener('dragover',edgeScroll,true);};
   },[]);
+  // Files dragged from File Explorer onto a conversation attach to the next message, as the + button would; a drop
+  // overlay shows while they are held over it. Study packs keep their own handling above.
+  const [dropping,setDropping]=useState(false);
+  const chatDrop=useRef<(files:File[])=>boolean>(()=>false);
+  chatDrop.current=(files)=>{
+    if(workspaceRoute()!=='/app'||!files.length||document.querySelector('dialog[open]'))return false;
+    const dt=new DataTransfer();for(const f of files)dt.items.add(f);
+    upload(dt.files,true);
+    setTimeout(()=>composer.current?.focus(),80);
+    return true;
+  };
+  useEffect(()=>{
+    let depth=0;
+    const hasFiles=(e:DragEvent)=>!!e.dataTransfer?.types.includes('Files');
+    const enter=(e:DragEvent)=>{if(!hasFiles(e)||workspaceRoute()!=='/app'||document.querySelector('dialog[open]'))return;depth++;setDropping(true);};
+    const leave=(e:DragEvent)=>{if(!hasFiles(e))return;depth=Math.max(0,depth-1);if(!depth)setDropping(false);};
+    const drop=(e:DragEvent)=>{
+      depth=0;setDropping(false);
+      if(e.defaultPrevented||!hasFiles(e))return;
+      const files=[...(e.dataTransfer?.files||[])];
+      if(files.some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION)))return;
+      if(chatDrop.current(files))e.preventDefault();
+    };
+    const end=()=>{depth=0;setDropping(false);};
+    window.addEventListener('dragenter',enter);window.addEventListener('dragleave',leave);window.addEventListener('drop',drop);window.addEventListener('dragend',end);
+    return()=>{window.removeEventListener('dragenter',enter);window.removeEventListener('dragleave',leave);window.removeEventListener('drop',drop);window.removeEventListener('dragend',end);};
+  },[]);
   /** A project or subject opens as its own page. */
   function openSpace(id:string,tab:SpaceTab='overview'){setSpaceId(id);setChatId(null);setSpaceTab(tab);navigate('/app/space/'+id);}
   const spaceRoute=route.match(/^\/app\/space\/([\w-]+)$/)?.[1];
@@ -2619,6 +2649,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 </div>
               ) : null)}
             </header>
+            {route === "/app" && dropping && <div className="drop-overlay" aria-hidden="true"><div className="drop-card"><Icon name="attach" size={26} /><strong>Drop to attach</strong><span>The files join your next message.</span></div></div>}
             {route === "/app" ? (
               <div className="chat-split">
               <div
@@ -2632,7 +2663,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         <Logo size={47} />
                         {temporaryNext ? "Temporary chat." : activeSpace
                           ? `Let’s think about ${activeSpace.name}.`
-                          : `${new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 18 ? "Afternoon" : "Evening"}, ${state.name === "Thinker" ? "thinker" : state.name}.`}
+                          : `${greeting(new Date().getHours())}, ${state.name === "Thinker" ? "thinker" : state.name}.`}
                       </h1>
                     </div>
                     {temporaryNext && <p className="temp-note">Not saved and never remembered. Mowr can still use your files and memory.</p>}

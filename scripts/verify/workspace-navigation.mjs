@@ -126,6 +126,16 @@ try {
   await page.keyboard.press("Control+0");
   assert.equal(await read(), normal);
 
+  // Files dragged onto a conversation attach to the next message, with an overlay while they are held over it.
+  await row("A long chat").click();
+  const dragged = await page.evaluateHandle(() => { const dt = new DataTransfer(); dt.items.add(new File(["Notes on mitosis"], "mitosis notes.txt", { type: "text/plain" })); return dt; });
+  await page.dispatchEvent(".messages", "dragenter", { dataTransfer: dragged });
+  await page.locator(".drop-overlay").waitFor();
+  await page.dispatchEvent(".messages", "drop", { dataTransfer: dragged });
+  await page.locator(".drop-overlay").waitFor({ state: "detached" });
+  await page.locator(".composer").getByText("mitosis notes.txt").first().waitFor({ timeout: 8000 });
+  await page.locator(".composer").getByRole("button", { name: /Remove/ }).first().click().catch(() => {});
+
   // Each chat keeps its own unsent message; a sent one never comes back.
   const box = page.getByLabel("Your message");
   await row("A long chat").click();
