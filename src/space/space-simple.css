@@ -1,0 +1,70 @@
+/* The Chats, Files, Flashcards and Quizzes tabs, quieter: one bar with one Add menu, rows that show a name and a time,
+   and actions that appear on hover. Loaded after space.css, space-calm.css and space-files.css. */
+
+/* Chats: a plain list, a title on the left and when on the right. */
+.space-page .sp-chats{display:flex;flex-direction:column;gap:2px}
+.space-page .sp-chats .sp-find{margin:0 0 10px}
+.space-page .sp-chats .sp-chat{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;width:calc(100% + 28px);margin:0 -14px;padding:14px;border:0;border-radius:12px;background:none;text-align:left;color:inherit}
+.space-page .sp-chats .sp-chat:hover{background:#ffffff08}
+.space-page .sp-chats .sp-chat strong{flex:1;min-width:0;font:400 17px/1.3 var(--serif);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.space-page .sp-chats .sp-chat small{flex:none;font-size:13px;color:var(--sp-muted)}
+
+/* Files: one bar. */
+.sp-files-bar{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.sp-files-bar .sp-find{flex:1;max-width:none}
+.sp-files-bar .sp-path{flex:1}
+.space-page .sp-files-bar .sp-menu{margin-left:auto}
+.space-page .sp-files-bar .sp-menu-trigger{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 14px 0 12px;border:0;border-radius:11px;background:var(--sp-ink);color:#141413;font:600 13.5px/1 var(--sans)}
+.space-page .sp-files-bar .sp-menu-trigger:hover{background:#fff}
+.space-page .sp-files-bar .sp-menu-trigger .drawn-icon{color:currentColor}
+.space-page .sp-kinds{margin:-4px 0 16px}
+.space-page .sp-kinds button small{display:none}
+
+/* Folders: small chips, not cards. */
+.space-page .sp-folders{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:12px}
+.space-page .sp-folder{padding:8px 6px 8px 12px;border-radius:12px;gap:10px}
+.space-page .sp-folder .sp-folder-icon .drawn-icon{width:22px;height:22px}
+.space-page .sp-folder>div{display:flex;align-items:baseline;gap:8px}
+.space-page .sp-folder strong{font-size:14px}
+.space-page .sp-folder small{flex:none}
+
+/* Files: rows without a box around them; the row lights on hover. */
+.space-page .sp-file-list{padding:0;border:0;background:none;gap:2px}
+.space-page .sp-file{padding:6px 8px;border:0;border-radius:12px;transition:background .2s}
+.space-page .sp-file:hover,.space-page .sp-file:focus-within{background:#ffffff07}
+.space-page .sp-file-open small{font-size:12.5px}
+.space-page .sp-file-open:hover strong{text-decoration:none}
+/* Source shows as a small mark when on; the switch itself appears on hover. */
+.space-page .sp-source{height:24px;padding:0 9px 0 7px;font-size:11.5px}
+.space-page .sp-files.drop{outline:2px dashed var(--sp-soft);outline-offset:6px;border-radius:16px}
+.space-page .sp-local-head{display:block;margin:20px 0 8px}
+
+/* Folders linked on this PC: a quiet list under the files. */
+.space-page .sp-linked{margin-top:22px;padding:0;border:0;background:none}
+.space-page .sp-linked .sp-eyebrow{display:block;margin-bottom:6px}
+.space-page .sp-linked .sp-row{display:flex;align-items:center;gap:10px;width:100%;padding:8px;border-radius:10px;justify-content:flex-start;color:var(--sp-soft)}
+.space-page .sp-linked .sp-row:hover{background:#ffffff07;color:var(--sp-ink)}
+.space-page .sp-files .calm-empty{padding:30px 0}
+.space-page .sp-files .calm-empty-actions button:not(.primary){display:inline-flex;align-items:center;gap:7px}
+
+/* Flashcards and quizzes: one thing to do at the top, then the sets as cards. */
+.space-page .study-hero{display:flex;align-items:center;gap:18px;padding:14px 20px 14px 10px;margin-bottom:22px;border:1px solid var(--sp-line);border-radius:18px;background:var(--sp-card)}
+.space-page .study-hero-art{flex:none;width:84px}
+.space-page .study-hero-art svg{display:block;width:100%;height:auto}
+.space-page .study-hero b{flex:1;font:400 26px/1.2 var(--serif);letter-spacing:-.015em;color:var(--sp-ink)}
+.space-page .study-hero .primary{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:12px}
+.space-page .subject-study .study-sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.space-page .subject-study .study-item{position:relative;display:flex;align-items:stretch;padding:0;border:1px solid var(--sp-line);border-radius:16px;background:var(--sp-card);transition:border-color .2s}
+.space-page .subject-study .study-item:hover{border-color:var(--sp-line-2)}
+.space-page .subject-study .study-item-open{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;gap:4px;min-height:96px;padding:16px;border:0;border-radius:16px;background:none;text-align:left;color:inherit;opacity:1;cursor:pointer}
+.space-page .subject-study .study-item-open:disabled{cursor:default}
+.space-page .subject-study .study-item-open strong{font:400 18px/1.25 var(--serif);color:var(--sp-ink)}
+.space-page .subject-study .study-item-open small{font-size:12.5px;color:var(--sp-muted);font-variant-numeric:tabular-nums}
+.space-page .subject-study .study-item>.icon-button{position:absolute;top:8px;right:8px;color:var(--sp-muted)}
+.space-page .subject-study .study-new{display:flex;align-items:center;justify-content:center;gap:8px;min-height:96px;border:1px dashed var(--sp-line-2);border-radius:16px;background:none;color:var(--sp-soft)}
+.space-page .subject-study .study-new:hover{border-style:solid;background:#ffffff06;color:var(--sp-ink)}
+@media (hover:hover){
+  .space-page .subject-study .study-item>.icon-button{opacity:0;transition:opacity .2s}
+  .space-page .subject-study .study-item:is(:hover,:focus-within)>.icon-button{opacity:1}
+}
+@media (max-width:640px){.space-page .subject-study .study-sets{grid-template-columns:repeat(2,minmax(0,1fr))}.space-page .study-hero b{font-size:21px}}

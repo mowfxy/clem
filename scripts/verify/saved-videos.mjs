@@ -97,7 +97,7 @@ try {
   // A subject: save a playlist into a folder of its own; the video without captions is kept and marked.
   await page.evaluate(() => { location.hash = "/app/space/bio"; });
   await page.getByRole("tab", { name: /^Files/ }).click();
-  await page.locator(".sp-files").getByRole("button", { name: "Save from YouTube" }).click();
+  await page.locator(".sp-files-bar").getByRole("button", { name: "Add" }).click(); await page.getByRole("menuitem", { name: "YouTube video" }).click();
   await dialog.getByRole("textbox").fill("https://www.youtube.com/watch?v=kReBsCyc1e2&list=PLcellbio2unit");
   await dialog.getByRole("button", { name: "Whole playlist" }).waitFor();
   assert.equal(await dialog.locator("select").count(), 0, "a subject saves into itself");

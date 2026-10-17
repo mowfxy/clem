@@ -149,7 +149,7 @@ try {
   await page.evaluate(() => (location.hash = "/app/subjects"));
   await page.getByRole("button", { name: /^Calculus\b/ }).click();
   await page.getByRole("tab", { name: /^Quizzes/ }).click();
-  await page.getByRole("button", { name: "New quiz", exact: true }).click();
+  await page.getByRole("button", { name: "Make a quiz", exact: true }).click();
   await page
     .locator(".composer textarea")
     .fill("/quiz create a quiz on arithmetic");
@@ -159,7 +159,7 @@ try {
   await page.getByRole("button", { name: /^Calculus\b/ }).click();
   await page.getByRole("tab", { name: /^Quizzes/ }).click();
   await page
-    .getByRole("button", { name: "Limits practice", exact: true })
+    .getByRole("button", { name: /^Limits practice/ })
     .click();
   await page.getByLabel("4", { exact: true }).check();
   await page
@@ -170,9 +170,9 @@ try {
     .waitFor();
   await page.screenshot({ path: "artifacts/subject-study.png" });
   await page
-    .getByRole("button", { name: "Back to sets", exact: true })
+    .getByRole("button", { name: "Back", exact: true })
     .click();
-  await page.getByText("last 1/1", { exact: false }).waitFor();
+  await page.getByText("· 1/1", { exact: false }).waitFor();
   // The quiz answer joined the review schedule, so nothing is due or new today.
   await page.getByRole("tab", { name: "Overview" }).click();
   await page.locator(".sp-today", { hasText: "All caught up" }).waitFor();
