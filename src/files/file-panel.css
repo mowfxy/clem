@@ -211,6 +211,6 @@ button.pointer-chip .drawn-icon{flex:none}
   .message-tools>button>span{display:none}
 }
 @container chat (max-width:470px){
-  .long-toggle>span:not(.long-switch){display:none}
+  .long-toggle>span:not(.long-state){display:none}
 }
 .file-panel:has(.fp-tools) .fp-proposal{margin:0 8px 8px;border:1px solid #2a2a28;border-radius:10px;padding-left:14px}

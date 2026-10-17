@@ -32,16 +32,14 @@
 .picker-empty{font-size:12px;color:#aaa99f;padding:8px 10px 12px;margin:0}
 .unified-picker-panel .picker-connect{border-top:1px solid #ffffff0c;border-radius:0;width:100%;justify-content:space-between;margin-top:6px;padding:10px 10px 5px;font-size:11px;color:#a5a59c}
 .unified-picker-panel .picker-connect:hover{color:#eeede7}
-/* Long task: a clear on/off toggle */
-.composer .mode-button.long-toggle{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 10px 0 9px;border-radius:10px;border:1px solid #3a3a36;background:transparent;color:#bdbcb4;font:12px var(--sans);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
-.composer .mode-button.long-toggle:hover{background:#ffffff08;border-color:#4d4d47;color:#efeee8}
+/* Long task: a quiet chip at rest that lights up, with a small lit dot, when it is on */
+.composer .mode-button.long-toggle{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 11px 0 9px;border-radius:99px;border:1px solid transparent;background:transparent;color:#a9a8a0;font:12px var(--sans);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.composer .mode-button.long-toggle:hover{background:#ffffff0b;color:#efeee8}
 .composer .mode-button.long-toggle:focus-visible{outline:2px solid #d6d5cf;outline-offset:1px}
-.long-toggle .long-switch{position:relative;width:24px;height:14px;border-radius:99px;background:#3b3b37;flex:none;transition:background .2s}
-.long-toggle .long-switch::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#9d9c95;transition:transform .2s cubic-bezier(.2,.9,.3,1),background .2s}
-.composer .mode-button.long-toggle.selected{background:#ffffff0d;border-color:#6b6b66;color:#f4f4f2}
-.long-toggle.selected .long-switch{background:#f4f4f2}
-.long-toggle.selected .long-switch::after{transform:translateX(10px);background:#171717}
-@media(prefers-reduced-motion:reduce){.long-toggle .long-switch,.long-toggle .long-switch::after{transition:none}}
+.long-toggle .long-state{width:6px;height:6px;margin-left:1px;border-radius:50%;background:#f4f4f2;flex:none;opacity:0;transform:scale(.4);transition:opacity .2s,transform .2s cubic-bezier(.2,.9,.3,1)}
+.composer .mode-button.long-toggle.selected{background:#ffffff12;border-color:#ffffff1f;color:#f4f4f2}
+.long-toggle.selected .long-state{opacity:1;transform:none;box-shadow:0 0 6px #ffffff80}
+@media(prefers-reduced-motion:reduce){.long-toggle .long-state{transition:none}}
 @media(max-width:760px){.picker-trigger-name{max-width:110px}}
 
 
@@ -115,3 +113,13 @@
 .effort-pop[data-provider=Anthropic] .effort-petal{fill:#fff4ee;filter:drop-shadow(0 0 2px #ffb08c66)}
 .effort-pop[data-provider=Anthropic] .effort-track:focus-visible{box-shadow:0 0 0 2px #232321,0 0 0 4px #d97757}
 .picker-trigger-effort[data-provider=Anthropic] .effort-pip::after{background:linear-gradient(90deg,#9a4d33,#e8936f)}
+/* In the composer the model and its thinking level sit together in one capsule, split by a hairline. */
+body .composer .unified-model-picker{gap:0;height:32px;padding:0 2px;border-radius:99px;border:1px solid #ffffff14;background:#ffffff05;transition:border-color .15s,background .15s}
+body .composer .unified-model-picker:hover{border-color:#ffffff22}
+body .composer .unified-model-picker .picker-trigger{height:28px;border:0;border-radius:99px;padding:0 9px 0 7px;gap:6px}
+body .composer .unified-model-picker .picker-trigger:hover,body .composer .unified-model-picker .picker-trigger[aria-expanded=true]{background:#ffffff0d;border:0}
+body .composer .unified-model-picker .picker-trigger>svg{width:10px;height:10px}
+body .composer .unified-model-picker .picker-mark{width:16px;height:16px}
+body .composer .unified-model-picker .picker-trigger-effort{position:relative;padding:0 10px 0 9px;margin-left:1px}
+body .composer .unified-model-picker .picker-trigger-effort::before{content:"";position:absolute;left:-1px;top:8px;bottom:8px;width:1px;background:#ffffff17}
+body .composer .unified-model-picker .picker-trigger-effort:hover::before,body .composer .unified-model-picker .picker-trigger:hover+.picker-trigger-effort::before{opacity:0}

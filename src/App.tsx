@@ -2417,7 +2417,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           >
             <Icon name="long" size={16} />
             <span>Long task</span>
-            <span className="long-switch" aria-hidden="true" />
+            <span className="long-state" aria-hidden="true" />
           </button>
         </div>
         <div className="composer-tools">
