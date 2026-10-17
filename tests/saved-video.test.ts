@@ -50,4 +50,8 @@ test('pasted links: a video, a playlist, or a video inside a playlist',()=>{
   const both=readVideoLink(' https://www.youtube.com/watch?v=abcdefghijk&list=PL1234567890 ');
   assert.equal(both?.video?.id,'abcdefghijk');assert.equal(both?.playlist?.id,'PL1234567890');
   assert.equal(readVideoLink('https://vimeo.com/123'),null);
+  // A video opened from a Mix is just the video: Mixes can't be saved.
+  const mix=readVideoLink('https://www.youtube.com/watch?v=abcdefghijk&list=RDabcdefghijk&start_radio=1');
+  assert.equal(mix?.video?.id,'abcdefghijk');
+  assert.equal(mix?.playlist,undefined);
 });

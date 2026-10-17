@@ -14,7 +14,9 @@ export type VideoLink = { video?: ReturnType<typeof youtubeReference>; playlist?
 /** What a pasted address points at: a video, a playlist, or a video played inside a playlist (both). */
 export function readVideoLink(value: string): VideoLink | null {
   const text = value.trim();
-  const video = youtubeReference(text), playlist = youtubePlaylistReference(text);
+  const video = youtubeReference(text);
+  // A Mix (RD…) is YouTube's endless radio, not a playlist that can be saved: a video opened from one is just the video.
+  const listed = youtubePlaylistReference(text), playlist = video && listed?.id.startsWith("RD") ? null : listed;
   return video || playlist ? { ...(video ? { video } : {}), ...(playlist ? { playlist } : {}) } : null;
 }
 
@@ -106,23 +108,25 @@ export async function saveVideos(videos: PlaylistVideo[], { place, folderId = nu
   const kept = new Set(existing.filter((f) => f.video && f.spaceId === place).map((f) => f.video!.id));
   const todo = videos.filter((v, i) => !kept.has(v.id) && videos.findIndex((x) => x.id === v.id) === i);
   const saved: (StoredFile | undefined)[] = new Array(todo.length);
-  let next = 0, done = 0;
+  // One clock for the whole run: later videos of a playlist are a moment older, so "newest first" keeps its order.
+  let next = 0, done = 0, failed: unknown;
+  const base = Date.now();
   onProgress?.({ done, total: todo.length, title: todo[0]?.title });
   const work = async (): Promise<void> => {
     const at = next++;
-    if (at >= todo.length || signal?.aborted) return;
+    if (at >= todo.length || signal?.aborted || failed) return;
     const c = await readVideo(todo[at]);
     if (signal?.aborted) return;
     const blob = new Blob([videoDocument(c, playlist)], { type: "text/markdown" });
     const id = crypto.randomUUID();
-    await store(id, blob);
-    const now = Date.now();
-    // Later videos of a playlist are a moment older, so "newest first" keeps the playlist's own order.
-    saved[at] = { id, name: videoFileName(c.title || todo[at].title || "YouTube video"), size: blob.size, type: "text/markdown", created: now - at, spaceId: place, folderId, remote: false, video: videoRecord(c, playlist) };
+    // A video that can't be stored (disk full) stops the run; the ones stored already are still listed.
+    try { await store(id, blob); } catch (e) { failed ??= e; return; }
+    saved[at] = { id, name: videoFileName(c.title || todo[at].title || "YouTube video"), size: blob.size, type: "text/markdown", created: base - at, spaceId: place, folderId, remote: false, video: videoRecord(c, playlist) };
     onProgress?.({ done: ++done, total: todo.length, title: todo[next]?.title });
     return work();
   };
   await Promise.all([work(), work()]);
+  if (failed && !saved.some(Boolean)) throw failed;
   return { files: saved.filter((f): f is StoredFile => !!f), skipped: videos.length - todo.length };
 }
 

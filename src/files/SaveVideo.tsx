@@ -34,7 +34,11 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
   useEffect(() => { ref.current?.showModal(); return () => stop.current?.abort(); }, []);
   useEffect(() => setError(""), [value]);
   // While saving, closing stops after the videos being read; the ones already read are kept.
-  const close = () => { if (busy) stop.current?.abort(); else onClose(); };
+  // Stop keeps the dialog open; closing it (Escape, the backdrop, ×) also closes it once the stop has settled.
+  const leaving = useRef(false);
+  const halt = () => { if (busy) stop.current?.abort(); else onClose(); };
+  const close = () => { if (busy) leaving.current = true; halt(); };
+  const stopped = () => { setBusy(null); if (leaving.current) onClose(); };
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -47,16 +51,17 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
       if (asPlaylist) {
         setBusy({ done: 0, total: 0, listing: true });
         const list = await readPlaylist(link.playlist!.id);
-        if (controller.signal.aborted) { setBusy(null); return; }
+        if (controller.signal.aborted) { stopped(); return; }
         if (list.error || !list.videos.length) { setBusy(null); setError(list.error || "YouTube didn't list any videos in this playlist."); return; }
         videos = list.videos;
         playlist = { id: list.id, title: list.title || "YouTube playlist" };
       }
       const result = await saveVideos(videos, { place, folderId, playlist, existing, store, signal: controller.signal, onProgress: (p) => setBusy(p) });
-      if (controller.signal.aborted && !result.files.length) { setBusy(null); return; }
+      if (controller.signal.aborted && !result.files.length) { stopped(); return; }
       onSaved({ ...result, place, ...(playlist ? { playlist } : {}) });
     } catch (err) {
       if (!controller.signal.aborted) { setBusy(null); setError(err instanceof Error ? err.message : "The video could not be saved. Try again."); }
+      else stopped();
     }
   }
 
@@ -96,7 +101,7 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
         <span>{busy.listing ? "Reading the playlist…" : busy.total > 1 ? `Reading transcripts · ${busy.done} of ${busy.total}` : "Reading the transcript…"}</span>
       </div>}
       <footer className="yt-save-actions">
-        <button type="button" className="yt-btn" onClick={close}>{busy ? "Stop" : "Cancel"}</button>
+        <button type="button" className="yt-btn" onClick={halt}>{busy ? "Stop" : "Cancel"}</button>
         <button className="yt-btn strong" disabled={!!busy || !value.trim()}>{asPlaylist ? "Save playlist" : "Save video"}</button>
       </footer>
     </form>
