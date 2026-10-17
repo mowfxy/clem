@@ -3,6 +3,8 @@ import { all, attr, find, kid, kids, num, path, type Pkg } from "./package";
 import { color, defaultMap, EMU, fillColor, fontFamily, gradientCss, parseTheme, type Theme } from "./drawingml";
 import { ChartSvg, parseChart, type ChartModel } from "./chart";
 import { Scaled } from "./scaled";
+/** Numbers the shapes' gradient definitions so their ids never collide on a page. */
+let gradientSeq = 0;
 
 /**
  * A PowerPoint file drawn as slides: shapes at their positions with their fills and lines, text with its bullets, sizes and
@@ -171,9 +173,11 @@ function ShapeBox({ ctx, sp, b, key_ }: { ctx: Ctx; sp: Element; b: NonNullable<
   const dash = DASH[attr(kid(ln, "prstDash"), "val") || ""];
   const custom = kid(spPr, "custGeom"), shape = custom ? { d: customPath(custom, b.w, b.h) } : geometry(prst, b.w, b.h, adj);
   const painted = (fill && fill !== null) || gradient || (stroke && lineW);
-  const common = { fill: gradient ? "url(#g)" : fill || "none", stroke: stroke || "none", strokeWidth: stroke ? lineW : 0, strokeDasharray: dash } as const;
+  // SVG ids are page-wide: each shape's gradient gets its own, or every gradient shape would paint with the first one.
+  const gradientId = gradient ? `op-grad-${++gradientSeq}` : "";
+  const common = { fill: gradient ? `url(#${gradientId})` : fill || "none", stroke: stroke || "none", strokeWidth: stroke ? lineW : 0, strokeDasharray: dash } as const;
   const svg = painted ? <svg width={Math.max(b.w, 1)} height={Math.max(b.h, 1)} viewBox={`0 0 ${Math.max(b.w, 1)} ${Math.max(b.h, 1)}`} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
-    {gradient && <defs><linearGradient id="g" gradientTransform={`rotate(${num(attr(kid(kid(spPr, "gradFill"), "lin"), "ang")) / 60000})`}>{all(kid(spPr, "gradFill"), "gs").map((g, i) => <stop key={i} offset={`${num(attr(g, "pos")) / 1000}%`} stopColor={color(g.firstElementChild, ctx.theme, ctx.map)} />)}</linearGradient></defs>}
+    {gradient && <defs><linearGradient id={gradientId} gradientTransform={`rotate(${num(attr(kid(kid(spPr, "gradFill"), "lin"), "ang")) / 60000})`}>{all(kid(spPr, "gradFill"), "gs").map((g, i) => <stop key={i} offset={`${num(attr(g, "pos")) / 1000}%`} stopColor={color(g.firstElementChild, ctx.theme, ctx.map)} />)}</linearGradient></defs>}
     {shape.kind === "line" ? <line x1={0} y1={0} x2={b.w} y2={b.h} stroke={stroke || "#000"} strokeWidth={lineW || 1} strokeDasharray={dash} />
       : shape.kind === "ellipse" ? <ellipse cx={b.w / 2} cy={b.h / 2} rx={b.w / 2} ry={b.h / 2} {...common} />
       : shape.d ? <path d={shape.d} {...common} /> : <rect width={b.w} height={b.h} {...common} />}
