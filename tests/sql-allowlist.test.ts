@@ -78,3 +78,9 @@ test('the database Worker refuses staff, vault and schema access',()=>{
   // A table name inside a string is data, not a reference.
   assert.equal(allowedStatement("SELECT 1 FROM mowr_users WHERE display_name='FROM desktop_admins'"),true);
 });
+
+test('reading a guarded table through IN or a pragma table function is refused',()=>{
+  assert.equal(allowedStatement("SELECT id FROM mowr_users WHERE ('u1','2026') IN desktop_owner_grants"),false);
+  assert.equal(allowedStatement("SELECT id FROM mowr_users WHERE 'x' IN pragma_table_info('provider_links')"),false);
+  assert.equal(allowedStatement("SELECT id FROM mowr_users WHERE id IN (?,?)"),true);
+});

@@ -151,7 +151,8 @@ test("the app reports anonymous usage counts and staff see them as stats", async
     // Resending the same running totals does not double count.
     assert.equal((await call("/usage", report)).status, 200);
     assert.equal((await call("/usage", { days: [{ day: today, rows: [{ provider: "other", model: "x", turns: 1, images: 0 }] }] })).status, 400);
-    assert.equal((await call("/usage", { days: [{ day: "2020-01-01", rows: [] }] })).status, 400);
+    // A day from before a long break is dropped, so the rest of that report still counts.
+    assert.equal((await call("/usage", { days: [{ day: "2020-01-01", rows: [] }] })).status, 200);
     assert.equal((await call("/admin/stats")).status, 403);
     current = people.owner;
     const stats = await (await call("/admin/stats?days=7")).json();

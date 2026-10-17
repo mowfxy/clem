@@ -39,7 +39,9 @@ export async function handleUsage(request, env, user, path) {
   const statements = [];
   for (const entry of body.days) {
     const day = String(entry?.day || "");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < oldest || day > newest) throw new HttpError(400, "Invalid usage day.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > newest) throw new HttpError(400, "Invalid usage day.");
+    // A day from before a long break is dropped, not refused, so the rest of the report still counts.
+    if (day < oldest) continue;
     if (!Array.isArray(entry.rows) || entry.rows.length > 40) throw new HttpError(400, "Too many usage rows.");
     // Each report carries this device's running totals for the day, so a resend replaces instead of adding.
     for (const row of entry.rows) {
