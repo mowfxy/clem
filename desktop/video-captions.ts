@@ -105,3 +105,85 @@ export async function youtubeCaptions(id: string, {fetcher = fetch, languages = 
     return {...result, error: message};
   }
 }
+
+/** One video of a playlist, as the playlist page lists it. */
+export type PlaylistVideo = {id: string; title?: string; channel?: string; durationSec?: number};
+export type Playlist = {id: string; title?: string; videos: PlaylistVideo[]; error?: string};
+/** The most videos one save takes from a playlist; the person is told when a playlist is longer. */
+export const PLAYLIST_LIMIT = 100;
+
+const text = (t: any): string | undefined => typeof t === "string" ? t : t?.simpleText ?? t?.content ?? (Array.isArray(t?.runs) ? t.runs.map((r: any) => r?.text || "").join("") : undefined);
+
+/** The videos, title and next-page token of a playlist page or a continuation of it. YouTube serves two layouts (the
+ *  older playlistVideoRenderer and the newer lockupViewModel), so both are walked for. */
+export function playlistFromData(data: unknown) {
+  const videos: PlaylistVideo[] = [];
+  let title: string | undefined, next: string | undefined;
+  const seen = new Set<string>();
+  const add = (v: PlaylistVideo) => { if (/^[\w-]{11}$/.test(v.id) && !seen.has(v.id)) { seen.add(v.id); videos.push(v); } };
+  const walk = (node: any, depth: number): void => {
+    if (!node || typeof node !== "object" || depth > 40) return;
+    if (Array.isArray(node)) { for (const item of node) walk(item, depth + 1); return; }
+    const old = node.playlistVideoRenderer;
+    if (old?.videoId) { if (old.isPlayable !== false) add({id: old.videoId, title: text(old.title), channel: text(old.shortBylineText), durationSec: Number(old.lengthSeconds) || undefined}); return; }
+    const lockup = node.lockupViewModel;
+    if (lockup?.contentId && (!lockup.contentType || lockup.contentType === "LOCKUP_CONTENT_TYPE_VIDEO")) {
+      const meta = lockup.metadata?.lockupMetadataViewModel;
+      const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts || [];
+      add({id: lockup.contentId, title: text(meta?.title), channel: text(rows[0]?.text)});
+      return;
+    }
+    if (node.playlistMetadataRenderer?.title) title ??= text(node.playlistMetadataRenderer.title);
+    if (node.playlistHeaderRenderer?.title) title ??= text(node.playlistHeaderRenderer.title);
+    const token = node.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+    if (typeof token === "string") next = token;
+    for (const key of Object.keys(node)) walk(node[key], depth + 1);
+  };
+  walk(data, 0);
+  return {title: title ? decodeEntities(title) : undefined, videos: videos.map((v) => ({...v, title: v.title ? decodeEntities(v.title) : undefined})), next};
+}
+
+/** The videos of a public or unlisted YouTube playlist, in its order, up to PLAYLIST_LIMIT. Never throws. */
+export async function youtubePlaylist(id: string, {fetcher = fetch, signal}: {fetcher?: typeof fetch; signal?: AbortSignal} = {}): Promise<Playlist> {
+  const result: Playlist = {id, videos: []};
+  if (!/^[\w-]{10,64}$/.test(id)) return {...result, error: "That isn't a YouTube playlist address."};
+  // Mixes ("RD…") are made for each viewer and have no page of their own.
+  if (id.startsWith("RD")) return {...result, error: "YouTube mixes can't be saved. Save a playlist or the videos one by one."};
+  const timeout = () => AbortSignal.any([AbortSignal.timeout(20000), ...(signal ? [signal] : [])]);
+  try {
+    let cookie = "CONSENT=YES+cb; SOCS=CAI";
+    const page = async () => {
+      const r = await fetcher(`https://www.youtube.com/playlist?list=${id}&hl=en`, {headers: {"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", Cookie: cookie}, signal: timeout()});
+      if (r.status === 429) throw new Unavailable("YouTube is limiting requests from this network right now. Try again in a few minutes.");
+      return r.text();
+    };
+    let html = await page();
+    const consent = html.includes('action="https://consent.youtube.com/s"') && /name="v" value="(.*?)"/.exec(html)?.[1];
+    if (consent) { cookie = `CONSENT=YES+${consent}; SOCS=CAI`; html = await page(); }
+    if (html.includes('class="g-recaptcha"')) throw new Unavailable("YouTube is asking this network to prove it isn't a bot. Try again later.");
+    const first = playlistFromData(embeddedJson(html, "ytInitialData"));
+    Object.assign(result, {title: first.title, videos: first.videos});
+    if (!first.videos.length) throw new Unavailable(/"alerts"[\s\S]{0,400}(does not exist|private)/i.test(html) ? "This playlist is private or doesn't exist." : "YouTube didn't list any videos in this playlist.");
+    // Longer playlists come a page at a time.
+    const key = /"INNERTUBE_API_KEY":\s*"([\w-]+)"/.exec(html)?.[1], version = /"INNERTUBE_CLIENT_VERSION":\s*"([\d.]+)"/.exec(html)?.[1] || "2.20250101.00.00";
+    let next = first.next;
+    while (key && next && result.videos.length < PLAYLIST_LIMIT) {
+      const r = await fetcher(`https://www.youtube.com/youtubei/v1/browse?key=${key}&prettyPrint=false`, {
+        method: "POST", headers: {"Content-Type": "application/json", "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", Cookie: cookie},
+        body: JSON.stringify({context: {client: {clientName: "WEB", clientVersion: version, hl: "en"}}, continuation: next}), signal: timeout(),
+      }).catch(() => null);
+      if (!r?.ok) break;
+      const more = playlistFromData(await r.json());
+      const fresh = more.videos.filter((v) => !result.videos.some((x) => x.id === v.id));
+      if (!fresh.length) break;
+      result.videos.push(...fresh);
+      next = more.next;
+    }
+    result.videos = result.videos.slice(0, PLAYLIST_LIMIT);
+    return result;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    const message = error instanceof Unavailable ? error.message : (error as Error).name === "TimeoutError" ? "YouTube took too long to answer." : "YouTube couldn't be reached.";
+    return {...result, error: message};
+  }
+}

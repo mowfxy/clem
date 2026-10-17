@@ -31,7 +31,6 @@ import {groupHistory} from "../core/history-groups";
 import {HistoryFilter} from "./HistoryFilter";
 import {essentials,applyEssentials} from "./essential-state";
 import {PageHead,EmptyState,Squiggle,Templates,type Template} from "./ui/Calm";
-import {PickMenu} from "./ui/PickMenu";
 import {shortWhen} from "./ui/when";
 import {FileGlyph} from "./files/FileGlyph";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
@@ -124,7 +123,10 @@ import { matchSource, type Citation } from "../core/citations";
 import { weakConcepts } from "./SubjectStudy";
 import "./chat/chat.css";
 import "./chat/workspace.css";
-import { StorageSummary, kinds as fileKinds, kindOf, type FileKind } from './files/StorageSummary';
+import { FilesPage } from './files/FilesPage';
+import { SaveVideoDialog, type SavedVideos } from './files/SaveVideo';
+import { VideoViewer } from './files/VideoViewer';
+import { refreshVideo } from './files/saved-video';
 import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } from "../core/chat-title";
 import { Chapters } from "./chat/Chapters";
@@ -322,10 +324,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [viewer, setViewer] = useState<StoredFile | null>(null);
   const renameFile = (id: string, name: string) => { patch((s) => ({ ...s, files: s.files.map((f) => (f.id === id ? { ...f, name, updated: Date.now() } : f)) })); setRenamingFile(null); };
   const [search, setSearch] = useState("");
-  // Files page: which kind of file is shown and in what order (remembered between visits).
-  const [fileKind, setFileKind] = useState<FileKind | "all">("all");
-  const [fileSort, setFileSort] = useState<"newest" | "oldest" | "name" | "size">(() => { try { const v = localStorage.getItem("mowr-file-sort"); return v === "oldest" || v === "name" || v === "size" ? v : "newest"; } catch { return "newest"; } });
-  useEffect(() => { try { localStorage.setItem("mowr-file-sort", fileSort); } catch {} }, [fileSort]);
+  // "Save from YouTube": where the videos go. A subject's or project's Files tab passes itself and the folder it shows;
+  // the Files page lets the person choose.
+  const [savingVideo, setSavingVideo] = useState<{ place: string | null; folderId?: string | null; choose?: boolean } | null>(null);
   const [sidebar, setSidebar] = useState(false);
   // On a wide window the sidebar can be put away (Ctrl+B) for more room; this device remembers the choice.
   const [sideClosed, setSideClosed] = useState(() => { try { return localStorage.getItem("mowr-sidebar") === "closed"; } catch { return false; } });
@@ -2035,6 +2036,30 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     return 'Workspace';
   };
   /** Deletes a file everywhere it is used, after asking: its bytes, earlier versions and specs, and its place as a source. */
+  /** Videos saved from YouTube join the files where they were saved, as sources there, like an upload. A playlist saved
+   *  in a subject or project gets a folder of its own, named after it. */
+  function videosSaved({files,skipped,place,playlist}:SavedVideos,folderId:string|null){
+    setSavingVideo(null);
+    if(!files.length){setToast(skipped===1?"That video is already saved here.":skipped?"Those videos are already saved here.":"Nothing was saved.");return;}
+    const space=place?stateRef.current.spaces.find(s=>s.id===place):undefined;
+    let folder=space?folderId:null,made:SpaceFolder|undefined;
+    if(space&&playlist){const found=(space.folders||[]).find(f=>(f.parentId||null)===folderId&&f.name.toLowerCase()===playlist.title.toLowerCase());if(found)folder=found.id;else{made={id:uid(),name:playlist.title.slice(0,80),parentId:folderId,created:Date.now()};folder=made.id;}}
+    const kept=files.map(f=>({...f,folderId:folder}));
+    patch(s=>({...s,files:[...kept,...s.files],spaces:s.spaces.map(x=>x.id===place?{...x,folders:made?[...(x.folders||[]),made]:x.folders,sources:[...x.sources,...kept.map(f=>f.id)]}:x)}));
+    const bare=kept.filter(f=>f.video?.captions==="none");
+    const title=(f:StoredFile)=>f.name.replace(/\.md$/i,"");
+    setToast(kept.length===1&&!playlist?(bare.length?`Saved “${title(kept[0])}” without a transcript. ${kept[0].video?.error||""}`.trim():`Saved “${title(kept[0])}” with its transcript.`)
+      :`Saved ${kept.length} video${kept.length===1?"":"s"}${playlist?` from “${playlist.title}”`:""}${bare.length?`; ${bare.length} had no captions to read`:""}${skipped?`; ${skipped} ${skipped===1?"was":"were"} already here`:""}.`);
+  }
+  /** Reads a saved video's captions again, for one saved while YouTube couldn't be read. */
+  async function refreshVideoFile(file:StoredFile){
+    const next=await refreshVideo(file,(id,blob)=>storeBlob(id,blob));
+    patch(s=>({...s,files:s.files.map(f=>f.id===next.id?{...f,size:next.size,updated:next.updated,video:next.video}:f)}));
+    setViewer(v=>v?.id===next.id?next:v);
+    setToast(next.video?.captions==="none"?`Still no transcript. ${next.video.error||""}`.trim():"Transcript saved.");
+  }
+  /** A new chat in the file's subject or project with the file attached, ready for a question about it. */
+  const askAboutFile=(file:StoredFile)=>{setViewer(null);newChat(file.spaceId);setAttachments([file.id]);navigate('/app');setTimeout(()=>composer.current?.focus(),80);};
   async function deleteStoredFile(file:StoredFile){
     if(!await confirmDialog({title:`Delete ${file.name}?`,message:'The file and its earlier versions are removed from this PC.',confirm:'Delete',danger:true}))return false;
     try{if(file.remote)await api("files/"+file.id,"DELETE");}catch{setToast("File could not be deleted. Try again.");return false;}
@@ -2179,6 +2204,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       onDraft:prompt=>{newChat(space.id);setDraft(prompt);setTimeout(()=>composer.current?.focus(),80);},
       onOpenChat:chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');},
       onOpenFile:file=>setViewer(file),
+      onSaveVideo:folderId=>setSavingVideo({place:space.id,folderId}),
+      onAskFile:askAboutFile,
       onEditFile:file=>{newChat(space.id);openInPanel(file);},
       // A file kept in Drive is renamed there too.
       onRenameFile:(file,name)=>{
@@ -2870,85 +2897,17 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 </div>;
               })()
             ) : route === "/app/files" ? (
-              <div className="page lib files-page">
-                <PageHead title="Files" line="Everything you’ve added, kept on this PC.">
-                  <button className="lib-btn strong" onClick={() => uploader.current?.click()}><Icon name="plus" size={16} />Upload</button>
-                </PageHead>
-                {state.files.length > 0 && <StorageSummary files={state.files} />}
-                {desktop&&<Suspense fallback={null}><PcFolders scopeLabel={scopeLabel} onBrowse={folderId=>setFolderView({folderId})}/></Suspense>}
-                {(() => {
-                  // Kinds present in the workspace, for the filter chips; a filter whose files are all gone resets to All.
-                  const kindById = new Map(state.files.map((f) => [f.id, kindOf(f)]));
-                  const counts = new Map<FileKind, number>();
-                  for (const k of kindById.values()) counts.set(k, (counts.get(k) || 0) + 1);
-                  const kind = fileKind !== "all" && counts.has(fileKind) ? fileKind : "all";
-                  const q = search.trim().toLowerCase();
-                  const spaceName = (f: StoredFile) => state.spaces.find((s) => s.id === f.spaceId)?.name || "Personal workspace";
-                  const when = (f: StoredFile) => f.updated || f.created;
-                  const shown = state.files
-                    .filter((f) => (kind === "all" || kindById.get(f.id) === kind) && (!q || f.name.toLowerCase().includes(q) || spaceName(f).toLowerCase().includes(q)))
-                    .sort((a, b) => fileSort === "name" ? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) : fileSort === "size" ? b.size - a.size : fileSort === "oldest" ? when(a) - when(b) : when(b) - when(a));
-                  if (!state.files.length) return null;
-                  return <>
-                  <div className="files-tools">
-                    {state.files.length > 6 && <div className="search-field">
-                      <Icon name="research" size={19} />
-                      <input aria-label="Search files" placeholder="Find a file or a subject…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" && search) { e.preventDefault(); setSearch(""); } }} />
-                    </div>}
-                    {counts.size > 1 && <div className="files-kinds" role="group" aria-label="Show">
-                      <button type="button" aria-pressed={kind === "all"} onClick={() => setFileKind("all")}>All<small>{state.files.length}</small></button>
-                      {fileKinds.filter((k) => counts.has(k.id)).map((k) => <button type="button" key={k.id} aria-pressed={kind === k.id} onClick={() => setFileKind(k.id)}>{k.label}<small>{counts.get(k.id)}</small></button>)}
-                    </div>}
-                    {state.files.length > 1 && <span className="files-sort"><PickMenu label="Sort files" value={fileSort} onChange={setFileSort} options={[{ value: "newest", label: "Newest first" }, { value: "oldest", label: "Oldest first" }, { value: "name", label: "Name" }, { value: "size", label: "Largest first" }]} /></span>}
-                  </div>
-                  {!shown.length && <p className="files-none" role="status">No files match{q ? ` “${search.trim()}”` : ""}{kind !== "all" ? ` in ${fileKinds.find((k) => k.id === kind)?.label}` : ""}.<button type="button" onClick={() => { setSearch(""); setFileKind("all"); }}>Show all files</button></p>}
-                <div className="file-list">
-                  {shown
-                    .map((f) => (
-                      <div className="file-row" key={f.id}>
-                        <FileGlyph file={f} size={32} />
-                        <div>
-                          {renamingFile === f.id ? <RenameField name={f.name} onSave={(name) => renameFile(f.id, name)} onCancel={() => setRenamingFile(null)} /> : <button className="file-open" onClick={()=>setViewer(f)}>{f.name}</button>}
-                          <small>
-                            {spaceName(f)} · <time dateTime={new Date(when(f)).toISOString()} title={new Date(when(f)).toLocaleString()}>{shortWhen(when(f))}</time>
-                          </small>
-                        </div>
-                        <span>{sizeLabel(f.size)}</span>
-                        <button className="icon-button" aria-label={`Rename ${f.name}`} aria-description="Rename" onClick={() => setRenamingFile(f.id)}><PencilIcon size={17} /></button>
-                        <button
-                          className="icon-button"
-                          aria-label={`Download ${f.name}`}
-                          onClick={async () => {
-                            try {
-                              const blob = await getBlob(f.id);
-                              if (blob) download(blob, f.name);
-                              else
-                                setToast(
-                                  "This file is no longer available on this device.",
-                                );
-                            } catch (e) {
-                              setToast(cleanError(e) || "This file could not be downloaded. Try again.");
-                            }
-                          }}
-                        >
-                          <Icon name="download" size={19} />
-                        </button>
-                        <button
-                          className="icon-button"
-                          aria-label={`Delete ${f.name}`}
-                          onClick={() => void deleteStoredFile(f).then((done) => { if (done) setToast("File deleted."); })}
-                        >
-                          <Icon name="trash" size={18} />
-                        </button>
-                      </div>
-                    ))}
-                </div>
-                  </>;
-                })()}
-                {!state.files.length && <EmptyState scene="folder" line="No files yet.">
-                  <button className="lib-btn strong" onClick={() => uploader.current?.click()}><Icon name="plus" size={16} />Upload files</button>
-                </EmptyState>}
-              </div>
+              <FilesPage files={state.files} spaces={state.spaces}
+                folders={desktop&&<Suspense fallback={null}><PcFolders scopeLabel={scopeLabel} onBrowse={folderId=>setFolderView({folderId})}/></Suspense>}
+                actions={{
+                  onUpload:()=>uploader.current?.click(),
+                  onSaveVideo:()=>setSavingVideo({place:null,choose:true}),
+                  onOpen:f=>setViewer(f),
+                  onRename:(f,name)=>renameFile(f.id,name),
+                  onDownload:async f=>{try{const blob=await getBlob(f.id);if(blob)download(blob,f.name);else setToast("This file is no longer available on this device.");}catch(e){setToast(cleanError(e)||"This file could not be downloaded. Try again.");}},
+                  onDelete:f=>void deleteStoredFile(f).then(done=>{if(done)setToast("File deleted.");}),
+                  onAsk:askAboutFile,
+                }}/>
             ) : (
               <div className="empty-state">
                 <h1>This page hasn’t found its place.</h1>
@@ -3288,7 +3247,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       {packShare&&<Suspense fallback={null}><ShareSheet space={packShare.space} folderId={packShare.folderId} sets={state.studySets.filter(x=>x.spaceId===packShare.space.id)} files={state.files.filter(f=>f.spaceId===packShare.space.id)} author={state.name} onClose={()=>setPackShare(null)} onDone={message=>setToast(message)}/></Suspense>}
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
       {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
-      {viewer && <FilePanel key={"viewer-" + viewer.id} variant="modal" file={viewer} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
+      {savingVideo && <SaveVideoDialog places={savingVideo.choose ? [{ id: null, name: "Personal" }, ...state.spaces.map((x) => ({ id: x.id, name: x.name }))] : []} place={savingVideo.place} folderId={savingVideo.folderId ?? null} existing={state.files} store={(id, blob) => storeBlob(id, blob)} onSaved={(r) => videosSaved(r, savingVideo.folderId ?? null)} onClose={() => setSavingVideo(null)} />}
+      {viewer?.video && <VideoViewer key={"video-" + viewer.id} file={viewer} onClose={() => setViewer(null)} onAsk={askAboutFile} onRefresh={refreshVideoFile} />}
+      {viewer && !viewer.video && <FilePanel key={"viewer-" + viewer.id} variant="modal" file={viewer} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
         onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); if (f.id.startsWith("drive_")) { setPointers([p]); return; } newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
         onChange={(next) => { if (next.id.startsWith("drive_")) return; changedFile(next); setViewer(next); }}
         onApproved={(f) => { if (!f.id.startsWith("drive_")) void syncToDrive(f); }} sync={syncOf(viewer.id)}
