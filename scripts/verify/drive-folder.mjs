@@ -206,10 +206,10 @@ try {
   assert.equal((await calls("driveUpload"))[uploadsBefore].folder, "drive-sub-000004");
   await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Biology 101 syllabus.txt" }).waitFor();
 
-  // "Add files" under On this PC keeps a file here only: named like any added file, listed under On this PC, never sent to Drive.
-  const local = page.locator(".sp-local-head");
+  // Upload files from the Add menu keeps a file here only: named like any added file, listed under On this PC, never sent to Drive.
   assert.equal(await page.getByRole("menuitem", { name: "Upload to this PC" }).count(), 0);
-  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), local.getByRole("button", { name: "Add files" }).click()]);
+  await page.locator(".sp-files-bar").getByRole("button", { name: "Add" }).click();
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByRole("menuitem", { name: "Upload files" }).click()]);
   await chooser.setFiles({ name: "Lec05.txt", mimeType: "text/plain", buffer: Buffer.from("Lecture 5: natural selection.") });
   await page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Lecture 5.txt" }).waitFor({ timeout: 8000 });
   await page.waitForTimeout(1500);
@@ -219,14 +219,14 @@ try {
   await saved(page);
   const localFile = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).files.find((x) => x.name === "Lecture 5.txt"));
   assert.ok(localFile && !localFile.driveId && !localFile.driveFolder && !localFile.made, "kept on this PC only");
-  // A folder button beside Add files makes a folder on this PC (no menu to open first).
-  await local.getByRole("button", { name: "New folder", exact: true }).click();
+  // New folder in the Add menu makes a folder on this PC.
+  await page.locator(".sp-files-bar").getByRole("button", { name: "Add" }).click(); await page.getByRole("menuitem", { name: "New folder" }).click();
   await page.getByLabel("New folder name").fill("Worksheets");
   await page.getByLabel("New folder name").press("Enter");
   await page.locator(".sp-files > .sp-folders .sp-folder", { hasText: "Worksheets" }).waitFor();
   await page.screenshot({ path: "artifacts/drive-on-this-pc.png" });
   // Reordering by a card's ☰ handle: press and drag places it among its neighbours; a plain click still opens the menu.
-  await local.getByRole("button", { name: "New folder", exact: true }).click();
+  await page.locator(".sp-files-bar").getByRole("button", { name: "Add" }).click(); await page.getByRole("menuitem", { name: "New folder" }).click();
   await page.getByLabel("New folder name").fill("Archive");
   await page.getByLabel("New folder name").press("Enter");
   const pcFolders = page.locator(".sp-files > .sp-folders .sp-folder");

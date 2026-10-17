@@ -64,20 +64,20 @@ try {
 
   // Files: folders, uploads into a folder, moving a file.
   await page.getByRole("tab", { name: /^Files/ }).click();
-  await page.locator(".sp-folder", { hasText: "Worksheets" }).getByText("1 item").waitFor();
-  await page.getByRole("button", { name: "New folder" }).click();
+  await page.locator(".sp-folder", { hasText: "Worksheets" }).getByText("1", { exact: true }).waitFor();
+  await page.locator(".sp-files-bar").getByRole("button", { name: "Add" }).click(); await page.getByRole("menuitem", { name: "New folder" }).click();
   await page.getByLabel("New folder name").fill("Revision");
   await page.getByLabel("New folder name").press("Enter");
   await page.locator(".sp-folder", { hasText: "Revision" }).click();
   await page.locator(".sp-path").getByText("Revision").waitFor();
-  await page.locator(".sp-tool-actions input[type=file]").setInputFiles({ name: "Key terms.txt", mimeType: "text/plain", buffer: Buffer.from("Osmosis, diffusion, active transport") });
+  await page.locator(".sp-files-bar input[type=file]").setInputFiles({ name: "Key terms.txt", mimeType: "text/plain", buffer: Buffer.from("Osmosis, diffusion, active transport") });
   await page.locator(".sp-file", { hasText: "Key terms.txt" }).waitFor();
   await page.locator(".sp-file", { hasText: "Key terms.txt" }).getByRole("button", { name: /options/ }).click();
   await page.getByRole("menuitem", { name: "Move to…" }).click();
   await page.locator(".sp-move button", { hasText: "Worksheets" }).click();
-  await page.locator(".sp-drop-empty", { hasText: "This folder is empty" }).waitFor();
+  await page.locator(".sp-files .calm-empty", { hasText: "Empty folder." }).waitFor();
   await page.locator(".sp-path button", { hasText: "Files" }).click();
-  await page.locator(".sp-folder", { hasText: "Worksheets" }).getByText("2 items").waitFor();
+  await page.locator(".sp-folder", { hasText: "Worksheets" }).getByText("2", { exact: true }).waitFor();
   await page.screenshot({ path: "artifacts/subject-files.png" });
 
   // "Make a worksheet" saves the PDF Mowr makes into Worksheets.

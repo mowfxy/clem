@@ -124,7 +124,7 @@ async function startLive() {
   await page.keyboard.press("Escape");
   await page.evaluate((id) => { location.hash = "/app/space/" + id; }, id);
   await page.getByRole("tab", { name: /^Files/ }).click();
-  if (!(await page.locator(".sp-file", { hasText: "Osmosis lab handout.pdf" }).count())) await page.locator(".sp-tool-actions input[type=file]").setInputFiles(join(work, "Osmosis lab handout.pdf"));
+  if (!(await page.locator(".sp-file", { hasText: "Osmosis lab handout.pdf" }).count())) await page.locator(".sp-files-bar input[type=file]").setInputFiles(join(work, "Osmosis lab handout.pdf"));
   await page.getByRole("tab", { name: "Overview" }).click();
   return { finish: async () => { await app.close(); } };
 }

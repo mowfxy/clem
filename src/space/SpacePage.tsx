@@ -4,7 +4,7 @@ import {Icon} from '../Icons';
 import {SpaceMark} from './SpaceMark';
 import {Menu,FolderIcon} from './SpaceMenu';
 import {useReorder,arranged} from './reorder';
-import {RenameField,PencilIcon} from '../files/RenameField';
+import {RenameField} from '../files/RenameField';
 import {FileGlyph} from '../files/FileGlyph';
 import {VideoThumb} from '../files/SaveVideo';
 import {YouTubeLogo} from '../BrandLogos';
@@ -25,10 +25,11 @@ import {PlanView,PlanOverviewCard,type PlanActions,type PlanDraftView} from './P
 import {planStatus,type SpacePlan} from '../../core/plans';
 import type {DriveItem,DriveSyncState} from '../drive/drive';
 import {menuKeys,useMenuKeys} from '../menuKeys';
-import {Squiggle,Templates} from '../ui/Calm';
+import {Squiggle,Templates,EmptyState} from '../ui/Calm';
 import './space.css';
 import './space-calm.css';
 import './space-files.css';
+import './space-simple.css';
 
 export type SpaceTab='overview'|'chats'|'plan'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
 type Linked={id:string;scope:string;path:string};
@@ -219,7 +220,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       </div>}
 
       {tab==='plan'&&<PlanView space={space} plan={plan} draft={planDraft} actions={planActions} canAsk={canAsk}/>}
-      {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onNew={()=>actions.onAsk('')} onMenu={chatMenu.open}/>}
+      {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onMenu={chatMenu.open}/>}
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
@@ -242,13 +243,15 @@ function Editable({value,onSave,className,max,label,placeholder}:{value:string;o
 }
 
 
-function ChatList({chats,onOpen,onNew,onMenu}:{chats:Chat[];onOpen:(c:Chat)=>void;onNew:()=>void;onMenu:(c:Chat)=>(e:ReactMouseEvent)=>void}){
+/** A space's chats, newest first: a title and when. A search appears once there are enough to need one. */
+function ChatList({chats,onOpen,onMenu}:{chats:Chat[];onOpen:(c:Chat)=>void;onMenu:(c:Chat)=>(e:ReactMouseEvent)=>void}){
   const [q,setQ]=useState('');
   const shown=chats.filter(c=>!q||(c.title+' '+(c.summary||'')+' '+c.messages.map(m=>m.content).join(' ')).toLowerCase().includes(q.toLowerCase()));
-  return <section className="sp-list">
-    <div className="sp-toolbar"><div className="sp-search"><Icon name="research" size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search these chats" aria-label="Search chats"/></div><button className="primary" onClick={onNew}><Icon name="plus" size={15}/>New chat</button></div>
-    {shown.map(c=>{const last=chatPreview(c);return <button key={c.id} className="sp-chat" onClick={()=>onOpen(c)} onContextMenu={onMenu(c)}><strong>{c.title}</strong>{last&&<span>{last}</span>}<small>{ago(c.updated)} · {c.messages.length} messages</small></button>;})}
-    {!shown.length&&<p className="sp-empty-line">{q?'No chat matches.':'No chats yet.'}</p>}
+  if(!chats.length)return <EmptyState scene="conversation" line="Ask your first question above."/>;
+  return <section className="sp-chats" aria-label="Chats">
+    {chats.length>8&&<label className="sp-find"><Icon name="research" size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search chats" aria-label="Search chats"/></label>}
+    {shown.map(c=><button key={c.id} className="sp-chat" onClick={()=>onOpen(c)} onContextMenu={onMenu(c)}><strong>{c.title}</strong><small>{ago(c.updated)}</small></button>)}
+    {!shown.length&&<p className="sp-empty-line">No chat matches.</p>}
   </section>;
 }
 
@@ -302,6 +305,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     if(ids.length>1){const tag=document.createElement('div');tag.className='sp-drag-count';tag.textContent=`${ids.length} files`;document.body.appendChild(tag);e.dataTransfer.setDragImage(tag,16,16);setTimeout(()=>tag.remove(),0);}
   };
   const [renaming,setRenaming]=useState<string|null>(null);
+  const linkPc=()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{});
   // Finding a file: a name, channel or kind looks through every folder here at once, each file shown with where it is.
   const [query,setQuery]=useState('');
   const [kind,setKind]=useState<FileKind|'all'>('all');
@@ -311,7 +315,6 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
   const flat=!!q||shownKind!=='all';
   const found=flat?files.filter(f=>(shownKind==='all'||kindOf(f)===shownKind)&&(!q||(f.name+' '+(f.video?.channel||'')+' '+(f.video?.playlist?.title||'')).toLowerCase().includes(q))).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created)):[];
   const where=(f:StoredFile)=>f.folderId?folderPath(folders,f.folderId):'';
-  const videos=files.filter(f=>f.video).length,sourced=files.filter(f=>space.sources.includes(f.id)).length;
   /** A file of this PC to copy into the Drive folder shown ("Save copy in Drive"); the Drive view uploads it. */
   const [toDrive,setToDrive]=useState<{key:string;id:string}|null>(null);
   const setSource=(f:StoredFile,on:boolean)=>actions.onUpdateSpace({...space,sources:on?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)});
@@ -319,44 +322,37 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
   const fileOpen=(f:StoredFile,place?:string)=>{
     const glyph=f.video?<VideoThumb id={f.video.id} duration={durationLabel(f.video.durationSec)} className="sp-thumb"/>:<FileGlyph file={f} size={36}/>;
     if(renaming===f.id)return <div className="sp-file-open">{glyph}<RenameField name={shownName(f)} onSave={name=>{actions.onRenameFile(f,f.video&&!/\.md$/i.test(name)?name+'.md':name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>;
-    const meta=[place!==undefined?place||'Top level':'',...(f.video?[f.video.channel||'',captionsLabel(f.video)]:[sizeLabel(f.size)]),f.updated?'edited '+ago(f.updated):ago(f.created),f.made?'made by Mowr':'',f.versions?.length?`${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''].filter(Boolean);
+    // One short line: where it is (when several folders are listed), a missing transcript, and when.
+    const meta=[place!==undefined?place||'':'',f.video?.captions==='none'?captionsLabel(f.video):'',ago(f.updated||f.created)].filter(Boolean);
     return <button className="sp-file-open" onClick={()=>picked.size?pick(f.id):actions.onOpenFile(f)}>{picked.size>0&&<input type="checkbox" className="sp-pick" aria-label={`Select ${shownName(f)}`} checked={picked.has(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>pick(f.id)}/>}{glyph}<span><strong>{shownName(f)}</strong><small className={f.video?.captions==='none'?'sp-no-transcript':undefined}>{meta.join(' · ')}</small></span></button>;
   };
   const fileTools=(f:StoredFile,handle?:ReturnType<typeof fileOrder.handle>)=><>
-    <button className="icon-button sp-rename" aria-label={`Rename ${shownName(f)}`} aria-description="Rename" onClick={()=>setRenaming(f.id)}><PencilIcon size={15}/></button>
-    <label className="sp-source" aria-description="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>setSource(f,e.target.checked)}/>Source</label>
-    <Menu label={`${shownName(f)} options`} handle={handle} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Ask about it',icon:'chat',run:()=>actions.onAskFile(f)},...(f.video?[{label:'Watch on YouTube',icon:'external',run:()=>window.open(watchUrl(f.video!.id),'_blank','noopener')}]:[]),...(handle?[{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)}]:[]),...(!f.video&&/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+    <label className="sp-source" title="Mowr reads this file when answering here"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>setSource(f,e.target.checked)}/>Source</label>
+    <Menu label={`${shownName(f)} options`} handle={handle} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Rename',icon:'rename',run:()=>setRenaming(f.id)},{label:'Ask about it',icon:'chat',run:()=>actions.onAskFile(f)},...(f.video?[{label:'Watch on YouTube',icon:'external',run:()=>window.open(watchUrl(f.video!.id),'_blank','noopener')}]:[]),...(handle?[{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)}]:[]),...(!f.video&&/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
   </>;
   return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
-    {/* At the top of a Drive-linked space the toolbar would only repeat the tab's name, so it stays out of the way. */}
-    <div className={`sp-toolbar${space.drive&&!at?' is-empty':''}`}>
-      <nav className="sp-path" aria-label="Folder path">
+    {/* One bar: find (or the way back out of a folder) on the left, one Add menu on the right. */}
+    <div className="sp-files-bar">
+      {at?<nav className="sp-path" aria-label="Folder path">
         <button className={over==='crumb-root'?'over':''} onClick={()=>setAt(null)} onDrop={drop(null)} {...dragTarget('crumb-root')}><Icon name="files" size={15}/>Files</button>
         {path.map(f=><span key={f.id}><i>/</i><button className={over==='crumb-'+f.id?'over':''} onClick={()=>setAt(f.id)} onDrop={drop(f.id)} {...dragTarget('crumb-'+f.id)}>{f.name}</button></span>)}
-      </nav>
-      {/* With a Drive folder linked, its header carries the actions; this bar stays empty so there is one row of buttons. */}
-      <div className="sp-tool-actions">
-        {!(space.drive&&!at)&&<>
-          {!space.drive&&<button onClick={actions.onLinkDrive}><DriveGlyph/>Link a Drive folder</button>}
-          <button onClick={()=>setNaming({name:''})}><Icon name="plus" size={15}/>New folder</button>
-          <button onClick={()=>input.current?.click()}><Icon name="attach" size={15}/>Upload</button>
-          <button onClick={()=>actions.onSaveVideo(at)}><YouTubeLogo size={15}/>Save from YouTube</button>
-          {at&&<button onClick={()=>actions.onShare(at)}><Icon name="import" size={15}/>Share folder</button>}
-        </>}
-        <input ref={input} type="file" multiple hidden onChange={e=>{if(e.target.files?.length)actions.onUpload(e.target.files,at);e.target.value='';}}/>
-      </div>
+      </nav>:files.length>0&&<label className="sp-find"><Icon name="research" size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'&&query){e.preventDefault();setQuery('');}}} placeholder="Find" aria-label={`Find files in ${space.name}`}/></label>}
+      <Menu label="Add" trigger={<><Icon name="plus" size={15}/>Add</>} items={[
+        {label:'Upload files',icon:'attach',run:()=>input.current?.click()},
+        {label:'YouTube video',icon:'play',run:()=>actions.onSaveVideo(at)},
+        {label:'New folder',icon:'folder-plus',run:()=>setNaming({name:''})},
+        ...(!space.drive&&!at?[{label:'Link Google Drive',icon:'drive',run:actions.onLinkDrive}]:[]),
+        ...(desktop&&!at?[{label:'Link a folder on this PC',icon:'projects',run:linkPc}]:[]),
+        ...(at?[{label:'Share folder',icon:'import',run:()=>actions.onShare(at)}]:[])]}/>
+      <input ref={input} type="file" multiple hidden onChange={e=>{if(e.target.files?.length)actions.onUpload(e.target.files,at);e.target.value='';}}/>
     </div>
-    {files.length>0&&<div className="sp-find-row">
-      <label className="sp-find"><Icon name="research" size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'&&query){e.preventDefault();setQuery('');}}} placeholder={`Find in ${space.name}`} aria-label={`Find files in ${space.name}`}/></label>
-      {kindCounts.size>1&&<div className="files-kinds sp-kinds" role="group" aria-label="Show">
-        <button type="button" aria-pressed={shownKind==='all'} onClick={()=>setKind('all')}>All<small>{files.length}</small></button>
-        {fileKinds.filter(k=>kindCounts.has(k.id)).map(k=><button type="button" key={k.id} aria-pressed={shownKind===k.id} onClick={()=>setKind(shownKind===k.id?'all':k.id)}>{k.id==='video'&&<YouTubeLogo size={13}/>}{k.label}<small>{kindCounts.get(k.id)}</small></button>)}
-      </div>}
-      <p className="sp-files-sum">{files.length} file{files.length===1?'':'s'}{videos?` · ${videos} video${videos===1?'':'s'}`:''} · {sourced?`${sourced} used as sources`:'none marked as sources'}</p>
+    {!at&&kindCounts.size>1&&<div className="files-kinds sp-kinds" role="group" aria-label="Show">
+      <button type="button" aria-pressed={shownKind==='all'} onClick={()=>setKind('all')}>All</button>
+      {fileKinds.filter(k=>kindCounts.has(k.id)).map(k=><button type="button" key={k.id} aria-pressed={shownKind===k.id} onClick={()=>setKind(shownKind===k.id?'all':k.id)}>{k.label}</button>)}
     </div>}
     {flat&&<div className="sp-file-list sp-found" aria-label="Matching files">
       {found.map(f=><div key={f.id} className="sp-file">{fileOpen(f,where(f))}{fileTools(f)}</div>)}
-      {!found.length&&<p className="sp-empty-line sp-found-none">No file here matches{q?` “${query.trim()}”`:''}{shownKind!=='all'?` in ${fileKinds.find(k=>k.id===shownKind)?.label}`:''}. <button type="button" onClick={()=>{setQuery('');setKind('all');}}>Show everything</button></p>}
+      {!found.length&&<p className="sp-empty-line sp-found-none">Nothing found. <button type="button" onClick={()=>{setQuery('');setKind('all');}}>Clear</button></p>}
     </div>}
     {!flat&&space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
       copy={toDrive}
@@ -364,37 +360,29 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     {!flat&&<>
     {!space.drive&&!at&&<DriveExtras space={space} actions={actions}/>}
     {/* Files added here are kept on this PC only; they are not sent to the linked Drive folder. */}
-    {space.drive&&!at&&<div className="sp-local-head"><span className="sp-eyebrow">On this PC</span>
-      <div className="sp-local-actions">
-        <button onClick={()=>input.current?.click()} aria-description="Add files from this PC, kept here only"><Icon name="plus" size={13}/> Add files</button>
-        <button onClick={()=>actions.onSaveVideo(null)}><YouTubeLogo size={13}/> YouTube</button>
-        <button className="icon-button sp-new-folder" aria-label="New folder" title="New folder" onClick={()=>setNaming({name:''})}><Icon name="folder-plus" size={18}/></button>
-      </div>
-    </div>}
-    {space.drive&&!at&&!inHere.length&&!here.length&&!naming&&<p className="sp-empty-line sp-local-empty">Files added here stay on this PC.</p>}
+    {space.drive&&!at&&(inHere.length>0||here.length>0)&&<span className="sp-eyebrow sp-local-head">On this PC</span>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
       {shownFolders.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
         :<div key={f.id} {...folderOrder.item(f.id)} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
-          <FolderIcon/><div><strong>{f.name}</strong><small>{countIn(f.id)} item{countIn(f.id)===1?'':'s'}</small></div>
+          <FolderIcon/><div><strong>{f.name}</strong><small>{countIn(f.id)}</small></div>
           <Menu label={`${f.name} options`} handle={folderOrder.handle(f.id)} items={[{label:'Rename',icon:'rename',run:()=>setNaming({id:f.id,name:f.name})},{label:'Share folder',icon:'import',run:()=>actions.onShare(f.id)},{label:'Remove folder',icon:'trash',danger:true,run:()=>void removeFolder(f)}]}/>
         </div>)}
       {naming&&!naming.id&&<div className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} placeholder="Folder name" aria-label="New folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>}
     </div>}
-    {picked.size>0&&<div className="sp-pick-bar" role="toolbar" aria-label="Selected files"><strong>{picked.size} selected</strong><span>Drag any of them to a folder to move them together.</span>
+    {picked.size>0&&<div className="sp-pick-bar" role="toolbar" aria-label="Selected files"><strong>{picked.size} selected</strong>
       <button onClick={()=>setPicked(new Set(shownFiles.map(f=>f.id)))}>Select all</button><button onClick={()=>setMovingPicked(true)}>Move to…</button><button onClick={()=>setPicked(new Set())}>Clear</button></div>}
     <div className="sp-file-list">
       {shownFiles.map(f=><div key={f.id} {...fileOrder.item(f.id)} className={`sp-file${picked.has(f.id)?' picked':''}${f.video?' is-video':''}`} draggable onDragStart={e=>{if(fileOrder.pressing()){e.preventDefault();return;}dragFiles(f,e);}}>
         {fileOpen(f)}{fileTools(f,fileOrder.handle(f.id))}
       </div>)}
-      {!inHere.length&&!here.length&&!(space.drive&&!at)&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, save a YouTube video or playlist, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
-        <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onSaveVideo(at)}><YouTubeLogo size={15}/>Save from YouTube</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}
+      {!inHere.length&&!here.length&&!naming&&!(space.drive&&!at)&&<EmptyState scene="folder" line={at?'Empty folder.':'Drop files here.'}>
+        <button className="primary" onClick={()=>input.current?.click()}>Upload</button><button onClick={()=>actions.onSaveVideo(at)}><YouTubeLogo size={15}/>YouTube</button></EmptyState>}
     </div>
     </>}
     {moving&&<div className="sp-move" role="dialog" aria-label={`Move ${moving.name}`}><strong>Move “{moving.name}” to</strong>{destinations(moving).map(d=><button key={d.id||'root'} onClick={()=>{move([moving.id],d.id);setMoving(null);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMoving(null)}>Cancel</button></div>}
     {movingPicked&&picked.size>0&&<div className="sp-move" role="dialog" aria-label={`Move ${picked.size} files`}><strong>Move {picked.size} file{picked.size===1?'':'s'} to</strong>{[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==at).map(d=><button key={d.id||'root'} onClick={()=>{move([...picked],d.id);setPicked(new Set());setMovingPicked(false);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMovingPicked(false)}>Cancel</button></div>}
-    {desktop&&<div className="sp-linked"><div className="sp-card-head"><span className="sp-eyebrow">{space.drive?'Linked folders':'On this PC'}</span><button onClick={()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{})}>Link a folder</button></div>
-      {linked.map(l=><button key={l.id} className="sp-row" onClick={()=>actions.onBrowseLinked(l.id)}><Icon name="projects" size={16}/><span>{l.path.split(/[\\/]/).pop()}</span><small>{l.path}</small></button>)}
-      {!linked.length&&<p className="sp-empty-line">Link a folder and Mowr can read it. Changes wait for your approval.</p>}</div>}
+    {desktop&&!at&&linked.length>0&&<div className="sp-linked"><span className="sp-eyebrow">On this PC</span>
+      {linked.map(l=><button key={l.id} className="sp-row" onClick={()=>actions.onBrowseLinked(l.id)} title={l.path}><Icon name="projects" size={16}/><span>{l.path.split(/[\\/]/).pop()}</span></button>)}</div>}
   </section>;
 }
 

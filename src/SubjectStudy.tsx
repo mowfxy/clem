@@ -3,6 +3,8 @@ import { confirmDialog } from "./dialogs";
 import type { CardState, StudySet } from "../core/types";
 import { review, previews, isDue, isWeak, type Grade } from "../core/srs";
 import { Icon } from "./Icons";
+import { Illustration } from "./Illustrations";
+import { EmptyState } from "./ui/Calm";
 
 type Card = { set: StudySet; index: number; question: string; answer: string; state?: CardState };
 const NEW_PER_SESSION = 20;
@@ -122,37 +124,21 @@ export function SubjectStudy({
     );
   }
 
+  const toReview = Math.min(due.length + fresh.length, due.length + NEW_PER_SESSION);
+  const make = kind === "quiz" ? "quiz" : "flashcards";
   return (
-    <section className="subject-study">
-      {kind !== "quiz" && <><div className="study-overview">
-        <div className="study-numbers">
-          <div><strong>{due.length}</strong><span>due</span></div>
-          <div><strong>{fresh.length}</strong><span>new</span></div>
-          <div><strong>{all.length}</strong><span>cards</span></div>
-        </div>
-        <button type="button" className="primary" disabled={!due.length && !fresh.length} onClick={start}>
-          {due.length || fresh.length ? `Review ${Math.min(due.length + fresh.length, due.length + NEW_PER_SESSION)}` : "Nothing due"}
-          <Icon name="arrow" size={16} />
-        </button>
-      </div>
-      </>}
-      {kind !== "quiz" && weak.length > 0 && (
-        <div className="study-weak">
-          <h4>Keeps slipping</h4>
-          <ul>{weak.slice(0, 3).map((q) => <li key={q}>{q}</li>)}</ul>
-          
+    <section className={`subject-study ${kind ? "is-" + kind : ""}`}>
+      {/* Flashcards lead with one thing to do: review what is due. */}
+      {kind !== "quiz" && all.length > 0 && !current && (
+        <div className="study-hero">
+          <Illustration scene="cards" viewBox="110 60 260 260" className="study-hero-art" />
+          <b>{toReview ? `${toReview} to review` : "All caught up"}</b>
+          <button type="button" className="primary" disabled={!toReview} onClick={start}>Review<Icon name="arrow" size={15} /></button>
         </div>
       )}
-      <div className="study-sets-head">
-        <h4>{kind === "quiz" ? "Quizzes" : kind === "flashcards" ? "Decks" : "Sets"}</h4>
-        <div>
-          {kind !== "quiz" && <button type="button" onClick={() => onGenerate("flashcards")}>New flashcards</button>}
-          {kind !== "flashcards" && <button type="button" onClick={() => onGenerate("quiz")}>New quiz</button>}
-        </div>
-      </div>
       {current ? (
         <div className="quiz-run">
-          <button type="button" className="study-back" onClick={() => { setSelected(null); setAnswers({}); setChecked(false); }}><Icon name="arrow" size={15} />Back to sets</button>
+          <button type="button" className="study-back" onClick={() => { setSelected(null); setAnswers({}); setChecked(false); }}><Icon name="arrow" size={15} />Back</button>
           <h4>{current.title}</h4>
           {current.items.map((item, i) => (
             <article className="study-card" key={i}>
@@ -182,22 +168,28 @@ export function SubjectStudy({
           </div>
         </div>
       ) : (
-        <div className="study-sets">
-          {sets.map((s) => {
-            const last = s.attempts.at(-1), mastered = s.cards?.filter((c) => c && c.stability >= 21).length || 0;
-            return (
-              <article className="study-item" key={s.id}>
-                <Icon name={s.kind === "quiz" ? "check" : "subjects"} size={18} />
-                <div>
-                  {s.kind === "quiz" ? <button type="button" onClick={() => setSelected(s.id)}>{s.title}</button> : <strong>{s.title}</strong>}
-                  <small>{s.items.length} {s.kind === "quiz" ? "questions" : "cards"}{last ? ` · last ${last.correct}/${last.total}` : ""}{mastered ? ` · ${mastered} solid` : ""}</small>
-                </div>
-                <button type="button" className="icon-button" aria-label={`Delete ${s.title}`} onClick={async () => { if (await confirmDialog({ title: `Delete ${s.title}?`, message: "This study set and its review history are removed.", confirm: "Delete", danger: true })) onDelete(s.id); }}><Icon name="trash" size={16} /></button>
-              </article>
-            );
-          })}
-          {!sets.length && <p className="fine">No sets yet. Ask for one in a chat, or make one here.</p>}
-        </div>
+        sets.length ? (
+          <div className="study-sets">
+            {sets.map((s) => {
+              const last = s.attempts.at(-1);
+              const open = s.kind === "quiz" ? () => setSelected(s.id) : undefined;
+              return (
+                <article className="study-item" key={s.id}>
+                  <button type="button" className="study-item-open" onClick={open} disabled={!open}>
+                    <strong>{s.title}</strong>
+                    <small>{s.items.length} {s.kind === "quiz" ? (s.items.length === 1 ? "question" : "questions") : (s.items.length === 1 ? "card" : "cards")}{last ? ` · ${last.correct}/${last.total}` : ""}</small>
+                  </button>
+                  <button type="button" className="icon-button" aria-label={`Delete ${s.title}`} onClick={async () => { if (await confirmDialog({ title: `Delete ${s.title}?`, message: "This study set and its review history are removed.", confirm: "Delete", danger: true })) onDelete(s.id); }}><Icon name="trash" size={15} /></button>
+                </article>
+              );
+            })}
+            <button type="button" className="study-new" onClick={() => onGenerate(make)}><Icon name="plus" size={16} />New</button>
+          </div>
+        ) : (
+          <EmptyState scene={kind === "quiz" ? "checklist" : "cards"} line={kind === "quiz" ? "No quizzes yet." : "No cards yet."}>
+            <button type="button" className="primary" onClick={() => onGenerate(make)}>{kind === "quiz" ? "Make a quiz" : "Make flashcards"}</button>
+          </EmptyState>
+        )
       )}
     </section>
   );
