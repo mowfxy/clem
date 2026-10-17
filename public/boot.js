@@ -2,17 +2,23 @@
 // is ready (the app calls window.mowrBoot.done()). Plain script so it paints on the first frame. The petal shapes and
 // the gather-and-open motion match the Logo component in src/Icons.tsx.
 (function () {
-  if (location.protocol !== "mowr:") return;
   var petal = "M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C85 48 75 43 65 48 C55 52 49 43 49 31 C49 22 54 15 64 11Z";
   var gathered = "M72 17 C82 17 90 25 90 35 C90 45 82 53 72 53 C66 53 62 50 59 46 C56 42 54 39 54 35 C54 25 59 20 65 18 C67 17 69 17 72 17Z".match(/-?\d*\.?\d+/g).map(Number);
+  // The theme goes on before anything paints, on the web and on the desktop alike, so a light-mode start never flashes
+  // dark: the choice from Settings, or by default the system's (Windows') light or dark setting. Same rule as src/theme/theme.ts.
+  var theme = "dark";
+  try { var chosen = localStorage.getItem("mowr-theme"); theme = chosen === "light" || chosen === "dark" ? chosen : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; } catch (e) {}
+  document.documentElement.dataset.theme = theme;
+  if (location.protocol !== "mowr:") return;
+  var paper = theme === "light" ? "#faf8f3" : "#141414", trace = theme === "light" ? "32,37,58" : "245,244,240";
   var style = document.createElement("style");
   style.textContent =
-    "#mowr-boot{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:#141414;color:#f5f4f0;transition:opacity .45s ease,visibility 0s linear .45s}" +
+    "#mowr-boot{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:" + paper + ";color:#d9473e;transition:opacity .45s ease,visibility 0s linear .45s}" +
     "#mowr-boot .boot-stage{position:relative;display:grid;place-items:center;width:160px;height:160px}" +
-    "#mowr-boot .boot-glow{position:absolute;inset:18px;border-radius:50%;background:radial-gradient(circle,rgba(245,244,240,.13),rgba(245,244,240,0) 68%);animation:mowr-boot-breathe 3.6s ease-in-out infinite}" +
+    "#mowr-boot .boot-glow{position:absolute;inset:18px;border-radius:50%;background:radial-gradient(circle,rgba(217,71,62,.16),rgba(217,71,62,0) 68%);animation:mowr-boot-breathe 3.6s ease-in-out infinite}" +
     "#mowr-boot svg{position:relative;width:64px;height:64px;overflow:visible;animation:mowr-boot-in .7s cubic-bezier(.2,.7,.2,1) both,mowr-boot-turn 14.4s linear infinite}" +
-    "#mowr-boot .boot-line{position:absolute;bottom:14px;width:56px;height:2px;border-radius:2px;background:rgba(245,244,240,.12);overflow:hidden;opacity:0;animation:mowr-boot-fade .4s ease 1.2s forwards}" +
-    "#mowr-boot .boot-line i{position:absolute;inset:0;width:40%;border-radius:2px;background:rgba(245,244,240,.55);animation:mowr-boot-run 1.4s ease-in-out infinite}" +
+    "#mowr-boot .boot-line{position:absolute;bottom:14px;width:56px;height:2px;border-radius:2px;background:rgba(" + trace + ",.12);overflow:hidden;opacity:0;animation:mowr-boot-fade .4s ease 1.2s forwards}" +
+    "#mowr-boot .boot-line i{position:absolute;inset:0;width:40%;border-radius:2px;background:rgba(" + trace + ",.55);animation:mowr-boot-run 1.4s ease-in-out infinite}" +
     "#mowr-boot.is-leaving{opacity:0;visibility:hidden}" +
     "#mowr-boot.is-leaving svg{transform:scale(1.08);transition:transform .45s cubic-bezier(.2,.7,.2,1)}" +
     "@keyframes mowr-boot-in{from{opacity:0;scale:.82}to{opacity:1;scale:1}}" +

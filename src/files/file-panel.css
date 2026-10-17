@@ -53,7 +53,7 @@ html.fp-resizing .file-panel{transition:none}
 .fp-body .ps-num{display:none}
 .is-working .fp-body>:not(.fp-working){filter:saturate(.5) brightness(.7);transition:filter .4s}
 .fp-working{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);display:flex;align-items:center;gap:11px;padding:10px 10px 10px 14px;border-radius:14px;background:#1f1f1df2;border:1px solid #42423d;box-shadow:0 18px 50px -12px #000d;backdrop-filter:blur(10px);z-index:2}
-.fp-working .mowr-mark{color:#f2f1ec}
+.fp-working .mowr-mark{color:var(--mowr-red)}
 .fp-working strong{display:block;font-weight:400;font-size:13px}
 .fp-working small{font-size:11px;color:#8f8e87}
 

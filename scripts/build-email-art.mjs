@@ -8,7 +8,7 @@ const {GIFEncoder,quantize,applyPalette}=gifenc;
 import {filmFrame,loopSeconds} from '../src/vectorFilm.ts';
 
 // Scenes sit on the email card; the mark sits on the page background.
-const OUT='public/email',BG='#1b1b19',PAGE='#121211',INK='#f0efeb';
+const OUT='public/email',BG='#1b1b19',PAGE='#121211',INK='#f0efeb',MARK='#d9473e';
 fs.mkdirSync(OUT,{recursive:true});
 const browser=await chromium.launch();
 const page=await browser.newPage();
@@ -33,7 +33,7 @@ const petal='M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C
 const gathered='M72 17 C82 17 90 25 90 35 C90 45 82 53 72 53 C66 53 62 50 59 46 C56 42 54 39 54 35 C54 25 59 20 65 18 C67 17 69 17 72 17Z'.match(/-?\d*\.?\d+/g).map(Number);
 const ease=t=>{const x=Math.max(0,Math.min(1,t));return x*x*(3-2*x);};
 function mark(ms){
-  const paths=[0,1,2,3].map(i=>{const t=((ms%3600)-i*100)/2600,blend=t<.12?0:t<.4?ease((t-.12)/.28):t<.54?1:1-ease((t-.54)/.34);let j=0;const d=petal.replace(/-?\d*\.?\d+/g,v=>{const f=Number(v);return (f+(gathered[j++]-f)*blend).toFixed(2);});return `<path transform="rotate(${i*90} 72 72)" d="${d}" fill="${INK}"/>`;}).join('');
+  const paths=[0,1,2,3].map(i=>{const t=((ms%3600)-i*100)/2600,blend=t<.12?0:t<.4?ease((t-.12)/.28):t<.54?1:1-ease((t-.54)/.34);let j=0;const d=petal.replace(/-?\d*\.?\d+/g,v=>{const f=Number(v);return (f+(gathered[j++]-f)*blend).toFixed(2);});return `<path transform="rotate(${i*90} 72 72)" d="${d}" fill="${MARK}"/>`;}).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><rect width="144" height="144" fill="${PAGE}"/>${paths}</svg>`;
 }
 {
@@ -49,7 +49,7 @@ const SCENES=['envelope','key','door','swap','invite','keypad','shield','link','
 // --only=wave,build re-renders just those scenes and leaves the rest untouched.
 const only=process.argv.find(a=>a.startsWith('--only='))?.slice(7).split(',');
 for(const scene of process.argv.includes('--mark-only')?[]:SCENES.filter(s=>!only||only.includes(s))){
-  const svg=t=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 390"><rect width="480" height="390" fill="${BG}"/>${filmFrame(scene,t,'f')}</svg>`;
+  const svg=t=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 390" color="${INK}"><rect width="480" height="390" fill="${BG}"/>${filmFrame(scene,t,'f')}</svg>`;
   const frames=[];
   for(let i=0;i<Math.round(loopSeconds[scene]*12);i++)frames.push([await raster(svg(i/12),W,H),83]);
   encode(frames,W,H,`${scene}.gif`);
