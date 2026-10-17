@@ -174,7 +174,6 @@ function SetupContent() {
   const initial = name.trim().charAt(0).toUpperCase();
   return (
     <main className="desktop-setup" data-step={state?.user ? Math.min(step, 3) : "welcome"}>
-      <SetupBackdrop />
       <div className="setup-layout">
         {state?.user && state.entitlement.reason !== "suspended" && !(state.entitlement.reason === "offline" && step >= 3) && (
           <div className="setup-progress" role="progressbar" aria-label={`Step ${Math.min(step + 1, 4)} of 4`} aria-valuemin={1} aria-valuemax={4} aria-valuenow={Math.min(step + 1, 4)}>
@@ -250,9 +249,6 @@ function SetupContent() {
             </>
           ) : (
             <>
-              <p className="eyebrow">
-                MAKE YOURSELF AT HOME · {Math.min(step + 1, 4)} OF 4
-              </p>
               <h1 ref={heading} tabIndex={-1}>
                 {titles[Math.min(step, 3)]}
               </h1>
@@ -413,17 +409,3 @@ function MemoryChoice({ value, onChange }: { value: boolean; onChange: (on: bool
   );
 }
 
-/** Slow light behind the setup: three soft glows that drift, and settle somewhere new on every step. */
-function SetupBackdrop() {
-  return (
-    <div className="setup-backdrop" aria-hidden="true">
-      <span className="setup-glow setup-glow-a" />
-      <span className="setup-glow setup-glow-b" />
-      <span className="setup-glow setup-glow-c" />
-      <span className="setup-motes">
-        {Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i * 37) % 100}%`, "--d": `${14 + ((i * 7) % 11)}s`, "--delay": `${i * -1.9}s` } as CSSProperties} />)}
-      </span>
-      <span className="setup-grain" />
-    </div>
-  );
-}
