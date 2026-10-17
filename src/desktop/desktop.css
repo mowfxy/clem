@@ -210,7 +210,8 @@
   position: absolute;
   inset: 8% 22%;
   border-radius: 50%;
-  background: radial-gradient(circle, #f1efe71f, transparent 68%);
+  /* Lit in the drawings' own ink, so it glows on dark and shades on light. */
+  background: radial-gradient(circle, color-mix(in srgb, var(--illustration-ink, #f4f3ed) 12%, transparent), transparent 68%);
   animation: setup-halo 5s ease-in-out infinite;
 }
 @keyframes setup-halo {
@@ -867,3 +868,52 @@ body:has(.desktop-content) {
 .desktop-content .sidebar>.brand{-webkit-app-region:drag;app-region:drag}
 
 @media(max-width:760px){.desktop-titlebar:has(+.desktop-content .sidebar){left:0}}
+/* Setup on the light theme: paper under a white card. The automatic light twins (scripts/light-theme.mjs) turn the
+   card's see-through dark glass grey, so its surfaces are set here; ink and line art already follow the theme. */
+html:root[data-theme=light] .desktop-setup {
+  background: #f6f3ec;
+}
+html:root[data-theme=light] .setup-backdrop {
+  opacity: 0.55;
+}
+html:root[data-theme=light] .setup-backdrop::after {
+  background: radial-gradient(ellipse at center, transparent 40%, #e8e3d6b3 100%);
+}
+html:root[data-theme=light] .setup-card {
+  background: linear-gradient(180deg, #fffffff5, #fcfaf5f0);
+  border-color: #20253a14;
+  box-shadow: 0 1px 0 #ffffff inset, 0 34px 80px -34px #20253a47, 0 0 0 1px #20253a08;
+}
+html:root[data-theme=light] .setup-card::before {
+  background: linear-gradient(90deg, transparent, #ffffff, transparent);
+}
+html:root[data-theme=light] .setup-input,
+html:root[data-theme=light] .memory-option {
+  background: #ffffff;
+  border-color: #20253a1f;
+}
+html:root[data-theme=light] .setup-input:focus-within {
+  background: #ffffff;
+  border-color: #20253a66;
+  box-shadow: 0 0 0 4px #20253a12, 0 10px 26px -16px #20253a59;
+}
+html:root[data-theme=light] .memory-option:hover {
+  border-color: #20253a38;
+}
+html:root[data-theme=light] .memory-option[data-on="true"] {
+  background: #ffffff;
+  border-color: #20253a59;
+  box-shadow: 0 14px 30px -20px #20253a59, 0 0 0 1px #20253a0d inset;
+}
+html:root[data-theme=light] .first-provider .provider-switch {
+  background: #efebe2;
+  border-color: #20253a12;
+}
+html:root[data-theme=light] .first-provider .cx-steps,
+html:root[data-theme=light] .first-provider .cx-challenge {
+  background: #fbf9f4 !important;
+  border-color: #20253a14 !important;
+}
+html:root[data-theme=light] .first-provider-done {
+  background: radial-gradient(circle at 50% 0%, #4f8a5c1f, transparent 70%), #ffffff;
+}
