@@ -11,7 +11,8 @@ import type {StoredFile,FileVersion} from '../../core/types';
 export async function openPdf(bytes:Uint8Array){
   const lib=await import('pdfjs-dist');
   lib.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).href;
-  return lib.getDocument({data:bytes.slice()}).promise;
+  const loading=lib.getDocument({data:bytes.slice()});
+  return loading.promise.catch(async e=>{await loading.destroy();throw e;});
 }
 
 async function itemsOf(page:PDFPageProxy):Promise<TextItem[]>{

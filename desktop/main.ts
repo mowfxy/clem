@@ -343,6 +343,8 @@ void app.whenReady().then(async () => {
   app.on("before-quit", () => chatSessions.clear());
   /** Working folders (root|lane) whose answer a usage limit stopped, from when that answer started: its files wait for the next one. */
   const heldOutputs = new Map<string, number>();
+  /** Lanes of the shared folder whose answers are running, by how many: another chat's sync leaves their files. */
+  const runningLanes = new Map<string, number>();
   /** People whose old per-subject and per-chat folders were removed this run (desktop/ai-workspace.ts removeOldFolders). */
   const oldFoldersRemoved = new Set<string>();
   /** Stops one answer wherever it runs: Codex, or any of the person's Claude and Grok accounts. */
@@ -415,8 +417,9 @@ void app.whenReady().then(async () => {
     if (kept && !grok && (kept.context ?? 0) > COMPACT_AT_TOKENS) {
       emit({ id, type: "status", text: "Summarising the work so far…" });
       // A summary keeps the work, not every guide and note word for word: they all go again with this message.
-      try { kept.context = await (current.provider as ClaudeProvider).compact(kept.session, model!, workspace?.root); kept.sent = new Set(); stats.compacted = true; }
+      try { kept.context = await (current.provider as ClaudeProvider).compact(kept.session, model!, workspace?.root, id); kept.sent = new Set(); stats.compacted = true; }
       catch { kept.end(); kept = undefined; }
+      if (cancelled()) { kept?.end(); throw Error("Request cancelled"); }
     }
     if (kept) { sessions.push({ id: kept.session, provider: current.provider }); stats.continued = true; }
     // Grok counts a session's tokens in its own usage.json: a kept session's count so far is taken off this answer's.
@@ -1305,6 +1308,7 @@ void app.whenReady().then(async () => {
       const before = await vault.read<IndexedFile[]>(cache, []);
       const files = await indexFolder(folder, before);
       if (!sameIndex(before, files)) await vault.write(cache, files);
+      if (watchOwner === user.id) folderWatcher!.refresh(folder.id, folder.path, files);
       return files;
     };
     if (request.action === "folderTree") {
@@ -1507,8 +1511,9 @@ void app.whenReady().then(async () => {
         const state = await disk.readState(user.id).catch(() => null);
         // Claude Code opens PDF pages only with poppler on the PATH (claudeOpensPdfPages); without it, as Codex does.
         const nativePdf = (!!request.model?.startsWith("claude:") && claudeOpensPdfPages()) || !!request.model?.startsWith(GROK_PREFIX);
-        const plan = mirrorFor({ state, scope: request.scope, chat: chatId, lane, blob: (id) => disk.blobPath(user.id, id), officeText, library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !nativePdf });
+        const plan = mirrorFor({ state, scope: request.scope, chat: chatId, lane, blob: (id) => disk.blobPath(user.id, id), officeText, library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !nativePdf, running: runningLanes });
         const paths = await syncMirror(root, plan.files, plan.keep, lane);
+        runningLanes.set(lane, (runningLanes.get(lane) || 0) + 1);
         const sources = plan.files.filter((m) => m.source && paths.includes(m.path)).map((m) => m.path);
         const places = spaceFolders(state?.spaces || []);
         const spaceId = /^(subject|project):/.test(request.scope) ? request.scope.split(":")[1] : "";
@@ -1935,8 +1940,6 @@ void app.whenReady().then(async () => {
       // The person's files in the working folder are copies the AI reads and never changes (Claude Code refuses edits there).
       const workspace = work ? { root: work.root, readOnly: linked.map((f) => f.path), protect: [...LIBRARY, TEXT].map((top) => join(work!.root, top)), writer: extras } : undefined;
       const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
-      // A folder for one request outside any chat is removed with its answer.
-      if (work?.once) void run.finally(() => Promise.all(laneFolders(work!.root, work!.lane).map((dir) => rm(dir, { recursive: true, force: true }).catch(() => {})))).catch(() => {});
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       // A request outside any chat has no later turn to use its crops.
@@ -1966,7 +1969,11 @@ void app.whenReady().then(async () => {
             ...(limited ? { limit: { resetsAt } } : {}),
           });
         })
-        .finally(() => cancelledRuns.end(request.id));
+        .finally(() => cancelledRuns.end(request.id))
+        // A folder for one request outside any chat is removed with its answer, once its outputs have been collected.
+        .finally(() => work?.once ? Promise.all(laneFolders(work.root, work.lane).map((dir) => rm(dir, { recursive: true, force: true }).catch(() => {}))) : undefined)
+        .finally(() => { if (!work) return; const left = (runningLanes.get(work.lane) || 1) - 1; if (left) runningLanes.set(work.lane, left); else runningLanes.delete(work.lane); })
+        .catch(() => {});
       return { started: true };
     }
   };

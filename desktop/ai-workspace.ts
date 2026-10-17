@@ -205,7 +205,7 @@ export const laneFolders = (root: string, lane: string) => [DRAFTS, OUTPUTS, ATT
  * without a PDF viewer, and files with no copy here (a Drive file read for this answer). `attached`: PDFs the window
  * sent with the request, which the saved workspace may not list yet. `documents`: files Mowr made in this conversation.
  */
-export function mirrorFor({ state, scope, chat, lane, blob, officeText, library = [], attached = [], documents = [], pdfText = true }: {
+export function mirrorFor({ state, scope, chat, lane, blob, officeText, library = [], attached = [], documents = [], pdfText = true, running }: {
   state: WorkspaceState;
   scope: string;
   chat?: string;
@@ -218,6 +218,8 @@ export function mirrorFor({ state, scope, chat, lane, blob, officeText, library 
   /** Whether a PDF here also gets its text in _text/. Off for Claude Code and Grok, which open PDFs natively (every page
    *  as drawn, with its text); on for Codex, which cannot. */
   pdfText?: boolean;
+  /** Lanes of answers still running (a temporary chat's, a request's outside any chat): their files stay too. */
+  running?: { has(lane: string): boolean };
 }): MirrorPlan {
   const files = (state?.files || []).filter((f) => !f.remote && !String(f.id).startsWith("drive_"));
   const spaces = state?.spaces || [];
@@ -279,12 +281,12 @@ export function mirrorFor({ state, scope, chat, lane, blob, officeText, library 
     }
   }
   const all = distinctPaths([...mirrored, ...texts.values()]);
-  // Lanes of the chats that still exist: their attachments and made files stay; a deleted chat's go.
+  // Lanes of the chats that still exist and of answers still running: their attachments and made files stay; a deleted chat's go.
   const lanes = new Set((state?.chats || []).filter((c) => !c.temporary).map((c) => workspaceLane(c.id, "")));
   const stamps = new Map(mirrored.filter((m) => m.id).map((m) => [m.path.toLowerCase(), m.stamp]));
   const keep = (path: string, recorded: string) => {
     const laned = new RegExp(`^(?:${ATTACHMENTS}|${MADE}|${TEXT}/${ATTACHMENTS})/([^/]+)/`).exec(path);
-    if (laned) return laned[1] !== lane && lanes.has(laned[1]);
+    if (laned) return laned[1] !== lane && (lanes.has(laned[1]) || !!running?.has(laned[1]));
     // A file's text the window read in another chat stays while the file is as it was then.
     if (path.startsWith(TEXT + "/") && recorded.startsWith("text:")) {
       const of = stamps.get(path.slice(TEXT.length + 1, -4).toLowerCase());

@@ -113,7 +113,7 @@ async function renderPage(file: StoredFile, pdf: any, n: number) {
 async function pdfPictures(file: StoredFile, blob: Blob, want: number[], limit: number, signal?: AbortSignal): Promise<Picture[]> {
   const lib = await pdfjs();
   const loading = lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: false });
-  const pdf = await loading.promise;
+  const pdf = await loading.promise.catch(async (e) => { await loading.destroy(); throw e; });
   try {
     const info = await survey(file, pdf, lib, signal);
     const order: number[] = [];
@@ -435,7 +435,7 @@ export async function pageImages(files: StoredFile[], name: string, pages: numbe
   if (!blob) throw Error(`${file.name} is missing from this PC.`);
   const lib = await pdfjs();
   const loading = lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: false });
-  const pdf = await loading.promise;
+  const pdf = await loading.promise.catch(async (e) => { await loading.destroy(); throw e; });
   try {
     const valid = pages.filter((p) => p >= 1 && p <= pdf.numPages).slice(0, 8);
     if (!valid.length) throw Error(`${file.name} has ${pdf.numPages} pages.`);

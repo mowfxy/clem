@@ -30,6 +30,8 @@ export class CliAccounts<P extends CliProvider> {
   private exhausted = new Map<string, number>();
   /** Sign-ins started from Settings, so an account waiting for the browser says so. */
   private signing = new Map<string, number>();
+  /** When list() last asked each account's CLI afresh: live polling reads one at most every 10 seconds. */
+  private listed = new Map<string, number>();
   private kind: "claude" | "grok";
   private vault: Vault;
   private options: Options<P>;
@@ -86,7 +88,11 @@ export class CliAccounts<P extends CliProvider> {
   }
   async list(owner: string, refresh = false) {
     const r = await this.registry(owner);
-    const accounts = await Promise.all(r.ids.map((id) => this.describe(owner, id, refresh)));
+    const accounts = await Promise.all(r.ids.map((id) => {
+      const key = owner + ":" + id, fresh = refresh && Date.now() - (this.listed.get(key) || 0) >= 10_000;
+      if (fresh) this.listed.set(key, Date.now());
+      return this.describe(owner, id, fresh);
+    }));
     return { active: r.active, accounts };
   }
   /** Adds an account and opens its sign-in. Settings then shows it as waiting until the browser sign-in finishes. */
