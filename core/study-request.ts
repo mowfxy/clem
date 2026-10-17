@@ -2,12 +2,10 @@ export function studyRequest(prompt: string): "quiz" | "flashcards" | null {
   if (/^\/(quiz|flashcards)\b/i.test(prompt))
     return /^\/quiz\b/i.test(prompt) ? "quiz" : "flashcards";
 
-  if (
-    /\b(make|create|generate|build)\b.{0,40}\b(quiz|flashcards|flash cards)\b/i.test(
-      prompt,
-    )
-  )
-    return /\bquiz\b/i.test(prompt) ? "quiz" : "flashcards";
+  const asked = prompt.match(
+    /\b(make|create|generate|build)\b.{0,40}?\b(quiz|flashcards|flash cards)\b/i,
+  );
+  if (asked) return /^quiz$/i.test(asked[2]) ? "quiz" : "flashcards";
 
   return null;
 }

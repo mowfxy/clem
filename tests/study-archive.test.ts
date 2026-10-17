@@ -12,6 +12,8 @@ test("study requests and quiz indices are validated", () => {
   assert.equal(studyRequest("/quiz calculus"), "quiz");
   assert.equal(studyRequest("make flashcards from this"), "flashcards");
   assert.equal(studyRequest("I took a quiz yesterday"), null);
+  assert.equal(studyRequest("Create flashcards to prepare for my quiz on Friday"), "flashcards");
+  assert.equal(studyRequest("Make a quiz, then flashcards"), "quiz");
   assert.throws(() =>
     parseStudy(
       '{"title":"Quiz","items":[{"question":"Q","answer":"A","choices":["A","B"],"correct":4}]}',

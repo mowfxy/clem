@@ -1104,7 +1104,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
                 goal: prompt,
                 sources,
                 memory: activeSpace ? activeSpace.memory : state.memory,
-                conversation: boundedConversation(next.messages.filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })), 20000).slice(0, -1),
+                conversation: boundedConversation(next.messages.filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })), 20000, undefined, undefined, { clipRequest: true }).slice(0, -1),
               }),
             },
           ],
@@ -1309,7 +1309,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       status(id)("");
       if(studyKind){
         status(id)(studyKind==='quiz'?'Writing the quiz…':'Writing the flashcards…');
-        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:boundedConversation(next.messages.filter(m=>m.content).map(m=>({role:m.role,content:m.content})),24000)})}],model,controller.signal,()=>{},'chat',undefined,images,{chat:id,side:true,pdfs:pdfs.files,pdfNotes:pdfs.notes});
+        const raw=await streamChat([{role:'system',content:studyInstructions},{role:'user',content:JSON.stringify({kind:studyKind,request:prompt,subject:activeSpace!.name,memory,sources:fileText+(driveNote?'\n\n'+driveNote:''),conversation:boundedConversation(next.messages.filter(m=>m.content).map(m=>({role:m.role,content:m.content})),24000,undefined,undefined,{clipRequest:true})})}],model,controller.signal,()=>{},'chat',undefined,images,{chat:id,side:true,pdfs:pdfs.files,pdfNotes:pdfs.notes});
         const parsed=(await import('../core/study')).parseStudy(raw,studyKind);
         patch(s=>({...s,studySets:[...s.studySets,{...parsed,id:uid(),spaceId:activeSpace!.id,chatId:id,kind:studyKind,created:Date.now(),attempts:[]}]}));
         updateChat(id,c=>({...c,messages:c.messages.map(m=>m.id===messageId?{...m,content:`${parsed.title} is ready: ${parsed.items.length} ${studyKind==='quiz'?'questions':'flashcards'}. Open ${activeSpace!.name} in Subjects to study and track your progress.`}:m)}));

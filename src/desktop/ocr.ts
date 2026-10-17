@@ -1,5 +1,5 @@
 import { get, set } from "idb-keyval";
-import { desktop } from "./bridge";
+import { desktop } from "./bridge.ts";
 
 /**
  * The text of scanned pages: drawn here with pdf.js, read by Windows' own OCR in the desktop app (desktop/ocr.ts).
@@ -22,7 +22,7 @@ const BANK = 45_000, REFILL = 0.5;
 let bank = BANK, filled = Date.now();
 
 async function read(pdf: any, pages: number[], key: string, until: number, texts: Map<number, string>, pending: number[], signal?: AbortSignal) {
-  const todo: number[] = [];
+  const todo: number[] = [], failed: number[] = [];
   for (const p of pages) {
     const known = await get<string>(`mowr-ocr:${key}:${p}`).catch(() => undefined);
     if (known !== undefined) texts.set(p, known);
@@ -36,7 +36,13 @@ async function read(pdf: any, pages: number[], key: string, until: number, texts
       const pictures = [];
       for (const p of batch) pictures.push(await drawPage(pdf, p));
       const { texts: read } = await desktop!.invoke({ action: "ocr", pictures });
-      batch.forEach((p, j) => { const text = String(read?.[j] || "").trim(); texts.set(p, text); void set(`mowr-ocr:${key}:${p}`, text).catch(() => {}); });
+      // A page Windows failed on is not kept as read: it stays pending and is tried again on a later request.
+      batch.forEach((p, j) => {
+        if (typeof read?.[j] !== "string") { failed.push(p); return; }
+        const text = read[j].trim();
+        texts.set(p, text);
+        void set(`mowr-ocr:${key}:${p}`, text).catch(() => {});
+      });
     } catch (e) {
       if (signal?.aborted) throw e;
       // Windows could not read them (no OCR language installed): they stay pages to look at.
@@ -44,6 +50,7 @@ async function read(pdf: any, pages: number[], key: string, until: number, texts
       break;
     }
   }
+  pending.unshift(...failed);
   return { texts, pending };
 }
 
