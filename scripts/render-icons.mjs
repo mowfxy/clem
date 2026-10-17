@@ -3,15 +3,15 @@
 //   public/logo.png                a large copy for drag previews
 // Like Claude's, the icon is a solid rounded tile with the mark on it, not a bare mark on transparency, so it reads
 // on any taskbar, light or dark. The tile is lit from the top left with a soft rim, the way Windows 11 icons are, and
-// the seed head on it uses fewer, larger seeds as the icon gets small (seedsFor in core/mark.ts, repeated here).
+// the seed head on it is the same 61 seeds at every size (SEEDS in core/mark.ts, repeated here).
 // Run: node scripts/render-icons.mjs  (needs Playwright's Chromium).
 import { chromium } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 
 const INK = process.env.MOWR_ICON_INK || "#f5f2e8";
 const head = (n, R, a, b, c) => { const st = R / Math.sqrt(n + .5); return Array.from({ length: n }, (_, k) => { const g = k * 2.39996323, r = st * Math.sqrt(k + .5), u = (k + 1) / n; return [r * Math.cos(g), r * Math.sin(g), st * (a + (b - a) * u ** c)]; }); };
-const seedsFor = (px) => (px <= 24 ? head(9, 40, .62, .9, 1) : px <= 40 ? head(24, 39.5, .45, .82, 1.1) : head(61, 39, .3, .78, 1.3));
-const markSvg = (px) => `<svg width="${px}" height="${px}" viewBox="-45 -45 90 90" fill="${INK}" style="filter:drop-shadow(0 ${Math.max(.5, px / 90).toFixed(2)}px ${Math.max(.4, px / 120).toFixed(2)}px rgba(70,30,15,.35))">${seedsFor(px).map(([x, y, r]) => `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r.toFixed(2)}"/>`).join("")}</svg>`;
+const SEEDS = head(61, 39, .3, .78, 1.3);
+const markSvg = (px) => `<svg width="${px}" height="${px}" viewBox="-45 -45 90 90" fill="${INK}" style="filter:drop-shadow(0 ${Math.max(.5, px / 90).toFixed(2)}px ${Math.max(.4, px / 120).toFixed(2)}px rgba(70,30,15,.35))">${SEEDS.map(([x, y, r]) => `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r.toFixed(2)}"/>`).join("")}</svg>`;
 const icoSizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
 // Small icons fill their square (every pixel counts at 16 px); larger ones leave the margin Windows icons usually have.
 const tileShare = (size) => (size <= 24 ? 1 : size <= 48 ? 0.94 : 0.9);

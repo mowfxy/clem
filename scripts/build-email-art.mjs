@@ -30,7 +30,7 @@ function encode(frames,w,h,file){
 
 // Mowr mark: a ripple runs out from the centre of the seed head, as in the app's thinking state
 // (Logo in src/Icons.tsx; geometry and motion from core/mark.ts, repeated here in plain JS).
-const step=39.5/Math.sqrt(24.5),seeds=Array.from({length:24},(_,k)=>[step*Math.sqrt(k+.5)*Math.cos(k*2.39996323),step*Math.sqrt(k+.5)*Math.sin(k*2.39996323),step*(.45+.37*((k+1)/24)**1.1)]);
+const step=39/Math.sqrt(61.5),seeds=Array.from({length:61},(_,k)=>[step*Math.sqrt(k+.5)*Math.cos(k*2.39996323),step*Math.sqrt(k+.5)*Math.sin(k*2.39996323),step*(.3+.48*((k+1)/61)**1.3)]);
 function mark(ms){
   const t=ms/1000,dots=seeds.map(([x,y,r],k)=>`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${(r*(1+.32*Math.sin(2*Math.PI*t/1.9-Math.sqrt(k)*1.15))).toFixed(2)}"/>`).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-45 -45 90 90"><rect x="-45" y="-45" width="90" height="90" fill="${PAGE}"/><g fill="${MARK}">${dots}</g></svg>`;

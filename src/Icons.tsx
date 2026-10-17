@@ -1,5 +1,5 @@
 import { useEffect,useRef } from 'react';
-import { MARK_VIEWBOX,seedsFor,rippleScale } from '../core/mark';
+import { MARK_VIEWBOX,SEEDS,rippleScale } from '../core/mark';
 // Icons: one even line on a 32-unit grid, rounded ends, and at most one soft grey fill per icon.
 // A drawing is a list of strokes; a stroke starting with "F " is also filled. Hover motion in CSS
 // targets strokes by index (`.icon-<name> .stroke-<i>`), so keep each icon's stroke order.
@@ -124,12 +124,12 @@ export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.st
 export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
 /** Mowr's mark: a sunflower seed head, seeds at the golden angle. The geometry lives in core/mark.ts, shared with the
  *  desktop sign-in page and the icon renderers; public/boot.js and scripts/build-email-art.mjs repeat it in plain JS.
- *  Small sizes draw fewer, larger seeds (seedsFor) so the head never turns to speckle. */
-export const MARK={viewBox:MARK_VIEWBOX,seedsFor} as const;
+ *  The same 61-seed head at every size. */
+export const MARK={viewBox:MARK_VIEWBOX,seeds:SEEDS} as const;
 /** The still mark, for places that only need the picture. */
-export function Mark({size=24,className}:{size?:number;className?:string}){return <svg width={size} height={size} viewBox={MARK_VIEWBOX} className={className} fill="currentColor" aria-hidden="true">{seedsFor(size).map(([x,y,r],i)=><circle key={i} cx={x} cy={y} r={r}/>)}</svg>;}
+export function Mark({size=24,className}:{size?:number;className?:string}){return <svg width={size} height={size} viewBox={MARK_VIEWBOX} className={className} fill="currentColor" aria-hidden="true">{SEEDS.map(([x,y,r],i)=><circle key={i} cx={x} cy={y} r={r}/>)}</svg>;}
 export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){
- const ref=useRef<SVGSVGElement>(null),seeds=seedsFor(size);
+ const ref=useRef<SVGSVGElement>(null),seeds=SEEDS;
  useEffect(()=>{const el=ref.current!;const media=matchMedia('(prefers-reduced-motion: reduce)');let frame=0,last=-1;const dots=Array.from(el.querySelectorAll('circle'));
  const reset=()=>{cancelAnimationFrame(frame);frame=0;dots.forEach((d,k)=>d.setAttribute('r',String(seeds[k][2])));};
  // Thinking: the head stays put while a ripple runs out from the centre, seed by seed. Drawn on 24 ms cels.

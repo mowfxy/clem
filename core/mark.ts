@@ -14,21 +14,15 @@ function head(count: number, radius: number, from: number, to: number, curve: nu
   });
 }
 
-/** 61 seeds, small in the middle and fuller at the rim. */
+/** 61 seeds, small in the middle and fuller at the rim. The same head at every size: the owner wants no simplified
+ *  small versions, inside the app or on the Windows icon. */
 export const SEEDS = head(61, 39, 0.3, 0.78, 1.3);
-/** 24 seeds for 25–40 px (sidebar, message marks), where the centre seeds of the full head would vanish. */
-export const MEDIUM_SEEDS = head(24, 39.5, 0.45, 0.82, 1.1);
-/** Nine larger seeds for 24 px and below, where more would turn to speckle. */
-export const SMALL_SEEDS = head(9, 40, 0.62, 0.9, 1);
 export const MARK_VIEWBOX = "-45 -45 90 90";
-/** The seed head that reads best at a size in CSS px. */
-export const seedsFor = (size: number) => (size <= 24 ? SMALL_SEEDS : size <= 40 ? MEDIUM_SEEDS : SEEDS);
 
 /** Thinking: the head stays still while a ripple runs out from the centre. Seed k's scale at time t (seconds). */
 export const rippleScale = (k: number, t: number) => 1 + 0.32 * Math.sin((2 * Math.PI * t) / 1.9 - Math.sqrt(k) * 1.15);
 
 /** The still mark as an SVG string, for pages and renderers outside React. */
-export function markSvg(fill: string, opts: { size?: number; attrs?: string } = {}) {
-  const seeds = seedsFor(opts.size ?? 100);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${MARK_VIEWBOX}" fill="${fill}"${opts.attrs ? " " + opts.attrs : ""}>${seeds.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join("")}</svg>`;
+export function markSvg(fill: string, attrs = "") {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${MARK_VIEWBOX}" fill="${fill}"${attrs ? " " + attrs : ""}>${SEEDS.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join("")}</svg>`;
 }

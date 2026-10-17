@@ -10,7 +10,7 @@ export const effortName = (value: string) =>
 const EFFORT_NAMES = ["minimal", "low", "medium", "high", "xhigh", "max"];
 /** Mowr's mark, small enough to drift through the thinking bar. */
 function Petal({ style }: { style: CSSProperties }) {
-  return <svg className="effort-petal" style={style} viewBox={MARK.viewBox} fill="currentColor" aria-hidden="true">{MARK.seedsFor(12).map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} />)}</svg>;
+  return <svg className="effort-petal" style={style} viewBox={MARK.viewBox} fill="currentColor" aria-hidden="true">{MARK.seeds.map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} />)}</svg>;
 }
 const petals = Array.from({ length: 9 }, (_, i) => ({ top: [18, 62, 34, 76, 46, 24, 68, 40, 56][i], size: [11, 8, 13, 9, 7, 12, 8, 10, 7][i], delay: -i * 0.53 }));
 
