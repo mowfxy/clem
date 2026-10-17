@@ -62,7 +62,6 @@
   width: 62vmax;
   height: 62vmax;
   border-radius: 50%;
-  filter: blur(70px);
   opacity: 0.34;
   transition: translate 1.6s var(--setup-ease), opacity 1.6s ease;
   will-change: transform;
@@ -150,10 +149,9 @@
   padding: 34px 40px 26px;
   border-radius: 28px;
   text-align: center;
-  background: linear-gradient(180deg, #23221fcc, #181816d9);
+  background: linear-gradient(180deg, #23221fe0, #181816eb);
   border: 1px solid #ffffff12;
   box-shadow: 0 1px 0 #ffffff12 inset, 0 40px 90px -30px #000000d9, 0 0 0 1px #00000040;
-  backdrop-filter: blur(22px) saturate(1.2);
   animation: setup-card-in 700ms var(--setup-ease) both;
 }
 /* A thin light that travels the card's top edge. */
