@@ -1393,7 +1393,16 @@ void app.whenReady().then(async () => {
       await markFromInternet(path);
       if (browserViewable.test(path)) {
         const browser = await defaultBrowser().catch(() => undefined);
-        if (browser) { spawn(browser, [pathToFileURL(path).href], { detached: true, stdio: "ignore" }).unref(); return { opened: "browser" }; }
+        if (browser) {
+          // A browser that is gone since Windows last named it (uninstalled, moved) fails here and the file opens in its
+          // own app instead; without the listener its "error" event would take down the whole app.
+          const started = await new Promise<boolean>((done) => {
+            const child = spawn(browser, [pathToFileURL(path).href], { detached: true, stdio: "ignore" });
+            child.once("spawn", () => { child.unref(); done(true); });
+            child.once("error", () => done(false));
+          });
+          if (started) return { opened: "browser" };
+        }
       }
       const failed = await shell.openPath(path);
       if (failed) throw Error(failed);
@@ -1584,7 +1593,9 @@ void app.whenReady().then(async () => {
       // the folder, so a change is still a small edit to it rather than the whole document again.
       const drafts = new Map<string, string>();
       if (work) await Promise.all([...documents.keys()].map(async (id) => {
-        const draft = JSON.parse((await disk.readFile(user.id, "spec-" + id))?.toString("utf8") || "{}")?.draft;
+        // A damaged source file only loses this hint; it never fails the answer.
+        let draft: any;
+        try { draft = JSON.parse((await disk.readFile(user.id, "spec-" + id))?.toString("utf8") || "{}")?.draft; } catch { return; }
         const full = typeof draft?.path === "string" && typeof draft.text === "string" ? workspacePath(work!.root, draft.path) : null;
         if (!full) return;
         drafts.set(id, draft.path);

@@ -94,7 +94,7 @@ export class CodexEngine {
     if (process.platform !== 'win32' || !TRIPLES[process.arch]) return false;
     await mkdir(this.root, {recursive: true});
     const stamp = join(this.root, 'checked.json');
-    const last = Number(JSON.parse(await readFile(stamp, 'utf8').catch(() => '{}')).at) || 0;
+    const last = await lastRun(stamp);
     // A forced check (Refresh in Settings → Models, which also runs on window focus) still waits ten minutes.
     if (Date.now() - last < (force ? 10 * 60_000 : CHECK_EVERY)) return false;
     await writeFile(stamp, JSON.stringify({at: Date.now()}));
@@ -141,10 +141,16 @@ export class CodexEngine {
   }
 }
 
+/** When a check last ran, from its stamp file. A missing or damaged stamp (a write cut short) counts as never, so the
+ *  check runs and writes a fresh one instead of failing every time. */
+async function lastRun(stamp: string) {
+  try { return Number(JSON.parse(await readFile(stamp, 'utf8')).at) || 0; } catch { return 0; }
+}
+
 /** Runs `update` at most once a day per program; the time of the last run is kept in `root`. */
 export async function daily(root: string, name: string, update: () => Promise<unknown>) {
   const stamp = join(root, 'engines', name + '-checked.json');
-  const last = Number(JSON.parse(await readFile(stamp, 'utf8').catch(() => '{}')).at) || 0;
+  const last = await lastRun(stamp);
   if (Date.now() - last < 24 * 60 * 60_000) return false;
   await mkdir(join(root, 'engines'), {recursive: true});
   await writeFile(stamp, JSON.stringify({at: Date.now()}));

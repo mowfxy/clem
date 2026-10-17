@@ -446,7 +446,8 @@ export class GrokProvider {
     if(!/^[0-9a-f-]{36}$/i.test(sessionId))return undefined;
     const base=join(this.home||join(process.env.USERPROFILE||'','.grok'),'sessions');
     for(const folder of await readdir(base).catch(()=>[] as string[])){
-      const s=(JSON.parse(await readFile(join(base,folder,sessionId,'usage.json'),'utf8').catch(()=>'null')) as any)?.session;
+      // A usage file Grok is still writing (or left damaged) is skipped, not an error.
+      let s:any;try{s=JSON.parse(await readFile(join(base,folder,sessionId,'usage.json'),'utf8'))?.session;}catch{continue;}
       if(!s||typeof s!=='object')continue;
       const n=(v:unknown)=>Math.max(0,Number(v)||0);
       const read=n(s.cachedReadTokens),write=n(s.cacheCreationTokens);

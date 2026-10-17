@@ -45,3 +45,16 @@ test('daily updates run once a day', async () => {
     assert.equal(runs, 1);
   } finally { await rm(root, {recursive: true, force: true}); }
 });
+
+test('a damaged stamp file does not stop the daily check for good', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'mowr-engines-'));
+  try {
+    await mkdir(join(root, 'engines'), {recursive: true});
+    await writeFile(join(root, 'engines', 'tool-checked.json'), '{"at": 17');
+    let runs = 0;
+    await daily(root, 'tool', async () => { runs++; });
+    assert.equal(runs, 1, 'the check runs instead of throwing');
+    await daily(root, 'tool', async () => { runs++; });
+    assert.equal(runs, 1, 'and its fresh stamp holds for the day');
+  } finally { await rm(root, {recursive: true, force: true}); }
+});
