@@ -126,17 +126,23 @@ function SetupContent() {
     });
     await refresh();
   }
-  const toWorkspace = !!state?.user && ((state.setup.step >= 4 && state.entitlement.active) || (state.setup.step >= 3 && state.entitlement.reason === "offline" && readOnly));
+  // Once the workspace is open, a check that could not reach the account service keeps it open: unmounting it would
+  // stop every answer that is running. Signing out, another account or a paused account still leave it.
+  const entered = useRef<string | null>(null);
+  if (state?.user && state.setup.step >= 4 && state.entitlement.active) entered.current = state.user.id;
+  else if (!state?.user || state.entitlement.reason !== "offline") entered.current = null;
+  const staysOpen = !!state?.user && entered.current === state.user.id && state.setup.step >= 4;
+  const toWorkspace = !!state?.user && ((state.setup.step >= 4 && state.entitlement.active) || staysOpen || (state.setup.step >= 3 && state.entitlement.reason === "offline" && readOnly));
   // The opening screen stays until there's something to show: a setup or sign-in screen here, or the loaded workspace.
   useEffect(() => { if ((state && !toWorkspace) || error) bootDone(); }, [state, toWorkspace, error]);
   // Offline, the local workspace still opens to read; sending waits for a connection.
-  if (state?.user && state.setup.step >= 3 && state.entitlement.reason === "offline" && readOnly)
+  if (state?.user && state.setup.step >= 3 && state.entitlement.reason === "offline" && readOnly && !staysOpen)
     return (
       <Suspense fallback={<main className="workspace-loading">Opening your workspace…</main>}>
         <App offline />
       </Suspense>
     );
-  if (state?.user && state.setup.step >= 4 && state.entitlement.active)
+  if (state?.user && state.setup.step >= 4 && (state.entitlement.active || staysOpen))
     return (
       <Suspense
         fallback={

@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
 import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
 import {liveText} from './live-reply.ts';
+import {followGrokLog} from './grok-log.ts';
 import {kinetraMcp,keepingAlive,GROK_MCP_CONFIG,GROK_NATIVE_NOTE,GROK_TOOL,grokMcpEnv,type NativeCall} from './kinetra-mcp.ts';
 /** One Kinetra request for Grok's native tool: its result, and pictures (files on this PC) that go with it. */
 export type GrokNative=(request:Record<string,unknown>)=>Promise<{result:unknown;pictures:{path:string;mime?:string}[]}>;
@@ -196,7 +197,11 @@ export const GROK_FOLDER_NOTE='IN MOWR: your working folder holds the person\'s 
 
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
 const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
+/** Without stdout or log activity for this long Grok is taken as stuck; a request in flight may run up to the second. */
+export const GROK_IDLE_LIMIT=10*60_000,GROK_REQUEST_LIMIT=60*60_000;
+const GROK_OFFLINE='Grok lost its connection to xAI and could not get it back. Check your internet connection, then send your message again.';
 function friendly(detail:string){
+  if(detail.includes(GROK_OFFLINE))return GROK_OFFLINE;
   if(signedOut.test(detail))return 'Sign in to Grok again in Settings → Models.';
   if(outOfUsage(detail))return 'Your Grok plan has no usage left right now. Try again later or pick another model.';
   if(/model/i.test(detail)&&/not (found|available|supported)|unknown/i.test(detail))return 'This Grok model is not available on your plan. Pick another one.';
@@ -410,11 +415,27 @@ export class GrokProvider {
     this.active.set(id,child);
     return new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
       let out='',err='',done=false;
-      const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);f?reject(f):resolve(v!);};
-      // An inactivity limit: any output from Grok restarts it, so a long answer that is still arriving is never cut off.
-      let timer:ReturnType<typeof setTimeout>;
-      const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Grok took too long to respond.'));},600000);};
+      const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);log?.stop();f?reject(f):resolve(v!);};
+      // An inactivity limit: any output from Grok, or any line in Grok's own log for this process, restarts it, so a
+      // long answer that is still arriving is never cut off. While a model request is in flight (Grok prints nothing
+      // while it thinks or writes a long document, and retries a dropped connection itself) the limit waits for it:
+      // Grok's own network client decides when a request has failed, and Grok then ends with an error.
+      let timer:ReturnType<typeof setTimeout>,inFlight=false,seen=Date.now(),retried=false;
+      const limit=()=>{
+        if(done)return;
+        if(inFlight&&Date.now()-seen<GROK_REQUEST_LIMIT){timer=setTimeout(limit,GROK_IDLE_LIMIT);return;}
+        child.kill();finish(undefined,Error(retried?GROK_OFFLINE:'Grok took too long to respond.'));
+      };
+      const touch=()=>{seen=Date.now();clearTimeout(timer);timer=setTimeout(limit,GROK_IDLE_LIMIT);};
       touch();
+      let log:{stop():void}|undefined;
+      if(child.pid)void followGrokLog(this.home||join(process.env.USERPROFILE||'','.grok'),child.pid,event=>{
+        if(done)return;
+        touch();
+        if(event.kind==='start')inFlight=true;
+        else if(event.kind==='done'){inFlight=false;if(retried){retried=false;emit({id,type:'status',text:'Connected again. Working…'});}}
+        else if(event.kind==='retry'){inFlight=true;retried=true;emit({id,type:'status',text:`Connection to Grok dropped. Trying again${event.attempt?` (${event.attempt}${event.max?' of '+event.max:''})`:''}…`});}
+      }).then(follow=>{if(done)follow.stop();else log=follow;},()=>{});
       // While a native Kinetra call runs Grok prints nothing; the call keeps this limit from firing (keepingAlive).
       this.alive.set(id,touch);
       // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
@@ -434,7 +455,7 @@ export class GrokProvider {
         pending+=p;let nl;while((nl=pending.indexOf('\n'))>=0){read(pending.slice(0,nl));pending=pending.slice(nl+1);}});
       child.stderr.on('data',(p:string)=>{if(!done)touch();err=(err+p).slice(-5000);});
       child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
-      child.on('close',code=>{read(pending);pending='';if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});finish({code,out,err});});
+      child.on('close',code=>{read(pending);pending='';if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});finish({code,out,err:retried?(err+' '+GROK_OFFLINE).slice(-5000):err});});
       child.stdin.end();
     }).finally(()=>{this.active.delete(id);this.alive.delete(id);});
   }

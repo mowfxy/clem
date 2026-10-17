@@ -58,7 +58,7 @@ export function ContactDialog({ kind, onClose, onSent }: { kind: ContactKind; on
     setBusy(true); setError("");
     try {
       const payload = { category: v.category, subject, message: message.slice(0, 10000) };
-      if (desktop) await desktop.invoke({ action: "supportSend", ...payload });
+      if (desktop) await desktop.invoke({ action: "supportSend", ...payload, diagnostics: kind === "bug" && f.get("logs") === "on" });
       else await api("support", "POST", payload);
       setSent(true); setDirty(false);
       await onSent?.();
@@ -97,6 +97,7 @@ export function ContactDialog({ kind, onClose, onSent }: { kind: ContactKind; on
             <label><span>Steps to reproduce <span className="contact-optional">Optional</span></span><textarea name="steps" rows={3} maxLength={3000} placeholder={"1. Open a chat\n2. …"} /></label>
             <label><span>What did you expect? <span className="contact-optional">Optional</span></span><input name="expected" maxLength={1500} /></label>
             <label className="contact-check"><input type="checkbox" name="system" defaultChecked /> Include the app version and system details</label>
+            {desktop && <label className="contact-check"><input type="checkbox" name="logs" defaultChecked /> Include diagnostic logs (errors and timings, never your chats or files)</label>}
           </>}
           {kind === "idea" && <>
             <label>Your idea<input name="subject" required maxLength={150} placeholder="e.g. Export flashcards to Anki" /></label>

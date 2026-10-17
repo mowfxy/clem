@@ -9,7 +9,7 @@ export const scopeSchema = z
   .regex(/^(chat|project|subject|user):[a-zA-Z0-9_-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
-  z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000) }),
+  z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000), diagnostics:z.boolean().optional() }),
   z.object({ action: z.literal("supportCases") }),
   z.object({ action: z.literal("supportReply"), id:z.string().regex(/^[\w-]{8,64}$/), body:z.string().trim().min(2).max(10000) }),
   z.object({ action: z.literal("supportSeen"), id:z.string().regex(/^[\w-]{8,64}$/) }),

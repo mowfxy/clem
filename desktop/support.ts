@@ -1,11 +1,11 @@
 /** Only the main process sends the session to the fixed first-party endpoint. */
-export async function submitSupport(token: string, payload: {category:string;subject:string;message:string}, send:typeof fetch=fetch) {
+export async function submitSupport(token: string, payload: {category:string;subject:string;message:string;logs?:string}, send:typeof fetch=fetch) {
   let response: Response;
   try {
     response = await send('https://mowrai.com/api/support', {
       method:'POST', redirect:'error', signal:AbortSignal.timeout(45000),
       headers:{'Content-Type':'application/json',Origin:'https://mowrai.com',Authorization:`Bearer ${token}`},
-      body:JSON.stringify({category:payload.category,subject:payload.subject,message:payload.message}),
+      body:JSON.stringify({category:payload.category,subject:payload.subject,message:payload.message,...(payload.logs?{logs:payload.logs}:{})}),
     });
   } catch {
     throw Error('The submission could not be confirmed. It may have reached support; please check before sending it again. You can email support@mowrai.com directly.');

@@ -1,3 +1,4 @@
+import {splitLogs} from '../../core/support-logs';
 import {useEffect,useState} from 'react';
 import {desktop} from '../desktop/bridge';
 import {ContactSettings} from '../AccountSettings';
@@ -32,7 +33,7 @@ function SupportThread({item,onBack,onChanged}:{item:SupportCase;onBack:()=>void
     <button className="support-back" onClick={onBack}><Icon name="arrow" size={15}/>Your requests</button>
     <header className="support-thread-head"><span className={`support-status status-${item.status}`}>{statusLabel[item.status]}</span><h2>{item.subject}</h2><p className="muted">{item.category} · opened {when(item.created_at)}</p></header>
     <div className="support-thread">
-      <article className="support-msg mine"><p>{item.message}</p><small>You · {when(item.created_at)}</small></article>
+      <article className="support-msg mine"><p>{splitLogs(item.message).text}</p><small>You · {when(item.created_at)}</small></article>
       {item.messages.map(m=><article key={m.id} className={`support-msg ${m.author==='user'?'mine':'team'}`}>{m.author==='staff'&&<span className="support-team-mark">M</span>}<div><p>{m.body}</p><small>{m.author==='user'?'You':'Mowr support'} · {when(m.created_at)}</small></div></article>)}
     </div>
     {item.status==='closed'?<p className="fine">This request is closed. Start a new request if you still need help.</p>:<form className="support-reply" onSubmit={e=>{e.preventDefault();if(body.trim().length>1)void send();}}>

@@ -1,4 +1,5 @@
 import { submitSupport } from "./support";
+import { collectDiagnostics, noteEvent, startMainLog } from "./diagnostics";
 import {illustratedPdf} from "./illustrated-pdf";
 import { pageCount } from "./pdf-structure";
 import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "./file-maker";
@@ -186,6 +187,8 @@ app.setPath('sessionData',durableSession);
 const disk=new WorkspaceDisk(workspaceRoot);
 void app.whenReady().then(async () => {
   if (!primaryInstance) return;
+  startMainLog(join(app.getPath("userData"), "logs"));
+  noteEvent("started", app.getVersion());
   await mkdir(durableSession,{recursive:true});
   const migrationMarker=join(durableSession,'.migration-complete');
   try{await access(migrationMarker);}catch{for(const name of ['IndexedDB','Local Storage','Session Storage']){const source=join(previousSession,name);try{await access(source);}catch{continue;}await cp(source,join(durableSession,name),{recursive:true,force:false,errorOnExist:false});}await writeFile(migrationMarker,'1');}
@@ -378,6 +381,7 @@ void app.whenReady().then(async () => {
       timer.end();
     } catch (error) {
       timer.end("failed");
+      if (!/cancel/i.test((error as Error)?.message || "")) console.warn("[answer] failed:", model, (error as Error)?.message);
       throw error;
     }
   }
@@ -728,6 +732,7 @@ void app.whenReady().then(async () => {
       else setTimeout(() => { welcomeAsked = false; }, 600_000);
     } catch { setTimeout(() => { welcomeAsked = false; }, 600_000); }
   }
+  let checkedEntitlement: { user: string; entitlement: DesktopStatus["entitlement"] } | undefined;
   async function status(): Promise<DesktopStatus> {
     const user = await auth.user(false);
     if (!user)
@@ -753,14 +758,18 @@ void app.whenReady().then(async () => {
         )?.id,
       };
     let setup = await vault.read("setup-" + user.id, setupDefault),
-      entitlement = { active: false, reason: "offline" };
+      entitlement: DesktopStatus["entitlement"] = { active: false, reason: "offline" };
     let error;
     try {
       setup = await auth.cloud("/profile");
       await vault.write("setup-" + user.id, setup);
       entitlement = await auth.cloud("/entitlement");
+      checkedEntitlement = { user: user.id, entitlement };
     } catch (e) {
       error = (e as Error).message;
+      // A dropped connection mid-session keeps the last answer the account service gave this session: the window
+      // checks on every focus, and a failed check must not close the workspace and the answers running in it.
+      if (checkedEntitlement?.user === user.id && checkedEntitlement.entitlement.active) entitlement = checkedEntitlement.entitlement;
     }
     return {
       configured: !!auth.client,
@@ -895,6 +904,15 @@ void app.whenReady().then(async () => {
   // Back at the window after a pause: the AI is made ready while the person types, not after they send.
   window.on("focus", () => { if (providerOwner && providerOwner !== "signed-out") prepareLast(providerOwner); });
   window.on("query-session-end", () => { quitting = true; });
+  // A window whose page crashed (out of memory, a GPU fault) is reloaded instead of left blank; the answers it was
+  // showing keep running in this process and reach it again.
+  window.webContents.on("render-process-gone", (_event, details) => {
+    noteEvent("window page stopped:", details.reason, "exit", details.exitCode);
+    if (details.reason !== "clean-exit" && !window.isDestroyed()) setTimeout(() => { if (!window.isDestroyed()) window.webContents.reload(); }, 800);
+  });
+  window.on("unresponsive", () => noteEvent("window not responding"));
+  window.on("responsive", () => noteEvent("window responding again"));
+  app.on("child-process-gone", (_event, details) => { if (details.reason !== "clean-exit") noteEvent("helper stopped:", details.type, details.reason, details.name || ""); });
   window.on("session-end", () => { quitting = true; });
   window.on("close", (event) => {
     if (quitting || !background.keepRunning) return;
@@ -1058,7 +1076,10 @@ void app.whenReady().then(async () => {
     if (request.action === "supportSend") {
       const {data,error}=await auth.client!.auth.getSession();
       if(error || !data.session) throw Error("Sign in again to contact support.");
-      return submitSupport(data.session.access_token, request);
+      const logs = request.diagnostics && request.category === "Report a bug"
+        ? await collectDiagnostics({ version: app.getVersion(), electron: process.versions.electron, logDir: join(app.getPath("userData"), "logs"), grokHomes: [join(process.env.USERPROFILE || app.getPath("home"), ".grok")] }).catch(() => undefined)
+        : undefined;
+      return submitSupport(data.session.access_token, { ...request, logs });
     }
     if (request.action === "supportCases") return auth.cloud("/support/cases");
     if (request.action === "supportReply") return auth.cloud(`/support/cases/${request.id}/reply`, { body: request.body });

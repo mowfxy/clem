@@ -1,3 +1,4 @@
+import {splitLogs} from '../../core/support-logs';
 import {useEffect,useRef,useState} from 'react';
 import {adminApi,mailApi,type CaseRow} from './api';
 import {Avatar,Badge,Empty,ErrorNote,I,PageHead,Skeleton,ago,date,useLoad,useToast,who,Select} from './ui';
@@ -66,7 +67,7 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
     </header>
     <div className="adm-case-body">
       <div className="adm-thread">
-        <article className="adm-msg user"><Avatar person={{id:c.owner_id,email:c.email,username:c.username}} size={30}/><div><header><strong>{who({email:c.email,username:c.username,display_name:c.display_name})}</strong><small>{ago(c.created_at)}</small></header><p>{c.message}</p></div></article>
+        <article className="adm-msg user"><Avatar person={{id:c.owner_id,email:c.email,username:c.username}} size={30}/><div><header><strong>{who({email:c.email,username:c.username,display_name:c.display_name})}</strong><small>{ago(c.created_at)}</small></header><p>{splitLogs(c.message).text}</p>{splitLogs(c.message).logs&&<details className="adm-logs"><summary>Diagnostic logs</summary><pre>{splitLogs(c.message).logs}</pre></details>}</div></article>
         {messages.map(m=><article key={m.id} className={`adm-msg ${m.author}`}>{m.author==='user'?<Avatar person={{id:c.owner_id,email:c.email,username:c.username}} size={30}/>:<span className="adm-msg-mark">{m.author==='note'?<I name="note" size={15}/>:'M'}</span>}<div><header><strong>{m.author==='user'?who({email:c.email,username:c.username}):m.author==='note'?'Internal note':'Mowr support'}</strong><small>{ago(m.created_at)}</small></header><p>{m.body}</p></div></article>)}
         {seen&&<p className="adm-seen"><I name="check" size={13}/>Seen in the app</p>}
         <div ref={end}/>

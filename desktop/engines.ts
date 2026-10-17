@@ -62,7 +62,22 @@ export class CodexEngine {
   private job: Promise<boolean> | null = null;
   /** Called after a newer build is in place, so cached model lists are read again with it. */
   onUpdated: () => void = () => {};
-  constructor(bundled: string, root: string) { this.bundled = bundled; this.root = join(root, 'engines', 'codex'); this.pick(); }
+  constructor(bundled: string, root: string) { this.bundled = bundled; this.root = join(root, 'engines', 'codex'); this.pick(); void this.prune(); }
+  /**
+   * At start no Codex is running yet, so only the newest downloaded build is kept (each is about 420 MB); the build an
+   * update replaces stays until then, in case a chat is still using it. Unpacking left behind by a closed Mowr goes too.
+   */
+  private async prune() {
+    const keep = this.current?.version;
+    if (!keep) return;
+    try {
+      for (const entry of readdirSync(this.root, {withFileTypes: true})) {
+        if (entry.name === keep || entry.name === 'checked.json') continue;
+        if ((entry.isDirectory() && /^\d+\.\d+\.\d+$/.test(entry.name) && newer(keep, entry.name)) || entry.name.startsWith('.staging-'))
+          await rm(join(this.root, entry.name), {recursive: true, force: true}).catch(() => {});
+      }
+    } catch { /* nothing installed yet */ }
+  }
   private installed() {
     try {
       return readdirSync(this.root, {withFileTypes: true})
