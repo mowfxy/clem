@@ -41,16 +41,19 @@ try {
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Display name").fill("Test Person");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByLabel("Enable memory").uncheck();
+  await page.getByRole("radio", { name: /Start fresh/ }).check();
   await page.getByText("3 OF 4", { exact: false }).waitFor();
   assert.equal(await page.getByText("$2").count(), 0, "no plan step");
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  assert.equal(await page.getByLabel("Enable memory").isChecked(), false);
+  assert.equal(await page.getByRole("radio", { name: /Remember/ }).isChecked(), false);
+  assert.ok(await page.getByRole("radio", { name: /Start fresh/ }).isChecked());
   // The last step connects an AI; the workspace opens only once one is connected.
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByText("4 OF 4", { exact: false }).waitFor();
-  assert.ok(await page.getByRole("button", { name: "Open workspace", exact: true }).isDisabled(), "needs a connected AI first");
+  const finish = page.locator(".setup-finish");
+  assert.ok(await finish.isDisabled(), "needs a connected AI first");
+  assert.equal(await finish.isVisible(), false, "stays out of sight until an AI is connected");
   await page.emulateMedia({ reducedMotion: "reduce" });
   assert.equal(
     await page

@@ -1,6 +1,7 @@
 import {Illustration} from "../Illustrations";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Logo } from "../Icons";
+import type { Scene } from "../vectorFilm";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Icon, Logo } from "../Icons";
 import { desktop } from "./bridge";
 import { FirstProvider } from "./FirstProvider";
 import { bootDone } from "../boot";
@@ -29,6 +30,9 @@ function SetupContent() {
     [memory, setMemory] = useState(true),
     [availability, setAvailability] = useState(""),
     [aiConnected, setAiConnected] = useState(false);
+  // Which way the steps are moving, and whether the current one is on its way out.
+  const [direction, setDirection] = useState<"next" | "back">("next"),
+    [leaving, setLeaving] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   // While reading offline, check quietly for the connection so sending comes back on its own.
   useEffect(() => {
@@ -95,6 +99,19 @@ function SetupContent() {
       setBusy(false);
     }
   }
+  /** Lets the current step slide away before the next one arrives. */
+  async function move(to: number, work: () => Promise<void>) {
+    setDirection(to < (state?.setup.step || 0) ? "back" : "next");
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setLeaving(true);
+      await new Promise((r) => setTimeout(r, 230));
+    }
+    try {
+      await work();
+    } finally {
+      setLeaving(false);
+    }
+  }
   async function save(step: number) {
     await desktop!.invoke({
       action: "setup",
@@ -127,20 +144,47 @@ function SetupContent() {
     );
   const step = state?.setup.step || 0;
   const titles = [
-    "Your username.",
-    "Your name.",
+    "Pick a username.",
+    "What should we call you?",
     "Remember what matters?",
     "Connect your AI.",
   ];
+  const lines = [
+    "It’s yours alone, and how people find you.",
+    "Your name, the way you like to hear it.",
+    "Mowr can keep useful context between chats. It syncs to your account; files stay on this PC.",
+    "Use the subscription you already have. You can add more in Settings → Models.",
+  ];
+  // Every screen gets its own drawing, so the setup reads as a short walk rather than one form.
+  const scene: Scene = !state?.user
+    ? browserPending ? "plane" : "house"
+    : state.entitlement.reason === "suspended" ? "lock"
+    : state.entitlement.reason === "offline" && step >= 3 ? "unlink"
+    : (["key", "wave", "jar", aiConnected ? "link" : "plug"] as const)[Math.min(step, 3)];
+  const initial = name.trim().charAt(0).toUpperCase();
   return (
-    <main className="desktop-setup">
+    <main className="desktop-setup" data-step={state?.user ? Math.min(step, 3) : "welcome"}>
+      <SetupBackdrop />
       <div className="setup-layout">
+        {state?.user && state.entitlement.reason !== "suspended" && !(state.entitlement.reason === "offline" && step >= 3) && (
+          <div className="setup-progress" role="progressbar" aria-label={`Step ${Math.min(step + 1, 4)} of 4`} aria-valuemin={1} aria-valuemax={4} aria-valuenow={Math.min(step + 1, 4)}>
+            <span className="setup-progress-fill" style={{ "--progress": Math.min(step, 3) / 3 } as CSSProperties} />
+            {[0, 1, 2, 3].map((index) => (
+              <span key={index} className="setup-progress-dot" data-complete={index <= step} data-current={index === Math.min(step, 3)} />
+            ))}
+          </div>
+        )}
         <section
           key={state?.user ? `step-${step}` : "welcome"}
           className="setup-card"
           aria-busy={busy}
+          data-direction={direction}
+          data-leaving={leaving || undefined}
         >
-          <Illustration scene={state?.user ? (step===2?"sprout":step===3?"bridge":"pencil") : "kite"} className="setup-idle-art"/>
+          <div className="setup-art" key={scene}>
+            <span className="setup-halo" aria-hidden="true" />
+            <Illustration scene={scene} className="setup-idle-art" />
+          </div>
           {state?.user && state.entitlement.reason === "suspended" ? (
             <>
               <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Your account is paused.</h1></div>
@@ -168,11 +212,11 @@ function SetupContent() {
             </>
           ) : !state.user ? (
             <>
-              <div className="setup-welcome-heading"><Logo size={36} thinking={browserPending}/><h1 ref={heading} tabIndex={-1}>Welcome to Mowr.</h1></div>
+              <div className="setup-welcome-heading"><Logo size={40} thinking={browserPending}/><h1 ref={heading} tabIndex={-1}>Welcome to Mowr.</h1></div>
               <p>
                 {browserPending
                   ? "Finish signing in in your browser. We’ll bring you back automatically."
-                  : "Your workspace starts here."}
+                  : "A calm place for your projects, study and documents."}
               </p>
               <button
                 className="primary browser-signin"
@@ -202,11 +246,11 @@ function SetupContent() {
               <h1 ref={heading} tabIndex={-1}>
                 {titles[Math.min(step, 3)]}
               </h1>
+              <p>{lines[Math.min(step, 3)]}</p>
               {step >= 3 ? (
                 <>
-                  <p>Use the subscription you already have. You can add more in Settings → Models.</p>
                   <FirstProvider onConnected={setAiConnected} />
-                  <button className="primary setup-finish" disabled={busy || !aiConnected} onClick={() => void run(() => save(4))}>
+                  <button className="primary setup-finish" data-ready={aiConnected} disabled={busy || !aiConnected} onClick={() => void run(() => move(4, () => save(4)))}>
                     {busy ? "Saving…" : "Open workspace"}
                   </button>
                 </>
@@ -214,70 +258,63 @@ function SetupContent() {
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void run(async () => {
-                    await save(step + 1);
-                  });
+                  void run(() => move(step + 1, () => save(step + 1)));
                 }}
               >
                 {step === 0 ? (
                   <>
-                    <p>Unique to you.</p>
-                    <label>
-                      Username
-                      <input
-                        autoFocus
-                        value={username}
-                        maxLength={24}
-                        onChange={(e) =>
-                          setUsername(
-                            e.target.value
-                              .normalize("NFKC")
-                              .toLowerCase()
-                              .trim(),
-                          )
-                        }
-                        autoComplete="username"
-                        spellCheck={false}
-                      />
+                    <label className="setup-field">
+                      <span className="setup-field-label">Username</span>
+                      <span className="setup-input" data-state={availability === "Available" ? "ok" : availability && availability !== "Checking…" ? "bad" : undefined}>
+                        <span className="setup-input-prefix" aria-hidden="true">@</span>
+                        <input
+                          autoFocus
+                          aria-label="Username"
+                          value={username}
+                          maxLength={24}
+                          onChange={(e) =>
+                            setUsername(
+                              e.target.value
+                                .normalize("NFKC")
+                                .toLowerCase()
+                                .trim(),
+                            )
+                          }
+                          autoComplete="username"
+                          spellCheck={false}
+                        />
+                        <span className="setup-input-mark" aria-hidden="true"><Icon name="check" size={15} /></span>
+                      </span>
                     </label>
                     <p
                       className="availability"
                       role="status"
                       aria-live="polite"
+                      data-state={availability === "Available" ? "ok" : undefined}
                     >
                       {availability}
                     </p>
                   </>
                 ) : step === 1 ? (
-                  <>
-                    <p>A name that feels like you.</p>
-                    <label>
-                      Display name
+                  <label className="setup-field">
+                    <span className="setup-field-label">Display name</span>
+                    <span className="setup-input setup-input-name">
+                      <span className="setup-avatar" data-filled={!!initial} aria-hidden="true">
+                        <span key={initial}>{initial || "·"}</span>
+                      </span>
                       <input
                         autoFocus
+                        aria-label="Display name"
                         value={name}
                         maxLength={80}
                         onChange={(e) => setName(e.target.value)}
                         autoComplete="nickname"
                         required
                       />
-                    </label>
-                  </>
+                    </span>
+                  </label>
                 ) : step === 2 ? (
-                  <>
-                    <p>Keep useful context for next time.</p>
-                    <label className="setup-choice">
-                      <input
-                        type="checkbox"
-                        checked={memory}
-                        onChange={(e) => setMemory(e.target.checked)}
-                      />
-                      Enable memory
-                    </label>
-                    <p className="fine">
-                      Memory syncs to your account. Files stay local. Mowr is free.
-                    </p>
-                  </>
+                  <MemoryChoice value={memory} onChange={setMemory} />
                 ) : null}
                 <button
                   className="primary"
@@ -288,6 +325,7 @@ function SetupContent() {
                   }
                 >
                   {busy ? "Saving…" : "Continue"}
+                  <Icon name="arrow" size={15} />
                 </button>
               </form>
               )}
@@ -295,33 +333,13 @@ function SetupContent() {
                 {step > 0 && (
                   <button
                     disabled={busy}
-                    onClick={() => void run(() => save(step - 1))}
+                    onClick={() => void run(() => move(step - 1, () => save(step - 1)))}
                   >
                     Back
                   </button>
                 )}
-                {step === 2 && (
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        setMemory(false);
-                        await desktop!.invoke({
-                          action: "setup",
-                          step: 3,
-                          username,
-                          displayName: name,
-                          memory: false,
-                        });
-                        await refresh();
-                      })
-                    }
-                  >
-                    Skip for now
-                  </button>
-                )}
                 {step === 3 && (
-                  <button disabled={busy} onClick={() => void run(() => save(4))}>
+                  <button disabled={busy} onClick={() => void run(() => move(4, () => save(4)))}>
                     Skip for now
                   </button>
                 )}
@@ -345,35 +363,57 @@ function SetupContent() {
               {error}
             </p>
           )}
-          {state?.user && (
-            <div
-              className="setup-progress"
-              aria-label={`Step ${Math.min(step + 1, 4)} of 4`}
-            >
-              {[0, 1, 2, 3].map((index) => (
-                <span key={index} data-complete={index <= step} />
-              ))}
-            </div>
-          )}
-          <p className="setup-legal">
-            <a
-              href="https://mowrai.com/#/privacy"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Privacy
-            </a>{" "}
-            ·{" "}
-            <a
-              href="https://mowrai.com/#/terms"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Terms
-            </a>
-          </p>
         </section>
+        <p className="setup-legal">
+          <a href="https://mowrai.com/#/privacy" target="_blank" rel="noreferrer">Privacy</a>
+          {" · "}
+          <a href="https://mowrai.com/#/terms" target="_blank" rel="noreferrer">Terms</a>
+        </p>
       </div>
     </main>
+  );
+}
+
+/** Two cards instead of a checkbox: what memory does, and what starting fresh means. */
+function MemoryChoice({ value, onChange }: { value: boolean; onChange: (on: boolean) => void }) {
+  const options = [
+    { on: true, title: "Remember", line: "Your preferences and what you’re working on carry into every chat." },
+    { on: false, title: "Start fresh", line: "Every chat begins clean. Turn memory on later in Settings." },
+  ];
+  return (
+    <div className="memory-choice" role="radiogroup" aria-label="Memory">
+      {options.map((option) => (
+        <label key={option.title} className="memory-option" data-on={value === option.on}>
+          <input type="radio" name="memory" checked={value === option.on} onChange={() => onChange(option.on)} />
+          <span className="memory-option-art" aria-hidden="true">
+            {option.on ? (
+              <svg viewBox="0 0 32 32"><path d="M16 4.5c-4.6 0-8 3.3-8 7.6 0 2.5 1.2 4.4 2.9 5.8 1 .8 1.6 2 1.6 3.3v1.3h7v-1.3c0-1.3.6-2.5 1.6-3.3 1.7-1.4 2.9-3.3 2.9-5.8 0-4.3-3.4-7.6-8-7.6Z" /><path d="M13 26.5h6" /><path className="memory-spark" d="M16 9v4M14 11h4" /></svg>
+            ) : (
+              <svg viewBox="0 0 32 32"><path d="M6 9.5h20M6 16h14M6 22.5h9" /><path className="memory-spark" d="M23 21l4 4M27 21l-4 4" /></svg>
+            )}
+          </span>
+          <span className="memory-option-text">
+            <b>{option.title}</b>
+            <small>{option.line}</small>
+          </span>
+          <span className="memory-option-tick" aria-hidden="true"><Icon name="check" size={13} /></span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** Slow light behind the setup: three soft glows that drift, and settle somewhere new on every step. */
+function SetupBackdrop() {
+  return (
+    <div className="setup-backdrop" aria-hidden="true">
+      <span className="setup-glow setup-glow-a" />
+      <span className="setup-glow setup-glow-b" />
+      <span className="setup-glow setup-glow-c" />
+      <span className="setup-motes">
+        {Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i * 37) % 100}%`, "--d": `${14 + ((i * 7) % 11)}s`, "--delay": `${i * -1.9}s` } as CSSProperties} />)}
+      </span>
+      <span className="setup-grain" />
+    </div>
   );
 }
