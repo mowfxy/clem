@@ -121,13 +121,13 @@ device:['F '+box(6,6,20,14),'M3 25.5h26']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
 export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
-const petal='M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C85 48 75 43 65 48 C55 52 49 43 49 31 C49 22 54 15 64 11Z';
+const petal='M68 9 C93 7 109 27 104 50 C101 63 90 71 78 70 C73 69 72 63 75 59 C80 52 76 45 68 45 C57 45 48 38 48 27 C48 16 57 10 68 9Z';
 export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){
  const ref=useRef<SVGSVGElement>(null);
  useEffect(()=>{const el=ref.current!;const media=matchMedia('(prefers-reduced-motion: reduce)');let frame=0,last=-1;const paths=Array.from(el.querySelectorAll('.mark-petal path'));
  const reset=()=>{cancelAnimationFrame(frame);frame=0;paths.forEach(p=>p.setAttribute('d',petal));};
  // Authored matching Bezier poses keep contours smooth throughout the morph.
- const gathered='M72 17 C82 17 90 25 90 35 C90 45 82 53 72 53 C66 53 62 50 59 46 C56 42 54 39 54 35 C54 25 59 20 65 18 C67 17 69 17 72 17Z'.match(/-?\d*\.?\d+/g)!.map(Number);
+ const gathered='M72 17 C81.9 17 90 25.1 90 35 C90 44.9 81.9 53 72 53 C68.3 53 64.7 51.9 61.7 49.7 C58.2 47.3 55.7 43.7 54.6 39.7 C53.2 34.5 54.2 29 57.3 24.7 C60.6 19.9 66.1 17 72 17Z'.match(/-?\d*\.?\d+/g)!.map(Number);
  const started=performance.now();
  const ease=(t:number)=>{const x=Math.max(0,Math.min(1,t));return x*x*(3-2*x);};
  const tick=(now:number)=>{const cel=Math.floor(now/24);if(cel!==last){last=cel;paths.forEach((path,i)=>{

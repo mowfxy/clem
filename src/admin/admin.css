@@ -6,7 +6,7 @@
 .adm-root h1{font-family:var(--serif);font-weight:400;letter-spacing:var(--track-display);color:var(--a-ink)}.adm-root h2,.adm-modal h2{font-family:var(--sans);font-weight:700;letter-spacing:var(--track-title);color:var(--a-ink)}
 .adm-root h3{font:400 11px/1 var(--sans);text-transform:uppercase;letter-spacing:.12em;color:var(--a-muted);margin:0 0 12px}
 .adm-root p{line-height:1.55}
-.adm-root .ink-scene{position:relative;color:#f4f3ed}
+.adm-root .ink-scene{position:relative;color:var(--illustration-ink)}
 .adm-root .ink-scene>svg{width:100%;height:auto;display:block;overflow:visible}
 
 /* Controls */

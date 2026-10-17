@@ -16,7 +16,7 @@ export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,bu
 export const animated:ReadonlySet<Scene>=new Set(Object.keys(loopSeconds) as Scene[]);
 type P=[number,number];
 type Style={fill?:string;w?:number;smooth?:boolean;closed?:boolean;opacity?:number;k?:number;holes?:P[][]};
-const INK='#f3f2ec',TAU=Math.PI*2,LINE=4.8,FINE=3.8,THIN=3;
+const INK='currentColor',TAU=Math.PI*2,LINE=4.8,FINE=3.8,THIN=3;
 // The palette: one of these per drawing, on one small element.
 const BLUE='#6a9bcc',GREEN='#8fae8e',LILAC='#cbcadb',PINK='#c46686',SAND='#c8b48c',CLAY='#c27a5f';
 const clamp=(x:number)=>Math.max(0,Math.min(1,x));
