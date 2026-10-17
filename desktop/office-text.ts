@@ -26,6 +26,28 @@ function paragraphs(xml: string, tag: "w" | "a") {
 const numbered = (files: Record<string, Uint8Array>, pattern: RegExp) =>
   Object.keys(files).filter((k) => pattern.test(k)).sort((a, b) => Number(pattern.exec(a)![1]) - Number(pattern.exec(b)![1]));
 
+const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+/** A part's relationships (its `_rels/*.rels`): each id and the part it points to, as a path in the package. */
+function related(files: Record<string, Uint8Array>, part: string) {
+  const dir = part.slice(0, part.lastIndexOf("/") + 1), out = new Map<string, string>();
+  const rels = files[`${dir}_rels/${part.slice(dir.length)}.rels`];
+  if (!rels) return out;
+  for (const [tag] of strFromU8(rels).matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = attr(tag, "Id"), target = attr(tag, "Target");
+    if (!id || !target || attr(tag, "TargetMode") === "External") continue;
+    const path: string[] = [];
+    for (const seg of (target.startsWith("/") ? decode(target).slice(1) : dir + decode(target)).split("/")) { if (seg === "..") path.pop(); else if (seg && seg !== ".") path.push(seg); }
+    out.set(id, path.join("/"));
+  }
+  return out;
+}
+/** The parts a list in `part` names through relationship ids (`r:id`), in its order: a deck's slides, a workbook's sheets. */
+function listed(files: Record<string, Uint8Array>, part: string, tag: RegExp) {
+  const rels = related(files, part);
+  if (!files[part] || !rels.size) return [];
+  return [...strFromU8(files[part]).matchAll(tag)].map(([t]) => ({ key: rels.get(/\s[\w-]+:id="([^"]*)"/.exec(t)?.[1] || "") || "", tag: t })).filter((p) => files[p.key]);
+}
+
 function docx(files: Record<string, Uint8Array>, name: string) {
   const body = files["word/document.xml"];
   if (!body) throw Error("not a Word document");
@@ -35,21 +57,25 @@ function docx(files: Record<string, Uint8Array>, name: string) {
 }
 
 function pptx(files: Record<string, Uint8Array>, name: string) {
-  const slides = numbered(files, /^ppt\/slides\/slide(\d+)\.xml$/);
+  // In the deck's own order (presentation.xml), which need not follow the slides' file numbers.
+  const ordered = listed(files, "ppt/presentation.xml", /<(?:\w+:)?sldId\b[^>]*>/g).map((p) => p.key);
+  const slides = ordered.length ? ordered : numbered(files, /^ppt\/slides\/slide(\d+)\.xml$/);
   if (!slides.length) throw Error("not a PowerPoint deck");
   return slides.map((key, i) => {
-    const n = /(\d+)\.xml$/.exec(key)![1];
-    const notes = files[`ppt/notesSlides/notesSlide${n}.xml`];
+    const own = related(files, key);
+    const notes = files[own.size ? [...own.values()].find((t) => t.startsWith("ppt/notesSlides/")) || "" : `ppt/notesSlides/notesSlide${/(\d+)\.xml$/.exec(key)?.[1]}.xml`];
     const noteText = notes ? paragraphs(strFromU8(notes), "a").split("\n").filter((l) => !/^\d+$/.test(l.trim())).join("\n") : "";
     return `[${name}, slide ${i + 1}]\n${paragraphs(strFromU8(files[key]), "a")}${noteText.trim() ? `\nSpeaker notes: ${noteText}` : ""}`;
   }).join("\n\n");
 }
 
 function xlsx(files: Record<string, Uint8Array>, name: string) {
-  const sheets = numbered(files, /^xl\/worksheets\/sheet(\d+)\.xml$/);
+  // In the workbook's order and with its names (workbook.xml through its relationships), not by file number.
+  const ordered = listed(files, "xl/workbook.xml", /<(?:\w+:)?sheet\b[^>]*>/g).map((p) => ({ key: p.key, name: decode(attr(p.tag, "name") || "") }));
+  const sheets = ordered.length ? ordered.map((p) => p.key) : numbered(files, /^xl\/worksheets\/sheet(\d+)\.xml$/);
   if (!sheets.length) throw Error("not an Excel workbook");
   const shared = files["xl/sharedStrings.xml"] ? [...strFromU8(files["xl/sharedStrings.xml"]).matchAll(/<si>([^]*?)<\/si>/g)].map((m) => [...m[1].matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map((t) => decode(t[1])).join("")) : [];
-  const names = files["xl/workbook.xml"] ? [...strFromU8(files["xl/workbook.xml"]).matchAll(/<sheet\b[^>]*\bname="([^"]*)"/g)].map((m) => decode(m[1])) : [];
+  const names = ordered.length ? ordered.map((p) => p.name) : files["xl/workbook.xml"] ? [...strFromU8(files["xl/workbook.xml"]).matchAll(/<sheet\b[^>]*\bname="([^"]*)"/g)].map((m) => decode(m[1])) : [];
   return sheets.map((key, i) => {
     const rows: string[] = [];
     for (const row of strFromU8(files[key]).matchAll(/<row\b[^>]*>([^]*?)<\/row>/g)) {
@@ -77,7 +103,7 @@ export async function officeText(path: string, name: string) {
     let total = 0;
     const files = unzipSync(new Uint8Array(await readFile(path)), {
       filter: (f) => {
-        const wanted = kind === "docx" ? /^word\/(document|footnotes|endnotes)\.xml$/ : kind === "pptx" ? /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/ : /^xl\/(worksheets\/sheet\d+|sharedStrings|workbook)\.xml$/;
+        const wanted = kind === "docx" ? /^word\/(document|footnotes|endnotes)\.xml$/ : kind === "pptx" ? /^ppt\/((slides|notesSlides)\/[^/]+\.xml|presentation\.xml|(_rels\/presentation|slides\/_rels\/[^/]+)\.xml\.rels)$/ : /^xl\/(worksheets\/[^/]+\.xml|sharedStrings\.xml|workbook\.xml|_rels\/workbook\.xml\.rels)$/;
         if (!wanted.test(f.name)) return false;
         total += f.originalSize;
         if (total > MAX_UNZIPPED) throw Error("too large to read");

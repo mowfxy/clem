@@ -59,6 +59,15 @@ export const memoryPrint = (name: string | undefined, memories: { text: string }
 /** The fingerprint of one source excerpt (a passage of a linked file): sent once per kept session. */
 export const sourcePrint = (s: { source: string; text: string }) => blockPrint("source\u0000" + s.source + "\u0000" + s.text);
 
+/** The fingerprint of a conversation's own instructions (the system messages the window sends with each request): on a
+ *  kept session they go again whenever they differ from the ones it last received. */
+export const instructionsPrint = (text: string) => "instructions:" + blockPrint(text);
+/** What a session has been sent after this message: what it had, with the instructions it last received replaced by these. */
+export function sentAfter(before: Iterable<string>, now: string[]) {
+  const replaced = now.some((p) => p.startsWith("instructions:"));
+  return new Set([...[...before].filter((p) => !replaced || !p.startsWith("instructions:")), ...now]);
+}
+
 export class ChatSessions {
   private kept = new Map<string, KeptSession>();
   private now: () => number;

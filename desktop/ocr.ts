@@ -19,16 +19,18 @@ $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
 function Await($op, [Type]$type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
 $first = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
 $engines = @($first) + @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | Where-Object { -not $first -or $_.LanguageTag -ne $first.RecognizerLanguage.LanguageTag } | ForEach-Object { [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($_) }) | Where-Object { $_ }
+if (-not $engines) { [Console]::Error.WriteLine("Windows has no OCR language installed, so scanned pages cannot be read. Add a language with its text recognition in Settings > Time & language > Language."); exit 3 }
 $out = @()
 foreach ($path in (Get-Content -LiteralPath $List -Encoding UTF8)) {
   if (-not $path) { continue }
-  $text = ""
+  $text = $null
   try {
     $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync([IO.Path]::GetFullPath($path))) ([Windows.Storage.StorageFile])
     $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
     $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
     $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
     $best = 0
+    $text = ""
     foreach ($engine in $engines) {
       $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
       # Windows lists a right-to-left line's words from left to right on the page: Arabic and Hebrew lines are put back in reading order.
@@ -38,7 +40,7 @@ foreach ($path in (Get-Content -LiteralPath $List -Encoding UTF8)) {
       if ($best -ge 60) { break }
     }
     $stream.Dispose()
-  } catch { $text = "" }
+  } catch { $text = $null }
   $out += ,$text
 }
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -48,8 +50,9 @@ ConvertTo-Json -InputObject @($out) -Compress
 /** At most this many pages a call, so one call ends well within its time limit. */
 export const OCR_BATCH = 12;
 
-/** The text of each picture (PNG or JPEG), in order; "" for one that could not be read. */
-export async function readPictures(folder: string, pictures: Uint8Array[]): Promise<string[]> {
+/** The text of each picture (PNG or JPEG), in order; null for one that could not be read, to be tried again later.
+ *  Throws when Windows has no OCR language at all. */
+export async function readPictures(folder: string, pictures: Uint8Array[]): Promise<(string | null)[]> {
   if (process.platform !== "win32" || !pictures.length) return pictures.map(() => "");
   const work = join(folder, "ocr-" + randomUUID());
   await mkdir(work, { recursive: true });
@@ -74,7 +77,7 @@ export async function readPictures(folder: string, pictures: Uint8Array[]): Prom
       child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve(out) : reject(Error(err.trim() || "Windows could not read the scanned pages.")); });
     });
     const texts = JSON.parse(output.trim().replace(/^﻿/, "") || "[]");
-    return paths.map((_, i) => (typeof texts[i] === "string" ? texts[i] : ""));
+    return paths.map((_, i) => (typeof texts[i] === "string" ? texts[i] : null));
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => {});
   }

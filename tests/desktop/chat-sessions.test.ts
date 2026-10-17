@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ChatSessions, COMPACT_AT_TOKENS, KEEP_MS, MAX_KEPT, blockPrint, conversationPrint } from "../../desktop/chat-sessions.ts";
+import { ChatSessions, COMPACT_AT_TOKENS, KEEP_MS, MAX_KEPT, blockPrint, conversationPrint, instructionsPrint, sentAfter } from "../../desktop/chat-sessions.ts";
 import { runKinetraTurn, SessionLost, BATCH_NOTE, LONE_STEPS, batchParts } from "../../desktop/kinetra-turn.ts";
 import { StepCounter } from "../../desktop/tool-status.ts";
 import { fileIndex } from "../../core/source-context.ts";
@@ -49,6 +49,16 @@ test("kept sessions are ended when idle, beyond the limit, on delete and on sign
   store.keep("u:c1", session({ session: "x" }, ended));
   store.clear();
   assert.equal(ended.at(-1), "x");
+});
+
+test("a kept session remembers only the instructions it last received", () => {
+  const a = instructionsPrint("Plan A"), b = instructionsPrint("Plan B"), note = blockPrint("note");
+  const first = sentAfter([], [note, a]);
+  assert.ok(first.has(a) && first.has(note));
+  // Unchanged instructions stay as received; changed ones replace them, so going back to A sends A again.
+  const second = sentAfter(first, [b]);
+  assert.deepEqual([...second].sort(), [note, b].sort());
+  assert.equal(sentAfter(second, [note]).has(b), true);
 });
 
 test("the conversation fingerprint follows the person's words and the order of answers, not how answers are shown", () => {

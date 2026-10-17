@@ -194,7 +194,7 @@ export async function slideReviewer() {
     /** Contact sheets of the slides (numbered), at most `limit` pictures. */
     async sheets(slides: SlideRecord[], W: number, H: number, limit = 4) {
       const perRow = slides.length > 18 ? 3 : 2, scale = perRow === 3 ? 0.5 : 0.75, per = perRow * (perRow === 3 ? 4 : 3);
-      const cellW = W * PT * scale, cellH = H * PT * scale, out: { name: string; jpeg: Uint8Array }[] = [];
+      const cellW = W * PT * scale, cellH = H * PT * scale, out: { name: string; first: number; last: number; jpeg: Uint8Array }[] = [];
       for (let start = 0; start < slides.length && out.length < limit; start += per) {
         const group = slides.slice(start, start + per), rows = Math.ceil(group.length / perRow);
         const body = `<div class="sheet" style="grid-template-columns:repeat(${perRow},${cellW}px)">${group.map((s, i) => `<div class="cell" style="width:${cellW}px;height:${cellH}px"><b>${start + i + 1}</b><div style="transform:scale(${scale});transform-origin:0 0">${slideHtml(s, start + i, W, H)}</div></div>`).join("")}</div>`;
@@ -202,7 +202,7 @@ export async function slideReviewer() {
         await load(body, width, height);
         await new Promise((done) => setTimeout(done, 80));
         const image = await capturePage(page.webContents, { x: 0, y: 0, width: Math.ceil(width), height: Math.ceil(height) });
-        out.push({ name: `slides ${start + 1}–${start + group.length}`, jpeg: new Uint8Array(image.toJPEG(82)) });
+        out.push({ name: `slides ${start + 1}–${start + group.length}`, first: start + 1, last: start + group.length, jpeg: new Uint8Array(image.toJPEG(82)) });
       }
       return out;
     },

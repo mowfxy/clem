@@ -182,7 +182,7 @@ const initials = (name: string) => name.split(/\s+/).filter((w) => /^\p{L}/u.tes
 type Raster = Awaited<ReturnType<typeof rasterizer>>;
 type Shot = { png: Uint8Array; width: number; height: number };
 /** What the review found and could not fix by itself, and pictures of the slides for the model to look at. */
-export type DeckResult = { bytes: Uint8Array; slides: number; review: string[]; design: Record<string, unknown>; sheets: { name: string; jpeg: Uint8Array }[]; figures: DrawnFigure[] };
+export type DeckResult = { bytes: Uint8Array; slides: number; review: string[]; design: Record<string, unknown>; sheets: { name: string; first: number; last: number; jpeg: Uint8Array }[]; figures: DrawnFigure[] };
 
 /** Every string of a specification without the control characters XML cannot hold: pptxgenjs writes them as they are,
  *  and PowerPoint then refuses the whole file. A vertical tab or form feed (a line or page break) becomes a new line. */
@@ -239,7 +239,8 @@ export async function powerpointDeck(input: DeckSpec, { preview = false }: { pre
     const left = [...findings, ...staticFindings(records, W, 7.5)];
     const review = [...notes, ...[...new Map(left.map((f) => [`${f.slide}:${f.problem}`, f])).values()].slice(0, 25).map((f) => `Slide ${f.slide}: ${f.problem}.`)];
     if (adjust.size) review.push(`The review reduced the type in ${adjust.size} text box${adjust.size === 1 ? "" : "es"} so ${adjust.size === 1 ? "it fits" : "they fit"}; shorter text would read better there.`);
-    const sheets = preview ? await reviewer.sheets(records, W, 7.5, 4) : [];
+    // Every slide is photographed (up to 12 sheets), so the sheets the model has not seen (changed or added slides) can go first.
+    const sheets = preview ? await reviewer.sheets(records, W, 7.5, 12) : [];
     const design = { archetype: theme.archetype, colors: { background: "#" + theme.bg, text: "#" + theme.text, accents: [theme.accent, theme.accent2, theme.accent3].map((c) => "#" + c) }, fonts: { heading: theme.head, body: theme.body }, cover: theme.cover, decoration: theme.decor, art: theme.art, icons: theme.icons };
     const shown = [...drawn].sort((a, b) => a[0] - b[0]).map(([k, svg]) => {
       const s = spec.slides[k];

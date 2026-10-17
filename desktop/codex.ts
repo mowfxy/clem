@@ -6,7 +6,7 @@ import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
 import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn,SessionLost,type AnswerGates} from "./kinetra-turn.ts";
-import {blockPrint,type ChatSessions} from "./chat-sessions.ts";
+import {blockPrint,sentAfter,type ChatSessions} from "./chat-sessions.ts";
 import {addTokens,type TurnStats} from "./turn-timing.ts";
 import {StepCounter} from "./tool-status.ts";
 import {kinetraMcp,codexMcpConfig,inlinePictures,keepingAlive,NATIVE_NOTE,type NativeEndpoint,type NativeCall} from "./kinetra-mcp.ts";
@@ -576,7 +576,7 @@ export class Codex {
       // The thread that wrote the answer stays for the chat's next message, with its endpoint (routed to nothing between answers).
       const threadId=session.threadId,server=this.server;
       if(keep&&threadId&&server&&!turn.cancelled){
-        const sent=new Set([...(stats?.continued&&kept?kept.sent:[]),...keep.blocks.map(blockPrint),...(keep.prints||[]),blockPrint(instructions)]);
+        const sent=sentAfter(stats?.continued&&kept?kept.sent:[],[...keep.blocks.map(blockPrint),...(keep.prints||[]),blockPrint(instructions)]);
         const ep=endpoint,mcp=session.mcp;
         this.threads.set(threadId,{server,endpoint:ep,route,mcp});
         keep.store.keep(keep.key,{provider:"codex",account:keep.account,model:selection?.model||"",session:threadId,history:keep.after,sent,end:()=>{this.threads.delete(threadId);ep?.close();}});
