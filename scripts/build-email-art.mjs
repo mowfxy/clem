@@ -6,7 +6,6 @@ import {chromium} from 'playwright';
 import gifenc from 'gifenc';
 const {GIFEncoder,quantize,applyPalette}=gifenc;
 import {filmFrame,loopSeconds} from '../src/vectorFilm.ts';
-import {markSvg,MARK_LOOP} from '../src/brand/mark.ts';
 
 // Scenes sit on the email card; the mark sits on the page background.
 const OUT='public/email',BG='#1b1b19',PAGE='#121211',INK='#f0efeb',MARK='#d9473e';
@@ -29,14 +28,18 @@ function encode(frames,w,h,file){
   console.log(`${file}: ${frames.length} frames, ${Math.round(gif.bytes().length/1024)} KB`);
 }
 
-// Mowr mark: the pen writes the m, holds and lifts it, as in the app's thinking state.
+// Mowr mark: each petal gathers toward the centre and opens again, staggered, as in the app's thinking state.
+const petal='M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C85 48 75 43 65 48 C55 52 49 43 49 31 C49 22 54 15 64 11Z';
+const gathered='M72 17 C82 17 90 25 90 35 C90 45 82 53 72 53 C66 53 62 50 59 46 C56 42 54 39 54 35 C54 25 59 20 65 18 C67 17 69 17 72 17Z'.match(/-?\d*\.?\d+/g).map(Number);
+const ease=t=>{const x=Math.max(0,Math.min(1,t));return x*x*(3-2*x);};
 function mark(ms){
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><rect width="144" height="144" fill="${PAGE}"/>${markSvg(ms,MARK)}</svg>`;
+  const paths=[0,1,2,3].map(i=>{const t=((ms%3600)-i*100)/2600,blend=t<.12?0:t<.4?ease((t-.12)/.28):t<.54?1:1-ease((t-.54)/.34);let j=0;const d=petal.replace(/-?\d*\.?\d+/g,v=>{const f=Number(v);return (f+(gathered[j++]-f)*blend).toFixed(2);});return `<path transform="rotate(${i*90} 72 72)" d="${d}" fill="${MARK}"/>`;}).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><rect width="144" height="144" fill="${PAGE}"/>${paths}</svg>`;
 }
 {
   const size=96,frames=[];
-  frames.push([await raster(mark(),size,size),900]);
-  for(let ms=0;ms<MARK_LOOP;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
+  frames.push([await raster(mark(0),size,size),900]);
+  for(let ms=0;ms<3600;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
   encode(frames,size,size,'mowr-mark.gif');
 }
 

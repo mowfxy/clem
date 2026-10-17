@@ -82,7 +82,7 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
       <h2>Drag it into any chat.</h2>
       <p>WhatsApp, Discord, Teams, email — anywhere you can drop a file.</p>
       <div className="sh-file" draggable={!!result.path} onDragStart={e=>{if(result.path&&desktop?.startDrag){e.preventDefault();desktop.startDrag(result.path);}}} aria-description={result.path?'Drag me':''}>
-        <span className="sh-file-icon"><svg viewBox="0 0 144 144" width="26" height="26" aria-hidden="true"><path d="M15 113 V63 C15 43 25 31 40 31 C55 31 65 43 65 63 V105 V63 C65 43 75 31 90 31 C105 31 115 43 115 63 V93 C115 105 121 113 129 109" fill="none" stroke="currentColor" strokeWidth="19" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+        <span className="sh-file-icon"><svg viewBox="0 0 144 144" width="26" height="26" fill="currentColor" aria-hidden="true">{[0,90,180,270].map(a=><path key={a} transform={`rotate(${a} 72 72)`} d="M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C85 48 75 43 65 48 C55 52 49 43 49 31 C49 22 54 15 64 11Z"/>)}</svg></span>
         <span><strong>{result.name}</strong><small>{result.summary} · {sizeLabel(result.size)}</small></span>
         {result.path&&<span className="sh-grip" aria-hidden="true">⠿</span>}
       </div>
