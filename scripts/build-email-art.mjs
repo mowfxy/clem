@@ -28,19 +28,17 @@ function encode(frames,w,h,file){
   console.log(`${file}: ${frames.length} frames, ${Math.round(gif.bytes().length/1024)} KB`);
 }
 
-// Mowr mark: the arms draw in one after another, the knot turns a third and opens again, as in the app's thinking
-// state (Logo in src/Icons.tsx).
-const arm='M62 87C60.6 83 55.2 70.5 53.5 63C51.8 55.5 51.1 48.2 52 42C52.9 35.8 55.3 30 59 26C62.7 22 69.2 18.8 74 18C78.8 17.2 84.5 19 88 21C91.5 23 93.7 26.7 95 30C96.3 33.3 95.8 39.2 96 41',numbers=arm.match(/-?\d*\.?\d+/g).map(Number),gathered=numbers.map(v=>72+(v-72)*.74);
-const ease=t=>{const x=Math.max(0,Math.min(1,t));return x*x*(3-2*x);};
+// Mowr mark: a ripple runs out from the centre of the seed head, as in the app's thinking state
+// (Logo in src/Icons.tsx; geometry and motion from core/mark.ts, repeated here in plain JS).
+const step=39.5/Math.sqrt(24.5),seeds=Array.from({length:24},(_,k)=>[step*Math.sqrt(k+.5)*Math.cos(k*2.39996323),step*Math.sqrt(k+.5)*Math.sin(k*2.39996323),step*(.45+.37*((k+1)/24)**1.1)]);
 function mark(ms){
-  const cycle=ms%3600,turn=(120*ease((cycle/3600-.2)/.42)).toFixed(2);
-  const paths=[0,1,2].map(i=>{const t=(cycle-i*100)/2600,blend=t<.12?0:t<.4?ease((t-.12)/.28):t<.54?1:1-ease((t-.54)/.34);let j=0;const d=arm.replace(/-?\d*\.?\d+/g,()=>{const f=numbers[j];return (f+(gathered[j++]-f)*blend).toFixed(2);});return `<path transform="rotate(${i*120} 72 72)" d="${d}"/>`;}).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="8.5 4.5 122 122"><rect x="8.5" y="4.5" width="122" height="122" fill="${PAGE}"/><g transform="rotate(${turn} 72 72)" fill="none" stroke="${MARK}" stroke-width="14.5" stroke-linecap="round">${paths}</g></svg>`;
+  const t=ms/1000,dots=seeds.map(([x,y,r],k)=>`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${(r*(1+.32*Math.sin(2*Math.PI*t/1.9-Math.sqrt(k)*1.15))).toFixed(2)}"/>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-45 -45 90 90"><rect x="-45" y="-45" width="90" height="90" fill="${PAGE}"/><g fill="${MARK}">${dots}</g></svg>`;
 }
 {
   const size=96,frames=[];
   frames.push([await raster(mark(0),size,size),900]);
-  for(let ms=0;ms<3600;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
+  for(let ms=0;ms<1900;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
   encode(frames,size,size,'mowr-mark.gif');
 }
 

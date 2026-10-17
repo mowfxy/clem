@@ -1,9 +1,9 @@
 // The desktop app's opening screen: Mowr's mark, drawn before any of the app has loaded and kept until the workspace
-// is ready (the app calls window.mowrBoot.done()). Plain script so it paints on the first frame. The arm, viewBox and
-// the gather-turn-open motion match MARK and the Logo component in src/Icons.tsx.
+// is ready (the app calls window.mowrBoot.done()). Plain script so it paints on the first frame. The seed head and its
+// ripple repeat SEEDS, rippleScale and rippleTurn from core/mark.ts (the Logo component in src/Icons.tsx).
 (function () {
-  var arm = "M62 87C60.6 83 55.2 70.5 53.5 63C51.8 55.5 51.1 48.2 52 42C52.9 35.8 55.3 30 59 26C62.7 22 69.2 18.8 74 18C78.8 17.2 84.5 19 88 21C91.5 23 93.7 26.7 95 30C96.3 33.3 95.8 39.2 96 41";
-  var numbers = arm.match(/-?\d*\.?\d+/g).map(Number), gathered = numbers.map(function (v) { return 72 + (v - 72) * .74; });
+  var seeds = [], step = 39 / Math.sqrt(61.5);
+  for (var k = 0; k < 61; k++) seeds.push([step * Math.sqrt(k + .5) * Math.cos(k * 2.39996323), step * Math.sqrt(k + .5) * Math.sin(k * 2.39996323), step * (.3 + .48 * Math.pow((k + 1) / 61, 1.3))]);
   // The theme goes on before anything paints, on the web and on the desktop alike, so a light-mode start never flashes
   // dark: the choice from Settings, or by default the system's (Windows') light or dark setting. Same rule as src/theme/theme.ts.
   var theme = "dark";
@@ -31,15 +31,14 @@
   root.id = "mowr-boot";
   root.setAttribute("role", "status");
   root.setAttribute("aria-label", "Opening Mowr");
-  var ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg"), turn = document.createElementNS(ns, "g"), paths = [];
-  svg.setAttribute("viewBox", "8.5 4.5 122 122");
+  var ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg"), turn = document.createElementNS(ns, "g"), dots = [];
+  svg.setAttribute("viewBox", "-45 -45 90 90");
   svg.setAttribute("aria-hidden", "true");
-  turn.setAttribute("fill", "none"); turn.setAttribute("stroke", "currentColor"); turn.setAttribute("stroke-width", "14.5"); turn.setAttribute("stroke-linecap", "round");
-  [0, 120, 240].forEach(function (angle) {
-    var path = document.createElementNS(ns, "path");
-    path.setAttribute("transform", "rotate(" + angle + " 72 72)");
-    path.setAttribute("d", arm);
-    turn.appendChild(path); paths.push(path);
+  turn.setAttribute("fill", "currentColor");
+  seeds.forEach(function (seed) {
+    var dot = document.createElementNS(ns, "circle");
+    dot.setAttribute("cx", seed[0].toFixed(2)); dot.setAttribute("cy", seed[1].toFixed(2)); dot.setAttribute("r", seed[2].toFixed(2));
+    turn.appendChild(dot); dots.push(dot);
   });
   svg.appendChild(turn);
   var stage = document.createElement("div"), glow = document.createElement("span"), line = document.createElement("span");
@@ -49,18 +48,13 @@
   (document.body || document.documentElement).appendChild(root);
 
   var still = matchMedia("(prefers-reduced-motion: reduce)").matches, started = performance.now(), frame = 0, last = -1;
-  var ease = function (t) { var x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
   function tick(now) {
     var cel = Math.floor(now / 24);
     if (cel !== last) {
       last = cel;
-      var cycle = (now - started) % 3600;
-      turn.setAttribute("transform", "rotate(" + (120 * ease((cycle / 3600 - .2) / .42)).toFixed(2) + " 72 72)");
-      paths.forEach(function (path, i) {
-        var t = (cycle - i * 100) / 2600;
-        var blend = t < .12 ? 0 : t < .4 ? ease((t - .12) / .28) : t < .54 ? 1 : 1 - ease((t - .54) / .34), j = 0;
-        path.setAttribute("d", arm.replace(/-?\d*\.?\d+/g, function () { var from = numbers[j]; return (from + (gathered[j++] - from) * blend).toFixed(2); }));
-      });
+      var t = (now - started) / 1000;
+      turn.setAttribute("transform", "rotate(" + (t * 24 % 360).toFixed(2) + ")");
+      dots.forEach(function (dot, k) { dot.setAttribute("r", (seeds[k][2] * (1 + .32 * Math.sin(2 * Math.PI * t / 1.9 - Math.sqrt(k) * 1.15))).toFixed(2)); });
     }
     frame = requestAnimationFrame(tick);
   }
@@ -70,7 +64,7 @@
   function done() {
     if (finished) return;
     finished = true;
-    // Always show at least one gather-and-open, so a fast start still reads as an opening rather than a flicker.
+    // Always show the seed head for a moment, so a fast start still reads as an opening rather than a flicker.
     setTimeout(function () {
       root.classList.add("is-leaving");
       setTimeout(function () { cancelAnimationFrame(frame); root.remove(); style.remove(); }, 500);
