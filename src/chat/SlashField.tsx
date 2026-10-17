@@ -51,7 +51,7 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
     el.style.height = `${el.scrollHeight + parseFloat(css.borderTopWidth) + parseFloat(css.borderBottomWidth)}px`;
     el.scrollTop = top;
     m.scrollTop = el.scrollTop;
-  });
+  }, [value]);
   // Puts the caret back after the text is rewritten, unless more was typed in the meantime.
   const focusAt = (pos: number, text: string) => requestAnimationFrame(() => { const el = inputRef.current; if (!el) return; el.focus(); if (el.value !== text) return; el.setSelectionRange(pos, pos); setCaret(pos); });
 

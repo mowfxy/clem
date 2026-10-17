@@ -141,7 +141,7 @@ export function PlanSummary({plan,today=localDay(),compact=false}:{plan:SpacePla
 function PlanBox({placeholder,onAsk,disabled}:{placeholder:string;onAsk:PlanActions['onAsk'];disabled?:string}){
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[reply,setReply]=useState<{text:string;error?:boolean}|null>(null);
   const history=useRef<{role:'user'|'assistant';content:string}[]>([]);
-  const live=useRef(true);useEffect(()=>()=>{live.current=false;},[]);
+  const live=useRef(true);useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
   const submit=async(e:FormEvent)=>{
     e.preventDefault();const message=text.trim();if(!message||busy)return;
     setBusy(true);setReply(null);setText('');

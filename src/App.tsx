@@ -64,6 +64,7 @@ import {Toast} from './Toast';
 import {RenameField,PencilIcon} from './files/RenameField';
 const REPLY_SOURCE = "reply";
 /** Sent to carry on a task the plan's usage limit stopped; the conversation and the working folder hold what was done. */
+type Carry = { attachments: string[]; drive: DriveItem[] };
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
 const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : "ChatGPT";
@@ -71,11 +72,13 @@ const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : mod
 const MAX_CHAT_SOURCES = 400;
 /** The longest a change waits before the workspace is written (streamed answers change it on every token). */
 const SAVE_MS = 400;
+// While an answer streams the whole workspace would be rewritten every SAVE_MS; it waits longer then, and is written when the answer ends.
+const STREAM_SAVE_MS = 3000;
 import {SecuritySettings,IconPicker} from './AccountSettings';
 import {ModelSelector} from './ModelSelector';
 import {Legal} from './site/Legal';
 import {Login} from './Login';
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type {
   Chat,
@@ -395,6 +398,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [driveRefs, setDriveRefs] = useState<DriveItem[]>([]);
   // Chats answering right now and what each is doing. Chats run side by side; stopping one never stops another.
   const [runs, setRuns] = useState<Record<string, string>>({});
+  const answering = Object.keys(runs).length > 0;
   const controllers = useRef(new Map<string, AbortController>());
   // Chats that finished answering while the person was looking at something else.
   const [unseen, setUnseen] = useState<Set<string>>(new Set());
@@ -441,7 +445,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
   // A message waiting to be sent, bound to the chat it was written in (none: the chat on screen).
   // `from`: a sent message answered again by Retry or Edit; it and everything after it are replaced.
-  const [queued,setQueued]=useState<{prompt:string;chat?:string;from?:string}|null>(null);
+  // `carry`: the files a resent or continued message goes with, instead of what is in the message box (left as it is).
+  const [queued,setQueued]=useState<{prompt:string;chat?:string;from?:string;carry?:Carry}|null>(null);
   /** Chats whose running answer continues a task after a usage limit by itself: another limit keeps it continuing. */
   const autoContinued=useRef(new Set<string>());
   const [editingMessage,setEditingMessage]=useState<string|null>(null);
@@ -474,7 +479,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     };
   }, []);
   // Saves are coalesced: a streaming answer changes state on every token, but the workspace is written at most every
-  // SAVE_MS with the latest state, and at once when the page hides or the account changes.
+  // SAVE_MS (STREAM_SAVE_MS while any chat answers) with the latest state, and at once when an answer ends, the page
+  // hides or the account changes.
   const pendingSave = useRef<{ state: State; owner: string } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flushSave = () => {
@@ -496,8 +502,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(() => {
     if (!ready) return;
     pendingSave.current = { state, owner: ownerRef.current };
-    saveTimer.current ??= setTimeout(() => void flushSaveRef.current(), SAVE_MS);
+    saveTimer.current ??= setTimeout(() => void flushSaveRef.current(), answering ? STREAM_SAVE_MS : SAVE_MS);
   }, [state, ready]);
+  useEffect(() => { if (!answering) void flushSaveRef.current(); }, [answering]);
   useEffect(() => {
     const flush = () => void flushSaveRef.current();
     const hidden = () => { if (document.hidden) flush(); };
@@ -601,7 +608,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(()=>{const selected=models.find(m=>m.id===defaultModel);if(selected&&!selected.reasoningEfforts?.some(e=>e.reasoningEffort===defaultReasoning)){setDefaultReasoning(selected.defaultReasoningEffort||"");}},[models,defaultModel,defaultReasoning]);
   const patch = (fn: (s: State) => State) => {const next=fn(stateRef.current);stateRef.current=next;setState(next);};
   const activeChat = state.chats.find((c) => c.id === chatId);
-  const savedChats = state.chats.filter((c) => !c.temporary);
+  const savedChats = useMemo(() => state.chats.filter((c) => !c.temporary), [state.chats]);
   const isTemporary = activeChat ? !!activeChat.temporary : temporaryNext;
   // Leaving a temporary chat deletes it without a word; nothing was ever written to disk.
   const lastChat = useRef<string | null>(null);
@@ -829,6 +836,17 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setPending((p) => p.filter((f) => !gone.includes(f)));
     for (const f of gone) void deleteBlob(f.id, f.owner).catch(() => {});
   }, [attachments]);
+  // Files on the box stay with the chat they were added in: moving to another chat drops them (the effect above deletes
+  // unsent uploads), unless they were put there on purpose while moving (a file asked about in a new chat), or a
+  // message waits to be sent with them.
+  const shownFiles = useRef({ key: draftKey, attachments, driveRefs });
+  useEffect(() => {
+    const before = shownFiles.current;
+    shownFiles.current = { key: draftKey, attachments, driveRefs };
+    if (before.key === draftKey || queued) return;
+    if (attachments.length && attachments === before.attachments) setAttachments([]);
+    if (driveRefs.length && driveRefs === before.driveRefs) setDriveRefs([]);
+  }, [draftKey, attachments, driveRefs]);
   // Attachments a closed app left unsent are removed once the workspace is open.
   useEffect(() => {
     if (!ready) return;
@@ -940,7 +958,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!doneEvent) throw new Error("The response was interrupted. Try again.");
     return result;
   }
-  async function send(e?: FormEvent, override?: string) {
+  async function send(e?: FormEvent, override?: string, carry?: Carry) {
     e?.preventDefault();
     // A command typed mid-message is read as if it came first (see core/commands.ts).
     const prompt = leadingCommand((override ?? draft).trim()).trim();
@@ -950,7 +968,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       if (override === undefined) { setQueued({ prompt, chat: conversationTarget }); setDraft(""); stopChat(conversationTarget); }
       return;
     }
-    const pickedDrive = driveRefs.map(({ id, name, mimeType, modified, size, durationMs }) => ({ id, name, mimeType, modified, size, durationMs }));
+    const files = carry?.attachments ?? attachments;
+    const pickedDrive = (carry?.drive ?? driveRefs).map(({ id, name, mimeType, modified, size, durationMs }) => ({ id, name, mimeType, modified, size, durationMs }));
     if (offline) { setToast("You’re offline. Your chats and files are here to read; sending needs a connection."); return; }
     const isVisual = /^\/visual\b/i.test(prompt);
     const createSkill = /^\/skill(?=\s|$)/i.test(prompt);
@@ -966,16 +985,16 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const id = chatId || (desktop?draftChatId.current:uid());
     const messageId = uid();
     const editing = !!panelFile && panelEdit && canEditInPanel(panelFile) && !isVisual && !long && isEditRequest(prompt);
-    const pointed = pointers;
+    const pointed = carry ? [] : pointers;
     const pointerNote = pointed.length ? "\n\nThe user is pointing at these exact parts:\n" + pointed.map((p) => `- ${p.file === REPLY_SOURCE ? "From your earlier answer" : "In " + p.file}${p.page ? ", page " + p.page : ""}: ${p.text ? "“" + p.text + "”" : ""}${p.image ? (p.text ? " " : "") + "(an area of the page, attached as an image)" : ""}`).join("\n") : "";
     const user = {
       id: uid(),
       role: "user" as const,
       content: prompt,
       at: Date.now(),
-      attachments: [...new Set(attachments)],
+      attachments: [...new Set(files)],
       // The file open beside the chat is read with the message but not shown as a new attachment.
-      ...(panelFile && !attachments.includes(panelFile.id) ? { context: [panelFile.id] } : {}),
+      ...(panelFile && !files.includes(panelFile.id) ? { context: [panelFile.id] } : {}),
       ...(pickedDrive.length ? { drive: pickedDrive } : {}),
       ...(pointed.length ? { pointers: pointed.map((p) => ({ file: p.file, ...(p.fileId ? { fileId: p.fileId } : {}), page: p.page, text: p.text?.slice(0, 600), area: !!p.image, ...(p.box ? { box: p.box } : {}) })) } : {}),
     };
@@ -1007,13 +1026,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     }));
     if (!chatId) { carriedChat.current = id; panelByChat.current.set(id, panelFile?.id || ""); }
     setChatId(id);
-    setDraft("");
-    // The message has gone, so the box it was typed in keeps no draft of it.
-    drafts.current.delete(chatId || "new");
-    setAttachments([]);
-    setDriveRefs([]);
-    setAttach(false);
-    setPointers([]);
+    // The message has gone, so the box it was typed in keeps no draft of it. A message sent for the person (a retry, a
+    // queued prompt) leaves what they are writing alone; a resent or continued one leaves the box's files too.
+    if (override === undefined) { setDraft(""); drafts.current.delete(chatId || "new"); }
+    if (!carry) { setAttachments([]); setDriveRefs([]); setAttach(false); setPointers([]); }
     setPanelEdit(true);
     if (editing) {
       const target = panelFile!;
@@ -1366,7 +1382,8 @@ In this subject the learner keeps missing these questions in review; connect to 
       if (run === "handoff" && named.content.trim()) {
         // The brief opens a fresh chat in the same place, so the work carries on with a clean context.
         const fresh = uid();
-        patch((s) => ({ ...s, chats: [{ id: fresh, title: ("Continued: " + (s.chats.find((c) => c.id === id)?.title || "chat")).slice(0, 70), spaceId: chat.spaceId, messages: [{ id: uid(), role: "assistant", content: named.content, model: model || undefined, compact: true }], updated: Date.now() }, ...s.chats] }));
+        // A temporary chat continues as a temporary one.
+        patch((s) => { const from = s.chats.find((c) => c.id === id); return { ...s, chats: [{ id: fresh, title: ("Continued: " + (from?.title || "chat")).slice(0, 70), spaceId: chat.spaceId, messages: [{ id: uid(), role: "assistant", content: named.content, model: model || undefined, compact: true }], updated: Date.now(), ...(from?.temporary || chat.temporary ? { temporary: true } : {}) }, ...s.chats] }; });
         if (viewing.current === id) setChatId(fresh);
         setToast("Continued in a new chat, starting from the handoff brief.");
       }
@@ -1486,6 +1503,7 @@ In this subject the learner keeps missing these questions in review; connect to 
       ?{...s,visuals:s.visuals.filter(v=>!(v.chatId===chat&&sameSpec(v.spec,spec)))}
       :{...s,visuals:[{id:uid(),chatId:chat,title:String((spec as {title?:unknown})?.title||"Visual").slice(0,80),created:Date.now(),spec},...s.visuals].slice(0,200)}),
   });
+  const chatVisualSaves=useMemo(()=>activeChat?visualSaves(activeChat.id):null,[activeChat?.id,state.visuals]);
   // Read from stateRef: this also runs long after the render that made it (the model's "look" mid-answer), when files
   // attached, made or opened since would be missing from that render's `state`.
   const sourceFiles=(chat?:Chat)=>{const current=stateRef.current;const ids=new Set([...(chat?.messages.flatMap(m=>[...(m.attachments||[]),...(m.context||[])])||[]),...(current.spaces.find(s=>s.id===chat?.spaceId)?.sources||[])]);return current.files.filter(f=>ids.has(f.id)||f.spaceId===(chat?.spaceId??"__none"));};
@@ -1702,7 +1720,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         patchMessage(chat.id,message.id,m=>({...m,edits:{...m.edits,[key]:{status:"applied",changeId:id}}}));
         setToast("Routine scheduled. Manage it in Settings → Automations.");
       },
-      planStamp:String(planStamp.current.n)+':'+chat.messages.length,
+      // Only plan cards depend on later messages (a newer draft supersedes them).
+      planStamp:String(planStamp.current.n)+(message.content.includes('```plan')?':'+chat.messages.length:''),
       planInfo:(key,block)=>{
         const current=stateRef.current,spaceId=resolveSpace(block,current.spaces,chat.spaceId),space=spaceId?current.spaces.find(x=>x.id===spaceId):undefined;
         const info:PlanCardInfo=space?{spaceName:space.name,spaceKind:space.kind}:block.create&&!block.space?{spaceName:block.create.name,spaceKind:block.create.kind,creates:true}:{};
@@ -2104,30 +2123,31 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       if(running)return;
       // The interrupted answer has stopped: cut the chat back to before the message, restore its files, then send it as new.
       const chat=stateRef.current.chats.find(c=>c.id===queued.chat),at=chat?chat.messages.findIndex(m=>m.id===queued.from):-1;
-      if(chat&&at>=0){const sent=chat.messages[at];updateChat(chat.id,c=>({...c,messages:c.messages.slice(0,at)}));setAttachments(sent.attachments||[]);setDriveRefs(sent.drive||[]);}
-      setQueued({prompt:queued.prompt,chat:queued.chat});
+      const sent=chat&&at>=0?chat.messages[at]:undefined;
+      if(chat&&sent)updateChat(chat.id,c=>({...c,messages:c.messages.slice(0,at)}));
+      setQueued({prompt:queued.prompt,chat:queued.chat,carry:{attachments:sent?.attachments||[],drive:sent?.drive||[]}});
       return;
     }
-    if(!running){const prompt=queued.prompt;setQueued(null);void send(undefined,prompt);}
+    if(!running){const {prompt,carry}=queued;setQueued(null);void send(undefined,prompt,carry);}
   },[queued,running,conversationTarget,runs]);
   /** Continues a task a usage limit stopped, in its own chat; `auto` when the reset time came rather than the person asking. */
   function continueAfterLimit(chat:string,messageId:string,auto=false){
     updateChat(chat,c=>({...c,messages:c.messages.map(m=>m.id===messageId&&m.limit?{...m,limit:{...m.limit,done:true}}:m)}));
     if(auto)autoContinued.current.add(chat);
-    setQueued({prompt:CONTINUE_AFTER_LIMIT,chat});
+    setQueued({prompt:CONTINUE_AFTER_LIMIT,chat,carry:{attachments:[],drive:[]}});
   }
   // A task set to continue after its limit resets is continued then (at once if Mowr was closed at the time).
   useEffect(()=>{
     // Another answer or a queued message goes first: when it ends, this runs again.
-    // So is a message the person is writing: sending would take its text and attachments.
-    if(!ready||!desktop||queued||Object.keys(runs).length||draft.trim()||attachments.length)return;
+    // So is a message the person is writing, and a temporary chat, which going to the task's chat would end.
+    if(!ready||!desktop||queued||Object.keys(runs).length||draft.trim()||attachments.length||driveRefs.length||pointers.length||isTemporary)return;
     const due=state.chats.flatMap(c=>{const m=c.messages.at(-1);return m?.role==='assistant'&&m.limit?.auto&&!m.limit.done?[{chat:c.id,message:m.id,at:resumeTime(m.limit)}]:[];});
     if(!due.length)return;
     const next=due.reduce((a,b)=>a.at<=b.at?a:b);
     // A minute after the reset, so the plan has its usage back.
     const timer=setTimeout(()=>continueAfterLimit(next.chat,next.message,true),Math.min(Math.max(next.at+60_000-Date.now(),1000),2**31-1));
     return ()=>clearTimeout(timer);
-  },[state.chats,ready,runs,queued,draft,attachments]);
+  },[state.chats,ready,runs,queued,draft,attachments,driveRefs,pointers,isTemporary]);
   function resend(chatId:string,messageId:string,prompt:string){
     if(!prompt.trim())return;
     setEditingMessage(null);
@@ -2344,7 +2364,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   },[route]);
   const searchQuery=search.toLowerCase();
   const searchMatches=modal==="search"?savedChats.filter((c)=>searchableText(c).includes(searchQuery)):[];
-  const commands:Command[]=[
+  // Built only while the palette is open.
+  const commands:Command[]=!palette?[]:[
     {id:'new-chat',group:'Actions',label:'New chat',hint:'Ctrl N',icon:'new',run:()=>newChat()},
     {id:'temporary-chat',group:'Actions',label:'New temporary chat',hint:'Ctrl Shift N',icon:'temp',keywords:'private incognito not saved',run:()=>{newChat();setTemporaryNext(true);}},
     {id:'shortcuts',group:'Actions',label:'Keyboard shortcuts',hint:'Ctrl /',icon:'cmd-explain',keywords:'keys hotkeys help',run:()=>setShortcuts(true)},
@@ -2368,6 +2389,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   useEffect(() => { if (route === "/app" && chatId) requestAnimationFrame(() => document.querySelector<HTMLElement>(".sidebar-history .history-item.chosen")?.scrollIntoView({ block: "nearest" })); }, [chatId, route]);
   // The conversation opens at its latest message and follows a streaming answer while the person stays at the end.
   let lastQuestion: string | undefined;
+  const openChatFiles = route === "/app" && activeChat?.messages.some((m) => m.role === "assistant") ? sourceFiles(activeChat) : [];
   for (let i = (activeChat?.messages.length ?? 0) - 1; i >= 0 && !lastQuestion; i--) if (activeChat!.messages[i].role === "user") lastQuestion = activeChat!.messages[i].id;
   const chatScroll = useChatScroll(route === "/app" ? activeChat?.id ?? null : null, activeChat?.messages.length ?? 0, lastQuestion);
   const composerUI = (
@@ -2733,12 +2755,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 ) : (
                   <>
                     <Chapters chapters={chaptersOf(activeChat)} />
-                    <VisualSaveContext.Provider value={visualSaves(activeChat.id)}>
+                    <VisualSaveContext.Provider value={chatVisualSaves}>
                     <div className="messages" ref={chatScroll.messages}>
                       {activeChat.messages.map((m, index) => {
                         const streaming = activeChat.id in runs && m.id === activeChat.messages.at(-1)?.id && m.role === "assistant";
                         const latest = m.role === "assistant" && index === activeChat.messages.length - 1;
-                        const sources = m.role === "assistant" ? sourceFiles(activeChat) : [];
+                        const sources = m.role === "assistant" ? openChatFiles : [];
                         // One mark per chat, like Claude: beside "Thinking…" while Mowr starts, then under the latest answer.
                         const waiting = latest && !m.content && !m.limit;
                         const mark = latest && <div className="message-mark" key="mark"><Logo size={waiting ? 30 : 26} thinking={streaming}/></div>;

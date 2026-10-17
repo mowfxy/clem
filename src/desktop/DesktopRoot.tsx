@@ -34,6 +34,7 @@ function SetupContent() {
   const [direction, setDirection] = useState<"next" | "back">("next"),
     [leaving, setLeaving] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const loaded = useRef<DesktopStatus["setup"] | null>(null);
   // While reading offline, check quietly for the connection so sending comes back on its own.
   useEffect(() => {
     if (!readOnly) return;
@@ -44,9 +45,12 @@ function SetupContent() {
     const next = (await desktop!.invoke({ action: "status" })) as DesktopStatus;
     setState(next);
     if (next.user) setBrowserPending(false);
-    setUsername(next.setup.username);
-    setName(next.setup.displayName);
-    setMemory(next.setup.memory);
+    // A field still showing what was saved follows the saved value; one the person has changed keeps their typing.
+    const was = loaded.current, now = next.setup;
+    loaded.current = now;
+    setUsername((v) => (!was || v === was.username ? now.username : v));
+    setName((v) => (!was || v === was.displayName ? now.displayName : v));
+    setMemory((v) => (!was || v === was.memory ? now.memory : v));
   }
   useEffect(() => {
     void refresh().catch((e) => setError(e.message));

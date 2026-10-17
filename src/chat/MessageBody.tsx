@@ -4,7 +4,7 @@ import { VisualSaveContext } from './visual-save';
 import { LinkChip, YouTubeEmbed, videosIn } from './Links';
 import { DriveAudio, DriveCard, DriveChip, DriveVideo } from './DriveCards';
 import { driveKind, type DriveRef } from '../../core/drive-search';
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -152,64 +152,92 @@ function CheckBlock({ body, streaming }: { body: string; streaming: boolean }) {
   </div>;
 }
 
+/** Numbers each ```edit, ```automation and ```plan block in document order (edit-0, plan-0…), the keys their saved outcomes use. */
+type HastNode = { type?: string; tagName?: string; properties?: Record<string, unknown>; children?: HastNode[] };
+function rehypeBlockKeys() {
+  return (tree: HastNode) => {
+    const seen: Record<string, number> = {};
+    const walk = (n: HastNode) => {
+      if (n.tagName === 'pre') {
+        const code = n.children?.find((c) => c.tagName === 'code'), cls = code?.properties?.className;
+        const lang = (Array.isArray(cls) ? cls : [cls]).map(String).map((c) => /^language-([\w-]+)$/.exec(c)?.[1]).find(Boolean);
+        if (lang === 'edit' || lang === 'automation' || lang === 'plan') { seen[lang] = seen[lang] ?? 0; n.properties = { ...n.properties, dataBlockKey: lang + '-' + seen[lang]++ }; }
+      }
+      for (const c of n.children || []) walk(c);
+    };
+    walk(tree);
+  };
+}
+const remarkPlugins = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]] as const;
+const rehypePlugins = [[rehypeKatex, { throwOnError: false, strict: 'ignore', output: 'html', macros: mathMacros }], rehypeBlockKeys] as const;
+const urlTransform = (url: string) => (url.startsWith('source:') || /^drive:[\w-]{10,150}$/.test(url) ? url : defaultUrlTransform(url));
+
 function MessageBodyImpl({ content, streaming = false, handlers = {} }: { content: string; streaming?: boolean; handlers?: BodyHandlers }) {
   const prepared = useMemo(() => prepareMarkdown(content), [content]);
-  let editIndex = 0, automationIndex = 0, planIndex = 0;
-  // Drive files linked in a paragraph follow it, like YouTube links: videos and audio play, documents open as cards.
-  const drivePlayers = (node: unknown) => driveIdsIn(node).map((id) => handlers.driveFile?.(id)).filter((f): f is DriveRef => !!f)
-    .map((f) => driveKind(f.mimeType) === 'video' ? <DriveVideo key={f.id} file={f} onOpenWeb={handlers.onOpenDriveWeb} /> : driveKind(f.mimeType) === 'audio' ? <DriveAudio key={f.id} file={f} /> : <DriveCard key={f.id} file={f} onOpen={(x) => handlers.onOpenDrive?.(x)} />);
-  return <div className="md">
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
-      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore', output: 'html', macros: mathMacros }]]}
-      urlTransform={url => (url.startsWith('source:') || /^drive:[\w-]{10,150}$/.test(url) ? url : defaultUrlTransform(url))}
-      components={{
+  // The renderers stay the same functions for the message's life, so blocks keep their state (a run's output, a playing
+  // video, a visual's sliders) across re-renders; what changes is read through these refs.
+  const live = useRef({ handlers, streaming });
+  live.current = { handlers, streaming };
+  const components = useMemo<Components>(() => {
+    // Drive files linked in a paragraph follow it, like YouTube links: videos and audio play, documents open as cards.
+    const drivePlayers = (node: unknown) => { const handlers = live.current.handlers; return driveIdsIn(node).map((id) => handlers.driveFile?.(id)).filter((f): f is DriveRef => !!f)
+      .map((f) => driveKind(f.mimeType) === 'video' ? <DriveVideo key={f.id} file={f} onOpenWeb={handlers.onOpenDriveWeb} /> : driveKind(f.mimeType) === 'audio' ? <DriveAudio key={f.id} file={f} /> : <DriveCard key={f.id} file={f} onOpen={(x) => live.current.handlers.onOpenDrive?.(x)} />); };
+    return {
         a: ({ href, children }) => {
+          const handlers = live.current.handlers;
           if (href?.startsWith('drive:')) {
             const file = handlers.driveFile?.(href.slice(6));
             if (!file) return <>{children}</>;
             // In the sentence a Drive link is a chip; its player or card follows the paragraph.
             const media = driveKind(file.mimeType) === 'video' || driveKind(file.mimeType) === 'audio';
-            return <DriveChip onClick={media ? undefined : () => handlers.onOpenDrive?.(file)}>{children}</DriveChip>;
+            return <DriveChip onClick={media ? undefined : () => live.current.handlers.onOpenDrive?.(file)}>{children}</DriveChip>;
           }
           const cite = href ? readCitation(href) : null;
           if (cite) {
             const usable = handlers.canCite?.(cite) ?? false;
-            return <button type="button" className={`cite ${usable ? '' : 'unavailable'}`} aria-description={usable ? `Open ${cite.name}${cite.page ? ', page ' + cite.page : ''}` : `${cite.name} is not in your files`} onClick={() => usable && handlers.onCite?.(cite)}><Icon name="files" size={12} /><span>{children}</span></button>;
+            return <button type="button" className={`cite ${usable ? '' : 'unavailable'}`} aria-description={usable ? `Open ${cite.name}${cite.page ? ', page ' + cite.page : ''}` : `${cite.name} is not in your files`} onClick={() => usable && live.current.handlers.onCite?.(cite)}><Icon name="files" size={12} /><span>{children}</span></button>;
           }
           return href ? <LinkChip href={href}>{children}</LinkChip> : <>{children}</>;
         },
         // A paragraph that mentions a YouTube video is followed by the video, ready to play.
-        p: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <>{<p>{children}</p>}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</>; },
-        li: ({ node, children }) => { const videos = streaming ? [] : videosIn(node); return <li>{children}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</li>; },
+        p: ({ node, children }) => { const streaming = live.current.streaming, videos = streaming ? [] : videosIn(node); return <>{<p>{children}</p>}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</>; },
+        li: ({ node, children }) => { const streaming = live.current.streaming, videos = streaming ? [] : videosIn(node); return <li>{children}{videos.map((v) => <YouTubeEmbed key={v} href={v} />)}{!streaming && drivePlayers(node)}</li>; },
         table: ({ children }) => <TableWrap>{children}</TableWrap>,
-        pre: ({ children }) => {
+        pre: ({ node, children }) => {
+          const { handlers, streaming } = live.current;
           const child = (Array.isArray(children) ? children[0] : children) as { props?: { className?: string; children?: ReactNode } } | undefined;
           const lang = /language-([\w-]+)/.exec(child?.props?.className || '')?.[1] || '';
           const code = String(child?.props?.children ?? '').replace(/\n$/, '');
+          const key = String(node?.properties?.dataBlockKey ?? lang + '-0');
           if (lang === 'visual') return <VisualBlock body={code} streaming={streaming} />;
           if (lang === 'check') return <CheckBlock body={code} streaming={streaming} />;
           if (lang === 'edit') {
-            const key = 'edit-' + editIndex++;
             let block: EditBlock | null = null;
             try { block = JSON.parse(code); } catch { /* still streaming or malformed */ }
             if (!block || typeof block.path !== 'string') return streaming ? <Drafting>Preparing a file change…</Drafting> : <details className="block-error"><summary>A proposed file change could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
-            return <EditProposal block={block} streaming={streaming} scope={handlers.scope} outcome={handlers.edits?.[key]} onDecide={(approve, base) => handlers.onEdit?.(key, block!, approve, base) ?? Promise.resolve()} onUndo={outcome => handlers.onUndo?.(key, outcome) ?? Promise.resolve()} />;
+            return <EditProposal block={block} streaming={streaming} scope={handlers.scope} outcome={handlers.edits?.[key]} onDecide={(approve, base) => live.current.handlers.onEdit?.(key, block!, approve, base) ?? Promise.resolve()} onUndo={outcome => live.current.handlers.onUndo?.(key, outcome) ?? Promise.resolve()} />;
           }
           if (lang === 'automation') {
-            const key = 'automation-' + automationIndex++, block = readAutomationBlock(code);
+            const block = readAutomationBlock(code);
             if (!block) return streaming ? <Drafting>Preparing a routine…</Drafting> : <details className="block-error"><summary>A proposed routine could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
-            return <AutomationProposal block={block} streaming={streaming} outcome={handlers.edits?.[key]} onDecide={approve => handlers.onSchedule?.(key, block, approve) ?? Promise.resolve()} />;
+            return <AutomationProposal block={block} streaming={streaming} outcome={handlers.edits?.[key]} onDecide={approve => live.current.handlers.onSchedule?.(key, block, approve) ?? Promise.resolve()} />;
           }
           if (lang === 'plan') {
-            const key = 'plan-' + planIndex++, block = readPlanBlock(code);
+            const block = readPlanBlock(code);
             if (!block) return streaming ? <Drafting>Drawing up the plan…</Drafting> : <details className="block-error"><summary>A plan could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             const outcome = handlers.edits?.[key];
-            return <PlanProposal block={block} streaming={streaming} outcome={outcome} info={handlers.planInfo?.(key, block) ?? {}} onDecide={approve => handlers.onPlan?.(key, block, approve) ?? Promise.resolve()} onUndo={() => outcome ? handlers.onPlanUndo?.(key, block, outcome) ?? Promise.resolve() : Promise.resolve()} onOpen={() => handlers.onOpenPlan?.(block)} />;
+            return <PlanProposal block={block} streaming={streaming} outcome={outcome} info={handlers.planInfo?.(key, block) ?? {}} onDecide={approve => live.current.handlers.onPlan?.(key, block, approve) ?? Promise.resolve()} onUndo={() => outcome ? live.current.handlers.onPlanUndo?.(key, block, outcome) ?? Promise.resolve() : Promise.resolve()} onOpen={() => live.current.handlers.onOpenPlan?.(block)} />;
           }
           return <CodeBlock lang={lang} code={code} streaming={streaming} />;
         },
-      }}
+    };
+  }, []);
+  return <div className="md">
+    <ReactMarkdown
+      remarkPlugins={remarkPlugins as never}
+      rehypePlugins={rehypePlugins as never}
+      urlTransform={urlTransform}
+      components={components}
     >{prepared}</ReactMarkdown>
   </div>;
 }
