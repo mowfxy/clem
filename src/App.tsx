@@ -337,7 +337,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     sideFirst.current = false;
     root.dataset.sidebar = sideClosed ? "closed" : "open";
   }, [sideClosed]);
-  // Dark or light (Settings → General); kept on this device and applied before the app first paints.
+  // System (the default, following Windows), light or dark (Settings → General); kept on this device and applied
+  // before the app first paints (public/boot.js).
   const [theme, setTheme] = useState<ThemeChoice>(themeChoice);
   useEffect(() => { applyTheme(theme); }, [theme]);
   // How large answers and messages read (Settings → General, or Ctrl + / Ctrl − / Ctrl 0); kept on this device.
@@ -2555,7 +2556,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       <ProfileSettings name={state.name} email={session.user?.email} avatar={state.avatar} storage={sizeLabel(bytes)} onName={name=>patch(s=>({...s,name}))} onAvatar={avatar=>patch(s=>({...s,avatar}))} onSecurity={()=>setSettingsTab("Security")} onFiles={()=>{setSettingsOpen(false);navigate("/app/files");}} onExport={exportWorkspace}/>
                     ) : settingsTab === "General" ? (<>
                       <SettingsCard title="Appearance">
-                        <SettingRow title="Theme" description="Dark, light paper, or follow your system."><span className="text-size" role="radiogroup" aria-label="Theme">{([["dark","Dark"],["light","Light"],["system","System"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={theme===value} onClick={()=>{setThemeChoice(value);setTheme(value);}}>{label}</button>)}</span></SettingRow>
+                        <SettingRow title="Theme" description="Follows Windows’ light or dark setting unless you pick one."><span className="text-size" role="radiogroup" aria-label="Theme">{([["system","System"],["light","Light"],["dark","Dark"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={theme===value} onClick={()=>{setThemeChoice(value);setTheme(value);}}>{label}</button>)}</span></SettingRow>
                         <SettingRow title="Quiet mode" description="Keep drawings still and reduce motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
                         <SettingRow title="Text size" description="How large answers and messages read."><span className="text-size" role="radiogroup" aria-label="Text size">{([["small","Small"],["default","Default"],["large","Large"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={textSize===value} onClick={()=>setTextSize(value)}>{label}</button>)}</span></SettingRow>
                         <SettingRow title="Sidebar" description="Put it away for more room."><Switch label="Show the sidebar" checked={!sideClosed} onChange={show=>setSideClosed(!show)}/></SettingRow>

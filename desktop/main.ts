@@ -35,6 +35,7 @@ import {
   globalShortcut,
   nativeImage,
   session,
+  nativeTheme,
   Tray,
 } from "electron";
 import { captureRegion } from "./capture";
@@ -858,9 +859,10 @@ void app.whenReady().then(async () => {
     minWidth: 800,
     minHeight: 600,
     title: "Mowr",
-    backgroundColor: "#141414",
+    // Painted before the page loads, so it follows Windows' light or dark setting, the app's default theme.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#141414" : "#faf8f3",
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#141414", symbolColor: "#eeece4", height: 38 },
+    titleBarOverlay: nativeTheme.shouldUseDarkColors ? { color: "#141414", symbolColor: "#eeece4", height: 38 } : { color: "#faf8f3", symbolColor: "#262a35", height: 38 },
     autoHideMenuBar: true,
     icon: join(__dirname, "../desktop/icon.ico"),
     webPreferences: {
@@ -958,7 +960,7 @@ void app.whenReady().then(async () => {
   };
   ipcMain.on("mowr:tone", (event, tone) => {
     if (event.sender !== window.webContents || !tones[tone]) return;
-    try { window.setTitleBarOverlay({ ...tones[tone], height: 38 }); } catch {}
+    try { window.setTitleBarOverlay({ ...tones[tone], height: 38 }); if (!tone.endsWith("dim")) window.setBackgroundColor(tones[tone].color); } catch {}
   });
   ipcMain.on("mowr:drag", (event, path) => {
     if (event.sender !== window.webContents || typeof path !== "string" || !sharedFiles.has(path)) return;

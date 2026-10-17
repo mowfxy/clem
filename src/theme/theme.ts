@@ -1,10 +1,10 @@
-/** The app's colour theme: dark (Mowr's original), light (paper), or whatever the system uses. Kept on this device. */
+/** The app's colour theme: dark, light (paper), or whatever the system (Windows) uses, which is the default. Kept on this device. */
 export type ThemeChoice = "dark" | "light" | "system";
 const KEY = "mowr-theme";
 const media = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: light)") : undefined;
 
 export function themeChoice(): ThemeChoice {
-  try { const v = localStorage.getItem(KEY); return v === "light" || v === "system" ? v : "dark"; } catch { return "dark"; }
+  try { const v = localStorage.getItem(KEY); return v === "light" || v === "dark" ? v : "system"; } catch { return "system"; }
 }
 const resolve = (choice: ThemeChoice) => (choice === "system" ? (media?.matches ? "light" : "dark") : choice);
 

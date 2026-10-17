@@ -2,10 +2,12 @@
 // is ready (the app calls window.mowrBoot.done()). Plain script so it paints on the first frame. The stroke and the
 // writing motion match src/brand/mark.ts.
 (function () {
-  if (location.protocol !== "mowr:") return;
-  var stroke = "M15 113 V63 C15 43 25 31 40 31 C55 31 65 43 65 63 V105 V63 C65 43 75 31 90 31 C105 31 115 43 115 63 V93 C115 105 121 113 129 109";
+  // The theme goes on before anything paints, on the web and on the desktop alike, so a light-mode start never flashes
+  // dark: the choice from Settings, or by default the system's (Windows') light or dark setting. Same rule as src/theme/theme.ts.
   var theme = "dark";
-  try { var chosen = localStorage.getItem("mowr-theme"); theme = chosen === "light" || (chosen === "system" && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark"; } catch (e) {}
+  try { var chosen = localStorage.getItem("mowr-theme"); theme = chosen === "light" || chosen === "dark" ? chosen : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; } catch (e) {}
+  document.documentElement.dataset.theme = theme;
+  if (location.protocol !== "mowr:") return;
   var paper = theme === "light" ? "#faf8f3" : "#141414", trace = theme === "light" ? "32,37,58" : "245,244,240";
   var style = document.createElement("style");
   style.textContent =
