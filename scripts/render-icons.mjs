@@ -16,7 +16,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ deviceScaleFactor: 1 });
 async function render(size, ink) {
   const box = Math.round((size * share(size)) / drawn);
-  const mark = svg.replace('fill="#f5f4f0"', `fill="${ink}"`).replace("<svg ", `<svg width="${box}" height="${box}" `);
+  const mark = svg.replace('fill="#d9473e"', `fill="${ink}"`).replace("<svg ", `<svg width="${box}" height="${box}" `);
   await page.setViewportSize({ width: size, height: size });
   await page.setContent(`<html><body style="margin:0;width:${size}px;height:${size}px;display:grid;place-items:center;background:transparent">${mark}</body></html>`);
   return page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } });
@@ -24,7 +24,7 @@ async function render(size, ink) {
 
 // ICO: a directory of PNG images, largest last is fine for Windows; each entry keeps its own exact size.
 const images = [];
-for (const size of icoSizes) images.push({ size, png: await render(size, "#f5f4f0") });
+for (const size of icoSizes) images.push({ size, png: await render(size, "#d9473e") });
 const header = Buffer.alloc(6 + 16 * images.length);
 header.writeUInt16LE(0, 0); header.writeUInt16LE(1, 2); header.writeUInt16LE(images.length, 4);
 let offset = header.length;

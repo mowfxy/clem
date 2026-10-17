@@ -7,6 +7,7 @@ import './revamp.css';
 import './marketing.css';
 import './production.css';
 import './popups.css';
+import {applyTheme} from './theme/theme';
 const ProvenanceChecker=lazy(()=>import("./ProvenanceChecker"));
 const Download=lazy(()=>import('./site/Download').then(module=>({default:module.Download})));
 const DesktopRoot=lazy(()=>import('./desktop/DesktopRoot'));
@@ -34,6 +35,7 @@ function Root(){
  if(adminHost||route.startsWith('/admin'))return <Suspense fallback={loading}><AdminApp/></Suspense>;
  return <Suspense fallback={loading}>{location.hostname==="check.mowrai.com"||route==="/check"?<ProvenanceChecker/>:isPublic?publicPage(route):(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect'))?(ready?<Login key={route}/>:loading):<Download account={route.startsWith('/app')&&ready} returning={route==='/desktop-return'}/>}</Suspense>;
 }
+applyTheme();
 if(desktop)void import('./desktop/window-tone').then(m=>m.followWindowTone());
 // Supabase sends OAuth returns it doesn't recognise to mowrai.com. If admin.mowrai.com started this sign-in
 // (it sets a short-lived cookie), hand the code back there: only the admin origin holds the PKCE verifier.

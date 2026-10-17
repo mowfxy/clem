@@ -953,6 +953,8 @@ void app.whenReady().then(async () => {
   const tones: Record<string, { color: string; symbolColor: string }> = {
     normal: { color: "#141414", symbolColor: "#eeece4" },
     dim: { color: "#080808", symbolColor: "#6f6e69" },
+    light: { color: "#faf8f3", symbolColor: "#262a35" },
+    "light-dim": { color: "#d9d7d2", symbolColor: "#6f6e69" },
   };
   ipcMain.on("mowr:tone", (event, tone) => {
     if (event.sender !== window.webContents || !tones[tone]) return;

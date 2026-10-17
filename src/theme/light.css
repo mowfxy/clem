@@ -1,0 +1,14 @@
+/* Light theme: hand-tuned spots the automatic paper conversion (scripts/light-theme.mjs) can't judge on its own.
+   Raised surfaces are white on paper rather than a shade darker; the extra html makes these win over the twins. */
+html:root[data-theme=light]{--bg:#faf8f3;--sidebar:#f3f0e8;--panel:#ffffff;--line:#e3dfd5;--muted:#6b6d76;--ink:#20253a;--accent:#2b3354;background:var(--bg);color:var(--ink)}
+html:root[data-theme=light] body,html:root[data-theme=light] .workspace{background:var(--bg)}
+html:root[data-theme=light] .sidebar{background:var(--sidebar);border-color:#e6e2d8}
+html:root[data-theme=light] .composer{background:#fff;border-color:#dcd8cd;box-shadow:0 1px 2px #20253a0a,0 6px 24px #20253a0d}
+html:root[data-theme=light] .composer:focus-within{border-color:#b9b5aa}
+html:root[data-theme=light] .chat-composer{background:linear-gradient(#faf8f300,var(--bg) 12px)}
+html:root[data-theme=light] .message.user .message-text{background:#efebe2}
+html:root[data-theme=light] dialog,html:root[data-theme=light] .popover{background:#fff;border-color:#dedad0}
+/* The primary action keeps Mowr's ink. */
+html:root[data-theme=light] .primary,html:root[data-theme=light] .send-button{background:#20253a;color:#faf8f3;border-color:#20253a}
+html:root[data-theme=light] .primary:hover,html:root[data-theme=light] .send-button:hover{background:#2f3652;color:#fff}
+html:root[data-theme=light] .send-button:disabled{background:#e7e3da;color:#9a998f}
