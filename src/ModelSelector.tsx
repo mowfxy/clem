@@ -1,21 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Model } from "../core/types";
-import { Icon } from "./Icons";
+import { Icon, MARK } from "./Icons";
 import { ProviderLogo } from "./BrandLogos";
 import "./model-selector.css";
 
 export const effortName = (value: string) =>
   value === "low" ? "Light" : value === "minimal" ? "Minimal" : value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1);
 const EFFORT_NAMES = ["minimal", "low", "medium", "high", "xhigh", "max"];
-const PETAL = "M12 2c3.2-.9 5.6 1.3 5.5 4.4 0 2.1-1.3 3.9-2.7 4.2-.8.1-.7-1-.4-1.6.6-1.8-.8-2.5-2.2-1.8-1.4.6-2.2-.7-2.2-2.3 0-1.3.7-2.3 2-2.9Z";
-/** Mowr's four-petal mark, small enough to drift through the thinking bar. */
+/** Mowr's mark, small enough to drift through the thinking bar. */
 function Petal({ style }: { style: CSSProperties }) {
-  return <svg className="effort-petal" style={style} viewBox="0 0 24 24" aria-hidden="true">{[0, 90, 180, 270].map((r) => <path key={r} d={PETAL} transform={`rotate(${r} 12 12)`} />)}</svg>;
+  return <svg className="effort-petal" style={style} viewBox={MARK.viewBox} fill="none" stroke="currentColor" strokeWidth={MARK.width} strokeLinecap="round" aria-hidden="true">{MARK.turns.map((r) => <path key={r} d={MARK.arm} transform={`rotate(${r} 72 72)`} />)}</svg>;
 }
 const petals = Array.from({ length: 9 }, (_, i) => ({ top: [18, 62, 34, 76, 46, 24, 68, 40, 56][i], size: [11, 8, 13, 9, 7, 12, 8, 10, 7][i], delay: -i * 0.53 }));
 
-/** How hard the model thinks: a bar to drag, with Mowr's petals drifting faster and thicker as it climbs. */
+/** How hard the model thinks: a bar to drag, with Mowr's marks drifting faster and thicker as it climbs. */
 function EffortSlider({ levels, level, onChange }: {
   levels: string[]; level: string; onChange: (effort: string) => void;
 }) {

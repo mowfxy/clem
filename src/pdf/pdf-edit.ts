@@ -1,3 +1,4 @@
+import {parseModelJson} from '../../core/model-json';
 import type {PDFDocumentProxy,PDFPageProxy} from 'pdfjs-dist';
 import {planEdits,lines,type TextItem,type PdfTextEdit} from '../../core/pdf-edit';
 import {desktop,desktopChat} from '../desktop/bridge';
@@ -102,7 +103,7 @@ export async function applyTextEdits(bytes:Uint8Array,edits:PdfTextEdit[]){
 }
 
 const JSON_ONLY='Return only JSON, no code fences or commentary.';
-function parseJson(raw:string){const text=raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');const start=text.indexOf('{'),end=text.lastIndexOf('}');if(start<0||end<start)throw Error('Mowr could not read the proposed edit. Try again.');return JSON.parse(text.slice(start,end+1));}
+const parseJson=(raw:string)=>parseModelJson(raw,'Mowr could not read the proposed edit. Try again.');
 
 export type PdfProposal={bytes:Uint8Array;summary:string;spec?:string};
 

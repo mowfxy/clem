@@ -1,3 +1,4 @@
+import { parseModelJson } from "./model-json.ts";
 export type DocumentBlock =
   | { kind: "heading"; level: number; text: string }
   | { kind: "paragraph" | "bullet" | "number" | "code"; text: string }
@@ -22,7 +23,7 @@ export function documentBlocks(markdown: string): DocumentBlock[] {
       if (/^\s*```visual\b/.test(line)) {
         // A visual that is not readable JSON is left out rather than printed as code.
         try {
-          const spec = JSON.parse(code.join("\n"));
+          const spec = parseModelJson(code.join("\n"));
           if (spec && typeof spec === "object" && !Array.isArray(spec)) blocks.push({ kind: "visual", spec });
         } catch {}
         continue;

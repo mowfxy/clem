@@ -60,7 +60,8 @@ test('diagrams auto-layout, survive cycles and validate step focus', () => {
   v.draw(pen, {}, 0.4, 0);
   assert.equal(pen.bad, 0);
   assert.ok(pen.texts.includes('Ocean') && pen.texts.includes('evaporation'));
-  assert.throws(() => compileVisual({ kind: 'diagram', title: 'x', nodes: [{ id: 'a', label: 'A' }], steps: [{ title: 's', focus: ['zzz'] }] }), /unknown node/);
+  // A step naming a node the diagram lacks just highlights nothing, rather than losing the whole picture.
+  assert.deepEqual(compileVisual({ kind: 'diagram', title: 'x', nodes: [{ id: 'a', label: 'A' }], steps: [{ title: 's', focus: ['zzz'] }] }).spec.steps![0].focus, []);
   assert.throws(() => compileVisual({ kind: 'diagram', title: 'x', nodes: [] }), /at least one node/);
 });
 

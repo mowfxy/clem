@@ -4,6 +4,7 @@
  * through here, so a diagram the AI drew in the chat goes into any file unchanged.
  */
 import { compileVisual, defaultValues, palette, W, H, type Pen, type P, type Style, type TextStyle } from './visual-spec.ts';
+import { parseModelJson } from './model-json.ts';
 import { printSans, printSerif } from './print-fonts.ts';
 
 /** The app's dark visual palette mapped to ink on paper. Colours outside the palette are kept. */
@@ -77,7 +78,7 @@ export function visualBlocks(markdown: string) {
   const out: { start: number; end: number; spec: Record<string, unknown> }[] = [];
   for (const m of markdown.matchAll(/```visual[^\n]*\n([\s\S]*?)(?:```|$)/g)) {
     try {
-      const spec = JSON.parse(m[1].trim());
+      const spec = parseModelJson(m[1]);
       if (spec && typeof spec === 'object' && !Array.isArray(spec)) out.push({ start: m.index!, end: m.index! + m[0].length, spec });
     } catch { /* a block that is not JSON is left out of the printed copy */ }
   }

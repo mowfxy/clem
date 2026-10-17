@@ -38,7 +38,7 @@
 .sx-hero-copy{position:relative;width:100%;display:grid;justify-items:center;animation:sx-rise .9s var(--sx-ease) both}
 .sx-hero .sx-lede{margin:22px auto 32px;max-width:none}
 .sx-hero .sx-cta-row{justify-content:center}
-.sx-hero-copy .mowr-mark{color:var(--mowr-red);margin-bottom:28px}
+.sx-hero-copy .mowr-mark{color:var(--mowr-clay);margin-bottom:28px}
 .sx-hero h1{font-size:clamp(44px,5.6vw,80px);line-height:1;letter-spacing:-.04em;white-space:nowrap}
 .sx-narrow-break{display:none}
 @media (max-width:760px){.sx-hero h1{white-space:normal;line-height:1.1}.sx-narrow-break{display:inline}}

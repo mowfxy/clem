@@ -14,6 +14,7 @@ import 'katex/contrib/copy-tex';
 import { mathMacros, normalizeMath } from '../../core/math-markdown';
 import { linkCitations, readCitation, type Citation } from '../../core/citations';
 import { parseVisual } from '../../core/visual-spec';
+import { parseModelJson } from '../../core/model-json';
 import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
 import { Icon } from '../Icons';
 import { copyText } from '../clipboard';
@@ -118,7 +119,7 @@ function CodeBlock({ lang, code, streaming }: { lang: string; code: string; stre
 }
 
 function VisualBlock({ body, streaming }: { body: string; streaming: boolean }) {
-  const result = useMemo(() => { try { return { visual: parseVisual(body), spec: JSON.parse(body) as unknown }; } catch (e) { return { error: (e as Error).message }; } }, [body]);
+  const result = useMemo(() => { try { return { visual: parseVisual(body), spec: parseModelJson(body) as unknown }; } catch (e) { return { error: (e as Error).message }; } }, [body]);
   const saves = useContext(VisualSaveContext);
   if (result.visual) {
     const saved = !!saves?.saved(result.spec);
@@ -213,7 +214,7 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
           if (lang === 'check') return <CheckBlock body={code} streaming={streaming} />;
           if (lang === 'edit') {
             let block: EditBlock | null = null;
-            try { block = JSON.parse(code); } catch { /* still streaming or malformed */ }
+            try { block = parseModelJson(code); } catch { /* still streaming or malformed */ }
             if (!block || typeof block.path !== 'string') return streaming ? <Drafting>Preparing a file change…</Drafting> : <details className="block-error"><summary>A proposed file change could not be read.</summary><pre>{code.slice(0, 4000)}</pre></details>;
             return <EditProposal block={block} streaming={streaming} scope={handlers.scope} outcome={handlers.edits?.[key]} onDecide={(approve, base) => live.current.handlers.onEdit?.(key, block!, approve, base) ?? Promise.resolve()} onUndo={outcome => live.current.handlers.onUndo?.(key, outcome) ?? Promise.resolve()} />;
           }

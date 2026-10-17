@@ -1,3 +1,4 @@
+import { parseModelJson } from "../../core/model-json";
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
@@ -46,12 +47,7 @@ export const kindOf = (name: string, type = ""): Kind =>
 export const canEditInPanel = (file: StoredFile) => !!desktop && !file.id.startsWith("drive_") && ["pdf", "office", "text"].includes(kindOf(file.name, file.type));
 const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 const JSON_ONLY = "Return only JSON, no code fences or commentary.";
-function parseJson(raw: string) {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const start = text.indexOf("{"), end = text.lastIndexOf("}");
-  if (start < 0 || end < start) throw Error("Mowr could not read the proposed edit. Try again.");
-  return JSON.parse(text.slice(start, end + 1));
-}
+const parseJson = (raw: string) => parseModelJson(raw, "Mowr could not read the proposed edit. Try again.");
 
 /** Replaces a file's contents, keeping the previous bytes as a version that Undo restores. */
 async function commitBlob(file: StoredFile, previous: Blob, next: Blob, summary: string): Promise<StoredFile> {

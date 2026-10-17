@@ -9,6 +9,7 @@
  * of Friday wherever the person is, so a task is overdue only once that day has ended.
  */
 
+import { parseModelJson } from './model-json.ts';
 export type PlanTask = {
   id: string;
   title: string;
@@ -125,7 +126,7 @@ function readTarget(o: Record<string, unknown>): PlanTarget {
 /** A ```plan block as the model wrote it, checked and tidied; null when it cannot be used. */
 export function readPlanBlock(code: string): PlanBlock | null {
   let o: Record<string, unknown> | null;
-  try { o = record(JSON.parse(code)); } catch { return null; }
+  try { o = record(parseModelJson(code)); } catch { return null; }
   if (!o) return null;
   const action = o.action;
   const target = readTarget(o);

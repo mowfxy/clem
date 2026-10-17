@@ -1,3 +1,4 @@
+import { parseModelJson } from '../../core/model-json';
 import { useEffect, useRef, useState } from 'react';
 import type { Model, Review, Verification } from '../../core/types';
 import type { Citation } from '../../core/citations';
@@ -83,9 +84,7 @@ function VerifyResult({ verify, onCite, canCite }: { verify: Verification; onCit
 }
 
 export function parseClaims(raw: string) {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  const start = text.indexOf('{'), end = text.lastIndexOf('}');
-  const data = JSON.parse(start >= 0 ? text.slice(start, end + 1) : text);
+  const data = parseModelJson(raw, 'The source check returned no claims.');
   if (!Array.isArray(data.claims)) throw Error('The source check returned no claims.');
   return data.claims.slice(0, 12).filter((c: any) => typeof c?.claim === 'string').map((c: any) => ({
     claim: String(c.claim).slice(0, 300),

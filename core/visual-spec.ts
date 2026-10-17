@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseModelJson } from './model-json.ts';
 import { compile, numeric, safeEval, type Compiled, type Vars } from './expr.ts';
 import { camera3dSchema, compile3d, drawProjected, object3dSchema, type Compiled3D } from './visual-3d.ts';
 import { compileFigure, figureIdPattern, figureItemTypes, type CompiledFigure } from './illustration.ts';
@@ -109,11 +110,62 @@ export function wrap(label: string, width = 18, lines = 2) {
 }
 const textWidth = (s: string, size: number) => s.length * size * 0.56;
 
+/* ── Repair ── Models often slip on a detail: a "diamond" node, a label a few characters too long, a size of 30
+   where 26 is the most. Rather than refuse the whole picture, nearby choices are mapped, text and lists are
+   trimmed, numbers clamped and a stray optional field dropped. Anything a picture needs (its kind, title,
+   formulas) still has to be there. */
+const enumSynonyms: Record<string, Record<string, string>> = {
+  shape: { rect: 'box', rectangle: 'box', square: 'box', rounded: 'pill', roundrect: 'pill', 'rounded-box': 'pill', capsule: 'pill', stadium: 'pill', oval: 'circle', ellipse: 'circle', round: 'circle', dot: 'circle', node: 'circle' },
+  direction: { left: 'right', horizontal: 'right', lr: 'right', rl: 'right', up: 'down', vertical: 'down', tb: 'down', td: 'down', bt: 'down' },
+  type: { column: 'bar', bars: 'bar', histogram: 'bar', scatter: 'line', lines: 'line', donut: 'pie', doughnut: 'pie' },
+};
+type Issue = z.core.$ZodIssue;
+const at = (root: unknown, path: PropertyKey[]) => path.reduce<unknown>((value, key) => (value && typeof value === 'object' ? (value as Record<PropertyKey, unknown>)[key] : undefined), root);
+function mend(root: unknown, issue: Issue): boolean {
+  const path = issue.path, key = path[path.length - 1], parent = at(root, path.slice(0, -1)) as Record<PropertyKey, unknown> | unknown[] | undefined;
+  if (!path.length || !parent || typeof parent !== 'object') return false;
+  const value = (parent as Record<PropertyKey, unknown>)[key as PropertyKey];
+  if (value === undefined) return false; // a required field is missing; nothing sensible to invent
+  if (issue.code === 'invalid_value' && typeof value === 'string') {
+    const options = issue.values.map(String), word = value.trim().toLowerCase();
+    const match = options.find(o => o.toLowerCase() === word) ?? enumSynonyms[String(key)]?.[word];
+    if (match && options.includes(match)) { (parent as Record<PropertyKey, unknown>)[key as PropertyKey] = match; return true; }
+  }
+  if (issue.code === 'too_big' && typeof issue.maximum === 'number') {
+    const max = issue.maximum;
+    if (typeof value === 'string') { (parent as Record<PropertyKey, unknown>)[key as PropertyKey] = value.slice(0, Math.max(0, max - 1)).trimEnd() + (max > 1 ? '…' : ''); return true; }
+    if (Array.isArray(value)) { value.length = max; return true; }
+    if (typeof value === 'number') { (parent as Record<PropertyKey, unknown>)[key as PropertyKey] = max; return true; }
+  }
+  if (issue.code === 'too_small' && typeof value === 'number' && typeof issue.minimum === 'number') { (parent as Record<PropertyKey, unknown>)[key as PropertyKey] = issue.minimum; return true; }
+  // Otherwise drop the offending piece: an entry from a list, or a field from an object. If that field was
+  // required, the next check reports it as missing and the original reason is shown.
+  if (Array.isArray(parent)) parent.splice(Number(key), 1); else delete (parent as Record<PropertyKey, unknown>)[key as PropertyKey];
+  return true;
+}
+/** Parses a spec, mending small slips (see above). Returns the first unfixable issue when there is one. */
+export function parseVisualSpec(raw: unknown): { ok: true; spec: VisualSpec } | { ok: false; issue: Issue } {
+  let parsed = visualSpecSchema.safeParse(raw);
+  if (parsed.success) return { ok: true, spec: parsed.data };
+  const first = parsed.error.issues[0];
+  if (!raw || typeof raw !== 'object') return { ok: false, issue: first };
+  let draft: unknown;
+  try { draft = structuredClone(raw); } catch { return { ok: false, issue: first }; }
+  for (let round = 0; round < 60 && !parsed.success; round++) {
+    const issue = parsed.error.issues[0];
+    // Never drop the picture's own identity or a missing required field.
+    if (issue.path.length <= 1 && ['kind', 'title'].includes(String(issue.path[0] ?? ''))) return { ok: false, issue };
+    if (!mend(draft, issue)) return { ok: false, issue: round ? issue : first };
+    parsed = visualSpecSchema.safeParse(draft);
+  }
+  return parsed.success ? { ok: true, spec: parsed.data } : { ok: false, issue: first };
+}
+
 /** Validate and compile a spec. Throws an Error with a short, human reason. */
 export function compileVisual(raw: unknown): CompiledVisual {
-  const parsed = visualSpecSchema.safeParse(raw);
-  if (!parsed.success) { const issue = parsed.error.issues[0]; throw Error(`The visual description is incomplete (${issue.path.join('.') || 'root'}: ${issue.message}).`); }
-  const spec = parsed.data;
+  const parsed = parseVisualSpec(raw);
+  if (!parsed.ok) { const issue = parsed.issue; throw Error(`The visual description is incomplete (${issue.path.join('.') || 'root'}: ${issue.message}).`); }
+  const spec = parsed.spec;
   const params: SpecParam[] = (spec.params || []).map(p => {
     const min = Math.min(p.min, p.max), max = Math.max(p.min, p.max);
     return { key: p.key, label: p.label, min, max, step: p.step && p.step <= max - min ? p.step : niceStep(max - min, 100), unit: p.unit || '', value: Math.max(min, Math.min(max, p.value)) };
@@ -380,7 +432,8 @@ export function compileVisual(raw: unknown): CompiledVisual {
     if (ids.size !== nodes.length) throw Error('Two diagram nodes share an id.');
     const edges = (spec.edges || []).filter(e => ids.has(e.from) && ids.has(e.to) && e.from !== e.to);
     hasFlow = edges.some(e => e.flow);
-    for (const s of spec.steps || []) for (const f of s.focus || []) if (!ids.has(f)) throw Error(`A step highlights an unknown node “${f}”.`);
+    // A step that names a node the diagram doesn't have just doesn't highlight it.
+    for (const s of spec.steps || []) if (s.focus) s.focus = s.focus.filter(f => ids.has(f));
     const layout = layoutDiagram(nodes, edges, spec.direction || 'right');
     const routes = routeEdges(layout, edges);
     draw = (pen, _values, t, step) => {
@@ -562,7 +615,7 @@ function layoutDiagram(nodes: NonNullable<VisualSpec['nodes']>, edges: NonNullab
 /** Extract the JSON inside a ```visual block body and compile it. */
 export function parseVisual(body: string): CompiledVisual {
   let data: unknown;
-  try { data = JSON.parse(body.trim()); } catch { throw Error('The visual description is not valid JSON.'); }
+  try { data = parseModelJson(body); } catch { throw Error('The visual description is not valid JSON.'); }
   return compileVisual(data);
 }
 export function defaultValues(v: CompiledVisual): Vars { return Object.fromEntries(v.params.map(p => [p.key, p.value])); }

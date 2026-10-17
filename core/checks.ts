@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseModelJson } from './model-json.ts';
 import { compile } from './expr.ts';
 
 /** Checked numbers: the model states each key result as a formula, its inputs and the value it
@@ -53,7 +54,7 @@ export function runChecks(raw: unknown): CheckResult[] {
 
 export function parseChecks(body: string): CheckResult[] {
   let data: unknown;
-  try { data = JSON.parse(body.trim()); } catch { throw Error('The calculation check is not valid JSON.'); }
+  try { data = parseModelJson(body); } catch { throw Error('The calculation check is not valid JSON.'); }
   return runChecks(data);
 }
 
