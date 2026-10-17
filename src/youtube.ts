@@ -50,3 +50,14 @@ export function youtubeReferences(text: string) {
   }
   return [...found.values()];
 }
+/** A YouTube playlist address ("…/playlist?list=…", or a video watched inside one), or null. */
+export function youtubePlaylistReference(value: string) {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || !["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(url.hostname)) return null;
+    const id = url.searchParams.get("list") || "";
+    return /^[\w-]{10,64}$/.test(id) ? { id, url: `https://www.youtube.com/playlist?list=${id}` } : null;
+  } catch {
+    return null;
+  }
+}

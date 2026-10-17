@@ -1,0 +1,76 @@
+/* Saved YouTube videos: their picture, the "Save from YouTube" dialog and the viewer with the player beside the
+   transcript. Colours come from the app's tokens (--ink, --muted, --line, --panel in src/style.css). */
+.yt-thumb{position:relative;display:grid;place-items:center;overflow:hidden;background:#000;color:var(--muted);border-radius:8px;aspect-ratio:16/9}
+.yt-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.yt-thumb i{position:absolute;right:4px;bottom:4px;padding:1px 4px;border-radius:4px;background:#000000c8;color:#fff;font:500 10.5px/1.4 var(--sans);font-style:normal;font-variant-numeric:tabular-nums}
+.yt-thumb-list{background:var(--panel);color:var(--ink)}
+
+.yt-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:#ffffff06;color:var(--ink);font:400 13px/1 var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
+.yt-btn:hover{background:#ffffff0e;border-color:#4d4d47;color:var(--ink)}
+.yt-btn.strong{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.yt-btn.strong:hover{background:#fff;border-color:#fff;color:var(--bg)}
+.yt-btn .drawn-icon{color:currentColor}
+.yt-btn:disabled{opacity:.45;cursor:default}
+
+/* The dialog */
+dialog.yt-save{width:min(500px,calc(100vw - 32px));max-width:none;padding:0;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);box-shadow:0 30px 110px #000a}
+dialog.yt-save::backdrop{background:#000000a6;backdrop-filter:none}
+dialog.yt-save[open]{animation:yt-in .22s cubic-bezier(.2,.9,.3,1)}
+@keyframes yt-in{from{opacity:0;transform:translateY(8px) scale(.985)}}
+.yt-save form{display:grid;gap:16px;padding:22px 22px 20px}
+.yt-save-head{display:flex;align-items:flex-start;gap:12px}
+.yt-save-head>div{flex:1;min-width:0}
+.yt-save-head .brand-youtube{flex:none;margin-top:2px}
+.yt-save h2{margin:0;font:700 17px/1.35 var(--sans);letter-spacing:0;color:var(--ink)}
+dialog.yt-save p{margin:4px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+.yt-save-head .icon-button{margin:-6px -8px 0 0;color:var(--muted)}
+.yt-save-field{display:grid;gap:7px;font-size:13px;color:var(--muted)}
+.yt-save-field input,.yt-save-field select{width:100%;height:42px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:400 14px var(--sans)}
+.yt-save-field select{padding:0 10px;line-height:normal}
+.yt-save-field input[aria-invalid=true]{border-color:#c4473c}
+.yt-save-preview{display:flex;align-items:center;gap:14px;padding:10px;border:1px solid var(--line);border-radius:12px;background:#ffffff04;animation:yt-in .2s ease-out}
+.yt-save-preview .yt-thumb{flex:none;width:120px}
+.yt-save-preview>div{display:grid;gap:4px;min-width:0}
+.yt-save-preview strong{font-weight:500;font-size:14px}
+.yt-save-preview small{font-size:12.5px;line-height:1.45;color:var(--muted)}
+.yt-save-choice{display:inline-flex;gap:2px;margin-top:4px;padding:2px;border:1px solid var(--line);border-radius:9px;width:max-content}
+.yt-save-choice button{height:26px;padding:0 10px;border-radius:7px;font-size:12px;color:var(--muted)}
+.yt-save-choice button[aria-pressed=true]{background:#ffffff12;color:var(--ink)}
+dialog.yt-save .yt-save-note{margin:0;font-size:12.5px}
+dialog.yt-save .yt-save-error{margin:0;color:#f0a493;font-size:13px}
+.yt-save-progress{display:grid;gap:7px;font-size:12.5px;color:var(--muted)}
+.yt-save-progress progress{height:4px}
+.yt-save-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+
+/* The viewer */
+dialog.yt-viewer{width:min(1180px,calc(100vw - 40px));max-width:none;max-height:calc(100vh - 40px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--panel);color:var(--ink);box-shadow:0 30px 110px #000a;overflow:hidden}
+dialog.yt-viewer::backdrop{background:#000000b8}
+dialog.yt-viewer[open]{display:flex;flex-direction:column;animation:yt-in .22s cubic-bezier(.2,.9,.3,1)}
+.yt-viewer-head{display:flex;align-items:center;gap:10px;padding:16px 16px 14px 22px;border-bottom:1px solid var(--line)}
+.yt-viewer-head>div{flex:1;min-width:0}
+.yt-viewer h2{margin:0;font:400 22px/1.25 var(--serif);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+dialog.yt-viewer .yt-viewer-head p{margin:3px 0 0;font-size:13px;color:var(--muted)}
+.yt-viewer-head .icon-button{color:var(--muted)}
+.yt-viewer-body{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);min-height:0;flex:1}
+.yt-player{padding:18px;background:#0d0d0d}
+.yt-player iframe{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
+.yt-transcript{display:flex;flex-direction:column;min-height:0;max-height:calc(100vh - 140px);border-left:1px solid var(--line)}
+.yt-transcript-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 10px}
+.yt-transcript-head strong{font-weight:500;font-size:13px}
+.yt-find{display:flex;align-items:center;gap:7px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:9px;color:var(--muted)}
+.yt-find input{width:140px;padding:0;border:0;background:none;outline:none;font-size:12.5px;color:var(--ink)}
+.yt-lines{list-style:none;margin:0;padding:0 8px 14px;overflow:auto}
+.yt-lines button{display:grid;grid-template-columns:52px 1fr;gap:10px;width:100%;padding:8px;border-radius:8px;text-align:left;align-items:start;color:var(--ink);font-size:13.5px;line-height:1.55}
+.yt-lines button:hover{background:#ffffff08}
+.yt-lines time{color:var(--muted);font:500 12px/1.9 var(--sans);font-variant-numeric:tabular-nums}
+.yt-lines button:hover time{color:var(--ink)}
+.yt-none{padding:4px 16px 16px;font-size:13.5px;line-height:1.55;color:var(--muted)}
+dialog.yt-viewer .yt-none p{margin:0 0 14px;color:var(--muted)}
+dialog.yt-viewer .yt-fine{margin:0;padding:10px 16px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+@media (max-width:860px){
+  .yt-viewer-body{grid-template-columns:1fr;overflow:auto}
+  .yt-transcript{border-left:0;border-top:1px solid var(--line);max-height:none}
+  .yt-viewer-head{flex-wrap:wrap}
+  .yt-viewer-head>div{flex-basis:calc(100% - 50px)}
+}
+@media (prefers-reduced-motion:reduce){dialog.yt-save[open],dialog.yt-viewer[open],.yt-save-preview{animation:none}}

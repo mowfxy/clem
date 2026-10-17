@@ -24,7 +24,10 @@ export type FileVersion = { blob: string; at: number; summary: string; size: num
 export type StoredFile = { remote?:boolean; /** Where the person placed it in its folder by dragging its handle (none: newest first). */ rank?: number; id: string; name: string; size: number; type: string; created: number; spaceId: string | null; folderId?: string | null; made?: boolean; versions?: FileVersion[]; updated?: number; /** Its copy in the Google Drive folder linked to its subject or project, kept in step after approved edits. */ driveId?: string;
   /** The Drive folder it is being saved into (a file dropped into Drive shows there while it uploads). */ driveFolder?: string;
   /** Drive's modified time of the copy this file matches, so a change made in Drive is fetched again. */ driveModified?: string;
-  /** Changed here since its Drive copy was saved; goes to Drive once the change is approved. */ drivePending?: boolean };
+  /** Changed here since its Drive copy was saved; goes to Drive once the change is approved. */ drivePending?: boolean;
+  /** A saved YouTube video. The file itself is its transcript as Markdown (src/files/saved-video.ts), so it is read as a
+   *  source like any text file; this only drives how it is shown. */ video?: SavedVideo };
+export type SavedVideo = { id: string; channel?: string; durationSec?: number; /** Whose captions the transcript is: the video's own, YouTube's automatic ones, or none could be read. */ captions: 'own' | 'auto' | 'none'; language?: string; /** Why there is no transcript, in words the person can act on. */ error?: string; playlist?: { id: string; title: string } };
 export type VisualRecord = { id: string; chatId: string; title: string; created: number; scene?: string; params?: Record<string, number>; spec?: unknown };
 export type Automation = {model?:string;nextRun?:number;lastRun?:number;lastError?:string; id: string; name: string; prompt: string; schedule: string; enabled: boolean; spaceId: string | null };
 

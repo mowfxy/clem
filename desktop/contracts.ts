@@ -58,6 +58,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("driveMediaUrl"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("driveText"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("videoCaptions"), source: z.enum(["youtube", "drive"]), id: z.string().regex(/^[\w-]{10,150}$/), languages: z.array(z.string().regex(/^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$/)).max(4).optional() }),
+  z.object({ action: z.literal("youtubePlaylist"), id: z.string().regex(/^[\w-]{10,64}$/) }),
   z.object({ action: z.literal("grokLogin") }),
   z.object({ action: z.literal("grokInstall") }),
   z.object({ action: z.literal("providerAccountAdd") }),

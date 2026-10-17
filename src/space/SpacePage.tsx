@@ -6,10 +6,14 @@ import {Menu,FolderIcon} from './SpaceMenu';
 import {useReorder,arranged} from './reorder';
 import {RenameField,PencilIcon} from '../files/RenameField';
 import {FileGlyph} from '../files/FileGlyph';
+import {VideoThumb} from '../files/SaveVideo';
+import {YouTubeLogo} from '../BrandLogos';
+import {captionsLabel,durationLabel,shownName,watchUrl} from '../files/saved-video';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
 import {chatPreview} from '../../core/chat-title';
 import {sizeLabel} from '../store';
+import {kinds as fileKinds,kindOf,type FileKind} from '../files/StorageSummary';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
 import {MemoryConversation,warmMemory} from '../MemoryConversation';
@@ -24,6 +28,7 @@ import {menuKeys,useMenuKeys} from '../menuKeys';
 import {Squiggle,Templates} from '../ui/Calm';
 import './space.css';
 import './space-calm.css';
+import './space-files.css';
 
 export type SpaceTab='overview'|'chats'|'plan'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
 type Linked={id:string;scope:string;path:string};
@@ -35,6 +40,10 @@ export type SpaceActions={
   /** Asks before deleting a chat of this space. */
   onDeleteChat:(chat:Chat)=>void;
   onOpenFile:(file:StoredFile)=>void;
+  /** Opens "Save from YouTube" for this space, saving into the folder shown. */
+  onSaveVideo:(folderId:string|null)=>void;
+  /** A new chat here with the file attached. */
+  onAskFile:(file:StoredFile)=>void;
   /** Opens the file beside a new chat in this space, where messages edit it. */
   onEditFile:(file:StoredFile)=>void;
   onRenameFile:(file:StoredFile,name:string)=>void;
@@ -196,7 +205,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
           </section>
           <section className="sp-list recent">
             <div className="sp-list-head"><h3>Recent files</h3>{files.length>4&&<button onClick={()=>onTab('files')}>All files</button>}</div>
-            {recentFiles.slice(0,4).map(f=><button className="sp-row" key={f.id} onClick={()=>actions.onOpenFile(f)}><FileGlyph file={f} size={22}/><span>{f.name}</span><small>{ago(f.updated||f.created)}</small></button>)}
+            {recentFiles.slice(0,4).map(f=><button className="sp-row" key={f.id} onClick={()=>actions.onOpenFile(f)}>{f.video?<VideoThumb id={f.video.id} className="sp-row-thumb"/>:<FileGlyph file={f} size={22}/>}<span>{shownName(f)}</span><small>{ago(f.updated||f.created)}</small></button>)}
             {!files.length&&<p className="sp-empty-line">Nothing added yet.</p>}
           </section>
         </div>
@@ -293,8 +302,31 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     if(ids.length>1){const tag=document.createElement('div');tag.className='sp-drag-count';tag.textContent=`${ids.length} files`;document.body.appendChild(tag);e.dataTransfer.setDragImage(tag,16,16);setTimeout(()=>tag.remove(),0);}
   };
   const [renaming,setRenaming]=useState<string|null>(null);
+  // Finding a file: a name, channel or kind looks through every folder here at once, each file shown with where it is.
+  const [query,setQuery]=useState('');
+  const [kind,setKind]=useState<FileKind|'all'>('all');
+  const kindCounts=useMemo(()=>{const c=new Map<FileKind,number>();for(const f of files)c.set(kindOf(f),(c.get(kindOf(f))||0)+1);return c;},[files]);
+  const shownKind=kind!=='all'&&kindCounts.has(kind)?kind:'all';
+  const q=query.trim().toLowerCase();
+  const flat=!!q||shownKind!=='all';
+  const found=flat?files.filter(f=>(shownKind==='all'||kindOf(f)===shownKind)&&(!q||(f.name+' '+(f.video?.channel||'')+' '+(f.video?.playlist?.title||'')).toLowerCase().includes(q))).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created)):[];
+  const where=(f:StoredFile)=>f.folderId?folderPath(folders,f.folderId):'';
+  const videos=files.filter(f=>f.video).length,sourced=files.filter(f=>space.sources.includes(f.id)).length;
   /** A file of this PC to copy into the Drive folder shown ("Save copy in Drive"); the Drive view uploads it. */
   const [toDrive,setToDrive]=useState<{key:string;id:string}|null>(null);
+  const setSource=(f:StoredFile,on:boolean)=>actions.onUpdateSpace({...space,sources:on?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)});
+  /** A file's picture, name and what it is; `place` names its folder when files from several folders are listed. */
+  const fileOpen=(f:StoredFile,place?:string)=>{
+    const glyph=f.video?<VideoThumb id={f.video.id} duration={durationLabel(f.video.durationSec)} className="sp-thumb"/>:<FileGlyph file={f} size={36}/>;
+    if(renaming===f.id)return <div className="sp-file-open">{glyph}<RenameField name={shownName(f)} onSave={name=>{actions.onRenameFile(f,f.video&&!/\.md$/i.test(name)?name+'.md':name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>;
+    const meta=[place!==undefined?place||'Top level':'',...(f.video?[f.video.channel||'',captionsLabel(f.video)]:[sizeLabel(f.size)]),f.updated?'edited '+ago(f.updated):ago(f.created),f.made?'made by Mowr':'',f.versions?.length?`${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''].filter(Boolean);
+    return <button className="sp-file-open" onClick={()=>picked.size?pick(f.id):actions.onOpenFile(f)}>{picked.size>0&&<input type="checkbox" className="sp-pick" aria-label={`Select ${shownName(f)}`} checked={picked.has(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>pick(f.id)}/>}{glyph}<span><strong>{shownName(f)}</strong><small className={f.video?.captions==='none'?'sp-no-transcript':undefined}>{meta.join(' · ')}</small></span></button>;
+  };
+  const fileTools=(f:StoredFile,handle?:ReturnType<typeof fileOrder.handle>)=><>
+    <button className="icon-button sp-rename" aria-label={`Rename ${shownName(f)}`} aria-description="Rename" onClick={()=>setRenaming(f.id)}><PencilIcon size={15}/></button>
+    <label className="sp-source" aria-description="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>setSource(f,e.target.checked)}/>Source</label>
+    <Menu label={`${shownName(f)} options`} handle={handle} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Ask about it',icon:'chat',run:()=>actions.onAskFile(f)},...(f.video?[{label:'Watch on YouTube',icon:'external',run:()=>window.open(watchUrl(f.video!.id),'_blank','noopener')}]:[]),...(handle?[{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)}]:[]),...(!f.video&&/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+  </>;
   return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
     {/* At the top of a Drive-linked space the toolbar would only repeat the tab's name, so it stays out of the way. */}
     <div className={`sp-toolbar${space.drive&&!at?' is-empty':''}`}>
@@ -308,19 +340,34 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
           {!space.drive&&<button onClick={actions.onLinkDrive}><DriveGlyph/>Link a Drive folder</button>}
           <button onClick={()=>setNaming({name:''})}><Icon name="plus" size={15}/>New folder</button>
           <button onClick={()=>input.current?.click()}><Icon name="attach" size={15}/>Upload</button>
+          <button onClick={()=>actions.onSaveVideo(at)}><YouTubeLogo size={15}/>Save from YouTube</button>
           {at&&<button onClick={()=>actions.onShare(at)}><Icon name="import" size={15}/>Share folder</button>}
         </>}
         <input ref={input} type="file" multiple hidden onChange={e=>{if(e.target.files?.length)actions.onUpload(e.target.files,at);e.target.value='';}}/>
       </div>
     </div>
-    {space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
+    {files.length>0&&<div className="sp-find-row">
+      <label className="sp-find"><Icon name="research" size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'&&query){e.preventDefault();setQuery('');}}} placeholder={`Find in ${space.name}`} aria-label={`Find files in ${space.name}`}/></label>
+      {kindCounts.size>1&&<div className="files-kinds sp-kinds" role="group" aria-label="Show">
+        <button type="button" aria-pressed={shownKind==='all'} onClick={()=>setKind('all')}>All<small>{files.length}</small></button>
+        {fileKinds.filter(k=>kindCounts.has(k.id)).map(k=><button type="button" key={k.id} aria-pressed={shownKind===k.id} onClick={()=>setKind(shownKind===k.id?'all':k.id)}>{k.id==='video'&&<YouTubeLogo size={13}/>}{k.label}<small>{kindCounts.get(k.id)}</small></button>)}
+      </div>}
+      <p className="sp-files-sum">{files.length} file{files.length===1?'':'s'}{videos?` · ${videos} video${videos===1?'':'s'}`:''} · {sourced?`${sourced} used as sources`:'none marked as sources'}</p>
+    </div>}
+    {flat&&<div className="sp-file-list sp-found" aria-label="Matching files">
+      {found.map(f=><div key={f.id} className="sp-file">{fileOpen(f,where(f))}{fileTools(f)}</div>)}
+      {!found.length&&<p className="sp-empty-line sp-found-none">No file here matches{q?` “${query.trim()}”`:''}{shownKind!=='all'?` in ${fileKinds.find(k=>k.id===shownKind)?.label}`:''}. <button type="button" onClick={()=>{setQuery('');setKind('all');}}>Show everything</button></p>}
+    </div>}
+    {!flat&&space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
       copy={toDrive}
       onItems={items=>{setDriveIds(new Set(items.filter(x=>!x.folder).map(x=>x.id)));actions.onDriveItems(items);}}/>}
+    {!flat&&<>
     {!space.drive&&!at&&<DriveExtras space={space} actions={actions}/>}
     {/* Files added here are kept on this PC only; they are not sent to the linked Drive folder. */}
     {space.drive&&!at&&<div className="sp-local-head"><span className="sp-eyebrow">On this PC</span>
       <div className="sp-local-actions">
         <button onClick={()=>input.current?.click()} aria-description="Add files from this PC, kept here only"><Icon name="plus" size={13}/> Add files</button>
+        <button onClick={()=>actions.onSaveVideo(null)}><YouTubeLogo size={13}/> YouTube</button>
         <button className="icon-button sp-new-folder" aria-label="New folder" title="New folder" onClick={()=>setNaming({name:''})}><Icon name="folder-plus" size={18}/></button>
       </div>
     </div>}
@@ -336,15 +383,13 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     {picked.size>0&&<div className="sp-pick-bar" role="toolbar" aria-label="Selected files"><strong>{picked.size} selected</strong><span>Drag any of them to a folder to move them together.</span>
       <button onClick={()=>setPicked(new Set(shownFiles.map(f=>f.id)))}>Select all</button><button onClick={()=>setMovingPicked(true)}>Move to…</button><button onClick={()=>setPicked(new Set())}>Clear</button></div>}
     <div className="sp-file-list">
-      {shownFiles.map(f=><div key={f.id} {...fileOrder.item(f.id)} className={`sp-file${picked.has(f.id)?' picked':''}`} draggable onDragStart={e=>{if(fileOrder.pressing()){e.preventDefault();return;}dragFiles(f,e);}}>
-        {renaming===f.id?<div className="sp-file-open"><FileGlyph file={f}/><RenameField name={f.name} onSave={name=>{actions.onRenameFile(f,name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>:<button className="sp-file-open" onClick={()=>picked.size?pick(f.id):actions.onOpenFile(f)}>{picked.size>0&&<input type="checkbox" className="sp-pick" aria-label={`Select ${f.name}`} checked={picked.has(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>pick(f.id)}/>}<FileGlyph file={f} size={36}/><span><strong>{f.name}</strong><small>{sizeLabel(f.size)} · {f.updated?'edited '+ago(f.updated):ago(f.created)}{f.made?' · made by Mowr':''}{f.versions?.length?` · ${f.versions.length} earlier version${f.versions.length===1?'':'s'}`:''}</small></span></button>}
-        <button className="icon-button sp-rename" aria-label={`Rename ${f.name}`} aria-description="Rename" onClick={()=>setRenaming(f.id)}><PencilIcon size={15}/></button>
-        <label className="sp-source" aria-description="Use this file when answering questions in this space"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>actions.onUpdateSpace({...space,sources:e.target.checked?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)})}/>Source</label>
-        <Menu label={`${f.name} options`} handle={fileOrder.handle(f.id)} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)},...(/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+      {shownFiles.map(f=><div key={f.id} {...fileOrder.item(f.id)} className={`sp-file${picked.has(f.id)?' picked':''}${f.video?' is-video':''}`} draggable onDragStart={e=>{if(fileOrder.pressing()){e.preventDefault();return;}dragFiles(f,e);}}>
+        {fileOpen(f)}{fileTools(f,fileOrder.handle(f.id))}
       </div>)}
-      {!inHere.length&&!here.length&&!(space.drive&&!at)&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
-        <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}
+      {!inHere.length&&!here.length&&!(space.drive&&!at)&&<div className="sp-drop-empty"><FolderIcon/><strong>{at?'This folder is empty':'Nothing here yet'}</strong><p>Drop files here, upload them, save a YouTube video or playlist, or ask Mowr to make a worksheet.{at?'':' Make folders like “Worksheets” or “Past papers” to keep things tidy.'}</p>
+        <div><button onClick={()=>input.current?.click()}>Upload files</button><button onClick={()=>actions.onSaveVideo(at)}><YouTubeLogo size={15}/>Save from YouTube</button><button onClick={()=>actions.onMake('worksheet',at)}>Make a worksheet here</button></div></div>}
     </div>
+    </>}
     {moving&&<div className="sp-move" role="dialog" aria-label={`Move ${moving.name}`}><strong>Move “{moving.name}” to</strong>{destinations(moving).map(d=><button key={d.id||'root'} onClick={()=>{move([moving.id],d.id);setMoving(null);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMoving(null)}>Cancel</button></div>}
     {movingPicked&&picked.size>0&&<div className="sp-move" role="dialog" aria-label={`Move ${picked.size} files`}><strong>Move {picked.size} file{picked.size===1?'':'s'} to</strong>{[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==at).map(d=><button key={d.id||'root'} onClick={()=>{move([...picked],d.id);setPicked(new Set());setMovingPicked(false);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMovingPicked(false)}>Cancel</button></div>}
     {desktop&&<div className="sp-linked"><div className="sp-card-head"><span className="sp-eyebrow">{space.drive?'Linked folders':'On this PC'}</span><button onClick={()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{})}>Link a folder</button></div>

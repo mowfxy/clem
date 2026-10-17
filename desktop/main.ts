@@ -60,7 +60,7 @@ import {ClaudeProvider,claudeOpensPdfPages} from './claude';
 import {GrokProvider,grokModels,grokPdfPath,grokUsage,GROK_PREFIX} from './grok';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
-import {youtubeCaptions} from './video-captions';
+import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
 import {LiveScreen} from './live-reply';
 import {inlinePictures} from './kinetra-mcp';
@@ -1156,6 +1156,7 @@ void app.whenReady().then(async () => {
       if(!await driveLive.connected())return {source:"drive",id:request.id,transcript:"",error:"Google Drive isn't connected. Connect it in Settings → Connectors → Google Drive."};
       return driveLive.captions(request.id,languages);
     }
+    if (request.action === "youtubePlaylist") return youtubePlaylist(request.id);
     if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
     if (request.action === "grokStatus") return (await grokFor(user.id)).status(true);
     if (request.action === "grokLogin") return grokSignIn(await grokFor(user.id));

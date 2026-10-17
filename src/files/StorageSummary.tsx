@@ -5,6 +5,8 @@ import type { StoredFile } from '../../core/types';
 import './storage-summary.css';
 
 export const kinds = [
+  // A saved YouTube video is a Markdown transcript, so it is told apart before Documents claims it.
+  { id: 'video', label: 'Videos', test: (f: StoredFile) => !!f.video },
   { id: 'pdf', label: 'PDFs', test: (f: StoredFile) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name) },
   { id: 'doc', label: 'Documents', test: (f: StoredFile) => /word|presentation|spreadsheet|officedocument|text\/|json|csv|markdown/.test(f.type) || /\.(docx?|pptx?|xlsx?|txt|md|csv|rtf|odt)$/i.test(f.name) },
   { id: 'image', label: 'Images', test: (f: StoredFile) => f.type.startsWith('image/') },
