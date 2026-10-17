@@ -93,6 +93,9 @@ function usePopover(trigger: RefObject<HTMLButtonElement | null>, open: boolean,
   return { panel, position };
 }
 
+/** The trigger already shows the provider's mark, so "Claude Sonnet 5.5" reads as "Sonnet 5.5" there. */
+const shortName = (m: Model) => m.provider === "Anthropic" ? m.name.replace(/^Claude\s+/, "") : m.name;
+
 /** Two small controls: which model, and how hard it thinks. `auto`: the name of a first choice that picks no model
  *  (value ""), such as Settings' automatic model for background tasks. */
 export function ModelSelector({ models, value, onChange, onConnect, effort, onEffort, disabled = false, auto, label = "Choose model" }: {
@@ -123,7 +126,7 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
   return <div className="model-selector unified-model-picker">
     <button ref={modelButton} type="button" className="picker-trigger" disabled={disabled} aria-label={label} aria-haspopup="menu" aria-expanded={open === "model"} aria-description={selected?.name || (auto && !value ? auto : "Choose a model")} onClick={() => setOpen(open === "model" ? null : "model")}>
       {selected && <ProviderMark provider={selected.provider} />}
-      <span className="picker-trigger-name">{selected?.name || (auto && !value ? auto : "Choose model")}</span>
+      <span className="picker-trigger-name">{(selected && shortName(selected)) || (auto && !value ? auto : "Choose model")}</span>
       <Icon name="down" size={12} />
     </button>
     {level && onEffort && levels.length > 0 && <button ref={effortButton} type="button" className="picker-trigger picker-trigger-effort" data-level={level} data-provider={selected?.provider} disabled={disabled} aria-label="Thinking level" aria-haspopup="dialog" aria-expanded={open === "effort"} aria-description={effortName(level) + " thinking"} onClick={() => setOpen(open === "effort" ? null : "effort")}>
