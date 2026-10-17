@@ -3,8 +3,8 @@
 // the gather-and-open motion match the Logo component in src/Icons.tsx.
 (function () {
   if (location.protocol !== "mowr:") return;
-  var petal = "M68 9 C93 7 109 27 104 50 C101 63 90 71 78 70 C73 69 72 63 75 59 C80 52 76 45 68 45 C57 45 48 38 48 27 C48 16 57 10 68 9Z";
-  var gathered = "M72 17 C81.9 17 90 25.1 90 35 C90 44.9 81.9 53 72 53 C68.3 53 64.7 51.9 61.7 49.7 C58.2 47.3 55.7 43.7 54.6 39.7 C53.2 34.5 54.2 29 57.3 24.7 C60.6 19.9 66.1 17 72 17Z".match(/-?\d*\.?\d+/g).map(Number);
+  var petal = "M96.7 10.8 C100.6 19.9 103.2 29.6 102.1 38.9 C101.1 48.1 95.8 55.7 89.5 60.7 C84.8 64.2 80 65.5 74.2 66.4 C70.7 61.8 68.2 57.5 67.2 51.7 C66.2 43.8 67.7 34.7 73.4 27.3 C79.1 19.8 87.6 14.7 96.7 10.8Z";
+  var gathered = "M78.7 18.3 C85.8 21.2 90.4 28.2 90 35.9 C89.6 44.3 83.3 51.3 75 52.7 C71.7 53.3 68.3 52.9 65.2 51.7 C62.2 50.4 59.5 48.4 57.5 45.7 C52.5 38.9 52.9 29.5 58.5 23.1 C63.5 17.4 71.6 15.4 78.7 18.3Z".match(/-?\d*\.?\d+/g).map(Number);
   var theme = "dark";
   try { var chosen = localStorage.getItem("mowr-theme"); theme = chosen === "light" || (chosen === "system" && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark"; } catch (e) {}
   var paper = theme === "light" ? "#faf8f3" : "#141414", trace = theme === "light" ? "32,37,58" : "245,244,240";
