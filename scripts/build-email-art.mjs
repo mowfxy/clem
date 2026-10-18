@@ -8,7 +8,7 @@ const {GIFEncoder,quantize,applyPalette}=gifenc;
 import {filmFrame,loopSeconds} from '../src/vectorFilm.ts';
 
 // Scenes sit on the email card; the mark sits on the page background.
-const OUT='public/email',BG='#1b1b19',PAGE='#121211',INK='#f0efeb',MARK='#b56c4b';
+const OUT='public/email',BG='#1b1b19',PAGE='#121211',INK='#f0efeb',MARK='#ef5340';
 fs.mkdirSync(OUT,{recursive:true});
 const browser=await chromium.launch();
 const page=await browser.newPage();
@@ -28,17 +28,18 @@ function encode(frames,w,h,file){
   console.log(`${file}: ${frames.length} frames, ${Math.round(gif.bytes().length/1024)} KB`);
 }
 
-// Mowr mark: a ripple runs out from the centre of the seed head, as in the app's thinking state
-// (Logo in src/Icons.tsx; geometry and motion from core/mark.ts, repeated here in plain JS).
-const step=39/Math.sqrt(61.5),seeds=Array.from({length:61},(_,k)=>[step*Math.sqrt(k+.5)*Math.cos(k*2.39996323),step*Math.sqrt(k+.5)*Math.sin(k*2.39996323),step*(.3+.48*((k+1)/61)**1.3)]);
+// Mowr mark: each petal gathers toward the centre and opens again, staggered, as in the app's thinking state.
+const petal='M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C85 48 75 43 65 48 C55 52 49 43 49 31 C49 22 54 15 64 11Z';
+const gathered='M72 17 C82 17 90 25 90 35 C90 45 82 53 72 53 C66 53 62 50 59 46 C56 42 54 39 54 35 C54 25 59 20 65 18 C67 17 69 17 72 17Z'.match(/-?\d*\.?\d+/g).map(Number);
+const ease=t=>{const x=Math.max(0,Math.min(1,t));return x*x*(3-2*x);};
 function mark(ms){
-  const t=ms/1000,dots=seeds.map(([x,y,r],k)=>`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${(r*(1+.32*Math.sin(2*Math.PI*t/1.9-Math.sqrt(k)*1.15))).toFixed(2)}"/>`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-45 -45 90 90"><rect x="-45" y="-45" width="90" height="90" fill="${PAGE}"/><g fill="${MARK}">${dots}</g></svg>`;
+  const paths=[0,1,2,3].map(i=>{const t=((ms%3600)-i*100)/2600,blend=t<.12?0:t<.4?ease((t-.12)/.28):t<.54?1:1-ease((t-.54)/.34);let j=0;const d=petal.replace(/-?\d*\.?\d+/g,v=>{const f=Number(v);return (f+(gathered[j++]-f)*blend).toFixed(2);});return `<path transform="rotate(${i*90} 72 72)" d="${d}" fill="${MARK}"/>`;}).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><rect width="144" height="144" fill="${PAGE}"/>${paths}</svg>`;
 }
 {
   const size=96,frames=[];
   frames.push([await raster(mark(0),size,size),900]);
-  for(let ms=0;ms<1900;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
+  for(let ms=0;ms<3600;ms+=50)frames.push([await raster(mark(ms),size,size),50]);
   encode(frames,size,size,'mowr-mark.gif');
 }
 

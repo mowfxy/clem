@@ -41,7 +41,7 @@
 .au-fine{font-size:13px!important;margin:18px 0 0!important}
 .au-inline{padding:0;background:none;border:0;color:#f0efeb;text-decoration:underline;text-underline-offset:3px;font:inherit;cursor:pointer}
 .au-check{display:grid;place-items:center;margin:4px 0 18px}
-.au-check .mowr-mark{color:var(--mowr-clay)}
+.au-check .mowr-mark{color:var(--mowr-red)}
 .au-progress{height:3px;border-radius:3px;background:#262624;overflow:hidden;margin:4px 40px 0}
 .au-progress i{display:block;height:100%;width:40%;border-radius:3px;background:#f0efeb;animation:au-slide 1.4s cubic-bezier(.4,0,.2,1) infinite}
 .au-done{display:grid;place-items:center;margin:0 0 16px}
