@@ -67,7 +67,7 @@ const REPLY_SOURCE = "reply";
 type Carry = { attachments: string[]; drive: DriveItem[] };
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
-const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : "ChatGPT";
+const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Antigravity" : "ChatGPT";
 /** Files of a chat and its subject or project read for each request; the budget decides how much of each is sent. */
 const MAX_CHAT_SOURCES = 400;
 /** The longest a change waits before the workspace is written (streamed answers change it on every token). */
@@ -184,6 +184,16 @@ const modelPlaceholders: Model[] = [
     id: "xai",
     name: "Grok",
     provider: "xAI",
+    connected: false,
+    context: 0,
+    specialties: [],
+    tools: [],
+  },
+
+  {
+    id: "google",
+    name: "Antigravity",
+    provider: "Google",
     connected: false,
     context: 0,
     specialties: [],
@@ -1300,7 +1310,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       const driveFound = isVisual || cowork ? [] : fromDrive.filter((f) => f.type === "application/pdf" && !pdfs.handled.includes(f.id));
       if (driveFound.length) {
         status(id)("Looking at your Drive files…");
-        const more = await pdfView({ files: driveFound, current: [], earlier: [], related: driveFound.map((f) => ({ id: f.id, where: "in Google Drive" })), prompt, provider: model.startsWith("claude:") ? "claude" : model.startsWith("grok:") ? "grok" : "codex", model, text: (file) => cachedFileText(file, ownerRef.current, controller.signal), after: pdfs, signal: controller.signal })
+        const more = await pdfView({ files: driveFound, current: [], earlier: [], related: driveFound.map((f) => ({ id: f.id, where: "in Google Drive" })), prompt, provider: model.startsWith("claude:") ? "claude" : model.startsWith("grok:") ? "grok" : model.startsWith("antigravity:") ? "antigravity" : "codex", model, text: (file) => cachedFileText(file, ownerRef.current, controller.signal), after: pdfs, signal: controller.signal })
           .catch((e) => { if (controller.signal.aborted) throw e; return NO_PDF_VIEW(); });
         pdfs.files.push(...more.files); pdfs.notes.push(...more.notes); pdfs.handled.push(...more.handled); pdfs.pictures.push(...more.pictures);
         images.push(...more.pictures);
@@ -1479,7 +1489,7 @@ ${answerInstructions}`,
     const space=stateRef.current.spaces.find(s=>s.id===chat.spaceId);
     const earlier=[...[...chat.messages].reverse().flatMap(m=>[...(m.attachments||[]),...(m.context||[])]),...driveFiles.map(f=>f.id).reverse(),...(space?.sources||[])];
     const inSpace=space?stateRef.current.files.filter(f=>f.spaceId===space.id&&!f.remote).map(f=>({id:f.id,where:`saved in the ${space.kind} "${space.name}"`})):[];
-    const provider=forModel.startsWith('claude:')?'claude':forModel.startsWith('grok:')?'grok':'codex';
+    const provider=forModel.startsWith('claude:')?'claude':forModel.startsWith('grok:')?'grok':forModel.startsWith('antigravity:')?'antigravity':'codex';
     return pdfView({files:[...stateRef.current.files,...driveFiles,...extraFiles],current,earlier,related:[...inSpace,...extraRelated],prompt:query,provider,model:forModel,text:(file)=>cachedFileText(file,ownerRef.current,signal),wholePages,after,signal,listOnly})
       .catch((e):PdfView=>{if(signal?.aborted)throw e;return NO_PDF_VIEW();});
   }
@@ -1815,7 +1825,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         async (task, inputs, signal) => {
           const live=accountDataRef.current,active=live?.accounts.find(account=>account.id===live.active);
           const alternate=live?.accounts.some(account=>account.id!==live.active&&account.connected&&hasCapacity(account.usage));
-          if(!handoffDecided&&live?.autoSwitch&&active?.usage&&isBelowSwitchThreshold(active.usage)&&!alternate&&!/^(claude|grok):/.test(task.model)&&models.some(model=>(model.provider==='Anthropic'||model.provider==='xAI')&&model.connected)){
+          if(!handoffDecided&&live?.autoSwitch&&active?.usage&&isBelowSwitchThreshold(active.usage)&&!alternate&&!/^(claude|grok|antigravity):/.test(task.model)&&models.some(model=>(model.provider==='Anthropic'||model.provider==='xAI'||model.provider==='Google')&&model.connected)){
             handoffDecided=true;
             handoffChoice=await new Promise<{model:string;reasoning?:string}|null>((resolve,reject)=>{
               const key=crypto.randomUUID(),drop=()=>setHandoffs(items=>items.filter(item=>item.key!==key));
@@ -1828,7 +1838,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               for(const remaining of executionPlan.tasks.slice(index)){if(remaining.status!=='complete'){remaining.model=handoffChoice.model;remaining.reasoning=handoffChoice.reasoning;}}
               current={...current,tasks:current.tasks.map(item=>executionPlan.tasks.find(next=>next.id===item.id)?.status!=='complete'?{...item,model:handoffChoice!.model,reasoning:handoffChoice!.reasoning}:item)};
               await workflow.save(current);updatePlan(id,messageId,current);
-              notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':'Claude'),detail:'Completed steps and their outputs are preserved.'});
+              notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':handoffChoice.model.startsWith('antigravity:')?'Antigravity':'Claude'),detail:'Completed steps and their outputs are preserved.'});
             }
           }
           // The chat's PDFs as this step's AI reads them: short ones whole, the pages of longer ones that fit the step.

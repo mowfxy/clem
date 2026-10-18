@@ -77,8 +77,11 @@ Telegram was removed at the owner's request (6 October 2026), as WhatsApp was be
 - [Lemon Squeezy checkout](https://docs.lemonsqueezy.com/api/checkouts/create-checkout)
 - [Lemon Squeezy webhooks](https://docs.lemonsqueezy.com/guides/developer-guide/webhooks)
 - [Grok Build enterprise authentication](https://docs.x.ai/build/enterprise)
+- [Antigravity in the ACP registry](https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json), as [T3 Code runs it](https://github.com/pingdotgg/t3code/blob/main/docs/user/providers-antigravity.md)
 
 Grok Build's official CLI supports subscription authentication, but its credential behavior and complete subscribed inference have not been verified in this desktop runtime. It remains disabled; no paid API substitute is used.
+
+Antigravity (`desktop/antigravity.ts`, `antigravity-engine.ts`, `acp.ts`) runs Google's official Antigravity agent for other apps (`antigravity-acp`), the program T3 Code uses, unmodified, over the Agent Client Protocol it was built for. Install reads the ACP registry for the newest version, downloads only Google's own build from `dl.google.com`, and refuses it unless both programs carry Google LLC's valid code signature. Each account has its own `GEMINI_HOME` under Mowr's data (never `~/.gemini`), so its sign-in, sessions and settings stay apart from any Antigravity app the person uses. Google's own agent does the Google sign-in (its page opens in the browser and returns to the agent on `127.0.0.1`) and keeps the token; Mowr never reads it and never calls Google's services itself. Plan usage comes from the agent's own `/usage` command, which its server answers without a model call. API keys and Google Cloud variables are left out of its environment, so it always runs on the person's plan.
 
 ## Browser sign-in and window chrome
 

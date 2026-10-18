@@ -8,14 +8,14 @@ flowchart LR
     UI["React interface<br/>src/"]
     Main["Electron main process<br/>desktop/"]
     Files[("Documents › Mowr<br/>chats, files, subjects")]
-    CLIs["Official AI CLIs<br/>Codex · Claude Code · Grok"]
+    CLIs["Official AI CLIs<br/>Codex · Claude Code · Grok · Antigravity"]
     Kinetra["Kinetra<br/>maths, figures, PDFs, Office"]
     UI <-- IPC --> Main
     Main <--> Files
     Main --> CLIs
     CLIs --> Kinetra
   end
-  CLIs -- "the person's own plan" --> AI["ChatGPT · Claude · Grok"]
+  CLIs -- "the person's own plan" --> AI["ChatGPT · Claude · Grok · Gemini"]
   Main -- "sign-in, support" --> Account["Account Worker<br/>cloudflare/"]
   Account --> Auth["Supabase Auth"]
   Main -. "optional" .-> Drive["Google Drive"]

@@ -37,7 +37,7 @@
 Mowr is one quiet place for the work you bring to an AI: a course, a research question, a report, a pile of PDFs. Instead of another chat tab, you get **subjects and projects** that hold your files, chats, flashcards and drafts together, and an AI that answers from them.
 
 - 🏠 **Yours, on your PC.** Everything lives in `Documents\Mowr` as plain files. No lock-in, no upload of your library.
-- 🔌 **Bring your own AI.** Connect the ChatGPT, Claude or Grok plan you already pay for. Mowr adds no subscription.
+- 🔌 **Bring your own AI.** Connect the ChatGPT, Claude, Grok or Google AI (Antigravity) plan you already pay for. Mowr adds no subscription.
 - 🆓 **Free and open source.** No plan, no trial, no card. Every line is here under the [MIT License](LICENSE).
 
 ## What it does
@@ -107,8 +107,8 @@ See **[Features in detail](docs/FEATURES.md)** for the full tour, with pointers 
 flowchart LR
   UI["React interface"] <-- IPC --> Main["Electron main process"]
   Main <--> Files[("Your files<br/>Documents › Mowr")]
-  Main --> CLI["Official AI CLIs<br/>Codex · Claude Code · Grok"]
-  CLI -- "your own plan" --> AI(("ChatGPT · Claude · Grok"))
+  Main --> CLI["Official AI CLIs<br/>Codex · Claude Code · Grok · Antigravity"]
+  CLI -- "your own plan" --> AI(("ChatGPT · Claude · Grok · Gemini"))
   Main -. "sign-in & support" .-> Acc["Account service"]
 ```
 

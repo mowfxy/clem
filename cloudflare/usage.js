@@ -1,7 +1,7 @@
 // The desktop app reports anonymous daily usage counts: provider, model, reasoning level and message totals. No content.
 import { HttpError, json, readJson } from "./lib/http.js";
 
-const PROVIDERS = new Set(["chatgpt", "claude", "grok"]);
+const PROVIDERS = new Set(["chatgpt", "claude", "grok", "antigravity"]);
 const label = (value) => {
   const text = String(value ?? "");
   if (text.length > 64 || !/^[\w.:\-]*$/.test(text)) throw new HttpError(400, "Invalid usage label.");

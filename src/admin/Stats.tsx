@@ -8,7 +8,7 @@ type Stats={range:number;turns:number;images:number;people:number;perPerson:numb
   reasoning:{reasoning:string;turns:number}[];byHour:number[];byWeekday:number[];series:{date:string;count:number;people:number}[];
   links:{kind:string;people:number}[];sync:{kind:string;people:number}[]};
 
-const providerName:Record<string,string>={chatgpt:'ChatGPT',claude:'Claude',grok:'Grok'};
+const providerName:Record<string,string>={chatgpt:'ChatGPT',claude:'Claude',grok:'Grok',antigravity:'Antigravity'};
 const linkName:Record<string,string>={codex:'ChatGPT',claude:'Claude'};
 const syncName:Record<string,string>={skills:'Skills',memory:'Memory',notes:'Notes'};
 const weekdays=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];

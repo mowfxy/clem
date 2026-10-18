@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import type { Vault } from "./vault";
 import { isBelowSwitchThreshold, resumeAt, type UsageSnapshot } from "../core/account-usage.ts";
 
-/** One Claude or Grok sign-in, in the shape Settings shows for ChatGPT accounts. */
+/** One Claude, Grok or Antigravity sign-in, in the shape Settings shows for ChatGPT accounts. */
 export type CliAccount = { id: string; connected: boolean; installed?: boolean; pending?: boolean; email?: string; plan?: string; usage?: UsageSnapshot; checkedAt?: number; error?: string };
 export interface CliProvider { readonly busy: boolean; cancel(id: string): void; stop(): void; logout(): Promise<void>; endSession(id: string): Promise<void>; forget(): void }
 type Registry = { active: string; ids: string[] };
@@ -32,10 +32,10 @@ export class CliAccounts<P extends CliProvider> {
   private signing = new Map<string, number>();
   /** When list() last asked each account's CLI afresh: live polling reads one at most every 10 seconds. */
   private listed = new Map<string, number>();
-  private kind: "claude" | "grok";
+  private kind: "claude" | "grok" | "antigravity";
   private vault: Vault;
   private options: Options<P>;
-  constructor(kind: "claude" | "grok", vault: Vault, options: Options<P>) { this.kind = kind; this.vault = vault; this.options = options; }
+  constructor(kind: "claude" | "grok" | "antigravity", vault: Vault, options: Options<P>) { this.kind = kind; this.vault = vault; this.options = options; }
   private key(owner: string) { return this.kind + "-accounts-" + owner; }
   private async registry(owner: string) {
     let value = this.registries.get(owner);

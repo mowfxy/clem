@@ -4,7 +4,7 @@ import type { Model } from "../core/types";
 import { desktop } from "./desktop/bridge";
 import {LocalProvider} from "./desktop/LocalProvider";
 import { Icon } from "./Icons";
-import { OpenAILogo, ClaudeLogo, GrokLogo } from "./BrandLogos";
+import { OpenAILogo, ClaudeLogo, GrokLogo, AntigravityLogo } from "./BrandLogos";
 import { ModelSelector } from "./ModelSelector";
 import "./models-settings.css";
 type WindowUsage = {
@@ -52,7 +52,7 @@ const when = (seconds: number) => {
   const date = new Date(seconds * 1000), soon = date.getTime() - Date.now() < 20 * 3600_000;
   return date.toLocaleString(undefined, soon ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
-const VENDOR: Record<Service, string> = { chatgpt: "OpenAI", claude: "Anthropic", grok: "xAI" };
+const VENDOR: Record<Service, string> = { chatgpt: "OpenAI", claude: "Anthropic", grok: "xAI", antigravity: "Google" };
 /** Each usage window as a thin meter of what is left, with when it resets. */
 function Usage({ account, service }: { account: Account; service: Service }) {
   const buckets =
@@ -84,15 +84,17 @@ const LOGO: Record<Service, (size: number) => ReactNode> = {
   chatgpt: (size) => <OpenAILogo size={size} title="OpenAI" />,
   claude: (size) => <ClaudeLogo size={size} title="Claude" />,
   grok: (size) => <GrokLogo size={size} title="Grok" />,
+  antigravity: (size) => <AntigravityLogo size={size} title="Antigravity" />,
 };
-const NAME: Record<Service, string> = { chatgpt: "ChatGPT", claude: "Claude", grok: "Grok" };
+const NAME: Record<Service, string> = { chatgpt: "ChatGPT", claude: "Claude", grok: "Grok", antigravity: "Antigravity" };
 /** One connected account: who it is, its plan, whether it is in use, and what it has left. */
 function AccountRow({ account, index, service, active, busy, onUse, onRemove, onSignIn }: {
   account: Account; index: number; service: Service; active: boolean; busy: boolean;
   onUse: () => void; onRemove: () => void; onSignIn: () => void;
 }) {
   const label = account.email || NAME[service] + " account" + (index ? " " + (index + 1) : "");
-  const plan = account.plan ? (service === "grok" ? planName(account.plan) : account.plan.charAt(0).toUpperCase() + account.plan.slice(1)) : "";
+  // Google names its plans itself ("Google AI Pro").
+  const plan = account.plan ? (service === "grok" ? planName(account.plan) : service === "antigravity" ? account.plan : account.plan.charAt(0).toUpperCase() + account.plan.slice(1)) : "";
   return <article className={"account-row" + (active && account.connected ? " is-active" : "")}>
     <div className="account-row-head">
       <span className="account-avatar" aria-hidden="true">{(account.email || NAME[service]).charAt(0).toUpperCase()}</span>
@@ -133,10 +135,11 @@ export function ModelsSettings({
     [error, setError] = useState(""),
     [claude,setClaude]=useState<CliStatus>({}),
     [grok,setGrok]=useState<CliStatus>({}),
-    [cli,setCli]=useState<Record<CliKind,AccountsData>>({claude:{active:"default",accounts:[]},grok:{active:"default",accounts:[]}}),
-    [tab,setTab]=useState<Service|null>(()=>{try{const saved=localStorage.getItem("mowr-provider-tab");return saved==="chatgpt"||saved==="claude"||saved==="grok"?saved:null;}catch{return null;}});
-  const store=(kind:CliKind,status:any)=>kind==="claude"?setClaude(status):setGrok(status);
-  const {setup,connect:connectCli}=useCliConnect(store,async()=>{await loadCli("claude");await loadCli("grok");await onRefresh();},setError);
+    [antigravity,setAntigravity]=useState<CliStatus>({}),
+    [cli,setCli]=useState<Record<CliKind,AccountsData>>({claude:{active:"default",accounts:[]},grok:{active:"default",accounts:[]},antigravity:{active:"default",accounts:[]}}),
+    [tab,setTab]=useState<Service|null>(()=>{try{const saved=localStorage.getItem("mowr-provider-tab");return saved==="chatgpt"||saved==="claude"||saved==="grok"||saved==="antigravity"?saved:null;}catch{return null;}});
+  const store=(kind:CliKind,status:any)=>kind==="claude"?setClaude(status):kind==="grok"?setGrok(status):setAntigravity(status);
+  const {setup,connect:connectCli}=useCliConnect(store,async()=>{await loadCli("claude");await loadCli("grok");await loadCli("antigravity");await onRefresh();},setError);
   async function loadCli(kind: CliKind, force = false) {
     const result = await desktop!.invoke({ action: "cliAccounts", kind, refresh: force }) as AccountsData;
     if (result?.accounts) setCli((current) => ({ ...current, [kind]: result }));
@@ -152,8 +155,8 @@ export function ModelsSettings({
           refresh: force,
         });
         if (result?.accounts) setData(result);
-        const [claudeStatus,grokStatus]=await Promise.all([desktop.invoke({action:'claudeStatus'}),desktop.invoke({action:'grokStatus'}),loadCli("claude",force),loadCli("grok",force)]);
-        setClaude(claudeStatus);setGrok(grokStatus);
+        const [claudeStatus,grokStatus,antigravityStatus]=await Promise.all([desktop.invoke({action:'claudeStatus'}),desktop.invoke({action:'grokStatus'}),desktop.invoke({action:'antigravityStatus'}),loadCli("claude",force),loadCli("grok",force),loadCli("antigravity",force)]);
+        setClaude(claudeStatus);setGrok(grokStatus);setAntigravity(antigravityStatus);
       }
       await onRefresh();
     } catch (e) {
@@ -171,7 +174,7 @@ export function ModelsSettings({
     window.addEventListener("focus",onFocus);
     // An account waiting for its browser sign-in is checked every few seconds until it connects.
     const waiting=data.accounts.some(a=>a.pending);
-    const cliWaiting=(["claude","grok"] as const).filter(kind=>cli[kind].accounts.some(a=>a.pending));
+    const cliWaiting=(["claude","grok","antigravity"] as const).filter(kind=>cli[kind].accounts.some(a=>a.pending));
     const timer=waiting?setTimeout(onFocus,5000):undefined;
     const cliTimer=cliWaiting.length?setInterval(()=>{for(const kind of cliWaiting)void loadCli(kind,true).then(()=>onRefresh()).catch(()=>{});},4000):undefined;
     return()=>{window.removeEventListener("focus",onFocus);clearTimeout(timer);clearInterval(cliTimer);};
@@ -209,12 +212,12 @@ export function ModelsSettings({
   }
   const addCli = (kind: CliKind) => run(async () => { await desktop!.invoke({ action: "cliAccountAdd", kind }); await loadCli(kind); });
   const chatgptAccounts = data.accounts.filter((a) => a.connected).length;
-  const counts: Record<Service, number> = { chatgpt: chatgptAccounts, claude: cli.claude.accounts.filter((a) => a.connected).length || (claude.connected ? 1 : 0), grok: cli.grok.accounts.filter((a) => a.connected).length || (grok.connected ? 1 : 0) };
-  const services: Service[] = desktop ? ["chatgpt", "claude", "grok"] : ["chatgpt"];
+  const counts: Record<Service, number> = { chatgpt: chatgptAccounts, claude: cli.claude.accounts.filter((a) => a.connected).length || (claude.connected ? 1 : 0), grok: cli.grok.accounts.filter((a) => a.connected).length || (grok.connected ? 1 : 0), antigravity: cli.antigravity.accounts.filter((a) => a.connected).length || (antigravity.connected ? 1 : 0) };
+  const services: Service[] = desktop ? ["chatgpt", "claude", "grok", "antigravity"] : ["chatgpt"];
   // Until someone picks a tab, open on the first connected service.
   const current = services.find((x) => x === tab) || services.find((x) => counts[x] > 0) || services[0];
   const pick = (id: Service) => { setTab(id); try { localStorage.setItem("mowr-provider-tab", id); } catch {} };
-  const status = current === "claude" ? claude : current === "grok" ? grok : null;
+  const status = current === "claude" ? claude : current === "grok" ? grok : current === "antigravity" ? antigravity : null;
   const listed: AccountsData = current === "chatgpt" ? data : cli[current];
   const rows = listed.accounts.filter((a) => a.connected || a.pending || a.error || a.id !== "default");
   const count = counts[current];
@@ -246,15 +249,16 @@ export function ModelsSettings({
             <span className="provider-logo">{LOGO[current](20)}</span>
             <div className="provider-title">
               <h3>{NAME[current]}</h3>
-              <small>{count ? count + (count > 1 ? " accounts" : " account") + " connected" : status && !status.installed ? `${current === "claude" ? "Claude Code" : "Grok"} is not installed` : "Not connected"}</small>
+              <small>{count ? count + (count > 1 ? " accounts" : " account") + " connected" : status && !status.installed && current !== "chatgpt" ? `${CLI[current].name} is not installed` : "Not connected"}</small>
             </div>
             {current === "chatgpt"
               ? <button className="provider-action" disabled={locked} onClick={onConnect}>{count ? "Add account" : "Connect ChatGPT"}<Icon name={count ? "plus" : "arrow"} size={14} /></button>
               : count
                 ? <button className="provider-action" disabled={busy || locked} onClick={() => void addCli(current)}>Add account<Icon name="plus" size={14} /></button>
-                : <SetupButton kind={current} setup={setup} disabled={busy || locked} label={status?.installed ? "Sign in to " + NAME[current] : "Install " + (current === "claude" ? "Claude Code" : "Grok")} account={current === "claude" ? "Claude" : "X or xAI"} onClick={() => void connectCli(current, status?.installed)} />}
+                : <SetupButton kind={current} setup={setup} disabled={busy || locked} label={status?.installed ? "Sign in to " + NAME[current] : "Install " + CLI[current].name} account={current === "claude" ? "Claude" : current === "antigravity" ? "Google" : "X or xAI"} onClick={() => void connectCli(current, status?.installed)} />}
           </div>
           {current === "grok" && !count && grok.installed && grok.error && <p className="provider-hint">{grok.error}</p>}
+          {current === "antigravity" && !count && antigravity.installed && antigravity.error && <p className="provider-hint">{antigravity.error}</p>}
           {rows.length > 0 && <div className="account-list">
             {rows.map((a, i) => <AccountRow key={a.id} account={a} index={i} service={current} active={a.id === listed.active} busy={busy || locked}
               onUse={() => void (current === "chatgpt" ? change(a.id) : changeCli(current, a.id, "use"))}
@@ -316,11 +320,12 @@ function HelperModelSetting({ models, locked }: { models: Model[]; locked: boole
     </div>
   </div>;
 }
-export type CliKind = "claude" | "grok";
+export type CliKind = "claude" | "grok" | "antigravity";
 type Service = "chatgpt" | CliKind;
 const CLI = {
   claude: { name: "Claude Code", owner: "Anthropic", terms: "anthropic.com/legal/consumer-terms", status: "claudeStatus", install: "claudeInstall", login: "claudeLogin" },
   grok: { name: "Grok", owner: "xAI", terms: "x.ai/legal/terms-of-service", status: "grokStatus", install: "grokInstall", login: "grokLogin" },
+  antigravity: { name: "Antigravity", owner: "Google", terms: "antigravity.google/terms", status: "antigravityStatus", install: "antigravityInstall", login: "antigravityLogin" },
 } as const;
 /** SUPERGROK_PRO → SuperGrok Pro, X_PREMIUM_PLUS → X Premium+ */
 function planName(tier: string) {
@@ -340,7 +345,7 @@ export function SetupButton({ kind, setup, disabled, label, account, onClick }: 
   </>;
 }
 
-/** Installs Claude Code or Grok from inside Mowr when needed, opens its sign-in, then checks every few seconds until
+/** Installs Claude Code, Grok or Antigravity from inside Mowr when needed, opens its sign-in, then checks every few seconds until
  *  the account is connected. Shared by Settings → Models and the last setup step. */
 export function useCliConnect(onStatus:(kind:CliKind,status:any)=>void,onConnected:()=>Promise<void>|void,onError:(message:string)=>void){
   const [setup,setSetup]=useState<{kind:CliKind;step:"installing"|"signing"}|null>(null);

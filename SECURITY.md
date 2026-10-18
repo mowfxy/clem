@@ -18,4 +18,4 @@ Security fixes go into the latest preview release. Please update before reportin
 ## Scope
 
 In scope: the desktop app in this repository, the account Worker in `cloudflare/`, and the website at mowrai.com.
-Out of scope: the AI providers themselves (ChatGPT, Claude, Grok), Google Drive, and builds that other people made from this source.
+Out of scope: the AI providers themselves (ChatGPT, Claude, Grok, Google Antigravity), Google Drive, and builds that other people made from this source.

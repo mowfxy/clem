@@ -35,6 +35,8 @@ try {
         if(r.action==='grokStatus')return {installed:true,connected:true,models:['grok-4.7']};
         if(r.action==='cliAccounts'&&r.kind==='claude')return {active:window.claudeActive||'default',autoSwitch:true,accounts:[{id:'default',connected:true,email:'me@example.com',plan:'max',checkedAt:Date.now(),usage:{rateLimits:{primary:{usedPercent:64,windowDurationMins:300,resetsAt:Date.now()/1000+5000},secondary:{usedPercent:93,windowDurationMins:10080,resetsAt:Date.now()/1000+300000}}}},{id:'33333333-3333-4333-8333-333333333333',connected:true,email:'team@example.com',plan:'pro'}].concat(window.claudeAdded?[{id:'44444444-4444-4444-8444-444444444444',connected:false,pending:true}]:[])};
         if(r.action==='cliAccounts'&&r.kind==='grok')return {active:'default',autoSwitch:true,accounts:[{id:'default',connected:true,plan:'X Premium',checkedAt:Date.now(),usage:{rateLimits:{primary:{usedPercent:1,windowDurationMins:10080,resetsAt:Date.now()/1000+290000}}}}]};
+        if(r.action==='antigravityStatus')return {installed:true,connected:true,models:[{id:'gemini-3.1-pro',name:'Gemini 3.1 Pro'}],plan:'Google AI Pro'};
+        if(r.action==='cliAccounts'&&r.kind==='antigravity')return {active:'default',autoSwitch:true,accounts:[{id:'default',connected:true,plan:'Google AI Pro',checkedAt:Date.now(),usage:{rateLimits:{primary:{usedPercent:20,windowDurationMins:300,resetsAt:Date.now()/1000+9000},secondary:{usedPercent:9,windowDurationMins:10080,resetsAt:Date.now()/1000+290000}}}}]};
         if(r.action==='cliAccountSelect'){window.claudeActive=r.id;return {ok:true};}
         if(r.action==='cliAccountAdd'){window.claudeAdded=true;return {id:'44444444-4444-4444-8444-444444444444',pending:true};}
         if(r.action==='providerAccountAdd')return {id:'22222222-2222-4222-8222-222222222222',url:'https://auth.openai.com/codex/device',code:'TEST-TEST'};
@@ -315,6 +317,13 @@ try {
   await page.getByText('99% left',{exact:true}).waitFor();
   await page.waitForTimeout(450);
   await page.screenshot({path:'artifacts/settings-models-grok.png'});
+  // Antigravity too: its Google plan by name, and its five-hour and weekly windows.
+  await page.getByRole('tab',{name:/Antigravity/}).click();
+  await page.getByText('80% left',{exact:true}).waitFor();
+  await page.getByText('91% left',{exact:true}).waitFor();
+  await page.getByText('Google AI Pro').first().waitFor();
+  await page.waitForTimeout(450);
+  await page.screenshot({path:'artifacts/settings-models-antigravity.png'});
   await page.getByRole('tab',{name:/ChatGPT/}).click();
   await page.getByRole('button',{name:'Add account',exact:true}).click();
   await page.getByRole('button',{name:'Continue with ChatGPT',exact:true}).waitFor();

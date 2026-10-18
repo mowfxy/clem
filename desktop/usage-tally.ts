@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Vault } from "./vault";
 import type { DesktopAuth } from "./auth";
 import { GROK_PREFIX } from "./grok";
+import { ANTIGRAVITY_PREFIX } from "./antigravity";
 
 type Row = { provider: string; model: string; reasoning: string; turns: number; images: number };
 type Day = { day: string; rows: Row[]; hours: number[] };
@@ -15,6 +16,7 @@ const clean = (text: string | undefined) => (text || "").replace(/[^\w.:\-]/g, "
 export function usageLabel(model: string | undefined) {
   if (model?.startsWith("claude:")) return { provider: "claude", model: clean(model.slice(7)) || "default" };
   if (model?.startsWith(GROK_PREFIX)) return { provider: "grok", model: clean(model.slice(GROK_PREFIX.length)) || "default" };
+  if (model?.startsWith(ANTIGRAVITY_PREFIX)) return { provider: "antigravity", model: clean(model.slice(ANTIGRAVITY_PREFIX.length)) || "default" };
   return { provider: "chatgpt", model: clean(model) || "default" };
 }
 

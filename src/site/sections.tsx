@@ -6,7 +6,7 @@ import {Illustration} from '../Illustrations';
 export const REPO='https://github.com/mowfxy/mowr';
 
 export const faqs=[
-  ['What do I need?','A Windows 10 or 11 PC and an AI subscription you already use: ChatGPT, Claude or Grok (SuperGrok or X Premium+).'],
+  ['What do I need?','A Windows 10 or 11 PC and an AI subscription you already use: ChatGPT, Claude, Grok (SuperGrok or X Premium+) or Antigravity (a Google AI plan).'],
   ['Where is my work stored?','On your PC, in Documents\\Mowr. Plain files you can open, move or back up.'],
   ['Is it really free?','Yes. No plan, no trial, no card, and no paid tier waiting later.'],
   ['Is Mowr open source?','Yes. The whole app, the website and the account service are on GitHub under the MIT License. Read it, build it yourself or send a fix.'],

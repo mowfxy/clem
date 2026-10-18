@@ -30,7 +30,7 @@ body:
     attributes:
       label: Which AI were you using?
       multiple: true
-      options: [ChatGPT (Codex), Claude, Grok, Not related]
+      options: [ChatGPT (Codex), Claude, Grok, Antigravity, Not related]
   - type: input
     id: windows
     attributes:

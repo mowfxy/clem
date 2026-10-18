@@ -214,12 +214,12 @@ export async function conversationPictures({ files, attached, open, earlier, pro
   return out.slice(0, limit);
 }
 
-export type PdfProvider = "claude" | "grok" | "codex";
+export type PdfProvider = "claude" | "grok" | "antigravity" | "codex";
 /** A PDF handed to the model as a file: Claude reads it as claude.ai reads an upload, Grok opens its pages itself. */
 export type PdfFile = { name: string; data: Uint8Array<ArrayBuffer> };
 /**
  * How the conversation's PDFs reach the model, the way each AI reads a PDF on its own:
- * - Claude takes PDF files (each page as drawn, plus its text).
+ * - Claude takes PDF files (each page as drawn, plus its text), and so does Antigravity (attached to its message).
  * - Grok's own read_file opens PDF pages as pictures, any range, so it gets the files themselves.
  * - ChatGPT (Codex) cannot be given a file, so it sees pages as pictures beside the page text, as ChatGPT does.
  * Text first, as Claude's Cowork reads files: every PDF's text goes with the request (the sources), and only the pages
@@ -243,8 +243,8 @@ const FOCUS_PAGES = 6;
 const PICTURE_PAGES = 24;
 /** Files not attached (the subject's or project's, Drive's) shown by their best pages: so many files, so many pages each. */
 const RELATED_FILES = 2, RELATED_PAGES = 2;
-/** Claude's request is capped at 32 MB; Grok's files are copied on this PC, so they may be larger. */
-const FILE_BYTES: Record<PdfProvider, number> = { claude: 18_000_000, grok: 150_000_000, codex: 200_000_000 };
+/** Claude's request is capped at 32 MB; Grok's and Antigravity's files are copied on this PC, so they may be larger. */
+const FILE_BYTES: Record<PdfProvider, number> = { claude: 18_000_000, grok: 150_000_000, antigravity: 150_000_000, codex: 200_000_000 };
 /** The most PDF files and notes one chat request takes (desktop/contracts.ts "chat"). */
 const MAX_FILES = 20, MAX_NOTES = 40;
 const isPdfFile = (f: StoredFile) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
@@ -315,15 +315,16 @@ export async function pdfView({ files, current, earlier, related = [], prompt, p
     if (view.notes.length + (after?.notes.length || 0) >= MAX_NOTES || (provider !== "codex" && view.files.length + (after?.files.length || 0) >= MAX_FILES)) return false;
     // An encrypted PDF cannot be cut into pages: Claude gets it whole when it fits, otherwise its pages as pictures.
     let sent: Uint8Array<ArrayBuffer> | null = null;
-    if (provider === "claude" && pages.length) {
+    const asFile = provider === "claude" || provider === "antigravity";
+    if (asFile && pages.length) {
       sent = whole ? data : await excerptPdf(data, pages);
-      if (!sent && !where && bytes + data.length <= FILE_BYTES.claude) sent = data;
+      if (!sent && !where && bytes + data.length <= FILE_BYTES[provider]) sent = data;
     }
     if (!pages.length) {
       if (where) return false;
       view.notes.push(`"${file.name}" (${plural(count)}): text only (no drawings, scans or formulas found), so its text with the sources is all of it. ${rest}`);
     } else if (sent) {
-      if (bytes + sent.length > FILE_BYTES.claude) return false;
+      if (bytes + sent.length > FILE_BYTES[provider]) return false;
       bytes += sent.length;
       const all = sent === data;
       view.files.push({ name: all ? file.name : `${file.name} — ${pagesNamed(pages)} of ${count}`, data: sent });

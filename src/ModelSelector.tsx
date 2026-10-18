@@ -59,7 +59,7 @@ function EffortSlider({ levels, level, onChange }: {
 }
 
 function ProviderMark({ provider }: { provider?: string }) {
-  return <span className={"picker-mark " + (provider === "Anthropic" ? "picker-mark-anthropic" : provider === "xAI" ? "picker-mark-grok" : "picker-mark-openai")} aria-hidden="true"><ProviderLogo provider={provider} size={16} /></span>;
+  return <span className={"picker-mark " + (provider === "Anthropic" ? "picker-mark-anthropic" : provider === "xAI" ? "picker-mark-grok" : provider === "Google" ? "picker-mark-antigravity" : "picker-mark-openai")} aria-hidden="true"><ProviderLogo provider={provider} size={16} /></span>;
 }
 
 /** A small popover anchored above (or below) its trigger. */
@@ -142,14 +142,14 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
         {!value && <Icon name="check" size={13} />}
       </button>}
       {available.map((m, i) => <div key={m.id}>
-        {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "xAI" ? "Grok" : m.provider}</div>}
+        {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "xAI" ? "Grok" : m.provider === "Google" ? "Antigravity" : m.provider}</div>}
         <button className="picker-model-row" type="button" role="menuitemradio" aria-checked={value === m.id} aria-label={m.name} onClick={() => { onChange(m.id); close(); modelButton.current?.focus(); }}>
           <ProviderMark provider={m.provider} />
           <span className="picker-model-name">{m.name}</span>
           {value === m.id && <Icon name="check" size={13} />}
         </button>
       </div>)}
-      {!available.length && <p className="picker-empty">Connect ChatGPT, Claude or Grok to see your models.</p>}
+      {!available.length && <p className="picker-empty">Connect ChatGPT, Claude, Grok or Antigravity to see your models.</p>}
       </div>
       {onConnect && <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>}
     </div>, host())}

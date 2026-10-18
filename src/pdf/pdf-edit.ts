@@ -108,12 +108,12 @@ const parseJson=(raw:string)=>parseModelJson(raw,'Mowr could not read the propos
 export type PdfProposal={bytes:Uint8Array;summary:string;spec?:string};
 
 /**
- * The PDF being edited, as the editing AI reads a PDF (src/desktop/page-images.ts pdfView): the file for Claude and
- * Grok, its pages as pictures for ChatGPT, so it sees which line is which on the page. Nothing when it cannot be drawn.
+ * The PDF being edited, as the editing AI reads a PDF (src/desktop/page-images.ts pdfView): the file for Claude, Grok
+ * and Antigravity, its pages as pictures for ChatGPT, so it sees which line is which on the page. Nothing when it cannot be drawn.
  */
 async function seenPdf(file:StoredFile,bytes:Uint8Array,instruction:string,model:string|undefined,signal:AbortSignal){
   const {pdfView}=await import('../desktop/page-images');
-  const provider=model?.startsWith('claude:')?'claude':model?.startsWith('grok:')?'grok':'codex';
+  const provider=model?.startsWith('claude:')?'claude':model?.startsWith('grok:')?'grok':model?.startsWith('antigravity:')?'antigravity':'codex';
   const view=await pdfView({files:[file],current:[file.id],earlier:[],prompt:instruction,provider,model:model||'',text:async()=>'',given:new Map([[file.id,new Blob([new Uint8Array(bytes)],{type:'application/pdf'})]]),signal}).catch(()=>undefined);
   if(!view?.notes.length)return {};
   return {pdfNotes:view.notes,...(view.files.length?{pdfs:view.files}:{}),...(view.pictures.length?{images:view.pictures}:{})};
