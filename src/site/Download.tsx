@@ -45,7 +45,7 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
     <main>
       <section className="sx-download-hero">
         <div className="sx-hero-glow" aria-hidden="true"/>
-        <Logo size={64} thinking={started}/>
+        <Logo size={64} still/>
         {returning?<><h1>Welcome back.</h1><p className="sx-lede">Return to the Mowr app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></>:<>
           <span className="sx-eyebrow">Mowr for Windows</span>
           <h1>{started?'Your download has started.':'Get Mowr'}</h1>

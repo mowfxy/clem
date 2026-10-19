@@ -124,14 +124,14 @@ export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.st
 export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
 /** Mowr's mark, Peaks (geometry in core/peaks.ts). Still at rest; while thinking it ticks and writes itself in jerky
  *  steps while the stroke boils between hand-drawn poses; a click makes it flick and redraw itself in one stroke. */
-export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){
+export function Logo({size=34,thinking=false,still=false}:{size?:number;thinking?:boolean;/** No motion at all, not even the click redraw (the website). */still?:boolean}){
  const id='pk'+useId().replace(/[^a-zA-Z0-9]/g,'');
  const [moving,setMoving]=useState(true);
  const [poke,setPoke]=useState(false);
  useEffect(()=>{const media=matchMedia('(prefers-reduced-motion: reduce)');const sync=()=>setMoving(!media.matches&&document.documentElement.dataset.quiet!=='true');sync();media.addEventListener('change',sync);const observer=new MutationObserver(sync);observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-quiet']});return()=>{observer.disconnect();media.removeEventListener('change',sync);};},[]);
  useEffect(()=>{if(!poke)return;const t=setTimeout(()=>setPoke(false),560);return()=>clearTimeout(t);},[poke]);
  const {offsets,width}=peaksTier(size);
- return <svg width={size} height={size} viewBox="0 0 100 100" className={`mowr-mark${thinking?' is-thinking':''}${poke?' is-poked':''}`} role={thinking?'img':undefined} aria-label={thinking?'Mowr is thinking':undefined} aria-hidden={thinking?undefined:true} onClick={()=>{if(!thinking&&moving)setPoke(true);}}>
+ return <svg width={size} height={size} viewBox="0 0 100 100" className={`mowr-mark${thinking?' is-thinking':''}${poke?' is-poked':''}`} role={thinking?'img':undefined} aria-label={thinking?'Mowr is thinking':undefined} aria-hidden={thinking?undefined:true} onClick={still?undefined:()=>{if(!thinking&&moving)setPoke(true);}}>
   <defs><path id={id} pathLength={100} d={PEAKS}>{thinking&&moving&&<animate attributeName="d" dur="0.36s" repeatCount="indefinite" calcMode="discrete" values={PEAKS_BOIL.join(';')}/>}</path></defs>
   <g className="mark-ink" fill="none" stroke="currentColor" strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">{offsets.map(([x,y],i)=><use key={i} href={'#'+id} transform={x||y?`translate(${x} ${y})`:undefined}/>)}</g>
  </svg>;

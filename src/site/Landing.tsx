@@ -42,7 +42,7 @@ export function Landing(){
       <section className="sx-hero">
         <div className="sx-hero-glow" aria-hidden="true"/>
         <div className="sx-hero-copy">
-          <Logo size={44} thinking/>
+          <Logo size={44} still/>
           <h1>Your space <br className="sx-narrow-break"/>to think.</h1>
           <p className="sx-lede">One calm place for your projects, study and documents.</p>
           <div className="sx-cta-row">
@@ -90,7 +90,7 @@ export function Landing(){
       </section>
 
       <section className="sx-final">
-        <Reveal><Logo size={52} thinking/><h2>What’s on your mind?</h2><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
+        <Reveal><Logo size={52} still/><h2>What’s on your mind?</h2><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
       </section>
     </main>
     <SiteFooter/>
