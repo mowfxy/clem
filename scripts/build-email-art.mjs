@@ -29,19 +29,12 @@ function encode(frames,w,h,file){
   console.log(`${file}: ${frames.length} frames, ${Math.round(gif.bytes().length/1024)} KB`);
 }
 
-// Mowr mark (Peaks): it holds still, then flicks and redraws itself in one quick stroke, as when it is clicked in the app.
-// Drawn with the five-line cut the app uses at this size, since emails show it at 30 px.
-const ease=t=>{const x=Math.max(0,Math.min(1,t));return x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;};
-function mark(ms){
-  const t=Math.min(1,ms/550),draw=ease(t),flick=t<.3?ease(t/.3):1-ease((t-.3)/.7);
-  const lines=peaksTier(30).offsets.map(([x,y])=>`<path pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="${(100-100*draw).toFixed(2)}" d="${PEAKS}" transform="translate(${x} ${y})"/>`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${PAGE}"/><g transform="translate(${(-3*flick).toFixed(2)} 0) rotate(${(-5*flick).toFixed(2)} 50 49)" fill="none" stroke="${MARK}" stroke-width="${peaksTier(30).width}" stroke-linecap="round" stroke-linejoin="round">${lines}</g></svg>`;
-}
+// Mowr mark (Peaks), still: a single frame, drawn with the five-line cut the app uses at this size (emails show it at 30 px).
 {
-  const size=96,frames=[];
-  frames.push([await raster(mark(550),size,size),2600]);
-  for(let ms=0;ms<=550;ms+=40)frames.push([await raster(mark(ms),size,size),40]);
-  encode(frames,size,size,'mowr-mark.gif');
+  const size=96,{offsets,width}=peaksTier(30);
+  const lines=offsets.map(([x,y])=>`<path d="${PEAKS}" transform="translate(${x} ${y})"/>`).join('');
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${PAGE}"/><g fill="none" stroke="${MARK}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${lines}</g></svg>`;
+  encode([[await raster(svg,size,size),0]],size,size,'mowr-mark.gif');
 }
 
 // Ink scenes: each plays its own loop once on twos and repeats; the first frame is the finished pose.
