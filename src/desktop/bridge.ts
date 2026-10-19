@@ -93,7 +93,7 @@ export async function desktopChat(
     const unsubscribe = desktop!.onChat((event) => {
       if (event.id !== id) return;
       if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
-      if (event.type === "status" && event.text) onStatus?.(event.text);
+      if (event.type === "status") onStatus?.(String(event.text || ""));
       if (event.type === "condensed") onCondensed?.();
       if (event.type === "worked") { clearTimeout(paint); paint = undefined; work = result.length; onText(result, work); }
       if (event.type === "look" && event.look) {

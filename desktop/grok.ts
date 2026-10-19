@@ -83,12 +83,13 @@ export function grokStatus(event:any):string|null{
   // With partial messages a block says what it is when it opens, long before its whole message arrives.
   const block=event?.type==='stream_event'&&!event.parent_tool_use_id&&event.event?.type==='content_block_start'?event.event.content_block:null;
   if(block?.type==='thinking')return 'Thinking it through…';
-  if(block?.type==='text')return 'Writing the answer…';
+  // The answer itself shows as it is written: no status line under it.
+  if(block?.type==='text')return '';
   if(event?.type==='assistant'){
     const parts:any[]=event.message?.content||[];
     const tool=parts.find(p=>p?.type==='tool_use');
     if(tool)return describeTool(tool.name,tool.input)||'Using a tool…';
-    if(parts.some(p=>p?.type==='text'&&String(p.text||'').trim()))return 'Writing the answer…';
+    if(parts.some(p=>p?.type==='text'&&String(p.text||'').trim()))return '';
     if(parts.some(p=>p?.type==='thinking'))return 'Thinking it through…';
   }
   if(event?.type==='user'&&(event.message?.content||[]).some((p:any)=>p?.type==='tool_result'))return 'Reading what it found…';
@@ -210,6 +211,8 @@ function friendly(detail:string){
 
 export class GrokProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
+  /** Sessions whose Grok is still exiting after its answer (saving the session and its usage.json), by session id. */
+  private exiting=new Map<string,Promise<void>>();
   /** Set when this CLI refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
   /** Set when this CLI refused --include-partial-messages: replies then arrive in one piece. */
@@ -386,6 +389,7 @@ export class GrokProvider {
       // its write tool too) is the working folder. Reading needs no rule.
       const args=()=>['--prompt-file',file,'-m',slug,'--output-format','streaming-messages-json',...(this.noPartial?[]:['--include-partial-messages']),'--permission-mode','dontAsk',...(workspace?['--allow','Edit(./**)']:[]),'--no-subagents',...(this.noToolList?[]:['--no-plan','--tools',workspace?GROK_FOLDER_TOOLS:GROK_TOOLS]),'--no-auto-update','--cwd',cwd,...(effort?['--reasoning-effort',effort]:[]),...(rules?['--rules',rules]:[]),...(session?[session.resume?'--resume':'--session-id',session.id]:[]),...(endpoint&&!this.noNative?grokNativeArgs():[])];
       const env=endpoint?grokMcpEnv(endpoint):{};
+      if(session)await this.exited(session.id);
       let result=await this.attempt(id,args(),emit,env);
       // A Grok without folder trust answers with the text protocol, which the instructions still describe.
       if(endpoint&&!this.noNative&&unsupportedFlag.test(result.err)&&/--trust|MCPTool/.test(result.err)){this.noNative=true;result=await this.attempt(id,args(),emit,env);}
@@ -413,6 +417,11 @@ export class GrokProvider {
     try{child=await this.start(args,undefined,env);}
     catch{throw Error('Grok could not start. Install it in Settings → Models.');}
     this.active.set(id,child);
+    // The session this run holds until Grok exits (it may exit after the answer is done): its next run waits for it.
+    const at=args.findIndex(a=>a==='--resume'||a==='--session-id'),session=at>=0?args[at+1]:undefined;
+    let exited=()=>{};
+    if(session){const gone=new Promise<void>(resolve=>{exited=resolve;});this.exiting.set(session,gone);void gone.then(()=>{if(this.exiting.get(session)===gone)this.exiting.delete(session);});}
+    let early=false;
     return new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
       let out='',err='',done=false;
       const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);log?.stop();f?reject(f):resolve(v!);};
@@ -448,14 +457,20 @@ export class GrokProvider {
         if(!line.trim())return;
         let event:any;try{event=JSON.parse(line);}catch{out+=line+'\n';return;}
         steps.read(event);
-        const status=grokStatus(event);if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
+        const status=grokStatus(event);if(status!==null&&status!==last){last=status;emit({id,type:'status',text:status});}
         if(event?.type==='stream_event')live(event);else out+=line+'\n';
+        // Grok takes about three seconds to exit after its result (it saves the session meanwhile): a finished reply is
+        // the answer now, and the session's next message waits for that exit instead (exiting, in run).
+        if(event?.type==='result'&&event.subtype==='success'&&!event.is_error&&parseGrokReply(out).text){
+          if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});
+          early=true;finish({code:0,out,err});
+        }
       };
       child.stdout.on('data',(p:string)=>{if(!done)touch();bytes+=p.length;if(bytes>256_000_000||out.length>64_000_000){child.kill();finish(undefined,Error('Grok response exceeded the safe limit.'));return;}
         pending+=p;let nl;while((nl=pending.indexOf('\n'))>=0){read(pending.slice(0,nl));pending=pending.slice(nl+1);}});
       child.stderr.on('data',(p:string)=>{if(!done)touch();err=(err+p).slice(-5000);});
-      child.on('error',()=>finish(undefined,Error('Grok could not start. Install it in Settings → Models.')));
-      child.on('close',code=>{read(pending);pending='';if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});finish({code,out,err:retried?(err+' '+GROK_OFFLINE).slice(-5000):err});});
+      child.on('error',()=>{exited();finish(undefined,Error('Grok could not start. Install it in Settings → Models.'));});
+      child.on('close',code=>{exited();if(early)return;read(pending);pending='';if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});finish({code,out,err:retried?(err+' '+GROK_OFFLINE).slice(-5000):err});});
       child.stdin.end();
     }).finally(()=>{this.active.delete(id);this.alive.delete(id);});
   }
@@ -465,6 +480,8 @@ export class GrokProvider {
   /** The tokens a session has used so far, from Grok's own usage.json (its input counts the cached part too); undefined when there is none. */
   async sessionTokens(sessionId:string):Promise<{input:number;cacheRead:number;cacheWrite:number;output:number}|undefined>{
     if(!/^[0-9a-f-]{36}$/i.test(sessionId))return undefined;
+    // Written as Grok exits, which may be after its answer was shown.
+    await this.exited(sessionId);
     const base=join(this.home||join(process.env.USERPROFILE||'','.grok'),'sessions');
     for(const folder of await readdir(base).catch(()=>[] as string[])){
       // A usage file Grok is still writing (or left damaged) is skipped, not an error.
@@ -476,7 +493,10 @@ export class GrokProvider {
     }
     return undefined;
   }
+  /** Waits (at most 20 s) for the Grok that holds this session to exit. */
+  private exited(sessionId:string){const gone=this.exiting.get(sessionId);return gone?Promise.race([gone,new Promise<void>(resolve=>{setTimeout(resolve,20_000).unref?.();})]):Promise.resolve();}
   async endSession(sessionId:string){
+    await this.exited(sessionId);
     if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!this.home&&!process.env.USERPROFILE||process.env.MOWR_KEEP_SESSIONS)return;
     const base=join(this.home||join(process.env.USERPROFILE!,'.grok'),'sessions');
     const sweep=async(folder:string,depth:number):Promise<void>=>{

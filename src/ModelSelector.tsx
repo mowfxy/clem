@@ -142,14 +142,14 @@ export function ModelSelector({ models, value, onChange, onConnect, effort, onEf
         {!value && <Icon name="check" size={13} />}
       </button>}
       {available.map((m, i) => <div key={m.id}>
-        {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "xAI" ? "Grok" : m.provider === "Google" ? "Antigravity" : m.provider}</div>}
+        {multi && (i === 0 || available[i - 1].provider !== m.provider) && <div className="picker-group-name">{m.provider === "Anthropic" ? "Claude" : m.provider === "xAI" ? "Grok" : m.provider === "Google" ? "Gemini" : m.provider}</div>}
         <button className="picker-model-row" type="button" role="menuitemradio" aria-checked={value === m.id} aria-label={m.name} onClick={() => { onChange(m.id); close(); modelButton.current?.focus(); }}>
           <ProviderMark provider={m.provider} />
           <span className="picker-model-name">{m.name}</span>
           {value === m.id && <Icon name="check" size={13} />}
         </button>
       </div>)}
-      {!available.length && <p className="picker-empty">Connect ChatGPT, Claude, Grok or Antigravity to see your models.</p>}
+      {!available.length && <p className="picker-empty">Connect ChatGPT, Claude, Grok or Gemini to see your models.</p>}
       </div>
       {onConnect && <button type="button" className="picker-connect" onClick={() => { close(); onConnect(); }}>Manage connections<Icon name="arrow" size={12} /></button>}
     </div>, host())}

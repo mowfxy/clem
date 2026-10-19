@@ -158,7 +158,7 @@ export async function streamTurn(
             if (headline && headline !== reasoningHeadline(before)) onStatus(headline);
           } else if (method === "item/started" && p.item?.type === "agentMessage") {
             if (p.item.phase === "commentary") commentary.add(p.item.id);
-            else onStatus("Writing the answer…");
+            else onStatus("");
           } else if (method === "item/started" && (p.item?.type === "mcpToolCall" || p.item?.type === "dynamicToolCall")) {
             const args = typeof p.item.arguments === "string" ? (() => { try { return JSON.parse(p.item.arguments); } catch { return {}; } })() : p.item.arguments;
             onStatus(describeTool(String(p.item.tool || p.item.name || ""), args) || "Using a tool…");

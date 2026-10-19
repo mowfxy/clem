@@ -67,7 +67,7 @@ const REPLY_SOURCE = "reply";
 type Carry = { attachments: string[]; drive: DriveItem[] };
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
-const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Antigravity" : "ChatGPT";
+const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Gemini" : "ChatGPT";
 /** Files of a chat and its subject or project read for each request; the budget decides how much of each is sent. */
 const MAX_CHAT_SOURCES = 400;
 /** The longest a change waits before the workspace is written (streamed answers change it on every token). */
@@ -192,7 +192,7 @@ const modelPlaceholders: Model[] = [
 
   {
     id: "google",
-    name: "Antigravity",
+    name: "Gemini",
     provider: "Google",
     connected: false,
     context: 0,
@@ -312,6 +312,13 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [defaultReasoning,setDefaultReasoning]=useState("");
   const savedSelection=state.chats.find(c=>c.id===chatId);
   const model=savedSelection?.model ?? defaultModel;
+  // Typing a message gets the chosen AI ready (its program started, its next session opened), so the answer starts sooner.
+  const warmedAt=useRef(0);
+  useEffect(()=>{
+    if(!desktop||!draft.trim()||Date.now()-warmedAt.current<60_000||!models.some(m=>m.id===model&&m.connected))return;
+    warmedAt.current=Date.now();
+    void desktop.invoke({action:"prepare",model,ahead:true}).catch(()=>{});
+  },[draft,model,models]);
   const reasoning=savedSelection?.reasoning ?? (savedSelection?.model ? models.find(m=>m.id===model)?.defaultReasoningEffort || "" : defaultReasoning);
   const [deleteChatId,setDeleteChatId]=useState<string|null>(null);
   // A chat being renamed in the sidebar (from its menu, or by double-clicking its title).
@@ -1838,7 +1845,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               for(const remaining of executionPlan.tasks.slice(index)){if(remaining.status!=='complete'){remaining.model=handoffChoice.model;remaining.reasoning=handoffChoice.reasoning;}}
               current={...current,tasks:current.tasks.map(item=>executionPlan.tasks.find(next=>next.id===item.id)?.status!=='complete'?{...item,model:handoffChoice!.model,reasoning:handoffChoice!.reasoning}:item)};
               await workflow.save(current);updatePlan(id,messageId,current);
-              notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':handoffChoice.model.startsWith('antigravity:')?'Antigravity':'Claude'),detail:'Completed steps and their outputs are preserved.'});
+              notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':handoffChoice.model.startsWith('antigravity:')?'Gemini':'Claude'),detail:'Completed steps and their outputs are preserved.'});
             }
           }
           // The chat's PDFs as this step's AI reads them: short ones whole, the pages of longer ones that fit the step.

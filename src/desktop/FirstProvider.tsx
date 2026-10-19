@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { desktop } from "./bridge";
 import { LocalProvider } from "./LocalProvider";
 import { SetupButton, useCliConnect, type CliKind } from "../ModelsSettings";
-import { OpenAILogo, ClaudeLogo, GrokLogo, AntigravityLogo } from "../BrandLogos";
+import { OpenAILogo, ClaudeLogo, GrokLogo, GeminiLogo } from "../BrandLogos";
 import { Icon } from "../Icons";
 import "../models-settings.css";
 
@@ -36,10 +36,10 @@ export function FirstProvider({ onConnected }: { onConnected: (connected: boolea
     { id: "chatgpt", name: "ChatGPT", logo: <OpenAILogo size={16} /> },
     { id: "claude", name: "Claude", logo: <ClaudeLogo size={16} /> },
     { id: "grok", name: "Grok", logo: <GrokLogo size={16} /> },
-    { id: "antigravity", name: "Antigravity", logo: <AntigravityLogo size={16} /> },
+    { id: "antigravity", name: "Gemini", logo: <GeminiLogo size={16} /> },
   ];
   const cli = tab === "claude" ? claude : tab === "grok" ? grok : antigravity;
-  const card = { claude: { name: "Claude", install: "Claude Code", logo: <ClaudeLogo size={24} title="Claude" />, about: "Use your Claude plan through Claude Code.", account: "Claude" }, grok: { name: "Grok", install: "Grok", logo: <GrokLogo size={24} title="Grok" />, about: "Use your SuperGrok or X Premium plan.", account: "X or xAI" }, antigravity: { name: "Antigravity", install: "Antigravity", logo: <AntigravityLogo size={24} title="Antigravity" />, about: "Use your Google AI plan through Google Antigravity.", account: "Google" } };
+  const card = { claude: { name: "Claude", install: "Claude Code", logo: <ClaudeLogo size={24} title="Claude" />, about: "Use your Claude plan through Claude Code.", account: "Claude" }, grok: { name: "Grok", install: "Grok", logo: <GrokLogo size={24} title="Grok" />, about: "Use your SuperGrok or X Premium plan.", account: "X or xAI" }, antigravity: { name: "Gemini", install: "Gemini", logo: <GeminiLogo size={24} title="Gemini" />, about: "Use your Google AI plan with Gemini.", account: "Google" } };
   return <div className="first-provider">
     <div className="provider-switch" role="tablist" aria-label="AI services">
       {services.map((s) => <button key={s.id} type="button" role="tab" aria-selected={s.id === tab} className={"provider-switch-tab provider-" + s.id + (s.id === tab ? " on" : "")} onClick={() => setTab(s.id)}>

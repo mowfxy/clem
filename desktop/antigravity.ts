@@ -70,7 +70,7 @@ export function antigravityModels(status: Pick<AntigravityStatus, 'models' | 'de
   return ordered.map((m) => {
     const effort = status.efforts?.[m.id];
     const levels = effort?.levels || [];
-    return {id: ANTIGRAVITY_PREFIX + m.id, name: m.name, provider: 'Google', connected: true, context: 32000, specialties: [], tools: [], description: m.description || 'On your Google AI plan, through Google Antigravity',
+    return {id: ANTIGRAVITY_PREFIX + m.id, name: m.name, provider: 'Google', connected: true, context: 32000, specialties: [], tools: [], description: m.description || 'On your Google AI plan',
       reasoningEfforts: levels.map((reasoningEffort) => ({reasoningEffort, description: effortNames[reasoningEffort] || reasoningEffort})),
       defaultReasoningEffort: effort?.default && levels.includes(effort.default) ? effort.default : levels.includes('high') ? 'high' : levels[0] || ''};
   });
@@ -129,15 +129,15 @@ export function replyProblem(text: string): {kind: 'limit' | 'error' | 'transien
     const delay = t.match(/(?:in|after)\s+((?:\d+\s+(?:day|hour|minute|second)s?(?:,?\s*(?:and\s+)?)?)+)/i)?.[1];
     let seconds = 0;
     for (const [, n, unit] of (delay || '').matchAll(/(\d+)\s+(day|hour|minute|second)/gi)) seconds += Number(n) * ({day: 86400, hour: 3600, minute: 60, second: 1} as Record<string, number>)[unit.toLowerCase()];
-    return {kind: 'limit', message: 'Your Google AI plan has no Antigravity usage left right now. Try again later or pick another model.', ...(seconds ? {resetsAt: Date.now() + seconds * 1000} : {})};
+    return {kind: 'limit', message: 'Your Google AI plan has no Gemini usage left right now. Try again later or pick another model.', ...(seconds ? {resetsAt: Date.now() + seconds * 1000} : {})};
   }
-  if (/^Agent connection was lost\b/.test(t)) return {kind: 'transient', message: 'Antigravity lost its connection to Google. Check your internet connection, then send your message again.'};
+  if (/^Agent connection was lost\b/.test(t)) return {kind: 'transient', message: 'Gemini lost its connection to Google. Check your internet connection, then send your message again.'};
   if (/^Agent execution error:/.test(t)) {
-    if (/RESOURCE_EXHAUSTED|QUOTA|rate limit|\b429\b/i.test(t)) return {kind: 'limit', message: 'Your Google AI plan has no Antigravity usage left right now. Try again later or pick another model.'};
-    if (/UNAUTHENTICATED|\b401\b|invalid_grant|sign in|logged out/i.test(t)) return {kind: 'signed-out', message: 'Sign in to Antigravity again in Settings → Models.'};
-    if (/UNAVAILABLE|\b50[234]\b|overloaded|DEADLINE_EXCEEDED|timed? ?out|connection/i.test(t)) return {kind: 'transient', message: 'Antigravity is busy right now. Try again in a moment.'};
-    if (/SUBSCRIPTION_REQUIRED|not eligible|ineligible/i.test(t)) return {kind: 'error', message: 'Google says this account has no Antigravity plan. Check your Google AI plan, or pick another model.'};
-    return {kind: 'error', message: 'Antigravity could not complete this request. Check Antigravity in Settings → Models.'};
+    if (/RESOURCE_EXHAUSTED|QUOTA|rate limit|\b429\b/i.test(t)) return {kind: 'limit', message: 'Your Google AI plan has no Gemini usage left right now. Try again later or pick another model.'};
+    if (/UNAUTHENTICATED|\b401\b|invalid_grant|sign in|logged out/i.test(t)) return {kind: 'signed-out', message: 'Sign in to Gemini again in Settings → Models.'};
+    if (/UNAVAILABLE|\b50[234]\b|overloaded|DEADLINE_EXCEEDED|timed? ?out|connection/i.test(t)) return {kind: 'transient', message: 'Gemini is busy right now. Try again in a moment.'};
+    if (/SUBSCRIPTION_REQUIRED|not eligible|ineligible/i.test(t)) return {kind: 'error', message: 'Google says this account has no Gemini plan. Check your Google AI plan, or pick another model.'};
+    return {kind: 'error', message: 'Gemini could not complete this request. Check Gemini in Settings → Models.'};
   }
   return null;
 }
@@ -175,8 +175,12 @@ export const ANTIGRAVITY_NATIVE_NOTE = NATIVE_NOTE;
 export const ANTIGRAVITY_MAX_OUTPUT_BYTES = 4_000_000;
 /** Without any word from the agent for this long an answer is taken as stuck (a native Kinetra call keeps it alive). */
 export const ANTIGRAVITY_IDLE_LIMIT = 10 * 60_000;
-/** An agent with no answer running is closed after this long; its sessions stay on disk and resume in the next one. */
-const PROCESS_IDLE = 10 * 60_000;
+/**
+ * An agent with no answer running is closed after this long; its sessions stay on disk and resume in the next one.
+ * Starting it again unpacks it (about 11 s on this PC) and opening a session again costs about 3 s, so it stays for as
+ * long as a chat keeps its session (desktop/chat-sessions.ts KEEP_MS).
+ */
+const PROCESS_IDLE = 55 * 60_000;
 /** A process that has held this many sessions is closed once idle, since the agent keeps every one in memory. */
 const PROCESS_SESSIONS = 40;
 
@@ -193,19 +197,27 @@ export function googleSignInUrl(text: string) {
 }
 const signedOut = /authentication required|not authenticated|logged out|sign in again|unauthenticated|invalid_grant|onboarding failed/i;
 function friendly(detail: string) {
-  if (signedOut.test(detail)) return 'Sign in to Antigravity again in Settings → Models.';
-  if (/SUBSCRIPTION_REQUIRED/.test(detail)) return 'Google says this account has no Antigravity plan. Check your Google AI plan.';
-  if (/model/i.test(detail) && /unavailable|not (found|available|supported)|unknown/i.test(detail)) return 'This Antigravity model is not available on your plan. Pick another one.';
-  return 'Antigravity could not complete this request. Check Antigravity in Settings → Models.';
+  if (signedOut.test(detail)) return 'Sign in to Gemini again in Settings → Models.';
+  if (/SUBSCRIPTION_REQUIRED/.test(detail)) return 'Google says this account has no Gemini plan. Check your Google AI plan.';
+  if (/model/i.test(detail) && /unavailable|not (found|available|supported)|unknown/i.test(detail)) return 'This Gemini model is not available on your plan. Pick another one.';
+  return 'Gemini could not complete this request. Check Gemini in Settings → Models.';
 }
 const MIME: Record<string, string> = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.bmp': 'image/bmp', '.gif': 'image/gif'};
 /** Where one turn's PDFs sit in the agent's working folder: kept for the whole turn, so a later step can open more pages. */
 export const antigravityPdfPath = (turn: string, index: number, name: string) => `.pdfs-${turn}/${index + 1}-${name.replace(/\.pdf$/i, '').replace(/[^\p{L}\p{N}._ -]+/gu, '_').slice(0, 80)}.pdf`;
 const inside = (root: string, path: string) => { const r = relative(resolve(root), resolve(path)); return r === '' || (!r.startsWith('..') && !/^[a-z]:/i.test(r)); };
 
+/**
+ * A session the process holds: where it works, whether it may write there, and its Kinetra endpoint, which lives as long
+ * as the session and is routed to whichever answer runs on it now (`route`), so a chat's next message goes on without
+ * opening the session again.
+ */
+type Held = {cwd: string; folder: boolean; endpoint?: NativeEndpoint; route?: {id: string; native: AntigravityNative}; ended?: boolean};
 type Live = {acp: AcpConnection; child: ChildProcessWithoutNullStreams; tier?: string; version?: string;
-  /** Sessions this process holds: where each works, and whether it may write there. */
-  sessions: Map<string, {cwd: string; folder: boolean}>; opened: number; idle?: ReturnType<typeof setTimeout>};
+  sessions: Map<string, Held>; opened: number; idle?: ReturnType<typeof setTimeout>};
+/** What a session is opened with: its folder, Mowr's rules for it, whether it may write there, and whether Kinetra is a tool. */
+export type AntigravitySpec = {cwd: string; system?: string; folder: boolean; native: boolean};
+const specKey = (spec: AntigravitySpec) => JSON.stringify([spec.cwd, spec.system || '', spec.folder, spec.native]);
 
 export class AntigravityProvider {
   private engine: AntigravityEngine;
@@ -229,6 +241,12 @@ export class AntigravityProvider {
   private processes = new Set<Live>();
   /** The session /usage is asked in (no model call); it lives with the process. */
   private probe: {session: string; live: Live} | null = null;
+  /**
+   * A session opened ahead for the next new chat message: the agent takes about three seconds to open one (it starts a
+   * helper for each), which the person would otherwise wait for at every new chat. `lastSpec` is what chats open.
+   */
+  private spare: {key: string; live: Live; session: Promise<string>} | null = null;
+  private lastSpec: AntigravitySpec | undefined;
   constructor(root: string, engine: AntigravityEngine) { this.root = root; this.engine = engine; this.home = join(root, 'home'); }
   private workspace() { return join(this.root, 'workspace'); }
   /** The agent unpacks itself (about 1 GB) into its temporary folder at each start, members up to 120 characters deep: the
@@ -250,7 +268,7 @@ export class AntigravityProvider {
   /** Starts the agent and signs it in. `login`: Google's sign-in page may open (the person asked to sign in). */
   private async open(login?: (url: string) => void): Promise<Live> {
     const install = this.engine.installed();
-    if (!install) throw Error('Install Antigravity first (Settings → Models).');
+    if (!install) throw Error('Install Gemini first (Settings → Models).');
     const acpDir = join(this.home, 'antigravity-acp');
     await mkdir(acpDir, {recursive: true});
     await mkdir(this.workspace(), {recursive: true});
@@ -262,7 +280,7 @@ export class AntigravityProvider {
     await mkdir(this.temp(), {recursive: true});
     let child: ChildProcessWithoutNullStreams;
     try { child = await this.start(install.server, this.env(install.harness), this.workspace()); }
-    catch { throw Error('Antigravity could not start. Install it again in Settings → Models.'); }
+    catch { throw Error('Gemini could not start. Install it again in Settings → Models.'); }
     const acp = new AcpConnection(child);
     const live: Live = {acp, child, sessions: new Map(), opened: 0};
     this.processes.add(live);
@@ -282,7 +300,7 @@ export class AntigravityProvider {
         const url = found && googleSignInUrl(found);
         if (!url) continue;
         // Signed out: a status check stops here rather than wait on a sign-in nobody asked for.
-        if (!login) { failSignIn(new SignedOut('Sign in to Antigravity first (Settings → Models).')); continue; }
+        if (!login) { failSignIn(new SignedOut('Sign in to Gemini first (Settings → Models).')); continue; }
         if (!pageShown) { pageShown = true; login(url); }
       }
     });
@@ -291,6 +309,8 @@ export class AntigravityProvider {
     acp.onActivity = () => { for (const run of this.active.values()) run.touch(); };
     acp.onClose = () => {
       if (this.probe?.live === live) this.probe = null;
+      if (this.spare?.live === live) this.spare = null;
+      for (const held of live.sessions.values()) held.endpoint?.close();
       // Once its harness has let go of the files too.
       setTimeout(() => void this.sweep(), 2000).unref?.();
     };
@@ -303,8 +323,8 @@ export class AntigravityProvider {
       return live;
     } catch (error) {
       this.kill(live);
-      if (error instanceof SignedOut || (error instanceof AcpError && (error.code === -32000 || signedOut.test(error.message)))) throw new SignedOut(login ? 'Google sign-in did not finish. Try again.' : 'Sign in to Antigravity first (Settings → Models).');
-      if (error instanceof AcpClosed) throw Error('Antigravity could not start. Install it again in Settings → Models.');
+      if (error instanceof SignedOut || (error instanceof AcpError && (error.code === -32000 || signedOut.test(error.message)))) throw new SignedOut(login ? 'Google sign-in did not finish. Try again.' : 'Sign in to Gemini first (Settings → Models).');
+      if (error instanceof AcpClosed) throw Error('Gemini could not start. Install it again in Settings → Models.');
       throw error;
     }
   }
@@ -377,7 +397,69 @@ export class AntigravityProvider {
   private knownStatus() { return this.statusCache && Date.now() - this.statusCache.at < 24 * 60 * 60_000 ? this.statusCache.value : undefined; }
   private recheck() { if (this.statusCache && !this.recentStatus()) void this.status(true).catch(() => {}); }
   /** Gets this account ready for a message: the agent is started (it takes a few seconds) and its sign-in checked. */
-  prepare(ahead = false) { if (ahead ? !this.recentStatus() : !this.knownStatus()) void this.status().catch(() => {}); else if (this.engine.installed()) void this.ready().catch(() => {}); }
+  prepare(ahead = false, spec?: AntigravitySpec) {
+    if (spec) this.lastSpec = spec;
+    const check = ahead ? !this.recentStatus() : !this.knownStatus();
+    const started = check ? this.status() : this.engine.installed() ? this.ready() : undefined;
+    // Once the agent runs (signed in), the next message's session is opened ahead.
+    void started?.then(() => { if (this.statusCache?.value.connected !== false && this.lastSpec) this.fillSpare(this.lastSpec); }).catch(() => {});
+  }
+  /** The rules a session is opened with (its system-prompt addition), and its tools. */
+  private meta(spec: AntigravitySpec, endpoint: boolean) {
+    const rules = spec.system ? spec.system + '\n\n' + (spec.folder ? ANTIGRAVITY_FOLDER_NOTE : ANTIGRAVITY_NOTE) : undefined;
+    return {antigravity: {...(rules ? {systemPrompt: {append: (endpoint ? ANTIGRAVITY_NATIVE_NOTE : '') + rules}} : {}), enabledTools: spec.folder ? ANTIGRAVITY_FOLDER_TOOLS : ANTIGRAVITY_TOOLS, ...(endpoint ? {eagerMcpServers: [SERVER_NAME], mcpMaxOutputBytes: ANTIGRAVITY_MAX_OUTPUT_BYTES} : {})}};
+  }
+  /** A held session's Kinetra endpoint: each call goes to the answer running on the session now. */
+  private endpointFor(held: Held) {
+    return kinetraMcp.open((request) => {
+      const route = held.route;
+      if (!route) return Promise.reject(Error('No answer is running in this conversation.'));
+      return keepingAlive(() => inlinePictures(route.native, (path) => readFile(path))(request), () => this.active.get(route.id)?.touch());
+    });
+  }
+  /** Opens (session/new) or reopens (session/resume) a session in this process, with its own Kinetra endpoint when it uses tools. */
+  private async openSession(live: Live, spec: AntigravitySpec, resume?: string): Promise<string> {
+    await mkdir(spec.cwd, {recursive: true});
+    const held: Held = {cwd: spec.cwd, folder: spec.folder};
+    if (spec.native) held.endpoint = await this.endpointFor(held);
+    const mcpServers = held.endpoint ? [{type: 'http', name: SERVER_NAME, url: held.endpoint.url, headers: [{name: 'Authorization', value: `Bearer ${held.endpoint.token}`}]}] : [];
+    try {
+      let id = resume;
+      if (resume) await live.acp.request('session/resume', {sessionId: resume, cwd: spec.cwd, mcpServers, _meta: this.meta(spec, !!held.endpoint)}, 120_000);
+      else id = String((await live.acp.request('session/new', {cwd: spec.cwd, mcpServers, _meta: this.meta(spec, !!held.endpoint)}, 120_000))?.sessionId || '');
+      if (!id) throw Error('Gemini could not start a conversation.');
+      live.sessions.get(id)?.endpoint?.close();
+      live.sessions.set(id, held);
+      if (!resume) live.opened++;
+      return id;
+    } catch (error) { held.endpoint?.close(); throw error; }
+  }
+  /** Opens the next chat message's session ahead, unless one like it is ready (or opening) in the running agent. */
+  private fillSpare(spec: AntigravitySpec) {
+    const key = specKey(spec);
+    void this.ready().then((live) => {
+      if (live.acp.closed || this.spare?.live === live && this.spare.key === key) return;
+      // A spare opened for other rules (or in an agent that has since closed) is not used.
+      const old = this.spare;
+      if (old) void old.session.then((id) => { this.dropped.add(id); this.release(id); }, () => {});
+      const session = this.openSession(live, spec);
+      const spare = {key, live, session};
+      this.spare = spare;
+      session.then(() => this.rest(live), () => { if (this.spare === spare) this.spare = null; });
+    }).catch(() => {});
+  }
+  /** The spare session, when it was opened with these rules in this agent; the next one is opened at once. */
+  private async takeSpare(live: Live, spec: AntigravitySpec) {
+    const spare = this.spare;
+    if (!spare || spare.live !== live || spare.key !== specKey(spec) || live.acp.closed) return undefined;
+    this.spare = null;
+    const id = await spare.session.catch(() => undefined);
+    return id && live.sessions.has(id) ? id : undefined;
+  }
+  /** A session Mowr is done with: its endpoint closes (the agent keeps the session itself until it closes). */
+  private release(agentSession: string) {
+    void this.live?.then((live) => { const held = live.sessions.get(agentSession); if (held) { held.endpoint?.close(); held.endpoint = undefined; held.route = undefined; held.ended = true; } }, () => {});
+  }
   private statusRequest: Promise<AntigravityStatus> | null = null;
   /** One check at a time: callers that arrive while one runs share it. */
   async status(force = false): Promise<AntigravityStatus> {
@@ -399,7 +481,7 @@ export class AntigravityProvider {
         const models = listAgain ? await this.listModels(live) : {models: before!.models, defaultModel: before!.defaultModel, efforts: before!.efforts, tier: before!.plan};
         const report = await this.usageReport(live).catch(() => undefined);
         const usage = report ? antigravityUsage(report.quotas) : before?.usage;
-        value = {installed: true, connected: models.models.length > 0, models: models.models, defaultModel: models.defaultModel, ...(models.efforts && Object.keys(models.efforts).length ? {efforts: models.efforts} : {}), ...(models.tier || live.tier ? {plan: models.tier || live.tier} : {}), ...(usage ? {usage} : {}), ...(live.version ? {version: live.version} : {}), ...(models.models.length ? {} : {error: 'Antigravity lists no models for this Google account.'})};
+        value = {installed: true, connected: models.models.length > 0, models: models.models, defaultModel: models.defaultModel, ...(models.efforts && Object.keys(models.efforts).length ? {efforts: models.efforts} : {}), ...(models.tier || live.tier ? {plan: models.tier || live.tier} : {}), ...(usage ? {usage} : {}), ...(live.version ? {version: live.version} : {}), ...(models.models.length ? {} : {error: 'Gemini lists no models for this Google account.'})};
       } catch (error) {
         value = {installed: true, connected: false, models: [], ...(error instanceof SignedOut ? {} : {error: friendly((error as Error).message || '')})};
       }
@@ -447,7 +529,7 @@ export class AntigravityProvider {
   forget() { this.statusCache = null; this.modelsAt = 0; }
   /** Opens Google's sign-in page in the browser; the agent finishes the sign-in itself when the person is done. */
   async login(openUrl: (url: string) => void) {
-    if (!this.engine.installed()) throw Error('Install Antigravity first (Settings → Models).');
+    if (!this.engine.installed()) throw Error('Install Gemini first (Settings → Models).');
     if (this.busy) throw Error('Finish or stop the answer using this account first.');
     // A sign-in replaces whatever runs for this account (a signed-out agent, or an earlier sign-in still waiting).
     for (const live of this.processes) this.kill(live);
@@ -482,27 +564,25 @@ export class AntigravityProvider {
     const slug = model.slice(ANTIGRAVITY_PREFIX.length);
     let status = this.knownStatus() || await this.status();
     if (!status.connected || !status.models.some((m) => m.id === slug)) status = await this.status(true);
-    if (!status.installed) throw Error('Install Antigravity first (Settings → Models).');
-    if (!status.connected) throw Error(status.error || 'Sign in to Antigravity first (Settings → Models).');
-    if (!status.models.some((m) => m.id === slug)) throw Error('This Antigravity model is not available on your plan. Pick another one.');
+    if (!status.installed) throw Error('Install Gemini first (Settings → Models).');
+    if (!status.connected) throw Error(status.error || 'Sign in to Gemini first (Settings → Models).');
+    if (!status.models.some((m) => m.id === slug)) throw Error('This Gemini model is not available on your plan. Pick another one.');
     if (effort && !status.efforts?.[slug]?.levels.includes(effort)) effort = undefined;
     const cwd = workspace?.root || this.workspace();
     await mkdir(cwd, {recursive: true});
     let live: Live;
-    try { live = await this.ready(); } catch (error) { this.statusCache = null; throw error instanceof SignedOut ? Error('Sign in to Antigravity again in Settings → Models.') : error; }
+    try { live = await this.ready(); } catch (error) { this.statusCache = null; throw error instanceof SignedOut ? Error('Sign in to Gemini again in Settings → Models.') : error; }
     clearTimeout(live.idle);
-    const endpoint: NativeEndpoint | undefined = native ? await kinetraMcp.open((request) => keepingAlive(() => inlinePictures(native, (path) => readFile(path))(request), () => this.active.get(id)?.touch())) : undefined;
-    const rules = system ? system + '\n\n' + (workspace ? ANTIGRAVITY_FOLDER_NOTE : ANTIGRAVITY_NOTE) : undefined;
-    const meta = {antigravity: {...(rules ? {systemPrompt: {append: (endpoint ? ANTIGRAVITY_NATIVE_NOTE : '') + rules}} : {}), enabledTools: workspace ? ANTIGRAVITY_FOLDER_TOOLS : ANTIGRAVITY_TOOLS, ...(endpoint ? {eagerMcpServers: [SERVER_NAME], mcpMaxOutputBytes: ANTIGRAVITY_MAX_OUTPUT_BYTES} : {})}};
-    const mcpServers = endpoint ? [{type: 'http', name: SERVER_NAME, url: endpoint.url, headers: [{name: 'Authorization', value: `Bearer ${endpoint.token}`}]}] : [];
+    const spec: AntigravitySpec = {cwd, system, folder: !!workspace, native: !!native};
     let agentSession: string | undefined;
+    let held: Held | undefined;
     const counter = new StepCounter();
     let stepKey = randomUUID(), fresh = true, segment = '', last = '', said = '', timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let rejectIdle: (error: Error) => void = () => {};
     const idle = new Promise<never>((_, reject) => { rejectIdle = reject; });
     idle.catch(() => {});
-    const touch = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; if (agentSession) live.acp.notify('session/cancel', {sessionId: agentSession}); rejectIdle(Error('Antigravity took too long to respond.')); }, ANTIGRAVITY_IDLE_LIMIT); };
+    const touch = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; if (agentSession) live.acp.notify('session/cancel', {sessionId: agentSession}); rejectIdle(Error('Gemini took too long to respond.')); }, ANTIGRAVITY_IDLE_LIMIT); };
     const read = (_: string, update: any) => {
       switch (update?.sessionUpdate) {
         case 'agent_message_chunk': {
@@ -510,7 +590,8 @@ export class AntigravityProvider {
           if (!piece) return;
           segment += piece;
           emit({id, type: 'partial', text: piece, fresh});
-          if (fresh && segment.trim()) emit({id, type: 'status', text: 'Writing the answer…'});
+          // The answer itself shows as it is written: no status line under it.
+          if (fresh && segment.trim()) emit({id, type: 'status', text: ''});
           fresh = false;
           return;
         }
@@ -531,31 +612,35 @@ export class AntigravityProvider {
     this.active.set(id, {touch, text: read});
     const turnPdfs = join(cwd, '.pdfs-' + id);
     try {
-      // A kept session goes on in the process that holds it; after a restart (or with this answer's Kinetra endpoint) it is
-      // resumed from the agent's own files. A session the agent no longer has starts again with everything (SessionLost).
+      // A kept session goes on in the process that holds it, with the Kinetra endpoint it was opened with; after a restart
+      // (or when it was opened without the tool) it is resumed from the agent's own files. A session the agent no longer
+      // has starts again with everything (SessionLost).
       if (session?.resume) {
         agentSession = this.agentIds.get(session.id);
-        if (!agentSession) throw new SessionLost('Antigravity no longer has this session.');
-        if (!live.sessions.has(agentSession) || endpoint) {
-          try { await live.acp.request('session/resume', {sessionId: agentSession, cwd, mcpServers, _meta: meta}, 120_000); }
-          catch (error) { if (error instanceof AcpClosed) throw new Transient('Antigravity stopped.'); throw new SessionLost('Antigravity no longer has this session.'); }
-          live.sessions.set(agentSession, {cwd, folder: !!workspace});
+        if (!agentSession) throw new SessionLost('Gemini no longer has this session.');
+        const there = live.sessions.get(agentSession);
+        if (!there || there.ended || (native && !there.endpoint) || there.cwd !== cwd) {
+          try { await this.openSession(live, spec, agentSession); }
+          catch (error) { if (error instanceof AcpClosed) throw new Transient('Gemini stopped.'); throw new SessionLost('Gemini no longer has this session.'); }
         }
       } else {
-        const created = await live.acp.request('session/new', {cwd, mcpServers, _meta: meta}, 120_000);
-        agentSession = String(created?.sessionId || '');
-        if (!agentSession) throw Error('Antigravity could not start a conversation.');
-        live.sessions.set(agentSession, {cwd, folder: !!workspace});
-        live.opened++;
+        // A new chat message takes the session opened ahead for it, and the next one is opened meanwhile.
+        agentSession = await this.takeSpare(live, spec);
+        if (!agentSession) {
+          try { agentSession = await this.openSession(live, spec); }
+          catch (error) { if (error instanceof AcpClosed) throw new Transient('Gemini stopped.'); throw error; }
+        }
         if (session) this.agentIds.set(session.id, agentSession); else this.dropped.add(agentSession);
       }
+      held = live.sessions.get(agentSession)!;
+      held.route = native ? {id, native} : undefined;
       this.active.get(id)!.session = agentSession;
       try {
         const chosen = await live.acp.request('session/set_config_option', {sessionId: agentSession, configId: 'model', value: slug}, 30_000);
         if (effort && parseAntigravityLevels(chosen?.configOptions).levels.includes(effort)) await live.acp.request('session/set_config_option', {sessionId: agentSession, configId: 'thinking_level', value: effort}, 30_000).catch(() => {});
       } catch (error) {
-        if (error instanceof AcpClosed) throw new Transient('Antigravity stopped.');
-        throw Error('This Antigravity model is not available on your plan. Pick another one.');
+        if (error instanceof AcpClosed) throw new Transient('Gemini stopped.');
+        throw Error('This Gemini model is not available on your plan. Pick another one.');
       }
       const blocks: any[] = [{type: 'text', text: prompt}];
       for (const path of images) blocks.push({type: 'image', mimeType: MIME[extname(path).toLowerCase()] || 'image/png', data: (await readFile(path)).toString('base64')});
@@ -577,9 +662,9 @@ export class AntigravityProvider {
       try { result = await Promise.race([live.acp.request('session/prompt', {sessionId: agentSession, prompt: blocks}), idle]); }
       catch (error) {
         if (timedOut) throw error;
-        if (error instanceof AcpClosed) throw new Transient('Antigravity stopped.');
-        if (error instanceof AcpError && (error.code === -32000 || signedOut.test(error.message))) { this.statusCache = null; throw Error('Sign in to Antigravity again in Settings → Models.'); }
-        if (error instanceof AcpError && session?.resume && /session not found/i.test(error.message)) throw new SessionLost('Antigravity no longer has this session.');
+        if (error instanceof AcpClosed) throw new Transient('Gemini stopped.');
+        if (error instanceof AcpError && (error.code === -32000 || signedOut.test(error.message))) { this.statusCache = null; throw Error('Sign in to Gemini again in Settings → Models.'); }
+        if (error instanceof AcpError && session?.resume && /session not found/i.test(error.message)) throw new SessionLost('Gemini no longer has this session.');
         throw Error(friendly((error as Error).message || ''));
       }
       if (counter.calls) emit({id, type: 'toolsteps', steps: counter.steps, calls: counter.calls});
@@ -590,14 +675,18 @@ export class AntigravityProvider {
       if (problem?.kind === 'transient') throw new Transient(problem.message);
       if (problem?.kind === 'signed-out') { this.statusCache = null; throw Error(problem.message); }
       if (problem) throw Error(problem.message);
-      if (result?.stopReason === 'refusal') throw Error('Antigravity declined this request.');
-      if (!reply.trim()) throw Error('Antigravity could not complete this request. Check Antigravity in Settings → Models.');
+      if (result?.stopReason === 'refusal') throw Error('Gemini declined this request.');
+      if (!reply.trim()) throw Error('Gemini could not complete this request. Check Gemini in Settings → Models.');
       this.usageStale = true;
       emit({id, type: 'delta', text: reply}); emit({id, type: 'done'});
     } finally {
       clearTimeout(timer);
       this.active.delete(id);
-      endpoint?.close();
+      if (held?.route?.id === id) held.route = undefined;
+      // A session nothing keeps (a side job's, a tool loop's first try) closes its endpoint now.
+      if (agentSession && this.dropped.has(agentSession)) this.release(agentSession);
+      // The next chat message's session is opened once this answer is done (not beside it).
+      if (native && workspace && !live.acp.closed) { this.lastSpec = spec; this.fillSpare(spec); }
       this.rest(live);
       this.recheck();
     }
@@ -625,6 +714,7 @@ export class AntigravityProvider {
     this.agentIds.delete(sessionId);
     this.attached.delete(agent);
     this.dropped.add(agent);
+    this.release(agent);
     await this.sweep();
   }
   /** Whether a request is running on this account (an account is never switched or removed mid-answer). */

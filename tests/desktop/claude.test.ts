@@ -38,7 +38,7 @@ test('Claude execution confines tools, streams progress, sends pictures and retu
   assert.deepEqual(sent.message.content[0],{type:'text',text:'Full handoff context'});
   assert.deepEqual(sent.message.content[1],{type:'image',source:{type:'base64',media_type:'image/png',data:'iVBORw0KGgo='}});
   assert.deepEqual(events.map(event=>event.type),['status','status','delta','done']);
-  assert.deepEqual(events.slice(0,2).map(event=>event.text),['Thinking it through…','Writing the answer…']);
+  assert.deepEqual(events.slice(0,2).map(event=>event.text),['Thinking it through…','']);
   assert.equal(events[2].text,'Completed step');
   assert.deepEqual(args.slice(0,5),['-p','--input-format','stream-json','--output-format','stream-json']);
   assert.ok(args.includes('--tools'));

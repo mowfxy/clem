@@ -54,7 +54,7 @@ import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { attachedSources, cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
-import { ChatSessions, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrint, sentAfter, sourcePrint } from "./chat-sessions";
+import { ChatSessions, type KeptSession, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrint, sentAfter, sourcePrint } from "./chat-sessions";
 import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
@@ -408,7 +408,7 @@ void app.whenReady().then(async () => {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:"), antigravity = !!model?.startsWith(ANTIGRAVITY_PREFIX);
     // Grok and Antigravity keep no compactable session and count their tokens themselves (sessionTokens); Claude does both itself.
     const counted = grok || antigravity;
-    const name = antigravity ? "Antigravity" : grok ? "Grok" : "Claude";
+    const name = antigravity ? "Gemini" : grok ? "Grok" : "Claude";
     // Stop pressed while the request was being prepared (folders, memory, account choice): nothing starts.
     if (cancelledRuns.has(id)) throw Error("Request cancelled");
     const finishing = async () => { try { await finish?.(); } catch (error) { console.warn("[answer] finishing:", (error as Error).message); } };
@@ -450,12 +450,15 @@ void app.whenReady().then(async () => {
       if (cancelled()) { kept?.end(); throw Error("Request cancelled"); }
     }
     if (kept) { sessions.push({ id: kept.session, provider: current.provider }); stats.continued = true; }
-    // Grok (its usage.json) and Antigravity (its /usage report) count a session's tokens themselves: a kept session's count so far is taken off this answer's.
-    const tokensBefore = counted && kept ? await (current.provider as GrokProvider | AntigravityProvider).sessionTokens(kept.session).catch(() => undefined) : undefined;
+    // Grok (its usage.json) and Antigravity (its /usage report) count a session's tokens themselves: a kept session's count
+    // so far (noted when its last answer was counted) is taken off this answer's. Nothing is asked of the CLI before the answer starts.
+    const tokensBefore = counted && kept ? kept.tokens : undefined;
     // The message's own pictures go with the first step that runs, on whichever session it opens.
     let delivered = false;
     // The context the latest step read (Claude reports it): a session grown large is compacted before the next message.
     let context: number | undefined;
+    // Grok's and Antigravity's token counts, read after the answer is shown (below).
+    let accounting: Promise<void> = Promise.resolve();
     // Their text streams as it is written; tool requests never show, and nothing shows twice (desktop/live-reply.ts).
     const screen = new LiveScreen((text) => emit({ id, type: "delta", text }));
     // Claude Code and Grok get Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; the text
@@ -519,27 +522,40 @@ void app.whenReady().then(async () => {
       emit({ id, type: "worked" });
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: () => emit({ id, type: "worked" }), stats, continued: !!kept, fresh: prompt }).then(async (text) => {
-      if (counted) for (const [i, session] of sessions.entries()) {
-        const used = await (session.provider as GrokProvider | AntigravityProvider).sessionTokens(session.id).catch(() => undefined);
-        // Grok reports no context per step: what entered the session uncached (new input, cache writes, output) is about its size.
-        // Antigravity reports the context itself (usage_update), which is kept when it came.
-        if (used && i === sessions.length - 1 && (grok || context === undefined)) context = used.input + used.cacheWrite + used.output;
-        const before = i === 0 && stats.continued ? tokensBefore : undefined;
-        if (used) addTokens(stats, before ? { input: used.input - before.input, cacheRead: used.cacheRead - before.cacheRead, cacheWrite: used.cacheWrite - before.cacheWrite, output: used.output - before.output } : used);
-      }
+    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: () => emit({ id, type: "worked" }), stats, continued: !!kept, fresh: prompt }).then((text) => {
       // The session that wrote the answer stays for the chat's next message; the context it was sent is remembered.
-      const last = sessions.at(-1);
+      const all = [...sessions], last = sessions.at(-1);
       if (keep && last && !cancelled()) {
         const sent = sentAfter(stats.continued && kept ? kept.sent : [], [...keep.blocks.map(blockPrint), ...(keep.prints || [])]);
         chatSessions.keep(keep.key, { provider: kind, account: accountOf(last.provider), model: model!, session: last.id, history: keep.after, sent, context, end: () => void last.provider.endSession(last.id).catch(() => {}) });
         sessions.pop();
       }
+      // Grok and Antigravity are asked for their counts once the answer is done (Grok writes them as it exits, seconds
+      // after its reply), so the person never waits for them. The kept session's size is noted for its next message.
+      if (counted) accounting = (async () => {
+        let total: KeptSession["tokens"];
+        for (const [i, session] of all.entries()) {
+          const used = await (session.provider as GrokProvider | AntigravityProvider).sessionTokens(session.id).catch(() => undefined);
+          // Grok reports no context per step: what entered the session uncached (new input, cache writes, output) is about its size.
+          // Antigravity reports the context itself (usage_update), which is kept when it came.
+          if (used && i === all.length - 1) { total = used; if (grok || context === undefined) context = used.input + used.cacheWrite + used.output; }
+          const before = i === 0 && stats.continued ? tokensBefore : undefined;
+          if (used) addTokens(stats, before ? { input: used.input - before.input, cacheRead: used.cacheRead - before.cacheRead, cacheWrite: used.cacheWrite - before.cacheWrite, output: used.output - before.output } : used);
+        }
+        if (keep && last) chatSessions.note(keep.key, last.id, { context, tokens: total });
+      })().catch(() => {});
       return text;
-    }).finally(() => { for (const session of sessions) void session.provider.endSession(session.id).catch(() => {}); if (counted && pdfs.length) void (antigravity ? antigravities : groks).all(owner).then((all) => all.forEach((g) => void g.dropPdfs(id))).catch(() => {}); });
+    }).finally(() => {
+      // Sessions the answer is done with go once they have been counted.
+      const ending = [...sessions];
+      void accounting.then(() => { for (const session of ending) void session.provider.endSession(session.id).catch(() => {}); });
+      if (counted && pdfs.length) void (antigravity ? antigravities : groks).all(owner).then((all) => all.forEach((g) => void g.dropPdfs(id))).catch(() => {});
+    });
     await finishing();
     screen.answer(answer);
     emit({ id, type: "done" });
+    // The timing log (desktop/turn-timing.ts) waits for the counts; the answer above does not.
+    await accounting;
   }
   /** The model the person chose for Mowr's side jobs in Settings → Models (none: automatic). */
   const helperKey = (owner: string) => "helper-model-" + owner;
@@ -609,7 +625,8 @@ void app.whenReady().then(async () => {
    * checks): Codex's connection is opened, Claude's and Grok's sign-ins are checked. Never waits and never fails.
    */
   function prepareFor(owner: string, model?: string, ahead = false) {
-    if (model?.startsWith(ANTIGRAVITY_PREFIX)) void antigravityFor(owner).then((ag) => ag.prepare(ahead)).catch(() => {});
+    // Antigravity opens the next chat message's session ahead, with the rules a chat answer in the working folder gets (answerTimed).
+    if (model?.startsWith(ANTIGRAVITY_PREFIX)) void antigravityFor(owner).then((ag) => ag.prepare(ahead, { cwd: join(local, owner, "work", "mowr"), system: cliSystemPrompt(kinetraCli), folder: true, native: true })).catch(() => {});
     else if (model?.startsWith(GROK_PREFIX)) void grokFor(owner).then((grok) => grok.prepare(ahead)).catch(() => {});
     else if (model?.startsWith("claude:")) void claudeFor(owner).then((claude) => claude.prepare(ahead)).catch(() => {});
     else void selectProvider(owner).then((provider) => provider.prepare(ahead)).catch(() => {});
@@ -648,8 +665,16 @@ void app.whenReady().then(async () => {
   const setupDefault = { step: 0, username: "", displayName: "", memory: true };
   /** Entitlement changes rarely; an active result is reused for five minutes. */
   let entitlementCache: { owner: string; at: number; value: any } | null = null;
+  let entitlementRefresh: Promise<void> | null = null;
   async function cachedEntitlement(owner: string) {
     if (entitlementCache?.owner === owner && Date.now() - entitlementCache.at < 5 * 60_000) return entitlementCache.value;
+    // An active plan checked within the last hours answers now and is checked again beside the answer: a message never
+    // waits on the account service (a plan that ended is refused from the next message on).
+    if (entitlementCache?.owner === owner && Date.now() - entitlementCache.at < 6 * 60 * 60_000) {
+      const cached = entitlementCache.value;
+      entitlementRefresh ??= auth.cloud("/entitlement").then((value) => { entitlementCache = value?.active ? { owner, at: Date.now(), value } : null; }, () => {}).finally(() => { entitlementRefresh = null; });
+      return cached;
+    }
     const value = await auth.cloud("/entitlement");
     entitlementCache = value?.active ? { owner, at: Date.now(), value } : null;
     return value;
@@ -1246,7 +1271,7 @@ void app.whenReady().then(async () => {
       await codex.logout();
       return { ok: true };
     }
-    if (request.action === "prepare") { prepareFor(user.id, request.model); return { ok: true }; }
+    if (request.action === "prepare") { prepareFor(user.id, request.model, !!request.ahead); return { ok: true }; }
     if (request.action === "cancel") {
       await stopRun(user.id, request.id);
       return { ok: true };
@@ -1492,6 +1517,8 @@ void app.whenReady().then(async () => {
       // The person's own answer, typeset as-is: no voice check, same professional layout.
       return illustratedPdf(markdownDocument(request.markdown, request.title), { checkVoice: false });
     if (request.action === "chat") {
+      // How long Mowr prepares a message before its AI is asked (the timing log's "prep").
+      const received = performance.now();
       const query = retrievalQuery(request.messages);
       // Claude, Grok and Antigravity use their own sign-ins; only ChatGPT picks among the person's Codex accounts.
       const agTurn = !!request.model?.startsWith(ANTIGRAVITY_PREFIX);
@@ -2022,6 +2049,7 @@ void app.whenReady().then(async () => {
       };
       // The person's files in the working folder are copies the AI reads and never changes (Claude Code refuses edits there).
       const workspace = work ? { root: work.root, readOnly: linked.map((f) => f.path), protect: [...LIBRARY, TEXT].map((top) => join(work!.root, top)), writer: extras } : undefined;
+      console.log(`[mowr timing] prep ${Math.round(performance.now() - received)}ms${work ? ` files=${Math.round(started ? Date.now() - started : 0)}ms` : ""}`);
       const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});

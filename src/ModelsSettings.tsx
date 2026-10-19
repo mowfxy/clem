@@ -4,7 +4,7 @@ import type { Model } from "../core/types";
 import { desktop } from "./desktop/bridge";
 import {LocalProvider} from "./desktop/LocalProvider";
 import { Icon } from "./Icons";
-import { OpenAILogo, ClaudeLogo, GrokLogo, AntigravityLogo } from "./BrandLogos";
+import { OpenAILogo, ClaudeLogo, GrokLogo, GeminiLogo } from "./BrandLogos";
 import { ModelSelector } from "./ModelSelector";
 import "./models-settings.css";
 type WindowUsage = {
@@ -84,9 +84,9 @@ const LOGO: Record<Service, (size: number) => ReactNode> = {
   chatgpt: (size) => <OpenAILogo size={size} title="OpenAI" />,
   claude: (size) => <ClaudeLogo size={size} title="Claude" />,
   grok: (size) => <GrokLogo size={size} title="Grok" />,
-  antigravity: (size) => <AntigravityLogo size={size} title="Antigravity" />,
+  antigravity: (size) => <GeminiLogo size={size} title="Gemini" />,
 };
-const NAME: Record<Service, string> = { chatgpt: "ChatGPT", claude: "Claude", grok: "Grok", antigravity: "Antigravity" };
+const NAME: Record<Service, string> = { chatgpt: "ChatGPT", claude: "Claude", grok: "Grok", antigravity: "Gemini" };
 /** One connected account: who it is, its plan, whether it is in use, and what it has left. */
 function AccountRow({ account, index, service, active, busy, onUse, onRemove, onSignIn }: {
   account: Account; index: number; service: Service; active: boolean; busy: boolean;
@@ -325,7 +325,7 @@ type Service = "chatgpt" | CliKind;
 const CLI = {
   claude: { name: "Claude Code", owner: "Anthropic", terms: "anthropic.com/legal/consumer-terms", status: "claudeStatus", install: "claudeInstall", login: "claudeLogin" },
   grok: { name: "Grok", owner: "xAI", terms: "x.ai/legal/terms-of-service", status: "grokStatus", install: "grokInstall", login: "grokLogin" },
-  antigravity: { name: "Antigravity", owner: "Google", terms: "antigravity.google/terms", status: "antigravityStatus", install: "antigravityInstall", login: "antigravityLogin" },
+  antigravity: { name: "Gemini", owner: "Google", terms: "antigravity.google/terms", status: "antigravityStatus", install: "antigravityInstall", login: "antigravityLogin" },
 } as const;
 /** SUPERGROK_PRO → SuperGrok Pro, X_PREMIUM_PLUS → X Premium+ */
 function planName(tier: string) {

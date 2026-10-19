@@ -81,7 +81,7 @@ html body .file-panel input.fp-page-field{width:44px;height:29px;font-size:13.5p
 /* The line under the chat box, readable at a glance */
 body .chat-composer .composer-note{font-size:13px;line-height:1.4;color:#8e8d86;margin:9px 0 0}
 /* Narrow windows: the menu button sits in the title bar's own row, above it, instead of 19px below its middle. */
-@media(max-width:760px){.desktop-content .mobile-menu{top:calc((var(--tb) - 34px) / 2);z-index:10002;border-radius:9px;background:#1f1f1e;-webkit-app-region:no-drag;app-region:no-drag}}
+@media(max-width:760px){.desktop-content .mobile-menu{top:calc((var(--tb) - 30px) / 2 + 1px);width:30px;height:30px;padding:0;z-index:10002;border-radius:9px;background:#1f1f1e;-webkit-app-region:no-drag;app-region:no-drag}}
 /* Phone widths: the composer's switches keep their icon and state; their words go so the row fits inside the box. */
 @media(max-width:520px){.long-toggle>span:not(.long-state),.picker-trigger-effort .effort-label{display:none}body .workspace-top .top-where .top-space{display:none}}
 /* Phone widths: the welcome stacks — the mark centred above the heading rather than stranded at its left. */

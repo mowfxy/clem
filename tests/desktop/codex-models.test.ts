@@ -188,7 +188,7 @@ test("reasoning summaries become a few words on what the model is doing", () => 
 test("Claude's stream-json events become the same short progress labels as ChatGPT's", async () => {
   const { claudeStatus } = await import("../../desktop/claude.ts");
   assert.equal(claudeStatus({ type: "stream_event", event: { type: "content_block_start", content_block: { type: "thinking" } } }), "Thinking it through…");
-  assert.equal(claudeStatus({ type: "stream_event", event: { type: "content_block_start", content_block: { type: "text" } } }), "Writing the answer…");
+  assert.equal(claudeStatus({ type: "stream_event", event: { type: "content_block_start", content_block: { type: "text" } } }), "");
   assert.equal(claudeStatus({ type: "assistant", message: { content: [{ type: "server_tool_use", name: "web_search", input: { query: "krebs cycle video" } }] } }), "Searching the web for “krebs cycle video”…");
   assert.equal(claudeStatus({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hi" } } }), null);
 });

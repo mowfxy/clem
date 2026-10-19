@@ -111,7 +111,8 @@ class NoSystemFile extends Error {}
 export function claudeStatus(event:any):string|null{
   const block=event?.type==='stream_event'&&event.event?.type==='content_block_start'?event.event.content_block:null;
   if(block?.type==='thinking')return 'Thinking it through…';
-  if(block?.type==='text')return 'Writing the answer…';
+  // The answer itself shows as it is written: no status line under it.
+  if(block?.type==='text')return '';
   if(block?.type==='server_tool_use'||block?.type==='tool_use')return block.name==='web_search'||block.name==='WebSearch'?'Searching the web…':'Using a tool…';
   if(event?.type==='assistant')for(const part of event.message?.content||[])if((part.type==='tool_use'||part.type==='server_tool_use')&&/web_?search/i.test(part.name||'')){
     const query=String(part.input?.query||'').trim();return query?`Searching the web for “${query.slice(0,80)}”…`:'Searching the web…';
@@ -508,7 +509,7 @@ export class ClaudeProvider {
           const limit=parseRateLimit(event);
           if(limit){this.noteLimit(limit);if(limit.status==='rejected')refused=limit;else if(refused&&limit.type===refused.type)refused=undefined;}
           const status=claudeStatus(event);
-          if(status&&status!==last){last=status;emit({id,type:'status',text:status});}
+          if(status!==null&&status!==undefined&&status!==last){last=status;emit({id,type:'status',text:status});}
         };
         // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
         child.stdout.setEncoding('utf8');

@@ -12,18 +12,18 @@ const GROK = "M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.
 export function GrokLogo({ size = 20, title }: { size?: number; title?: string }) {
   return <svg className="brand-logo brand-grok" width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true} fill="currentColor" fillRule="evenodd"><path d={GROK} /></svg>;
 }
-/** Antigravity's arch, in Google's colours. */
-const ANTIGRAVITY = "M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z";
-export function AntigravityLogo({ size = 20, title }: { size?: number; title?: string }) {
-  const id = "agy" + useId().replace(/[^a-zA-Z0-9]/g, "");
-  return <svg className="brand-logo brand-antigravity" width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
-    <defs><linearGradient id={id} x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#3186FF" /><stop offset=".38" stopColor="#00B95C" /><stop offset=".68" stopColor="#FFD300" /><stop offset="1" stopColor="#FC413D" /></linearGradient></defs>
-    <path d={ANTIGRAVITY} fill={`url(#${id})`} />
+/** Gemini's four-pointed spark, in its blue-to-violet colours. */
+const GEMINI = "M12 24A14.3 14.3 0 0 0 0 12 14.3 14.3 0 0 0 12 0a14.3 14.3 0 0 0 12 12 14.3 14.3 0 0 0-12 12";
+export function GeminiLogo({ size = 20, title }: { size?: number; title?: string }) {
+  const id = "gem" + useId().replace(/[^a-zA-Z0-9]/g, "");
+  return <svg className="brand-logo brand-gemini" width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
+    <defs><linearGradient id={id} x1="3" y1="20" x2="21" y2="5" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#4796E3" /><stop offset=".55" stopColor="#9177C7" /><stop offset="1" stopColor="#CA6673" /></linearGradient></defs>
+    <path d={GEMINI} fill={`url(#${id})`} />
   </svg>;
 }
 export function ProviderLogo({ provider, size }: { provider?: string; size?: number }) {
   if (provider === "xAI") return <GrokLogo size={size} />;
-  if (provider === "Google") return <AntigravityLogo size={size} />;
+  if (provider === "Google") return <GeminiLogo size={size} />;
   return provider === "Anthropic" ? <ClaudeLogo size={size} /> : <OpenAILogo size={size} />;
 }
 const GITHUB = "M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58l-.01-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3";

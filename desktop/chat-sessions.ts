@@ -34,6 +34,8 @@ export type KeptSession = {
   sent: Set<string>;
   /** Tokens of context the session's last step read, when the CLI reports it. */
   context?: number;
+  /** The session's token counts so far, for a CLI that reports only totals (Grok, Antigravity): the next answer's own are the difference. */
+  tokens?: { input: number; cacheRead: number; cacheWrite: number; output: number };
   at: number;
   /** Removes the session (its transcript, or its thread's endpoint) when it will not be continued. */
   end: () => void;
@@ -97,6 +99,13 @@ export class ChatSessions {
     this.kept.delete(key);
     this.kept.set(key, { ...session, at: this.now() });
     this.sweep();
+  }
+  /** Notes a kept session's size once it is known (counted after its answer was shown), while it is still the chat's session. */
+  note(key: string, session: string, { context, tokens }: { context?: number; tokens?: KeptSession["tokens"] }) {
+    const found = this.kept.get(key);
+    if (found?.session !== session) return;
+    if (context !== undefined) found.context = context;
+    if (tokens) found.tokens = tokens;
   }
   /** Ends a chat's session (the chat was deleted, or its answer failed). */
   drop(key: string) {

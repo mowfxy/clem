@@ -97,15 +97,15 @@ export class AntigravityEngine {
     const have = this.installed();
     if (!have || this.configured) return false;
     try { return (await this.install()).version !== have.version; }
-    catch (error) { console.warn('Antigravity update:', (error as Error)?.message || error); return false; }
+    catch (error) { console.warn('Gemini update:', (error as Error)?.message || error); return false; }
   }
   private async fetch(): Promise<AntigravityInstall> {
-    if (process.platform !== 'win32' || !PLATFORMS[process.arch]) throw Error('Antigravity is available for Windows on x64 and Arm PCs.');
+    if (process.platform !== 'win32' || !PLATFORMS[process.arch]) throw Error('Gemini is available for Windows on x64 and Arm PCs.');
     let manifest: any;
     try { manifest = await (await fetch(ANTIGRAVITY_REGISTRY, {signal: AbortSignal.timeout(20000)})).json(); }
-    catch { throw Error('Couldn’t reach the Antigravity download. Check your internet connection and try again.'); }
+    catch { throw Error('Couldn’t reach the Gemini download. Check your internet connection and try again.'); }
     const release = antigravityRelease(manifest);
-    if (!release) throw Error('Google’s Antigravity download is not available right now. Try again later.');
+    if (!release) throw Error('Google’s Gemini download is not available right now. Try again later.');
     const have = this.installed();
     if (have && have.version !== 'custom' && !newer(release.version, have.version)) return have;
     await mkdir(this.root, {recursive: true});
@@ -115,20 +115,20 @@ export class AntigravityEngine {
     try {
       let response: Response;
       try { response = await fetch(release.url, {signal: AbortSignal.timeout(30 * 60_000)}); }
-      catch { throw Error('Couldn’t reach the Antigravity download. Check your internet connection and try again.'); }
+      catch { throw Error('Couldn’t reach the Gemini download. Check your internet connection and try again.'); }
       // Google's own download host, wherever it redirected within Google.
-      if (!response.ok || !response.body || !/^https:\/\/([a-z0-9-]+\.)*(google\.com|gvt1\.com)\//.test(response.url)) throw Error('The Antigravity download failed. Try again.');
-      if (Number(response.headers.get('content-length') || 0) > MAX_ARCHIVE) throw Error('The Antigravity download is larger than expected.');
+      if (!response.ok || !response.body || !/^https:\/\/([a-z0-9-]+\.)*(google\.com|gvt1\.com)\//.test(response.url)) throw Error('The Gemini download failed. Try again.');
+      if (Number(response.headers.get('content-length') || 0) > MAX_ARCHIVE) throw Error('The Gemini download is larger than expected.');
       let bytes = 0;
       const body = Readable.fromWeb(response.body as any);
-      body.on('data', (chunk: Buffer) => { bytes += chunk.length; if (bytes > MAX_ARCHIVE) body.destroy(Error('The Antigravity download is larger than expected.')); });
+      body.on('data', (chunk: Buffer) => { bytes += chunk.length; if (bytes > MAX_ARCHIVE) body.destroy(Error('The Gemini download is larger than expected.')); });
       await pipeline(body, createWriteStream(archive));
       // Windows' own tar reads zip archives; only the two programs are taken out.
       const tar = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
       const unpacked = await run(tar, ['-xf', archive, '-C', staging, ANTIGRAVITY_FILES.server, ANTIGRAVITY_FILES.harness], 10 * 60_000);
       const server = join(staging, ANTIGRAVITY_FILES.server), harness = join(staging, ANTIGRAVITY_FILES.harness);
-      if (unpacked.code !== 0 || !existsSync(server) || !existsSync(harness)) throw Error('Antigravity didn’t finish installing. Try again, or contact support@mowrai.com.');
-      if (!(await signedByGoogle([server, harness]))) throw Error('The Antigravity download is not signed by Google, so Mowr did not install it.');
+      if (unpacked.code !== 0 || !existsSync(server) || !existsSync(harness)) throw Error('Gemini didn’t finish installing. Try again, or contact support@mowrai.com.');
+      if (!(await signedByGoogle([server, harness]))) throw Error('The Gemini download is not signed by Google, so Mowr did not install it.');
       await rm(join(this.root, release.version), {recursive: true, force: true});
       await rename(staging, join(this.root, release.version));
     } finally {
