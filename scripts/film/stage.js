@@ -99,7 +99,7 @@ root.innerHTML = `
 ${live ? "" : '<div class="demo-tag">Demo · scripted AI replies</div>'}`;
 const app = document.getElementById("app"), shot = document.getElementById("shot"), cursorEl = document.getElementById("cursor"), fx = document.getElementById("fx"), ghost = document.getElementById("ghost"), cards = document.getElementById("cards");
 
-const logo = (size, fill) => `<svg width="${size}" height="${size}" viewBox="0 0 144 144" fill="${fill}">${[0, 90, 180, 270].map((a) => `<path transform="rotate(${a} 72 72)" d="M64 11 C87 4 104 20 103 42 C103 57 94 70 84 72 C78 73 79 65 81 61 C85 48 75 43 65 48 C55 52 49 43 49 31 C49 22 54 15 64 11Z"/>`).join("")}</svg>`;
+const logo = (size, fill) => `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" stroke="${fill}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((k) => `<path transform="translate(${(k * 0.6275).toFixed(2)} ${(-k * 0.5275).toFixed(2)})" d="M20 64 L36 32 L52 66 L68 32 L80 56"/>`).join("")}</svg>`;
 const chip = (cls, icon, text) => `<span class="chip ${cls}"><span class="ci">${icon}</span>${text}</span>`;
 const ICON = {
   notes: '<svg viewBox="0 0 20 20" width="22" height="22"><rect x="4" y="2.5" width="12" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M7 7h6M7 10h6M7 13h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',

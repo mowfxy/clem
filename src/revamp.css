@@ -8,3 +8,16 @@
 
 
 .workspace-loading{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;font-size:14px;color:#aaa}
+/* Peaks, Mowr's mark: thinking ticks the mark and writes it in steps (the stroke's boil is SMIL in Logo); a click flicks
+   and redraws it. Stepped, so it repaints a few times a second rather than every frame. */
+.mowr-mark{transform-origin:50% 49%}
+.mowr-mark .mark-ink{stroke-dasharray:100 100}
+.mowr-mark.is-thinking{animation:pk-tick .84s steps(1) infinite}
+.mowr-mark.is-thinking .mark-ink{animation:pk-write 1.04s steps(9) infinite}
+.mowr-mark.is-poked{animation:pk-flick .55s cubic-bezier(.3,1.6,.5,1)}
+.mowr-mark.is-poked .mark-ink{animation:pk-redraw .55s cubic-bezier(.7,0,.2,1)}
+@keyframes pk-tick{0%{transform:rotate(0)}33%{transform:rotate(-6deg)}66%{transform:rotate(4deg)}}
+@keyframes pk-write{0%{stroke-dashoffset:100}55%{stroke-dashoffset:0}100%{stroke-dashoffset:-100}}
+@keyframes pk-redraw{0%{stroke-dashoffset:-100}1%{stroke-dashoffset:100}100%{stroke-dashoffset:0}}
+@keyframes pk-flick{0%{transform:none}30%{transform:translateX(-3%) rotate(-5deg)}100%{transform:none}}
+@media(prefers-reduced-motion:reduce){.mowr-mark{animation:none!important}}[data-quiet=true] .mowr-mark{animation:none!important}
