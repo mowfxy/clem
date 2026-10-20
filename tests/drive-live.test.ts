@@ -203,3 +203,20 @@ test('a dropped connection or a busy Google is tried again, and many requests sh
   const offline=new DriveLive(async()=>'session',(async(input:any)=>{if(String(input).endsWith('/api/drive/token'))return Response.json({accessToken:'tok',expiresIn:3300});throw new TypeError('fetch failed');}) as typeof fetch,'https://mowrai.example');
   await assert.rejects(offline.list({folder:'root'}),/couldn't reach Google Drive/);
 });
+test('a linked folder listing answers from what it has and is read again beside it',async()=>{
+  let lists=0;
+  const fetcher=(async(input:any)=>{
+    const url=new URL(String(input));
+    if(url.pathname.endsWith('/api/drive/token'))return Response.json({accessToken:'tok',expiresIn:3300});
+    if(/in parents/.test(url.searchParams.get('q')||'')&&!/fullText/.test(url.searchParams.get('q')||''))lists++;
+    return Response.json({files:[]});
+  }) as typeof fetch;
+  const drive=new DriveLive(async()=>'session',fetcher,'https://mowrai.example');
+  const first=await drive.tree('rootFolder123');
+  (first as {at:number}).at-=5*60_000;
+  const again=await drive.tree('rootFolder123');
+  assert.equal(again,first);
+  await new Promise((done)=>setTimeout(done,10));
+  assert.equal(lists,2);
+  assert.notEqual(await drive.tree('rootFolder123'),first);
+});

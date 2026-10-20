@@ -1941,9 +1941,11 @@ void app.whenReady().then(async () => {
             tool = { ...tool, file: id ? MOWR_FILE + id : named };
           }
         }
-        // Every file is in the working folder: the AI finds files with its own tools, not with Mowr's search.
-        if ((tool?.action === "find" || tool?.action === "attach") && work)
-          return { error: "Every file the person keeps in Mowr is already in your working folder (Subjects/, Projects/, Files/): find it there with your own file tools (list, glob, grep) and open it by its path." };
+        // Every Mowr file is in the working folder: the AI finds those with its own tools. Google Drive is not there, so
+        // find searches only Drive, and attach brings in a Drive file (drive:ID) the request needs, read live.
+        const driveFile = typeof (tool?.file ?? tool?.id) === "string" && /^drive:[\w-]{10,200}$/.test(tool.file ?? tool.id);
+        if (tool?.action === "attach" && work && !driveFile)
+          return { error: "Every file the person keeps in Mowr is already in your working folder (Subjects/, Projects/, Files/): find it there with your own file tools (list, glob, grep) and open it by its path. attach is for Google Drive files (\"drive:ID\")." };
         if (tool?.action === "help" && work) return grokTurn ? kinetraFiles : kinetraCli;
         const read = fileTool(library, tool);
         if (read) return read;
@@ -1958,7 +1960,7 @@ void app.whenReady().then(async () => {
         if (tool?.action === "find" || tool?.action === "attach") {
           // The person's files anywhere in Mowr and in their Google Drive, found and attached by the window (src/files/finder.ts).
           try {
-            const { data, files } = await windowTask(tool.action, { query: tool.query, file: tool.file ?? tool.id });
+            const { data, files } = await windowTask(tool.action, { query: tool.query, file: tool.file ?? tool.id, ...(work ? { driveOnly: true } : {}) });
             if (tool.action !== "attach" || !files[0]) return data;
             // Its whole text joins this answer's files, so read and search work on it; look and crop open it in the window.
             if (!library.some((f) => f.name === data.attached)) library.push({ name: data.attached, text: new TextDecoder().decode(files[0]), kind: "file" });

@@ -241,10 +241,22 @@ export class DriveLive {
     return {ok:true};
   }
 
-  /** Everything inside a linked folder and its subfolders (5 levels, 1500 items), read live and kept for two minutes. */
+  /** Everything inside a linked folder and its subfolders (5 levels, 1500 items), read live and kept for two minutes.
+   *  A listing up to ten minutes old answers at once and is read again beside it, so a chat message never waits on
+   *  Drive listing a whole folder tree; changes made here (upload, rename, move, trash) drop it. */
   async tree(folderId:string,refresh=false){
     const cached=this.trees.get(folderId);
     if(!refresh&&cached&&Date.now()-cached.at<120_000)return cached;
+    if(!refresh&&cached&&Date.now()-cached.at<600_000){void this.relist(folderId).catch(()=>{});return cached;}
+    return this.relist(folderId);
+  }
+  private listing=new Map<string,Promise<{at:number;items:DriveItem[];folders:string[]}>>();
+  private relist(folderId:string){
+    let run=this.listing.get(folderId);
+    if(!run){run=this.listTree(folderId).finally(()=>this.listing.delete(folderId));this.listing.set(folderId,run);}
+    return run;
+  }
+  private async listTree(folderId:string){
     const generation=this.generation;
     if(!await this.token())throw Object.assign(Error("Connect Google Drive in Settings → Connectors first."),{code:"not_connected"});
     const items:DriveItem[]=[],folders=[folderId],paths=new Map<string,string>([[folderId,""]]),seen=new Set([folderId]);
@@ -283,7 +295,7 @@ export class DriveLive {
 
   /**
    * What a question needs from a linked folder: every item (for browsing), plus the files that best match the
-   * question, ranked by name and by Drive's own full-text index, with a short excerpt where Drive can give text.
+   * question, ranked by name and by Drive's own full-text index.
    */
   async folder(folderId:string,question="",refresh=false){
     const tree=await this.tree(folderId,refresh);
@@ -293,17 +305,20 @@ export class DriveLive {
     for(const f of files){const name=(f.path+" "+f.name).toLowerCase();const n=terms.reduce((s,t)=>s+(name.includes(t)?3:0),0);if(n)score.set(f.id,n);}
     if(terms.length){
       const text=terms.map(t=>`fullText contains ${quote(t)}`).join(" or ");
-      for(let i=0;i<tree.folders.length&&i<60;i+=20){
+      // Drive's text search, a group of subfolders per request, all asked at once.
+      const groups:string[][]=[];
+      for(let i=0;i<tree.folders.length&&i<60;i+=20)groups.push(tree.folders.slice(i,i+20));
+      const found=await Promise.all(groups.map(async group=>{
         const url=new URL(API);
-        url.search=new URLSearchParams({q:`trashed = false and (${text}) and (${tree.folders.slice(i,i+20).map(id=>`${quote(id)} in parents`).join(" or ")})`,pageSize:"30",supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"files(id)"}).toString();
+        url.search=new URLSearchParams({q:`trashed = false and (${text}) and (${group.map(id=>`${quote(id)} in parents`).join(" or ")})`,pageSize:"30",supportsAllDrives:"true",includeItemsFromAllDrives:"true",fields:"files(id)"}).toString();
         const r=await this.google(url.href,{timeout:15000}).catch(()=>null);
-        if(!r?.ok)continue;
-        for(const f of ((await r.json()).files||[]) as {id:string}[])score.set(f.id,(score.get(f.id)||0)+2);
-      }
+        return r?.ok?((await r.json().catch(()=>({}))).files||[]) as {id:string}[]:[];
+      }));
+      for(const f of found.flat())score.set(f.id,(score.get(f.id)||0)+2);
     }
     const hits:DriveHit[]=[...score.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([id])=>files.find(f=>f.id===id)!).filter(Boolean)
       .map(f=>({id:f.id,name:f.name,mimeType:f.mimeType,modified:f.modified,size:f.size,durationMs:f.durationMs}));
-    await Promise.all(hits.slice(0,4).map(async h=>{h.excerpt=await this.excerpt(h).catch(()=>undefined);}));
+    // No excerpts: the chat reads the hits it uses itself (src/drive/drive.ts driveSources), so fetching text here only delayed it.
     return {items:tree.items,hits,checked:tree.at};
   }
 

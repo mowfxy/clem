@@ -32,14 +32,15 @@ const where = (finder: Finder, file: StoredFile) => {
 const pagesOf = (text: string) => [...text.matchAll(/\n\[[^\n]*?, page (\d+)\]\n/g)].reduce((n, m) => Math.max(n, Number(m[1])), 0);
 
 export async function findTask(finder: Finder, op: string, args: any): Promise<{ data?: unknown; files?: Uint8Array[] }> {
-  if (op === "find") return { data: await find(finder, String(args?.query || "").slice(0, 300)) };
+  if (op === "find") return { data: await find(finder, String(args?.query || "").slice(0, 300), !!args?.driveOnly) };
   if (op === "attach") return attach(finder, String(args?.file || "").slice(0, 400));
   throw Error(`Unknown task "${op}".`);
 }
 
-async function find(finder: Finder, query: string) {
+/** `driveOnly`: the AI already has every Mowr file in its working folder (desktop/ai-workspace.ts), so only Drive is searched. */
+async function find(finder: Finder, query: string, driveOnly = false) {
   if (!query.trim()) return { error: 'Give "query": words from the file\'s name or from what it says.' };
-  const files = finder.files().filter((f) => !f.remote);
+  const files = driveOnly ? [] : finder.files().filter((f) => !f.remote);
   const until = Date.now() + READ_MS;
   const docs: SearchDoc[] = [];
   let unread = 0;
