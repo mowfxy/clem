@@ -516,7 +516,12 @@ app.get("/api/drive/connect", async (req, res) => {
     );
   const nonce = randomUUID();
   if (req.query.account && u.id !== "supabase:" + String(req.query.account)) throw Error("Sign in to the same Clem account as your desktop, then reconnect Drive.");
-  const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1" });
+  // A pick opens Google's own picker inside the consent screen. Under drive.file, what is picked (and what Clem creates)
+  // is all Clem can open; `request` lets the desktop app collect the picked IDs afterwards.
+  const pick = req.query.pick === "files" || req.query.pick === "folder" ? req.query.pick : undefined;
+  const request = String(req.query.request || "");
+  if (pick && !/^[\w-]{16,64}$/.test(request)) throw Error("Invalid Drive pick request.");
+  const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1", ...(pick ? { pick, request } : {}) });
   res.cookie("clem_oauth", nonce, {
     httpOnly: true,
     secure: !!process.env.VERCEL,
@@ -529,12 +534,14 @@ app.get("/api/drive/connect", async (req, res) => {
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: process.env.APP_URL + "/api/drive/callback",
     response_type: "code",
-    // Read the folders people link, and add files to them: dropped files, Clem's own files and approved edits. drive.file
-    // alone cannot add to a folder Clem did not create, so saving into someone's own folder needs the full Drive scope.
-    scope: "https://www.googleapis.com/auth/drive",
+    // Only the files and folders people pick, and the files Clem creates in them. Never the whole Drive.
+    scope: "https://www.googleapis.com/auth/drive.file",
     access_type: "offline",
     prompt: "consent",
     state,
+    ...(pick ? { trigger_onepick: "true" } : {}),
+    ...(pick === "files" ? { allow_multiple: "true" } : {}),
+    ...(pick === "folder" ? { allow_folder_selection: "true", mimetypes: "application/vnd.google-apps.folder" } : {}),
   }).toString();
   res.redirect(url.href);
 });
@@ -545,6 +552,13 @@ app.get("/api/drive/callback", async (req, res) => {
   if (state.sub !== u.id || state.nonce !== cookies(req).clem_oauth)
     throw new Error("OAuth state expired or did not match.");
   res.clearCookie("clem_oauth", { path: "/" });
+  const pick = state.pick === "files" || state.pick === "folder" ? { request: String(state.request), at: Date.now() } : undefined;
+  if (req.query.error) {
+    // Closing the picker or declining still answers the waiting app, so it stops waiting.
+    if (pick) await db()`UPDATE clem_credentials SET metadata=${JSON.stringify({ pick: { ...pick, ids: [] } })}::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
+    return void driveDone(res, !!state.desktop, "Nothing was chosen.", "Return to Clem.");
+  }
+  const picked = String(req.query.picked_file_ids || "").split(",").filter((id) => /^[\w-]{10,150}$/.test(id)).slice(0, 50);
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -564,11 +578,26 @@ app.get("/api/drive/callback", async (req, res) => {
       "Google did not provide offline access. Reconnect and grant access.",
     );
   const enc = encrypt(token.refresh_token, u.id);
-  await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,'{}') ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce`;
-  if (state.desktop) {
-    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'");
-    res.type("html").send('<!doctype html><title>Drive connected</title><style>@font-face{font-family:"Mowafy Sans";src:url(/fonts/MowafySans-Regular.woff2) format("woff2")}@font-face{font-family:"Mowafy Serif";src:url(/fonts/MowafySerif-Regular.woff2) format("woff2")}</style><body style="background:#141414;color:#eeece4;font:18px Mowafy Sans,system-ui,sans-serif;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>Drive is connected.</h1><p>Return to Clem to choose your files.</p></body>');
-  } else res.redirect(process.env.APP_URL + "/#/app/connectors");
+  const metadata = JSON.stringify(pick ? { pick: { ...pick, ids: picked } } : {});
+  await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,${metadata}::jsonb) ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce,metadata=excluded.metadata`;
+  if (pick) driveDone(res, !!state.desktop, picked.length ? "Sent to Clem." : "Nothing was chosen.", "Return to Clem.");
+  else driveDone(res, !!state.desktop, "Drive is connected.", "Return to Clem to choose your files.");
+});
+function driveDone(res: express.Response, desktop: boolean, title: string, line: string) {
+  if (!desktop) return res.redirect(process.env.APP_URL + "/#/app/connectors");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'");
+  res.type("html").send(`<!doctype html><title>${title}</title><style>@font-face{font-family:"Mowafy Sans";src:url(/fonts/MowafySans-Regular.woff2) format("woff2")}</style><body style="background:#141414;color:#eeece4;font:18px Mowafy Sans,system-ui,sans-serif;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>${title}</h1><p>${line}</p></body>`);
+}
+// The files or folder just picked in Google's picker, for the desktop request that opened it. Read once.
+app.get("/api/drive/picked", async (req, res) => {
+  const u = await requireDriveUser(req, res); if (!u) return;
+  const request = String(req.query.request || "");
+  if (!/^[\w-]{16,64}$/.test(request)) { res.status(400).json({error: "Invalid Drive pick request."}); return; }
+  const [row] = await db()`SELECT metadata FROM clem_credentials WHERE owner_id=${u.id} AND provider='drive'`;
+  const pick = row?.metadata?.pick as {request?: string; ids?: string[]; at?: number} | undefined;
+  if (!pick || pick.request !== request || Date.now() - Number(pick.at) > 15 * 60_000) { res.json({done: false}); return; }
+  await db()`UPDATE clem_credentials SET metadata='{}'::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
+  res.json({done: true, ids: Array.isArray(pick.ids) ? pick.ids : []});
 });
 async function driveToken(userId: string) {
   const c = await credential(userId, "drive");

@@ -1157,9 +1157,11 @@ void app.whenReady().then(async () => {
     await selectProvider(user.id);
     if (request.action === "driveConnect") {
       driveLive.forget();
-      await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id));
+      const pick = request.pick && request.request ? "&pick=" + request.pick + "&request=" + request.request : "";
+      await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id) + pick);
       return {ok:true};
     }
+    if (request.action === "drivePicked") return driveLive.picked(request.request);
     if(request.action==="essentialSync") {
       void usageTally.flush(user.id);
       const [skills,notes]=await Promise.all([essentialSync.exchange(user.id,"skills",request.skills),essentialSync.exchange(user.id,"notes",request.notes)]);

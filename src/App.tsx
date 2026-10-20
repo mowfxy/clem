@@ -2704,7 +2704,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
                       <SettingsCard>
-                        <SettingRow title="Privacy policy" description="How Clem handles your information."><a className="secondary" href="https://clem.m4labs.xyz/#/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
+                        <SettingRow title="Privacy policy" description="How Clem handles your information."><a className="secondary" href="https://m4labs.xyz/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
                       </SettingsCard>
                     </>)}
             </SettingsWindow>}

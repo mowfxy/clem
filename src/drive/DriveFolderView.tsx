@@ -179,7 +179,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
     </nav>}
     {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Settings → Connectors to see this folder.</p>}
     {error && <p className="gd-error">{error} {!busy && <button className="gd-retry" onClick={() => void load(true)}>Try again</button>}</p>}
-    {reconnect && <p className="gd-reconnect">Clem saves into your own Drive folders, which needs one more permission from Google.
+    {reconnect && <p className="gd-reconnect">Clem needs permission from Google again to save into this folder.
       <button onClick={() => void connectDrive().then(() => failed.forEach(send)).catch((e) => setError((e as Error).message))}>Reconnect Google Drive</button></p>}
     {!items && !error && connected !== false && <div className="sp-file-list">{Array.from({ length: 3 }, (_, i) => <div key={i} className="gd-skeleton" />)}</div>}
     {folders.length > 0 && <div className="sp-folders">
@@ -216,7 +216,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
           ]} />
         </div>; })}
     </div>}
-    {items && !here.length && !incoming.length && <div className="gd-space-empty">This folder is empty in Drive. Drop files here to save them to it.</div>}
+    {items && !here.length && !incoming.length && <div className="gd-space-empty">Clem sees only the files it saved here and the ones you chose in Google Drive. Drop files here to save them to this folder.</div>}
     </>}
   </section>;
 }

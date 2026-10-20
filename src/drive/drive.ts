@@ -44,6 +44,22 @@ export async function connectDrive() {
     void refreshDrive(true);
   }, 2500);
 }
+/**
+ * Opens Google's own picker in the browser (Clem can open only what is picked there, plus the files it makes) and
+ * waits for the choice. Resolves with the picked items, or none if the picker was closed or never finished.
+ */
+export async function pickFromDrive(kind: "files" | "folder", signal?: AbortSignal): Promise<DriveItem[]> {
+  if (!desktop) return [];
+  const request = crypto.randomUUID();
+  await desktop.invoke({ action: "driveConnect", pick: kind, request });
+  const started = Date.now();
+  while (Date.now() - started < 10 * 60_000 && !signal?.aborted) {
+    await new Promise((go) => setTimeout(go, 2000));
+    const r = await desktop.invoke({ action: "drivePicked", request }).catch(() => null) as { done: boolean; files: DriveItem[] } | null;
+    if (r?.done) { set({ connected: true }); return r.files; }
+  }
+  return [];
+}
 export async function disconnectDrive() {
   const r = await fetch("/api/drive/connection", { method: "DELETE" });
   if (!r.ok) throw Error((await r.json().catch(() => ({}))).error || "Could not disconnect Google Drive.");

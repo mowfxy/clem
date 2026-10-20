@@ -2,10 +2,10 @@
 dialog.app-modal:has(.gd-picker){width:min(780px,calc(100vw - 32px));max-width:none;padding:20px 20px 16px;background:#1b1b1a;border-color:#34342f}
 .gd-picker{display:flex;flex-direction:column;gap:10px;min-height:0;font-family:var(--sans);color:#eceae3}
 .gd-top{display:flex;align-items:center;gap:10px}
-.gd-tabs{display:flex;padding:3px;border-radius:11px;background:#ffffff08;border:1px solid #ffffff0d}
-.gd-tabs button{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border:0;border-radius:8px;background:none;color:#a7a59d;font:400 12px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
-.gd-tabs button:hover{color:#eceae3}
-.gd-tabs button[aria-selected=true]{background:#2e2e2b;color:#f5f4ee;box-shadow:0 1px 0 #ffffff12 inset,0 2px 8px -4px #000}
+.gd-choose{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border:1px solid #ffffff1a;border-radius:11px;background:#2e2e2b;color:#f5f4ee;font:400 13px var(--sans);white-space:nowrap;cursor:pointer;box-shadow:0 1px 0 #ffffff12 inset;transition:background .15s}
+.gd-choose:hover{background:#383834}
+.gd-choose:disabled{opacity:.6;cursor:progress}
+.gd-empty .gd-choose{margin-top:10px}
 .gd-search{flex:1;display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:11px;border:1px solid #ffffff12;background:#121211;color:#8f8d86;transition:border-color .15s,box-shadow .15s}
 .gd-search:focus-within{border-color:#ffffff30;box-shadow:0 0 0 3px #ffffff0a}
 dialog.app-modal .gd-search{flex-direction:row;margin:0;gap:8px;font-size:13px}

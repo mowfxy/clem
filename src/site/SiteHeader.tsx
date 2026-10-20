@@ -31,7 +31,7 @@ export function jump(id:string){
 export function SiteFooter(){
   return <footer className="cx-foot"><div className="cx-wrap">
     <span>© {new Date().getFullYear()} <a href={LAB}>M4 Labs</a> · Clem is free and open source under the <a href={REPO+'/blob/main/LICENSE'}>MIT License</a></span>
-    <ul><li><a href="#/privacy">privacy</a></li><li><a href="#/terms">terms</a></li><li><a href="mailto:support@m4labs.xyz">contact</a></li><li><a href={REPO}>github</a></li></ul>
+    <ul><li><a href="https://m4labs.xyz/privacy">privacy</a></li><li><a href="https://m4labs.xyz/terms">terms</a></li><li><a href="mailto:support@m4labs.xyz">contact</a></li><li><a href={REPO}>github</a></li></ul>
   </div></footer>;
 }
 

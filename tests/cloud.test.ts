@@ -212,6 +212,17 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
   const wrong=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie},redirect:'manual'});assert.equal(wrong.status,400);
   const callback=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie+'; '+oauthCookie},redirect:'manual'});assert.equal(callback.status,200);assert.match(await callback.text(),/Drive is connected/);
   assert.equal((await rawFetch(base+'files',{headers})).status,200);
+  assert.equal(google.searchParams.get('scope'),'https://www.googleapis.com/auth/drive.file');assert.equal(google.searchParams.get('trigger_onepick'),null);
+  // A pick opens Google's picker in the consent screen, and the desktop collects what was picked exactly once.
+  const pickRequest='0123456789abcdef0123';
+  const picking=await rawFetch(base+'connect?desktop=1&pick=folder&request='+pickRequest+'&account='+uid,{headers:{Cookie:cookie},redirect:'manual'});
+  const pickUrl=new URL(picking.headers.get('location')!);
+  assert.equal(pickUrl.searchParams.get('trigger_onepick'),'true');assert.equal(pickUrl.searchParams.get('allow_folder_selection'),'true');
+  assert.equal((await (await rawFetch(base+'picked?request='+pickRequest,{headers})).json()).done,false);
+  const picked=await rawFetch(base+'callback?code=test&picked_file_ids=fold1234567,bad%20id&state='+pickUrl.searchParams.get('state'),{headers:{Cookie:cookie+'; '+picking.headers.get('set-cookie')!.split(';')[0]},redirect:'manual'});
+  assert.equal(picked.status,200);assert.match(await picked.text(),/Sent to Clem/);
+  assert.deepEqual(await (await rawFetch(base+'picked?request='+pickRequest,{headers})).json(),{done:true,ids:['fold1234567']});
+  assert.equal((await (await rawFetch(base+'picked?request='+pickRequest,{headers})).json()).done,false);
   const download=await rawFetch(base+'file/doc123',{headers});assert.equal(download.status,200);assert.equal(decodeURIComponent(download.headers.get('X-Clem-File-Name')!),'Research.docx');assert.match(exportUrl,/wordprocessingml/);
   // Drive decides the type, so a shared HTML file opened by URL must download, not run on this origin.
   assert.equal(download.headers.get('Content-Disposition'),'attachment');assert.match(download.headers.get('Content-Security-Policy')!,/sandbox/);

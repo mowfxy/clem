@@ -1,13 +1,13 @@
 # Google Drive credentials
 
-The existing server connector uses a Web application OAuth client, separate from Google sign-in. These credentials do not yet enable the unfinished desktop Drive bridge.
+Clem uses one Web application OAuth client for Google sign-in (through Supabase) and for the Drive connector.
 
-1. Open https://console.cloud.google.com/ and select or create the Clem project.
-2. Under APIs & Services → Library, enable Google Drive API.
+1. Open https://console.cloud.google.com/ and select or create the M4 Labs project.
+2. Under APIs & Services → Library, enable **Google Drive API** and **Google Picker API**.
 3. Configure Google Auth Platform branding, audience and contact details. For initial external testing, add your Google account as a test user.
-4. Under Data Access, add `https://www.googleapis.com/auth/drive`, the scope currently requested by Clem (it reads linked folders and saves dropped files, Clem's files and approved edits into them; `drive.file` cannot add to folders Clem did not create). This is a restricted scope; public distribution requires Google's applicable verification. People connected under the older read-only scope are asked to reconnect once, the first time they save into a folder.
+4. Under Data Access, add `https://www.googleapis.com/auth/drive.file` (plus `openid`, `userinfo.email` and `userinfo.profile` for sign-in). It is not a sensitive or restricted scope, so only brand verification is needed. Clem opens Google's own picker inside the consent screen (`trigger_onepick=true`); people choose files, or a folder to link, and Clem can open only those and the files it creates. Saving into a picked folder works; files already in it are visible only once chosen in the picker too.
 5. Under Clients, create an OAuth client with application type **Web application**.
-6. Add this exact authorized redirect URI: `https://clem.m4labs.xyz/api/drive/callback`.
+6. Add the authorized redirect URIs `https://npdkvkikudvjrgnesuhc.supabase.co/auth/v1/callback` (sign-in) and `https://clem.m4labs.xyz/api/drive/callback` (Drive), and the JavaScript origins `https://clem.m4labs.xyz` and `https://admin.m4labs.xyz`.
 7. Copy the client ID and client secret into the existing ignored `.env.local` at the repository root:
 
 ```dotenv
@@ -18,7 +18,7 @@ APP_URL="https://clem.m4labs.xyz"
 
 Update those existing fields rather than duplicating them. For deployed server use, add the same values to the Clem project's **Vercel → Settings → Environment Variables → Production**, then redeploy. Keep existing database, session and credential-encryption configuration. Do not put the secret in `VITE_*`, `desktop/public-config.json`, source code, or chat.
 
-`GOOGLE_AUTH_CLIENT_ID` and `GOOGLE_AUTH_CLIENT_SECRET` are for Google sign-in, not these Drive variables. No Drive API key is needed for private user files.
+`GOOGLE_AUTH_CLIENT_ID` and `GOOGLE_AUTH_CLIENT_SECRET` hold the same client for Google sign-in; `scripts/configure-supabase.mjs` sends them to Supabase. No Drive API key is needed for private user files.
 
 ## YouTube
 
@@ -32,6 +32,6 @@ Sources:
 
 ## Desktop connection
 
-In Clem, open Drive and choose **Connect / reconnect Drive**. A separate browser sign-in screen opens; use the same Clem account as desktop, then grant Google access. Return to Clem and choose **Refresh** if files have not appeared yet. Select a file to import a local copy. **Disconnect** revokes the saved Google grant.
+In Clem, open Drive and choose **Continue with Google**, then **Choose in Google Drive** (or **Choose a folder in Google Drive** when linking). Google's picker opens in the browser; use the same Clem account as desktop. Clem notices the choice on its own. **Disconnect** revokes the saved Google grant.
 
 Desktop calls the deployed Drive service using its main-process session. The client secret remains in Vercel, never in the desktop bundle. Google Docs/Sheets/Slides export to Office formats using Google's supported export MIME types: https://developers.google.com/workspace/drive/api/guides/ref-export-formats .

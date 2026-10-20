@@ -4,13 +4,16 @@ import {Readable} from "node:stream";
 import {driveQuery, driveTerms, viewFormat, type DriveHit} from "../core/drive-search.ts";
 import {decodeEntities, isMediaType, parseCaptions, pickTrack, transcriptText, type CaptionTrack, type VideoCaptions} from "../core/captions.ts";
 
-// Google Drive, live: search, browse folders (with subfolders and thumbnails), read text and stream files straight from
-// Google with byte ranges so long videos seek instantly. Nothing is written to disk; the short-lived access token stays
-// in the main process.
+// Google Drive, live, under drive.file: Clem sees only what people pick in Google's own picker and the files it creates.
+// It searches and browses those (with subfolders and thumbnails), reads text and streams files straight from Google with
+// byte ranges so long videos seek instantly. Nothing is written to disk; the short-lived access token stays in the main
+// process.
 
 const API = "https://www.googleapis.com/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
 const RECONNECT = "Reconnect Google Drive once so Clem can save files into your folders.";
+/** Either grant lets Clem save into a picked folder; drive.file is what Clem asks for now. */
+const WRITE_SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"];
 /** Why Google refused a save: missing permission on the connection (reconnect), or on the folder itself (shared read-only). */
 const refusal = async (r: Response) => {
   const reason = String(((await r.json().catch(() => ({}))) as {error?:{errors?:{reason?:string}[]}}).error?.errors?.[0]?.reason || "");
@@ -103,10 +106,10 @@ export class DriveLive {
     if(r.status===401&&retry){this.cached=null;return this.google(url,init,false);}
     return r;
   }
-  /** A connection made before Clem asked for the full Drive scope can read but not add to people's own folders;
-   *  it says so up front instead of letting Google refuse the file. An unknown scope (older service) is let through. */
+  /** A read-only connection cannot add to a folder; it says so up front instead of letting Google refuse the file.
+   *  An unknown scope (older service) is let through. */
   private async canWrite(){
-    const full=()=>{const scope=this.cached?.scope||"";return !scope||scope.split(/\s+/).includes("https://www.googleapis.com/auth/drive");};
+    const full=()=>{const scope=this.cached?.scope||"";return !scope||scope.split(/\s+/).some(s=>WRITE_SCOPES.includes(s));};
     await this.token();
     // A reconnect since the token was cached shows only in a fresh one.
     if(!full())await this.token(true);
@@ -118,6 +121,22 @@ export class DriveLive {
     if(!refresh&&this.known&&Date.now()-this.known.at<5*60_000)return {connected:this.known.connected,checked:true};
     try{const connected=!!await this.token(refresh);return {connected,checked:true};}
     catch(error){return this.known?{connected:this.known.connected,checked:true,error:(error as Error).message}:{connected:false,checked:false,error:(error as Error).message};}
+  }
+  /** What was picked in Google's picker for this request; not done while the person is still choosing. */
+  async picked(request:string):Promise<{done:boolean;files:DriveItem[]}>{
+    const session=await this.session();if(!session)return {done:false,files:[]};
+    const r=await sturdy(this.fetcher,this.service+"/api/drive/picked?request="+encodeURIComponent(request),{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",timeout:20000});
+    if(!r.ok)return {done:false,files:[]};
+    const body=await r.json() as {done?:boolean;ids?:string[]};
+    if(!body.done)return {done:false,files:[]};
+    // The picker issued a new grant; the cached token may predate it.
+    this.cached=null;this.trees.clear();
+    const files=await Promise.all((body.ids||[]).map(async id=>{
+      const m=await this.google(`${API}/${encodeURIComponent(id)}?supportsAllDrives=true&fields=${encodeURIComponent(FIELDS)}`,{timeout:20000});
+      if(!m.ok)return null;
+      const f=resolve(await m.json() as Meta);this.meta.set(f.id,f);return item(f);
+    }));
+    return {done:true,files:files.filter((f):f is DriveItem=>!!f)};
   }
   private generation=0;
   /** Drops everything held for the signed-in person (token, connection state, folder trees, file details). */
@@ -138,18 +157,18 @@ export class DriveLive {
     return {connected:true,files:hits};
   }
 
-  /** One page of a folder ("root" is My Drive, "shared" is Shared with me), folders first; or a search across Drive. */
+  /** One page of a folder, folders first; "root" is everything Clem can open (picked or made by Clem), newest first.
+   *  Or a search across those. */
   async list({folder="root",page,query,kind="all"}:{folder?:string;page?:string;query?:string;kind?:"all"|"folders"}={}){
     if(!await this.token())return {connected:false,files:[] as DriveItem[]};
     const clauses=["trashed = false"];
     const words=(query||"").trim();
     if(words)clauses.push(`name contains ${quote(words.slice(0,100))}`);
-    else if(folder==="shared")clauses.push("sharedWithMe = true");
-    else clauses.push(`${quote(folder)} in parents`);
+    else if(folder!=="root")clauses.push(`${quote(folder)} in parents`);
     if(kind==="folders")clauses.push(`(mimeType = '${FOLDER}' or mimeType = '${SHORTCUT}')`);
     const url=new URL(API);
     url.search=new URLSearchParams({q:clauses.join(" and "),pageSize:"100",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
-      ...(words?{}:{orderBy:"folder,name_natural"}),fields:`nextPageToken,files(${FIELDS})`,...(page?{pageToken:page}:{})}).toString();
+      ...(words?{}:{orderBy:folder==="root"?"folder,modifiedTime desc":"folder,name_natural"}),fields:`nextPageToken,files(${FIELDS})`,...(page?{pageToken:page}:{})}).toString();
     const r=await this.google(url.href,{timeout:20000});
     if(!r.ok)throw Error(r.status===404?"This Drive folder is no longer available.":"Google Drive could not list these files.");
     const body=await r.json() as {files?:Meta[];nextPageToken?:string};
@@ -170,7 +189,7 @@ export class DriveLive {
     });
     if(start.status===403)throw Error(await refusal(start));
     const session=start.headers.get("Location");
-    if(!start.ok||!session)throw Error(start.status===404?"This Drive folder is no longer available.":"Google Drive did not accept the file.");
+    if(!start.ok||!session)throw Error(start.status===404?"Clem can't open this Drive folder anymore. Link it again by choosing it in Google Drive.":"Google Drive did not accept the file.");
     const done=await this.fetcher(session,{method:"PUT",headers:{"Content-Type":mime},body:data as unknown as BodyInit,signal:AbortSignal.timeout(Math.max(120_000,data.length/50))});
     if(!done.ok)throw Error("Google Drive did not finish saving the file. Try again.");
     for(const [id,tree] of this.trees)if(id===folderId||tree.folders.includes(folderId))this.trees.delete(id);

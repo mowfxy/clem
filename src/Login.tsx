@@ -69,7 +69,7 @@ export function Login(_props: {onClose?:()=>void} = {}){
   {!verifying&&<div className="au-links">{mode==='login'&&<button className="login-text" onClick={()=>{setMode('forgot');setError('');}}>Forgot password?</button>}<button className="login-text" onClick={()=>{setMode(mode==='login'?'signup':'login');setMessage('');setError('')}}>{mode==='login'?'New to Clem? Create an account':'Back to sign in'}</button></div>}
   {message&&<p className="au-status" role="status">{message}</p>}{error&&<p className="inline-error au-error" role="alert">{error}</p>}
   {emailMfa&&<button className="login-text" disabled={busy} onClick={()=>void run(async()=>{const r=await fetch("/api/security/email/send",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});if(!r.ok)throw Error((await r.json()).error);setMessage("A code has been sent.");})}>Send code</button>}
-  <p className="login-terms">By continuing you agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a>.</p>
+  <p className="login-terms">By continuing you agree to the <a href="https://m4labs.xyz/terms" target="_blank" rel="noreferrer">Terms</a> and <a href="https://m4labs.xyz/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.</p>
  </AuthShell>;
 }
 

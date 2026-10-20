@@ -56,6 +56,16 @@
       "source": "/download/windows",
       "destination": "https://github.com/mowfxy/clem-releases/releases/download/v0.3.0-preview.1/Clem-Setup-0.3.0-preview.1.exe",
       "permanent": false
+    },
+    {
+      "source": "/privacy",
+      "destination": "https://m4labs.xyz/privacy",
+      "permanent": false
+    },
+    {
+      "source": "/terms",
+      "destination": "https://m4labs.xyz/terms",
+      "permanent": false
     }
   ]
 }

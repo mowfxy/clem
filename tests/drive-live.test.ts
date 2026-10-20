@@ -110,7 +110,8 @@ test('Drive shortcuts open what they point to: a shortcut to a folder is a folde
   const S='application/vnd.google-apps.shortcut',F='application/vnd.google-apps.folder';
   const files:Record<string,any[]>={root:[{id:'short1234567',name:'Physics',mimeType:S,shortcutDetails:{targetId:'target123456',targetMimeType:F},parents:['root']},{id:'short7654321',name:'Notes link',mimeType:S,shortcutDetails:{targetId:'doc987654321',targetMimeType:'application/pdf'},parents:['root']}],
     target123456:[{id:'inner1234567',name:'Week 1.pdf',mimeType:'application/pdf',parents:['target123456']}]};
-  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=new URL(String(input));if(url.pathname.endsWith('/token'))return Response.json({accessToken:'t',expiresIn:3300});const q=url.searchParams.get('q')||'';return Response.json({files:[...q.matchAll(/'([\w-]+)' in parents/g)].flatMap(m=>files[m[1]]||[])});}) as any,'https://x.example');
+  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=new URL(String(input));if(url.pathname.endsWith('/token'))return Response.json({accessToken:'t',expiresIn:3300});const q=url.searchParams.get('q')||'';const parents=[...q.matchAll(/'([\w-]+)' in parents/g)].map(m=>m[1]);return Response.json({files:(parents.length?parents:['root']).flatMap(p=>files[p]||[])});}) as any,'https://x.example');
+  // The top level has no parent filter: it is everything Clem can open, and here that is the two shortcuts.
   const list=await drive.list({folder:'root'});
   assert.deepEqual(list.files.map(f=>[f.id,f.name,!!f.folder]),[['target123456','Physics',true],['doc987654321','Notes link',false]]);
   const tree=await drive.tree('root');
@@ -138,16 +139,31 @@ test('an MP4 written as many small mdat boxes is served as one, so Chromium star
   }finally{server.stop();}
 });
 
-test('saving into a folder asks for a reconnect under the old read-only scope, and goes through once Drive is fully granted',async()=>{
-  let scope='https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',created=0;
+test('saving into a folder asks for a reconnect under a read-only scope, and goes through under drive.file',async()=>{
+  let scope='https://www.googleapis.com/auth/drive.readonly',created=0;
   const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
     if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope});
     if(url.includes('uploadType=resumable'))return new Response('{}',{headers:{Location:'https://upload.example/session'}});
     created++;return Response.json({id:'new-file-id-123'});}) as any,'https://x.example');
   await assert.rejects(drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),/Reconnect Google Drive/);
   assert.equal(created,0);
-  scope='https://www.googleapis.com/auth/drive';
+  scope='https://www.googleapis.com/auth/drive.file';
   assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123'});
+});
+
+test('files picked in Google’s picker come back once, with their details, and the top level lists everything Clem can open',async()=>{
+  let served=false;const lists:string[]=[];
+  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
+    if(url.includes('/api/drive/picked?request=')){if(served)return Response.json({done:false});served=true;return Response.json({done:true,ids:['picked-file-123']});}
+    if(url.includes('/drive/v3/files/picked-file-123'))return Response.json({id:'picked-file-123',name:'Notes.pdf',mimeType:'application/pdf'});
+    if(url.includes('/drive/v3/files?')){lists.push(new URL(url).searchParams.get('q')!);return Response.json({files:[]});}
+    throw Error('unexpected '+url);}) as any,'https://x.example');
+  const request='0123456789abcdef0123';
+  assert.deepEqual(await drive.picked(request),{done:true,files:[{id:'picked-file-123',name:'Notes.pdf',mimeType:'application/pdf',size:undefined,modified:undefined,thumbnail:false,durationMs:undefined}]});
+  assert.deepEqual(await drive.picked(request),{done:false,files:[]});
+  await drive.list({});
+  assert.equal(lists[0],'trashed = false','no parent filter: picked files can sit anywhere in Drive');
 });
 
 test('a file renamed or moved to the trash from Clem is changed in Drive itself, in place',async()=>{
