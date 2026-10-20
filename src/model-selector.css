@@ -33,13 +33,19 @@
 .unified-picker-panel .picker-connect{border-top:1px solid #ffffff0c;border-radius:0;width:100%;justify-content:space-between;margin-top:6px;padding:10px 10px 5px;font-size:11px;color:#a5a59c}
 .unified-picker-panel .picker-connect:hover{color:#eeede7}
 /* Long task: a quiet chip at rest that lights up, with a small lit dot, when it is on */
-.composer .mode-button.long-toggle{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 11px 0 9px;border-radius:99px;border:1px solid transparent;background:transparent;color:#a9a8a0;font:12px var(--sans);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.composer .mode-button.long-toggle{display:inline-flex;align-items:center;gap:0;height:32px;padding:0 8px;border-radius:99px;border:1px solid transparent;background:transparent;color:#a9a8a0;font:12px var(--sans);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
 .composer .mode-button.long-toggle:hover{background:#ffffff0b;color:#efeee8}
 .composer .mode-button.long-toggle:focus-visible{outline:2px solid #d6d5cf;outline-offset:1px}
-.long-toggle .long-state{width:6px;height:6px;margin-left:1px;border-radius:50%;background:#f4f4f2;flex:none;opacity:0;transform:scale(.4);transition:opacity .2s,transform .2s cubic-bezier(.2,.9,.3,1)}
-.composer .mode-button.long-toggle.selected{background:#ffffff12;border-color:#ffffff1f;color:#f4f4f2}
+.long-toggle .long-state{width:0;height:6px;margin-left:0;border-radius:50%;background:#f4f4f2;flex:none;opacity:0;transform:scale(.4);transition:opacity .2s,transform .2s cubic-bezier(.2,.9,.3,1),width .32s cubic-bezier(.2,.9,.3,1),margin .32s cubic-bezier(.2,.9,.3,1)}
+/* Off, Long task is just its icon; turned on, the name slides out beside it with the lit dot. */
+.long-toggle .long-label{display:inline-block;max-width:0;margin-left:0;overflow:hidden;white-space:nowrap;opacity:0;transition:max-width .34s cubic-bezier(.2,.9,.3,1),margin .34s cubic-bezier(.2,.9,.3,1),opacity .22s}
+.long-toggle.selected .long-label{max-width:90px;margin-left:7px;opacity:1;transition-delay:0s,0s,.06s}
+.long-toggle.selected .long-state{width:6px;margin-left:7px}
+.long-toggle svg{transition:transform .34s cubic-bezier(.3,1.5,.5,1)}
+.long-toggle.selected svg{transform:rotate(-8deg) scale(1.06)}
+.composer .mode-button.long-toggle.selected{padding:0 11px 0 9px;background:#ffffff12;border-color:#ffffff1f;color:#f4f4f2}
 .long-toggle.selected .long-state{opacity:1;transform:none;box-shadow:0 0 6px #ffffff80}
-@media(prefers-reduced-motion:reduce){.long-toggle .long-state{transition:none}}
+@media(prefers-reduced-motion:reduce){.long-toggle .long-state,.long-toggle .long-label,.long-toggle svg{transition:none}}
 @media(max-width:760px){.picker-trigger-name{max-width:110px}}
 
 

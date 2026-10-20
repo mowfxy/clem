@@ -68,3 +68,13 @@
   .space-page .subject-study .study-item:is(:hover,:focus-within)>.icon-button{opacity:1}
 }
 @media (max-width:640px){.space-page .subject-study .study-sets{grid-template-columns:repeat(2,minmax(0,1fr))}.space-page .study-hero b{font-size:21px}}
+/* The Chats tab opens with a way to start one here. */
+.space-page .sp-chats .sp-new-chat{display:flex;align-items:center;gap:14px;width:calc(100% + 28px);margin:0 -14px 8px;padding:12px 14px;border:1px dashed #ffffff1c;border-radius:14px;background:none;color:inherit;text-align:left;cursor:pointer;transition:background .2s,border-color .2s}
+.space-page .sp-chats .sp-new-chat:hover{background:#ffffff08;border-color:#ffffff33;border-style:solid}
+.space-page .sp-new-chat>span:nth-child(2){display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.space-page .sp-new-chat strong{font:500 15px/1.3 var(--sans)}
+.space-page .sp-new-chat small{color:#8a8983;font-size:12.5px}
+.space-page .sp-new-chat-icon{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:#ffffff0d;color:#e8e7e1;flex:none;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
+.space-page .sp-new-chat:hover .sp-new-chat-icon{transform:rotate(90deg)}
+.space-page .sp-new-chat>svg:last-child{color:#77766f;transition:transform .2s,color .2s}
+.space-page .sp-new-chat:hover>svg:last-child{transform:translateX(3px);color:#e8e7e1}

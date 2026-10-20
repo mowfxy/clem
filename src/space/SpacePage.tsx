@@ -220,7 +220,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       </div>}
 
       {tab==='plan'&&<PlanView space={space} plan={plan} draft={planDraft} actions={planActions} canAsk={canAsk}/>}
-      {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onMenu={chatMenu.open}/>}
+      {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onMenu={chatMenu.open} onNew={()=>actions.onDraft('')}/>}
       {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
@@ -244,11 +244,13 @@ function Editable({value,onSave,className,max,label,placeholder}:{value:string;o
 
 
 /** A space's chats, newest first: a title and when. A search appears once there are enough to need one. */
-function ChatList({chats,onOpen,onMenu}:{chats:Chat[];onOpen:(c:Chat)=>void;onMenu:(c:Chat)=>(e:ReactMouseEvent)=>void}){
+function ChatList({chats,onOpen,onMenu,onNew}:{chats:Chat[];onOpen:(c:Chat)=>void;onMenu:(c:Chat)=>(e:ReactMouseEvent)=>void;onNew:()=>void}){
   const [q,setQ]=useState('');
   const shown=chats.filter(c=>!q||(c.title+' '+(c.summary||'')+' '+c.messages.map(m=>m.content).join(' ')).toLowerCase().includes(q.toLowerCase()));
-  if(!chats.length)return <EmptyState scene="conversation" line="Ask your first question above."/>;
+  const start=<button type="button" className="sp-new-chat" onClick={onNew}><span className="sp-new-chat-icon"><Icon name="plus" size={15}/></span><span><strong>New chat</strong><small>Starts in this subject, with its files and memory</small></span><Icon name="arrow" size={15}/></button>;
+  if(!chats.length)return <section className="sp-chats" aria-label="Chats">{start}<EmptyState scene="conversation" line="Or ask your first question above."/></section>;
   return <section className="sp-chats" aria-label="Chats">
+    {start}
     {chats.length>8&&<label className="sp-find"><Icon name="research" size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search chats" aria-label="Search chats"/></label>}
     {shown.map(c=><button key={c.id} className="sp-chat" onClick={()=>onOpen(c)} onContextMenu={onMenu(c)}><strong>{c.title}</strong><small>{ago(c.updated)}</small></button>)}
     {!shown.length&&<p className="sp-empty-line">No chat matches.</p>}

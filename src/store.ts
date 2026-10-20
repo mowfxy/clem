@@ -12,6 +12,7 @@ import type {
   FileVersion,
 } from "../core/types";
 import type { SpacePlan } from "../core/plans";
+import type { UsageArchive } from "./settings/UsageSettings";
 export type State = {
   studySets: StudySet[];
   /** One plan per subject or project at most (core/plans.ts). Absent in workspaces saved before plans existed. */
@@ -24,6 +25,8 @@ export type State = {
   visuals: VisualRecord[];
   automations: Automation[];
   avatar?: string;
+  /** Usage totals of deleted chats, so the Usage tab keeps counting them (src/settings/UsageSettings.tsx). */
+  usageArchive?: UsageArchive;
   name: string;
   memory: string;
   quiet: boolean;

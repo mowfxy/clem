@@ -72,8 +72,12 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
           {nothing&&<p className="sh-empty">{shareFolder?`“${shareFolder.name}” has no files yet. Add some, then share it.`:`${title} has nothing to share yet. Make flashcards or quizzes, or add files, and they’ll show up here.`}</p>}
           {!shareFolder&&loose.length>0&&<Option on={pick.has('loose')} onToggle={()=>toggle('loose')} icon="files" tone="files" title="Other files" detail={`${loose.length} file${loose.length===1?'':'s'} · ${sizeLabel(loose.reduce((n,f)=>n+f.size,0))}`}/>}
         </div>
-        <label className="sh-name"><input type="checkbox" checked={showName} onChange={e=>setShowName(e.target.checked)}/>Show “{author||'my name'}” as the sender</label>
-        <p className="sh-private"><Icon name="check" size={14}/>Your chats, memory and review progress always stay on this PC.</p>
+        <button type="button" role="switch" aria-checked={showName} className={`sh-from ${showName?'on':''}`} onClick={()=>setShowName(!showName)}>
+          <span className="sh-from-avatar" aria-hidden="true">{showName?(author||'You').trim().charAt(0).toUpperCase():<Icon name="lock" size={15}/>}</span>
+          <span className="sh-from-text"><small>Sent as</small><strong>{showName?(author||'Your name'):'No name'}</strong></span>
+          <span className="sh-switch" aria-hidden="true"><i/></span>
+        </button>
+        <div className="sh-private"><Icon name="lock" size={13}/><span>Never included</span><ul>{['Chats','Memory','Review progress'].map(x=><li key={x}>{x}</li>)}</ul></div>
         {error&&<p className="sh-error" role="alert">{error}</p>}
       </div>
       <footer className="sh-foot"><span>{empty?(nothing?'Nothing to share yet':'Nothing selected'):[count?`${count} card${count===1?'':'s'}`:'',chosen.files.length?`${chosen.files.length} file${chosen.files.length===1?'':'s'} · ${sizeLabel(bytes)}`:''].filter(Boolean).join(' · ')}</span><button className="primary" disabled={empty||busy} onClick={()=>void create()}>{busy?'Packing…':'Share'}<Icon name="arrow" size={16}/></button></footer>

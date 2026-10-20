@@ -1,4 +1,4 @@
-import { arrow, C, fmt, H, niceStep, SvgPen, W, type P, type Pen } from './pen';
+import { arrow, C, fmt, H, niceStep, SvgPen, W, type Ink, type P, type Pen } from './pen';
 
 /** Deterministic, closed-form (or tightly integrated) models. No scene is drawn from guesses. */
 export type Values = Record<string, number>;
@@ -404,8 +404,8 @@ export const scenes: SceneDef[] = [projectile, pendulum, waves, lens, field, orb
 export const sceneById = (id?: string | boolean) => scenes.find(s => s.id === id) || (id === true ? projectile : undefined);
 export const defaults = (scene: SceneDef): Values => Object.fromEntries(scene.params.map(p => [p.key, p.value]));
 
-export function sceneSvg(scene: SceneDef, params = defaults(scene), t = scene.still(params)) {
-  const pen = new SvgPen();
+export function sceneSvg(scene: SceneDef, params = defaults(scene), t = scene.still(params), ink?: Ink) {
+  const pen = new SvgPen(ink);
   scene.draw(pen, params, t);
   return pen.toString(scene.title);
 }

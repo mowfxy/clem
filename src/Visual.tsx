@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icons';
 import { downloadMade } from './store';
 import { exportFonts, standardFonts } from '../core/print-fonts';
-import { CanvasPen, C, H, W } from './visuals/pen';
+import { CanvasPen, C, H, W, useInk } from './visuals/pen';
 import { defaults, projectileLatex, sceneById, scenes, sceneSvg, type Handle, type Values } from './visuals/scenes';
 import './visuals/visuals.css';
 
@@ -22,6 +22,7 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
   const [hover, setHover] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const time = useRef(reducedMotion() ? scene.still(params) : 0);
+  const ink = useInk();
   const dirty = useRef(true), paramsRef = useRef(params), dragging = useRef<string | null>(null);
   paramsRef.current = params;
   const period = scene.period(params), looped = Number.isFinite(period);
@@ -33,7 +34,7 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
     if (!el || view !== '2d') return;
     const ctx = el.getContext('2d');
     if (!ctx) { setError('This device cannot draw the visual. Save the SVG instead.'); return; }
-    const pen = new CanvasPen(ctx);
+    const pen = new CanvasPen(ctx, undefined, ink);
     let raf = 0, last = 0, visible = true, lastReadout = 0;
     const resize = () => { const dpr = Math.min(devicePixelRatio || 1, 2), w = el.clientWidth; el.width = Math.round(w * dpr); el.height = Math.round(w * H / W * dpr); dirty.current = true; };
     const frame = (now: number) => {
@@ -46,7 +47,7 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
       dirty.current = false;
       const p = paramsRef.current, t = local(), s = el.width / W;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = C.bg; ctx.fillRect(0, 0, el.width, el.height);
+      ctx.fillStyle = ink(C.bg); ctx.fillRect(0, 0, el.width, el.height);
       ctx.setTransform(s, 0, 0, s, 0, 0);
       scene.draw(pen, p, t);
       if (now - lastReadout > 110) { lastReadout = now; setReadouts(scene.readouts(p, t)); if (looped) setProgress(t / scene.period(p)); }
@@ -57,13 +58,13 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
     document.addEventListener('visibilitychange', wake);
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', wake); };
-  }, [scene, playing, rate, view, looped]);
+  }, [scene, playing, rate, view, looped, ink]);
 
   const toLogical = (e: React.PointerEvent) => { const r = canvas.current!.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H] as const; };
   const hit = (x: number, y: number): Handle | undefined => scene.handles?.(paramsRef.current).find(h => Math.hypot(h.x - x, h.y - y) < 30);
   const handles = scene.handles?.(params) || [];
   const visible = scene.params.filter(p => !p.hidden);
-  const svg = () => sceneSvg(scene, params, local());
+  const svg = () => sceneSvg(scene, params, local(), ink);
   const name = scene.id;
 
   return <section className={`visual-engine v2 ${compact ? 'compact' : ''}`} aria-label={`Interactive visual: ${scene.title}`}>
@@ -95,7 +96,7 @@ export default function Visual({ scene: sceneId = 'projectile', params: initial,
     </div>
     <footer className="visual-caption"><span className="visual-equation">{scene.equation}</span><span>{scene.assumption}</span></footer>
     {!compact && <div className="visual-exports">
-      <button onClick={() => { const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = C.bg; ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); scene.draw(new CanvasPen(ctx, exportFonts), params, local()); off.toBlob(b => b && void downloadMade(b, `${name}.png`), 'image/png'); }}><Icon name="download" size={16} /> Image</button>
+      <button onClick={() => { const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = ink(C.bg); ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); scene.draw(new CanvasPen(ctx, exportFonts, ink), params, local()); off.toBlob(b => b && void downloadMade(b, `${name}.png`), 'image/png'); }}><Icon name="download" size={16} /> Image</button>
       <button onClick={() => void downloadMade(new Blob([standardFonts(svg())], { type: 'image/svg+xml' }), `${name}.svg`)}>SVG</button>
       <button onClick={() => void import('./visual-pdf').then(m => m.exportDiagramPdf(standardFonts(svg()), `${name}.pdf`)).catch(() => setError('Could not export the PDF. Please try again.'))}>PDF</button>
       {scene.id === 'projectile' && <button onClick={() => void downloadMade(new Blob([projectileLatex(params)], { type: 'text/plain' }), 'projectile.tex')}>LaTeX</button>}

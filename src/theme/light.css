@@ -12,3 +12,10 @@ html:root[data-theme=light] dialog,html:root[data-theme=light] .popover{backgrou
 html:root[data-theme=light] .primary,html:root[data-theme=light] .send-button{background:#20253a;color:#faf8f3;border-color:#20253a}
 html:root[data-theme=light] .primary:hover,html:root[data-theme=light] .send-button:hover{background:#2f3652;color:#fff}
 html:root[data-theme=light] .send-button:disabled{background:#e7e3da;color:#9a998f}
+/* The profile picture draws with fixed colours in its SVG; on paper it turns into navy ink on a warm disc. */
+html:root[data-theme=light] .profile-character [fill="#101010"]{fill:#ece8de}
+html:root[data-theme=light] .profile-character [stroke="#ffffff24"]{stroke:#20253a24}
+html:root[data-theme=light] .profile-character [fill="#f2f1ec"]{fill:#20253a}
+html:root[data-theme=light] .profile-character [stroke="#f2f1ec"]{stroke:#20253a}
+html:root[data-theme=light] .profile-character [fill="#63635e"]{fill:#c3bdaf}
+html:root[data-theme=light] .profile-character [stroke="#63635e"]{stroke:#c3bdaf}

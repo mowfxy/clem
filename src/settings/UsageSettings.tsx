@@ -13,34 +13,56 @@ const plural=(n:number,word:string)=>`${n.toLocaleString()} ${word}${n===1?'':'s
 const hourLabel=(h:number)=>new Date(2000,0,1,h).toLocaleTimeString([], {hour:'numeric'});
 const dayKey=(t:number)=>new Date(t).toDateString();
 
-export type UsageData={chats:Chat[];spaces:Space[];files:StoredFile[];studySets:StudySet[];visuals:VisualRecord[];automations:Automation[];models:Model[]};
+export type UsageData={chats:Chat[];spaces:Space[];files:StoredFile[];studySets:StudySet[];visuals:VisualRecord[];automations:Automation[];models:Model[];archive?:UsageArchive};
+
+/** What deleted chats added to the Usage tab, kept as totals (never their words) so deleting a chat doesn't undo its usage. */
+export type UsageArchive={threads:number;messages:number;sent:number;replies:number;tokensIn:number;tokensOut:number;words:number;wordsBack:number;models:Record<string,number>;times:number[];longest?:{title:string;messages:number}};
+export const emptyArchive=():UsageArchive=>({threads:0,messages:0,sent:0,replies:0,tokensIn:0,tokensOut:0,words:0,wordsBack:0,models:{},times:[]});
+/** Adds chats about to be deleted to the archive. Temporary chats never counted, so they are left out. */
+export function archiveChats(archive:UsageArchive|undefined,chats:Chat[]):UsageArchive{
+  const a:UsageArchive=structuredClone(archive||emptyArchive());
+  for(const c of chats){
+    if(c.temporary)continue;
+    a.threads++;a.messages+=c.messages.length;a.times.push(c.updated);
+    for(const m of c.messages){
+      if(m.role==='user'){a.sent++;a.tokensIn+=tokensOf(m.content);a.words+=wordsOf(m.content);}
+      else if(m.role==='assistant'){a.replies++;a.tokensOut+=tokensOf(m.content);a.wordsBack+=wordsOf(m.content);if(m.model)a.models[m.model]=(a.models[m.model]||0)+1;}
+    }
+    if(c.messages.length>(a.longest?.messages||0))a.longest={title:c.title,messages:c.messages.length};
+  }
+  a.times=a.times.slice(-20_000);
+  return a;
+}
 
 /** Everything the Usage tab shows, worked out from what is saved on this PC. */
-export function usageStats({chats,spaces,files,studySets,visuals,automations,models}:UsageData,now=Date.now()){
+export function usageStats({chats,spaces,files,studySets,visuals,automations,models,archive=emptyArchive()}:UsageData,now=Date.now()){
   const messages=chats.flatMap(c=>c.messages);
-  const sent=messages.filter(m=>m.role==='user'),replies=messages.filter(m=>m.role==='assistant');
-  const tokensIn=sent.reduce((n,m)=>n+tokensOf(m.content),0),tokensOut=replies.reduce((n,m)=>n+tokensOf(m.content),0);
-  const words=sent.reduce((n,m)=>n+wordsOf(m.content),0),wordsBack=replies.reduce((n,m)=>n+wordsOf(m.content),0);
-  const longest=chats.reduce<Chat|null>((best,c)=>!best||c.messages.length>best.messages.length?c:best,null);
-  const byModel=new Map<string,number>();
-  for(const m of replies)if(m.model)byModel.set(m.model,(byModel.get(m.model)||0)+1);
+  const sentNow=messages.filter(m=>m.role==='user'),repliesNow=messages.filter(m=>m.role==='assistant');
+  const sent={length:sentNow.length+archive.sent},replies={length:repliesNow.length+archive.replies};
+  const tokensIn=sentNow.reduce((n,m)=>n+tokensOf(m.content),archive.tokensIn),tokensOut=repliesNow.reduce((n,m)=>n+tokensOf(m.content),archive.tokensOut);
+  const words=sentNow.reduce((n,m)=>n+wordsOf(m.content),archive.words),wordsBack=repliesNow.reduce((n,m)=>n+wordsOf(m.content),archive.wordsBack);
+  const kept=chats.reduce<{title:string;messages:number}|null>((best,c)=>!best||c.messages.length>best.messages?{title:c.title,messages:c.messages.length}:best,null);
+  const longest=archive.longest&&archive.longest.messages>(kept?.messages||0)?archive.longest:kept;
+  const byModel=new Map<string,number>(Object.entries(archive.models));
+  for(const m of repliesNow)if(m.model)byModel.set(m.model,(byModel.get(m.model)||0)+1);
   const topModelId=[...byModel].sort((a,b)=>b[1]-a[1])[0]?.[0];
   const topModel=topModelId?models.find(m=>m.id===topModelId)?.name||topModelId.replace(/^[a-z]+:/,''):null;
-  const recent=chats.filter(c=>c.updated>now-30*DAY);
+  const times=[...chats.map(c=>c.updated),...archive.times],threads=times.length;
+  const recent=times.filter(t=>t>now-30*DAY);
   const weekday=new Array(7).fill(0),hour=new Array(24).fill(0);
-  for(const c of chats){const d=new Date(c.updated);weekday[d.getDay()]++;hour[d.getHours()]++;}
-  const days=new Set(chats.map(c=>dayKey(c.updated)));
+  for(const t of times){const d=new Date(t);weekday[d.getDay()]++;hour[d.getHours()]++;}
+  const days=new Set(times.map(dayKey));
   let streak=0,t=days.has(dayKey(now))?now:now-DAY;
   while(days.has(dayKey(t))){streak++;t-=DAY;}
-  const first=chats.reduce((min,c)=>Math.min(min,c.updated),now);
+  const first=times.reduce((min,t)=>Math.min(min,t),now);
   return {
-    threads:chats.length,recent:recent.length,sent:sent.length,replies:replies.length,
+    threads,recent:recent.length,sent:sent.length,replies:replies.length,
     tokensIn,tokensOut,tokens:tokensIn+tokensOut,words,wordsBack,
     longest,topModel,topModelShare:topModelId&&replies.length?byModel.get(topModelId)!/replies.length:0,modelsUsed:byModel.size,
-    busiestDay:chats.length?WEEKDAYS[weekday.indexOf(Math.max(...weekday))]:null,
-    busiestHour:chats.length?hour.indexOf(Math.max(...hour)):null,
-    streak,activeDays:days.size,since:chats.length?first:null,
-    perThread:chats.length?messages.length/chats.length:0,
+    busiestDay:threads?WEEKDAYS[weekday.indexOf(Math.max(...weekday))]:null,
+    busiestHour:threads?hour.indexOf(Math.max(...hour)):null,
+    streak,activeDays:days.size,since:threads?first:null,
+    perThread:threads?(messages.length+archive.messages)/threads:0,
     projects:spaces.filter(s=>s.kind!=='subject').length,subjects:spaces.filter(s=>s.kind==='subject').length,
     files:files.length,made:files.filter(f=>f.made).length,
     cards:studySets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0),
@@ -55,8 +77,8 @@ function Stat({value,label,detail}:{value:string;label:string;detail?:string}){
 }
 
 export function UsageSettings(data:UsageData){
-  const s=useMemo(()=>usageStats(data),[data.chats,data.spaces,data.files,data.studySets,data.visuals,data.automations,data.models]);
-  const times=useMemo(()=>data.chats.map(c=>c.updated),[data.chats]);
+  const s=useMemo(()=>usageStats(data),[data.chats,data.spaces,data.files,data.studySets,data.visuals,data.automations,data.models,data.archive]);
+  const times=useMemo(()=>[...data.chats.map(c=>c.updated),...(data.archive?.times||[])],[data.chats,data.archive]);
   const novels=s.words+s.wordsBack>=90_000?(s.words+s.wordsBack)/90_000:0;
 
   return <>
@@ -74,7 +96,7 @@ export function UsageSettings(data:UsageData){
       <ActivityGraph times={times} label="Threads" unit="thread" height={104}/>
     </div></section>
 
-    <SettingsCard title="Conversations" note={s.since?`Counted from ${new Date(s.since).toLocaleDateString([], {month:'long',day:'numeric',year:'numeric'})}, across the chats saved on this PC.`:undefined}>
+    <SettingsCard title="Conversations" note={s.since?`Counted from ${new Date(s.since).toLocaleDateString([], {month:'long',day:'numeric',year:'numeric'})}, across every chat on this PC, including ones you deleted.`:undefined}>
       <div className="usage-grid">
         <Stat value={s.threads.toLocaleString()} label="Threads" detail={`${s.perThread.toFixed(1)} messages each`}/>
         <Stat value={s.sent.toLocaleString()} label="Messages sent" detail={`${compact(s.words)} words written`}/>
@@ -96,7 +118,7 @@ export function UsageSettings(data:UsageData){
       <div className="usage-facts">
         {s.topModel&&<p>Your go-to model is <b>{s.topModel}</b>, behind {Math.round(s.topModelShare*100)}% of replies{s.modelsUsed>1?` · ${s.modelsUsed} models tried`:''}.</p>}
         {s.busiestDay&&<p>You’re busiest on <b>{s.busiestDay}</b>, most often around <b>{hourLabel(s.busiestHour!)}</b>.</p>}
-        {s.longest&&s.longest.messages.length>2&&<p>Your longest thread, <b>“{s.longest.title}”</b>, runs {plural(s.longest.messages.length,'message')}.</p>}
+        {s.longest&&s.longest.messages>2&&<p>Your longest thread, <b>“{s.longest.title}”</b>, runs {plural(s.longest.messages,'message')}.</p>}
         {novels>0&&<p>Together you’ve written and read about <b>{novels<10?novels.toFixed(1):Math.round(novels)} novels</b> worth of words.</p>}
         {!s.threads&&<p className="muted">Start a chat and your habits show up here.</p>}
       </div>

@@ -14,7 +14,7 @@ import type { Vars } from '../../core/expr';
 export type Clock = { values: Vars; t: number; step?: number; dirty: boolean };
 export type Scene3DHandle = { capture(): Promise<Blob | null>; resetView(): void; record(seconds: number, turntable: boolean): Promise<{ blob: Blob; ext: string }> };
 
-const BG = '#161615';
+const BG = '#161615', PAPER_BG = '#f4f1ea';
 const ramp = ['#3d4f9a', '#8197e2', '#b49ddb', '#d87968', '#d9b36c'].map(c => new THREE.Color(c));
 function heat(f: number, out: THREE.Color) { const x = Math.max(0, Math.min(0.9999, f)) * (ramp.length - 1), i = Math.floor(x); return out.copy(ramp[i]).lerp(ramp[i + 1], x - i); }
 
@@ -29,8 +29,12 @@ type Slot = { sig: string; obj: THREE.Object3D; update(p: Prim): void };
 const sigOf = (p: Prim) => p.k === 'mesh' ? `mesh${p.rows}x${p.cols}${p.wire}${p.colormap}` : p.k === 'line' ? `line${p.pts.length}${p.dash}` : p.k === 'poly' ? `poly${p.pts.length}` : p.k === 'cyl' ? (p.cone ? 'cone' : 'cyl') + (p.mat ?? '') : p.k === 'glyph' ? `glyph${p.sign}` : p.k + (('mat' in p && p.mat) || '');
 
 /** Orbitable Three.js view of a model-authored 3D scene. Drag to orbit, scroll or pinch to zoom, right-drag to pan. */
-export default function Spec3D({ scene, clock, handle, onError, label }: { scene: Compiled3D; clock: MutableRefObject<Clock>; handle: MutableRefObject<Scene3DHandle | null>; onError: (message: string) => void; label: string }) {
+export default function Spec3D({ scene, clock, handle, onError, label, light = false }: { light?: boolean; scene: Compiled3D; clock: MutableRefObject<Clock>; handle: MutableRefObject<Scene3DHandle | null>; onError: (message: string) => void; label: string }) {
   const host = useRef<HTMLDivElement>(null);
+  // The backdrop follows the colour theme; the models keep their own colours.
+  const backdrop = useRef<THREE.Scene | null>(null), lightRef = useRef(light);
+  lightRef.current = light;
+  useEffect(() => { if (backdrop.current) { backdrop.current.background = new THREE.Color(light ? PAPER_BG : BG); clock.current.dirty = true; } }, [light]);
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -41,7 +45,7 @@ export default function Spec3D({ scene, clock, handle, onError, label }: { scene
     element.appendChild(renderer.domElement);
     const labels = new CSS2DRenderer(); labels.domElement.className = 'scene-labels'; element.appendChild(labels.domElement);
 
-    const three = new THREE.Scene(); three.background = new THREE.Color(BG);
+    const three = new THREE.Scene(); three.background = new THREE.Color(lightRef.current ? PAPER_BG : BG); backdrop.current = three;
     // Reflections for metal, glass and plastic: a soft studio room, only on objects given a material.
     const pmrem = new THREE.PMREMGenerator(renderer), env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     three.add(new THREE.HemisphereLight(0xf4f2ec, 0x2a2a27, 1.15));

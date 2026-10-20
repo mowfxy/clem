@@ -12,7 +12,7 @@ const paper: Record<string, string> = {
   [palette.bg]: '#ffffff', [palette.panel]: '#f4f6f8', [palette.grid]: '#e3e6ea', [palette.axis]: '#8a9098',
   [palette.ink]: '#1b1d21', [palette.soft]: '#4a4f57', [palette.faint]: '#6b7078',
   [palette.blue]: '#1f4e79', [palette.coral]: '#c0504d', [palette.green]: '#3f7a31', [palette.amber]: '#b7801a', [palette.violet]: '#6b4c9a',
-  '#262624': '#e8f0f8',
+  [palette.hot]: '#e8f0f8', [palette.shadow]: '#ffffff',
 };
 const ink = (color: string | undefined) => (color ? paper[color.toLowerCase()] ?? color : undefined);
 const n = (v: number) => (Math.round(v * 10) / 10).toString();

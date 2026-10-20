@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 /** One drawing vocabulary for every visual: painted live to a canvas, or written out as SVG for exports and thumbnails. */
 export type P = [number, number];
 export type Style = { stroke?: string; fill?: string; width?: number; dash?: number[]; alpha?: number };
@@ -13,6 +14,20 @@ export interface Pen {
 export const W = 800, H = 440;
 export const C = { bg: '#161615', panel: '#1b1b19', grid: '#242422', axis: '#4a4a45', ink: '#f0efeb', soft: '#a3a3a0', faint: '#6f6e68', blue: '#8197e2', coral: '#d87968' };
 const SANS = "'Mowafy Sans',system-ui,sans-serif", SERIF = "'Mowafy Serif',serif";
+
+/** Visuals are drawn in the dark palette; on the light theme each pen moves those colours onto paper (tuned by eye
+ *  against the light theme's warm whites and navy ink). Colours outside the palette are kept. */
+const PAPER: Record<string, string> = {
+  '#161615': '#fbf9f4', '#1b1b19': '#ffffff', '#1d1d1b': '#ffffff', '#242422': '#ece8df', '#262624': '#f1ede4', '#2c2c2a': '#e4e0d6', '#0a0a09': '#bdb6a6', '#141413': '#f4f1ea',
+  '#4a4a45': '#c4c0b5', '#f0efeb': '#20253a', '#a3a3a0': '#585d69', '#6f6e68': '#868891', '#8a8a85': '#7b7d85', '#b8b7b2': '#6a6c75',
+  '#8197e2': '#3c55b0', '#d87968': '#b24c39', '#8fbf98': '#3b7a49', '#d9b36c': '#946512', '#b49ddb': '#6b4f9e', '#9fcf8f': '#3f7d33', '#e39a5b': '#b0611f', '#d08a5a': '#a55a26',
+};
+export type Ink = (color: string) => string;
+export const darkInk: Ink = c => c;
+export const paperInk: Ink = c => PAPER[c.toLowerCase()] ?? c;
+export const isLight = () => typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light';
+/** The ink for the theme on screen now. */
+export const themeInk = (): Ink => (isLight() ? paperInk : darkInk);
 
 export function arrow(pen: Pen, x1: number, y1: number, x2: number, y2: number, style: Style, head = 9) {
   const len = Math.hypot(x2 - x1, y2 - y1);
@@ -33,7 +48,7 @@ export class CanvasPen implements Pen {
   readonly w = W;
   readonly h = H;
   /** `fonts` replaces the app's faces, for an exported image (files use standard fonts, see core/print-fonts). */
-  constructor(private ctx: CanvasRenderingContext2D, private fonts?: { sans: string; serif: string }) {}
+  constructor(private ctx: CanvasRenderingContext2D, private fonts?: { sans: string; serif: string }, private ink: Ink = darkInk) {}
   private apply(s: Style) {
     const c = this.ctx;
     c.globalAlpha = s.alpha ?? 1;
@@ -50,8 +65,8 @@ export class CanvasPen implements Pen {
     c.moveTo(points[0][0], points[0][1]);
     for (let i = 1; i < points.length; i++) c.lineTo(points[i][0], points[i][1]);
     if (closed) c.closePath();
-    if (s.fill) { c.fillStyle = s.fill; c.fill(); }
-    if (s.stroke) { c.strokeStyle = s.stroke; c.stroke(); }
+    if (s.fill) { c.fillStyle = this.ink(s.fill); c.fill(); }
+    if (s.stroke) { c.strokeStyle = this.ink(s.stroke); c.stroke(); }
     c.globalAlpha = 1;
   }
   circle(x: number, y: number, r: number, s: Style) {
@@ -59,15 +74,15 @@ export class CanvasPen implements Pen {
     this.apply(s);
     c.beginPath();
     c.arc(x, y, Math.max(0, r), 0, Math.PI * 2);
-    if (s.fill) { c.fillStyle = s.fill; c.fill(); }
-    if (s.stroke) { c.strokeStyle = s.stroke; c.stroke(); }
+    if (s.fill) { c.fillStyle = this.ink(s.fill); c.fill(); }
+    if (s.stroke) { c.strokeStyle = this.ink(s.stroke); c.stroke(); }
     c.globalAlpha = 1;
   }
   text(x: number, y: number, value: string, s: TextStyle = {}) {
     const c = this.ctx;
     c.globalAlpha = s.alpha ?? 1;
     c.font = `${s.weight ?? 400} ${s.size ?? 12}px ${s.serif ? this.fonts?.serif ?? SERIF : this.fonts?.sans ?? SANS}`;
-    c.fillStyle = s.color ?? C.soft;
+    c.fillStyle = this.ink(s.color ?? C.soft);
     c.textAlign = s.align === 'middle' ? 'center' : s.align === 'end' ? 'right' : 'left';
     c.textBaseline = 'alphabetic';
     c.fillText(value, x, y);
@@ -81,8 +96,9 @@ export class SvgPen implements Pen {
   readonly w = W;
   readonly h = H;
   private parts: string[] = [];
+  constructor(private ink: Ink = darkInk) {}
   private attrs(s: Style) {
-    return `fill="${s.fill ?? 'none'}"${s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 1.5}" stroke-linecap="round" stroke-linejoin="round"` : ''}${s.dash ? ` stroke-dasharray="${s.dash.join(' ')}"` : ''}${s.alpha !== undefined && s.alpha < 1 ? ` opacity="${s.alpha.toFixed(3)}"` : ''}`;
+    return `fill="${s.fill ? this.ink(s.fill) : 'none'}"${s.stroke ? ` stroke="${this.ink(s.stroke)}" stroke-width="${s.width ?? 1.5}" stroke-linecap="round" stroke-linejoin="round"` : ''}${s.dash ? ` stroke-dasharray="${s.dash.join(' ')}"` : ''}${s.alpha !== undefined && s.alpha < 1 ? ` opacity="${s.alpha.toFixed(3)}"` : ''}`;
   }
   path(points: P[], s: Style, closed = false) {
     if (points.length < 2) return;
@@ -92,9 +108,16 @@ export class SvgPen implements Pen {
     this.parts.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${n(Math.max(0, r))}" ${this.attrs(s)}/>`);
   }
   text(x: number, y: number, value: string, s: TextStyle = {}) {
-    this.parts.push(`<text x="${n(x)}" y="${n(y)}" font-family="${s.serif ? 'Mowafy Serif, serif' : 'Mowafy Sans, Arial, sans-serif'}" font-size="${s.size ?? 12}" font-weight="${s.weight ?? 400}" fill="${s.color ?? C.soft}" text-anchor="${s.align ?? 'start'}"${s.alpha !== undefined ? ` opacity="${s.alpha}"` : ''}>${esc(value)}</text>`);
+    this.parts.push(`<text x="${n(x)}" y="${n(y)}" font-family="${s.serif ? 'Mowafy Serif, serif' : 'Mowafy Sans, Arial, sans-serif'}" font-size="${s.size ?? 12}" font-weight="${s.weight ?? 400}" fill="${this.ink(s.color ?? C.soft)}" text-anchor="${s.align ?? 'start'}"${s.alpha !== undefined ? ` opacity="${s.alpha}"` : ''}>${esc(value)}</text>`);
   }
   toString(title = '') {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${title ? `<title>${esc(title)}</title>` : ''}<rect width="${W}" height="${H}" fill="${C.bg}"/>${this.parts.join('')}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${title ? `<title>${esc(title)}</title>` : ''}<rect width="${W}" height="${H}" fill="${this.ink(C.bg)}"/>${this.parts.join('')}</svg>`;
   }
+}
+
+/** The colour theme as React state, so a visual repaints when the person switches it. */
+export function useInk(): Ink {
+  const [light, setLight] = useState(isLight);
+  useEffect(() => { const on = () => setLight(isLight()); window.addEventListener('mowr-theme', on); return () => window.removeEventListener('mowr-theme', on); }, []);
+  return light ? paperInk : darkInk;
 }

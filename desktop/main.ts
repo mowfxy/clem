@@ -1013,6 +1013,20 @@ void app.whenReady().then(async () => {
     (contents, permission, callback, details) => callback(allowed.has(permission) && contents === window.webContents && (permission === "fullscreen" || String(details?.requestingUrl || "").startsWith("mowr://app/"))),
   );
   Menu.setApplicationMenu(null);
+  // Right-click: spelling suggestions for a misspelled word, then the usual edit actions. Pages that open their own
+  // menu (a chat's row menu) prevent the default, so Chromium never asks for this one there.
+  window.webContents.on("context-menu", (_event, params) => {
+    const items: Electron.MenuItemConstructorOptions[] = [];
+    const contents = window!.webContents, edit = params.editFlags;
+    if (params.misspelledWord) {
+      for (const word of params.dictionarySuggestions.slice(0, 6)) items.push({ label: word, click: () => contents.replaceMisspelling(word) });
+      if (!params.dictionarySuggestions.length) items.push({ label: "No suggestions", enabled: false });
+      items.push({ label: "Add to dictionary", click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord) }, { type: "separator" });
+    }
+    if (params.isEditable) items.push({ role: "undo", enabled: edit.canUndo }, { role: "redo", enabled: edit.canRedo }, { type: "separator" }, { role: "cut", enabled: edit.canCut }, { role: "copy", enabled: edit.canCopy }, { role: "paste", enabled: edit.canPaste }, { type: "separator" }, { role: "selectAll", enabled: edit.canSelectAll });
+    else if (params.selectionText.trim()) items.push({ role: "copy" });
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: window! });
+  });
   /** Captures a screen region and hands it to the workspace as an image attachment. */
   const capture = async (fromApp: boolean) => {
     if (!(await auth.user())) return;

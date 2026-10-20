@@ -17,7 +17,7 @@ export type Style = { stroke?: string; fill?: string; width?: number; dash?: num
 export type TextStyle = { size?: number; color?: string; align?: 'start' | 'middle' | 'end'; serif?: boolean; weight?: number; alpha?: number };
 export interface Pen { readonly w: number; readonly h: number; path(points: P[], style: Style, closed?: boolean): void; circle(x: number, y: number, r: number, style: Style): void; text(x: number, y: number, value: string, style?: TextStyle): void }
 export const W = 800, H = 440;
-export const palette = { bg: '#161615', panel: '#1d1d1b', grid: '#242422', axis: '#4a4a45', ink: '#f0efeb', soft: '#a3a3a0', faint: '#6f6e68', blue: '#8197e2', coral: '#d87968', green: '#8fbf98', amber: '#d9b36c', violet: '#b49ddb' };
+export const palette = { bg: '#161615', panel: '#1d1d1b', grid: '#242422', axis: '#4a4a45', ink: '#f0efeb', soft: '#a3a3a0', faint: '#6f6e68', blue: '#8197e2', coral: '#d87968', green: '#8fbf98', amber: '#d9b36c', violet: '#b49ddb', hot: '#262624', shadow: '#0a0a09' };
 const tones = ['ink', 'blue', 'coral', 'green', 'amber', 'violet', 'soft'] as const;
 type Tone = typeof tones[number];
 const tone = (value: unknown, fallback: Tone = 'ink') => palette[(tones as readonly string[]).includes(value as string) ? value as Tone : fallback];
@@ -434,35 +434,44 @@ export function compileVisual(raw: unknown): CompiledVisual {
     hasFlow = edges.some(e => e.flow);
     // A step that names a node the diagram doesn't have just doesn't highlight it.
     for (const s of spec.steps || []) if (s.focus) s.focus = s.focus.filter(f => ids.has(f));
-    const layout = layoutDiagram(nodes, edges, spec.direction || 'right');
-    const routes = routeEdges(layout, edges);
+    const { boxes: layout, routes } = layoutDiagram(nodes, edges, spec.direction || 'right');
     draw = (pen, _values, t, step) => {
       const focus = step !== undefined && spec.steps?.[step]?.focus ? new Set(spec.steps[step].focus) : null;
-      const dim = (id: string) => (focus && !focus.has(id) ? 0.32 : 1);
+      const dim = (id: string) => (focus && !focus.has(id) ? 0.3 : 1);
       edges.forEach((e, i) => {
-        const { points, at } = routes[i], alpha = Math.min(dim(e.from), dim(e.to));
-        const hot = focus && focus.has(e.from) && focus.has(e.to);
-        const style = { stroke: hot ? palette.ink : palette.soft, width: hot ? 1.8 : 1.4, dash: e.dashed ? [5, 5] : undefined, alpha: alpha * (hot ? 1 : 0.8) };
+        const { points } = routes[i], alpha = Math.min(dim(e.from), dim(e.to));
+        const hot = focus && focus.has(e.from) && focus.has(e.to), accent = nodes.find(n => n.id === e.from)?.color;
+        const stroke = hot ? palette.ink : accent ? tone(accent, 'soft') : palette.soft;
+        const style = { stroke, width: hot ? 2 : 1.5, dash: e.dashed ? [5, 5] : undefined, alpha: alpha * (hot ? 1 : 0.72) };
         // A curved edge is drawn as a line up to its last stretch, which carries the arrowhead.
         const tail = Math.max(0, points.length - 4);
         if (tail > 0) pen.path(points.slice(0, tail + 1), { ...style, fill: undefined });
         arrow(pen, points[tail][0], points[tail][1], points[points.length - 1][0], points[points.length - 1][1], style, 8);
+      });
+      // Flow dots and labels go over every line, so a later edge never cuts through an earlier one's label.
+      edges.forEach((e, i) => {
+        const { at } = routes[i], alpha = Math.min(dim(e.from), dim(e.to));
         if (e.flow && alpha === 1) {
-          for (const k of [0, 0.5]) { const f = ((t * 0.45 + k + i * 0.137) % 1 + 1) % 1; const [x, y] = at(f); pen.circle(x, y, 7, { fill: palette.coral, alpha: 0.14 }); pen.circle(x, y, 3.2, { fill: palette.coral }); }
+          for (const k of [0, 0.5]) { const f = ((t * 0.45 + k + i * 0.137) % 1 + 1) % 1; const [x, y] = at(f); pen.circle(x, y, 7, { fill: palette.coral, alpha: 0.16 }); pen.circle(x, y, 3.2, { fill: palette.coral }); }
         }
         if (e.label) {
-          const [mx, my] = at(0.5), w = textWidth(e.label, 11) + 12;
-          pen.path(roundRect(mx - w / 2, my - 10, w, 19, 6), { fill: palette.bg, alpha: 0.92 * alpha }, true);
-          pen.text(mx, my + 4, e.label, { size: 11, color: palette.soft, align: 'middle', alpha });
+          const [mx, my] = at(0.5), w = textWidth(e.label, 11) + 14;
+          pen.path(roundRect(mx - w / 2, my - 10, w, 20, 10), { fill: palette.bg, stroke: palette.grid, width: 1, alpha }, true);
+          pen.text(mx, my + 4, e.label, { size: 11, color: palette.soft, align: 'middle', alpha, weight: 500 });
         }
       });
       for (const n of nodes) {
         const box = layout.get(n.id)!, alpha = dim(n.id), hot = focus?.has(n.id), accent = n.color ? tone(n.color, 'ink') : null;
-        const outline = n.shape === 'circle' ? circlePoints(box.x, box.y, box.r) : roundRect(box.x - box.w / 2, box.y - box.h / 2, box.w, box.h, n.shape === 'pill' ? box.h / 2 : 11);
-        pen.path(outline, { fill: hot ? '#262624' : palette.panel, alpha }, true);
-        pen.path(outline, { stroke: hot ? palette.ink : accent || palette.axis, width: hot ? 1.8 : 1.3, alpha }, true);
-        const lines = box.lines, size = 12.5, top = box.y - (lines.length - 1) * 8 + 4;
-        lines.forEach((line, i) => pen.text(box.x, top + i * 16, line, { size, color: hot || !focus ? palette.ink : palette.soft, align: 'middle', alpha, weight: 500 }));
+        const shape = (dx: number, dy: number) => n.shape === 'circle' ? circlePoints(box.x + dx, box.y + dy, box.r) : roundRect(box.x - box.w / 2 + dx, box.y - box.h / 2 + dy, box.w, box.h, n.shape === 'pill' ? box.h / 2 : 12);
+        const outline = shape(0, 0);
+        pen.path(shape(0, 3), { fill: palette.shadow, alpha: 0.32 * alpha }, true);
+        pen.path(outline, { fill: hot ? palette.hot : palette.panel, alpha }, true);
+        if (accent) pen.path(outline, { fill: accent, alpha: 0.1 * alpha }, true);
+        pen.path(outline, { stroke: hot ? palette.ink : accent || palette.axis, width: hot ? 2 : accent ? 1.5 : 1.2, alpha }, true);
+        const lines = box.lines, detail = box.detail ?? [], height = lines.length * 16 + (detail.length ? 4 + detail.length * 14 : 0);
+        const top = box.y - height / 2 + 12;
+        lines.forEach((line, i) => pen.text(box.x, top + i * 16, line, { size: 13, color: hot || !focus ? palette.ink : palette.soft, align: 'middle', alpha, weight: 600 }));
+        detail.forEach((line, i) => pen.text(box.x, top + lines.length * 16 + 3 + i * 14, line, { size: 11, color: palette.soft, align: 'middle', alpha }));
       }
     };
   } else {
@@ -540,9 +549,13 @@ export function compileVisual(raw: unknown): CompiledVisual {
   };
 }
 
-type Box = { x: number; y: number; w: number; h: number; r: number; lines: string[]; shape: 'box' | 'pill' | 'circle' };
+type Box = { x: number; y: number; w: number; h: number; r: number; lines: string[]; detail?: string[]; shape: 'box' | 'pill' | 'circle' };
 export type DiagramBox = Box;
+type DiagramNode = NonNullable<VisualSpec['nodes']>[number];
+type DiagramEdge = NonNullable<VisualSpec['edges']>[number];
+const PAD = { l: 30, r: 30, t: 28, b: 28 };
 function circlePoints(x: number, y: number, r: number): P[] { return Array.from({ length: 49 }, (_, i) => { const a = Math.PI * 2 * i / 48; return [x + r * Math.cos(a), y + r * Math.sin(a)] as P; }); }
+const halfW = (b: Box) => (b.shape === 'circle' ? b.r : b.w / 2), halfH = (b: Box) => (b.shape === 'circle' ? b.r : b.h / 2);
 /** Where a line from the middle of `from` towards `to` leaves its outline. */
 function cut(from: Box, to: P): P {
   const dx = to[0] - from.x, dy = to[1] - from.y, len = Math.hypot(dx, dy) || 1;
@@ -550,66 +563,220 @@ function cut(from: Box, to: P): P {
   const sx = Math.abs(dx) > 1e-9 ? (from.w / 2 + 4) / Math.abs(dx) : Infinity, sy = Math.abs(dy) > 1e-9 ? (from.h / 2 + 4) / Math.abs(dy) : Infinity, s = Math.min(sx, sy);
   return [from.x + dx * s, from.y + dy * s];
 }
+const inside = (box: Box, [x, y]: P, margin = 6) => Math.abs(x - box.x) < halfW(box) + margin && Math.abs(y - box.y) < halfH(box) + margin;
 /** Whether the segment p→q passes through a box (with a small margin), tested by sampling along it. */
 function crosses(p: P, q: P, box: Box) {
-  const hw = (box.shape === 'circle' ? box.r : box.w / 2) + 6, hh = (box.shape === 'circle' ? box.r : box.h / 2) + 6;
-  for (let k = 1; k < 24; k++) { const x = p[0] + (q[0] - p[0]) * k / 24, y = p[1] + (q[1] - p[1]) * k / 24; if (Math.abs(x - box.x) < hw && Math.abs(y - box.y) < hh) return true; }
+  for (let k = 1; k < 24; k++) if (inside(box, [p[0] + (q[0] - p[0]) * k / 24, p[1] + (q[1] - p[1]) * k / 24])) return true;
   return false;
 }
 export type EdgeRoute = { points: P[]; at: (f: number) => P };
+/** A route along a polyline, measured by length so a label or a flow dot sits where the eye expects. */
+function along(points: P[]): EdgeRoute {
+  const acc = [0];
+  for (let i = 1; i < points.length; i++) acc.push(acc[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
+  const total = acc[acc.length - 1] || 1;
+  return { points, at: f => {
+    const d = Math.max(0, Math.min(1, f)) * total; let i = 1;
+    while (i < acc.length - 1 && acc[i] < d) i++;
+    const k = (d - acc[i - 1]) / (acc[i] - acc[i - 1] || 1), p = points[i - 1], q = points[i] ?? p;
+    return [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k];
+  } };
+}
+const cubic = (p1: P, c1: P, c2: P, p2: P, n = 32) => Array.from({ length: n + 1 }, (_, k): P => { const f = k / n, u = 1 - f; return [u * u * u * p1[0] + 3 * u * u * f * c1[0] + 3 * u * f * f * c2[0] + f * f * f * p2[0], u * u * u * p1[1] + 3 * u * u * f * c1[1] + 3 * u * f * f * c2[1] + f * f * f * p2[1]]; });
+/** One edge: straight when nothing is in the way; bowed to one side when it would run through another node or has a twin going back. */
+function routeOne(layout: Map<string, Box>, e: { from: string; to: string }, twin: boolean, minBend = 0): EdgeRoute {
+  const a = layout.get(e.from)!, b = layout.get(e.to)!;
+  const blocked = [...layout].some(([id, box]) => id !== e.from && id !== e.to && crosses([a.x, a.y], [b.x, b.y], box));
+  if (!blocked && !twin && !minBend) {
+    const p1 = cut(a, [b.x, b.y]), p2 = cut(b, [a.x, a.y]);
+    return { points: [p1, p2], at: (f: number): P => [p1[0] + (p2[0] - p1[0]) * f, p1[1] + (p2[1] - p1[1]) * f] };
+  }
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+  const bend = Math.max(minBend, blocked ? Math.max(64, Math.min(150, len * 0.3)) : 26);
+  const c: P = [(a.x + b.x) / 2 - dy / len * bend, (a.y + b.y) / 2 + dx / len * bend];
+  const p1 = cut(a, c), p2 = cut(b, c);
+  const at = (f: number): P => { const u = 1 - f; return [u * u * p1[0] + 2 * u * f * c[0] + f * f * p2[0], u * u * p1[1] + 2 * u * f * c[1] + f * f * p2[1]]; };
+  return { points: Array.from({ length: 29 }, (_, k) => at(k / 28)), at };
+}
 /** Each edge's path. Straight when nothing is in the way; an edge that would run through another node, or that has
  *  a twin going the other way, bows to one side (forward edges one way, back edges the other) so every edge shows. */
 export function routeEdges(layout: Map<string, DiagramBox>, edges: { from: string; to: string }[]): EdgeRoute[] {
   const pairs = new Set(edges.map(e => JSON.stringify([e.from, e.to])));
-  return edges.map(e => {
-    const a = layout.get(e.from)!, b = layout.get(e.to)!;
-    const blocked = [...layout].some(([id, box]) => id !== e.from && id !== e.to && crosses([a.x, a.y], [b.x, b.y], box));
-    const twin = pairs.has(JSON.stringify([e.to, e.from]));
-    if (!blocked && !twin) {
-      const p1 = cut(a, [b.x, b.y]), p2 = cut(b, [a.x, a.y]);
-      return { points: [p1, p2], at: (f: number): P => [p1[0] + (p2[0] - p1[0]) * f, p1[1] + (p2[1] - p1[1]) * f] };
-    }
-    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
-    const bend = blocked ? Math.max(64, Math.min(150, len * 0.3)) : 26;
-    const c: P = [(a.x + b.x) / 2 - dy / len * bend, (a.y + b.y) / 2 + dx / len * bend];
-    const p1 = cut(a, c), p2 = cut(b, c);
-    const at = (f: number): P => { const u = 1 - f; return [u * u * p1[0] + 2 * u * f * c[0] + f * f * p2[0], u * u * p1[1] + 2 * u * f * c[1] + f * f * p2[1]]; };
-    return { points: Array.from({ length: 29 }, (_, k) => at(k / 28)), at };
-  });
+  return edges.map(e => routeOne(layout, e, pairs.has(JSON.stringify([e.to, e.from]))));
 }
-/** Places nodes: explicit 0–100 coordinates when every node has them, otherwise layered by dependency. */
-function layoutDiagram(nodes: NonNullable<VisualSpec['nodes']>, edges: NonNullable<VisualSpec['edges']>, direction: 'right' | 'down') {
-  const size = (n: (typeof nodes)[number]): Box => {
-    const lines = wrap(n.label, n.shape === 'circle' ? 12 : 18), longest = Math.max(...lines.map(l => l.length));
-    const w = Math.max(88, Math.min(176, longest * 7.4 + 34)), h = lines.length > 1 ? 56 : 42;
-    return { x: 0, y: 0, w, h, r: Math.max(34, Math.min(52, longest * 3.9 + 12)), lines, shape: n.shape || 'box' };
-  };
-  const out = new Map<string, Box>();
-  const pad = { l: 40, r: 40, t: 34, b: 34 };
-  if (nodes.every(n => n.x !== undefined && n.y !== undefined)) {
-    for (const n of nodes) { const box = size(n); box.x = pad.l + (W - pad.l - pad.r) * n.x! / 100; box.y = pad.t + (H - pad.t - pad.b) * n.y! / 100; out.set(n.id, box); }
-    return out;
+
+/** Every node's outline with its label wrapped to fit `maxW`. Boxes in one diagram share a width and a height and
+ *  circles share a radius, so rows and columns line up the way a hand-drawn diagram would. */
+function sizeNodes(nodes: DiagramNode[], maxW: number) {
+  const chars = Math.max(8, Math.floor((maxW - 30) / 7.3));
+  const raw = nodes.map(n => {
+    const circle = n.shape === 'circle', lines = wrap(n.label, circle ? Math.min(12, chars) : chars, 3);
+    const detail = n.detail && !circle ? wrap(n.detail, Math.floor(chars * 1.2), 2) : [];
+    const widest = Math.max(...lines.map(l => textWidth(l, 13)), ...detail.map(l => textWidth(l, 11)));
+    return { n, circle, lines, detail, w: Math.max(96, Math.min(maxW, widest + 34)), h: 22 + lines.length * 16 + (detail.length ? 4 + detail.length * 14 : 0), r: Math.max(34, Math.min(60, Math.max(widest / 2 + 14, lines.length * 9 + 22))) };
+  });
+  const boxes = raw.filter(b => !b.circle), rings = raw.filter(b => b.circle);
+  const w = Math.max(0, ...boxes.map(b => b.w)), h = Math.max(46, ...boxes.map(b => b.h)), r = Math.max(0, ...rings.map(b => b.r));
+  return new Map(raw.map(b => [b.n.id, { x: 0, y: 0, w: b.circle ? r * 2 : w, h: b.circle ? r * 2 : h, r, lines: b.lines, detail: b.detail, shape: b.n.shape || 'box' } as Box]));
+}
+const clampInto = (b: Box) => { b.x = Math.max(PAD.l + halfW(b), Math.min(W - PAD.r - halfW(b), b.x)); b.y = Math.max(PAD.t + halfH(b), Math.min(H - PAD.b - halfH(b), b.y)); };
+/** Pushes overlapping nodes apart (along whichever axis they overlap least) until each has breathing room. */
+function separate(list: Box[], gap = 24) {
+  for (let pass = 0; pass < 120; pass++) {
+    let moved = false;
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      const ox = halfW(a) + halfW(b) + gap - Math.abs(a.x - b.x), oy = halfH(a) + halfH(b) + gap * 0.75 - Math.abs(a.y - b.y);
+      if (ox <= 0 || oy <= 0) continue;
+      moved = true;
+      if (ox / (halfW(a) + halfW(b)) < oy / (halfH(a) + halfH(b))) { const s = Math.sign(b.x - a.x) || (i % 2 ? -1 : 1); a.x -= s * ox / 2; b.x += s * ox / 2; }
+      else { const s = Math.sign(b.y - a.y) || 1; a.y -= s * oy / 2; b.y += s * oy / 2; }
+      clampInto(a); clampInto(b);
+    }
+    if (!moved) break;
   }
+}
+/** The order of a cycle that visits every node once following the edges, or null. Cycles (life cycles, round-robin,
+ *  ring buffers, feedback loops) read best drawn as a ring. */
+function ringOrder(nodes: DiagramNode[], edges: DiagramEdge[]) {
+  if (nodes.length < 3 || nodes.length > 12 || edges.length < nodes.length) return null;
+  const next = new Map<string, string[]>(nodes.map(n => [n.id, []]));
+  for (const e of edges) next.get(e.from)!.push(e.to);
+  const order = [nodes[0].id], seen = new Set(order);
+  const walk = (id: string): boolean => {
+    if (order.length === nodes.length) return next.get(id)!.includes(order[0]);
+    for (const to of next.get(id)!) { if (seen.has(to)) continue; order.push(to); seen.add(to); if (walk(to)) return true; order.pop(); seen.delete(to); }
+    return false;
+  };
+  return walk(order[0]) ? order : null;
+}
+type DiagramLayout = { boxes: Map<string, Box>; routes: EdgeRoute[] };
+/** Places and routes a diagram. Explicit 0–100 coordinates are honoured but fitted to the canvas and pulled apart
+ *  where they collide; a cycle becomes a ring; a long chain wraps into rows; anything else is layered by dependency
+ *  with nodes ordered to untangle crossings and edges drawn as smooth curves between facing sides. */
+function layoutDiagram(nodes: DiagramNode[], edges: DiagramEdge[], direction: 'right' | 'down'): DiagramLayout {
+  const pairs = new Set(edges.map(e => JSON.stringify([e.from, e.to])));
+  const plain = (boxes: Map<string, Box>): DiagramLayout => ({ boxes, routes: edges.map(e => routeOne(boxes, e, pairs.has(JSON.stringify([e.to, e.from])))) });
+
+  if (nodes.every(n => n.x !== undefined && n.y !== undefined)) {
+    // Boxes narrow when many share a row, so the row fits with room for its edges.
+    const rows = new Map<number, number>();
+    for (const n of nodes) rows.set(Math.round(n.y! / 12), (rows.get(Math.round(n.y! / 12)) ?? 0) + 1);
+    const perRow = Math.max(...rows.values()), boxes = sizeNodes(nodes, Math.max(96, Math.min(172, (W - PAD.l - PAD.r - (perRow - 1) * 60) / perRow))), any = boxes.values().next().value!;
+    const span = (v: number[]) => [Math.min(...v), Math.max(...v)];
+    const [x0, x1] = span(nodes.map(n => n.x!)), [y0, y1] = span(nodes.map(n => n.y!));
+    const left = PAD.l + halfW(any), right = W - PAD.r - halfW(any), top = PAD.t + halfH(any), bottom = H - PAD.b - halfH(any);
+    for (const n of nodes) {
+      const b = boxes.get(n.id)!;
+      b.x = x1 - x0 > 1 ? left + (right - left) * (n.x! - x0) / (x1 - x0) : W / 2;
+      b.y = y1 - y0 > 1 ? top + (bottom - top) * (n.y! - y0) / (y1 - y0) : H / 2;
+      clampInto(b);
+    }
+    separate([...boxes.values()], 32);
+    // A labelled edge needs room for its label between the two nodes it joins.
+    for (let pass = 0; pass < 4; pass++) {
+      for (const e of edges) {
+        if (!e.label) continue;
+        const a = boxes.get(e.from)!, b = boxes.get(e.to)!, p1 = cut(a, [b.x, b.y]), p2 = cut(b, [a.x, a.y]);
+        const gap = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * Math.sign((p2[0] - p1[0]) * (b.x - a.x) + (p2[1] - p1[1]) * (b.y - a.y)), need = textWidth(e.label, 11) + 40;
+        if (gap >= need) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, push = (need - gap) / 2;
+        a.x -= dx / len * push; a.y -= dy / len * push; b.x += dx / len * push; b.y += dy / len * push; clampInto(a); clampInto(b);
+      }
+      separate([...boxes.values()], 32);
+    }
+    return plain(boxes);
+  }
+
+  const ring = ringOrder(nodes, edges);
+  if (ring) {
+    const n = ring.length, boxes = sizeNodes(nodes, n <= 5 ? 172 : n <= 8 ? 142 : 116), any = boxes.values().next().value!;
+    const rx = (W - PAD.l - PAD.r) / 2 - halfW(any), ry = (H - PAD.t - PAD.b) / 2 - halfH(any), angle = (i: number) => -Math.PI / 2 + Math.PI * 2 * i / n;
+    ring.forEach((id, i) => { const b = boxes.get(id)!; b.x = W / 2 + rx * Math.cos(angle(i)); b.y = H / 2 + ry * Math.sin(angle(i)); });
+    separate([...boxes.values()], 16);
+    const index = new Map(ring.map((id, i) => [id, i]));
+    const routes = edges.map(e => {
+      const i = index.get(e.from)!, j = index.get(e.to)!, a = boxes.get(e.from)!, b = boxes.get(e.to)!;
+      const step = j === (i + 1) % n ? 1 : i === (j + 1) % n ? -1 : 0;
+      if (!step) return routeOne(boxes, e, pairs.has(JSON.stringify([e.to, e.from])));
+      // Neighbours on the ring are joined along it, an inner lane for the way back when both directions exist.
+      const k = step < 0 && pairs.has(JSON.stringify([e.to, e.from])) ? 0.82 : 1;
+      const pts = Array.from({ length: 41 }, (_, s): P => { const t = angle(i) + step * (Math.PI * 2 / n) * s / 40; return [W / 2 + rx * k * Math.cos(t), H / 2 + ry * k * Math.sin(t)]; })
+        .filter(p => !inside(a, p, 5) && !inside(b, p, 7));
+      return pts.length >= 2 ? along(pts) : routeOne(boxes, e, false);
+    });
+    return { boxes, routes };
+  }
+
   // Longest-path ranks over the graph with cycle-closing (back) edges removed.
-  const order = nodes.map(n => n.id), out_ = new Map(order.map(id => [id, [] as string[]])), incoming = new Map(order.map(id => [id, 0]));
-  for (const e of edges) { out_.get(e.from)!.push(e.to); incoming.set(e.to, incoming.get(e.to)! + 1); }
+  const order = nodes.map(n => n.id), succ = new Map(order.map(id => [id, [] as string[]])), incoming = new Map(order.map(id => [id, 0]));
+  for (const e of edges) { succ.get(e.from)!.push(e.to); incoming.set(e.to, incoming.get(e.to)! + 1); }
   const state = new Map<string, 1 | 2>(), forward: [string, string][] = [];
-  const visit = (id: string) => { state.set(id, 1); for (const to of out_.get(id)!) { if (state.get(to) === 1) continue; forward.push([id, to]); if (!state.has(to)) visit(to); } state.set(id, 2); };
+  const visit = (id: string) => { state.set(id, 1); for (const to of succ.get(id)!) { if (state.get(to) === 1) continue; forward.push([id, to]); if (!state.has(to)) visit(to); } state.set(id, 2); };
   for (const id of order) if (!incoming.get(id)) if (!state.has(id)) visit(id);
   for (const id of order) if (!state.has(id)) visit(id);
   const rank = new Map(order.map(id => [id, 0]));
   for (let pass = 0; pass < order.length; pass++) { let changed = false; for (const [a, b] of forward) if (rank.get(a)! + 1 > rank.get(b)!) { rank.set(b, rank.get(a)! + 1); changed = true; } if (!changed) break; }
   const layers: string[][] = [];
   for (const id of order) (layers[rank.get(id)!] ||= []).push(id);
-  const cols = layers.filter(Boolean), across = direction === 'right';
+  const cols = layers.filter(Boolean);
+  // Order each layer by the average position of its neighbours in the layer before (then after), over a few sweeps.
+  const near = new Map(order.map(id => [id, new Set<string>()]));
+  for (const e of edges) { near.get(e.from)!.add(e.to); near.get(e.to)!.add(e.from); }
+  for (let sweep = 0; sweep < 6; sweep++) {
+    const down = sweep % 2 === 0;
+    for (let k = down ? 1 : cols.length - 2; down ? k < cols.length : k >= 0; k += down ? 1 : -1) {
+      const ref = cols[down ? k - 1 : k + 1], pos = new Map(ref.map((id, i) => [id, i])), here = new Map(cols[k].map((id, i) => [id, i]));
+      const bary = (id: string) => { const nb = [...near.get(id)!].filter(x => pos.has(x)); return nb.length ? (nb.reduce((s, x) => s + pos.get(x)! + 0.5, 0) / nb.length) / ref.length * cols[k].length - 0.5 : here.get(id)!; };
+      cols[k].sort((a, b) => bary(a) - bary(b) || here.get(a)! - here.get(b)!);
+    }
+  }
+  const widest = Math.max(...cols.map(c => c.length));
+  // The canvas is landscape: a deep top-to-bottom flow turns sideways, and a long single chain wraps into rows.
+  let across = direction === 'right';
+  if (!across && cols.length > 4 && cols.length > widest) across = true;
+  if (widest === 1 && across && cols.length > 5) {
+    const n = cols.length, rows = n <= 8 ? 2 : n <= 15 ? 3 : 4, per = Math.ceil(n / rows);
+    const boxes = sizeNodes(nodes, Math.min(176, (W - PAD.l - PAD.r) / per - 40)), any = boxes.values().next().value!;
+    const slotW = (W - PAD.l - PAD.r - any.w) / Math.max(1, per - 1), slotH = Math.min((H - PAD.t - PAD.b - any.h) / Math.max(1, rows - 1), any.h + 64), top = (H - slotH * (rows - 1)) / 2;
+    cols.forEach(([id], i) => {
+      const row = Math.floor(i / per), col = row % 2 ? per - 1 - (i % per) : i % per, b = boxes.get(id)!;
+      b.x = PAD.l + any.w / 2 + slotW * col; b.y = top + slotH * row;
+    });
+    return plain(boxes);
+  }
+  const mainRoom = across ? W - PAD.l - PAD.r : H - PAD.t - PAD.b, crossRoom = across ? H - PAD.t - PAD.b : W - PAD.l - PAD.r;
+  const boxes = sizeNodes(nodes, across ? Math.max(96, Math.min(180, mainRoom / cols.length - 40)) : Math.max(96, Math.min(180, crossRoom / widest - 28)));
+  const any = boxes.values().next().value!, mainHalf = across ? halfW(any) : halfH(any);
   cols.forEach((col, i) => col.forEach((id, j) => {
-    const box = size(nodes.find(n => n.id === id)!);
-    const main = cols.length === 1 ? 0.5 : i / (cols.length - 1), cross = (j + 0.5) / col.length;
-    box.x = across ? pad.l + 60 + (W - pad.l - pad.r - 120) * main : pad.l + (W - pad.l - pad.r) * cross;
-    box.y = across ? pad.t + (H - pad.t - pad.b) * cross : pad.t + 30 + (H - pad.t - pad.b - 60) * main;
-    out.set(id, box);
+    const box = boxes.get(id)!, main = cols.length === 1 ? 0.5 : i / (cols.length - 1);
+    // Siblings sit a comfortable distance apart around the middle rather than flung to the edges.
+    const gap = Math.min(crossRoom / col.length, (across ? any.h : any.w) + (across ? 64 : 48));
+    const m = (across ? PAD.l : PAD.t) + mainHalf + (mainRoom - mainHalf * 2) * main, c = (across ? H : W) / 2 + gap * (j - (col.length - 1) / 2);
+    if (across) { box.x = m; box.y = c; } else { box.x = c; box.y = m; }
   }));
-  return out;
+  // Ports: edges leaving (or entering) one side of a node spread along it, sorted by where they are headed.
+  const outs = new Map<string, DiagramEdge[]>(), ins = new Map<string, DiagramEdge[]>();
+  const isForward = (e: DiagramEdge) => rank.get(e.to)! > rank.get(e.from)!;
+  const push = (m: Map<string, DiagramEdge[]>, id: string, e: DiagramEdge) => { const list = m.get(id); if (list) list.push(e); else m.set(id, [e]); };
+  for (const e of edges) if (isForward(e)) { push(outs, e.from, e); push(ins, e.to, e); }
+  const crossOf = (id: string) => (across ? boxes.get(id)!.y : boxes.get(id)!.x);
+  const offset = (list: DiagramEdge[] | undefined, e: DiagramEdge, other: (e: DiagramEdge) => string, box: Box) => {
+    if (!list || list.length < 2) return 0;
+    const sorted = [...list].sort((p, q) => crossOf(other(p)) - crossOf(other(q))), k = sorted.indexOf(e), side = (across ? halfH(box) : halfW(box)) * 2;
+    return (k - (sorted.length - 1) / 2) * Math.min(14, (side - 18) / sorted.length);
+  };
+  const routes = edges.map(e => {
+    if (!isForward(e)) return routeOne(boxes, e, pairs.has(JSON.stringify([e.to, e.from])), 70);
+    const a = boxes.get(e.from)!, b = boxes.get(e.to)!, oa = offset(outs.get(e.from), e, x => x.to, a), ob = offset(ins.get(e.to), e, x => x.from, b);
+    const p1: P = across ? [a.x + halfW(a) + 3, a.y + oa] : [a.x + oa, a.y + halfH(a) + 3];
+    const p2: P = across ? [b.x - halfW(b) - 4, b.y + ob] : [b.x + ob, b.y - halfH(b) - 4];
+    const pull = Math.max(24, (across ? p2[0] - p1[0] : p2[1] - p1[1]) * 0.5);
+    const pts = cubic(p1, across ? [p1[0] + pull, p1[1]] : [p1[0], p1[1] + pull], across ? [p2[0] - pull, p2[1]] : [p2[0], p2[1] - pull], p2);
+    const blocked = [...boxes].some(([id, box]) => id !== e.from && id !== e.to && pts.some(p => inside(box, p, 4)));
+    return blocked ? routeOne(boxes, e, false) : along(pts);
+  });
+  return { boxes, routes };
 }
 
 /** Extract the JSON inside a ```visual block body and compile it. */

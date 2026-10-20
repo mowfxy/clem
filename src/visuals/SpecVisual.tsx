@@ -7,7 +7,7 @@ import type { Clock, Scene3DHandle } from './Spec3D';
 import { Icon } from '../Icons';
 import { downloadMade } from '../store';
 import { exportFonts, standardFonts } from '../../core/print-fonts';
-import { CanvasPen, SvgPen, C, H, W } from './pen';
+import { CanvasPen, SvgPen, C, H, W, useInk, darkInk } from './pen';
 import { defaultValues, type CompiledVisual } from '../../core/visual-spec';
 import { paintSvg, recordCanvas, videoFormat } from './record';
 import './visuals.css';
@@ -33,6 +33,7 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
   const [progress, setProgress] = useState(0);
   const canvas = useRef<HTMLCanvasElement>(null), stage = useRef<HTMLDivElement>(null);
   const [flat, setFlat] = useState(false);
+  const ink = useInk();
   const use3d = !!visual.scene3d && !flat, figure = visual.figure;
   const figHost = useRef<HTMLDivElement>(null), film = useRef<HTMLCanvasElement | null>(null), filming = useRef(false);
   const [recording, setRecording] = useState(false), [note, setNote] = useState('');
@@ -50,7 +51,7 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
   useEffect(() => {
     const el = canvas.current, ctx = el?.getContext('2d') ?? null, watched = el || stage.current;
     if (!watched || (!use3d && !figure && !ctx)) return;
-    const pen = ctx ? new CanvasPen(ctx) : null;
+    const pen = ctx ? new CanvasPen(ctx, undefined, ink) : null;
     let raf = 0, last = 0, visible = true, lastReadout = 0;
     const resize = () => { if (!el) return; const dpr = Math.min(devicePixelRatio || 1, 2), w = el.clientWidth; el.width = Math.round(w * dpr); el.height = Math.round(w * H / W * dpr); dirty.current = true; };
     const frame = (now: number) => {
@@ -70,7 +71,7 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
       }
       if (el && ctx && pen) {
         const s = el.width / W;
-        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = C.bg; ctx.fillRect(0, 0, el.width, el.height);
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = ink(C.bg); ctx.fillRect(0, 0, el.width, el.height);
         ctx.setTransform(s, 0, 0, s, 0, 0);
         try { visual.draw(pen, valuesRef.current, t, stepRef.current); } catch { /* A formula failing mid-draw leaves the rest of the picture. */ }
       }
@@ -82,16 +83,16 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
     document.addEventListener('visibilitychange', wake);
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); observer.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', wake); };
-  }, [visual, playing, rate, moving, looped, use3d]);
+  }, [visual, playing, rate, moving, looped, use3d, ink]);
   useEffect(() => { if (!moving || !playing) setReadouts(visual.readouts(values, local())); }, [values]);
 
-  const svg = () => { if (figure) return figureSvg(values, local(), step); const pen = new SvgPen(); visual.draw(pen, values, local(), step); return pen.toString(spec.title); };
+  const svg = () => { if (figure) return figureSvg(values, local(), step); const pen = new SvgPen(ink); visual.draw(pen, values, local(), step); return pen.toString(spec.title); };
   // An export that fails says so beside the buttons instead of doing nothing.
   const exportFailed = (e: unknown) => setNote(`That export did not finish${(e as Error)?.message ? ': ' + (e as Error).message : ''}. Try again.`);
   const png = () => {
     setNote('');
     if (figure) { const out = svg(), m = /viewBox="0 0 (\d+) (\d+)"/.exec(out), c = document.createElement('canvas'); c.width = (m ? +m[1] : 760) * 2; c.height = (m ? +m[2] : 460) * 2; void paintSvg(c, standardFonts(out)).then(() => c.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png')).catch(exportFailed); return; }
-    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); return; } const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = C.bg; ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); visual.draw(new CanvasPen(ctx, exportFonts), values, local(), step); off.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png'); };
+    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); return; } const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = ink(C.bg); ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); visual.draw(new CanvasPen(ctx, exportFonts, ink), values, local(), step); off.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png'); };
   // Films the visual as it plays: animations from the start for one loop, still 3D models as a turntable.
   const canFilm = (moving || use3d) && !!videoFormat();
   const video = async () => {
@@ -125,7 +126,7 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
       </div>
     </header>
     <div className="visual-stage" ref={stage}>
-      {use3d && visual.scene3d ? <Suspense fallback={<div className="visual-canvas-fallback">Building the 3D scene…</div>}><Spec3D scene={visual.scene3d} clock={clock} handle={view3d} label={visual.describe()} onError={() => setFlat(true)} /><span className="visual-hint-3d">Drag to orbit · scroll to zoom</span></Suspense>
+      {use3d && visual.scene3d ? <Suspense fallback={<div className="visual-canvas-fallback">Building the 3D scene…</div>}><Spec3D scene={visual.scene3d} light={ink !== darkInk} clock={clock} handle={view3d} label={visual.describe()} onError={() => setFlat(true)} /><span className="visual-hint-3d">Drag to orbit · scroll to zoom</span></Suspense>
         : figure ? <div ref={figHost} className="visual-figure" role="img" aria-label={visual.describe()} />
         : <canvas ref={canvas} className="visual-canvas" role="img" aria-label={visual.describe()} />}
     </div>
@@ -136,7 +137,7 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
         <div className="spec-step-dots">{steps.map((s, i) => <button key={i} aria-label={s.title} aria-current={step === i} className={step === i ? 'on' : step !== undefined && i < step ? 'done' : ''} onClick={() => setStep(i)} />)}</div>
         <button className="visual-icon" aria-label="Next step" disabled={step === steps.length - 1} onClick={() => setStep(s => (s === undefined ? 0 : Math.min(steps.length - 1, s + 1)))}><Icon name="arrow" size={15} /></button>
       </div>
-      <div className="spec-step-text" aria-live="polite">{current ? <><strong>{current.title}</strong>{current.text && <p>{current.text}</p>}</> : <p className="spec-step-hint">Step through it — {steps.length} stages.</p>}</div>
+      <div className="spec-step-text" aria-live="polite">{current ? <><strong>{current.title}</strong>{current.text && <p>{current.text}</p>}</> : <p className="spec-step-hint">Step through it — {steps.length} {steps.length === 1 ? 'stage' : 'stages'}.</p>}</div>
     </div>}
     {hasSide && <div className="visual-body">
       {params.length > 0 && <div className="visual-controls">{params.map(p => <label key={p.key}><span className="visual-control-label">{p.label}<output>{Number(values[p.key].toFixed(6))}{p.unit && ` ${p.unit}`}</output></span><input type="range" min={p.min} max={p.max} step={p.step} value={values[p.key]} onChange={e => setValues(v => ({ ...v, [p.key]: +e.target.value }))} /></label>)}</div>}

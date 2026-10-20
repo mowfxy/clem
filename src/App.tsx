@@ -22,7 +22,8 @@ import {SettingsWindow} from "./settings/SettingsWindow";
 import {ProfileSettings} from "./settings/ProfileSettings";
 import {SkillsSettings} from "./settings/SkillsSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
-import {UsageSettings} from "./settings/UsageSettings";
+import {UsageSettings,archiveChats} from "./settings/UsageSettings";
+import {AsciiField} from "./chat/AsciiField";
 import {ProfileAvatar} from "./ProfileAvatar";
 import "./settings.css";
 import {cachedFileText,localSourceContext} from "./source-context";
@@ -277,7 +278,6 @@ function searchableText(c:{title:string;messages:{content:string}[]}){
 const greeting = (hour: number) => hour < 5 ? "Late night" : hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening";
 
 /** Overdue in a plan: a small clock, on subject and project cards. */
-function PlanLateGlyph(){return <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="6" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M8 5.5v3.2l2 1.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;}
 
 export default function App({offline=false}:{offline?:boolean}={}) {
   const [state, setState] = useState<State>(emptyState);
@@ -2050,7 +2050,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     for(const c of current.chats)if(c.spaceId===space.id)stopChat(c.id);
     try{
       await deleteWorkflowCheckpoints(owner,current.chats.filter(c=>c.spaceId===space.id).flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));
-      const next={...current,essentialNotes:current.essentialNotes?.filter(n=>n.id!==space.id),spaces:current.spaces.filter(s=>s.id!==space.id).map(s=>({...s,sources:s.sources.filter(id=>!ids.has(id))})),chats:current.chats.filter(c=>c.spaceId!==space.id).map(c=>({...c,messages:c.messages.map(m=>({...m,attachments:m.attachments?.filter(id=>!ids.has(id))}))})),files:current.files.filter(f=>!ids.has(f.id)),studySets:current.studySets.filter(s=>s.spaceId!==space.id),plans:(current.plans||[]).filter(p=>p.spaceId!==space.id),automations:current.automations.filter(a=>a.spaceId!==space.id),visuals:current.visuals.filter(v=>!current.chats.some(c=>c.spaceId===space.id&&c.id===v.chatId))};
+      const next={...current,usageArchive:archiveChats(current.usageArchive,current.chats.filter(c=>c.spaceId===space.id)),essentialNotes:current.essentialNotes?.filter(n=>n.id!==space.id),spaces:current.spaces.filter(s=>s.id!==space.id).map(s=>({...s,sources:s.sources.filter(id=>!ids.has(id))})),chats:current.chats.filter(c=>c.spaceId!==space.id).map(c=>({...c,messages:c.messages.map(m=>({...m,attachments:m.attachments?.filter(id=>!ids.has(id))}))})),files:current.files.filter(f=>!ids.has(f.id)),studySets:current.studySets.filter(s=>s.spaceId!==space.id),plans:(current.plans||[]).filter(p=>p.spaceId!==space.id),automations:current.automations.filter(a=>a.spaceId!==space.id),visuals:current.visuals.filter(v=>!current.chats.some(c=>c.spaceId===space.id&&c.id===v.chatId))};
       // Commit the index before removing blobs, so interruption cannot leave live references to deleted files.
       if(owner!==ownerRef.current)return;stateRef.current=next;setState(next);
       const persistence=saveQueue.current.then(()=>saveState(next,owner));saveQueue.current=persistence.catch(()=>{});await persistence;
@@ -2521,7 +2521,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             onClick={() => setLong(!long)}
           >
             <Icon name="long" size={16} />
-            <span>Long task</span>
+            <span className="long-label">Long task</span>
             <span className="long-state" aria-hidden="true" />
           </button>
         </div>
@@ -2692,7 +2692,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Usage" ? (
-                      <UsageSettings chats={savedChats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
+                      <UsageSettings archive={state.usageArchive} chats={savedChats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
                     ) : settingsTab === "Help & support" ? (
                       <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Open source" description="Mowr is free and open source. Read the code, report a bug or suggest an idea on GitHub."><a className="secondary" href="https://github.com/mowfxy/mowr" target="_blank" rel="noreferrer">GitHub</a></SettingRow></SettingsCard></>
                     ) : (<>
@@ -2761,6 +2761,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               <div
                 className={`chat-view ${activeChat?.messages.length ? "has-messages" : ""} ${isTemporary ? "temporary" : ""}`}
               >
+                {!activeChat?.messages.length && <AsciiField />}
                 {!activeChat?.messages.length ? (
                   <div className="new-chat-content">
                     <div className="greeting-row">
@@ -2921,7 +2922,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       const last = chats.reduce((m, c) => Math.max(m, c.updated || 0), 0);
                       const late = lateBySpace.get(s.id) || 0;
                       return <article className="lib-card" key={s.id}>
-                        {late > 0 && <button type="button" className="lib-card-late" onClick={() => openSpace(s.id, "plan")} aria-label={`${late} overdue in ${s.name}'s plan`} title={`${late} overdue in the plan`}><PlanLateGlyph/>{late}</button>}
+                        {late > 0 && <button type="button" className="lib-card-late" onClick={() => openSpace(s.id, "plan")} aria-label={`${late} overdue in ${s.name}'s plan`} title={`${late} overdue in the plan`}><i className="late-dot" aria-hidden="true"/><b>{late}</b> overdue</button>}
                         <button type="button" className="lib-card-open" onClick={() => openSpace(s.id)}>
                           <SpaceMark space={s} size={28} bare decorative />
                           <strong>{s.name}</strong>
@@ -3002,7 +3003,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           e.target.value = "";
         }}
       />
-      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device, with what Mowr only noted from it. Saved files and memory you kept stay.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);if(desktop&&/^[a-zA-Z0-9_-]{1,80}$/.test(id))void desktop.invoke({action:"memoryForgetChat",chats:[id]}).catch(()=>{});patch(s=>({...s,chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
+      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device, with what Mowr only noted from it. Saved files and memory you kept stay.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);if(desktop&&/^[a-zA-Z0-9_-]{1,80}$/.test(id))void desktop.invoke({action:"memoryForgetChat",chats:[id]}).catch(()=>{});patch(s=>({...s,usageArchive:archiveChats(s.usageArchive,s.chats.filter(c=>c.id===id)),chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
       {modal && (
         <Modal
           title={
