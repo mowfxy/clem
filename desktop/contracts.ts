@@ -34,7 +34,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("checkout") }),
   z.object({ action: z.literal("providerAccounts"), refresh:z.boolean().optional() }),
   z.object({ action: z.literal("providerAutoSwitch"), enabled:z.boolean() }),
-  // The model (and thinking level) for Mowr's own side jobs: naming files, memory notes, condensing a long chat. None: automatic.
+  // The model (and thinking level) for Clem's own side jobs: naming files, memory notes, condensing a long chat. None: automatic.
   z.object({ action: z.literal("helperModel"), set: z.object({ model: z.string().regex(/^[a-zA-Z0-9._:-]{1,100}(?:\[[a-z0-9]{1,8}\])?$/).optional(), reasoning: z.string().regex(/^[a-z]{2,12}$/).optional() }).optional() }),
   z.object({ action: z.literal("claudeStatus") }),
   z.object({ action: z.literal("claudeLogin") }),
@@ -100,7 +100,7 @@ export const requestSchema = z.discriminatedUnion("action", [
     reasoning:z.enum(["none","minimal","low","medium","high","xhigh","max","ultra"]).optional(),
     id: z.string().uuid(),
     scope: scopeSchema,
-    /** Documents Mowr made in this conversation; a change to one updates that same file. */
+    /** Documents Clem made in this conversation; a change to one updates that same file. */
     documents: z.array(z.object({ id: z.string().uuid(), name: z.string().max(200) })).max(20).optional(),
     /** What the model looks at: attached pictures, PDF pages with drawings or scans, pictures inside Office files (src/desktop/page-images.ts). */
     images: z.array(z.object({ name: z.string().max(300), data: z.string().max(11_000_000).regex(/^[A-Za-z0-9+/=]+$/) })).max(80).optional(),
@@ -117,7 +117,7 @@ export const requestSchema = z.discriminatedUnion("action", [
     plain: z.boolean().optional(),
     /** A temporary chat: the model reads memory and files as usual, but nothing from it is remembered or kept. */
     temporary: z.boolean().optional(),
-    /** A request Mowr makes beside the chat (a plan, a review, a source check, a study set, a plan step): it neither goes
+    /** A request Clem makes beside the chat (a plan, a review, a source check, a study set, a plan step): it neither goes
      *  on nor replaces the chat's kept CLI session (desktop/chat-sessions.ts). */
     side: z.boolean().optional(),
     /** The conversation: crops the model cuts are kept with it (desktop/pdf-assets.ts). */
@@ -152,7 +152,7 @@ export const requestSchema = z.discriminatedUnion("action", [
     source: z.string().max(300).optional(),
   }),
   z.object({ action: z.literal("memoryForget"), id: z.string().uuid(), ids: z.array(z.string().uuid()).max(20).optional() }),
-  /** Deleted chats: what Mowr only learned from them is forgotten; what the person kept stays. */
+  /** Deleted chats: what Clem only learned from them is forgotten; what the person kept stays. */
   z.object({ action: z.literal("memoryForgetChat"), chats: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/)).max(5000) }),
   z.object({ action: z.literal("memoryConfirm"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryToggle"), enabled: z.boolean() }),
@@ -232,7 +232,7 @@ export type DesktopBridge = {
   startDrag?: (path: string) => void;
   /** Recolours the Windows caption buttons to sit in the page: normal, or dimmed behind a pop-up. */
   setWindowTone?: (tone: "normal" | "dim" | "light" | "light-dim") => void;
-  /** Reads, or changes, whether closing keeps Mowr running in the tray and whether it starts with Windows. */
+  /** Reads, or changes, whether closing keeps Clem running in the tray and whether it starts with Windows. */
   background?: (next?: { keepRunning?: boolean; startWithWindows?: boolean }) => Promise<{ keepRunning: boolean; startWithWindows: boolean }>;
   onChat: (
     listener: (event: {
@@ -244,7 +244,7 @@ export type DesktopBridge = {
       error?: string;
       /** type "error": the plan's usage limit stopped the answer; no files were sent. `resetsAt` (ms) when known. */
       limit?: { resetsAt?: number };
-      /** type "memory": what Mowr noted about the person after this answer. */
+      /** type "memory": what Clem noted about the person after this answer. */
       memories?: { id: string; text: string; confirmed: boolean }[];
       /** An artifact that replaced an existing file's contents (a revised document) rather than a new file. */
       revised?: { version: import("../core/types").FileVersion };

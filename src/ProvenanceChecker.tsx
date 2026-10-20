@@ -13,20 +13,20 @@ const verdicts: Record<"found" | "changed" | "none", Verdict> = {
   found: {
     tone: "found",
     icon: "verify",
-    title: "Made with Mowr",
-    body: "The Mowr mark is in this file and the content is unchanged since it was exported.",
+    title: "Made with Clem",
+    body: "The Clem mark is in this file and the content is unchanged since it was exported.",
   },
   changed: {
     tone: "changed",
     icon: "alert",
     title: "The mark doesn't match",
-    body: "A Mowr mark was found, but it is invalid or the content has changed since it was exported.",
+    body: "A Clem mark was found, but it is invalid or the content has changed since it was exported.",
   },
   none: {
     tone: "none",
     icon: "search",
-    title: "No Mowr mark found",
-    body: "This doesn't rule out Mowr: editing or re-exporting a file can remove the mark.",
+    title: "No Clem mark found",
+    body: "This doesn't rule out Clem: editing or re-exporting a file can remove the mark.",
   },
 };
 export default function ProvenanceChecker() {
@@ -62,10 +62,10 @@ export default function ProvenanceChecker() {
   return (
     <main className="provenance-page">
       <header>
-        <a href="https://mowrai.com" aria-label="Mowr home">
+        <a href="https://clem.m4labs.xyz" aria-label="Clem home">
           <Logo size={28} />
           <span>
-            mowr <span className="checker-slash">/</span> check
+            clem <span className="checker-slash">/</span> check
           </span>
         </a>
       </header>
@@ -75,9 +75,9 @@ export default function ProvenanceChecker() {
                     <h1>
             Does it carry
             <br />
-            the Mowr mark?
+            the Clem mark?
           </h1>
-          <p>Look for the invisible marker in a document made with Mowr.</p>
+          <p>Look for the invisible marker in a document made with Clem.</p>
         </div>
         <div className="checker-workspace">
           <div
@@ -101,7 +101,7 @@ export default function ProvenanceChecker() {
               <Icon name="files" size={30} />
             </span>
             <h2>{busy ? "Reading the mark…" : "Drop a file to check it"}</h2>
-            <p>{filename || "Documents, slides, sheets and PDFs made with Mowr."}</p>
+            <p>{filename || "Documents, slides, sheets and PDFs made with Clem."}</p>
             <button
               className="primary"
               disabled={busy}
@@ -155,7 +155,7 @@ export default function ProvenanceChecker() {
       </section>
       <footer>
         <span>Made with care. Checked on your device.</span>
-        <a href="https://mowrai.com/#/privacy">Privacy</a>
+        <a href="https://clem.m4labs.xyz/#/privacy">Privacy</a>
       </footer>
     </main>
   );

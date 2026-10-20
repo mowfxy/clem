@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
-const root = await mkdtemp(join(tmpdir(), "mowr-migration-test-")),
+const root = await mkdtemp(join(tmpdir(), "clem-migration-test-")),
   profile = join(root, "profile"),
   fixture = join(root, "seed.cjs");
 await writeFile(
@@ -19,7 +19,7 @@ try {
   await seed.close();
   seed = null;
   migrated = await electron.launch({
-    executablePath: resolve("release/win-unpacked/Mowr.exe"),
+    executablePath: resolve("release/win-unpacked/Clem.exe"),
     args: ["--user-data-dir=" + profile],
   });
   await migrated.firstWindow();

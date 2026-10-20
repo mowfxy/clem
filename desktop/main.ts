@@ -75,12 +75,12 @@ import {kinetraTool} from './kinetra-runtime';
 import {turnTimer,addTokens,type TurnStats} from './turn-timing';
 import {answerLedger} from './answer-ledger';
 import {toolStatus} from './codex';
-import {documentsNote,foldersPlaybook} from '../core/mowr-skills';
+import {documentsNote,foldersPlaybook} from '../core/clem-skills';
 import {cleanAiName,namingPrompt} from '../core/file-naming';
 import {readPictures} from './ocr';
 import {installCli} from './cli-install';
 import {CodexEngine,daily} from './engines';
-import {MOWR_FILE,cliFileToolsGuide,distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
+import {CLEM_FILE,cliFileToolsGuide,distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
 import {
   inside,
   link,
@@ -118,7 +118,7 @@ import {
 
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "mowr",
+    scheme: "clem",
     privileges: {
       standard: true,
       secure: true,
@@ -127,7 +127,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-// A second launch only hands its arguments to the running Mowr: app.quit() doesn't stop 'ready' from firing, so
+// A second launch only hands its arguments to the running Clem: app.quit() doesn't stop 'ready' from firing, so
 // nothing below may migrate data, clear files or open a window in it.
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
@@ -139,7 +139,7 @@ let claudeAccounts: CliAccounts<ClaudeProvider> | undefined;
 let grokAccounts: CliAccounts<GrokProvider> | undefined;
 let antigravityAccounts: CliAccounts<AntigravityProvider> | undefined;
 let folderWatcher: FolderWatcher | undefined;
-/** A .mowrpack opened from Explorer, handed to the workspace once it is ready to receive it. */
+/** A .clempack opened from Explorer, handed to the workspace once it is ready to receive it. */
 const packPath = (argv: string[]) => argv.find((arg) => arg.toLowerCase().endsWith(PACK_EXTENSION) && existsSync(arg));
 let pendingPack = packPath(process.argv);
 async function deliverPack(path: string) {
@@ -147,7 +147,7 @@ async function deliverPack(path: string) {
     const info = await statFile(path);
     if (!info.isFile() || info.size > 105_000_000) return;
     const bytes = await readDiskFile(path);
-    window.webContents.send("mowr:pack", { bytes: new Uint8Array(bytes), name: basename(path) });
+    window.webContents.send("clem:pack", { bytes: new Uint8Array(bytes), name: basename(path) });
   } catch { /* An unreadable file is ignored; the person can open it from Subjects instead. */ }
 }
 app.on("second-instance", (_event, argv) => {
@@ -157,7 +157,7 @@ app.on("second-instance", (_event, argv) => {
   if (path && window && !window.webContents.isLoading()) void deliverPack(path);
 });
 app.on("window-all-closed", () => app.quit());
-// Closing the window keeps Mowr running in the tray (routines keep working); Quit ends it.
+// Closing the window keeps Clem running in the tray (routines keep working); Quit ends it.
 let quitting = false;
 let tray: Tray | undefined;
 const startedInBackground = process.argv.includes("--background");
@@ -171,7 +171,7 @@ app.on("before-quit", () => {
   antigravityAccounts?.stop();
   folderWatcher?.stop();
 });
-const workspaceRoot=app.commandLine.hasSwitch('user-data-dir')?join(app.getPath('userData'),'Workspace'):join(app.getPath('documents'),'Mowr');
+const workspaceRoot=app.commandLine.hasSwitch('user-data-dir')?join(app.getPath('userData'),'Workspace'):join(app.getPath('documents'),'Clem');
 const previousSession=app.getPath('sessionData');
 const durableSession=join(workspaceRoot,'Local data');
 // Chromium's OSCrypt key lives in Local State. Copy it before Electron becomes ready,
@@ -196,10 +196,10 @@ void app.whenReady().then(async () => {
   await mkdir(durableSession,{recursive:true});
   const migrationMarker=join(durableSession,'.migration-complete');
   try{await access(migrationMarker);}catch{for(const name of ['IndexedDB','Local Storage','Session Storage']){const source=join(previousSession,name);try{await access(source);}catch{continue;}await cp(source,join(durableSession,name),{recursive:true,force:false,errorOnExist:false});}await writeFile(migrationMarker,'1');}
-  app.setAppUserModelId("com.mowrai.desktop");
+  app.setAppUserModelId("xyz.m4labs.clem");
   await afterUpdate(workspaceRoot,app.getVersion(),async()=>{await session.defaultSession.clearCache();await session.defaultSession.clearCodeCaches({});}).catch(()=>{});
   // Copies of files opened in the browser from earlier runs.
-  void rm(join(app.getPath("temp"),"Mowr","view"),{recursive:true,force:true}).catch(()=>{});
+  void rm(join(app.getPath("temp"),"Clem","view"),{recursive:true,force:true}).catch(()=>{});
   const vault = new Vault(join(app.getPath("userData"), "protected"));
   // Earlier versions kept a progress file per chat and Telegram request, and Telegram connections, conversations and choices; Telegram is gone, so they are removed.
   void readdir(join(app.getPath("userData"), "protected")).then((names) => Promise.all(names.filter((name) => /^(?:task|telegram)-.+\.bin$/.test(name)).map((name) => unlink(join(app.getPath("userData"), "protected", name)).catch(() => {})))).catch(() => {});
@@ -217,7 +217,7 @@ void app.whenReady().then(async () => {
       if (!sameIndex(before, files)) await vault.write(cache, files);
       return files;
     },
-    (event) => { if (window && !window.isDestroyed()) window.webContents.send("mowr:folder", event); },
+    (event) => { if (window && !window.isDestroyed()) window.webContents.send("clem:folder", event); },
   );
   /** Keeps the watcher on the signed-in person's linked folders, unless they turned watching off. */
   async function watchFolders(owner: string) {
@@ -232,16 +232,16 @@ void app.whenReady().then(async () => {
   const ledger = answerLedger(join(app.getPath("userData"), "logs"));
   await mkdir(local, { recursive: true });
   const codexExecutable =
-    process.env.MOWR_CODEX_EXECUTABLE ||
+    process.env.CLEM_CODEX_EXECUTABLE ||
     (app.isPackaged
       ? join(process.resourcesPath, "codex", "bin", "codex.exe")
       : resolve(
           "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
         ));
   // Codex is kept at OpenAI's latest build, since only a current Codex lists newly released models. A Codex chosen
-  // with MOWR_CODEX_EXECUTABLE (development, tests) is used as it is.
+  // with CLEM_CODEX_EXECUTABLE (development, tests) is used as it is.
   const codexEngine = new CodexEngine(codexExecutable, local);
-  const codexProgram = process.env.MOWR_CODEX_EXECUTABLE ? codexExecutable : () => codexEngine.executable();
+  const codexProgram = process.env.CLEM_CODEX_EXECUTABLE ? codexExecutable : () => codexEngine.executable();
   codex = new Codex(
     codexProgram,
     join(local, "codex"),
@@ -258,8 +258,8 @@ void app.whenReady().then(async () => {
     }
   })();
   codexEngine.onUpdated = () => { codex.engineChanged(); providerAccounts.engineChanged(); };
-  const claudeExecutable=process.env.MOWR_CLAUDE_EXECUTABLE||'claude';
-  // The first Claude account keeps the folder Mowr always used; each added one has its own CLAUDE_CONFIG_DIR.
+  const claudeExecutable=process.env.CLEM_CLAUDE_EXECUTABLE||'claude';
+  // The first Claude account keeps the folder Clem always used; each added one has its own CLAUDE_CONFIG_DIR.
   const claudeFolder=(owner:string,id:string)=>id==='default'?join(local,owner,'claude'):join(local,owner,'claude-accounts',id);
   const claudes=claudeAccounts=new CliAccounts<ClaudeProvider>('claude',vault,{
     make:(owner,id)=>new ClaudeProvider(claudeExecutable,claudeFolder(owner,id)),
@@ -268,7 +268,7 @@ void app.whenReady().then(async () => {
   });
   /** The active Claude account's provider. */
   const claudeFor=async(owner:string)=>(await claudes.selected(owner)).provider;
-  /** Where an account's Claude sign-in is kept with the Mowr account: the first as before, added ones by their own id. */
+  /** Where an account's Claude sign-in is kept with the Clem account: the first as before, added ones by their own id. */
   const claudeLinkId=(id:string)=>id==='default'?CLAUDE_LINK_ID:'claude-'+id;
   const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   const driveMedia=new DriveMediaServer(driveLive,async()=>!!await auth.user());
@@ -282,7 +282,7 @@ void app.whenReady().then(async () => {
   const keepEnginesCurrent=(owner:string,force=false)=>{
     if(Date.now()-enginesLooked<60_000)return;
     enginesLooked=Date.now();
-    if(!process.env.MOWR_CODEX_EXECUTABLE)void codexEngine.update(force);
+    if(!process.env.CLEM_CODEX_EXECUTABLE)void codexEngine.update(force);
     const failed=(error:unknown)=>console.warn('Engine update:',(error as Error)?.message||error);
     void daily(local,'claude',async()=>{await (await claudeFor(owner)).update();for(const provider of await claudes.all(owner))provider.forget();}).catch(failed);
     void daily(local,'grok',async()=>{const grok=await grokFor(owner);if(!(await grok.status()).installed)return;await installCli('grok');for(const provider of await groks.all(owner))provider.forget();}).catch(failed);
@@ -291,14 +291,14 @@ void app.whenReady().then(async () => {
   // The first Grok account uses Grok's own home (~/.grok); each added one has its own GROK_HOME.
   const grokFolder=(owner:string,id:string)=>id==='default'?join(local,owner,'grok'):join(local,owner,'grok-accounts',id);
   const groks=grokAccounts=new CliAccounts<GrokProvider>('grok',vault,{
-    make:(owner,id)=>new GrokProvider(grokFolder(owner,id),process.env.MOWR_GROK_EXECUTABLE,id==='default'?undefined:join(grokFolder(owner,id),'home')),
+    make:(owner,id)=>new GrokProvider(grokFolder(owner,id),process.env.CLEM_GROK_EXECUTABLE,id==='default'?undefined:join(grokFolder(owner,id),'home')),
     folder:grokFolder,
     describe:async(provider,refresh)=>{const s=await provider.status(refresh);return {installed:s.installed,connected:s.connected,plan:s.usage?.plan,usage:grokUsage(s.usage),...(s.connected&&s.usage?{checkedAt:Date.now()}:{}),...(!s.connected&&s.error?{error:s.error}:{})};},
   });
   /** The active Grok account's provider. */
   const grokFor=async(owner:string)=>(await groks.selected(owner)).provider;
   // Google's Antigravity agent, installed once for every account; each account keeps its own sign-in folder (its GEMINI_HOME),
-  // Mowr's own, never the folder of an Antigravity app the person also uses.
+  // Clem's own, never the folder of an Antigravity app the person also uses.
   const antigravityEngine=new AntigravityEngine(local);
   const antigravityFolder=(owner:string,id:string)=>id==='default'?join(local,owner,'antigravity'):join(local,owner,'antigravity-accounts',id);
   const antigravities=antigravityAccounts=new CliAccounts<AntigravityProvider>('antigravity',vault,{
@@ -310,15 +310,15 @@ void app.whenReady().then(async () => {
   const antigravityFor=async(owner:string)=>(await antigravities.selected(owner)).provider;
   /** Google's sign-in page opens in the browser; the agent's own loopback address on this PC finishes it. */
   const antigravitySignIn=(provider:AntigravityProvider)=>provider.login(url=>{const page=googleSignInUrl(url);if(page)void shell.openExternal(page);});
-  /** Claude's sign-in page in a Mowr window of its own: in the default browser an installed Claude desktop app took the
+  /** Claude's sign-in page in a Clem window of its own: in the default browser an installed Claude desktop app took the
    *  sign-in over (the person was signed in to that app, and Claude Code was never authorised). Its own saved session
    *  keeps the person signed in to claude.ai next time; other schemes (claude://) are never followed. */
   const signInDenied=new Set(["media","geolocation","notifications","display-capture","midi","midiSysex","idle-detection","clipboard-read","openExternal","window-management","fileSystem"]);
   const claudeSignInPage=(url:string)=>{
-    const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Mowr",parent:window,autoHideMenuBar:true,backgroundColor:"#141414",icon:join(__dirname,"../desktop/icon.ico"),
+    const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Clem",parent:window,autoHideMenuBar:true,backgroundColor:"#141414",icon:join(__dirname,"../desktop/icon.ico"),
       webPreferences:{partition:"persist:claude-signin",contextIsolation:true,nodeIntegration:false,sandbox:true}});
     // A plain Chrome identity: Google refuses sign-in to pages it thinks are embedded in an app.
-    page.webContents.setUserAgent(page.webContents.getUserAgent().replace(/\s(?:Electron|Mowr)\/\S+/g,""));
+    page.webContents.setUserAgent(page.webContents.getUserAgent().replace(/\s(?:Electron|Clem)\/\S+/g,""));
     const allowed=(target:string)=>{try{const u=new URL(target);return u.protocol==="https:"||(u.protocol==="http:"&&["localhost","127.0.0.1"].includes(u.hostname));}catch{return false;}};
     page.webContents.on("will-navigate",(event,target)=>{if(!allowed(target))event.preventDefault();});
     page.webContents.on("will-redirect",(event,target)=>{if(!allowed(target))event.preventDefault();});
@@ -343,7 +343,7 @@ void app.whenReady().then(async () => {
       // Kept CLI sessions are the previous person's conversations: none carries over.
       chatSessions.clear();
       if(owner==='signed-out'){folderWatcher?.stop();watchOwner='';}else void watchFolders(owner).catch(()=>{});
-      // Sign-ins kept with the Mowr account come back before any Codex process starts.
+      // Sign-ins kept with the Clem account come back before any Codex process starts.
       if(owner!=='signed-out')await Promise.race([
         providerLink.restore(owner).then(async r=>{
           // A restore that outlasted the wait finishes after the person may have signed out or switched: it then changes nothing.
@@ -388,7 +388,7 @@ void app.whenReady().then(async () => {
   const accountIds = new WeakMap<object, string>();
   const accountOf = (provider: object) => { let id = accountIds.get(provider); if (!id) { id = randomUUID(); accountIds.set(provider, id); } return id; };
   /**
-   * One answer from whichever AI the person chose (ChatGPT through Codex, Claude or Grok), with Mowr's
+   * One answer from whichever AI the person chose (ChatGPT through Codex, Claude or Grok), with Clem's
    * Kinetra tools, documents and pictures. Chat and memory notes all go through here, so a
    * feature never works on one provider only. Each answer logs its timings (desktop/turn-timing.ts).
    */
@@ -419,8 +419,8 @@ void app.whenReady().then(async () => {
       if (ended) { await finishing(); emit({ id, type: "done" }); }
       return;
     }
-    // Claude, Grok and Antigravity get Mowr's rules and tool guide in their system prompt; only this turn's notes (its files) go with the request.
-    // In a working folder they keep their own system prompt, and Mowr's follows it.
+    // Claude, Grok and Antigravity get Clem's rules and tool guide in their system prompt; only this turn's notes (its files) go with the request.
+    // In a working folder they keep their own system prompt, and Clem's follows it.
     const system = workspace ? cliSystemPrompt(instructions) : systemPrompt(instructions);
     const cancelled = () => cancelledRuns.has(id);
     emit({ id, type: "status", text: `${name} is working on it…` });
@@ -557,7 +557,7 @@ void app.whenReady().then(async () => {
     // The timing log (desktop/turn-timing.ts) waits for the counts; the answer above does not.
     await accounting;
   }
-  /** The model the person chose for Mowr's side jobs in Settings → Models (none: automatic). */
+  /** The model the person chose for Clem's side jobs in Settings → Models (none: automatic). */
   const helperKey = (owner: string) => "helper-model-" + owner;
   type HelperChoice = { model?: string; reasoning?: string };
   /**
@@ -621,12 +621,12 @@ void app.whenReady().then(async () => {
     finally { if (path) await unlink(path).catch(() => {}); }
   }
   /**
-   * Gets the AI a message is about to go to ready while Mowr still prepares the message (files, memory, account
+   * Gets the AI a message is about to go to ready while Clem still prepares the message (files, memory, account
    * checks): Codex's connection is opened, Claude's and Grok's sign-ins are checked. Never waits and never fails.
    */
   function prepareFor(owner: string, model?: string, ahead = false) {
     // Antigravity opens the next chat message's session ahead, with the rules a chat answer in the working folder gets (answerTimed).
-    if (model?.startsWith(ANTIGRAVITY_PREFIX)) void antigravityFor(owner).then((ag) => ag.prepare(ahead, { cwd: join(local, owner, "work", "mowr"), system: cliSystemPrompt(kinetraCli), folder: true, native: true })).catch(() => {});
+    if (model?.startsWith(ANTIGRAVITY_PREFIX)) void antigravityFor(owner).then((ag) => ag.prepare(ahead, { cwd: join(local, owner, "work", "clem"), system: cliSystemPrompt(kinetraCli), folder: true, native: true })).catch(() => {});
     else if (model?.startsWith(GROK_PREFIX)) void grokFor(owner).then((grok) => grok.prepare(ahead)).catch(() => {});
     else if (model?.startsWith("claude:")) void claudeFor(owner).then((claude) => claude.prepare(ahead)).catch(() => {});
     else void selectProvider(owner).then((provider) => provider.prepare(ahead)).catch(() => {});
@@ -659,8 +659,8 @@ void app.whenReady().then(async () => {
   /** Explains why the workspace is locked in the person's terms. */
   function entitlementMessage(entitlement: { reason?: string; message?: string }) {
     if (entitlement.reason === "suspended")
-      return "Your account is suspended" + (entitlement.message ? ": " + entitlement.message : ".") + " Contact support@mowrai.com if this is a mistake.";
-    return "Mowr could not confirm your account. Check your connection and try again.";
+      return "Your account is suspended" + (entitlement.message ? ": " + entitlement.message : ".") + " Contact support@m4labs.xyz if this is a mistake.";
+    return "Clem could not confirm your account. Check your connection and try again.";
   }
   const setupDefault = { step: 0, username: "", displayName: "", memory: true };
   /** Entitlement changes rarely; an active result is reused for five minutes. */
@@ -734,12 +734,12 @@ void app.whenReady().then(async () => {
       });
       if (!added.length) return;
       scheduleMemorySync(owner);
-      if (!window.isDestroyed()) window.webContents.send("mowr:chat", { id: eventId, type: "memory", text: added.map((m) => m.text).join("\n"), memories: added.map((m) => ({ id: m.id, text: m.text, confirmed: m.confirmed })) });
+      if (!window.isDestroyed()) window.webContents.send("clem:chat", { id: eventId, type: "memory", text: added.map((m) => m.text).join("\n"), memories: added.map((m) => ({ id: m.id, text: m.text, confirmed: m.confirmed })) });
     }).catch((error) => console.warn("[memory] could not save what was learned:", (error as Error).message));
   }
   /**
    * Memory syncs with the person's other devices whenever it changes (shortly after, so a burst of changes is
-   * one exchange), when Mowr starts, and when memory is opened. Changes made on this PC while the exchange was
+   * one exchange), when Clem starts, and when memory is opened. Changes made on this PC while the exchange was
    * on the network are kept on top of what it returned.
    */
   async function syncMemory(owner: string) {
@@ -771,7 +771,7 @@ void app.whenReady().then(async () => {
   }
   void authReady.then(async () => { const user = await auth.user(false); if (user) scheduleMemorySync(user.id); }).catch(() => {});
 
-  // Asks mowrai.com for the welcome email once per account on this PC; the server also sends it at most once per account.
+  // Asks clem.m4labs.xyz for the welcome email once per account on this PC; the server also sends it at most once per account.
   let welcomeAsked = false;
   async function welcomeOnce() {
     if (welcomeAsked) return;
@@ -780,8 +780,8 @@ void app.whenReady().then(async () => {
       const user = await auth.user();
       if (!user || !/^[\w-]{1,100}$/.test(user.id) || await vault.read("welcome-" + user.id, false)) return;
       const { data } = await auth.client!.auth.getSession();
-      const response = await fetch("https://mowrai.com/api/email/welcome", { method: "POST", redirect: "error", signal: AbortSignal.timeout(20000),
-        headers: { Authorization: "Bearer " + data.session!.access_token, Origin: "https://mowrai.com", "Content-Type": "application/json" }, body: "{}" });
+      const response = await fetch("https://clem.m4labs.xyz/api/email/welcome", { method: "POST", redirect: "error", signal: AbortSignal.timeout(20000),
+        headers: { Authorization: "Bearer " + data.session!.access_token, Origin: "https://clem.m4labs.xyz", "Content-Type": "application/json" }, body: "{}" });
       if (response.ok) await vault.write("welcome-" + user.id, true);
       else setTimeout(() => { welcomeAsked = false; }, 600_000);
     } catch { setTimeout(() => { welcomeAsked = false; }, 600_000); }
@@ -834,7 +834,7 @@ void app.whenReady().then(async () => {
     };
   }
   const root = resolve(__dirname, "../dist");
-  protocol.handle("mowr", async (request) => {
+  protocol.handle("clem", async (request) => {
     const url = new URL(request.url);
     if (url.hostname !== "app") return new Response("", { status: 403 });
     if (url.pathname === "/api/diagram") {
@@ -872,14 +872,14 @@ void app.whenReady().then(async () => {
       });
     }
     if(url.pathname==='/api/local/state'||/^\/api\/local\/files\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
-      try{const user=await auth.user();if(!user)return Response.json({error:'Sign in first.'},{status:401});if(request.headers.get('X-Mowr-Owner')!==user.id)return Response.json({error:'Account changed.'},{status:409});
+      try{const user=await auth.user();if(!user)return Response.json({error:'Sign in first.'},{status:401});if(request.headers.get('X-Clem-Owner')!==user.id)return Response.json({error:'Account changed.'},{status:409});
       if(url.pathname.endsWith('/state')){if(request.method==='GET')return Response.json(await disk.readState(user.id));if(request.method==='PUT'){const value=await request.json();await disk.writeState(user.id,value);return Response.json({ok:true});}}
       else {const id=url.pathname.split('/').at(-1)!;if(request.method==='GET'){const file=await disk.readFile(user.id,id);return file?new Response(new Uint8Array(file)):new Response(null,{status:404});}if(request.method==='PUT'){await disk.writeFile(user.id,id,new Uint8Array(await request.arrayBuffer()));return Response.json({ok:true});}if(request.method==='DELETE'){await disk.deleteFile(user.id,id);return Response.json({ok:true});}}
-      return new Response(null,{status:405});}catch{return Response.json({error:'Could not access your Documents/Mowr workspace. Check available disk space and permissions.'},{status:500});}
+      return new Response(null,{status:405});}catch{return Response.json({error:'Could not access your Documents/Clem workspace. Check available disk space and permissions.'},{status:500});}
     }
     if (url.pathname === "/api/models") {
       const user = await auth.user();
-      // Every list comes from the provider itself (Codex's model/list, Claude Code's model handshake, grok models), so a model added to the person's plan shows up here without a Mowr update.
+      // Every list comes from the provider itself (Codex's model/list, Claude Code's model handshake, grok models), so a model added to the person's plan shows up here without a Clem update.
       try{if(!user)return Response.json([]);return Response.json(await modelsFor(user.id));}catch{return Response.json({error:"Could not sync models. Try refreshing."},{status:503});}
     }
     if ((request.method === "GET" && (url.pathname === "/api/drive/files" || /^\/api\/drive\/file\/[\w-]{1,150}$/.test(url.pathname))) || (request.method === "DELETE" && url.pathname === "/api/drive/connection") || (request.method === "POST" && url.pathname === "/api/drive/upload")) {
@@ -888,12 +888,12 @@ void app.whenReady().then(async () => {
         const { data } = await auth.client!.auth.getSession();
         const upload = request.method === "POST" ? await request.arrayBuffer() : undefined;
         if (upload && upload.byteLength > 4_000_000) return Response.json({error:"Files saved to Drive must be under 4 MB."},{status:413});
-        const response = await fetch("https://mowrai.com" + url.pathname + url.search, {
+        const response = await fetch("https://clem.m4labs.xyz" + url.pathname + url.search, {
           method:request.method, redirect:"error", signal:AbortSignal.timeout(60000), body:upload,
-          headers:{Authorization:"Bearer " + data.session!.access_token, Origin:"https://mowrai.com", ...(upload?{"Content-Type":request.headers.get("Content-Type")||"application/octet-stream"}:{})},
+          headers:{Authorization:"Bearer " + data.session!.access_token, Origin:"https://clem.m4labs.xyz", ...(upload?{"Content-Type":request.headers.get("Content-Type")||"application/octet-stream"}:{})},
         });
         if (request.method === "DELETE" && response.ok) { driveLive.forget(); driveMedia.forget(); }
-        return new Response(response.body, {status:response.status, headers:{"Content-Type":response.headers.get("Content-Type") || "application/octet-stream", "X-Mowr-File-Name":response.headers.get("X-Mowr-File-Name") || "", "Cache-Control":"no-store"}});
+        return new Response(response.body, {status:response.status, headers:{"Content-Type":response.headers.get("Content-Type") || "application/octet-stream", "X-Clem-File-Name":response.headers.get("X-Clem-File-Name") || "", "Cache-Control":"no-store"}});
       } catch { return Response.json({error:"Drive is unavailable. Check your connection and retry."},{status:502}); }
     }
     // Drive files streamed for viewing (videos seek via Range); nothing is saved.
@@ -929,7 +929,7 @@ void app.whenReady().then(async () => {
     height: 960,
     minWidth: 800,
     minHeight: 600,
-    title: "Mowr",
+    title: "Clem",
     // Painted before the page loads, so it follows Windows' light or dark setting, the app's default theme.
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#141414" : "#faf8f3",
     titleBarStyle: "hidden",
@@ -951,8 +951,8 @@ void app.whenReady().then(async () => {
   applyLogin();
   const showWindow = () => { if (window.isDestroyed()) return; if (window.isMinimized()) window.restore(); window.show(); window.focus(); };
   tray = new Tray(nativeImage.createFromPath(join(__dirname, "../desktop/icon.ico")));
-  tray.setToolTip("Mowr");
-  tray.setContextMenu(Menu.buildFromTemplate([{ label: "Open Mowr", click: showWindow }, { type: "separator" }, { label: "Quit Mowr", click: () => { quitting = true; app.quit(); } }]));
+  tray.setToolTip("Clem");
+  tray.setContextMenu(Menu.buildFromTemplate([{ label: "Open Clem", click: showWindow }, { type: "separator" }, { label: "Quit Clem", click: () => { quitting = true; app.quit(); } }]));
   tray.on("click", showWindow);
   // Signing out or shutting down Windows must never be held up by hiding to the tray.
   // Back at the window after a pause: the AI is made ready while the person types, not after they send.
@@ -973,7 +973,7 @@ void app.whenReady().then(async () => {
     event.preventDefault();
     window.hide();
   });
-  ipcMain.handle("mowr:background", async (event, next?: Partial<Background>) => {
+  ipcMain.handle("clem:background", async (event, next?: Partial<Background>) => {
     if (event.sender !== window.webContents) throw Error("Not allowed.");
     if (next && typeof next === "object") {
       background = { ...background, ...(typeof next.keepRunning === "boolean" ? { keepRunning: next.keepRunning } : {}), ...(typeof next.startWithWindows === "boolean" ? { startWithWindows: next.startWithWindows } : {}) };
@@ -985,7 +985,7 @@ void app.whenReady().then(async () => {
   window.webContents.session.webRequest.onBeforeSendHeaders(
     {urls:["https://www.youtube-nocookie.com/embed/*"]},
     (details,callback)=>{
-      if(details.webContentsId===window.webContents.id)details.requestHeaders.Referer="https://com.mowrai.desktop/";
+      if(details.webContentsId===window.webContents.id)details.requestHeaders.Referer="https://xyz.m4labs.clem/";
       callback({requestHeaders:details.requestHeaders});
     },
   );
@@ -1002,15 +1002,15 @@ void app.whenReady().then(async () => {
     // A custom scheme's URL origin is "null", so the scheme and host are compared instead.
     try {
       const target = new URL(url);
-      if (target.protocol !== "mowr:" || target.host !== "app") event.preventDefault();
+      if (target.protocol !== "clem:" || target.host !== "app") event.preventDefault();
     } catch { event.preventDefault(); }
   });
-  // Everything is refused except what Mowr's own page needs for video: full screen, and reaching the private
+  // Everything is refused except what Clem's own page needs for video: full screen, and reaching the private
   // 127.0.0.1 server that streams Drive video (Chromium's Local Network Access asks for it; without it the player is blocked),
   // and writing to the clipboard so the Copy buttons work.
   const allowed = new Set(["fullscreen", "loopback-network", "local-network-access", "clipboard-sanitized-write"]);
   window.webContents.session.setPermissionRequestHandler(
-    (contents, permission, callback, details) => callback(allowed.has(permission) && contents === window.webContents && (permission === "fullscreen" || String(details?.requestingUrl || "").startsWith("mowr://app/"))),
+    (contents, permission, callback, details) => callback(allowed.has(permission) && contents === window.webContents && (permission === "fullscreen" || String(details?.requestingUrl || "").startsWith("clem://app/"))),
   );
   Menu.setApplicationMenu(null);
   // Right-click: spelling suggestions for a misspelled word, then the usual edit actions. Pages that open their own
@@ -1036,7 +1036,7 @@ void app.whenReady().then(async () => {
     window.show(); window.focus();
     if (!bytes) return;
     const stamp = new Date().toTimeString().slice(0, 5).replace(":", ".");
-    window.webContents.send("mowr:capture", { bytes: new Uint8Array(bytes), name: `Screen capture ${stamp}.png`, mime: "image/png" });
+    window.webContents.send("clem:capture", { bytes: new Uint8Array(bytes), name: `Screen capture ${stamp}.png`, mime: "image/png" });
   };
   // Ctrl+Shift+Space works from any app. Registration fails quietly if another app owns it.
   try { globalShortcut.register("Control+Shift+Space", () => void capture(false).catch(() => {})); } catch { /* shortcut unavailable */ }
@@ -1052,11 +1052,11 @@ void app.whenReady().then(async () => {
     light: { color: "#faf8f3", symbolColor: "#262a35" },
     "light-dim": { color: "#d9d7d2", symbolColor: "#6f6e69" },
   };
-  ipcMain.on("mowr:tone", (event, tone) => {
+  ipcMain.on("clem:tone", (event, tone) => {
     if (event.sender !== window.webContents || !tones[tone]) return;
     try { window.setTitleBarOverlay({ ...tones[tone], height: 38 }); if (!tone.endsWith("dim")) window.setBackgroundColor(tones[tone].color); } catch {}
   });
-  ipcMain.on("mowr:drag", (event, path) => {
+  ipcMain.on("clem:drag", (event, path) => {
     if (event.sender !== window.webContents || typeof path !== "string" || !sharedFiles.has(path)) return;
     event.sender.startDrag({ file: path, icon: dragIcon.isEmpty() ? nativeImage.createFromPath(join(__dirname, "../desktop/icon.ico")) : dragIcon });
   });
@@ -1064,7 +1064,7 @@ void app.whenReady().then(async () => {
     if (
       event.sender !== window.webContents ||
       event.senderFrame !== window.webContents.mainFrame ||
-      !event.senderFrame.url.startsWith("mowr://app/")
+      !event.senderFrame.url.startsWith("clem://app/")
     )
       throw Error("Untrusted caller.");
     const request = requestSchema.parse(input);
@@ -1115,7 +1115,7 @@ void app.whenReady().then(async () => {
           window.show();
           if (window.isMinimized()) window.restore();
           window.focus();
-          window.webContents.send("mowr:auth");
+          window.webContents.send("clem:auth");
         },
       );
       try {
@@ -1157,7 +1157,7 @@ void app.whenReady().then(async () => {
     await selectProvider(user.id);
     if (request.action === "driveConnect") {
       driveLive.forget();
-      await shell.openExternal("https://mowrai.com/#/drive-connect?account=" + encodeURIComponent(user.id));
+      await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id));
       return {ok:true};
     }
     if(request.action==="essentialSync") {
@@ -1310,7 +1310,7 @@ void app.whenReady().then(async () => {
         records: state.records.filter((m) => m.scope === request.scope || m.scope === PROFILE_SCOPE),
       };
     }
-    // Everything Mowr would still use, across every chat and space: what the memory settings show.
+    // Everything Clem would still use, across every chat and space: what the memory settings show.
     if (request.action === "memoryAll") {
       const {state,syncError}=await syncedMemory();
       const now=Date.now();
@@ -1378,12 +1378,12 @@ void app.whenReady().then(async () => {
       return { bytes: (await makeFile("pdf", spec, { assets: (id) => readAsset(diskCrops(user.id), id) })).bytes };
     }
     if (request.action === "shareSave") {
-      const folder = join(app.getPath("downloads"), "Mowr");
+      const folder = join(app.getPath("downloads"), "Clem");
       await mkdir(folder, { recursive: true });
-      const clean = request.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim() || "Study pack.mowrpack";
-      const stem = clean.replace(/\.mowrpack$/i, "");
-      let path = join(folder, stem + ".mowrpack");
-      for (let n = 2; existsSync(path) && n < 100; n++) path = join(folder, `${stem} (${n}).mowrpack`);
+      const clean = request.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim() || "Study pack.clempack";
+      const stem = clean.replace(/\.clempack$/i, "");
+      let path = join(folder, stem + ".clempack");
+      for (let n = 2; existsSync(path) && n < 100; n++) path = join(folder, `${stem} (${n}).clempack`);
       await writeFile(path, request.data);
       sharedFiles.add(path);
       return { path, name: basename(path) };
@@ -1446,7 +1446,7 @@ void app.whenReady().then(async () => {
     }
     if (request.action === "linkFolder") {
       const selection = await dialog.showOpenDialog(window, {
-        title: "Allow Mowr to index this folder for this conversation or space",
+        title: "Allow Clem to index this folder for this conversation or space",
         properties: ["openDirectory"],
       });
       if (selection.canceled) return null;
@@ -1493,8 +1493,8 @@ void app.whenReady().then(async () => {
       // A read-only copy in a temp folder, opened in the default web browser (or the default app for
       // formats browsers cannot show, such as Word or PowerPoint files).
       const name = viewCopyName(request.name);
-      if (!name) throw Error("Mowr opens only documents, pictures, audio and video, so this file was not opened.");
-      const folder = join(app.getPath("temp"), "Mowr", "view", randomUUID().slice(0, 8));
+      if (!name) throw Error("Clem opens only documents, pictures, audio and video, so this file was not opened.");
+      const folder = join(app.getPath("temp"), "Clem", "view", randomUUID().slice(0, 8));
       await mkdir(folder, { recursive: true });
       const path = join(folder, name);
       await writeFile(path, request.data);
@@ -1531,7 +1531,7 @@ void app.whenReady().then(async () => {
       // The person's own answer, typeset as-is: no voice check, same professional layout.
       return illustratedPdf(markdownDocument(request.markdown, request.title), { checkVoice: false });
     if (request.action === "chat") {
-      // How long Mowr prepares a message before its AI is asked (the timing log's "prep").
+      // How long Clem prepares a message before its AI is asked (the timing log's "prep").
       const received = performance.now();
       const query = retrievalQuery(request.messages);
       // Claude, Grok and Antigravity use their own sign-ins; only ChatGPT picks among the person's Codex accounts.
@@ -1575,7 +1575,7 @@ void app.whenReady().then(async () => {
       library.splice(0, library.length, ...distinctNames(library));
       // A chat that has outgrown the budget never stops: its older turns become a brief written by the person's own AI
       // (kept per chat, extended only as needed) and the newest turns stay word for word.
-      const send = (event: any) => { if (!window.isDestroyed()) window.webContents.send("mowr:chat", event); };
+      const send = (event: any) => { if (!window.isDestroyed()) window.webContents.send("clem:chat", event); };
       const briefs = "chat-briefs-" + user.id, briefKeyOf = briefKey(request.scope, request.messages.find((m) => m.role !== "system")?.content || "", request.chat);
       let condensing = false;
       const condensed = await condenseConversation(request.messages, budget.conversation, {
@@ -1609,7 +1609,7 @@ void app.whenReady().then(async () => {
       // A picture refused part-way leaves none of the ones already saved behind (the turn that removes them never starts).
       const pictures = await savePictures(request.images || []).catch(async (error) => { await Promise.all(imagePaths.map((path) => unlink(path).catch(() => {}))); throw error; });
       // Every AI answers with tools as its own CLI, in a folder of all the person's files (desktop/ai-workspace.ts): every
-      // subject's and project's files under their real names and folders, the chat's attachments, and the files Mowr made.
+      // subject's and project's files under their real names and folders, the chat's attachments, and the files Clem made.
       // Only what changed since the last answer is copied. A plain request (no tools) needs none.
       const started = Date.now();
       let work: { root: string; lane: string; note: string; once: boolean; files: MirrorFile[] } | undefined;
@@ -1618,7 +1618,7 @@ void app.whenReady().then(async () => {
         // One folder of all the person's files for every chat (desktop/ai-workspace.ts); each chat has its own lane in it.
         const chatId = request.temporary ? undefined : request.chat;
         const lane = workspaceLane(chatId, request.id);
-        const root = join(local, user.id, "work", "mowr");
+        const root = join(local, user.id, "work", "clem");
         if (!oldFoldersRemoved.has(user.id)) { oldFoldersRemoved.add(user.id); void removeOldFolders(join(local, user.id, "work")); }
         const state = await disk.readState(user.id).catch(() => null);
         // Claude Code opens PDF pages only with poppler on the PATH (claudeOpensPdfPages); without it, as Codex does.
@@ -1687,7 +1687,7 @@ void app.whenReady().then(async () => {
       const delivery = new Map<string, any>();
       const deliver = () => { for (const event of delivery.values()) send(event); delivery.clear(); };
       const emit = (event: any) => { if (event.type === "done") deliver(); send(event); };
-      // Files Mowr made earlier in this conversation. Asking to change one revises that same file.
+      // Files Clem made earlier in this conversation. Asking to change one revises that same file.
       const documents = new Map<string, string>();
       // Files made in this answer, and the version each earlier file had before this answer first changed it. One answer
       // that changes a file counts as one edit (one Undo step), however many times the model reworked it before replying.
@@ -1772,7 +1772,7 @@ void app.whenReady().then(async () => {
           // A document built from the person's sources (a lecture, a chapter) is planned from their structure first, so
           // the file is checked against every topic, example and exercise rather than stopping at a sketch.
           if (spec.plan === undefined && spec.revise === undefined && (library.length > 0 || pdfs.length > 0))
-            throw Error(`Send "plan" with this request: every heading the finished document will have, taken from the source's structure (each topic, worked example and exercise, in order). Mowr checks ${spec.markdown} against it.`);
+            throw Error(`Send "plan" with this request: every heading the finished document will have, taken from the source's structure (each topic, worked example and exercise, in order). Clem checks ${spec.markdown} against it.`);
           spec = withMarkdownSource(spec, text);
           draft = { path: relative(work!.root, full).split(sep).join("/"), text };
           unchecked = uncheckedExamples(text);
@@ -1839,7 +1839,7 @@ void app.whenReady().then(async () => {
           if (earlier && !before.has(revise)) {
             // The first change this answer makes to a file the person already had: keep that file for Undo.
             const previous = await disk.readFile(user.id, revise);
-            const version = { blob: "v-" + randomUUID(), at: Date.now(), summary: String(change || "Revised by Mowr").slice(0, 200), size: previous?.length || 0 };
+            const version = { blob: "v-" + randomUUID(), at: Date.now(), summary: String(change || "Revised by Clem").slice(0, 200), size: previous?.length || 0 };
             if (previous) {
               await disk.writeFile(user.id, version.blob, new Uint8Array(previous));
               const oldSpec = await disk.readFile(user.id, "spec-" + revise);
@@ -1914,7 +1914,7 @@ void app.whenReady().then(async () => {
             if (!bytes) throw Error("The original this edit was made from is missing.");
             return { bytes: new Uint8Array(bytes), source: ref };
           }
-          // A file Mowr made in this conversation, by id.
+          // A file Clem made in this conversation, by id.
           if (documents.has(ref)) {
             if (!/\.pdf$/i.test(documents.get(ref)!)) throw Error(`${documents.get(ref)} is not a PDF.`);
             const bytes = await disk.readFile(user.id, ref);
@@ -1943,23 +1943,23 @@ void app.whenReady().then(async () => {
       };
       const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
-        // A file named by its path in the working folder ("Subjects/Physics/Week 1/notes.pdf") is that Mowr file, whichever
+        // A file named by its path in the working folder ("Subjects/Physics/Week 1/notes.pdf") is that Clem file, whichever
         // subject or project it is in: the window opens it by its id. Any other path is the file of that name.
         if (typeof tool?.file === "string" && /[\\/]/.test(tool.file) && !findFile(library, tool.file)) {
           const named = basename(tool.file.replace(/\\/g, "/"));
-          // read and search work on this answer's texts by name (only the window knows Mowr file ids): a path to one of
+          // read and search work on this answer's texts by name (only the window knows Clem file ids): a path to one of
           // them is that name, or the request fails and costs the model another step.
           if ((tool.action === "read" || tool.action === "search") && findFile(library, named)) tool = { ...tool, file: named };
           else {
             const at = work ? workspaceRelative(work.root, tool.file) : null, id = at && work ? mirroredId(work.files, at) : undefined;
-            tool = { ...tool, file: id ? MOWR_FILE + id : named };
+            tool = { ...tool, file: id ? CLEM_FILE + id : named };
           }
         }
-        // Every Mowr file is in the working folder: the AI finds those with its own tools. Google Drive is not there, so
+        // Every Clem file is in the working folder: the AI finds those with its own tools. Google Drive is not there, so
         // find searches only Drive, and attach brings in a Drive file (drive:ID) the request needs, read live.
         const driveFile = typeof (tool?.file ?? tool?.id) === "string" && /^drive:[\w-]{10,200}$/.test(tool.file ?? tool.id);
         if (tool?.action === "attach" && work && !driveFile)
-          return { error: "Every file the person keeps in Mowr is already in your working folder (Subjects/, Projects/, Files/): find it there with your own file tools (list, glob, grep) and open it by its path. attach is for Google Drive files (\"drive:ID\")." };
+          return { error: "Every file the person keeps in Clem is already in your working folder (Subjects/, Projects/, Files/): find it there with your own file tools (list, glob, grep) and open it by its path. attach is for Google Drive files (\"drive:ID\")." };
         if (tool?.action === "help" && work) return grokTurn ? kinetraFiles : kinetraCli;
         const read = fileTool(library, tool);
         if (read) return read;
@@ -1972,7 +1972,7 @@ void app.whenReady().then(async () => {
           }
         }
         if (tool?.action === "find" || tool?.action === "attach") {
-          // The person's files anywhere in Mowr and in their Google Drive, found and attached by the window (src/files/finder.ts).
+          // The person's files anywhere in Clem and in their Google Drive, found and attached by the window (src/files/finder.ts).
           try {
             const { data, files } = await windowTask(tool.action, { query: tool.query, file: tool.file ?? tool.id, ...(work ? { driveOnly: true } : {}) });
             if (tool.action !== "attach" || !files[0]) return data;
@@ -2011,7 +2011,7 @@ void app.whenReady().then(async () => {
           }
         }
         if (tool?.action !== "open") return undefined;
-        if (!documents.has(tool.id)) return { error: `No Mowr-made file with id "${tool.id}" in this conversation.` };
+        if (!documents.has(tool.id)) return { error: `No Clem-made file with id "${tool.id}" in this conversation.` };
         const spec = await disk.readFile(user.id, "spec-" + tool.id);
         if (!spec) return { error: "That file's source is missing, so it can only be edited in the file panel." };
         const { action, draft, ...specification } = JSON.parse(spec.toString("utf8"));
@@ -2022,7 +2022,7 @@ void app.whenReady().then(async () => {
       // Claude and Grok always see the whole tool guide (kinetraCompact, the same in every system prompt); what this request
       // adds to it (recipes, a file design guide) and this conversation's files change from turn to turn, so they go in the message.
       const fileNotes = documentsNote([...documents].map(([id, name]) => ({ id, name, draft: drafts.get(id) }))) + (work ? cliFileToolsGuide() : fileToolsGuide(library, pictures.length > 0));
-      // The topic is what the person said and this answer's own sources, never Mowr's rules (which name pulleys, inclines and
+      // The topic is what the person said and this answer's own sources, never Clem's rules (which name pulleys, inclines and
       // charges) or the working folder's list of every file the person keeps: with those, a Math chat carried the circuit,
       // mechanics and optics recipes (~7k tokens re-read at every step). Recipes left out stay one {"action":"recipes"} away.
       const topic = {
@@ -2065,7 +2065,7 @@ void app.whenReady().then(async () => {
       };
       // The person's files in the working folder are copies the AI reads and never changes (Claude Code refuses edits there).
       const workspace = work ? { root: work.root, readOnly: linked.map((f) => f.path), protect: [...LIBRARY, TEXT].map((top) => join(work!.root, top)), writer: extras } : undefined;
-      console.log(`[mowr timing] prep ${Math.round(performance.now() - received)}ms${work ? ` files=${Math.round(started ? Date.now() - started : 0)}ms` : ""}`);
+      console.log(`[clem timing] prep ${Math.round(performance.now() - received)}ms${work ? ` files=${Math.round(started ? Date.now() - started : 0)}ms` : ""}`);
       const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
@@ -2104,12 +2104,12 @@ void app.whenReady().then(async () => {
       return { started: true };
     }
   };
-  ipcMain.handle("mowr:request", (event, input) => handleRequest(event, input).catch((error) => {
+  ipcMain.handle("clem:request", (event, input) => handleRequest(event, input).catch((error) => {
     // A chat that failed before its answer started (entitlement, files, a Stop while preparing) has nothing left to stop.
     if (input?.action === "chat" && typeof input.id === "string") cancelledRuns.end(input.id);
     throw error;
   }));
-  await window.loadURL("mowr://app/");
+  await window.loadURL("clem://app/");
   if (pendingPack) { const path = pendingPack; pendingPack = undefined; setTimeout(() => void deliverPack(path), 1500); }
 });
 

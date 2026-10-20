@@ -7,14 +7,14 @@ import type {Go} from './AdminApp';
 
 const statuses=[['active','Active'],['open','Open'],['pending','Waiting on person'],['resolved','Resolved'],['closed','Closed'],['all','All']] as const;
 const priorityTone:Record<string,string>={urgent:'danger',high:'warn',normal:'neutral',low:'quiet'};
-const replies=['Thanks for reaching out — I\'m looking into this now and will update you shortly.','This is fixed in the latest version. Download the newest Mowr from mowrai.com/download/windows and let us know if it happens again.','Could you share the steps that lead to this, and your Mowr version (Settings → About)?'];
+const replies=['Thanks for reaching out — I\'m looking into this now and will update you shortly.','This is fixed in the latest version. Download the newest Clem from clem.m4labs.xyz/download/windows and let us know if it happens again.','Could you share the steps that lead to this, and your Clem version (Settings → About)?'];
 
 export function Cases({go,selected}:{go:Go;selected?:string}){
   const [status,setStatus]=useState('active');const [q,setQ]=useState('');const [query,setQuery]=useState('');
   useEffect(()=>{const t=setTimeout(()=>setQuery(q.trim()),250);return()=>clearTimeout(t);},[q]);
   const list=useLoad(()=>adminApi<{cases:CaseRow[]}>(`/admin/cases?status=${status}&q=${encodeURIComponent(query)}`),[status,query]);
   return <div className="adm-page adm-inbox-page">
-    <PageHead scene="lifebuoy" title="Support cases" line="Questions, bug reports and ideas from people using Mowr."><button className="adm-ghost" onClick={list.reload}><I name="refresh"/>Refresh</button></PageHead>
+    <PageHead scene="lifebuoy" title="Support cases" line="Questions, bug reports and ideas from people using Clem."><button className="adm-ghost" onClick={list.reload}><I name="refresh"/>Refresh</button></PageHead>
     <div className="adm-inbox">
       <section className="adm-inbox-list">
         <div className="adm-inbox-tools"><label className="adm-search"><I name="search"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search cases" aria-label="Search cases"/></label>
@@ -68,7 +68,7 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
     <div className="adm-case-body">
       <div className="adm-thread">
         <article className="adm-msg user"><Avatar person={{id:c.owner_id,email:c.email,username:c.username}} size={30}/><div><header><strong>{who({email:c.email,username:c.username,display_name:c.display_name})}</strong><small>{ago(c.created_at)}</small></header><p>{splitLogs(c.message).text}</p>{splitLogs(c.message).logs&&<details className="adm-logs"><summary>Diagnostic logs</summary><pre>{splitLogs(c.message).logs}</pre></details>}</div></article>
-        {messages.map(m=><article key={m.id} className={`adm-msg ${m.author}`}>{m.author==='user'?<Avatar person={{id:c.owner_id,email:c.email,username:c.username}} size={30}/>:<span className="adm-msg-mark">{m.author==='note'?<I name="note" size={15}/>:'M'}</span>}<div><header><strong>{m.author==='user'?who({email:c.email,username:c.username}):m.author==='note'?'Internal note':'Mowr support'}</strong><small>{ago(m.created_at)}</small></header><p>{m.body}</p></div></article>)}
+        {messages.map(m=><article key={m.id} className={`adm-msg ${m.author}`}>{m.author==='user'?<Avatar person={{id:c.owner_id,email:c.email,username:c.username}} size={30}/>:<span className="adm-msg-mark">{m.author==='note'?<I name="note" size={15}/>:'M'}</span>}<div><header><strong>{m.author==='user'?who({email:c.email,username:c.username}):m.author==='note'?'Internal note':'Clem support'}</strong><small>{ago(m.created_at)}</small></header><p>{m.body}</p></div></article>)}
         {seen&&<p className="adm-seen"><I name="check" size={13}/>Seen in the app</p>}
         <div ref={end}/>
       </div>
@@ -82,7 +82,7 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
     <form className={`adm-composer ${internal?'internal':''}`} onSubmit={e=>{e.preventDefault();void send();}}>
       <div className="adm-composer-tabs"><button type="button" className={!internal?'on':''} onClick={()=>setInternal(false)}>Reply</button><button type="button" className={internal?'on':''} onClick={()=>setInternal(true)}>Internal note</button>
         {!internal&&<Select aria-label="Insert a saved reply" className="saved" value="" placeholder="Saved replies…" onChange={v=>setBody(b=>(b?b+'\n\n':'')+v)} options={replies.map(r=>({value:r,label:r.slice(0,60)+'…'}))}/>}</div>
-      <textarea value={body} onChange={e=>setBody(e.target.value)} rows={4} maxLength={10000} placeholder={internal?'Only the team can see this.':`Write a reply. It appears in the person's Mowr app under Help & support${c.email&&byEmail?' and is emailed to them':''}.`} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))void send();}}/>
+      <textarea value={body} onChange={e=>setBody(e.target.value)} rows={4} maxLength={10000} placeholder={internal?'Only the team can see this.':`Write a reply. It appears in the person's Clem app under Help & support${c.email&&byEmail?' and is emailed to them':''}.`} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))void send();}}/>
       <footer>{!internal&&c.email?<label className="adm-check"><input type="checkbox" checked={byEmail} onChange={e=>setByEmail(e.target.checked)}/>Also email it to {c.email}</label>:<small className="adm-muted">Ctrl + Enter to send</small>}<div>{!internal&&<button type="button" disabled={busy||body.trim().length<2} onClick={()=>void send('resolved')}>Send & resolve</button>}<button className="adm-primary" disabled={busy||body.trim().length<2}><I name="send" size={15}/>{internal?'Add note':'Send reply'}</button></div></footer>
     </form>
   </div>;

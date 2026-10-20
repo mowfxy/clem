@@ -1,2 +1,2 @@
-ALTER TABLE mowr_credentials DROP CONSTRAINT IF EXISTS mowr_credentials_provider_check;
-ALTER TABLE mowr_credentials ADD CONSTRAINT mowr_credentials_provider_check CHECK (provider IN ('openai','anthropic','google','xai','drive','github'));
+ALTER TABLE clem_credentials DROP CONSTRAINT IF EXISTS clem_credentials_provider_check;
+ALTER TABLE clem_credentials ADD CONSTRAINT clem_credentials_provider_check CHECK (provider IN ('openai','anthropic','google','xai','drive','github'));

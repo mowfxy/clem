@@ -1,6 +1,6 @@
 /**
  * How many characters one request may carry, by provider. Roughly 3.5 characters per token for technical text;
- * each budget leaves room for Mowr's instructions, the Kinetra tool guide and a long answer.
+ * each budget leaves room for Clem's instructions, the Kinetra tool guide and a long answer.
  * - ChatGPT (Codex): about 272k input tokens.
  * - Claude, Grok and Antigravity (whose plan includes Claude models): about 200k tokens.
  */

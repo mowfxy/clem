@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../Icons";
 
 /** Matches are painted with the CSS Custom Highlight API, so the page's own elements are never rewritten. */
-const ALL = "mowr-find", CURRENT = "mowr-find-current";
+const ALL = "clem-find", CURRENT = "clem-find-current";
 const MAX = 1000;
 type Highlights = { set(name: string, value: unknown): void; delete(name: string): void };
 const registry = (): Highlights | undefined => (globalThis.CSS as unknown as { highlights?: Highlights } | undefined)?.highlights;
@@ -32,7 +32,7 @@ function findRanges(root: Element, query: string): Range[] {
   return ranges;
 }
 
-/** Ctrl+F in Mowr: finds words in the page on screen (a conversation, a subject, Files), steps through them with
+/** Ctrl+F in Clem: finds words in the page on screen (a conversation, a subject, Files), steps through them with
  *  Enter and Shift+Enter, and keeps counting while an answer streams in. */
 export function FindBar({ scope, focusKey = 0, onClose }: { scope: string; focusKey?: number; onClose: () => void }) {
   const [query, setQuery] = useState("");

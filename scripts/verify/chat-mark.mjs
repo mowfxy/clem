@@ -1,4 +1,4 @@
-// The Mowr mark appears once per chat: beside "Thinking…" while waiting, then under the latest answer only.
+// The Clem mark appears once per chat: beside "Thinking…" while waiting, then under the latest answer only.
 // node scripts/verify/chat-mark.mjs
 import { chromium } from "playwright";
 import assert from "node:assert/strict";

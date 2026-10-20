@@ -25,7 +25,7 @@ export async function exportDiagramPdf(svg: string, name = "visual.pdf") {
       y: (595 - fit.height) / 2,
       ...fit,
     });
-    pdf.setCreator("Mowr");
+    pdf.setCreator("Clem");
     await downloadMade(
       new Blob([new Uint8Array(await pdf.save())], { type: "application/pdf" }),
       name,

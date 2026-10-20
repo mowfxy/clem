@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 
 // With no file given (as in verify:all) it draws the briefing in tests/fixtures/office.
 const [file = "tests/fixtures/office/brief.docx", outDir = "test-results/office-preview", width = "1000"] = process.argv.slice(2);
-const out = join(tmpdir(), "mowr-verify-preview");
+const out = join(tmpdir(), "clem-verify-preview");
 await mkdir(out, { recursive: true });
 await mkdir(resolve(outDir), { recursive: true });
 await build({

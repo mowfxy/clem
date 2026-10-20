@@ -75,7 +75,7 @@ export function putMemory(
 export const MEMORY_LIMIT = 800;
 const DAY = 86_400_000;
 /**
- * Drops what Mowr no longer uses: replaced records after 30 days (at most 100 kept for history) and records that expired
+ * Drops what Clem no longer uses: replaced records after 30 days (at most 100 kept for history) and records that expired
  * over 30 days ago. If still over the limit, the oldest go first: replaced, then learned, then confirmed.
  */
 export function pruneMemory(state: MemoryState, now = Date.now()): MemoryState {
@@ -121,7 +121,7 @@ export function forgetSource(state: MemoryState, sourceId: string) {
   );
 }
 /**
- * A deleted chat takes with it what Mowr only learned from it (and anything tied to that chat alone);
+ * A deleted chat takes with it what Clem only learned from it (and anything tied to that chat alone);
  * what the person kept stays, as the delete dialog promises.
  */
 export function forgetChat(state: MemoryState, chatId: string) {
@@ -220,7 +220,7 @@ export function memoryLines(records: Omit<Memory, "embedding">[]) {
   ].filter(Boolean).join("\n");
 }
 /**
- * The same cues in the other languages people use Mowr in (Arabic, French, Spanish, German). Arabic has no
+ * The same cues in the other languages people use Clem in (Arabic, French, Spanish, German). Arabic has no
  * word boundaries in JavaScript's \b, so its cues match at the start of a word instead.
  */
 const otherLanguages = [
@@ -253,7 +253,7 @@ export function rememberedWords(text: string): Learned[] {
   return [{ key: key.slice(0, 60), text: words[0].toUpperCase() + words.slice(1) + ".", kind: preference ? "preference" : "fact", about: "user" }];
 }
 /**
- * The person asking Mowr to remember something: "remember that…", "remember: …", "remember I…", "keep in mind
+ * The person asking Clem to remember something: "remember that…", "remember: …", "remember I…", "keep in mind
  * my…". A question ("Remember the Krebs cycle steps?", "Do you remember…") is not an instruction, and neither
  * is "Remember the formula for…", which asks about the topic, not the person.
  */
@@ -344,7 +344,7 @@ export function learnMemories(state: MemoryState, items: Learned[], context: { s
       kind: confirmed ? item.kind : expiresAt ? "temporary" : "inference",
       confirmed,
       confidence: confirmed ? 1 : 0.7,
-      source: { id: context.sourceId, locator: confirmed ? "You asked Mowr to remember this in a chat" : "Learned from your message in a chat", at: now },
+      source: { id: context.sourceId, locator: confirmed ? "You asked Clem to remember this in a chat" : "Learned from your message in a chat", at: now },
       ...(expiresAt ? { expiresAt } : {}),
       derivedFrom: [],
       sharedWith: [],

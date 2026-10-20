@@ -1,14 +1,14 @@
 import type { Skill } from './types';
 import { documentStandard, documentIntent } from './document-standard.ts';
 /**
- * Built-in workflows: how to do each kind of work well inside Mowr. They describe what Mowr can actually do: web
+ * Built-in workflows: how to do each kind of work well inside Clem. They describe what Clem can actually do: web
  * search on the person's own plan (when the connected model offers it), answers in Markdown that export as typeset
  * PDF, Word or PowerPoint files, ```visual and ```check blocks, [[file, p. N]] citations, drive: links, and Kinetra
  * tools for verified calculations, figures and PDF documents. The steps are detailed on purpose: the model follows
  * them literally, so vague steps give vague work. The two that fit a request are added to it (see relevantSkills).
  */
 const DOC = 'Follow the document standard: write the document itself in a formal, impersonal voice, never a message to the requester.';
-const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (docx with the same specification when they want to edit it in Word; never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (flowchart, chart, timeline, cycle, mind map, tree, Venn or a science recipe) wherever a picture explains faster than text. A ```visual already drawn in this chat goes into the PDF unchanged as the figure {"module":"mowr","fn":"visual","args":[the JSON of that visual]}.';
+const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (docx with the same specification when they want to edit it in Word; never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (flowchart, chart, timeline, cycle, mind map, tree, Venn or a science recipe) wherever a picture explains faster than text. A ```visual already drawn in this chat goes into the PDF unchanged as the figure {"module":"clem","fn":"visual","args":[the JSON of that visual]}.';
 export const builtinSkills: Skill[] = [
  // Learning
  {id:'tutor',name:'A thoughtful tutor',description:'Build understanding step by step, at your pace.',category:'Learning',icon:'subjects',steps:[
@@ -25,7 +25,7 @@ export const builtinSkills: Skill[] = [
  ],builtin:true},
  {id:'problem-solving',name:'Worked solutions',description:'Step-by-step solutions to maths, physics and engineering problems, with every number checked.',category:'Learning',icon:'diagram',steps:[
   'Restate the problem precisely: list the givens with values and units, the unknowns being asked for, and any quantity implied but not stated (for example g = 9.81 m/s², air resistance neglected, ideal pulley).',
-  'Draw the situation when geometry, forces, circuits or motion are involved, so directions and signs are fixed before any algebra: apparatus (pulleys, inclines, levers, springs, charges) as a textbook figure (```visual kind figure in the chat, the Kinetra mowr illustration recipe in a PDF), graphs as a plot, circuits and optics with their Kinetra recipes.',
+  'Draw the situation when geometry, forces, circuits or motion are involved, so directions and signs are fixed before any algebra: apparatus (pulleys, inclines, levers, springs, charges) as a textbook figure (```visual kind figure in the chat, the Kinetra clem illustration recipe in a PDF), graphs as a plot, circuits and optics with their Kinetra recipes.',
   'Name the principle or method that applies (Newton’s second law, conservation of energy, Kirchhoff’s laws, integration by parts…) and say in one sentence why it fits this problem better than the alternatives.',
   'Choose a sign convention and coordinate axes explicitly and keep them for the whole solution.',
   'Solve symbolically first and keep the expression general as long as possible; this exposes mistakes and lets the result be sanity-checked by limits.',
@@ -33,7 +33,7 @@ export const builtinSkills: Skill[] = [
   'State each answer with units and sensible significant figures matching the data, clearly marked (for example in bold).',
   'Sanity-check the result: dimensions, order of magnitude, limiting cases (what happens when a mass goes to zero, an angle to 90°), and the physical meaning of signs. Say what you checked.',
   'Mention the most common wrong approach to this problem and why it fails, when it helps the learner avoid it next time.',
-  'End with one ```check block listing the key numeric results with the same inputs and rounding you wrote, so Mowr recomputes them.',
+  'End with one ```check block listing the key numeric results with the same inputs and rounding you wrote, so Clem recomputes them.',
  ],builtin:true},
  {id:'study-guide',name:'Study guides & exam prep',description:'Condense a topic into what to know, worked examples and practice questions.',category:'Learning',icon:'subjects',steps:[
   'Scope the guide from memory and the sources: course, level, exam board, exam date and the syllabus points it must cover. Work from the attached files, a linked Drive folder and the subject’s sources first; say which material the guide is based on.',
@@ -45,7 +45,7 @@ export const builtinSkills: Skill[] = [
   'Write 8–15 practice questions of rising difficulty covering every topic, mixing recall, application and one or two longer exam-style questions; put full answers in a separate section at the end.',
   'Close with a one-page recap of the most important points and a short revision checklist the learner can tick off.',
   'Cite the source file and page for key facts as [[file, p. N]]; never state exam details (dates, mark schemes) that the sources or the learner did not give.',
-  'In a subject, offer to turn the key facts into flashcards: a message starting with /flashcards saves them as a study set that Mowr schedules with spaced repetition. ' + PDF + ' ' + DOC,
+  'In a subject, offer to turn the key facts into flashcards: a message starting with /flashcards saves them as a study set that Clem schedules with spaced repetition. ' + PDF + ' ' + DOC,
  ],builtin:true},
  {id:'visual',name:'Visual understanding',description:'Turn an abstract idea into something you can move, explore and understand.',category:'Learning',icon:'visuals',steps:[
   'Name the concept precisely, the one relationship the learner should see, the quantities they would want to change, and the assumptions of the model.',
@@ -56,7 +56,7 @@ export const builtinSkills: Skill[] = [
   'Add readouts for the derived values a learner would ask about (period, range, maximum, equilibrium point).',
   'Write a one-line caption stating the assumptions (no air resistance, small-angle approximation, ideal gas…).',
   'Follow with at most three short prompts: which slider to move and exactly what to notice, so the visual teaches rather than decorates.',
-  'For a document instead of the chat, draw the same idea as a Kinetra figure in the PDF; a ```visual already drawn in this chat goes in unchanged as {"module":"mowr","fn":"visual","args":[the JSON of that visual]}.',
+  'For a document instead of the chat, draw the same idea as a Kinetra figure in the PDF; a ```visual already drawn in this chat goes in unchanged as {"module":"clem","fn":"visual","args":[the JSON of that visual]}.',
  ],builtin:true},
  {id:'diagrams',name:'Technical diagrams',description:'Textbook figures computed from the physics, not sketched.',category:'Learning',icon:'diagram',steps:[
   'Extract the givens, units and unknowns; state every assumption the figure depends on (g = 9.81 m/s², ideal pulley, thin lens, rigid body, steady state).',
@@ -71,10 +71,10 @@ export const builtinSkills: Skill[] = [
  {id:'youtube',name:'Videos for learning',description:'Find real videos that explain a topic, and work through a video with timestamped notes.',category:'Learning',icon:'play',steps:[
   'When the learner asks for videos, search the web for them (for example “<topic> explained”, “<topic> lecture”, “site:youtube.com <topic>”) and recommend only videos whose page you actually found; never invent a video id or URL.',
   'Prefer well-known educational channels and university lectures that match the learner’s level; say the channel and roughly how long the video is when known.',
-  'Link each one as [Title — Channel](https://www.youtube.com/watch?v=ID) inside the line that introduces it, so Mowr shows a playable video under it; add &t=<seconds>s when a specific moment answers the question.',
+  'Link each one as [Title — Channel](https://www.youtube.com/watch?v=ID) inside the line that introduces it, so Clem shows a playable video under it; add &t=<seconds>s when a specific moment answers the question.',
   'Give 2–4 videos with one line each on why it fits (what it covers, level, style). If the learner asked for “the links”, also print each full URL as visible text.',
   'If web search is unavailable or nothing reliable turns up, say so and give a YouTube search link: https://www.youtube.com/results?search_query=<words+joined+with+plus>.',
-  'To work through a video, use the transcript Mowr supplies from its captions (VIDEO TRANSCRIPTS); when captions are unavailable, say so and use a transcript or notes the learner pastes or attaches.',
+  'To work through a video, use the transcript Clem supplies from its captions (VIDEO TRANSCRIPTS); when captions are unavailable, say so and use a transcript or notes the learner pastes or attaches.',
   'From a transcript, organise notes by timestamp (mm:ss) using the transcript’s own times, with the key idea of each part in one or two sentences.',
   'Explain the key ideas against the learner’s actual question, quoting only short phrases, and mark clearly what the video says versus your own explanation.',
   'Finish with three questions that check understanding of the video’s main points.',
@@ -165,7 +165,7 @@ export const builtinSkills: Skill[] = [
   'Fix grammar, spelling and punctuation, and make consistent terms, tense, numbers, capitalisation and hyphenation.',
   'Cut redundancy and filler, untangle long sentences, prefer concrete wording and active voice where it reads better.',
   'Improve flow between sentences and paragraphs; flag structural problems (a buried point, a repeated argument) rather than silently rewriting them.',
-  'When the text is a file open beside the chat, Mowr applies edit requests to that file itself; when the request reaches you instead, return the edited text first.',
+  'When the text is a file open beside the chat, Clem applies edit requests to that file itself; when the request reaches you instead, return the edited text first.',
   'After the text, list the substantive changes briefly and any points that need the author’s decision.',
   'Never add facts or claims that were not in the original.',
  ],builtin:true},
@@ -237,10 +237,10 @@ export const builtinSkills: Skill[] = [
   'Define the outcome and exactly when the workflow should apply.',
   'List the inputs it needs from the person or their files.',
   'Write 3–10 concrete steps, each producing something checkable, in the order they must happen.',
-  'Name the Mowr features each step should use (web search, Kinetra figures or PDFs, visuals, checks, citations, Drive files) so the workflow uses the app fully.',
+  'Name the Clem features each step should use (web search, Kinetra figures or PDFs, visuals, checks, citations, Drive files) so the workflow uses the app fully.',
   'Add a final check of the result against the goal.',
-  'Keep steps within what Mowr can do: it cannot run programs or act outside the app; it reads files only when attached, linked or in Drive.',
-  'Give the result ready to paste: a name (up to 100 characters), a one-line description, then the steps as plain lines without numbers or bullets, one step per line. The person saves it with /skill (or Skills → New skill); Mowr cannot save it for them.',
+  'Keep steps within what Clem can do: it cannot run programs or act outside the app; it reads files only when attached, linked or in Drive.',
+  'Give the result ready to paste: a name (up to 100 characters), a one-line description, then the steps as plain lines without numbers or bullets, one step per line. The person saves it with /skill (or Skills → New skill); Clem cannot save it for them.',
  ],builtin:true},
 ];
 

@@ -85,17 +85,17 @@ test('not installed: the status says so', async () => {
   assert.deepEqual(await p.status(true), {installed: false, connected: false, models: []});
 });
 
-test('an answer streams, picks the model and thinking level, and carries Mowr’s rules and tool list', async () => {
+test('an answer streams, picks the model and thinking level, and carries Clem’s rules and tool list', async () => {
   const p = new FakeAgent('ok');
   try {
-    const events = await answer(p, 'Hi', 'antigravity:gemini-3.5-flash', {effort: 'low', options: {system: 'MOWR RULES'}});
+    const events = await answer(p, 'Hi', 'antigravity:gemini-3.5-flash', {effort: 'low', options: {system: 'CLEM RULES'}});
     assert.equal(events.filter((e) => e.type === 'delta').map((e) => e.text).join(''), 'Hello from gemini-3.5-flash at low.');
     assert.ok(events.some((e) => e.type === 'partial' && e.text === 'Hello ' && e.fresh));
     assert.ok(events.some((e) => e.type === 'status' && e.text === 'Thinking it through…'));
     assert.ok(events.some((e) => e.type === 'context' && e.tokens === 4321));
     assert.equal(events.at(-1).type, 'done');
     const [sent] = await p.prompts();
-    assert.match(sent.system, /^MOWR RULES/);
+    assert.match(sent.system, /^CLEM RULES/);
     assert.deepEqual(sent.tools, ANTIGRAVITY_TOOLS);
     // A level the model does not list is left to the agent's default rather than failing the request.
     const other = await answer(p, 'Hi', 'antigravity:claude-sonnet-4-6', {effort: 'low'});
@@ -124,7 +124,7 @@ test('permissions follow the answer’s rules: no writing outside the folder, no
   } finally { p.stop(); }
 });
 
-test('an exhausted plan is a usage limit, so Mowr can move to another account', async () => {
+test('an exhausted plan is a usage limit, so Clem can move to another account', async () => {
   const p = new FakeAgent('limit');
   try {
     await assert.rejects(answer(p, 'Hi'), (error: unknown) => error instanceof UsageLimit && !!(error as UsageLimit).resetsAt);
@@ -139,7 +139,7 @@ test('a kept session goes on in the same agent session, and its tokens come from
     const sent = await p.prompts();
     assert.deepEqual(sent.map((x: any) => x.text), ['First', 'Second']);
     assert.deepEqual(await p.sessionTokens('chat-1'), {input: 400, cacheRead: 800, cacheWrite: 0, output: 300});
-    // A session Mowr never started cannot be resumed: the loop resends everything instead.
+    // A session Clem never started cannot be resumed: the loop resends everything instead.
     await assert.rejects(answer(p, 'Third', 'antigravity:gemini-3.1-pro', {session: {id: 'unknown', resume: true}}), /no longer has this session/);
   } finally { p.stop(); }
 });

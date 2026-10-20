@@ -152,11 +152,11 @@
 .provider-card .provider-action.primary{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
 .provider-card .provider-action.primary:hover{background:#fff}
 .provider-card .provider-action:disabled{opacity:.5;cursor:default}
-/* Connect ChatGPT: Mowr and OpenAI, linked */
+/* Connect ChatGPT: Clem and OpenAI, linked */
 .cx-connect{display:flex;flex-direction:column;gap:18px!important}
 .cx-link{display:flex;align-items:center;justify-content:center;gap:0;padding:6px 0 2px}
 .cx-tile{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;flex:none;border:1px solid #ffffff17}
-.cx-mowr{background:#f2f1ec;color:#141413;border-color:#f2f1ec}
+.cx-clem{background:#f2f1ec;color:#141413;border-color:#f2f1ec}
 .cx-openai{background:#0b0b0b;color:#fff}
 .cx-wire{position:relative;width:74px;height:2px;margin:0 8px;background:repeating-linear-gradient(90deg,#ffffff2e 0 4px,transparent 4px 8px)}
 .cx-wire i{position:absolute;top:-2px;left:0;width:6px;height:6px;border-radius:50%;background:#fff;opacity:0;animation:cx-flow 2.1s cubic-bezier(.45,0,.55,1) infinite}
@@ -187,7 +187,7 @@
 .cx-hint{font-size:11px!important;color:#85847d;margin:6px 0 0!important}
 .cx-connect .provider-note{text-align:center;font-size:11px!important;color:#7f7e78!important}
 @media(prefers-reduced-motion:reduce){.cx-wire i,.provider-wait .cx-wait{animation:none}.cx-wire i:first-child{opacity:1;left:34px}}
-.cx-mowr .mowr-mark{color:#141413}
+.cx-clem .clem-mark{color:#141413}
 .setting-row button.secondary.danger {color:#f0a594;border-color:#6b3a31}.setting-row button.secondary.danger:hover:not(:disabled){background:#3a1f1d;color:#ffc3b5}
 
 /* A service's accounts: a compact header with the add action, then one row per account with its usage. */

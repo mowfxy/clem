@@ -1,5 +1,5 @@
 /**
- * Plans: one living plan per subject or project, made and kept up to date by talking to Mowr. A plan is a list of
+ * Plans: one living plan per subject or project, made and kept up to date by talking to Clem. A plan is a list of
  * dated tasks (things to do) and milestones (things that happen: a quiz, a midterm, a launch), optionally grouped
  * into phases. The model writes ```plan blocks of JSON (see readPlanBlock); creating, replacing and deleting a plan
  * are proposals the person confirms on a card in the chat, while updates (a task done, a date moved) apply as soon as
@@ -36,9 +36,9 @@ export type SpacePlan = {
   tasks: PlanTask[];
   created: number;
   updated: number;
-  /** Counts every change, by Mowr or by hand; an update can be undone only while nothing came after it. */
+  /** Counts every change, by Clem or by hand; an update can be undone only while nothing came after it. */
   rev: number;
-  /** The plan as it was before each of Mowr's updates, newest last, for Undo. */
+  /** The plan as it was before each of Clem's updates, newest last, for Undo. */
   history?: PlanSnapshot[];
 };
 

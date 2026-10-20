@@ -13,10 +13,10 @@ export type GrokNative=(request:Record<string,unknown>)=>Promise<{result:unknown
 import type {UsageSnapshot} from '../core/account-usage.ts';
 
 // Grok through the person's own SuperGrok or X Premium+ plan, by running xAI's official, open-source Grok Build CLI
-// (github.com/xai-org/grok-build, Apache-2.0) that Mowr installs with xAI's own installer. xAI documents headless mode
+// (github.com/xai-org/grok-build, Apache-2.0) that Clem installs with xAI's own installer. xAI documents headless mode
 // as "ideal for scripts, automations, or integration into other apps" and ACP as its protocol for third-party
-// integration. Mowr only starts the unmodified program on this PC: it never reads Grok's stored sign-in, never calls
-// xAI's services itself, and nothing passes through Mowr's servers.
+// integration. Clem only starts the unmodified program on this PC: it never reads Grok's stored sign-in, never calls
+// xAI's services itself, and nothing passes through Clem's servers.
 
 export const GROK_PREFIX = 'grok:';
 export type GrokUsage = {percentUsed?:number;periodEnd?:string;plan?:string;period?:string};
@@ -49,7 +49,7 @@ export function grokModels(status:Pick<GrokStatus,'models'|'defaultModel'|'effor
 }
 
 /**
- * Grok's headless output. Mowr asks for `streaming-messages-json` (one Anthropic-style message per line, then a
+ * Grok's headless output. Clem asks for `streaming-messages-json` (one Anthropic-style message per line, then a
  * `result`), whose result is the final message only. Plain `--output-format json` joins the text of every step the
  * agent took into one string with nothing between them, which glued its interim notes ("I'll read the file.") onto
  * the reply and hid a tool request behind them. The older single object {text, stopReason} is still understood.
@@ -98,7 +98,7 @@ export function grokStatus(event:any):string|null{
 /**
  * Native Kinetra needs the working folder trusted (--trust), since Grok loads a folder's MCP servers only then. Trust
  * also loads a folder's hooks, instruction files and other MCP sources, and Grok may write in its folder, so before each
- * answer Mowr removes any it finds and writes its own .grok/config.toml, and the answer may not write them (grokNativeArgs).
+ * answer Clem removes any it finds and writes its own .grok/config.toml, and the answer may not write them (grokNativeArgs).
  */
 const GUARDED_FOLDERS=['.grok','.claude','.cursor','.agents'],GUARDED_FILES=['.mcp.json','.envrc','AGENTS.md','AGENT.md','GROK.md','CLAUDE.md'];
 export async function grokNativeFolder(cwd:string){
@@ -166,7 +166,7 @@ export function grokUsage(usage?:GrokUsage):UsageSnapshot|undefined{
 /** Windows passes at most 32,767 characters of command line, and Grok's --rules takes only literal text (no file). */
 export const GROK_RULES_MAX=24_000;
 /**
- * Mowr's system prompt as Grok's --rules (added to Grok's own system prompt; replacing that prompt made Grok fetch pages
+ * Clem's system prompt as Grok's --rules (added to Grok's own system prompt; replacing that prompt made Grok fetch pages
  * instead of searching). A prompt too long for the command line returns undefined and goes at the top of the message.
  */
 export function grokRules(system?:string,inFolder=false){
@@ -174,15 +174,15 @@ export function grokRules(system?:string,inFolder=false){
   return rules&&rules.length<=GROK_RULES_MAX?rules:undefined;
 }
 /**
- * Grok Build is a coding agent: in Mowr its own tools only open the pictures a message names and reach the web. Without
+ * Grok Build is a coding agent: in Clem its own tools only open the pictures a message names and reach the web. Without
  * this, Grok read its bundled pdf skill (SKILL.md, 11k characters) before each document, and each picture cost a step of
  * its own; every extra step re-reads the whole conversation.
  */
-export const GROK_NOTE='IN MOWR: your own tools are only for opening the pictures and PDFs a message names (read_file) and for the web. Files, documents, figures and calculations go only through Mowr\'s {"kinetra":…} requests: never read Grok\'s own skills (SKILL.md) or other files on this PC. When a message names several pictures or PDF page ranges, open all of them in the same step (one read_file call each, sent together).';
+export const GROK_NOTE='IN CLEM: your own tools are only for opening the pictures and PDFs a message names (read_file) and for the web. Files, documents, figures and calculations go only through Clem\'s {"kinetra":…} requests: never read Grok\'s own skills (SKILL.md) or other files on this PC. When a message names several pictures or PDF page ranges, open all of them in the same step (one read_file call each, sent together).';
 /** Where one turn's PDFs sit in Grok's working folder for read_file: kept for the whole turn, so a later step can open more pages. */
 export const grokPdfPath=(turn:string,index:number,name:string)=>`.pdfs-${turn}/${index+1}-${name.replace(/\.pdf$/i,'').replace(/[^\p{L}\p{N}._ -]+/gu,'_').slice(0,80)}.pdf`;
 /**
- * Grok's built-in tools Mowr keeps: read_file opens the pictures named in a prompt, web_search is xAI's own search
+ * Grok's built-in tools Clem keeps: read_file opens the pictures named in a prompt, web_search is xAI's own search
  * (it runs on xAI's side, but only when listed here). The other 24 (shell, editing, subagents, schedulers, video…)
  * cost about 10k input tokens on every step. web_fetch is left out: in dontAsk mode a call to it cancelled the run.
  */
@@ -194,7 +194,7 @@ export const GROK_TOOLS='read_file,web_search';
  * tools, the terminal included (checked against the tool_definitions.json of the sessions it records).
  */
 export const GROK_FOLDER_TOOLS='read_file,list_dir,grep,search_replace,write,web_search,todo_write';
-export const GROK_FOLDER_NOTE='IN MOWR: your working folder holds the person\'s files; list, search, read and write them with your own file tools, as in any project. Run no commands. Never read Grok\'s own skills (SKILL.md) or files outside the working folder. When you need several files or page ranges, open them in the same step (one call each, sent together).';
+export const GROK_FOLDER_NOTE='IN CLEM: your working folder holds the person\'s files; list, search, read and write them with your own file tools, as in any project. Run no commands. Never read Grok\'s own skills (SKILL.md) or files outside the working folder. When you need several files or page ranges, open them in the same step (one call each, sent together).';
 
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
 const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
@@ -249,7 +249,7 @@ export class GrokProvider {
   private configured:string|undefined;
   /** GROK_HOME for this account: each added Grok account keeps its own sign-in there. Unset for the first one (~/.grok). */
   private home:string|undefined;
-  constructor(root:string,configured=process.env.MOWR_GROK_EXECUTABLE,home?:string){this.root=root;this.configured=configured;this.home=home;}
+  constructor(root:string,configured=process.env.CLEM_GROK_EXECUTABLE,home?:string){this.root=root;this.configured=configured;this.home=home;}
   private executable(){return this.configured||installedPath('grok','grok');}
   private workspace(){return join(this.root,'workspace');}
   /** Only what Windows and Grok need; an XAI_API_KEY in the environment would bypass the person's own plan. */
@@ -301,7 +301,7 @@ export class GrokProvider {
         }
       });
       child.stderr.resume();child.on('error',()=>finish(undefined,true));child.on('close',()=>finish(undefined,true));
-      send({id:1,method:'initialize',params:{protocolVersion:1,clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false},_meta:{clientType:'mowr',clientVersion:'1'}}});
+      send({id:1,method:'initialize',params:{protocolVersion:1,clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false},_meta:{clientType:'clem',clientVersion:'1'}}});
     });
   }
   private statusRequest:Promise<GrokStatus>|null=null;
@@ -497,7 +497,7 @@ export class GrokProvider {
   private exited(sessionId:string){const gone=this.exiting.get(sessionId);return gone?Promise.race([gone,new Promise<void>(resolve=>{setTimeout(resolve,20_000).unref?.();})]):Promise.resolve();}
   async endSession(sessionId:string){
     await this.exited(sessionId);
-    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!this.home&&!process.env.USERPROFILE||process.env.MOWR_KEEP_SESSIONS)return;
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!this.home&&!process.env.USERPROFILE||process.env.CLEM_KEEP_SESSIONS)return;
     const base=join(this.home||join(process.env.USERPROFILE!,'.grok'),'sessions');
     const sweep=async(folder:string,depth:number):Promise<void>=>{
       for(const entry of await readdir(folder,{withFileTypes:true}).catch(()=>[])){

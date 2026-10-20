@@ -288,7 +288,7 @@ export async function pdfView({ files, current, earlier, related = [], prompt, p
   model: string;
   /** A PDF's extracted text with its page markers (src/source-context.ts cachedFileText), to find the pages a question is about. */
   text: (file: StoredFile) => Promise<string>;
-  /** PDFs not stored in Mowr (one being edited from disk), by id. */
+  /** PDFs not stored in Clem (one being edited from disk), by id. */
   given?: Map<string, Blob>;
   /** Pages seen whole in this request (less for each step of a plan); longer PDFs are seen by their relevant pages. */
   wholePages?: number;

@@ -1,6 +1,6 @@
 {
-  "name": "mowr",
-  "version": "0.2.0-preview.130",
+  "name": "clem",
+  "version": "0.3.0-preview.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "setup": "node scripts/setup.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "typecheck:server": "tsc -p tsconfig.server.json",
-    "deploy": "node scripts/sync-env.mjs && node scripts/prepare-deploy.mjs && npx vercel deploy .deploy/site --prod --yes --scope mowr1",
+    "deploy": "node scripts/sync-env.mjs && node scripts/prepare-deploy.mjs && npx vercel deploy .deploy/site --prod --yes --scope m4labs",
     "build:vercel": "node scripts/build-api.mjs --root && npm run build",
     "desktop:build": "npm run build && tsc -p desktop/tsconfig.json && node scripts/build-desktop.mjs",
     "desktop:dev": "npm run desktop:build && electron desktop-dist/main.cjs",
@@ -22,7 +22,7 @@
     "test:desktop": "node scripts/build-kinetra.mjs && node --experimental-strip-types --test tests/desktop/*.test.ts",
     "desktop:smoke": "node scripts/smoke-desktop.mjs",
     "installer:publish": "node scripts/publish-installer.mjs",
-    "db:admin": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/admin-schema.sql",
+    "db:admin": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/admin-schema.sql",
     "deploy:accounts": "npx wrangler deploy --config cloudflare/account.wrangler.jsonc",
     "verify:ui": "node scripts/verify/settings.mjs && node scripts/verify/notices.mjs",
     "installer:release": "node scripts/publish-installer.mjs --site",
@@ -35,8 +35,8 @@
     "film:live-setup": "node scripts/film/capture.mjs --live-setup",
     "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live",
     "ads": "node scripts/ads/build.mjs",
-    "db:remove-telegram": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/remove-telegram.sql",
-    "db:email": "npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/email-schema.sql",
+    "db:remove-telegram": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/remove-telegram.sql",
+    "db:email": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/email-schema.sql",
     "emails:announce": "node scripts/announce-release.mjs"
   },
   "dependencies": {
@@ -84,16 +84,16 @@
     "typescript": "^5.9.0",
     "vite": "^7.1.0"
   },
-  "description": "Mowr: a calm, local-first Windows workspace for projects, study and documents, powered by the AI plan you already have.",
+  "description": "Clem: a calm, local-first Windows workspace for projects, study and documents, powered by the AI plan you already have.",
   "license": "MIT",
   "author": "Mohamed Mowafy",
-  "homepage": "https://mowrai.com",
+  "homepage": "https://clem.m4labs.xyz",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mowfxy/mowr.git"
+    "url": "git+https://github.com/mowfxy/clem.git"
   },
   "bugs": {
-    "url": "https://github.com/mowfxy/mowr/issues"
+    "url": "https://github.com/mowfxy/clem/issues"
   },
   "overrides": {
     "image-size": "2.0.4"

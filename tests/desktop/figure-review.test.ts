@@ -10,8 +10,8 @@ test("figures are named the way the document numbers them, with their section", 
   const spec = { title: "T", sections: [
     { heading: "Circuit", text: "x", figure: { module: "diagram/circuit_schematic", fn: "renderCircuit", args: [] } },
     { text: "no figure" },
-    { text: "continues Circuit", figure: { module: "mowr", fn: "plot", args: [] } },
-    { heading: "Broken", figure: { module: "mowr", fn: "chart", args: [] } },
+    { text: "continues Circuit", figure: { module: "clem", fn: "plot", args: [] } },
+    { heading: "Broken", figure: { module: "clem", fn: "chart", args: [] } },
   ] };
   const figures = documentFigures(spec, [svg(1), undefined, svg(2), undefined]);
   assert.deepEqual(figures.map((f) => f.where), ["Figure 1 (in “Circuit”)", "Figure 2 (in “Circuit”)"]);
@@ -22,16 +22,16 @@ test("only figures not yet seen in this answer are sent, at most the cap per res
   const seen = new Set<string>();
   const drawnAt: { maxWidth?: number; maxHeight?: number; pixelRatio?: number }[] = [];
   const raster = { svg: async (_svg: string, o: any) => { drawnAt.push(o); return { png: png() }; } };
-  const nine = Array.from({ length: 9 }, (_, i) => ({ svg: svg(i), where: `Figure ${i + 1}`, figure: { module: "mowr", fn: "plot" } }));
+  const nine = Array.from({ length: 9 }, (_, i) => ({ svg: svg(i), where: `Figure ${i + 1}`, figure: { module: "clem", fn: "plot" } }));
   const first = await figurePictures(nine, seen, raster);
   assert.equal(first.pictures.length, FIGURES_PER_RESULT);
   assert.equal(first.more, 3);
-  assert.equal(first.pictures[0].name, "Figure 1 — mowr.plot");
+  assert.equal(first.pictures[0].name, "Figure 1 — clem.plot");
   // Small pictures: bounded on both sides at one device pixel per CSS pixel.
   assert.ok(drawnAt.every((o) => o.maxWidth === FIGURE_PIXELS && o.maxHeight === FIGURE_PIXELS && o.pixelRatio === 1));
   // Appending a part re-renders the whole document: the figures already seen are not sent again.
   const second = await figurePictures(nine, seen, raster);
-  assert.deepEqual(second.pictures.map((p) => p.name), ["Figure 7 — mowr.plot", "Figure 8 — mowr.plot", "Figure 9 — mowr.plot"]);
+  assert.deepEqual(second.pictures.map((p) => p.name), ["Figure 7 — clem.plot", "Figure 8 — clem.plot", "Figure 9 — clem.plot"]);
   assert.equal((await figurePictures(nine, seen, raster)).pictures.length, 0);
   // A changed figure is new again.
   assert.equal(newFigures([{ svg: svg(99), where: "Figure 1" }], seen).fresh.length, 1);

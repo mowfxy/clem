@@ -109,15 +109,15 @@ test('3D charged bodies print their signs and trace field lines between them', (
 });
 
 test('models are told which renderer to use, with verified figures to start from', async () => {
-  const { mowrSkillsFor, mowrSkillText, visualChoice } = await import('../core/mowr-skills.ts');
+  const { clemSkillsFor, clemSkillText, visualChoice } = await import('../core/clem-skills.ts');
   const { visualLanguage } = await import('../core/answer-format.ts');
   const { slashCommands } = await import('../core/commands.ts');
-  const ids = (q: string) => mowrSkillsFor(q).map(s => s.id);
+  const ids = (q: string) => clemSkillsFor(q).map(s => s.id);
   for (const q of ['show me a block on an inclined plane', 'an atwood machine with two masses', 'draw a wheelbarrow with the torques', 'electric field lines of a dipole', 'a mass hanging from a spring scale'])
     assert.ok(ids(q).includes('figures'), q);
   assert.ok(ids('a negatively charged wire and a positively charged sphere in 3d').includes('3d'));
   assert.ok(!ids('plot y = sin x').includes('figures') && !ids('what is the capital of France').includes('figures'));
-  const text = mowrSkillText('draw a pulley system');
+  const text = clemSkillText('draw a pulley system');
   assert.ok(text.includes(visualChoice) && text.includes('"kind":"figure"'), 'the playbook gives the rule and names the figure kind');
   assert.match(text, /VERIFIED TEXTBOOK FIGURES/);
   assert.match(text, /"type":"rope","path":\["mL.top"/);

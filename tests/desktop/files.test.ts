@@ -25,7 +25,7 @@ test("file actions reach the maker, and say so plainly when files cannot be made
 test("requests for Office and other files get the tool guide with the matching design skill", () => {
   for (const ask of ["make me a powerpoint on photosynthesis", "turn this into an excel budget", "write my CV as a word document", "export the schedule as a .ics calendar file"]) {
     assert.ok(fileIntent.test(ask), ask);
-    assert.match(kinetraInstructionsFor(ask), /FILES: Mowr makes real files/);
+    assert.match(kinetraInstructionsFor(ask), /FILES: Clem makes real files/);
   }
   assert.match(fileGuidesFor("a slide deck for my thesis defence"), /SLIDES SKILL/);
   assert.doesNotMatch(fileGuidesFor("a slide deck for my thesis defence"), /SPREADSHEETS SKILL/);
@@ -81,7 +81,7 @@ test("LaTeX becomes native Word equations, upright where it should be", () => {
   assert.equal(wordUpright(`<m:r><m:t>${UPRIGHT}mA</m:t></m:r>`), '<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>mA</m:t></m:r>');
 });
 
-test("a workbook Mowr makes carries each formula's calculated value, so readers that do not calculate show numbers", () => {
+test("a workbook Clem makes carries each formula's calculated value, so readers that do not calculate show numbers", () => {
   const zip = unzipSync(excelWorkbook({ sheets: [
     { name: "Sales", columns: [{ header: "Item" }, { header: "Qty", format: "integer" }, { header: "Price", format: "currency" }, { header: "Total", format: "currency" }], rows: [["Pen", 3, 1.5, "=B{row}*C{row}"], ["Book", 2, 12, "=B{row}*C{row}"]], totals: { columns: { Qty: "sum", Total: "sum" } } },
     { name: "Summary", columns: [{ header: "Metric" }, { header: "Value" }], rows: [["Biggest", "=MAX(Sales!D2:D3)"], ["Label", '="n="&COUNT(Sales!D2:D3)'], ["Broken", "=1/0"]] },

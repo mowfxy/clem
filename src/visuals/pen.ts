@@ -118,6 +118,6 @@ export class SvgPen implements Pen {
 /** The colour theme as React state, so a visual repaints when the person switches it. */
 export function useInk(): Ink {
   const [light, setLight] = useState(isLight);
-  useEffect(() => { const on = () => setLight(isLight()); window.addEventListener('mowr-theme', on); return () => window.removeEventListener('mowr-theme', on); }, []);
+  useEffect(() => { const on = () => setLight(isLight()); window.addEventListener('clem-theme', on); return () => window.removeEventListener('clem-theme', on); }, []);
   return light ? paperInk : darkInk;
 }

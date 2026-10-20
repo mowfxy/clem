@@ -49,11 +49,11 @@ test('A step run again without --system-prompt-file carries the native-tool note
     return child;
   };
   const events:any[]=[];
-  await provider.run('one','The request','claude:sonnet',undefined,(event:any)=>events.push(event),[],undefined,async()=>({result:{},pictures:[]}),{system:'MOWR RULES'});
+  await provider.run('one','The request','claude:sonnet',undefined,(event:any)=>events.push(event),[],undefined,async()=>({result:{},pictures:[]}),{system:'CLEM RULES'});
   assert.equal(starts,2);
   const text=JSON.parse(inputs[1].trim()).message.content.find((part:any)=>part.type==='text').text as string;
   assert.equal(text.split(NATIVE_NOTE).length-1,1);
-  assert.ok(text.includes('MOWR RULES\n\nThe request'));
+  assert.ok(text.includes('CLEM RULES\n\nThe request'));
   assert.equal(events.find(event=>event.type==='delta').text,'Done');
 });
 

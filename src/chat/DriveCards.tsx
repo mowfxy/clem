@@ -40,7 +40,7 @@ export function DriveChip({ children, onClick }: { children: React.ReactNode; on
   return onClick ? <button type="button" className="link-chip drive-chip" onClick={onClick}>{inner}</button> : <span className="link-chip drive-chip">{inner}</span>;
 }
 
-/** A Drive document, image or audio file linked in a reply; opens in Mowr's viewer, streamed. */
+/** A Drive document, image or audio file linked in a reply; opens in Clem's viewer, streamed. */
 export function DriveCard({ file, label, onOpen }: { file: DriveRef; label?: string; onOpen: (file: DriveRef) => void }) {
   const kind = driveKind(file.mimeType);
   return <button type="button" className="drive-card" onClick={() => onOpen(file)} aria-description={"Open " + file.name}>

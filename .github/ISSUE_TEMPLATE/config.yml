@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security problem
-    url: https://github.com/mowfxy/mowr/security/advisories/new
+    url: https://github.com/mowfxy/clem/security/advisories/new
     about: Report vulnerabilities privately, never in a public issue.
   - name: Account or app help
-    url: mailto:support@mowrai.com
-    about: Questions about your account or using Mowr.
+    url: mailto:support@m4labs.xyz
+    about: Questions about your account or using Clem.

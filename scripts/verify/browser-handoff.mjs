@@ -11,13 +11,13 @@ const callback = new URLSearchParams(new URL(flow.url).hash.split("?")[1]).get(
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
-  await page.route("https://mowrai.com/**", (route) =>
+  await page.route("https://clem.m4labs.xyz/**", (route) =>
     route.fulfill({
       contentType: "text/html",
       body: "<!doctype html><title>Handoff test</title>",
     }),
   );
-  await page.goto("https://mowrai.com/");
+  await page.goto("https://clem.m4labs.xyz/");
   let origin;
   page.on("request", (r) => {
     if (r.url() === callback) origin = r.headers().origin;

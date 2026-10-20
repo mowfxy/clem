@@ -1,4 +1,4 @@
-// Builds docs/verification/mowr-drive-demo.mp4 from the raw takes in docs/verification/takes/.
+// Builds docs/verification/clem-drive-demo.mp4 from the raw takes in docs/verification/takes/.
 //   node scripts/verification/build-demo.mjs                      build everything
 //   node scripts/verification/build-demo.mjs --only 02-connect    rebuild one scene, then re-join
 //   node scripts/verification/build-demo.mjs --dead-air 05-drop   list frozen spans to put in `cuts`
@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const dir = join(root, "docs/verification"), takes = join(dir, "takes"), build = join(dir, "build"), frames = join(dir, "frames");
-const OUT = join(dir, "mowr-drive-demo.mp4");
+const OUT = join(dir, "clem-drive-demo.mp4");
 const FONT = "Segoe UI";
 const SCOPE = "https://www.googleapis.com/auth/drive";
 // Where Chrome's address bar sits in the 2880x1620 capture (physical pixels). Adjust after looking at a take.
@@ -21,18 +21,18 @@ const BAR = { y: Number(process.env.BAR_Y || 70), h: Number(process.env.BAR_H ||
 
 /** Cards are generated; every other scene is a take. `zoom` windows magnify the address bar over the top of the frame. */
 const SCENES = [
-  { id: "00-title", card: { seconds: 7, lines: ["Mowr: Google OAuth verification demo", SCOPE, "Website: https://mowrai.com", "Privacy policy: https://mowrai.com/#/privacy"] } },
-  { id: "00-site", caption: "Mowr is a Windows desktop app. The website mowrai.com hosts sign-in, the Drive consent redirect and the privacy policy, linked from the footer." },
-  { id: "01-signin", caption: "OAuth client 2 of 2: Google sign-in (“Continue with Google”). Mowr uses it only to identify the user’s account (email and basic profile)." },
+  { id: "00-title", card: { seconds: 7, lines: ["Clem: Google OAuth verification demo", SCOPE, "Website: https://clem.m4labs.xyz", "Privacy policy: https://clem.m4labs.xyz/#/privacy"] } },
+  { id: "00-site", caption: "Clem is a Windows desktop app. The website clem.m4labs.xyz hosts sign-in, the Drive consent redirect and the privacy policy, linked from the footer." },
+  { id: "01-signin", caption: "OAuth client 2 of 2: Google sign-in (“Continue with Google”). Clem uses it only to identify the user’s account (email and basic profile)." },
   { id: "02-connect", caption: `OAuth client 1 of 2: the Google Drive connector. It requests one scope: ${SCOPE}` },
   { id: "03-link", caption: "READ: the user links a Drive folder to a subject. Folders and files are listed live from Drive; nothing is copied to the PC." },
   { id: "04-read", caption: "READ: PDFs and videos are streamed from Drive when opened. “Ask about it” reads the chosen file from Drive only to answer the user’s question." },
   { id: "05-drop", caption: "WRITE: a file the user drops into the Drive folder they linked is uploaded to that folder, then marked as saved." },
-  { id: "06-add", caption: "WRITE: “Add files” uploads the user’s chosen files to the linked folder, and a worksheet Mowr makes is saved into it." },
+  { id: "06-add", caption: "WRITE: “Add files” uploads the user’s chosen files to the linked folder, and a worksheet Clem makes is saved into it." },
   { id: "07-edit", caption: "WRITE: after the user approves an edit, the same Drive file receives the new version. It is not duplicated." },
-  { id: "08-why", card: { seconds: 9, lines: ["Why the full drive scope?", "drive.file can’t add files to folders the user created themselves, so Mowr needs the drive scope to save into the folder the user linked.", "Data is read live from Drive and streamed, never copied. Disconnect revokes access."] } },
-  { id: "09-revoke", caption: "REVOKE: Disconnect in Mowr revokes the Google grant, so Mowr can no longer read or write the user’s Drive." },
-  { id: "10-end", card: { seconds: 7, lines: ["Mowr: thank you for reviewing", "Support: support@mowrai.com", "Privacy policy: https://mowrai.com/#/privacy", "Scope used: " + SCOPE] } },
+  { id: "08-why", card: { seconds: 9, lines: ["Why the full drive scope?", "drive.file can’t add files to folders the user created themselves, so Clem needs the drive scope to save into the folder the user linked.", "Data is read live from Drive and streamed, never copied. Disconnect revokes access."] } },
+  { id: "09-revoke", caption: "REVOKE: Disconnect in Clem revokes the Google grant, so Clem can no longer read or write the user’s Drive." },
+  { id: "10-end", card: { seconds: 7, lines: ["Clem: thank you for reviewing", "Support: support@m4labs.xyz", "Privacy policy: https://clem.m4labs.xyz/#/privacy", "Scope used: " + SCOPE] } },
 ];
 const timing = existsSync(join(dir, "timing.json")) ? JSON.parse(readFileSync(join(dir, "timing.json"), "utf8")) : {};
 

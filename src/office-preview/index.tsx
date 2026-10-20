@@ -7,7 +7,7 @@ import "./office-preview.css";
 
 /**
  * Word, PowerPoint and Excel files shown as what they are: pages, slides and formatted sheets with calculated values.
- * Read from the file's own bytes, so a file the person uploaded and one Mowr made look right with no Office installed,
+ * Read from the file's own bytes, so a file the person uploaded and one Clem made look right with no Office installed,
  * and an edit made in the panel shows at once. `fallback` (the plain text view) is shown if the file cannot be drawn.
  */
 type Drawn = { kind: "docx"; model: DocxModel } | { kind: "pptx"; model: PptxModel } | { kind: "xlsx"; model: XlsxModel & { dispose: () => void } } | { error: string };

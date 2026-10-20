@@ -39,7 +39,7 @@ export function VideoViewer({ file, onClose, onAsk, onRefresh }: { file: StoredF
           {video.captions !== "none" && <span className="yt-find"><Icon name="research" size={14} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find in transcript" aria-label="Find in transcript" /></span>}
         </div>
         {video.captions === "none" ? <div className="yt-none">
-          <p>{video.error || "This video has no captions Mowr can read."} Mowr only knows its title{video.channel ? " and channel" : ""}, so it won’t guess what the video says.</p>
+          <p>{video.error || "This video has no captions Clem can read."} Clem only knows its title{video.channel ? " and channel" : ""}, so it won’t guess what the video says.</p>
           <button type="button" className="yt-btn" disabled={refreshing} onClick={async () => { setRefreshing(true); try { await onRefresh(file); } finally { setRefreshing(false); } }}><Icon name="refresh" size={14} />{refreshing ? "Reading captions…" : "Try captions again"}</button>
         </div> : doc === null ? <p className="yt-none">Loading the transcript…</p> : <ol className="yt-lines">
           {shown.map((m) => <li key={m.start}><button type="button" onClick={() => jump(m.start)}><time>{stamp(m.start)}</time><span>{m.text}</span></button></li>)}

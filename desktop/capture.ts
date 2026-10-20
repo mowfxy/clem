@@ -16,11 +16,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;cursor:crosshair;
 <script>
 const shot=document.getElementById('shot'),sel=document.getElementById('sel'),dim=document.getElementById('dim'),size=document.getElementById('size'),hint=document.getElementById('hint');
 let start=null;
-window.mowrCapture.image().then(src=>{shot.src=src;});
-addEventListener('keydown',e=>{if(e.key==='Escape')window.mowrCapture.done(null);if(e.key==='Enter')window.mowrCapture.done({x:0,y:0,width:innerWidth,height:innerHeight});});
+window.clemCapture.image().then(src=>{shot.src=src;});
+addEventListener('keydown',e=>{if(e.key==='Escape')window.clemCapture.done(null);if(e.key==='Enter')window.clemCapture.done({x:0,y:0,width:innerWidth,height:innerHeight});});
 addEventListener('mousedown',e=>{start={x:e.clientX,y:e.clientY};sel.style.display='block';dim.style.display='none';hint.style.opacity='0';draw(e);});
 addEventListener('mousemove',e=>{if(start)draw(e);});
-addEventListener('mouseup',e=>{if(!start)return;const r=rect(e);start=null;window.mowrCapture.done(r.width<6||r.height<6?{x:0,y:0,width:innerWidth,height:innerHeight}:r);});
+addEventListener('mouseup',e=>{if(!start)return;const r=rect(e);start=null;window.clemCapture.done(r.width<6||r.height<6?{x:0,y:0,width:innerWidth,height:innerHeight}:r);});
 function rect(e){return {x:Math.min(start.x,e.clientX),y:Math.min(start.y,e.clientY),width:Math.abs(e.clientX-start.x),height:Math.abs(e.clientY-start.y)};}
 function draw(e){const r=rect(e);Object.assign(sel.style,{left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px'});size.style.display='block';size.textContent=Math.round(r.width*devicePixelRatio)+' × '+Math.round(r.height*devicePixelRatio);size.style.left=(r.x)+'px';size.style.top=Math.max(4,r.y-24)+'px';}
 </script></body></html>`;
@@ -37,7 +37,7 @@ export async function captureRegion(preload: string, hide?: BrowserWindow): Prom
     const pixels = { width: Math.round(display.size.width * display.scaleFactor), height: Math.round(display.size.height * display.scaleFactor) };
     const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: pixels });
     const source = sources.find((s) => s.display_id === String(display.id)) || sources[0];
-    if (!source || source.thumbnail.isEmpty()) throw Error("Windows did not allow Mowr to capture the screen.");
+    if (!source || source.thumbnail.isEmpty()) throw Error("Windows did not allow Clem to capture the screen.");
     const image = source.thumbnail;
     overlay = new BrowserWindow({
       x: display.bounds.x, y: display.bounds.y, width: display.bounds.width, height: display.bounds.height,
@@ -55,13 +55,13 @@ export async function captureRegion(preload: string, hide?: BrowserWindow): Prom
       const finish = (rect: { x: number; y: number; width: number; height: number } | null) => {
         if (finished) return;
         finished = true;
-        ipcMain.removeHandler("mowr:capture-image");
-        ipcMain.removeListener("mowr:capture-done", onDone);
+        ipcMain.removeHandler("clem:capture-image");
+        ipcMain.removeListener("clem:capture-done", onDone);
         resolve(rect);
       };
-      ipcMain.removeHandler("mowr:capture-image");
-      ipcMain.handle("mowr:capture-image", onImage);
-      ipcMain.on("mowr:capture-done", onDone);
+      ipcMain.removeHandler("clem:capture-image");
+      ipcMain.handle("clem:capture-image", onImage);
+      ipcMain.on("clem:capture-done", onDone);
       win.on("closed", () => finish(null));
       win.on("blur", () => { if (!win.isDestroyed()) win.focus(); });
       win.webContents.on("will-navigate", (e) => e.preventDefault());

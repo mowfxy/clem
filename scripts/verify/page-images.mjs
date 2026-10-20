@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 
 const files = process.argv.slice(2).map((f) => resolve(f));
-const out = join(tmpdir(), "mowr-verify-pages");
+const out = join(tmpdir(), "clem-verify-pages");
 await mkdir(out, { recursive: true });
 // The page module reads files through the app's store; here the store serves the files given on the command line.
 const store = `export async function getBlob(id){const f=window.__files[id];return f?new Blob([f.bytes],{type:f.type}):undefined;}`;

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS mowr_document_edits (
+CREATE TABLE IF NOT EXISTS clem_document_edits (
  owner_id TEXT NOT NULL,
  file_id TEXT NOT NULL,
  revision INTEGER NOT NULL DEFAULT 1,

@@ -17,7 +17,7 @@ export type FileKind = (typeof kinds)[number]['id'];
 /** The first kind a file belongs to: the same grouping the storage bar and the Files page filters use. */
 export const kindOf = (f: StoredFile): FileKind => kinds.find((k) => k.test(f))!.id;
 
-/** How much the person keeps in Mowr, what kind of files it is, and how much room the device has left. */
+/** How much the person keeps in Clem, what kind of files it is, and how much room the device has left. */
 export function StorageSummary({ files }: { files: StoredFile[] }) {
   const local = files.filter((f) => !f.remote);
   const total = local.reduce((n, f) => n + f.size, 0);

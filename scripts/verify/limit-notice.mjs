@@ -9,7 +9,7 @@ await mkdir(out, { recursive: true });
 // The first chat request writes a little, then ends the way the main process ends one the plan refused.
 const limited = () => {
   let bridge;
-  Object.defineProperty(window, "mowrDesktop", {
+  Object.defineProperty(window, "clemDesktop", {
     configurable: true,
     get: () => bridge,
     set(value) {
@@ -44,7 +44,7 @@ try {
   check(!(await page.locator(".closed-note").count()), "no 'closed unexpectedly' note");
   check(await notice.getByText("Continue this task when the limit resets?").isVisible(), "notice asks whether to continue at the reset");
   await notice.getByRole("button", { name: /^Continue (at|tomorrow)/ }).click();
-  await notice.getByText("Mowr will continue").waitFor();
+  await notice.getByText("Clem will continue").waitFor();
   check(true, "auto-continue turned on shows when it continues");
   await page.screenshot({ path: out + "/notice.png" });
   await notice.getByRole("button", { name: "Try now" }).click();

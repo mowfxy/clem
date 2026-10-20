@@ -1,13 +1,13 @@
-// The database Worker runs SQL sent by the Mowr API (server/d1.ts). It accepts only single SELECT/INSERT/UPDATE/DELETE
+// The database Worker runs SQL sent by the Clem API (server/d1.ts). It accepts only single SELECT/INSERT/UPDATE/DELETE
 // statements over the tables that API uses, so a leaked secret or a compromised API cannot read linked accounts or
 // make itself staff (desktop_admins, desktop_owner_grants, provider_links and the rest are refused).
 // Keep in step with server/: tests/sql-allowlist.test.ts checks every query the API sends.
 
 /** Tables the API inserts into, updates and deletes from. */
 export const writableTables = new Set([
-  "mowr_users", "mowr_credentials", "mowr_rate_limits", "mowr_workspaces", "mowr_scopes", "mowr_usage", "mowr_files",
-  "mowr_automations", "mowr_security", "mowr_email_challenges", "mowr_support", "mowr_email_log", "mowr_email_optout",
-  "mowr_document_edits", "mowr_subscription_sessions", "mowr_runtime_budget",
+  "clem_users", "clem_credentials", "clem_rate_limits", "clem_workspaces", "clem_scopes", "clem_usage", "clem_files",
+  "clem_automations", "clem_security", "clem_email_challenges", "clem_support", "clem_email_log", "clem_email_optout",
+  "clem_document_edits", "clem_subscription_sessions", "clem_runtime_budget",
 ]);
 /** Staff email sends are audited (server/staff-emails.ts): the API may add entries, never change or remove them. */
 export const insertableTables = new Set([...writableTables, "desktop_audit_log"]);

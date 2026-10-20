@@ -1,5 +1,5 @@
 /**
- * Makes one sample of every file type Mowr's file tools produce, in Electron (figures and equations are drawn by
+ * Makes one sample of every file type Clem's file tools produce, in Electron (figures and equations are drawn by
  * Chromium), so they can be opened in Word, PowerPoint and Excel. Run with: node scripts/verify/office-files.mjs <out dir>
  */
 import { app } from "electron";
@@ -12,10 +12,10 @@ import { deckSamples } from "./deck-samples.ts";
 
 const out = process.argv.at(-1)!;
 const circuit = kinetraRecipes.find((r) => r.name === "circuit schematic")!.figure;
-const flow = { module: "mowr", fn: "flowchart", args: [{ title: "Design process", direction: "down", nodes: [{ id: "s", label: "Brief", shape: "start" }, { id: "b", label: "Research" }, { id: "d", label: "Meets goals?", shape: "decision" }, { id: "p", label: "Ship", shape: "end" }], edges: [{ from: "s", to: "b" }, { from: "b", to: "d" }, { from: "d", to: "p", label: "Yes" }, { from: "d", to: "b", label: "No" }] }] };
+const flow = { module: "clem", fn: "flowchart", args: [{ title: "Design process", direction: "down", nodes: [{ id: "s", label: "Brief", shape: "start" }, { id: "b", label: "Research" }, { id: "d", label: "Meets goals?", shape: "decision" }, { id: "p", label: "Ship", shape: "end" }], edges: [{ from: "s", to: "b" }, { from: "b", to: "d" }, { from: "d", to: "p", label: "Yes" }, { from: "d", to: "b", label: "No" }] }] };
 
 const doc = {
-  kind: "report", title: "Voltage Division in Series Resistor Networks", subtitle: "A worked analysis", author: "Mowr", summary: "This report derives the voltage divider relation, verifies it on a 12 V network and discusses loading effects.",
+  kind: "report", title: "Voltage Division in Series Resistor Networks", subtitle: "A worked analysis", author: "Clem", summary: "This report derives the voltage divider relation, verifies it on a 12 V network and discusses loading effects.",
   plan: ["Introduction", "Theory", "Worked example", "Discussion"],
   sections: [
     { heading: "Introduction", text: "Series resistors share the source voltage in proportion to their resistance [1]. The circuit in Figure 1 is analysed throughout.\n\n- Ohm's law applies to each resistor.\n- Kirchhoff's voltage law closes the loop.\n  - Nested point one.\n\n1. Measure the source.\n2. Compute the current.", figure: circuit, caption: "A 12 V source driving $R_1$ and $R_2$ in series." },
@@ -27,7 +27,7 @@ const doc = {
 };
 
 const deck = (preset: string) => ({
-  title: "Voltage dividers in practice", subtitle: "From Ohm's law to sensor circuits", author: "Mowr", theme: { preset },
+  title: "Voltage dividers in practice", subtitle: "From Ohm's law to sensor circuits", author: "Clem", theme: { preset },
   slides: [
     { layout: "title", kicker: "Electronics 101" },
     { layout: "agenda", title: "Agenda", items: ["Why dividers matter", "The divider equation", "Worked example", "Loading effects", "Applications"] },
@@ -53,8 +53,8 @@ app.on("window-all-closed", () => {});
 app.whenReady().then(async () => {
   await mkdir(out, { recursive: true });
   const jobs: [string, string, any][] = [["docx", "report.docx", doc], ["pdf", "report.pdf", doc], ["docx", "notes.docx", { ...doc, kind: "notes" }], ["docx", "brief.docx", { ...doc, kind: "brief", design: { accent: "#0B5CAD" } }], ...Object.keys(themes).map((p) => ["pptx", `deck-${p}.pptx`, deck(p)] as [string, string, any]), ...Object.entries(deckSamples).map(([name, spec]) => ["pptx", `context-${name}.pptx`, spec] as [string, string, any]), ["image", "circuit.png", { name: "circuit", figure: circuit }], ["file", "data.csv", { name: "data.csv", content: "a,b\n1,2\n" }]];
-  // MOWR_ONLY=<regex> makes only the matching files (e.g. MOWR_ONLY=context- for the context decks).
-  const only = process.env.MOWR_ONLY ? new RegExp(process.env.MOWR_ONLY) : null;
+  // CLEM_ONLY=<regex> makes only the matching files (e.g. CLEM_ONLY=context- for the context decks).
+  const only = process.env.CLEM_ONLY ? new RegExp(process.env.CLEM_ONLY) : null;
   for (const [action, name, spec] of jobs) {
     if (only && !only.test(name)) continue;
     try {

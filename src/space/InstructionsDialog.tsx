@@ -10,7 +10,7 @@ export function InstructionsGlyph(){
   return <Icon name="note" size={18}/>;
 }
 
-/** The notes Mowr follows in one project or subject, edited in a popup. */
+/** The notes Clem follows in one project or subject, edited in a popup. */
 export function InstructionsDialog({space,onSave,onClose}:{space:Space;onSave:(memory:string)=>void;onClose:()=>void}){
   const subject=space.kind==='subject';
   const ref=useRef<HTMLDialogElement>(null),field=useRef<HTMLTextAreaElement>(null);
@@ -26,15 +26,15 @@ export function InstructionsDialog({space,onSave,onClose}:{space:Space;onSave:(m
       onClick={e=>{if(e.target===e.currentTarget)casualClose();}}>
       <header>
         <span className="contact-option-mark" aria-hidden="true"><InstructionsGlyph/></span>
-        <div><h2 id="instructions-title">{subject?'How Mowr teaches you':'Project instructions'}</h2>
-          <p>{subject?`Mowr follows these whenever you study ${space.name}.`:`Mowr follows these in every chat in ${space.name}.`}</p></div>
+        <div><h2 id="instructions-title">{subject?'How Clem teaches you':'Project instructions'}</h2>
+          <p>{subject?`Clem follows these whenever you study ${space.name}.`:`Clem follows these in every chat in ${space.name}.`}</p></div>
         <button type="button" className="contact-close" aria-label="Close" onClick={onClose}><Icon name="close" size={16}/></button>
       </header>
       <form onSubmit={e=>{e.preventDefault();save();}}>
         <div className="instructions-field">
           <textarea aria-label="Instructions" ref={field} rows={9} value={text} maxLength={MAX} onChange={e=>setText(e.target.value)}
             onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();save();}}}
-            placeholder={subject?'My level, the course and exam board, how I like things explained…':'Goals, background, tone, and how Mowr should work here…'}/>
+            placeholder={subject?'My level, the course and exam board, how I like things explained…':'Goals, background, tone, and how Clem should work here…'}/>
           {text.length>MAX*.8&&<small className="instructions-count">{text.length.toLocaleString()} / {MAX.toLocaleString()}</small>}
         </div>
         <footer>
@@ -64,7 +64,7 @@ export function DescriptionDialog({space,onSave,onClose}:{space:Space;onSave:(de
       <header>
         <span className="contact-option-mark" aria-hidden="true"><Icon name="cmd-notes" size={18}/></span>
         <div><h2 id="description-title">Description</h2>
-          <p>{subject?`Shown under ${space.name}. Mowr reads it to know what you are studying.`:`Shown under ${space.name}. Mowr reads it to know what the project is.`}</p></div>
+          <p>{subject?`Shown under ${space.name}. Clem reads it to know what you are studying.`:`Shown under ${space.name}. Clem reads it to know what the project is.`}</p></div>
         <button type="button" className="contact-close" aria-label="Close" onClick={onClose}><Icon name="close" size={16}/></button>
       </header>
       <form onSubmit={e=>{e.preventDefault();save();}}>

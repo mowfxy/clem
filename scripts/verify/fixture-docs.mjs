@@ -1,4 +1,4 @@
-// Real documents for fixtures: Mowr's own document template (desktop/pdf-document.ts) printed by
+// Real documents for fixtures: Clem's own document template (desktop/pdf-document.ts) printed by
 // Chromium, which is how the desktop app prints them, plus a plain "teacher's handout" PDF.
 import { build } from "esbuild";
 import { mkdir } from "node:fs/promises";
@@ -15,7 +15,7 @@ async function documentHtml() {
   return template;
 }
 
-/** Returns spec → PDF bytes, printed the way Mowr prints generated documents. */
+/** Returns spec → PDF bytes, printed the way Clem prints generated documents. */
 export async function specPrinter(browser) {
   const html = await documentHtml();
   const page = await browser.newPage();
@@ -37,7 +37,7 @@ export const worksheetSpec = {
   ],
 };
 
-/** A handout someone else made: ordinary fonts, a table, no Mowr source behind it. */
+/** A handout someone else made: ordinary fonts, a table, no Clem source behind it. */
 export async function handoutPdf(browser) {
   const page = await browser.newPage();
   await page.setContent(`<!doctype html><style>body{font-family:Arial,Helvetica,sans-serif;margin:56px 64px;color:#1a1a1a}h1{font-size:22px;margin:0 0 4px}p{font-size:13px;line-height:1.6;margin:6px 0}.meta{color:#666;font-size:12px}table{border-collapse:collapse;margin:14px 0}td,th{border:1px solid #bbb;padding:6px 14px;font-size:12.5px}th{background:#f1f1f1}</style>

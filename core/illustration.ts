@@ -5,7 +5,7 @@ import { numeric, safeEval, type Compiled, type Vars } from './expr.ts';
  * inclines, levers and wheelbarrows, charged spheres and wires with their field lines, vessels of liquid), built
  * from a short list of parts in world units (y up). The geometry is computed, not traced: ropes leave every pulley
  * along its true tangent, blocks sit on the incline they are placed on, and field lines are integrated from the
- * charges in the scene. One renderer serves the chat (```visual kind "figure"), PDFs (Kinetra mowr.illustration),
+ * charges in the scene. One renderer serves the chat (```visual kind "figure"), PDFs (Kinetra clem.illustration),
  * exports and thumbnails, so a figure looks the same everywhere. Output is a self-contained SVG string.
  */
 

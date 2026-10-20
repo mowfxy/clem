@@ -1,5 +1,5 @@
 // Runs every browser check in this folder, one after another, and reports each result.
-// installer-download is skipped by default: it downloads the live installer from mowrai.com.
+// installer-download is skipped by default: it downloads the live installer from clem.m4labs.xyz.
 import { readdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";

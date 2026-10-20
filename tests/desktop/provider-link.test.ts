@@ -15,7 +15,7 @@ function setup(remote: { id: string; kind: "codex" | "claude"; label: string; ha
 }
 
 test("linked sign-ins are restored, newer local ones are kept, stale ones replaced", async () => {
-  const root = await mkdtemp(join(tmpdir(), "mowr-link-"));
+  const root = await mkdtemp(join(tmpdir(), "clem-link-"));
   const fresh = JSON.stringify({ tokens: "cloud" });
   const env = setup([{ id: "a", kind: "codex", label: "", hash: sha(fresh), data: fresh }, { id: "claude", kind: "claude", label: "", hash: sha(fresh), data: fresh }]);
   const link = new ProviderLink(env.auth as any, env.vault as any, root);
@@ -34,7 +34,7 @@ test("linked sign-ins are restored, newer local ones are kept, stale ones replac
 });
 
 test("a copy this PC uploaded is replaced when the account holds a newer one", async () => {
-  const root = await mkdtemp(join(tmpdir(), "mowr-link-"));
+  const root = await mkdtemp(join(tmpdir(), "clem-link-"));
   const old = JSON.stringify({ tokens: "old" }), newer = JSON.stringify({ tokens: "rotated-elsewhere" });
   const env = setup([{ id: "a", kind: "codex", label: "", hash: sha(newer), data: newer }]);
   env.store.set("provider-link-owner", { a: sha(old) });
@@ -47,7 +47,7 @@ test("a copy this PC uploaded is replaced when the account holds a newer one", a
 });
 
 test("a linked entry whose id is not a plain name is never written to disk", async () => {
-  const root = await mkdtemp(join(tmpdir(), "mowr-link-"));
+  const root = await mkdtemp(join(tmpdir(), "clem-link-"));
   const data = JSON.stringify({ tokens: "x" });
   const env = setup([{ id: "../../escape", kind: "codex", label: "", hash: sha(data), data }, { id: "b", kind: "other" as any, label: "", hash: sha(data), data }]);
   const link = new ProviderLink(env.auth as any, env.vault as any, root);

@@ -17,9 +17,9 @@ export function Users({go,selected,staff}:{go:Go;selected?:string;staff:Staff}){
   const [q,setQ]=useState('');const [query,setQuery]=useState('');const [plan,setPlan]=useState('all');
   useEffect(()=>{const t=setTimeout(()=>setQuery(q.trim()),250);return()=>clearTimeout(t);},[q]);
   const {data,error,loading,reload}=useLoad(()=>adminApi<{users:Person[];total:number}>(`/admin/users?q=${encodeURIComponent(query)}&plan=${plan}`),[query,plan]);
-  function exportCsv(){if(!data)return;const url=URL.createObjectURL(new Blob([toCsv(data.users)],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download=`mowr-people-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);}
+  function exportCsv(){if(!data)return;const url=URL.createObjectURL(new Blob([toCsv(data.users)],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download=`clem-people-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);}
   return <div className="adm-page">
-    <PageHead scene="invite" title="People" line={data?`${data.total} ${data.total===1?'person':'people'} ${plan==='all'?'have used Mowr':'match'}.`:'Everyone who has used Mowr.'}><button className="adm-ghost" onClick={exportCsv} disabled={!data?.users.length}><I name="download"/>Export CSV</button></PageHead>
+    <PageHead scene="invite" title="People" line={data?`${data.total} ${data.total===1?'person':'people'} ${plan==='all'?'have used Clem':'match'}.`:'Everyone who has used Clem.'}><button className="adm-ghost" onClick={exportCsv} disabled={!data?.users.length}><I name="download"/>Export CSV</button></PageHead>
     <div className="adm-toolbar">
       <label className="adm-search"><I name="search"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search email, username or ID" aria-label="Search people"/></label>
       <div className="adm-segment" role="tablist">{filters.map(([value,label])=><button key={value} role="tab" aria-selected={plan===value} className={plan===value?'on':''} onClick={()=>setPlan(value)}>{label}</button>)}</div>

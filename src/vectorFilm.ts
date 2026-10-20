@@ -1,5 +1,5 @@
 /**
- * Mowr's illustrations: each scene is a small metaphor told in two or three things, drawn with an even ivory pen
+ * Clem's illustrations: each scene is a small metaphor told in two or three things, drawn with an even ivory pen
  * line that wanders a little and leaves its ends open, set small in a lot of empty space. Colour sits on one small
  * element only (a keystone, a keyhole, a tab) and often carries a few thin lines of its own over it; everything else
  * is bare line.

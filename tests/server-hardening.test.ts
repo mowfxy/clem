@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { neonConfig } from "@neondatabase/serverless";
 // Retired legacy uploads stay retired here (cloud.test.ts turns them on to test the legacy readers).
-delete process.env.MOWR_LEGACY_WORKSPACE;
+delete process.env.CLEM_LEGACY_WORKSPACE;
 delete process.env.VERCEL;
 const pg = new PGlite();
 for (const file of ["001_core.sql", "002_accounts.sql", "003_github.sql"]) await pg.exec(await fs.readFile("database/" + file, "utf8"));
@@ -57,12 +57,12 @@ test("parallel requests cannot create more than five automations", async () => {
   assert.equal((await (await request("automations", "GET", undefined, cookie)).json()).length, 5);
 });
 
-test("only messages Mowr wrote reach people; library and runtime errors stay generic", () => {
+test("only messages Clem wrote reach people; library and runtime errors stay generic", () => {
   assert.equal(exposable(new Error("Connect Google Drive first.")), true);
   assert.equal(exposable(new TypeError("Cannot read properties of undefined")), false);
   assert.equal(exposable(Object.assign(new Error("Invalid login: 535 5.7.8 smtp.example rejected"), { code: "EAUTH" })), false);
   class StorageError extends Error {}
-  assert.equal(exposable(new StorageError("bucket mowr-files row-level security")), false);
+  assert.equal(exposable(new StorageError("bucket clem-files row-level security")), false);
   assert.equal(exposable("text"), false);
 });
 
@@ -105,9 +105,9 @@ test("a deployment uses the server's own provider keys only when it opts in", as
     assert.equal(modelCatalog().find((m) => m.id === "anthropic")!.connected, false);
     // A person's own key still works on the deployment.
     assert.equal(requestSpec("anthropic", [{ role: "user", content: "hi" }], { key: "sk-own", model: "claude-own" }).headers["x-api-key"], "sk-own");
-    process.env.MOWR_SERVER_KEYS = "true";
+    process.env.CLEM_SERVER_KEYS = "true";
     assert.equal(serverKeysAllowed(), true);
   } finally {
-    for (const name of ["VERCEL", "MOWR_SERVER_KEYS", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"]) if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
+    for (const name of ["VERCEL", "CLEM_SERVER_KEYS", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"]) if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
   }
 });

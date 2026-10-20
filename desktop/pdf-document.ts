@@ -59,7 +59,7 @@ export type DocumentSpec = {
   headingFont?: string;
   /** The person's own design (or one a skill describes), on top of the layout; see `designCss`. */
   design?: Design;
-  /** Every heading the finished document will have, sent with the first part. Mowr reports which are still
+  /** Every heading the finished document will have, sent with the first part. Clem reports which are still
    *  unwritten, so a long document is completed over as many parts as it needs (desktop/main.ts). */
   plan?: string[];
 };
@@ -109,7 +109,7 @@ export function designProblems(design: unknown): string[] {
   if (d.css !== undefined && (typeof d.css !== "string" || d.css.length > 20000)) problems.push("design.css must be CSS text of at most 20,000 characters.");
   return problems;
 }
-/** The person's CSS, kept inside the style element and away from Mowr's own fonts and from anything outside the page. */
+/** The person's CSS, kept inside the style element and away from Clem's own fonts and from anything outside the page. */
 export const cleanCss = (css: string) =>
   css.replace(/<\/?style[^>]*>?|<!--|-->/gi, "").replace(/@import[^;]*;?/gi, "").replace(/url\s*\([^)]*\)/gi, "none").replace(/[^;{}]*mowafy[^;{}]*;?/gi, "");
 
@@ -140,7 +140,7 @@ export const layoutFor = (spec: Pick<DocumentSpec, "kind" | "style">): Layout =>
   layouts.has(spec.style as Layout) ? (spec.style as Layout) : kindLayout[String(spec.kind || "report")] || "technical";
 
 /** Standard document typefaces installed with Windows (with metric-compatible fallbacks), so a PDF reads like
- *  print. Mowr's own interface fonts are never used in documents, even when asked for. */
+ *  print. Clem's own interface fonts are never used in documents, even when asked for. */
 const times = "'Times New Roman',Times,'Liberation Serif','Nimbus Roman','TeX Gyre Termes',serif";
 const palatino = "'Palatino Linotype','Book Antiqua',Palatino,'TeX Gyre Pagella',serif";
 const georgia = "Georgia,Cambria,'Times New Roman',serif";
@@ -215,11 +215,11 @@ const unsafeSvg = /<script|<foreignObject|\bon\w+\s*=|(?:href|src)\s*=\s*["'](?:
 const kinds = new Set(["report", "paper", "brief", "notes", "proposal", "manual", "handout", "worksheet", "letter", "memo", "document"]);
 const kindLabel: Record<string, string> = { report: "Report", paper: "Preprint", brief: "Briefing", notes: "Notes", proposal: "Proposal", manual: "Guide", handout: "Handout", worksheet: "Worksheet", letter: "Letter", memo: "Memorandum", document: "" };
 const summaryLabel = (kind: string) => (kind === "paper" || kind === "report" ? "Abstract" : kind === "brief" || kind === "proposal" ? "Executive summary" : kind === "memo" ? "Summary" : "Overview");
-/** Mowr numbers sections itself, so manual numbers in headings are removed. */
+/** Clem numbers sections itself, so manual numbers in headings are removed. */
 export const cleanHeading = (heading: string) => heading.replace(/^\s*(?:(?:\d+(?:\.\d+)*|[IVXLC]+|[A-Z])[.)]|\d+(?:\.\d+)+)\s+/, "").trim();
 
 /** How long a specification is as written: a crop's picture (added for drawing, desktop/pdf-assets.ts) does not count. */
-export const specSize = (spec: unknown) => JSON.stringify(spec, (k, v) => (k === "svg" && typeof v === "string" && v.includes("data-mowr-asset") ? "" : v)).length;
+export const specSize = (spec: unknown) => JSON.stringify(spec, (k, v) => (k === "svg" && typeof v === "string" && v.includes("data-clem-asset") ? "" : v)).length;
 
 /** Checks the whole specification and renders every figure before any page is laid out.
  *  All problems (structure, voice and figures) are reported together, so the model can correct them in one pass. */
@@ -753,7 +753,7 @@ export function unwritten(spec: Pick<DocumentSpec, "plan" | "sections">, { stubs
   });
 }
 
-/** Each ```visual block becomes a marker line, and the visual itself a printed figure (Kinetra mowr.visual). */
+/** Each ```visual block becomes a marker line, and the visual itself a printed figure (Kinetra clem.visual). */
 const VISUAL_MARK = /^\u0000visual(\d+)\u0000$/;
 /** A Markdown answer as a document: the first heading is the title and "##" headings start sections.
  *  Every ```visual is printed as a numbered figure where it stood; the other interactive blocks (check, edit,
@@ -779,7 +779,7 @@ export function markdownDocument(markdown: string, fallbackTitle = "Document"): 
     if (visual) {
       // A section holds one figure, after its text: the text that follows the visual continues in an unheaded section.
       const spec = visuals[Number(visual[1])].spec;
-      sections.push({ ...current, figure: { module: "mowr", fn: "visual", args: [spec] }, caption: visualCaption(spec) || undefined });
+      sections.push({ ...current, figure: { module: "clem", fn: "visual", args: [spec] }, caption: visualCaption(spec) || undefined });
       current = {};
     } else if (heading) { if (current.heading || current.text?.trim()) sections.push(current); current = { heading: heading[1].trim(), text: "" }; }
     else current.text = (current.text || "") + line + "\n";

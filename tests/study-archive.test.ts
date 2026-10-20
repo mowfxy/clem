@@ -23,7 +23,7 @@ test("study requests and quiz indices are validated", () => {
 });
 test("subject archive includes source bytes and rejects missing files and unsafe entries", async () => {
   const manifest: SubjectArchive = {
-    format: "mowr-subject",
+    format: "clem-subject",
     version: 1,
     space: {
       id: "subject",

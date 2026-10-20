@@ -210,8 +210,8 @@ test("overdue across plans and the model's view of them", () => {
 });
 
 test("the plans playbook's own examples are read by the parser", async () => {
-  const { mowrSkills, mowrSkillsFor, planIntent } = await import("../core/mowr-skills.ts");
-  const steps = mowrSkills.find((s) => s.id === "plans")!.steps.join("\n");
+  const { clemSkills, clemSkillsFor, planIntent } = await import("../core/clem-skills.ts");
+  const steps = clemSkills.find((s) => s.id === "plans")!.steps.join("\n");
   const created = readPlanBlock(/(\{"action":"create".*?\]\})/.exec(steps)![1].replace(/YYYY-MM-DD/g, "2026-10-20").replace(/HH:MM/g, "09:00"));
   assert.ok(created && created.action === "create" && created.tasks.length === 2);
   assert.equal(created.tasks[1].kind, "milestone");
@@ -221,7 +221,7 @@ test("the plans playbook's own examples are read by the parser", async () => {
   assert.deepEqual(readPlanBlock(/(\{"action":"delete"[^}]*\})/.exec(steps)![1]), { action: "delete", space: "<space id>" });
   for (const t of ["make me a study plan before the midterm", "I finished lecture 3", "am I on track?", "the quiz moved to Friday, reschedule", "what should I do today"]) assert.ok(planIntent.test(t), t);
   for (const t of ["explain recursion", "draw a pulley"]) assert.equal(planIntent.test(t), false, t);
-  assert.ok(mowrSkillsFor("explain recursion", { plans: true }).some((s) => s.id === "plans"), "a space with a plan always brings the playbook");
+  assert.ok(clemSkillsFor("explain recursion", { plans: true }).some((s) => s.id === "plans"), "a space with a plan always brings the playbook");
 });
 
 test("a plan saved in a subject ZIP comes back with what was done and when", () => {

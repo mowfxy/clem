@@ -35,7 +35,7 @@ export const kinetraToolSpec = {
   name: TOOL_NAME,
   title: "Kinetra",
   description:
-    'Runs one Kinetra request: verified calculations, textbook figures, and real files (PDF, Word, PowerPoint, Excel, text files, images), plus reading the person\'s files. The arguments are exactly the object the instructions write inside {"kinetra":…}: an "action" and its fields, for example {"action":"call","module":"mowr","fn":"solveCircuit","args":[…]} or {"action":"pdf","title":…,"sections":[…]}.',
+    'Runs one Kinetra request: verified calculations, textbook figures, and real files (PDF, Word, PowerPoint, Excel, text files, images), plus reading the person\'s files. The arguments are exactly the object the instructions write inside {"kinetra":…}: an "action" and its fields, for example {"action":"call","module":"clem","fn":"solveCircuit","args":[…]} or {"action":"pdf","title":…,"sections":[…]}.',
   inputSchema: {
     type: "object",
     properties: { action: { type: "string", enum: [...ACTIONS], description: "call, pdf, docx, pptx, xlsx, file, image, open, recipes, api, skill, help, files, read, search, look, regions, crop, editpdf, find, attach, or batch (several requests in one call: {\"action\":\"batch\",\"requests\":[…]})" } },
@@ -145,7 +145,7 @@ class KinetraMcp {
     switch (m.method) {
       case "initialize": {
         const asked = String(m.params?.protocolVersion || "");
-        return ok({ protocolVersion: PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: SERVER_NAME, title: "Kinetra (Mowr)", version: "1.0.0" } });
+        return ok({ protocolVersion: PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: SERVER_NAME, title: "Kinetra (Clem)", version: "1.0.0" } });
       }
       case "ping": return ok({});
       case "tools/list": return ok({ tools: [kinetraToolSpec] });
@@ -191,7 +191,7 @@ export const kinetraMcp = new KinetraMcp();
  * {"kinetra":…} objects (one description for every provider); this maps each one to a tool call. A model that does not
  * see the tool still has the text protocol, which runs the same way.
  */
-export const NATIVE_NOTE = `NATIVE KINETRA TOOL: this session has a tool named "${TOOL_NAME}". Wherever the instructions below say to reply with {"kinetra":X}, call the ${TOOL_NAME} tool with X as its arguments instead (for example {"kinetra":{"action":"help"}} becomes a ${TOOL_NAME} call with {"action":"help"}), and keep working in the same reply: its result comes back to you directly, with any pictures. Where the instructions say to batch requests in one reply, make those ${TOOL_NAME} calls together in one turn (parallel tool calls). Write no {"kinetra":…} JSON in your text. If that tool is not available to you, reply with the {"kinetra":…} JSON as described, and Mowr runs it.\n\n`;
+export const NATIVE_NOTE = `NATIVE KINETRA TOOL: this session has a tool named "${TOOL_NAME}". Wherever the instructions below say to reply with {"kinetra":X}, call the ${TOOL_NAME} tool with X as its arguments instead (for example {"kinetra":{"action":"help"}} becomes a ${TOOL_NAME} call with {"action":"help"}), and keep working in the same reply: its result comes back to you directly, with any pictures. Where the instructions say to batch requests in one reply, make those ${TOOL_NAME} calls together in one turn (parallel tool calls). Write no {"kinetra":…} JSON in your text. If that tool is not available to you, reply with the {"kinetra":…} JSON as described, and Clem runs it.\n\n`;
 
 /**
  * A provider's side of a native call: the loop's result with its picture files read in, since MCP sends pictures
@@ -247,21 +247,21 @@ export const GROK_MAX_OUTPUT_BYTES = 4_000_000;
  * no secret, and two answers running in one subject's folder at once each reach their own endpoint.
  */
 export const GROK_MCP_CONFIG = [
-  "# Written by Mowr before each Grok answer: Kinetra, reached through this answer's local endpoint.",
+  "# Written by Clem before each Grok answer: Kinetra, reached through this answer's local endpoint.",
   "[mcp]",
   `max_output_bytes = ${GROK_MAX_OUTPUT_BYTES}`,
   "",
   `[mcp_servers.${SERVER_NAME}]`,
-  'url = "${MOWR_KINETRA_URL}"',
+  'url = "${CLEM_KINETRA_URL}"',
   "enabled = true",
   "startup_timeout_sec = 30",
   `tool_timeout_sec = ${TOOL_TIMEOUT_SECONDS}`,
   "",
   `[mcp_servers.${SERVER_NAME}.headers]`,
-  'Authorization = "Bearer ${MOWR_KINETRA_TOKEN}"',
+  'Authorization = "Bearer ${CLEM_KINETRA_TOKEN}"',
   "",
 ].join("\n");
-export const grokMcpEnv = (endpoint: NativeEndpoint) => ({ MOWR_KINETRA_URL: endpoint.url, MOWR_KINETRA_TOKEN: endpoint.token });
+export const grokMcpEnv = (endpoint: NativeEndpoint) => ({ CLEM_KINETRA_URL: endpoint.url, CLEM_KINETRA_TOKEN: endpoint.token });
 /** NATIVE_NOTE for Grok, which reaches MCP tools through use_tool: naming the tool saves it a search step. */
 export const GROK_NATIVE_NOTE = NATIVE_NOTE.replace(
   `call the ${TOOL_NAME} tool with X as its arguments instead (for example {"kinetra":{"action":"help"}} becomes a ${TOOL_NAME} call with {"action":"help"})`,

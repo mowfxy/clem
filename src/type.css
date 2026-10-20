@@ -1,6 +1,6 @@
-/* Mowr typography.
+/* Clem typography.
    Two families, Light to Bold with real italics in both, one size scale.
-   Serif is Mowr's voice and what you read: one headline per page, answers, documents, study cards.
+   Serif is Clem's voice and what you read: one headline per page, answers, documents, study cards.
    Sans is names and interface: every sub-heading, title of a thing, label, control and caption.
    Stylesheets name families only through --sans, --serif and --mono. */
 
@@ -291,7 +291,7 @@ button,input,textarea,select,option{font-family:var(--sans)}
 b,strong{font-weight:700}
 code,kbd,pre,samp{font-family:var(--mono)}
 
-/* Voice: the one serif headline a screen gets, and Mowr talking in an empty or finished state. */
+/* Voice: the one serif headline a screen gets, and Clem talking in an empty or finished state. */
 .empty-state h2,.upload-empty h2,.vp-empty h2,.sh-done h2,.contact-sent h3,.adm-empty h3,
 .new-chat-content .greeting-row h1{font-family:var(--serif);font-weight:400;letter-spacing:var(--track-display)}
 
@@ -300,3 +300,10 @@ code,kbd,pre,samp{font-family:var(--mono)}
 
 /* Eyebrows: the small capital labels above a title or group. */
 .eyebrow{font:700 var(--t-label)/1.2 var(--sans);letter-spacing:var(--track-label);text-transform:uppercase}
+
+/* Clem's identity faces (Google Fonts, SIL OFL 1.1, latin subset, variable weight): JetBrains Mono for the terminal voice
+   of the website and portal, Outfit for the "clem" wordmark. */
+@font-face{font-family:'JetBrains Mono';src:url('/fonts/JetBrainsMono.woff2') format('woff2');font-weight:100 800;font-style:normal;font-display:swap}
+@font-face{font-family:'Outfit';src:url('/fonts/Outfit.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:swap}
+:root{--brand-mono:'JetBrains Mono',ui-monospace,Consolas,monospace;--wordmark:'Outfit','Helvetica Neue',Arial,sans-serif}
+.wordmark{font-family:var(--wordmark);font-weight:600;letter-spacing:-.03em;line-height:1}

@@ -12,10 +12,10 @@ type Staff={id:string;email:string;role:'owner'|'admin'|'support'};
 type Send=typeof sendMail;
 class StaffError extends Error{status:number;constructor(message:string,status:number){super(message);this.status=status;}}
 
-const accountService=()=>(process.env.MOWR_ACCOUNT_SERVICE||'https://mowr-accounts.mohamed-khaled011008.workers.dev').replace(/\/$/,'');
+const accountService=()=>(process.env.CLEM_ACCOUNT_SERVICE||'https://clem-accounts.mohamed-khaled011008.workers.dev').replace(/\/$/,'');
 
 /** Replies from people land in the support inbox, not the address that sends. */
-const replyTo=()=>process.env.SUPPORT_EMAIL||'support@mowrai.com';
+const replyTo=()=>process.env.SUPPORT_EMAIL||'support@m4labs.xyz';
 
 async function staffFor(req:express.Request,roles:Staff['role'][]=['admin','owner']):Promise<Staff>{
   const authorization=req.get('authorization')||'';
@@ -50,7 +50,7 @@ function fields(body:Record<string,unknown>,kind:StaffPreset){
 
 const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** A person with a Mowr account (`userId`), or any address typed in (`email`), matched to an account when there is one. */
+/** A person with a Clem account (`userId`), or any address typed in (`email`), matched to an account when there is one. */
 async function recipient(userId:unknown,typed?:unknown){
   if(!userId&&typeof typed==='string'){
     const email=typed.trim().toLowerCase();
@@ -61,11 +61,11 @@ async function recipient(userId:unknown,typed?:unknown){
   if(typeof userId!=='string'||!/^[\w-]{3,64}$/.test(userId))throw new StaffError('Choose a person.',400);
   const [row]=await db()`SELECT a.email,p.display_name,p.username FROM desktop_activity a LEFT JOIN desktop_profiles p ON p.user_id=a.user_id WHERE a.user_id=${userId}`;
   const email=String(row?.email||'').trim().toLowerCase();
-  if(!emailPattern.test(email))throw new StaffError('Mowr has no email address on record for this person.',404);
+  if(!emailPattern.test(email))throw new StaffError('Clem has no email address on record for this person.',404);
   return {id:userId,email,name:String(row?.display_name||row?.username||'')};
 }
 
-const unsubscribeLink=(email:string)=>`https://mowrai.com/api/email/unsubscribe?e=${encodeURIComponent(email)}&t=${unsubscribeToken(email)}`;
+const unsubscribeLink=(email:string)=>`https://clem.m4labs.xyz/api/email/unsubscribe?e=${encodeURIComponent(email)}&t=${unsubscribeToken(email)}`;
 
 export function staffEmailRouter(send:Send=sendMail){
   const router=express.Router();
@@ -100,10 +100,10 @@ export function staffEmailRouter(send:Send=sendMail){
     if(recent)throw new StaffError('This email was just sent to them. Wait a minute to send it again.',409);
     let headers:Record<string,string>|undefined,unsubscribe='';
     if(kind==='update'){
-      const [optedOut]=await db()`SELECT 1 AS hit FROM mowr_email_optout WHERE email=${person.email} AND kind='updates'`;
+      const [optedOut]=await db()`SELECT 1 AS hit FROM clem_email_optout WHERE email=${person.email} AND kind='updates'`;
       if(optedOut)throw new StaffError('They turned off update emails, so this one was not sent.',409);
       unsubscribe=unsubscribeLink(person.email);
-      headers={'List-Unsubscribe':`<${unsubscribe}>, <mailto:support@mowrai.com?subject=unsubscribe>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'};
+      headers={'List-Unsubscribe':`<${unsubscribe}>, <mailto:support@m4labs.xyz?subject=unsubscribe>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'};
     }
     const mail=staffEmail(kind,{...extra,name:person.name,unsubscribe});
     try{await send(person.email,mail.subject,mail.text,replyTo(),{html:mail.html,headers});}
@@ -111,7 +111,7 @@ export function staffEmailRouter(send:Send=sendMail){
     const at=new Date().toISOString();
     // The automatic senders skip anyone already logged, so a hand-sent welcome or update is not repeated later.
     const logged=kind==='welcome'?'welcome':kind==='update'?'update:'+extra.version:null;
-    if(logged&&person.id!==person.email)await db()`INSERT INTO mowr_email_log(owner_id,kind,sent_at) VALUES(${'supabase:'+person.id},${logged},${at}) ON CONFLICT(owner_id,kind) DO NOTHING`;
+    if(logged&&person.id!==person.email)await db()`INSERT INTO clem_email_log(owner_id,kind,sent_at) VALUES(${'supabase:'+person.id},${logged},${at}) ON CONFLICT(owner_id,kind) DO NOTHING`;
     await db()`INSERT INTO desktop_audit_log(id,actor_id,actor_email,action,target,detail,created_at) VALUES(${randomUUID()},${staff.id},${staff.email},'email.send',${person.id},${detail},${at})`;
     res.json({ok:true,to:person.email,subject:mail.subject});
   }));
@@ -128,7 +128,7 @@ export function staffEmailRouter(send:Send=sendMail){
     const found=await r.json().catch(()=>({}));
     if(!r.ok)throw new StaffError(found.error||'Case not found.',r.status===404?404:502);
     const c=found.case||{},email=String(c.email||'').trim().toLowerCase();
-    if(!emailPattern.test(email))throw new StaffError('Mowr has no email address on record for this person.',404);
+    if(!emailPattern.test(email))throw new StaffError('Clem has no email address on record for this person.',404);
     const reply=[...(found.messages||[])].reverse().find((m:{author:string})=>m.author==='staff');
     if(!reply)throw new StaffError('Send a reply first.',400);
     const key=`case-reply ${reply.id} · `;

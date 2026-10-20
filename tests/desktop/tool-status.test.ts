@@ -4,8 +4,8 @@ import { describeTool, shortPath } from "../../desktop/tool-status.ts";
 import { claudeStatus } from "../../desktop/claude.ts";
 import { grokStatus } from "../../desktop/grok.ts";
 
-test("file tools name the file, without Mowr's own folders", () => {
-  assert.equal(describeTool("Read", { file_path: "C:\\Users\\me\\AppData\\mowr\\space-1\\Files\\Lectures\\Week 3.pdf" }), "Reading Lectures/Week 3.pdf…");
+test("file tools name the file, without Clem's own folders", () => {
+  assert.equal(describeTool("Read", { file_path: "C:\\Users\\me\\AppData\\clem\\space-1\\Files\\Lectures\\Week 3.pdf" }), "Reading Lectures/Week 3.pdf…");
   assert.equal(describeTool("Read", { file_path: "C:/w/_text/Week 3.pdf.txt" }), "Reading Week 3.pdf…");
   assert.equal(describeTool("Write", { file_path: "C:/w/Outputs/chat-1a2b3c4d/results.csv" }), "Writing results.csv…");
   assert.equal(describeTool("Grep", { pattern: "Thevenin" }), "Searching the files for “Thevenin”…");

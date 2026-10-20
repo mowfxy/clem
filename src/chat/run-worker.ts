@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // Runs a chat code block away from the page. Python runs on Pyodide (bundled, loaded on first use); JavaScript runs as a
 // module function. Before any user code runs, the worker's network and storage are removed, so a snippet can print and
-// compute but cannot reach Mowr's local API, the web or saved data.
+// compute but cannot reach Clem's local API, the web or saved data.
 
 type Run = { id: number; lang: 'python' | 'javascript'; code: string; pyodideBase: string };
 type Out = { id: number; type: 'out' | 'err' | 'status' | 'done'; text?: string; ok?: boolean };

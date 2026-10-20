@@ -38,12 +38,12 @@ export function safeName(name: string) {
   );
 }
 export type Folder = { id: string; scope: string; path: string };
-/** Whether the .gitignore and .mowrignore files on the way to `parts` (a path inside `root`) leave it out, as indexing
+/** Whether the .gitignore and .clemignore files on the way to `parts` (a path inside `root`) leave it out, as indexing
  *  does: a file left out of the index is never read for or changed by an edit either. */
 export async function ignoredIn(root: string, parts: string[]) {
   for (let depth = 0; depth < parts.length; depth++) {
     const dir = join(root, ...parts.slice(0, depth));
-    for (const filename of [".gitignore", ".mowrignore"]) {
+    for (const filename of [".gitignore", ".clemignore"]) {
       const file = join(dir, filename);
       const stat = await lstat(file).catch(() => null);
       if (!stat || stat.isSymbolicLink() || stat.size >= 64000) continue;
@@ -93,7 +93,7 @@ export async function indexFolder(
     inherited: { base: string; rules: Ignore }[] = [],
   ) {
     const rules = [...inherited];
-    for (const filename of [".gitignore", ".mowrignore"]) {
+    for (const filename of [".gitignore", ".clemignore"]) {
       try {
         const file = join(dir, filename),
           stat = await lstat(file);

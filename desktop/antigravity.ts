@@ -15,8 +15,8 @@ import type {UsageSnapshot} from '../core/account-usage.ts';
 // plan, the way T3 Code runs it: Google's official Antigravity agent for other apps ("antigravity-acp", desktop/
 // antigravity-engine.ts), started unmodified on this PC and spoken to over the Agent Client Protocol, the protocol Google
 // built it for. Google's own agent signs the person in (its Google sign-in page opens in the browser), keeps the sign-in
-// in its own folder, and talks to Google's services itself. Mowr never reads that sign-in, never calls Google's services
-// itself, and nothing passes through Mowr's servers. Plan usage comes from the agent's own /usage command.
+// in its own folder, and talks to Google's services itself. Clem never reads that sign-in, never calls Google's services
+// itself, and nothing passes through Clem's servers. Plan usage comes from the agent's own /usage command.
 
 export const ANTIGRAVITY_PREFIX = 'antigravity:';
 export type AntigravityModel = {id: string; name: string; description?: string};
@@ -161,14 +161,14 @@ export function antigravityToolStatus(update: any): string | null {
 }
 
 /**
- * The agent's own tools Mowr keeps, by their built-in names: in a chat, opening the pictures and PDFs a message names and
+ * The agent's own tools Clem keeps, by their built-in names: in a chat, opening the pictures and PDFs a message names and
  * the web; in a working folder of the person's files (desktop/ai-workspace.ts), its file tools there too. Its terminal,
  * subagents, browser, image generation and questions stay off. Kinetra is an MCP tool, which the list does not govern.
  */
 export const ANTIGRAVITY_TOOLS = ['view_file', 'search_web', 'read_url_content', 'finish'];
 export const ANTIGRAVITY_FOLDER_TOOLS = ['view_file', 'list_directory', 'search_directory', 'find_file', 'create_file', 'edit_file', 'search_web', 'read_url_content', 'finish'];
-export const ANTIGRAVITY_NOTE = 'IN MOWR: your own tools are only for opening the pictures and PDFs a message names (view_file) and for the web. Files, documents, figures and calculations go only through Mowr\'s {"kinetra":…} requests: never read other files on this PC. When a message names several pictures or PDF page ranges, open all of them in the same step (one call each, sent together).';
-export const ANTIGRAVITY_FOLDER_NOTE = 'IN MOWR: your working folder holds the person\'s files; list, search, read and write them with your own file tools, as in any project. Run no commands. Never read files outside the working folder. When you need several files or page ranges, open them in the same step (one call each, sent together).';
+export const ANTIGRAVITY_NOTE = 'IN CLEM: your own tools are only for opening the pictures and PDFs a message names (view_file) and for the web. Files, documents, figures and calculations go only through Clem\'s {"kinetra":…} requests: never read other files on this PC. When a message names several pictures or PDF page ranges, open all of them in the same step (one call each, sent together).';
+export const ANTIGRAVITY_FOLDER_NOTE = 'IN CLEM: your working folder holds the person\'s files; list, search, read and write them with your own file tools, as in any project. Run no commands. Never read files outside the working folder. When you need several files or page ranges, open them in the same step (one call each, sent together).';
 /** NATIVE_NOTE as Antigravity names an MCP tool (server, then tool). */
 export const ANTIGRAVITY_NATIVE_NOTE = NATIVE_NOTE;
 /** The most of one Kinetra result the agent passes to the model, in bytes (a guide or a passage of a file goes whole). */
@@ -185,8 +185,8 @@ const PROCESS_IDLE = 55 * 60_000;
 const PROCESS_SESSIONS = 40;
 
 class SignedOut extends Error {}
-/** The agent's two ways of handing out its Google sign-in page: through BROWSER (Mowr's helper, below), or printed. */
-const URL_MARKER = '__MOWR_ANTIGRAVITY_URL__', URL_PRINTED = 'Open the following link to authenticate the ACP server: ';
+/** The agent's two ways of handing out its Google sign-in page: through BROWSER (Clem's helper, below), or printed. */
+const URL_MARKER = '__CLEM_ANTIGRAVITY_URL__', URL_PRINTED = 'Open the following link to authenticate the ACP server: ';
 /** Google's sign-in page, as the agent builds it, with a loopback return address on this PC. */
 export function googleSignInUrl(text: string) {
   try {
@@ -215,7 +215,7 @@ const inside = (root: string, path: string) => { const r = relative(resolve(root
 type Held = {cwd: string; folder: boolean; endpoint?: NativeEndpoint; route?: {id: string; native: AntigravityNative}; ended?: boolean};
 type Live = {acp: AcpConnection; child: ChildProcessWithoutNullStreams; tier?: string; version?: string;
   sessions: Map<string, Held>; opened: number; idle?: ReturnType<typeof setTimeout>};
-/** What a session is opened with: its folder, Mowr's rules for it, whether it may write there, and whether Kinetra is a tool. */
+/** What a session is opened with: its folder, Clem's rules for it, whether it may write there, and whether Kinetra is a tool. */
 export type AntigravitySpec = {cwd: string; system?: string; folder: boolean; native: boolean};
 const specKey = (spec: AntigravitySpec) => JSON.stringify([spec.cwd, spec.system || '', spec.folder, spec.native]);
 
@@ -225,9 +225,9 @@ export class AntigravityProvider {
   /** The agent's GEMINI_HOME for this account: its sign-in, settings and sessions, apart from any other Antigravity app. */
   private home: string;
   private live: Promise<Live> | null = null;
-  /** Mowr's session ids (chosen before a session starts) → the agent's own, which it picks itself. */
+  /** Clem's session ids (chosen before a session starts) → the agent's own, which it picks itself. */
   private agentIds = new Map<string, string>();
-  /** Sessions Mowr is done with; their files are removed once the process holding them has closed. */
+  /** Sessions Clem is done with; their files are removed once the process holding them has closed. */
   private dropped = new Set<string>();
   /** PDFs each session has been handed already, so a kept chat attaches each one once. */
   private attached = new Map<string, Set<string>>();
@@ -251,13 +251,13 @@ export class AntigravityProvider {
   private workspace() { return join(this.root, 'workspace'); }
   /** The agent unpacks itself (about 1 GB) into its temporary folder at each start, members up to 120 characters deep: the
    *  folder is short, so Windows' 260-character limit holds, and it is this account's own, so a leftover can be cleared. */
-  private temp() { return join(tmpdir(), 'mowr-agy', createHash('sha256').update(this.root).digest('hex').slice(0, 10)); }
+  private temp() { return join(tmpdir(), 'clem-agy', createHash('sha256').update(this.root).digest('hex').slice(0, 10)); }
   /** Only what Windows and the agent need: an API key or Google Cloud setting in the environment would bypass the plan. */
   private env(harness: string): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {};
     for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'HOMEDRIVE', 'HOMEPATH', 'USERNAME', 'ProgramData', 'ProgramFiles', 'COMSPEC', 'PATHEXT', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS']) if (process.env[key]) env[key] = process.env[key];
-    // The agent opens its sign-in page with Python's webbrowser, which runs BROWSER: Mowr's helper hands the address
-    // back on stderr instead, so Mowr opens it (a check that just reads the status never opens a browser at all).
+    // The agent opens its sign-in page with Python's webbrowser, which runs BROWSER: Clem's helper hands the address
+    // back on stderr instead, so Clem opens it (a check that just reads the status never opens a browser at all).
     const helper = `process.stderr.write("${URL_MARKER}"+JSON.stringify(process.argv[1])+"\\n",()=>process.exit(0))`;
     const quote = (s: string) => `'${s.replace(/'/g, `'"'"'`)}'`;
     return {...env, GEMINI_HOME: this.home, AGY_ACP_FORCE_FILE_STORAGE: '1', ANTIGRAVITY_HARNESS_PATH: harness, PYTHONUNBUFFERED: '1', NO_COLOR: '1',
@@ -272,7 +272,7 @@ export class AntigravityProvider {
     const acpDir = join(this.home, 'antigravity-acp');
     await mkdir(acpDir, {recursive: true});
     await mkdir(this.workspace(), {recursive: true});
-    // Only Google's own sign-in, chosen in its settings; never a hook or MCP server of another app's (this home is Mowr's own).
+    // Only Google's own sign-in, chosen in its settings; never a hook or MCP server of another app's (this home is Clem's own).
     await writeFile(join(acpDir, 'settings.json'), JSON.stringify({auth: {type: 'oauth-personal'}}) + '\n');
     await Promise.all(['hooks.json', 'mcp_config.json', 'skills'].map((name) => rm(join(this.home, 'config', name), {recursive: true, force: true}).catch(() => {})));
     // No agent of this account runs now: whatever an earlier one left in its temporary folder can go.
@@ -316,7 +316,7 @@ export class AntigravityProvider {
     };
     try {
       // The first start unpacks the agent, which can take a while on a slow disk.
-      const init = await Promise.race([acp.request('initialize', {protocolVersion: 1, clientCapabilities: {fs: {readTextFile: false, writeTextFile: false}, terminal: false}, clientInfo: {name: 'mowr', title: 'Mowr', version: '1'}}, 180_000), signIn]);
+      const init = await Promise.race([acp.request('initialize', {protocolVersion: 1, clientCapabilities: {fs: {readTextFile: false, writeTextFile: false}, terminal: false}, clientInfo: {name: 'clem', title: 'Clem', version: '1'}}, 180_000), signIn]);
       live.version = typeof init?.agentInfo?.version === 'string' ? init.agentInfo.version : undefined;
       const auth = await Promise.race([acp.request('authenticate', {methodId: 'oauth-personal'}, login ? 15 * 60_000 : 90_000), signIn]);
       live.tier = antigravityTier(auth);
@@ -352,7 +352,7 @@ export class AntigravityProvider {
     if (live.child.pid) spawn('taskkill.exe', ['/PID', String(live.child.pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'}).on('error', () => live.child.kill());
     else live.child.kill();
   }
-  /** Removes the files of the sessions Mowr is done with, once no running process holds them (Windows keeps them locked). */
+  /** Removes the files of the sessions Clem is done with, once no running process holds them (Windows keeps them locked). */
   private async sweep() {
     if (!this.dropped.size) return;
     const live = this.live ? await this.live.catch(() => null) : null;
@@ -371,7 +371,7 @@ export class AntigravityProvider {
     const call = params?.toolCall || {}, options: any[] = Array.isArray(params?.options) ? params.options : [];
     const pick = (kind: string) => options.find((o) => o?.kind === kind && typeof o.optionId === 'string')?.optionId;
     const reject = () => { const id = pick('reject_once'); return id ? {outcome: {outcome: 'selected', optionId: id}} : {outcome: {outcome: 'cancelled'}}; };
-    // A question for the person (trust a folder's hooks, pick an option): Mowr never trusts, and nobody is asked mid-answer.
+    // A question for the person (trust a folder's hooks, pick an option): Clem never trusts, and nobody is asked mid-answer.
     if (String(call.toolCallId || '').startsWith('interaction_')) return reject();
     const session = live.sessions.get(String(params?.sessionId || ''));
     const mcp = call?._meta?.mcp;
@@ -456,7 +456,7 @@ export class AntigravityProvider {
     const id = await spare.session.catch(() => undefined);
     return id && live.sessions.has(id) ? id : undefined;
   }
-  /** A session Mowr is done with: its endpoint closes (the agent keeps the session itself until it closes). */
+  /** A session Clem is done with: its endpoint closes (the agent keeps the session itself until it closes). */
   private release(agentSession: string) {
     void this.live?.then((live) => { const held = live.sessions.get(agentSession); if (held) { held.endpoint?.close(); held.endpoint = undefined; held.route = undefined; held.ended = true; } }, () => {});
   }
@@ -558,7 +558,7 @@ export class AntigravityProvider {
    * One answer step. Pictures go as images, the conversation's PDFs as files the agent opens itself (saved in its
    * folder, attached once per session), `system` as the agent's own system-prompt addition, and `native` (Kinetra's
    * tool calls for this reply) as an MCP server of the session, so a Kinetra request never ends the agent's turn.
-   * `session`: Mowr's id for the session that carries a tool loop (and a chat's later messages).
+   * `session`: Clem's id for the session that carries a tool loop (and a chat's later messages).
    */
   async run(id: string, prompt: string, model: string, emit: (event: any) => void, images: string[] = [], session?: {id: string; resume: boolean}, effort?: string, {system, pdfs = [], workspace, native}: {system?: string; pdfs?: {name: string; data: Uint8Array}[]; workspace?: {root: string}; native?: AntigravityNative} = {}) {
     const slug = model.slice(ANTIGRAVITY_PREFIX.length);
@@ -707,10 +707,10 @@ export class AntigravityProvider {
     if (!t) return undefined;
     return {input: Math.max(0, t.prompt - t.cached), cacheRead: t.cached, cacheWrite: 0, output: t.completion + t.thinking};
   }
-  /** A session Mowr is done with: its files go once no process holds it. */
+  /** A session Clem is done with: its files go once no process holds it. */
   async endSession(sessionId: string) {
     const agent = this.agentIds.get(sessionId);
-    if (!agent || process.env.MOWR_KEEP_SESSIONS) return;
+    if (!agent || process.env.CLEM_KEEP_SESSIONS) return;
     this.agentIds.delete(sessionId);
     this.attached.delete(agent);
     this.dropped.add(agent);

@@ -6,7 +6,7 @@ import { requestSchema } from "../desktop/contracts.ts";
 const sent: any[] = [];
 let listener: ((event: any) => void) | undefined;
 (globalThis as any).window = {
-  mowrDesktop: {
+  clemDesktop: {
     onChat: (l: (event: any) => void) => { listener = l; return () => { listener = undefined; }; },
     invoke: async (request: any) => { sent.push(request); if (request.action === "chat") queueMicrotask(() => listener?.({ id: request.id, type: "done" })); return {}; },
   },

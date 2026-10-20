@@ -11,7 +11,7 @@ await mkdir(out, { recursive: true });
 // The desktop bridge answers clipboardFiles with two files, as File Explorer's copy would give.
 const explorer = () => {
   let bridge;
-  Object.defineProperty(window, "mowrDesktop", {
+  Object.defineProperty(window, "clemDesktop", {
     configurable: true,
     get: () => bridge,
     set(value) {
@@ -57,7 +57,7 @@ try {
   await page.locator(".composer-files .cf-file", { hasText: "Results.csv" }).waitFor({ timeout: 8000 });
   check(await page.locator(".composer-files .cf-file", { hasText: "Lecture notes.md" }).isVisible(), "files copied in File Explorer are attached");
   await page.screenshot({ path: out + "/pasted.png" });
-  const kept = async () => { await page.waitForTimeout(900); return page.evaluate(async () => ((await (await fetch("/api/local/state", { headers: { "X-Mowr-Owner": "fixture-owner" } })).json())?.files || []).map((f) => f.name)); };
+  const kept = async () => { await page.waitForTimeout(900); return page.evaluate(async () => ((await (await fetch("/api/local/state", { headers: { "X-Clem-Owner": "fixture-owner" } })).json())?.files || []).map((f) => f.name)); };
   check(!(await kept()).some((n) => /Results|Lecture notes|Pasted image/.test(n)), "attached files are not in Files before they are sent");
   await page.getByRole("button", { name: "Remove Lecture notes.md" }).click();
   await box.fill("Look at these"); await box.press("Enter");

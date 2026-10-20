@@ -3,7 +3,7 @@
  * circuit, a scanned page, a page with an embedded raster figure, and a two-column paper. Each figure's true box is
  * measured, not declared: the page is drawn again with only that figure on it, at 8 pixels per point, and the box is
  * where its ink is. Run: node --experimental-strip-types tests/fixtures/pdf/make.ts
- * chromium-report.pdf is not made here: it is a document Mowr printed with Chromium (composite fonts, a crop placed as a
+ * chromium-report.pdf is not made here: it is a document Clem printed with Chromium (composite fonts, a crop placed as a
  * form), saved from a run of scripts/verify/pdf-crops.mjs, for the redaction tests.
  */
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFPage } from "pdf-lib";
@@ -167,7 +167,7 @@ const twoColumn: Painter = (page, f, part) => {
 
 async function build(paint: Painter, only: string | null) {
   const doc = await PDFDocument.create();
-  doc.setCreationDate(new Date(0)); doc.setModificationDate(new Date(0)); doc.setProducer("mowr-fixture");
+  doc.setCreationDate(new Date(0)); doc.setModificationDate(new Date(0)); doc.setProducer("clem-fixture");
   const page = doc.addPage([612, 792]);
   const fonts = { roman: await doc.embedFont(StandardFonts.TimesRoman), italic: await doc.embedFont(StandardFonts.TimesRomanItalic), bold: await doc.embedFont(StandardFonts.TimesRomanBold), sans: await doc.embedFont(StandardFonts.Helvetica), symbol: await doc.embedFont(StandardFonts.Symbol) };
   await paint(page, fonts, (name, draw) => { if (only === null || only === name) draw(); });
@@ -217,7 +217,7 @@ async function scanned() {
   let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
   for (let y = 0; y < t.height; y++) for (let x = 0; x < t.width; x++) if (px[(y * t.width + x) * 4] < 230) { x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1); }
   const doc = await PDFDocument.create();
-  doc.setCreationDate(new Date(0)); doc.setModificationDate(new Date(0)); doc.setProducer("mowr-fixture");
+  doc.setCreationDate(new Date(0)); doc.setModificationDate(new Date(0)); doc.setProducer("clem-fixture");
   const page = doc.addPage([612, 792]);
   page.drawImage(await doc.embedJpg(c.toBuffer("image/jpeg", 88)), { x: 0, y: 0, width: 612, height: 792 });
   const r = (v: number) => Math.round(v * 100) / 100;

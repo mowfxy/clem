@@ -28,7 +28,7 @@ test("arithmetic follows Excel's precedence, including the unary minus and perce
   assert.deepEqual(calc([], '="x"+1'), { error: "#VALUE!" });
 });
 
-test("Mowr's workbook formulas calculate: row formulas, totals and cross-cell references", () => {
+test("Clem's workbook formulas calculate: row formulas, totals and cross-cell references", () => {
   const g = grid([["Item", "Qty", "Price", "Total"], ["Pen", 3, 1.5, "=B2*C2"], ["Book", 2, 12, "=B3*C3"], ["Total", "=SUM(B2:B3)", "", "=SUM(D2:D3)"], ["Share", "", "", "=D2/D4"]]);
   const c = new Calculator(g);
   assert.equal(c.value("Sheet1", 2, 4), 4.5);

@@ -4,8 +4,8 @@ import express from 'express';
 import type {AddressInfo} from 'node:net';
 
 // Fake account service, D1 and mail server: nothing here reaches a real inbox or database.
-Object.assign(process.env,{MOWR_ACCOUNT_SERVICE:'https://accounts.test',CLOUDFLARE_DATABASE_URL:'https://d1.test',CLOUDFLARE_DATABASE_SECRET:'x',SESSION_SECRET:'secret',
-  SMTP_HOST:'smtp.test',SMTP_PORT:'465',SMTP_USER:'u',SMTP_PASSWORD:'p',SMTP_FROM:'Mowr <hello@mowrai.com>'});
+Object.assign(process.env,{CLEM_ACCOUNT_SERVICE:'https://accounts.test',CLOUDFLARE_DATABASE_URL:'https://d1.test',CLOUDFLARE_DATABASE_SECRET:'x',SESSION_SECRET:'secret',
+  SMTP_HOST:'smtp.test',SMTP_PORT:'465',SMTP_USER:'u',SMTP_PASSWORD:'p',SMTP_FROM:'Clem <hello@m4labs.xyz>'});
 const {staffEmailRouter}=await import('../server/staff-emails.ts');
 
 const roles:Record<string,string>={'Bearer admin':'admin','Bearer owner':'owner','Bearer support':'support'};
@@ -16,7 +16,7 @@ globalThis.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{
   const url=String(input);
   if(url==='https://accounts.test/admin/me'){
     const role=roles[new Headers(init?.headers).get('authorization')||''];
-    return role?Response.json({id:'staff-1',email:'staff@mowrai.com',role}):Response.json({error:'This account does not have staff access.'},{status:403});
+    return role?Response.json({id:'staff-1',email:'staff@m4labs.xyz',role}):Response.json({error:'This account does not have staff access.'},{status:403});
   }
   if(url==='https://accounts.test/admin/cases/case-7f1a2b3c'){
     if(!roles[new Headers(init?.headers).get('authorization')||''])return Response.json({error:'Staff only.'},{status:403});
@@ -29,7 +29,7 @@ globalThis.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{
     const results=batch.map(({sql}:{sql:string})=>{
       if(sql.includes('lower(a.email)'))return {results:[]};
       if(sql.includes('FROM desktop_activity'))return {results:[{email:'Ava@Studio.co',display_name:'Ava Laurent',username:'ava'}]};
-      if(sql.includes('FROM mowr_email_optout'))return {results:optedOut?[{hit:1}]:[]};
+      if(sql.includes('FROM clem_email_optout'))return {results:optedOut?[{hit:1}]:[]};
       if(sql.includes('FROM desktop_audit_log'))return {results:recent?[{hit:1}]:[]};
       return {results:[]};
     });
@@ -65,17 +65,17 @@ test('only admins and owners can use preset emails',async()=>{
 test('sends a welcome email to the person and records it',async()=>{
   const r=await call('/send',{kind:'welcome',userId:user});
   assert.equal(r.status,200);
-  assert.deepEqual(await r.json(),{ok:true,to:'ava@studio.co',subject:'Welcome to Mowr'});
+  assert.deepEqual(await r.json(),{ok:true,to:'ava@studio.co',subject:'Welcome to Clem'});
   assert.equal(outbox.length,1);
   assert.equal(outbox[0].to,'ava@studio.co');
-  assert.match(outbox[0].extra.html!,/Welcome to Mowr, Ava/);
+  assert.match(outbox[0].extra.html!,/Welcome to Clem, Ava/);
   // Marks the automatic welcome as done, so it never arrives a second time.
-  const log=queries.find(q=>q.sql.startsWith('INSERT INTO mowr_email_log'))!;
+  const log=queries.find(q=>q.sql.startsWith('INSERT INTO clem_email_log'))!;
   assert.deepEqual(log.params.slice(0,2),['supabase:'+user,'welcome']);
   const audit=queries.find(q=>q.sql.startsWith('INSERT INTO desktop_audit_log'))!;
   assert.equal(audit.params[1],'staff-1');
   assert.equal(audit.params[3],user);
-  assert.match(String(audit.params[4]),/^welcome · Welcome to Mowr → ava@studio\.co$/);
+  assert.match(String(audit.params[4]),/^welcome · Welcome to Clem → ava@studio\.co$/);
 });
 
 test('update emails need a version and notes, carry an unsubscribe link and respect opt-outs',async()=>{
@@ -88,10 +88,10 @@ test('update emails need a version and notes, carry an unsubscribe link and resp
   optedOut=false;
   const r=await call('/send',{kind:'update',userId:user,version:'0.3.0-preview.34',notes:'Faster search\nNew fonts'});
   assert.equal(r.status,200);
-  assert.equal(outbox[0].subject,'Mowr 0.3.0-preview.34 is here');
+  assert.equal(outbox[0].subject,'Clem 0.3.0-preview.34 is here');
   assert.match(outbox[0].extra.headers!['List-Unsubscribe'],/api\/email\/unsubscribe\?e=ava%40studio\.co&t=/);
   assert.match(outbox[0].text,/- Faster search\n- New fonts/);
-  const log=queries.find(q=>q.sql.startsWith('INSERT INTO mowr_email_log'))!;
+  const log=queries.find(q=>q.sql.startsWith('INSERT INTO clem_email_log'))!;
   assert.equal(log.params[1],'update:0.3.0-preview.34');
 });
 
@@ -99,7 +99,7 @@ test('notices send as is and are not logged as automatic emails',async()=>{
   const r=await call('/send',{kind:'automation-complete',userId:user});
   assert.equal(r.status,200);
   assert.equal(outbox[0].subject,'Your routine is ready');
-  assert.ok(!queries.some(q=>q.sql.startsWith('INSERT INTO mowr_email_log')));
+  assert.ok(!queries.some(q=>q.sql.startsWith('INSERT INTO clem_email_log')));
 });
 
 test('rejects unknown presets, bad ids and a repeat within a minute',async()=>{
@@ -130,7 +130,7 @@ test('a hand-written email needs a subject and message, and replies go to suppor
   assert.match(outbox[0].text,/^Hi Ava,\n\nLine one\nLine two/);
   assert.match(outbox[0].extra.html!,/Your &lt;files&gt;/);
   assert.ok(!outbox[0].extra.html!.includes('<files>'));
-  assert.ok(!queries.some(q=>q.sql.startsWith('INSERT INTO mowr_email_log')));
+  assert.ok(!queries.some(q=>q.sql.startsWith('INSERT INTO clem_email_log')));
 });
 
 test('sends to a typed address that has no account',async()=>{

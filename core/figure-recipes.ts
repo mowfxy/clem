@@ -1,7 +1,7 @@
 /**
  * Verified textbook figures. Each one renders as-is (tests/illustration.test.ts draws every recipe), so a model
  * starts from a figure that works and changes the values, never guessing the shape of the description. The same
- * items draw in the chat (```visual with "kind":"figure") and in PDFs (Kinetra figure {"module":"mowr","fn":"illustration"}).
+ * items draw in the chat (```visual with "kind":"figure") and in PDFs (Kinetra figure {"module":"clem","fn":"illustration"}).
  */
 export type FigureRecipe = { name: string; use: string; figure: { items: unknown[]; view?: unknown }; notes: string };
 

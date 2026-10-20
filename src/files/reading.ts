@@ -1,7 +1,7 @@
 /** Where the person stopped reading each file, so a file opens again at the same place. Kept on this PC only. */
 export type ReadingSpot = { /** PDFs: the page at the top of the view and how far into it (0–1). */ page?: number; frac: number; zoom?: number; at: number };
 
-const KEY = "mowr-reading";
+const KEY = "clem-reading";
 const LIMIT = 300;
 
 function all(): Record<string, ReadingSpot> {

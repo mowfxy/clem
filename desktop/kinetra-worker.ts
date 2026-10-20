@@ -30,7 +30,7 @@ import * as expression from "../vendor/kinetra/packages/core/src/math/expression
 import * as symbolic from "../vendor/kinetra/packages/core/src/math/symbolic";
 import * as numeric from "../vendor/kinetra/packages/core/src/math/eval";
 const modules: Record<string, any> = {
-  mowr: adapters,
+  clem: adapters,
   "math/expression": expression,
   "math/symbolic": symbolic,
   "math/eval": numeric,
@@ -60,7 +60,7 @@ const modules: Record<string, any> = {
   "math/calculus": m23,
   "math/linear": m24,
 };
-/** One call. Async so a lazily loaded function (mowr.visual) can be awaited; every other function returns at once. */
+/** One call. Async so a lazily loaded function (clem.visual) can be awaited; every other function returns at once. */
 async function execute({ module: moduleName, fn, args }: { module: string; fn: string; args: any[] }) {
   if (
     !Object.hasOwn(modules, moduleName) ||

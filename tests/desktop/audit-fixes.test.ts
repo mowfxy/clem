@@ -136,7 +136,7 @@ test("legacy Office and RTF files, which can carry macros or OLE objects, are ne
 });
 
 test("a copy opened from the workspace is marked as from the internet where the drive allows it", { skip: process.platform !== "win32" }, async () => {
-  const path = join(mkdtempSync(join(tmpdir(), "mowr-motw-")), "notes.docx");
+  const path = join(mkdtempSync(join(tmpdir(), "clem-motw-")), "notes.docx");
   writeFileSync(path, "x");
   await markFromInternet(path);
   assert.match(readFileSync(path + ":Zone.Identifier", "utf8"), /\[ZoneTransfer\]\r\nZoneId=3/);
@@ -144,7 +144,7 @@ test("a copy opened from the workspace is marked as from the internet where the 
 });
 
 test("an ignore file that cannot be read leaves the folder indexed without it", async () => {
-  const root = mkdtempSync(join(tmpdir(), "mowr-ignore-"));
+  const root = mkdtempSync(join(tmpdir(), "clem-ignore-"));
   mkdirSync(join(root, ".gitignore")); // reading it fails (EISDIR), as a locked or protected file would
   writeFileSync(join(root, "a.md"), "alpha");
   const files = await indexFolder({ id: "f", scope: "chat:x", path: root }, []);
@@ -177,14 +177,14 @@ test("a watched folder's index is reused while no change is waiting to be read",
 });
 
 test("the workspace says whether a file is there without reading it", async () => {
-  const disk = new WorkspaceDisk(mkdtempSync(join(tmpdir(), "mowr-disk-")));
+  const disk = new WorkspaceDisk(mkdtempSync(join(tmpdir(), "clem-disk-")));
   assert.equal(await disk.hasFile("owner", "spec-x"), false);
   await disk.writeFile("owner", "spec-x", new Uint8Array([1]));
   assert.equal(await disk.hasFile("owner", "spec-x"), true);
 });
 
 test("signing in to Grok again replaces the sign-in already waiting", async () => {
-  const grok: any = new GrokProvider(mkdtempSync(join(tmpdir(), "mowr-grok-")), "fixture");
+  const grok: any = new GrokProvider(mkdtempSync(join(tmpdir(), "clem-grok-")), "fixture");
   const started: any[] = [];
   grok.start = async () => { const p = child(); started.push(p); return p; };
   await grok.login(() => {});

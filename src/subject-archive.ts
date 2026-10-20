@@ -26,7 +26,7 @@ export async function exportSubject(state: State, space: Space) {
     edits[file.id] = await loadEdits(file);
   }
   const manifest: SubjectArchive = {
-    format: "mowr-subject",
+    format: "clem-subject",
     version: 1,
     space: { ...space, kind: "subject" },
     files: files.map((f) => ({ ...f, size: blobs[f.id].length })),
@@ -38,7 +38,7 @@ export async function exportSubject(state: State, space: Space) {
   const bytes = await packSubject(manifest, blobs);
   download(
     new Blob([bytes], { type: "application/zip" }),
-    space.name.replace(/[<>:"/\\|?*]/g, "-") + ".mowr.zip",
+    space.name.replace(/[<>:"/\\|?*]/g, "-") + ".clem.zip",
   );
 }
 export async function importSubject(file: File, owner: string) {
@@ -68,7 +68,7 @@ export async function importSubject(file: File, owner: string) {
         owner,
       );
       if (manifest.edits[f.id])
-        await set("mowr-document-" + id, manifest.edits[f.id]);
+        await set("clem-document-" + id, manifest.edits[f.id]);
     }
   } catch (error) {
     await Promise.allSettled(written.map((id) => deleteBlob(id, owner)));

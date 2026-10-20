@@ -52,7 +52,7 @@ const fixture = await openFixture(browser, { replies: [draft, update, update, bo
 const { page, errors } = fixture;
 let failed = false;
 const check = (ok, what) => { console.log((ok ? "ok   " : "FAIL ") + what); if (!ok) failed = true; };
-const plans = () => page.evaluate(async () => (await (await fetch("/api/local/state", { headers: { "X-Mowr-Owner": "fixture-owner" } })).json())?.plans || []);
+const plans = () => page.evaluate(async () => (await (await fetch("/api/local/state", { headers: { "X-Clem-Owner": "fixture-owner" } })).json())?.plans || []);
 const send = async (text) => { await page.getByLabel("Your message").fill(text); await page.getByLabel("Your message").press("Enter"); };
 const idle = () => page.locator(".message.assistant").last().locator(".pl-proposal").first().waitFor({ timeout: 15000 });
 try {
@@ -75,7 +75,7 @@ try {
   await saved(page);
   let all = await plans();
   check(all.length === 2, "both plans saved");
-  const state = await page.evaluate(async () => (await (await fetch("/api/local/state", { headers: { "X-Mowr-Owner": "fixture-owner" } })).json()));
+  const state = await page.evaluate(async () => (await (await fetch("/api/local/state", { headers: { "X-Clem-Owner": "fixture-owner" } })).json()));
   const portfolio = state.spaces.find((s) => s.name === "Portfolio site");
   check(portfolio?.kind === "project" && all.some((p) => p.spaceId === portfolio.id), "saving made the Portfolio site project with its plan");
   check(await cards.nth(0).getByText("Plan saved").isVisible(), "the card shows it was saved");
@@ -125,13 +125,13 @@ try {
   check(await page.locator(".sp-tabs .late").count() === 0, "the Plan tab's overdue count clears");
 
   // 5. The small box changes the plan.
-  await page.getByLabel("Tell Mowr about your plan").fill("Add a revision session in Week 2");
-  await page.getByLabel("Tell Mowr about your plan").press("Enter");
+  await page.getByLabel("Tell Clem about your plan").fill("Add a revision session in Week 2");
+  await page.getByLabel("Tell Clem about your plan").press("Enter");
   await page.locator(".pl-reply:not(.working)").waitFor({ timeout: 15000 });
-  check((await page.locator(".pl-reply:not(.working)").textContent()).startsWith("Added a revision session"), "the box shows Mowr's reply without the block");
+  check((await page.locator(".pl-reply:not(.working)").textContent()).startsWith("Added a revision session"), "the box shows Clem's reply without the block");
   check(await page.locator(".pl-task", { hasText: "Revision session: cells to respiration" }).count() === 1, "the new task is in the plan");
   const boxCall = await page.evaluate(() => window.requests.filter((r) => r.action === "chat").at(-1));
-  check(boxCall.messages[0].content.includes("small box on its Plan tab") && boxCall.messages[0].content.includes("space id bio"), "the box sends the plan to Mowr");
+  check(boxCall.messages[0].content.includes("small box on its Plan tab") && boxCall.messages[0].content.includes("space id bio"), "the box sends the plan to Clem");
   await page.locator(".pl-view").screenshot({ path: `${out}/plan-box.png` });
 
   // 6. The Overview card.
@@ -152,7 +152,7 @@ try {
   check((await plans()).length === 1 && (await plans())[0].spaceId === "bio", "Delete plan removed only that plan");
 
   // 8. The overdue reminder: once a day per plan, with its own drawing, closed with its ×.
-  await page.evaluate(() => localStorage.removeItem("mowr-plan-reminders"));
+  await page.evaluate(() => localStorage.removeItem("clem-plan-reminders"));
   await send("The lab write-up was due two days ago, actually.");
   await page.locator(".pl-proposal.update.applied").last().waitFor({ timeout: 15000 });
   await saved(page);

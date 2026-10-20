@@ -1,4 +1,4 @@
-/** What one answer's tool loop did: Mowr's steps (each a CLI run or turn), Kinetra calls run, and broken requests sent
+/** What one answer's tool loop did: Clem's steps (each a CLI run or turn), Kinetra calls run, and broken requests sent
  *  back for correction. `cliSteps`/`cliCalls`: the CLI's own model steps that asked for tools and every tool call in
  *  them, its file tools included (desktop/tool-status.ts StepCounter). `continued`: the answer went on the chat's kept
  *  CLI session (desktop/chat-sessions.ts), so the conversation so far was not sent again. */
@@ -37,7 +37,7 @@ export function turnTimer(provider: string, { model, record }: { model?: string;
       const total = Math.round(performance.now() - started);
       try { record?.({ at: Date.now(), provider, ...(model ? { model } : {}), outcome, ...(first ? { firstTextMs: Math.round(first - started) } : {}), totalMs: total, ...stats }); } catch { /* the ledger never costs an answer */ }
       const t = stats.tokens;
-      console.log(`[mowr timing] ${provider} ${outcome} first-text=${first ? ms(first) : "none"} total=${ms(performance.now())} steps=${stats.steps} calls=${stats.calls} broken=${stats.broken} cli-steps=${stats.cliSteps || 0} cli-calls=${stats.cliCalls || 0}${stats.cliSteps ? ` per-step=${((stats.cliCalls || 0) / stats.cliSteps).toFixed(1)}` : ""} session=${stats.continued ? "continued" : "new"}${t ? ` tokens in=${t.input} cache-read=${t.cacheRead} cache-write=${t.cacheWrite} out=${t.output}` : ""}`);
+      console.log(`[clem timing] ${provider} ${outcome} first-text=${first ? ms(first) : "none"} total=${ms(performance.now())} steps=${stats.steps} calls=${stats.calls} broken=${stats.broken} cli-steps=${stats.cliSteps || 0} cli-calls=${stats.cliCalls || 0}${stats.cliSteps ? ` per-step=${((stats.cliCalls || 0) / stats.cliSteps).toFixed(1)}` : ""} session=${stats.continued ? "continued" : "new"}${t ? ` tokens in=${t.input} cache-read=${t.cacheRead} cache-write=${t.cacheWrite} out=${t.output}` : ""}`);
     },
   };
 }

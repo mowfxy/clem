@@ -1,5 +1,5 @@
 // Converts a real HEIC photo with the app's own worker (src/desktop/heic-worker.ts, as built into dist/) in Electron,
-// served from a mowr:// page with the app's real Content-Security-Policy (desktop/csp.ts), so a policy that blocks
+// served from a clem:// page with the app's real Content-Security-Policy (desktop/csp.ts), so a policy that blocks
 // WebAssembly or the .wasm fetch shows up here. Run `npx vite build` first.
 // Usage: node scripts/verify/heic.mjs <photo.heic> [out.jpg]
 import { build } from "esbuild";
@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 
 // With no photo given (as in verify:all) it converts the small test photo in tests/fixtures.
 const photo = resolve(process.argv[2] || "tests/fixtures/photos/red-q7.heic");
-const jpeg = resolve(process.argv[3] || join(tmpdir(), "mowr-heic-out.jpg"));
-const out = join(tmpdir(), "mowr-verify-heic");
+const jpeg = resolve(process.argv[3] || join(tmpdir(), "clem-heic-out.jpg"));
+const out = join(tmpdir(), "clem-verify-heic");
 await mkdir(out, { recursive: true });
 await build({ entryPoints: ["desktop/csp.ts"], outfile: join(out, "csp.cjs"), bundle: true, platform: "node", format: "cjs", logLevel: "warning" });
 const worker = (await readdir("dist/assets")).find((f) => /^heic-worker-.+\.js$/.test(f));
@@ -23,10 +23,10 @@ const { pathToFileURL } = require("url");
 const { join, resolve } = require("path");
 const fs = require("fs");
 const { contentSecurityPolicy } = require(${JSON.stringify(join(out, "csp.cjs"))});
-protocol.registerSchemesAsPrivileged([{ scheme: "mowr", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: "clem", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 app.whenReady().then(async () => {
   const dist = resolve(${JSON.stringify(resolve("dist"))});
-  protocol.handle("mowr", async (request) => {
+  protocol.handle("clem", async (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/") return new Response("<!doctype html><meta charset=utf-8>", { headers: { "Content-Type": "text/html", "Content-Security-Policy": contentSecurityPolicy("/") } });
     const response = await net.fetch(pathToFileURL(join(dist, "." + decodeURIComponent(url.pathname))).toString());
@@ -35,10 +35,10 @@ app.whenReady().then(async () => {
     return response;
   });
   const w = new BrowserWindow({ show: false });
-  await w.loadURL("mowr://app/");
+  await w.loadURL("clem://app/");
   const bytes = [...fs.readFileSync(${JSON.stringify(photo)})];
   const result = await w.webContents.executeJavaScript(\`new Promise(async (resolve) => {
-    const worker = new Worker("mowr://app/assets/${worker}", { type: "module" });
+    const worker = new Worker("clem://app/assets/${worker}", { type: "module" });
     worker.onerror = (e) => resolve({ error: "worker error: " + (e.message || "failed to start") });
     worker.onmessage = async (e) => resolve(e.data.error ? { error: e.data.error } : { width: e.data.width, height: e.data.height, bytes: [...new Uint8Array(await e.data.jpeg.arrayBuffer())], type: e.data.jpeg.type });
     const t = Date.now();
@@ -50,7 +50,7 @@ app.whenReady().then(async () => {
   console.log("converted:", result.width + "x" + result.height, result.type, Math.round(result.bytes.length / 1024) + " KB ->", ${JSON.stringify(jpeg)});
   // A file that is not a HEIC photo must fail with a message, not hang.
   const bad = await w.webContents.executeJavaScript(\`new Promise((resolve) => {
-    const worker = new Worker("mowr://app/assets/${worker}", { type: "module" });
+    const worker = new Worker("clem://app/assets/${worker}", { type: "module" });
     worker.onmessage = (e) => resolve(e.data.error || "no error");
     worker.postMessage({ id: 2, bytes: new TextEncoder().encode("not a photo at all").buffer, quality: 0.9 });
     setTimeout(() => resolve("timed out"), 30000);

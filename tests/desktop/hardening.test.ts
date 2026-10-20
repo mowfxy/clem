@@ -78,7 +78,7 @@ test("every deck gets a design of its own: different subjects and purposes look 
   }
   // The same deck always gets the same design.
   assert.deepEqual(designTheme({ title: "Loop: reusable packaging", archetype: "pitch", brief: { tone: "bold" } }, deck.themes), pitch);
-  // Brand colours and fonts win; Mowr's own fonts never go into a file; asked-for colours that would not read are corrected.
+  // Brand colours and fonts win; Clem's own fonts never go into a file; asked-for colours that would not read are corrected.
   const brand = designTheme({ title: "Northwind", brand: { primary: "#7B2D26", headingFont: "Rockwell", bodyFont: "Mowafy Sans" } }, deck.themes);
   assert.equal(brand.accent, "7B2D26");
   assert.equal(brand.head, "Rockwell");
@@ -225,7 +225,7 @@ test("a capture Chromium fails once is tried again; one that keeps failing still
   await assert.rejects(deck.capturePage(broken, { x: 0, y: 0, width: 10, height: 10 }), /UnknownVizError/);
 });
 
-test("Mowr's own fonts are recognised wherever they are named", () => {
-  for (const name of ["Mowafy Serif", "Mowr Sans", "Kindred", "Soft Ink Serif"]) assert.ok(brandFont.test(name), name);
+test("Clem's own fonts are recognised wherever they are named", () => {
+  for (const name of ["Mowafy Serif", "Clem Sans", "Kindred", "Soft Ink Serif"]) assert.ok(brandFont.test(name), name);
   assert.ok(!brandFont.test("Segoe UI"));
 });

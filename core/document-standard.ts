@@ -1,5 +1,5 @@
 /**
- * How Mowr writes deliverable documents (reports, papers, briefs, notes, PDFs). A document is
+ * How Clem writes deliverable documents (reports, papers, briefs, notes, PDFs). A document is
  * the artifact itself, not a chat message about it, so it never addresses the requester.
  */
 export const documentStandard = `DOCUMENT STANDARD (for reports, papers, briefs, notes, handouts, proposals, PDFs and any other deliverable document):
@@ -7,7 +7,7 @@ export const documentStandard = `DOCUMENT STANDARD (for reports, papers, briefs,
 - Formal, impersonal register: third person with neutral or passive constructions ("This report examines…", "The results indicate…"). Do not use "I", "you" or "your". Use "we" only for an organisation's own proposal. Letters, memos, instructions and worksheets may address their reader directly.
 - Precise and neutral: no hype, rhetorical questions, exclamation marks, emojis or filler. Define terms and abbreviations at first use. State units, assumptions, data sources and limitations. Report numbers with sensible significant figures.
 - Structure: a specific title; for reports a short summary first; sections with descriptive headings in sentence case (for example Introduction, Background, Method, Findings, Discussion, Conclusions, Recommendations, as the content needs); tables for comparisons; figures only when they carry information, each referred to in the text ("Figure 1 shows…"); references last when sources were used.
-- Do not number headings yourself; Mowr numbers sections, figures and pages.`;
+- Do not number headings yourself; Clem numbers sections, figures and pages.`;
 
 const documentWords = /\b(report|paper|white ?paper|brief(?:ing)?|memo|proposal|essay|documentation|manual|handout|worksheet|study guide|summary document|literature review|lab report|case study|policy|specification|spec|minutes|article|pdf|docx|word document)\b/i;
 /** True when the request asks for a deliverable document rather than a conversational answer. */
@@ -56,7 +56,7 @@ export function voiceProblems(parts: { where: string; text: string }[], kind: Do
     if (me) problems.push(`${where}: first person ("${me[0]}") ${excerpt(me.index)}`);
     if (emoji.test(plain)) problems.push(`${where}: contains emoji`);
     const lost = missingFigure.exec(plain);
-    if (lost) problems.push(`${where}: a picture is described or left out instead of drawn ${excerpt(lost.index)}. Draw it as a figure (a crop of the source, or a Kinetra figure: graphs, regions and contour maps with mowr visual) and remove the sentence`);
+    if (lost) problems.push(`${where}: a picture is described or left out instead of drawn ${excerpt(lost.index)}. Draw it as a figure (a crop of the source, or a Kinetra figure: graphs, regions and contour maps with clem visual) and remove the sentence`);
     const bang = /[A-Za-z)]!(?=\s|$)/.exec(plain);
     if (bang) problems.push(`${where}: exclamation mark ${excerpt(bang.index)}`);
   }

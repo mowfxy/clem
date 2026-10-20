@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import { brandFontFaces } from "./brand-fonts.ts";
-import { PEAKS, peaksTier } from "../core/peaks.ts";
+import { markInner } from "../core/mark.ts";
 
-// The Peaks mark, writing itself in once as the page opens.
-const signedInMark = `<svg class="m" viewBox="0 0 100 100" aria-hidden="true"><g fill="none" stroke="#ef5340" stroke-width="${peaksTier(64).width}" stroke-linecap="round" stroke-linejoin="round">${peaksTier(64).offsets.map(([x, y]) => `<path pathLength="100" d="${PEAKS}" transform="translate(${x} ${y})"/>`).join("")}</g></svg>`;
+// Clem's mark; its cursor blinks twice as the page opens.
+const signedInMark = `<svg class="m" viewBox="0 0 100 100" aria-hidden="true">${markInner("#F4F2EC")}</svg>`;
 
 /** A short-lived, single-use loopback receiver. Credentials never enter the renderer. */
 export async function browserLogin(
@@ -31,13 +31,13 @@ export async function browserLogin(
     if (
       req.url !== path ||
       req.method !== "POST" ||
-      !["https://mowrai.com", "null"].includes(req.headers.origin || "") ||
+      !["https://clem.m4labs.xyz", "null"].includes(req.headers.origin || "") ||
       used ||
       !active
     ) {
       res
         .writeHead(403)
-        .end("Sign-in request expired. Open Mowr and try again.");
+        .end("Sign-in request expired. Open Clem and try again.");
       return;
     }
     if (
@@ -70,13 +70,13 @@ export async function browserLogin(
       await accept({ access_token, refresh_token });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.end(
-        '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signed in — Mowr</title><style>' + brandFontFaces() + 'body{margin:0;min-height:100vh;display:grid;place-items:center;background:#121211;color:#f0efeb;font:15px/1.6 "Mowafy Sans",system-ui,sans-serif;overflow:hidden}.g{position:fixed;inset:-20% -10% auto;height:80%;background:radial-gradient(40% 45% at 50% 30%,#f0efeb0d,transparent 70%);pointer-events:none}main{position:relative;text-align:center;padding:24px}main>*{animation:r .7s cubic-bezier(.2,.8,.2,1) both}main>:nth-child(2){animation-delay:.1s}main>:nth-child(3){animation-delay:.2s}main>:nth-child(4){animation-delay:.3s}.m{width:64px;height:64px;margin:0 auto 22px}.m g{stroke-dasharray:100 100;animation:w .8s cubic-bezier(.7,0,.2,1) .15s backwards}h1{font:400 34px/1.15 "Mowafy Serif",Georgia,serif;letter-spacing:-.02em;margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:12px}.c{width:28px;height:28px;fill:none;stroke:#f0efeb;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}.c circle{stroke:#f0efeb;fill:#63635e;fill-opacity:.35;stroke-dasharray:76;stroke-dashoffset:76;animation:d .7s .3s forwards}.c path{stroke-dasharray:20;stroke-dashoffset:20;animation:d .45s .8s forwards}p{color:#a3a3a0;margin:0}small{display:block;margin-top:26px;color:#6f6e68;font-size:12.5px}@keyframes r{from{opacity:0;transform:translateY(12px)}}@keyframes d{to{stroke-dashoffset:0}}@keyframes w{from{stroke-dashoffset:100}}@media (prefers-reduced-motion:reduce){main>*,.m g{animation:none}.c circle,.c path{animation:none;stroke-dashoffset:0}}</style></head><body><div class="g"></div><main>' + signedInMark + '<h1><svg class="c" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12"/><path d="M8.5 14.5l3.5 3.5 7.5-8"/></svg>You’re signed in.</h1><p>Return to Mowr to continue.</p><small>You can close this tab.</small></main></body></html>',
+        '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signed in — Clem</title><style>' + brandFontFaces() + 'body{margin:0;min-height:100vh;display:grid;place-items:center;background:#121211;color:#f0efeb;font:15px/1.6 "Mowafy Sans",system-ui,sans-serif;overflow:hidden}.g{position:fixed;inset:-20% -10% auto;height:80%;background:radial-gradient(40% 45% at 50% 30%,#f0efeb0d,transparent 70%);pointer-events:none}main{position:relative;text-align:center;padding:24px}main>*{animation:r .7s cubic-bezier(.2,.8,.2,1) both}main>:nth-child(2){animation-delay:.1s}main>:nth-child(3){animation-delay:.2s}main>:nth-child(4){animation-delay:.3s}.m{width:64px;height:64px;margin:0 auto 22px}.m rect{animation:w 1s steps(1) .3s 2}h1{font:400 34px/1.15 "Mowafy Serif",Georgia,serif;letter-spacing:-.02em;margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:12px}.c{width:28px;height:28px;fill:none;stroke:#f0efeb;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}.c circle{stroke:#f0efeb;fill:#63635e;fill-opacity:.35;stroke-dasharray:76;stroke-dashoffset:76;animation:d .7s .3s forwards}.c path{stroke-dasharray:20;stroke-dashoffset:20;animation:d .45s .8s forwards}p{color:#a3a3a0;margin:0}small{display:block;margin-top:26px;color:#6f6e68;font-size:12.5px}@keyframes r{from{opacity:0;transform:translateY(12px)}}@keyframes d{to{stroke-dashoffset:0}}@keyframes w{50%{opacity:0}}@media (prefers-reduced-motion:reduce){main>*,.m rect{animation:none}.c circle,.c path{animation:none;stroke-dashoffset:0}}</style></head><body><div class="g"></div><main>' + signedInMark + '<h1><svg class="c" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12"/><path d="M8.5 14.5l3.5 3.5 7.5-8"/></svg>You’re signed in.</h1><p>Return to Clem to continue.</p><small>You can close this tab.</small></main></body></html>',
       );
       completed();
     } catch {
       res
         .writeHead(400)
-        .end("Could not sign in. Return to Mowr and try again.");
+        .end("Could not sign in. Return to Clem and try again.");
     } finally {
       stop();
     }
@@ -95,7 +95,7 @@ export async function browserLogin(
     server.close();
   }
   return {
-    url: `https://mowrai.com/#/desktop-signin?callback=${encodeURIComponent(`http://127.0.0.1:${port}${path}`)}`,
+    url: `https://clem.m4labs.xyz/#/desktop-signin?callback=${encodeURIComponent(`http://127.0.0.1:${port}${path}`)}`,
     stop,
   };
 }

@@ -9,7 +9,7 @@ const PYODIDE = join('node_modules', 'pyodide'), PYODIDE_FILES = ['pyodide.mjs',
 const TYPES: Record<string, string> = { mjs: 'text/javascript', wasm: 'application/wasm', zip: 'application/zip', json: 'application/json' };
 function pyodide(): Plugin {
   return {
-    name: 'mowr-pyodide',
+    name: 'clem-pyodide',
     configureServer(server) {
       server.middlewares.use('/pyodide/', (req, res, next) => {
         const name = (req.url || '').split('?')[0].replace(/^\//, '');
@@ -24,4 +24,4 @@ function pyodide(): Plugin {
   };
 }
 
-export default defineConfig({ base:'./', plugins: [react(), pyodide()], css: { postcss: { plugins: [lightTheme()] } }, worker: { format: 'es' }, server: { proxy: { '/api': process.env.MOWR_API_ORIGIN || 'http://127.0.0.1:8787' } }, build: { rollupOptions: { output: { manualChunks: { three: ['three'] } } } } });
+export default defineConfig({ base:'./', plugins: [react(), pyodide()], css: { postcss: { plugins: [lightTheme()] } }, worker: { format: 'es' }, server: { proxy: { '/api': process.env.CLEM_API_ORIGIN || 'http://127.0.0.1:8787' } }, build: { rollupOptions: { output: { manualChunks: { three: ['three'] } } } } });

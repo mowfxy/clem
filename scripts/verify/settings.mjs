@@ -17,7 +17,7 @@ try {
     window.requests = [];
     window.activeAccount="default";
     window.recovery=false;
-    window.mowrDesktop = {
+    window.clemDesktop = {
       onAuth: () => () => {},
       onAttachment: () => () => {},
       onChat: (fn) => {
@@ -144,12 +144,12 @@ try {
   });
   await page.locator(".greeting-row").waitFor();
   assert.equal(
-    await page.getByText("Download Mowr", { exact: true }).count(),
+    await page.getByText("Download Clem", { exact: true }).count(),
     0,
   );
   // The mark leads the heading's first line (src/premium.css): inside the heading, centred on that line.
   const mark = await page.locator(".greeting-row h1").evaluate((h) => {
-    const m = h.querySelector(".mowr-mark"), r = h.getBoundingClientRect(), line = parseFloat(getComputedStyle(h).lineHeight) || r.height;
+    const m = h.querySelector(".clem-mark"), r = h.getBoundingClientRect(), line = parseFloat(getComputedStyle(h).lineHeight) || r.height;
     if (!m) return null;
     const b = m.getBoundingClientRect();
     return { offset: b.y + b.height / 2 - (r.y + line / 2), line };

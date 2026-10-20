@@ -112,7 +112,7 @@ function slidesFor(unit: Unit, deckTitle: string): Slide[] {
       for (let i = 0; i < rows.length; i += 12) out.push({ layout: "table", title: base.title + (i ? " (continued)" : ""), table: { header, rows: rows.slice(i, i + 12) } });
     } else if (block.kind === "visual") {
       const caption = visualCaption(block.spec);
-      out.push({ layout: "figure", title: (caption && caption.length <= 70 ? caption : base.title).slice(0, 120), figure: { module: "mowr", fn: "visual", args: [block.spec] }, ...(caption && caption.length > 70 ? { caption } : {}) });
+      out.push({ layout: "figure", title: (caption && caption.length <= 70 ? caption : base.title).slice(0, 120), figure: { module: "clem", fn: "visual", args: [block.spec] }, ...(caption && caption.length > 70 ? { caption } : {}) });
     }
   }
   return out;

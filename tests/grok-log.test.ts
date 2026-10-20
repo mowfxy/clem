@@ -54,5 +54,5 @@ test('diagnostics leave out tokens, keys and the user folder', () => {
 
 test('a report\'s logs are split from the message the person wrote', () => {
   assert.deepEqual(splitLogs('What happened: it broke'),{text:'What happened: it broke',logs:''});
-  assert.deepEqual(splitLogs('What happened: it broke'+LOGS_MARK+'Mowr 0.2.0'),{text:'What happened: it broke',logs:'Mowr 0.2.0'});
+  assert.deepEqual(splitLogs('What happened: it broke'+LOGS_MARK+'Clem 0.2.0'),{text:'What happened: it broke',logs:'Clem 0.2.0'});
 });

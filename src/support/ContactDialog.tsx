@@ -9,9 +9,9 @@ export type ContactKind = "help" | "bug" | "idea";
 type Category = "Contact support" | "Report a bug" | "Suggest a feature";
 
 const variants: Record<ContactKind, { category: Category; title: string; lead: string; card: string; icon: string; send: string }> = {
-  help: { category: "Contact support", title: "Contact support", lead: "Questions about your account, models or files. A person from the Mowr team reads every message.", card: "Questions about your account, models or files", icon: "chat", send: "Send to support" },
+  help: { category: "Contact support", title: "Contact support", lead: "Questions about your account, models or files. A person from the Clem team reads every message.", card: "Questions about your account, models or files", icon: "chat", send: "Send to support" },
   bug: { category: "Report a bug", title: "Report a bug", lead: "Tell us what went wrong. Clear steps help us fix it quickly.", card: "Something broke or behaved unexpectedly", icon: "alert", send: "Send report" },
-  idea: { category: "Suggest a feature", title: "Suggest a feature", lead: "What would make Mowr more useful to you? We read every idea.", card: "Share an idea that would make Mowr better", icon: "spark", send: "Send idea" },
+  idea: { category: "Suggest a feature", title: "Suggest a feature", lead: "What would make Clem more useful to you? We read every idea.", card: "Share an idea that would make Clem better", icon: "spark", send: "Send idea" },
 };
 const helpTopics = ["Account & sign-in", "Models & usage", "Chats & files", "Something else"];
 const impact = ["Nice to have", "Important to me", "Blocking my work"];
@@ -101,7 +101,7 @@ export function ContactDialog({ kind, onClose, onSent }: { kind: ContactKind; on
           </>}
           {kind === "idea" && <>
             <label>Your idea<input name="subject" required maxLength={150} placeholder="e.g. Export flashcards to Anki" /></label>
-            <label>What should Mowr do?<textarea name="idea" rows={4} required minLength={10} maxLength={5000} placeholder="Describe how it would work for you." /></label>
+            <label>What should Clem do?<textarea name="idea" rows={4} required minLength={10} maxLength={5000} placeholder="Describe how it would work for you." /></label>
             <label><span>Why would it help? <span className="contact-optional">Optional</span></span><textarea name="why" rows={2} maxLength={3000} /></label>
             <fieldset className="contact-chips"><legend>How much would this matter?</legend>{impact.map((t) => <button type="button" key={t} aria-pressed={weight === t} onClick={() => setWeight(t)}>{t}</button>)}</fieldset>
           </>}

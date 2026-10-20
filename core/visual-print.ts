@@ -1,6 +1,6 @@
 /**
  * A chat ```visual as a printed figure: the same compiled drawing the person saw, on white paper in print colours
- * and standard fonts. PDFs (Kinetra mowr.visual), answer exports and Word or PowerPoint files all print visuals
+ * and standard fonts. PDFs (Kinetra clem.visual), answer exports and Word or PowerPoint files all print visuals
  * through here, so a diagram the AI drew in the chat goes into any file unchanged.
  */
 import { compileVisual, defaultValues, palette, W, H, type Pen, type P, type Style, type TextStyle } from './visual-spec.ts';

@@ -11,8 +11,8 @@ import { unzipSync, strFromU8 } from "fflate";
  * so this runs scripts/verify/office-files.mjs on three of its context decks and reads back what it wrote.
  */
 test("context decks are drawn, measured and photographed, each with its own design", { timeout: 600_000 }, () => {
-  const out = mkdtempSync(join(tmpdir(), "mowr-decks-"));
-  const run = spawnSync(process.execPath, ["scripts/verify/office-files.mjs", out], { encoding: "utf8", timeout: 600_000, env: { ...process.env, MOWR_ONLY: "context-(pitch|kids|report)" } });
+  const out = mkdtempSync(join(tmpdir(), "clem-decks-"));
+  const run = spawnSync(process.execPath, ["scripts/verify/office-files.mjs", out], { encoding: "utf8", timeout: 600_000, env: { ...process.env, CLEM_ONLY: "context-(pitch|kids|report)" } });
   assert.equal(run.status, 0, run.stdout + run.stderr);
   const lines = run.stdout.split("\n").filter((l) => l.startsWith("ok context-"));
   assert.equal(lines.length, 3, run.stdout);
@@ -33,8 +33,8 @@ test("context decks are drawn, measured and photographed, each with its own desi
 });
 
 test("inline maths on slides is a native PowerPoint equation with a plain-text fallback", { timeout: 600_000 }, () => {
-  const out = mkdtempSync(join(tmpdir(), "mowr-decks-math-"));
-  const run = spawnSync(process.execPath, ["scripts/verify/office-files.mjs", out], { encoding: "utf8", timeout: 600_000, env: { ...process.env, MOWR_ONLY: "context-circuit" } });
+  const out = mkdtempSync(join(tmpdir(), "clem-decks-math-"));
+  const run = spawnSync(process.execPath, ["scripts/verify/office-files.mjs", out], { encoding: "utf8", timeout: 600_000, env: { ...process.env, CLEM_ONLY: "context-circuit" } });
   assert.equal(run.status, 0, run.stdout + run.stderr);
   const bytes = new Uint8Array(readFileSync(join(out, "context-circuit-lecture-preset.pptx")));
   const files = unzipSync(bytes); // still a valid zip

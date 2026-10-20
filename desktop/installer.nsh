@@ -1,27 +1,27 @@
 !ifdef BUILD_UNINSTALLER
-Var removeMowrData
+Var removeClemData
 !endif
 !macro customUnInit
-  StrCpy $removeMowrData "no"
+  StrCpy $removeClemData "no"
   ${if} ${isUpdated}
-    Goto keepMowrData
+    Goto keepClemData
   ${endif}
-  IfSilent keepMowrData
-  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also permanently delete all Mowr chats, files, subjects and local data from Documents? Choose No to keep your work for reinstalling." IDNO keepMowrData
-    StrCpy $removeMowrData "yes"
-  keepMowrData:
+  IfSilent keepClemData
+  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also permanently delete all Clem chats, files, subjects and local data from Documents? Choose No to keep your work for reinstalling." IDNO keepClemData
+    StrCpy $removeClemData "yes"
+  keepClemData:
 !macroend
 !macro customUnInstall
-  ; A real uninstall (not an update) also removes Mowr from Windows' startup list ("Start with Windows").
+  ; A real uninstall (not an update) also removes Clem from Windows' startup list ("Start with Windows").
   ${ifNot} ${isUpdated}
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Mowr"
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.mowrai.desktop"
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.Mowr"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Clem"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "xyz.m4labs.clem"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.Clem"
   ${endIf}
-  StrCmp $removeMowrData "yes" 0 doneMowrData
+  StrCmp $removeClemData "yes" 0 doneClemData
     SetShellVarContext current
-    RMDir /r "$DOCUMENTS\Mowr"
-    RMDir /r "$APPDATA\Mowr"
-    RMDir /r "$APPDATA\mowr-desktop"
-  doneMowrData:
+    RMDir /r "$DOCUMENTS\Clem"
+    RMDir /r "$APPDATA\Clem"
+    RMDir /r "$APPDATA\clem-desktop"
+  doneClemData:
 !macroend

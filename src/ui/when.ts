@@ -4,7 +4,7 @@ export function daysAgo(t: number, now = Date.now()) {
   return Math.round((day(now) - day(t)) / 86_400_000);
 }
 
-/** A date as Mowr writes it: "today", "yesterday", "3 days ago", then "Sep 15" (with the year when it differs). */
+/** A date as Clem writes it: "today", "yesterday", "3 days ago", then "Sep 15" (with the year when it differs). */
 export function shortWhen(t: number, now = Date.now()) {
   const days = daysAgo(t, now);
   if (days <= 0) return "today";

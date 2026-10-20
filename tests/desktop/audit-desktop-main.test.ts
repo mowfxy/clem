@@ -7,7 +7,7 @@ import { locate } from "../../desktop/folder-edits.ts";
 import type { Folder } from "../../desktop/folders.ts";
 
 test("a colon in a path segment (an NTFS alternate data stream) is refused", async () => {
-  const base = await realpath(await mkdtemp(join(tmpdir(), "mowr-ads-")));
+  const base = await realpath(await mkdtemp(join(tmpdir(), "clem-ads-")));
   try {
     await mkdir(join(base, "src"), { recursive: true });
     await writeFile(join(base, "src", "a.txt"), "hello");

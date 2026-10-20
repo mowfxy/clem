@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {parseCaptions,transcriptText,pickTrack,videoContext,videoContentIntent,stamp,decodeEntities} from '../core/captions.ts';
 import {youtubeCaptions,embeddedJson} from '../desktop/video-captions.ts';
 import {DriveLive,findUrl} from '../desktop/drive-live.ts';
-import {mowrSkillsFor,mowrSkillText,capabilityIndex} from '../core/mowr-skills.ts';
+import {clemSkillsFor,clemSkillText,capabilityIndex} from '../core/clem-skills.ts';
 
 test('every caption format YouTube and Drive serve becomes the same cues',()=>{
   const want=[{start:1.2,text:"Today we'll look at derivatives"},{start:4.5,text:'The slope & the tangent'}];
@@ -57,10 +57,10 @@ test('the model gets the transcript, how it was made and what was left out',()=>
 });
 
 test('the notes playbook comes with transcripts and the old "cannot transcribe" rule is gone',()=>{
-  assert.ok(mowrSkillsFor('hi',{videos:true}).some(s=>s.id==='video-notes'));
-  assert.ok(mowrSkillsFor('make notes on this lecture video').some(s=>s.id==='video-notes'));
-  assert.ok(!mowrSkillsFor('what is entropy').some(s=>s.id==='video-notes'));
-  assert.doesNotMatch(mowrSkillText('give me a youtube video on this and make notes'),/Mowr cannot watch or transcribe/i);
+  assert.ok(clemSkillsFor('hi',{videos:true}).some(s=>s.id==='video-notes'));
+  assert.ok(clemSkillsFor('make notes on this lecture video').some(s=>s.id==='video-notes'));
+  assert.ok(!clemSkillsFor('what is entropy').some(s=>s.id==='video-notes'));
+  assert.doesNotMatch(clemSkillText('give me a youtube video on this and make notes'),/Clem cannot watch or transcribe/i);
   assert.ok(capabilityIndex.length<2200);
 });
 
@@ -119,7 +119,7 @@ test('the page player JSON is read even with braces inside strings',()=>{
   assert.equal(findUrl({a:[{timedTextDetails:{timedTextBaseUrl:'https://drive.google.com/timedtext?id=1'}}]}),'https://drive.google.com/timedtext?id=1');
 });
 
-// A fake of mowrai.com's token endpoint, the Drive API, Drive's playback service and its timed text.
+// A fake of clem.m4labs.xyz's token endpoint, the Drive API, Drive's playback service and its timed text.
 function fakeDrive(opts:{playback?:'auth'|'key'|'none';sidecar?:boolean}={}){
   const calls:string[]=[];
   const fetcher=(async(input:any,init:any={})=>{
@@ -144,7 +144,7 @@ function fakeDrive(opts:{playback?:'auth'|'key'|'none';sidecar?:boolean}={}){
     if(u.pathname==='/drive/v3/files/cap1234567890')return new Response(`1\n00:01:00,000 --> 00:01:02,000\nfrom the srt file`);
     return new Response('nope',{status:404});
   }) as typeof fetch;
-  return {calls,drive:new DriveLive(async()=>'session',fetcher,'https://mowrai.example')};
+  return {calls,drive:new DriveLive(async()=>'session',fetcher,'https://clem.example')};
 }
 
 test("Drive captions: the video's own track, signed in or as the public player",async()=>{

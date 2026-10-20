@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readCommand,expandCommand,commandsFor,slashCommands,leadingCommand} from '../core/commands.ts';
-import {mowrSkills,mowrSkillsFor} from '../core/mowr-skills.ts';
+import {clemSkills,clemSkillsFor} from '../core/clem-skills.ts';
 import {builtinSkills} from '../core/skills.ts';
 
 test('a command is read at the start of a message or after a space, and moves to the front',()=>{
@@ -37,8 +37,8 @@ test('the menu filters by what is typed and hides subject-only commands outside 
 
 test('every command names real playbooks and workflows, and forced playbooks come first',()=>{
   for(const c of slashCommands){
-    for(const id of c.skills||[]) assert.ok(mowrSkills.some(s=>s.id===id),`${c.id} → ${id}`);
+    for(const id of c.skills||[]) assert.ok(clemSkills.some(s=>s.id===id),`${c.id} → ${id}`);
     if(c.workflow) assert.ok(builtinSkills.some(s=>s.id===c.workflow),`${c.id} → ${c.workflow}`);
   }
-  assert.equal(mowrSkillsFor('hello',{force:['automations']})[0].id,'automations');
+  assert.equal(clemSkillsFor('hello',{force:['automations']})[0].id,'automations');
 });

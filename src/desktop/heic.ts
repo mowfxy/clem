@@ -20,7 +20,7 @@ let worker: Worker | undefined, next = 1;
 export function heicToJpeg(file: Blob, quality = 0.92): Promise<{ jpeg: Blob; width: number; height: number }> {
   if (file.size > 80_000_000) return Promise.reject(Error("The photo is over 80 MB, too large to convert."));
   const id = next++;
-  const w = (worker ??= new Worker(new URL("./heic-worker.ts", import.meta.url), { type: "module", name: "mowr-heic" }));
+  const w = (worker ??= new Worker(new URL("./heic-worker.ts", import.meta.url), { type: "module", name: "clem-heic" }));
   return new Promise((resolve, reject) => {
     const finish = (done: () => void) => { clearTimeout(timer); w.removeEventListener("message", listen); w.removeEventListener("error", crash); done(); };
     const listen = (event: MessageEvent<{ id: number; jpeg?: Blob; width?: number; height?: number; error?: string }>) => {

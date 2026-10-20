@@ -1,5 +1,5 @@
 // A failed account check (a bad connection) after the workspace opened must not close it: closing it stopped every
-// running answer and showed "Can't reach Mowr" mid-answer. Opening Mowr while offline still shows that screen.
+// running answer and showed "Can't reach Clem" mid-answer. Opening Clem while offline still shows that screen.
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ const open = async (startOffline) => {
   await page.addInitScript((startOffline) => {
     const online = { active: true, reason: "free" }, offline = { active: false, reason: "offline" };
     window.fixture = { entitlement: startOffline ? offline : online, offline, online };
-    window.mowrDesktop = {
+    window.clemDesktop = {
       onAuth: () => () => {}, onChat: () => () => {}, onAttachment: () => () => {}, onCapture: () => () => {}, onFolder: () => () => {}, onPack: () => () => {},
       invoke: async (r) => {
         if (r.action === "status") return { configured: true, user: { id: "fixture-owner", email: "sam@example.com", name: "Sam" }, setup: { step: 4, username: "sam", displayName: "Sam", memory: true }, entitlement: window.fixture.entitlement };
@@ -36,7 +36,7 @@ try {
   // The connection drops; the window regains focus and checks again.
   await page.evaluate(() => { window.fixture.entitlement = window.fixture.offline; window.dispatchEvent(new Event("focus")); });
   await page.waitForTimeout(1200);
-  assert.equal(await page.getByText("Can’t reach Mowr.").count(), 0, "a failed check keeps the open workspace");
+  assert.equal(await page.getByText("Can’t reach Clem.").count(), 0, "a failed check keeps the open workspace");
   assert.equal(await page.locator(".desktop-setup").count(), 0);
   await page.evaluate(() => { window.fixture.entitlement = window.fixture.online; window.dispatchEvent(new Event("focus")); });
   await page.waitForTimeout(600);
@@ -44,7 +44,7 @@ try {
   await page.close();
 
   const cold = await open(true);
-  await cold.getByText("Can’t reach Mowr.").waitFor({ timeout: 30000 });
+  await cold.getByText("Can’t reach Clem.").waitFor({ timeout: 30000 });
   await cold.close();
   console.log("Offline check passed: the open workspace stays, a cold offline start still asks.");
 } finally {

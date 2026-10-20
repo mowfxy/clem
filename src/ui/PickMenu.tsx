@@ -2,7 +2,7 @@ import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../Icons";
 
-/** A small text-only pick list in Mowr's menu style (src/popups.css): the trigger shows the current choice, the menu
+/** A small text-only pick list in Clem's menu style (src/popups.css): the trigger shows the current choice, the menu
  *  ticks it. Used where a native <select> would otherwise appear. */
 export function PickMenu<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
   const id = useId(), menu = useRef<HTMLDivElement>(null);

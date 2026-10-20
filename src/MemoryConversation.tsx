@@ -18,7 +18,7 @@ const keep = (records: Fact[]) => (remembered = newestFirst(records));
 export function warmMemory() { if (desktop && !remembered) void desktop.invoke({ action: "memoryAll" }).then((r) => keep(r.records)).catch(() => {}); }
 const cleanError = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 /**
- * Everything Mowr remembers, grouped by where it applies: about the person first, then the open
+ * Everything Clem remembers, grouped by where it applies: about the person first, then the open
  * space, then other spaces and chats. Learned items wait for Keep; anything can be forgotten.
  */
 export function MemoryConversation({
@@ -28,7 +28,7 @@ export function MemoryConversation({
   summary = "",
   summaryLabel = "Your notes",
   onSummary,
-  empty = "Share your role, goals or how you like answers in any chat and Mowr keeps it here.",
+  empty = "Share your role, goals or how you like answers in any chat and Clem keeps it here.",
 }: {
   /** The open project or subject, if any: new memories are saved there and its group comes first. */
   home?: string;
@@ -77,7 +77,7 @@ export function MemoryConversation({
       {summary.trim() && onSummary && (
         <div className="memory-group">
           <h4>{summaryLabel}</h4>
-          <ul><li><span className="memory-text">{summary.trim()}</span><span className="memory-actions"><button type="button" className="memory-icon" disabled={busy} aria-label="Forget your notes" aria-description="Forget" onClick={async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Mowr stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); }}><Icon name="close" size={13} /></button></span></li></ul>
+          <ul><li><span className="memory-text">{summary.trim()}</span><span className="memory-actions"><button type="button" className="memory-icon" disabled={busy} aria-label="Forget your notes" aria-description="Forget" onClick={async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Clem stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); }}><Icon name="close" size={13} /></button></span></li></ul>
         </div>
       )}
       {groups.map(({ scope, items }) => (
@@ -112,7 +112,7 @@ export function MemoryConversation({
           finally { setBusy(false); }
         }}
       >
-        <input value={text} disabled={busy || facts === null} maxLength={2000} onChange={(e) => setText(e.target.value)} placeholder="Add something for Mowr to remember" aria-label="Add a memory" />
+        <input value={text} disabled={busy || facts === null} maxLength={2000} onChange={(e) => setText(e.target.value)} placeholder="Add something for Clem to remember" aria-label="Add a memory" />
         <button type="submit" className="memory-send" disabled={busy || facts === null || !text.trim()} aria-label="Remember"><Icon name="up" size={15} /></button>
       </form>
       {status && <p role="status">{status}</p>}

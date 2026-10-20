@@ -11,7 +11,7 @@ const clean=(e:unknown)=>(e as Error).message.replace(/^Error invoking remote me
 const baseName=(p:string)=>p.split(/[\\/]/).filter(Boolean).pop()||p;
 
 /**
- * Linked folders, browsed and read inside Mowr. Files open read-only; changes are asked for in
+ * Linked folders, browsed and read inside Clem. Files open read-only; changes are asked for in
  * words and come back as a diff to approve, exactly like any other proposed edit.
  */
 export function FolderBrowser({initial,folderId:startFolder,scopeLabel,onAsk,onClose}:{initial?:OpenFolderFile;folderId?:string;scopeLabel:(scope:string)=>string;onAsk:(file:OpenFolderFile,instruction:string)=>void;onClose:()=>void}){
@@ -52,7 +52,7 @@ export function FolderBrowser({initial,folderId:startFolder,scopeLabel,onAsk,onC
       </aside>
       <section className="fb-main">
         {open?<FileViewer key={open.folderId+open.path} file={open} onAsk={instruction=>{onAsk(open,instruction);onClose();}}/>
-          :<div className="fb-empty"><Icon name="files" size={34}/><strong>Choose a file to read it here.</strong><p>Files stay where they are. Mowr only writes a change after you approve its diff, and every change can be undone.</p></div>}
+          :<div className="fb-empty"><Icon name="files" size={34}/><strong>Choose a file to read it here.</strong><p>Files stay where they are. Clem only writes a change after you approve its diff, and every change can be undone.</p></div>}
         {error&&<p className="fb-error" role="alert">{error}</p>}
       </section>
     </div>
@@ -86,15 +86,15 @@ export function FileViewer({file,onAsk}:{file:OpenFolderFile;onAsk:(instruction:
     </div>
     <form className="fv-ask" onSubmit={e=>{e.preventDefault();submit();}}>
       <div className="fv-suggest">{suggestions.map(s=><button type="button" key={s} onClick={()=>setInstruction(s)}>{s}</button>)}</div>
-      <div className="fv-input"><Icon name="chat" size={17}/><input value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder={`Tell Mowr what to change in ${baseName(file.path)}…`} aria-label="Describe the change"/>
+      <div className="fv-input"><Icon name="chat" size={17}/><input value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder={`Tell Clem what to change in ${baseName(file.path)}…`} aria-label="Describe the change"/>
         <button type="button" className="secondary" onClick={()=>onAsk('')} aria-description="Ask a question about this file">Ask about it</button>
         <button className="primary" disabled={!instruction.trim()||text===null}>Propose change<Icon name="arrow" size={15}/></button></div>
-      <p className="fine">Mowr drafts a diff in the chat. Nothing is written until you press Apply.</p>
+      <p className="fine">Clem drafts a diff in the chat. Nothing is written until you press Apply.</p>
     </form>
   </div>;
 }
 
-/** The Files page's view of linked folders: what Mowr can read, and whether it is watching. */
+/** The Files page's view of linked folders: what Clem can read, and whether it is watching. */
 export function PcFolders({scopeLabel,onBrowse}:{scopeLabel:(scope:string)=>string;onBrowse:(folderId?:string)=>void}){
   const [folders,setFolders]=useState<Folder[]|null>(null);
   const [watch,setWatch]=useState(true);
@@ -111,7 +111,7 @@ export function FolderWatchSetting({onBrowse}:{onBrowse:()=>void}){
   useEffect(()=>{void desktop!.invoke({action:'folderWatch'}).then(setState).catch(()=>{});},[]);
   const toggle=(enabled:boolean)=>void desktop!.invoke({action:'folderWatch',enabled}).then(setState).catch(()=>{});
   return <>
-    <div className="setting-row v2"><div className="setting-row-text"><h3>Watch for changes</h3><p>When a file in a linked folder changes outside Mowr, offer to update flashcards or summarize what changed.{state?.enabled&&state.watching?` Watching ${state.watching} folder${state.watching===1?'':'s'}.`:''}</p></div><div className="setting-row-control"><label className="mw-switch"><input type="checkbox" role="switch" aria-label="Watch linked folders" checked={!!state?.enabled} disabled={!state} onChange={e=>toggle(e.target.checked)}/><span aria-hidden="true"/></label></div></div>
-    <div className="setting-row v2"><div className="setting-row-text"><h3>Read your files in Mowr</h3><p>Browse linked folders, open any text or code file and ask for a change.</p></div><div className="setting-row-control"><button className="secondary" onClick={onBrowse}>Browse files</button></div></div>
+    <div className="setting-row v2"><div className="setting-row-text"><h3>Watch for changes</h3><p>When a file in a linked folder changes outside Clem, offer to update flashcards or summarize what changed.{state?.enabled&&state.watching?` Watching ${state.watching} folder${state.watching===1?'':'s'}.`:''}</p></div><div className="setting-row-control"><label className="mw-switch"><input type="checkbox" role="switch" aria-label="Watch linked folders" checked={!!state?.enabled} disabled={!state} onChange={e=>toggle(e.target.checked)}/><span aria-hidden="true"/></label></div></div>
+    <div className="setting-row v2"><div className="setting-row-text"><h3>Read your files in Clem</h3><p>Browse linked folders, open any text or code file and ask for a change.</p></div><div className="setting-row-control"><button className="secondary" onClick={onBrowse}>Browse files</button></div></div>
   </>;
 }

@@ -4,10 +4,10 @@ import type { DesktopBridge } from "../../desktop/contracts";
 import type { FileVersion, StoredFile } from "../../core/types";
 declare global {
   interface Window {
-    mowrDesktop?: DesktopBridge;
+    clemDesktop?: DesktopBridge;
   }
 }
-export const desktop = typeof window === "undefined" ? undefined : window.mowrDesktop;
+export const desktop = typeof window === "undefined" ? undefined : window.clemDesktop;
 export type ChatOptions = {
   /** A temporary chat: nothing from it is remembered or kept. */
   temporary?: boolean;
@@ -18,17 +18,17 @@ export type ChatOptions = {
   pdfs?: { name: string; data: Uint8Array }[];
   /** How each PDF of the conversation reached the model (whole, which pages) and how to read the rest. */
   pdfNotes?: string[];
-  /** Documents Mowr made in this conversation, so a change updates that same file. */
+  /** Documents Clem made in this conversation, so a change updates that same file. */
   documents?: { id: string; name: string }[];
   /** The full text of the chat's files, for the model's file tools (core/file-tools.ts); not added to the prompt. */
   library?: { name: string; text: string }[];
-  /** Text-only answer (a document edit returning JSON): Mowr's tools are off, so it can never make a new file. */
+  /** Text-only answer (a document edit returning JSON): Clem's tools are off, so it can never make a new file. */
   plain?: boolean;
   /** Send the whole conversation: the main process condenses older turns into a brief when it outgrows the model's window. */
   condense?: boolean;
-  /** Mowr condensed the earlier part of a long chat into a brief for this answer. */
+  /** Clem condensed the earlier part of a long chat into a brief for this answer. */
   onCondensed?: () => void;
-  /** What Mowr is doing right now ("Searching the web…", "Typesetting the PDF…"). */
+  /** What Clem is doing right now ("Searching the web…", "Typesetting the PDF…"). */
   onStatus?: (text: string) => void;
   /** Pictures of pages the model asks to look at ({"action":"look"}), drawn here where the files and pdf.js are. */
   look?: (file: string, pages: number[]) => Promise<{ name: string; data: string }[]>;
@@ -92,7 +92,7 @@ export async function desktopChat(
     };
     const unsubscribe = desktop!.onChat((event) => {
       if (event.id !== id) return;
-      if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("mowr:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
+      if(event.type === "artifact" && event.file){window.dispatchEvent(new CustomEvent("clem:artifact",{detail:event}));onArtifact?.(event.file,event.revised);}
       if (event.type === "status") onStatus?.(String(event.text || ""));
       if (event.type === "condensed") onCondensed?.();
       if (event.type === "worked") { clearTimeout(paint); paint = undefined; work = result.length; onText(result, work); }

@@ -26,7 +26,7 @@ const driveScript = () => {
   ];
   window.driveCalls = [];
   let real;
-  Object.defineProperty(window, "mowrDesktop", { configurable: true, get: () => real, set: (bridge) => {
+  Object.defineProperty(window, "clemDesktop", { configurable: true, get: () => real, set: (bridge) => {
     const invoke = bridge.invoke;
     real = { ...bridge, invoke: async (r) => {
       if (!String(r.action).startsWith("drive")) return invoke(r);
@@ -148,9 +148,9 @@ try {
   await row("Osmosis handout.pdf").waitFor();
   assert.deepEqual((await calls("driveRename")).map((c) => [c.id, c.name]), [["drive-pdf-000001", "Osmosis handout.pdf"]]);
 
-  // Edit a Drive PDF with Mowr: the change waits for approval; Done sends it to the same Drive file.
+  // Edit a Drive PDF with Clem: the change waits for approval; Done sends it to the same Drive file.
   await row("Osmosis handout.pdf").getByRole("button", { name: "Osmosis handout.pdf options" }).click();
-  await page.getByRole("menuitem", { name: "Edit with Mowr" }).click();
+  await page.getByRole("menuitem", { name: "Edit with Clem" }).click();
   await page.locator(".file-panel .ps-page canvas").first().waitFor();
   await page.getByLabel("Your message").fill("Move the due date to Monday and make question 2 more precise");
   await page.getByLabel("Your message").press("Enter");
@@ -215,7 +215,7 @@ try {
   await page.waitForTimeout(1500);
   assert.equal((await calls("driveUpload")).length, 4, "a file added on this PC is not uploaded to Drive");
   assert.equal(await drive.locator(".sp-file", { hasText: "Lecture 5.txt" }).count(), 0, "not listed in the Drive folder");
-  // Its edits approved later stay local too, even with "Save Mowr's files" on.
+  // Its edits approved later stay local too, even with "Save Clem's files" on.
   await saved(page);
   const localFile = await page.evaluate(async () => (await (await import("/src/store.ts")).loadState()).files.find((x) => x.name === "Lecture 5.txt"));
   assert.ok(localFile && !localFile.driveId && !localFile.driveFolder && !localFile.made, "kept on this PC only");
@@ -281,13 +281,13 @@ try {
   assert.deepEqual(moved, ["Biology 101 syllabus.txt", "Lecture 5.txt"]);
   assert.equal((await calls("driveUpload")).length, uploadsNow, "moving on this PC sends nothing to Drive");
 
-  // A PDF Mowr makes lands under On this PC, even with the old "Save Mowr's files" setting on: nothing goes to Drive by itself.
+  // A PDF Clem makes lands under On this PC, even with the old "Save Clem's files" setting on: nothing goes to Drive by itself.
   const uploadsMade = (await calls("driveUpload")).length;
   await page.evaluate(async () => {
     const store = await import("/src/store.ts");
     const id = "made-notes-0001";
-    await store.storeBlob(id, new Blob(["%PDF-1.4 made by Mowr"], { type: "application/pdf" }));
-    window.dispatchEvent(new CustomEvent("mowr:artifact", { detail: { file: { id, name: "Stacks revision notes.pdf", size: 21, type: "application/pdf", created: Date.now(), spaceId: "bio", made: true }, scope: "subject:bio" } }));
+    await store.storeBlob(id, new Blob(["%PDF-1.4 made by Clem"], { type: "application/pdf" }));
+    window.dispatchEvent(new CustomEvent("clem:artifact", { detail: { file: { id, name: "Stacks revision notes.pdf", size: 21, type: "application/pdf", created: Date.now(), spaceId: "bio", made: true }, scope: "subject:bio" } }));
   });
   const madeRow = page.locator(".sp-files > .sp-file-list .sp-file", { hasText: "Stacks revision notes.pdf" });
   await madeRow.waitFor({ timeout: 5000 });

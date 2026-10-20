@@ -8,7 +8,7 @@ html:root[data-theme=light] .composer:focus-within{border-color:#b9b5aa}
 html:root[data-theme=light] .chat-composer{background:linear-gradient(#faf8f300,var(--bg) 12px)}
 html:root[data-theme=light] .message.user .message-text{background:#efebe2}
 html:root[data-theme=light] dialog,html:root[data-theme=light] .popover{background:#fff;border-color:#dedad0}
-/* The primary action keeps Mowr's ink. */
+/* The primary action keeps Clem's ink. */
 html:root[data-theme=light] .primary,html:root[data-theme=light] .send-button{background:#20253a;color:#faf8f3;border-color:#20253a}
 html:root[data-theme=light] .primary:hover,html:root[data-theme=light] .send-button:hover{background:#2f3652;color:#fff}
 html:root[data-theme=light] .send-button:disabled{background:#e7e3da;color:#9a998f}

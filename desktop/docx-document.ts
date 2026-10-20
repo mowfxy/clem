@@ -16,7 +16,7 @@ import { latexMathml, wordMath, wordUpright } from "./docx-math.ts";
 import { unzipSync, zipSync, strFromU8, strToU8 } from "fflate";
 
 /**
- * Word documents from the same specification as Mowr's PDFs, built as a real Word file rather than a picture of
+ * Word documents from the same specification as Clem's PDFs, built as a real Word file rather than a picture of
  * one: Title and Heading styles (so the navigation pane and Word's own contents work), numbered sections, native
  * editable equations, Word tables, captioned figures, framed definitions and theorems, footnotes, running heads
  * and page numbers. The four page designs follow the PDF ones (technical, notes, business, letter).
@@ -393,7 +393,7 @@ async function build(spec: DocumentSpec, figures: (string | undefined)[], raster
   const footers = { default: numberFooter, first: layout === "letter" ? new Footer({ children: [new Paragraph("")] }) : numberFooter };
 
   const document = new Document({
-    creator: spec.author || "Mowr",
+    creator: spec.author || "Clem",
     title: spec.title,
     description: spec.subtitle || "",
     footnotes,

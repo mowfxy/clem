@@ -1,7 +1,7 @@
 import { random, mix, type Art } from "./deck-design.ts";
 
 /**
- * Pictures Mowr draws for decks itself: a set of outline icons on a 24-unit grid, and generated art (orbits, waves,
+ * Pictures Clem draws for decks itself: a set of outline icons on a 24-unit grid, and generated art (orbits, waves,
  * contours, confetti…) seeded per deck and coloured from its palette, for covers, section slides and image slides.
  * Both are SVG, drawn to PNG by the offscreen page (desktop/rasterize.ts) like Kinetra figures.
  */

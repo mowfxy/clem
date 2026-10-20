@@ -90,7 +90,7 @@ export async function handleSecurity(
   if (request.action === "emailChange") {
     const result = await auth.client!.auth.updateUser(
       { email: request.email },
-      { emailRedirectTo: "https://mowrai.com/" },
+      { emailRedirectTo: "https://clem.m4labs.xyz/" },
     );
     if (result.error) throw Error(result.error.message);
     return { ok: true };
@@ -103,7 +103,7 @@ export async function handleSecurity(
   if (request.action === "mfaEnroll") {
     const result = await auth.client!.auth.mfa.enroll({
       factorType: "totp",
-      friendlyName: "Mowr authenticator",
+      friendlyName: "Clem authenticator",
     });
     if (result.error) throw Error(result.error.message);
     return { id: result.data.id, qr: result.data.totp.qr_code };

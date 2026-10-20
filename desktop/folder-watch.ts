@@ -29,9 +29,9 @@ const SETTLED_MS = 10 * 60_000;
 type Entry = { folder: Folder; watcher?: FSWatcher; timer?: NodeJS.Timeout; baseline?: IndexedFile[]; at?: number; checking?: boolean; silent?: boolean; running?: Promise<void> };
 
 /**
- * Watches linked folders and reports text files that changed outside Mowr.
+ * Watches linked folders and reports text files that changed outside Clem.
  * Each folder keeps its own baseline, so chat retrieval refreshing the shared index cache
- * never hides a change from the watcher. Changes Mowr applies itself are absorbed silently.
+ * never hides a change from the watcher. Changes Clem applies itself are absorbed silently.
  */
 export class FolderWatcher {
   private live = new Map<string, Entry>();
@@ -95,7 +95,7 @@ export class FolderWatcher {
     entry.timer = setTimeout(() => { entry.timer = undefined; void this.check(id); }, delay);
   }
 
-  /** Re-reads the folder after Mowr writes to it, updating the baseline without a notice. */
+  /** Re-reads the folder after Clem writes to it, updating the baseline without a notice. */
   absorb(folderId: string) {
     const entry = this.live.get(folderId);
     if (!entry) return;

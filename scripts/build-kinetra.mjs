@@ -15,7 +15,7 @@ const skills = {};
 for (const name of (await readdir(root)).sort())
   skills[name] = await readFile(root + "/" + name + "/SKILL.md", "utf8");
 const source = await readFile("desktop/kinetra-worker.ts", "utf8");
-const modules = ["mowr", ...source.matchAll(/core\/src\/([^"']+)/g)].map(
+const modules = ["clem", ...source.matchAll(/core\/src\/([^"']+)/g)].map(
   (value) => (typeof value === "string" ? value : value[1]),
 );
 const api = {};
@@ -32,7 +32,7 @@ async function references(folder, prefix = "") {
   }
 }
 await references("vendor/kinetra/packages/core/src");
-api.mowr = declarations(await readFile("desktop/kinetra-adapters.ts", "utf8")) + "\n" + declarations(await readFile("desktop/kinetra-diagrams.ts", "utf8"));
+api.clem = declarations(await readFile("desktop/kinetra-adapters.ts", "utf8")) + "\n" + declarations(await readFile("desktop/kinetra-diagrams.ts", "utf8"));
 await mkdir("desktop/generated", { recursive: true });
 await writeFile(
   "desktop/generated/kinetra.json",

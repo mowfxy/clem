@@ -21,16 +21,16 @@ export function useWorkspaceSignals(enabled:boolean,onAnnouncement:(a:Announceme
     last.current=Date.now();
     const [news,support]=await Promise.allSettled([desktop.invoke({action:'announcements'}),desktop.invoke({action:'supportCases'})]);
     if(news.status==='fulfilled'){
-      const seen=read('mowr-seen-announcements');
+      const seen=read('clem-seen-announcements');
       for(const a of (news.value as {announcements:Announcement[]}).announcements||[])if(!seen.includes(a.id)){seen.push(a.id);callbacks.current.onAnnouncement(a);}
-      write('mowr-seen-announcements',seen);
+      write('clem-seen-announcements',seen);
     }
     if(support.status==='fulfilled'){
       const list=(support.value as {cases:SupportCase[]}).cases||[];
       setCases(list);
-      const notified=read('mowr-notified-replies');
+      const notified=read('clem-notified-replies');
       for(const c of list){const key=c.id+'@'+c.staff_replied_at;if(c.unread&&!notified.includes(key)){notified.push(key);callbacks.current.onReply(c);}}
-      write('mowr-notified-replies',notified);
+      write('clem-notified-replies',notified);
     }
   },[enabled]);
   useEffect(()=>{

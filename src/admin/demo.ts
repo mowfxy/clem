@@ -1,25 +1,25 @@
 // Development-only fixtures for previewing the portal without staff credentials.
 const day=86400000,iso=(offset:number)=>new Date(Date.now()-offset).toISOString();
-const names=[['ava@studio.co','ava','Ava Laurent'],['kenji@uni.ac.jp','kenji','Kenji Mori'],['sara.h@gmail.com','sarah','Sara Haddad'],['omar@lab.eg','omar_k','Omar Khaled'],['lena@proton.me','lena','Lena Fischer'],['dev@mowrai.com','mowr_dev','Mowr Dev'],['priya@college.edu','priya','Priya Nair'],['tom@hey.com','tomw','Tom Walsh']];
+const names=[['ava@studio.co','ava','Ava Laurent'],['kenji@uni.ac.jp','kenji','Kenji Mori'],['sara.h@gmail.com','sarah','Sara Haddad'],['omar@lab.eg','omar_k','Omar Khaled'],['lena@proton.me','lena','Lena Fischer'],['dev@m4labs.xyz','clem_dev','Clem Dev'],['priya@college.edu','priya','Priya Nair'],['tom@hey.com','tomw','Tom Walsh']];
 const plans=['free','free','free','free','free','owner','free','free'];
 const steps=[4,4,2,4,0,4,3,4];
 const people=names.map(([email,username,display_name],i)=>({id:`00000000-0000-4000-8000-00000000000${i}`,email,username,display_name,first_seen_at:iso((i*3+1)*day),last_seen_at:iso(i*4*3600000),setup_step:steps[i],suspended:i===7,suspended_until:i===7?iso(-3*day):null,cases:i%3,plan:plans[i],until:null}));
 const cases=[
   {id:'case-7f1a2b3c',owner_id:people[0].id,category:'Report a bug',subject:'PPTX export shows odd symbols before bullets',message:'When I export my notes to slides every bullet starts with a question-mark diamond. Happens on every deck.',status:'open',priority:'high'},
-  {id:'case-8e2d4c1a',owner_id:people[2].id,category:'Contact support',subject:'Can I use two ChatGPT accounts?',message:'I have a personal and a work account. Can Mowr switch between them automatically?',status:'pending',priority:'normal'},
-  {id:'case-9a3b5d2e',owner_id:people[4].id,category:'Report a bug',subject:'Stuck on “Connect your AI”',message:'The Claude sign-in finishes in the browser but Mowr keeps waiting on the last setup step.',status:'open',priority:'urgent'},
+  {id:'case-8e2d4c1a',owner_id:people[2].id,category:'Contact support',subject:'Can I use two ChatGPT accounts?',message:'I have a personal and a work account. Can Clem switch between them automatically?',status:'pending',priority:'normal'},
+  {id:'case-9a3b5d2e',owner_id:people[4].id,category:'Report a bug',subject:'Stuck on “Connect your AI”',message:'The Claude sign-in finishes in the browser but Clem keeps waiting on the last setup step.',status:'open',priority:'urgent'},
   {id:'case-1b4c6e3f',owner_id:people[1].id,category:'Suggest a feature',subject:'Anki export for flashcards',message:'Would love to send subject flashcards straight to Anki.',status:'resolved',priority:'low'},
 ].map((c,i)=>({...c,created_at:iso((i+1)*day/2),updated_at:iso(i*3600000),email:people.find(p=>p.id===c.owner_id)!.email,username:people.find(p=>p.id===c.owner_id)!.username,replies:i%2,awaiting_staff:c.status==='open',assignee_id:null}));
-const messages:Record<string,any[]>={'case-8e2d4c1a':[{id:'m1',author:'staff',author_name:'Mowr support',body:'Yes! Add both in Settings → Models, then turn on “Switch accounts automatically”.',created_at:iso(20*3600000)},{id:'m2',author:'note',author_name:'',body:'Point to the auto-switch docs once published.',created_at:iso(19*3600000)}]};
-const audit=[['user.note',people[1].id,'Early tester'],['user.suspend',people[7].id,'Repeated spam in support · until 2026-09-27'],['case.reply',people[2].id,'case-8e2d4c1a'],['announcement.publish','a1','Mowr 0.3 preview']].map(([action,target,detail],i)=>({id:'audit'+i,actor_email:'m@mohamedmowafy.com',action,target,detail,created_at:iso(i*5*3600000)}));
-const announcements=[{id:'a1',title:'Mowr 0.3 preview',body:'Support inbox, faster usage checks and smoother popups.',tone:'success',link:null,starts_at:iso(day),ends_at:iso(-6*day),archived:0,created_at:iso(day)}];
+const messages:Record<string,any[]>={'case-8e2d4c1a':[{id:'m1',author:'staff',author_name:'Clem support',body:'Yes! Add both in Settings → Models, then turn on “Switch accounts automatically”.',created_at:iso(20*3600000)},{id:'m2',author:'note',author_name:'',body:'Point to the auto-switch docs once published.',created_at:iso(19*3600000)}]};
+const audit=[['user.note',people[1].id,'Early tester'],['user.suspend',people[7].id,'Repeated spam in support · until 2026-09-27'],['case.reply',people[2].id,'case-8e2d4c1a'],['announcement.publish','a1','Clem 0.3 preview']].map(([action,target,detail],i)=>({id:'audit'+i,actor_email:'m@mohamedmowafy.com',action,target,detail,created_at:iso(i*5*3600000)}));
+const announcements=[{id:'a1',title:'Clem 0.3 preview',body:'Support inbox, faster usage checks and smoother popups.',tone:'success',link:null,starts_at:iso(day),ends_at:iso(-6*day),archived:0,created_at:iso(day)}];
 
 export async function demoApi(path:string,body?:any):Promise<any>{
   await new Promise(r=>setTimeout(r,250));
   if(body!==undefined){
     if(path==='/admin/announcements')announcements.unshift({id:'a'+Date.now(),...body,starts_at:iso(0),ends_at:body.days?iso(-body.days*day):null,archived:0,created_at:iso(0)});
     const reply=/^\/admin\/cases\/(.+)\/reply$/.exec(path);
-    if(reply)(messages[reply[1]]??=[]).push({id:'m'+Date.now(),author:body.internal?'note':'staff',author_name:'Mowr support',body:body.body,created_at:iso(0)});
+    if(reply)(messages[reply[1]]??=[]).push({id:'m'+Date.now(),author:body.internal?'note':'staff',author_name:'Clem support',body:body.body,created_at:iso(0)});
     return {ok:true};
   }
   const url=new URL(path,'https://x');
@@ -55,7 +55,7 @@ export async function demoMail(path:string,body?:any):Promise<any>{
   if(path==='/presets')return {presets:staffPresets,ready:true};
   if(path==='/case-reply'){const c=cases.find(x=>x.id===body.caseId)!;return {ok:true,to:c.email,subject:'Re: '+c.subject};}
   const person=people.find(p=>p.id===body?.userId)||(body?.email?{id:body.email,email:body.email,display_name:''}:undefined);
-  const mail=staffEmail(body.kind,{name:person?.display_name||'',version:body.version||'0.0.0',notes:body.notes||'',subject:body.subject||'Subject',message:body.message||'Your message appears here.',unsubscribe:'https://mowrai.com/api/email/unsubscribe'});
+  const mail=staffEmail(body.kind,{name:person?.display_name||'',version:body.version||'0.0.0',notes:body.notes||'',subject:body.subject||'Subject',message:body.message||'Your message appears here.',unsubscribe:'https://clem.m4labs.xyz/api/email/unsubscribe'});
   if(path==='/preview')return {subject:mail.subject,html:mail.html,to:person?.email||null};
   // Nothing leaves the browser in demo mode; the send only lands in the local audit list.
   const entry={id:'audit'+Date.now(),actor_email:'m@mohamedmowafy.com',action:'email.send',target:person!.id,detail:`${body.kind} · ${mail.subject} → ${person!.email}`,created_at:iso(0)};

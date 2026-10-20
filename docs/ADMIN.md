@@ -1,15 +1,15 @@
-# Admin portal — admin.mowrai.com
+# M4 Labs admin — admin.m4labs.xyz
 
-Staff use the portal to see how Mowr is doing, moderate accounts, answer support cases, publish in-app announcements and review an audit log. Mowr is free, so the portal has no billing screens: the overview tracks people, activity and progress through the app's four-step welcome.
+Staff use the portal to see how Clem is doing, moderate accounts, answer support cases, publish in-app announcements and review an audit log. Clem is free, so the portal has no billing screens: the overview tracks people, activity and progress through the app's four-step welcome.
 
-The portal uses the app's own look — the same near-black surfaces, Mowafy Serif headings, drawn icons (`src/Icons.tsx`) and an ink illustration (`src/Illustrations.tsx`) at the top of each page, like the app's settings tabs.
+The portal is the M4 Labs admin, with Clem (the lab's first project) as the project it serves. It uses the lab's terminal look from m4labs.xyz: Fragment Mono, the M4 logo, near-black surfaces with hairlines, `./section` navigation and a page head that shows the command that opened the page (`m4labs:~$ clem admin people`). It is dark only. The style layer is at the end of `src/admin/admin.css`.
 
 ## How it fits together
 
-- **Frontend:** `src/admin/`, lazy-loaded from the website bundle. `src/main.tsx` renders it when the hostname is `admin.mowrai.com`, or at `#/admin` on any other host (local development).
-- **API:** `/admin/*` routes on the account Worker (`cloudflare/admin.js`), using the existing `mowr-workspaces` D1 database. The Worker verifies the Supabase session exactly as it does for the desktop app, then checks the staff role.
+- **Frontend:** `src/admin/`, lazy-loaded from the website bundle. `src/main.tsx` renders it when the hostname is `admin.m4labs.xyz`, or at `#/admin` on any other host (local development).
+- **API:** `/admin/*` routes on the account Worker (`cloudflare/admin.js`), using the existing `clem-workspaces` D1 database. The Worker verifies the Supabase session exactly as it does for the desktop app, then checks the staff role.
 - **People-facing routes:** `cloudflare/support.js` serves `/support/cases`, `/support/cases/:id/reply|seen` and `/announcements` to the desktop app (IPC actions `supportCases`, `supportReply`, `supportSeen`, `announcements`).
-- **Schema:** `cloudflare/admin-schema.sql` is additive and idempotent. Support-case workflow state lives in `mowr_support_state` beside the legacy `mowr_support` table, so the website's `/api/support` submission path is unchanged.
+- **Schema:** `cloudflare/admin-schema.sql` is additive and idempotent. Support-case workflow state lives in `clem_support_state` beside the legacy `clem_support` table, so the website's `/api/support` submission path is unchanged.
 
 Entitlement keeps working if the Worker is deployed before the migration: missing moderation, grant and activity tables are treated as empty (tested).
 
@@ -35,14 +35,14 @@ People open cases from the app (Settings → Help & support) or the website. Sta
 
 ## Setup (one time)
 
-1. Apply the schema: `npm run db:admin` (runs `wrangler d1 execute mowr-workspaces --remote --file cloudflare/admin-schema.sql`).
+1. Apply the schema: `npm run db:admin` (runs `wrangler d1 execute clem-workspaces --remote --file cloudflare/admin-schema.sql`).
 2. Deploy the Worker: `npm run deploy:accounts`.
 3. Optional Worker settings:
    - `ADMIN_REQUIRE_MFA="true"` (variable) requires authenticator verification for staff. Recommended once every staff member has an authenticator.
    - `SUPABASE_SERVICE_ROLE_KEY` (secret, `wrangler secret put`) adds sign-in details (providers, MFA, last sign-in) to person pages. Without it, emails come from the app's own activity records.
-4. Add `admin.mowrai.com` as a domain of the Vercel project that serves mowrai.com, then deploy the website. No separate build is needed.
+4. Add `admin.m4labs.xyz` as a domain of the Vercel project that serves clem.m4labs.xyz, then deploy the website. No separate build is needed.
 
-The Worker allows browser requests from `https://admin.mowrai.com` and local Vite (`localhost:5173`) only (`cloudflare/lib/http.js`).
+The Worker allows browser requests from `https://admin.m4labs.xyz` and local Vite (`localhost:5173`) only (`cloudflare/lib/http.js`).
 
 ## Local preview
 

@@ -128,7 +128,7 @@ export const deckSamples: Record<string, any> = {
     ],
   },
   "circuit-lecture-preset": {
-    title: "Voltage dividers in practice", subtitle: "From Ohm's law to sensor circuits", author: "Mowr", theme: { preset: "lab" },
+    title: "Voltage dividers in practice", subtitle: "From Ohm's law to sensor circuits", author: "Clem", theme: { preset: "lab" },
     slides: [
       { layout: "title", kicker: "Electronics 101" },
       { layout: "figure", title: "A 12 V divider", figure: circuit, caption: "R1 = 100 Ω, R2 = 200 Ω", bullets: ["I = 40 mA", "V2 = 8 V"] },

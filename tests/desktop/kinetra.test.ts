@@ -46,8 +46,8 @@ test("a lead-in sentence or several envelopes in one reply still run; quoted exa
   // After a long lead-in, a cut-off or unknown request is sent back to be fixed, never shown; a quoted one with prose after it is prose.
   assert.ok(brokenToolRequest(pages + '{"kinetra":{"action":"pdf","sections":[{"heading":"Q1"'));
   assert.ok(brokenToolRequest(pages + '{"kinetra":{"action":"nope"}}'));
-  assert.equal(brokenToolRequest(pages + 'A request looks like {"kinetra":{"action":"help"}} and then Mowr runs it.'), null);
-  assert.equal(toolRequests(pages + 'A request looks like {"kinetra":{"action":"help"}} and then Mowr runs it.'), null);
+  assert.equal(brokenToolRequest(pages + 'A request looks like {"kinetra":{"action":"help"}} and then Clem runs it.'), null);
+  assert.equal(toolRequests(pages + 'A request looks like {"kinetra":{"action":"help"}} and then Clem runs it.'), null);
   assert.equal(toolRequests('An example: {"kinetra":{}}'), null);
   assert.equal(toolRequests('Use {"kinetra":{"action":"call"}} and then read the result.'), null);
   assert.equal(shownLength('Let me check.\n{"kinetra":{"act'), 'Let me check.\n'.length);
@@ -153,7 +153,7 @@ test("real worker calculates projectile, integrates expressions and retrieves so
   assert.ok(
     Math.abs(
       (await kinetraCall({
-        module: "mowr",
+        module: "clem",
         fn: "integrateExpression",
         args: ["x^2", "x", 0, 1],
       })) -
@@ -161,7 +161,7 @@ test("real worker calculates projectile, integrates expressions and retrieves so
     ) < 1e-8,
   );
   const hits = await kinetraCall({
-    module: "mowr",
+    module: "clem",
     fn: "retrieve",
     args: [
       [
@@ -190,7 +190,7 @@ test("worker renders textbook SVG and expression-based fields, rejects arbitrary
   assert.match(svg, /<svg/);
   assert.match(svg, /Rubber/);
   const field = await kinetraCall({
-    module: "mowr",
+    module: "clem",
     fn: "vectorField",
     args: [
       {
@@ -212,7 +212,7 @@ test("worker renders textbook SVG and expression-based fields, rejects arbitrary
   );
   await assert.rejects(() =>
     kinetraCall({
-      module: "mowr",
+      module: "clem",
       fn: "integrateExpression",
       args: ["process.exit()", "x", 0, 1],
     }),
@@ -220,7 +220,7 @@ test("worker renders textbook SVG and expression-based fields, rejects arbitrary
 });
 test("study and Boolean tools return useful structured data", async () => {
   const schedule = await kinetraCall({
-    module: "mowr",
+    module: "clem",
     fn: "studySchedule",
     args: [["Circuits"], "2026-09-23", [1, 3]],
   });
@@ -310,10 +310,10 @@ test("a described design is built on top of the layout, and the defaults apply o
   assert.equal(cleanCss("@import url(x.css); h1{font-family:'Mowafy Serif';color:red} body{background:url(http://x)}</style>"), " h1{color:red} body{background:none}");
 });
 
-test("a chat visual goes into a PDF unchanged: through mowr.visual, and in an exported answer where it stood", async () => {
+test("a chat visual goes into a PDF unchanged: through clem.visual, and in an exported answer where it stood", async () => {
   const { markdownDocument, renderFigures, documentHtml } = await import("../../desktop/pdf-document.ts");
   const chart = { kind: "chart", title: "Sales", caption: "Quarterly sales in units", chart: { type: "bar", labels: ["Q1", "Q2"], series: [{ name: "2026", values: [3, 5] }] } };
-  const svg = await kinetraCall({ module: "mowr", fn: "visual", args: [chart] });
+  const svg = await kinetraCall({ module: "clem", fn: "visual", args: [chart] });
   assert.match(svg, /^<svg[\s\S]*<\/svg>$/);
   assert.match(String(await kinetraTool({ action: "help" })), /"fn":"visual"/);
   const answer = "# Sales review\n\n## Results\nSales grew.\n```visual\n" + JSON.stringify(chart) + "\n```\nThe second quarter was stronger.\n```visual\n{broken\n```\n## Outlook\nSteady.";
@@ -329,7 +329,7 @@ test("a chat visual goes into a PDF unchanged: through mowr.visual, and in an ex
   // An answer whose visual cannot be drawn still exports, without that figure; a document the AI writes is refused instead.
   const bad = markdownDocument("Text\n```visual\n" + JSON.stringify({ kind: "chart", title: "x" }) + "\n```");
   assert.equal((await renderFigures(bad, { checkVoice: false })).filter(Boolean).length, 0);
-  await assert.rejects(renderFigures({ title: "T", sections: [{ text: "This report shows a chart.", figure: { module: "mowr", fn: "visual", args: [{ kind: "chart", title: "x" }] } }] }), /needs labels and series/);
+  await assert.rejects(renderFigures({ title: "T", sections: [{ text: "This report shows a chart.", figure: { module: "clem", fn: "visual", args: [{ kind: "chart", title: "x" }] } }] }), /needs labels and series/);
 });
 
 test("a lost provider session falls back to resending everything, and a session saves most of what a long document task sends", async () => {
@@ -385,7 +385,7 @@ test("a model that keeps sending broken requests stops after a few: its text is 
   assert.deepEqual(stats, { steps: 6, calls: 1, broken: 4 });
 });
 test("streaming keeps showing an example quoted earlier and holds only the request that may end the reply", () => {
-  const quoted = 'A request looks like {"kinetra":{"action":"help"}} and Mowr runs it. ';
+  const quoted = 'A request looks like {"kinetra":{"action":"help"}} and Clem runs it. ';
   assert.equal(shownLength(quoted + "More prose."), (quoted + "More prose.").length);
   assert.equal(shownLength(quoted + 'Let me check.\n{"kinetra":{"act'), (quoted + "Let me check.\n").length);
   assert.equal(shownLength(quoted + 'Now:\n```json\n{"kinetra":{"action":"call"}}\n```\n{"kinetra":{"act'), (quoted + "Now:\n").length);
@@ -447,7 +447,7 @@ test("two PDF edits in one reply run one after the other, never at once", async 
 });
 
 test("Kinetra calls share a few warm workers; one that times out or stops is replaced", async () => {
-  const integral = { module: "mowr", fn: "integrateExpression", args: ["x^2", "x", 0, 1] };
+  const integral = { module: "clem", fn: "integrateExpression", args: ["x^2", "x", 0, 1] };
   assert.ok(Math.abs((await kinetraCall(integral)) - 1 / 3) < 1e-8);
   const [warm] = kinetraPool.workers();
   // Later calls reuse the loaded worker instead of starting one each time.
@@ -488,7 +488,7 @@ test("a request that only lacks its closing brackets runs at once, and its resul
   assert.equal(answer, "Done.");
   assert.equal(ran.length, 1);
   assert.equal(ran[0].sections.length, 2);
-  assert.match(sent[1], /missing its closing brackets; Mowr closed it/);
+  assert.match(sent[1], /missing its closing brackets; Clem closed it/);
   assert.doesNotMatch(sent[1], /cut off/);
   // Cut off inside a string, after a key or a comma, or right after a bare value may be a real cut-off: not closed.
   assert.equal(closedRequest('{"kinetra":{"action":"pdf","sections":[{"heading":"Q7","text":"Find'), null);

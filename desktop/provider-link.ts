@@ -9,7 +9,7 @@ type Linked = { id: string; kind: Kind; label: string; hash: string; data: strin
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 export const CLAUDE_LINK_ID = "claude";
 
-/** Keeps ChatGPT (Codex) and Claude sign-ins with the Mowr account: each credential file is backed
+/** Keeps ChatGPT (Codex) and Claude sign-ins with the Clem account: each credential file is backed
  *  up (encrypted by the account service) when it changes, and written back after a reinstall or on
  *  another PC. The newer side wins: a file changed here since its last upload is uploaded, and a
  *  file untouched here is replaced when the account holds a newer copy (for example a refresh made
@@ -75,7 +75,7 @@ export class ProviderLink {
   }
 
   /** Brings linked sign-ins onto this PC. Returns the ChatGPT connections the account holds, the added Claude
-   *  accounts (by their Mowr account id), and the ids whose credentials were written, so their processes can restart. */
+   *  accounts (by their Clem account id), and the ids whose credentials were written, so their processes can restart. */
   restore(owner: string) {
     return this.serial(async () => {
       const result = { codex: [] as { id: string; label: string }[], claude: [] as string[], written: [] as string[] };
@@ -83,7 +83,7 @@ export class ProviderLink {
       const { items } = (await this.auth.cloud("/providers")) as { items: Linked[] };
       const uploaded = await this.uploaded(owner);
       for (const item of items as (Linked | { id: string; kind: "telegram" })[]) {
-        // Telegram was removed: a bot connection an earlier Mowr kept with the account is deleted from it.
+        // Telegram was removed: a bot connection an earlier Clem kept with the account is deleted from it.
         if (item.kind === "telegram") { await this.auth.cloud("/providers/delete", { id: item.id }).catch(() => {}); delete uploaded[item.id]; continue; }
         // The id becomes a folder name: never let a stored entry write outside this account's folders.
         if ((item.kind !== "codex" && item.kind !== "claude") || typeof item.id !== "string" || !/^[\w-]{1,64}$/.test(item.id) || typeof item.data !== "string") continue;

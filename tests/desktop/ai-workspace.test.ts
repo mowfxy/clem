@@ -10,7 +10,7 @@ import { zipSync, strToU8 } from "fflate";
 import { markdownSource, withMarkdownSource } from "../../desktop/markdown-source.ts";
 import { claudeCliArgs, claudeCliSettings, claudeWriters, rulePath, CLAUDE_CLI_TOOLS, WRITER, WRITERS_NOTE } from "../../desktop/claude.ts";
 import { folderThread } from "../../desktop/codex-stream.ts";
-import { documentsNote } from "../../core/mowr-skills.ts";
+import { documentsNote } from "../../core/clem-skills.ts";
 import { kinetraCli, kinetraFiles, kinetraCompact } from "../../desktop/kinetra-runtime.ts";
 import { cliSystemPrompt } from "../../desktop/prompt.ts";
 import { GROK_FOLDER_TOOLS, grokRules } from "../../desktop/grok.ts";
@@ -38,7 +38,7 @@ test("the working folder holds every file the person keeps, organised by subject
   // Claude Code and Grok open the PDF itself; a Word file still has its text.
   const native = mirrorFor({ state, scope: "workspace", chat: "chat1", lane: "chat-1", blob: (id) => id, officeText: async () => "t", library: [{ name: "Lecture 1.pdf", text: "pdf text" }], pdfText: false }).files.map((f) => f.path);
   assert.ok(native.includes("_text/Subjects/Physics/Notes.docx.txt") && !native.some((p) => p.endsWith("Lecture 1.pdf.txt")));
-  // A picture's text only when Mowr read it by OCR; an attachment not saved yet goes in the chat's own lane.
+  // A picture's text only when Clem read it by OCR; an attachment not saved yet goes in the chat's own lane.
   assert.ok(!mirrorFor({ state, scope: "workspace", lane: "l", blob: (id) => id, library: [{ name: "photo.png", text: "words" }] }).files.some((f) => f.path.startsWith("_text/")));
   assert.ok(mirrorFor({ state, scope: "workspace", lane: "l", blob: (id) => id, library: [{ name: "photo.png", text: "[OCR] words" }] }).files.some((f) => f.path === "_text/Files/photo.png.txt"));
   assert.ok(mirrorFor({ state, scope: "workspace", lane: "l", blob: (id) => id, attached: [{ name: "new.pdf", data: new Uint8Array(3) }] }).files.some((f) => f.path === "Attachments/l/new.pdf" && f.source));
@@ -59,7 +59,7 @@ test("the working folder holds every file the person keeps, organised by subject
 });
 
 test("Word, PowerPoint and Excel files are read here, slide by slide and sheet by sheet", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mowr-office-"));
+  const dir = await mkdtemp(join(tmpdir(), "clem-office-"));
   try {
     await writeFile(join(dir, "a.docx"), zipSync({ "word/document.xml": strToU8('<w:document><w:body><w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:t xml:space="preserve"> world &amp; more</w:t></w:r></w:p><w:p><w:r><w:t>Second</w:t></w:r></w:p></w:body></w:document>') }));
     assert.equal(await officeText(join(dir, "a.docx"), "a.docx"), "Hello world & more\nSecond");
@@ -90,8 +90,8 @@ test("Word, PowerPoint and Excel files are read here, slide by slide and sheet b
 });
 
 test("syncing copies only what changed, restores copies the AI changed, removes deleted files and keeps Drafts and Outputs", async () => {
-  const root = await mkdtemp(join(tmpdir(), "mowr-ws-"));
-  const blobs = await mkdtemp(join(tmpdir(), "mowr-blobs-"));
+  const root = await mkdtemp(join(tmpdir(), "clem-ws-"));
+  const blobs = await mkdtemp(join(tmpdir(), "clem-blobs-"));
   try {
     await writeFile(join(blobs, "a"), "one");
     await writeFile(join(blobs, "b"), "two");
@@ -129,7 +129,7 @@ test("syncing copies only what changed, restores copies the AI changed, removes 
 test("the note says where everything is, counts each subject's files and names the sources first", () => {
   const paths = ["Subjects/Physics/a.pdf", "Subjects/Physics/b.pdf", "Subjects/Maths/c.pdf", "Projects/Thesis/d.docx", "Files/e.png", "_text/Projects/Thesis/d.docx.txt"];
   const note = workspaceNote("C:/w", paths, ["Subjects/Physics/a.pdf"], { here: "Subjects/Physics", lane: "chat-1234abcd" });
-  assert.match(note, /every file the person keeps in Mowr/);
+  assert.match(note, /every file the person keeps in Clem/);
   assert.match(note, /- Subjects\/Physics\/ \(2 files\)\n- Subjects\/Maths\/ \(1 file\)|- Projects\/Thesis\/ \(1 file\)/);
   assert.match(note, /- Subjects\/Maths\/ \(1 file\)/);
   assert.match(note, /THIS CONVERSATION IS IN Subjects\/Physics\//);
@@ -147,7 +147,7 @@ test("the note says where everything is, counts each subject's files and names t
   assert.doesNotMatch(big, /f12\.pdf/);
   // Codex, with no PDF viewer of its own, looks at a PDF's pages; its text is for searching.
   assert.match(workspaceNote("C:/w", paths, [], { nativePdf: false }), /looking at its pages/);
-  assert.match(workspaceNote("C:/w", [], []), /no files in Mowr yet/);
+  assert.match(workspaceNote("C:/w", [], []), /no files in Clem yet/);
 });
 
 test("documents made from a Markdown file are listed with it, and changed by editing it", () => {
@@ -159,13 +159,13 @@ test("documents made from a Markdown file are listed with it, and changed by edi
 });
 
 test("a document's Markdown source becomes the pdf specification, figures and references included", () => {
-  const md = "# Nodal Analysis\n\nA short summary.\n\n## Basics\nText with $V=IR$.\n\n```figure\n{\"module\":\"mowr\",\"fn\":\"solveCircuit\",\"args\":[{}],\"caption\":\"The circuit\",\"align\":\"wrap-right\"}\n```\nMore text after.\n\n## Code\n```python\n## not a heading\n```\n\n## References\n1. Hayt, Engineering Circuit Analysis.\n2. Nilsson, Electric Circuits.\n";
+  const md = "# Nodal Analysis\n\nA short summary.\n\n## Basics\nText with $V=IR$.\n\n```figure\n{\"module\":\"clem\",\"fn\":\"solveCircuit\",\"args\":[{}],\"caption\":\"The circuit\",\"align\":\"wrap-right\"}\n```\nMore text after.\n\n## Code\n```python\n## not a heading\n```\n\n## References\n1. Hayt, Engineering Circuit Analysis.\n2. Nilsson, Electric Circuits.\n";
   const source = markdownSource(md);
   assert.equal(source.title, "Nodal Analysis");
   assert.equal(source.summary, "A short summary.");
   assert.deepEqual(source.references, ["Hayt, Engineering Circuit Analysis.", "Nilsson, Electric Circuits."]);
   assert.deepEqual(source.sections.map((s) => s.heading ?? null), ["Basics", null, "Code"]);
-  assert.deepEqual(source.sections[0].figure, { module: "mowr", fn: "solveCircuit", args: [{}], align: "wrap-right" });
+  assert.deepEqual(source.sections[0].figure, { module: "clem", fn: "solveCircuit", args: [{}], align: "wrap-right" });
   assert.equal(source.sections[0].caption, "The circuit");
   assert.equal(source.sections[1].text, "More text after.");
   assert.match(source.sections[2].text!, /## not a heading/);
@@ -195,7 +195,7 @@ test("Claude runs as itself in the folder: its own prompt, file tools, no comman
   const writer = JSON.parse(claudeWriters("RULES"))[WRITER];
   assert.ok(writer.tools.includes("mcp__kinetra__kinetra") && writer.tools.includes("Write"));
   for (const tool of ["Bash", "Task", "Agent"]) assert.ok(!writer.tools.includes(tool), tool);
-  assert.match(writer.prompt, /^RULES\n\nYOU ARE A MOWR DOCUMENT WRITER/);
+  assert.match(writer.prompt, /^RULES\n\nYOU ARE A CLEM DOCUMENT WRITER/);
   assert.match(WRITERS_NOTE, /word for word/);
   assert.ok(!args.includes("--system-prompt-file") && !args.includes("--safe-mode"));
   assert.equal(rulePath("D:\\Course\\Week 1\\"), "//d/Course/Week 1");
@@ -220,7 +220,7 @@ test("the folder guides write documents as Markdown files instead of in parts, a
   assert.match(kinetraFiles, /"markdown":"Drafts\/…\/name\.md"/);
   assert.match(kinetraCompact, /one reply holds only about 3–5 pages/);
   const system = cliSystemPrompt(kinetraCli);
-  assert.match(system, /^IN MOWR/);
+  assert.match(system, /^IN CLEM/);
   assert.doesNotMatch(system, /You have no shell, file system/);
   assert.match(system, /Run no commands or programs/);
   assert.doesNotMatch(system, /Do not execute commands/);
@@ -235,16 +235,16 @@ test("an unchanged answer copies nothing and leaves the manifest alone", async (
   const { mkdtemp, stat: st, rm: remove, writeFile: write } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join: at } = await import("node:path");
-  const root = await mkdtemp(at(tmpdir(), "mowr-mirror-"));
+  const root = await mkdtemp(at(tmpdir(), "clem-mirror-"));
   try {
     const source = at(root, "..", "src-" + Date.now() + ".txt");
     await write(source, "hello");
     const files = [{ path: "Files/a.txt", stamp: "1", from: { file: source } }];
     await syncMirror(root, files);
-    const manifest = (await st(at(root, ".mowr-mirror.json"))).mtimeMs, copy = (await st(at(root, "Files/a.txt"))).mtimeMs;
+    const manifest = (await st(at(root, ".clem-mirror.json"))).mtimeMs, copy = (await st(at(root, "Files/a.txt"))).mtimeMs;
     await new Promise((r) => setTimeout(r, 30));
     assert.deepEqual(await syncMirror(root, files), ["Files/a.txt"]);
-    assert.equal((await st(at(root, ".mowr-mirror.json"))).mtimeMs, manifest);
+    assert.equal((await st(at(root, ".clem-mirror.json"))).mtimeMs, manifest);
     assert.equal((await st(at(root, "Files/a.txt"))).mtimeMs, copy);
     // A copy the AI changed is copied again.
     await write(at(root, "Files/a.txt"), "changed by the AI");

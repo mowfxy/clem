@@ -115,7 +115,7 @@ dialog.settings-dialog .settings-dialog-body form+form{margin-top:10px;padding-t
 dialog.settings-dialog .settings-dialog-body small{font-size:11px;color:#7f7e77}
 dialog.app-modal .modal-actions{justify-content:flex-end;gap:8px;margin-top:18px}
 dialog.app-modal .modal-actions button{margin:0}
-/* Memory: what Mowr learned */
+/* Memory: what Clem learned */
 
 
 
@@ -126,7 +126,7 @@ dialog.app-modal .modal-actions button{margin:0}
 
 
 
-/* Memory: a quiet list of what Mowr keeps, grouped by where it applies, with one field to add more. */
+/* Memory: a quiet list of what Clem keeps, grouped by where it applies, with one field to add more. */
 .memory-panel{display:grid;gap:18px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lede{margin:-6px 0 0;font-size:12px;color:#8a8982}
 .memory-group h4{margin:0 0 8px;font:400 11px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:#8a8982}

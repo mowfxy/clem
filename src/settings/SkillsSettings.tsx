@@ -16,7 +16,7 @@ export function SkillsSettings({skills,onOpen,onCreate,onImport}:{skills:Skill[]
     <button type="button" className="secondary st-strong" onClick={onCreate}><Icon name="plus" size={15}/>Create a skill</button>
    </div>
   </div>
-  <SettingsCard note="Always available in chat. Describe your goal and Mowr applies the skills that fit.">
+  <SettingsCard note="Always available in chat. Describe your goal and Clem applies the skills that fit.">
    {shown.map(s=><button type="button" className="st-skill" key={s.id} onClick={()=>onOpen(s)}>
     <span className="st-skill-icon"><Icon name={s.icon} size={20}/></span>
     <span className="st-skill-text"><strong>{s.name}</strong><small>{s.description}</small></span>

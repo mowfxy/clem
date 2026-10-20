@@ -47,13 +47,13 @@ test("staff portal enforces roles, moderates accounts and manages complimentary 
     for (const key of ["member", "helper", "owner"]) { current = people[key]; await call("/entitlement"); }
     current = people.member;
     assert.equal((await call("/admin/me")).status, 403);
-    database.prepare("INSERT INTO mowr_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-0001", "member-id", "Report a bug", "Export fails", "The export button does nothing.");
+    database.prepare("INSERT INTO clem_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-0001", "member-id", "Report a bug", "Export fails", "The export button does nothing.");
 
     current = people.owner;
-    const me = await (await call("/admin/me", undefined, "https://admin.mowrai.com")).json();
+    const me = await (await call("/admin/me", undefined, "https://admin.m4labs.xyz")).json();
     assert.equal(me.role, "owner");
-    const preflight = await worker.fetch(new Request("https://account.example/admin/me", { method: "OPTIONS", headers: { Origin: "https://admin.mowrai.com" } }), env);
-    assert.equal(preflight.headers.get("Access-Control-Allow-Origin"), "https://admin.mowrai.com");
+    const preflight = await worker.fetch(new Request("https://account.example/admin/me", { method: "OPTIONS", headers: { Origin: "https://admin.m4labs.xyz" } }), env);
+    assert.equal(preflight.headers.get("Access-Control-Allow-Origin"), "https://admin.m4labs.xyz");
     const foreign = await worker.fetch(new Request("https://account.example/admin/me", { method: "OPTIONS", headers: { Origin: "https://evil.example" } }), env);
     assert.equal(foreign.headers.get("Access-Control-Allow-Origin"), null);
 
@@ -117,7 +117,7 @@ test("staff portal enforces roles, moderates accounts and manages complimentary 
     const overview = await (await call("/admin/overview")).json();
     assert.equal(overview.users, 3);
     assert.equal(overview.openCases, 1);
-    // Mowr is free: the overview reports welcome progress, not plans or revenue.
+    // Clem is free: the overview reports welcome progress, not plans or revenue.
     assert.equal(Object.values(overview.setup as Record<string, number>).reduce((a, b) => a + b, 0), 3);
     assert.equal(overview.mrrCents, undefined);
     const settingUp = await (await call("/admin/users?plan=setup")).json();
@@ -188,9 +188,9 @@ test("suspension, legacy support ids, audit visibility and exact people totals",
     }), env);
   try {
     for (const key of ["member", "admin", "helper", "owner"]) { current = people[key]; await call("/entitlement"); }
-    // A case filed on mowrai.com before owner ids were unified still reaches its owner and staff.
-    database.prepare("INSERT INTO mowr_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-legacy1", "supabase:" + uuid, "Report a bug", "Old case", "Filed with the prefixed id.");
-    database.prepare("INSERT INTO mowr_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-current", uuid, "Report a bug", "New case", "Filed with the bare id.");
+    // A case filed on clem.m4labs.xyz before owner ids were unified still reaches its owner and staff.
+    database.prepare("INSERT INTO clem_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-legacy1", "supabase:" + uuid, "Report a bug", "Old case", "Filed with the prefixed id.");
+    database.prepare("INSERT INTO clem_support(id,owner_id,category,subject,message) VALUES(?,?,?,?,?)").run("case-current", uuid, "Report a bug", "New case", "Filed with the bare id.");
     current = people.member;
     assert.equal((await (await call("/support/cases")).json()).cases.length, 2);
     assert.equal((await call("/profile", undefined, "{not json")).status, 400);

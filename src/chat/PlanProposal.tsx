@@ -27,7 +27,7 @@ function changeLine(block:Extract<PlanBlock,{action:'update'}>){
 }
 
 /**
- * A plan Mowr made or changed in a chat. New, replacing and deleting plans wait for the person (Save / Replace /
+ * A plan Clem made or changed in a chat. New, replacing and deleting plans wait for the person (Save / Replace /
  * Delete); updates were applied when the reply finished and offer Undo while nothing has changed since.
  */
 export function PlanProposal({block,streaming,outcome,info,onDecide,onUndo,onOpen}:{block:PlanBlock;streaming:boolean;outcome?:EditOutcome;info:PlanCardInfo;onDecide:(approve:boolean)=>Promise<void>;onUndo:()=>Promise<void>;onOpen:()=>void}){
@@ -83,7 +83,7 @@ export function PlanProposal({block,streaming,outcome,info,onDecide,onUndo,onOpe
       <PlanSummary plan={preview} compact/>
       {open&&<div className="pl-preview-tasks"><PlanTasks plan={preview}/></div>}
     </div>}
-    {lost&&<p className="pl-proposal-note">Mowr couldn’t tell which subject or project this plan is for. Ask it to name one.</p>}
+    {lost&&<p className="pl-proposal-note">Clem couldn’t tell which subject or project this plan is for. Ask it to name one.</p>}
     {!streaming&&!lost&&<footer>
       {!dismissed&&<button type="button" className="pl-btn pl-toggle" aria-expanded={open} onClick={()=>setOpen(o=>!o)}>{open?'Hide tasks':'Open plan'}<Icon name="chevron" size={13}/></button>}
       <div>

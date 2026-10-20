@@ -30,20 +30,22 @@ await site.listen();
 try {
   const web = await (await browser.newContext({ viewport })).newPage();
   await web.goto("http://127.0.0.1:5200/#/");
-  await web.waitForSelector(".sx-hero");
-  await shot(web, "website-visual", async () => { await web.locator("#visuals").scrollIntoViewIfNeeded(); await web.evaluate(() => scrollBy(0, 40)); await web.waitForSelector(".sx-demo-stage canvas", { timeout: 20000 }); await web.waitForTimeout(2500); });
+  await web.waitForSelector(".cx-hero");
+  await shot(web, "website-visual", async () => { await web.locator("#visuals").scrollIntoViewIfNeeded(); await web.evaluate(() => scrollBy(0, 40)); await web.waitForSelector(".cx-demo-stage canvas", { timeout: 20000 }); await web.waitForTimeout(2500); });
   await shot(web, "website-open-source", async () => { await web.locator("#open-source").scrollIntoViewIfNeeded(); await web.evaluate(() => scrollBy(0, -140)); await web.waitForTimeout(900); });
-  // The banner at the top of the README, drawn in Mowr's own type (also a good GitHub social preview, 1280×640).
+  // The banner at the top of the README, in M4 Labs' terminal style with Clem's lockup (also a good GitHub social preview, 1280×640).
   const banner = await (await browser.newContext({ viewport: { width: 1280, height: 640 }, deviceScaleFactor: 2 })).newPage();
   await banner.goto("http://127.0.0.1:5200/");
   await banner.setContent(`<style>
-    @font-face{font-family:Serif;src:url(/fonts/MowafySerif-Regular.woff2)}@font-face{font-family:Sans;src:url(/fonts/MowafySans-Regular.woff2)}
-    body{margin:0;width:1280px;height:640px;display:grid;place-items:center;background:radial-gradient(55% 70% at 50% 38%,#26221f,#121211 70%);color:#f0efeb;overflow:hidden}
-    main{text-align:center}svg{width:74px;height:74px}
-    h1{font:400 112px/1 Serif;letter-spacing:-.045em;margin:26px 0 18px}
-    p{font:400 27px/1.4 Sans;color:#b5b4ad;margin:0}
-    small{display:block;margin-top:34px;font:400 17px/1 Sans;letter-spacing:.16em;text-transform:uppercase;color:#85847e}
-  </style><main>${(await readFile("public/logo.svg", "utf8"))}<h1>Your space to think.</h1><p>A calm Windows workspace for projects, study and documents.</p><small>Free · Open source · MIT</small></main>`);
+    @font-face{font-family:Mono;src:url(/fonts/JetBrainsMono.woff2);font-weight:100 800}@font-face{font-family:Word;src:url(/fonts/Outfit.woff2);font-weight:100 900}
+    body{margin:0;width:1280px;height:640px;box-sizing:border-box;padding:72px 88px;display:flex;flex-direction:column;justify-content:space-between;background:#0b0b0a;color:#F4F2EC;font-family:Mono;overflow:hidden}
+    .top{display:flex;justify-content:space-between;font-size:18px;color:#8a897f}.top b{color:#F4F2EC;font-weight:400}
+    .lock{display:flex;align-items:center;gap:30px}.lock svg{width:120px;height:120px}.lock span{font:600 140px/1 Word;letter-spacing:-.03em}
+    h1{font-weight:400;font-size:44px;letter-spacing:-.02em;margin:0}h1 i{display:inline-block;width:.55em;height:.95em;background:#F4F2EC;border-radius:3px;margin-left:.2em;vertical-align:-.12em}
+    p{margin:14px 0 0;font-size:20px;color:#8a897f}
+  </style><div class="top"><span><b>m4labs:~$</b> clem --about</span><span>an M4 Labs project</span></div>
+  <div class="lock">${(await readFile("public/logo.svg", "utf8"))}<span>clem</span></div>
+  <div><h1>Your space to think.<i></i></h1><p>A calm Windows workspace for projects, study and documents · free · open source · MIT</p></div>`);
   await banner.evaluate(() => document.fonts.ready);
   await banner.waitForTimeout(400);
   await banner.screenshot({ path: resolve("docs/assets/banner.png") });

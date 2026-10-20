@@ -60,7 +60,7 @@ html body .file-panel input.fp-page-field{width:44px;height:29px;font-size:13.5p
 .desktop-content .chat-view .new-chat-content{width:min(700px,calc(100% - 56px));transform:translateY(1.5vh)}
 .desktop-content .new-chat-content .greeting-row{margin-bottom:26px}
 .desktop-content .new-chat-content .greeting-row h1{font-size:40px}
-.desktop-content .new-chat-content .greeting-row>.mowr-mark{width:40px;height:40px}
+.desktop-content .new-chat-content .greeting-row>.clem-mark{width:40px;height:40px}
 .desktop-content .new-chat-content .composer textarea{min-height:70px;padding:15px 18px 6px}
 .desktop-content .new-chat-content .suggestions{margin-top:18px}
 

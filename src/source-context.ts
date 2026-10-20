@@ -11,7 +11,7 @@ import { contextBudget } from "../core/context-budget";
 export async function cachedFileText(file: StoredFile, owner: string, signal?: AbortSignal) {
   // "v2": PDFs now carry their bookmarks and keep the text of very long ones, so texts read before are read again.
   const stamp = `v2:${(await loadEdits(file)).revision}:${file.size}:${file.updated || file.created}`,
-    key = `mowr-source:${owner}:${file.id}`;
+    key = `clem-source:${owner}:${file.id}`;
   const cached = await get<{ stamp?: string; text: string }>(key);
   if (cached?.stamp === stamp) return cached.text;
   const text = await extractFiles([file], signal);

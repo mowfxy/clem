@@ -24,7 +24,7 @@ let bank = BANK, filled = Date.now();
 async function read(pdf: any, pages: number[], key: string, until: number, texts: Map<number, string>, pending: number[], signal?: AbortSignal) {
   const todo: number[] = [], failed: number[] = [];
   for (const p of pages) {
-    const known = await get<string>(`mowr-ocr:${key}:${p}`).catch(() => undefined);
+    const known = await get<string>(`clem-ocr:${key}:${p}`).catch(() => undefined);
     if (known !== undefined) texts.set(p, known);
     else todo.push(p);
   }
@@ -41,7 +41,7 @@ async function read(pdf: any, pages: number[], key: string, until: number, texts
         if (typeof read?.[j] !== "string") { failed.push(p); return; }
         const text = read[j].trim();
         texts.set(p, text);
-        void set(`mowr-ocr:${key}:${p}`, text).catch(() => {});
+        void set(`clem-ocr:${key}:${p}`, text).catch(() => {});
       });
     } catch (e) {
       if (signal?.aborted) throw e;

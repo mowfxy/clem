@@ -1,39 +1,34 @@
-import {SiteFooter,SiteHeader} from './SiteHeader';
-import {SupportPage} from './SupportPage';
 import {useEffect} from 'react';
-import {Illustration} from '../Illustrations';
-import type {Scene} from '../vectorFilm';
-import {Icon} from '../Icons';
-import {features} from '../features';
-import {Reveal} from './Reveal';
+import {SupportPage} from './SupportPage';
+import {Page} from './SiteHeader';
+import {shown} from './Landing';
 import {REPO} from './sections';
-
-const scenes:Record<string,Scene>={'financial-analysis':'balance','physics-diagrams':'telescope','technical-reports':'build',research:'discover',learning:'learn',presentations:'conversation','professional-documents':'pencil','connected-work':'folder'};
-// Provider-specific pages are not part of the product story.
-const shown=features.filter(f=>f.id!=='multi-model-work');
-export function FeatureArt({kind}:{kind:string}){return <div className="sx-feature-art"><Illustration scene={scenes[kind]||'learn'}/></div>;}
 
 export function Marketing({route}:{route:string}){if(route==='/support'||route==='/pricing')return <SupportPage/>;return <MarketingPage route={route}/>;}
 
 function MarketingPage({route}:{route:string}){
   const feature=shown.find(f=>route==='/features/'+f.id);
-  useEffect(()=>{window.scrollTo(0,0);document.title=feature?`${feature.title} — Mowr`:route==='/about'?'About Mowr':'Mowr features';},[route,feature]);
-  return <div className="sx-site"><SiteHeader/><main>
-    {route==='/about'?<section className="sx-page-hero">
-      <Reveal><h1>A place for<br/>serious curiosity.</h1><p className="sx-lede">Mowr is a calm desktop workspace for learning, research and professional work. Your files stay yours, and the code is open for anyone to read.</p><div className="sx-cta-row"><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a><a className="sx-btn sx-btn-ghost sx-btn-lg" href={REPO}><Icon name="github" size={18}/>View on GitHub</a></div></Reveal>
-    </section>:feature?<>
-      <section className="sx-feature-hero">
-        <Reveal><a className="sx-back" href="#/features"><Icon name="arrow" size={14}/>Features</a><h1>{feature.line}</h1><p className="sx-lede">{feature.intro}</p><a className="sx-btn sx-btn-primary sx-btn-lg" href="/download/windows">Download for Windows<Icon name="download" size={18}/></a></Reveal>
-        <Reveal delay={120}><FeatureArt kind={feature.id}/></Reveal>
-      </section>
-      <section className="sx-section sx-feature-detail">
-        <Reveal><h2>How it works</h2><ol>{feature.steps.map((s,i)=><li key={s}><span>{i+1}</span>{s}</li>)}</ol></Reveal>
-        <Reveal delay={100}><h2>What you get</h2><ul>{feature.outputs.map(x=><li key={x}><Icon name="check" size={16}/>{x}</li>)}</ul></Reveal>
-      </section>
-      <section className="sx-section"><div className="sx-related">{shown.filter(f=>f.id!==feature.id).slice(0,3).map(f=><a key={f.id} href={'#/features/'+f.id}><span>{f.title}</span><Icon name="arrow" size={16}/></a>)}</div></section>
-    </>:<>
-      <section className="sx-page-hero"><Reveal><h1>Features</h1><p className="sx-lede">Everything happens in one workspace.</p></Reveal></section>
-      <section className="sx-section sx-section-tight"><div className="sx-feature-grid">{shown.map((f,i)=><Reveal key={f.id} delay={(i%3)*80}><a className="sx-feature-card" href={'#/features/'+f.id}><FeatureArt kind={f.id}/><span className="sx-feature-title">{f.title}</span><p>{f.line}</p><Icon name="arrow" size={16}/></a></Reveal>)}</div></section>
-    </>}
-  </main><SiteFooter/></div>;
+  useEffect(()=>{window.scrollTo(0,0);document.title=feature?`${feature.title}: Clem`:route==='/about'?'About Clem':'Clem features';},[route,feature]);
+  if(route==='/about')return <Page cmd="cat about.txt" title="A place for serious curiosity." next={['#/features','features']}>
+    <div className="cx-body">
+      <p>Clem is a calm desktop workspace for learning, research and professional work. Subjects and projects hold your files, chats, flashcards and drafts together, and the AI you already pay for answers from them.</p>
+      <p>Your files stay yours, on your PC, and the code is open for anyone to read. Clem is the first app from <a href="https://m4labs.xyz">M4 Labs</a>, an AI research lab that studies how AI can work alongside people.</p>
+    </div>
+    <div className="cx-actions"><a className="cx-btn" href="/download/windows">download for windows</a><a href={REPO}>view on github</a></div>
+  </Page>;
+  if(feature){
+    const i=shown.indexOf(feature),next=shown[(i+1)%shown.length];
+    return <Page cmd={`cat features/${feature.id}.txt`} title={feature.line} next={['#/features/'+next.id,next.id]}>
+      <div className="cx-body"><p>{feature.intro}</p></div>
+      <h2 className="cx-sub">how it works</h2>
+      <ol className="cx-out cx-steps">{feature.steps.map((s,n)=><li key={s}><span>{String(n+1).padStart(2,'0')}</span><span>{s}</span></li>)}</ol>
+      <h2 className="cx-sub">what you get</h2>
+      <ul className="cx-out">{feature.outputs.map(x=><li key={x}><span>+</span><span>{x}</span></li>)}</ul>
+      {feature.note&&<p className="cx-fine cx-note"># {feature.note}</p>}
+      <div className="cx-actions"><a className="cx-btn" href="/download/windows">download for windows</a><a href="#/features">all features</a></div>
+    </Page>;
+  }
+  return <Page cmd="ls features/" title="Everything happens in one workspace." next={['#/support','support']}>
+    <ul className="cx-dir">{shown.map(f=><li key={f.id}><a href={'#/features/'+f.id}><span>{f.id}/</span><span className="dim">{f.line}</span></a></li>)}</ul>
+  </Page>;
 }

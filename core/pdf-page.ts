@@ -45,7 +45,7 @@ async function draw(page: any, box: Box, scale: number, kit: CanvasKit) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
   // The print intent draws in one go: the display intent waits for animation frames, which a hidden or minimised
-  // window never gives, so the drawing would never finish while Mowr works in the background.
+  // window never gives, so the drawing would never finish while Clem works in the background.
   await page.render({ canvasContext: ctx, canvas, viewport, transform: [1, 0, 0, 1, -x, -y], annotationMode: 0, intent: "print" }).promise;
   return { canvas, x, y, viewport };
 }

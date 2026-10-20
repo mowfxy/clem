@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 
 // With no PDF given (as in verify:all) it draws the textbook circuit page in tests/fixtures/pdf.
 const [pdf = "tests/fixtures/pdf/textbook-circuit.pdf", outDir = "test-results/pdf-png", width = "900", first = "1", last = "12"] = process.argv.slice(2);
-const out = join(tmpdir(), "mowr-verify-pdfpng");
+const out = join(tmpdir(), "clem-verify-pdfpng");
 await mkdir(out, { recursive: true });
 await mkdir(resolve(outDir), { recursive: true });
 await build({

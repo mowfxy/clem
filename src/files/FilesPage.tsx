@@ -44,14 +44,14 @@ export type FilesPageActions = {
 /** Every file the person keeps, in one place: find one by name, kind or where it lives, as a list or as cards. */
 export function FilesPage({ files, spaces, folders, actions }: { files: StoredFile[]; spaces: Space[]; folders?: ReactNode; actions: FilesPageActions }) {
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<FileKind | "all">(() => remembered("mowr-file-kind", ["all", ...kinds.map((k) => k.id)] as (FileKind | "all")[], "all"));
-  const [sort, setSort] = useState<Sort>(() => remembered("mowr-file-sort", ["newest", "oldest", "name", "size"] as const, "newest"));
-  const [view, setView] = useState<View>(() => remembered("mowr-file-view", ["list", "grid"] as const, "list"));
+  const [kind, setKind] = useState<FileKind | "all">(() => remembered("clem-file-kind", ["all", ...kinds.map((k) => k.id)] as (FileKind | "all")[], "all"));
+  const [sort, setSort] = useState<Sort>(() => remembered("clem-file-sort", ["newest", "oldest", "name", "size"] as const, "newest"));
+  const [view, setView] = useState<View>(() => remembered("clem-file-view", ["list", "grid"] as const, "list"));
   const [place, setPlace] = useState("all");
   const [renaming, setRenaming] = useState<string | null>(null);
-  useEffect(() => remember("mowr-file-sort", sort), [sort]);
-  useEffect(() => remember("mowr-file-kind", kind), [kind]);
-  useEffect(() => remember("mowr-file-view", view), [view]);
+  useEffect(() => remember("clem-file-sort", sort), [sort]);
+  useEffect(() => remember("clem-file-kind", kind), [kind]);
+  useEffect(() => remember("clem-file-view", view), [view]);
 
   const spaceName = (f: StoredFile) => spaces.find((s) => s.id === f.spaceId)?.name || "Personal";
   const counts = useMemo(() => { const c = new Map<FileKind, number>(); for (const f of files) { const k = kindOf(f); c.set(k, (c.get(k) || 0) + 1); } return c; }, [files]);
@@ -134,7 +134,7 @@ export function FilesPage({ files, spaces, folders, actions }: { files: StoredFi
         </div>}
       </section>)}
     </>}
-    {!files.length && <EmptyState scene="folder" line="No files yet. Upload a file, or save a YouTube video and Mowr keeps its transcript.">
+    {!files.length && <EmptyState scene="folder" line="No files yet. Upload a file, or save a YouTube video and Clem keeps its transcript.">
       <button className="lib-btn" onClick={actions.onSaveVideo}><YouTubeLogo size={16} />Save from YouTube</button>
       <button className="lib-btn strong" onClick={actions.onUpload}><Icon name="plus" size={16} />Upload files</button>
     </EmptyState>}

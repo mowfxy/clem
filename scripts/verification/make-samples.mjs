@@ -1,11 +1,11 @@
-// Makes harmless sample files for the Drive demo in ~/Desktop/mowr-demo-files (nothing personal): two PDFs and a short video.
+// Makes harmless sample files for the Drive demo in ~/Desktop/clem-demo-files (nothing personal): two PDFs and a short video.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const out = join(homedir(), "Desktop", "mowr-demo-files");
+const out = join(homedir(), "Desktop", "clem-demo-files");
 mkdirSync(out, { recursive: true });
 const chrome = ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"].find(existsSync);
 const page = (title, body) => `<meta charset=utf-8><style>body{font:16px Georgia,serif;margin:60px;line-height:1.55}h1{font-size:30px}</style><h1>${title}</h1>${body}`;

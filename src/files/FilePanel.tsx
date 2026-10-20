@@ -28,7 +28,7 @@ export type PointerBox = { x: number; y: number; w: number; h: number };
 /** A spot to show in the open file: its page scrolls into view and the spot glows for a moment. `key` repeats a jump. */
 export type FileFocus = { page: number; box?: PointerBox; key: number };
 const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
-const PANEL_WIDTH = "mowr-panel-width";
+const PANEL_WIDTH = "clem-panel-width";
 const round = (n: number) => Math.round(n * 10000) / 10000;
 type Area = { page: HTMLElement; n: number; x: number; y: number; w: number; h: number };
 type Kind = "pdf" | "office" | "text" | "image" | "video" | "audio" | "other";
@@ -47,7 +47,7 @@ export const kindOf = (name: string, type = ""): Kind =>
 export const canEditInPanel = (file: StoredFile) => !!desktop && !file.id.startsWith("drive_") && ["pdf", "office", "text"].includes(kindOf(file.name, file.type));
 const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 const JSON_ONLY = "Return only JSON, no code fences or commentary.";
-const parseJson = (raw: string) => parseModelJson(raw, "Mowr could not read the proposed edit. Try again.");
+const parseJson = (raw: string) => parseModelJson(raw, "Clem could not read the proposed edit. Try again.");
 
 /** Replaces a file's contents, keeping the previous bytes as a version that Undo restores. */
 async function commitBlob(file: StoredFile, previous: Blob, next: Blob, summary: string): Promise<StoredFile> {
@@ -177,7 +177,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     opened.current!.resolve();
   }
   useEffect(() => { setProposal(null); setSaved(null); void load().catch((e) => { setError(clean(e)); opened.current!.failed = true; opened.current!.reject(Error(clean(e))); }); return () => abort.current?.abort(); }, [file.id]);
-  // Mowr revised this file from the chat: show the new version, highlighting what changed.
+  // Clem revised this file from the chat: show the new version, highlighting what changed.
   useEffect(() => {
     if (!file.updated || file.updated === ownSave.current || !view || working) return;
     setCurrent(file);
@@ -188,7 +188,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       if (kind === "pdf" && before.kind === "pdf") {
         const next = track(await openPdf(new Uint8Array(await data.arrayBuffer())));
         const after: View = { kind: "pdf", pdf: next, boxes: await changedLines(before.pdf, next) };
-        setView(after); setSaved({ summary: file.versions?.[0]?.summary || "Updated by Mowr", before: { ...before, boxes: [] }, after }); setCompare("after");
+        setView(after); setSaved({ summary: file.versions?.[0]?.summary || "Updated by Clem", before: { ...before, boxes: [] }, after }); setCompare("after");
       } else await load();
     })().catch((e) => { setError(clean(e)); opened.current!.failed = true; opened.current!.reject(Error(clean(e))); });
   }, [file.updated]);
@@ -218,7 +218,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       const parsed = parseJson(raw);
       const byIndex = new Map(editable.map((b) => [b.i, b]));
       const edits = (Array.isArray(parsed.edits) ? parsed.edits : []).filter((e: { i: number; text: string }) => byIndex.has(e?.i) && typeof e.text === "string" && e.text !== view.blocks[e.i].text).slice(0, 400);
-      if (!edits.length) throw Error(String(parsed.summary || "Mowr found nothing to change for that request."));
+      if (!edits.length) throw Error(String(parsed.summary || "Clem found nothing to change for that request."));
       const patches: OfficePatch[] = edits.map((e: { i: number; text: string }) => ({ part: view.blocks[e.i].part, index: view.blocks[e.i].index, text: e.text }));
       const blocks = applyOfficePatches(view.blocks, patches);
       const summary = String(parsed.summary || `${edits.length} change${edits.length === 1 ? "" : "s"}`).slice(0, 200);
@@ -230,7 +230,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     ], scope, signal, progress, { ...selection, plain: true });
     const parsed = parseJson(raw);
     if (typeof parsed.text !== "string" || !parsed.text.trim()) throw Error("The revised file was empty. Try again.");
-    if (parsed.text === view.text) throw Error(String(parsed.summary || "Mowr found nothing to change for that request."));
+    if (parsed.text === view.text) throw Error(String(parsed.summary || "Clem found nothing to change for that request."));
     const before = new Set(view.text.split("\n")), lines = parsed.text.split("\n");
     const summary = String(parsed.summary || "Edited the file.").slice(0, 200);
     const next = new Blob([parsed.text], { type: blob.type || "text/plain" });
@@ -423,7 +423,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       {sync && <span className={"fp-sync is-" + sync} role="status" aria-label={sync === "uploading" ? "Saving the change to Google Drive" : sync === "synced" ? "In sync with Google Drive" : sync === "pending" ? "Changed here · not in Google Drive until approved" : "Not saved to Google Drive"}>{sync === "synced" ? <Icon name="check" size={11} /> : sync === "pending" ? <Icon name="cloud-up" size={15} /> : sync === "failed" ? "!" : null}</span>}
       {(kind !== "pdf" || !!current.versions?.length) && <small className="fp-meta">{[kind === "pdf" ? "" : detail, current.versions?.length ? `edited ${current.versions.length}×` : ""].filter(Boolean).join(" · ")}</small>}
       {!!current.versions?.length && !proposal && !working && <button className="fp-icon" aria-description="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}
-      {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Mowr</button>}
+      {onEditInChat && <button className="fp-edit" onClick={() => onEditInChat(current)}><Icon name="chat" size={15} />Ask or edit with Clem</button>}
       <button className="fp-icon" aria-description="Open in browser" aria-label="Open in browser" onClick={() => onOpenExternally(current)}><Icon name="arrow" size={16} /></button>
       <button className="fp-icon" aria-description="Download" aria-label="Download" disabled={!blob} onClick={() => blob && download(blob, file.name)}><Icon name="download" size={16} /></button>
       <button className="fp-icon" aria-description="Close" aria-label="Close file" onClick={() => { abort.current?.abort(); onClose(); }}><Icon name="close" size={16} /></button>
@@ -501,7 +501,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
       }}>
       {error && <p className="fp-error" role="alert">{error}</p>}
       {!shown && !imageUrl && !mediaSrc && !error && kind !== "other" && <p className="fp-note">Opening…</p>}
-      {kind === "other" && <div className="fp-empty"><p>Mowr can’t show this format here.</p><button className="fp-ghost" onClick={() => onOpenExternally(current)}>Open with its app</button></div>}
+      {kind === "other" && <div className="fp-empty"><p>Clem can’t show this format here.</p><button className="fp-ghost" onClick={() => onOpenExternally(current)}>Open with its app</button></div>}
       {imageUrl && <div className="fp-image"><img src={imageUrl} alt={file.name} /></div>}
       {mediaSrc && kind === "video" && <div className="fp-media"><video src={mediaSrc} controls autoPlay playsInline controlsList="nodownload" onError={() => setError("This video could not be played here. Open it in Drive instead.")} /></div>}
       {mediaSrc && kind === "audio" && <div className="fp-media is-audio"><audio src={mediaSrc} controls autoPlay /></div>}

@@ -1,4 +1,4 @@
-// Regression tests for the Mowr audit fixes (see MOWR_PATCHES.md).
+// Regression tests for the Clem audit fixes (see CLEM_PATCHES.md).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

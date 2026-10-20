@@ -38,7 +38,7 @@ const docx = () => zip({
 
 /** Draws a file in the viewer; returns what the page shows (or that it fell back to the plain text view). */
 function draw(name: string, bytes: Uint8Array) {
-  const dir = mkdtempSync(join(tmpdir(), "mowr-preview-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "clem-preview-test-"));
   const file = join(dir, name);
   writeFileSync(file, bytes);
   const run = spawnSync(process.execPath, ["scripts/verify/office-preview.mjs", file, dir, "900"], { encoding: "utf8", timeout: 120_000 });
@@ -66,7 +66,7 @@ test("a Word file is drawn as pages, with styles, equations, tables and page bre
 });
 
 test("a workbook shows calculated values and number formats even when the file holds no results", () => {
-  // Strip the results Mowr writes, as a tool that never calculates would leave them.
+  // Strip the results Clem writes, as a tool that never calculates would leave them.
   const made = excelWorkbook({ sheets: [{ name: "Budget", columns: [{ header: "Item" }, { header: "Qty", format: "integer" }, { header: "Price", format: "currency" }, { header: "Total", format: "currency" }, { header: "Share", format: "percent" }], rows: [["Pen", 3, 1.5, "=B{row}*C{row}", "=D{row}/D{last}"], ["Book", 2, 12, "=B{row}*C{row}", "=D{row}/D{last}"]], totals: { columns: { Total: "sum" } } }] });
   const files = unzipSync(made);
   files["xl/worksheets/sheet1.xml"] = strToU8(strFromU8(files["xl/worksheets/sheet1.xml"]).replace(/(<\/f>)<v>[^<]*<\/v>/g, "$1"));

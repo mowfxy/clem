@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 
 /**
  * The folder every CLI works in (Claude Code, Grok Build and Codex run in it as their working directory): every file
- * the person keeps in Mowr, organised as they are in Mowr, so the AI lists, searches, reads and opens any of them with
+ * the person keeps in Clem, organised as they are in Clem, so the AI lists, searches, reads and opens any of them with
  * its own tools, as in any project, whichever chat it answers in. One folder per person:
  *
  *   Subjects/<subject>/…   each subject's files, in the folders the person made in it
@@ -13,20 +13,20 @@ import { createHash } from "node:crypto";
  *   _text/                 the text of files no CLI here opens itself, at the file's own path with .txt added: Word,
  *                          PowerPoint and Excel files (read here, desktop/office-text.ts), scans read by OCR, and PDFs
  *                          for Codex, which has no PDF viewer (Claude Code and Grok open PDFs themselves)
- *   Attachments/<chat>/    files a chat sent that are not saved in Mowr yet (attached a moment ago)
- *   Made/<chat>/           files Mowr made earlier in a chat that are not among the person's files
+ *   Attachments/<chat>/    files a chat sent that are not saved in Clem yet (attached a moment ago)
+ *   Made/<chat>/           files Clem made earlier in a chat that are not among the person's files
  *   Drafts/<chat>/         the AI's own working files for a chat (a document's Markdown source); kept between answers
  *   Outputs/<chat>/        files the AI writes for the person: each new or changed one is delivered with the answer
  *
  * Every chat has its own lane (<chat>) in Attachments, Made, Drafts and Outputs, so chats answering at once never
  * overwrite each other's drafts or receive each other's files. Which files an answer is about (attached in the chat,
  * or chosen as the space's sources) is said in the message, not by moving them. The person's files are copies:
- * nothing a CLI does here changes Mowr's own copy, and a copy it changed is copied again before the next answer.
+ * nothing a CLI does here changes Clem's own copy, and a copy it changed is copied again before the next answer.
  */
 export const SUBJECTS = "Subjects", PROJECTS = "Projects", FILES = "Files", ATTACHMENTS = "Attachments", MADE = "Made", TEXT = "_text", DRAFTS = "Drafts", OUTPUTS = "Outputs";
-/** The folders that hold the person's own files (Mowr's mirror; the AI reads them and never changes them). */
+/** The folders that hold the person's own files (Clem's mirror; the AI reads them and never changes them). */
 export const LIBRARY = [SUBJECTS, PROJECTS, FILES];
-const MANIFEST = ".mowr-mirror.json";
+const MANIFEST = ".clem-mirror.json";
 /** The largest file mirrored; bigger ones (and audio and video, which no CLI here can read) are left out. */
 const MAX_FILE = 200_000_000;
 const MEDIA = /^(audio|video)\//;
@@ -42,7 +42,7 @@ export type MirrorFile = {
   from: { file: string } | { bytes: Uint8Array | string } | { make: () => Promise<Uint8Array | string> };
   /** One of this answer's sources (attached in the chat, or chosen as sources of the subject or project). */
   source?: boolean;
-  /** The Mowr file it is a copy of, so a tool request naming its path reaches that file. */
+  /** The Clem file it is a copy of, so a tool request naming its path reaches that file. */
   id?: string;
 };
 /** What one answer brings up to date: the files it needs, and which other recorded copies stay (other chats' lanes). */
@@ -96,7 +96,7 @@ export function distinctPaths<T extends { path: string }>(files: T[]) {
 const syncing = new Map<string, Promise<unknown>>();
 
 /**
- * Brings the mirror up to date: copies what is new or changed (or was changed here since), removes what Mowr mirrored
+ * Brings the mirror up to date: copies what is new or changed (or was changed here since), removes what Clem mirrored
  * before and no longer has unless `keep` says it stays (another chat's attachments), and never touches Drafts or
  * Outputs. Returns every path now mirrored.
  */
@@ -131,7 +131,7 @@ async function syncNow(root: string, files: MirrorFile[], keep: MirrorPlan["keep
       if (!full) continue;
       const was = before[f.path]?.split("|") || [];
       try {
-        // A copy that is still as Mowr left it is not read again: one stat per file on an unchanged answer.
+        // A copy that is still as Clem left it is not read again: one stat per file on an unchanged answer.
         const here = was[0] === f.stamp ? await stat(full).catch(() => null) : null;
         const present = !!here && here.isFile() && String(here.size) === was[1] && String(Math.round(here.mtimeMs)) === was[2];
         if (present) { after[f.path] = before[f.path]; continue; }
@@ -160,7 +160,7 @@ async function pruneEmpty(folder: string): Promise<boolean> {
   return empty;
 }
 
-/** What the files of a Mowr workspace look like to this module (core/types.ts StoredFile, Space and Chat, in part). */
+/** What the files of a Clem workspace look like to this module (core/types.ts StoredFile, Space and Chat, in part). */
 type Stored = { id: string; name: string; size: number; type: string; created: number; updated?: number; spaceId: string | null; folderId?: string | null; remote?: boolean };
 type Folder = { id: string; name: string; parentId: string | null };
 type SpaceLike = { id: string; name?: string; kind?: string; sources?: string[]; folders?: Folder[] };
@@ -199,11 +199,11 @@ export function workspaceLane(chat: string | undefined, request: string) {
 export const laneFolders = (root: string, lane: string) => [DRAFTS, OUTPUTS, ATTACHMENTS, MADE, `${TEXT}/${ATTACHMENTS}`].map((top) => join(root, top, lane));
 
 /**
- * Which files go where for one answer. `blob(id)` is where Mowr keeps a file's bytes on this PC; `officeText(path,
+ * Which files go where for one answer. `blob(id)` is where Clem keeps a file's bytes on this PC; `officeText(path,
  * name)` reads an Office file's text (desktop/office-text.ts). `library` is the text the window read from this
  * conversation's files (OCR included): it goes to _text/ for PDFs and pictures whose text came from OCR, PDFs for a CLI
  * without a PDF viewer, and files with no copy here (a Drive file read for this answer). `attached`: PDFs the window
- * sent with the request, which the saved workspace may not list yet. `documents`: files Mowr made in this conversation.
+ * sent with the request, which the saved workspace may not list yet. `documents`: files Clem made in this conversation.
  */
 export function mirrorFor({ state, scope, chat, lane, blob, officeText, library = [], attached = [], documents = [], pdfText = true, running }: {
   state: WorkspaceState;
@@ -231,7 +231,7 @@ export function mirrorFor({ state, scope, chat, lane, blob, officeText, library 
   const stamp = (f: Stored) => `${f.size}:${f.updated || f.created}`;
   const out: MirrorFile[] = [];
   const done = new Set<string>();
-  // Every file the person keeps, where it is in Mowr.
+  // Every file the person keeps, where it is in Clem.
   for (const f of files) {
     if (f.size > MAX_FILE || MEDIA.test(f.type || "")) continue;
     const place = f.spaceId ? places.get(f.spaceId) : undefined;
@@ -303,7 +303,7 @@ function hash(text: string) {
   return (h >>> 0).toString(36);
 }
 
-/** The Mowr file id a path in the working folder is a copy of (or its text in _text/), for tool requests that name one. */
+/** The Clem file id a path in the working folder is a copy of (or its text in _text/), for tool requests that name one. */
 export function mirroredId(files: MirrorFile[], path: string) {
   const wanted = path.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
   const plain = wanted.startsWith(TEXT + "/") ? wanted.slice(TEXT.length + 1).replace(/\.txt$/, "") : wanted;
@@ -340,14 +340,14 @@ export function workspaceNote(root: string, paths: string[], sources: string[], 
   const attachments = paths.filter((p) => p.startsWith(`${ATTACHMENTS}/${lane}/`)), made = paths.filter((p) => p.startsWith(`${MADE}/${lane}/`));
   const text = paths.filter((p) => p.startsWith(TEXT + "/"));
   return [
-    `YOUR WORKING FOLDER (${root}) holds every file the person keeps in Mowr, as real files, organised as in Mowr: Subjects/<subject>/ and Projects/<project>/ (each with the folders the person made in it) and Files/ (files in no subject or project). Find, list, search, read and open them with your own file tools (${nativePdf ? "PDFs and pictures open natively, every page as drawn with its text; from a long PDF open the pages you need, several ranges at once" : "pictures open natively; PDFs as below"}). This is the complete set: when the person asks about their files, subjects or projects, answer from these folders (list them; never guess, never say you cannot see them). They are copies kept in step with Mowr: read them, never change them (a change here changes nothing for the person).`,
+    `YOUR WORKING FOLDER (${root}) holds every file the person keeps in Clem, as real files, organised as in Clem: Subjects/<subject>/ and Projects/<project>/ (each with the folders the person made in it) and Files/ (files in no subject or project). Find, list, search, read and open them with your own file tools (${nativePdf ? "PDFs and pictures open natively, every page as drawn with its text; from a long PDF open the pages you need, several ranges at once" : "pictures open natively; PDFs as below"}). This is the complete set: when the person asks about their files, subjects or projects, answer from these folders (list them; never guess, never say you cannot see them). They are copies kept in step with Clem: read them, never change them (a change here changes nothing for the person).`,
     here ? `THIS CONVERSATION IS IN ${here}/: start there, and use the other subjects' and projects' files whenever the request needs or mentions them.` : "This conversation is in no subject or project; every subject's and project's files are still here for you to use.",
-    overview.length ? `What is here (list or search a folder to see its files):\n${overview.join("\n")}` : "The person has no files in Mowr yet.",
+    overview.length ? `What is here (list or search a folder to see its files):\n${overview.join("\n")}` : "The person has no files in Clem yet.",
     sources.length ? `SOURCES OF THIS ANSWER (attached in the chat or chosen as sources); base the answer on these and cite them as [[file name, p. N]]:\n${list(sources, 80)}` : "No file is attached to this conversation.",
     shown.length ? `${sources.length ? "The other files" : "The files"} of ${here}/:\n${list(shown, 200)}` : "",
-    attachments.length ? `${lanePath(ATTACHMENTS)}: files attached in this chat that are not saved in Mowr yet:\n${list(attachments, 40)}` : "",
-    made.length ? `${lanePath(MADE)}: files Mowr made earlier in this chat:\n${list(made, 40)}` : "",
-    text.length ? `${TEXT}/: text Mowr read from files your tools cannot open, at each file's own path with .txt added (the text of Subjects/X/notes.docx is ${TEXT}/Subjects/X/notes.docx.txt): every Word, PowerPoint and Excel file (read them only from here)${nativePdf ? "" : ", PDFs"} and scanned pages read by OCR. Pages and slides are marked "[name, page N]" or "[name, slide N]".` : "",
+    attachments.length ? `${lanePath(ATTACHMENTS)}: files attached in this chat that are not saved in Clem yet:\n${list(attachments, 40)}` : "",
+    made.length ? `${lanePath(MADE)}: files Clem made earlier in this chat:\n${list(made, 40)}` : "",
+    text.length ? `${TEXT}/: text Clem read from files your tools cannot open, at each file's own path with .txt added (the text of Subjects/X/notes.docx is ${TEXT}/Subjects/X/notes.docx.txt): every Word, PowerPoint and Excel file (read them only from here)${nativePdf ? "" : ", PDFs"} and scanned pages read by OCR. Pages and slides are marked "[name, page N]" or "[name, slide N]".` : "",
     nativePdf ? "" : `PDFs: you have no PDF viewer of your own, so read a PDF as drawn by looking at its pages with Kinetra's look (up to 8 pages a call; ask for every page you need at once, as parallel calls or one batch), the way a PDF sent to a chat is seen. Name the PDF by its path here. Its text in ${TEXT}/, where there is one, is for searching and quoting; never take a page's drawings, tables, formulas or layout from the text alone.`,
     `${lanePath(DRAFTS)}: your own working files for this chat, such as a document's Markdown source; kept for later answers. Write nowhere else but here and ${lanePath(OUTPUTS)}.`,
     `${lanePath(OUTPUTS)}: any file you write here (.csv, .py, .tex, .html, .txt…) is delivered to the person with your answer. Make PDF, Word, PowerPoint and Excel files with Kinetra instead, so they are typeset properly.`,

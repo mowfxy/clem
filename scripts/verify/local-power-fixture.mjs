@@ -75,7 +75,7 @@ export const fixtureModels = [
   { id: "claude:sonnet", name: "Claude Sonnet", provider: "Anthropic", connected: true, context: 32000, specialties: [], tools: [] },
 ];
 
-/** What the model returns when asked to edit the Mowr-made worksheet ("make it harder…"). */
+/** What the model returns when asked to edit the Clem-made worksheet ("make it harder…"). */
 export const harderWorksheet = {
   ...worksheetSpec,
   subtitle: "Biology 101 · Week 3 · Extension",
@@ -115,7 +115,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       const tick = () => { for (const fn of chat) fn({ id, type: "delta", text: text.slice(i, i + 24) }); i += 24; if (i < text.length) setTimeout(tick, 22); else { extra?.(); for (const fn of chat) fn({ id, type: "done" }); } };
       setTimeout(tick, 500);
     };
-    const put = (id, body) => fetch("/api/local/files/" + id, { method: "PUT", body, headers: { "X-Mowr-Owner": "fixture-owner" } });
+    const put = (id, body) => fetch("/api/local/files/" + id, { method: "PUT", body, headers: { "X-Clem-Owner": "fixture-owner" } });
     const search = (q) => {
       const terms = q.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
       return Object.entries(files).filter(([p, t]) => terms.every((x) => (p + " " + t).toLowerCase().includes(x))).map(([p, t]) => {
@@ -125,7 +125,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
         return { folderId: FOLDER.id, scope: FOLDER.scope, folder: "Biology 101", path: p, score: 20, snippet: { text: (from ? "…" : "") + text, marks: marks.map(([a, b]) => [a + (from ? 1 : 0), b + (from ? 1 : 0)]), line: t.slice(0, at).split("\n").length } };
       });
     };
-    window.mowrDesktop = {
+    window.clemDesktop = {
       onAuth: () => () => {}, onAttachment: () => () => {}, onCapture: () => () => {},
       onChat: (fn) => { chat.add(fn); return () => chat.delete(fn); },
       onFolder: (fn) => { folder.add(fn); return () => folder.delete(fn); },
@@ -146,11 +146,11 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
           case "folderFileRead": if (!(r.path in files)) throw Error("That file is not in a linked folder for this conversation."); return { path: r.path, text: files[r.path] };
           case "folderEditApply": { const before = files[r.path]; if (!before.includes(r.find)) throw Error("The text to replace was not found."); files[r.path] = before.replace(r.find, r.replace); return { id: "22222222-2222-4222-8222-222222222222", added: 3, removed: 1 }; }
           case "pdfRender": return { bytes: new Uint8Array(await window.__renderSpec(r.spec)) };
-          case "shareSave": window.lastShare = r.data; return { path: "C:\\Users\\Sam\\Downloads\\Mowr\\" + r.name, name: r.name };
+          case "shareSave": window.lastShare = r.data; return { path: "C:\\Users\\Sam\\Downloads\\Clem\\" + r.name, name: r.name };
           case "shareReveal": return { ok: true };
           case "chat": {
             const system = r.messages[0]?.content || "", all = r.messages.map((m) => m.content).join("\n");
-            if (system.includes("You edit a document that Mowr typeset")) stream(r.id, JSON.stringify({ summary: "Made every question harder and added an answer key.", spec: harderWorksheet }));
+            if (system.includes("You edit a document that Clem typeset")) stream(r.id, JSON.stringify({ summary: "Made every question harder and added an answer key.", spec: harderWorksheet }));
             else if (system.includes("You edit an existing PDF in place")) stream(r.id, JSON.stringify(handoutEdits));
             else if (/worksheet PDF/.test(all)) {
               const id = crypto.randomUUID(), spec = { ...worksheetSpec, title: "Week 3 worksheet", subtitle: "Biology 101 · Cells and membranes" };
@@ -158,7 +158,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
                 const bytes = new Uint8Array(await window.__renderSpec(JSON.stringify(spec)));
                 await put(id, bytes); await put("spec-" + id, JSON.stringify(spec));
                 const file = { id, name: "Week 3 worksheet.pdf", size: bytes.length, type: "application/pdf", created: Date.now(), spaceId: r.scope.split(":")[1], made: true };
-                window.dispatchEvent(new CustomEvent("mowr:artifact", { detail: { id: r.id, type: "artifact", file, scope: r.scope } }));
+                window.dispatchEvent(new CustomEvent("clem:artifact", { detail: { id: r.id, type: "artifact", file, scope: r.scope } }));
               });
             } else stream(r.id, replies.shift() || "Done.");
             return { started: true };

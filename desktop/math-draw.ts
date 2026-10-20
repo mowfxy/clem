@@ -1,5 +1,5 @@
 /**
- * Two corrections for maths Mowr draws in Chromium (PDFs, deck equations, Word fallback pictures).
+ * Two corrections for maths Clem draws in Chromium (PDFs, deck equations, Word fallback pictures).
  *
  * Arrows with something written on them (\xrightarrow{light}, \xleftarrow, \overrightarrow{AB}): Chromium's MathML
  * does not stretch an arrow horizontally, so the label sat on a short arrow and ran into the next term. `drawnArrows`
@@ -12,7 +12,7 @@
  * chemists write them.
  */
 
-// Measured in Chromium with Cambria Math at 200px (the face Mowr's pages and pictures use for maths), in ems: the
+// Measured in Chromium with Cambria Math at 200px (the face Clem's pages and pictures use for maths), in ems: the
 // arrowhead's stroke is RULE thick with its top edge AXIS above the baseline; a double arrow's strokes are GAP apart,
 // the upper one's top edge DOUBLE above the baseline.
 const AXIS = 0.275, RULE = 0.045, GAP = 0.2, DOUBLE = 0.41, OVERLAP = 0.3, MIN = 1.4;

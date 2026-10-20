@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,renameSync} from 'node:fs';
 import {createInterface} from 'node:readline';
 const provider=process.argv[2];
-const root='/vercel/sandbox/mowr';
+const root='/vercel/sandbox/clem';
 mkdirSync(root,{recursive:true,mode:0o700});
 mkdirSync(root+'/.codex',{recursive:true,mode:0o700});
 mkdirSync(root+'/.grok',{recursive:true,mode:0o700});
@@ -26,7 +26,7 @@ if(provider==='openai'){
  }catch{fail();}});
  child.stderr.resume();
  child.on('exit',()=>{if(!complete)fail();});
- send({id:1,method:'initialize',params:{clientInfo:{name:'mowr',version:'1.0.0'}}});
+ send({id:1,method:'initialize',params:{clientInfo:{name:'clem',version:'1.0.0'}}});
 }else if(provider==='xai'){
  child=spawn(bin+'grok',['login','--device-auth'],{env,stdio:['ignore','pipe','pipe'],cwd:root});
  let buffer='';

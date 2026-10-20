@@ -53,8 +53,8 @@ export type SpaceActions={
   /** Files from anywhere in Drive, outside the linked folder, that this space reads too. */
   onAddDriveFiles:()=>void; onRemoveDriveFile:(id:string)=>void;
   onOpenDrive:(file:DriveItem)=>void; onAskDrive:(files:DriveItem[])=>void; onDriveItems:(items:DriveItem[])=>void;
-  /** Saves a file from this PC (or a Mowr file, by id) into a folder of the linked Drive folder, keeping it here too. */
-  /** Saves a file from this PC (or a Mowr file, by id) into a Drive folder only; resolves to it as Drive lists it. */
+  /** Saves a file from this PC (or a Clem file, by id) into a folder of the linked Drive folder, keeping it here too. */
+  /** Saves a file from this PC (or a Clem file, by id) into a Drive folder only; resolves to it as Drive lists it. */
   onAddToDrive:(folder:string,input:File|string)=>Promise<DriveItem>;
   /** Copies Drive files onto this PC, into folders named `dirs` under "On this PC". */
   onSaveOnPc:(entries:{item:DriveItem;dirs:string[]}[])=>void;
@@ -159,7 +159,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
           {space.description&&<p className="sp-desc">{space.description}</p>}
         </div>
         <div className="sp-actions">
-          <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} aria-description={space.memory.trim()?'Edit the instructions Mowr follows here':'Tell Mowr how to work here'}><InstructionsGlyph/>Instructions</button>
+          <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)} aria-description={space.memory.trim()?'Edit the instructions Clem follows here':'Tell Clem how to work here'}><InstructionsGlyph/>Instructions</button>
           <button className="sp-share" onClick={()=>actions.onShare()}><Icon name="import" size={16}/>Share</button>
           <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
@@ -225,7 +225,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
       {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals you save in this {space.kind} appear here.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
-      {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Mowr remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
+      {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Clem remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
     {describing&&<DescriptionDialog space={space} onSave={description=>actions.onUpdateSpace({...space,description})} onClose={()=>setDescribing(false)}/>}
@@ -289,7 +289,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     actions.onUpdateFiles(all=>all.map(f=>f.folderId===folder.id?{...f,folderId:folder.parentId}:f));
     setFolders(folders.filter(f=>f.id!==folder.id).map(f=>f.parentId===folder.id?{...f,parentId:folder.parentId}:f));
   };
-  const drop=(folderId:string|null)=>(e:DragEvent)=>{e.preventDefault();e.stopPropagation();setOver(null);const ids=e.dataTransfer.getData('application/x-mowr-file').split(',').filter(Boolean);if(ids.length){move(ids,folderId);setPicked(new Set());}else if(e.dataTransfer.files.length)actions.onUpload(e.dataTransfer.files,folderId);};
+  const drop=(folderId:string|null)=>(e:DragEvent)=>{e.preventDefault();e.stopPropagation();setOver(null);const ids=e.dataTransfer.getData('application/x-clem-file').split(',').filter(Boolean);if(ids.length){move(ids,folderId);setPicked(new Set());}else if(e.dataTransfer.files.length)actions.onUpload(e.dataTransfer.files,folderId);};
   const dragTarget=(id:string)=>({onDragOver:(e:DragEvent)=>{e.preventDefault();setOver(id);},onDragLeave:()=>setOver(o=>o===id?null:o)});
   const destinations=(file:StoredFile)=>[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==(file.folderId||null));
   const [moving,setMoving]=useState<StoredFile|null>(null);
@@ -303,7 +303,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
    *  shows how many go. */
   const dragFiles=(f:StoredFile,e:DragEvent)=>{
     const ids=picked.has(f.id)?pickedHere:[f.id];
-    e.dataTransfer.setData('application/x-mowr-file',ids.join(','));e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('application/x-clem-file',ids.join(','));e.dataTransfer.effectAllowed='move';
     if(ids.length>1){const tag=document.createElement('div');tag.className='sp-drag-count';tag.textContent=`${ids.length} files`;document.body.appendChild(tag);e.dataTransfer.setDragImage(tag,16,16);setTimeout(()=>tag.remove(),0);}
   };
   const [renaming,setRenaming]=useState<string|null>(null);
@@ -329,8 +329,8 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     return <button className="sp-file-open" onClick={()=>picked.size?pick(f.id):actions.onOpenFile(f)}>{picked.size>0&&<input type="checkbox" className="sp-pick" aria-label={`Select ${shownName(f)}`} checked={picked.has(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>pick(f.id)}/>}{glyph}<span><strong>{shownName(f)}</strong><small className={f.video?.captions==='none'?'sp-no-transcript':undefined}>{meta.join(' · ')}</small></span></button>;
   };
   const fileTools=(f:StoredFile,handle?:ReturnType<typeof fileOrder.handle>)=><>
-    <label className="sp-source" title="Mowr reads this file when answering here"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>setSource(f,e.target.checked)}/>Source</label>
-    <Menu label={`${shownName(f)} options`} handle={handle} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Rename',icon:'rename',run:()=>setRenaming(f.id)},{label:'Ask about it',icon:'chat',run:()=>actions.onAskFile(f)},...(f.video?[{label:'Watch on YouTube',icon:'external',run:()=>window.open(watchUrl(f.video!.id),'_blank','noopener')}]:[]),...(handle?[{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)}]:[]),...(!f.video&&/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Mowr',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
+    <label className="sp-source" title="Clem reads this file when answering here"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>setSource(f,e.target.checked)}/>Source</label>
+    <Menu label={`${shownName(f)} options`} handle={handle} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Rename',icon:'rename',run:()=>setRenaming(f.id)},{label:'Ask about it',icon:'chat',run:()=>actions.onAskFile(f)},...(f.video?[{label:'Watch on YouTube',icon:'external',run:()=>window.open(watchUrl(f.video!.id),'_blank','noopener')}]:[]),...(handle?[{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)}]:[]),...(!f.video&&/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Clem',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
   </>;
   return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
     {/* One bar: find (or the way back out of a folder) on the left, one Add menu on the right. */}

@@ -1,7 +1,7 @@
 import type {ChildProcessWithoutNullStreams} from 'node:child_process';
 
 // The Agent Client Protocol (agentclientprotocol.com) over a child's stdin and stdout: newline-delimited JSON-RPC 2.0.
-// Mowr is the client. It sends requests (initialize, session/new, session/prompt…) and answers the agent's own requests
+// Clem is the client. It sends requests (initialize, session/new, session/prompt…) and answers the agent's own requests
 // (session/request_permission) itself, so nothing waits on a person for a tool the answer's rules already decide.
 
 /** An error the agent answered a request with: its JSON-RPC code, message and data. */

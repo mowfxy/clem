@@ -176,7 +176,7 @@ test('Kinetra is a native tool for Grok: a guarded folder config, trust, and the
   assert.ok(!exists(join(folder,'.mcp.json'))&&!exists(join(folder,'AGENTS.md'))&&!exists(join(folder,'.envrc'))&&!exists(join(folder,'.grok','hooks')));
   assert.ok(exists(join(folder,'Files','AGENTS.md')));
   const config=read(join(folder,'.grok','config.toml'),'utf8');
-  assert.match(config,/url = "\$\{MOWR_KINETRA_URL\}"/);
+  assert.match(config,/url = "\$\{CLEM_KINETRA_URL\}"/);
   assert.ok(!/[0-9a-f]{64}/.test(config),'no token on disk');
   const args=grokNativeArgs();
   for(const rule of ['--trust','MCPTool(kinetra__kinetra)','Edit(./.grok/**)','Edit(./.mcp.json)','Edit(./AGENTS.md)'])assert.ok(args.includes(rule),rule);

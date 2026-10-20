@@ -1,5 +1,5 @@
 {
-  "name": "mowr-accounts",
+  "name": "clem-accounts",
   "main": "account-worker.js",
   "compatibility_date": "2026-09-19",
   "workers_dev": true,
@@ -9,8 +9,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "mowr-workspaces",
-      "database_id": "7574b2c5-0815-497b-9faa-ea62137cb8c7"
+      "database_name": "clem-workspaces",
+      "database_id": "51b5667b-5712-4f80-9559-efcf62940dfb"
     }
   ],
   "triggers": {

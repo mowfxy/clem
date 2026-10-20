@@ -47,7 +47,7 @@ const bytes = await readFile("artifacts/kinetra-document.pdf");
 const doc = await PDFDocument.load(bytes);
 assert.equal(doc.getPageCount(), 1);
 assert.ok(bytes.length > 10000);
-assert.match(bytes.toString(), /MOWR-PROVENANCE-v1/);
+assert.match(bytes.toString(), /CLEM-PROVENANCE-v1/);
 // A long document (120 sections) in the font the person asked for keeps every section.
 const long = await readFile("artifacts/kinetra-long-document.pdf");
 const longDoc = await PDFDocument.load(long);

@@ -3,7 +3,7 @@ import { parseModelJson } from './model-json.ts';
 import { compile } from './expr.ts';
 
 /** Checked numbers: the model states each key result as a formula, its inputs and the value it
- *  reported. Mowr recomputes the formula itself and says whether the arithmetic holds.
+ *  reported. Clem recomputes the formula itself and says whether the arithmetic holds.
  *  This verifies arithmetic and substitution, not the choice of formula. */
 const checkSchema = z.object({
   label: z.string().trim().min(1).max(80),

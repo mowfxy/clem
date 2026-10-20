@@ -61,13 +61,13 @@ export function LocalProvider({ onDone, accountId }: { onDone: () => void; accou
   return (
     <div className="desktop-provider cx-connect">
       <div className="cx-link" aria-hidden="true">
-        <span className="cx-tile cx-mowr"><Logo size={26} /></span>
+        <span className="cx-tile cx-clem"><Logo size={26} /></span>
         <span className="cx-wire"><i /><i /><i /></span>
         <span className="cx-tile cx-openai"><OpenAILogo size={26} /></span>
       </div>
       <div className="cx-title">
         <h3>Connect ChatGPT</h3>
-        <p>Use your ChatGPT plan in Mowr through Codex.</p>
+        <p>Use your ChatGPT plan in Clem through Codex.</p>
       </div>
       {!challenge ? (
         <>
@@ -98,7 +98,7 @@ export function LocalProvider({ onDone, accountId }: { onDone: () => void; accou
       )}
       {error && <div className="provider-recovery"><p role="alert">{error}</p><button className="secondary" disabled={busy} onClick={()=>void start()}>Try again</button></div>}
       <p className="provider-note">
-        No API key or password is shared with Mowr. Credentials stay in Windows’ protected credential store.
+        No API key or password is shared with Clem. Credentials stay in Windows’ protected credential store.
       </p>
     </div>
   );

@@ -21,7 +21,7 @@ const escape = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": 
  */
 export async function typesetBlock(text: string, { width, height, size, font, bold, color, align }: { width: number; height: number; size: number; font: string; bold: boolean; color: [number, number, number]; align: string }) {
   const page = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true, javascript: false } });
-  const file = join(tmpdir(), "mowr-block-" + randomUUID() + ".html");
+  const file = join(tmpdir(), "clem-block-" + randomUUID() + ".html");
   const ink = `rgb(${color.map((c) => Math.round(c * 255)).join(",")})`;
   try {
     // Enough tries to get from the largest size (72 pt) below 4 pt.

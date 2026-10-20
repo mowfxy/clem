@@ -1,11 +1,11 @@
-// Connected ChatGPT (Codex) and Claude sign-ins, kept with the Mowr account so a reinstall or a new
-// PC reconnects them after signing in to Mowr. Each credential is deflated, then encrypted with
+// Connected ChatGPT (Codex) and Claude sign-ins, kept with the Clem account so a reinstall or a new
+// PC reconnects them after signing in to Clem. Each credential is deflated, then encrypted with
 // AES-GCM under PROVIDER_VAULT_KEY, bound to its owner and connection id, and stored as one compact
 // BLOB (IV + ciphertext). Entries are returned only to their owner.
 import { pack, unpack } from "./lib/pack.js";
 import { HttpError, readJson } from "./lib/http.js";
 
-// "telegram" rows from earlier versions can still be read (so Mowr deletes them) but no new ones are stored.
+// "telegram" rows from earlier versions can still be read (so Clem deletes them) but no new ones are stored.
 const KINDS = new Set(["codex", "claude"]);
 const MAX_ITEMS = 12, MAX_BYTES = 64_000;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });

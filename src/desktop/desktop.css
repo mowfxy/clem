@@ -525,14 +525,14 @@
   margin: 0;
   white-space: nowrap;
 }
-.setup-welcome-heading .mowr-mark {
+.setup-welcome-heading .clem-mark {
   flex-shrink: 0;
   width: 36px;
   height: 36px;
 }
 
 /* The last step holds a provider picker. Its own drawing already says "connect", so the
-   Mowr ↔ OpenAI tiles from Settings stay out of it. */
+   Clem ↔ OpenAI tiles from Settings stay out of it. */
 .first-provider {
   display: grid;
   gap: 14px;
@@ -609,7 +609,7 @@
   .setup-welcome-heading h1 {
     font-size: 28px;
   }
-  .setup-welcome-heading .mowr-mark {
+  .setup-welcome-heading .clem-mark {
     width: 29px;
     height: 29px;
   }

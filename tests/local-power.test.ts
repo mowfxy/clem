@@ -32,7 +32,7 @@ test("snippets collapse whitespace, keep offsets and report the line", () => {
 });
 
 const pack: StudyPack = {
-  format: "mowr-study-pack", version: 1, title: "Cell biology", description: "Unit 2", author: "Sam", created: 1,
+  format: "clem-study-pack", version: 1, title: "Cell biology", description: "Unit 2", author: "Sam", created: 1,
   sets: [
     { kind: "flashcards", title: "Organelles", items: [{ question: "Powerhouse?", answer: "Mitochondria" }] },
     { kind: "quiz", title: "Check", items: [{ question: "Makes protein?", answer: "Ribosome", choices: ["Ribosome", "Golgi"], correct: 0 }] },
@@ -46,15 +46,15 @@ test("study packs round-trip and carry only study content", async () => {
   assert.deepEqual(back, pack);
   assert.equal(new TextDecoder().decode(files.f1), "hello");
   assert.equal(cardCount(back), 2);
-  assert.equal(packFileName('a/b:"c"'), "a-b--c-.mowrpack");
+  assert.equal(packFileName('a/b:"c"'), "a-b--c-.clempack");
   assert.ok(!("attempts" in back.sets[0]) && !("chats" in back));
 });
 
 test("study packs reject damaged, oversized or foreign content", async () => {
   await assert.rejects(packStudy(pack, {}), /Missing file/);
   await assert.rejects(packStudy({ ...pack, sets: [{ kind: "quiz", title: "Bad", items: [{ question: "Q", answer: "A" }] }], files: [] }), /incomplete quiz/);
-  await assert.rejects(unpackStudy(strToU8("not a zip")), /not a Mowr study pack/);
-  await assert.rejects(unpackStudy(zipSync({ "pack.json": strToU8("{}") })), /newer Mowr or is damaged/);
+  await assert.rejects(unpackStudy(strToU8("not a zip")), /not a Clem study pack/);
+  await assert.rejects(unpackStudy(zipSync({ "pack.json": strToU8("{}") })), /newer Clem or is damaged/);
   await assert.rejects(unpackStudy(zipSync({ "pack.json": strToU8(JSON.stringify(pack)), "../evil.exe": strToU8("x") })), /unsupported/);
   await assert.rejects(unpackStudy(zipSync({ "pack.json": strToU8(JSON.stringify(pack)), "files/f1": strToU8("hi") })), /missing or damaged/);
 });

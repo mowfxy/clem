@@ -15,7 +15,7 @@ try {
   await page.addInitScript(() => {
     const listeners = new Set();
     window.requests = [];
-    window.mowrDesktop = {
+    window.clemDesktop = {
       onAuth: () => () => {},
       onAttachment: () => () => {},
       onChat: (fn) => {

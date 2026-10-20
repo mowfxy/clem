@@ -66,7 +66,7 @@ test('Claude output split inside a multi-byte character is decoded intact',async
   assert.equal(events.find(event=>event.type==='delta').text,'Café — مرحبا');
 });
 
-test('Claude models come from Claude Code itself, so a model added to the plan appears without a Mowr update',async()=>{
+test('Claude models come from Claude Code itself, so a model added to the plan appears without a Clem update',async()=>{
   const {parseClaudeModels}=await import('../../desktop/claude.ts');
   const parsed=parseClaudeModels([
     {value:'default',displayName:'Default (recommended)',description:'Opus 5.5'},

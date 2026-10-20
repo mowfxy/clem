@@ -5,7 +5,7 @@ import type { Vault } from "./vault";
 import { hasCapacity, isBelowSwitchThreshold, resetWindows, resumeAt } from "../core/account-usage.ts";
 type Registry = { active: string; ids: string[] };
 type AccountStatus = {id:string;connected:boolean;email?:string;usage?:any;checkedAt?:number;[key:string]:any};
-/** Each account has its own Codex home and credential file, which ProviderLink keeps with the Mowr account. */
+/** Each account has its own Codex home and credential file, which ProviderLink keeps with the Clem account. */
 export class ProviderAccounts {
   private clients = new Map<string, Codex>();
   private registries = new Map<string, Registry>();
@@ -187,7 +187,7 @@ export class ProviderAccounts {
       return { ok: true };
     });
   }
-  /** Adds ChatGPT connections restored from the Mowr account, and restarts the Codex processes
+  /** Adds ChatGPT connections restored from the Clem account, and restarts the Codex processes
    *  whose credentials were just written so they pick them up. */
   async adopt(owner: string, linked: { id: string }[], written: string[]) {
     return this.exclusive(async () => {

@@ -2,7 +2,7 @@ import type { TurnStats } from "./turn-timing.ts";
 /** Thrown by a provider that could not use its session (the CLI no longer has it, or does not support sessions at all):
  *  the loop resends everything instead, for the rest of the turn. */
 export class SessionLost extends Error {}
-/** Thrown by a provider whose plan has no usage left: Mowr can move the request to another connected account. */
+/** Thrown by a provider whose plan has no usage left: Clem can move the request to another connected account. */
 export class UsageLimit extends Error {
   /** When the plan can be used again (ms), when the provider said so with the refusal. */
   resetsAt?: number;
@@ -210,8 +210,8 @@ export function closedRequest(text: string): string | null {
   const fixed = body + stack.reverse().join("");
   return toolRequests(fixed) ? fixed : null;
 }
-/** What a request whose closing brackets Mowr added is told with its result. */
-export const CLOSED_NOTE = "Your request was missing its closing brackets; Mowr closed it and ran it. If it was meant to continue, send the rest with \"revise\" and \"append\":true.";
+/** What a request whose closing brackets Clem added is told with its result. */
+export const CLOSED_NOTE = "Your request was missing its closing brackets; Clem closed it and ran it. If it was meant to continue, send the rest with \"revise\" and \"append\":true.";
 /** A stretch of the model's own reply, quoted back on one line. */
 const shown = (s: string) => s.replace(/\s+/g, " ");
 /** Why one {"kinetra":…} envelope cannot run (null when it can): the JSON fault with the text around it, or what the object lacks. */
@@ -449,7 +449,7 @@ export async function runKinetraTurn<Picture = unknown>(
   // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
   let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
-  // `instructions` may be empty: a provider with Mowr's rules in its system prompt sends only this turn's notes here.
+  // `instructions` may be empty: a provider with Clem's rules in its system prompt sends only this turn's notes here.
   const openingFor = (text: string, guide = instructions) => (guide ? guide + "\n\n" : "") + "Original request and context:\n" + text;
   let opening = openingFor(prompt);
   const check = () => {

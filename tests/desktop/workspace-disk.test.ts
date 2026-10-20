@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceDisk } from "../../desktop/workspace-disk.ts";
 test("workspace persists per account and refuses traversal without masking corrupted state", async () => {
-  const root = await mkdtemp(join(tmpdir(), "mowr-disk-test-"));
+  const root = await mkdtemp(join(tmpdir(), "clem-disk-test-"));
   try {
     const disk = new WorkspaceDisk(root);
     assert.equal(await disk.readState("one"), null);

@@ -4,7 +4,7 @@ import { patchParts } from "../../desktop/file-guides.ts";
 
 const sections = [
   { heading: "One", text: "a" },
-  { heading: "Two", text: "b", figure: { module: "mowr", fn: "circuit", args: [1], align: "center", width: 0.8 } },
+  { heading: "Two", text: "b", figure: { module: "clem", fn: "circuit", args: [1], align: "center", width: 0.8 } },
   { heading: "Three", text: "c" },
 ];
 
@@ -12,7 +12,7 @@ test("a patch changes only the parts it names, merging a figure field by field",
   const out = patchParts(sections, [{ at: 2, figure: { align: "wrap-right", width: null } }], "sections") as any[];
   assert.deepEqual(out[0], sections[0]);
   assert.deepEqual(out[2], sections[2]);
-  assert.deepEqual(out[1].figure, { module: "mowr", fn: "circuit", args: [1], align: "wrap-right" });
+  assert.deepEqual(out[1].figure, { module: "clem", fn: "circuit", args: [1], align: "wrap-right" });
   assert.equal(out[1].text, "b");
   // The stored source is not changed in place.
   assert.equal(sections[1].figure.align, "center");

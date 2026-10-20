@@ -5,8 +5,8 @@ import {randomBytes} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
-// Installs the official command-line tools Mowr uses for Claude and Grok, so nobody has to open a terminal.
-// Mowr runs each vendor's own published Windows installer, fetched over HTTPS from the vendor's domain at the moment
+// Installs the official command-line tools Clem uses for Claude and Grok, so nobody has to open a terminal.
+// Clem runs each vendor's own published Windows installer, fetched over HTTPS from the vendor's domain at the moment
 // the person clicks Install; nothing is bundled or redistributed, and the installer is not modified. Both install
 // for the current user only (no administrator rights) into the locations below.
 
@@ -18,7 +18,7 @@ export const clis:Record<CliKind,{name:string;script:string;path:()=>string|unde
     path:()=>process.env.USERPROFILE&&join(process.env.USERPROFILE,'.grok','bin','grok.exe')},
 };
 
-/** The installed program's full path when it exists, since Mowr's PATH doesn't see a fresh install until it restarts. */
+/** The installed program's full path when it exists, since Clem's PATH doesn't see a fresh install until it restarts. */
 export function installedPath(kind:CliKind,fallback:string){const path=clis[kind].path();return path&&existsSync(path)?path:fallback;}
 
 const running=new Map<CliKind,Promise<void>>();
@@ -38,23 +38,23 @@ export function installCli(kind:CliKind){
       clearTimeout(timer);
       if(code===0&&existsSync(clis[kind].path()||''))return resolve();
       const offline=/could not be resolved|unable to connect|timed out|no such host|network/i.test(log);
-      reject(Error(offline?`Couldn’t reach the ${name} download. Check your internet connection and try again.`:`${name} didn’t finish installing. Try again, or contact support@mowrai.com.`));
+      reject(Error(offline?`Couldn’t reach the ${name} download. Check your internet connection and try again.`:`${name} didn’t finish installing. Try again, or contact support@m4labs.xyz.`));
     });
   }).finally(()=>running.delete(kind));
   running.set(kind,job);return job;
 }
 
 /** Sign-in needs the vendor's own interactive screen, so it opens in a small titled window while the actual sign-in
- *  happens on the vendor's page in the browser. Mowr checks `signedIn` every few seconds and closes the window itself
+ *  happens on the vendor's page in the browser. Clem checks `signedIn` every few seconds and closes the window itself
  *  as soon as the account is connected, so the person never has to deal with it. */
 const signIns=new Set<string>();
-/** Where a CLI's sign-in page may be opened by Mowr itself: the vendor's own https sign-in hosts only. */
+/** Where a CLI's sign-in page may be opened by Clem itself: the vendor's own https sign-in hosts only. */
 export function signInPageUrl(text:string,hosts:RegExp){
   const raw=text.trim().replace(/^"|"$/g,'').trim();
   try{const url=new URL(raw);return url.protocol==='https:'&&!url.username&&!url.password&&hosts.test(url.hostname)?url.href:null;}catch{return null;}
 }
 
-/** `page`: Mowr opens the sign-in page in its own window instead of the default browser (the CLI's BROWSER is pointed
+/** `page`: Clem opens the sign-in page in its own window instead of the default browser (the CLI's BROWSER is pointed
  *  at a tiny script that hands the address back). In the default browser an installed Claude desktop app took over
  *  claude.ai's sign-in, so the person ended up signed in to that app and the CLI was never authorised. Returns a closer. */
 export async function signInWindow(options:{title:string;message:string;command:string;cwd?:string;env:NodeJS.ProcessEnv;signedIn:()=>Promise<boolean>;page?:{hosts:RegExp;open:(url:string)=>()=>void}}){
@@ -63,7 +63,7 @@ export async function signInWindow(options:{title:string;message:string;command:
   signIns.add(options.command);
   let handoff:string|undefined,closePage=()=>{};
   if(options.page){
-    handoff=join(tmpdir(),'mowr-signin-'+randomBytes(8).toString('hex'));
+    handoff=join(tmpdir(),'clem-signin-'+randomBytes(8).toString('hex'));
     await mkdir(handoff,{recursive:true});
     // %* keeps the quotes the CLI puts round the address, so the & in it stays literal for cmd.
     await writeFile(join(handoff,'open.cmd'),`@echo %*> "${join(handoff,'url.txt')}"\r\n`);
@@ -71,7 +71,7 @@ export async function signInWindow(options:{title:string;message:string;command:
   }
   const cleanup=()=>{closePage();closePage=()=>{};if(handoff)void rm(handoff,{recursive:true,force:true}).catch(()=>{});};
   const quote=(s:string)=>s.replace(/'/g,"''");
-  const script=`$Host.UI.RawUI.WindowTitle='${quote(options.title)}'; Write-Host ''; Write-Host '  ${quote(options.message)}' -ForegroundColor Cyan; Write-Host '  Mowr closes this window when you are signed in.'; Write-Host ''; ${options.command}`;
+  const script=`$Host.UI.RawUI.WindowTitle='${quote(options.title)}'; Write-Host ''; Write-Host '  ${quote(options.message)}' -ForegroundColor Cyan; Write-Host '  Clem closes this window when you are signed in.'; Write-Host ''; ${options.command}`;
   // The window is opened by Start-Process, not spawned directly: a spawned console gets Node's standard handles
   // (stdin is NUL), so PowerShell read end-of-input and closed at once, and the CLI, seeing no terminal, fell back to
   // a paste-the-code sign-in nobody could finish. Start-Process gives it a real console of its own.

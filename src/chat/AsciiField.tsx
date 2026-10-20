@@ -60,9 +60,9 @@ export function AsciiField() {
     let raf = 0, last = 0, visible = true, focused = document.hasFocus(), clouds: Cloud[] = [];
     const start = performance.now();
 
-    // Every character drawn once in the theme's ink (row 0) and in Mowr's coral (row 1); frames only copy them.
+    // Every character drawn once in the theme's ink (row 0) and in Clem's coral (row 1); frames only copy them.
     const buildAtlas = () => {
-      const style = getComputedStyle(canvas), coral = document.documentElement.dataset.theme === 'light' ? '#c8432f' : '#ef5340';
+      const style = getComputedStyle(canvas), coral = document.documentElement.dataset.theme === 'light' ? '#0b0b0a' : '#F4F2EC';
       glyphW = Math.ceil(CELL_W * dpr); glyphH = Math.ceil(CELL_H * dpr);
       atlas = document.createElement('canvas'); atlas.width = glyphW * CHARS.length; atlas.height = glyphH * 2;
       const a = atlas.getContext('2d')!;
@@ -199,12 +199,12 @@ export function AsciiField() {
     const io = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; wake(); }); io.observe(canvas);
     window.addEventListener('focus', focus); window.addEventListener('blur', focus);
     document.addEventListener('visibilitychange', wake);
-    window.addEventListener('mowr-theme', retheme);
+    window.addEventListener('clem-theme', retheme);
     wake();
     return () => {
       cancelAnimationFrame(raf); observer.disconnect(); io.disconnect();
       window.removeEventListener('focus', focus); window.removeEventListener('blur', focus);
-      document.removeEventListener('visibilitychange', wake); window.removeEventListener('mowr-theme', retheme);
+      document.removeEventListener('visibilitychange', wake); window.removeEventListener('clem-theme', retheme);
     };
   }, []);
   return <canvas ref={ref} className="ascii-field" aria-hidden="true" />;

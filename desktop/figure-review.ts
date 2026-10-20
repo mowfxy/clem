@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 /**
- * Pictures of the figures in a file Mowr just made, for the model to look at before it answers, the way a deck's
+ * Pictures of the figures in a file Clem just made, for the model to look at before it answers, the way a deck's
  * contact sheets are: a figure copied from a problem sheet or a lecture can come out with a wire on the wrong node,
  * a swapped label or a wrong value, and only looking at it shows that. Each figure is drawn small (it only has to be
  * legible) and only figures the model has not seen in this answer are sent, so appending to a long document does

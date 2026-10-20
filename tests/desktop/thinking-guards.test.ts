@@ -25,7 +25,7 @@ test("a Markdown document is checked against its plan: a missing section and a s
     "",
     "## Figure",
     "```figure",
-    '{"module":"mowr","fn":"solveCircuit","args":[{}]}',
+    '{"module":"clem","fn":"solveCircuit","args":[{}]}',
     "```",
     "",
   ].join("\n");
@@ -40,7 +40,7 @@ test("a Markdown document is checked against its plan: a missing section and a s
   const done = withMarkdownSource({ action: "pdf", markdown: "Drafts/l3.md", plan }, md.replace("TODO", words(STUB_WORDS)).replace("A few lines only.", words(STUB_WORDS + 5)) + "## Kirchhoff's laws\n" + words(60) + "\n");
   assert.deepEqual(unwritten(done, { stubs: true }), []);
   // The text after a figure counts toward the section it continues.
-  const split = withMarkdownSource({ plan: ["Nodes"] }, "## Nodes\nShort intro.\n```figure\n{\"module\":\"mowr\",\"fn\":\"x\",\"args\":[]}\n```\n" + words(60) + "\n");
+  const split = withMarkdownSource({ plan: ["Nodes"] }, "## Nodes\nShort intro.\n```figure\n{\"module\":\"clem\",\"fn\":\"x\",\"args\":[]}\n```\n" + words(60) + "\n");
   assert.deepEqual(unwritten(split, { stubs: true }), []);
 });
 
@@ -84,9 +84,9 @@ test("an unchanged request after a failure is refused without running", () => {
   assert.equal(memory.repeated(spec, "text v2"), undefined);
   assert.equal(memory.repeated({ ...spec, plan: ["A"] }, "text v1"), undefined);
   // The same for a request sent as JSON.
-  const json = { action: "pptx", slides: [{ title: "x", figure: { module: "mowr", fn: "nope" } }] };
-  memory.failed(json, undefined, "mowr.nope is not a function");
-  assert.match(memory.repeated(json, undefined)!, /same as one that just failed, so it was not run again: mowr\.nope is not a function\./);
+  const json = { action: "pptx", slides: [{ title: "x", figure: { module: "clem", fn: "nope" } }] };
+  memory.failed(json, undefined, "clem.nope is not a function");
+  assert.match(memory.repeated(json, undefined)!, /same as one that just failed, so it was not run again: clem\.nope is not a function\./);
   assert.equal(memory.repeated({ ...json, slides: [] }, undefined), undefined);
   // A failure that can pass on its own is not remembered.
   memory.failed(json, "t", "That took too long.");
@@ -98,7 +98,7 @@ test("the guide tells every folder AI to plan first and check each worked exampl
     assert.match(guide, /"plan":\[every heading\]/);
     assert.match(guide, /Plan first: .*every topic, worked example and exercise/);
     assert.match(guide, /info string is check/);
-    assert.match(guide, /mowr solveCircuit with the same netlist as the figure/);
+    assert.match(guide, /clem solveCircuit with the same netlist as the figure/);
   }
 });
 
@@ -109,7 +109,7 @@ test("a chat answer's wrong check, or a calculation nothing verified, goes back 
   // Worked out with no tool and no check: sent back, unless a call computed it or a file (checked when made) carries it.
   const bare = "The current is $I = V/R = 12/4 = 3$ A.";
   assert.match(answerReview(bare, [], { calculation: true })!, /no Kinetra call worked out and no check verifies/);
-  assert.equal(answerReview(bare, [{ request: { action: "call", module: "mowr", fn: "solveCircuit" }, result: { I: 3 } }], { calculation: true }), undefined);
+  assert.equal(answerReview(bare, [{ request: { action: "call", module: "clem", fn: "solveCircuit" }, result: { I: 3 } }], { calculation: true }), undefined);
   assert.equal(answerReview(bare, [{ request: { action: "pdf" }, result: { created: true } }], { calculation: true }), undefined);
   assert.equal(answerReview(bare, [], { calculation: false }), undefined, "an explanation is not a calculation");
   assert.equal(answerReview("Ohm's law says V = IR.", [], { calculation: true }), undefined, "a formula alone is no result");
@@ -155,6 +155,6 @@ test("a final answer sent back folds the first version away and is reviewed at m
 });
 
 test("an unfinished writer's document goes to a new writer, not to the main assistant's own reading", () => {
-  assert.match(WRITERS_NOTE, /start a new mowr-writer for just that: its draft file, what is missing/);
+  assert.match(WRITERS_NOTE, /start a new clem-writer for just that: its draft file, what is missing/);
   assert.match(WRITERS_NOTE, /Never read a writer's sources yourself/);
 });

@@ -70,7 +70,7 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
     <form onSubmit={save}>
       <header className="yt-save-head">
         <YouTubeLogo size={26} />
-        <div><h2 id="yt-save-title">Save from YouTube</h2><p>Mowr keeps the transcript, so it can answer from what the video says.</p></div>
+        <div><h2 id="yt-save-title">Save from YouTube</h2><p>Clem keeps the transcript, so it can answer from what the video says.</p></div>
         <button type="button" className="icon-button" aria-label="Close" onClick={close}><Icon name="close" size={18} /></button>
       </header>
       <label className="yt-save-field">
@@ -94,7 +94,7 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
           {places.map((p) => <option key={p.id ?? ""} value={p.id ?? ""}>{p.name}</option>)}
         </select>
       </label>}
-      {!desktop && <p className="yt-save-note">In the browser, videos are saved without a transcript. The Mowr desktop app reads them.</p>}
+      {!desktop && <p className="yt-save-note">In the browser, videos are saved without a transcript. The Clem desktop app reads them.</p>}
       {error && <p className="yt-save-error" role="alert">{error}</p>}
       {busy && <div className="yt-save-progress" role="status">
         <progress max={busy.total || 1} value={busy.listing ? undefined : busy.done} />

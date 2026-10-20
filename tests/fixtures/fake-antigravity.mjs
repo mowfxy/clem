@@ -4,7 +4,7 @@
 // FAKE_AGY = ok (default) | signed-out | limit | native | tools | permission
 import {stdin, stdout, stderr, env, exit} from 'node:process';
 const mode = env.FAKE_AGY || 'ok';
-for (const key of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS']) if (env[key]) { stderr.write(`Mowr must not pass ${key}\n`); exit(9); }
+for (const key of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS']) if (env[key]) { stderr.write(`Clem must not pass ${key}\n`); exit(9); }
 if (!env.GEMINI_HOME || !env.ANTIGRAVITY_HARNESS_PATH) { stderr.write('GEMINI_HOME and ANTIGRAVITY_HARNESS_PATH are needed\n'); exit(9); }
 const send = (m) => stdout.write(JSON.stringify({jsonrpc: '2.0', ...m}) + '\n');
 const update = (sessionId, u) => send({method: 'session/update', params: {sessionId, update: u}});

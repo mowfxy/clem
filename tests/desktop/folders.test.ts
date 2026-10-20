@@ -12,7 +12,7 @@ import {
   safeName,
 } from "../../desktop/folders.ts";
 test("folder index excludes secrets, detects edits and deletions, and stays within budget", async () => {
-  const root = await mkdtemp(join(tmpdir(), "mowr-index-test-"));
+  const root = await mkdtemp(join(tmpdir(), "clem-index-test-"));
   try {
     await writeFile(join(root, "notes.md"), "Geometry uses metres");
     await writeFile(join(root, ".env"), "secret");

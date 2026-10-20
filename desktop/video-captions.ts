@@ -43,7 +43,7 @@ function tracksOf(player: PlayerResponse | undefined): CaptionTrack[] {
 function whyUnplayable(player: PlayerResponse | undefined) {
   const status = player?.playabilityStatus?.status, reason = player?.playabilityStatus?.reason || "";
   if (!status || status === "OK") return "";
-  if (/inappropriate|age|sign in to confirm your age/i.test(reason)) return "YouTube only shows this video to signed-in adults, so Mowr can't read its captions.";
+  if (/inappropriate|age|sign in to confirm your age/i.test(reason)) return "YouTube only shows this video to signed-in adults, so Clem can't read its captions.";
   if (/private/i.test(reason)) return "This video is private.";
   if (/bot|sign in to confirm/i.test(reason)) return "YouTube is asking this network to prove it isn't a bot, so captions can't be read right now. Try again later.";
   return reason ? `YouTube says: ${reason}` : "YouTube won't play this video here.";

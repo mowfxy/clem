@@ -149,7 +149,7 @@ function CheckBlock({ body, streaming }: { body: string; streaming: boolean }) {
       <span className="check-label">{r.label}</span>
       <code aria-description={r.expr}>{r.expr}</code>
       <span className="check-value">{r.status === 'differs' ? <>stated {showNumber(r.claimed)} · <strong>recomputed {showNumber(r.computed)}</strong></> : r.status === 'ok' ? <>{showNumber(r.computed)}</> : r.error}{r.unit && r.status !== 'error' ? ' ' + r.unit : ''}</span>
-    </li>)}<li className="checks-note">Mowr recomputes each stated formula with its inputs. It confirms the arithmetic, not the choice of formula.</li></ul>}
+    </li>)}<li className="checks-note">Clem recomputes each stated formula with its inputs. It confirms the arithmetic, not the choice of formula.</li></ul>}
   </div>;
 }
 

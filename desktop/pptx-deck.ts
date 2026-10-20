@@ -12,7 +12,7 @@ import { recorded, staticFindings, slideReviewer, type Adjust, type SlideRecord 
 
 export type { Theme } from "./deck-design.ts";
 /**
- * PowerPoint decks Mowr designs itself. A deck is a list of slides, each with a layout (title, statement, big number,
+ * PowerPoint decks Clem designs itself. A deck is a list of slides, each with a layout (title, statement, big number,
  * chart, matrix, roadmap, diagram, image-led…), drawn in a design worked out for that deck (desktop/deck-design.ts): its
  * archetype (lecture, pitch, report, workshop, defence, kids' lesson…) sets the structure and visual language, and its
  * colours and type come from the brand or the subject. Everything stays editable in PowerPoint: text boxes, native
@@ -274,9 +274,9 @@ async function draw(spec: DeckSpec, t: Theme, figures: Map<number, string>, rast
   const wide = spec.aspect !== "4:3";
   pptx.layout = wide ? "LAYOUT_WIDE" : "LAYOUT_4x3";
   const W = wide ? 13.333 : 10, H = 7.5;
-  pptx.author = spec.author || "Mowr";
+  pptx.author = spec.author || "Clem";
   pptx.title = spec.title;
-  pptx.company = spec.brand?.name || "Mowr";
+  pptx.company = spec.brand?.name || "Clem";
   const M = W > 11 ? 0.7 : 0.55;
   const shape = (name: string) => (pptx.ShapeType as any)[name] ?? name;
   const card = t.rounded ? shape("roundRect") : shape("rect");
@@ -904,7 +904,7 @@ async function draw(spec: DeckSpec, t: Theme, figures: Map<number, string>, rast
           else if (quad.text) text(slide, runs(quad.text), { x: x + 0.25, y: y + 0.8, w: hw - 0.5, h: hh - 0.95, fontSize: qSize, color: lit ? ink : t.muted });
         });
         for (const p of points) {
-          const fx = Math.max(0, Math.min(1, p.x)), fy = Math.max(0, Math.min(1, p.y)), px = g.x + fx * g.w, py = g.y + (1 - fy) * g.h, own = /^(us|we|our|mowr)$/i.test(p.label.trim());
+          const fx = Math.max(0, Math.min(1, p.x)), fy = Math.max(0, Math.min(1, p.y)), px = g.x + fx * g.w, py = g.y + (1 - fy) * g.h, own = /^(us|we|our|clem)$/i.test(p.label.trim());
           const ground = s.highlight === quadrantAt(fx, fy) ? t.accent : t.surface, dot = own ? (ground === t.accent ? on(t.accent) : t.accent2) : ground === t.accent ? on(t.accent) : t.text;
           // The label goes on the side of the dot with more room.
           const left = fx > 0.75;

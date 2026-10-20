@@ -14,7 +14,7 @@ const PHRASES = [
   "who (?:are|r) (?:you|u)", "what(?:'s| is) your name", "what are (?:you|u)",
   "no worries", "np", "all good", "no problem", "that(?:'s| is) all", "thats all", "you(?:'re| are) welcome", "youre welcome",
   "i(?:'m| am) (?:good|fine|great|ok|okay)", "im (?:good|fine|great|ok|okay)", "(?:and|what about) (?:you|u)",
-  "there", "mowr", "buddy", "bro", "man", "dude", "friend", "again", "and", "too", "you", "u",
+  "there", "clem", "buddy", "bro", "man", "dude", "friend", "again", "and", "too", "you", "u",
 ];
 const ONLY_TALK = new RegExp(`^(?:(?:${PHRASES.join("|")})(?:\\s+|$))+$`, "i");
 

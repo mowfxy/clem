@@ -1,5 +1,5 @@
 /**
- * Fonts for files that leave Mowr (PDFs, SVG, PNG and Word exports). Mowafy Serif and Mowafy Sans are the app's
+ * Fonts for files that leave Clem (PDFs, SVG, PNG and Word exports). Mowafy Serif and Mowafy Sans are the app's
  * interface fonts and never appear in a file: a reader without them would see a substitute, and a document should
  * read like print, not like the app. Files use standard faces every PC has, with metric-compatible fallbacks.
  */
@@ -24,5 +24,5 @@ export function standardFonts(svg: string, only?: string) {
 /** The same faces for a canvas drawing saved as an image. */
 export const exportFonts = { sans: printSans, serif: printSerif };
 
-/** Mowr's own typefaces (Mowafy Serif and Sans and their earlier names) belong to the app, not to documents. */
-export const brandFont = /mowafy|\bmowr\b|kindred|soft ink/i;
+/** Clem's own typefaces (Mowafy Serif and Sans and their earlier names) belong to the app, not to documents. */
+export const brandFont = /mowafy|\bclem\b|kindred|soft ink/i;

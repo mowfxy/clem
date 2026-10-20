@@ -59,13 +59,13 @@ const hex = (bytes) => Array.from(new Uint8Array(bytes), (b) => b.toString(16).p
  * Email two-step for the account service. Off unless REQUIRE_EMAIL_PROOF="true": the desktop app cannot obtain a proof
  * yet, and turning this on before it can would lock those people out of sync, linked accounts and support.
  * The proof is the one server/file-security.ts already makes after an emailed code is confirmed:
- * X-Mowr-Email-Proof: "<expires>.<HMAC-SHA256(FILE_GATE_SECRET, userId|session_id|session|expires) hex>".
+ * X-Clem-Email-Proof: "<expires>.<HMAC-SHA256(FILE_GATE_SECRET, userId|session_id|session|expires) hex>".
  */
 export async function emailProofAccepted(request, env, user, authorization, at = Date.now()) {
   if (env.REQUIRE_EMAIL_PROOF !== "true") return true;
-  const settings = await env.DB.prepare("SELECT email_mfa FROM mowr_security WHERE owner_id=?").bind("supabase:" + user.id).first();
+  const settings = await env.DB.prepare("SELECT email_mfa FROM clem_security WHERE owner_id=?").bind("supabase:" + user.id).first();
   if (!settings?.email_mfa) return true;
-  const [expires, proof] = String(request.headers.get("X-Mowr-Email-Proof") || "").split(".");
+  const [expires, proof] = String(request.headers.get("X-Clem-Email-Proof") || "").split(".");
   const session = tokenClaims(authorization).session_id;
   if (!env.FILE_GATE_SECRET || !session || !/^\d{1,12}$/.test(expires || "") || Number(expires) * 1000 <= at || !/^[a-f0-9]{64}$/.test(proof || "")) return false;
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.FILE_GATE_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -193,7 +193,7 @@ async function route(request, env) {
         if (!(await limit(env, "admin:" + user.id, 240)))
           return json({ error: "Try again shortly." }, 429);
         // A suspended staff member loses the portal too (and so cannot lift their own suspension).
-        if (suspended) return json({ error: "This account is suspended. Contact support@mowrai.com." }, 403);
+        if (suspended) return json({ error: "This account is suspended. Contact support@m4labs.xyz." }, 403);
         return await handleAdmin(request, env, user, path, authorization);
       }
       if (!(await limit(env, "user:" + user.id, 60)))
@@ -204,7 +204,7 @@ async function route(request, env) {
         suspended &&
         !(path === "/entitlement" || path === "/announcements" || path.startsWith("/support/") || (path === "/profile" && request.method === "GET"))
       )
-        return json({ error: "This account is suspended. Contact support@mowrai.com.", reason: "suspended" }, 403);
+        return json({ error: "This account is suspended. Contact support@m4labs.xyz.", reason: "suspended" }, 403);
       const supportResponse = await handleSupport(request, env, user, path);
       if (supportResponse) return supportResponse;
       const usageResponse = await handleUsage(request, env, user, path);
@@ -318,7 +318,7 @@ async function route(request, env) {
       }
       const comp = !grant && (await complimentary(env, user.id));
       const paid = hasActiveSubscription(await subscriptionsFor(env, user.id));
-      // Mowr is free: every signed-in account that is not suspended has access.
+      // Clem is free: every signed-in account that is not suspended has access.
       const active = !suspended;
       if (path === "/entitlement") {
         await recordActivity(env, user);
@@ -406,7 +406,7 @@ async function route(request, env) {
       }
       if (path === "/checkout" && request.method === "POST") {
         if (suspended)
-          return json({ error: "This account is suspended. Contact support@mowrai.com." }, 403);
+          return json({ error: "This account is suspended. Contact support@m4labs.xyz." }, 403);
         if (active) return json({ error: "You already have access." }, 409);
         if (!env.LEMON_API_KEY || !env.LEMON_STORE_ID || !env.LEMON_VARIANT_ID)
           return json(
@@ -458,7 +458,7 @@ async function route(request, env) {
               expires_at: expires,
               product_options: {
                 enabled_variants: [Number(env.LEMON_VARIANT_ID)],
-                redirect_url: "https://mowrai.com/#/desktop-return",
+                redirect_url: "https://clem.m4labs.xyz/#/desktop-return",
               },
               checkout_options: { skip_trial: true },
               checkout_data: { email: user.email, custom: { checkout_id: id } },

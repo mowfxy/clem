@@ -1,4 +1,4 @@
-# Imports Mowafy Serif from a checkout of mowfxy/serif (3.0 layout) into Mowr.
+# Imports Mowafy Serif from a checkout of mowfxy/serif (3.0 layout) into Clem.
 #   python scripts/import-serif.py <path-to-serif-checkout>
 # Each style ships as a small Latin cut under the plain name (what the app, emails, server pages and films load)
 # plus MowafySerifFull-*, the whole Mowafy Serif file (Greek, Cyrillic, extended Latin), limited by unicode-range

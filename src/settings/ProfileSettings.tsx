@@ -4,7 +4,7 @@ import {SettingsCard, SettingRow} from './SettingsParts';
 
 const greeting=(name:string)=>`${new Date().getHours()<12?'Morning':new Date().getHours()<18?'Afternoon':'Evening'}, ${name==='Thinker'?'thinker':name||'thinker'}.`;
 
-/** Who you are in Mowr: a live preview of how you appear, your name and picture, then the account itself. */
+/** Who you are in Clem: a live preview of how you appear, your name and picture, then the account itself. */
 export function ProfileSettings({name,email,avatar,storage,onName,onAvatar,onSecurity,onFiles,onExport}:{name:string;email?:string;avatar?:string;storage:string;onName:(name:string)=>void;onAvatar:(id:string)=>void;onSecurity:()=>void;onFiles:()=>void;onExport:()=>void}){
  return <div className="st-profile">
   <div className="st-id" aria-label="Preview">
@@ -12,10 +12,10 @@ export function ProfileSettings({name,email,avatar,storage,onName,onAvatar,onSec
     <span className="st-id-avatar"><ProfileAvatar value={avatar} size={88}/></span>
     <div className="st-id-text"><strong>{name||'Your name'}</strong><span>{email||'Signed in on this PC'}</span></div>
    </div>
-   <div className="st-id-greeting"><span className="st-eyebrow">How Mowr greets you</span><p>{greeting(name)}</p></div>
+   <div className="st-id-greeting"><span className="st-eyebrow">How Clem greets you</span><p>{greeting(name)}</p></div>
   </div>
   <SettingsCard title="Name">
-   <label className="st-field"><span>What should Mowr call you?</span>
+   <label className="st-field"><span>What should Clem call you?</span>
     <span className="st-input"><input value={name} maxLength={50} placeholder="Your name" onChange={e=>onName(e.target.value)} autoComplete="nickname"/><small aria-hidden="true">{name.length}/50</small></span>
    </label>
   </SettingsCard>

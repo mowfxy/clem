@@ -29,7 +29,7 @@ type Upload = { key: string; name: string; size: number; type: string; folder: s
 
 /**
  * The Google Drive folder linked to a subject or project, listed like the files kept here: the same file icons, rename,
- * Source and menu. Files dropped on it (from this PC or from Mowr's own files) go to the Drive folder they land on and
+ * Source and menu. Files dropped on it (from this PC or from Clem's own files) go to the Drive folder they land on and
  * only there, showing a turning ring until Drive has them; "Save on this PC" copies a file or a whole folder to
  * "On this PC" as well. Edits made here go back to the same Drive file once approved.
  */
@@ -91,19 +91,19 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
       setTimeout(() => void load(true), 1500);
     }, (e) => setUploads((all) => all.map((u) => u.key === upload.key ? { ...u, error: (e as Error).message || "Not saved to Google Drive" } : u)));
   }
-  /** Files go to Drive only, side by side; Mowr files dragged in are copied there and stay on this PC too. */
-  function save(target: string, local: File[], mowr: string[]) {
-    if (!local.length && !mowr.length) return;
+  /** Files go to Drive only, side by side; Clem files dragged in are copied there and stay on this PC too. */
+  function save(target: string, local: File[], clem: string[]) {
+    if (!local.length && !clem.length) return;
     setError("");
     for (const input of local) send({ key: crypto.randomUUID(), name: input.name, size: input.size, type: input.type, folder: target, input });
-    for (const id of mowr) { const f = files.find((x) => x.id === id); if (f) send({ key: crypto.randomUUID(), name: f.name, size: f.size, type: f.type, folder: target, input: id }); }
+    for (const id of clem) { const f = files.find((x) => x.id === id); if (f) send({ key: crypto.randomUUID(), name: f.name, size: f.size, type: f.type, folder: target, input: id }); }
   }
   // "Save copy in Drive" from a file's menu: the copy goes where a dropped file would, and the file stays on this PC.
   useEffect(() => { if (copy && connected !== false) save(hereId, [], [copy.id]); }, [copy?.key]);
   /** Every Drive file inside a folder, with the folders it sits in (starting with the folder itself), for "Save on this PC". */
   const inside = (folder: DriveItem) => { const root = full(folder); return (items || []).filter((i) => !i.folder && (i.path === root || i.path?.startsWith(root + " / "))).map((item) => ({ item, dirs: [folder.name, ...(item.path!.slice(root.length).split(" / ").filter(Boolean))] })); };
-  const DRIVE_ITEM = "application/x-mowr-drive";
-  const accepts = (e: DragEvent) => e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/x-mowr-file") || e.dataTransfer.types.includes(DRIVE_ITEM);
+  const DRIVE_ITEM = "application/x-clem-drive";
+  const accepts = (e: DragEvent) => e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/x-clem-file") || e.dataTransfer.types.includes(DRIVE_ITEM);
   /** Drive files and folders are dragged by id onto another folder (a card, the path above, or the folder shown). */
   const dragItem = (i: DriveItem) => ({ draggable: true, onDragStart: (e: DragEvent) => { e.stopPropagation(); e.dataTransfer.setData(DRIVE_ITEM, i.id); e.dataTransfer.effectAllowed = "move"; } });
   /** Moves a Drive file or folder into `to`: shown there at once (a folder with everything in it), undone if Drive refuses. */
@@ -126,20 +126,20 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
     const local = entries.length
       ? entries.filter((i) => !i.webkitGetAsEntry?.()?.isDirectory).map((i) => i.getAsFile()).filter((f): f is File => !!f)
       : Array.from(e.dataTransfer.files);
-    const mowr = e.dataTransfer.getData("application/x-mowr-file");
+    const clem = e.dataTransfer.getData("application/x-clem-file");
     if (folders) setError("Folders are not copied to Drive yet; drop the files inside them.");
-    // Several selected Mowr files travel together as one comma-separated list.
-    return { local, mowr: mowr ? mowr.split(",").filter(Boolean) : [] };
+    // Several selected Clem files travel together as one comma-separated list.
+    return { local, clem: clem ? clem.split(",").filter(Boolean) : [] };
   };
   const target = (key: string) => ({
     onDragOver: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation();
       // A file from this space's own list is dragged as a move; the drop effect has to match or the browser cancels the drop.
-      e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-mowr-file") || e.dataTransfer.types.includes(DRIVE_ITEM) ? "move" : "copy"; setOver(key); },
+      e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-clem-file") || e.dataTransfer.types.includes(DRIVE_ITEM) ? "move" : "copy"; setOver(key); },
     onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === key ? null : o)); },
     onDrop: (e: DragEvent) => { if (!accepts(e) || connected === false) return; e.preventDefault(); e.stopPropagation(); setOver(null);
       const driveId = e.dataTransfer.getData(DRIVE_ITEM);
       if (driveId) { move(driveId, key); return; }
-      const { local, mowr } = dropped(e); save(key, local, mowr); },
+      const { local, clem } = dropped(e); save(key, local, clem); },
   });
 
   const isSource = (i: DriveItem, copy?: StoredFile) => space.sources.includes(copy ? copy.id : "drive:" + i.id);
@@ -179,7 +179,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
     </nav>}
     {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Settings → Connectors to see this folder.</p>}
     {error && <p className="gd-error">{error} {!busy && <button className="gd-retry" onClick={() => void load(true)}>Try again</button>}</p>}
-    {reconnect && <p className="gd-reconnect">Mowr saves into your own Drive folders, which needs one more permission from Google.
+    {reconnect && <p className="gd-reconnect">Clem saves into your own Drive folders, which needs one more permission from Google.
       <button onClick={() => void connectDrive().then(() => failed.forEach(send)).catch((e) => setError((e as Error).message))}>Reconnect Google Drive</button></p>}
     {!items && !error && connected !== false && <div className="sp-file-list">{Array.from({ length: 3 }, (_, i) => <div key={i} className="gd-skeleton" />)}</div>}
     {folders.length > 0 && <div className="sp-folders">
@@ -207,7 +207,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
           <Menu label={`${name} options`} items={[
             { label: "Open", run: () => open(i, copy) },
             ...(state === "pending" && copy ? [{ label: "Review edit", run: () => actions.onEditFile(copy) }] : []),
-            ...(google ? [{ label: "Edit in Google Drive", run: () => actions.onEditDrive(i) }] : editable.test(name) ? [{ label: "Edit with Mowr", run: () => copy ? actions.onEditFile(copy) : actions.onEditDrive(i) }] : []),
+            ...(google ? [{ label: "Edit in Google Drive", run: () => actions.onEditDrive(i) }] : editable.test(name) ? [{ label: "Edit with Clem", run: () => copy ? actions.onEditFile(copy) : actions.onEditDrive(i) }] : []),
             { label: "Ask about it", run: () => actions.onAskDrive([i]) },
             { label: "Save on this PC", run: () => actions.onSaveOnPc([{ item: i, dirs: [] }]) },
             ...(!google ? [{ label: "Open in Google Drive", run: () => actions.onOpenDriveWeb(i) }] : []),
@@ -257,7 +257,7 @@ function ExtrasList({ space, actions }: { space: Space; actions: SpaceActions })
         <button className="sp-file-open" onClick={() => actions.onOpenDrive(item)}><FileGlyph file={{ name: glyphName(f), type: f.mimeType }} size={36} /><span><strong>{f.name}</strong><small>{meta}</small></span></button>
         <Menu label={`${f.name} options`} items={[
           { label: "Open", run: () => actions.onOpenDrive(item) },
-          ...(google ? [{ label: "Edit in Google Drive", run: () => actions.onEditDrive(item) }] : editable.test(f.name) ? [{ label: "Edit with Mowr", run: () => actions.onEditDrive(item) }] : []),
+          ...(google ? [{ label: "Edit in Google Drive", run: () => actions.onEditDrive(item) }] : editable.test(f.name) ? [{ label: "Edit with Clem", run: () => actions.onEditDrive(item) }] : []),
           { label: "Ask about it", run: () => actions.onAskDrive([item]) },
           ...(!google ? [{ label: "Open in Google Drive", run: () => actions.onOpenDriveWeb(item) }] : []),
           { label: `Remove from ${space.name}`, danger: true, run: () => actions.onRemoveDriveFile(f.id) },

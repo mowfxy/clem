@@ -52,7 +52,7 @@ export async function rasterizer() {
     backgroundColor: "#00000000",
     webPreferences: { offscreen: true, sandbox: true, nodeIntegration: false, contextIsolation: true, javascript: false },
   });
-  const file = join(tmpdir(), "mowr-raster-" + randomUUID() + ".html");
+  const file = join(tmpdir(), "clem-raster-" + randomUUID() + ".html");
   // One page and one file: captures run one at a time (a docx table builds its cells concurrently).
   let queue: Promise<unknown> = Promise.resolve();
   function capture(html: string, width: number, height: number, scale = 2) {

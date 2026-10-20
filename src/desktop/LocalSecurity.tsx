@@ -233,7 +233,7 @@ export function LocalSecurity() {
         )}
         {error && <p role="status">{error}</p>}
       </SettingsPopup>{" "}
-      <div className="settings-action"><div><h3>Sign out</h3><p>Sign out of Mowr on this PC. Your files stay here.</p></div>
+      <div className="settings-action"><div><h3>Sign out</h3><p>Sign out of Clem on this PC. Your files stay here.</p></div>
       <button
         disabled={busy}
         onClick={() =>

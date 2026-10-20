@@ -17,7 +17,7 @@ try {
       setup: { step: 0, username: "", displayName: "", memory: true },
       entitlement: { active: true, reason: "free" },
     };
-    window.mowrDesktop = {
+    window.clemDesktop = {
       onAuth: () => () => {},
       onChat: () => () => {},
       onAttachment: () => () => {},
@@ -28,7 +28,7 @@ try {
           state.setup = { ...r };
           return state;
         }
-        if (r.action === "checkout") throw Error("Mowr is free; setup must never open checkout.");
+        if (r.action === "checkout") throw Error("Clem is free; setup must never open checkout.");
       },
     };
   });

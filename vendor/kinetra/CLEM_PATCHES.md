@@ -1,4 +1,4 @@
-# Mowr integration patches
+# Clem integration patches
 
 The vendored core has four small fixes for the desktop bridge:
 

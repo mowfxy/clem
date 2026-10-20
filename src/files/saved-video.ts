@@ -4,7 +4,7 @@ import { desktop } from "../desktop/bridge.ts";
 import { youtubePlaylistReference, youtubeReference } from "../youtube.ts";
 
 // A saved YouTube video is an ordinary Markdown file: its title, where it came from and its timestamped transcript.
-// Mowr reads it like any other file the person keeps (src/source-context.ts), so the AI works from the transcript with
+// Clem reads it like any other file the person keeps (src/source-context.ts), so the AI works from the transcript with
 // no special handling; StoredFile.video only changes how the file is shown.
 
 export type PlaylistVideo = { id: string; title?: string; channel?: string; durationSec?: number };
@@ -39,7 +39,7 @@ export function videoDocument(c: VideoCaptions, playlist?: { id: string; title: 
     ...(playlist ? [`Playlist: ${playlist.title} (https://www.youtube.com/playlist?list=${playlist.id})`] : []),
     c.transcript
       ? `Captions: ${c.auto ? "automatic (speech recognition, may mishear names and terms)" : "the video's own captions"}${c.language ? ` · ${c.language}` : ""}`
-      : `Captions: not available. ${c.error || "This video has no captions Mowr can read."} There is no transcript, so what the video says is not in this file.`,
+      : `Captions: not available. ${c.error || "This video has no captions Clem can read."} There is no transcript, so what the video says is not in this file.`,
   ];
   if (c.transcript) lines.push("", "## Transcript", "", c.transcript.split("\n").join("\n\n"));
   else if (c.description) lines.push("", "## Description", "", "The video's own description, not a transcript:", "", c.description.slice(0, 5000));
@@ -53,7 +53,7 @@ export function videoRecord(c: VideoCaptions, playlist?: { id: string; title: st
     ...(c.durationSec ? { durationSec: c.durationSec } : {}),
     captions: c.transcript ? (c.auto ? "auto" : "own") : "none",
     ...(c.language ? { language: c.language } : {}),
-    ...(!c.transcript ? { error: c.error || "This video has no captions Mowr can read." } : {}),
+    ...(!c.transcript ? { error: c.error || "This video has no captions Clem can read." } : {}),
     ...(playlist ? { playlist } : {}),
   };
 }
@@ -75,7 +75,7 @@ const languages = () => [...new Set([navigator.language, "en"])].filter((l) => /
 /** One video's captions, read by the desktop app. In a browser YouTube can't be read, so the video is saved without. */
 export async function readVideo(v: PlaylistVideo): Promise<VideoCaptions> {
   const base: VideoCaptions = { source: "youtube", id: v.id, transcript: "", title: v.title, channel: v.channel, durationSec: v.durationSec };
-  if (!desktop) return { ...base, error: "Transcripts are read in the Mowr desktop app." };
+  if (!desktop) return { ...base, error: "Transcripts are read in the Clem desktop app." };
   try {
     const read = (await desktop.invoke({ action: "videoCaptions", source: "youtube", id: v.id, languages: languages() })) as VideoCaptions;
     return { ...read, title: read.title || v.title, channel: read.channel || v.channel, durationSec: read.durationSec || v.durationSec };
@@ -85,7 +85,7 @@ export async function readVideo(v: PlaylistVideo): Promise<VideoCaptions> {
 }
 
 export async function readPlaylist(id: string): Promise<Playlist> {
-  if (!desktop) return { id, videos: [], error: "Playlists can be saved in the Mowr desktop app." };
+  if (!desktop) return { id, videos: [], error: "Playlists can be saved in the Clem desktop app." };
   try { return (await desktop.invoke({ action: "youtubePlaylist", id })) as Playlist; }
   catch (e) { return { id, videos: [], error: e instanceof Error ? e.message : "YouTube couldn't be reached." }; }
 }

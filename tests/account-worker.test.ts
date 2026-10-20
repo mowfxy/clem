@@ -58,7 +58,7 @@ test("email two-step proof: off by default, and when on only the server's signed
   const expires = String(Math.floor(now / 1000) + 600);
   // The proof server/file-security.ts makes after a confirmed code.
   const proof = createHmac("sha256", "gate-secret").update(["u1", "sess-1", "session", expires].join("|")).digest("hex");
-  const request = (value?: string) => new Request("https://accounts.test/sync/notes", { headers: value ? { "X-Mowr-Email-Proof": value } : {} });
+  const request = (value?: string) => new Request("https://accounts.test/sync/notes", { headers: value ? { "X-Clem-Email-Proof": value } : {} });
   assert.equal(await emailProofAccepted(request(), { DB }, user, auth, now), true);
   const env = { DB, REQUIRE_EMAIL_PROOF: "true", FILE_GATE_SECRET: "gate-secret" };
   assert.equal(await emailProofAccepted(request(), env, user, auth, now), false);

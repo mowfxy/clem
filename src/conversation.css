@@ -34,7 +34,7 @@
 .history-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* A chat that lives in a subject or project wears a small drawn mark in the space's colour */
-/* Mowr is working in this chat: a small spinner; a finished reply you haven't seen: one soft dot. Both sit at the row's
+/* Clem is working in this chat: a small spinner; a finished reply you haven't seen: one soft dot. Both sit at the row's
    right edge, in the slot the "···" menu takes on hover, so the title keeps its full width and nothing doubles up. */
 .history-live,.history-new{position:absolute;right:13px;top:50%;margin-top:-6px;pointer-events:none;transition:opacity .15s}
 .history-row:is(:hover,:focus-within,.chosen) :is(.history-live,.history-new){opacity:0}
@@ -45,7 +45,7 @@
 .history-new{width:7px;height:7px;margin-top:-3.5px;right:15.5px;border-radius:50%;background:#9fb4ff;box-shadow:0 0 0 3px #9fb4ff1a}
 .history-row.is-working .history-title{color:#f4f3ee}
 .history-row.is-unseen .history-title{color:#f4f3ee;font-weight:400}
-/* What Mowr is doing right now, under a reply that is still being written */
+/* What Clem is doing right now, under a reply that is still being written */
 .work-status{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:5px 11px 5px 9px;border-radius:99px;background:#ffffff08;border:1px solid #ffffff0f;color:#b9b7af;font:12px var(--sans)}
 .work-status .work-mark{flex:none;color:#9fb4ff;transform-origin:20% 80%;animation:work-write 1.1s ease-in-out infinite}
 @keyframes work-write{0%,100%{transform:rotate(-8deg) translateX(-1px)}50%{transform:rotate(6deg) translateX(1px)}}

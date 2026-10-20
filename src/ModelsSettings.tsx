@@ -137,7 +137,7 @@ export function ModelsSettings({
     [grok,setGrok]=useState<CliStatus>({}),
     [antigravity,setAntigravity]=useState<CliStatus>({}),
     [cli,setCli]=useState<Record<CliKind,AccountsData>>({claude:{active:"default",accounts:[]},grok:{active:"default",accounts:[]},antigravity:{active:"default",accounts:[]}}),
-    [tab,setTab]=useState<Service|null>(()=>{try{const saved=localStorage.getItem("mowr-provider-tab");return saved==="chatgpt"||saved==="claude"||saved==="grok"||saved==="antigravity"?saved:null;}catch{return null;}});
+    [tab,setTab]=useState<Service|null>(()=>{try{const saved=localStorage.getItem("clem-provider-tab");return saved==="chatgpt"||saved==="claude"||saved==="grok"||saved==="antigravity"?saved:null;}catch{return null;}});
   const store=(kind:CliKind,status:any)=>kind==="claude"?setClaude(status):kind==="grok"?setGrok(status):setAntigravity(status);
   const {setup,connect:connectCli}=useCliConnect(store,async()=>{await loadCli("claude");await loadCli("grok");await loadCli("antigravity");await onRefresh();},setError);
   async function loadCli(kind: CliKind, force = false) {
@@ -188,7 +188,7 @@ export function ModelsSettings({
   async function confirmRemove(service: Service, account: Account) {
     return confirmDialog({
       title: "Disconnect " + (account.email || "this " + NAME[service] + " account") + "?",
-      message: `Mowr will stop using this ${NAME[service]} account. Your chats and files stay on this PC, and you can connect it again anytime.`,
+      message: `Clem will stop using this ${NAME[service]} account. Your chats and files stay on this PC, and you can connect it again anytime.`,
       confirm: "Disconnect",
       danger: true,
     });
@@ -216,7 +216,7 @@ export function ModelsSettings({
   const services: Service[] = desktop ? ["chatgpt", "claude", "grok", "antigravity"] : ["chatgpt"];
   // Until someone picks a tab, open on the first connected service.
   const current = services.find((x) => x === tab) || services.find((x) => counts[x] > 0) || services[0];
-  const pick = (id: Service) => { setTab(id); try { localStorage.setItem("mowr-provider-tab", id); } catch {} };
+  const pick = (id: Service) => { setTab(id); try { localStorage.setItem("clem-provider-tab", id); } catch {} };
   const status = current === "claude" ? claude : current === "grok" ? grok : current === "antigravity" ? antigravity : null;
   const listed: AccountsData = current === "chatgpt" ? data : cli[current];
   const rows = listed.accounts.filter((a) => a.connected || a.pending || a.error || a.id !== "default");
@@ -292,7 +292,7 @@ export function ModelsSettings({
 
 type HelperChoice = { model?: string; reasoning?: string };
 /**
- * The model for Mowr's side jobs (naming uploaded files, memory notes, condensing a long chat), never the person's own
+ * The model for Clem's side jobs (naming uploaded files, memory notes, condensing a long chat), never the person's own
  * tasks. Automatic keeps them on the AI being chatted with, at its lightest; a chosen model that later cannot answer
  * (signed out, off the plan) falls back to automatic for that job (desktop/main.ts quickAsk).
  */
@@ -341,11 +341,11 @@ export function SetupButton({ kind, setup, disabled, label, account, onClick }: 
       {mine === "installing" ? <><span className="provider-spinner" aria-hidden="true" />Installing…</> : mine === "signing" ? <><span className="provider-spinner" aria-hidden="true" />Waiting for sign-in…</> : <>{label}<Icon name="arrow" size={14} /></>}
     </button>
     {mine === "installing" && <p className="provider-hint">Downloading and installing. This takes about a minute.</p>}
-    {mine === "signing" && <p className="provider-hint">Sign in with your {account} account in the browser. Mowr connects automatically when you’re done.</p>}
+    {mine === "signing" && <p className="provider-hint">Sign in with your {account} account in the browser. Clem connects automatically when you’re done.</p>}
   </>;
 }
 
-/** Installs Claude Code, Grok or Antigravity from inside Mowr when needed, opens its sign-in, then checks every few seconds until
+/** Installs Claude Code, Grok or Antigravity from inside Clem when needed, opens its sign-in, then checks every few seconds until
  *  the account is connected. Shared by Settings → Models and the last setup step. */
 export function useCliConnect(onStatus:(kind:CliKind,status:any)=>void,onConnected:()=>Promise<void>|void,onError:(message:string)=>void){
   const [setup,setSetup]=useState<{kind:CliKind;step:"installing"|"signing"}|null>(null);
@@ -368,7 +368,7 @@ export function useCliConnect(onStatus:(kind:CliKind,status:any)=>void,onConnect
     onError("");
     try{
       if(!installed){
-        if(!await confirmDialog({title:`Install ${vendor.name}?`,confirm:"Install",message:`Mowr will download ${vendor.name} from ${vendor.owner} and install it for your Windows account. It takes about a minute and doesn’t need administrator rights.\n\nBy installing, you agree to ${vendor.owner}’s terms (${vendor.terms}).`}))return;
+        if(!await confirmDialog({title:`Install ${vendor.name}?`,confirm:"Install",message:`Clem will download ${vendor.name} from ${vendor.owner} and install it for your Windows account. It takes about a minute and doesn’t need administrator rights.\n\nBy installing, you agree to ${vendor.owner}’s terms (${vendor.terms}).`}))return;
         setSetup({kind,step:"installing"});
         const status=await desktop!.invoke({action:vendor.install});
         latest.current.onStatus(kind,status);

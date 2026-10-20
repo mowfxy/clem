@@ -5,8 +5,8 @@ import type { EditOutcome } from '../../core/types';
 import { Icon } from '../Icons';
 
 export type EditBlock = { path: string; find?: string; replace?: string; content?: string; summary?: string };
-/** Sent on the window when Mowr changes a linked file (an approved change or an Undo), so open proposals read it again. */
-export const FOLDER_FILE_CHANGED = 'mowr:folder-file-changed';
+/** Sent on the window when Clem changes a linked file (an approved change or an Undo), so open proposals read it again. */
+export const FOLDER_FILE_CHANGED = 'clem:folder-file-changed';
 
 const sha256 = async (text: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(b => b.toString(16).padStart(2, '0')).join('');
 

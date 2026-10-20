@@ -77,7 +77,7 @@ test("an answer becomes a deck whose layouts follow its content, and the deck is
   assert.equal(by("Numbers")[0].layout, "table");
   assert.deepEqual(by("Numbers")[0].table.header, ["Region", "Revenue", "Growth"]);
   const figure = deck.slides.find((s: any) => s.layout === "figure");
-  assert.deepEqual([figure.figure.module, figure.figure.fn, figure.figure.args[0].title], ["mowr", "visual", "Sales by quarter"]);
+  assert.deepEqual([figure.figure.module, figure.figure.fn, figure.figure.args[0].title], ["clem", "visual", "Sales by quarter"]);
   // An equation with its points is one slide; long prose goes to the speaker notes, not onto the slide.
   assert.equal(by("The model").length, 1);
   assert.deepEqual([by("The model")[0].layout, by("The model")[0].math, by("The model")[0].bullets.length], ["equation", "R = N \\cdot p", 2]);

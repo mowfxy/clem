@@ -25,7 +25,7 @@ export async function illustratedPdf(spec: any, { checkVoice = true, drawn, vect
     },
   });
   // Loaded from a temporary file: a data: URL is limited to 2 MB, which a long document or one with many figures exceeds.
-  const file = join(tmpdir(), "mowr-print-" + randomUUID() + ".html");
+  const file = join(tmpdir(), "clem-print-" + randomUUID() + ".html");
   // Accessibility tags are written for documents up to about a hundred pages. Chromium stores each tag as a separate
   // uncompressed object, which for a few hundred pages of text and maths is most of a 20 MB file.
   const tagged = specSize(spec) < 400_000;

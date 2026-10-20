@@ -15,6 +15,6 @@ export function followWindowTone() {
   };
   new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(update); } })
     .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class"] });
-  addEventListener("mowr-theme", update);
+  addEventListener("clem-theme", update);
   update();
 }

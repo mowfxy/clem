@@ -3,7 +3,7 @@
 import {argv,stdin,stdout,stderr,exit,env} from 'node:process';
 import {readFileSync} from 'node:fs';
 const args=argv.slice(2),mode=env.FAKE_GROK||'ok';
-if(env.XAI_API_KEY){stderr.write('Mowr must not pass XAI_API_KEY\n');exit(9);}
+if(env.XAI_API_KEY){stderr.write('Clem must not pass XAI_API_KEY\n');exit(9);}
 if(args[0]==='models'){
   if(mode==='signed-out'){stdout.write('You are not authenticated.\n\n');stderr.write('Error: Authentication required. Run `grok login`\n');exit(1);}
   stdout.write('You are logged in with grok.com.\n\nDefault model: grok-4.6\n\nAvailable models:\n  * grok-4.6 (default)\n  - grok-build-0.1\n  - grok-4.3-mini\n');exit(0);
@@ -16,7 +16,7 @@ if(args[0]==='agent'&&args[1]==='stdio'){
   stdin.on('end',()=>exit(0));
 }
 else {
-  if(args.includes('--always-approve')||args.includes('--yolo')){stderr.write('Mowr must never auto-approve tools\n');exit(9);}
+  if(args.includes('--always-approve')||args.includes('--yolo')){stderr.write('Clem must never auto-approve tools\n');exit(9);}
   const mode2=args[args.indexOf('--permission-mode')+1];
   if(mode2!=='dontAsk'){stderr.write('expected dontAsk, got '+mode2+'\n');exit(2);}
   const prompt=readFileSync(args[args.indexOf('--prompt-file')+1],'utf8'),model=args[args.indexOf('-m')+1];

@@ -39,13 +39,13 @@ export async function textPdf(text: string) {
     y -= 16;
   }
   for (const [i, p] of document.getPages().entries())
-    p.drawText(`Mowr | ${i + 1} / ${document.getPageCount()}`, {
+    p.drawText(`Clem | ${i + 1} / ${document.getPageCount()}`, {
       x: 50,
       y: 28,
       font,
       size: 8,
     });
-  document.setCreator("Mowr");
+  document.setCreator("Clem");
   return new Uint8Array(await (await markContent(new Blob([new Uint8Array(await document.save())]),"document.pdf")).arrayBuffer());
 }
 
@@ -54,7 +54,7 @@ export async function textPdf(text: string) {
  *  study pack and opening it would run it. */
 export const browserViewable = /\.(pdf|png|jpe?g|gif|webp|svg|txt|md|csv|json|html?|xml|mp4|webm|mp3|wav)$/i;
 const openable = /\.(pdf|png|jpe?g|gif|webp|svg|bmp|tiff?|heic|avif|txt|md|csv|json|xml|html?|log|mp4|webm|mov|m4v|mkv|avi|mp3|wav|m4a|aac|ogg|flac|docx|xlsx|pptx|odt|ods|odp|epub)$/i;
-/** The file name for a local read-only copy, or null when Mowr must not hand the file to Windows to open. */
+/** The file name for a local read-only copy, or null when Clem must not hand the file to Windows to open. */
 export function viewCopyName(name: string) {
   // Windows drops trailing dots and spaces, so "setup.exe." would still be saved, and run, as "setup.exe".
   const clean = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim().replace(/[. ]+$/, "") || "file";

@@ -15,8 +15,8 @@ function cleanRelative(path: string) {
   if (!trimmed || isAbsolute(path) || /^[a-z]:/i.test(path)) throw Error("Use a path inside a linked folder.");
   const parts = normalize(trimmed).split(/[\\/]+/).filter(Boolean);
   // A colon inside a name would reach an NTFS alternate data stream instead of the file.
-  if (!parts.length || parts.some((p) => p === ".." || p.includes(":") || !safeName(p))) throw Error("This path is outside what Mowr may change.");
-  if (!supportedText.has(extname(parts[parts.length - 1]).toLowerCase())) throw Error("Mowr only changes text and code files it can index.");
+  if (!parts.length || parts.some((p) => p === ".." || p.includes(":") || !safeName(p))) throw Error("This path is outside what Clem may change.");
+  if (!supportedText.has(extname(parts[parts.length - 1]).toLowerCase())) throw Error("Clem only changes text and code files it can index.");
   return parts;
 }
 
@@ -31,7 +31,7 @@ async function existingAncestor(path: string): Promise<string> {
 }
 
 /** Finds the one linked folder that holds `path`. New files are allowed only when a single folder is linked.
- *  Files the folder's .gitignore or .mowrignore leave out of the index are out of reach here too. */
+ *  Files the folder's .gitignore or .clemignore leave out of the index are out of reach here too. */
 export async function locate(folders: Folder[], path: string, create = false) {
   const parts = cleanRelative(path);
   const matches: { folder: Folder; absolute: string; exists: boolean }[] = [];
@@ -80,7 +80,7 @@ export async function readText(absolute: string) {
 async function writeAtomic(absolute: string, text: string) {
   if (Buffer.byteLength(text) > LIMIT) throw Error("The changed file would exceed 256 KB.");
   await mkdir(dirname(absolute), { recursive: true });
-  const temp = absolute + ".mowr-" + randomUUID().slice(0, 8) + ".tmp";
+  const temp = absolute + ".clem-" + randomUUID().slice(0, 8) + ".tmp";
   await writeFile(temp, text, { encoding: "utf8", flag: "wx" });
   try { await rename(temp, absolute); } catch (e) { await rm(temp, { force: true }); throw e; }
 }
@@ -98,7 +98,7 @@ export async function applyChange(folders: Folder[], scope: string, edit: { path
   return { id: randomUUID(), scope, folderId: target.folder.id, path: edit.path, before, after, afterHash: sha(after), at: Date.now(), summary: (edit.summary || "").slice(0, 200), ...stats };
 }
 
-/** Restores the previous content, refusing if the file changed after Mowr wrote it. */
+/** Restores the previous content, refusing if the file changed after Clem wrote it. */
 export async function undoChange(folders: Folder[], change: Change) {
   if (change.undone) throw Error("This change was already undone.");
   const folder = folders.find((f) => f.id === change.folderId);

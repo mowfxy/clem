@@ -32,13 +32,13 @@ async function pageInfo(bytes: Uint8Array) {
 }
 
 /**
- * Crops reused in files Mowr makes, end to end in Electron (scripts/verify/pdf-crops.ts): the circuit cut from the
+ * Crops reused in files Clem makes, end to end in Electron (scripts/verify/pdf-crops.ts): the circuit cut from the
  * textbook page goes into a PDF as vectors, exactly where its placeholder printed and at its own proportions, with its
  * caption and source; into Word and PowerPoint as the very PNG that was cut; and a crop whose vector copy is missing
  * still prints, as its PNG.
  */
 test("a crop is a figure in PDFs (as vectors), Word documents and decks (as its PNG)", { timeout: 600_000 }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mowr-crops-"));
+  const dir = mkdtempSync(join(tmpdir(), "clem-crops-"));
   const source = new Uint8Array(await fixture("textbook-circuit.pdf"));
   const pdf = await open(source);
   const a = await analysePage(lib, pdf, 1, kit);
@@ -59,7 +59,7 @@ test("a crop is a figure in PDFs (as vectors), Word documents and decks (as its 
   const run = spawnSync(process.execPath, ["scripts/verify/pdf-crops.mjs", dir], { encoding: "utf8", timeout: 600_000 });
   assert.equal(run.status, 0, run.stdout + run.stderr);
   for (const name of ["report.pdf", "fallback.pdf", "report.docx", "deck.pptx"]) assert.match(run.stdout, new RegExp(`ok ${name.replace(".", "\\.")}`), run.stdout);
-  // An edit of a PDF Mowr just made: a new file named after it, with its edits listed and its source kept as a copy.
+  // An edit of a PDF Clem just made: a new file named after it, with its edits listed and its source kept as a copy.
   const edited = JSON.parse(/ok edited\.pdf \d+ (.*)/.exec(run.stdout)![1]);
   assert.equal(edited.name, "report (edited).pdf");
   assert.equal(edited.info.pages, 2);

@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState,type CSSProperties} from 'react';
 import {Icon} from '../Icons';
-import {PEAKS,peaksTier} from '../../core/peaks';
+import {MARK_ARC,MARK_CURSOR as C,MARK_NUDGE} from '../../core/mark';
 import {getBlob,storeBlob,deleteBlob,download,sizeLabel} from '../store';
 import {desktop} from '../desktop/bridge';
 import {packStudy,unpackStudy,cardCount,packFileName,PACK_EXTENSION,type StudyPack} from '../../core/study-pack';
@@ -49,7 +49,7 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
       const blobs:Record<string,Uint8Array>={};
       for(const f of chosen.files){const b=await getBlob(f.id);if(!b)throw Error(f.name+' is missing from this PC.');blobs[f.id]=new Uint8Array(await b.arrayBuffer());}
       const base=shareFolder?pathOf(folders,shareFolder.parentId):'';
-      const pack:StudyPack={format:'mowr-study-pack',version:1,title,description:space.description,author:showName&&author.trim()?author.trim():undefined,created:Date.now(),
+      const pack:StudyPack={format:'clem-study-pack',version:1,title,description:space.description,author:showName&&author.trim()?author.trim():undefined,created:Date.now(),
         sets:chosen.sets.map(s=>({kind:s.kind,title:s.title,items:s.items})),
         files:chosen.files.map(f=>{const p=pathOf(folders,f.folderId);return {id:f.id,name:f.name,type:f.type||'application/octet-stream',size:blobs[f.id].length,folder:(base&&p.startsWith(base+'/')?p.slice(base.length+1):p)||undefined};})};
       const data=await packStudy(pack,blobs);
@@ -64,7 +64,7 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
     {!result?<>
       <header className="sh-head"><div><span className="sh-eyebrow">Share</span><h2>{title}</h2></div><button className="icon-button" aria-label="Close" onClick={close}><Icon name="close" size={18}/></button></header>
       <div className="sh-body">
-        <p className="sh-lead">Choose what your friends get. They open it in Mowr and it becomes their own subject.</p>
+        <p className="sh-lead">Choose what your friends get. They open it in Clem and it becomes their own subject.</p>
         <div className="sh-options">
           {!shareFolder&&cards.length>0&&<Option on={pick.has('cards')} onToggle={()=>toggle('cards')} icon="subjects" tone="cards" title="Flashcards" detail={`${cards.reduce((n,s)=>n+s.items.length,0)} cards in ${cards.length} deck${cards.length===1?'':'s'}`}/>}
           {!shareFolder&&quizzes.length>0&&<Option on={pick.has('quizzes')} onToggle={()=>toggle('quizzes')} icon="check" tone="quiz" title="Quizzes" detail={`${quizzes.length} quiz${quizzes.length===1?'':'zes'}`}/>}
@@ -87,7 +87,7 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
       <h2>Drag it into any chat.</h2>
       <p>WhatsApp, Discord, Teams, email — anywhere you can drop a file.</p>
       <div className="sh-file" draggable={!!result.path} onDragStart={e=>{if(result.path&&desktop?.startDrag){e.preventDefault();desktop.startDrag(result.path);}}} aria-description={result.path?'Drag me':''}>
-        <span className="sh-file-icon"><svg viewBox="0 0 100 100" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{peaksTier(26).offsets.map(([x,y],i)=><path key={i} d={PEAKS} transform={`translate(${x} ${y})`}/>)}</svg></span>
+        <span className="sh-file-icon"><svg viewBox="0 0 100 100" width="26" height="26" aria-hidden="true"><g transform={MARK_NUDGE}><path d={MARK_ARC} fill="none" stroke="currentColor" strokeWidth="13" strokeLinecap="round"/><rect x={C.x} y={C.y} width={C.width} height={C.height} rx={C.rx} fill="currentColor"/></g></svg></span>
         <span><strong>{result.name}</strong><small>{result.summary} · {sizeLabel(result.size)}</small></span>
         {result.path&&<span className="sh-grip" aria-hidden="true">⠿</span>}
       </div>
@@ -96,7 +96,7 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
         <button onClick={()=>download(new Blob([result.bytes.slice()],{type:'application/zip'}),result.name)}><Icon name="download" size={15}/>Save a copy</button>
         <button className="primary" onClick={close}>Done</button>
       </div>
-      {result.path&&<p className="sh-where">Also saved in Downloads\Mowr</p>}
+      {result.path&&<p className="sh-where">Also saved in Downloads\Clem</p>}
     </div>}
   </dialog>;
 }
@@ -153,6 +153,6 @@ export function PackPreview({opened,subjects,onImport,onCancel}:{opened:OpenedPa
       {subjects.length>0&&<details className="po-where"><summary>{target==='new'?'Adds a new subject':`Adds to ${subjects.find(s=>s.id===target)?.name}`} · change</summary><select value={target} onChange={e=>setTarget(e.target.value)} aria-label="Add to"><option value="new">A new subject: {pack.title}</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></details>}
       <p className="sh-private"><Icon name="check" size={14}/>Checked on this PC. New cards start fresh in your own review schedule.</p>
     </div>
-    <footer className="sh-foot"><button className="sh-ghost" onClick={onCancel}>Not now</button><button className="primary" disabled={busy} onClick={()=>{setBusy(true);void onImport(target==='new'?null:subjects.find(s=>s.id===target)||null).finally(()=>setBusy(false));}}>{busy?'Adding…':'Add to Mowr'}<Icon name="arrow" size={16}/></button></footer>
+    <footer className="sh-foot"><button className="sh-ghost" onClick={onCancel}>Not now</button><button className="primary" disabled={busy} onClick={()=>{setBusy(true);void onImport(target==='new'?null:subjects.find(s=>s.id===target)||null).finally(()=>setBusy(false));}}>{busy?'Adding…':'Add to Clem'}<Icon name="arrow" size={16}/></button></footer>
   </dialog>;
 }

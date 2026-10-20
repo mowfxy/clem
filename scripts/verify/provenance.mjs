@@ -17,7 +17,7 @@ try {
     return Array.from(
       new Uint8Array(
         await (
-          await markContent(new Blob(["A Mowr document"]), "work.md")
+          await markContent(new Blob(["A Clem document"]), "work.md")
         ).arrayBuffer(),
       ),
     );
@@ -35,7 +35,7 @@ try {
     });
   await page
     .getByRole("status")
-    .filter({ hasText: "Made with Mowr" })
+    .filter({ hasText: "Made with Clem" })
     .waitFor();
   assert.equal(uploads.length, 0);
   await page.screenshot({ path: "artifacts/checker.png" });
@@ -48,7 +48,7 @@ try {
     });
   await page
     .getByRole("status")
-    .filter({ hasText: "No Mowr mark found" })
+    .filter({ hasText: "No Clem mark found" })
     .waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(

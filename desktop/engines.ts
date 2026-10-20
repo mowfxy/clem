@@ -6,9 +6,9 @@ import {join} from 'node:path';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 
-// Keeps the provider programs Mowr runs up to date, so a model a person's plan just gained shows up in Mowr too.
+// Keeps the provider programs Clem runs up to date, so a model a person's plan just gained shows up in Clem too.
 // Providers only offer a new model to a program new enough to use it: an old Codex never lists it, whatever the
-// account allows. Codex ships inside Mowr, so between Mowr releases Mowr fetches OpenAI's own published Windows build
+// account allows. Codex ships inside Clem, so between Clem releases Clem fetches OpenAI's own published Windows build
 // of the official @openai/codex package from the npm registry, checks it against the registry's sha512, and runs that
 // unmodified build. Claude Code and Grok update with their vendors' own updater and installer.
 
@@ -51,7 +51,7 @@ function run(executable: string, args: string[], timeout: number, cwd?: string) 
 }
 
 /**
- * The Codex program Mowr runs: the newest of the copy shipped with Mowr and the verified builds downloaded since.
+ * The Codex program Clem runs: the newest of the copy shipped with Clem and the verified builds downloaded since.
  * `executable()` is read at every start, so an update takes effect on the next Codex process without a restart.
  */
 export class CodexEngine {
@@ -65,7 +65,7 @@ export class CodexEngine {
   constructor(bundled: string, root: string) { this.bundled = bundled; this.root = join(root, 'engines', 'codex'); this.pick(); void this.prune(); }
   /**
    * At start no Codex is running yet, so only the newest downloaded build is kept (each is about 420 MB); the build an
-   * update replaces stays until then, in case a chat is still using it. Unpacking left behind by a closed Mowr goes too.
+   * update replaces stays until then, in case a chat is still using it. Unpacking left behind by a closed Clem goes too.
    */
   private async prune() {
     const keep = this.current?.version;
@@ -91,7 +91,7 @@ export class CodexEngine {
     this.current = best && (!this.bundledVersion || newer(best, this.bundledVersion)) ? {path: join(this.root, best, 'bin', 'codex.exe'), version: best} : null;
   }
   executable() { return this.current?.path || this.bundled; }
-  /** The version in use. The first call reads the shipped copy's version, so a Mowr update that ships a newer
+  /** The version in use. The first call reads the shipped copy's version, so a Clem update that ships a newer
    *  Codex than the one downloaded earlier switches back to the shipped one. */
   async version() {
     if (!this.bundledVersion) {

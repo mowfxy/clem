@@ -33,7 +33,7 @@ function Share({items,total,note}:{items:{key:string;label:string;value:number;s
 export function Stats(){
   const [range,setRange]=useState(30);
   const {data,error,loading,reload}=useLoad(()=>adminApi<Stats>(`/admin/stats?days=${range}`),[range]);
-  const head=<PageHead scene="kite" title="Stats" line="Which AIs people pick and how they use Mowr. Counts only, never what anyone wrote.">
+  const head=<PageHead scene="kite" title="Stats" line="Which AIs people pick and how they use Clem. Counts only, never what anyone wrote.">
     <div className="adm-segment" role="tablist" aria-label="Time range">{[7,30,90].map(n=><button key={n} role="tab" aria-selected={range===n} className={range===n?'on':''} onClick={()=>setRange(n)}>{n} days</button>)}</div>
     <button className="adm-ghost" onClick={reload}><I name="refresh"/>Refresh</button>
   </PageHead>;

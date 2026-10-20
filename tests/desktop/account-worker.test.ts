@@ -88,7 +88,7 @@ test("account endpoints enforce identity, atomic username ownership and absent c
       available: false,
       valid: true,
     });
-    // Mowr is free: every signed-in account has access and checkout is never needed.
+    // Clem is free: every signed-in account has access and checkout is never needed.
     assert.equal((await call("/checkout", {})).status, 409);
     assert.deepEqual(await (await call("/entitlement")).json(), {
       active: true,

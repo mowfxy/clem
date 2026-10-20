@@ -13,7 +13,7 @@ import {liveText} from './live-reply.ts';
  * sources (such as YouTube videos) on the person's own plan. With `mcpConfig` (the path of a config file holding the endpoint and its token), Kinetra is a native
  * tool as well (desktop/kinetra-mcp.ts): it is the only MCP server loaded (--strict-mcp-config), it is allowed without a
  * prompt, and one reply may make as many calls as the tool loop allows. Safe mode is left out then, since it turns off
- * every MCP server; Claude Code runs in Mowr's own configuration folder and workspace either way.
+ * every MCP server; Claude Code runs in Clem's own configuration folder and workspace either way.
  */
 export function claudeArgs(model:string,effort:string|undefined,session:{id:string;resume:boolean}|undefined,mcpConfig?:string,bare=false){
   const tools=mcpConfig
@@ -38,7 +38,7 @@ export const CLAUDE_CLI_TOOLS='Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Todo
 export const CLAUDE_AGENT_TOOLS='Task,Agent';
 /** The tools a writer has: its own file tools, the web and Kinetra. It starts no further subagents. */
 const WRITER_TOOLS=['Read','Write','Edit','Glob','Grep','WebSearch','WebFetch','ToolSearch',CLAUDE_TOOL];
-export const WRITER='mowr-writer';
+export const WRITER='clem-writer';
 /**
  * Claude Code's subagent for one document of several (--agents, one file per answer). A request for a document per
  * lecture used to read every lecture into one conversation, and every later step re-read all of them; a writer reads
@@ -48,13 +48,13 @@ export const WRITER='mowr-writer';
 export function claudeWriters(prompt:string){
   return JSON.stringify({[WRITER]:{
     description:'Writes ONE complete document (pdf or docx) for the person from given source files, at full depth, and makes it with Kinetra. Use one per document when a request needs two or more documents; start them together.',
-    prompt:`${prompt}\n\nYOU ARE A MOWR DOCUMENT WRITER: Mowr's main assistant started you for ONE document. Your task says what the person asked (word for word), which document you write, its sources and its draft file. Read those sources yourself (open each PDF and read its pages as drawn, several page ranges at once), check every number with Kinetra, write the draft at full depth (everything the request and the sources call for; nothing summarised away), make the file with one pdf or docx request (with its "plan" and a check after every worked example), look at what comes back and fix what is wrong; until the result says every planned part is written, keep writing. Then reply in a few lines: the file's id and name, what it covers, and anything you could not do. The document is for the person, not for the assistant.`,
+    prompt:`${prompt}\n\nYOU ARE A CLEM DOCUMENT WRITER: Clem's main assistant started you for ONE document. Your task says what the person asked (word for word), which document you write, its sources and its draft file. Read those sources yourself (open each PDF and read its pages as drawn, several page ranges at once), check every number with Kinetra, write the draft at full depth (everything the request and the sources call for; nothing summarised away), make the file with one pdf or docx request (with its "plan" and a check after every worked example), look at what comes back and fix what is wrong; until the result says every planned part is written, keep writing. Then reply in a few lines: the file's id and name, what it covers, and anything you could not do. The document is for the person, not for the assistant.`,
     tools:WRITER_TOOLS,model:'inherit'}});
 }
 /** What the answer itself is told about its writers (the guide in its prompt explains documents; this, when to delegate). */
-export const WRITERS_NOTE=`SEVERAL DOCUMENTS: when the request needs two or more documents (one per lecture, chapter or file), give each one to a ${WRITER} subagent and start them all in the same turn (parallel calls), rather than reading every source yourself: each writer reads only its own sources, so the work is faster and uses far less of the person's plan. Tell each writer: the person's request word for word, the one document it writes (title, kind, everything it must cover), its source files (paths in your working folder) and pages, and its draft file (in your drafts folder, one file each). Read a source yourself only as far as you need to divide the work. When the writers finish, check each report (the file was made, nothing was left out), then answer the person. When Mowr says a writer's document is unfinished (planned sections missing or a stub, worked examples without a check), start a new ${WRITER} for just that: its draft file, what is missing, and the sources and pages those parts come from. Never read a writer's sources yourself to finish its document. One document: write it yourself.`;
+export const WRITERS_NOTE=`SEVERAL DOCUMENTS: when the request needs two or more documents (one per lecture, chapter or file), give each one to a ${WRITER} subagent and start them all in the same turn (parallel calls), rather than reading every source yourself: each writer reads only its own sources, so the work is faster and uses far less of the person's plan. Tell each writer: the person's request word for word, the one document it writes (title, kind, everything it must cover), its source files (paths in your working folder) and pages, and its draft file (in your drafts folder, one file each). Read a source yourself only as far as you need to divide the work. When the writers finish, check each report (the file was made, nothing was left out), then answer the person. When Clem says a writer's document is unfinished (planned sections missing or a stub, worked examples without a check), start a new ${WRITER} for just that: its draft file, what is missing, and the sources and pages those parts come from. Never read a writer's sources yourself to finish its document. One document: write it yourself.`;
 /**
- * Claude Code as itself, for an answer with tools: its own system prompt (Mowr's rules are appended to it), its own
+ * Claude Code as itself, for an answer with tools: its own system prompt (Clem's rules are appended to it), its own
  * file tools working in the conversation's folder, and Kinetra as its one MCP server. --restricted removes every tool
  * that runs commands or code, keeps the file tools inside the working directories (the folder and `addDirs`), and
  * ignores the person's own Claude Code settings; `settingsFile` adds the rules for this answer (linked folders are
@@ -86,11 +86,11 @@ import {describeTool,StepCounter} from './tool-status.ts';
 function logUsage(model:string,result:any){
   const u=result?.usage;if(!u)return;
   const n=(x:unknown)=>Number(x)||0;
-  console.log(`[mowr tokens] ${model} steps=${n(result.num_turns)} input=${n(u.input_tokens)} cache-write=${n(u.cache_creation_input_tokens)} cache-read=${n(u.cache_read_input_tokens)} output=${n(u.output_tokens)} ms=${n(result.duration_ms)}`);
+  console.log(`[clem tokens] ${model} steps=${n(result.num_turns)} input=${n(u.input_tokens)} cache-write=${n(u.cache_creation_input_tokens)} cache-read=${n(u.cache_read_input_tokens)} output=${n(u.output_tokens)} ms=${n(result.duration_ms)}`);
 }
 /**
  * Whether Claude Code can open a PDF's pages itself: its Read renders page ranges with poppler's pdftoppm, which it
- * looks for on the PATH it inherits from Mowr. Without it every page read fails ("pdftoppm is not installed"), so the
+ * looks for on the PATH it inherits from Clem. Without it every page read fails ("pdftoppm is not installed"), so the
  * working folder treats Claude like Codex: PDF text in _text/ and pages through Kinetra's look.
  */
 let pdfPages:boolean|undefined;
@@ -102,7 +102,7 @@ export function claudeOpensPdfPages(path=process.env.PATH||''){
  * The whole system prompt of a side job (desktop/main.ts quickAsk): in place of Claude Code's own, which describes a
  * coding agent's tools and ways of working and is several thousand tokens read again by every memory note and file name.
  */
-export const SIDE_JOB_SYSTEM='You are a helper inside Mowr, a desktop app for learning and professional work. Do exactly the task the message gives, from the text (and any file) it includes, and reply with only what the task asks for, in the format it names. You have no tools.';
+export const SIDE_JOB_SYSTEM='You are a helper inside Clem, a desktop app for learning and professional work. Do exactly the task the message gives, from the text (and any file) it includes, and reply with only what the task asks for, in the format it names. You have no tools.';
 export type ClaudeImage = { mime: string; data: string };
 export type ClaudePdf = { name: string; data: string };
 /** A Claude Code too old for --system-prompt-file: the step is run again with the rules in the message. */
@@ -202,12 +202,12 @@ export function claudeFailure({result,apiError,apiText='',stderr='',refused=fals
 }
 /** A failure that looks like a lapsed sign-in: the next request checks the sign-in again instead of trusting the last check. */
 const signedOut=/not logged in|log ?in|unauthori[sz]ed|\b401\b|authenticat|oauth token|invalid api key/i;
-/** Model names Mowr passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
+/** Model names Clem passes to `--model`: Claude Code's aliases and ids, such as opus, claude-opus-5-5 or sonnet[1m]. */
 const MODEL_NAME=/^[A-Za-z0-9._-]{1,80}(?:\[[a-z0-9]{1,8}\])?$/;
 
 /**
  * Claude Code names its models by family only ("Opus", "Fable"); the version sits at the start of the description
- * ("Opus 5.5 · Best for…") and in `resolvedModel` (claude-opus-5-5). Mowr shows both, as "Claude Opus 5.5",
+ * ("Opus 5.5 · Best for…") and in `resolvedModel` (claude-opus-5-5). Clem shows both, as "Claude Opus 5.5",
  * keeping a qualifier such as "(1M context)".
  */
 export function claudeModelName(m:any,value:string){
@@ -226,7 +226,7 @@ export function claudeModelName(m:any,value:string){
 
 /**
  * The models Claude Code offers this account, from its own startup handshake (the list its model picker shows),
- * so a model added to the person's plan appears without a Mowr update. "default" only repeats one of the others.
+ * so a model added to the person's plan appears without a Clem update. "default" only repeats one of the others.
  */
 export function parseClaudeModels(list:any):ClaudeModel[]{
   if(!Array.isArray(list))return [];
@@ -254,13 +254,13 @@ export function claudeSubscriptionStatus(raw:string,code:number|null) {
 /**
  * Claude Code on the person's plan. An answer with tools runs it as itself in the conversation's working folder
  * (claudeCliArgs: its own prompt and file tools, no commands or code); short internal requests run it with web search
- * only. Either way no plugins or settings of the person's own, and no MCP server but Mowr's Kinetra one (desktop/kinetra-mcp.ts).
+ * only. Either way no plugins or settings of the person's own, and no MCP server but Clem's Kinetra one (desktop/kinetra-mcp.ts).
  */
 export class ClaudeProvider {
   private active=new Map<string,ChildProcessWithoutNullStreams>();
   /** Set when this Claude Code refused --session-id/--resume: tool loops then run without a session. */
   private noSessions=false;
-  /** Set when this Claude Code refused --system-prompt-file: Mowr's rules then go at the top of the message. */
+  /** Set when this Claude Code refused --system-prompt-file: Clem's rules then go at the top of the message. */
   private noSystemFile=false;
   /** Set when this Claude Code refused --agents: answers then write every document themselves. */
   private noAgents=false;
@@ -324,7 +324,7 @@ export class ClaudeProvider {
   /** Whether a request is running on this account (an account is never switched or removed mid-answer). */
   get busy(){return this.active.size>0;}
   private configured:string;
-  /** Re-resolved each time so a Claude Code that Mowr just installed is found without restarting. */
+  /** Re-resolved each time so a Claude Code that Clem just installed is found without restarting. */
   private get executable(){return this.configured==='claude'?installedPath('claude','claude'):this.configured;}
   private root:string;
   constructor(executable:string,root:string){this.configured=executable;this.root=root;}
@@ -390,16 +390,16 @@ export class ClaudeProvider {
         while((newline=buffer.indexOf('\n'))>=0){
           const line=buffer.slice(0,newline);buffer=buffer.slice(newline+1);
           let event:any;try{event=JSON.parse(line);}catch{continue;}
-          if(event.type!=='control_response'||event.response?.request_id!=='mowr-models')continue;
+          if(event.type!=='control_response'||event.response?.request_id!=='clem-models')continue;
           finish(parseClaudeModels(event.response?.response?.models??event.response?.models));
         }
       });
       child.stderr.resume();child.on('error',()=>finish([]));child.on('close',()=>finish([]));
-      child.stdin.write(JSON.stringify({type:'control_request',request_id:'mowr-models',request:{subtype:'initialize'}})+'\n');
+      child.stdin.write(JSON.stringify({type:'control_request',request_id:'clem-models',request:{subtype:'initialize'}})+'\n');
     });
   }
-  /** Claude Code's own updater, at most once a day: a new model can need a newer Claude Code. Mowr turns off
-   *  Claude Code's background traffic, which includes its automatic updates, so Mowr asks for them here instead. */
+  /** Claude Code's own updater, at most once a day: a new model can need a newer Claude Code. Clem turns off
+   *  Claude Code's background traffic, which includes its automatic updates, so Clem asks for them here instead. */
   async update(){
     if(!(await this.status()).installed)return;
     const child=await this.start(['update']).catch(()=>null);
@@ -407,11 +407,11 @@ export class ClaudeProvider {
     await new Promise<void>(resolve=>{const timer=setTimeout(()=>child.kill(),5*60_000);child.stdout.resume();child.stderr.resume();child.on('error',()=>{clearTimeout(timer);resolve();});child.on('close',()=>{clearTimeout(timer);resolve();});child.stdin.end();});
     this.catalog=null;
   }
-  /** `page`: opens Claude's sign-in page in a Mowr window (see signInWindow); without it the default browser is used. */
+  /** `page`: opens Claude's sign-in page in a Clem window (see signInWindow); without it the default browser is used. */
   async login(page?:(url:string)=>()=>void){
     await mkdir(this.root,{recursive:true});
     this.statusCache=null;
-    return signInWindow({title:'Sign in to Claude · Mowr',message:page?'Sign in with your Claude account in the Mowr window that opens.':'Sign in with your Claude account in the browser that opens.',env:this.env(),
+    return signInWindow({title:'Sign in to Claude · Clem',message:page?'Sign in with your Claude account in the Clem window that opens.':'Sign in with your Claude account in the browser that opens.',env:this.env(),
       ...(page?{page:{hosts:/^(?:[a-z0-9-]+\.)*(?:claude\.ai|claude\.com|anthropic\.com)$/,open:page}}:{}),
       command:`$env:CLAUDE_CONFIG_DIR='${this.root.replace(/'/g,"''")}'; & '${this.executable.replace(/'/g,"''")}' auth login`,
       signedIn:async()=>(await this.status(true)).connected});
@@ -422,7 +422,7 @@ export class ClaudeProvider {
    * The reply streams as `partial` events while it is written (desktop/live-reply.ts); the final `delta` is the
    * confirmed result, which alone is read for tool requests.
    */
-  /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. `system`: Mowr's system prompt.
+  /** `native`: Kinetra's tool calls for this reply, offered as a native tool through a local MCP endpoint. `system`: Clem's system prompt.
    *  `pdfs`: PDFs read whole as document blocks, as claude.ai takes an upload (every page as drawn plus its text). */
   async run(id:string,prompt:string,model:string,effort:string|undefined,emit:(event:any)=>void,images:ClaudeImage[]=[],session?:{id:string;resume:boolean},native?:NativeCall,{system,pdfs=[],workspace,bare=false}:{system?:string;pdfs?:ClaudePdf[];workspace?:ClaudeWorkspace;bare?:boolean}={}):Promise<void>{
     // A side job replaces Claude Code's coding-agent prompt (and its tools) with a few lines: it answers from the text it is given.
@@ -432,10 +432,10 @@ export class ClaudeProvider {
     // A Claude Code that refused the session flags once runs every later step without them (the tool loop resends everything).
     // A session to go on cannot be resumed by a CLI that keeps none: the message is sent again with everything instead.
     if(this.noSessions){if(session?.resume)throw new SessionLost('This Claude Code does not keep sessions.');session=undefined;}
-    // One without --system-prompt-file gets Mowr's rules ahead of the request, as before, rather than not at all.
+    // One without --system-prompt-file gets Clem's rules ahead of the request, as before, rather than not at all.
     if(system&&this.noSystemFile){prompt=system+'\n\n'+prompt;system=undefined;}
     if(!model.startsWith('claude:')||!MODEL_NAME.test(model.slice(7)))throw Error('Choose a supported Claude model.');
-    // Checked against the account's own list when Mowr has it; otherwise Claude Code itself refuses an unknown model.
+    // Checked against the account's own list when Clem has it; otherwise Claude Code itself refuses an unknown model.
     const listed=this.listed;
     const selected=listed.find(item=>item.id===model);
     if(!selected&&this.catalog)throw Error('That Claude model is no longer available on your plan. Pick another one.');
@@ -446,10 +446,10 @@ export class ClaudeProvider {
     if(native&&!session?.resume)prompt=NATIVE_NOTE+prompt;
     // While a native Kinetra call runs Claude Code prints nothing, so the inactivity limit below is kept from firing.
     let alive=()=>{};
-    // Mowr's own system prompt replaces Claude Code's coding-agent one (a file: it is far past Windows' command-line limit).
+    // Clem's own system prompt replaces Claude Code's coding-agent one (a file: it is far past Windows' command-line limit).
     // A resumed session reuses the one it recorded; it is passed again for a Claude Code that does not record it.
     const systemFile=system?join(this.root,'workspace','.system-'+randomUUID()+'.txt'):undefined;
-    // In a working folder Claude Code keeps its own prompt and Mowr's rules follow it; the linked folders it may only read go in its settings.
+    // In a working folder Claude Code keeps its own prompt and Clem's rules follow it; the linked folders it may only read go in its settings.
     const settingsFile=workspace?.readOnly?.length||workspace?.protect?.length?join(this.root,'workspace','.settings-'+randomUUID()+'.json'):undefined;
     if(settingsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(settingsFile,claudeCliSettings([...(workspace!.readOnly||[]),...(workspace!.protect||[])]));}
     // Writers need Kinetra, so they come only with the native tool; a Claude Code too old for --agents runs without them.
@@ -585,9 +585,9 @@ export class ClaudeProvider {
     });
   }
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk.
-   *  MOWR_KEEP_SESSIONS=1 keeps them, to see afterwards what every step sent and cost. */
+   *  CLEM_KEEP_SESSIONS=1 keeps them, to see afterwards what every step sent and cost. */
   async endSession(sessionId:string){
-    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||process.env.MOWR_KEEP_SESSIONS)return;
+    if(!/^[0-9a-f-]{36}$/i.test(sessionId)||process.env.CLEM_KEEP_SESSIONS)return;
     const projects=join(this.root,'projects');
     for(const folder of await readdir(projects).catch(()=>[] as string[])){
       await rm(join(projects,folder,sessionId+'.jsonl'),{force:true}).catch(()=>{});

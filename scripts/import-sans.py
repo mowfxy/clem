@@ -1,4 +1,4 @@
-# Imports Mowafy Sans from a checkout of mowfxy/sans (6.0 layout) into Mowr.
+# Imports Mowafy Sans from a checkout of mowfxy/sans (6.0 layout) into Clem.
 #   python scripts/import-sans.py <path-to-sans-checkout>
 # Copies the five weights, their italics and the script and math companions into public/fonts, and rewrites the
 # Mowafy Sans block in src/type.css from the package's own mowafy-sans.css. That CSS declares every companion under

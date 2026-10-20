@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { neonConfig } from "@neondatabase/serverless";
-process.env.MOWR_LEGACY_WORKSPACE="true";
+process.env.CLEM_LEGACY_WORKSPACE="true";
 const pg = new PGlite();
 await pg.exec(await fs.readFile("database/001_core.sql", "utf8"));
 await pg.exec(await fs.readFile("database/002_accounts.sql", "utf8"));
@@ -139,7 +139,7 @@ test("accounts, scoped persistence and encrypted connections work with PostgreSQ
     ).status,
     200,
   );
-  const creds = await pg.query("SELECT ciphertext FROM mowr_credentials");
+  const creds = await pg.query("SELECT ciphertext FROM clem_credentials");
   assert.ok(!(creds.rows[0] as any).ciphertext.includes("test-dummy"));
   const models = await (await request("models", "GET", undefined, bc)).json();
   assert.equal(models.find((m:any)=>m.id==='anthropic').connected, false);
@@ -186,8 +186,8 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
  const rawFetch=globalThis.fetch;
  const names=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','APP_URL'];const previous=Object.fromEntries(names.map(n=>[n,process.env[n]]));
  Object.assign(process.env,{SUPABASE_URL:'https://drive-test.supabase.co',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_test',GOOGLE_CLIENT_ID:'test-id',GOOGLE_CLIENT_SECRET:'test-secret',APP_URL:'http://127.0.0.1:5173'});
- await pg.exec('CREATE TABLE IF NOT EXISTS mowr_security (owner_id text primary key,email_mfa boolean default false)');
- const uid='11111111-1111-4111-8111-111111111111';await pg.query('INSERT INTO mowr_users(id,display_name) VALUES($1,$2) ON CONFLICT DO NOTHING',['supabase:'+uid,'Drive test']);
+ await pg.exec('CREATE TABLE IF NOT EXISTS clem_security (owner_id text primary key,email_mfa boolean default false)');
+ const uid='11111111-1111-4111-8111-111111111111';await pg.query('INSERT INTO clem_users(id,display_name) VALUES($1,$2) ON CONFLICT DO NOTHING',['supabase:'+uid,'Drive test']);
  const token='e30.'+Buffer.from(JSON.stringify({aal:'aal1'})).toString('base64url')+'.test';let exportUrl='',revoked=false,uploaded='';
  globalThis.fetch=async(input:any,init:any)=>{
   const url=String(input);
@@ -204,7 +204,7 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
  };
  const base=`http://127.0.0.1:${port}/api/drive/`;
  const headers={Authorization:'Bearer '+token,Origin:'http://127.0.0.1:5173'};
- const cookie='mowr_supabase='+token;
+ const cookie='clem_supabase='+token;
  try{
   assert.equal((await rawFetch(base+'files',{headers:{Authorization:'Bearer forged'}})).status,401);
   const connect=await rawFetch(base+'connect?desktop=1&account='+uid,{headers:{Cookie:cookie},redirect:'manual'});assert.equal(connect.status,302);
@@ -212,7 +212,7 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
   const wrong=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie},redirect:'manual'});assert.equal(wrong.status,400);
   const callback=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie+'; '+oauthCookie},redirect:'manual'});assert.equal(callback.status,200);assert.match(await callback.text(),/Drive is connected/);
   assert.equal((await rawFetch(base+'files',{headers})).status,200);
-  const download=await rawFetch(base+'file/doc123',{headers});assert.equal(download.status,200);assert.equal(decodeURIComponent(download.headers.get('X-Mowr-File-Name')!),'Research.docx');assert.match(exportUrl,/wordprocessingml/);
+  const download=await rawFetch(base+'file/doc123',{headers});assert.equal(download.status,200);assert.equal(decodeURIComponent(download.headers.get('X-Clem-File-Name')!),'Research.docx');assert.match(exportUrl,/wordprocessingml/);
   // Drive decides the type, so a shared HTML file opened by URL must download, not run on this origin.
   assert.equal(download.headers.get('Content-Disposition'),'attachment');assert.match(download.headers.get('Content-Security-Policy')!,/sandbox/);
   // Uploads carry raw file bytes of any type (JSON included), from the desktop's bearer token or a same-origin page.
@@ -221,8 +221,8 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
   assert.equal((await rawFetch(base+'upload?folder=fold123&name=notes.txt',{method:'POST',headers:{Cookie:cookie,Origin:'http://127.0.0.1:5173','Content-Type':'text/plain'},body:'hello'})).status,200);
   assert.equal((await rawFetch(base+'upload?folder=fold123&name=notes.txt',{method:'POST',headers:{Cookie:cookie,Origin:'https://untrusted.example','Content-Type':'text/plain'},body:'hello'})).status,403);
   assert.equal((await rawFetch(base+'connection',{method:'DELETE',headers})).status,200);assert.ok(revoked);
-  assert.equal((await pg.query("SELECT * FROM mowr_credentials WHERE owner_id=$1 AND provider='drive'",['supabase:'+uid])).rows.length,0);
-  await pg.query('INSERT INTO mowr_security(owner_id,email_mfa) VALUES($1,true)',['supabase:'+uid]);
+  assert.equal((await pg.query("SELECT * FROM clem_credentials WHERE owner_id=$1 AND provider='drive'",['supabase:'+uid])).rows.length,0);
+  await pg.query('INSERT INTO clem_security(owner_id,email_mfa) VALUES($1,true)',['supabase:'+uid]);
   // With email two-step on, neither a cookie session without the code nor a bearer token (which cannot carry it) reaches Drive.
   assert.equal((await rawFetch(base+'files',{headers:{Cookie:cookie}})).status,401);
   assert.equal((await rawFetch(base+'files',{headers})).status,401);
@@ -230,12 +230,12 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
  }finally{globalThis.fetch=rawFetch;for(const name of names){if(previous[name]===undefined)delete process.env[name];else process.env[name]=previous[name];}}
 });
 
-test('production storage policy blocks legacy workspace uploads',async()=>{delete process.env.MOWR_LEGACY_WORKSPACE;try{for(const path of ['workspace','scopes','files/reserve'])assert.equal((await request(path,'POST',{})).status,410);}finally{process.env.MOWR_LEGACY_WORKSPACE='true';}});
+test('production storage policy blocks legacy workspace uploads',async()=>{delete process.env.CLEM_LEGACY_WORKSPACE;try{for(const path of ['workspace','scopes','files/reserve'])assert.equal((await request(path,'POST',{})).status,410);}finally{process.env.CLEM_LEGACY_WORKSPACE='true';}});
 
 test('subscription VM time has a per-person share and unused reservations are refunded',async()=>{
  const {reserveRuntime,refundRuntime,USER_MONTHLY_RUNTIME_SECONDS}=await import('../server/subscriptions.ts');
- await pg.exec('CREATE TABLE IF NOT EXISTS mowr_runtime_budget(month text primary key,reserved_seconds integer not null default 0)');
- const month=new Date().toISOString().slice(0,7),used=async(key:string)=>(await pg.query<{reserved_seconds:number}>('SELECT reserved_seconds FROM mowr_runtime_budget WHERE month=$1',[key])).rows[0]?.reserved_seconds??0;
+ await pg.exec('CREATE TABLE IF NOT EXISTS clem_runtime_budget(month text primary key,reserved_seconds integer not null default 0)');
+ const month=new Date().toISOString().slice(0,7),used=async(key:string)=>(await pg.query<{reserved_seconds:number}>('SELECT reserved_seconds FROM clem_runtime_budget WHERE month=$1',[key])).rows[0]?.reserved_seconds??0;
  const taken=[];for(let i=0;i<USER_MONTHLY_RUNTIME_SECONDS/600;i++)taken.push(await reserveRuntime('supabase:heavy',600));
  await assert.rejects(reserveRuntime('supabase:heavy',600),/Your free account connection allowance/);
  assert.equal(await used(month),USER_MONTHLY_RUNTIME_SECONDS);

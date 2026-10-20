@@ -1,13 +1,12 @@
 import {useEffect,useRef,useState} from 'react';
-import {SiteFooter,SiteHeader} from './SiteHeader';
-import {Icon,Logo} from '../Icons';
+import {Prompt,Site} from './SiteHeader';
 import {SecuritySettings} from '../AccountSettings';
 import {getSupabase} from '../supabase';
 import {REPO} from './sections';
 
 type Release={url:string;version:string;signed:boolean;sha256?:string;size?:number;released?:string;notes?:string};
 
-/** Where old "Setup" links, web sign-ins and the desktop return land: one button to get Mowr, and the account on the web. */
+/** Where old "Setup" links, web sign-ins and the desktop return land: one button to get Clem, and the account on the web. */
 export function Download({account=false,returning=false}:{account?:boolean;returning?:boolean}){
   const [release,setRelease]=useState<Release|null>(null);
   const [failed,setFailed]=useState(false);
@@ -28,7 +27,7 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
   const autostart=useRef(wantsStart()),releaseRef=useRef<Release|null>(null);
   // Older links end in "?start": they start the download right away.
   const begin=(url:string)=>{autostart.current=false;setStarted(true);history.replaceState(history.state,'',location.pathname+location.search+location.hash.replace(/[?&]start\b.*$/,''));location.href=url;};
-  useEffect(()=>{document.title='Get Mowr for Windows';window.scrollTo(0,0);},[]);
+  useEffect(()=>{document.title='Get Clem for Windows';window.scrollTo(0,0);},[]);
   useEffect(()=>{
     const abort=new AbortController();
     void fetch('/desktop-release.json',{signal:abort.signal}).then(r=>r.ok?r.json():Promise.reject()).then((value:Release)=>{
@@ -40,24 +39,23 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
     addEventListener('hashchange',onHash);
     return()=>{abort.abort();removeEventListener('hashchange',onHash);};
   },[]);
-  return <div className="sx-site">
-    <SiteHeader/>
-    <main>
-      <section className="sx-download-hero">
-        <div className="sx-hero-glow" aria-hidden="true"/>
-        <Logo size={64} still/>
-        {returning?<><h1>Welcome back.</h1><p className="sx-lede">Return to the Mowr app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></>:<>
-          <span className="sx-eyebrow">Mowr for Windows</span>
-          <h1>{started?'Your download has started.':'Get Mowr'}</h1>
-          <p className="sx-lede">Free and open source, for Windows 10 and 11.</p>
-          {link?<div className="sx-download-cta">
-            <a className="sx-btn sx-btn-primary sx-btn-lg" href={link} onClick={()=>setStarted(true)}><Icon name="download" size={19}/>{started?'Download again':'Download for Windows'}</a>
-            <p className="sx-download-meta">Windows 10 & 11 · 64-bit · {release!.version} · <a className="sx-link" href={REPO}>Source on GitHub</a></p>
-          </div>:failed?<p role="alert" className="sx-download-meta">We couldn’t load the latest release. <a className="sx-link" href="/download/windows">Try the direct link</a> or email support@mowrai.com.</p>:<p role="status" className="sx-download-meta">Finding the latest version…</p>}
-        </>}
-      </section>
-      {account&&signedIn&&<section className="sx-section sx-account"><SecuritySettings/></section>}
-    </main>
-    <SiteFooter/>
-  </div>;
+  return <Site>
+    <section className="cx-cmd cx-page"><div className="cx-wrap">
+      {returning?<><Prompt>clem --return</Prompt><h1>Welcome back.</h1><p className="cx-status">Return to the Clem app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></>:<>
+        <Prompt>clem --download windows</Prompt>
+        <h1>{started?'Your download has started.':'Get Clem for Windows.'}<span className="cx-caret" aria-hidden="true"/></h1>
+        <p className="cx-status">Free and open source, for Windows 10 and 11.</p>
+        {link?<>
+          <div className="cx-actions"><a className="cx-btn" href={link} onClick={()=>setStarted(true)}>{started?'download again':'download for windows'}</a><a href={REPO}>source on github</a></div>
+          <ul className="cx-out">
+            <li><span>version</span><span>{release!.version}</span></li>
+            <li><span>system</span><span>Windows 10 &amp; 11, 64-bit</span></li>
+            {release!.size?<li><span>size</span><span>{Math.round(release!.size/1048576)} MB</span></li>:null}
+            {release!.sha256?<li><span>sha256</span><span className="cx-hash">{release!.sha256}</span></li>:null}
+          </ul>
+        </>:failed?<p role="alert" className="cx-status">We couldn’t load the latest release. <a href="/download/windows">Try the direct link</a> or email <a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a>.</p>:<p role="status" className="cx-status">finding the latest version<span className="cx-spin"/></p>}
+      </>}
+      {account&&signedIn&&<div className="cx-account"><SecuritySettings/></div>}
+    </div></section>
+  </Site>;
 }

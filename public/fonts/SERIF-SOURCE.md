@@ -3,7 +3,7 @@ with Arabic, Greek, Hebrew, Devanagari, Bengali, Tamil, Thai, Armenian,
 Georgian, math, science and Coptic companion families).
 Import a newer revision with `python scripts/import-serif.py <serif checkout>`.
 
-Mowr ships Light, Regular, Medium, Bold, Light Italic, Italic, Medium Italic and Bold Italic. Each style has
+Clem ships Light, Regular, Medium, Bold, Light Italic, Italic, Medium Italic and Bold Italic. Each style has
 `MowafySerif-<style>.woff2`, a Latin cut (about 60 kB) that the app, emails, server pages and films load, and
 `MowafySerifFull-<style>.woff2`, the whole Mowafy Serif file (Greek, Cyrillic, extended Latin). The companions
 (`MowafyGreek-*`, `MowafyArabic-*`, `MowafyHebrew-*`, `MowafyDevanagari-*`, `MowafyBengali-*`, `MowafyTamil-*`, `MowafyThai-*`,

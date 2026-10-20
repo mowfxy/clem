@@ -1,4 +1,4 @@
-const tag = "MOWR-PROVENANCE-v1:";
+const tag = "CLEM-PROVENANCE-v1:";
 const encoder = new TextEncoder(),
   decoder = new TextDecoder();
 async function digest(bytes: Uint8Array) {
@@ -26,7 +26,7 @@ export async function markContent(blob: Blob, name: string): Promise<Blob> {
     end = zipEnd(bytes),
     hash = await digest(bytes);
   const receipt = JSON.stringify({
-    app: "Mowr",
+    app: "Clem",
     version: 1,
     sha256: hash,
     createdAt: new Date().toISOString(),
@@ -80,7 +80,7 @@ export async function checkContent(
     if (!raw) return { status: "changed" };
     const info = JSON.parse(raw);
     if (
-      info.app !== "Mowr" ||
+      info.app !== "Clem" ||
       info.version !== 1 ||
       !Number.isInteger(info.originalLength) ||
       info.originalLength < 0 ||

@@ -10,12 +10,12 @@ import {decodeEntities, isMediaType, parseCaptions, pickTrack, transcriptText, t
 
 const API = "https://www.googleapis.com/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
-const RECONNECT = "Reconnect Google Drive once so Mowr can save files into your folders.";
+const RECONNECT = "Reconnect Google Drive once so Clem can save files into your folders.";
 /** Why Google refused a save: missing permission on the connection (reconnect), or on the folder itself (shared read-only). */
 const refusal = async (r: Response) => {
   const reason = String(((await r.json().catch(() => ({}))) as {error?:{errors?:{reason?:string}[]}}).error?.errors?.[0]?.reason || "");
   return /insufficientScopes|appNotAuthorized|insufficientPermissions|authError/i.test(reason) && !/insufficientFilePermissions|insufficientParentPermissions/i.test(reason)
-    ? RECONNECT : /storageQuotaExceeded|quota/i.test(reason) ? "Your Google Drive is full." : "You can only view this Drive folder, so Mowr cannot save into it.";
+    ? RECONNECT : /storageQuotaExceeded|quota/i.test(reason) ? "Your Google Drive is full." : "You can only view this Drive folder, so Clem cannot save into it.";
 };
 type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string;modifiedTime?:string;iconLink?:string;videoMediaMetadata?:{durationMillis?:string};shortcutDetails?:{targetId?:string;targetMimeType?:string}};
 const SHORTCUT = "application/vnd.google-apps.shortcut";
@@ -33,7 +33,7 @@ const resolve = <T extends Meta>(f: T): T => f.mimeType === SHORTCUT && f.shortc
 export type DriveItem = {id:string;name:string;mimeType:string;size?:number;modified?:string;thumbnail?:boolean;durationMs?:number;path?:string;folder?:boolean};
 const FIELDS = "id,name,mimeType,size,modifiedTime,thumbnailLink,hasThumbnail,webViewLink,iconLink,videoMediaMetadata(durationMillis),shortcutDetails(targetId,targetMimeType)";
 const quote = (s: string) => "'" + s.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
-const OFFLINE = "Mowr couldn't reach Google Drive. Check your connection and try again.";
+const OFFLINE = "Clem couldn't reach Google Drive. Check your connection and try again.";
 const wait = (ms: number) => new Promise((go) => setTimeout(go, ms));
 /** A dropped connection or a timeout, rather than an answer from the server. */
 const unreached = (e: unknown) => e instanceof TypeError || /^(TimeoutError|AbortError)$/.test((e as Error)?.name || "") || /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network/i.test(String((e as Error)?.message || e));
@@ -72,7 +72,7 @@ export class DriveLive {
   private service:string;
   private known: {connected:boolean;at:number}|null = null;
   private trees = new Map<string, {at:number;items:DriveItem[];folders:string[]}>();
-  constructor(session:()=>Promise<string|null>,fetcher:typeof fetch=fetch,service="https://mowrai.com"){this.session=session;this.fetcher=fetcher;this.service=service;}
+  constructor(session:()=>Promise<string|null>,fetcher:typeof fetch=fetch,service="https://clem.m4labs.xyz"){this.session=session;this.fetcher=fetcher;this.service=service;}
 
   /** null means Drive isn't connected for this account. */
   private async token(force=false):Promise<string|null>{
@@ -103,7 +103,7 @@ export class DriveLive {
     if(r.status===401&&retry){this.cached=null;return this.google(url,init,false);}
     return r;
   }
-  /** A connection made before Mowr asked for the full Drive scope can read but not add to people's own folders;
+  /** A connection made before Clem asked for the full Drive scope can read but not add to people's own folders;
    *  it says so up front instead of letting Google refuse the file. An unknown scope (older service) is let through. */
   private async canWrite(){
     const full=()=>{const scope=this.cached?.scope||"";return !scope||scope.split(/\s+/).includes("https://www.googleapis.com/auth/drive");};
@@ -177,7 +177,7 @@ export class DriveLive {
     return await done.json() as {id:string;modifiedTime?:string};
   }
 
-  /** Replaces the contents of a file Mowr saved to Drive earlier (after an approved edit), keeping its id, name and place. */
+  /** Replaces the contents of a file Clem saved to Drive earlier (after an approved edit), keeping its id, name and place. */
   async update(fileId:string,type:string,data:Uint8Array){
     await this.canWrite();
     const mime=uploadType(type,(await this.info(fileId).catch(()=>null))?.name||"",data);
@@ -348,7 +348,7 @@ export class DriveLive {
     const m=await this.info(id),format=viewFormat(m.mimeType);
     const r=await this.google(format.export?`${API}/${id}/export?mimeType=${encodeURIComponent(format.export)}`:`${API}/${id}?alt=media&supportsAllDrives=true&acknowledgeAbuse=false`,{headers:range&&!format.export?{Range:range}:{}});
     if(!r.ok&&r.status!==206)return Response.json({error:r.status===403?"This Drive file can't be opened here. Google may block downloads for it.":"This Drive file is unavailable."},{status:r.status===404?404:502});
-    const headers=new Headers({"Content-Type":playableType(format.export||m.mimeType||r.headers.get("Content-Type")||"application/octet-stream",m.name),"Cache-Control":"no-store","Accept-Ranges":format.export?"none":"bytes","X-Mowr-File-Name":encodeURIComponent(m.name+format.extension)});
+    const headers=new Headers({"Content-Type":playableType(format.export||m.mimeType||r.headers.get("Content-Type")||"application/octet-stream",m.name),"Cache-Control":"no-store","Accept-Ranges":format.export?"none":"bytes","X-Clem-File-Name":encodeURIComponent(m.name+format.extension)});
     for(const h of ["Content-Length","Content-Range"]){const v=r.headers.get(h);if(v)headers.set(h,v);}
     return new Response(r.body,{status:r.status,headers});
   }
@@ -628,7 +628,7 @@ export class DriveMediaServer {
           if (file) { await this.stream(match[1], file, typeof req.headers.range === "string" ? req.headers.range : undefined, req.method === "HEAD", res); return; }
           const upstream = await this.drive.media(match[1], typeof req.headers.range === "string" ? req.headers.range : null);
           const headers: Record<string, string> = {};
-          upstream.headers.forEach((value, name) => { if (name !== "x-mowr-file-name") headers[name] = value; });
+          upstream.headers.forEach((value, name) => { if (name !== "x-clem-file-name") headers[name] = value; });
           res.writeHead(upstream.status, headers);
           if (req.method === "HEAD" || !upstream.body) { res.end(); return; }
           const body = Readable.fromWeb(upstream.body as never);

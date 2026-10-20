@@ -6,7 +6,7 @@ import {
   type WorkflowCheckpoint,
 } from "../core/workflow-checkpoint";
 export async function openWorkflow(owner: string, plan: Plan, context: string) {
-  const key = `mowr-workflow:${owner}:${plan.id}`;
+  const key = `clem-workflow:${owner}:${plan.id}`;
   const signature = await workflowSignature(plan, context);
   const restored = resumeWorkflow(
     plan,
@@ -26,6 +26,6 @@ export async function openWorkflow(owner: string, plan: Plan, context: string) {
 
 export async function deleteWorkflowCheckpoints(owner: string, plans: Plan[]) {
   await Promise.all(
-    plans.map((plan) => del(`mowr-workflow:${owner}:${plan.id}`)),
+    plans.map((plan) => del(`clem-workflow:${owner}:${plan.id}`)),
   );
 }

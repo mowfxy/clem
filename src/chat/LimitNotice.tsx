@@ -1,6 +1,6 @@
 import { Icon } from '../Icons';
 
-/** What a reply stopped by the plan's usage limit keeps: when the plan resets, and whether Mowr carries on by itself then. */
+/** What a reply stopped by the plan's usage limit keeps: when the plan resets, and whether Clem carries on by itself then. */
 export type LimitState = { at: number; resetsAt?: number; auto?: boolean; done?: boolean };
 
 /** When to continue: the provider's reset time, or an hour after the limit when it does not say. */
@@ -20,7 +20,7 @@ function when(ms: number) {
  * can have the task continue on its own once the limit resets.
  */
 export function LimitNotice({ limit, model, latest, onAuto, onContinue }: { limit: LimitState; model: string; /** The chat's last message: only then can the task continue from it. */ latest: boolean; onAuto: (on: boolean) => void; onContinue: () => void }) {
-  const resets = limit.resetsAt ? `It resets ${when(limit.resetsAt)}.` : 'The reset time was not shared; Mowr will try again in about an hour.';
+  const resets = limit.resetsAt ? `It resets ${when(limit.resetsAt)}.` : 'The reset time was not shared; Clem will try again in about an hour.';
   return <div className="limit-notice" role="note">
     <p className="limit-head"><Icon name="clock" size={15} />{model} usage limit reached</p>
     <p className="limit-body">The task stopped before it finished, so the files it was working on were not sent. {resets}</p>
@@ -29,7 +29,7 @@ export function LimitNotice({ limit, model, latest, onAuto, onContinue }: { limi
       : latest && <div className="limit-actions">
           {limit.auto
             ? <>
-                <span className="limit-set"><Icon name="check" size={14} />Mowr will continue this task {when(resumeTime(limit))}.</span>
+                <span className="limit-set"><Icon name="check" size={14} />Clem will continue this task {when(resumeTime(limit))}.</span>
                 <button type="button" className="limit-now" onClick={() => onAuto(false)}>Don’t continue</button>
               </>
             : <>

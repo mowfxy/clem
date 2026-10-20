@@ -96,7 +96,7 @@ const EXAMPLE_START = /^\s*>\s*\[!(?:EXAMPLE|SOLUTION|ANSWER)\]|^#{3,5}\s+(?:wor
 const RESULT = /=[^=\n]*=\s*\$?\s*-?\d|(?:≈|\\approx)\s*\$?\s*-?\d/;
 /**
  * The lines where a worked example or solution states computed results with no ```check after it (before the next
- * example or ## section). Mowr can only recompute what is checked, so these are the numbers nothing verified.
+ * example or ## section). Clem can only recompute what is checked, so these are the numbers nothing verified.
  */
 export function uncheckedExamples(markdown: string) {
   const unchecked: number[] = [];
@@ -126,7 +126,7 @@ export function withMarkdownSource(spec: Record<string, any>, markdown: string) 
   if (!source.sections.length) throw Error("The Markdown file has no content: write the document's sections (## Heading, then text) first.");
   // A worked example's numbers are recomputed before anything is made, so a file never goes out with a wrong value.
   const wrong = checkProblems(source.checks);
-  if (wrong.length) throw Error(`No file was made: ${wrong.length === 1 ? "a checked value differs" : `${wrong.length} checked values differ`} from what Mowr computes. ${wrong.join(" ")} Work each one out again (with a Kinetra call where a module computes it), correct the example's text and its check with an edit, then send the request again.`);
+  if (wrong.length) throw Error(`No file was made: ${wrong.length === 1 ? "a checked value differs" : `${wrong.length} checked values differ`} from what Clem computes. ${wrong.join(" ")} Work each one out again (with a Kinetra call where a module computes it), correct the example's text and its check with an edit, then send the request again.`);
   return {
     ...rest,
     title: rest.title || source.title || "Document",

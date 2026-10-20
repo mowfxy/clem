@@ -4,7 +4,7 @@ import { sourceExcerpts } from "../../core/source-context";
 import type { DriveRef } from "../../core/drive-search";
 
 /**
- * Google Drive as the whole app sees it: whether it is connected (checked once in the background when Mowr opens,
+ * Google Drive as the whole app sees it: whether it is connected (checked once in the background when Clem opens,
  * then kept fresh), file text read live when a question needs it, and stream addresses for video. Nothing from Drive
  * is written to this PC; text is kept in memory for this session only.
  */
@@ -32,7 +32,7 @@ export function refreshDrive(force = false) {
   return checking;
 }
 
-/** After "Continue with Google" the browser finishes the sign-in; Mowr notices on its own and carries on. */
+/** After "Continue with Google" the browser finishes the sign-in; Clem notices on its own and carries on. */
 let waiting: ReturnType<typeof setInterval> | undefined;
 export async function connectDrive() {
   if (!desktop) return;
@@ -70,7 +70,7 @@ export const renameInDrive = (id: string, name: string) => desktop!.invoke({ act
 export const trashInDrive = (id: string) => desktop!.invoke({ action: "driveTrash", id }) as Promise<{ ok: true }>;
 /** Moves a file or folder into another folder inside the linked folder `root`. */
 export const moveInDrive = (root: string, id: string, to: string) => desktop!.invoke({ action: "driveMove", root, id, to }) as Promise<{ ok: true }>;
-/** A Drive file's bytes, so Mowr can keep a working copy to edit; Google Docs, Slides and Sheets come as PDF. */
+/** A Drive file's bytes, so Clem can keep a working copy to edit; Google Docs, Slides and Sheets come as PDF. */
 export async function driveBytes(id: string) {
   const r = await fetch("/api/drive/live/" + id);
   if (!r.ok) throw Error((await r.json().catch(() => ({}))).error || "Google Drive did not send the file.");

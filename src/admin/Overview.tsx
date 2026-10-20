@@ -17,7 +17,7 @@ export function Overview({go}:{go:Go}){
   const finished=reached(4);
   const share=(n:number)=>d.users?Math.round(n/d.users*100):0;
   return <div className="adm-page">
-    <PageHead scene="telescope" title="Overview" line="How Mowr is doing right now.">
+    <PageHead scene="telescope" title="Overview" line="How Clem is doing right now.">
       <button className="adm-ghost" onClick={reload}><I name="refresh"/>Refresh</button>
     </PageHead>
     <section className="adm-stats">
@@ -36,7 +36,7 @@ export function Overview({go}:{go:Go}){
         <header><h2>Getting started</h2><span className="adm-muted">{d.suspended} suspended</span></header>
         {d.users?<ul className="adm-funnel">{steps.map((label,i)=>{const n=reached(i+1);return <li key={label}><span>{label}</span><i><b style={{width:`${share(n)}%`}}/></i><strong>{n}</strong></li>;})}</ul>
         :<Empty title="No people yet">People appear after they open the desktop app.</Empty>}
-        <p className="adm-card-note">Mowr is free for everyone. Each bar counts people who reached that step of the welcome.</p>
+        <p className="adm-card-note">Clem is free for everyone. Each bar counts people who reached that step of the welcome.</p>
       </section>
     </div>
     <div className="adm-grid-2">

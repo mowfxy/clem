@@ -5,7 +5,7 @@ import type {Chat,Model,Space,StoredFile,StudySet,VisualRecord,Automation} from 
 
 const DAY=86_400_000;
 const WEEKDAYS=['Sundays','Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays'];
-/** Roughly four characters to a token across the providers Mowr talks to. Nothing here is billed, so an estimate is enough. */
+/** Roughly four characters to a token across the providers Clem talks to. Nothing here is billed, so an estimate is enough. */
 const tokensOf=(text:string)=>Math.ceil(text.length/4);
 const wordsOf=(text:string)=>text.trim()?text.trim().split(/\s+/).length:0;
 const compact=(n:number)=>n<1000?String(n):n<1_000_000?`${+(n/1000).toFixed(n<10_000?1:0)}K`:`${+(n/1_000_000).toFixed(n<10_000_000?1:0)}M`;
@@ -110,7 +110,7 @@ export function UsageSettings(data:UsageData){
         <div className="usage-bar" role="img" aria-label={`${compact(s.tokensIn)} tokens sent, ${compact(s.tokensOut)} tokens received`}>
           <i style={{flexGrow:s.tokensIn||0}}/><i style={{flexGrow:s.tokensOut||(s.tokens?0:1)}}/>
         </div>
-        <div className="usage-legend"><span><i className="in"/>You · {compact(s.tokensIn)}</span><span><i className="out"/>Mowr · {compact(s.tokensOut)}</span></div>
+        <div className="usage-legend"><span><i className="in"/>You · {compact(s.tokensIn)}</span><span><i className="out"/>Clem · {compact(s.tokensOut)}</span></div>
       </div>
     </SettingsCard>
 
@@ -128,7 +128,7 @@ export function UsageSettings(data:UsageData){
       <div className="usage-grid">
         <Stat value={s.projects.toLocaleString()} label="Projects"/>
         <Stat value={s.subjects.toLocaleString()} label="Subjects"/>
-        <Stat value={s.files.toLocaleString()} label="Files" detail={s.made?`${s.made} made by Mowr`:undefined}/>
+        <Stat value={s.files.toLocaleString()} label="Files" detail={s.made?`${s.made} made by Clem`:undefined}/>
         <Stat value={s.cards.toLocaleString()} label="Flashcards" detail={s.reviews?`${compact(s.reviews)} reviews`:undefined}/>
         <Stat value={s.quizzes.toLocaleString()} label="Quizzes taken"/>
         <Stat value={s.visuals.toLocaleString()} label="Visuals" detail={s.automations?plural(s.automations,'automation'):undefined}/>

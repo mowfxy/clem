@@ -53,7 +53,7 @@ test("an agent's short note before a web search never shows; only the reply does
 
 test("tool requests never show; the lead-in shows once and the next step is its own paragraph", () => {
   const { screen: s, shown } = screen();
-  const request = 'Let me calculate that.\n{"kinetra":{"action":"call","module":"mowr","fn":"integrateExpression","args":["' + "x".repeat(NOTE_HOLD * 2) + '"]}}';
+  const request = 'Let me calculate that.\n{"kinetra":{"action":"call","module":"clem","fn":"integrateExpression","args":["' + "x".repeat(NOTE_HOLD * 2) + '"]}}';
   s.step();
   stream(s, request);
   assert.equal(shown(), "Let me calculate that.");

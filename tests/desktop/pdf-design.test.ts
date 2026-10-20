@@ -35,7 +35,7 @@ test("what the person set wins, field by field; a chosen colour shows in the hea
   assert.equal(d.design.accent, "#aa0000");
   assert.equal(d.design.headingStyle, "accent");
   assert.equal(d.design.margin, 18, "two columns get the narrow margin");
-  // Mowr's own fonts never reach a document.
+  // Clem's own fonts never reach a document.
   assert.notEqual(designDocument(spec({ font: "Mowafy Serif" }), "notes").font, "Mowafy Serif");
   // Young readers get a friendly sans, larger.
   const kids = designDocument(spec({ title: "Plants for kids", kind: "handout" }), "notes");
@@ -87,7 +87,7 @@ test("a crop's units and optical centre travel with its drawing into the page", 
   const svg = assetSvg(meta, new Uint8Array([137, 80, 78, 71]));
   assert.deepEqual({ units: assetOf(svg)!.units, centre: assetOf(svg)!.centre }, { units: "pt", centre: 0.42 });
   const html = documentHtml({ title: "T", kind: "report", sections: [{ heading: "A", text: "x", figure: { asset: meta.id, svg, width: 0.5 } as any }] } as any, [svg]);
-  assert.match(html, /<a class="asset-slot" style="width:[\d.]+px;margin-left:clamp\([^"]+\);margin-right:0" href="https:\/\/asset\.mowr\.invalid\/crop-0000aaaa\/1\/p">/);
+  assert.match(html, /<a class="asset-slot" style="width:[\d.]+px;margin-left:clamp\([^"]+\);margin-right:0" href="https:\/\/asset\.clem\.invalid\/crop-0000aaaa\/1\/p">/);
 });
 
 test("placing a crop in a PDF: on the page's text column, refused over text, and replace centres the drawing", async () => {
@@ -142,7 +142,7 @@ test("placement is a layout decision: small figures beside enough text, larger o
   assert.match(html({ align: "right" }), /<figure id="fig-1" class="align-right">/);
   // A drawing (not a crop) is marked too, so its page can be shown.
   const drawn = documentHtml({ title: "T", sections: [{ text: "x", figure: { module: "m", fn: "f", args: [] } }] } as any, ['<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300"></svg>']);
-  assert.match(drawn, /<a class="figure-slot" style="" href="https:\/\/asset\.mowr\.invalid\/figure\/1\/p"><img/);
+  assert.match(drawn, /<a class="figure-slot" style="" href="https:\/\/asset\.clem\.invalid\/figure\/1\/p"><img/);
 });
 
 test("the pages shown for figures: where each printed, and the page before when one starts a page", async () => {

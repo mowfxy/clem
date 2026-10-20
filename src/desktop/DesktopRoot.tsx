@@ -162,7 +162,7 @@ function SetupContent() {
   const lines = [
     "It’s yours alone, and how people find you.",
     "Your name, the way you like to hear it.",
-    "Mowr can keep useful context between chats. It syncs to your account; files stay on this PC.",
+    "Clem can keep useful context between chats. It syncs to your account; files stay on this PC.",
     "Use the subscription you already have. You can add more in Settings → Models.",
   ];
   // Every screen gets its own drawing, so the setup reads as a short walk rather than one form.
@@ -199,7 +199,7 @@ function SetupContent() {
               <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Your account is paused.</h1></div>
               <p>{state.entitlement.message || "This account has been suspended."}</p>
               {state.entitlement.until && <p className="fine">Access returns {new Date(state.entitlement.until).toLocaleDateString(undefined,{dateStyle:"long"})}.</p>}
-              <p className="fine">Your chats and files stay on this PC. If you think this is a mistake, email <a href="mailto:support@mowrai.com">support@mowrai.com</a>.</p>
+              <p className="fine">Your chats and files stay on this PC. If you think this is a mistake, email <a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a>.</p>
               <div className="setup-navigation">
                 <button disabled={busy} onClick={() => void run(refresh)}>Check again</button>
                 <button disabled={busy} onClick={() => void run(async () => { await desktop!.invoke({ action: "logout" }); await refresh(); })}>Sign out</button>
@@ -207,8 +207,8 @@ function SetupContent() {
             </>
           ) : state?.user && state.entitlement.reason === "offline" && state.setup.step >= 3 ? (
             <>
-              <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Can’t reach Mowr.</h1></div>
-              <p>Mowr checks your account when it opens. Check your internet connection and try again — nothing on this PC has changed.</p>
+              <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Can’t reach Clem.</h1></div>
+              <p>Clem checks your account when it opens. Check your internet connection and try again — nothing on this PC has changed.</p>
               {state.error && <p className="fine">{state.error}</p>}
               <div className="setup-navigation">
                 <button className="primary" disabled={busy} onClick={() => void run(refresh)}>{busy ? "Checking…" : "Try again"}</button>
@@ -217,11 +217,11 @@ function SetupContent() {
             </>
           ) : !state ? (
             <>
-              <div className="setup-welcome-heading"><Logo size={36} thinking/><h1>Opening Mowr…</h1></div>
+              <div className="setup-welcome-heading"><Logo size={36} thinking/><h1>Opening Clem…</h1></div>
             </>
           ) : !state.user ? (
             <>
-              <div className="setup-welcome-heading"><Logo size={40} thinking={browserPending}/><h1 ref={heading} tabIndex={-1}>Welcome to Mowr.</h1></div>
+              <div className="setup-welcome-heading"><Logo size={40} thinking={browserPending}/><h1 ref={heading} tabIndex={-1}>Welcome to Clem.</h1></div>
               <p>
                 {browserPending
                   ? "Finish signing in in your browser. We’ll bring you back automatically."
@@ -371,9 +371,9 @@ function SetupContent() {
           )}
         </section>
         <p className="setup-legal">
-          <a href="https://mowrai.com/#/privacy" target="_blank" rel="noreferrer">Privacy</a>
+          <a href="https://clem.m4labs.xyz/#/privacy" target="_blank" rel="noreferrer">Privacy</a>
           {" · "}
-          <a href="https://mowrai.com/#/terms" target="_blank" rel="noreferrer">Terms</a>
+          <a href="https://clem.m4labs.xyz/#/terms" target="_blank" rel="noreferrer">Terms</a>
         </p>
       </div>
     </main>

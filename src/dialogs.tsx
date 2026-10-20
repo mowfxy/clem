@@ -36,7 +36,7 @@ function ConfirmDialog({ title, message, confirm = "Confirm", cancel = "Cancel",
   );
 }
 
-/** The in-app replacement for window.confirm: same design as the rest of Mowr, never the system dialog. */
+/** The in-app replacement for window.confirm: same design as the rest of Clem, never the system dialog. */
 export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     const host = document.createElement("div");

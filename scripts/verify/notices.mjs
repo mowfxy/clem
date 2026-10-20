@@ -15,11 +15,11 @@ try{
     window.requests=[];
     const reply={id:'m1',author:'staff',body:'Fixed in the next build — thanks for the report!',created_at:new Date().toISOString()};
     window.supportCase={id:'case-00000001',category:'Report a bug',subject:'Export shows odd symbols',message:'Bullets start with a strange diamond.',created_at:new Date(Date.now()-86400000).toISOString(),status:'pending',staff_replied_at:reply.created_at,unread:true,messages:[reply]};
-    window.mowrDesktop={
+    window.clemDesktop={
       onAuth:()=>()=>{},onAttachment:()=>()=>{},onChat:()=>()=>{},
       invoke:async r=>{
         window.requests.push(r);
-        if(r.action==='announcements')return {announcements:[{id:'ann-1',title:'Mowr 0.3 preview',body:'Support replies now arrive in the app.',tone:'success',link:null}]};
+        if(r.action==='announcements')return {announcements:[{id:'ann-1',title:'Clem 0.3 preview',body:'Support replies now arrive in the app.',tone:'success',link:null}]};
         if(r.action==='supportCases')return {cases:[window.supportCase]};
         if(r.action==='supportSeen'){window.supportCase={...window.supportCase,unread:false};return {ok:true};}
         if(r.action==='supportReply'){window.supportCase={...window.supportCase,status:'open',messages:[...window.supportCase.messages,{id:'m2',author:'user',body:r.body,created_at:new Date().toISOString()}]};return {ok:true};}
@@ -48,7 +48,7 @@ try{
   await stack.locator('.notice-card').nth(1).waitFor();
   assert.equal(await stack.locator('.notice-card').count(),2);
   assert.equal(await stack.locator('.notice-count').innerText(),'2');
-  assert.match(await stack.locator('[role=status]').innerText(),/Mowr support replied/);
+  assert.match(await stack.locator('[role=status]').innerText(),/Clem support replied/);
   await page.waitForTimeout(900);
   await page.screenshot({path:'artifacts/notice-stack.png',clip:{x:0,y:560,width:420,height:340}});
   const account=await page.locator('.account-button').boundingBox(),card=await stack.boundingBox();

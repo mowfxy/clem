@@ -1,5 +1,5 @@
 // Slash commands: typed anywhere in a message as "/name", shown as a chip in the composer and in the sent message. Each one
-// becomes an explicit instruction for the model and pulls in the playbooks that do the job (see mowr-skills.ts and
+// becomes an explicit instruction for the model and pulls in the playbooks that do the job (see clem-skills.ts and
 // skills.ts), so a command never depends on the model guessing what "/pdf" means. /visual, /flashcards, /quiz and
 // /skill keep their own handling in the app; for those the text reaches the model as before.
 export type SlashCommand = {
@@ -11,7 +11,7 @@ export type SlashCommand = {
   placeholder: string;
   /** What the model is told, placed before the person's words. Absent for commands the app handles itself. */
   instruction?: (rest: string) => string;
-  /** Mowr playbooks to include (ids from mowr-skills.ts). */
+  /** Clem playbooks to include (ids from clem-skills.ts). */
   skills?: string[];
   /** Built-in workflow to include (id from skills.ts). */
   workflow?: string;
@@ -20,18 +20,18 @@ export type SlashCommand = {
 };
 
 export const slashCommands: SlashCommand[] = [
-  { id: "visual", label: "Visual", icon: "visuals", description: "Draw an interactive visual", placeholder: "What should Mowr draw?", skills: ["visuals"] },
-  { id: "figure", label: "Figure", icon: "visuals", description: "Draw it like a textbook figure", placeholder: "Which setup or apparatus should Mowr draw?", skills: ["figures", "visuals", "notation"],
+  { id: "visual", label: "Visual", icon: "visuals", description: "Draw an interactive visual", placeholder: "What should Clem draw?", skills: ["visuals"] },
+  { id: "figure", label: "Figure", icon: "visuals", description: "Draw it like a textbook figure", placeholder: "Which setup or apparatus should Clem draw?", skills: ["figures", "visuals", "notation"],
     instruction: () => "Draw this as a textbook figure: one ```visual block with \"kind\":\"figure\", started from the closest verified textbook figure and made physically correct (attachments through anchors, forces with the right directions and proportional lengths, computed field lines). If I ask for 3D, use a \"3d\" scene of real objects with materials and charges instead. Then say in two or three lines what the figure shows." },
   { id: "pdf", label: "PDF", icon: "cmd-pdf", description: "Make a formatted PDF document", placeholder: "What should the document cover?", skills: ["documents"], workflow: "report",
     instruction: () => "Make this as a PDF document with the Kinetra pdf action, not as a chat answer. Choose the right kind of document, a specific title and one section per heading." },
-  { id: "research", label: "Research", icon: "research", description: "Search the web and cite every source", placeholder: "What should Mowr research?", skills: ["web", "numbers"], workflow: "research",
+  { id: "research", label: "Research", icon: "research", description: "Search the web and cite every source", placeholder: "What should Clem research?", skills: ["web", "numbers"], workflow: "research",
     instruction: () => "Research this properly: search the web with several specific queries, compare sources, and link every claim to its source. Say what is uncertain or disputed." },
-  { id: "explain", label: "Explain", icon: "cmd-explain", description: "Teach it step by step", placeholder: "What should Mowr explain?", skills: ["notation"], workflow: "tutor",
+  { id: "explain", label: "Explain", icon: "cmd-explain", description: "Teach it step by step", placeholder: "What should Clem explain?", skills: ["notation"], workflow: "tutor",
     instruction: () => "Teach this step by step as a tutor: start from what I likely know, one idea at a time, one worked example, then one short question to check I understood." },
   { id: "solve", label: "Solve", icon: "cmd-solve", description: "A worked solution with checked numbers", placeholder: "Paste the problem…", skills: ["numbers", "notation"], workflow: "problem-solving",
     instruction: () => "Give a complete worked solution: givens and unknowns, the method and why, every step with units, the answer clearly marked, and a ```check block for the key numbers." },
-  { id: "summarize", label: "Summarize", icon: "cmd-summarize", description: "Summarize a file, link or text", placeholder: "What should Mowr summarize?", skills: ["files", "video-notes"], workflow: "summary",
+  { id: "summarize", label: "Summarize", icon: "cmd-summarize", description: "Summarize a file, link or text", placeholder: "What should Clem summarize?", skills: ["files", "video-notes"], workflow: "summary",
     instruction: () => "Summarize this: the main point first in one or two sentences, then the key points in order, then anything I should act on. Work only from the material supplied or linked." },
   { id: "notes", label: "Notes", icon: "cmd-notes", description: "Study notes from a lecture, video or file", placeholder: "Which lecture, video or topic?", skills: ["video-notes", "files"], workflow: "study-guide",
     instruction: () => "Make clear study notes from this: sections that follow the material's own structure, key definitions and formulas, worked examples, and a short recap at the end." },
@@ -42,17 +42,17 @@ export const slashCommands: SlashCommand[] = [
   { id: "flashcards", label: "Flashcards", icon: "cmd-flashcards", description: "Make a flashcard deck in this subject", placeholder: "Which topic or material?", skills: ["study"], subjectOnly: true },
   { id: "quiz", label: "Quiz", icon: "cmd-quiz", description: "Make a quiz in this subject", placeholder: "Which topic or material?", skills: ["study"], subjectOnly: true },
   { id: "routine", label: "Routine", icon: "cmd-routine", description: "Run something on a schedule", placeholder: "What should run, and when?", skills: ["automations"],
-    instruction: () => "Set this up as a Mowr routine: propose it in one ```automation block with a clear name, the time and repeat, and the exact prompt it should run." },
-  { id: "remember", label: "Remember", icon: "cmd-remember", description: "Save something to memory", placeholder: "What should Mowr remember?", skills: ["memory"],
+    instruction: () => "Set this up as a Clem routine: propose it in one ```automation block with a clear name, the time and repeat, and the exact prompt it should run." },
+  { id: "remember", label: "Remember", icon: "cmd-remember", description: "Save something to memory", placeholder: "What should Clem remember?", skills: ["memory"],
     instruction: () => "Remember that" },
   { id: "outline", label: "Outline", icon: "cmd-outline", description: "Plan an essay, report or talk", placeholder: "What are you writing?", workflow: "essay",
     instruction: () => "Write an outline for this, not the full text: a one-line thesis or aim, then numbered sections with two or three points each and the evidence each point needs. End with what I still need to find out." },
   { id: "feedback", label: "Feedback", icon: "cmd-feedback", description: "Honest feedback on your work", placeholder: "Paste or attach your work…", workflow: "editing",
     instruction: () => "Give honest, specific feedback on this work: what works, the three changes that would improve it most (quote the passage each one is about), then smaller fixes. Keep my voice; don't rewrite it all." },
-  { id: "compare", label: "Compare", icon: "compare", description: "Compare options side by side", placeholder: "What should Mowr compare?", skills: ["web"], workflow: "decision",
+  { id: "compare", label: "Compare", icon: "compare", description: "Compare options side by side", placeholder: "What should Clem compare?", skills: ["web"], workflow: "decision",
     instruction: () => "Compare these side by side: a table with the criteria that matter as rows, a short note on each real difference, then a clear recommendation and when the other option would win." },
-  { id: "plan", label: "Plan", icon: "cmd-plan", description: "A plan Mowr keeps up to date", placeholder: "What, and by when?", skills: ["plans"],
-    instruction: () => "Make this a Mowr plan: work back from the deadlines, put fixed dates (quizzes, exams, submissions) in as milestones, break the work into dated tasks small enough to start today, and propose it with one ```plan block per subject or project. Ask only if a deadline or what has to be done is missing." },
+  { id: "plan", label: "Plan", icon: "cmd-plan", description: "A plan Clem keeps up to date", placeholder: "What, and by when?", skills: ["plans"],
+    instruction: () => "Make this a Clem plan: work back from the deadlines, put fixed dates (quizzes, exams, submissions) in as milestones, break the work into dated tasks small enough to start today, and propose it with one ```plan block per subject or project. Ask only if a deadline or what has to be done is missing." },
   { id: "mnemonic", label: "Mnemonic", icon: "cmd-mnemonic", description: "A memory trick that sticks", placeholder: "What do you need to remember?", skills: ["notation"],
     instruction: () => "Make this easy to remember: two or three different memory tricks (an acronym, a vivid image or story, a rhyme), then say which one fits best and why. Keep every fact correct." },
   { id: "debate", label: "Debate", icon: "cmd-debate", description: "The strongest case on each side", placeholder: "Which question or claim?", skills: ["web"],
@@ -66,8 +66,8 @@ export const slashCommands: SlashCommand[] = [
   { id: "skill", label: "Skill", icon: "skills", description: "Create a reusable skill", placeholder: "Opens the skill editor", skills: ["own-skills"] },
   { id: "skill-creator", label: "Skill creator", icon: "skills", description: "Work out a new skill together in chat", placeholder: "What should the skill help with?", skills: ["own-skills"], workflow: "create-skill",
     instruction: (rest) => rest.trim()
-      ? "Help me turn this into a reusable Mowr skill. Ask me up to three short questions only if something essential is unclear (the outcome, when it applies, what I will provide); otherwise draft it straight away."
-      : "Help me create a reusable Mowr skill. Start by asking, in one short message, what I want it to help with and when it should apply. Draft the skill once you know." },
+      ? "Help me turn this into a reusable Clem skill. Ask me up to three short questions only if something essential is unclear (the outcome, when it applies, what I will provide); otherwise draft it straight away."
+      : "Help me create a reusable Clem skill. Start by asking, in one short message, what I want it to help with and when it should apply. Draft the skill once you know." },
 ];
 
 const byId = new Map(slashCommands.map((c) => [c.id, c]));

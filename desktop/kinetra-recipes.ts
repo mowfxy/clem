@@ -11,7 +11,7 @@ export const kinetraRecipes: KinetraRecipe[] = [
   {
     name: "function plot",
     use: "graphs of y = f(x): one or several curves, or measured data points",
-    figure: { module: "mowr", fn: "plot", args: [{ title: "Quadratic and its derivative", xRange: [-3, 3], xLabel: "x", yLabel: "y", functions: [{ expression: "x^2 - 1", label: "f(x) = x² − 1" }, { expression: "2*x", label: "f′(x) = 2x", style: "dashed" }] }] },
+    figure: { module: "clem", fn: "plot", args: [{ title: "Quadratic and its derivative", xRange: [-3, 3], xLabel: "x", yLabel: "y", functions: [{ expression: "x^2 - 1", label: "f(x) = x² − 1" }, { expression: "2*x", label: "f′(x) = 2x", style: "dashed" }] }] },
     notes: "Variable must be x. Operators + - * / ^, functions sin cos tan exp ln log sqrt abs. Data points: data:[{x,y}] instead of functions. The adapter rejects curves with no real values.",
   },
   {
@@ -47,49 +47,49 @@ export const kinetraRecipes: KinetraRecipe[] = [
   {
     name: "vector field",
     use: "2D vector fields such as electric fields or flows",
-    figure: { module: "mowr", fn: "vectorField", args: [{ type: "vector", xExpression: "x/((x^2+y^2)^1.5+0.05)", yExpression: "y/((x^2+y^2)^1.5+0.05)", world: { xMin: -2, xMax: 2, yMin: -2, yMax: 2 }, width: 480, height: 480, cols: 15, rows: 15, title: "Field of a positive point charge" }] },
-    notes: "Expressions in x and y. Use mowr vectorField / scalarField (scalar: expression, contours:[levels]); diagram/fields needs functions and cannot be called directly.",
+    figure: { module: "clem", fn: "vectorField", args: [{ type: "vector", xExpression: "x/((x^2+y^2)^1.5+0.05)", yExpression: "y/((x^2+y^2)^1.5+0.05)", world: { xMin: -2, xMax: 2, yMin: -2, yMax: 2 }, width: 480, height: 480, cols: 15, rows: 15, title: "Field of a positive point charge" }] },
+    notes: "Expressions in x and y. Use clem vectorField / scalarField (scalar: expression, contours:[levels]); diagram/fields needs functions and cannot be called directly.",
   },
   {
     name: "circuit schematic",
     use: "analog circuits from a netlist: resistors, capacitors, inductors, independent and dependent sources, diodes, switches, meters",
     figure: { module: "diagram/circuit_schematic", fn: "renderCircuit", args: [{ title: "Nodal analysis with a dependent source", elements: [{ kind: "current-source", from: "0", to: "1", value: 1, unit: "A" }, { kind: "resistor", from: "1", to: "0", label: "R_1", value: 4, unit: "Ω" }, { kind: "dependent-voltage-source", from: "2", to: "1", label: "4i_o" }, { kind: "resistor", from: "2", to: "0", label: "R_2", value: 1, unit: "Ω", current: "i_o" }, { kind: "resistor", from: "1", to: "3", label: "R_3", value: 1, unit: "Ω", voltage: "v_o" }, { kind: "dependent-current-source", from: "2", to: "3", label: "2v_o" }, { kind: "resistor", from: "3", to: "4", label: "R_4", value: 2, unit: "Ω" }, { kind: "voltage-source", from: "0", to: "4", value: 10, unit: "V" }] }] },
-    notes: "Describe the circuit as elements between named nodes; Mowr does the whole layout (ground rail, right-angle wires, junction dots, labels clear of everything), so never give coordinates. Node \"0\" (or gnd) is ground. Kinds: resistor, capacitor, inductor, voltage-source, current-source, dependent-voltage-source, dependent-current-source, ac-source, battery, switch (closed:true), diode, led, lamp, ammeter, voltmeter, wire. Voltage sources and batteries have + at \"to\"; current sources and diodes point from \"from\" to \"to\". label is the name only (R_1, V_s, 4i_o; _ makes a subscript); put the number in value and unit (\"Ω\", \"kΩ\", \"V\", \"mA\"), never both in label. current:\"i_x\" draws a current arrow, voltage:\"v_x\" draws + − marks (+ at from). Optional order:[node names] fixes the left-to-right node order. Copy the topology exactly from the problem. Solve and draw from ONE netlist: first {\"action\":\"call\",\"module\":\"mowr\",\"fn\":\"solveCircuit\",\"args\":[this same netlist object]} returns every node voltage, each element's voltage (V(from) − V(to)), current (from → to) and power, and each named current/voltage; state those numbers and put this identical netlist in the figure. Dependent sources are controlled by the element whose current or voltage their label names (\"4i_o\" = 4 × the current:\"i_o\" element). Capacitors are open and inductors shorts in DC; for a switching or RC/RL response use mowr circuitTransient [netlist, {endTime, dt}].",
+    notes: "Describe the circuit as elements between named nodes; Clem does the whole layout (ground rail, right-angle wires, junction dots, labels clear of everything), so never give coordinates. Node \"0\" (or gnd) is ground. Kinds: resistor, capacitor, inductor, voltage-source, current-source, dependent-voltage-source, dependent-current-source, ac-source, battery, switch (closed:true), diode, led, lamp, ammeter, voltmeter, wire. Voltage sources and batteries have + at \"to\"; current sources and diodes point from \"from\" to \"to\". label is the name only (R_1, V_s, 4i_o; _ makes a subscript); put the number in value and unit (\"Ω\", \"kΩ\", \"V\", \"mA\"), never both in label. current:\"i_x\" draws a current arrow, voltage:\"v_x\" draws + − marks (+ at from). Optional order:[node names] fixes the left-to-right node order. Copy the topology exactly from the problem. Solve and draw from ONE netlist: first {\"action\":\"call\",\"module\":\"clem\",\"fn\":\"solveCircuit\",\"args\":[this same netlist object]} returns every node voltage, each element's voltage (V(from) − V(to)), current (from → to) and power, and each named current/voltage; state those numbers and put this identical netlist in the figure. Dependent sources are controlled by the element whose current or voltage their label names (\"4i_o\" = 4 × the current:\"i_o\" element). Capacitors are open and inductors shorts in DC; for a switching or RC/RL response use clem circuitTransient [netlist, {endTime, dt}].",
   },
   {
     name: "logic circuit",
     use: "gate-level diagram of a Boolean expression",
-    figure: { module: "mowr", fn: "logicDiagram", args: ["A B + !C", "F", "F = AB + C′"] },
+    figure: { module: "clem", fn: "logicDiagram", args: ["A B + !C", "F", "F = AB + C′"] },
     notes: "Operators: juxtaposition or * for AND, + for OR, ! or ' for NOT, ^ for XOR. Simplify first with dld/simplify if the user asked for a minimal circuit. dld/kmap buildKMap counts the first variable as the lowest minterm bit, so for a textbook F(A,B,C) = Σm(…) pass variables reversed ([\"C\",\"B\",\"A\"]).",
   },
   {
     name: "domain in the plane",
     use: "the domain of f(x, y) or any region of the plane: shaded set, solid boundary that belongs to it, dashed boundary that does not",
-    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Domain of f(x, y) = √(x + y + 1) / (x − 1)", x: { min: -4, max: 4, label: "x" }, y: { min: -4, max: 4, label: "y" }, equal: true, layers: [{ type: "area", expr: "4", base: "-x-1", from: -4, to: 4, color: "blue" }, { type: "text", x: 2.3, y: 2.5, text: "D", size: 16, color: "blue" }, { type: "function", expr: "-x-1", color: "blue", label: "y = −x − 1" }, { type: "implicit", expr: "x-1", color: "coral", dash: true, label: "x = 1 excluded" }] }] },
+    figure: { module: "clem", fn: "visual", args: [{ kind: "plot", title: "Domain of f(x, y) = √(x + y + 1) / (x − 1)", x: { min: -4, max: 4, label: "x" }, y: { min: -4, max: 4, label: "y" }, equal: true, layers: [{ type: "area", expr: "4", base: "-x-1", from: -4, to: 4, color: "blue" }, { type: "text", x: 2.3, y: 2.5, text: "D", size: 16, color: "blue" }, { type: "function", expr: "-x-1", color: "blue", label: "y = −x − 1" }, { type: "implicit", expr: "x-1", color: "coral", dash: true, label: "x = 1 excluded" }] }] },
     notes: "kind plot. area fills between expr (top) and base (bottom) for x from \"from\" to \"to\"; set the top to the y-axis maximum for a region above a curve; name the region with a text layer inside it, clear of the axes. implicit expr = 0 draws any boundary g(x, y) = 0 (circles, vertical lines); dash:true for points left out. polygon with fill:true for straight-edged regions. equal:true keeps circles round.",
   },
   {
     name: "contour map / level curves",
     use: "level curves f(x, y) = k and contour maps, labelled by level; also implicit curves and boundaries",
-    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Level curves of f(x, y) = x² − y²", x: { min: -3, max: 3, label: "x" }, y: { min: -3, max: 3, label: "y" }, equal: true, layers: [{ type: "implicit", expr: "x^2 - y^2", levels: [-4, -1, 0, 1, 4], label: "k" }] }] },
+    figure: { module: "clem", fn: "visual", args: [{ kind: "plot", title: "Level curves of f(x, y) = x² − y²", x: { min: -3, max: 3, label: "x" }, y: { min: -3, max: 3, label: "y" }, equal: true, layers: [{ type: "implicit", expr: "x^2 - y^2", levels: [-4, -1, 0, 1, 4], label: "k" }] }] },
     notes: "One implicit layer with levels (up to 12) draws every level curve f = k, each labelled \"k = value\". Choose levels evenly in k for a contour map (spacing then shows steepness). Variables x and y; ^ for powers.",
   },
   {
     name: "surface z = f(x, y)",
     use: "the graph of a function of two variables, a quadric surface, or a surface with a trace curve on it",
-    figure: { module: "mowr", fn: "visual", args: [{ kind: "3d", title: "Graph of z = x² + y² (paraboloid)", x: { min: -2, max: 2, label: "x" }, y: { min: -2, max: 2, label: "y" }, z: { min: 0, max: 8, label: "z" }, objects: [{ type: "surface", expr: "x^2 + y^2", x: [-2, 2], y: [-2, 2], colormap: true, wireframe: true }, { type: "curve", x: "s", y: "1", z: "s^2 + 1", from: -2, to: 2, color: "coral", label: "trace y = 1", width: 3 }], camera: { azimuth: 35, elevation: 25 } }] },
+    figure: { module: "clem", fn: "visual", args: [{ kind: "3d", title: "Graph of z = x² + y² (paraboloid)", x: { min: -2, max: 2, label: "x" }, y: { min: -2, max: 2, label: "y" }, z: { min: 0, max: 8, label: "z" }, objects: [{ type: "surface", expr: "x^2 + y^2", x: [-2, 2], y: [-2, 2], colormap: true, wireframe: true }, { type: "curve", x: "s", y: "1", z: "s^2 + 1", from: -2, to: 2, color: "coral", label: "trace y = 1", width: 3 }], camera: { azimuth: 35, elevation: 25 } }] },
     notes: "Printed as a still from the camera (azimuth and elevation in degrees). surface expr in x and y; curve is parametric in s (traces: fix x or y). Pair it with a contour map of the same f when the text compares them.",
   },
   {
     name: "polar curve",
     use: "polar curves r = f(θ), polar regions and the polar form of a limit",
-    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Cardioid r = 1 + cos θ", x: { min: -1, max: 2.5, label: "x" }, y: { min: -1.5, max: 1.5, label: "y" }, equal: true, layers: [{ type: "polar", r: "1 + cos(theta)", from: 0, to: 6.2832, label: "r = 1 + cos θ" }, { type: "segment", x1: 0, y1: 0, x2: 1.207, y2: -1.207, dash: true, label: "r" }, { type: "point", x: 0, y: 0, label: "O" }] }] },
+    figure: { module: "clem", fn: "visual", args: [{ kind: "plot", title: "Cardioid r = 1 + cos θ", x: { min: -1, max: 2.5, label: "x" }, y: { min: -1.5, max: 1.5, label: "y" }, equal: true, layers: [{ type: "polar", r: "1 + cos(theta)", from: 0, to: 6.2832, label: "r = 1 + cos θ" }, { type: "segment", x1: 0, y1: 0, x2: 1.207, y2: -1.207, dash: true, label: "r" }, { type: "point", x: 0, y: 0, label: "O" }] }] },
     notes: "polar r in theta (radians), from/to default 0 to 2π. Add segments for a radius and points for the pole.",
   },
   {
     name: "limit along paths",
     use: "testing a limit at a point along several paths (lines, parabolas) that approach it",
-    figure: { module: "mowr", fn: "visual", args: [{ kind: "plot", title: "Paths to the origin for f(x, y) = xy / (x² + y²)", x: { min: -2, max: 2, label: "x" }, y: { min: -2, max: 2, label: "y" }, equal: true, layers: [{ type: "function", expr: "0", label: "y = 0: f → 0" }, { type: "function", expr: "x", label: "y = x: f → 1/2" }, { type: "function", expr: "x^2", dash: true, label: "y = x²: f → 0" }, { type: "point", x: 0, y: 0, color: "coral", label: "(0, 0)" }] }] },
+    figure: { module: "clem", fn: "visual", args: [{ kind: "plot", title: "Paths to the origin for f(x, y) = xy / (x² + y²)", x: { min: -2, max: 2, label: "x" }, y: { min: -2, max: 2, label: "y" }, equal: true, layers: [{ type: "function", expr: "0", label: "y = 0: f → 0" }, { type: "function", expr: "x", label: "y = x: f → 1/2" }, { type: "function", expr: "x^2", dash: true, label: "y = x²: f → 0" }, { type: "point", x: 0, y: 0, color: "coral", label: "(0, 0)" }] }] },
     notes: "One function layer per path, labelled with the value f approaches along it; a point at the limit point. Different values along two paths show the limit does not exist.",
   },
 ];
@@ -100,55 +100,55 @@ export const diagramRecipes: KinetraRecipe[] = [
   {
     name: "flowchart",
     use: "processes, algorithms, procedures, decision paths, pathways (biology, chemistry, business, computing)",
-    figure: { module: "mowr", fn: "flowchart", args: [{ title: "Enzyme-catalysed reaction", direction: "down", nodes: [{ id: "s", label: "Substrate meets enzyme", shape: "start" }, { id: "b", label: "Substrate binds the active site" }, { id: "d", label: "Correct shape and conditions?", shape: "decision" }, { id: "c", label: "Enzyme–substrate complex forms" }, { id: "p", label: "Products released; enzyme unchanged", shape: "end" }, { id: "n", label: "No reaction", shape: "end" }], edges: [{ from: "s", to: "b" }, { from: "b", to: "d" }, { from: "d", to: "c", label: "Yes" }, { from: "d", to: "n", label: "No" }, { from: "c", to: "p" }] }] },
+    figure: { module: "clem", fn: "flowchart", args: [{ title: "Enzyme-catalysed reaction", direction: "down", nodes: [{ id: "s", label: "Substrate meets enzyme", shape: "start" }, { id: "b", label: "Substrate binds the active site" }, { id: "d", label: "Correct shape and conditions?", shape: "decision" }, { id: "c", label: "Enzyme–substrate complex forms" }, { id: "p", label: "Products released; enzyme unchanged", shape: "end" }, { id: "n", label: "No reaction", shape: "end" }], edges: [{ from: "s", to: "b" }, { from: "b", to: "d" }, { from: "d", to: "c", label: "Yes" }, { from: "d", to: "n", label: "No" }, { from: "c", to: "p" }] }] },
     notes: "shape: process (default), decision (diamond, label the out-edges Yes/No), start, end, io (input/output), note. direction \"right\" for wide, short processes. Loops (an edge back to an earlier node) are drawn around the side. Up to 40 nodes.",
   },
   {
     name: "bar chart",
     use: "comparing quantities across categories; grouped series; type hbar for long labels, stacked for parts of a whole",
-    figure: { module: "mowr", fn: "chart", args: [{ title: "Energy use by sector", type: "bar", labels: ["Industry", "Transport", "Homes", "Services"], series: [{ name: "2015", values: [34, 29, 22, 15] }, { name: "2025", values: [31, 30, 21, 18] }], yLabel: "Share of total", unit: "%" }] },
+    figure: { module: "clem", fn: "chart", args: [{ title: "Energy use by sector", type: "bar", labels: ["Industry", "Transport", "Homes", "Services"], series: [{ name: "2015", values: [34, 29, 22, 15] }, { name: "2025", values: [31, 30, 21, 18] }], yLabel: "Share of total", unit: "%" }] },
     notes: "Every series has exactly one number per label. type: bar | hbar | stacked | line | pie (pie uses the first series). Use real or computed values only.",
   },
   {
     name: "line chart",
     use: "trends over time or any ordered variable",
-    figure: { module: "mowr", fn: "chart", args: [{ title: "Population growth", type: "line", labels: ["1990", "2000", "2010", "2020"], series: [{ name: "Population", values: [5.3, 6.1, 6.9, 7.8] }], yLabel: "People", unit: "bn" }] },
+    figure: { module: "clem", fn: "chart", args: [{ title: "Population growth", type: "line", labels: ["1990", "2000", "2010", "2020"], series: [{ name: "Population", values: [5.3, 6.1, 6.9, 7.8] }], yLabel: "People", unit: "bn" }] },
     notes: "For y = f(x) curves use the function plot recipe instead.",
   },
   {
     name: "timeline",
     use: "historical events, project phases, schedules, life cycles in order",
-    figure: { module: "mowr", fn: "timeline", args: [{ title: "Key steps in the French Revolution", events: [{ date: "1789", label: "Storming of the Bastille", detail: "14 July" }, { date: "1791", label: "Constitution adopted" }, { date: "1793", label: "Reign of Terror begins" }, { date: "1799", label: "Napoleon takes power" }] }] },
+    figure: { module: "clem", fn: "timeline", args: [{ title: "Key steps in the French Revolution", events: [{ date: "1789", label: "Storming of the Bastille", detail: "14 July" }, { date: "1791", label: "Constitution adopted" }, { date: "1793", label: "Reign of Terror begins" }, { date: "1799", label: "Napoleon takes power" }] }] },
     notes: "Up to 30 events in order; more than 8 are drawn as a vertical list with details.",
   },
   {
     name: "cycle",
     use: "repeating processes: water cycle, cell cycle, Krebs cycle, product life cycle, feedback loops",
-    figure: { module: "mowr", fn: "cycle", args: [{ title: "The water cycle", center: "Water cycle", steps: [{ label: "Evaporation", detail: "Sun heats surface water" }, { label: "Condensation", detail: "Vapour forms clouds" }, { label: "Precipitation" }, { label: "Collection", detail: "Rivers, lakes, oceans" }] }] },
+    figure: { module: "clem", fn: "cycle", args: [{ title: "The water cycle", center: "Water cycle", steps: [{ label: "Evaporation", detail: "Sun heats surface water" }, { label: "Condensation", detail: "Vapour forms clouds" }, { label: "Precipitation" }, { label: "Collection", detail: "Rivers, lakes, oceans" }] }] },
     notes: "3–12 steps in order; the arrow from the last step returns to the first.",
   },
   {
     name: "mind map",
     use: "a topic overview, revision summary or brainstorm: a central idea with branches and sub-points",
-    figure: { module: "mowr", fn: "mindMap", args: [{ title: "Cell biology overview", center: "The cell", branches: [{ label: "Organelles", children: ["Nucleus", "Mitochondria", "Ribosomes"] }, { label: "Transport", children: ["Diffusion", "Osmosis", "Active transport"] }, { label: "Division", children: ["Mitosis", "Meiosis"] }, { label: "Types", children: ["Prokaryotic", "Eukaryotic"] }] }] },
+    figure: { module: "clem", fn: "mindMap", args: [{ title: "Cell biology overview", center: "The cell", branches: [{ label: "Organelles", children: ["Nucleus", "Mitochondria", "Ribosomes"] }, { label: "Transport", children: ["Diffusion", "Osmosis", "Active transport"] }, { label: "Division", children: ["Mitosis", "Meiosis"] }, { label: "Types", children: ["Prokaryotic", "Eukaryotic"] }] }] },
     notes: "Up to 10 branches with up to 8 short children each.",
   },
   {
     name: "tree / hierarchy",
     use: "classification, taxonomy, organisation chart, decision tree, family of concepts",
-    figure: { module: "mowr", fn: "tree", args: [{ title: "Classification of matter", root: { label: "Matter", children: [{ label: "Pure substances", children: [{ label: "Elements" }, { label: "Compounds" }] }, { label: "Mixtures", children: [{ label: "Homogeneous", detail: "e.g. salt water" }, { label: "Heterogeneous", detail: "e.g. sand in water" }] }] } }] },
+    figure: { module: "clem", fn: "tree", args: [{ title: "Classification of matter", root: { label: "Matter", children: [{ label: "Pure substances", children: [{ label: "Elements" }, { label: "Compounds" }] }, { label: "Mixtures", children: [{ label: "Homogeneous", detail: "e.g. salt water" }, { label: "Heterogeneous", detail: "e.g. sand in water" }] }] } }] },
     notes: "Up to 60 nodes and 6 levels; detail is an optional short second line.",
   },
   {
     name: "Venn diagram",
     use: "similarities and differences between two or three things",
-    figure: { module: "mowr", fn: "venn", args: [{ title: "Mitosis and meiosis", sets: [{ label: "Mitosis", items: ["2 daughter cells", "Identical", "Growth and repair"] }, { label: "Meiosis", items: ["4 daughter cells", "Genetically different", "Gametes"] }], overlap: ["DNA replicates first", "Spindle fibres", "Nuclear division"] }] },
+    figure: { module: "clem", fn: "venn", args: [{ title: "Mitosis and meiosis", sets: [{ label: "Mitosis", items: ["2 daughter cells", "Identical", "Growth and repair"] }, { label: "Meiosis", items: ["4 daughter cells", "Genetically different", "Gametes"] }], overlap: ["DNA replicates first", "Spindle fibres", "Nuclear division"] }] },
     notes: "2 or 3 sets; for 3 sets, overlaps: {AB:[…],AC:[…],BC:[…],all:[…]}. Keep items to a few words.",
   },
   {
     name: "chat visual",
     use: "a ```visual already drawn in the conversation (plot, chart, diagram, figure or 3d), printed unchanged",
-    figure: { module: "mowr", fn: "visual", args: [{ kind: "diagram", title: "Request lifecycle", direction: "right", nodes: [{ id: "a", label: "Client request" }, { id: "b", label: "Validate input", shape: "pill" }, { id: "c", label: "Store result" }], edges: [{ from: "a", to: "b" }, { from: "b", to: "c", label: "valid" }] }] },
+    figure: { module: "clem", fn: "visual", args: [{ kind: "diagram", title: "Request lifecycle", direction: "right", nodes: [{ id: "a", label: "Client request" }, { id: "b", label: "Validate input", shape: "pill" }, { id: "c", label: "Store result" }], edges: [{ from: "a", to: "b" }, { from: "b", to: "c", label: "valid" }] }] },
     notes: "args[0] is the visual's JSON object exactly as written in the ```visual block. Printed on white paper; sliders at their starting values, animations at their final frame, every step shown.",
   },
 ];
@@ -158,11 +158,11 @@ export const diagramRecipes: KinetraRecipe[] = [
  * (shaded blocks and balls, pulleys and ropes on true tangents, spring scales, inclines, levers, vessels, charges with
  * computed field lines). The same figures draw in the chat as ```visual kind "figure".
  */
-export const illustrationRecipes: KinetraRecipe[] = figureRecipes.map((r) => ({ name: `textbook figure: ${r.name}`, use: r.use, figure: { module: "mowr", fn: "illustration", args: [r.figure] }, notes: r.notes }));
+export const illustrationRecipes: KinetraRecipe[] = figureRecipes.map((r) => ({ name: `textbook figure: ${r.name}`, use: r.use, figure: { module: "clem", fn: "illustration", args: [r.figure] }, notes: r.notes }));
 
-/** The full item list for {"module":"mowr","fn":"illustration"} figures, returned by {"action":"skill","name":"figures"}. */
+/** The full item list for {"module":"clem","fn":"illustration"} figures, returned by {"action":"skill","name":"figures"}. */
 export const illustrationGuide = `${figureVocabulary}
-Call it as {"module":"mowr","fn":"illustration","args":[{"items":[…],"view"?:{…}}]}. Start from the closest textbook figure recipe and change positions, sizes and labels; keep every id unique and refer only to anchors of items that exist.`;
+Call it as {"module":"clem","fn":"illustration","args":[{"items":[…],"view"?:{…}}]}. Start from the closest textbook figure recipe and change positions, sizes and labels; keep every id unique and refer only to anchors of items that exist.`;
 
 /** Every recipe: the science recipes, the concept diagrams and the textbook figures. */
 export const allRecipes = () => [...kinetraRecipes, ...diagramRecipes, ...illustrationRecipes];

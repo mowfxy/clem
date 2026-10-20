@@ -11,7 +11,7 @@ import { answerLedger, readLedger, summarizeLedger, LEDGER_FILE, LEDGER_MAX_BYTE
 import { memoryPrint, sourcePrint } from "../../desktop/chat-sessions.ts";
 import { composePrompt } from "../../desktop/prompt.ts";
 
-test("a Claude side job runs with no tools, one turn and Mowr's few-line prompt instead of Claude Code's own", () => {
+test("a Claude side job runs with no tools, one turn and Clem's few-line prompt instead of Claude Code's own", () => {
   const args = claudeArgs("haiku", undefined, undefined, undefined, true);
   assert.deepEqual(args.slice(args.indexOf("--tools"), args.indexOf("--tools") + 2), ["--tools", ""]);
   assert.equal(args[args.indexOf("--max-turns") + 1], "1");
@@ -33,17 +33,17 @@ test("the tokens each CLI reports are tallied per answer", () => {
 });
 
 test("Grok's own usage.json gives a session's tokens, its input counting the cached part", async () => {
-  const home = mkdtempSync(join(tmpdir(), "mowr-grok-home-"));
+  const home = mkdtempSync(join(tmpdir(), "clem-grok-home-"));
   const id = "0123abcd-0000-4000-8000-000000000001";
   mkdirSync(join(home, "sessions", "C%3A%5Cwork", id), { recursive: true });
   writeFileSync(join(home, "sessions", "C%3A%5Cwork", id, "usage.json"), JSON.stringify({ session: { inputTokens: 33169, outputTokens: 413, cachedReadTokens: 18048, cacheCreationTokens: 0 } }));
-  const grok = new GrokProvider(mkdtempSync(join(tmpdir(), "mowr-grok-")), "fixture", home);
+  const grok = new GrokProvider(mkdtempSync(join(tmpdir(), "clem-grok-")), "fixture", home);
   assert.deepEqual(await grok.sessionTokens(id), { input: 15121, cacheRead: 18048, cacheWrite: 0, output: 413 });
   assert.equal(await grok.sessionTokens("0123abcd-0000-4000-8000-000000000002"), undefined);
 });
 
 test("every answer is recorded in the ledger with counts only, and the ledger stays bounded", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mowr-ledger-"));
+  const dir = mkdtempSync(join(tmpdir(), "clem-ledger-"));
   const ledger = answerLedger(dir);
   const recorded: AnswerEntry[] = [];
   const timer = turnTimer("claude", { model: "claude:sonnet", record: (e) => { recorded.push(e); void ledger.record(e); } });
@@ -80,5 +80,5 @@ test("on a kept session the memory and source excerpts go once, and again when t
   assert.notEqual(sourcePrint(source), sourcePrint({ ...source, text: "Kirchhoff" }));
   // What the continuation leaves out is simply absent from the prompt: no empty sections.
   const prompt = composePrompt({ messages: [{ role: "user", content: "next question" }], sources: [], memories: [], continued: true, rulesInSystem: true });
-  assert.equal(prompt, "<mowr-request>\nnext question\n</mowr-request>");
+  assert.equal(prompt, "<clem-request>\nnext question\n</clem-request>");
 });

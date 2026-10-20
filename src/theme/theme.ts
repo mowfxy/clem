@@ -1,6 +1,6 @@
 /** The app's colour theme: dark, light (paper), or whatever the system (Windows) uses, which is the default. Kept on this device. */
 export type ThemeChoice = "dark" | "light" | "system";
-const KEY = "mowr-theme";
+const KEY = "clem-theme";
 const media = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: light)") : undefined;
 
 export function themeChoice(): ThemeChoice {
@@ -13,7 +13,7 @@ export function applyTheme(choice: ThemeChoice = themeChoice()) {
   const theme = resolve(choice), root = document.documentElement;
   root.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#faf8f3" : "#171717");
-  window.dispatchEvent(new CustomEvent("mowr-theme", { detail: theme }));
+  window.dispatchEvent(new CustomEvent("clem-theme", { detail: theme }));
 }
 export function setThemeChoice(choice: ThemeChoice) {
   try { localStorage.setItem(KEY, choice); } catch {}

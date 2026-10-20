@@ -1,12 +1,12 @@
 name: Feature idea
-description: Suggest something Mowr should do.
+description: Suggest something Clem should do.
 labels: [idea]
 body:
   - type: textarea
     id: problem
     attributes:
       label: What are you trying to do?
-      description: The work you were doing when you wished Mowr could help more.
+      description: The work you were doing when you wished Clem could help more.
     validations:
       required: true
   - type: textarea

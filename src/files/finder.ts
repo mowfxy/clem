@@ -4,7 +4,7 @@ import { isGoogleFormat } from "../drive/drive";
 import type { Space, StoredFile } from "../../core/types";
 
 /**
- * The AI finding the person's files on its own: every file saved in Mowr (each subject, project and the workspace, not
+ * The AI finding the person's files on its own: every file saved in Clem (each subject, project and the workspace, not
  * only this chat's) and their Google Drive, by name and by what they say. A file it then attaches is read into this
  * answer, so search, read, look and crop work on it as on any attached file. Runs here, where the files are; the
  * desktop app asks for it through the conversation's window tasks (desktop/main.ts "find" and "attach").
@@ -37,7 +37,7 @@ export async function findTask(finder: Finder, op: string, args: any): Promise<{
   throw Error(`Unknown task "${op}".`);
 }
 
-/** `driveOnly`: the AI already has every Mowr file in its working folder (desktop/ai-workspace.ts), so only Drive is searched. */
+/** `driveOnly`: the AI already has every Clem file in its working folder (desktop/ai-workspace.ts), so only Drive is searched. */
 async function find(finder: Finder, query: string, driveOnly = false) {
   if (!query.trim()) return { error: 'Give "query": words from the file\'s name or from what it says.' };
   const files = driveOnly ? [] : finder.files().filter((f) => !f.remote);
@@ -67,7 +67,7 @@ async function find(finder: Finder, query: string, driveOnly = false) {
       finder.found.set(f.id, { name: f.name, mimeType: f.mimeType, size: f.size });
       return { file: f.name, id: "drive:" + f.id, where: "Google Drive" };
     });
-    else driveNote = "Google Drive is not connected, so only files saved in Mowr were searched.";
+    else driveNote = "Google Drive is not connected, so only files saved in Clem were searched.";
   } catch { driveNote = "Google Drive could not be searched right now."; }
   return {
     query,

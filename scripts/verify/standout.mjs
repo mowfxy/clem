@@ -35,7 +35,7 @@ try {
     window.requests = [];
     window.fireCapture = async () => { const png = await (await fetch("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")).arrayBuffer(); for (const fn of captures) fn({ bytes: new Uint8Array(png), name: "Screen capture 10.00.png", mime: "image/png" }); };
     let file = "# Cycle\nRain: TODO\n";
-    window.mowrDesktop = {
+    window.clemDesktop = {
       onAuth: () => () => {}, onAttachment: () => () => {},
       onCapture: (fn) => { captures.add(fn); return () => captures.delete(fn); },
       onChat: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },

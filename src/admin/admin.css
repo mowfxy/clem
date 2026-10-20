@@ -1,4 +1,4 @@
-/* Mowr Admin — the app's own look: warm near-black surfaces, ivory ink, Mowafy Serif headings,
+/* Clem Admin — the app's own look: warm near-black surfaces, ivory ink, Mowafy Serif headings,
    drawn icons and an ink illustration at the top of every page. No brand hue beyond the illustrations. */
 .adm-root,.adm-modal{--a-bg:#141414;--a-side:#111;--a-card:#1b1b19;--a-raised:#232321;--a-field:#161615;--a-line:#2c2c29;--a-line-2:#3a3a36;--a-ink:#f0efeb;--a-soft:#b5b4ad;--a-muted:#85847e;--a-faint:#6f6e68;
   --a-ok:#a9c9a2;--a-warn:#e3c07e;--a-danger:#e08a7e;--a-blue:#8197e2;--a-ease:cubic-bezier(.2,.8,.2,1)}
@@ -37,7 +37,7 @@
 .adm-shell{display:grid;grid-template-columns:260px minmax(0,1fr)}
 .adm-nav{position:sticky;top:0;height:100vh;height:100dvh;display:flex;flex-direction:column;min-height:0;padding:22px 12px 12px;background:var(--a-side);border-right:1px solid #222;z-index:30}
 .adm-brand{display:flex;align-items:center;gap:9px;padding:0 10px 26px;font:400 30px/1 var(--serif);letter-spacing:-.5px;color:var(--a-ink);flex:none}
-.adm-brand .mowr-mark{color:var(--mowr-red)}
+.adm-brand .clem-mark{color:var(--clem-ink)}
 .adm-brand em{font:400 11px/1 var(--sans);font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:var(--a-muted);border:1px solid var(--a-line-2);border-radius:99px;padding:5px 8px 4px;margin-left:4px;align-self:center}
 .adm-brand.small{font-size:22px;padding:0;gap:7px}
 .adm-nav nav{flex:1;min-height:0;overflow-y:auto;display:grid;align-content:start;gap:22px;margin:0 -4px;padding:0 4px}
@@ -437,3 +437,56 @@
 @media (max-width:760px){.adm-mail{grid-template-columns:1fr}.adm-mail-presets{grid-template-columns:1fr}.adm-mail-preview{min-height:380px}.adm-mail-preview iframe{min-height:360px}}
 
 .adm-logs{margin-top:10px}.adm-logs summary{cursor:pointer;font-size:12px;color:var(--a-muted)}.adm-logs pre{margin:8px 0 0;max-height:360px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.5;color:var(--a-muted)}
+
+/* M4 Labs admin (admin.m4labs.xyz): the lab's terminal look from m4labs.xyz laid over the portal above. Fragment Mono
+   throughout, the M4 logo, the lab's near-black and hairlines, ./section navigation and prompt-led page heads. */
+@font-face{font-family:'Fragment Mono';src:url('/fonts/FragmentMono-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+.adm-root,.adm-modal{--a-bg:#0b0b0a;--a-side:#0b0b0a;--a-card:#121211;--a-raised:#171715;--a-field:#0f0f0e;--a-line:#2a2a27;--a-line-2:#34342f;
+  --a-ink:#ececea;--a-soft:#b9b9b4;--a-muted:#9a9a95;--a-faint:#5c5c58;--lab-mono:'Fragment Mono',ui-monospace,Consolas,monospace}
+html:has(.adm-root),body:has(.adm-root){background:#0b0b0a}
+.adm-root,.adm-modal{font-family:var(--lab-mono);font-size:13px}
+.adm-root h1,.adm-root h2,.adm-modal h2,.adm-root h3,.adm-empty h3{font-family:var(--lab-mono);font-weight:400;letter-spacing:-.01em}
+.adm-root h3{letter-spacing:.06em}
+.adm-root button,.adm-modal button,.adm-root input,.adm-root select,.adm-root textarea,.adm-modal input,.adm-modal select,.adm-modal textarea{font-family:var(--lab-mono);border-radius:6px}
+.adm-root ::selection{background:var(--a-ink);color:var(--a-bg)}
+
+/* the logo, set like the brand mark on m4labs.xyz */
+.adm-lab-logo{display:inline-flex;align-items:flex-start;gap:.075em;font-family:'Mowafy Sans',Arial,sans-serif;line-height:.8;color:var(--a-ink);font-size:26px}
+.adm-lab-logo b{font-weight:700;letter-spacing:-.058em}
+.adm-lab-logo i{font-style:normal;font-weight:500;font-size:.3em;letter-spacing:-.02em;line-height:1;padding:.14em .42em .2em;border:.09em solid currentColor;border-radius:999px;margin-top:-.1em}
+.adm-brand{font-family:var(--lab-mono);align-items:center;gap:12px;padding:4px 10px 14px}
+.adm-brand em{font-family:var(--lab-mono);letter-spacing:.04em;text-transform:none;border-radius:6px;padding:4px 7px}
+.adm-brand.small .adm-lab-logo{font-size:21px}
+.adm-project{display:flex;align-items:center;gap:7px;margin:0 10px 22px;padding:8px 10px;border:1px solid var(--a-line);border-radius:6px;color:var(--a-ink)}
+.adm-project .clem-mark{color:var(--a-ink)}
+.adm-project .wordmark{font-size:16px}
+.adm-project small{margin-left:auto;color:var(--a-faint);font-size:11px}
+
+/* navigation: ./sections */
+.adm-nav{border-right-color:var(--a-line)}
+.adm-nav-label{letter-spacing:.06em;text-transform:lowercase}
+.adm-nav nav a{height:34px;border-radius:6px;color:var(--a-muted);font-size:13px}
+.adm-nav nav a .drawn-icon{display:none}
+.adm-nav nav a span::before{content:'./';color:var(--a-faint)}
+.adm-nav nav a:hover{background:transparent;color:var(--a-ink)}
+.adm-nav nav a.on{background:var(--a-card);color:var(--a-ink);box-shadow:inset 2px 0 0 var(--a-ink)}
+.adm-nav-foot{border-top-color:var(--a-line)}
+
+/* page heads: the command that opened the page */
+.adm-prompt{margin:0 0 12px!important;color:var(--a-muted);font-size:13px}
+.adm-prompt span{color:var(--a-ink)}
+.adm-page-head{min-height:0;padding:8px 0 24px;margin-bottom:18px;border-bottom:1px solid var(--a-line)}
+.adm-page-head h1{font-size:30px;letter-spacing:-.02em}
+.adm-head-art,.adm-empty-art,.adm-auth-art,.adm-auth-glow{display:none}
+
+/* cards, tables and badges: hairlines, small radii */
+.adm-root :is(.adm-alert,.adm-announce-preview,.adm-card,.adm-compose-preview,.adm-error,.adm-facts,.adm-google,.adm-inbox,.adm-mail-preview,.adm-mail-results,.adm-mail-to,.adm-note,.adm-select-menu,.adm-stat,.adm-table-wrap),.adm-modal,.adm-toast{border-radius:8px}
+.adm-empty-mark{border-radius:6px}
+.adm-badge{border-radius:4px;font-family:var(--lab-mono)}
+
+/* sign-in */
+.adm-auth-card{text-align:left;width:min(100%,400px);padding:28px;border:1px solid var(--a-line);border-radius:8px;background:var(--a-card)}
+.adm-auth-card .adm-lab-logo{font-size:30px;margin-bottom:8px}
+.adm-auth-card h1{font-size:26px;margin:0}
+.adm-auth-home{font:400 13px/1 var(--lab-mono);color:var(--a-muted)}
+.adm-auth-home:hover{color:var(--a-ink)}

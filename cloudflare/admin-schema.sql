@@ -1,19 +1,19 @@
 -- Additive migration for the admin portal, moderation, support cases and in-app announcements.
 -- Safe to run repeatedly. Existing tables are not altered.
-CREATE TABLE IF NOT EXISTS mowr_support(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,category TEXT NOT NULL,subject TEXT NOT NULL,message TEXT NOT NULL,delivered INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
-CREATE INDEX IF NOT EXISTS mowr_support_owner ON mowr_support(owner_id,created_at);
+CREATE TABLE IF NOT EXISTS clem_support(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,category TEXT NOT NULL,subject TEXT NOT NULL,message TEXT NOT NULL,delivered INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+CREATE INDEX IF NOT EXISTS clem_support_owner ON clem_support(owner_id,created_at);
 
 -- Workflow state kept beside the legacy support table so the website endpoint keeps working unchanged.
-CREATE TABLE IF NOT EXISTS mowr_support_state (
+CREATE TABLE IF NOT EXISTS clem_support_state (
  case_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','pending','resolved','closed')),
  priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low','normal','high','urgent')),
  assignee_id TEXT, updated_at TEXT NOT NULL, staff_replied_at TEXT, user_seen_at TEXT, user_replied_at TEXT
 );
-CREATE TABLE IF NOT EXISTS mowr_support_messages (
+CREATE TABLE IF NOT EXISTS clem_support_messages (
  id TEXT PRIMARY KEY, case_id TEXT NOT NULL, author TEXT NOT NULL CHECK(author IN ('user','staff','note')),
  author_id TEXT NOT NULL, author_name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, created_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS mowr_support_messages_case ON mowr_support_messages(case_id,created_at);
+CREATE INDEX IF NOT EXISTS clem_support_messages_case ON clem_support_messages(case_id,created_at);
 
 CREATE TABLE IF NOT EXISTS desktop_admins (
  user_id TEXT PRIMARY KEY, email TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','support')),

@@ -119,7 +119,7 @@ export async function docxBlob(content: string, title: string) {
         : {}),
       ...(block.kind === "bullet" ? { bullet: { level: 0 } } : {}),
       ...(block.kind === "number"
-        ? { numbering: { reference: "mowr-numbered", level: 0 } }
+        ? { numbering: { reference: "clem-numbered", level: 0 } }
         : {}),
       spacing: block.kind === "heading" ? undefined : { after: 140, line: 288 },
     });
@@ -128,11 +128,11 @@ export async function docxBlob(content: string, title: string) {
   return Packer.toBlob(
     new Document({
       title,
-      creator: "Mowr",
+      creator: "Clem",
       numbering: {
         config: [
           {
-            reference: "mowr-numbered",
+            reference: "clem-numbered",
             levels: [
               {
                 level: 0,
@@ -180,7 +180,7 @@ export async function slidesBlob(content: string, title: string) {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
-  pptx.author = "Mowr";
+  pptx.author = "Clem";
   pptx.title = title;
   const sections: { title: string; lines: string[]; pictures: Picture[] }[] = [];
   let listNumber = 0;

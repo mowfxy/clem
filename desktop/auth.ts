@@ -102,7 +102,7 @@ export class DesktopAuth {
       throw Error("Account service is not configured in this build.");
     if (!(await this.user())) throw Error("Sign in again to continue.");
     const { data } = await this.client!.auth.getSession();
-    if (!data.session) throw Error("Mowr could not reach the account service. Check your connection and try again.");
+    if (!data.session) throw Error("Clem could not reach the account service. Check your connection and try again.");
     return fetch(this.config.service + path, {
       method: init.method || "GET",
       headers: { Authorization: "Bearer " + data.session!.access_token, ...init.headers },

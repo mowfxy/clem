@@ -27,5 +27,5 @@ export function answerReview(answer: string, history: { request: any; result: an
   // Code is not a calculation ("x = y = 0" in a fix for a bug): only the prose and the maths count.
   const prose = answer.replace(/(```+|~~~+)[^\n]*\n[\s\S]*?(?:\n\s*\1\s*(?:\n|$)|$)/g, "\n").replace(/`[^`\n]*`/g, "");
   if (!CHAIN.test(prose) && (prose.match(VALUE) || []).length < 3) return undefined;
-  return `Your answer states computed results that no Kinetra call worked out and no check verifies. Verify them now: compute each with {"action":"call",…} where a module does (circuits: mowr solveCircuit with the circuit's netlist), then write your whole answer again, ending with one \`\`\`check block of strict JSON {"checks":[{"label":…,"expr":…,"vars":{…},"claimed":…,"unit":…}]} for the key results. The person sees only the new answer.`;
+  return `Your answer states computed results that no Kinetra call worked out and no check verifies. Verify them now: compute each with {"action":"call",…} where a module does (circuits: clem solveCircuit with the circuit's netlist), then write your whole answer again, ending with one \`\`\`check block of strict JSON {"checks":[{"label":…,"expr":…,"vars":{…},"claimed":…,"unit":…}]} for the key results. The person sees only the new answer.`;
 }

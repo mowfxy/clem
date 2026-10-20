@@ -1,6 +1,6 @@
 # Local data and portable subjects
 
-Mowr stores user work under the Windows Documents known folder (`Documents/Mowr`; Windows may redirect Documents into OneDrive). Mowr itself does not upload chats, source files, projects or subjects. Operating-system folder backup follows the user's Windows configuration.
+Clem stores user work under the Windows Documents known folder (`Documents/Clem`; Windows may redirect Documents into OneDrive). Clem itself does not upload chats, source files, projects or subjects. Operating-system folder backup follows the user's Windows configuration.
 
 `Accounts/<account>/workspace.json` holds the workspace index and conversations. `Accounts/<account>/Files/<id>.blob` contains original source bytes. `Local data` contains Chromium IndexedDB for document edits, source caches and workflow checkpoints. Protected login/provider credentials remain in AppData and never enter exported subject archives.
 
@@ -14,4 +14,4 @@ Subject deletion removes the subject's owned files, chats, visuals, study sets, 
 
 ## Uninstall
 
-Data is retained by default for reinstalling. Interactive uninstall offers removal of all Mowr local data. That choice runs only in the actual uninstall phase. Updates and silent uninstall preserve data. Cloud account/essential-memory deletion is a separate operation.
+Data is retained by default for reinstalling. Interactive uninstall offers removal of all Clem local data. That choice runs only in the actual uninstall phase. Updates and silent uninstall preserve data. Cloud account/essential-memory deletion is a separate operation.

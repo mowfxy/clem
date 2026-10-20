@@ -143,7 +143,7 @@
   margin: 0;
   line-height: 1.15;
 }
-.new-chat-content .greeting-row > .mowr-mark {
+.new-chat-content .greeting-row > .clem-mark {
   flex-shrink: 0;
   display: block;
 }

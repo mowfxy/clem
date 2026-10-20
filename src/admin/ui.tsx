@@ -1,14 +1,13 @@
 import {createContext,useCallback,useContext,useEffect,useId,useRef,useState,type CSSProperties,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import type {Person} from './api';
 import type {Scene} from '../vectorFilm';
-import {Illustration} from '../Illustrations';
 import {Icon} from '../Icons';
 import {copyText} from '../clipboard';
 
-/** The admin portal draws from the app's own icon set, so both read as one family. */
+/** The portal draws from Clem's icon set, so a project's admin and its app read as one family. */
 export function I({name,size=17}:{name:string;size?:number}){return <Icon name={name} size={size}/>;}
 
-/** Mowr is free, so a person's standing is about access and progress, never billing. */
+/** Clem is free, so a person's standing is about access and progress, never billing. */
 export function PersonStatus({person}:{person:Pick<Person,'plan'|'suspended'|'setup_step'>}){
   if(person.suspended)return <Badge tone="danger">Suspended</Badge>;
   if(person.plan==='owner')return <Badge tone="ink">Owner</Badge>;
@@ -33,13 +32,15 @@ export function Avatar({person,size=32}:{person:{id?:string;email?:string|null;u
   return <span className="adm-avatar" style={{width:size,height:size,fontSize:size*.38,'--hue':String(seed*47%360)} as CSSProperties}>{initials(person)}</span>;
 }
 
-export function Empty({icon='spark',scene,title,children}:{icon?:string;scene?:Scene;title:string;children?:ReactNode}){
-  return <div className="adm-empty">{scene?<div className="adm-empty-art"><Illustration scene={scene}/></div>:<span className="adm-empty-mark"><I name={icon} size={20}/></span>}<h3>{title}</h3>{children&&<p>{children}</p>}</div>;
+// `scene` is accepted for older callers and ignored: the lab's admin has no illustrations.
+export function Empty({icon='spark',title,children}:{icon?:string;scene?:Scene;title:string;children?:ReactNode}){
+  return <div className="adm-empty"><span className="adm-empty-mark"><I name={icon} size={20}/></span><h3>{title}</h3>{children&&<p>{children}</p>}</div>;
 }
 
-/** The illustrated page header, matching the one at the top of each settings tab in the app. */
-export function PageHead({scene,title,line,children}:{scene:Scene;title:string;line:ReactNode;children?:ReactNode}){
-  return <header className="adm-page-head"><Illustration scene={scene} className="adm-head-art"/><div className="adm-head-text"><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
+/** A page header in the manner of m4labs.xyz: the command that opened the page, then its title and line. */
+export function PageHead({title,line,children}:{scene?:Scene;title:string;line:ReactNode;children?:ReactNode}){
+  const cmd=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  return <header className="adm-page-head"><div className="adm-head-text"><p className="adm-prompt"><span>m4labs:~$</span> clem admin {cmd}</p><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
 }
 export function Skeleton({rows=5}:{rows?:number}){return <div className="adm-skeleton" aria-busy="true" aria-label="Loading">{Array.from({length:rows},(_,i)=><span key={i} style={{animationDelay:i*80+'ms'}}/>)}</div>;}
 

@@ -17,7 +17,7 @@ test('Drive questions are recognised and turned into a Drive search',()=>{
 
 // The fake 900 MB video's bytes: byte n is n % 251, so any range can be checked.
 const pattern=(a:number,b:number)=>Uint8Array.from({length:b-a+1},(_,i)=>(a+i)%251);
-// A fake of mowrai.com's token endpoint and Google's Drive API.
+// A fake of clem.m4labs.xyz's token endpoint and Google's Drive API.
 function fakeGoogle(opts:{connected?:boolean}={}){
   const calls:{url:string;headers:Record<string,string>}[]=[];
   const fetcher=(async(input:any,init:any={})=>{
@@ -30,7 +30,7 @@ function fakeGoogle(opts:{connected?:boolean}={}){
     if(u.pathname==='/drive/v3/files/vid1234567890'&&u.searchParams.get('alt')==='media'){const [,a,b]=/bytes=(\d+)-(\d+)/.exec(headers.Range)!;return new Response(pattern(Number(a),Number(b)),{status:206,headers:{'Content-Type':'video/mp4','Content-Range':`bytes ${a}-${b}/900000000`,'Content-Length':String(Number(b)-Number(a)+1)}});}
     return new Response('nope',{status:404});
   }) as typeof fetch;
-  return {calls,drive:new DriveLive(async()=>'session',fetcher,'https://mowrai.example')};
+  return {calls,drive:new DriveLive(async()=>'session',fetcher,'https://clem.example')};
 }
 
 test('search returns matches with an excerpt of the best text match',async()=>{
@@ -51,7 +51,7 @@ test('videos stream with byte ranges; Google Docs stream as PDF',async()=>{
   assert.equal(video.status,206);assert.equal(video.headers.get('Content-Range'),'bytes 100-103/900000000');assert.equal(video.headers.get('Accept-Ranges'),'bytes');
   assert.equal(calls.find(c=>c.url.includes('vid1234567890?alt=media'))!.headers.Range,'bytes=100-103');
   const doc=await drive.media('doc1234567890',null);
-  assert.equal(doc.headers.get('Content-Type'),'application/pdf');assert.equal(decodeURIComponent(doc.headers.get('X-Mowr-File-Name')!),'Chain rule notes.pdf');
+  assert.equal(doc.headers.get('Content-Type'),'application/pdf');assert.equal(decodeURIComponent(doc.headers.get('X-Clem-File-Name')!),'Chain rule notes.pdf');
   assert.equal(await doc.text(),'%PDF-1.7');
 });
 
@@ -69,7 +69,7 @@ function fakeTree(){
     const parents=[...q.matchAll(/'([\w-]+)' in parents/g)].map(m=>m[1]);
     return Response.json({files:parents.flatMap(p=>files[p]||[])});
   }) as typeof fetch;
-  return new DriveLive(async()=>'session',fetcher,'https://mowrai.example');
+  return new DriveLive(async()=>'session',fetcher,'https://clem.example');
 }
 test('a linked folder is read live with its subfolders, and questions find the right files',async()=>{
   const drive=fakeTree();
@@ -82,7 +82,7 @@ test('a linked folder is read live with its subfolders, and questions find the r
 });
 test('the connection state survives a network hiccup instead of asking to reconnect',async()=>{
   let fail=false;
-  const drive=new DriveLive(async()=>'session',(async()=>{if(fail)throw Error('offline');return Response.json({accessToken:'tok',expiresIn:3300});}) as any,'https://mowrai.example');
+  const drive=new DriveLive(async()=>'session',(async()=>{if(fail)throw Error('offline');return Response.json({accessToken:'tok',expiresIn:3300});}) as any,'https://clem.example');
   assert.deepEqual(await drive.state(),{connected:true,checked:true});
   fail=true;
   const later=await drive.state(true);
@@ -150,7 +150,7 @@ test('saving into a folder asks for a reconnect under the old read-only scope, a
   assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123'});
 });
 
-test('a file renamed or moved to the trash from Mowr is changed in Drive itself, in place',async()=>{
+test('a file renamed or moved to the trash from Clem is changed in Drive itself, in place',async()=>{
   const calls:{url:string;method?:string;body?:string}[]=[];
   const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const url=String(input);
     if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
@@ -161,7 +161,7 @@ test('a file renamed or moved to the trash from Mowr is changed in Drive itself,
   assert.deepEqual(calls.map(c=>[c.method,new URL(c.url).pathname,JSON.parse(c.body!)]),[['PATCH','/drive/v3/files/file-id-12345',{name:'Week 2.pdf'}],['PATCH','/drive/v3/files/file-id-12345',{trashed:true}]]);
 });
 
-test('a saved file reports Drive’s modified time, so Mowr knows its own upload is not a change made in Drive',async()=>{
+test('a saved file reports Drive’s modified time, so Clem knows its own upload is not a change made in Drive',async()=>{
   const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
     if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
     if(url.includes('uploadType=resumable')){assert.match(url,/fields=id,modifiedTime/);return new Response('{}',{headers:{Location:'https://upload.example/session'}});}
@@ -195,12 +195,12 @@ test('a dropped connection or a busy Google is tried again, and many requests sh
     if(lists===2)return new Response('{}',{status:503});
     return Response.json({files:[{id:'doc1234567890',name:'Notes',mimeType:'text/plain'}]});
   }) as typeof fetch;
-  const drive=new DriveLive(async()=>'session',fetcher,'https://mowrai.example');
+  const drive=new DriveLive(async()=>'session',fetcher,'https://clem.example');
   const [a,b]=await Promise.all([drive.list({folder:'root'}),drive.list({folder:'root'})]);
   assert.equal(tokens,1);
   assert.deepEqual([a.files.length,b.files.length],[1,1]);
   // Never reaching Google ends in a plain message, not "fetch failed".
-  const offline=new DriveLive(async()=>'session',(async(input:any)=>{if(String(input).endsWith('/api/drive/token'))return Response.json({accessToken:'tok',expiresIn:3300});throw new TypeError('fetch failed');}) as typeof fetch,'https://mowrai.example');
+  const offline=new DriveLive(async()=>'session',(async(input:any)=>{if(String(input).endsWith('/api/drive/token'))return Response.json({accessToken:'tok',expiresIn:3300});throw new TypeError('fetch failed');}) as typeof fetch,'https://clem.example');
   await assert.rejects(offline.list({folder:'root'}),/couldn't reach Google Drive/);
 });
 test('a linked folder listing answers from what it has and is read again beside it',async()=>{
@@ -211,7 +211,7 @@ test('a linked folder listing answers from what it has and is read again beside 
     if(/in parents/.test(url.searchParams.get('q')||'')&&!/fullText/.test(url.searchParams.get('q')||''))lists++;
     return Response.json({files:[]});
   }) as typeof fetch;
-  const drive=new DriveLive(async()=>'session',fetcher,'https://mowrai.example');
+  const drive=new DriveLive(async()=>'session',fetcher,'https://clem.example');
   const first=await drive.tree('rootFolder123');
   (first as {at:number}).at-=5*60_000;
   const again=await drive.tree('rootFolder123');

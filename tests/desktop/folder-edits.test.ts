@@ -8,7 +8,7 @@ import { applyChange, undoChange, locate, sha } from "../../desktop/folder-edits
 import type { Folder } from "../../desktop/folders.ts";
 
 async function workspace() {
-  const base = await realpath(await mkdtemp(join(tmpdir(), "mowr-edits-")));
+  const base = await realpath(await mkdtemp(join(tmpdir(), "clem-edits-")));
   const root = join(base, "project"), other = join(base, "other");
   await mkdir(join(root, "src"), { recursive: true });
   await mkdir(other, { recursive: true });
@@ -120,10 +120,10 @@ test("a subfolder named like the linked folder is reached as written; the folder
   } finally { await rm(base, { recursive: true, force: true }); }
 });
 
-test("files the folder's .gitignore or .mowrignore leave out cannot be read or changed", async () => {
+test("files the folder's .gitignore or .clemignore leave out cannot be read or changed", async () => {
   const { base, root, folders } = await workspace();
   try {
-    await writeFile(join(root, ".mowrignore"), "private/\n*.log.txt\n");
+    await writeFile(join(root, ".clemignore"), "private/\n*.log.txt\n");
     await mkdir(join(root, "src", "private"), { recursive: true });
     await writeFile(join(root, "src", "private", "diary.md"), "keep out\n");
     await writeFile(join(root, "src", ".gitignore"), "generated.json\n");

@@ -22,8 +22,8 @@ try {
   await page.waitForTimeout(500);
   assert.equal(await page.locator(".nav-item.active").count(), 0, "no page is marked while a chat is open");
   assert.ok((await at()).gap < 4, "a chat opens at its latest message");
-  assert.equal(await page.getByLabel("Your message").getAttribute("placeholder"), "Reply to Mowr…");
-  assert.match(await page.title(), /^A long chat · Mowr$/);
+  assert.equal(await page.getByLabel("Your message").getAttribute("placeholder"), "Reply to Clem…");
+  assert.match(await page.title(), /^A long chat · Clem$/);
 
   // Sending brings the answer into view and follows it while it streams.
   await page.getByLabel("Your message").fill("Tell me more");
@@ -95,7 +95,7 @@ try {
   assert.ok(await page.getByText("Find in this page", { exact: true }).count());
   await page.keyboard.press("Escape");
 
-  // Rename a chat in place; Mowr never renames it after that.
+  // Rename a chat in place; Clem never renames it after that.
   await page.keyboard.press("Control+1");
   await row("Osmosis lab write-up").dblclick();
   await page.locator(".history-rename input").waitFor();

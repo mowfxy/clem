@@ -7,11 +7,11 @@ import { studySchema } from "./study.ts";
  * source files. It never carries chats, memory, review history or anything about the sender
  * beyond the name they choose to show.
  */
-export const PACK_EXTENSION = ".mowrpack";
+export const PACK_EXTENSION = ".clempack";
 const MAX_FILE = 25_000_000, MAX_TOTAL = 100_000_000;
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 export const packSchema = z.object({
-  format: z.literal("mowr-study-pack"),
+  format: z.literal("clem-study-pack"),
   version: z.literal(1),
   title: z.string().trim().min(1).max(150),
   description: z.string().max(2000),
@@ -26,11 +26,11 @@ export type StudyPack = z.infer<typeof packSchema>;
 const readme = (pack: StudyPack) => `${pack.title}
 ${"=".repeat(Math.min(60, pack.title.length))}
 
-A Mowr study pack${pack.author ? " shared by " + pack.author : ""}.
+A Clem study pack${pack.author ? " shared by " + pack.author : ""}.
 ${[pack.sets.length ? `${cardCount(pack)} cards and questions` : "", pack.files.length ? `${pack.files.length} file${pack.files.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ")}.
 
-Open this file with Mowr (free for Windows at https://mowrai.com) to study it with
-spaced repetition. Mowr checks the pack before adding anything to your subjects.
+Open this file with Clem (free for Windows at https://clem.m4labs.xyz) to study it with
+spaced repetition. Clem checks the pack before adding anything to your subjects.
 `;
 
 export const cardCount = (pack: Pick<StudyPack, "sets">) => pack.sets.reduce((n, s) => n + s.items.length, 0);
@@ -74,12 +74,12 @@ export async function unpackStudy(bytes: Uint8Array) {
         if (!allowed || total > MAX_TOTAL + 1_000_000 || info.originalSize > MAX_FILE) { rejected = true; return false; }
         return info.name !== "README.txt";
       },
-    }, (error, data) => (error ? reject(Error("This is not a Mowr study pack.")) : resolve(data))));
+    }, (error, data) => (error ? reject(Error("This is not a Clem study pack.")) : resolve(data))));
   if (rejected || !entries["pack.json"] || entries["pack.json"].length > 5_000_000) throw Error("This study pack is unsupported, damaged or too large.");
   let raw: unknown;
   try { raw = JSON.parse(strFromU8(entries["pack.json"])); } catch { throw Error("This study pack is damaged."); }
   const parsed = packSchema.safeParse(raw);
-  if (!parsed.success) throw Error("This study pack is from a newer Mowr or is damaged.");
+  if (!parsed.success) throw Error("This study pack is from a newer Clem or is damaged.");
   const pack = parsed.data;
   nonEmpty(pack);
   validQuizzes(pack);

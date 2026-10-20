@@ -2,7 +2,7 @@ import {createClient,type SupabaseClient} from '@supabase/supabase-js';
 
 // Public values only: the publishable key is designed to ship to browsers.
 const fallback={url:'https://npdkvkikudvjrgnesuhc.supabase.co',key:'sb_publishable_iuAX6xFMvThhHYTWkT3fMw_CtkABHLu'};
-export const accountService=(import.meta.env.VITE_ACCOUNT_SERVICE as string|undefined)||'https://mowr-accounts.mohamed-khaled011008.workers.dev';
+export const accountService=(import.meta.env.VITE_ACCOUNT_SERVICE as string|undefined)||'https://clem-accounts.mohamed-khaled011008.workers.dev';
 
 let client:SupabaseClient|null=null;
 export async function adminClient(){
@@ -10,7 +10,7 @@ export async function adminClient(){
   let config=fallback;
   try{const r=await fetch('/api/supabase/config',{signal:AbortSignal.timeout(5000)});const data=await r.json();if(data.url&&data.key)config=data;}catch{/* Static preview: use the public fallback. */}
   // PKCE returns Google sign-ins as ?code=, leaving the hash free for portal routes.
-  client=createClient(config.url,config.key,{auth:{storageKey:'mowr-admin-auth',persistSession:true,autoRefreshToken:true,flowType:'pkce',detectSessionInUrl:true}});
+  client=createClient(config.url,config.key,{auth:{storageKey:'clem-admin-auth',persistSession:true,autoRefreshToken:true,flowType:'pkce',detectSessionInUrl:true}});
   return client;
 }
 
@@ -52,7 +52,7 @@ export async function mailApi<T=any>(path:string,body?:unknown):Promise<T>{
     headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},
     body:body===undefined?undefined:JSON.stringify(body),
     signal:AbortSignal.timeout(30000),
-  }).catch(()=>{throw new AdminError('The Mowr website could not be reached. Check your connection.',0);});
+  }).catch(()=>{throw new AdminError('The Clem website could not be reached. Check your connection.',0);});
   const result=await response.json().catch(()=>({}));
   if(!response.ok)throw new AdminError(result.error||`Request failed (${response.status}).`,response.status);
   return result as T;

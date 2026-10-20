@@ -1,5 +1,5 @@
 /** Inline source citations. Models write [[File name.pdf, p. 3]] (page optional);
- *  Mowr turns each into a link the chat renders as a chip that opens the source. */
+ *  Clem turns each into a link the chat renders as a chip that opens the source. */
 const pattern = /\[\[([^\]\n]{1,160}?)(?:\s*[,·|]\s*(?:p\.?|pp\.?|page)\s*(\d{1,4})(?:\s*[-–]\s*\d{1,4})?)?\]\]/gi;
 
 export type Citation = { name: string; page?: number };

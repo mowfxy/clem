@@ -19,7 +19,7 @@ const youtubeScript = () => {
   };
   window.youtubeCalls = [];
   let real;
-  Object.defineProperty(window, "mowrDesktop", { configurable: true, get: () => real, set: (bridge) => {
+  Object.defineProperty(window, "clemDesktop", { configurable: true, get: () => real, set: (bridge) => {
     const invoke = bridge.invoke;
     real = { ...bridge, invoke: async (r) => {
       if (r.action === "youtubePlaylist") {

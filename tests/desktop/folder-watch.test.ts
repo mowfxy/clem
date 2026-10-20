@@ -13,7 +13,7 @@ test("index diff reports content changes, not touches", () => {
   assert.ok(!relevant("node_modules/x.js") && !relevant(".git/HEAD") && !relevant("photo.png") && !relevant("secrets.txt"));
 });
 
-test("watcher debounces, reports outside changes and absorbs Mowr's own edits", async (t) => {
+test("watcher debounces, reports outside changes and absorbs Clem's own edits", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let disk = [file("a.md", "1")];
   const emitted: FolderEvent[] = [];
@@ -32,7 +32,7 @@ test("watcher debounces, reports outside changes and absorbs Mowr's own edits", 
   disk = [file("a.md", "5"), file("b.md", "3")];
   watcher.absorb("f");
   await watcher.check("f");
-  assert.equal(emitted.length, 1, "Mowr's own write is not announced");
+  assert.equal(emitted.length, 1, "Clem's own write is not announced");
   watcher.sync([]);
   assert.deepEqual(watcher.watching(), []);
 });

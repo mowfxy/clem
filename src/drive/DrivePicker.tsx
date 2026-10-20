@@ -24,13 +24,13 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
   const [items, setItems] = useState<DriveItem[]>([]), [next, setNext] = useState<string>();
   const [busy, setBusy] = useState(true), [error, setError] = useState("");
   const [picked, setPicked] = useState<Map<string, DriveItem>>(new Map());
-  const [grid, setGrid] = useState(() => { try { return localStorage.getItem("mowr-drive-grid") === "1"; } catch { return false; } });
+  const [grid, setGrid] = useState(() => { try { return localStorage.getItem("clem-drive-grid") === "1"; } catch { return false; } });
   const [waiting, setWaiting] = useState(false);
   const version = useRef(0);
   const folder = trail.at(-1)?.id || root;
   useEffect(() => { const t = setTimeout(() => setSearch(query.trim()), 280); return () => clearTimeout(t); }, [query]);
   async function load(page?: string) {
-    if (!desktop) { setBusy(false); setError("Google Drive works in the Mowr desktop app."); return; }
+    if (!desktop) { setBusy(false); setError("Google Drive works in the Clem desktop app."); return; }
     const v = ++version.current;
     setBusy(true); setError("");
     try {
@@ -55,12 +55,12 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
     <p>Browse your Drive, use files in chats and link folders to subjects and projects. Files are read live from Drive, never copied to this PC.</p>
     <ul>
       <li><Icon name="check" size={14} />Reads the folders and files you choose to open</li>
-      <li><Icon name="check" size={14} />Saves files you add, and Mowr's files, into folders you link</li>
+      <li><Icon name="check" size={14} />Saves files you add, and Clem's files, into folders you link</li>
       <li><Icon name="check" size={14} />Videos play straight from Drive</li>
       <li><Icon name="check" size={14} />Disconnect anytime</li>
     </ul>
     <button className="gd-google" disabled={waiting} onClick={() => { setWaiting(true); void connectDrive().catch((e) => { setWaiting(false); setError(e.message); }); }}>
-      <GoogleG />{waiting ? "Finish in your browser — Mowr will notice" : "Continue with Google"}
+      <GoogleG />{waiting ? "Finish in your browser — Clem will notice" : "Continue with Google"}
     </button>
     {waiting && <button className="gd-link" onClick={() => void refreshDrive(true)}>I've connected it</button>}
     {error && <p className="gd-error">{error}</p>}
@@ -73,7 +73,7 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
         <button role="tab" aria-selected={root === "shared" && !search} onClick={() => { setRoot("shared"); setTrail([]); setQuery(""); }}><Icon name="account" size={14} />Shared with me</button>
       </div>
       <label className="gd-search"><Icon name="research" size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={mode === "folder" ? "Search folders" : "Search Drive"} aria-label="Search Google Drive" />{query && <button aria-label="Clear search" onClick={() => setQuery("")}><Icon name="close" size={12} /></button>}</label>
-      <button className="gd-view" aria-label={grid ? "List view" : "Grid view"} aria-description={grid ? "List view" : "Grid view"} onClick={() => { const g = !grid; setGrid(g); try { localStorage.setItem("mowr-drive-grid", g ? "1" : "0"); } catch {} }}>{grid ? <ListGlyph /> : <GridGlyph />}</button>
+      <button className="gd-view" aria-label={grid ? "List view" : "Grid view"} aria-description={grid ? "List view" : "Grid view"} onClick={() => { const g = !grid; setGrid(g); try { localStorage.setItem("clem-drive-grid", g ? "1" : "0"); } catch {} }}>{grid ? <ListGlyph /> : <GridGlyph />}</button>
     </div>
     <nav className="gd-trail" aria-label="Folder path">
       {search ? <span className="gd-crumb here">Results for “{search}”</span> : <>
@@ -102,7 +102,7 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
     </div>
     {error && <p className="gd-error" role="alert">{error}</p>}
     <footer className="gd-foot">
-      <button className="gd-disconnect" onClick={() => void confirmDialog({ title: "Disconnect Google Drive?", message: "Mowr stops reading your Drive. Linked folders reconnect when you connect again. Nothing in your Drive changes.", confirm: "Disconnect" }).then((yes) => { if (yes) return disconnectDrive(); }).catch((e) => setError(e.message))}>Disconnect</button>
+      <button className="gd-disconnect" onClick={() => void confirmDialog({ title: "Disconnect Google Drive?", message: "Clem stops reading your Drive. Linked folders reconnect when you connect again. Nothing in your Drive changes.", confirm: "Disconnect" }).then((yes) => { if (yes) return disconnectDrive(); }).catch((e) => setError(e.message))}>Disconnect</button>
       {mode === "files"
         ? <><span className="gd-count">{picked.size ? `${picked.size} selected` : "Select files, or double-click one"}</span><button className="primary" disabled={!picked.size} onClick={() => onFiles?.([...picked.values()])}>{confirmLabel || "Add to chat"}</button></>
         : <><span className="gd-count">{here ? <>Open folders to go deeper, or link one with <b>Link</b></> : "Open a folder, or link one with Link"}</span><button className="primary" disabled={!here} onClick={() => here && onFolder?.(here)}>{here ? `Link “${here.name.length > 24 ? here.name.slice(0, 23) + "…" : here.name}”` : "Link this folder"}</button></>}

@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { format } from "node:util";
 
 /**
- * Mowr's own log on this PC (logs/main.log): the main process's warnings and errors, answer timings, crashes of the
+ * Clem's own log on this PC (logs/main.log): the main process's warnings and errors, answer timings, crashes of the
  * window or its helpers. It is what a bug report attaches when the person leaves "Include diagnostic logs" on, so a
- * report says what happened even after Mowr was restarted. Never a prompt, a reply or a file's contents.
+ * report says what happened even after Clem was restarted. Never a prompt, a reply or a file's contents.
  */
 export const MAIN_LOG = "main.log";
 const MAIN_LOG_MAX = 1_000_000;
@@ -32,14 +32,14 @@ export function startMainLog(dir: string) {
     const original = console[level].bind(console);
     console[level] = (...args: unknown[]) => { keep(level, args); original(...args); };
   }
-  // Only Mowr's own tagged lines (answer timings and the like), not every library's chatter.
+  // Only Clem's own tagged lines (answer timings and the like), not every library's chatter.
   const log = console.log.bind(console);
-  console.log = (...args: unknown[]) => { if (typeof args[0] === "string" && /^\[mowr/.test(args[0])) keep("info", args); log(...args); };
+  console.log = (...args: unknown[]) => { if (typeof args[0] === "string" && /^\[clem/.test(args[0])) keep("info", args); log(...args); };
   // Observed only: Electron's own handling of an uncaught error is unchanged.
   process.on("uncaughtExceptionMonitor", (error) => keep("fatal", ["uncaught:", error?.stack || error]));
   process.on("unhandledRejection", (reason) => keep("error", ["unhandled rejection:", (reason as Error)?.stack || reason]));
 }
-export function noteEvent(...args: unknown[]) { console.warn("[mowr event]", ...args); }
+export function noteEvent(...args: unknown[]) { console.warn("[clem event]", ...args); }
 
 /** Sign-in tokens, keys and this PC's user folder are taken out of anything a report carries. */
 export function redact(text: string) {
@@ -80,10 +80,10 @@ async function grokLog(home: string) {
 
 export async function collectDiagnostics({ version, electron, logDir, grokHomes = [] }: { version: string; electron: string; logDir: string; grokHomes?: string[] }) {
   const parts = [
-    `Mowr ${version} · Electron ${electron} · Windows ${release()} ${arch()} · memory ${Math.round(freemem() / 1e9)}/${Math.round(totalmem() / 1e9)} GB free · PC up ${Math.round(uptime() / 3600)} h · app up ${Math.round(process.uptime() / 60)} min`,
+    `Clem ${version} · Electron ${electron} · Windows ${release()} ${arch()} · memory ${Math.round(freemem() / 1e9)}/${Math.round(totalmem() / 1e9)} GB free · PC up ${Math.round(uptime() / 3600)} h · app up ${Math.round(process.uptime() / 60)} min`,
   ];
   const main = await tail(join(logDir, MAIN_LOG), 40_000);
-  if (main.trim()) parts.push("Mowr log (newest last):\n" + main.trim());
+  if (main.trim()) parts.push("Clem log (newest last):\n" + main.trim());
   const answers = (await readFile(join(logDir, "answers.jsonl"), "utf8").catch(() => "")).trim().split("\n").filter(Boolean).slice(-40);
   if (answers.length) parts.push("Recent answers (timings only):\n" + answers.map((line) => { try { const e = JSON.parse(line); return `${new Date(e.at).toISOString()} ${e.provider} ${e.model || ""} ${e.outcome} total=${e.totalMs}ms first-text=${e.firstTextMs ?? "none"} steps=${e.steps ?? ""} calls=${e.calls ?? ""} cli=${e.cliSteps ?? ""}/${e.cliCalls ?? ""}`; } catch { return ""; } }).filter(Boolean).join("\n"));
   for (const home of [...new Set(grokHomes)]) {

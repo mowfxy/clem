@@ -11,12 +11,12 @@ const KINETRA: Record<string, string> = {
   batch: "Running several Kinetra requests…",
 };
 
-/** The last two parts of a path ("Lectures/Week 3.pdf"), without Mowr's own folders in front. */
+/** The last two parts of a path ("Lectures/Week 3.pdf"), without Clem's own folders in front. */
 export function shortPath(path: unknown) {
   const parts = String(path || "").replace(/\\/g, "/").split("/").filter(Boolean);
   const tail = parts.slice(-2);
   if (tail.length === 2 && /^(Files|Attachments|Made|_text|Drafts|Outputs|chat-[0-9a-f]{8})$/.test(tail[0])) tail.shift();
-  // _text/Week 3.pdf.txt is Mowr's reading of Week 3.pdf: name the document.
+  // _text/Week 3.pdf.txt is Clem's reading of Week 3.pdf: name the document.
   const text = tail.join("/").replace(/\.(pdf|docx?|pptx?|xlsx?)\.txt$/i, ".$1");
   return text.length > 60 ? "…" + text.slice(-58) : text;
 }

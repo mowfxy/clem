@@ -9,7 +9,7 @@ import './auth.css';
 
 /** Webmail shortcuts; the provider matching the address is offered first. */
 const inboxes:[string,string,RegExp][]=[
- ['Gmail','https://mail.google.com/mail/u/0/#search/from%3A%40mowrai.com+in%3Aanywhere',/@(gmail|googlemail)\./i],
+ ['Gmail','https://mail.google.com/mail/u/0/#search/from%3A%40m4labs.xyz+in%3Aanywhere',/@(gmail|googlemail)\./i],
  ['Outlook','https://outlook.live.com/mail/0/',/@(outlook|hotmail|live|msn)\./i],
  ['Yahoo Mail','https://mail.yahoo.com/',/@(yahoo|ymail)\./i],
  ['iCloud Mail','https://www.icloud.com/mail',/@(icloud|me|mac)\.com$/i],
@@ -21,7 +21,7 @@ export function AuthShell({scene,stepKey,children}:{scene:Scene;stepKey:string;c
  return <main className="auth-page au-page"><div className="au-glow" aria-hidden="true"/><section className="au-card" key={stepKey}>
   <div className="au-art"><Illustration scene={scene}/></div>
   {children}
- </section><a className="au-home" href="#/"><Logo size={18}/>mowr</a></main>;
+ </section><a className="au-home" href="#/"><Logo size={18}/><span className="wordmark">clem</span></a></main>;
 }
 
 function Inbox({email,kind,onBack,onResend,busy,message}:{email:string;kind:'signup'|'reset';onBack:()=>void;onResend:()=>void;busy:boolean;message:string}){
@@ -42,7 +42,7 @@ function Inbox({email,kind,onBack,onResend,busy,message}:{email:string;kind:'sig
 export function Login(_props: {onClose?:()=>void} = {}){
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[mode,setMode]=useState<'login'|'signup'|'forgot'|'reset'>(location.hash.includes('reset')?'reset':'login'),[factor,setFactor]=useState(''),[emailMfa,setEmailMfa]=useState(location.hash.includes('email-mfa'));
  const [sent,setSent]=useState<{email:string;kind:'signup'|'reset'}|null>(null);
- useEffect(()=>{document.title='Sign in to Mowr';if(location.hash.includes('error=callback'))setError('That link could not be used. Sign in again.');},[]);
+ useEffect(()=>{document.title='Sign in to Clem';if(location.hash.includes('error=callback'))setError('That link could not be used. Sign in again.');},[]);
  const client=getSupabase();
  useEffect(()=>{if(location.hash.includes('/mfa'))void client?.auth.mfa.listFactors().then(r=>{if(r.data?.totp[0])setFactor(r.data.totp[0].id);});},[]);
  async function finish(){const {data,error}=await client!.auth.getSession();if(error)throw error;if(!data.session)throw Error('Check your email to confirm your account.');const factors=await client!.auth.mfa.listFactors();if(factors.error)throw factors.error;const level=await client!.auth.mfa.getAuthenticatorAssuranceLevel();if(factors.data.totp.length&&level.data?.currentLevel!=='aal2'){setFactor(factors.data.totp[0].id);return;}try{await bridgeSession(data.session.access_token);}catch(e){if(location.hash.includes('email-mfa')){setEmailMfa(true);return;}throw e;}if(!returnToDesktop(data.session)&&!returnToDrive())location.hash='/app';}
@@ -66,21 +66,21 @@ export function Login(_props: {onClose?:()=>void} = {}){
   });}}>{verifying?<label>Verification code<input name="code" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" required autoFocus className="au-code"/></label>:<>{mode!=='reset'&&<label>Email<input name="email" type="email" required autoComplete="email" placeholder="you@example.com"/></label>}{mode!=='forgot'&&<label>Password<input name="password" type="password" required minLength={mode==='login'?1:12} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} placeholder={mode==='signup'||mode==='reset'?'At least 12 characters':''}/></label>}</>}
    <button className="primary au-submit" disabled={busy}>{busy?<><Logo size={16} thinking/>Please wait</>:<>{verifying?'Verify':mode==='signup'?'Create account':mode==='forgot'?'Send link':mode==='reset'?'Save password':'Sign in'}<Icon name="arrow" size={17}/></>}</button>
   </form>
-  {!verifying&&<div className="au-links">{mode==='login'&&<button className="login-text" onClick={()=>{setMode('forgot');setError('');}}>Forgot password?</button>}<button className="login-text" onClick={()=>{setMode(mode==='login'?'signup':'login');setMessage('');setError('')}}>{mode==='login'?'New to Mowr? Create an account':'Back to sign in'}</button></div>}
+  {!verifying&&<div className="au-links">{mode==='login'&&<button className="login-text" onClick={()=>{setMode('forgot');setError('');}}>Forgot password?</button>}<button className="login-text" onClick={()=>{setMode(mode==='login'?'signup':'login');setMessage('');setError('')}}>{mode==='login'?'New to Clem? Create an account':'Back to sign in'}</button></div>}
   {message&&<p className="au-status" role="status">{message}</p>}{error&&<p className="inline-error au-error" role="alert">{error}</p>}
   {emailMfa&&<button className="login-text" disabled={busy} onClick={()=>void run(async()=>{const r=await fetch("/api/security/email/send",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});if(!r.ok)throw Error((await r.json()).error);setMessage("A code has been sent.");})}>Send code</button>}
   <p className="login-terms">By continuing you agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a>.</p>
  </AuthShell>;
 }
 
-/** Landing page for links in Mowr emails: shows progress while the session is exchanged, then a clear result. */
+/** Landing page for links in Clem emails: shows progress while the session is exchanged, then a clear result. */
 export function AuthCallback({ready}:{ready:boolean}){
  const hash=new URLSearchParams(location.hash.replace(/^#\/?/,''));
  const linkError=hash.get('error_description')||new URLSearchParams(location.search).get('error_description');
  const [state,setState]=useState<'checking'|'done'|'failed'>(linkError?'failed':'checking');
- useEffect(()=>{document.title='Confirming — Mowr';},[]);
+ useEffect(()=>{document.title='Confirming — Clem';},[]);
  useEffect(()=>{if(!ready||linkError)return;let live=true;const client=getSupabase();const check=async()=>{const {data}=await client!.auth.getSession();if(live)setState(data.session?'done':'failed');};void (client?check():Promise.resolve(setState('failed'))).catch(()=>live&&setState('failed'));return()=>{live=false;};},[ready]);
  if(state==='checking')return <AuthShell scene="discover" stepKey="checking"><div className="au-check"><Logo size={40} thinking/></div><h1>Confirming…</h1><p>One moment while we check your link.</p><div className="au-progress" aria-hidden="true"><i/></div></AuthShell>;
  if(state==='failed')return <AuthShell scene="expired" stepKey="failed"><h1>This link has expired.</h1><p>{linkError&&/expired|invalid/i.test(linkError)?'Links work once and expire after a while.':'We couldn’t use that link.'} Sign in to get a new one.</p><a className="primary au-submit" href="#/login">Sign in<Icon name="arrow" size={17}/></a></AuthShell>;
- return <AuthShell scene="door" stepKey="done"><div className="au-done" aria-hidden="true"><svg viewBox="0 0 52 52" width="52" height="52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg></div><h1>You’re in.</h1><p>Your email is confirmed. Return to the Mowr app, or download it to get started.</p><div className="au-actions"><a className="primary au-submit" href="#/app">Continue<Icon name="arrow" size={17}/></a><a className="login-text" href="#/download?start">Download for Windows</a></div></AuthShell>;
+ return <AuthShell scene="door" stepKey="done"><div className="au-done" aria-hidden="true"><svg viewBox="0 0 52 52" width="52" height="52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg></div><h1>You’re in.</h1><p>Your email is confirmed. Return to the Clem app, or download it to get started.</p><div className="au-actions"><a className="primary au-submit" href="#/app">Continue<Icon name="arrow" size={17}/></a><a className="login-text" href="#/download?start">Download for Windows</a></div></AuthShell>;
 }

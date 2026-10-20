@@ -8,9 +8,9 @@ import {newer} from './engines.ts';
 
 // Google's official Antigravity agent for other apps: the "antigravity-acp" server Google publishes in the Agent Client
 // Protocol registry (github.com/agentclientprotocol/registry), the same program T3 Code and other ACP clients run.
-// Mowr reads the registry's listing for the newest version, downloads Google's own Windows build from dl.google.com when
+// Clem reads the registry's listing for the newest version, downloads Google's own Windows build from dl.google.com when
 // the person clicks Install, checks that both programs carry Google's valid code signature, and runs them unmodified.
-// Nothing is bundled or redistributed, and Mowr never calls Google's services itself.
+// Nothing is bundled or redistributed, and Clem never calls Google's services itself.
 
 export const ANTIGRAVITY_REGISTRY = 'https://raw.githubusercontent.com/agentclientprotocol/registry/main/antigravity-acp/agent.json';
 const PLATFORMS: Record<string, {key: string; file: string}> = {x64: {key: 'windows-x86_64', file: 'x86_64'}, arm64: {key: 'windows-aarch64', file: 'arm64'}};
@@ -58,14 +58,14 @@ export async function signedByGoogle(paths: string[]) {
 export type AntigravityInstall = {version: string; server: string; harness: string};
 
 /**
- * The Antigravity agent Mowr runs, kept in `<data>/engines/antigravity/<version>` (shared by every Antigravity account).
- * `MOWR_ANTIGRAVITY_EXECUTABLE` points at another copy of agy_acp_server.exe (its harness beside it) instead.
+ * The Antigravity agent Clem runs, kept in `<data>/engines/antigravity/<version>` (shared by every Antigravity account).
+ * `CLEM_ANTIGRAVITY_EXECUTABLE` points at another copy of agy_acp_server.exe (its harness beside it) instead.
  */
 export class AntigravityEngine {
   private root: string;
   private configured: string | undefined;
   private job: Promise<AntigravityInstall> | null = null;
-  constructor(local: string, configured = process.env.MOWR_ANTIGRAVITY_EXECUTABLE) { this.root = join(local, 'engines', 'antigravity'); this.configured = configured; void this.prune(); }
+  constructor(local: string, configured = process.env.CLEM_ANTIGRAVITY_EXECUTABLE) { this.root = join(local, 'engines', 'antigravity'); this.configured = configured; void this.prune(); }
   private versions() {
     try {
       return readdirSync(this.root, {withFileTypes: true})
@@ -127,8 +127,8 @@ export class AntigravityEngine {
       const tar = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
       const unpacked = await run(tar, ['-xf', archive, '-C', staging, ANTIGRAVITY_FILES.server, ANTIGRAVITY_FILES.harness], 10 * 60_000);
       const server = join(staging, ANTIGRAVITY_FILES.server), harness = join(staging, ANTIGRAVITY_FILES.harness);
-      if (unpacked.code !== 0 || !existsSync(server) || !existsSync(harness)) throw Error('Gemini didn’t finish installing. Try again, or contact support@mowrai.com.');
-      if (!(await signedByGoogle([server, harness]))) throw Error('The Gemini download is not signed by Google, so Mowr did not install it.');
+      if (unpacked.code !== 0 || !existsSync(server) || !existsSync(harness)) throw Error('Gemini didn’t finish installing. Try again, or contact support@m4labs.xyz.');
+      if (!(await signedByGoogle([server, harness]))) throw Error('The Gemini download is not signed by Google, so Clem did not install it.');
       await rm(join(this.root, release.version), {recursive: true, force: true});
       await rename(staging, join(this.root, release.version));
     } finally {

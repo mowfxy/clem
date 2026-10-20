@@ -46,9 +46,9 @@ export function toolStatus(request: any) {
   if (request?.action === "find") return "Looking through all your files…";
   if (request?.action === "attach") return "Opening the file…";
   if (request?.action === "files") return "Looking through your files…";
-  if (request?.action === "call" && typeof request.module === "string" && /^diagram\/|^mowr$/.test(request.module) && /^render|plot|flowchart|chart|timeline|cycle|mindmap|diagram|table|venn|illustration|visual/i.test(String(request.fn))) return "Drawing the figure…";
+  if (request?.action === "call" && typeof request.module === "string" && /^diagram\/|^clem$/.test(request.module) && /^render|plot|flowchart|chart|timeline|cycle|mindmap|diagram|table|venn|illustration|visual/i.test(String(request.fn))) return "Drawing the figure…";
   if (request?.action === "call") return "Calculating…";
-  return "Checking Mowr's tools…";
+  return "Checking Clem's tools…";
 }
 
 /** Provider output is never shown verbatim: it can include sensitive diagnostics. */
@@ -115,7 +115,7 @@ export class Codex {
   private loginProcess: ChildProcessWithoutNullStreams | null = null;
   private starting: number | boolean = 0;
   private active = new Map<string, ChildProcessWithoutNullStreams>();
-  /** A function when the program can change while Mowr runs (CodexEngine updates it); read at every start. */
+  /** A function when the program can change while Clem runs (CodexEngine updates it); read at every start. */
   private executable: string | (() => string);
   private home: string;
   private workspace: string;
@@ -279,7 +279,7 @@ export class Codex {
       });
       send(
         "initialize",
-        { clientInfo: { name: "mowr", version: "0.2.0" } },
+        { clientInfo: { name: "clem", version: "0.2.0" } },
         id,
       );
     });
@@ -408,7 +408,7 @@ export class Codex {
           finish(undefined, e as Error);
         }
       });
-      send(1, "initialize", { clientInfo: { name: "mowr", version: "0.2.0" } });
+      send(1, "initialize", { clientInfo: { name: "clem", version: "0.2.0" } });
     });
   }
   async login() {

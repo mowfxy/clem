@@ -125,7 +125,7 @@ test("time-bound memories stop applying after their date", async () => {
 test("the learner reads the person's message, not a Drive note sent after it", async () => {
   const { retrievalQuery, boundedConversation, SOURCE_PREFIX } = await import("../../core/chat-context.ts");
   const { mentionsSelf } = await import("../../desktop/memory.ts");
-  const messages = boundedConversation([{ role: "system", content: "You are Mowr." }, { role: "user", content: "I'm writing my thesis on muon decay." }, { role: "user", content: `${SOURCE_PREFIX}\nThis project is linked to the Google Drive folder "Thesis".` }]);
+  const messages = boundedConversation([{ role: "system", content: "You are Clem." }, { role: "user", content: "I'm writing my thesis on muon decay." }, { role: "user", content: `${SOURCE_PREFIX}\nThis project is linked to the Google Drive folder "Thesis".` }]);
   assert.equal(retrievalQuery(messages), "I'm writing my thesis on muon decay.");
   assert.ok(mentionsSelf(retrievalQuery(messages)));
 });

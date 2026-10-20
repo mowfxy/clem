@@ -32,7 +32,7 @@ test("browser handoff rejects foreign origins and GET; accepts one bounded form 
     assert.equal(accepted, 0);
     const response = await fetch(callback, {
       method: "POST",
-      headers: { Origin: "https://mowrai.com" },
+      headers: { Origin: "https://clem.m4labs.xyz" },
       body: new URLSearchParams({
         access_token: "test-access",
         refresh_token: "test-refresh",

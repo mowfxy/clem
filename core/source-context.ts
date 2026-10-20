@@ -33,7 +33,7 @@ export function fileIndex(sources: { name: string; text: string }[], focus: numb
     return `${n + 1}. ${name} — ${where} · ${count ? `${count} page${count === 1 ? "" : "s"} · ` : ""}${size(text.length)}${start ? ` · begins: "${start}${text.length > 160 ? "…" : ""}"` : ""}`;
   });
   // A short file attached to this request goes along whole: reading it would cost a step of its own. Never a PDF: the
-  // AI opens it itself and reads its pages as drawn, as a PDF sent to it is read, not from Mowr's text of it.
+  // AI opens it itself and reads its pages as drawn, as a PDF sent to it is read, not from Clem's text of it.
   const small = order.filter((i) => focus.includes(i) && sources[i].text.length <= SMALL_FILE && !/\.pdf$/i.test(sources[i].name)).map((i) => `[Source: ${sources[i].name}; complete file]\n${sources[i].text}`);
   return `[Files available (${sources.length}), listed, not loaded${small.length ? " (short attached files are included whole below)" : ""}: read, search and look at what this request needs with the file tools before relying on it. A file attached to this request is what the person is asking about: read it through (in parallel reads) unless only a part of it is asked about.
 ${lines.join("\n")}]${small.length ? "\n\n" + small.join("\n\n") : ""}`;

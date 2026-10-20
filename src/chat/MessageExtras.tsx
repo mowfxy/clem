@@ -16,7 +16,7 @@ export function reviewerFor(models: Model[], current: string) {
 /** A title for an exported answer: its first heading, else the chat title. */
 export function exportTitle(content: string, fallback: string) {
   const heading = /^#{1,2}\s+(.+)$/m.exec(content)?.[1];
-  return (heading || fallback || 'Mowr document').replace(/[*_`#]/g, '').trim().slice(0, 120);
+  return (heading || fallback || 'Clem document').replace(/[*_`#]/g, '').trim().slice(0, 120);
 }
 
 export function MessageTools({ content, models, model, onReview, onVerify, canVerify, busy, title = '', onExport, at }: { at?: number; content: string; models: Model[]; model?: string; onReview: (model: string) => void; onVerify?: () => void; canVerify: boolean; busy: boolean; title?: string; onExport?: (format: 'pdf' | 'docx' | 'pptx', content: string, title: string) => Promise<void> }) {

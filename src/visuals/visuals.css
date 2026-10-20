@@ -1,4 +1,4 @@
-/* Visuals engine. Mowr palette: warm charcoal, ivory ink, ink-film blue and coral. */
+/* Visuals engine. Clem palette: warm charcoal, ivory ink, ink-film blue and coral. */
 .visual-engine.v2{--v-bg:#161615;--v-panel:#1b1b19;--v-line:#2e2e2b;--v-ink:#f0efeb;--v-soft:#a3a3a0;--v-faint:#6f6e68;--v-blue:#8197e2;--v-coral:#d87968;background:var(--v-panel);border:1px solid var(--v-line);border-radius:14px;overflow:hidden;margin:16px 0;color:var(--v-ink);font-family:var(--sans);animation:visual-in .5s cubic-bezier(.2,.8,.2,1) both}
 @keyframes visual-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .v2 .visual-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px 12px 18px;border-bottom:1px solid var(--v-line);font-size:13px}

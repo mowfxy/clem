@@ -7,12 +7,12 @@ import type {Space} from '../../core/types';
 import './plan.css';
 import './plan-calm.css';
 
-/** A plan Mowr proposed from the Plan tab's box, waiting for Save (create) or Replace. */
+/** A plan Clem proposed from the Plan tab's box, waiting for Save (create) or Replace. */
 export type PlanDraftView={plan:SpacePlan;replaces?:string};
 export type PlanActions={
   onToggle:(taskId:string)=>void;
   onDelete:()=>void;
-  /** Sends the box's message to Mowr with the plan; resolves to Mowr's short reply. */
+  /** Sends the box's message to Clem with the plan; resolves to Clem's short reply. */
   onAsk:(text:string,history:{role:'user'|'assistant';content:string}[])=>Promise<string>;
   onSaveDraft:()=>void;
   onDiscardDraft:()=>void;
@@ -137,7 +137,7 @@ export function PlanSummary({plan,today=localDay(),compact=false}:{plan:SpacePla
   </>;
 }
 
-/** The small box under the plan: tell Mowr what changed, or ask for a plan. */
+/** The small box under the plan: tell Clem what changed, or ask for a plan. */
 function PlanBox({placeholder,onAsk,disabled}:{placeholder:string;onAsk:PlanActions['onAsk'];disabled?:string}){
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[reply,setReply]=useState<{text:string;error?:boolean}|null>(null);
   const history=useRef<{role:'user'|'assistant';content:string}[]>([]);
@@ -155,10 +155,10 @@ function PlanBox({placeholder,onAsk,disabled}:{placeholder:string;onAsk:PlanActi
   return <div className="pl-box-wrap">
     <form className={`pl-box ${busy?'busy':''}`} onSubmit={submit}>
       <Icon name="chat" size={16}/>
-      <input value={text} onChange={e=>setText(e.target.value)} placeholder={disabled||placeholder} aria-label="Tell Mowr about your plan" disabled={busy||!!disabled} maxLength={2000}/>
+      <input value={text} onChange={e=>setText(e.target.value)} placeholder={disabled||placeholder} aria-label="Tell Clem about your plan" disabled={busy||!!disabled} maxLength={2000}/>
       <button type="submit" className="pl-box-send" disabled={!text.trim()||busy||!!disabled} aria-label="Send">{busy?<span className="pl-spin" aria-hidden="true"/>:<Icon name="arrow" size={15}/>}</button>
     </form>
-    {busy&&<p className="pl-reply working" role="status">Mowr is updating the plan…</p>}
+    {busy&&<p className="pl-reply working" role="status">Clem is updating the plan…</p>}
     {reply&&<p className={`pl-reply ${reply.error?'error':''}`} role="status">{reply.text}<button type="button" aria-label="Dismiss" onClick={()=>setReply(null)}><Icon name="close" size={12}/></button></p>}
   </div>;
 }
@@ -167,7 +167,7 @@ function PlanBox({placeholder,onAsk,disabled}:{placeholder:string;onAsk:PlanActi
 export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:SpacePlan;draft?:PlanDraftView|null;actions:PlanActions;canAsk:boolean}){
   const today=localDay();
   const s=useMemo(()=>plan?planStatus(plan,today):null,[plan,today]);
-  const disabled=canAsk?undefined:'Connect an AI in Settings → Models to plan with Mowr';
+  const disabled=canAsk?undefined:'Connect an AI in Settings → Models to plan with Clem';
   const remove=async()=>{if(await confirmDialog({title:`Delete “${plan!.title}”?`,message:`The plan and its progress are removed from ${space.name}. This can’t be undone.`,confirm:'Delete plan',danger:true}))actions.onDelete();};
   if(draft)return <div className="pl-view">
     <section className="pl-card pl-hero pl-draft">
@@ -193,7 +193,7 @@ export function PlanView({space,plan,draft,actions,canAsk}:{space:Space;plan?:Sp
     <section className="pl-card pl-hero">
       <PlanSummary plan={plan} today={today}/>
     </section>
-    <PlanBox placeholder="Tell Mowr what changed: “finished lecture 3”, “quiz moved to Friday”…" onAsk={actions.onAsk} disabled={disabled}/>
+    <PlanBox placeholder="Tell Clem what changed: “finished lecture 3”, “quiz moved to Friday”…" onAsk={actions.onAsk} disabled={disabled}/>
     <PlanTasks plan={plan} today={today} onToggle={actions.onToggle}/>
     <button type="button" className="pl-delete" onClick={()=>void remove()}>Delete plan</button>
   </div>;

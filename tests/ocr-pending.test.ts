@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 // The desktop bridge, a canvas and an IndexedDB that never opens: no page reading is kept between calls here.
 let reply: () => Promise<any> = async () => ({ texts: [] });
-(globalThis as any).window = { mowrDesktop: { onChat: () => () => {}, invoke: async (r: any) => (r.action === "ocr" ? reply() : {}) } };
+(globalThis as any).window = { clemDesktop: { onChat: () => () => {}, invoke: async (r: any) => (r.action === "ocr" ? reply() : {}) } };
 (globalThis as any).document = { createElement: () => ({ getContext: () => ({ fillRect() {} }), toBlob: (done: (b: Blob) => void) => done(new Blob([new Uint8Array([1])])) }) };
 (globalThis as any).indexedDB = { open: () => { const r: any = { error: Error("no IndexedDB") }; queueMicrotask(() => r.onerror?.()); return r; } };
 const { scannedText } = await import("../src/desktop/ocr.ts");

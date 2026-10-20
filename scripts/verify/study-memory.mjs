@@ -15,7 +15,7 @@ try {
   await page.addInitScript(() => {
     const listeners = new Set();
     window.requests = [];
-    window.mowrDesktop = {
+    window.clemDesktop = {
       onAuth: () => () => {},
       onAttachment: () => () => {},
       onChat: (fn) => {
@@ -182,11 +182,11 @@ try {
     .getByRole("menuitem", { name: "Export subject ZIP", exact: true })
     .click();
   const zip = await downloadPromise;
-  await zip.saveAs("artifacts/subject-transfer.mowr.zip");
+  await zip.saveAs("artifacts/subject-transfer.clem.zip");
   await page.keyboard.press("Escape");
   await page
-    .locator('input[accept=".zip,.mowrpack"]')
-    .setInputFiles("artifacts/subject-transfer.mowr.zip");
+    .locator('input[accept=".zip,.clempack"]')
+    .setInputFiles("artifacts/subject-transfer.clem.zip");
   await page
     .getByText("Subject imported, including files and study history.", {
       exact: true,
@@ -221,7 +221,7 @@ try {
     const current = await store.loadState();
     current.automations = [{ id: "routine-1", name: "Daily review", prompt: "Review my goals", model: "openai", schedule: "daily", nextRun: Date.now() + 3600000, enabled: true, spaceId: null }];
     await store.saveState(current);
-    window.dispatchEvent(new Event("mowr-auth"));
+    window.dispatchEvent(new Event("clem-auth"));
   });
   await page.evaluate(() => (location.hash = "/app"));
   await page.evaluate(() => (location.hash = "/app/settings"));
@@ -257,7 +257,7 @@ try {
         nextRun: Date.now() - 1000,
       }));
       await store.saveState(current);
-      window.dispatchEvent(new Event("mowr-auth"));
+      window.dispatchEvent(new Event("clem-auth"));
       return false;
     });
     if (due) break;

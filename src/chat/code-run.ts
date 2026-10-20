@@ -5,12 +5,12 @@ export type RunLang = 'python' | 'javascript';
 export type RunEvent = { type: 'out' | 'err' | 'status'; text: string } | { type: 'done'; ok: boolean; stopped?: boolean };
 
 const ALIASES: Record<string, RunLang> = { python: 'python', py: 'python', python3: 'python', javascript: 'javascript', js: 'javascript', mjs: 'javascript', node: 'javascript' };
-/** The language a code fence runs as, or null when Mowr cannot run it. */
+/** The language a code fence runs as, or null when Clem cannot run it. */
 export const runnable = (lang: string): RunLang | null => ALIASES[lang.toLowerCase()] ?? null;
 
 const LIMIT_MS = 60_000;
 let python: Worker | null = null, nextId = 1;
-const spawn = (lang: RunLang) => new Worker(new URL('./run-worker.ts', import.meta.url), { type: 'module', name: 'mowr-run-' + lang });
+const spawn = (lang: RunLang) => new Worker(new URL('./run-worker.ts', import.meta.url), { type: 'module', name: 'clem-run-' + lang });
 /** Runs waiting on or using the shared Python worker; stopping one restarts the worker, which ends the others too. */
 const pythonRuns = new Set<() => void>();
 

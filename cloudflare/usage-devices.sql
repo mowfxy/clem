@@ -1,5 +1,5 @@
 -- One-time migration for D1 databases created before desktop usage was kept per device (run once, before deploying
--- the account worker that writes the `device` column): npx wrangler d1 execute mowr-workspaces --remote --file cloudflare/usage-devices.sql
+-- the account worker that writes the `device` column): npx wrangler d1 execute clem-workspaces --remote --file cloudflare/usage-devices.sql
 -- Existing rows become device '' and keep counting; new reports land in per-device rows.
 CREATE TABLE desktop_usage_devices (
  user_id TEXT NOT NULL, day TEXT NOT NULL, device TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL, model TEXT NOT NULL, reasoning TEXT NOT NULL DEFAULT '',

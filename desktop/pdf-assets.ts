@@ -103,7 +103,7 @@ export async function vectorCrop(source: Uint8Array, page: number, box: Box): Pr
   try { src = await PDFDocument.load(source, { updateMetadata: false }); } catch { return undefined; }
   if (src.isEncrypted || page < 1 || page > src.getPageCount()) return undefined;
   const out = await PDFDocument.create();
-  out.setProducer("Mowr");
+  out.setProducer("Clem");
   const from = src.getPage(page - 1);
   // A page shown turned is cut as a picture: a placed page ignores its turn, so the vector copy would lie on its side.
   if (from.getRotation().angle % 360) return undefined;
@@ -193,15 +193,15 @@ export function assetSvg(meta: CropAsset, png: Uint8Array) {
   const [x0, y0, x1, y1] = meta.box;
   const scale = meta.units === "pt" ? 96 / 72 : 1;
   const w = Math.max(1, Math.round((x1 - x0) * scale * 100) / 100), h = Math.max(1, Math.round((y1 - y0) * scale * 100) / 100);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" data-mowr-asset="${meta.id}"${meta.vector ? ' data-mowr-vector="1"' : ""} data-mowr-units="${meta.units}"${typeof meta.centre === "number" ? ` data-mowr-centre="${meta.centre}"` : ""}><image width="${w}" height="${h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(png).toString("base64")}"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" data-clem-asset="${meta.id}"${meta.vector ? ' data-clem-vector="1"' : ""} data-clem-units="${meta.units}"${typeof meta.centre === "number" ? ` data-clem-centre="${meta.centre}"` : ""}><image width="${w}" height="${h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(png).toString("base64")}"/></svg>`;
 }
-const ASSET_SVG = /^<svg [^>]*\bwidth="([\d.]+)" height="([\d.]+)"[^>]*\bdata-mowr-asset="(crop-(?:[a-f0-9]{16}|[a-f0-9]{8}))"[^>]*><image [^>]*href="data:image\/png;base64,([A-Za-z0-9+/=]+)"\/><\/svg>$/;
+const ASSET_SVG = /^<svg [^>]*\bwidth="([\d.]+)" height="([\d.]+)"[^>]*\bdata-clem-asset="(crop-(?:[a-f0-9]{16}|[a-f0-9]{8}))"[^>]*><image [^>]*href="data:image\/png;base64,([A-Za-z0-9+/=]+)"\/><\/svg>$/;
 /** The crop inside an assetSvg drawing: its id, its CSS size, its PNG, its units and optical centre; undefined for any other drawing. */
 export function assetOf(svg: string) {
   const m = ASSET_SVG.exec(svg);
   if (!m) return undefined;
-  const head = svg.slice(0, 500), centre = Number(/\bdata-mowr-centre="([\d.]+)"/.exec(head)?.[1]);
-  return { id: m[3], width: Number(m[1]), height: Number(m[2]), png: new Uint8Array(Buffer.from(m[4], "base64")), vector: /\bdata-mowr-vector="1"/.test(head), units: (/\bdata-mowr-units="px"/.test(head) ? "px" : "pt") as "pt" | "px", ...(centre >= 0 && centre <= 1 ? { centre } : {}) };
+  const head = svg.slice(0, 500), centre = Number(/\bdata-clem-centre="([\d.]+)"/.exec(head)?.[1]);
+  return { id: m[3], width: Number(m[1]), height: Number(m[2]), png: new Uint8Array(Buffer.from(m[4], "base64")), vector: /\bdata-clem-vector="1"/.test(head), units: (/\bdata-clem-units="px"/.test(head) ? "px" : "pt") as "pt" | "px", ...(centre >= 0 && centre <= 1 ? { centre } : {}) };
 }
 
 const LABEL = /^\s*(?:fig(?:ure)?|table|tab|scheme|plate|chart)\.?\s*(?:\d+|[IVXLC]+\b)(?:[.\-–:]\d+)*[a-z]?[.:]?\s*/i;
@@ -244,7 +244,7 @@ export async function resolveAssets(spec: any, read: ReadAsset) {
 }
 
 /** Where a vector crop goes on the printed page: a link to this address, wrapped round a placeholder of its size. */
-export const SLOT = "https://asset.mowr.invalid/";
+export const SLOT = "https://asset.clem.invalid/";
 
 /** Where a crop printed: its page (1-based) and rectangle in PDF points, and the page's size. */
 export type CropSpot = { id: string; figure: number; page: number; rect: [number, number, number, number]; sheet: [number, number] };

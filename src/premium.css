@@ -24,7 +24,7 @@ body .workspace-top .top-title{font-weight:500;color:#cfcec8}
 body .new-chat-content .greeting-row h1{font-size:46px}
 /* The greeting's mark leads its first line (src/App.tsx): beside the first word on one line or two, never at the far edge of a wrapped heading. */
 body .new-chat-content .greeting-row h1{text-align:center;text-wrap:balance}
-body .new-chat-content .greeting-row h1>.mowr-mark{display:inline-block;width:.9em;height:.9em;margin-right:.3em;vertical-align:-.13em}
+body .new-chat-content .greeting-row h1>.clem-mark{display:inline-block;width:.9em;height:.9em;margin-right:.3em;vertical-align:-.13em}
 body .new-chat-content .suggestions{gap:8px}
 body .new-chat-content .suggestions button{height:36px;padding:0 14px;border:1px solid #2c2c29;border-radius:10px;background:transparent;color:#cfcec8;font-size:13.5px;box-shadow:none;transition:background .3s var(--pm-ease),border-color .3s var(--pm-ease),color .3s var(--pm-ease)}
 body .new-chat-content .suggestions button .drawn-icon{color:#a9a8a1;transition:color .3s var(--pm-ease)}

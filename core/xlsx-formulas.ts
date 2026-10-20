@@ -1,7 +1,7 @@
 import { formatNumber } from "./numfmt.ts";
 
 /**
- * Excel formulas, calculated: the values a workbook shows when its file carries none (Mowr's own workbooks leave Excel to
+ * Excel formulas, calculated: the values a workbook shows when its file carries none (Clem's own workbooks leave Excel to
  * calculate on open, and an upload may have been written by a tool that did not). Arithmetic, comparison, & and %, cell and
  * range references (also across sheets, absolute or not) and the functions people use every day; anything else is reported
  * as #NAME? so the viewer can fall back to the saved result or show the formula.

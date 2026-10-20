@@ -13,7 +13,7 @@ export function pastedFiles(data: DataTransfer, now = new Date()): File[] {
 }
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** Whether a paste happened where Mowr should take files: the chat box, or the page itself, not another field. */
+/** Whether a paste happened where Clem should take files: the chat box, or the page itself, not another field. */
 export function pasteTarget(target: EventTarget | null) {
   const el = target instanceof HTMLElement ? target : null;
   if (!el) return true;

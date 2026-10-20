@@ -1,4 +1,4 @@
-// Checks how a chat row in the sidebar looks while Mowr works on it and once its answer has finished elsewhere
+// Checks how a chat row in the sidebar looks while Clem works on it and once its answer has finished elsewhere
 // (the person moved to another chat): the row says so quietly, and opening the chat clears it.
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";

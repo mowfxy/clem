@@ -11,7 +11,7 @@ import { redactPage, collectGarbage, scrubText, dropAttachments, Unclean } from 
  * revision replays them on the same original.
  */
 export type EditHelpers = {
-  /** A file to edit or merge in, by name (a PDF in this chat), by id (a file Mowr made) or by the "src-…" copy an earlier
+  /** A file to edit or merge in, by name (a PDF in this chat), by id (a file Clem made) or by the "src-…" copy an earlier
    *  edit kept: its bytes and the copy's id, which is what the stored edit list names from then on. */
   load(ref: string): Promise<{ bytes: Uint8Array; source: string; name?: string }>;
   /** The text runs of one page of a document (pdf.js, in the window), for edits that find text. */
@@ -344,7 +344,7 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
         }
         case "merge": {
           const from = op.source ?? op.file;
-          if (typeof from !== "string" || !from.trim()) throw Error('"file": the PDF to merge in (a name from this chat, or a Mowr file id).');
+          if (typeof from !== "string" || !from.trim()) throw Error('"file": the PDF to merge in (a name from this chat, or a Clem file id).');
           const src = await helpers.load(from);
           const other = await openPdf(src.bytes, src.name || from);
           const pages = pageList(op.pages, other.getPageCount(), "all");
@@ -550,7 +550,7 @@ export async function editPdf(spec: any, helpers: EditHelpers): Promise<EditResu
               const options = field.getOptions(), pick = String(value);
               if (!options.includes(pick)) throw Error(`"${name}" takes one of: ${options.map((o) => `"${o}"`).join(", ")}.`);
               field.select(pick);
-            } else throw Error(`"${name}" is a kind of field Mowr cannot fill.`);
+            } else throw Error(`"${name}" is a kind of field Clem cannot fill.`);
             for (const w of field.acroField.getWidgets()) { const ref = w.P(); const host = doc.getPages().find((p) => p.ref === ref); if (host) touched.add(host); }
           }
           form.updateFieldAppearances(helv);
@@ -583,7 +583,7 @@ async function openPdf(bytes: Uint8Array, name: string) {
     if (doc.isEncrypted) throw Error("encrypted");
     return doc;
   } catch (error) {
-    if (/encrypt/i.test(String((error as Error).message))) throw Error(`${name} is protected (a password or permissions), so Mowr cannot change it.`);
+    if (/encrypt/i.test(String((error as Error).message))) throw Error(`${name} is protected (a password or permissions), so Clem cannot change it.`);
     throw Error(`${name} could not be read as a PDF.`);
   }
 }
@@ -596,7 +596,7 @@ function markup(doc: PDFDocument, page: PDFPage, kind: "Highlight", [x0, y0, x1,
   }));
   const annot = doc.context.obj({
     Type: "Annot", Subtype: kind, Rect: [x0, y0, x1, y1], QuadPoints: [x0, y1, x1, y1, x0, y0, x1, y0], C: [r, g, b], F: 4, CA: 0.85,
-    T: PDFHexString.fromText("Mowr"), AP: { N: ap },
+    T: PDFHexString.fromText("Clem"), AP: { N: ap },
     ...(typeof note === "string" && note.trim() ? { Contents: PDFHexString.fromText(note.slice(0, 5000)) } : {}),
   });
   attach(doc, page, annot);
@@ -605,7 +605,7 @@ function markup(doc: PDFDocument, page: PDFPage, kind: "Highlight", [x0, y0, x1,
 /** A sticky note (a Text annotation) with a small drawn icon. */
 function stickyNote(doc: PDFDocument, page: PDFPage, x: number, y: number, text: string, [r, g, b]: [number, number, number]) {
   const ap = doc.context.register(doc.context.stream(`${r} ${g} ${b} rg 0.45 0.35 0 RG 1 w 0.5 0.5 17 17 re B 0.45 0.35 0 RG 0.8 w 4 12 m 14 12 l 4 9 m 14 9 l 4 6 m 11 6 l S`, { Type: "XObject", Subtype: "Form", BBox: [0, 0, 18, 18] }));
-  const annot = doc.context.obj({ Type: "Annot", Subtype: "Text", Rect: [x, y - 18, x + 18, y], Contents: PDFHexString.fromText(text), Name: "Comment", C: [r, g, b], F: 4 + 8 + 16, T: PDFHexString.fromText("Mowr"), AP: { N: ap } });
+  const annot = doc.context.obj({ Type: "Annot", Subtype: "Text", Rect: [x, y - 18, x + 18, y], Contents: PDFHexString.fromText(text), Name: "Comment", C: [r, g, b], F: 4 + 8 + 16, T: PDFHexString.fromText("Clem"), AP: { N: ap } });
   attach(doc, page, annot);
 }
 

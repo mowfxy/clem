@@ -27,7 +27,7 @@ const openHandout = async () => {
   await page.evaluate(() => { location.hash = "/app/space/bio"; });
   await page.getByRole("tab", { name: /^Files/ }).click();
   await page.locator(".sp-file", { hasText: "Osmosis lab handout.pdf" }).getByRole("button", { name: "Osmosis lab handout.pdf options" }).click();
-  await page.getByRole("menuitem", { name: "Edit with Mowr" }).click();
+  await page.getByRole("menuitem", { name: "Edit with Clem" }).click();
   await page.locator(".file-panel .ps-page canvas").first().waitFor();
   await page.locator(".fp-of", { hasText: "of 12" }).waitFor();
 };

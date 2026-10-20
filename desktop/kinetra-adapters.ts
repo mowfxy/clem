@@ -131,7 +131,7 @@ export function plot(spec: {
   }
   return renderPlotSvg(
     {
-      id: "mowr-plot",
+      id: "clem-plot",
       title: spec.title,
       type: functions.length ? "function2d" : "scatter",
       xRange: [from, to],
@@ -171,7 +171,7 @@ export function retrieve(
       addToHybridIndex(idx, chunk);
   return searchHybrid(idx, query, limit);
 }
-/** Printable revision dates. Subject mastery remains in Mowr's subject records. */
+/** Printable revision dates. Subject mastery remains in Clem's subject records. */
 export function studySchedule(
   topics: string[],
   start: string,

@@ -1,4 +1,4 @@
-// Staff API for admin.mowrai.com. Every mutation is authorised by role and written to the audit log.
+// Staff API for admin.m4labs.xyz. Every mutation is authorised by role and written to the audit log.
 import { ownerEligible, subscriptionActive } from "./account-policy.js";
 import { grantActive } from "./lib/account-state.js";
 import { HttpError, json, lemon, now, readJson, text } from "./lib/http.js";
@@ -88,10 +88,10 @@ async function planContext(env, ids) {
 const caseOwner = "(CASE WHEN s.owner_id LIKE 'supabase:%' THEN substr(s.owner_id,10) ELSE s.owner_id END)";
 const ownsCase = "s.owner_id IN (?,'supabase:'||?)";
 
-const peopleSql = `WITH ids AS (SELECT user_id FROM desktop_profiles UNION SELECT user_id FROM desktop_activity UNION SELECT user_id FROM desktop_subscriptions UNION SELECT user_id FROM desktop_comp_grants UNION SELECT ${caseOwner} FROM mowr_support s)
+const peopleSql = `WITH ids AS (SELECT user_id FROM desktop_profiles UNION SELECT user_id FROM desktop_activity UNION SELECT user_id FROM desktop_subscriptions UNION SELECT user_id FROM desktop_comp_grants UNION SELECT ${caseOwner} FROM clem_support s)
 SELECT ids.user_id AS id, a.email, a.first_seen_at, a.last_seen_at, p.username, p.display_name, p.setup_step,
  CASE WHEN m.status='suspended' AND (m.until IS NULL OR m.until>?) THEN 1 ELSE 0 END AS suspended, m.until AS suspended_until,
- (SELECT COUNT(*) FROM mowr_support s WHERE s.owner_id IN (ids.user_id,'supabase:'||ids.user_id)) AS cases
+ (SELECT COUNT(*) FROM clem_support s WHERE s.owner_id IN (ids.user_id,'supabase:'||ids.user_id)) AS cases
 FROM ids LEFT JOIN desktop_activity a ON a.user_id=ids.user_id LEFT JOIN desktop_profiles p ON p.user_id=ids.user_id LEFT JOIN desktop_moderation m ON m.user_id=ids.user_id`;
 
 // Filters that SQL can apply before the list is cut, so totals and results are exact.
@@ -153,8 +153,8 @@ async function caseList(env, { status = "active", q = "", limit = 200 }) {
   const rows = await all(
     env,
     `SELECT s.id,${caseOwner} AS owner_id,s.category,s.subject,s.created_at,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority,t.assignee_id,COALESCE(t.updated_at,s.created_at) AS updated_at,t.staff_replied_at,t.user_replied_at,a.email,p.username,
-     (SELECT COUNT(*) FROM mowr_support_messages x WHERE x.case_id=s.id AND x.author!='note') AS replies
-     FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=${caseOwner} LEFT JOIN desktop_profiles p ON p.user_id=${caseOwner}
+     (SELECT COUNT(*) FROM clem_support_messages x WHERE x.case_id=s.id AND x.author!='note') AS replies
+     FROM clem_support s LEFT JOIN clem_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=${caseOwner} LEFT JOIN desktop_profiles p ON p.user_id=${caseOwner}
      WHERE 1=1 ${statusFilter} AND (?='' OR lower(s.subject) LIKE ? OR lower(COALESCE(a.email,'')) LIKE ? OR lower(s.message) LIKE ?)
      ORDER BY CASE COALESCE(t.priority,'normal') WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, COALESCE(t.updated_at,s.created_at) DESC LIMIT ?`,
     ...values,
@@ -166,11 +166,11 @@ async function caseList(env, { status = "active", q = "", limit = 200 }) {
 }
 
 async function setCaseState(env, caseId, fields) {
-  const existing = await first(env, "SELECT * FROM mowr_support_state WHERE case_id=?", caseId);
+  const existing = await first(env, "SELECT * FROM clem_support_state WHERE case_id=?", caseId);
   const next = { status: "open", priority: "normal", assignee_id: null, staff_replied_at: null, user_seen_at: null, user_replied_at: null, ...existing, ...fields, updated_at: now() };
   await run(
     env,
-    "INSERT INTO mowr_support_state(case_id,status,priority,assignee_id,updated_at,staff_replied_at,user_seen_at,user_replied_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(case_id) DO UPDATE SET status=excluded.status,priority=excluded.priority,assignee_id=excluded.assignee_id,updated_at=excluded.updated_at,staff_replied_at=excluded.staff_replied_at",
+    "INSERT INTO clem_support_state(case_id,status,priority,assignee_id,updated_at,staff_replied_at,user_seen_at,user_replied_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(case_id) DO UPDATE SET status=excluded.status,priority=excluded.priority,assignee_id=excluded.assignee_id,updated_at=excluded.updated_at,staff_replied_at=excluded.staff_replied_at",
     caseId, next.status, next.priority, next.assignee_id, next.updated_at, next.staff_replied_at, next.user_seen_at, next.user_replied_at,
   );
   return next;
@@ -187,7 +187,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
   if (!role) throw new HttpError(403, "This account does not have staff access.");
   const aal = claims(authorization).aal;
   if (env.ADMIN_REQUIRE_MFA === "true" && aal !== "aal2")
-    throw new HttpError(403, "Staff access requires authenticator verification. Add an authenticator in Mowr security settings.");
+    throw new HttpError(403, "Staff access requires authenticator verification. Add an authenticator in Clem security settings.");
   const staff = { id: user.id, email: String(user.email || ""), role, mfa: aal === "aal2" };
   const get = request.method === "GET";
   const params = new URL(request.url).searchParams;
@@ -198,15 +198,15 @@ export async function handleAdmin(request, env, user, path, authorization) {
 
   if (path === "/admin/overview" && get) {
     const since = (n) => new Date(Date.now() - n * day).toISOString();
-    // Counted in SQL so totals stay exact however many people use Mowr.
+    // Counted in SQL so totals stay exact however many people use Clem.
     const [totals, steps, joined, caseTotals, recentCases] = await Promise.all([
       first(env, `SELECT COUNT(*) AS users, SUM(first_seen_at>?) AS newThisWeek, SUM(last_seen_at>?) AS activeThisWeek, SUM(last_seen_at>?) AS activeToday, SUM(suspended) AS suspended FROM (${peopleSql})`, since(7), since(7), since(1), now()),
       all(env, `SELECT COALESCE(setup_step,0) AS step, COUNT(*) AS n FROM (${peopleSql}) GROUP BY COALESCE(setup_step,0)`, now()),
       all(env, `SELECT substr(first_seen_at,1,10) AS date, COUNT(*) AS n FROM (${peopleSql}) WHERE first_seen_at>=? GROUP BY substr(first_seen_at,1,10)`, now(), since(14).slice(0, 10)),
-      first(env, "SELECT COUNT(*) AS open, SUM(CASE WHEN COALESCE(t.status,'open')='open' AND (t.staff_replied_at IS NULL OR (t.user_replied_at IS NOT NULL AND t.user_replied_at>t.staff_replied_at)) THEN 1 ELSE 0 END) AS awaiting, SUM(CASE WHEN COALESCE(t.priority,'normal') IN ('urgent','high') THEN 1 ELSE 0 END) AS urgent FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE COALESCE(t.status,'open') IN ('open','pending')"),
+      first(env, "SELECT COUNT(*) AS open, SUM(CASE WHEN COALESCE(t.status,'open')='open' AND (t.staff_replied_at IS NULL OR (t.user_replied_at IS NOT NULL AND t.user_replied_at>t.staff_replied_at)) THEN 1 ELSE 0 END) AS awaiting, SUM(CASE WHEN COALESCE(t.priority,'normal') IN ('urgent','high') THEN 1 ELSE 0 END) AS urgent FROM clem_support s LEFT JOIN clem_support_state t ON t.case_id=s.id WHERE COALESCE(t.status,'open') IN ('open','pending')"),
       caseList(env, { status: "active", limit: 6 }),
     ]);
-    // Mowr is free: report how far people got through the app's four-step welcome instead of plans.
+    // Clem is free: report how far people got through the app's four-step welcome instead of plans.
     const setup = Object.fromEntries(steps.map((r) => [r.step, r.n]));
     const signups = Array.from({ length: 14 }, (_, i) => {
       const date = new Date(Date.now() - (13 - i) * day).toISOString().slice(0, 10);
@@ -288,12 +288,12 @@ export async function handleAdmin(request, env, user, path, authorization) {
   if ((m = /^\/admin\/users\/([\w-]{3,64})$/.exec(path)) && get) {
     const userId = m[1];
     const [row] = await all(env, `${peopleSql} WHERE ids.user_id=?`, now(), userId);
-    if (!row) throw new HttpError(404, "No Mowr record for this person.");
+    if (!row) throw new HttpError(404, "No Clem record for this person.");
     const context = await planContext(env, [userId]);
     const [moderation, notes, cases, directory] = await Promise.all([
       first(env, "SELECT * FROM desktop_moderation WHERE user_id=?", userId),
       all(env, "SELECT * FROM desktop_staff_notes WHERE user_id=? ORDER BY created_at DESC", userId),
-      all(env, `SELECT s.id,s.subject,s.category,s.created_at,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE ${ownsCase} ORDER BY s.created_at DESC`, userId, userId),
+      all(env, `SELECT s.id,s.subject,s.category,s.created_at,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority FROM clem_support s LEFT JOIN clem_support_state t ON t.case_id=s.id WHERE ${ownsCase} ORDER BY s.created_at DESC`, userId, userId),
       supabaseUser(env, userId).catch(() => null),
     ]);
     return json({
@@ -379,26 +379,26 @@ export async function handleAdmin(request, env, user, path, authorization) {
     return json({ cases: await caseList(env, { status: params.get("status") || "active", q: (params.get("q") || "").trim().slice(0, 120) }) });
 
   if ((m = /^\/admin\/cases\/([\w-]{8,64})$/.exec(path)) && get) {
-    const found = await first(env, `SELECT s.*,${caseOwner} AS owner_id,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority,t.assignee_id,t.staff_replied_at,t.user_seen_at,t.user_replied_at,a.email,a.last_seen_at,p.username,p.display_name FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=${caseOwner} LEFT JOIN desktop_profiles p ON p.user_id=${caseOwner} WHERE s.id=?`, m[1]);
+    const found = await first(env, `SELECT s.*,${caseOwner} AS owner_id,COALESCE(t.status,'open') AS status,COALESCE(t.priority,'normal') AS priority,t.assignee_id,t.staff_replied_at,t.user_seen_at,t.user_replied_at,a.email,a.last_seen_at,p.username,p.display_name FROM clem_support s LEFT JOIN clem_support_state t ON t.case_id=s.id LEFT JOIN desktop_activity a ON a.user_id=${caseOwner} LEFT JOIN desktop_profiles p ON p.user_id=${caseOwner} WHERE s.id=?`, m[1]);
     if (!found) throw new HttpError(404, "Case not found.");
     const context = await planContext(env, [found.owner_id]);
     return json({
       case: { ...found, ...planFor(found.owner_id, context) },
-      messages: await all(env, "SELECT * FROM mowr_support_messages WHERE case_id=? ORDER BY created_at", found.id),
-      otherCases: await all(env, `SELECT s.id,s.subject,s.created_at,COALESCE(t.status,'open') AS status FROM mowr_support s LEFT JOIN mowr_support_state t ON t.case_id=s.id WHERE ${ownsCase} AND s.id!=? ORDER BY s.created_at DESC LIMIT 10`, found.owner_id, found.owner_id, found.id),
+      messages: await all(env, "SELECT * FROM clem_support_messages WHERE case_id=? ORDER BY created_at", found.id),
+      otherCases: await all(env, `SELECT s.id,s.subject,s.created_at,COALESCE(t.status,'open') AS status FROM clem_support s LEFT JOIN clem_support_state t ON t.case_id=s.id WHERE ${ownsCase} AND s.id!=? ORDER BY s.created_at DESC LIMIT 10`, found.owner_id, found.owner_id, found.id),
       team: await team(env),
     });
   }
 
   if ((m = /^\/admin\/cases\/([\w-]{8,64})\/(reply|update)$/.exec(path)) && !get) {
     need(staff, "support");
-    const found = await first(env, `SELECT s.id,${caseOwner} AS owner_id FROM mowr_support s WHERE s.id=?`, m[1]);
+    const found = await first(env, `SELECT s.id,${caseOwner} AS owner_id FROM clem_support s WHERE s.id=?`, m[1]);
     if (!found) throw new HttpError(404, "Case not found.");
     if (m[2] === "reply") {
       const internal = body.internal === true;
       const message = text(body.body, 10000, { min: 2 });
       const at = now();
-      await run(env, "INSERT INTO mowr_support_messages(id,case_id,author,author_id,author_name,body,created_at) VALUES(?,?,?,?,?,?,?)", crypto.randomUUID(), found.id, internal ? "note" : "staff", staff.id, "Mowr support", message, at);
+      await run(env, "INSERT INTO clem_support_messages(id,case_id,author,author_id,author_name,body,created_at) VALUES(?,?,?,?,?,?,?)", crypto.randomUUID(), found.id, internal ? "note" : "staff", staff.id, "Clem support", message, at);
       if (!internal) await setCaseState(env, found.id, { status: ["open", "pending", "resolved", "closed"].includes(body.status) ? body.status : "pending", staff_replied_at: at });
       await audit(env, staff, internal ? "case.note" : "case.reply", found.owner_id, found.id);
       return json({ ok: true });
@@ -423,7 +423,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
     need(staff, "admin");
     const tone = ["info", "success", "warning"].includes(body.tone) ? body.tone : "info";
     const link = body.link ? text(body.link, 300) : null;
-    if (link && !/^https:\/\/mowrai\.com\//.test(link)) throw new HttpError(400, "Links must point to mowrai.com.");
+    if (link && !/^https:\/\/clem.m4labs.xyz\//.test(link)) throw new HttpError(400, "Links must point to clem.m4labs.xyz.");
     const announcement = { id: crypto.randomUUID(), title: text(body.title, 80), body: text(body.body, 400), tone, link, starts_at: now(), ends_at: days(body.days, 365) };
     await run(env, "INSERT INTO desktop_announcements(id,title,body,tone,link,starts_at,ends_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)", announcement.id, announcement.title, announcement.body, tone, link, announcement.starts_at, announcement.ends_at, staff.id, now());
     await audit(env, staff, "announcement.publish", announcement.id, announcement.title);
@@ -443,8 +443,8 @@ export async function handleAdmin(request, env, user, path, authorization) {
     const role = body.role === "support" ? "support" : "admin";
     // Activity rows refresh on sign-in, so after an email change two accounts can briefly share one address.
     const matches = await all(env, "SELECT user_id FROM desktop_activity WHERE email=? LIMIT 2", email);
-    if (!matches.length) throw new HttpError(404, "That person needs to sign in to the Mowr app once before they can be added.");
-    if (matches.length > 1) throw new HttpError(409, "More than one Mowr account has used this email, so it cannot be matched to one person yet.");
+    if (!matches.length) throw new HttpError(404, "That person needs to sign in to the Clem app once before they can be added.");
+    if (matches.length > 1) throw new HttpError(409, "More than one Clem account has used this email, so it cannot be matched to one person yet.");
     const [person] = matches;
     await run(env, "INSERT INTO desktop_admins(user_id,email,role,added_by,added_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,email=excluded.email", person.user_id, email, role, staff.id, now());
     await audit(env, staff, "team.add", person.user_id, `${email} as ${role}`);

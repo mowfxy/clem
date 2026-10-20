@@ -8,7 +8,7 @@ export type CliAccount = { id: string; connected: boolean; installed?: boolean; 
 export interface CliProvider { readonly busy: boolean; cancel(id: string): void; stop(): void; logout(): Promise<void>; endSession(id: string): Promise<void>; forget(): void }
 type Registry = { active: string; ids: string[] };
 type Options<P> = {
-  /** The provider for one account: "default" is the sign-in Mowr has always used, others have their own folder. */
+  /** The provider for one account: "default" is the sign-in Clem has always used, others have their own folder. */
   make: (owner: string, id: string) => P;
   /** The folder an added account keeps its sign-in in (removed with the account). */
   folder: (owner: string, id: string) => string;
@@ -18,7 +18,7 @@ const SIGN_IN_MS = 15 * 60_000;
 
 /**
  * Several Claude or Grok accounts, as ChatGPT has: each keeps its own sign-in folder (Claude Code's
- * CLAUDE_CONFIG_DIR, Grok's GROK_HOME), one is active, and with automatic switching Mowr moves to another
+ * CLAUDE_CONFIG_DIR, Grok's GROK_HOME), one is active, and with automatic switching Clem moves to another
  * connected account before a request when the active one is nearly out of usage, or during one when the
  * plan refuses it. A running answer keeps its own account; only later requests move.
  */
@@ -194,7 +194,7 @@ export class CliAccounts<P extends CliProvider> {
     const until = this.exhausted.get(owner + ":" + r.active);
     return resumeAt(account?.usage) ?? (until && until > Date.now() ? until : undefined);
   }
-  /** Accounts restored from the Mowr account (their sign-ins were just written back to this PC). */
+  /** Accounts restored from the Clem account (their sign-ins were just written back to this PC). */
   async adopt(owner: string, ids: string[]) {
     return this.exclusive(async () => {
       for (const id of ids) { const key = owner + ":" + id; this.providers.get(key)?.forget(); }

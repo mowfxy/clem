@@ -21,8 +21,8 @@ test('the Windows build is read from the official package manifest only', () => 
   assert.equal(platformBuild({}, 'x64'), null);
 });
 
-test('a downloaded Codex is used only while it is newer than the one shipped with Mowr', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'mowr-engines-'));
+test('a downloaded Codex is used only while it is newer than the one shipped with Clem', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'clem-engines-'));
   try {
     for (const version of ['0.150.0', '0.160.0']) {
       await mkdir(join(root, 'engines', 'codex', version, 'bin'), {recursive: true});
@@ -37,7 +37,7 @@ test('a downloaded Codex is used only while it is newer than the one shipped wit
 });
 
 test('daily updates run once a day', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'mowr-engines-'));
+  const root = await mkdtemp(join(tmpdir(), 'clem-engines-'));
   try {
     let runs = 0;
     assert.equal(await daily(root, 'grok', async () => { runs++; }), true);
@@ -47,7 +47,7 @@ test('daily updates run once a day', async () => {
 });
 
 test('a damaged stamp file does not stop the daily check for good', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'mowr-engines-'));
+  const root = await mkdtemp(join(tmpdir(), 'clem-engines-'));
   try {
     await mkdir(join(root, 'engines'), {recursive: true});
     await writeFile(join(root, 'engines', 'tool-checked.json'), '{"at": 17');

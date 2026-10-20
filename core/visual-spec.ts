@@ -8,7 +8,7 @@ const figureSpan = z.tuple([z.union([z.number(), z.string().max(200)]), z.union(
 const figureViewSchema = z.object({ x: figureSpan.optional(), y: figureSpan.optional() });
 
 /** Model-authored visuals. A model describes *what* to draw in a small JSON language;
- *  Mowr validates it, compiles every expression safely and draws it with the same pen
+ *  Clem validates it, compiles every expression safely and draws it with the same pen
  *  as the built-in models. No code from the model ever runs. */
 
 /* ── Drawing surface, shared with src/visuals/pen.ts ── */

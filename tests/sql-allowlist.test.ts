@@ -48,7 +48,7 @@ test('every query the API sends is inside the database Worker allowlist',()=>{
   assert.ok(queries.length>60,`found only ${queries.length} queries; the scanner missed some`);
   for(const {file,sql} of queries)assert.ok(allowedStatement(sql),`${file}: ${sql}`);
   // scripts/announce-release.mjs uses the same Worker.
-  for(const sql of ["SELECT email FROM mowr_email_optout WHERE kind='updates'",'SELECT owner_id FROM mowr_email_log WHERE kind=?',"INSERT INTO mowr_email_log(owner_id,kind,sent_at) VALUES(?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(owner_id,kind) DO NOTHING"])
+  for(const sql of ["SELECT email FROM clem_email_optout WHERE kind='updates'",'SELECT owner_id FROM clem_email_log WHERE kind=?',"INSERT INTO clem_email_log(owner_id,kind,sent_at) VALUES(?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(owner_id,kind) DO NOTHING"])
     assert.ok(allowedStatement(sql),sql);
 });
 
@@ -61,26 +61,26 @@ test('the database Worker refuses staff, vault and schema access',()=>{
     'DELETE FROM desktop_activity WHERE user_id=?',
     'DELETE FROM desktop_audit_log WHERE 1=1',
     "UPDATE desktop_audit_log SET detail='' WHERE 1=1",
-    'SELECT * FROM mowr_users, desktop_admins',
-    'SELECT * FROM mowr_users u, desktop_admins a',
-    'SELECT * FROM mowr_users WHERE id IN (SELECT user_id FROM desktop_sync)',
+    'SELECT * FROM clem_users, desktop_admins',
+    'SELECT * FROM clem_users u, desktop_admins a',
+    'SELECT * FROM clem_users WHERE id IN (SELECT user_id FROM desktop_sync)',
     'SELECT name FROM sqlite_master',
     'SELECT * FROM pragma_table_info(?)',
     'PRAGMA table_list',
-    'DROP TABLE mowr_users',
-    'SELECT 1; DROP TABLE mowr_users',
+    'DROP TABLE clem_users',
+    'SELECT 1; DROP TABLE clem_users',
     'SELECT * FROM "desktop_admins"',
-    'SELECT * FROM mowr_users -- comment',
-    "SELECT * FROM mowr_users WHERE id='x",
+    'SELECT * FROM clem_users -- comment',
+    "SELECT * FROM clem_users WHERE id='x",
     'WITH x AS (SELECT * FROM desktop_admins) SELECT * FROM x',
     '',
   ])assert.equal(allowedStatement(sql),false,sql);
   // A table name inside a string is data, not a reference.
-  assert.equal(allowedStatement("SELECT 1 FROM mowr_users WHERE display_name='FROM desktop_admins'"),true);
+  assert.equal(allowedStatement("SELECT 1 FROM clem_users WHERE display_name='FROM desktop_admins'"),true);
 });
 
 test('reading a guarded table through IN or a pragma table function is refused',()=>{
-  assert.equal(allowedStatement("SELECT id FROM mowr_users WHERE ('u1','2026') IN desktop_owner_grants"),false);
-  assert.equal(allowedStatement("SELECT id FROM mowr_users WHERE 'x' IN pragma_table_info('provider_links')"),false);
-  assert.equal(allowedStatement("SELECT id FROM mowr_users WHERE id IN (?,?)"),true);
+  assert.equal(allowedStatement("SELECT id FROM clem_users WHERE ('u1','2026') IN desktop_owner_grants"),false);
+  assert.equal(allowedStatement("SELECT id FROM clem_users WHERE 'x' IN pragma_table_info('provider_links')"),false);
+  assert.equal(allowedStatement("SELECT id FROM clem_users WHERE id IN (?,?)"),true);
 });

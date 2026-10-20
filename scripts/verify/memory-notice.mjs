@@ -10,7 +10,7 @@ await mkdir(out, { recursive: true });
 // Keep a handle on the App's chat listeners so the test can send what the main process would.
 const capture = () => {
   let bridge;
-  Object.defineProperty(window, "mowrDesktop", {
+  Object.defineProperty(window, "clemDesktop", {
     configurable: true,
     get: () => bridge,
     set(value) {
@@ -34,7 +34,7 @@ try {
       { id: ids[1], text: "The user has a midterm on 20 October.", confirmed: false },
     ] });
   }, ids);
-  const notice = page.locator(".notice-card", { hasText: "Mowr noted this" });
+  const notice = page.locator(".notice-card", { hasText: "Clem noted this" });
   await notice.waitFor({ timeout: 5000 });
   check(await notice.getByText("second-year biology student").isVisible(), "notice shows what was noted");
   await page.waitForTimeout(1800);
@@ -46,7 +46,7 @@ try {
 
   // A kept memory ("remember that…") says so.
   await page.evaluate(() => { for (const fn of window.__chatListeners) fn({ id: "run-2", type: "memory", text: "", memories: [{ id: "33333333-3333-4333-8333-333333333333", text: "The user prefers SI units.", confirmed: true }] }); });
-  await page.locator(".notice-card", { hasText: "Mowr will remember this" }).waitFor({ timeout: 5000 });
+  await page.locator(".notice-card", { hasText: "Clem will remember this" }).waitFor({ timeout: 5000 });
   check(true, "kept memory notice");
 
   // Deleting a chat forgets what was only learned from it.

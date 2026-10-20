@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-const userData = await mkdtemp(join(tmpdir(), "mowr-desktop-smoke-"));
+const userData = await mkdtemp(join(tmpdir(), "clem-desktop-smoke-"));
 const app = await electron.launch({
-  ...(process.env.MOWR_SMOKE_PACKAGED
+  ...(process.env.CLEM_SMOKE_PACKAGED
     ? {
-        executablePath: resolve("release/win-unpacked/Mowr.exe"),
+        executablePath: resolve("release/win-unpacked/Clem.exe"),
         args: ["--user-data-dir=" + userData],
       }
     : {
@@ -19,10 +19,10 @@ try {
   const page = await app.firstWindow(),
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.getByRole("heading", { name: "Welcome to Mowr." }).waitFor();
+  await page.getByRole("heading", { name: "Welcome to Clem." }).waitFor();
   assert.equal(await page.evaluate(() => typeof window.require), "undefined");
   assert.equal(
-    await page.evaluate(() => typeof window.mowrDesktop?.invoke),
+    await page.evaluate(() => typeof window.clemDesktop?.invoke),
     "function",
   );
   assert.equal(await page.evaluate(() => Object.keys(localStorage).length), 0);
@@ -44,7 +44,7 @@ try {
     const {Worker}=process.getBuiltinModule('worker_threads'),{join}=process.getBuiltinModule('path');
     const root=app.isPackaged?join(app.getAppPath(),'desktop-dist'):app.getAppPath();
     return new Promise((resolve,reject)=>{
-      const worker=new Worker(join(root,'kinetra-worker.cjs'),{workerData:{module:'mowr',fn:'integrateExpression',args:['x^2','x',0,1]}});
+      const worker=new Worker(join(root,'kinetra-worker.cjs'),{workerData:{module:'clem',fn:'integrateExpression',args:['x^2','x',0,1]}});
       const timer=setTimeout(()=>{worker.terminate();reject(Error('worker timeout'));},10000);
       worker.once('message',value=>{clearTimeout(timer);worker.terminate();resolve(value);});worker.once('error',e=>{clearTimeout(timer);reject(e);});
     });
@@ -52,7 +52,7 @@ try {
   assert.ok(Math.abs(toolResult.result-1/3)<1e-8,'Packaged Kinetra worker executes');
   assert.ok(
     await page.evaluate(() =>
-      window.mowrDesktop.invoke({ action: "shell", command: "whoami" }).then(
+      window.clemDesktop.invoke({ action: "shell", command: "whoami" }).then(
         () => false,
         () => true,
       ),
@@ -66,7 +66,7 @@ try {
   await page.getByRole("button", { name: "Sign in with browser" }).click();
   await page.getByRole("button", { name: "Open browser again" }).waitFor();
   const opened = await app.evaluate(() => globalThis.__openedUrl);
-  assert.ok(opened.startsWith("https://mowrai.com/#/desktop-signin?callback="));
+  assert.ok(opened.startsWith("https://clem.m4labs.xyz/#/desktop-signin?callback="));
   // Exercise the real Electron popup handler: links in answers open in the browser when they are https (any host, by
   // design), never plain http or https carrying a user name and password.
   for (const url of ["https://auth.openai.com/codex/device", "https://auth.openai.com.evil.example/codex/device", "http://auth.openai.com/codex/device", "https://user:pass@example.com/"]) {

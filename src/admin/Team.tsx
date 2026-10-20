@@ -16,7 +16,7 @@ export function Team({staff}:{staff:Staff}){
   return <div className="adm-page">
     <PageHead scene="key" title="Team" line="Who can use this portal, and what they can do.">{owner&&<button className="adm-primary" onClick={()=>setAdding(true)}><I name="users" size={15}/>Add teammate</button>}</PageHead>
     <div className="adm-roles">{Object.entries(describe).map(([role,text])=><div key={role}><Badge tone={tone(role)}>{role}</Badge><p>{text}</p></div>)}</div>
-    {adding&&<Modal title="Add a teammate" line="They need to have signed in to the Mowr app once. Owners are set in the account service code." onClose={()=>setAdding(false)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void run('/admin/team',{email:String(f.get('email')),role:String(f.get('role'))},'Team member added').then(ok=>{if(ok)setAdding(false);});}}>
+    {adding&&<Modal title="Add a teammate" line="They need to have signed in to the Clem app once. Owners are set in the account service code." onClose={()=>setAdding(false)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void run('/admin/team',{email:String(f.get('email')),role:String(f.get('role'))},'Team member added').then(ok=>{if(ok)setAdding(false);});}}>
       <label>Email<input name="email" type="email" required placeholder="teammate@example.com" autoFocus/></label>
       <label>Role<Select name="role" options={[{value:'support',label:'Support'},{value:'admin',label:'Admin'}]}/></label>
       <footer><button type="button" onClick={()=>setAdding(false)}>Cancel</button><button className="adm-primary" disabled={busy}>Add to team</button></footer>

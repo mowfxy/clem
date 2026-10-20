@@ -80,26 +80,26 @@ try {
   await page.locator(".sp-folder", { hasText: "Worksheets" }).getByText("2", { exact: true }).waitFor();
   await page.screenshot({ path: "artifacts/subject-files.png" });
 
-  // "Make a worksheet" saves the PDF Mowr makes into Worksheets.
+  // "Make a worksheet" saves the PDF Clem makes into Worksheets.
   await page.getByRole("tab", { name: "Overview" }).click();
   await page.locator(".calm-template", { hasText: "Worksheet" }).click();
   await page.getByText("I saved it as a PDF.").waitFor();
-  const saved = await page.evaluate(async () => { for (let i = 0; i < 60; i++) { const s = await (await fetch("/api/local/state", { headers: { "X-Mowr-Owner": "fixture-owner" } })).json(); const f = s?.files.find((x) => x.name === "Week 3 worksheet.pdf"); if (f) return f; await new Promise((r) => setTimeout(r, 150)); } });
+  const saved = await page.evaluate(async () => { for (let i = 0; i < 60; i++) { const s = await (await fetch("/api/local/state", { headers: { "X-Clem-Owner": "fixture-owner" } })).json(); const f = s?.files.find((x) => x.name === "Week 3 worksheet.pdf"); if (f) return f; await new Promise((r) => setTimeout(r, 150)); } });
   assert.equal(saved?.folderId, "f-worksheets", "the worksheet lands in Worksheets");
   assert.equal(saved.made, true);
 
-  // Edit a PDF Mowr made: re-typeset, review, keep; undo is offered.
+  // Edit a PDF Clem made: re-typeset, review, keep; undo is offered.
   await page.evaluate(() => { location.hash = "/app/space/bio"; });
   await page.getByRole("tab", { name: /^Files/ }).click();
   await page.locator(".sp-folder", { hasText: "Worksheets" }).click();
   // Files open beside a chat in this space; a change request in the composer edits the file.
-  const editWithMowr = async (name) => {
+  const editWithClem = async (name) => {
     await page.locator(".sp-file", { hasText: name }).getByRole("button", { name: `${name} options` }).click();
-    await page.getByRole("menuitem", { name: "Edit with Mowr" }).click();
+    await page.getByRole("menuitem", { name: "Edit with Clem" }).click();
     await page.locator(".file-panel .ps-page canvas").first().waitFor();
   };
   const askFile = async (text) => { await page.getByLabel("Your message").fill(text); await page.getByLabel("Your message").press("Enter"); };
-  await editWithMowr("Cell biology worksheet.pdf");
+  await editWithClem("Cell biology worksheet.pdf");
   await askFile("Make it harder and add an answer key");
   await page.getByText("Made every question harder and added an answer key.").first().waitFor({ timeout: 30000 });
   assert.ok(await page.locator(".ps-mark").count() >= 3, "changed lines are highlighted");
@@ -114,7 +114,7 @@ try {
   // Edit someone else's PDF in place.
   await page.evaluate(() => { location.hash = "/app/space/bio"; });
   await page.getByRole("tab", { name: /^Files/ }).click();
-  await editWithMowr("Osmosis lab handout.pdf");
+  await editWithClem("Osmosis lab handout.pdf");
   await askFile("Move the due date to Monday and make question 2 more precise");
   await page.getByText("Moved the due date to Monday").first().waitFor({ timeout: 30000 });
   await page.screenshot({ path: "artifacts/pdf-handout-proposal.png" });
@@ -139,15 +139,15 @@ try {
   await page.locator(".sh-foot .primary").click();
   await page.getByText("Drag it into any chat.").waitFor();
   await page.locator(".sh-file").dispatchEvent("dragstart");
-  assert.deepEqual(await page.evaluate(() => window.drags), ["C:\\Users\\Sam\\Downloads\\Mowr\\Biology 101.mowrpack"]);
+  assert.deepEqual(await page.evaluate(() => window.drags), ["C:\\Users\\Sam\\Downloads\\Clem\\Biology 101.clempack"]);
   await page.waitForTimeout(900);
   await page.screenshot({ path: "artifacts/share-done.png" });
   await page.getByRole("button", { name: "Done" }).click();
-  await page.evaluate(() => window.firePack(window.lastShare, "Biology 101.mowrpack"));
+  await page.evaluate(() => window.firePack(window.lastShare, "Biology 101.clempack"));
   await page.getByText("Sam shared a subject").waitFor();
   await page.waitForTimeout(700);
   await page.screenshot({ path: "artifacts/pack-open.png" });
-  await page.getByRole("button", { name: "Add to Mowr" }).click();
+  await page.getByRole("button", { name: "Add to Clem" }).click();
   await page.locator(".space-page .sp-name", { hasText: "Biology 101" }).waitFor();
   await page.getByRole("tab", { name: /^Files/ }).click();
   await page.locator(".sp-folder", { hasText: "Worksheets" }).getByText("3 items").waitFor();

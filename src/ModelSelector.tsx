@@ -3,19 +3,18 @@ import { createPortal } from "react-dom";
 import type { Model } from "../core/types";
 import { Icon } from "./Icons";
 import { ProviderLogo } from "./BrandLogos";
-import { PEAKS } from "../core/peaks";
 import "./model-selector.css";
 
 export const effortName = (value: string) =>
   value === "low" ? "Light" : value === "minimal" ? "Minimal" : value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1);
 const EFFORT_NAMES = ["minimal", "low", "medium", "high", "xhigh", "max"];
-/** Mowr's Peaks mark as one solid stroke, small enough to drift through the thinking bar. */
+/** Clem's block cursor, small enough to drift through the thinking bar. */
 function Petal({ style }: { style: CSSProperties }) {
-  return <svg className="effort-petal" style={style} viewBox="12 22 76 56" aria-hidden="true"><path d={PEAKS} fill="none" stroke="currentColor" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  return <svg className="effort-petal" style={style} viewBox="0 0 11 20" aria-hidden="true"><rect width="11" height="20" rx="2" fill="currentColor" /></svg>;
 }
 const petals = Array.from({ length: 9 }, (_, i) => ({ top: [18, 62, 34, 76, 46, 24, 68, 40, 56][i], size: [11, 8, 13, 9, 7, 12, 8, 10, 7][i], delay: -i * 0.53 }));
 
-/** How hard the model thinks: a bar to drag, with Mowr's marks drifting faster and thicker as it climbs. */
+/** How hard the model thinks: a bar to drag, with Clem's cursors drifting faster and thicker as it climbs. */
 function EffortSlider({ levels, level, onChange }: {
   levels: string[]; level: string; onChange: (effort: string) => void;
 }) {

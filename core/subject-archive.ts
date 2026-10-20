@@ -26,7 +26,7 @@ const plan = z.object({
   skillId: id.optional(),
 });
 export const archiveSchema = z.object({
-  format: z.literal("mowr-subject"),
+  format: z.literal("clem-subject"),
   version: z.literal(1),
   space: z.object({
     id,

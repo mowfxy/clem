@@ -1,6 +1,6 @@
-# Contributing to Mowr
+# Contributing to Clem
 
-Thanks for wanting to make Mowr better. Bug reports, fixes, docs and ideas are all welcome.
+Thanks for wanting to make Clem better. Bug reports, fixes, docs and ideas are all welcome.
 
 ## Before you start
 
@@ -13,8 +13,8 @@ Thanks for wanting to make Mowr better. Bug reports, fixes, docs and ideas are a
 You need Windows 10 or 11, Node 25 and npm.
 
 ```powershell
-git clone https://github.com/mowfxy/mowr.git
-cd mowr
+git clone https://github.com/mowfxy/clem.git
+cd clem
 npm ci
 copy .env.example .env.local   # fill in the Supabase public URL and key
 npm run desktop:dev            # builds and opens the desktop app

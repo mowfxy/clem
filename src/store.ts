@@ -49,7 +49,7 @@ export function setStorageNamespace(value: string) {
   namespace = value;
 }
 const stateKey = (ns = namespace) =>
-  ns === "guest" ? "mowr-state-v1" : `mowr-state-${ns}`;
+  ns === "guest" ? "clem-state-v1" : `clem-state-${ns}`;
 const blobKey = (id: string, owner = namespace) =>
   owner === "guest" ? `file-${id}` : `file-${owner}-${id}`;
 async function local(
@@ -62,7 +62,7 @@ async function local(
   const response = await fetch("/api/local/" + path, {
     method,
     body,
-    headers: { "X-Mowr-Owner": owner },
+    headers: { "X-Clem-Owner": owner },
   });
   if (!response.ok)
     throw Error(
@@ -121,7 +121,7 @@ export async function storeBlob(id: string, file: Blob, owner = namespace) {
   if (desktop) await local("files/" + id, "PUT", file, owner);
   else await set(blobKey(id), file);
   // The file's text changed: drop its cached extracted text.
-  await del(`mowr-source:${owner}:${id}`);
+  await del(`clem-source:${owner}:${id}`);
 }
 export async function getBlob(id: string) {
   // Google Drive files shown in chat are streamed into memory for viewing and never written to this PC.
@@ -132,7 +132,7 @@ export async function getBlob(id: string) {
   }
   if (desktop) {
     const response = await fetch("/api/local/files/" + id, {
-      headers: { "X-Mowr-Owner": namespace },
+      headers: { "X-Clem-Owner": namespace },
     });
     if (response.status === 404) return undefined;
     if (!response.ok) throw Error("Could not read this local file.");
@@ -153,8 +153,8 @@ export async function deleteBlob(id: string, owner = namespace) {
   if (owner !== namespace) throw Error("Account changed. Try again.");
   if (desktop) await local("files/" + id, "DELETE", undefined, owner);
   await del(blobKey(id, owner));
-  await del("mowr-document-" + id);
-  await del(`mowr-source:${owner}:${id}`);
+  await del("clem-document-" + id);
+  await del(`clem-source:${owner}:${id}`);
 }
 /** How many earlier versions of a file are kept for Undo. */
 export const VERSIONS_KEPT = 20;

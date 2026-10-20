@@ -7,18 +7,18 @@ export type SettingsTab={name:string;icon:string;scene:Scene;line:string;keyword
 export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
  {label:'You',tabs:[
   {name:'Profile',icon:'account',scene:'profile',line:'Your name, your picture and your account.',keywords:'name picture avatar account email storage export'},
-  {name:'General',icon:'settings',scene:'balance',line:'How Mowr looks, runs and responds to keys.',keywords:'appearance quiet motion background tray windows startup shortcuts keyboard'},
+  {name:'General',icon:'settings',scene:'balance',line:'How Clem looks, runs and responds to keys.',keywords:'appearance quiet motion background tray windows startup shortcuts keyboard'},
   {name:'Security',icon:'lock',scene:'safe',line:'Sign-in, password and verification.',keywords:'password email google two-factor authenticator sessions sign in'},
  ]},
  {label:'Intelligence',tabs:[
   {name:'Models',icon:'models',scene:'plug',line:'Connected accounts and how much is left.',keywords:'chatgpt claude codex usage limits accounts subscription'},
-  {name:'Memory',icon:'subjects',scene:'jar',line:'What Mowr keeps in mind for you.',keywords:'remember notes'},
-  {name:'Skills',icon:'skills',scene:'cards',line:'Ways of working Mowr brings to every chat.',keywords:'skills workflows steps playbook create import practice'},
+  {name:'Memory',icon:'subjects',scene:'jar',line:'What Clem keeps in mind for you.',keywords:'remember notes'},
+  {name:'Skills',icon:'skills',scene:'cards',line:'Ways of working Clem brings to every chat.',keywords:'skills workflows steps playbook create import practice'},
   {name:'Automations',icon:'clock',scene:'hourglass',line:'Routines you set up in a chat.',keywords:'routines schedule recurring'},
  ]},
  {label:'Connections',tabs:[
-  {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Mowr can read from.',keywords:'google drive apps'},
-  {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Mowr can read.',keywords:'folders files changes undo watch'},
+  {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Clem can read from.',keywords:'google drive apps'},
+  {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Clem can read.',keywords:'folders files changes undo watch'},
  ]},
  {label:'Data',tabs:[
   {name:'Usage',icon:'analysis',scene:'telescope',line:'Your threads, tokens and habits.',keywords:'usage stats statistics tokens activity graph habits streak threads messages'},

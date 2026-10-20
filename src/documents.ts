@@ -53,10 +53,10 @@ function notebookText(raw:string){
  try{const nb=JSON.parse(raw);return (nb.cells||[]).map((c:{cell_type?:string;source?:string|string[];outputs?:{text?:string|string[]}[]},i:number)=>{const src=Array.isArray(c.source)?c.source.join(''):c.source||'';const out=(c.outputs||[]).map(o=>Array.isArray(o.text)?o.text.join(''):o.text||'').filter(Boolean).join('\n');return `[cell ${i+1}, ${c.cell_type||'code'}]\n${src}${out?'\n[output]\n'+out.slice(0,4000):''}`;}).join('\n\n');}
  catch{return raw;}
 }
-const safeTitle=(title:string)=>title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').slice(0,80)||'Mowr document';
-export async function exportDocx(content:string,title='Mowr document') {
+const safeTitle=(title:string)=>title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').slice(0,80)||'Clem document';
+export async function exportDocx(content:string,title='Clem document') {
   await downloadMade(await (await import('./document-export')).docxBlob(content,title),safeTitle(title)+'.docx');
 }
-export async function exportSlides(content:string,title='Mowr presentation') {
+export async function exportSlides(content:string,title='Clem presentation') {
   await downloadMade(await (await import('./document-export')).slidesBlob(content,title),safeTitle(title)+'.pptx');
 }

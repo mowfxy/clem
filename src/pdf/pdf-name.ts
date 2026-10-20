@@ -120,7 +120,7 @@ export async function readableName(file: File, place?: string) {
 /**
  * The file's name from the rules (`name`, the fallback), and `refine`: the AI's name when the file's own name does not
  * already say what it is (worksheets, sheets, assignments, labs and project documents as much as lectures). A PDF is
- * read as it is drawn, its first pages themselves, never from Mowr's text of it; Word and PowerPoint files from their
+ * read as it is drawn, its first pages themselves, never from Clem's text of it; Word and PowerPoint files from their
  * text. `siblings`: the names of the other files where it goes, so the name follows the pattern they share ("… –
  * Lecture 5"). `refine` resolves to undefined when there is nothing better, or outside the desktop app.
  */

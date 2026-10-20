@@ -100,8 +100,8 @@ dialog.shortcuts-sheet{width:min(560px,calc(100vw - 32px));padding:0;border-radi
 .find-bar .find-count{min-width:68px;text-align:right;padding-right:6px;font-size:12px;color:#8f8e88;white-space:nowrap}
 .find-bar .icon-button{width:30px;height:30px;padding:0;color:#c9c8c1}
 .find-bar .icon-button:disabled{opacity:.35}
-::highlight(mowr-find){background-color:#e9c46a40;color:inherit}
-::highlight(mowr-find-current){background-color:#f2b84b;color:#141414}
+::highlight(clem-find){background-color:#e9c46a40;color:inherit}
+::highlight(clem-find-current){background-color:#f2b84b;color:#141414}
 
 /* ── Narrow windows ── */
 @media(max-width:760px){

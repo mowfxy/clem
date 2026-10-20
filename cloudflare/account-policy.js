@@ -11,7 +11,7 @@ export function normalizeUsername(value) {
 export function validUsername(value) {
   return (
     /^[a-z][a-z0-9_]{2,23}$/.test(value) &&
-    !["admin", "support", "mowr", "system"].includes(value)
+    !["admin", "support", "clem", "system"].includes(value)
   );
 }
 export function ownerEligible(user) {

@@ -18,7 +18,7 @@ export function FileCard({file,onOpen,onError}:{file:StoredFile;onOpen:()=>void;
  return <div className={'file-slip tone-'+kind}>
   <button className="file-slip-open" onClick={onOpen} aria-description={file.name}>
    <span className="file-page" aria-hidden="true"><span className="file-fold"/><b>{ext}</b></span>
-   <span className="file-slip-text"><strong>{middle(file.name)}</strong><small>{file.made?'Made by Mowr · ':''}{sizeLabel(file.size)}</small></span>
+   <span className="file-slip-text"><strong>{middle(file.name)}</strong><small>{file.made?'Made by Clem · ':''}{sizeLabel(file.size)}</small></span>
   </button>
   <button className="file-slip-save" aria-label={'Download '+file.name} onClick={save}><Icon name="download" size={15}/></button>
  </div>;

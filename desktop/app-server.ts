@@ -10,7 +10,7 @@ type Listener = { onMessage: (method: string, params: any) => void; onFail: (err
  * Starting the CLI and completing the handshake costs far more than a turn's first token,
  * so the connection is kept warm and reused; each conversation still gets its own
  * ephemeral, read-only thread. Provider tool/approval requests are always refused,
- * except a confirmation before calling Mowr's own Kinetra MCP server.
+ * except a confirmation before calling Clem's own Kinetra MCP server.
  */
 export class AppServer {
   private pending = new Map<number, Pending>();
@@ -30,7 +30,7 @@ export class AppServer {
     child.on("close", () => this.fail(Error(this.stderr || "Codex connection closed.")));
     child.stdin.on("error", () => this.fail(Error("Codex connection closed.")));
     lines.on("line", (line) => this.receive(line));
-    this.ready = this.request("initialize", { clientInfo: { name: "mowr", version: clientVersion } }).then(() => {
+    this.ready = this.request("initialize", { clientInfo: { name: "clem", version: clientVersion } }).then(() => {
       this.write({ method: "initialized", params: {} });
     });
     this.ready.catch(() => {});
@@ -67,8 +67,8 @@ export class AppServer {
     let m: any;
     try { m = JSON.parse(line); } catch { return; }
     if (m.method && m.id !== undefined) {
-      // Mowr's own Kinetra server (desktop/kinetra-mcp.ts) is the one MCP server a thread may have: a confirmation Codex
-      // asks for before calling it is granted, as Mowr already decided to offer that tool. A link (url mode) never is.
+      // Clem's own Kinetra server (desktop/kinetra-mcp.ts) is the one MCP server a thread may have: a confirmation Codex
+      // asks for before calling it is granted, as Clem already decided to offer that tool. A link (url mode) never is.
       if (m.method === "mcpServer/elicitation/request" && m.params?.serverName === "kinetra" && m.params?.mode !== "url") {
         this.write({ id: m.id, result: { action: "accept", content: {} } });
         return;

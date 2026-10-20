@@ -68,7 +68,7 @@ test("a tool error is marked as an error result", () => {
 
 /** The same three requests, sent by a model as text envelopes or as native calls, with a document planned in parts. */
 async function scenario(mode: "text" | "native") {
-  const requests = [{ action: "call", module: "mowr", fn: "solveCircuit", args: [{}] }, { action: "look", file: "a.pdf", pages: [1] }, { action: "pdf", title: "T", sections: [{ heading: "A", text: "x" }] }];
+  const requests = [{ action: "call", module: "clem", fn: "solveCircuit", args: [{}] }, { action: "look", file: "a.pdf", pages: [1] }, { action: "pdf", title: "T", sections: [{ heading: "A", text: "x" }] }];
   const ran: unknown[] = [], seenResults: unknown[] = [], inputs: string[] = [], pictures: string[][] = [];
   let step = 0;
   const answer = await runKinetraTurn<string>("q", "INSTRUCTIONS", async (input, _followUp, attached, native) => {
@@ -175,9 +175,9 @@ function fakeClaude(provider: any, script: (url: string, token: string) => Promi
 }
 
 test("Claude: a native call runs through MCP inside one reply, with its pictures, and the endpoint closes after", async () => {
-  const provider: any = new ClaudeProvider("fixture", mkdtempSync(join(tmpdir(), "mowr-claude-")));
+  const provider: any = new ClaudeProvider("fixture", mkdtempSync(join(tmpdir(), "clem-claude-")));
   provider.status = async () => ({ connected: true });
-  const folder = mkdtempSync(join(tmpdir(), "mowr-pic-"));
+  const folder = mkdtempSync(join(tmpdir(), "clem-pic-"));
   const png = join(folder, "page.png");
   writeFileSync(png, Buffer.from("89504e470d0a1a0a", "hex"));
   let url = "", token = "", result: any;
@@ -210,7 +210,7 @@ test("Claude: a native call runs through MCP inside one reply, with its pictures
 });
 
 test("Claude: without a provider session or with the text protocol, an envelope in the reply still runs", async () => {
-  const provider: any = new ClaudeProvider("fixture", mkdtempSync(join(tmpdir(), "mowr-claude-")));
+  const provider: any = new ClaudeProvider("fixture", mkdtempSync(join(tmpdir(), "clem-claude-")));
   provider.status = async () => ({ connected: true });
   let n = 0;
   fakeClaude(provider, async () => (++n === 1 ? '{"kinetra":{"action":"recipes"}}' : "Answer."));
@@ -243,7 +243,7 @@ function fakeCodex() {
         write({ id: 900, method: "mcpServer/elicitation/request", params: { threadId: "t1", serverName: "kinetra", mode: "form", message: "Allow kinetra?", requestedSchema: { type: "object", properties: {} } } });
         write({ method: "item/started", params: { threadId: "t1", item: { type: "mcpToolCall", id: "m1" } } });
         const url = config["mcp_servers.kinetra.url"], token = config["mcp_servers.kinetra.http_headers"].Authorization.slice(7);
-        const out = await rpc(url, token, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "kinetra", arguments: { action: "call", module: "mowr", fn: "solveCircuit" } } });
+        const out = await rpc(url, token, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "kinetra", arguments: { action: "call", module: "clem", fn: "solveCircuit" } } });
         write({ method: "item/agentMessage/delta", params: { threadId: "t1", itemId: "a1", delta: "Result: " + out.body.result.content[0].text } });
         write({ method: "turn/completed", params: { threadId: "t1", turn: { status: "completed" } } });
       }
@@ -261,7 +261,7 @@ test("Codex: the thread gets the Kinetra server, the call runs natively, and its
   const ran: any[] = [];
   await codex.run("a", "solve it", (e: any) => events.push(e), [], undefined, undefined, undefined, async (request: any) => { ran.push(request); return { nodes: { "1": 6 } }; });
   assert.equal(events.filter((e) => e.type === "delta").map((e) => e.text).join(""), 'Result: {"nodes":{"1":6}}');
-  assert.deepEqual(ran, [{ action: "call", module: "mowr", fn: "solveCircuit" }]);
+  assert.deepEqual(ran, [{ action: "call", module: "clem", fn: "solveCircuit" }]);
   const start = server.sent.find((r: any) => r.method === "thread/start");
   assert.equal(start.params.config["mcp_servers.kinetra.tool_timeout_sec"], TOOL_TIMEOUT_SECONDS);
   assert.ok(server.sent.find((r: any) => r.method === "turn/start").params.input[0].text.startsWith(NATIVE_NOTE));

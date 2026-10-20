@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-const key = "mowr-desktop-return";
+const key = "clem-desktop-return";
 export function rememberDesktopReturn() {
   if (!location.hash.startsWith("#/desktop-signin?")) return;
   const callback = new URLSearchParams(location.hash.split("?")[1]).get(

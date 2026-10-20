@@ -14,12 +14,12 @@ const publicConfig = {
   key:
     process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || "",
   service:
-    process.env.MOWR_ACCOUNT_SERVICE ||
-    "https://mowr-accounts.mohamed-khaled011008.workers.dev",
+    process.env.CLEM_ACCOUNT_SERVICE ||
+    "https://clem-accounts.mohamed-khaled011008.workers.dev",
 };
 // Without these the app says "Sign-in is unavailable in this build", so a missing .env.local must fail loudly
-// (a git worktree has none unless it is copied in). MOWR_ALLOW_NO_SIGNIN=1 is for local experiments only.
-if ((!publicConfig.url || !publicConfig.key) && process.env.MOWR_ALLOW_NO_SIGNIN !== "1")
+// (a git worktree has none unless it is copied in). CLEM_ALLOW_NO_SIGNIN=1 is for local experiments only.
+if ((!publicConfig.url || !publicConfig.key) && process.env.CLEM_ALLOW_NO_SIGNIN !== "1")
   throw Error("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are missing from .env.local, so sign-in would not work in this build.");
 await mkdir("desktop-dist", { recursive: true });
 await build({
@@ -56,10 +56,10 @@ const manifest = JSON.parse(await readFile("package.json", "utf8"));
 await writeFile(
   "desktop-package/package.json",
   JSON.stringify({
-    name: "mowr-desktop",
+    name: "clem-desktop",
     version: manifest.version,
-    description: "Mowr local desktop workspace",
+    description: "Clem local desktop workspace",
     main: "desktop-dist/main.cjs",
-    author: { name: "Mowr Ai" },
+    author: { name: "Clem" },
   }),
 );

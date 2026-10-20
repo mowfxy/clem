@@ -68,7 +68,7 @@ app.use((req, res, next) => {
       // Drive uploads carry the file's own type; the Origin check above still guards them.
       (!req.is("application/json") && req.method !== "DELETE" && req.path !== "/api/drive/upload"))
   ) {
-    res.status(403).json({ error: "Use Mowr from its configured APP_URL." });
+    res.status(403).json({ error: "Use Clem from its configured APP_URL." });
     return;
   }
   next();
@@ -80,8 +80,8 @@ app.use((req, res, next) => req.path === "/api/drive/upload" ? next() : jsonBody
 app.use((req,res,next)=>{
   // Lowercased so a differently cased path cannot reach a retired route; saved edits to cloud files stay open.
   const path=req.path.toLowerCase();
-  if(process.env.MOWR_LEGACY_WORKSPACE!=="true" && ["POST","PUT","PATCH"].includes(req.method) && /^\/api\/(workspace|scopes|files)(\/|$)/.test(path) && !(req.method==="PUT" && /^\/api\/files\/[^/]+\/edits$/.test(path))) {
-    res.status(410).json({error:"Chats, files, projects and subjects are stored locally in the Mowr desktop app."});return;
+  if(process.env.CLEM_LEGACY_WORKSPACE!=="true" && ["POST","PUT","PATCH"].includes(req.method) && /^\/api\/(workspace|scopes|files)(\/|$)/.test(path) && !(req.method==="PUT" && /^\/api\/files\/[^/]+\/edits$/.test(path))) {
+    res.status(410).json({error:"Chats, files, projects and subjects are stored locally in the Clem desktop app."});return;
   }
   next();
 });
@@ -95,7 +95,7 @@ const localLimits = new Map<string, { count: number; until: number }>();
 async function rate(key: string, limit = 30) {
   if (databaseReady()) {
     const rows =
-      await db()`INSERT INTO mowr_rate_limits(key,count) VALUES(${key},1) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN mowr_rate_limits.window_start < now()-interval '1 minute' THEN 1 ELSE mowr_rate_limits.count+1 END,window_start=CASE WHEN mowr_rate_limits.window_start < now()-interval '1 minute' THEN now() ELSE mowr_rate_limits.window_start END RETURNING count`;
+      await db()`INSERT INTO clem_rate_limits(key,count) VALUES(${key},1) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN clem_rate_limits.window_start < now()-interval '1 minute' THEN 1 ELSE clem_rate_limits.count+1 END,window_start=CASE WHEN clem_rate_limits.window_start < now()-interval '1 minute' THEN now() ELSE clem_rate_limits.window_start END RETURNING count`;
     return rows[0].count <= limit;
   }
   const old = localLimits.get(key);
@@ -113,7 +113,7 @@ async function requireUser(req: express.Request, res: express.Response) {
     return null;
   }
   if (databaseReady()) {
-    const rows = await db()`SELECT disabled FROM mowr_users WHERE id=${u.id}`;
+    const rows = await db()`SELECT disabled FROM clem_users WHERE id=${u.id}`;
     if (!rows.length || rows[0].disabled) {
       res.status(401).json({ error: "This session is no longer active." });
       return null;
@@ -124,7 +124,7 @@ async function requireUser(req: express.Request, res: express.Response) {
 async function credential(userId: string, provider: string) {
   if (!databaseReady()) return undefined;
   const rows =
-    await db()`SELECT ciphertext,nonce,metadata FROM mowr_credentials WHERE owner_id=${userId} AND provider=${provider}`;
+    await db()`SELECT ciphertext,nonce,metadata FROM clem_credentials WHERE owner_id=${userId} AND provider=${provider}`;
   if (!rows.length) return undefined;
   return {
     key: decrypt(rows[0].ciphertext, rows[0].nonce, userId),
@@ -140,7 +140,7 @@ app.get("/api/auth/session", async (req, res) =>
   res.json({ user: await identity(req), ...capabilities() }),
 );
 app.get('/api/supabase/config',(_req,res)=>res.json(supabaseConfig()||{}));
-app.post('/api/supabase/session',async(req,res)=>{if(!(await rate('supabase:'+String(req.ip),30))){res.status(429).json({error:'Try again in a minute.'});return;}const {token}=z.object({token:z.string().min(20).max(3500)}).parse(req.body);const user=await supabaseIdentity(token);if(!user){res.status(401).json({error:'Invalid or expired sign-in.'});return;}if(databaseReady())await ensureUser(user.id,user.name);res.clearCookie('mowr_session',{path:'/'});res.cookie('mowr_supabase',token,{httpOnly:true,secure:!!process.env.VERCEL,sameSite:'lax',maxAge:3600000,path:'/'});if(!await emailAllowed({...req,headers:{...req.headers,cookie:'mowr_supabase='+token+'; mowr_email_verified='+ (cookies(req).mowr_email_verified||'')}} as express.Request,user.id)){res.status(403).json({error:'Email verification required.',code:'EMAIL_MFA'});return;}res.json({user});});
+app.post('/api/supabase/session',async(req,res)=>{if(!(await rate('supabase:'+String(req.ip),30))){res.status(429).json({error:'Try again in a minute.'});return;}const {token}=z.object({token:z.string().min(20).max(3500)}).parse(req.body);const user=await supabaseIdentity(token);if(!user){res.status(401).json({error:'Invalid or expired sign-in.'});return;}if(databaseReady())await ensureUser(user.id,user.name);res.clearCookie('clem_session',{path:'/'});res.cookie('clem_supabase',token,{httpOnly:true,secure:!!process.env.VERCEL,sameSite:'lax',maxAge:3600000,path:'/'});if(!await emailAllowed({...req,headers:{...req.headers,cookie:'clem_supabase='+token+'; clem_email_verified='+ (cookies(req).clem_email_verified||'')}} as express.Request,user.id)){res.status(403).json({error:'Email verification required.',code:'EMAIL_MFA'});return;}res.json({user});});
 const authInput = z.object({
   email: z.email().max(200).optional(),
   password: z.string().min(8).max(128),
@@ -149,8 +149,8 @@ const authInput = z.object({
 app.post("/api/auth/:action", async (req, res) => {
   const action = req.params.action;
   if (action === "logout") {
-    res.clearCookie("mowr_session", { path: "/" });
-    res.clearCookie("mowr_supabase", { path: "/" });
+    res.clearCookie("clem_session", { path: "/" });
+    res.clearCookie("clem_supabase", { path: "/" });
     res.json({ ok: true });
     return;
   }
@@ -163,11 +163,11 @@ app.post("/api/auth/:action", async (req, res) => {
     return;
   }
   if (action === "unlock") {
-    const expected = process.env.MOWR_ACCESS_PASSWORD;
+    const expected = process.env.CLEM_ACCESS_PASSWORD;
     if (!expected) {
       res.status(503).json({
         error:
-          "Set MOWR_ACCESS_PASSWORD in .env.local to enable a private workspace without a database.",
+          "Set CLEM_ACCESS_PASSWORD in .env.local to enable a private workspace without a database.",
       });
       return;
     }
@@ -190,7 +190,7 @@ app.post("/api/auth/:action", async (req, res) => {
     const id = randomUUID(),
       hash = await hashPassword(body.password);
     try {
-      await db()`INSERT INTO mowr_users(id,email,display_name,password_hash) VALUES(${id},${email},${body.name},${hash})`;
+      await db()`INSERT INTO clem_users(id,email,display_name,password_hash) VALUES(${id},${email},${body.name},${hash})`;
     } catch {
       res.status(400).json({
         error: "Unable to create this account. Try signing in instead.",
@@ -204,7 +204,7 @@ app.post("/api/auth/:action", async (req, res) => {
   }
   if (action === "login") {
     const rows =
-      await db()`SELECT id,display_name,password_hash,disabled FROM mowr_users WHERE email=${email}`;
+      await db()`SELECT id,display_name,password_hash,disabled FROM clem_users WHERE email=${email}`;
     if (
       !rows.length ||
       rows[0].disabled ||
@@ -230,7 +230,7 @@ app.post("/api/account/password", async (req, res) => {
     })
     .parse(req.body);
   const rows =
-    await db()`SELECT password_hash FROM mowr_users WHERE id=${u.id}`;
+    await db()`SELECT password_hash FROM clem_users WHERE id=${u.id}`;
   if (
     !rows[0]?.password_hash ||
     !(await checkPassword(b.current, rows[0].password_hash))
@@ -239,7 +239,7 @@ app.post("/api/account/password", async (req, res) => {
     return;
   }
   const hash = await hashPassword(b.password);
-  await db()`UPDATE mowr_users SET password_hash=${hash} WHERE id=${u.id}`;
+  await db()`UPDATE clem_users SET password_hash=${hash} WHERE id=${u.id}`;
   res.json({ ok: true });
 });
 app.get("/api/models", async (req, res) => {
@@ -247,7 +247,7 @@ app.get("/api/models", async (req, res) => {
   const list = modelCatalog();
   if (u && databaseReady()) {
     const rows =
-      await db()`SELECT provider,metadata FROM mowr_credentials WHERE owner_id=${u.id} AND provider<>'drive'`;
+      await db()`SELECT provider,metadata FROM clem_credentials WHERE owner_id=${u.id} AND provider<>'drive'`;
     for (const row of rows) {
       const m = list.find((m) => m.id === row.provider);
       if (m) {
@@ -280,13 +280,13 @@ app.post("/api/providers", async (req, res) => {
     })
     .parse(req.body);
   const value = encrypt(b.key, u.id);
-  await db()`INSERT INTO mowr_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},${b.provider},${value.ciphertext},${value.nonce},1,${JSON.stringify({ model: b.model, context: b.context })}::jsonb) ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce,metadata=excluded.metadata,updated_at=now()`;
+  await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},${b.provider},${value.ciphertext},${value.nonce},1,${JSON.stringify({ model: b.model, context: b.context })}::jsonb) ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce,metadata=excluded.metadata,updated_at=now()`;
   res.json({ ok: true });
 });
 app.delete("/api/providers/:provider", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
-  await db()`DELETE FROM mowr_credentials WHERE owner_id=${u.id} AND provider=${String(req.params.provider)}`;
+  await db()`DELETE FROM clem_credentials WHERE owner_id=${u.id} AND provider=${String(req.params.provider)}`;
   res.json({ ok: true });
 });
 app.get("/api/diagram", (req, res) => {
@@ -364,7 +364,7 @@ app.get("/api/workspace", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const rows =
-    await db()`SELECT state,revision FROM mowr_workspaces WHERE owner_id=${u.id}`;
+    await db()`SELECT state,revision FROM clem_workspaces WHERE owner_id=${u.id}`;
   res.json(rows[0] || { state: null, revision: 0 });
 });
 app.put("/api/workspace", async (req, res) => {
@@ -382,7 +382,7 @@ app.put("/api/workspace", async (req, res) => {
     return;
   }
   const rows =
-    await db()`INSERT INTO mowr_workspaces(owner_id,state,revision) VALUES(${u.id},${JSON.stringify(b.state)}::jsonb,1) ON CONFLICT(owner_id) DO UPDATE SET state=excluded.state,revision=mowr_workspaces.revision+1,updated_at=now() WHERE mowr_workspaces.revision=${b.revision} RETURNING revision`;
+    await db()`INSERT INTO clem_workspaces(owner_id,state,revision) VALUES(${u.id},${JSON.stringify(b.state)}::jsonb,1) ON CONFLICT(owner_id) DO UPDATE SET state=excluded.state,revision=clem_workspaces.revision+1,updated_at=now() WHERE clem_workspaces.revision=${b.revision} RETURNING revision`;
   if (!rows.length) {
     res.status(409).json({
       error: "This workspace changed in another tab. Reload before saving.",
@@ -404,18 +404,18 @@ app.post("/api/files/reserve", async (req, res) => {
     })
     .parse(req.body);
   const rows =
-    await db()`SELECT id FROM mowr_scopes WHERE id=${b.scopeId} AND owner_id=${u.id}`;
+    await db()`SELECT id FROM clem_scopes WHERE id=${b.scopeId} AND owner_id=${u.id}`;
   if (!rows.length) {
     res.status(403).json({ error: "This space is not available." });
     return;
   }
   const key = `${u.id.replace("supabase:", "")}/${b.id}`;
-  const signedUrl = await uploadUrl(key, b.size, b.type, cookies(req).mowr_supabase);
+  const signedUrl = await uploadUrl(key, b.size, b.type, cookies(req).clem_supabase);
   const sql = db();
   await sql.transaction([
-    sql`INSERT INTO mowr_usage(owner_id) VALUES(${u.id}) ON CONFLICT DO NOTHING`,
-    sql`UPDATE mowr_usage SET reserved_bytes=reserved_bytes+${b.size} WHERE owner_id=${u.id}`,
-    sql`INSERT INTO mowr_files(id,owner_id,scope_id,object_key,name,mime,bytes,status,expires_at) VALUES(${b.id},${u.id},${b.scopeId},${key},${b.name},${b.type},${b.size},'reserved',now()+interval '10 minutes')`,
+    sql`INSERT INTO clem_usage(owner_id) VALUES(${u.id}) ON CONFLICT DO NOTHING`,
+    sql`UPDATE clem_usage SET reserved_bytes=reserved_bytes+${b.size} WHERE owner_id=${u.id}`,
+    sql`INSERT INTO clem_files(id,owner_id,scope_id,object_key,name,mime,bytes,status,expires_at) VALUES(${b.id},${u.id},${b.scopeId},${key},${b.name},${b.type},${b.size},'reserved',now()+interval '10 minutes')`,
   ]);
   res.json({ url: signedUrl, id: b.id });
 });
@@ -423,47 +423,47 @@ app.post("/api/files/:id/complete", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const rows =
-    await db()`SELECT * FROM mowr_files WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
+    await db()`SELECT * FROM clem_files WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
   const f = rows[0];
   if (!f) throw new Error("File not found.");
   if (f.status === "ready") {
     res.json({ ok: true });
     return;
   }
-  if ((await objectSize(f.object_key, cookies(req).mowr_supabase)) !== Number(f.bytes))
+  if ((await objectSize(f.object_key, cookies(req).clem_supabase)) !== Number(f.bytes))
     throw new Error("Uploaded file size does not match its reservation.");
-  await db()`UPDATE mowr_files SET status='ready',expires_at=NULL WHERE id=${f.id} AND owner_id=${u.id} AND status='reserved'`;
+  await db()`UPDATE clem_files SET status='ready',expires_at=NULL WHERE id=${f.id} AND owner_id=${u.id} AND status='reserved'`;
   res.json({ ok: true });
 });
 app.get("/api/files/:id", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const rows =
-    await db()`SELECT object_key FROM mowr_files WHERE id=${String(req.params.id)} AND owner_id=${u.id} AND status='ready'`;
+    await db()`SELECT object_key FROM clem_files WHERE id=${String(req.params.id)} AND owner_id=${u.id} AND status='ready'`;
   if (!rows.length) {
     res.status(404).json({ error: "File not found." });
     return;
   }
-  res.json({ url: await downloadUrl(rows[0].object_key, cookies(req).mowr_supabase) });
+  res.json({ url: await downloadUrl(rows[0].object_key, cookies(req).clem_supabase) });
 });
 app.delete("/api/files/:id", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const rows =
-    await db()`SELECT * FROM mowr_files WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
+    await db()`SELECT * FROM clem_files WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
   if (rows.length) {
     const f = rows[0];
-    await removeObject(f.object_key, cookies(req).mowr_supabase);
-    await db()`DELETE FROM mowr_files WHERE id=${f.id} AND owner_id=${u.id}`;
+    await removeObject(f.object_key, cookies(req).clem_supabase);
+    await db()`DELETE FROM clem_files WHERE id=${f.id} AND owner_id=${u.id}`;
   }
   res.json({ ok: true });
 });
 app.get("/api/scopes/personal", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
-  await db()`INSERT INTO mowr_scopes(id,owner_id,kind,name) VALUES(${randomUUID()},${u.id},'personal','Personal') ON CONFLICT DO NOTHING`;
+  await db()`INSERT INTO clem_scopes(id,owner_id,kind,name) VALUES(${randomUUID()},${u.id},'personal','Personal') ON CONFLICT DO NOTHING`;
   const rows =
-    await db()`SELECT id FROM mowr_scopes WHERE owner_id=${u.id} AND kind='personal'`;
+    await db()`SELECT id FROM clem_scopes WHERE owner_id=${u.id} AND kind='personal'`;
   res.json(rows[0]);
 });
 app.post("/api/scopes", async (req, res) => {
@@ -477,7 +477,7 @@ app.post("/api/scopes", async (req, res) => {
       memory: z.string().max(30000).default(""),
     })
     .parse(req.body);
-  await db()`INSERT INTO mowr_scopes(id,owner_id,kind,name,memory) VALUES(${b.id},${u.id},${b.kind},${b.name},${b.memory}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,memory=excluded.memory WHERE mowr_scopes.owner_id=${u.id}`;
+  await db()`INSERT INTO clem_scopes(id,owner_id,kind,name,memory) VALUES(${b.id},${u.id},${b.kind},${b.name},${b.memory}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,memory=excluded.memory WHERE clem_scopes.owner_id=${u.id}`;
   res.json({ ok: true });
 });
 async function requireDriveUser(req: express.Request, res: express.Response) {
@@ -489,11 +489,11 @@ async function requireDriveUser(req: express.Request, res: express.Response) {
   }
   // A bearer token proves only the password (and authenticator, if any). With email two-step on, the emailed code
   // is the second factor, and the desktop has no way to present it yet, so Drive stays closed rather than bypassing it.
-  const [security] = await db()`SELECT email_mfa FROM mowr_security WHERE owner_id=${user.id}`;
+  const [security] = await db()`SELECT email_mfa FROM clem_security WHERE owner_id=${user.id}`;
   if (security?.email_mfa) {
     res.status(401).json({error: "Google Drive in the app is not available yet for accounts with email two-step verification."}); return null;
   }
-  const rows = await db()`SELECT disabled FROM mowr_users WHERE id=${user.id}`;
+  const rows = await db()`SELECT disabled FROM clem_users WHERE id=${user.id}`;
   if (!rows.length || rows[0].disabled) { res.status(401).json({error: "Sign in again."}); return null; }
   return user;
 }
@@ -504,7 +504,7 @@ app.delete("/api/drive/connection", async (req, res) => {
     const result = await fetch("https://oauth2.googleapis.com/revoke", {method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({token:saved.key}), signal:AbortSignal.timeout(15000)});
     if (!result.ok && result.status !== 400) throw Error("Google could not revoke access. Try again.");
   }
-  await db()`DELETE FROM mowr_credentials WHERE owner_id=${user.id} AND provider='drive'`;
+  await db()`DELETE FROM clem_credentials WHERE owner_id=${user.id} AND provider='drive'`;
   res.json({ok:true});
 });
 app.get("/api/drive/connect", async (req, res) => {
@@ -515,9 +515,9 @@ app.get("/api/drive/connect", async (req, res) => {
       "Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and APP_URL to .env.local.",
     );
   const nonce = randomUUID();
-  if (req.query.account && u.id !== "supabase:" + String(req.query.account)) throw Error("Sign in to the same Mowr account as your desktop, then reconnect Drive.");
+  if (req.query.account && u.id !== "supabase:" + String(req.query.account)) throw Error("Sign in to the same Clem account as your desktop, then reconnect Drive.");
   const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1" });
-  res.cookie("mowr_oauth", nonce, {
+  res.cookie("clem_oauth", nonce, {
     httpOnly: true,
     secure: !!process.env.VERCEL,
     sameSite: "lax",
@@ -529,8 +529,8 @@ app.get("/api/drive/connect", async (req, res) => {
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: process.env.APP_URL + "/api/drive/callback",
     response_type: "code",
-    // Read the folders people link, and add files to them: dropped files, Mowr's own files and approved edits. drive.file
-    // alone cannot add to a folder Mowr did not create, so saving into someone's own folder needs the full Drive scope.
+    // Read the folders people link, and add files to them: dropped files, Clem's own files and approved edits. drive.file
+    // alone cannot add to a folder Clem did not create, so saving into someone's own folder needs the full Drive scope.
     scope: "https://www.googleapis.com/auth/drive",
     access_type: "offline",
     prompt: "consent",
@@ -542,9 +542,9 @@ app.get("/api/drive/callback", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const state = await readState(String(req.query.state || ""));
-  if (state.sub !== u.id || state.nonce !== cookies(req).mowr_oauth)
+  if (state.sub !== u.id || state.nonce !== cookies(req).clem_oauth)
     throw new Error("OAuth state expired or did not match.");
-  res.clearCookie("mowr_oauth", { path: "/" });
+  res.clearCookie("clem_oauth", { path: "/" });
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -564,10 +564,10 @@ app.get("/api/drive/callback", async (req, res) => {
       "Google did not provide offline access. Reconnect and grant access.",
     );
   const enc = encrypt(token.refresh_token, u.id);
-  await db()`INSERT INTO mowr_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,'{}') ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce`;
+  await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,'{}') ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce`;
   if (state.desktop) {
     res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'");
-    res.type("html").send('<!doctype html><title>Drive connected</title><style>@font-face{font-family:"Mowafy Sans";src:url(/fonts/MowafySans-Regular.woff2) format("woff2")}@font-face{font-family:"Mowafy Serif";src:url(/fonts/MowafySerif-Regular.woff2) format("woff2")}</style><body style="background:#141414;color:#eeece4;font:18px Mowafy Sans,system-ui,sans-serif;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>Drive is connected.</h1><p>Return to Mowr to choose your files.</p></body>');
+    res.type("html").send('<!doctype html><title>Drive connected</title><style>@font-face{font-family:"Mowafy Sans";src:url(/fonts/MowafySans-Regular.woff2) format("woff2")}@font-face{font-family:"Mowafy Serif";src:url(/fonts/MowafySerif-Regular.woff2) format("woff2")}</style><body style="background:#141414;color:#eeece4;font:18px Mowafy Sans,system-ui,sans-serif;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>Drive is connected.</h1><p>Return to Clem to choose your files.</p></body>');
   } else res.redirect(process.env.APP_URL + "/#/app/connectors");
 });
 async function driveToken(userId: string) {
@@ -651,7 +651,7 @@ app.get("/api/drive/file/:id", async (req, res) => {
   // The type comes from Drive (anyone can share an HTML file), so a browser opening this URL must never render it on this origin.
   res.setHeader("Content-Disposition", "attachment");
   res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
-  res.setHeader("X-Mowr-File-Name", encodeURIComponent(m.name + (format?.extension || "")));
+  res.setHeader("X-Clem-File-Name", encodeURIComponent(m.name + (format?.extension || "")));
   let bytes = 0;
   for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) {
     bytes += chunk.length;
@@ -681,7 +681,7 @@ app.post("/api/drive/upload", express.raw({ type: () => true, limit: "4mb" }), a
   const body = req.body as Buffer;
   if (!Buffer.isBuffer(body) || !body.length) { res.status(400).json({ error: "The file is empty." }); return; }
   const token = (await driveToken(u.id)).access_token;
-  const boundary = "mowr" + randomUUID().replace(/-/g, "");
+  const boundary = "clem" + randomUUID().replace(/-/g, "");
   // A PDF sent with no type or as text would show in Drive as raw text.
   const type = body.subarray(0, 5).toString("latin1") === "%PDF-" ? "application/pdf" : String(req.headers["content-type"] || "application/octet-stream").split(";")[0].replace(/[^\w.+/-]/g, "") || "application/octet-stream";
   const payload = Buffer.concat([
@@ -690,7 +690,7 @@ app.post("/api/drive/upload", express.raw({ type: () => true, limit: "4mb" }), a
     Buffer.from(`\r\n--${boundary}--`),
   ]);
   const r = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` }, body: payload });
-  if (r.status === 403) { res.status(403).json({ error: "Reconnect Google Drive to let Mowr save files there." }); return; }
+  if (r.status === 403) { res.status(403).json({ error: "Reconnect Google Drive to let Clem save files there." }); return; }
   if (!r.ok) { res.status(502).json({ error: "Google Drive did not accept the file." }); return; }
   res.json(await r.json());
 });
@@ -698,7 +698,7 @@ app.get("/api/automations", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const rows =
-    await db()`SELECT id,name,prompt,model,schedule,enabled,next_run_at,last_result,last_error FROM mowr_automations WHERE owner_id=${u.id} ORDER BY updated_at DESC`;
+    await db()`SELECT id,name,prompt,model,schedule,enabled,next_run_at,last_result,last_error FROM clem_automations WHERE owner_id=${u.id} ORDER BY updated_at DESC`;
   res.json(rows);
 });
 app.post("/api/automations", async (req, res) => {
@@ -714,7 +714,7 @@ app.post("/api/automations", async (req, res) => {
     .parse(req.body);
   // The cap is checked inside the insert, so parallel requests cannot each see four and all add one.
   const rows =
-    await db()`INSERT INTO mowr_automations(id,owner_id,name,prompt,model,schedule,next_run_at) SELECT ${randomUUID()},${u.id},${b.name},${b.prompt},${b.model},${b.schedule},${nextRun(b.schedule)} WHERE (SELECT count(*) FROM mowr_automations WHERE owner_id=${u.id})<5 RETURNING id`;
+    await db()`INSERT INTO clem_automations(id,owner_id,name,prompt,model,schedule,next_run_at) SELECT ${randomUUID()},${u.id},${b.name},${b.prompt},${b.model},${b.schedule},${nextRun(b.schedule)} WHERE (SELECT count(*) FROM clem_automations WHERE owner_id=${u.id})<5 RETURNING id`;
   if (!rows.length)
     throw new Error("Keep at most five active automations per account.");
   res.json(rows[0]);
@@ -723,13 +723,13 @@ app.patch("/api/automations/:id", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
   const b = z.object({ enabled: z.boolean() }).parse(req.body);
-  await db()`UPDATE mowr_automations SET enabled=${b.enabled},updated_at=now() WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
+  await db()`UPDATE clem_automations SET enabled=${b.enabled},updated_at=now() WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
   res.json({ ok: true });
 });
 app.delete("/api/automations/:id", async (req, res) => {
   const u = await requireUser(req, res);
   if (!u) return;
-  await db()`DELETE FROM mowr_automations WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
+  await db()`DELETE FROM clem_automations WHERE id=${String(req.params.id)} AND owner_id=${u.id}`;
   res.json({ ok: true });
 });
 app.get("/api/cron", async (req, res) => {
@@ -750,7 +750,7 @@ app.get("/api/cron", async (req, res) => {
   if(subscriptionReady())await cleanExpiredSubscriptionSessions();
   res.json(await runDue());
 });
-/** Messages Mowr wrote for people: plain Errors thrown by this app, not subclasses or errors carrying a system code. */
+/** Messages Clem wrote for people: plain Errors thrown by this app, not subclasses or errors carrying a system code. */
 export function exposable(error: unknown): error is Error {
   return error instanceof Error && error.constructor === Error && !("code" in error) && !("status" in error);
 }
@@ -783,7 +783,7 @@ app.use(
         return;
       }
       console.error("Request failed", error);
-      res.status(500).json({ error: "Mowr could not complete this request. Try again." });
+      res.status(500).json({ error: "Clem could not complete this request. Try again." });
     }
   },
 );

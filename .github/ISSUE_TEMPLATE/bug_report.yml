@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Mowr is broken or behaves unexpectedly.
+description: Something in Clem is broken or behaves unexpectedly.
 labels: [bug]
 body:
   - type: textarea
@@ -20,7 +20,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Mowr version
+      label: Clem version
       description: Settings → About
       placeholder: 0.2.0-preview.119
     validations:

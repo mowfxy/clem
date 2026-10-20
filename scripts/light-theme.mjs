@@ -1,4 +1,4 @@
-// Mowr's light theme, made from the dark one at build time. Every CSS rule that sets a colour gets a twin under
+// Clem's light theme, made from the dark one at build time. Every CSS rule that sets a colour gets a twin under
 // :root[data-theme=light] with that colour moved onto paper: dark surfaces become warm whites, light ink becomes
 // navy-tinted near-black, accents keep their hue at a readable depth, and shadows soften. New styles are themed the
 // moment they are written, so nobody has to keep a second stylesheet in step. Hand-tuned exceptions live in
@@ -8,8 +8,9 @@
 
 const PREFIX = ":root[data-theme=light]";
 // Colours that mean something on their own: a rendered Office document, a diagram on white, the logo.
-const SKIP_FILES = [/office-preview/, /[\\/]theme[\\/]light\.css$/];
-const SKIP_SELECTORS = [/\.kinetra-diagram/, /\.mowr-mark/, /\.brand-logo/, /\.office-/, /\.yt-thumb i/];
+// The website and the M4 Labs admin are dark only, like m4labs.xyz.
+const SKIP_FILES = [/office-preview/, /[\\/]theme[\\/]light\.css$/, /[\\/]site[\\/]site\.css$/, /[\\/]admin[\\/]admin\.css$/];
+const SKIP_SELECTORS = [/\.kinetra-diagram/, /\.clem-mark/, /\.brand-logo/, /\.office-/, /\.yt-thumb i/];
 const COLOUR_PROPS = /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|text-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?|scrollbar-color|filter|--.+)$/;
 const SHADOW_PROPS = /^(box-shadow|text-shadow|filter)$/;
 const NAMED = { white: "#ffffff", black: "#000000" };
@@ -85,7 +86,7 @@ function scope(selector) {
 
 export default function lightTheme() {
   return {
-    postcssPlugin: "mowr-light-theme",
+    postcssPlugin: "clem-light-theme",
     Once(root) {
       const file = root.source?.input.file || "";
       if (!/\.css$/.test(file) || SKIP_FILES.some((r) => r.test(file))) return;

@@ -163,12 +163,12 @@ export function staticFindings(slides: SlideRecord[], W: number, H: number): Fin
   return found;
 }
 
-/** The hidden page the slides are measured and photographed in (scripts allowed only for measuring Mowr's own markup). */
+/** The hidden page the slides are measured and photographed in (scripts allowed only for measuring Clem's own markup). */
 export async function slideReviewer() {
   const page = new BrowserWindow({ show: false, width: 1000, height: 800, webPreferences: { offscreen: true, sandbox: true, nodeIntegration: false, contextIsolation: true, javascript: true } });
   page.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   page.webContents.on("will-navigate", (event) => event.preventDefault());
-  const file = join(tmpdir(), "mowr-deck-review-" + randomUUID() + ".html");
+  const file = join(tmpdir(), "clem-deck-review-" + randomUUID() + ".html");
   const load = async (body: string, width: number, height: number) => {
     page.setContentSize(Math.ceil(width), Math.ceil(height));
     await writeFile(file, `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><style>${PAGE_CSS}</style></head><body>${body}</body></html>`, "utf8");
