@@ -13,11 +13,11 @@ OAuth clients shown:
 
 How Clem uses the Drive scope:
 - READ: the user links a Drive folder to a subject; folders and files are listed live, PDFs and videos are streamed from Drive, and "Ask about it" reads the chosen file only to answer the user's question.
-- WRITE: files the user drops or adds into the folder they linked are uploaded to it; worksheets Clem makes are saved into it; edits the user approves update the same Drive file.
-- Why not drive.file: it cannot add files to folders the user created themselves, so saving into the folder the user linked needs the drive scope.
+- WRITE: files the user drops or adds into the folder they linked are uploaded to it; a worksheet Clem makes is saved into it when the user chooses Save copy in Drive; edits the user approves update the same Drive file; the user can rename a file or move it to Drive's trash.
+- Why not drive.file: a folder the user made themselves shows none of its contents under drive.file, and drive.file cannot add files to it, so listing and saving into the folder the user linked needs the drive scope.
 - Data stays with the user: read live from Drive and streamed, never copied to our servers. Disconnect revokes access at Google.
 
-Privacy policy: https://clem.m4labs.xyz/#/privacy
+Privacy policy: https://m4labs.xyz/privacy
 Support: support@m4labs.xyz
 ```
 5. **Audience:** "No, it's not made for kids".

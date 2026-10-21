@@ -21,18 +21,19 @@ const BAR = { y: Number(process.env.BAR_Y || 70), h: Number(process.env.BAR_H ||
 
 /** Cards are generated; every other scene is a take. `zoom` windows magnify the address bar over the top of the frame. */
 const SCENES = [
-  { id: "00-title", card: { seconds: 7, lines: ["Clem: Google OAuth verification demo", SCOPE, "Website: https://clem.m4labs.xyz", "Privacy policy: https://clem.m4labs.xyz/#/privacy"] } },
-  { id: "00-site", caption: "Clem is a Windows desktop app. The website clem.m4labs.xyz hosts sign-in, the Drive consent redirect and the privacy policy, linked from the footer." },
+  { id: "00-title", card: { seconds: 7, lines: ["Clem: Google OAuth verification demo", SCOPE, "Website: https://clem.m4labs.xyz", "Privacy policy: https://m4labs.xyz/privacy"] } },
+  { id: "00-site", caption: "Clem is a Windows desktop app. The website clem.m4labs.xyz hosts sign-in and the Drive consent redirect; the privacy policy at m4labs.xyz/privacy is linked from the footer." },
   { id: "01-signin", caption: "OAuth client 2 of 2: Google sign-in (“Continue with Google”). Clem uses it only to identify the user’s account (email and basic profile)." },
   { id: "02-connect", caption: `OAuth client 1 of 2: the Google Drive connector. It requests one scope: ${SCOPE}` },
-  { id: "03-link", caption: "READ: the user links a Drive folder to a subject. Folders and files are listed live from Drive; nothing is copied to the PC." },
-  { id: "04-read", caption: "READ: PDFs and videos are streamed from Drive when opened. “Ask about it” reads the chosen file from Drive only to answer the user’s question." },
+  { id: "03-link", caption: "READ: the user browses their Drive and links a folder they made to a subject. Its files and subfolders are listed live from Drive; nothing is copied to the PC." },
+  { id: "04-read", caption: "READ: PDFs and videos are streamed from Drive when opened. Clem reads a file, or searches Drive, only to answer the user’s question." },
   { id: "05-drop", caption: "WRITE: a file the user drops into the Drive folder they linked is uploaded to that folder, then marked as saved." },
-  { id: "06-add", caption: "WRITE: “Add files” uploads the user’s chosen files to the linked folder, and a worksheet Clem makes is saved into it." },
+  { id: "06-add", caption: "WRITE: “Add files” uploads files the user chooses to the linked folder; a worksheet Clem made is saved into it only when the user picks Save copy in Drive." },
   { id: "07-edit", caption: "WRITE: after the user approves an edit, the same Drive file receives the new version. It is not duplicated." },
-  { id: "08-why", card: { seconds: 9, lines: ["Why the full drive scope?", "drive.file can’t add files to folders the user created themselves, so Clem needs the drive scope to save into the folder the user linked.", "Data is read live from Drive and streamed, never copied. Disconnect revokes access."] } },
+  { id: "07b-manage", caption: "WRITE: the user can rename a file or move it to Drive’s trash from Clem. Clem never permanently deletes Drive files." },
+  { id: "08-why", card: { seconds: 10, lines: ["Why the full drive scope?", "Users link folders they made themselves. drive.file shows none of what is already inside such a folder and can’t add files to it, so Clem needs the drive scope to list the linked folder and save into it.", "Clem reads and changes Drive only when the user acts. Data is streamed, never copied to our servers. Disconnect revokes access."] } },
   { id: "09-revoke", caption: "REVOKE: Disconnect in Clem revokes the Google grant, so Clem can no longer read or write the user’s Drive." },
-  { id: "10-end", card: { seconds: 7, lines: ["Clem: thank you for reviewing", "Support: support@m4labs.xyz", "Privacy policy: https://clem.m4labs.xyz/#/privacy", "Scope used: " + SCOPE] } },
+  { id: "10-end", card: { seconds: 7, lines: ["Clem: thank you for reviewing", "Support: support@m4labs.xyz", "Privacy policy: https://m4labs.xyz/privacy", "Scope used: " + SCOPE] } },
 ];
 const timing = existsSync(join(dir, "timing.json")) ? JSON.parse(readFileSync(join(dir, "timing.json"), "utf8")) : {};
 
