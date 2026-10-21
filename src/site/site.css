@@ -50,8 +50,8 @@ html:has(.cx-site),body:has(.cx-site){background:#0b0b0a}
 .cx-hero-mark{position:relative;height:clamp(240px,38vw,440px);margin-bottom:clamp(24px,4vw,44px)}
 .cx-ascii{position:absolute;inset:0;margin:0;font:400 12px/12px var(--mono);white-space:pre;overflow:hidden;color:var(--text);user-select:none;-webkit-user-select:none;pointer-events:none;font-variant-ligatures:none}
 .cx-hero h1,.cx-page h1{font-family:var(--mono);font-weight:400;font-size:clamp(28px,4.2vw,54px);line-height:1.15;letter-spacing:-.02em;max-width:24ch}
-.cx-status{margin-top:20px;color:var(--dim);font-size:clamp(16px,1.4vw,18px);max-width:60ch}
-.cx-fine{margin-top:18px;font-size:13px;color:var(--dim)}
+.cx-site .cx-status{margin-top:18px;color:var(--dim);font-size:clamp(16px,1.4vw,18px);max-width:60ch}
+.cx-site .cx-fine{margin-top:22px;font-size:13px;color:var(--dim)}
 .cx-caret{display:inline-block;width:.55em;height:1em;background:currentColor;vertical-align:-.12em;margin-left:.18em;border-radius:2px;animation:cx-blink 1.06s steps(1) infinite}
 @keyframes cx-blink{50%{opacity:0}}
 

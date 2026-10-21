@@ -42,7 +42,8 @@ html[data-sidebar=closed] .drop-overlay{left:0}
   html[data-sidebar=closed] body .desktop-content .workspace-top{left:56px}
   html[data-sidebar=closed] body .desktop-titlebar:has(+ .desktop-content .sidebar){left:0}
   html[data-sidebar=closed] .mobile-menu{display:flex;position:fixed;top:14px;left:14px;z-index:20;animation:en-rise .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)) .1s backwards}
-  html[data-sidebar=closed] .desktop-content .mobile-menu{top:calc((var(--tb,38px) - 30px) / 2 + 1px);width:30px;height:30px;padding:0;z-index:10002;border-radius:9px;background:#1f1f1e;-webkit-app-region:no-drag;app-region:no-drag}
+  html[data-sidebar=closed] .desktop-content .mobile-menu{top:calc((var(--tb,38px) - 30px) / 2);left:12px;width:30px;height:30px;padding:0;z-index:10002;border-radius:8px;background:transparent;color:#bdbcb5;transition:background .15s,color .15s;-webkit-app-region:no-drag;app-region:no-drag}
+  html[data-sidebar=closed] .desktop-content .mobile-menu:hover{background:#ffffff0d;color:#fff}
 }
 
 /* ── Reading size (Settings → General, Ctrl +/−) ── */

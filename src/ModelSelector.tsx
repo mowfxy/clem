@@ -8,13 +8,11 @@ import "./model-selector.css";
 export const effortName = (value: string) =>
   value === "low" ? "Light" : value === "minimal" ? "Minimal" : value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1);
 const EFFORT_NAMES = ["minimal", "low", "medium", "high", "xhigh", "max"];
-/** Clem's block cursor, small enough to drift through the thinking bar. */
-function Petal({ style }: { style: CSSProperties }) {
-  return <svg className="effort-petal" style={style} viewBox="0 0 11 20" aria-hidden="true"><rect width="11" height="20" rx="2" fill="currentColor" /></svg>;
-}
-const petals = Array.from({ length: 9 }, (_, i) => ({ top: [18, 62, 34, 76, 46, 24, 68, 40, 56][i], size: [11, 8, 13, 9, 7, 12, 8, 10, 7][i], delay: -i * 0.53 }));
+/** A row of Clem's block cursors inside the filled part of the bar; a wave rolls through them toward the knob. */
+const BITS = 26;
+const bits = Array.from({ length: BITS }, (_, i) => ({ left: 12 + i * 9, delay: -(BITS - i) * 0.07 }));
 
-/** How hard the model thinks: a bar to drag, with Clem's cursors drifting faster and thicker as it climbs. */
+/** How hard the model thinks: a bar to drag, with a wave of Clem's cursors that rolls faster and brighter as it climbs. */
 function EffortSlider({ levels, level, onChange }: {
   levels: string[]; level: string; onChange: (effort: string) => void;
 }) {
@@ -28,12 +26,11 @@ function EffortSlider({ levels, level, onChange }: {
   const pick = (p: number) => { const next = levels[Math.round(p * last)]; if (next && next !== level) onChange(next); };
   const intensity = levels.length > 1 ? index / last : 1;
   const live = drag ?? intensity;
-  // The drift speeds up through its playback rate, so every petal keeps its place instead of the loop restarting.
+  // The wave speeds up through its playback rate, so every cursor keeps its phase instead of the loop restarting.
   useEffect(() => {
-    const rate = 0.75 + live * 1.6;
-    for (const animation of track.current?.getAnimations({ subtree: true }) || []) if (animation instanceof CSSAnimation && animation.animationName !== "effort-sheen") animation.updatePlaybackRate(rate);
+    const rate = 0.6 + live * 1.5;
+    for (const animation of track.current?.getAnimations({ subtree: true }) || []) if (animation instanceof CSSAnimation && animation.animationName === "effort-wave") animation.updatePlaybackRate(rate);
   }, [live]);
-  const shown = Math.round(3 + live * (petals.length - 3));
   const style = { "--p": live, "--glow": 0.35 + live * 0.65 } as CSSProperties;
   return <div className="picker-effort">
     <div className="effort-head">
@@ -51,7 +48,7 @@ function EffortSlider({ levels, level, onChange }: {
         onChange(levels[next]);
       }}>
       {levels.map((l, i) => <span key={l} className={"effort-stop" + (i <= index ? " is-passed" : "")} style={{ "--at": i / last } as CSSProperties} />)}
-      <span className="effort-fill">{petals.map((p, i) => <span key={i} className={"effort-lane" + (i < shown ? " is-on" : "")} style={{ animationDelay: p.delay + "s" }}><Petal style={{ top: p.top + "%", width: p.size, height: p.size, animationDelay: p.delay + "s" }} /></span>)}</span>
+      <span className="effort-fill">{bits.map((b, i) => <span key={i} className="effort-bit" style={{ left: b.left, animationDelay: b.delay + "s" }} />)}</span>
       <span className="effort-knob" />
     </div>
   </div>;

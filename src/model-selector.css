@@ -90,20 +90,20 @@
 .effort-stop{position:absolute;top:50%;left:calc(15px + (100% - 30px) * var(--at));width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:#ffffff30;transition:opacity .3s}
 .effort-stop.is-passed{opacity:0}
 .effort-fill{position:absolute;inset:-1px auto -1px -1px;width:calc(32px + (100% - 30px) * var(--p));border-radius:99px;overflow:hidden;background:linear-gradient(90deg,#4a4a46,#a3a29b 65%,#e2e1da);box-shadow:inset 0 1px 0 #ffffff22;contain:paint}
-.effort-fill::after{content:"";position:absolute;top:0;bottom:0;left:0;width:45%;background:linear-gradient(100deg,transparent,#ffffff3a 50%,transparent);opacity:var(--glow);transform:translateX(-120%);animation:effort-sheen 3.6s cubic-bezier(.45,0,.55,1) infinite;will-change:transform}
+.effort-fill::after{content:"";position:absolute;top:0;bottom:0;left:0;width:45%;background:linear-gradient(100deg,transparent,#ffffff30 50%,transparent);opacity:calc(var(--glow) * .8);transform:translateX(-120%);animation:effort-sheen 3.6s cubic-bezier(.45,0,.55,1) infinite;will-change:transform}
 @keyframes effort-sheen{to{transform:translateX(330%)}}
-.effort-lane{position:absolute;inset:0;transform:translateX(-100%);animation:effort-lane 4.8s linear infinite;will-change:transform,opacity}
-@keyframes effort-lane{0%{transform:translateX(-100%);opacity:0}14%{opacity:1}82%{opacity:1}100%{transform:translateX(0);opacity:0}}
-.effort-petal{position:absolute;right:8px;margin-top:-5px;color:#fff;opacity:0;filter:drop-shadow(0 0 2px #ffffff55);transition:opacity .6s ease;animation:effort-spin 4.8s linear infinite}
-.effort-lane.is-on .effort-petal{opacity:calc(var(--glow) * .9)}
-.effort-lane:nth-child(3n) .effort-petal{color:#1a1a19}
-@keyframes effort-spin{from{transform:rotate(-14deg) scale(.65)}to{transform:rotate(14deg) scale(1)}}
+/* Block cursors in a row; mix-blend difference keeps them readable from the dark start of the fill to its pale end. */
+.effort-bit{position:absolute;top:50%;width:3px;height:12px;margin-top:-6px;border-radius:1px;background:#fff;mix-blend-mode:difference;opacity:.16;transform:scaleY(.4);animation:effort-wave 1.5s cubic-bezier(.45,0,.55,1) infinite;will-change:transform,opacity}
+@keyframes effort-wave{0%,62%,100%{opacity:calc(.1 + var(--glow) * .12);transform:scaleY(.4)}31%{opacity:calc(.35 + var(--glow) * .6);transform:scaleY(1)}}
 .effort-knob{position:absolute;top:2px;left:calc(2px + (100% - 30px) * var(--p));width:var(--k);height:var(--k);border-radius:50%;background:#fff;box-shadow:0 2px 8px #0008,0 0 0 1px #0000000f;transition:transform .2s cubic-bezier(.22,1,.36,1)}
+.effort-knob::after{content:"";position:absolute;left:50%;top:50%;width:3px;height:11px;margin:-5.5px 0 0 -1.5px;border-radius:1px;background:#1a1a19;animation:effort-blink 1.1s steps(1) infinite}
+@keyframes effort-blink{50%{opacity:0}}
+.effort-track.is-dragging .effort-knob::after,.effort-track:focus-visible .effort-knob::after{animation:none}
 .effort-track:active .effort-knob,.effort-track.is-dragging .effort-knob{transform:scale(1.08)}
 .effort-pip{transition:--p .5s cubic-bezier(.22,1,.36,1)}
 .effort-pip::after{content:"";position:absolute;inset:0 auto 0 0;width:calc(6px + 12px * var(--p));border-radius:99px;background:linear-gradient(90deg,#8d8c86,#f2f1ec)}
 .effort-pop .effort-head{padding:0 0 10px}
-@media(prefers-reduced-motion:reduce){.effort-track,.effort-pip,.effort-knob{transition:none}.effort-fill::after,.effort-lane,.effort-petal{animation:none}.effort-lane{opacity:0}}
+@media(prefers-reduced-motion:reduce){.effort-track,.effort-pip,.effort-knob{transition:none}.effort-fill::after,.effort-bit,.effort-knob::after{animation:none}.effort-bit{opacity:.3;transform:none}}
 /* The model list scrolls inside the panel: at most about ten rows tall, and never taller than the window allows. */
 .model-pop{max-height:min(460px,calc(100dvh - 16px))}
 .picker-model-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#ffffff2e transparent;margin-right:-2px;padding-right:2px}
@@ -112,11 +112,10 @@
 .picker-model-list::-webkit-scrollbar-thumb:hover{background:#ffffff4a}
 .picker-model-list::-webkit-scrollbar-track{background:transparent}
 .model-pop .picker-connect{flex:none}
-/* With a Claude model the thinking picker takes Claude's orange: the fill, its sheen and petals, and the pip. */
+/* With a Claude model the thinking picker takes Claude's orange: the fill, its sheen and cursors, and the pip. */
 .effort-pop[data-provider=Anthropic] .effort-fill{background:linear-gradient(90deg,#5c2f20,#b9603f 60%,#e8936f);box-shadow:inset 0 1px 0 #ffd2bd33}
 .effort-pop[data-provider=Anthropic] .effort-fill::after{background:linear-gradient(100deg,transparent,#ffd9c64a 50%,transparent)}
-.effort-pop[data-provider=Anthropic] .effort-lane:nth-child(3n) .effort-petal{color:#4a2215}
-.effort-pop[data-provider=Anthropic] .effort-petal{color:#fff4ee;filter:drop-shadow(0 0 2px #ffb08c66)}
+.effort-pop[data-provider=Anthropic] .effort-bit{background:#fff4ee;mix-blend-mode:normal;box-shadow:0 0 4px #ffb08c66}
 .effort-pop[data-provider=Anthropic] .effort-track:focus-visible{box-shadow:0 0 0 2px #232321,0 0 0 4px #d97757}
 .picker-trigger-effort[data-provider=Anthropic] .effort-pip::after{background:linear-gradient(90deg,#9a4d33,#e8936f)}
 /* In the composer the model and its thinking level sit together in one capsule, split by a hairline. */

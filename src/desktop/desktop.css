@@ -1,6 +1,7 @@
 :root {
-  /* The title bar row, as tall as the caption buttons Windows draws (titleBarOverlay height in desktop/main.ts). */
-  --tb: 38px;
+  /* The title bar row, as tall as the caption buttons Windows draws (titleBarOverlay height in desktop/main.ts, 38 px).
+     The page is shown at 90 % (zoomFactor in desktop/main.ts), so in page pixels it is 38 / 0.9. */
+  --tb: 42.2px;
 }
 .desktop-titlebar {
   height: var(--tb);
@@ -17,7 +18,7 @@
   position: fixed;
   inset: 0 0 auto;
   z-index: 10000;
-  padding-right: 150px;
+  padding-right: 160px;
 }
 .desktop-content {
   height: calc(100vh - var(--tb));

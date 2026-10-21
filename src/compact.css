@@ -14,7 +14,7 @@ body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
 .workspace-top .temp-pill{font-size:12.5px}
 
 /* On the desktop the header lives in the title bar, beside the window buttons, and gives its height to the chat */
-.desktop-content .workspace-top{position:fixed!important;top:0!important;left:244px;right:150px;height:var(--tb)!important;display:flex!important;align-items:center!important;padding:1px 8px 0 20px!important;z-index:10001!important;background:transparent!important;box-sizing:border-box;-webkit-app-region:drag;app-region:drag}
+.desktop-content .workspace-top{position:fixed!important;top:0!important;left:244px;right:160px;height:var(--tb)!important;display:flex!important;align-items:center!important;padding:1px 8px 0 20px!important;z-index:10001!important;background:transparent!important;box-sizing:border-box;-webkit-app-region:drag;app-region:drag}
 .desktop-content .workspace-top :is(button,a,input,select){-webkit-app-region:no-drag;app-region:no-drag}
 .desktop-content .workspace-top .icon-button{width:34px;height:34px;color:#e6e5df}
 .desktop-content .workspace-top .icon-button svg{width:22px;height:22px}
@@ -68,9 +68,9 @@ html body .file-panel input.fp-page-field{width:44px;height:29px;font-size:13.5p
 .chat-view.has-messages .chat-composer .composer textarea{min-height:44px;padding:12px 16px 2px}
 .chat-view.has-messages .chat-composer .composer-bottom{padding:0 8px 8px}
 
-/* A roomier sidebar, close to Claude's: 300 px on a usual window, never under the old 244 px.
+/* The sidebar: 268 px on a usual window, never under 236 px.
    The title bar and the header in it start where the sidebar ends. */
-:root{--side:clamp(244px,24vw,300px)}
+:root{--side:clamp(236px,20vw,268px)}
 @media(min-width:761px){
   body .desktop-content .sidebar{width:var(--side)}
   body .desktop-content .workspace{margin-left:var(--side);width:calc(100% - var(--side))}

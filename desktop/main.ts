@@ -942,6 +942,8 @@ void app.whenReady().then(async () => {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      // Shown at 90 %: at 100 % the app reads as zoomed in. The title bar's height in src/desktop/desktop.css (--tb) follows it.
+      zoomFactor: 0.9,
     },
   });
   type Background = { keepRunning: boolean; startWithWindows: boolean };
