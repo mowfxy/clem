@@ -392,25 +392,11 @@ void app.whenReady().then(async () => {
    * Kinetra tools, documents and pictures. Chat and memory notes all go through here, so a
    * feature never works on one provider only. Each answer logs its timings (desktop/turn-timing.ts).
    */
-  /** A status line's subject that is a file (a name with a document's extension) rather than a web site. */
-  const READ_FILE = /\.(?:pdf|docx?|pptx?|xlsx?|csv|md|txt|json|html?|png|jpe?g|gif|webp|svg|rtf|odt|tex|py|js|ts|ipynb)$/i;
   async function answerWith(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void, options: AnswerOptions = {}) {
     const timer = turnTimer(model?.startsWith(ANTIGRAVITY_PREFIX) ? "antigravity" : model?.startsWith(GROK_PREFIX) ? "grok" : model?.startsWith("claude:") ? "claude" : "codex", { model, record: (entry) => void ledger.record(entry) });
-    // The files and web pages the AI opened, from its status lines ("Reading Week 3.pdf…"), for the thread's info panel.
-    const read = new Set<string>(), web = new Set<string>();
-    const noting = (event: any) => {
-      const opened = event?.type === "status" && /^(?:Reading|Looking at) (.+)…$/.exec(String(event.text || ""))?.[1];
-      if (opened && !/^(?:a file|the page|your files|your Drive files|the videos?'? captions)$/.test(opened)) (READ_FILE.test(opened) ? read : web).add(opened);
-      if (event?.type === "status" && /^Searching the web/.test(String(event.text || ""))) web.add("search:" + event.text);
-      emit(event);
-    };
-    const started = Date.now();
     try {
-      await answerTimed(owner, id, model, reasoning, prompt, timer.watch(noting), options, timer.stats);
+      await answerTimed(owner, id, model, reasoning, prompt, timer.watch(emit), options, timer.stats);
       timer.end();
-      // After "done": Grok's and Gemini's token counts come in once the answer is shown (answerTimed waits for them).
-      const s = timer.stats;
-      emit({ id, type: "usage", usage: { ...(model ? { model } : {}), ...(s.tokens ? { tokens: s.tokens } : {}), calls: s.calls + (s.cliCalls || 0), ms: Date.now() - started, ...(read.size ? { read: [...read].slice(0, 200) } : {}), ...(web.size ? { web: web.size } : {}) } });
     } catch (error) {
       timer.end("failed");
       if (!/cancel/i.test((error as Error)?.message || "")) console.warn("[answer] failed:", model, (error as Error)?.message);

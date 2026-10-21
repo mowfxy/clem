@@ -256,8 +256,6 @@ export type DesktopBridge = {
       task?: string;
       op?: string;
       args?: any;
-      /** type "usage", after "done": what the answer cost (tokens, tool calls, time) and the files it opened. */
-      usage?: import("../core/types").AnswerUsage;
     }) => void,
   ) => () => void;
 };
