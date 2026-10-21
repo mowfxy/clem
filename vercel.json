@@ -54,7 +54,7 @@
   "redirects": [
     {
       "source": "/download/windows",
-      "destination": "https://github.com/mowfxy/clem-releases/releases/download/v0.3.0-preview.5/Clem-Setup-0.3.0-preview.5.exe",
+      "destination": "https://github.com/mowfxy/clem-releases/releases/download/v0.3.0-preview.6/Clem-Setup-0.3.0-preview.6.exe",
       "permanent": false
     },
     {
