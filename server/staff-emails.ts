@@ -106,11 +106,11 @@ export function staffEmailRouter(send:Send=sendMail){
       headers={'List-Unsubscribe':`<${unsubscribe}>, <mailto:support@m4labs.xyz?subject=unsubscribe>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'};
     }
     const mail=staffEmail(kind,{...extra,name:person.name,unsubscribe});
-    try{await send(person.email,mail.subject,mail.text,replyTo(),{html:mail.html,headers});}
+    try{await send(person.email,mail.subject,mail.text,replyTo(),{html:mail.html,headers,from:mail.from});}
     catch(error){throw new StaffError((error as Error).message||'The mail server did not accept the email.',502);}
     const at=new Date().toISOString();
     // The automatic senders skip anyone already logged, so a hand-sent welcome or update is not repeated later.
-    const logged=kind==='welcome'?'welcome':kind==='update'?'update:'+extra.version:null;
+    const logged=kind==='welcome'||kind==='welcome-m4labs'?kind:kind==='update'?'update:'+extra.version:null;
     if(logged&&person.id!==person.email)await db()`INSERT INTO clem_email_log(owner_id,kind,sent_at) VALUES(${'supabase:'+person.id},${logged},${at}) ON CONFLICT(owner_id,kind) DO NOTHING`;
     await db()`INSERT INTO desktop_audit_log(id,actor_id,actor_email,action,target,detail,created_at) VALUES(${randomUUID()},${staff.id},${staff.email},'email.send',${person.id},${detail},${at})`;
     res.json({ok:true,to:person.email,subject:mail.subject});

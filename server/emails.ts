@@ -1,12 +1,13 @@
 // Emails the server sends itself (Supabase only sends the sign-in and security ones):
-//  - a welcome email, once per account, the first time the desktop app or site sees a confirmed sign-in;
+//  - two welcome emails, once per account, the first time the desktop app or site sees a confirmed sign-in: the M4 Labs
+//    one (the account covers every M4 Labs product), then Clem's;
 //  - the opt-out link that scripts/announce-release.mjs puts in every update email.
 import express from 'express';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {db,databaseReady} from './db.ts';
 import {cookies,supabaseIdentity} from './auth.ts';
 import {mailReady,sendMail} from './mail.ts';
-import {welcomeEmail} from './email-layout.ts';
+import {m4labsWelcomeEmail,welcomeEmail} from './email-layout.ts';
 
 export const emailRouter=express.Router();
 
@@ -24,7 +25,14 @@ emailRouter.post('/welcome',async(req,res)=>{
   if(!claimed.length){res.json({sent:false});return;}
   // Accounts made before welcome emails existed are marked done without an email; a late "welcome" would confuse.
   if(!user.created||Date.now()-Date.parse(user.created)>7*86_400_000){res.json({sent:false});return;}
-  try{const mail=welcomeEmail(user.name==='Thinker'?'':user.name);await sendMail(user.email,mail.subject,mail.text,undefined,{html:mail.html});res.json({sent:true});}
+  const name=user.name==='Thinker'?'':user.name;
+  // The M4 Labs welcome has its own row, so a retry after a failed Clem welcome doesn't send it twice.
+  const m4=await db()`INSERT INTO clem_email_log(owner_id,kind,sent_at) VALUES(${user.id},'welcome-m4labs',now()) ON CONFLICT(owner_id,kind) DO NOTHING RETURNING owner_id`;
+  if(m4.length){
+    try{const mail=m4labsWelcomeEmail(name);await sendMail(user.email,mail.subject,mail.text,undefined,{html:mail.html,from:mail.from});}
+    catch(error){await db()`DELETE FROM clem_email_log WHERE owner_id=${user.id} AND kind IN ('welcome','welcome-m4labs')`;throw error;}
+  }
+  try{const mail=welcomeEmail(name);await sendMail(user.email,mail.subject,mail.text,undefined,{html:mail.html});res.json({sent:true});}
   catch(error){await db()`DELETE FROM clem_email_log WHERE owner_id=${user.id} AND kind='welcome'`;throw error;}
 });
 

@@ -38,7 +38,7 @@ globalThis.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{
   return realFetch(input,init);
 }) as typeof fetch;
 
-const outbox:{to:string;subject:string;text:string;extra:{html?:string;headers?:Record<string,string>}}[]=[];
+const outbox:{to:string;subject:string;text:string;extra:{html?:string;headers?:Record<string,string>;from?:string}}[]=[];
 const app=express();app.use(express.json());
 app.use('/api/email/staff',staffEmailRouter(async(to,subject,text,_reply,extra={})=>{outbox.push({to,subject,text,extra});return {status:'submitted' as const,messageId:'m1'};}));
 const server=app.listen(0);
@@ -58,7 +58,7 @@ test('only admins and owners can use preset emails',async()=>{
   const ok=await call('/presets',undefined,'owner');
   assert.equal(ok.status,200);
   const body=await ok.json();
-  assert.deepEqual(body.presets.map((p:{id:string})=>p.id),['custom','welcome','update','automation-complete','automation-failed','support-received']);
+  assert.deepEqual(body.presets.map((p:{id:string})=>p.id),['custom','welcome-m4labs','welcome','update','automation-complete','automation-failed','support-received']);
   assert.equal(outbox.length,0);
 });
 
@@ -76,6 +76,16 @@ test('sends a welcome email to the person and records it',async()=>{
   assert.equal(audit.params[1],'staff-1');
   assert.equal(audit.params[3],user);
   assert.match(String(audit.params[4]),/^welcome · Welcome to Clem → ava@studio\.co$/);
+});
+
+test('sends the M4 Labs welcome from M4 Labs and records it',async()=>{
+  const r=await call('/send',{kind:'welcome-m4labs',userId:user});
+  assert.equal(r.status,200);
+  assert.deepEqual(await r.json(),{ok:true,to:'ava@studio.co',subject:'Welcome to M4 Labs'});
+  assert.equal(outbox[0].extra.from,'M4 Labs');
+  assert.match(outbox[0].extra.html!,/Welcome to M4 Labs, Ava/);
+  const log=queries.find(q=>q.sql.startsWith('INSERT INTO clem_email_log'))!;
+  assert.deepEqual(log.params.slice(0,2),['supabase:'+user,'welcome-m4labs']);
 });
 
 test('update emails need a version and notes, carry an unsubscribe link and respect opt-outs',async()=>{
