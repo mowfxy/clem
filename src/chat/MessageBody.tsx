@@ -72,7 +72,14 @@ function driveIdsIn(node: unknown): string[] {
   return found;
 }
 
-function CodeBlock({ lang, code, streaming }: { lang: string; code: string; streaming: boolean }) {
+/** A fence the answer marked as a complete program to try (```python run): only those get Run, so a fragment
+ *  quoted in an explanation is shown, not executed. */
+export function fenceRuns(lang: string, meta: unknown) {
+  const tagged = /-run$/i.test(lang);
+  return { lang: tagged ? lang.replace(/-run$/i, '') : lang, runs: tagged || /(?:^|[s{,])run(?:nable)?(?:$|[s},=])/i.test(String(meta ?? '')) };
+}
+
+function CodeBlock({ lang, code, streaming, runs }: { lang: string; code: string; streaming: boolean; runs: boolean }) {
   const [copied, setCopied] = useState(false);
   const [wrap, setWrap] = useState(false);
   type Chunk = { kind: 'out' | 'err' | 'in'; text: string };
@@ -81,7 +88,7 @@ function CodeBlock({ lang, code, streaming }: { lang: string; code: string; stre
   const stop = useRef<RunHandle | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const tokens = useMemo(() => tokenize(code, lang), [code, lang]);
-  const runAs = runnable(lang);
+  const runAs = runs ? runnable(lang) : null;
   useEffect(() => () => stop.current?.(), []);
   // Lines of the same stream join into one chunk, and a run is capped so a runaway loop cannot flood the chat.
   const append = (output: Chunk[], kind: Chunk['kind'], text: string) => {
@@ -250,7 +257,8 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
             const outcome = handlers.edits?.[key];
             return <PlanProposal block={block} streaming={streaming} outcome={outcome} info={handlers.planInfo?.(key, block) ?? {}} onDecide={approve => live.current.handlers.onPlan?.(key, block, approve) ?? Promise.resolve()} onUndo={() => outcome ? live.current.handlers.onPlanUndo?.(key, block, outcome) ?? Promise.resolve() : Promise.resolve()} onOpen={() => live.current.handlers.onOpenPlan?.(block)} />;
           }
-          return <CodeBlock lang={lang} code={code} streaming={streaming} />;
+          const fence = fenceRuns(lang, (node?.children?.[0] as { data?: { meta?: unknown } } | undefined)?.data?.meta);
+          return <CodeBlock lang={fence.lang} code={code} streaming={streaming} runs={fence.runs} />;
         },
     };
   }, []);
