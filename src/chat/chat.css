@@ -56,6 +56,16 @@
 .code-output pre{margin:0;padding:4px 18px 16px;max-height:340px;overflow:auto;background:none;border:0;font:13px/1.6 var(--mono);color:#d9d7d0;white-space:pre-wrap;word-break:break-word}
 .code-err{color:#e79a8c}
 .code-none{color:var(--c-faint);font-style:italic}
+.code-in{color:#a9b6f7}
+.code-stdin{display:flex;align-items:center;gap:8px;margin:0 12px 12px;padding:4px 4px 4px 12px;border:1px solid var(--c-line);border-radius:10px;background:#ffffff05;transition:border-color .15s,background .15s}
+.code-stdin.waiting{border-color:#8197e266;background:#8197e20d}
+.code-stdin:focus-within{border-color:#8197e2aa}
+.code-stdin-mark{font:500 14px/1 var(--mono);color:var(--c-muted)}
+.code-stdin.waiting .code-stdin-mark{color:#a9b6f7}
+.code-stdin input{flex:1;min-width:0;padding:6px 0;border:0;outline:0;background:none;color:#e3e1da;font:13px/1.4 var(--mono)}
+.code-stdin input::placeholder{color:var(--c-faint)}
+.code-stdin-send{display:inline-grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:none;color:var(--c-muted)}
+.code-stdin-send:hover{background:#ffffff10;color:var(--c-ink)}
 .code-caret{display:inline-block;width:7px;height:1.05em;vertical-align:-2px;background:var(--c-muted);animation:code-blink 1s steps(1) infinite}
 @keyframes code-blink{50%{opacity:0}}
 @keyframes code-out{from{opacity:0;transform:translateY(-3px)}}

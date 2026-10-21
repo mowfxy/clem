@@ -158,3 +158,10 @@ test("an unfinished writer's document goes to a new writer, not to the main assi
   assert.match(WRITERS_NOTE, /start a new clem-writer for just that: its draft file, what is missing/);
   assert.match(WRITERS_NOTE, /Never read a writer's sources yourself/);
 });
+
+test("an answer with a visual the chat cannot draw goes back with the reason", async () => {
+  const { visualProblems } = await import("../../desktop/answer-review.ts");
+  const broken = "Here:\n```visual\n{\"kind\":\"diagram\",\"nodes\":[]}\n```\n";
+  assert.match(answerReview(broken, [], { calculation: false })!, /^Some of your visuals cannot be drawn: Visual 1: .*title/);
+  assert.deepEqual(visualProblems("```visual\n{\"kind\":\"diagram\",\"title\":\"T\",\"nodes\":[{\"id\":\"a\",\"label\":\"A\"}]}\n```"), []);
+});

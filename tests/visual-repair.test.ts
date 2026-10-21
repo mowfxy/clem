@@ -24,3 +24,23 @@ test('the original description is left untouched', () => {
   compileVisual(raw);
   assert.equal(raw.nodes[0].shape, 'hexagon');
 });
+
+test('shapes a model often writes are rewritten into the schema rather than refused', () => {
+  const molecule = compileVisual({ kind: '3d', title: 'Water', objects: [{ type: 'molecule', atoms: [{ el: 'O', pos: [0, 0, 0] }, { element: 'h', x: '0.757', y: 0.586 }, ['H', -0.757, 0.586, 0]] }] });
+  const atoms = (molecule.spec.objects![0] as { atoms: { el: string; x: number; z: number }[] }).atoms;
+  assert.deepEqual(atoms.map(a => a.el), ['O', 'H', 'H']);
+  assert.equal(atoms[1].x, 0.757);
+  assert.equal(atoms[1].z, 0);
+  const flow = compileVisual({ type: 'flowchart', title: 'Flow', nodes: ['Start', { name: 'Stop' }], edges: [['Start', 'Stop', 'go'], { source: 'Stop', target: 'Start' }] });
+  assert.equal(flow.spec.kind, 'diagram');
+  assert.deepEqual(flow.spec.edges!.map(e => [e.from, e.to]), [['Start', 'Stop'], ['Stop', 'Start']]);
+  const chart = compileVisual({ kind: 'bar', title: 'Sales', labels: ['Q1', 'Q2'], series: [{ label: 'EU', data: [3, 4] }] });
+  assert.equal(chart.spec.chart!.series[0].name, 'EU');
+});
+
+test('an entry of a list missing a required field is dropped and the rest still drawn', () => {
+  const v = compileVisual({ kind: '3d', title: 'Ammonia', objects: [{ type: 'molecule', atoms: [{ el: 'N', x: 0, y: 0, z: 0 }, { el: 'H' }, { el: 'H', x: 0.94, y: 0, z: -0.38 }], bonds: [[0, 2]] }] });
+  const m = v.spec.objects![0] as { atoms: unknown[]; bonds?: unknown };
+  assert.equal(m.atoms.length, 2);
+  assert.equal(m.bonds, undefined, 'numbered bonds are dropped once an atom is, and bonding goes by distance');
+});

@@ -72,6 +72,7 @@ import {CropAssets,cropTools,memoryIo,readAsset,temporaryStores,type AssetIo} fr
 import type {EditHelpers} from './pdf-edit-tools';
 import {typesetBlock} from './text-block';
 import {kinetraTool} from './kinetra-runtime';
+import {CodeRunner, type CodeRequest} from './code-runner';
 import {turnTimer,addTokens,type TurnStats} from './turn-timing';
 import {answerLedger} from './answer-ledger';
 import {toolStatus} from './codex';
@@ -975,6 +976,13 @@ void app.whenReady().then(async () => {
     event.preventDefault();
     window.hide();
   });
+  // Run on a chat code block in a language the page cannot run itself (desktop/code-runner.ts).
+  const codeRunner = new CodeRunner(join(app.getPath("userData"), "runtimes"), (event) => { if (!window.isDestroyed()) window.webContents.send("clem:code", event); });
+  ipcMain.handle("clem:code", (event, request: CodeRequest) => {
+    if (event.sender !== window.webContents) throw Error("Not allowed.");
+    return codeRunner.handle(request);
+  });
+  app.on("before-quit", () => codeRunner.stopAll());
   ipcMain.handle("clem:background", async (event, next?: Partial<Background>) => {
     if (event.sender !== window.webContents) throw Error("Not allowed.");
     if (next && typeof next === "object") {

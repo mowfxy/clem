@@ -19,7 +19,7 @@ import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
 import { Icon } from '../Icons';
 import { copyText } from '../clipboard';
 import { tokenize, languageName } from './highlight';
-import { runCode, runnable } from './code-run';
+import { runCode, runnable, type RunHandle } from './code-run';
 import { EditProposal, type EditBlock } from './EditProposal';
 import { AutomationProposal } from './AutomationProposal';
 import { readAutomationBlock, type AutomationBlock } from '../LocalAutomations';
@@ -75,24 +75,39 @@ function driveIdsIn(node: unknown): string[] {
 function CodeBlock({ lang, code, streaming }: { lang: string; code: string; streaming: boolean }) {
   const [copied, setCopied] = useState(false);
   const [wrap, setWrap] = useState(false);
-  const [run, setRun] = useState<{ output: { err: boolean; text: string }[]; status: string; state: 'running' | 'ok' | 'failed' | 'stopped'; ms: number } | null>(null);
-  const stop = useRef<(() => void) | null>(null);
+  type Chunk = { kind: 'out' | 'err' | 'in'; text: string };
+  const [run, setRun] = useState<{ output: Chunk[]; status: string; state: 'running' | 'ok' | 'failed' | 'stopped'; ms: number; waiting: boolean } | null>(null);
+  const [typed, setTyped] = useState('');
+  const stop = useRef<RunHandle | null>(null);
+  const field = useRef<HTMLInputElement>(null);
   const tokens = useMemo(() => tokenize(code, lang), [code, lang]);
   const runAs = runnable(lang);
   useEffect(() => () => stop.current?.(), []);
+  // Lines of the same stream join into one chunk, and a run is capped so a runaway loop cannot flood the chat.
+  const append = (output: Chunk[], kind: Chunk['kind'], text: string) => {
+    if (output.reduce((n, o) => n + o.text.length, 0) > 200_000) return output;
+    const last = output[output.length - 1];
+    return last && last.kind === kind ? [...output.slice(0, -1), { kind, text: last.text + text }] : [...output, { kind, text }];
+  };
   const start = () => {
     if (!runAs) return;
     const began = performance.now();
-    setRun({ output: [], status: '', state: 'running', ms: 0 });
+    setTyped('');
+    setRun({ output: [], status: '', state: 'running', ms: 0, waiting: false });
     stop.current = runCode(runAs, code, (e) => setRun((r) => {
       if (!r) return r;
       if (e.type === 'status') return { ...r, status: e.text };
-      if (e.type === 'done') { stop.current = null; return { ...r, status: '', state: e.stopped ? 'stopped' : e.ok ? 'ok' : 'failed', ms: performance.now() - began }; }
-      const last = r.output[r.output.length - 1], err = e.type === 'err';
-      // Lines of the same stream join into one chunk, and a run is capped so a runaway loop cannot flood the chat.
-      if (r.output.reduce((n, o) => n + o.text.length, 0) > 200_000) return r;
-      return { ...r, output: last && last.err === err ? [...r.output.slice(0, -1), { err, text: last.text + e.text }] : [...r.output, { err, text: e.text }] };
+      if (e.type === 'waiting') { requestAnimationFrame(() => field.current?.focus({ preventScroll: true })); return { ...r, waiting: true }; }
+      if (e.type === 'done') { stop.current = null; return { ...r, status: '', waiting: false, state: e.stopped ? 'stopped' : e.ok ? 'ok' : 'failed', ms: performance.now() - began }; }
+      return { ...r, output: append(r.output, e.type, e.text) };
     }));
+  };
+  /** The typed line goes to the program's standard input and shows in the output where it was entered. */
+  const send = (line: string | null) => {
+    if (!stop.current) return;
+    stop.current.send(line);
+    setRun((r) => (r ? { ...r, waiting: false, output: line === null ? r.output : append(r.output, 'in', line + '\n') } : r));
+    setTyped('');
   };
   const running = run?.state === 'running';
   return <div className={`code-block ${wrap ? 'wrapped' : ''}`}>
@@ -109,11 +124,17 @@ function CodeBlock({ lang, code, streaming }: { lang: string; code: string; stre
     <pre><code>{tokens.map((t, i) => t.kind === 'plain' ? t.text : <span key={i} className={'tk-' + t.kind}>{t.text}</span>)}</code></pre>
     {run && <div className={`code-output ${run.state}`} role="log" aria-live="polite" aria-label="Output">
       <div className="code-output-head">
-        <span>{running ? (run.status || 'Running…') : run.state === 'ok' ? 'Output' : run.state === 'stopped' ? 'Stopped' : 'Error'}</span>
+        <span>{running ? (run.waiting ? 'Waiting for input' : run.status || 'Running…') : run.state === 'ok' ? 'Output' : run.state === 'stopped' ? 'Stopped' : 'Error'}</span>
         {!running && <span className="code-output-meta">{run.ms < 1000 ? Math.max(1, Math.round(run.ms)) + ' ms' : (run.ms / 1000).toFixed(1) + ' s'}</span>}
         {!running && <button type="button" className="code-icon" aria-label="Clear output" title="Clear" onClick={() => setRun(null)}><Icon name="close" size={13} /></button>}
       </div>
-      <pre>{run.output.length ? run.output.map((o, i) => <span key={i} className={o.err ? 'code-err' : undefined}>{o.text}</span>) : !running && <span className="code-none">No output</span>}{running && <span className="code-caret" aria-hidden="true" />}</pre>
+      <pre>{run.output.length ? run.output.map((o, i) => <span key={i} className={o.kind === 'err' ? 'code-err' : o.kind === 'in' ? 'code-in' : undefined}>{o.text}</span>) : !running && <span className="code-none">No output</span>}{running && !run.waiting && <span className="code-caret" aria-hidden="true" />}</pre>
+      {running && <form className={`code-stdin ${run.waiting ? 'waiting' : ''}`} onSubmit={(e) => { e.preventDefault(); send(typed); }}>
+        <span className="code-stdin-mark" aria-hidden="true">›</span>
+        <input ref={field} value={typed} onChange={(e) => setTyped(e.target.value)} aria-label="Input for the program" placeholder={run.waiting ? 'The program is waiting for input. Type it and press Enter' : 'Type input for the program and press Enter'} spellCheck={false} autoComplete="off"
+          onKeyDown={(e) => { if (e.key === 'd' && (e.ctrlKey || e.metaKey) && !typed) { e.preventDefault(); send(null); } }} />
+        <button type="submit" className="code-stdin-send" aria-label="Send input" title="Send (Enter)"><Icon name="send" size={13} /></button>
+      </form>}
     </div>}
   </div>;
 }

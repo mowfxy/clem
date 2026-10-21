@@ -125,7 +125,17 @@ function mend(root: unknown, issue: Issue): boolean {
   const path = issue.path, key = path[path.length - 1], parent = at(root, path.slice(0, -1)) as Record<PropertyKey, unknown> | unknown[] | undefined;
   if (!path.length || !parent || typeof parent !== 'object') return false;
   const value = (parent as Record<PropertyKey, unknown>)[key as PropertyKey];
-  if (value === undefined) return false; // a required field is missing; nothing sensible to invent
+  if (value === undefined) {
+    // A required field is missing. Nothing sensible can be invented, but when the field belongs to one entry of a list
+    // (an atom without coordinates, a layer without its formula) that entry is dropped and the rest is still drawn.
+    const index = path.length - 2, list = at(root, path.slice(0, index));
+    if (index < 1 || !Array.isArray(list) || typeof path[index] !== 'number') return false;
+    list.splice(path[index] as number, 1);
+    // A molecule that lost an atom bonds by distance, since its numbered bonds now point at the wrong atoms.
+    const owner = at(root, path.slice(0, index - 1)) as Record<string, unknown> | undefined;
+    if (path[index - 1] === 'atoms' && owner && typeof owner === 'object') delete owner.bonds;
+    return true;
+  }
   if (issue.code === 'invalid_value' && typeof value === 'string') {
     const options = issue.values.map(String), word = value.trim().toLowerCase();
     const match = options.find(o => o.toLowerCase() === word) ?? enumSynonyms[String(key)]?.[word];
@@ -143,6 +153,89 @@ function mend(root: unknown, issue: Issue): boolean {
   if (Array.isArray(parent)) parent.splice(Number(key), 1); else delete (parent as Record<PropertyKey, unknown>)[key as PropertyKey];
   return true;
 }
+/* ── Normalize ── Models also write the same thing in other shapes: a position as "pos":[x,y,z], an atom as
+   ["O",0,0,0], an edge as "source"/"target" or [from,to], a node as a bare string, "type":"flowchart" for a kind.
+   Those are rewritten into the schema's shape before it is checked, so nothing the model meant is lost. */
+type Obj = Record<string, unknown>;
+const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
+const kindSynonyms: Record<string, VisualSpec['kind']> = {
+  flowchart: 'diagram', flow: 'diagram', process: 'diagram', cycle: 'diagram', network: 'diagram', mindmap: 'diagram', 'mind-map': 'diagram', tree: 'diagram', concept: 'diagram', 'concept-map': 'diagram', graphviz: 'diagram', state: 'diagram',
+  bar: 'chart', line: 'chart', pie: 'chart', donut: 'chart', histogram: 'chart', 'bar-chart': 'chart', barchart: 'chart', data: 'chart',
+  graph: 'plot', function: 'plot', '2d': 'plot', plot2d: 'plot', curve: 'plot',
+  surface: '3d', molecule: '3d', scene: '3d', '3-d': '3d', three: '3d',
+  illustration: 'figure', apparatus: 'figure', physics: 'figure', drawing: 'figure',
+};
+/** First of `keys` that holds something, moved to `to` when `to` is empty. */
+function alias(o: Obj, to: string, keys: string[]) { if (o[to] !== undefined) return; for (const k of keys) if (o[k] !== undefined) { o[to] = o[k]; delete o[k]; return; } }
+/** "pos":[x,y,z] (or position, center, at, coords, xyz) spread into x, y and z. */
+function spreadPosition(o: Obj, dims: string[]) {
+  for (const k of ['pos', 'position', 'center', 'centre', 'at', 'coords', 'coordinates', 'xyz', 'xy', 'p']) {
+    const v = o[k];
+    if (Array.isArray(v) && v.length >= 2 && dims.every(d => o[d] === undefined)) { dims.forEach((d, i) => { if (v[i] !== undefined) o[d] = v[i]; }); delete o[k]; return; }
+    if (isObj(v) && dims.every(d => o[d] === undefined)) { dims.forEach(d => { if (v[d] !== undefined) o[d] = v[d]; }); delete o[k]; return; }
+  }
+}
+const toNumber = (v: unknown) => (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : v);
+function normalize(spec: Obj) {
+  alias(spec, 'kind', ['type']);
+  if (typeof spec.kind === 'string') { const k = spec.kind.trim().toLowerCase(); spec.kind = kindSynonyms[k] ?? k; }
+  if (!['plot', 'diagram', 'chart', '3d', 'figure'].includes(spec.kind as string))
+    spec.kind = spec.nodes ? 'diagram' : spec.chart || spec.series ? 'chart' : spec.objects ? '3d' : spec.items ? 'figure' : spec.layers ? 'plot' : spec.kind;
+  alias(spec, 'title', ['name', 'heading', 'label']);
+  if (spec.title === undefined && typeof (spec.caption ?? spec.subject) === 'string') spec.title = spec.caption ?? spec.subject;
+  if (Array.isArray(spec.nodes)) spec.nodes = spec.nodes.map((n, i) => {
+    const node: Obj = typeof n === 'string' || typeof n === 'number' ? { label: String(n) } : isObj(n) ? n : {};
+    alias(node, 'label', ['name', 'text', 'title']);
+    if (node.id === undefined) node.id = typeof node.label === 'string' ? node.label.trim().slice(0, 40) || `n${i}` : `n${i}`;
+    node.id = String(node.id);
+    if (node.label === undefined) node.label = node.id;
+    else if (typeof node.label !== 'string') node.label = String(node.label);
+    for (const d of ['x', 'y']) node[d] = toNumber(node[d]);
+    alias(node, 'detail', ['description', 'subtitle', 'note', 'sub']);
+    return node;
+  });
+  if (Array.isArray(spec.edges)) spec.edges = spec.edges.map(e => {
+    const edge: Obj = Array.isArray(e) ? { from: e[0], to: e[1], ...(e[2] !== undefined ? { label: e[2] } : {}) } : isObj(e) ? e : {};
+    alias(edge, 'from', ['source', 'src', 'start', 'a', 'origin']); alias(edge, 'to', ['target', 'dst', 'end', 'b', 'dest']); alias(edge, 'label', ['text', 'name']);
+    for (const k of ['from', 'to', 'label']) if (typeof edge[k] === 'number') edge[k] = String(edge[k]);
+    return edge;
+  });
+  if (Array.isArray(spec.objects)) for (const o of spec.objects) {
+    if (!isObj(o)) continue;
+    spreadPosition(o, ['x', 'y', 'z']);
+    if (Array.isArray(o.atoms)) o.atoms = o.atoms.map(a => {
+      const atom: Obj = Array.isArray(a) ? { el: a[0], x: a[1], y: a[2], z: a[3] } : isObj(a) ? a : {};
+      alias(atom, 'el', ['element', 'symbol', 'atom', 'type', 'name']);
+      spreadPosition(atom, ['x', 'y', 'z']);
+      for (const d of ['x', 'y', 'z']) atom[d] = toNumber(atom[d]);
+      // A flat molecule may leave out z.
+      if (atom.z === undefined && typeof atom.x === 'number' && typeof atom.y === 'number') atom.z = 0;
+      if (typeof atom.el === 'string') { const el = atom.el.trim(); atom.el = el.charAt(0).toUpperCase() + el.slice(1, 2).toLowerCase(); }
+      return atom;
+    });
+  }
+  if (Array.isArray(spec.layers)) for (const l of spec.layers) if (isObj(l)) { if (l.type === 'function') alias(l, 'expr', ['fn', 'f', 'function', 'equation', 'y']); if (['point', 'text', 'vector', 'circle'].includes(l.type as string)) spreadPosition(l, ['x', 'y']); }
+  // A chart written at the top level ("labels" and "series" beside "kind") is moved into "chart".
+  if (spec.kind === 'chart' && !isObj(spec.chart) && (spec.labels || spec.series)) {
+    spec.chart = { type: 'bar', labels: spec.labels, series: spec.series };
+    delete spec.labels; delete spec.series;
+  }
+  if (isObj(spec.chart)) {
+    const chart = spec.chart;
+    alias(chart, 'type', ['kind', 'chartType']);
+    alias(chart, 'labels', ['categories', 'x', 'xLabels']);
+    if (chart.type === undefined) chart.type = 'bar';
+    if (Array.isArray(chart.labels)) chart.labels = chart.labels.map(String);
+    if (Array.isArray(chart.series)) chart.series = chart.series.map((s, i) => {
+      const one: Obj = Array.isArray(s) ? { values: s } : isObj(s) ? s : {};
+      alias(one, 'values', ['data', 'y', 'points']); alias(one, 'name', ['label', 'title']);
+      if (one.name === undefined) one.name = `Series ${i + 1}`;
+      return one;
+    });
+    else if (Array.isArray(chart.values) || Array.isArray(chart.data)) { chart.series = [{ name: String(spec.title ?? 'Values'), values: chart.values ?? chart.data }]; delete chart.values; delete chart.data; }
+  }
+}
+
 /** Parses a spec, mending small slips (see above). Returns the first unfixable issue when there is one. */
 export function parseVisualSpec(raw: unknown): { ok: true; spec: VisualSpec } | { ok: false; issue: Issue } {
   let parsed = visualSpecSchema.safeParse(raw);
@@ -151,6 +244,7 @@ export function parseVisualSpec(raw: unknown): { ok: true; spec: VisualSpec } | 
   if (!raw || typeof raw !== 'object') return { ok: false, issue: first };
   let draft: unknown;
   try { draft = structuredClone(raw); } catch { return { ok: false, issue: first }; }
+  if (isObj(draft)) { normalize(draft); parsed = visualSpecSchema.safeParse(draft); if (parsed.success) return { ok: true, spec: parsed.data }; }
   for (let round = 0; round < 60 && !parsed.success; round++) {
     const issue = parsed.error.issues[0];
     // Never drop the picture's own identity or a missing required field.
@@ -455,7 +549,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
           for (const k of [0, 0.5]) { const f = ((t * 0.45 + k + i * 0.137) % 1 + 1) % 1; const [x, y] = at(f); pen.circle(x, y, 7, { fill: palette.coral, alpha: 0.16 }); pen.circle(x, y, 3.2, { fill: palette.coral }); }
         }
         if (e.label) {
-          const [mx, my] = at(0.5), w = textWidth(e.label, 11) + 14;
+          const [mx, my] = routes[i].labelAt ?? at(0.5), w = textWidth(e.label, 11) + 14;
           pen.path(roundRect(mx - w / 2, my - 10, w, 20, 10), { fill: palette.bg, stroke: palette.grid, width: 1, alpha }, true);
           pen.text(mx, my + 4, e.label, { size: 11, color: palette.soft, align: 'middle', alpha, weight: 500 });
         }
@@ -569,7 +663,7 @@ function crosses(p: P, q: P, box: Box) {
   for (let k = 1; k < 24; k++) if (inside(box, [p[0] + (q[0] - p[0]) * k / 24, p[1] + (q[1] - p[1]) * k / 24])) return true;
   return false;
 }
-export type EdgeRoute = { points: P[]; at: (f: number) => P };
+export type EdgeRoute = { points: P[]; at: (f: number) => P; /** Where the edge's label sits, clear of every node and other label. */ labelAt?: P };
 /** A route along a polyline, measured by length so a label or a flow dot sits where the eye expects. */
 function along(points: P[]): EdgeRoute {
   const acc = [0];
@@ -607,16 +701,16 @@ export function routeEdges(layout: Map<string, DiagramBox>, edges: { from: strin
 
 /** Every node's outline with its label wrapped to fit `maxW`. Boxes in one diagram share a width and a height and
  *  circles share a radius, so rows and columns line up the way a hand-drawn diagram would. */
-function sizeNodes(nodes: DiagramNode[], maxW: number) {
+function sizeNodes(nodes: DiagramNode[], maxW: number, compact = false) {
   const chars = Math.max(8, Math.floor((maxW - 30) / 7.3));
   const raw = nodes.map(n => {
     const circle = n.shape === 'circle', lines = wrap(n.label, circle ? Math.min(12, chars) : chars, 3);
     const detail = n.detail && !circle ? wrap(n.detail, Math.floor(chars * 1.2), 2) : [];
     const widest = Math.max(...lines.map(l => textWidth(l, 13)), ...detail.map(l => textWidth(l, 11)));
-    return { n, circle, lines, detail, w: Math.max(96, Math.min(maxW, widest + 34)), h: 22 + lines.length * 16 + (detail.length ? 4 + detail.length * 14 : 0), r: Math.max(34, Math.min(60, Math.max(widest / 2 + 14, lines.length * 9 + 22))) };
+    return { n, circle, lines, detail, w: Math.max(compact ? 72 : 96, Math.min(maxW, widest + (compact ? 22 : 34))), h: (compact ? 12 : 22) + lines.length * 16 + (detail.length ? 4 + detail.length * 14 : 0), r: Math.max(34, Math.min(60, Math.max(widest / 2 + 14, lines.length * 9 + 22))) };
   });
   const boxes = raw.filter(b => !b.circle), rings = raw.filter(b => b.circle);
-  const w = Math.max(0, ...boxes.map(b => b.w)), h = Math.max(46, ...boxes.map(b => b.h)), r = Math.max(0, ...rings.map(b => b.r));
+  const w = Math.max(0, ...boxes.map(b => b.w)), h = Math.max(compact ? 32 : 46, ...boxes.map(b => b.h)), r = Math.max(0, ...rings.map(b => b.r));
   return new Map(raw.map(b => [b.n.id, { x: 0, y: 0, w: b.circle ? r * 2 : w, h: b.circle ? r * 2 : h, r, lines: b.lines, detail: b.detail, shape: b.n.shape || 'box' } as Box]));
 }
 const clampInto = (b: Box) => { b.x = Math.max(PAD.l + halfW(b), Math.min(W - PAD.r - halfW(b), b.x)); b.y = Math.max(PAD.t + halfH(b), Math.min(H - PAD.b - halfH(b), b.y)); };
@@ -651,10 +745,41 @@ function ringOrder(nodes: DiagramNode[], edges: DiagramEdge[]) {
   return walk(order[0]) ? order : null;
 }
 type DiagramLayout = { boxes: Map<string, Box>; routes: EdgeRoute[] };
+/** Puts each edge label where it covers no node and no other label: along its own edge first (the middle, then
+ *  further out), then nudged to either side of the line, keeping the spot with the least overlap when none is clear. */
+function placeEdgeLabels({ boxes, routes }: DiagramLayout, edges: DiagramEdge[]) {
+  type Rect = [number, number, number, number];
+  const nodeRects: Rect[] = [...boxes.values()].map(b => [b.x - halfW(b) - 5, b.y - halfH(b) - 5, b.x + halfW(b) + 5, b.y + halfH(b) + 5]);
+  const placed: Rect[] = [];
+  const overlap = (a: Rect, b: Rect) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const along = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74, 0.18, 0.82];
+  edges.forEach((e, i) => {
+    if (!e.label) return;
+    const route = routes[i], w = textWidth(e.label, 11) + 14, h = 20;
+    let best: P = route.at(0.5), score = Infinity;
+    for (const side of [0, 1, -1, 2, -2, 3, -3, 4, -4]) for (const [k, f] of along.entries()) {
+      const [x, y] = route.at(f), [x2, y2] = route.at(Math.min(1, f + 0.02)), len = Math.hypot(x2 - x, y2 - y) || 1;
+      // Sideways from the line by a label's height per step.
+      const px = x - (y2 - y) / len * side * 15, py = y + (x2 - x) / len * side * 15;
+      const rect: Rect = [px - w / 2, py - h / 2, px + w / 2, py + h / 2];
+      const outside = Math.max(0, PAD.l / 2 - rect[0]) + Math.max(0, rect[2] - (W - PAD.r / 2)) + Math.max(0, PAD.t / 2 - rect[1]) + Math.max(0, rect[3] - (H - PAD.b / 2));
+      const s = nodeRects.reduce((n, r) => n + overlap(rect, r), 0) * 4 + placed.reduce((n, r) => n + overlap(rect, r), 0) * 3 + outside * 200 + Math.abs(side) * 30 + k * 2;
+      if (s < score) { score = s; best = [px, py]; }
+      if (s === 0) break;
+    }
+    route.labelAt = best;
+    placed.push([best[0] - w / 2 - 4, best[1] - h / 2 - 3, best[0] + w / 2 + 4, best[1] + h / 2 + 3]);
+  });
+}
 /** Places and routes a diagram. Explicit 0–100 coordinates are honoured but fitted to the canvas and pulled apart
  *  where they collide; a cycle becomes a ring; a long chain wraps into rows; anything else is layered by dependency
  *  with nodes ordered to untangle crossings and edges drawn as smooth curves between facing sides. */
-function layoutDiagram(nodes: DiagramNode[], edges: DiagramEdge[], direction: 'right' | 'down'): DiagramLayout {
+export function layoutDiagram(nodes: DiagramNode[], edges: DiagramEdge[], direction: 'right' | 'down'): DiagramLayout {
+  const layout = placeDiagram(nodes, edges, direction);
+  placeEdgeLabels(layout, edges);
+  return layout;
+}
+function placeDiagram(nodes: DiagramNode[], edges: DiagramEdge[], direction: 'right' | 'down'): DiagramLayout {
   const pairs = new Set(edges.map(e => JSON.stringify([e.from, e.to])));
   const plain = (boxes: Map<string, Box>): DiagramLayout => ({ boxes, routes: edges.map(e => routeOne(boxes, e, pairs.has(JSON.stringify([e.to, e.from])))) });
 
@@ -735,9 +860,16 @@ function layoutDiagram(nodes: DiagramNode[], edges: DiagramEdge[], direction: 'r
   // The canvas is landscape: a deep top-to-bottom flow turns sideways, and a long single chain wraps into rows.
   let across = direction === 'right';
   if (!across && cols.length > 4 && cols.length > widest) across = true;
-  if (widest === 1 && across && cols.length > 5) {
-    const n = cols.length, rows = n <= 8 ? 2 : n <= 15 ? 3 : 4, per = Math.ceil(n / rows);
-    const boxes = sizeNodes(nodes, Math.min(176, (W - PAD.l - PAD.r) / per - 40)), any = boxes.values().next().value!;
+  // Room an edge label needs between two neighbouring columns: its pill plus a margin on each side.
+  const labelRoom = Math.max(48, ...edges.filter(e => e.label && isForwardRank(e)).map(e => textWidth(e.label!, 11) + 14 + 22));
+  function isForwardRank(e: DiagramEdge) { return rank.get(e.to)! > rank.get(e.from)!; }
+  const roomFor = (count: number) => (W - PAD.l - PAD.r - (count - 1) * labelRoom) / count;
+  if (widest === 1 && across && (cols.length > 5 || (cols.length > 2 && roomFor(cols.length) < 96))) {
+    const n = cols.length;
+    let rows = n <= 8 ? 2 : n <= 15 ? 3 : 4;
+    while (rows < 4 && roomFor(Math.ceil(n / rows)) < 96) rows++;
+    const per = Math.ceil(n / rows);
+    const boxes = sizeNodes(nodes, Math.max(96, Math.min(176, (W - PAD.l - PAD.r) / per - 40, roomFor(per)))), any = boxes.values().next().value!;
     const slotW = (W - PAD.l - PAD.r - any.w) / Math.max(1, per - 1), slotH = Math.min((H - PAD.t - PAD.b - any.h) / Math.max(1, rows - 1), any.h + 64), top = (H - slotH * (rows - 1)) / 2;
     cols.forEach(([id], i) => {
       const row = Math.floor(i / per), col = row % 2 ? per - 1 - (i % per) : i % per, b = boxes.get(id)!;
@@ -746,15 +878,34 @@ function layoutDiagram(nodes: DiagramNode[], edges: DiagramEdge[], direction: 'r
     return plain(boxes);
   }
   const mainRoom = across ? W - PAD.l - PAD.r : H - PAD.t - PAD.b, crossRoom = across ? H - PAD.t - PAD.b : W - PAD.l - PAD.r;
-  const boxes = sizeNodes(nodes, across ? Math.max(96, Math.min(180, mainRoom / cols.length - 40)) : Math.max(96, Math.min(180, crossRoom / widest - 28)));
-  const any = boxes.values().next().value!, mainHalf = across ? halfW(any) : halfH(any);
-  cols.forEach((col, i) => col.forEach((id, j) => {
-    const box = boxes.get(id)!, main = cols.length === 1 ? 0.5 : i / (cols.length - 1);
-    // Siblings sit a comfortable distance apart around the middle rather than flung to the edges.
-    const gap = Math.min(crossRoom / col.length, (across ? any.h : any.w) + (across ? 64 : 48));
-    const m = (across ? PAD.l : PAD.t) + mainHalf + (mainRoom - mainHalf * 2) * main, c = (across ? H : W) / 2 + gap * (j - (col.length - 1) / 2);
+  const fit = (layers: string[][], compact = false) => sizeNodes(nodes, across ? Math.max(96, Math.min(180, mainRoom / layers.length - 40, roomFor(layers.length))) : Math.max(compact ? 72 : 96, Math.min(180, crossRoom / Math.max(...layers.map(l => l.length)) - (compact ? 10 : 28))), compact);
+  const fits = (layers: string[][], gap: number) => { const first = boxes.values().next().value!; return layers.every(l => l.length * ((across ? first.h : first.w) + gap) - gap <= crossRoom); };
+  // A layer with more siblings than fit side by side first gets compact nodes; if even those do not fit, it is staggered
+  // into sub-layers that interleave (alternate nodes step forward), so nodes never sit on top of each other.
+  let slots = cols, boxes = fit(slots), staggered = false;
+  if (!fits(cols, 14)) {
+    boxes = fit(cols, true);
+    if (!fits(cols, 8)) {
+      const first = boxes.values().next().value!, cap = Math.max(1, Math.floor((crossRoom + 8) / ((across ? first.h : first.w) + 8)));
+      slots = cols.flatMap(l => { const k = Math.ceil(l.length / cap); return Array.from({ length: k }, (_, s) => l.filter((_, j) => j % k === s)); });
+      boxes = fit(slots, true);
+      staggered = true;
+    }
+  }
+  const layerOf = new Map(cols.flatMap(l => l.map((id, j) => [id, [j, l.length]] as const)));
+  const any = boxes.values().next().value!, mainHalf = across ? halfW(any) : halfH(any), crossSize = across ? any.h : any.w;
+  slots.forEach((col, i) => col.forEach((id, jj) => {
+    const box = boxes.get(id)!, main = slots.length === 1 ? 0.5 : i / (slots.length - 1);
+    // Siblings sit a comfortable distance apart around the middle rather than flung to the edges; staggered ones keep
+    // their place in the whole layer, so each sits in the gap between its neighbours in the other sub-layer.
+    const [j, count] = staggered ? layerOf.get(id)! : [jj, col.length];
+    const gap = staggered ? (count > 1 ? (crossRoom - crossSize) / (count - 1) : 0) : Math.min(crossRoom / count, crossSize + (across ? 64 : 48));
+    const m = (across ? PAD.l : PAD.t) + mainHalf + (mainRoom - mainHalf * 2) * main, c = (across ? H : W) / 2 + gap * (j - (count - 1) / 2);
     if (across) { box.x = m; box.y = c; } else { box.x = c; box.y = m; }
   }));
+  // A crowded layer (more siblings than fit side by side) is pulled apart so no two nodes overlap.
+  const placedBoxes = [...boxes.values()];
+  if (placedBoxes.some((a, i) => placedBoxes.some((b, j) => j > i && Math.abs(a.x - b.x) < halfW(a) + halfW(b) + 8 && Math.abs(a.y - b.y) < halfH(a) + halfH(b) + 6))) separate(placedBoxes, 14);
   // Ports: edges leaving (or entering) one side of a node spread along it, sorted by where they are headed.
   const outs = new Map<string, DiagramEdge[]>(), ins = new Map<string, DiagramEdge[]>();
   const isForward = (e: DiagramEdge) => rank.get(e.to)! > rank.get(e.from)!;

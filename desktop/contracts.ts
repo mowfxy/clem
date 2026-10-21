@@ -230,6 +230,10 @@ export type DesktopBridge = {
   onFolder?: (listener: (event: FolderEvent) => void) => () => void;
   onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
   startDrag?: (path: string) => void;
+  /** Runs a chat code block on this computer (desktop/code-runner.ts): start it, send it a line of input (null ends input), or stop it. */
+  runCode?: (request: { op: "start"; id: string; lang: string; code: string } | { op: "input"; id: string; text: string | null } | { op: "stop"; id: string }) => Promise<unknown>;
+  /** Output, status and the end of runs started with runCode. */
+  onCode?: (listener: (event: { id: string; type: "out" | "err" | "status" | "started" | "done"; text?: string; ok?: boolean }) => void) => () => void;
   /** Recolours the Windows caption buttons to sit in the page: normal, or dimmed behind a pop-up. */
   setWindowTone?: (tone: "normal" | "dim" | "light" | "light-dim") => void;
   /** Reads, or changes, whether closing keeps Clem running in the tray and whether it starts with Windows. */
