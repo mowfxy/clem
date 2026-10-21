@@ -55,7 +55,8 @@ export async function pickFromDrive(kind: "files" | "folder", signal?: AbortSign
   const started = Date.now();
   while (Date.now() - started < 10 * 60_000 && !signal?.aborted) {
     await new Promise((go) => setTimeout(go, 2000));
-    const r = await desktop.invoke({ action: "drivePicked", request }).catch(() => null) as { done: boolean; files: DriveItem[] } | null;
+    // A dropped connection is asked again; a refusal from Google (the choice already collected) is shown, not waited out.
+    const r = await desktop.invoke({ action: "drivePicked", request }).catch((e: Error) => { if (/couldn't reach/i.test(String(e?.message))) return null; throw e; }) as { done: boolean; files: DriveItem[] } | null;
     if (r?.done) { set({ connected: true }); return r.files; }
   }
   return [];

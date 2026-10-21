@@ -20,6 +20,15 @@ const refusal = async (r: Response) => {
   return /insufficientScopes|appNotAuthorized|insufficientPermissions|authError/i.test(reason) && !/insufficientFilePermissions|insufficientParentPermissions/i.test(reason)
     ? RECONNECT : /storageQuotaExceeded|quota/i.test(reason) ? "Your Google Drive is full." : "You can only view this Drive folder, so Clem cannot save into it.";
 };
+/** Why Google refused a read, when it is something other than this folder or file: the Drive API switched off for Clem's
+ *  Google project, or a connection without access. Otherwise `fallback`. */
+const unread = async (r: Response, fallback: string) => {
+  const body = (await r.clone().json().catch(() => ({}))) as {error?:{errors?:{reason?:string}[];details?:{reason?:string}[]}};
+  const reasons = [...(body.error?.errors||[]), ...(body.error?.details||[])].map(e => String(e.reason||"")).join(" ");
+  if (/accessNotConfigured|SERVICE_DISABLED|API_DISABLED/i.test(reasons)) return "Google Drive is switched off for Clem on Google's side right now, so Drive can't be read. Try again later.";
+  if (r.status === 401 || /insufficientScopes|appNotAuthorized|authError/i.test(reasons)) return "Reconnect Google Drive in Settings → Connectors, then try again.";
+  return fallback;
+};
 type Meta = {id:string;name:string;mimeType:string;size?:string;thumbnailLink?:string;webViewLink?:string;modifiedTime?:string;iconLink?:string;videoMediaMetadata?:{durationMillis?:string};shortcutDetails?:{targetId?:string;targetMimeType?:string}};
 const SHORTCUT = "application/vnd.google-apps.shortcut";
 // Drive's own video player reads playback details (including its caption tracks) from this service, with this public
@@ -131,12 +140,15 @@ export class DriveLive {
     if(!body.done)return {done:false,files:[]};
     // The picker issued a new grant; the cached token may predate it.
     this.cached=null;this.trees.clear();
-    const files=await Promise.all((body.ids||[]).map(async id=>{
+    let refused="";
+    const files=(await Promise.all((body.ids||[]).map(async id=>{
       const m=await this.google(`${API}/${encodeURIComponent(id)}?supportsAllDrives=true&fields=${encodeURIComponent(FIELDS)}`,{timeout:20000});
-      if(!m.ok)return null;
+      if(!m.ok){refused=await unread(m,"Google Drive could not open what you chose. Try choosing it again.");return null;}
       const f=resolve(await m.json() as Meta);this.meta.set(f.id,f);return item(f);
-    }));
-    return {done:true,files:files.filter((f):f is DriveItem=>!!f)};
+    }))).filter((f):f is DriveItem=>!!f);
+    // Something was chosen but none of it opens: say why, rather than acting as if nothing was picked.
+    if(refused&&!files.length)throw Error(refused);
+    return {done:true,files};
   }
   private generation=0;
   /** Drops everything held for the signed-in person (token, connection state, folder trees, file details). */
@@ -148,7 +160,7 @@ export class DriveLive {
     url.search=new URLSearchParams({q:driveQuery(question),pageSize:"12",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
       fields:`files(${FIELDS})`}).toString();
     const r=await this.google(url.href,{timeout:20000});
-    if(!r.ok)throw Error("Google Drive search failed. Try again.");
+    if(!r.ok)throw Error(await unread(r,"Google Drive search failed. Try again."));
     const files=(((await r.json()).files||[]) as Meta[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&f.mimeType!==FOLDER);
     for(const f of files)this.meta.set(f.id,f);
     const hits:DriveHit[]=files.map(f=>({id:f.id,name:f.name,mimeType:f.mimeType,modified:f.modifiedTime,size:f.size?Number(f.size):undefined,durationMs:f.videoMediaMetadata?.durationMillis?Number(f.videoMediaMetadata.durationMillis):undefined}));
@@ -170,7 +182,7 @@ export class DriveLive {
     url.search=new URLSearchParams({q:clauses.join(" and "),pageSize:"100",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
       ...(words?{}:{orderBy:folder==="root"?"folder,modifiedTime desc":"folder,name_natural"}),fields:`nextPageToken,files(${FIELDS})`,...(page?{pageToken:page}:{})}).toString();
     const r=await this.google(url.href,{timeout:20000});
-    if(!r.ok)throw Error(r.status===404?"This Drive folder is no longer available.":"Google Drive could not list these files.");
+    if(!r.ok)throw Error(r.status===404?"This Drive folder is no longer available.":await unread(r,"Google Drive could not list these files."));
     const body=await r.json() as {files?:Meta[];nextPageToken?:string};
     const resolved=(body.files||[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&(kind!=="folders"||f.mimeType===FOLDER));
     for(const f of resolved)this.meta.set(f.id,f);
@@ -291,7 +303,7 @@ export class DriveLive {
           url.search=new URLSearchParams({q:`trashed = false and (${group.map(id=>`${quote(id)} in parents`).join(" or ")})`,pageSize:"200",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
             fields:`nextPageToken,files(${FIELDS},parents)`,...(page?{pageToken:page}:{})}).toString();
           const r=await this.google(url.href,{timeout:25000});
-          if(!r.ok)throw Error(r.status===404?"The linked Drive folder is no longer available.":"Google Drive could not list the linked folder.");
+          if(!r.ok)throw Error(r.status===404?"The linked Drive folder is no longer available.":await unread(r,"Google Drive could not list the linked folder."));
           const body=await r.json() as {files?:(Meta&{parents?:string[]})[];nextPageToken?:string};
           for(const raw of body.files||[]){
             const parent=raw.parents?.find(p=>paths.has(p))||group[0],path=paths.get(parent)||"";

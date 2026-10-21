@@ -166,6 +166,16 @@ test('files picked in Google’s picker come back once, with their details, and 
   assert.equal(lists[0],'trashed = false','no parent filter: picked files can sit anywhere in Drive');
 });
 
+test('Google refusing every read (Drive API off) says so, both after a pick and when listing, instead of looking empty',async()=>{
+  const off=()=>Response.json({error:{code:403,message:'Google Drive API has not been used in project 1 before or it is disabled.',errors:[{reason:'accessNotConfigured'}],details:[{reason:'SERVICE_DISABLED'}]}},{status:403});
+  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
+    if(url.includes('/api/drive/picked?request='))return Response.json({done:true,ids:['picked-file-123']});
+    return off();}) as any,'https://x.example');
+  await assert.rejects(drive.picked('0123456789abcdef0123'),/switched off for Clem on Google's side/);
+  await assert.rejects(drive.list({}),/switched off for Clem on Google's side/);
+});
+
 test('a file renamed or moved to the trash from Clem is changed in Drive itself, in place',async()=>{
   const calls:{url:string;method?:string;body?:string}[]=[];
   const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const url=String(input);
