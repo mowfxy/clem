@@ -539,9 +539,10 @@ app.get("/api/drive/connect", async (req, res) => {
     access_type: "offline",
     prompt: "consent",
     state,
-    ...(pick ? { trigger_onepick: "true" } : {}),
+    // Without allow_folder_selection Google's picker only opens folders on click, so picking files could never pick one.
+    ...(pick ? { trigger_onepick: "true", allow_folder_selection: "true" } : {}),
     ...(pick === "files" ? { allow_multiple: "true" } : {}),
-    ...(pick === "folder" ? { allow_folder_selection: "true", mimetypes: "application/vnd.google-apps.folder" } : {}),
+    ...(pick === "folder" ? { mimetypes: "application/vnd.google-apps.folder" } : {}),
   }).toString();
   res.redirect(url.href);
 });

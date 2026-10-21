@@ -56,6 +56,8 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
       const got = await pickFromDrive(mode === "folder" ? "folder" : "files");
       if (mode === "folder") { const f = got.find((g) => g.mimeType === FOLDER); if (f) onFolder?.({ id: f.id, name: f.name }); }
       else if (got.some((g) => g.mimeType !== FOLDER)) onFiles?.(got.filter((g) => g.mimeType !== FOLDER));
+      // Only folders picked: open the first, so its files can be chosen here.
+      else if (got[0]) { setTrail([]); open(got[0]); }
       else void load();
     } catch (e) { setError(driveError(e)); }
     finally { setChoosing(false); }
