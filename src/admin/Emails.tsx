@@ -4,7 +4,7 @@ import {Avatar,Empty,ErrorNote,I,Modal,PageHead,Skeleton,ago,useLoad,useToast,wh
 import type {Go} from './AdminApp';
 
 type Entry={id:string;actor_email:string;action:string;target:string;detail:string;created_at:string};
-/** `id` is empty for an address typed in by hand that has no Clem account. */
+/** `id` is empty for an address typed in by hand that has no M4 Labs account. */
 type Recipient=Pick<Person,'id'|'email'|'username'|'display_name'>;
 const looksLikeEmail=(v:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
@@ -13,9 +13,9 @@ export function Emails({go}:{go:Go}){
   const {data,error,loading,reload}=useLoad(()=>adminApi<{entries:Entry[]}>('/admin/audit?q=email.send'),[]);
   const sent=data?.entries.filter(e=>e.action==='email.send')||[];
   return <div className="adm-page">
-    <PageHead scene="envelope" title="Emails" line="Write to anyone, or send one of Clem’s preset emails. The automatic emails keep going out on their own."><button className="adm-primary" onClick={()=>setComposing(true)}><I name="send" size={15}/>Send an email</button></PageHead>
+    <PageHead scene="envelope" title="Emails" line="Write to any M4 Labs account or address, or send one of Clem’s preset emails. The automatic emails keep going out on their own."><button className="adm-primary" onClick={()=>setComposing(true)}><I name="send" size={15}/>Send an email</button></PageHead>
     <section className="adm-card"><header><h2>Sent by staff</h2></header>
-      {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:sent.length?<ul className="adm-list plain">{sent.map(e=><li key={e.id}>{e.target.includes('@')?<div className="adm-row"><div><strong>{e.detail.split(' · ').slice(1).join(' · ')||e.detail}</strong><small>{e.actor_email} · {ago(e.created_at)}</small></div></div>:<button className="adm-row link" onClick={()=>go('users',e.target)}><div><strong>{e.detail.split(' · ').slice(1).join(' · ')||e.detail}</strong><small>{e.actor_email} · {ago(e.created_at)}</small></div><I name="arrow" size={15}/></button>}</li>)}</ul>:<Empty scene="plane" title="Nothing sent yet">Emails you send from here, or from a person’s page, are listed here.</Empty>}
+      {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:sent.length?<ul className="adm-list plain">{sent.map(e=><li key={e.id}>{e.target.includes('@')?<div className="adm-row"><div><strong>{e.detail.split(' · ').slice(1).join(' · ')||e.detail}</strong><small>{e.actor_email} · {ago(e.created_at)}</small></div></div>:<button className="adm-row link" onClick={()=>go('accounts',e.target)}><div><strong>{e.detail.split(' · ').slice(1).join(' · ')||e.detail}</strong><small>{e.actor_email} · {ago(e.created_at)}</small></div><I name="arrow" size={15}/></button>}</li>)}</ul>:<Empty scene="plane" title="Nothing sent yet">Emails you send from here, or from a person’s page, are listed here.</Empty>}
     </section>
     {composing&&<SendEmail onClose={()=>setComposing(false)} onSent={reload}/>}
   </div>;
@@ -58,8 +58,8 @@ export function SendEmail({person,onClose,onSent}:{person?:Recipient;onClose:()=
           {presets.data.presets.map(p=><button type="button" role="radio" aria-checked={kind===p.id} key={p.id} className={kind===p.id?'on':''} onClick={()=>setKind(p.id)}><strong>{p.label}</strong><small>{p.about}</small></button>)}
         </div>}
         {kind==='custom'&&<>
-          <label>Subject<input value={subject} onChange={e=>setSubject(e.target.value)} required maxLength={150} placeholder="About your Clem account"/></label>
-          <label>Message<textarea value={message} onChange={e=>setMessage(e.target.value)} required minLength={2} rows={7} maxLength={10000} placeholder={'Write it like a normal email. Line breaks are kept.\nIt starts with “Hi” and their first name when Clem knows it.'}/></label>
+          <label>Subject<input value={subject} onChange={e=>setSubject(e.target.value)} required maxLength={150} placeholder="About your M4 Labs account"/></label>
+          <label>Message<textarea value={message} onChange={e=>setMessage(e.target.value)} required minLength={2} rows={7} maxLength={10000} placeholder={'Write it like a normal email. Line breaks are kept.\nIt starts with “Hi” and their first name when we know it.'}/></label>
         </>}
         {kind==='update'&&<>
           <label>Version<input value={version} onChange={e=>setVersion(e.target.value)} required pattern="\d+\.\d+\.\d+(-[\w.]+)?" placeholder="0.3.0"/></label>
@@ -87,7 +87,7 @@ function PersonPicker({onPick}:{onPick:(p:Recipient)=>void}){
   return <div className="adm-mail-picker">
     <label className="adm-search"><I name="search"/><input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();if(byHand)pickTyped();else if(users.length===1&&users[0].email)onPick(users[0]);}}} placeholder="Search people, or type any email address" aria-label="Find a person" autoFocus/></label>
     {query&&<div className="adm-mail-results">
-      {byHand&&<button type="button" className="adm-person link" onClick={pickTyped}><span className="adm-mail-at" aria-hidden="true">@</span><span><strong>Send to {typed}</strong><small>Not a Clem account</small></span></button>}
+      {byHand&&<button type="button" className="adm-person link" onClick={pickTyped}><span className="adm-mail-at" aria-hidden="true">@</span><span><strong>Send to {typed}</strong><small>Not an M4 Labs account</small></span></button>}
       {loading&&!users.length?<Skeleton rows={2}/>:users.length?users.map(p=><button type="button" key={p.id} className="adm-person link" disabled={!p.email} onClick={()=>onPick(p)}><Avatar person={p} size={28}/><span><strong>{who(p)}</strong><small>{p.email||'No email on record'}</small></span></button>):!byHand&&<p className="adm-muted">No one matches. Type a full email address to write to anyone.</p>}
     </div>}
   </div>;

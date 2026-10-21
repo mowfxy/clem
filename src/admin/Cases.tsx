@@ -14,7 +14,7 @@ export function Cases({go,selected}:{go:Go;selected?:string}){
   useEffect(()=>{const t=setTimeout(()=>setQuery(q.trim()),250);return()=>clearTimeout(t);},[q]);
   const list=useLoad(()=>adminApi<{cases:CaseRow[]}>(`/admin/cases?status=${status}&q=${encodeURIComponent(query)}`),[status,query]);
   return <div className="adm-page adm-inbox-page">
-    <PageHead scene="lifebuoy" title="Support cases" line="Questions, bug reports and ideas from people using Clem."><button className="adm-ghost" onClick={list.reload}><I name="refresh"/>Refresh</button></PageHead>
+    <PageHead product="clem" scene="lifebuoy" title="Support cases" line="Questions, bug reports and ideas from people using Clem."><button className="adm-ghost" onClick={list.reload}><I name="refresh"/>Refresh</button></PageHead>
     <div className="adm-inbox">
       <section className="adm-inbox-list">
         <div className="adm-inbox-tools"><label className="adm-search"><I name="search"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search cases" aria-label="Search cases"/></label>
@@ -74,7 +74,7 @@ function CaseDetail({id,go,onChanged}:{id:string;go:Go;onChanged:()=>void}){
       </div>
       <aside className="adm-case-side">
         <h3>Requester</h3>
-        <button className="adm-person link" onClick={()=>go('users',c.owner_id)}><Avatar person={{id:c.owner_id,email:c.email,username:c.username}}/><span><strong>{who({email:c.email,username:c.username,display_name:c.display_name})}</strong><small>{c.email}</small></span></button>
+        <button className="adm-person link" onClick={()=>go('accounts',c.owner_id)}><Avatar person={{id:c.owner_id,email:c.email,username:c.username}}/><span><strong>{who({email:c.email,username:c.username,display_name:c.display_name})}</strong><small>{c.email}</small></span></button>
         <dl className="adm-facts single"><div><dt>Last seen</dt><dd>{ago(c.last_seen_at)}</dd></div><div><dt>Cases</dt><dd>{otherCases.length+1}</dd></div></dl>
         {!!otherCases.length&&<><h3>Other cases</h3>{otherCases.map(o=><button key={o.id} className="adm-row link" onClick={()=>go('cases',o.id)}><div><strong>{o.subject}</strong><small>{o.status} · {date(o.created_at)}</small></div></button>)}</>}
       </aside>

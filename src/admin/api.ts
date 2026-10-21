@@ -10,11 +10,11 @@ export async function adminClient(){
   let config=fallback;
   try{const r=await fetch('/api/supabase/config',{signal:AbortSignal.timeout(5000)});const data=await r.json();if(data.url&&data.key)config=data;}catch{/* Static preview: use the public fallback. */}
   // PKCE returns Google sign-ins as ?code=, leaving the hash free for portal routes.
-  client=createClient(config.url,config.key,{auth:{storageKey:'clem-admin-auth',persistSession:true,autoRefreshToken:true,flowType:'pkce',detectSessionInUrl:true}});
+  client=createClient(config.url,config.key,{auth:{storageKey:'m4labs-admin-auth',persistSession:true,autoRefreshToken:true,flowType:'pkce',detectSessionInUrl:true}});
   return client;
 }
 
-export class AdminError extends Error{constructor(message:string,public status:number){super(message);}}
+export class AdminError extends Error{constructor(message:string,public status:number,public code?:string){super(message);}}
 
 // Local preview with fixture data: http://localhost:5173/?demo#/admin. Never active in production builds.
 export const demo=import.meta.env.DEV&&new URLSearchParams(location.search).has('demo');
@@ -31,14 +31,15 @@ export async function adminApi<T=any>(path:string,body?:unknown):Promise<T>{
     signal:AbortSignal.timeout(20000),
   }).catch(()=>{throw new AdminError('The account service could not be reached. Check your connection.',0);});
   const result=await response.json().catch(()=>({}));
-  if(!response.ok)throw new AdminError(result.error||`Request failed (${response.status}).`,response.status);
+  if(!response.ok)throw new AdminError(result.error||`Request failed (${response.status}).`,response.status,result.code);
   return result as T;
 }
 
 export type Plan='owner'|'complimentary'|'subscribed'|'cancelling'|'past_due'|'lapsed'|'free';
-export type Person={id:string;email?:string|null;username?:string|null;display_name?:string|null;first_seen_at?:string|null;last_seen_at?:string|null;setup_step?:number|null;suspended:boolean;suspended_until?:string|null;cases:number;plan:Plan;until?:string|null};
+/** An M4 Labs account. `products` lists the lab products it has used; the Clem fields are empty when that's none. */
+export type Person={id:string;products?:string[];created_at?:string|null;last_sign_in_at?:string|null;email?:string|null;username?:string|null;display_name?:string|null;first_seen_at?:string|null;last_seen_at?:string|null;setup_step?:number|null;suspended:boolean;suspended_until?:string|null;cases:number;plan:Plan;until?:string|null};
 export type CaseRow={id:string;owner_id:string;category:string;subject:string;created_at:string;status:'open'|'pending'|'resolved'|'closed';priority:'low'|'normal'|'high'|'urgent';assignee_id?:string|null;updated_at:string;email?:string|null;username?:string|null;replies:number;awaiting_staff:boolean};
-export type Staff={id:string;email:string;role:'owner'|'admin'|'support';mfa:boolean;lemon:boolean;directory:boolean;requireMfa:boolean};
+export type Staff={id:string;email:string;role:'owner'|'admin'|'support';mfa:boolean;lemon:boolean;directory:boolean;requireMfa:boolean;products?:string[]};
 
 /** Preset emails are sent by the website's own server (it holds the mail account), not the account service. */
 export async function mailApi<T=any>(path:string,body?:unknown):Promise<T>{
@@ -52,7 +53,7 @@ export async function mailApi<T=any>(path:string,body?:unknown):Promise<T>{
     headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},
     body:body===undefined?undefined:JSON.stringify(body),
     signal:AbortSignal.timeout(30000),
-  }).catch(()=>{throw new AdminError('The Clem website could not be reached. Check your connection.',0);});
+  }).catch(()=>{throw new AdminError('The admin service could not be reached. Check your connection.',0);});
   const result=await response.json().catch(()=>({}));
   if(!response.ok)throw new AdminError(result.error||`Request failed (${response.status}).`,response.status);
   return result as T;

@@ -307,3 +307,42 @@ test("database worker refuses every request when its secret is missing", async (
   try { assert.equal((await database.fetch(request(), { ...env, DATABASE_SECRET: "undefined" })).status, 200); }
   finally { if (!had) delete subtle.timingSafeEqual; }
 });
+
+test("accounts list every M4 Labs account from the directory, and staff without an authenticator get MFA_REQUIRED", async () => {
+  const { env } = setup(), original = globalThis.fetch;
+  env.SUPABASE_SERVICE_ROLE_KEY = "service";
+  const owner = { id: "owner-id", email: "m@mohamedmowafy.com", email_confirmed_at: "2026-09-19" };
+  const clem = { id: "clem-id", email: "clem@example.com", email_confirmed_at: "2026-09-19" };
+  const directory = [
+    { id: "owner-id", email: owner.email, created_at: "2026-09-01T00:00:00Z", last_sign_in_at: new Date().toISOString() },
+    { id: "clem-id", email: clem.email, created_at: "2026-09-02T00:00:00Z", last_sign_in_at: null },
+    { id: "fresh-id", email: "fresh@example.com", created_at: new Date().toISOString(), last_sign_in_at: new Date().toISOString() },
+  ];
+  let current: any = clem;
+  globalThis.fetch = (async (url: string) => {
+    if (String(url).includes("/admin/users?")) return Response.json({ users: directory });
+    if (String(url).includes("/admin/users/fresh-id")) return Response.json({ ...directory[2], app_metadata: { providers: ["google"] } });
+    return Response.json(current);
+  }) as any;
+  const call = (path: string) => worker.fetch(new Request("https://account.example" + path, { headers: { Authorization: "Bearer x.e30.y" } }), env);
+  try {
+    await call("/entitlement");
+    current = owner;
+    await call("/entitlement");
+    const all = await (await call("/admin/users")).json();
+    assert.equal(all.total, 3);
+    assert.deepEqual(all.users.find((u: any) => u.id === "fresh-id").products, []);
+    assert.deepEqual(all.users.find((u: any) => u.id === "clem-id").products, ["clem"]);
+    assert.deepEqual((await (await call("/admin/users?plan=account")).json()).users.map((u: any) => u.id), ["fresh-id"]);
+    const fresh = await (await call("/admin/users/fresh-id")).json();
+    assert.equal(fresh.user.email, "fresh@example.com");
+    assert.equal((await (await call("/admin/overview")).json()).accounts.total, 3);
+
+    env.ADMIN_REQUIRE_MFA = "true";
+    const denied = await call("/admin/me");
+    assert.equal(denied.status, 403);
+    assert.equal((await denied.json()).code, "MFA_REQUIRED");
+  } finally {
+    globalThis.fetch = original;
+  }
+});

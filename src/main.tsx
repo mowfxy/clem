@@ -39,6 +39,6 @@ applyTheme();
 if(desktop)void import('./desktop/window-tone').then(m=>m.followWindowTone());
 // Supabase sends OAuth returns it doesn't recognise to clem.m4labs.xyz. If admin.m4labs.xyz started this sign-in
 // (it sets a short-lived cookie), hand the code back there: only the admin origin holds the PKCE verifier.
-const adminReturn=!desktop&&!adminHost&&location.hostname.endsWith('m4labs.xyz')&&/(?:^|;\s*)clem_admin_oauth=1/.test(document.cookie)&&/[?&](code|error)=/.test(location.search);
-if(adminReturn){document.cookie='clem_admin_oauth=; domain=m4labs.xyz; path=/; max-age=0; secure; samesite=lax';location.replace('https://admin.m4labs.xyz/'+location.search);}
+const adminReturn=!desktop&&!adminHost&&location.hostname.endsWith('m4labs.xyz')&&/(?:^|;\s*)m4labs_admin_oauth=1/.test(document.cookie)&&/[?&](code|error)=/.test(location.search);
+if(adminReturn){document.cookie='m4labs_admin_oauth=; domain=m4labs.xyz; path=/; max-age=0; secure; samesite=lax';location.replace('https://admin.m4labs.xyz/'+location.search);}
 else createRoot(document.getElementById('root')!).render(<React.StrictMode>{desktop?<Suspense fallback={<main className="workspace-loading">Opening Clem…</main>}><DesktopRoot/></Suspense>:<Root/>}</React.StrictMode>);

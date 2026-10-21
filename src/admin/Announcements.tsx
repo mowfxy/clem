@@ -16,7 +16,7 @@ export function Announcements({staff}:{staff:Staff}){
   async function publish(){setBusy(true);try{await adminApi('/admin/announcements',{title:draft.title,body:draft.body,tone:draft.tone,link:draft.link||undefined,days:draft.days==='none'?null:Number(draft.days)});toast('Published to the app');setDraft(blank);setComposing(false);await reload();}catch(e){toast((e as Error).message,'error');}finally{setBusy(false);}}
   async function archive(id:string){try{await adminApi(`/admin/announcements/${id}/archive`,{});toast('Announcement taken down');await reload();}catch(e){toast((e as Error).message,'error');}}
   return <div className="adm-page">
-    <PageHead scene="envelope" title="Announcements" line="Short notes shown in everyone’s Clem app, such as maintenance or a new release.">{canEdit&&<button className="adm-primary" onClick={()=>setComposing(true)}><I name="megaphone" size={15}/>New announcement</button>}</PageHead>
+    <PageHead product="clem" scene="envelope" title="Announcements" line="Short notes shown in everyone’s Clem app, such as maintenance or a new release.">{canEdit&&<button className="adm-primary" onClick={()=>setComposing(true)}><I name="megaphone" size={15}/>New announcement</button>}</PageHead>
     {composing&&<Modal wide title="New announcement" line="Shown in everyone’s Clem app, just above the account button." onClose={()=>setComposing(false)}>
       <form className="adm-form adm-compose" onSubmit={e=>{e.preventDefault();void publish();}}>
         <div className="adm-compose-fields">

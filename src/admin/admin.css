@@ -1,4 +1,4 @@
-/* Clem Admin — the app's own look: warm near-black surfaces, ivory ink, Mowafy Serif headings,
+/* M4 Labs admin base — Clem's own look: warm near-black surfaces, ivory ink, Mowafy Serif headings,
    drawn icons and an ink illustration at the top of every page. No brand hue beyond the illustrations. */
 .adm-root,.adm-modal{--a-bg:#141414;--a-side:#111;--a-card:#1b1b19;--a-raised:#232321;--a-field:#161615;--a-line:#2c2c29;--a-line-2:#3a3a36;--a-ink:#f0efeb;--a-soft:#b5b4ad;--a-muted:#85847e;--a-faint:#6f6e68;
   --a-ok:#a9c9a2;--a-warn:#e3c07e;--a-danger:#e08a7e;--a-blue:#8197e2;--a-ease:cubic-bezier(.2,.8,.2,1)}
@@ -457,10 +457,6 @@ html:has(.adm-root),body:has(.adm-root){background:#0b0b0a}
 .adm-brand{font-family:var(--lab-mono);align-items:center;gap:12px;padding:4px 10px 14px}
 .adm-brand em{font-family:var(--lab-mono);letter-spacing:.04em;text-transform:none;border-radius:6px;padding:4px 7px}
 .adm-brand.small .adm-lab-logo{font-size:21px}
-.adm-project{display:flex;align-items:center;gap:7px;margin:0 10px 22px;padding:8px 10px;border:1px solid var(--a-line);border-radius:6px;color:var(--a-ink)}
-.adm-project .clem-mark{color:var(--a-ink)}
-.adm-project .wordmark{font-size:16px}
-.adm-project small{margin-left:auto;color:var(--a-faint);font-size:11px}
 
 /* navigation: ./sections */
 .adm-nav{border-right-color:var(--a-line)}
@@ -490,3 +486,24 @@ html:has(.adm-root),body:has(.adm-root){background:#0b0b0a}
 .adm-auth-card h1{font-size:26px;margin:0}
 .adm-auth-home{font:400 13px/1 var(--lab-mono);color:var(--a-muted)}
 .adm-auth-home:hover{color:var(--a-ink)}
+
+/* lab-wide sections first, then one group per product (src/admin/products.ts) */
+.adm-nav-product{display:flex;align-items:center;gap:7px;color:var(--a-soft)}
+.adm-nav-product .clem-mark{color:var(--a-ink)}
+.adm-nav-product a{margin-left:auto;display:inline-flex;color:var(--a-faint);padding:2px}
+.adm-nav-product a:hover{color:var(--a-ink)}
+.adm-section-label{margin:6px 0 10px;color:var(--a-muted);font-size:12px!important;letter-spacing:.06em!important;text-transform:lowercase}
+.adm-section-label::before{content:'## ';color:var(--a-faint)}
+.adm-stats+.adm-section-label{margin-top:28px}
+.adm-stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:720px){.adm-stats.three{grid-template-columns:1fr}}
+.adm-loading-logo .adm-lab-logo{font-size:40px;animation:adm-pulse 1.35s ease-in-out infinite}
+@keyframes adm-pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.adm-loading-logo .adm-lab-logo{animation:none}}
+/* authenticator setup */
+button.adm-mfa-tip{background:none;text-align:left;cursor:pointer;width:100%}
+.adm-mfa-qr{justify-self:center;width:176px;height:176px;padding:10px;border-radius:8px;background:#f4f2ec}
+.adm-mfa-secret{color:var(--a-muted);font-size:12px}
+.adm-mfa-secret summary{cursor:pointer}
+.adm-mfa-secret code{display:block;margin-top:6px;padding:8px 10px;border:1px solid var(--a-line);border-radius:6px;color:var(--a-ink);word-break:break-all;user-select:all}
+.adm-root button.adm-quiet-link{border:0;background:none}

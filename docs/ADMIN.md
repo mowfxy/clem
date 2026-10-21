@@ -1,8 +1,10 @@
 # M4 Labs admin — admin.m4labs.xyz
 
-Staff use the portal to see how Clem is doing, moderate accounts, answer support cases, publish in-app announcements and review an audit log. Clem is free, so the portal has no billing screens: the overview tracks people, activity and progress through the app's four-step welcome.
+Staff use the portal to run M4 Labs: every lab account, staff email, the team and an audit log, plus a section for each lab product. Clem is the first product; its group has stats, support cases and in-app announcements. The lab's products are free, so there are no billing screens.
 
-The portal is the M4 Labs admin, with Clem (the lab's first project) as the project it serves. It uses the lab's terminal look from m4labs.xyz: Fragment Mono, the M4 logo, near-black surfaces with hairlines, `./section` navigation and a page head that shows the command that opened the page (`m4labs:~$ clem admin people`). It is dark only. The style layer is at the end of `src/admin/admin.css`.
+An **M4 Labs account** is a Supabase account; it signs in to every lab product. **Accounts** lists all of them (from the Supabase directory) with the products each has used, so someone who signed up but never opened Clem still shows, marked “Account only”. Products are registered in `src/admin/products.ts`; product pages live at `#/<product>/<section>` (`#/clem/stats`), lab pages at `#/<section>` (`#/accounts`).
+
+The portal uses the lab's terminal look from m4labs.xyz: Fragment Mono, the M4 logo and favicon (`public/m4labs/`; `vercel.json` redirects the favicon paths there on the admin host), near-black surfaces with hairlines, `./section` navigation and a page head that shows the command that opened the page (`m4labs:~$ admin accounts`, `m4labs:~$ admin clem stats`). It is dark only. The style layer is at the end of `src/admin/admin.css`.
 
 ## How it fits together
 
@@ -18,8 +20,8 @@ Entitlement keeps working if the Worker is deployed before the migration: missin
 | Role | Can |
 | --- | --- |
 | owner | Everything, including adding and removing staff. Owners are the verified emails in `cloudflare/account-policy.js`. |
-| admin | People, suspensions, announcements, audit log. |
-| support | Read people; answer, note and triage support cases; add staff notes. |
+| admin | Accounts, suspensions, email, every product's announcements, audit log. |
+| support | Read accounts; answer, note and triage support cases; add staff notes. |
 
 Every mutation writes to `desktop_audit_log`. Owner accounts cannot be suspended, and staff cannot suspend themselves.
 
@@ -38,8 +40,8 @@ People open cases from the app (Settings → Help & support) or the website. Sta
 1. Apply the schema: `npm run db:admin` (runs `wrangler d1 execute clem-workspaces --remote --file cloudflare/admin-schema.sql`).
 2. Deploy the Worker: `npm run deploy:accounts`.
 3. Optional Worker settings:
-   - `ADMIN_REQUIRE_MFA="true"` (variable) requires authenticator verification for staff. Recommended once every staff member has an authenticator.
-   - `SUPABASE_SERVICE_ROLE_KEY` (secret, `wrangler secret put`) adds sign-in details (providers, MFA, last sign-in) to person pages. Without it, emails come from the app's own activity records.
+   - `ADMIN_REQUIRE_MFA="true"` (variable, on) requires authenticator verification for staff. The Worker answers `code: "MFA_REQUIRED"` and the portal walks the person through adding a TOTP authenticator to their M4 Labs account on the spot.
+   - `SUPABASE_SERVICE_ROLE_KEY` (secret, set) is what lets **Accounts** list every M4 Labs account and adds sign-in details to account pages. Without it the list falls back to the people Clem has seen.
 4. Add `admin.m4labs.xyz` as a domain of the Vercel project that serves clem.m4labs.xyz, then deploy the website. No separate build is needed.
 
 The Worker allows browser requests from `https://admin.m4labs.xyz` and local Vite (`localhost:5173`) only (`cloudflare/lib/http.js`).

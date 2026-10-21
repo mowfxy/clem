@@ -1,4 +1,5 @@
 export const ownerEmails = new Set([
+  "1@mohamedmowafy.com",
   "m@mohamedmowafy.com",
   "mo.mowafymxis@gmail.com",
 ]);

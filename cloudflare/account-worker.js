@@ -477,7 +477,7 @@ async function route(request, env) {
       }
       return json({ error: "Not found" }, 404);
     } catch (error) {
-      if (error instanceof HttpError) return json({ error: error.message }, error.status);
+      if (error instanceof HttpError) return json({ error: error.message, ...(error.code && { code: error.code }) }, error.status);
       return json(
         {
           error:

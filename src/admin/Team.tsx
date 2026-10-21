@@ -3,7 +3,7 @@ import {confirmDialog} from '../dialogs';
 import {adminApi,type Staff} from './api';
 import {Avatar,Badge,ErrorNote,I,Skeleton,useLoad,useToast,PageHead,Select,Modal} from './ui';
 
-const describe={owner:'Everything, including the team.',admin:'People, access, moderation and announcements.',support:'Read people and answer support cases.'};
+const describe={owner:'Everything, including the team.',admin:'Accounts, access, moderation, email and every product’s announcements.',support:'Read accounts and answer support cases in every product.'};
 const tone=(role:string)=>role==='owner'?'ink':role==='admin'?'ok':'neutral';
 
 export function Team({staff}:{staff:Staff}){
@@ -14,9 +14,9 @@ export function Team({staff}:{staff:Staff}){
   const owner=staff.role==='owner';
   async function run(path:string,body:unknown,done:string){setBusy(true);try{await adminApi(path,body);toast(done);await reload();return true;}catch(e){toast((e as Error).message,'error');return false;}finally{setBusy(false);}}
   return <div className="adm-page">
-    <PageHead scene="key" title="Team" line="Who can use this portal, and what they can do.">{owner&&<button className="adm-primary" onClick={()=>setAdding(true)}><I name="users" size={15}/>Add teammate</button>}</PageHead>
+    <PageHead scene="key" title="Team" line="Who can use the M4 Labs admin, and what they can do. Roles apply across every lab product.">{owner&&<button className="adm-primary" onClick={()=>setAdding(true)}><I name="users" size={15}/>Add teammate</button>}</PageHead>
     <div className="adm-roles">{Object.entries(describe).map(([role,text])=><div key={role}><Badge tone={tone(role)}>{role}</Badge><p>{text}</p></div>)}</div>
-    {adding&&<Modal title="Add a teammate" line="They need to have signed in to the Clem app once. Owners are set in the account service code." onClose={()=>setAdding(false)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void run('/admin/team',{email:String(f.get('email')),role:String(f.get('role'))},'Team member added').then(ok=>{if(ok)setAdding(false);});}}>
+    {adding&&<Modal title="Add a teammate" line="They need an M4 Labs account, which they get by signing in to any lab product. Owners are set in the account service code." onClose={()=>setAdding(false)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void run('/admin/team',{email:String(f.get('email')),role:String(f.get('role'))},'Team member added').then(ok=>{if(ok)setAdding(false);});}}>
       <label>Email<input name="email" type="email" required placeholder="teammate@example.com" autoFocus/></label>
       <label>Role<Select name="role" options={[{value:'support',label:'Support'},{value:'admin',label:'Admin'}]}/></label>
       <footer><button type="button" onClick={()=>setAdding(false)}>Cancel</button><button className="adm-primary" disabled={busy}>Add to team</button></footer>

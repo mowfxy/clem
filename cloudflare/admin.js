@@ -1,4 +1,5 @@
-// Staff API for admin.m4labs.xyz. Every mutation is authorised by role and written to the audit log.
+// Staff API for admin.m4labs.xyz, the M4 Labs admin: lab-wide accounts and team, plus each product's own sections
+// (Clem today). Every mutation is authorised by role and written to the audit log.
 import { ownerEligible, subscriptionActive } from "./account-policy.js";
 import { grantActive } from "./lib/account-state.js";
 import { HttpError, json, lemon, now, readJson, text } from "./lib/http.js";
@@ -112,6 +113,63 @@ const planSql = `CASE WHEN EXISTS(SELECT 1 FROM desktop_owner_grants o WHERE o.u
  WHEN EXISTS(SELECT 1 FROM desktop_subscriptions x WHERE x.user_id=people.id AND x.status IN ('past_due','unpaid')) THEN 'past_due'
  WHEN EXISTS(SELECT 1 FROM desktop_subscriptions x WHERE x.user_id=people.id) THEN 'lapsed' ELSE 'free' END`;
 
+// M4 Labs accounts live in Supabase and sign in to every lab product. With the service key the portal lists all of
+// them; without it, it falls back to the people Clem has seen.
+let directoryCache = { at: 0, users: null };
+async function directory(env) {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  if (directoryCache.users && Date.now() - directoryCache.at < 60000) return directoryCache.users;
+  const users = [];
+  for (let page = 1; page <= 20; page++) {
+    const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=1000`, {
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE_KEY },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) throw new HttpError(502, "The M4 Labs account directory could not be read.");
+    const batch = (await r.json()).users || [];
+    for (const u of batch) users.push({ id: u.id, email: u.email || null, created_at: u.created_at || null, last_sign_in_at: u.last_sign_in_at || null });
+    if (batch.length < 1000) break;
+  }
+  directoryCache = { at: Date.now(), users };
+  return users;
+}
+
+// Every M4 Labs account, joined to what each product knows about it. Filters other than "account" are Clem's.
+async function accounts(env, { q = "", filter = "all", limit = 500 } = {}) {
+  const listed = await directory(env).catch(() => null);
+  if (!listed) {
+    const found = await people(env, { q, filter, limit });
+    return { ...found, users: found.users.map((u) => ({ ...u, products: ["clem"] })), directory: false };
+  }
+  const clem = await people(env, { limit: 100000 });
+  const byId = new Map(clem.users.map((u) => [u.id, u]));
+  const merged = listed.map((a) => {
+    const c = byId.get(a.id);
+    byId.delete(a.id);
+    return c ? { ...c, email: c.email || a.email, created_at: a.created_at, last_sign_in_at: a.last_sign_in_at, products: ["clem"] }
+      : { id: a.id, email: a.email, created_at: a.created_at, last_sign_in_at: a.last_sign_in_at, suspended: false, cases: 0, plan: "free", products: [] };
+  });
+  // Clem records whose account is gone from the directory stay visible so their cases and history are reachable.
+  for (const c of byId.values()) merged.push({ ...c, products: ["clem"] });
+  const week = Date.now() - 7 * day;
+  const after = (v) => !!v && Date.parse(v) > week;
+  const needle = q.toLowerCase();
+  const tests = {
+    all: () => true,
+    active: (u) => after(u.last_seen_at) || after(u.last_sign_in_at),
+    new: (u) => after(u.created_at || u.first_seen_at),
+    setup: (u) => u.products.includes("clem") && (u.setup_step || 0) < 4,
+    suspended: (u) => u.suspended,
+    account: (u) => !u.products.length,
+  };
+  const test = tests[filter] || (() => false);
+  const latest = (u) => [u.last_seen_at, u.last_sign_in_at, u.created_at, u.first_seen_at].filter(Boolean).sort().pop() || "";
+  const users = merged
+    .filter((u) => test(u) && (!needle || u.id === q || [u.email, u.username, u.display_name].some((v) => String(v || "").toLowerCase().includes(needle))))
+    .sort((a, b) => latest(b).localeCompare(latest(a)));
+  return { users: users.slice(0, limit), total: users.length, directory: true };
+}
+
 async function people(env, { q = "", filter = "all", limit = 500 } = {}) {
   const like = "%" + q.toLowerCase() + "%";
   const where = ["(?='' OR lower(COALESCE(email,'')) LIKE ? OR lower(COALESCE(username,'')) LIKE ? OR lower(COALESCE(display_name,'')) LIKE ? OR id=?)"];
@@ -187,19 +245,20 @@ export async function handleAdmin(request, env, user, path, authorization) {
   if (!role) throw new HttpError(403, "This account does not have staff access.");
   const aal = claims(authorization).aal;
   if (env.ADMIN_REQUIRE_MFA === "true" && aal !== "aal2")
-    throw new HttpError(403, "Staff access requires authenticator verification. Add an authenticator in Clem security settings.");
+    throw new HttpError(403, "Staff access needs an authenticator. Set one up to continue.", "MFA_REQUIRED");
   const staff = { id: user.id, email: String(user.email || ""), role, mfa: aal === "aal2" };
   const get = request.method === "GET";
   const params = new URL(request.url).searchParams;
   const body = get ? {} : await readJson(request);
   let m;
 
-  if (path === "/admin/me") return json({ ...staff, lemon: !!env.LEMON_API_KEY, directory: !!env.SUPABASE_SERVICE_ROLE_KEY, requireMfa: env.ADMIN_REQUIRE_MFA === "true" });
+  if (path === "/admin/me") return json({ ...staff, lemon: !!env.LEMON_API_KEY, directory: !!env.SUPABASE_SERVICE_ROLE_KEY, requireMfa: env.ADMIN_REQUIRE_MFA === "true", products: ["clem"] });
 
   if (path === "/admin/overview" && get) {
     const since = (n) => new Date(Date.now() - n * day).toISOString();
     // Counted in SQL so totals stay exact however many people use Clem.
-    const [totals, steps, joined, caseTotals, recentCases] = await Promise.all([
+    const [listed, totals, steps, joined, caseTotals, recentCases] = await Promise.all([
+      directory(env).catch(() => null),
       first(env, `SELECT COUNT(*) AS users, SUM(first_seen_at>?) AS newThisWeek, SUM(last_seen_at>?) AS activeThisWeek, SUM(last_seen_at>?) AS activeToday, SUM(suspended) AS suspended FROM (${peopleSql})`, since(7), since(7), since(1), now()),
       all(env, `SELECT COALESCE(setup_step,0) AS step, COUNT(*) AS n FROM (${peopleSql}) GROUP BY COALESCE(setup_step,0)`, now()),
       all(env, `SELECT substr(first_seen_at,1,10) AS date, COUNT(*) AS n FROM (${peopleSql}) WHERE first_seen_at>=? GROUP BY substr(first_seen_at,1,10)`, now(), since(14).slice(0, 10)),
@@ -213,6 +272,8 @@ export async function handleAdmin(request, env, user, path, authorization) {
       return { date, count: joined.find((r) => r.date === date)?.n || 0 };
     });
     return json({
+      // Lab-wide: every M4 Labs account, whichever products it uses. Null when the directory is not configured.
+      accounts: listed && { total: listed.length, newThisWeek: listed.filter((a) => a.created_at > since(7)).length, activeThisWeek: listed.filter((a) => a.last_sign_in_at > since(7)).length },
       users: totals.users,
       newThisWeek: totals.newThisWeek || 0,
       activeThisWeek: totals.activeThisWeek || 0,
@@ -281,14 +342,25 @@ export async function handleAdmin(request, env, user, path, authorization) {
   }
 
   if (path === "/admin/users" && get) {
-    const found = await people(env, { q: (params.get("q") || "").trim().slice(0, 120), filter: params.get("plan") || "all" });
-    return json(found);
+    return json(await accounts(env, { q: (params.get("q") || "").trim().slice(0, 120), filter: params.get("plan") || "all" }));
   }
 
   if ((m = /^\/admin\/users\/([\w-]{3,64})$/.exec(path)) && get) {
     const userId = m[1];
     const [row] = await all(env, `${peopleSql} WHERE ids.user_id=?`, now(), userId);
-    if (!row) throw new HttpError(404, "No Clem record for this person.");
+    if (!row) {
+      // An M4 Labs account that has not used a product yet: show what the directory knows.
+      const account = await supabaseUser(env, userId).catch(() => null);
+      if (!account) throw new HttpError(404, "No M4 Labs account with this ID.");
+      const [notes, history] = await Promise.all([
+        all(env, "SELECT * FROM desktop_staff_notes WHERE user_id=? ORDER BY created_at DESC", userId),
+        ROLE_RANK[staff.role] >= ROLE_RANK.admin ? all(env, "SELECT * FROM desktop_audit_log WHERE target=? ORDER BY created_at DESC LIMIT 40", userId) : [],
+      ]);
+      return json({
+        user: { id: userId, email: account.email, created_at: account.created_at, last_sign_in_at: account.last_sign_in_at, suspended: false, cases: 0, plan: "free", products: [] },
+        owner: false, moderation: null, notes, cases: [], directory: account, history,
+      });
+    }
     const context = await planContext(env, [userId]);
     const [moderation, notes, cases, directory] = await Promise.all([
       first(env, "SELECT * FROM desktop_moderation WHERE user_id=?", userId),
@@ -297,7 +369,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
       supabaseUser(env, userId).catch(() => null),
     ]);
     return json({
-      user: { ...row, suspended: !!row.suspended, ...planFor(userId, context) },
+      user: { ...row, suspended: !!row.suspended, ...planFor(userId, context), products: ["clem"] },
       subscriptions: context.subs,
       grants: context.grants.map((g) => ({ ...g, active: grantActive(g) })),
       owner: context.owners.has(userId),
@@ -442,9 +514,10 @@ export async function handleAdmin(request, env, user, path, authorization) {
     const email = text(body.email, 200).toLowerCase();
     const role = body.role === "support" ? "support" : "admin";
     // Activity rows refresh on sign-in, so after an email change two accounts can briefly share one address.
-    const matches = await all(env, "SELECT user_id FROM desktop_activity WHERE email=? LIMIT 2", email);
-    if (!matches.length) throw new HttpError(404, "That person needs to sign in to the Clem app once before they can be added.");
-    if (matches.length > 1) throw new HttpError(409, "More than one Clem account has used this email, so it cannot be matched to one person yet.");
+    let matches = await all(env, "SELECT user_id FROM desktop_activity WHERE email=? LIMIT 2", email);
+    if (!matches.length) matches = ((await directory(env).catch(() => null)) || []).filter((a) => a.email?.toLowerCase() === email).map((a) => ({ user_id: a.id }));
+    if (!matches.length) throw new HttpError(404, "That person needs an M4 Labs account first. They can create one by signing in to any lab product.");
+    if (matches.length > 1) throw new HttpError(409, "More than one account has used this email, so it cannot be matched to one person yet.");
     const [person] = matches;
     await run(env, "INSERT INTO desktop_admins(user_id,email,role,added_by,added_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,email=excluded.email", person.user_id, email, role, staff.id, now());
     await audit(env, staff, "team.add", person.user_id, `${email} as ${role}`);

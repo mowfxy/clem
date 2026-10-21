@@ -4,13 +4,14 @@ import type {Scene} from '../vectorFilm';
 import {Icon} from '../Icons';
 import {copyText} from '../clipboard';
 
-/** The portal draws from Clem's icon set, so a project's admin and its app read as one family. */
+/** The portal draws from Clem's drawn icon set, the lab's first and shared set. */
 export function I({name,size=17}:{name:string;size?:number}){return <Icon name={name} size={size}/>;}
 
-/** Clem is free, so a person's standing is about access and progress, never billing. */
-export function PersonStatus({person}:{person:Pick<Person,'plan'|'suspended'|'setup_step'>}){
+/** The lab's products are free, so an account's standing is about access and progress, never billing. */
+export function PersonStatus({person}:{person:Pick<Person,'plan'|'suspended'|'setup_step'|'products'>}){
   if(person.suspended)return <Badge tone="danger">Suspended</Badge>;
   if(person.plan==='owner')return <Badge tone="ink">Owner</Badge>;
+  if(person.products&&!person.products.length)return <Badge tone="quiet">Account only</Badge>;
   if((person.setup_step??0)<4)return <Badge tone="quiet">Setup {person.setup_step??0}/4</Badge>;
   return <Badge tone="ok">Active</Badge>;
 }
@@ -37,10 +38,11 @@ export function Empty({icon='spark',title,children}:{icon?:string;scene?:Scene;t
   return <div className="adm-empty"><span className="adm-empty-mark"><I name={icon} size={20}/></span><h3>{title}</h3>{children&&<p>{children}</p>}</div>;
 }
 
-/** A page header in the manner of m4labs.xyz: the command that opened the page, then its title and line. */
-export function PageHead({title,line,children}:{scene?:Scene;title:string;line:ReactNode;children?:ReactNode}){
+/** A page header in the manner of m4labs.xyz: the command that opened the page, then its title and line.
+ *  Product pages name their product (`admin clem stats`); lab-wide pages don't (`admin accounts`). */
+export function PageHead({title,line,product,children}:{scene?:Scene;title:string;line:ReactNode;product?:string;children?:ReactNode}){
   const cmd=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  return <header className="adm-page-head"><div className="adm-head-text"><p className="adm-prompt"><span>m4labs:~$</span> clem admin {cmd}</p><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
+  return <header className="adm-page-head"><div className="adm-head-text"><p className="adm-prompt"><span>m4labs:~$</span> admin {product?product+' ':''}{cmd}</p><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
 }
 export function Skeleton({rows=5}:{rows?:number}){return <div className="adm-skeleton" aria-busy="true" aria-label="Loading">{Array.from({length:rows},(_,i)=><span key={i} style={{animationDelay:i*80+'ms'}}/>)}</div>;}
 
