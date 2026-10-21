@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {adminApi,mailApi,type MailPreset,type Person} from './api';
-import {Avatar,Empty,ErrorNote,I,Modal,PageHead,Skeleton,ago,useLoad,useToast,who} from './ui';
+import {Avatar,Empty,ErrorNote,I,Modal,PageHead,Select,Skeleton,ago,useLoad,useToast,who} from './ui';
 import type {Go} from './AdminApp';
 
 type Entry={id:string;actor_email:string;action:string;target:string;detail:string;created_at:string};
@@ -48,30 +48,38 @@ export function SendEmail({person,onClose,onSent}:{person?:Recipient;onClose:()=
     catch(e){toast((e as Error).message,'error');}finally{setBusy(false);}
   }
   const ready=presets.data?.ready!==false;
-  return <Modal wide title="Send an email" line="Uses the same design as the automatic emails. It goes out right away and is kept in the audit log." onClose={onClose}>
+  const preset=presets.data?.presets.find(p=>p.id===kind);
+  // Laid out like a mail client: header fields on the left, the exact email at full size on the right.
+  return <Modal className="mail" title="Send an email" line="Same design as the automatic emails. It goes out right away and is kept in the audit log." onClose={onClose}>
     <form className="adm-form adm-mail" onSubmit={e=>{e.preventDefault();void send();}}>
       <div className="adm-mail-fields">
-        <div className="adm-mail-label">To</div>
-        {to?<div className="adm-mail-to"><Avatar person={to} size={34}/><span className="adm-mail-who"><strong>{who(to)}</strong><small>{to.email||'No email on record'}</small></span>{!person&&<button type="button" className="adm-icon" aria-label="Choose someone else" onClick={()=>setTo(null)}><I name="close" size={15}/></button>}</div>:<PersonPicker onPick={setTo}/>}
-        <div className="adm-mail-label">Email</div>
-        {presets.error?<ErrorNote error={presets.error} onRetry={presets.reload}/>:!presets.data?<Skeleton rows={3}/>:<div className="adm-mail-presets" role="radiogroup" aria-label="Preset email">
-          {presets.data.presets.map(p=><button type="button" role="radio" aria-checked={kind===p.id} key={p.id} className={kind===p.id?'on':''} onClick={()=>setKind(p.id)}><strong>{p.label}</strong><small>{p.about}</small></button>)}
-        </div>}
+        <div className="adm-mail-field">
+          <span className="adm-mail-label">to</span>
+          {to?<div className="adm-mail-to"><Avatar person={to} size={30}/><span className="adm-mail-who"><strong>{who(to)}</strong><small>{to.email||'No email on record'}</small></span>{!person&&<button type="button" className="adm-icon" aria-label="Choose someone else" onClick={()=>setTo(null)}><I name="close" size={15}/></button>}</div>:<PersonPicker onPick={setTo}/>}
+        </div>
+        <div className="adm-mail-field">
+          <span className="adm-mail-label">email</span>
+          {presets.error?<ErrorNote error={presets.error} onRetry={presets.reload}/>:!presets.data?<Skeleton rows={1}/>:<div className="adm-mail-kind">
+            <Select aria-label="Which email" value={kind} onChange={setKind} options={presets.data.presets.map(p=>({value:p.id,label:p.label}))}/>
+            {preset?.about&&<small>{preset.about}</small>}
+          </div>}
+        </div>
         {kind==='custom'&&<>
-          <label>Subject<input value={subject} onChange={e=>setSubject(e.target.value)} required maxLength={150} placeholder="About your M4 Labs account"/></label>
-          <label>Message<textarea value={message} onChange={e=>setMessage(e.target.value)} required minLength={2} rows={7} maxLength={10000} placeholder={'Write it like a normal email. Line breaks are kept.\nIt starts with “Hi” and their first name when we know it.'}/></label>
+          <label className="adm-mail-field"><span className="adm-mail-label">subject</span><input value={subject} onChange={e=>setSubject(e.target.value)} required maxLength={150} placeholder="About your M4 Labs account"/></label>
+          <label className="adm-mail-field grow"><span className="adm-mail-label">message</span><textarea value={message} onChange={e=>setMessage(e.target.value)} required minLength={2} maxLength={10000} placeholder={'Write it like a normal email. Line breaks are kept.\nIt starts with “Hi” and their first name when we know it.'}/></label>
         </>}
         {kind==='update'&&<>
-          <label>Version<input value={version} onChange={e=>setVersion(e.target.value)} required pattern="\d+\.\d+\.\d+(-[\w.]+)?" placeholder="0.3.0"/></label>
-          <label>What changed, one per line<textarea value={notes} onChange={e=>setNotes(e.target.value)} required rows={4} maxLength={2000} placeholder={'Flashcards follow your exam date\nTidier recent files'}/></label>
+          <label className="adm-mail-field"><span className="adm-mail-label">version</span><input value={version} onChange={e=>setVersion(e.target.value)} required pattern="\d+\.\d+\.\d+(-[\w.]+)?" placeholder="0.3.0"/></label>
+          <label className="adm-mail-field grow"><span className="adm-mail-label">what changed, one per line</span><textarea value={notes} onChange={e=>setNotes(e.target.value)} required maxLength={2000} placeholder={'Flashcards follow your exam date\nTidier recent files'}/></label>
         </>}
+        {kind!=='custom'&&kind!=='update'&&<p className="adm-mail-note">This email is already written. Check it on the right, then send.</p>}
         {!ready&&<p className="adm-alert danger">Email sending is not set up on the website yet, so nothing can be sent.</p>}
+        <footer><button type="button" onClick={onClose}>Cancel</button><button className="adm-primary" disabled={busy||!to?.email||!ready||!presets.data}><I name="send" size={15}/>{busy?'Sending…':to?.email?`Send to ${to.email}`:'Send'}</button></footer>
       </div>
-      <aside className="adm-mail-preview" aria-label="Preview">
-        <div className="adm-mail-subject"><small>Subject</small><strong>{preview?.subject||'…'}</strong></div>
+      <section className="adm-mail-preview" aria-label="Preview">
+        <div className="adm-mail-subject"><span>subject</span><strong>{preview?.subject||'…'}</strong></div>
         {preview?<iframe title="Email preview" sandbox="" srcDoc={preview.html}/>:<div className="adm-mail-frame-wait"><Skeleton rows={6}/></div>}
-      </aside>
-      <footer><div><button type="button" onClick={onClose}>Cancel</button><button className="adm-primary" disabled={busy||!to?.email||!ready||!presets.data}><I name="send" size={15}/>{busy?'Sending…':to?.email?`Send to ${to.email}`:'Send'}</button></div></footer>
+      </section>
     </form>
   </Modal>;
 }

@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useState} from 'react';
-import {GoogleLogo,Icon,Logo} from '../Icons';
+import {GoogleLogo,Icon} from '../Icons';
 import {AdminError,adminApi,adminClient,demo,type Staff} from './api';
 import {Avatar,I,ToastHost} from './ui';
 import {useDarkOnly} from '../site/SiteHeader';
@@ -77,27 +77,26 @@ export default function AdminApp(){
   if(phase==='denied')return <div className="adm-root adm-center adm-auth"><div className="adm-auth-card"><LabLogo/><p className="adm-prompt"><span>m4labs:~$</span> admin</p><h1>No staff access</h1><p>{denied}</p><button className="adm-primary wide" onClick={()=>void signOut()}>Use another account</button></div></div>;
   const s=staff!;
   const link=(section:Section)=>`#${prefix}${path(section)}`;
-  const item=(n:{id:Section;label:string;icon:string})=><a key={n.id} href={link(n.id)} className={where.section===n.id?'on':''} aria-current={where.section===n.id?'page':undefined}><Icon name={n.icon} size={19}/><span>{n.label}</span></a>;
+  // Links read like the paths on m4labs.xyz: ./accounts, ./stats. The section id is the path.
+  const item=(n:{id:Section;label:string})=><a key={n.id} href={link(n.id)} className={where.section===n.id?'on':''} aria-current={where.section===n.id?'page':undefined} title={n.label}>{n.id}</a>;
   return <ToastHost><div className={`adm-root adm-shell ${menu?'menu-open':''}`}>
-    <header className="adm-topbar">
-      <button className="adm-icon" aria-label={menu?'Close navigation':'Open navigation'} aria-expanded={menu} onClick={()=>setMenu(!menu)}><Icon name={menu?'close':'menu'} size={20}/></button>
-      <a className="adm-brand small" href={link('overview')}><LabLogo/><em>admin</em></a>
-    </header>
-    <div className="adm-scrim nav" onClick={()=>setMenu(false)} aria-hidden="true"/>
-    <aside className="adm-nav" aria-label="Admin navigation">
+    <header className="adm-bar">
+      <button className="adm-icon adm-menu" aria-label={menu?'Close navigation':'Open navigation'} aria-expanded={menu} onClick={()=>setMenu(!menu)}><Icon name={menu?'close':'menu'} size={20}/></button>
       <a className="adm-brand" href={link('overview')}><LabLogo/><em>admin</em></a>
-      <nav>
+      <div className="adm-scrim nav" onClick={()=>setMenu(false)} aria-hidden="true"/>
+      <nav className="adm-nav" aria-label="Admin navigation">
         <div className="adm-nav-group"><span className="adm-nav-label">lab</span>{lab.filter(n=>!n.min||s.role!=='support').map(item)}</div>
         {products.map(p=><div className="adm-nav-group" key={p.id}>
-          <span className="adm-nav-label adm-nav-product">{p.id==='clem'?<Logo size={13}/>:null}{p.name}<a href={p.url} target="_blank" rel="noreferrer" aria-label={`Open ${p.name}`}><I name="external" size={13}/></a></span>
+          <a className="adm-nav-label adm-nav-product" href={p.url} target="_blank" rel="noreferrer" title={`Open ${p.name}`}>{p.id}/</a>
           {p.sections.map(item)}
         </div>)}
       </nav>
-      <div className="adm-nav-foot">
-        {!s.mfa&&<button className="adm-mfa-tip" onClick={()=>setPhase('mfa')}><Icon name="verify" size={17}/><span>Add an authenticator to protect staff access.</span></button>}
-        <div className="adm-me"><Avatar person={{id:s.id,email:s.email}} size={32}/><div><strong title={s.email}>{s.email}</strong><small>{s.role}</small></div><button className="adm-icon" aria-label="Sign out" title="Sign out" onClick={()=>void signOut()}><I name="logout"/></button></div>
+      <div className="adm-bar-end">
+        {!s.mfa&&<button className="adm-mfa-tip" onClick={()=>setPhase('mfa')} title="Add an authenticator to protect staff access">2fa off</button>}
+        <span className="adm-me" title={`${s.email} · ${s.role}`}><Avatar person={{id:s.id,email:s.email}} size={26}/><span><strong>{s.email}</strong><small>{s.role}</small></span></span>
+        <button className="adm-icon" aria-label="Sign out" title="Sign out" onClick={()=>void signOut()}><I name="logout"/></button>
       </div>
-    </aside>
+    </header>
     <main className="adm-main" key={where.section}>{(()=>{switch(where.section){
       case 'stats':return <Stats/>;
       case 'accounts':return <Users go={go} selected={where.id} staff={s}/>;
@@ -121,7 +120,7 @@ function MfaSetup({onDone,onSignOut}:{onDone:()=>Promise<void>;onSignOut:()=>voi
       // An unfinished earlier attempt blocks a new one with the same name, so clear it first.
       const listed=await client.auth.mfa.listFactors();
       for(const f of listed.data?.all||[])if(f.status!=='verified')await client.auth.mfa.unenroll({factorId:f.id});
-      const {data,error}=await client.auth.mfa.enroll({factorType:'totp',friendlyName:'M4 Labs '+new Date().toISOString().slice(0,10)});
+      const {data,error}=await client.auth.mfa.enroll({factorType:'totp',friendlyName:'M4 Labs '+new Date().toISOString().slice(0,10),issuer:'m4labs.xyz'});
       if(error)throw error;
       setFactor({id:data.id,qr:data.totp.qr_code,secret:data.totp.secret});
     }catch(e){setError((e as Error).message);}

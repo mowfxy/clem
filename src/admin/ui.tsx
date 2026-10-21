@@ -56,10 +56,10 @@ export function ToastHost({children}:{children:ReactNode}){
 }
 
 /** Modal built on <dialog> so focus trapping and Escape come from the browser. */
-export function Modal({title,line,children,onClose,wide}:{title:string;line?:ReactNode;children:ReactNode;onClose:()=>void;wide?:boolean}){
+export function Modal({title,line,children,onClose,wide,className}:{title:string;line?:ReactNode;children:ReactNode;onClose:()=>void;wide?:boolean;className?:string}){
   const ref=useRef<HTMLDialogElement>(null);
   useEffect(()=>{ref.current?.showModal();},[]);
-  return <dialog ref={ref} className={`adm-modal ${wide?'wide':''}`} onClose={onClose} onClick={e=>{if(e.target===ref.current)onClose();}}><header><div><h2>{title}</h2>{line&&<p className="adm-modal-line">{line}</p>}</div><button className="adm-icon" aria-label="Close" onClick={onClose}><I name="close"/></button></header>{children}</dialog>;
+  return <dialog ref={ref} className={`adm-modal ${wide?'wide':''} ${className||''}`} onClose={onClose} onClick={e=>{if(e.target===ref.current)onClose();}}><header><div><h2>{title}</h2>{line&&<p className="adm-modal-line">{line}</p>}</div><button className="adm-icon" aria-label="Close" onClick={onClose}><I name="close"/></button></header>{children}</dialog>;
 }
 
 const SYNC_MS=30_000;

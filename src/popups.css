@@ -1,26 +1,26 @@
 /* Every pop-up shares one soft, deep shadow from behind. Only the small menus open instantly; dialogs, toasts and windows keep their own entrances. */
 :root{--pop-shadow:0 16px 48px #000000b3,0 4px 14px #00000080;--pop-shadow-lg:0 28px 90px #000000c7,0 8px 24px #00000080}
-:is(.popover,.chat-options,.unified-picker-panel,.slash-menu,.review-menu,.fp-menu,.sp-menu-list,.adm-select-menu){box-shadow:var(--pop-shadow)!important;animation:none!important;transition:none!important}
+:is(.popover,.chat-options,.unified-picker-panel,.slash-menu,.review-menu,.fp-menu,.sp-menu-list){box-shadow:var(--pop-shadow)!important;animation:none!important;transition:none!important}
 :is(.toast,.adm-toast,.reply-pick,.fp-flash,.fp-working){box-shadow:var(--pop-shadow)!important}
 .adm-drawer{box-shadow:var(--pop-shadow-lg)!important}
 /* Small menus, one look everywhere (after Claude's): a quiet raised sheet sized to its words, compact 28px rows, soft hover, inset hairline
    separators, muted shortcut hints on the right, a soft red for destructive rows. */
 :root{--menu-bg:#252524;--menu-line:#3a3a37;--menu-ink:#ecebe6;--menu-hint:#8e8d87;--menu-hover:#ffffff10;--menu-danger:#ec7a6f}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu){width:max-content;min-width:132px;max-width:280px;padding:4px;border:1px solid var(--menu-line);border-radius:10px;background:var(--menu-bg);color:var(--menu-ink);font:400 14px/1.2 var(--sans)}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;height:28px;min-height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--menu-ink);font:400 14px/1.2 var(--sans);letter-spacing:0;text-align:left;white-space:nowrap;transition:none}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button:is(:hover,:focus-visible,.active,.on):not(:disabled){background:var(--menu-hover);color:#fff;outline:none}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger{color:var(--menu-danger)}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger:is(:hover,:focus-visible):not(:disabled){background:#ec7a6f17;color:#f48a80}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) :is(hr,.menu-sep){display:block;height:1px;margin:4px 8px;border:0;background:#ffffff14}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) :is(kbd,.popover-hint,.menu-key,button small){margin-left:auto;padding-left:20px;font:400 12.5px/1 var(--sans);letter-spacing:.02em;color:var(--menu-hint)}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu) button.danger .menu-key{color:#ec7a6fa6}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu,.adm-select-menu)>p{margin:4px 8px 6px;font:400 12px/1.4 var(--sans);color:var(--menu-hint);white-space:normal}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu){width:max-content;min-width:132px;max-width:280px;padding:4px;border:1px solid var(--menu-line);border-radius:10px;background:var(--menu-bg);color:var(--menu-ink);font:400 14px/1.2 var(--sans)}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;height:28px;min-height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--menu-ink);font:400 14px/1.2 var(--sans);letter-spacing:0;text-align:left;white-space:nowrap;transition:none}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button:is(:hover,:focus-visible,.active,.on):not(:disabled){background:var(--menu-hover);color:#fff;outline:none}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button.danger{color:var(--menu-danger)}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button.danger:is(:hover,:focus-visible):not(:disabled){background:#ec7a6f17;color:#f48a80}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) :is(hr,.menu-sep){display:block;height:1px;margin:4px 8px;border:0;background:#ffffff14}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) :is(kbd,.popover-hint,.menu-key,button small){margin-left:auto;padding-left:20px;font:400 12.5px/1 var(--sans);letter-spacing:.02em;color:var(--menu-hint)}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button.danger .menu-key{color:#ec7a6fa6}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu)>p{margin:4px 8px 6px;font:400 12px/1.4 var(--sans);color:var(--menu-hint);white-space:normal}
 html body .chat-options:popover-open{display:block}
 html body .history-filter-menu .history-filter-check{width:14px;margin-right:-2px;color:var(--menu-ink)}
 /* Every pop-up window, one finish (after Claude's dialogs): a flat warm sheet, hairline border, one soft deep shadow,
    a plain dim backdrop without blur, and a quick fade-and-settle entrance. */
 :root{--sheet-bg:#232322;--sheet-line:#3c3c39;--sheet-shadow:0 24px 64px -12px #000000b8,0 8px 24px -10px #00000080}
-html body dialog:not(.st-dialog,.fp-dialog){border:1px solid var(--sheet-line)!important;border-radius:16px!important;background:var(--sheet-bg)!important;backdrop-filter:none!important;box-shadow:var(--sheet-shadow)!important}
+html body dialog:not(.st-dialog,.fp-dialog,.adm-modal){border:1px solid var(--sheet-line)!important;border-radius:16px!important;background:var(--sheet-bg)!important;backdrop-filter:none!important;box-shadow:var(--sheet-shadow)!important}
 html body :is(.st,.file-panel.as-modal){border-radius:16px;box-shadow:var(--sheet-shadow),0 0 0 1px var(--sheet-line)!important}
 html body .file-panel.as-modal{border-color:var(--sheet-line)}
 html body dialog::backdrop{background:#000000a6!important;backdrop-filter:none!important}
@@ -28,6 +28,6 @@ html body dialog.settings-dialog>header{background:linear-gradient(var(--sheet-b
 @keyframes sheet-in{from{opacity:0;transform:scale(.97)}}
 @keyframes sheet-fade{from{opacity:0}}
 @media (prefers-reduced-motion:no-preference){
- html:not([data-quiet=true]) body dialog[open]:not(.st-dialog,.fp-dialog),html:not([data-quiet=true]) body :is(.st,.file-panel.as-modal){animation:sheet-in .18s cubic-bezier(.2,.9,.3,1) backwards!important}
+ html:not([data-quiet=true]) body dialog[open]:not(.st-dialog,.fp-dialog,.adm-modal),html:not([data-quiet=true]) body :is(.st,.file-panel.as-modal){animation:sheet-in .18s cubic-bezier(.2,.9,.3,1) backwards!important}
  html:not([data-quiet=true]) body dialog[open]::backdrop{animation:sheet-fade .18s ease-out backwards!important}
 }
