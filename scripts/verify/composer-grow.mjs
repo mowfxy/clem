@@ -26,6 +26,18 @@ try {
   check(Math.abs(long.top - long.mirrorTop) <= 1, "word layer scrolls with the box");
   check(long.width === long.mirrorWidth, `word layer wraps at the box's width (${long.width} / ${long.mirrorWidth})`);
   await page.screenshot({ path: out + "/long.png" });
+  // Switching theme repaints the words in the new ink, as applyTheme does it (theme.ts).
+  const flip = (theme) => box.evaluate((el, theme) => {
+    document.documentElement.dataset.theme = theme;
+    window.dispatchEvent(new CustomEvent("clem-theme", { detail: theme }));
+    return { ink: getComputedStyle(el).color, words: getComputedStyle(el.previousElementSibling).color };
+  }, theme);
+  for (const theme of ["light", "dark", "light"]) {
+    const c = await flip(theme);
+    check(c.ink === c.words, `${theme}: words follow the box's ink (${c.words} / ${c.ink})`);
+  }
+  await page.screenshot({ path: out + "/light.png" });
+  await flip("dark");
   await box.fill("");
   const back = await measure();
   check(back.h === short.h, `shrinks back when cleared (${back.h}px)`);

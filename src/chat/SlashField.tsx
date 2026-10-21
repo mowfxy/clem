@@ -36,15 +36,26 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
   const open = options.length > 0 && !closed;
   const at = Math.min(index, options.length - 1);
   const mirror = useRef<HTMLDivElement>(null);
+  // The words are painted by the pill layer (so the command can be tinted); the box keeps only the caret.
+  // Read fresh each time so switching between light and dark repaints the words in the new ink.
+  const paintInk = () => {
+    const el = inputRef.current, m = mirror.current;
+    if (!el || !m) return;
+    const ink = getComputedStyle(el).color;
+    m.style.color = ink;
+    el.style.caretColor = ink;
+  };
+  useEffect(() => {
+    window.addEventListener("clem-theme", paintInk);
+    return () => window.removeEventListener("clem-theme", paintInk);
+  }, []);
   // The pill layer copies the text box's type so both wrap and scroll identically.
   useLayoutEffect(() => {
     const el = inputRef.current, m = mirror.current;
     if (!el || !m) return;
     const css = getComputedStyle(el);
     for (const k of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "wordSpacing", "textIndent"] as const) m.style[k] = css[k];
-    // The words are painted by this layer (so the command can be tinted); the box keeps only the caret.
-    m.style.color = el.dataset.ink ||= css.color;
-    el.style.caretColor = el.dataset.ink;
+    paintInk();
     // Grows with the message; the stylesheet's max-height caps it and the box scrolls past that.
     const top = el.scrollTop;
     el.style.height = "auto";
