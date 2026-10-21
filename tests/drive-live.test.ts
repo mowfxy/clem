@@ -151,29 +151,27 @@ test('saving into a folder asks for a reconnect under a read-only scope, and goe
   assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123'});
 });
 
-test('files picked in Google’s picker come back once, with their details, and the top level lists everything Clem can open',async()=>{
-  let served=false;const lists:string[]=[];
+test('My Drive, Shared with me and folders list by place; a drive.file connection from a preview asks for a reconnect',async()=>{
+  let scope='https://www.googleapis.com/auth/drive';const lists:string[]=[];
   const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
-    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
-    if(url.includes('/api/drive/picked?request=')){if(served)return Response.json({done:false});served=true;return Response.json({done:true,ids:['picked-file-123']});}
-    if(url.includes('/drive/v3/files/picked-file-123'))return Response.json({id:'picked-file-123',name:'Notes.pdf',mimeType:'application/pdf'});
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope});
     if(url.includes('/drive/v3/files?')){lists.push(new URL(url).searchParams.get('q')!);return Response.json({files:[]});}
     throw Error('unexpected '+url);}) as any,'https://x.example');
-  const request='0123456789abcdef0123';
-  assert.deepEqual(await drive.picked(request),{done:true,files:[{id:'picked-file-123',name:'Notes.pdf',mimeType:'application/pdf',size:undefined,modified:undefined,thumbnail:false,durationMs:undefined}]});
-  assert.deepEqual(await drive.picked(request),{done:false,files:[]});
-  await drive.list({});
-  assert.equal(lists[0],'trashed = false','no parent filter: picked files can sit anywhere in Drive');
+  await drive.list({});await drive.list({folder:'shared'});await drive.list({folder:'folder123456'});
+  assert.deepEqual(lists,["trashed = false and 'root' in parents",'trashed = false and sharedWithMe = true',"trashed = false and 'folder123456' in parents"]);
+  // drive.file sees only what was picked, so a folder's contents would look empty: say so instead of listing nothing.
+  scope='https://www.googleapis.com/auth/drive.file';drive.forget();
+  await assert.rejects(drive.list({}),/Reconnect Google Drive once so Clem can show all your folders/);
+  await assert.rejects(drive.tree('folder123456',true),/Reconnect Google Drive once so Clem can show all your folders/);
+  assert.equal(lists.length,3,'nothing is listed under drive.file');
 });
 
-test('Google refusing every read (Drive API off) says so, both after a pick and when listing, instead of looking empty',async()=>{
-  const off=()=>Response.json({error:{code:403,message:'Google Drive API has not been used in project 1 before or it is disabled.',errors:[{reason:'accessNotConfigured'}],details:[{reason:'SERVICE_DISABLED'}]}},{status:403});
+test('Google refusing every read (Drive API off) says so when listing, instead of looking empty',async()=>{
   const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
-    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
-    if(url.includes('/api/drive/picked?request='))return Response.json({done:true,ids:['picked-file-123']});
-    return off();}) as any,'https://x.example');
-  await assert.rejects(drive.picked('0123456789abcdef0123'),/switched off for Clem on Google's side/);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    return Response.json({error:{code:403,message:'Google Drive API has not been used in project 1 before or it is disabled.',errors:[{reason:'accessNotConfigured'}],details:[{reason:'SERVICE_DISABLED'}]}},{status:403});}) as any,'https://x.example');
   await assert.rejects(drive.list({}),/switched off for Clem on Google's side/);
+  await assert.rejects(drive.tree('folder123456',true),/switched off for Clem on Google's side/);
 });
 
 test('a file renamed or moved to the trash from Clem is changed in Drive itself, in place',async()=>{

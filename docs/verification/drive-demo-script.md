@@ -11,9 +11,9 @@ Two OAuth clients exist in the Google Cloud project and both consent flows are s
 
 ## Before anything is recorded
 
-### Fix first (these will be on screen, and Google reviewers read them)
-1. The Drive connect card in Clem says **“Read-only access to what you choose to open”** ([src/drive/DrivePicker.tsx:55](../../src/drive/DrivePicker.tsx)). The app now writes, so this contradicts the scope and the video. Needs new wording and a new build.
-2. The privacy policy ([src/site/Legal.tsx](../../src/site/Legal.tsx)) has no Google API Services User Data Policy / Limited Use statement and does not say Clem writes to Drive. Google checks this page. Website-only change.
+### Checked before recording (these are on screen, and Google reviewers read them)
+1. Done: the Drive connect card says Clem reads the folders and files you choose to open and saves files you add, and Clem's files, into folders you link ([src/drive/DrivePicker.tsx](../../src/drive/DrivePicker.tsx)), matching the `drive` scope and the video.
+2. Done: the privacy policy at https://m4labs.xyz/privacy (source: the m4labs-site repo, `src/legal.mjs`) names the `drive` scope, says when Clem reads and writes Drive, and has the Google API Services User Data Policy / Limited Use statement.
 
 ### Screen and browser
 - Screen is 2880×1800 at 200%. The recorder captures the top 2880×1620 (16:9). The edit scales it to 1920×1080. Keep everything you want seen in the top 90% of the screen; the taskbar will not be in the video.

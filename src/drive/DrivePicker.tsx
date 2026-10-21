@@ -4,7 +4,7 @@ import { DriveLogo } from "../BrandLogos";
 import { desktop } from "../desktop/bridge";
 import { confirmDialog } from "../dialogs";
 import { DriveIcon, kindName } from "./DriveIcon";
-import { connectDrive, disconnectDrive, driveError, listDrive, pickFromDrive, refreshDrive, useDrive, type DriveItem } from "./drive";
+import { connectDrive, disconnectDrive, listDrive, refreshDrive, useDrive, type DriveItem } from "./drive";
 import "./drive.css";
 
 const FOLDER = "application/vnd.google-apps.folder";
@@ -13,13 +13,12 @@ const bytes = (n?: number) => !n ? "" : n < 1024 * 1024 ? Math.max(1, Math.round
 const hasPreview = (f: DriveItem) => !!f.thumbnail && /^(image|video)\//.test(f.mimeType);
 
 /**
- * Google Drive, live, as far as Clem can see it: the files and folders picked in Google's own picker and the files Clem
- * made. "Choose in Google Drive" opens that picker to add more. In "files" mode, pick files to use in a chat (they are
- * read from Drive when needed, never copied). In "folder" mode, link a folder to a subject or project.
+ * Browse Google Drive live. In "files" mode, pick files to use in a chat (they are read from Drive when needed,
+ * never copied). In "folder" mode, open any folder or subfolder and link it to a subject or project.
  */
 export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }: { mode?: "files" | "folder"; onFiles?: (files: DriveItem[]) => void; onFolder?: (folder: { id: string; name: string }) => void; confirmLabel?: string }) {
   const { connected } = useDrive();
-  const [choosing, setChoosing] = useState(false);
+  const [root, setRoot] = useState<"root" | "shared">("root");
   const [trail, setTrail] = useState<{ id: string; name: string }[]>([]);
   const [query, setQuery] = useState(""), [search, setSearch] = useState("");
   const [items, setItems] = useState<DriveItem[]>([]), [next, setNext] = useState<string>();
@@ -28,7 +27,7 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
   const [grid, setGrid] = useState(() => { try { return localStorage.getItem("clem-drive-grid") === "1"; } catch { return false; } });
   const [waiting, setWaiting] = useState(false);
   const version = useRef(0);
-  const folder = trail.at(-1)?.id || "root";
+  const folder = trail.at(-1)?.id || root;
   useEffect(() => { const t = setTimeout(() => setSearch(query.trim()), 280); return () => clearTimeout(t); }, [query]);
   async function load(page?: string) {
     if (!desktop) { setBusy(false); setError("Google Drive works in the Clem desktop app."); return; }
@@ -49,27 +48,13 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
   const toggle = (f: DriveItem) => setPicked((all) => { const copy = new Map(all); if (copy.has(f.id)) copy.delete(f.id); else if (copy.size < 10) copy.set(f.id, f); return copy; });
   const shown = useMemo(() => mode === "folder" ? [...items].sort((a, b) => Number(b.mimeType === FOLDER) - Number(a.mimeType === FOLDER)) : items, [items, mode]);
   const here = trail.at(-1);
-  // Google's picker opens in the browser; what comes back is used straight away, as if picked here.
-  async function choose() {
-    setChoosing(true); setError("");
-    try {
-      const got = await pickFromDrive(mode === "folder" ? "folder" : "files");
-      if (mode === "folder") { const f = got.find((g) => g.mimeType === FOLDER); if (f) onFolder?.({ id: f.id, name: f.name }); }
-      else if (got.some((g) => g.mimeType !== FOLDER)) onFiles?.(got.filter((g) => g.mimeType !== FOLDER));
-      // Only folders picked: open the first, so its files can be chosen here.
-      else if (got[0]) { setTrail([]); open(got[0]); }
-      else void load();
-    } catch (e) { setError(driveError(e)); }
-    finally { setChoosing(false); }
-  }
-  const chooseLabel = choosing ? "Finish in your browser…" : mode === "folder" ? "Choose a folder in Google Drive" : "Choose in Google Drive";
 
   if (connected === false) return <div className="gd-picker gd-connect">
     <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile"><DriveLogo size={34} /></span></div>
     <h3>Connect Google Drive</h3>
-    <p>Use Drive files in chats and link folders to subjects and projects. Files are read live from Drive, never copied to this PC.</p>
+    <p>Browse your Drive, use files in chats and link folders to subjects and projects. Files are read live from Drive, never copied to this PC.</p>
     <ul>
-      <li><Icon name="check" size={14} />Opens only the files and folders you choose in Google Drive</li>
+      <li><Icon name="check" size={14} />Reads the folders and files you choose to open</li>
       <li><Icon name="check" size={14} />Saves files you add, and Clem's files, into folders you link</li>
       <li><Icon name="check" size={14} />Videos play straight from Drive</li>
       <li><Icon name="check" size={14} />Disconnect anytime</li>
@@ -83,13 +68,16 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
 
   return <div className={"gd-picker" + (grid ? " is-grid" : "")}>
     <div className="gd-top">
-      <button className="gd-choose" disabled={choosing} onClick={() => void choose()}><DriveLogo size={14} />{chooseLabel}</button>
-      <label className="gd-search"><Icon name="research" size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={mode === "folder" ? "Search folders" : "Search chosen files"} aria-label="Search Google Drive" />{query && <button aria-label="Clear search" onClick={() => setQuery("")}><Icon name="close" size={12} /></button>}</label>
+      <div className="gd-tabs" role="tablist">
+        <button role="tab" aria-selected={root === "root" && !search} onClick={() => { setRoot("root"); setTrail([]); setQuery(""); }}><DriveLogo size={14} />My Drive</button>
+        <button role="tab" aria-selected={root === "shared" && !search} onClick={() => { setRoot("shared"); setTrail([]); setQuery(""); }}><Icon name="account" size={14} />Shared with me</button>
+      </div>
+      <label className="gd-search"><Icon name="research" size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={mode === "folder" ? "Search folders" : "Search Drive"} aria-label="Search Google Drive" />{query && <button aria-label="Clear search" onClick={() => setQuery("")}><Icon name="close" size={12} /></button>}</label>
       <button className="gd-view" aria-label={grid ? "List view" : "Grid view"} aria-description={grid ? "List view" : "Grid view"} onClick={() => { const g = !grid; setGrid(g); try { localStorage.setItem("clem-drive-grid", g ? "1" : "0"); } catch {} }}>{grid ? <ListGlyph /> : <GridGlyph />}</button>
     </div>
     <nav className="gd-trail" aria-label="Folder path">
       {search ? <span className="gd-crumb here">Results for “{search}”</span> : <>
-        <button className={"gd-crumb" + (trail.length ? "" : " here")} onClick={() => up(0)}>Opened with Clem</button>
+        <button className={"gd-crumb" + (trail.length ? "" : " here")} onClick={() => up(0)}>{root === "root" ? "My Drive" : "Shared with me"}</button>
         {trail.map((t, i) => <span key={t.id} className="gd-crumb-wrap"><Chevron /><button className={"gd-crumb" + (i === trail.length - 1 ? " here" : "")} onClick={() => up(i + 1)}>{t.name}</button></span>)}
       </>}
       <button className="gd-refresh" aria-label="Refresh" aria-description="Refresh" disabled={busy} onClick={() => void load()}><Icon name="undo" size={13} /></button>
@@ -109,15 +97,12 @@ export function DrivePicker({ mode = "files", onFiles, onFolder, confirmLabel }:
         </div>;
       })}
       {busy && !items.length && Array.from({ length: 7 }, (_, i) => <div key={i} className="gd-skeleton" style={{ animationDelay: i * 60 + "ms" }} />)}
-      {!busy && !error && !items.length && <div className="gd-empty"><DriveIcon mime={FOLDER} size={40} />
-        <strong>{search ? "Nothing matches" : here ? "Nothing here Clem can open" : "Nothing from your Drive yet"}</strong>
-        <small>{search ? "Clem searches only what you've chosen. Try other words." : here ? (mode === "folder" ? "You can still link it." : "Choose its files in Google Drive to use them.") : mode === "folder" ? "Choose a folder in Google Drive to link it." : "Choose files in Google Drive to use them here."}</small>
-        {!search && <button className="gd-choose" disabled={choosing} onClick={() => void choose()}><DriveLogo size={14} />{chooseLabel}</button>}</div>}
+      {!busy && !error && !items.length && <div className="gd-empty"><DriveIcon mime={FOLDER} size={40} /><strong>{search ? "Nothing matches" : "This folder is empty"}</strong><small>{search ? "Try other words." : mode === "folder" ? "You can still link it." : "Open another folder."}</small></div>}
       {next && !busy && <button className="gd-more" onClick={() => void load(next)}>Show more</button>}
     </div>
-    {error && <p className="gd-error" role="alert">{error}</p>}
+    {error && <p className="gd-error" role="alert">{error}{/^Reconnect Google Drive/.test(error) && <> <button className="gd-retry" onClick={() => void connectDrive().catch((e) => setError(e.message))}>Reconnect</button> <button className="gd-retry" onClick={() => void load()}>Try again</button></>}</p>}
     <footer className="gd-foot">
-      <button className="gd-disconnect" onClick={() => void confirmDialog({ title: "Disconnect Google Drive?", message: "Clem stops reading your Drive and loses access to the files you chose. Nothing in your Drive changes.", confirm: "Disconnect" }).then((yes) => { if (yes) return disconnectDrive(); }).catch((e) => setError(e.message))}>Disconnect</button>
+      <button className="gd-disconnect" onClick={() => void confirmDialog({ title: "Disconnect Google Drive?", message: "Clem stops reading your Drive. Linked folders reconnect when you connect again. Nothing in your Drive changes.", confirm: "Disconnect" }).then((yes) => { if (yes) return disconnectDrive(); }).catch((e) => setError(e.message))}>Disconnect</button>
       {mode === "files"
         ? <><span className="gd-count">{picked.size ? `${picked.size} selected` : "Select files, or double-click one"}</span><button className="primary" disabled={!picked.size} onClick={() => onFiles?.([...picked.values()])}>{confirmLabel || "Add to chat"}</button></>
         : <><span className="gd-count">{here ? <>Open folders to go deeper, or link one with <b>Link</b></> : "Open a folder, or link one with Link"}</span><button className="primary" disabled={!here} onClick={() => here && onFolder?.(here)}>{here ? `Link “${here.name.length > 24 ? here.name.slice(0, 23) + "…" : here.name}”` : "Link this folder"}</button></>}
