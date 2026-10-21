@@ -96,8 +96,8 @@ function Ring({value,size=58}:{value:number;size?:number}){
   return <svg className="sp-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true"><circle cx={size/2} cy={size/2} r={r} className="track"/><circle cx={size/2} cy={size/2} r={r} className="fill" strokeDasharray={c} strokeDashoffset={c*(1-value)} transform={`rotate(-90 ${size/2} ${size/2})`}/></svg>;
 }
 
-/** A right-click menu for a chat row: the same actions as elsewhere, where the pointer is. */
-function ChatContextMenu({at,onClose,items}:{at:{x:number;y:number};onClose:()=>void;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[]}){
+/** A right-click menu (a chat row, a folder, the Files area): the same actions as elsewhere, where the pointer is. */
+function ContextMenu({at,onClose,items}:{at:{x:number;y:number};onClose:()=>void;items:{label:string;icon?:string;danger?:boolean;run:()=>void}[]}){
   const root=useRef<HTMLDivElement>(null);
   useEffect(()=>{const close=(e:Event)=>{if(!root.current?.contains(e.target as Node))onClose();};const key=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};
     document.addEventListener('pointerdown',close);document.addEventListener('keydown',key);window.addEventListener('blur',onClose);window.addEventListener('scroll',onClose,true);
@@ -113,7 +113,7 @@ function useChatMenu(onDelete:(chat:Chat)=>void){
   const [menu,setMenu]=useState<{chat:Chat;x:number;y:number}|null>(null);
   const close=useMemo(()=>()=>setMenu(null),[]);
   const open=(chat:Chat)=>(e:ReactMouseEvent)=>{e.preventDefault();setMenu({chat,x:e.clientX,y:e.clientY});};
-  const node=menu&&<ChatContextMenu at={menu} onClose={close} items={[{label:'Delete chat',icon:'trash',danger:true,run:()=>onDelete(menu.chat)}]}/>;
+  const node=menu&&<ContextMenu at={menu} onClose={close} items={[{label:'Delete chat',icon:'trash',danger:true,run:()=>onDelete(menu.chat)}]}/>;
   return {open,node};
 }
 
@@ -307,6 +307,18 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     if(ids.length>1){const tag=document.createElement('div');tag.className='sp-drag-count';tag.textContent=`${ids.length} files`;document.body.appendChild(tag);e.dataTransfer.setDragImage(tag,16,16);setTimeout(()=>tag.remove(),0);}
   };
   const [renaming,setRenaming]=useState<string|null>(null);
+  /** Right-click: on a folder, its own options; anywhere else in Files, what can be added here (a new folder first). */
+  const [context,setContext]=useState<{x:number;y:number;folder?:SpaceFolder}|null>(null);
+  const closeContext=useMemo(()=>()=>setContext(null),[]);
+  const folderItems=(f:SpaceFolder)=>[{label:'Rename',icon:'rename',run:()=>setNaming({id:f.id,name:f.name})},{label:'Share folder',icon:'import',run:()=>actions.onShare(f.id)},{label:'Remove folder',icon:'trash',danger:true,run:()=>void removeFolder(f)}];
+  const openContext=(e:ReactMouseEvent)=>{
+    const target=e.target as Element;
+    // Files, the linked Drive folder and text fields keep their own (or the system's) menu.
+    if(flat||target.closest('.sp-file,.gd-space,input,textarea,.sp-menu-list,.sp-move'))return;
+    const card=target.closest<HTMLElement>('.sp-folder[data-folder]');
+    e.preventDefault();
+    setContext({x:e.clientX,y:e.clientY,folder:card?folders.find(f=>f.id===card.dataset.folder):undefined});
+  };
   const linkPc=()=>void desktop!.invoke({action:'linkFolder',scope:`${space.kind}:${space.id}`}).then(()=>desktop!.invoke({action:'folders',scope:`${space.kind}:${space.id}`})).then(setLinked).catch(()=>{});
   // Finding a file: a name, channel or kind looks through every folder here at once, each file shown with where it is.
   const [query,setQuery]=useState('');
@@ -332,7 +344,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     <label className="sp-source" title="Clem reads this file when answering here"><input type="checkbox" checked={space.sources.includes(f.id)} onChange={e=>setSource(f,e.target.checked)}/>Source</label>
     <Menu label={`${shownName(f)} options`} handle={handle} items={[{label:'Open',run:()=>actions.onOpenFile(f)},{label:'Rename',icon:'rename',run:()=>setRenaming(f.id)},{label:'Ask about it',icon:'chat',run:()=>actions.onAskFile(f)},...(f.video?[{label:'Watch on YouTube',icon:'external',run:()=>window.open(watchUrl(f.video!.id),'_blank','noopener')}]:[]),...(handle?[{label:picked.has(f.id)?'Deselect':'Select',icon:'check',run:()=>pick(f.id)}]:[]),...(!f.video&&/\.(pdf|docx|pptx|xlsx|txt|md|csv|json|tex)$/i.test(f.name)?[{label:'Edit with Clem',run:()=>actions.onEditFile(f)}]:[]),{label:'Move to…',run:()=>setMoving(f)},...(space.drive?[{label:'Save copy in Drive',run:()=>setToDrive({key:crypto.randomUUID(),id:f.id})}]:[]),{label:'Delete',icon:'trash',danger:true,run:()=>void actions.onDeleteFile(f)}]}/>
   </>;
-  return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)}>
+  return <section className={`sp-files ${over==='root-area'?'drop':''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setOver('root-area');}}} onDragOverCapture={e=>{if((e.target as Element).closest?.('.gd-space'))setOver(null);}} onDragLeave={e=>{if(e.currentTarget===e.target)setOver(null);}} onDrop={drop(at)} onContextMenu={openContext}>
     {/* One bar: find (or the way back out of a folder) on the left, one Add menu on the right. */}
     <div className="sp-files-bar">
       {at?<nav className="sp-path" aria-label="Folder path">
@@ -365,9 +377,9 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     {space.drive&&!at&&(inHere.length>0||here.length>0)&&<span className="sp-eyebrow sp-local-head">On this PC</span>}
     {(here.length>0||naming&&!naming.id)&&<div className="sp-folders">
       {shownFolders.map(f=>naming?.id===f.id?<div key={f.id} className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} aria-label="Folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>
-        :<div key={f.id} {...folderOrder.item(f.id)} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
+        :<div key={f.id} {...folderOrder.item(f.id)} data-folder={f.id} className={`sp-folder ${over===f.id?'over':''}`} role="button" tabIndex={0} onClick={()=>setAt(f.id)} onKeyDown={e=>{if(e.key==='Enter')setAt(f.id);}} onDrop={drop(f.id)} {...dragTarget(f.id)}>
           <FolderIcon/><div><strong>{f.name}</strong><small>{countIn(f.id)}</small></div>
-          <Menu label={`${f.name} options`} handle={folderOrder.handle(f.id)} items={[{label:'Rename',icon:'rename',run:()=>setNaming({id:f.id,name:f.name})},{label:'Share folder',icon:'import',run:()=>actions.onShare(f.id)},{label:'Remove folder',icon:'trash',danger:true,run:()=>void removeFolder(f)}]}/>
+          <Menu label={`${f.name} options`} handle={folderOrder.handle(f.id)} items={folderItems(f)}/>
         </div>)}
       {naming&&!naming.id&&<div className="sp-folder naming"><FolderIcon/><input autoFocus value={naming.name} maxLength={80} placeholder="Folder name" aria-label="New folder name" onChange={e=>setNaming({...naming,name:e.target.value})} onBlur={saveName} onKeyDown={e=>{if(e.key==='Enter')saveName();if(e.key==='Escape')setNaming(null);}}/></div>}
     </div>}
@@ -385,6 +397,9 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     {movingPicked&&picked.size>0&&<div className="sp-move" role="dialog" aria-label={`Move ${picked.size} files`}><strong>Move {picked.size} file{picked.size===1?'':'s'} to</strong>{[{label:space.name+' (top level)',id:null as string|null},...folders.map(f=>({label:folderPath(folders,f.id),id:f.id as string|null}))].filter(d=>d.id!==at).map(d=><button key={d.id||'root'} onClick={()=>{move([...picked],d.id);setPicked(new Set());setMovingPicked(false);}}><FolderIcon/>{d.label}</button>)}<button className="cancel" onClick={()=>setMovingPicked(false)}>Cancel</button></div>}
     {desktop&&!at&&linked.length>0&&<div className="sp-linked"><span className="sp-eyebrow">On this PC</span>
       {linked.map(l=><button key={l.id} className="sp-row" onClick={()=>actions.onBrowseLinked(l.id)} title={l.path}><Icon name="projects" size={16}/><span>{l.path.split(/[\\/]/).pop()}</span></button>)}</div>}
+    {context&&<ContextMenu at={context} onClose={closeContext} items={context.folder
+      ?[{label:'Open',run:()=>setAt(context.folder!.id)},{label:'New folder inside',icon:'folder-plus',run:()=>{setAt(context.folder!.id);setNaming({name:''});}},...folderItems(context.folder)]
+      :[{label:'New folder',icon:'folder-plus',run:()=>setNaming({name:''})},{label:'Upload files',icon:'attach',run:()=>input.current?.click()},{label:'YouTube video',icon:'play',run:()=>actions.onSaveVideo(at)}]}/>}
   </section>;
 }
 

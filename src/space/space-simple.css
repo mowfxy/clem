@@ -22,7 +22,13 @@
 
 /* Folders: small chips, not cards. */
 .space-page .sp-folders{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:12px}
-.space-page .sp-folder{padding:8px 6px 8px 12px;border-radius:12px;gap:10px}
+.space-page .sp-folder{padding:8px 12px;border-radius:12px;gap:10px}
+/* The ☰ button floats over the card's right end instead of keeping a column empty, so the name runs the full width;
+   on hover it covers the name's end with a short fade. */
+.space-page .sp-folder>.sp-menu{position:absolute;right:6px;top:50%;margin:0;transform:translateY(-50%)}
+.space-page .sp-folder>.sp-menu>.icon-button{background:var(--sp-card);box-shadow:-16px 0 10px -4px var(--sp-card)}
+.space-page .sp-folder.over>.sp-menu>.icon-button{background:#262624;box-shadow:-16px 0 10px -4px #262624}
+.space-page .sp-folder>.sp-menu>.icon-button:hover{background:linear-gradient(#ffffff0d,#ffffff0d),var(--sp-card)}
 .space-page .sp-folder .sp-folder-icon .drawn-icon{width:22px;height:22px}
 .space-page .sp-folder>div{display:flex;align-items:baseline;gap:8px}
 .space-page .sp-folder strong{font-size:14px}
