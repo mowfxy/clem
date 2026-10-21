@@ -81,6 +81,7 @@ export const builtinSkills: Skill[] = [
  ],builtin:true},
  // Writing
  {id:'report',name:'Technical reports',description:'From scattered findings to a clear, professionally typeset report.',category:'Writing',icon:'files',steps:[
+  'Write a report only because the person directly asked for one; if they asked a question or for an explanation, answer that in the chat instead.',
   'Infer the audience, purpose, depth and length from the request and context; ask only when the answer would change the whole document.',
   'Gather the evidence first: attached files, the linked Drive folder, the space’s sources and, when the topic needs current or external facts, web search. Keep track of which source supports which claim.',
   'Plan the structure before writing: Summary, Introduction (scope and purpose), Background or Method, Findings, Discussion, Conclusions and Recommendations, as the content needs; merge or drop sections that would be empty.',
@@ -260,7 +261,8 @@ const routes: [string, RegExp][] = [
  ['youtube', /\b(youtube|youtu\.be|videos?|lecture recording|transcript|watch(?!\s+out\b))\b/i],
  ['study-guide', /\b(study guide|revision (?:notes|guide|plan)|exam prep|cheat ?sheet|practice questions|prepare for (?:my|the|an) exams?)\b/i],
  ['summary', /\b(summari[sz]e|summary|tl;?dr|briefing|key points|executive summary|condense)\b/i],
- ['report', /\b(report|technical document|white ?paper|write-?up|write (?:the |some )?documentation|(?:make|create|write|generate|produce|export|turn .{0,60} into|as|into) (?:me )?(?:a |an )?pdf)\b/i],
+ // Only a request for a report: a PDF of notes, or a question that mentions a report, is not one.
+ ['report', /\b(?:write|make|create|draft|prepare|produce|generate|build|turn .{0,60} into|as|into)\b.{0,40}\b(?:report|white ?paper|write-?up|technical document)s?\b|\bwrite (?:the |some )?documentation\b/i],
  ['editing', /\b(proofread|edit (?:my|this)|improve (?:my|this) (?:writing|text|paragraph|essay)|rewrite|grammar|rephrase)\b/i],
  ['decision', /\b(should i|which (?:is|option|one) (?:is )?better|compare|comparison|pros and cons|trade-?offs?|decide between)\b/i],
  ['diagrams', /\b(free[- ]?body|projectile|pulley|lens|mirror|ray diagram|circuit|schematic|logic gate|electric field|charged rod|force diagram)\b/i],
