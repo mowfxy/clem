@@ -1,7 +1,7 @@
 import {boundedConversation} from "../../core/chat-context.ts";
 import {contextBudget} from "../../core/context-budget.ts";
 import type { DesktopBridge } from "../../desktop/contracts";
-import type { FileVersion, StoredFile } from "../../core/types";
+import type { AnswerUsage, FileVersion, StoredFile } from "../../core/types";
 declare global {
   interface Window {
     clemDesktop?: DesktopBridge;
@@ -9,6 +9,8 @@ declare global {
 }
 export const desktop = typeof window === "undefined" ? undefined : window.clemDesktop;
 export type ChatOptions = {
+  /** What the answer used (tokens, tool calls, files opened): it arrives a few seconds after the answer itself. */
+  onUsage?: (usage: AnswerUsage) => void;
   /** A temporary chat: nothing from it is remembered or kept. */
   temporary?: boolean;
   model?: string;
@@ -69,7 +71,7 @@ export async function desktopChat(
   selection?: ChatOptions,
   onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
-  const { onStatus, onCondensed, look, pdfTask, condense, ...options } = selection || {};
+  const { onStatus, onCondensed, onUsage, look, pdfTask, condense, ...options } = selection || {};
   messages=condense?newestWithin(messages,2000,MAX_CHAT_CHARACTERS):boundedConversation(messages,contextBudget(options.model).conversation);
   const id = crypto.randomUUID();
   let result = "", work: number | undefined;
@@ -110,8 +112,14 @@ export async function desktopChat(
         result += event.text || "";
         paint ??= setTimeout(() => { paint = undefined; onText(result, work); }, STREAM_MS);
       }
+      if (event.type === "usage" && event.usage) { onUsage?.(event.usage); unsubscribe(); }
       if (event.type === "done") {
-        cleanup();
+        // The usage report follows "done" (Grok and Gemini count their tokens after answering): the answer is resolved
+        // now, and only that report is still listened for, for a minute at most.
+        clearTimeout(paint);
+        paint = undefined;
+        signal.removeEventListener("abort", cancel);
+        if (onUsage) setTimeout(unsubscribe, 60_000); else unsubscribe();
         resolve(result);
       }
       if (event.type === "error") {

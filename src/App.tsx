@@ -82,6 +82,7 @@ import {Login} from './Login';
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type {
+  AnswerUsage,
   Chat,
   EditOutcome,
   Model,
@@ -134,6 +135,8 @@ import { refreshVideo } from './files/saved-video';
 import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } from "../core/chat-title";
 import { Chapters } from "./chat/Chapters";
+import { ThreadInfo } from "./chat/ThreadInfo";
+import { addUsage } from "../core/thread-usage";
 import { useChatScroll } from "./chat/useChatScroll";
 import { FindBar } from "./chat/FindBar";
 import { SlashField, CommandChip } from "./chat/SlashField";
@@ -927,8 +930,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   ) {
     if(desktop){
       const target=extra.chat||conversationTarget;
+      // The reply this answer fills: its usage (tokens, files opened) is added to it when the report arrives, after the answer.
+      const replyId=[...(stateRef.current.chats.find(c=>c.id===target)?.messages||[])].reverse().find(m=>m.role==='assistant')?.id;
+      const onUsage=(usage:AnswerUsage)=>{if(replyId)updateChat(target,c=>({...c,messages:c.messages.map(m=>m.id===replyId?{...m,usage:addUsage(m.usage,usage)}:m)}));};
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,...(extra.pdfs?.length?{pdfs:extra.pdfs}:{}),...(extra.pdfNotes?.length?{pdfNotes:extra.pdfNotes}:{}),library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,side:extra.side,...(extra.plain?{plain:true}:{}),condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,...(extra.pdfs?.length?{pdfs:extra.pdfs}:{}),...(extra.pdfNotes?.length?{pdfNotes:extra.pdfNotes}:{}),library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,side:extra.side,onUsage,...(extra.plain?{plain:true}:{}),condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -2754,6 +2760,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   <button className={`icon-button temp-toggle ${temporaryNext ? "on" : ""}`} aria-pressed={temporaryNext} aria-label="Temporary chat" title={temporaryNext ? "Temporary chat is on" : "Start a temporary chat"} onClick={() => setTemporaryNext(!temporaryNext)}><Icon name="temp" size={18} /></button>
                 </div>
               ) : null)}
+              {route === "/app" && activeChat && activeChat.messages.length > 0 && (
+                <ThreadInfo chat={activeChat} files={state.files} visuals={state.visuals} studySets={state.studySets} models={models} onOpenFile={(id) => { const f = state.files.find((x) => x.id === id); if (f) openInPanel(f); }} />
+              )}
             </header>
             {route === "/app" && dropping && <div className="drop-overlay" aria-hidden="true"><div className="drop-card"><Icon name="attach" size={26} /><strong>Drop to attach</strong><span>The files join your next message.</span></div></div>}
             {route === "/app" ? (
