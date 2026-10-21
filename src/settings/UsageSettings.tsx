@@ -76,6 +76,11 @@ function Stat({value,label,detail}:{value:string;label:string;detail?:string}){
   return <div className="usage-stat"><b>{value}</b><span>{label}</span>{detail&&<small>{detail}</small>}</div>;
 }
 
+/** One line of the Workspace list; a count still at zero is shown quietly, so the ones in use stand out. */
+function Count({value,label,detail}:{value:number;label:string;detail?:string}){
+  return <div className={value?undefined:'zero'}><dt>{label}{detail&&<small>{detail}</small>}</dt><dd>{value.toLocaleString()}</dd></div>;
+}
+
 export function UsageSettings(data:UsageData){
   const s=useMemo(()=>usageStats(data),[data.chats,data.spaces,data.files,data.studySets,data.visuals,data.automations,data.models,data.archive]);
   const times=useMemo(()=>[...data.chats.map(c=>c.updated),...(data.archive?.times||[])],[data.chats,data.archive]);
@@ -125,13 +130,22 @@ export function UsageSettings(data:UsageData){
     </SettingsCard>
 
     <SettingsCard title="Workspace">
-      <div className="usage-grid">
-        <Stat value={s.projects.toLocaleString()} label="Projects"/>
-        <Stat value={s.subjects.toLocaleString()} label="Subjects"/>
-        <Stat value={s.files.toLocaleString()} label="Files" detail={s.made?`${s.made} made by Clem`:undefined}/>
-        <Stat value={s.cards.toLocaleString()} label="Flashcards" detail={s.reviews?`${compact(s.reviews)} reviews`:undefined}/>
-        <Stat value={s.quizzes.toLocaleString()} label="Quizzes taken"/>
-        <Stat value={s.visuals.toLocaleString()} label="Visuals" detail={s.automations?plural(s.automations,'automation'):undefined}/>
+      <div className="usage-ws">
+        <div className="usage-tokens">
+          <div className="usage-token-total"><b>{s.files.toLocaleString()}</b><span>{s.files===1?'file':'files'} in Clem</span></div>
+          <div className="usage-bar" role="img" aria-label={`${s.files-s.made} added by you, ${s.made} made by Clem`}>
+            <i style={{flexGrow:s.files-s.made}}/><i style={{flexGrow:s.made||(s.files?0:1)}}/>
+          </div>
+          <div className="usage-legend"><span><i className="in"/>Added by you · {(s.files-s.made).toLocaleString()}</span><span><i className="out"/>Made by Clem · {s.made.toLocaleString()}</span></div>
+        </div>
+        <dl className="usage-ws-list">
+          <Count value={s.subjects} label="Subjects"/>
+          <Count value={s.projects} label="Projects"/>
+          <Count value={s.cards} label="Flashcards" detail={s.reviews?`${compact(s.reviews)} reviews`:undefined}/>
+          <Count value={s.quizzes} label="Quizzes taken"/>
+          <Count value={s.visuals} label="Visuals"/>
+          <Count value={s.automations} label="Automations"/>
+        </dl>
       </div>
     </SettingsCard>
   </>;
