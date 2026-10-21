@@ -55,7 +55,7 @@ import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { attachedSources, cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
 import { ChatSessions, type KeptSession, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrint, sentAfter, sourcePrint } from "./chat-sessions";
-import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
+import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraCliBrief, kinetraFilesBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeOpensPdfPages} from './claude';
@@ -626,7 +626,7 @@ void app.whenReady().then(async () => {
    */
   function prepareFor(owner: string, model?: string, ahead = false) {
     // Antigravity opens the next chat message's session ahead, with the rules a chat answer in the working folder gets (answerTimed).
-    if (model?.startsWith(ANTIGRAVITY_PREFIX)) void antigravityFor(owner).then((ag) => ag.prepare(ahead, { cwd: join(local, owner, "work", "clem"), system: cliSystemPrompt(kinetraCli), folder: true, native: true })).catch(() => {});
+    if (model?.startsWith(ANTIGRAVITY_PREFIX)) void antigravityFor(owner).then((ag) => ag.prepare(ahead, { cwd: join(local, owner, "work", "clem"), system: cliSystemPrompt(kinetraCliBrief), folder: true, native: true })).catch(() => {});
     else if (model?.startsWith(GROK_PREFIX)) void grokFor(owner).then((grok) => grok.prepare(ahead)).catch(() => {});
     else if (model?.startsWith("claude:")) void claudeFor(owner).then((claude) => claude.prepare(ahead)).catch(() => {});
     else void selectProvider(owner).then((provider) => provider.prepare(ahead)).catch(() => {});
@@ -2023,8 +2023,8 @@ void app.whenReady().then(async () => {
         return { id: tool.id, name: documents.get(tool.id), action: action || "pdf", specification, ...(typeof draft?.path === "string" ? { madeFrom: lanePath(draft.path), note: `Made from ${lanePath(draft.path)}: edit that file and send {"action":"${action || "pdf"}","revise":"${tool.id}","markdown":"${lanePath(draft.path)}","change":…}.` } : {}) };
       };
       // A plain request (a document edit that answers in JSON) runs without tools, so it can never make another file.
-      // Claude and Grok always see the whole tool guide (kinetraCompact, the same in every system prompt); what this request
-      // adds to it (recipes, a file design guide) and this conversation's files change from turn to turn, so they go in the message.
+      // What this request adds to the tool guide (recipes, a file design guide) and this conversation's files change from
+      // turn to turn, so they go in the message.
       const fileNotes = documentsNote([...documents].map(([id, name]) => ({ id, name, draft: drafts.get(id) }))) + (work ? cliFileToolsGuide() : fileToolsGuide(library, pictures.length > 0));
       // The topic is what the person said and this answer's own sources, never Clem's rules (which name pulleys, inclines and
       // charges) or the working folder's list of every file the person keeps: with those, a Math chat carried the circuit,
@@ -2033,11 +2033,15 @@ void app.whenReady().then(async () => {
         context: [...messages.filter((m) => m.role !== "system").map((m) => m.content), ...sources.map((s) => s.text), pdfNote, ...library.map((f) => f.name)].join("\n"),
         pictures: pictures.length > 0,
       };
-      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : work ? (grokTurn ? kinetraFiles : cli || needsKinetra(query, documents.size > 0) ? kinetraCli : kinetraBrief) : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0, { ...topic, notes: fileNotes });
+      const needsTools = needsKinetra(query, documents.size > 0);
+      // Claude, Grok and Gemini in a working folder keep a one-line tool note in their system prompt (kinetraCliBrief): the
+      // full guide joins the message (below) only when this request may need it.
+      const instructions = request.plain ? "Answer with text only; no tools are available for this request." : work ? (cli ? (grokTurn ? kinetraFilesBrief : kinetraCliBrief) : needsTools ? kinetraCli : kinetraBrief) : cli ? kinetraCompact : kinetraInstructionsFor(query, documents.size > 0, { ...topic, notes: fileNotes });
+      const guide = work && cli && needsTools && !request.plain ? (grokTurn ? kinetraFiles : kinetraCli) : "";
       // This conversation's files come before what this message chose (recipes, a design guide), so the prompt cache keeps more.
       const extras = request.plain ? "" : kinetraExtrasFor(query, documents.size > 0, topic);
       // They join this message's context, after the conversation, so the prompt starts the same way on every message.
-      const blocks = request.plain || !cli && !work ? contextBlocks : [...contextBlocks, fileNotes.trim(), extras].filter(Boolean);
+      const blocks = request.plain || !cli && !work ? contextBlocks : [...contextBlocks, guide, fileNotes.trim(), extras].filter(Boolean);
       const fresh = promptWith(blocks);
       // A chat's answers go on one CLI session (desktop/chat-sessions.ts), whichever AI answers: the next message continues it
       // when the conversation is as the session left it. Its fingerprints leave out the files attached as source material.

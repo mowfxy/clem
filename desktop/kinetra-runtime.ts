@@ -100,6 +100,16 @@ export const kinetraCli = buildInstructions('Not listed here: {"action":"recipes
 /** The same for an AI in a working folder that sends Kinetra requests as {"kinetra":…} replies (Grok). */
 export const kinetraFiles = buildInstructions('Not listed here: {"action":"recipes"} returns every recipe, and a request that needs figures carries the ones for its topic after this guide.', "", { files: true });
 /**
+ * The system prompt's tool note for an AI in a working folder, in place of kinetraCli or kinetraFiles. Those were in
+ * every system prompt on the promise of the CLI's prompt cache, but Gemini never read them from it (0 cached tokens in
+ * every answer logged) and Grok barely did, so "hey" carried ~6k tokens of tool guide and waited 8–14 s for its first
+ * word. The guide now goes in the message of a request that may need it (needsKinetra), once per kept session; one the
+ * regex misses asks for it with help. The note is the same every time, so the pre-opened session still matches it.
+ */
+const workBrief = (native: boolean) => `Kinetra tools (verified calculations, physics/circuit/logic figures, and real files: PDF, Word, PowerPoint, Excel, CSV, HTML, calendar and other text files, images) are available${native ? " as your kinetra tool" : ""}. Their full guide (KINETRA TOOLS) comes with any message that may need them. If a request needs them and that guide is not in this conversation, first ${native ? 'call kinetra with {"action":"help"}' : 'reply with ONLY {"kinetra":{"action":"help"}}'} to get it; otherwise answer normally.`;
+export const kinetraCliBrief = workBrief(true);
+export const kinetraFilesBrief = workBrief(false);
+/**
  * What a request adds after kinetraCompact, in the message: the recipes for its topic when it may need tools, and the
  * design guide for the kind of file asked for. `context` and `pictures` choose the recipes as in kinetraInstructionsFor.
  */

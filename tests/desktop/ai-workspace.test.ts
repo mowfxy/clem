@@ -11,7 +11,7 @@ import { markdownSource, withMarkdownSource } from "../../desktop/markdown-sourc
 import { claudeCliArgs, claudeCliSettings, claudeWriters, rulePath, CLAUDE_CLI_TOOLS, WRITER, WRITERS_NOTE } from "../../desktop/claude.ts";
 import { folderThread } from "../../desktop/codex-stream.ts";
 import { documentsNote } from "../../core/clem-skills.ts";
-import { kinetraCli, kinetraFiles, kinetraCompact } from "../../desktop/kinetra-runtime.ts";
+import { kinetraCli, kinetraFiles, kinetraCompact, kinetraCliBrief, kinetraFilesBrief } from "../../desktop/kinetra-runtime.ts";
 import { cliSystemPrompt } from "../../desktop/prompt.ts";
 import { GROK_FOLDER_TOOLS, grokRules } from "../../desktop/grok.ts";
 
@@ -229,6 +229,13 @@ test("the folder guides write documents as Markdown files instead of in parts, a
   assert.doesNotMatch(cliSystemPrompt("", { shell: true }), /Run no commands/);
   assert.match(kinetraCli, /not to compose the document's text before writing it/);
   assert.match(grokRules("rules", true)!, /working folder holds the person's files/);
+});
+
+test("a folder AI's system prompt carries a one-line tool note, so a plain message does not carry the whole guide", () => {
+  assert.ok(cliSystemPrompt(kinetraCliBrief).length < 3000);
+  assert.ok(cliSystemPrompt(kinetraCli).length > 15000);
+  assert.match(kinetraCliBrief, /call kinetra with \{"action":"help"\}/);
+  assert.match(kinetraFilesBrief, /reply with ONLY \{"kinetra":\{"action":"help"\}\}/);
 });
 
 test("an unchanged answer copies nothing and leaves the manifest alone", async () => {
