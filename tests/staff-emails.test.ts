@@ -98,7 +98,7 @@ test('update emails need a version and notes, carry an unsubscribe link and resp
   optedOut=false;
   const r=await call('/send',{kind:'update',userId:user,version:'0.3.0-preview.34',notes:'Faster search\nNew fonts'});
   assert.equal(r.status,200);
-  assert.equal(outbox[0].subject,'Clem 0.3.0-preview.34 is here');
+  assert.equal(outbox[0].subject,'Clem 0.3.0-preview.34 is available');
   assert.match(outbox[0].extra.headers!['List-Unsubscribe'],/api\/email\/unsubscribe\?e=ava%40studio\.co&t=/);
   assert.match(outbox[0].text,/- Faster search\n- New fonts/);
   const log=queries.find(q=>q.sql.startsWith('INSERT INTO clem_email_log'))!;
@@ -108,7 +108,7 @@ test('update emails need a version and notes, carry an unsubscribe link and resp
 test('notices send as is and are not logged as automatic emails',async()=>{
   const r=await call('/send',{kind:'automation-complete',userId:user});
   assert.equal(r.status,200);
-  assert.equal(outbox[0].subject,'Your routine is ready');
+  assert.equal(outbox[0].subject,'Your routine has finished');
   assert.ok(!queries.some(q=>q.sql.startsWith('INSERT INTO clem_email_log')));
 });
 
@@ -124,7 +124,7 @@ test('preview renders the email without sending it',async()=>{
   const r=await call('/preview',{kind:'support-received',userId:user});
   assert.equal(r.status,200);
   const body=await r.json();
-  assert.equal(body.subject,'We got your message');
+  assert.equal(body.subject,'We received your message');
   assert.equal(body.to,'ava@studio.co');
   assert.match(body.html,/^<!doctype html>/);
   assert.equal(outbox.length,0);

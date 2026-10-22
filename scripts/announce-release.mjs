@@ -58,7 +58,7 @@ for(const user of queue.slice(0,limit)){
   const unsubscribe=link(user.email),mail=updateEmail(version,notes,unsubscribe);
   try{
     await mailer.sendMail({from:env.SMTP_FROM,to:user.email,subject:mail.subject,text:mail.text,html:mail.html,
-      headers:{'List-Unsubscribe':`<${unsubscribe}>, <mailto:support@m4labs.xyz?subject=unsubscribe>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}});
+      headers:{'X-M4Labs-Mail':'automated','List-Unsubscribe':`<${unsubscribe}>, <mailto:support@m4labs.xyz?subject=unsubscribe>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}});
     await d1("INSERT INTO clem_email_log(owner_id,kind,sent_at) VALUES(?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(owner_id,kind) DO NOTHING",'supabase:'+user.id,kind);
     sent++;
   }catch(e){failed++;console.warn(`Not sent to one address: ${e.message}`);if(failed>=5&&!sent)throw Error('Stopping: the mail server is refusing messages.');}

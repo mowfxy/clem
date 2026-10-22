@@ -18,6 +18,7 @@ import {
 import { handleAdmin } from "./admin.js";
 import { handleSupport } from "./support.js";
 import { handleUsage } from "./usage.js";
+import { purgeMailRecords } from "./lib/retention.js";
 
 // core/sync.ts allows notes up to 200 x 30,000 characters (about 6 MB as plain JSON); allow that with headroom.
 // Stored compressed, a collection must still fit D1's 2 MB value limit, checked after packing.
@@ -137,6 +138,7 @@ export default {
     await env.DB.prepare("DELETE FROM desktop_rate_limits WHERE expires<?")
       .bind(Math.floor(Date.now() / 60000) - 60)
       .run();
+    await purgeMailRecords(env);
   },
 };
 

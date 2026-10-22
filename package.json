@@ -49,6 +49,7 @@
     "fflate": "0.8.3",
     "idb-keyval": "^6.2.2",
     "ignore": "7.0.5",
+    "imapflow": "^2.8.0",
     "jose": "^6.2.12",
     "katex": "^0.16.47",
     "libheif-js": "1.23.2",

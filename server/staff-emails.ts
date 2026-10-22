@@ -106,7 +106,7 @@ export function staffEmailRouter(send:Send=sendMail){
       headers={'List-Unsubscribe':`<${unsubscribe}>, <mailto:support@m4labs.xyz?subject=unsubscribe>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'};
     }
     const mail=staffEmail(kind,{...extra,name:person.name,unsubscribe});
-    try{await send(person.email,mail.subject,mail.text,replyTo(),{html:mail.html,headers,from:mail.from});}
+    try{await send(person.email,mail.subject,mail.text,replyTo(),{html:mail.html,headers,from:mail.from,kind:kind==='custom'?'staff':'automated'});}
     catch(error){throw new StaffError((error as Error).message||'The mail server did not accept the email.',502);}
     const at=new Date().toISOString();
     // The automatic senders skip anyone already logged, so a hand-sent welcome or update is not repeated later.
@@ -135,7 +135,7 @@ export function staffEmailRouter(send:Send=sendMail){
     const [already]=await db()`SELECT 1 AS hit FROM desktop_audit_log WHERE action='email.send' AND detail LIKE ${key+'%'} LIMIT 1`;
     if(already)throw new StaffError('This reply was already emailed.',409);
     const mail=caseReplyEmail(String(c.subject||'Your support request'),String(reply.body),String(c.display_name||c.username||''));
-    try{await send(email,mail.subject,mail.text,replyTo(),{html:mail.html});}
+    try{await send(email,mail.subject,mail.text,replyTo(),{html:mail.html,kind:'case',caseId});}
     catch(error){throw new StaffError((error as Error).message||'The mail server did not accept the email.',502);}
     await db()`INSERT INTO desktop_audit_log(id,actor_id,actor_email,action,target,detail,created_at) VALUES(${randomUUID()},${staff.id},${staff.email},'email.send',${String(c.owner_id||email)},${`${key}${mail.subject} → ${email}`},${new Date().toISOString()})`;
     res.json({ok:true,to:email,subject:mail.subject});

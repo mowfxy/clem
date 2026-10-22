@@ -11,8 +11,8 @@ export const writableTables = new Set([
 ]);
 /** Staff email sends are audited (server/staff-emails.ts): the API may add entries, never change or remove them. */
 export const insertableTables = new Set([...writableTables, "desktop_audit_log"]);
-/** Staff emails also look up a person's address and name. */
-export const readableTables = new Set([...insertableTables, "desktop_activity", "desktop_profiles"]);
+/** Staff emails also look up a person's address and name; mail retention (server/retention.ts) reads which cases closed. */
+export const readableTables = new Set([...insertableTables, "desktop_activity", "desktop_profiles", "clem_support_state"]);
 
 export function allowedStatement(sql) {
   if (typeof sql !== "string" || !sql.trim() || sql.length > 20000) return false;

@@ -29,6 +29,7 @@ import {
   cookies,
 } from "./auth.ts";
 import { encrypt, decrypt } from "./vault.ts";
+import { runRetention } from "./retention.ts";
 import { uploadUrl, downloadUrl, objectSize, removeObject } from "./storage.ts";
 const app = express();
 app.disable("x-powered-by");
@@ -774,7 +775,9 @@ app.get("/api/cron", async (req, res) => {
     return;
   }
   if(subscriptionReady())await cleanExpiredSubscriptionSessions();
-  res.json(await runDue());
+  const retention=await runRetention().catch((error:Error)=>({error:error.message}));
+  if("error" in retention||retention.mailbox.error)console.error("Mail retention did not finish",retention);
+  res.json({...(await runDue()),retention});
 });
 /** Messages Clem wrote for people: plain Errors thrown by this app, not subclasses or errors carrying a system code. */
 export function exposable(error: unknown): error is Error {
