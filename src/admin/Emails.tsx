@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {adminApi,mailApi,type MailPreset,type Person} from './api';
-import {Avatar,Empty,ErrorNote,I,Modal,PageHead,Select,Skeleton,ago,useLoad,useToast,who} from './ui';
+import {Avatar,Empty,ErrorNote,I,PageHead,Select,Skeleton,ago,useLoad,useToast,who} from './ui';
 import type {Go} from './AdminApp';
 
 type Entry={id:string;actor_email:string;action:string;target:string;detail:string;created_at:string};
@@ -8,23 +8,30 @@ type Entry={id:string;actor_email:string;action:string;target:string;detail:stri
 type Recipient=Pick<Person,'id'|'email'|'username'|'display_name'>;
 const looksLikeEmail=(v:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
-export function Emails({go}:{go:Go}){
-  const [composing,setComposing]=useState(false);
+/** #/emails lists what staff sent; #/emails/new writes one; #/emails/<account id> writes to that account. */
+export function Emails({go,compose}:{go:Go;compose?:string}){
+  if(compose)return <Compose go={go} personId={compose==='new'?undefined:compose}/>;
+  return <SentEmails go={go}/>;
+}
+
+function SentEmails({go}:{go:Go}){
   const {data,error,loading,reload}=useLoad(()=>adminApi<{entries:Entry[]}>('/admin/audit?q=email.send'),[]);
   const sent=data?.entries.filter(e=>e.action==='email.send')||[];
+  // The audit detail reads "<kind> · <subject> → <address>"; the target is an account id, or the address itself.
+  const parts=(e:Entry)=>{const rest=e.detail.split(' · ').slice(1).join(' · ')||e.detail;const at=rest.lastIndexOf(' → ');return at<0?{subject:rest,to:''}:{subject:rest.slice(0,at),to:rest.slice(at+3)};};
   return <div className="adm-page">
-    <PageHead scene="envelope" title="Emails" line="Write to any M4 Labs account or address, or send one of Clem’s preset emails. The automatic emails keep going out on their own."><button className="adm-primary" onClick={()=>setComposing(true)}><I name="send" size={15}/>Send an email</button></PageHead>
-    <section className="adm-card"><header><h2>Sent by staff</h2></header>
-      {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:sent.length?<ul className="adm-list plain">{sent.map(e=><li key={e.id}>{e.target.includes('@')?<div className="adm-row"><div><strong>{e.detail.split(' · ').slice(1).join(' · ')||e.detail}</strong><small>{e.actor_email} · {ago(e.created_at)}</small></div></div>:<button className="adm-row link" onClick={()=>go('accounts',e.target)}><div><strong>{e.detail.split(' · ').slice(1).join(' · ')||e.detail}</strong><small>{e.actor_email} · {ago(e.created_at)}</small></div><I name="arrow" size={15}/></button>}</li>)}</ul>:<Empty scene="plane" title="Nothing sent yet">Emails you send from here, or from a person’s page, are listed here.</Empty>}
-    </section>
-    {composing&&<SendEmail onClose={()=>setComposing(false)} onSent={reload}/>}
+    <PageHead title="Emails" line="Write to any M4 Labs account or email address, or send one of the preset emails. Automatic emails go out on their own."><button className="adm-primary" onClick={()=>go('emails','new')}><I name="plus" size={15}/>New email</button></PageHead>
+    {error?<ErrorNote error={error} onRetry={reload}/>:loading&&!data?<Skeleton/>:sent.length?<div className="adm-table-wrap"><table className="adm-table">
+      <thead><tr><th>Subject</th><th>To</th><th>Sent by</th><th>When</th></tr></thead>
+      <tbody>{sent.map(e=>{const person=!e.target.includes('@'),p=parts(e);return <tr key={e.id} className={person?'':'static'} onClick={()=>{if(person)go('accounts',e.target);}}><td><strong>{p.subject}</strong></td><td>{p.to||(person?'Account':e.target)}</td><td>{e.actor_email}</td><td>{ago(e.created_at)}</td></tr>;})}</tbody>
+    </table></div>:<div className="adm-card"><Empty icon="send" title="No emails sent yet">Emails staff send from here or from an account appear in this list.</Empty></div>}
   </div>;
 }
 
-/** Write a message or pick a preset, see exactly what the person gets, then send. Opened from the Emails page or a person's page. */
-export function SendEmail({person,onClose,onSent}:{person?:Recipient;onClose:()=>void;onSent?:()=>void}){
+/** A page of its own: the message on the left, the exact email on the right. */
+function Compose({go,personId}:{go:Go;personId?:string}){
   const toast=useToast();
-  const [to,setTo]=useState<Recipient|null>(person||null);
+  const [to,setTo]=useState<Recipient|null>(null);
   const [kind,setKind]=useState('custom');
   const [subject,setSubject]=useState('');
   const [message,setMessage]=useState('');
@@ -33,6 +40,8 @@ export function SendEmail({person,onClose,onSent}:{person?:Recipient;onClose:()=
   const [busy,setBusy]=useState(false);
   const presets=useLoad(()=>mailApi<{presets:MailPreset[];ready:boolean}>('/presets'),[]);
   const [preview,setPreview]=useState<{subject:string;html:string}|null>(null);
+  // Opened from an account: start addressed to that person.
+  useEffect(()=>{if(!personId)return;void adminApi<{user:Person}>('/admin/users/'+personId).then(d=>setTo(d.user)).catch(e=>toast((e as Error).message,'error'));},[personId]);
   // Update emails announce the version the website offers now.
   useEffect(()=>{void fetch('/desktop-release.json').then(r=>r.json()).then(d=>setVersion(v=>v||String(d.version||''))).catch(()=>{});},[]);
   const target=to?(to.id?{userId:to.id}:{email:to.email}):{};
@@ -44,44 +53,43 @@ export function SendEmail({person,onClose,onSent}:{person?:Recipient;onClose:()=
   async function send(){
     if(!to)return;
     setBusy(true);
-    try{const r=await mailApi<{to:string}>('/send',{kind,...target,version,notes,subject,message});toast(`Sent to ${r.to}`);onSent?.();onClose();}
+    try{const r=await mailApi<{to:string}>('/send',{kind,...target,version,notes,subject,message});toast(`Sent to ${r.to}`);go('emails');}
     catch(e){toast((e as Error).message,'error');}finally{setBusy(false);}
   }
   const ready=presets.data?.ready!==false;
   const preset=presets.data?.presets.find(p=>p.id===kind);
-  // Laid out like a mail client: header fields on the left, the exact email at full size on the right.
-  return <Modal className="mail" title="Send an email" line="Same design as the automatic emails. It goes out right away and is kept in the audit log." onClose={onClose}>
-    <form className="adm-form adm-mail" onSubmit={e=>{e.preventDefault();void send();}}>
-      <div className="adm-mail-fields">
-        <div className="adm-mail-field">
-          <span className="adm-mail-label">to</span>
-          {to?<div className="adm-mail-to"><Avatar person={to} size={30}/><span className="adm-mail-who"><strong>{who(to)}</strong><small>{to.email||'No email on record'}</small></span>{!person&&<button type="button" className="adm-icon" aria-label="Choose someone else" onClick={()=>setTo(null)}><I name="close" size={15}/></button>}</div>:<PersonPicker onPick={setTo}/>}
+  return <div className="adm-page adm-compose-page">
+    <PageHead back={{label:'Emails',onClick:()=>go('emails')}} title="New email" line="It goes out right away in the same design as the automatic emails, and is kept in the audit log."/>
+    <form className="adm-compose-grid" onSubmit={e=>{e.preventDefault();void send();}}>
+      <section className="adm-card adm-compose-form">
+        <div className="adm-field"><span className="adm-field-label">To</span>
+          {to?<div className="adm-mail-to"><Avatar person={to} size={32}/><span className="adm-mail-who"><strong>{who(to)}</strong><small>{to.email||'No email on record'}</small></span><button type="button" className="adm-icon" aria-label="Choose someone else" onClick={()=>setTo(null)}><I name="close" size={15}/></button></div>
+          :personId?<Skeleton rows={1}/>:<PersonPicker onPick={setTo}/>}
         </div>
-        <div className="adm-mail-field">
-          <span className="adm-mail-label">email</span>
-          {presets.error?<ErrorNote error={presets.error} onRetry={presets.reload}/>:!presets.data?<Skeleton rows={1}/>:<div className="adm-mail-kind">
+        <div className="adm-field"><span className="adm-field-label">Email</span>
+          {presets.error?<ErrorNote error={presets.error} onRetry={presets.reload}/>:!presets.data?<Skeleton rows={1}/>:<>
             <Select aria-label="Which email" value={kind} onChange={setKind} options={presets.data.presets.map(p=>({value:p.id,label:p.label}))}/>
-            {preset?.about&&<small>{preset.about}</small>}
-          </div>}
+            {preset?.about&&<small className="adm-field-help">{preset.about}</small>}
+          </>}
         </div>
         {kind==='custom'&&<>
-          <label className="adm-mail-field"><span className="adm-mail-label">subject</span><input value={subject} onChange={e=>setSubject(e.target.value)} required maxLength={150} placeholder="About your M4 Labs account"/></label>
-          <label className="adm-mail-field grow"><span className="adm-mail-label">message</span><textarea value={message} onChange={e=>setMessage(e.target.value)} required minLength={2} maxLength={10000} placeholder={'Write it like a normal email. Line breaks are kept.\nIt starts with “Hi” and their first name when we know it.'}/></label>
+          <label className="adm-field"><span className="adm-field-label">Subject</span><input value={subject} onChange={e=>setSubject(e.target.value)} required maxLength={150} placeholder="About your M4 Labs account"/></label>
+          <label className="adm-field"><span className="adm-field-label">Message</span><textarea value={message} onChange={e=>setMessage(e.target.value)} required minLength={2} maxLength={10000} rows={10} placeholder="Write it like a normal email. Line breaks are kept."/><small className="adm-field-help">It opens with “Hi” and their first name when we know it.</small></label>
         </>}
         {kind==='update'&&<>
-          <label className="adm-mail-field"><span className="adm-mail-label">version</span><input value={version} onChange={e=>setVersion(e.target.value)} required pattern="\d+\.\d+\.\d+(-[\w.]+)?" placeholder="0.3.0"/></label>
-          <label className="adm-mail-field grow"><span className="adm-mail-label">what changed, one per line</span><textarea value={notes} onChange={e=>setNotes(e.target.value)} required maxLength={2000} placeholder={'Flashcards follow your exam date\nTidier recent files'}/></label>
+          <label className="adm-field"><span className="adm-field-label">Version</span><input value={version} onChange={e=>setVersion(e.target.value)} required pattern="\d+\.\d+\.\d+(-[\w.]+)?" placeholder="0.3.0"/></label>
+          <label className="adm-field"><span className="adm-field-label">What changed</span><textarea value={notes} onChange={e=>setNotes(e.target.value)} required maxLength={2000} rows={8} placeholder={'Flashcards follow your exam date\nTidier recent files'}/><small className="adm-field-help">One change per line.</small></label>
         </>}
-        {kind!=='custom'&&kind!=='update'&&<p className="adm-mail-note">This email is already written. Check it on the right, then send.</p>}
-        {!ready&&<p className="adm-alert danger">Email sending is not set up on the website yet, so nothing can be sent.</p>}
-        <footer><button type="button" onClick={onClose}>Cancel</button><button className="adm-primary" disabled={busy||!to?.email||!ready||!presets.data}><I name="send" size={15}/>{busy?'Sending…':to?.email?`Send to ${to.email}`:'Send'}</button></footer>
-      </div>
-      <section className="adm-mail-preview" aria-label="Preview">
-        <div className="adm-mail-subject"><span>subject</span><strong>{preview?.subject||'…'}</strong></div>
+        {kind!=='custom'&&kind!=='update'&&<p className="adm-field-note">This email is already written. Check the preview, then send it.</p>}
+        {!ready&&<p className="adm-alert danger">Email sending isn’t set up on the website yet, so nothing can be sent.</p>}
+        <footer><button type="button" onClick={()=>go('emails')}>Cancel</button><button className="adm-primary" disabled={busy||!to?.email||!ready||!presets.data}><I name="send" size={15}/>{busy?'Sending…':'Send email'}</button></footer>
+      </section>
+      <section className="adm-compose-preview-pane" aria-label="Preview">
+        <header><span>Preview</span><strong>{preview?.subject||'…'}</strong>{to?.email&&<small>to {to.email}</small>}</header>
         {preview?<iframe title="Email preview" sandbox="" srcDoc={preview.html}/>:<div className="adm-mail-frame-wait"><Skeleton rows={6}/></div>}
       </section>
     </form>
-  </Modal>;
+  </div>;
 }
 
 function PersonPicker({onPick}:{onPick:(p:Recipient)=>void}){

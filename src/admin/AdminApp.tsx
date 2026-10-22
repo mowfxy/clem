@@ -74,35 +74,36 @@ export default function AdminApp(){
   if(phase==='loading')return <div className="adm-root adm-center"><span className="adm-loading-logo"><LabLogo/></span></div>;
   if(phase==='signin')return <ToastHost><SignIn onDone={check}/></ToastHost>;
   if(phase==='mfa')return <ToastHost><MfaSetup onDone={check} onSignOut={()=>void signOut()}/></ToastHost>;
-  if(phase==='denied')return <div className="adm-root adm-center adm-auth"><div className="adm-auth-card"><LabLogo/><p className="adm-prompt"><span>m4labs:~$</span> admin</p><h1>No staff access</h1><p>{denied}</p><button className="adm-primary wide" onClick={()=>void signOut()}>Use another account</button></div></div>;
+  if(phase==='denied')return <div className="adm-root adm-center adm-auth"><div className="adm-auth-card"><LabLogo/><h1>No staff access</h1><p>{denied}</p><button className="adm-primary wide" onClick={()=>void signOut()}>Use another account</button></div></div>;
   const s=staff!;
   const link=(section:Section)=>`#${prefix}${path(section)}`;
-  // Links read like the paths on m4labs.xyz: ./accounts, ./stats. The section id is the path.
-  const item=(n:{id:Section;label:string})=><a key={n.id} href={link(n.id)} className={where.section===n.id?'on':''} aria-current={where.section===n.id?'page':undefined} title={n.label}>{n.id}</a>;
+  const item=(n:{id:Section;label:string;icon:string})=><a key={n.id} href={link(n.id)} className={where.section===n.id?'on':''} aria-current={where.section===n.id?'page':undefined}><Icon name={n.icon} size={18}/><span>{n.label}</span></a>;
   return <ToastHost><div className={`adm-root adm-shell ${menu?'menu-open':''}`}>
-    <header className="adm-bar">
-      <button className="adm-icon adm-menu" aria-label={menu?'Close navigation':'Open navigation'} aria-expanded={menu} onClick={()=>setMenu(!menu)}><Icon name={menu?'close':'menu'} size={20}/></button>
-      <a className="adm-brand" href={link('overview')}><LabLogo/><em>admin</em></a>
-      <div className="adm-scrim nav" onClick={()=>setMenu(false)} aria-hidden="true"/>
-      <nav className="adm-nav" aria-label="Admin navigation">
-        <div className="adm-nav-group"><span className="adm-nav-label">lab</span>{lab.filter(n=>!n.min||s.role!=='support').map(item)}</div>
+    <header className="adm-topbar">
+      <button className="adm-icon" aria-label={menu?'Close navigation':'Open navigation'} aria-expanded={menu} onClick={()=>setMenu(!menu)}><Icon name={menu?'close':'menu'} size={20}/></button>
+      <a className="adm-brand" href={link('overview')}><LabLogo/><span>Admin</span></a>
+    </header>
+    <div className="adm-scrim nav" onClick={()=>setMenu(false)} aria-hidden="true"/>
+    <aside className="adm-side" aria-label="Admin navigation">
+      <a className="adm-brand" href={link('overview')}><LabLogo/><span>Admin</span></a>
+      <nav>
+        <div className="adm-nav-group"><span className="adm-nav-label">M4 Labs</span>{lab.filter(n=>!n.min||s.role!=='support').map(item)}</div>
         {products.map(p=><div className="adm-nav-group" key={p.id}>
-          <a className="adm-nav-label adm-nav-product" href={p.url} target="_blank" rel="noreferrer" title={`Open ${p.name}`}>{p.id}/</a>
+          <span className="adm-nav-label">{p.name}<a href={p.url} target="_blank" rel="noreferrer" aria-label={`Open ${p.name}`} title={`Open ${p.name}`}><I name="external" size={13}/></a></span>
           {p.sections.map(item)}
         </div>)}
       </nav>
-      <div className="adm-bar-end">
-        {!s.mfa&&<button className="adm-mfa-tip" onClick={()=>setPhase('mfa')} title="Add an authenticator to protect staff access">2fa off</button>}
-        <span className="adm-me" title={`${s.email} · ${s.role}`}><Avatar person={{id:s.id,email:s.email}} size={26}/><span><strong>{s.email}</strong><small>{s.role}</small></span></span>
-        <button className="adm-icon" aria-label="Sign out" title="Sign out" onClick={()=>void signOut()}><I name="logout"/></button>
+      <div className="adm-side-foot">
+        {!s.mfa&&<button className="adm-mfa-tip" onClick={()=>setPhase('mfa')}><Icon name="verify" size={16}/><span>Add an authenticator to protect staff access</span></button>}
+        <div className="adm-me"><Avatar person={{id:s.id,email:s.email}} size={30}/><div><strong title={s.email}>{s.email}</strong><small>{s.role}</small></div><button className="adm-icon" aria-label="Sign out" title="Sign out" onClick={()=>void signOut()}><I name="logout"/></button></div>
       </div>
-    </header>
+    </aside>
     <main className="adm-main" key={where.section}>{(()=>{switch(where.section){
       case 'stats':return <Stats/>;
       case 'accounts':return <Users go={go} selected={where.id} staff={s}/>;
       case 'cases':return <Cases go={go} selected={where.id}/>;
       case 'announcements':return <Announcements staff={s}/>;
-      case 'emails':return s.role==='support'?<Overview go={go}/>:<Emails go={go}/>;
+      case 'emails':return s.role==='support'?<Overview go={go}/>:<Emails go={go} compose={where.id}/>;
       case 'team':return <Team staff={s}/>;
       case 'audit':return <Audit go={go}/>;
       default:return <Overview go={go}/>;
@@ -133,8 +134,7 @@ function MfaSetup({onDone,onSignOut}:{onDone:()=>Promise<void>;onSignOut:()=>voi
   return <div className="adm-root adm-center adm-auth">
     <form className="adm-auth-card" onSubmit={e=>{e.preventDefault();void verify(new FormData(e.currentTarget));}}>
       <LabLogo/>
-      <p className="adm-prompt"><span>m4labs:~$</span> mfa enroll --totp</p>
-      <h1>Add an authenticator.</h1>
+      <h1>Add an authenticator</h1>
       <p>Staff access needs a second step. Scan this with an authenticator app (1Password, Google Authenticator, Authy), then enter the 6-digit code it shows. It also protects this account in every M4 Labs product.</p>
       {factor?<>
         <img className="adm-mfa-qr" src={factor.qr} alt="QR code for your authenticator app" width={176} height={176}/>
@@ -175,8 +175,7 @@ function SignIn({onDone}:{onDone:()=>Promise<void>}){
   return <div className="adm-root adm-center adm-auth">
         <form className="adm-auth-card" onSubmit={e=>{e.preventDefault();void submit(new FormData(e.currentTarget));}}>
       <LabLogo/>
-      <p className="adm-prompt"><span>m4labs:~$</span> {factor?'verify --totp':'login --staff'}</p>
-      <h1>{factor?'Verify it’s you.':'M4 Labs admin.'}</h1>
+      <h1>{factor?'Verify it’s you':'Sign in to M4 Labs admin'}</h1>
       <p>{factor?'Enter the 6-digit code from your authenticator app.':'Staff sign-in for M4 Labs. Use your M4 Labs account, the one you sign in to the lab’s products with.'}</p>
       {!factor&&<><button type="button" className="adm-google" disabled={busy} onClick={()=>void google()}><GoogleLogo/>Continue with Google</button><div className="adm-or"><span>or</span></div></>}
       {factor?<label>Code<input name="code" className="adm-code" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" required autoFocus/></label>:<>
@@ -186,6 +185,6 @@ function SignIn({onDone}:{onDone:()=>Promise<void>}){
       <button className="adm-primary wide" disabled={busy}>{busy?'Checking…':factor?'Verify':'Sign in'}<I name="arrow" size={16}/></button>
       {!factor&&<a className="adm-quiet-link" href="https://clem.m4labs.xyz/#/login">Forgot password?</a>}
     </form>
-    <a className="adm-auth-home" href="https://m4labs.xyz">cd m4labs.xyz</a>
+    <a className="adm-auth-home" href="https://m4labs.xyz">m4labs.xyz</a>
   </div>;
 }

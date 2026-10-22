@@ -38,11 +38,9 @@ export function Empty({icon='spark',title,children}:{icon?:string;scene?:Scene;t
   return <div className="adm-empty"><span className="adm-empty-mark"><I name={icon} size={20}/></span><h3>{title}</h3>{children&&<p>{children}</p>}</div>;
 }
 
-/** A page header in the manner of m4labs.xyz: the command that opened the page, then its title and line.
- *  Product pages name their product (`admin clem stats`); lab-wide pages don't (`admin accounts`). */
-export function PageHead({title,line,product,children}:{scene?:Scene;title:string;line:ReactNode;product?:string;children?:ReactNode}){
-  const cmd=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  return <header className="adm-page-head"><div className="adm-head-text"><p className="adm-prompt"><span>m4labs:~$</span> admin {product?product+' ':''}{cmd}</p><h1>{title}</h1><p>{line}</p></div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
+/** A page header: title, one line on what the page is for, and the page's actions. `back` adds a link up a level. */
+export function PageHead({title,line,back,children}:{scene?:Scene;title:string;line?:ReactNode;product?:string;back?:{onClick:()=>void;label:string};children?:ReactNode}){
+  return <header className="adm-page-head"><div className="adm-head-text">{back&&<button type="button" className="adm-back" onClick={back.onClick}><I name="arrow" size={15}/>{back.label}</button>}<h1>{title}</h1>{line&&<p>{line}</p>}</div>{children&&<div className="adm-head-actions">{children}</div>}</header>;
 }
 export function Skeleton({rows=5}:{rows?:number}){return <div className="adm-skeleton" aria-busy="true" aria-label="Loading">{Array.from({length:rows},(_,i)=><span key={i} style={{animationDelay:i*80+'ms'}}/>)}</div>;}
 
