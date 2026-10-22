@@ -348,8 +348,8 @@ html:has(.adm-root),body:has(.adm-root){background:#0a0a09}
 .adm-modal p{margin:0}
 .adm-modal .adm-form>footer{padding-top:4px}
 
-/* Send an email: its own page. The message on the left, the exact email on the right. */
-.adm-compose-grid{display:grid;grid-template-columns:minmax(340px,440px) minmax(0,1fr);gap:20px;align-items:start}
+/* Send an email: its own page, one column. */
+.adm-compose-grid{display:grid;max-width:720px}
 .adm-compose-form{display:grid;gap:20px;padding:22px}
 .adm-field{display:grid;gap:7px;min-width:0}
 .adm-field-label{font-size:13px;font-weight:500;color:var(--a-soft)}
@@ -367,12 +367,6 @@ html:has(.adm-root),body:has(.adm-root){background:#0a0a09}
 .adm-mail-results{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 6px);display:grid;gap:1px;padding:5px;max-height:320px;overflow:auto;border:1px solid var(--a-line-2);border-radius:10px;background:#1b1b19;box-shadow:0 20px 50px #000b;animation:adm-pop .14s var(--a-ease)}
 .adm-mail-at{display:grid;place-items:center;width:28px;height:28px;flex:none;border-radius:50%;background:var(--a-raised);color:var(--a-soft);font-size:13px}
 .adm-mail-results .adm-muted{padding:8px}
-.adm-compose-preview-pane{position:sticky;top:20px;display:grid;grid-template-rows:auto minmax(0,1fr);height:max(520px,calc(100dvh - 280px));border:1px solid var(--a-line);border-radius:12px;overflow:hidden;background:var(--a-page)}
-.adm-compose-preview-pane>header{display:flex;align-items:baseline;gap:12px;padding:12px 18px;border-bottom:1px solid var(--a-line);background:var(--a-card);min-width:0}
-.adm-compose-preview-pane>header span{flex:none;font-size:12px;font-weight:500;color:var(--a-muted)}
-.adm-compose-preview-pane>header strong{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.adm-compose-preview-pane>header small{margin-left:auto;flex:none;font-size:12px;color:var(--a-muted)}
-.adm-compose-preview-pane iframe{width:100%;height:100%;border:0;display:block;background:var(--a-page)}
 .adm-mail-frame-wait{padding:20px}
 
 /* Toasts */
@@ -416,7 +410,6 @@ html:has(.adm-root),body:has(.adm-root){background:#0a0a09}
 @media (max-width:1180px){
   .adm-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .adm-case-body{grid-template-columns:1fr}.adm-case-side{display:none}
-  .adm-compose-grid{grid-template-columns:minmax(300px,380px) minmax(0,1fr)}
 }
 @media (max-width:900px){
   .adm-shell{display:block}
@@ -426,9 +419,8 @@ html:has(.adm-root),body:has(.adm-root){background:#0a0a09}
   .menu-open .adm-side{transform:none;box-shadow:30px 0 80px #000a}
   .menu-open .adm-scrim.nav{display:block;z-index:45}
   .adm-main{margin:0;border:0;border-radius:0;padding:24px 16px 56px;min-height:calc(100dvh - 56px)}
-  .adm-grid-2,.adm-roles,.adm-stats.three,.adm-compose,.adm-compose-grid{grid-template-columns:1fr}
-  .adm-compose-preview-pane{position:static;height:680px}
-  .adm-page-head{flex-wrap:wrap;align-items:flex-start}
+  .adm-grid-2,.adm-roles,.adm-stats.three,.adm-compose{grid-template-columns:1fr}
+    .adm-page-head{flex-wrap:wrap;align-items:flex-start}
   .adm-main:has(>.adm-inbox-page){height:auto;overflow:visible;display:block}
   .adm-inbox{grid-template-columns:1fr;height:auto;min-height:0}
   .adm-inbox-list{max-height:340px;border-right:0;border-bottom:1px solid var(--a-line)}

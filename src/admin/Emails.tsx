@@ -28,7 +28,7 @@ function SentEmails({go}:{go:Go}){
   </div>;
 }
 
-/** A page of its own: the message on the left, the exact email on the right. */
+/** A page of its own for writing an email. */
 function Compose({go,personId}:{go:Go;personId?:string}){
   const toast=useToast();
   const [to,setTo]=useState<Recipient|null>(null);
@@ -39,17 +39,11 @@ function Compose({go,personId}:{go:Go;personId?:string}){
   const [notes,setNotes]=useState('');
   const [busy,setBusy]=useState(false);
   const presets=useLoad(()=>mailApi<{presets:MailPreset[];ready:boolean}>('/presets'),[]);
-  const [preview,setPreview]=useState<{subject:string;html:string}|null>(null);
   // Opened from an account: start addressed to that person.
   useEffect(()=>{if(!personId)return;void adminApi<{user:Person}>('/admin/users/'+personId).then(d=>setTo(d.user)).catch(e=>toast((e as Error).message,'error'));},[personId]);
   // Update emails announce the version the website offers now.
   useEffect(()=>{void fetch('/desktop-release.json').then(r=>r.json()).then(d=>setVersion(v=>v||String(d.version||''))).catch(()=>{});},[]);
   const target=to?(to.id?{userId:to.id}:{email:to.email}):{};
-  useEffect(()=>{
-    let live=true;
-    const t=setTimeout(()=>{void mailApi<{subject:string;html:string}>('/preview',{kind,...target,version,notes,subject,message}).then(p=>{if(live)setPreview(p);}).catch(()=>{});},kind==='update'||kind==='custom'?400:0);
-    return()=>{live=false;clearTimeout(t);};
-  },[kind,to?.id,to?.email,version,notes,subject,message]);
   async function send(){
     if(!to)return;
     setBusy(true);
@@ -80,13 +74,9 @@ function Compose({go,personId}:{go:Go;personId?:string}){
           <label className="adm-field"><span className="adm-field-label">Version</span><input value={version} onChange={e=>setVersion(e.target.value)} required pattern="\d+\.\d+\.\d+(-[\w.]+)?" placeholder="0.3.0"/></label>
           <label className="adm-field"><span className="adm-field-label">What changed</span><textarea value={notes} onChange={e=>setNotes(e.target.value)} required maxLength={2000} rows={8} placeholder={'Flashcards follow your exam date\nTidier recent files'}/><small className="adm-field-help">One change per line.</small></label>
         </>}
-        {kind!=='custom'&&kind!=='update'&&<p className="adm-field-note">This email is already written. Check the preview, then send it.</p>}
+        {kind!=='custom'&&kind!=='update'&&<p className="adm-field-note">This email is already written. Pick who gets it, then send.</p>}
         {!ready&&<p className="adm-alert danger">Email sending isn’t set up on the website yet, so nothing can be sent.</p>}
         <footer><button type="button" onClick={()=>go('emails')}>Cancel</button><button className="adm-primary" disabled={busy||!to?.email||!ready||!presets.data}><I name="send" size={15}/>{busy?'Sending…':'Send email'}</button></footer>
-      </section>
-      <section className="adm-compose-preview-pane" aria-label="Preview">
-        <header><span>Preview</span><strong>{preview?.subject||'…'}</strong>{to?.email&&<small>to {to.email}</small>}</header>
-        {preview?<iframe title="Email preview" sandbox="" srcDoc={preview.html}/>:<div className="adm-mail-frame-wait"><Skeleton rows={6}/></div>}
       </section>
     </form>
   </div>;
