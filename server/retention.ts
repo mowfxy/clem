@@ -3,8 +3,7 @@
 //    support case (the notification, staff replies, the person's replies) 14 days after the case was closed;
 //  - Cloudflare D1 is cleaned by the account worker's hourly cron (cloudflare/lib/retention.js): email logs after 21
 //    days, closed cases two days after this has had its chance at their mail.
-// Zoho is reached over IMAP with the SMTP app password, so IMAP access has to be on for support@m4labs.xyz.
-import {ImapFlow} from 'imapflow';
+// Zoho is reached through the Zoho Mail REST API with a Self Client (ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN).
 import {db,databaseReady} from './db.ts';
 import {CASE_HEADER,MAIL_HEADER} from './mail.ts';
 import {templates} from './email-layout.ts';
@@ -23,10 +22,10 @@ const automatedSubjects=new Set([
 const isUpdate=(subject:string)=>/^Clem \S+ (?:is here|is available)$/.test(subject);
 const caseFrom=(value:string)=>/case\.([\w-]{8,64})\./.exec(value)?.[1];
 
-type Found={uid:number;reason:'automated'|'case'};
-export type MailboxReport={configured:boolean;deleted:number;folders:Record<string,number>;error?:string};
+type Reason='automated'|'case';
+export type MailboxReport={configured:boolean;deleted:number;folders:Record<string,number>;would?:string[];error?:string};
 
-function imapReady(){return !!(process.env.SMTP_USER&&process.env.SMTP_PASSWORD&&(process.env.IMAP_HOST||process.env.SMTP_HOST));}
+function zohoReady(){return !!(process.env.ZOHO_CLIENT_ID&&process.env.ZOHO_CLIENT_SECRET&&process.env.ZOHO_REFRESH_TOKEN);}
 
 /** Closed cases past the wait, oldest first. */
 async function closedCases(now:number){
@@ -38,10 +37,10 @@ async function closedCases(now:number){
 
 export type Message={headers:string;messageId?:string;subject?:string;from?:string;date?:Date};
 /** Why a message should go, or null to keep it. `sent` is the Sent folder; anything else is treated as the inbox. */
-export function classify(m:Message,sent:boolean,closed:Set<string>,cutoff:Date):Found['reason']|null{
+export function classify(m:Message,sent:boolean,closed:Set<string>,cutoff:Date):Reason|null{
   const field=(name:string)=>new RegExp(`^${name}:[ \\t]*(.+)$`,'im').exec(m.headers)?.[1]?.trim()||'';
   const kind=field(MAIL_HEADER).toLowerCase();
-  const caseId=field(CASE_HEADER)||caseFrom(m.messageId||'')||caseFrom(field('references'))||caseFrom(field('in-reply-to'));
+  const caseId=field(CASE_HEADER)||caseFrom(m.messageId||field('message-id'))||caseFrom(field('references'))||caseFrom(field('in-reply-to'));
   if(caseId&&closed.has(caseId))return 'case';
   if(!m.date||m.date>=cutoff)return null;
   const subject=m.subject||'',from=(m.from||'').toLowerCase();
@@ -52,46 +51,67 @@ export function classify(m:Message,sent:boolean,closed:Set<string>,cutoff:Date):
   return automated?'automated':null;
 }
 
-/** Finds what to delete in one folder. Headers only; bodies are never downloaded. */
-async function scan(client:ImapFlow,path:string,sent:boolean,closed:Set<string>,cutoff:Date){
-  const found:Found[]=[];
-  const lock=await client.getMailboxLock(path);
-  try{
-    if(!(client.mailbox&&client.mailbox.exists))return found;
-    for await(const m of client.fetch('1:*',{uid:true,envelope:true,internalDate:true,headers:[MAIL_HEADER,CASE_HEADER,'references','in-reply-to']})){
-      const reason=classify({headers:m.headers?.toString('utf8')||'',messageId:m.envelope?.messageId,subject:m.envelope?.subject,
-        from:m.envelope?.from?.[0]?.address,date:m.internalDate||m.envelope?.date?new Date(m.internalDate||m.envelope!.date!):undefined},sent,closed,cutoff);
-      if(reason)found.push({uid:m.uid,reason});
-    }
-  }finally{lock.release();}
-  return found;
+/** A short-lived access token from the Self Client's refresh token (api-console.zoho.com). */
+async function zohoToken(){
+  const r=await fetch((process.env.ZOHO_ACCOUNTS_URL||'https://accounts.zoho.com')+'/oauth/v2/token',{method:'POST',signal:AbortSignal.timeout(15000),
+    body:new URLSearchParams({grant_type:'refresh_token',client_id:process.env.ZOHO_CLIENT_ID!,client_secret:process.env.ZOHO_CLIENT_SECRET!,refresh_token:process.env.ZOHO_REFRESH_TOKEN!})});
+  const data=await r.json().catch(()=>({}));
+  if(!data.access_token)throw Error('Zoho refused the refresh token: '+(data.error||r.status));
+  return String(data.access_token);
 }
 
-/** Deletes old automated mail and closed cases' mail from the Zoho mailbox. */
-export async function purgeMailbox(now=Date.now(),closed:string[]=[]):Promise<MailboxReport>{
-  if(!imapReady())return {configured:false,deleted:0,folders:{}};
-  const client=new ImapFlow({host:process.env.IMAP_HOST||process.env.SMTP_HOST!.replace(/^smtp/,'imap'),port:Number(process.env.IMAP_PORT||993),secure:true,
-    auth:{user:process.env.SMTP_USER!,pass:process.env.SMTP_PASSWORD!},logger:false,socketTimeout:60_000});
-  const report:MailboxReport={configured:true,deleted:0,folders:{}};
+type ZohoMessage={messageId:string;folderId:string;subject?:string;fromAddress?:string;receivedTime?:string};
+function zohoClient(token:string){
+  const base=(process.env.ZOHO_API_URL||'https://mail.zoho.com')+'/api/accounts';
+  return async function call(path:string,init:RequestInit={}){
+    const r=await fetch(base+path,{...init,headers:{Authorization:'Zoho-oauthtoken '+token,'Content-Type':'application/json'},signal:AbortSignal.timeout(20000)});
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok||(data.status&&data.status.code>=300))throw Error(`Zoho Mail ${init.method||'GET'} ${path.split('?')[0]}: ${data.data?.errorCode||data.status?.description||r.status}`);
+    return data.data;
+  };
+}
+
+const unescape=(s='')=>s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');
+
+/**
+ * Deletes old automated mail and closed cases' mail from the Zoho mailbox through the Zoho Mail API. Headers are read
+ * only for messages that could go; bodies never are. `dryRun` reports what would go without deleting anything.
+ */
+export async function purgeMailbox(now=Date.now(),closed:string[]=[],dryRun=false):Promise<MailboxReport>{
+  if(!zohoReady())return {configured:false,deleted:0,folders:{}};
+  const report:MailboxReport={configured:true,deleted:0,folders:{},...(dryRun?{would:[]}:{})};
   try{
-    await client.connect();
-    const boxes=await client.list();
-    const inbox=boxes.find(b=>b.specialUse==='\\Inbox'||b.path.toUpperCase()==='INBOX'),sent=boxes.find(b=>b.specialUse==='\\Sent'||/^sent$/i.test(b.path));
+    const call=zohoClient(await zohoToken());
+    const accounts:{accountId:string;primaryEmailAddress?:string}[]=await call('');
+    const user=(process.env.SMTP_USER||'').toLowerCase();
+    const account=accounts.find(a=>a.primaryEmailAddress?.toLowerCase()===user)||accounts[0];
+    if(!account)throw Error('No Zoho Mail account is visible to this client.');
+    const folders:{folderId:string;folderName:string;folderType:string}[]=await call(`/${account.accountId}/folders`);
     const cutoff=new Date(now-AUTOMATED_DAYS*DAY),set=new Set(closed);
-    for(const [box,isSent] of [[inbox,false],[sent,true]] as const){
-      if(!box)continue;
-      const found=await scan(client,box.path,isSent,set,cutoff);
-      if(found.length){
-        const lock=await client.getMailboxLock(box.path);
-        try{await client.messageDelete(found.map(f=>f.uid),{uid:true});}finally{lock.release();}
+    // Sent, every inbox-type folder (Inbox, Notification, Newsletter) where replies and bounces land, then Trash, where
+    // the API puts what it deletes: there it is matched like Sent mail of any age, so the copy goes too.
+    const order=['Sent','Inbox','Trash'];
+    for(const folder of folders.filter(f=>order.includes(f.folderType)).sort((a,b)=>order.indexOf(a.folderType)-order.indexOf(b.folderType))){
+      const sent=folder.folderType!=='Inbox',trash=folder.folderType==='Trash',doomed:string[]=[];
+      for(let start=1;start<=5000;start+=200){
+        const page:ZohoMessage[]=await call(`/${account.accountId}/messages/view?folderId=${folder.folderId}&start=${start}&limit=200`)||[];
+        for(const m of page){
+          const date=m.receivedTime?new Date(Number(m.receivedTime)):undefined;
+          // Recent mail can only go as a closed case's mail, so its headers are skipped when no case is due.
+          if(!trash&&!set.size&&date&&date>=cutoff)continue;
+          const head=await call(`/${account.accountId}/folders/${folder.folderId}/messages/${m.messageId}/header`);
+          const reason=classify({headers:String(head?.headerContent||''),subject:unescape(m.subject),from:unescape(m.fromAddress),date},sent,set,trash?new Date(now):cutoff);
+          if(!reason)continue;
+          doomed.push(m.messageId);
+          report.would?.push(`${folder.folderName} · ${reason} · ${date?.toISOString().slice(0,10)} · ${unescape(m.subject)}`);
+        }
+        if(page.length<200)break;
       }
-      report.folders[box.path]=found.length;report.deleted+=found.length;
+      // Deleted after listing, so pages don't shift under the loop.
+      if(!dryRun)for(const id of doomed)await call(`/${account.accountId}/folders/${folder.folderId}/messages/${id}`,{method:'DELETE'});
+      report.folders[folder.folderName]=doomed.length;report.deleted+=doomed.length;
     }
-    await client.logout();
-  }catch(error){
-    report.error=(error as {responseText?:string}).responseText||(error as Error).message;
-    client.close();
-  }
+  }catch(error){report.error=(error as Error).message;}
   return report;
 }
 
