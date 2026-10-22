@@ -7,7 +7,7 @@ export type SettingsTab={name:string;icon:string;scene:Scene;line:string;keyword
 export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
  {label:'You',tabs:[
   {name:'Profile',icon:'account',scene:'profile',line:'Your name, your picture and your account.',keywords:'name picture avatar account email storage export'},
-  {name:'General',icon:'settings',scene:'balance',line:'How Clem looks, runs and responds to keys.',keywords:'appearance quiet motion background tray windows startup shortcuts keyboard'},
+  {name:'General',icon:'settings',scene:'balance',line:'How Clem looks, runs and responds to keys.',keywords:'appearance quiet motion background tray windows startup shortcuts keyboard updates version'},
   {name:'Security',icon:'lock',scene:'safe',line:'Sign-in, password and verification.',keywords:'password email google two-factor authenticator sessions sign in'},
  ]},
  {label:'Intelligence',tabs:[

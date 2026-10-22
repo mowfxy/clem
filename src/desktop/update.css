@@ -1,0 +1,19 @@
+/* Clem's update indicator beside the name in the sidebar (src/desktop/AppUpdate.tsx), and its row in Settings. */
+.update-chip{flex-shrink:0;width:32px;height:32px;padding:5px;border-radius:9px;color:#babbb5;animation:notice-pop .45s cubic-bezier(.3,1.6,.5,1) backwards}
+.update-chip:hover{background:#1d1d1c}
+.update-chip svg{display:block;overflow:visible}
+.update-track,.update-fill{fill:none;stroke-width:2}
+.update-track{stroke:#2e2e2c}
+.update-fill{stroke:#e8e7e2;stroke-linecap:round;transform:rotate(-90deg);transform-origin:11px 11px;transition:stroke-dashoffset .5s cubic-bezier(.2,.7,.2,1),stroke .4s}
+.update-arrow{fill:none;stroke:#a9a9a3;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transition:stroke .4s,transform .25s}
+/* Ready: the ring closes in Clem's coral (the settings badge's) and the arrow points up, to restart into it. */
+.update-chip.ready .update-fill,.update-chip.ready .update-arrow{stroke:#ec8a74}
+.update-chip.ready:hover .update-arrow{transform:translateY(-1px)}
+.update-chip.available .update-arrow{stroke:#ec8a74}
+.update-chip.available:hover .update-arrow{transform:translateY(1px)}
+.update-status{display:block}
+.update-status.error{color:#ec8a74}
+.update-progress{width:132px}
+/* The chip takes the chevron's place, so a long name keeps its room. */
+.sidebar-bottom:has(.update-chip) .account-button>.drawn-icon{display:none}
+@media(prefers-reduced-motion:reduce){.update-chip{animation:none}.update-fill,.update-arrow{transition:none}}

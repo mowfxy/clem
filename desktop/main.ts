@@ -18,6 +18,7 @@ import {condenseConversation,briefKey,type Brief} from "./chat-condense";
 import {contextBudget} from "../core/context-budget";
 import {WorkspaceDisk} from "./workspace-disk";
 import {afterUpdate} from "./update-care";
+import {appUpdates, type UpdateRequest} from "./app-update";
 import {cp,access,stat as statFile,readFile as readDiskFile} from "node:fs/promises";
 import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
@@ -960,7 +961,7 @@ void app.whenReady().then(async () => {
   // Signing out or shutting down Windows must never be held up by hiding to the tray.
   // Back at the window after a pause: the AI is made ready while the person types, not after they send.
   window.on("focus", () => { if (providerOwner && providerOwner !== "signed-out") prepareLast(providerOwner); });
-  window.on("query-session-end", () => { quitting = true; });
+  window.on("query-session-end", () => { quitting = true; updates.sessionEnding(); });
   // A window whose page crashed (out of memory, a GPU fault) is reloaded instead of left blank; the answers it was
   // showing keep running in this process and reach it again.
   window.webContents.on("render-process-gone", (_event, details) => {
@@ -970,7 +971,7 @@ void app.whenReady().then(async () => {
   window.on("unresponsive", () => noteEvent("window not responding"));
   window.on("responsive", () => noteEvent("window responding again"));
   app.on("child-process-gone", (_event, details) => { if (details.reason !== "clean-exit") noteEvent("helper stopped:", details.type, details.reason, details.name || ""); });
-  window.on("session-end", () => { quitting = true; });
+  window.on("session-end", () => { quitting = true; updates.sessionEnding(); });
   window.on("close", (event) => {
     if (quitting || !background.keepRunning) return;
     event.preventDefault();
@@ -983,6 +984,19 @@ void app.whenReady().then(async () => {
     return codeRunner.handle(request);
   });
   app.on("before-quit", () => codeRunner.stopAll());
+  // Clem updating itself from its GitHub releases (desktop/app-update.ts); on or off in Settings → General.
+  const updatesKey = "update-settings";
+  const updates = appUpdates({
+    read: () => vault.read<{ automatic: boolean }>(updatesKey, { automatic: true }),
+    write: (value) => vault.write(updatesKey, value),
+    send: (state) => { if (!window.isDestroyed()) window.webContents.send("clem:update", state); },
+    busy: () => cancelledRuns.size > 0 || codeRunner.busy,
+    beforeInstall: () => { quitting = true; },
+  });
+  ipcMain.handle("clem:update", (event, request?: UpdateRequest) => {
+    if (event.sender !== window.webContents) throw Error("Not allowed.");
+    return updates.handle(request && typeof request === "object" ? request : undefined);
+  });
   ipcMain.handle("clem:background", async (event, next?: Partial<Background>) => {
     if (event.sender !== window.webContents) throw Error("Not allowed.");
     if (next && typeof next === "object") {

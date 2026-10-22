@@ -22,6 +22,7 @@ import {SettingsWindow} from "./settings/SettingsWindow";
 import {ProfileSettings} from "./settings/ProfileSettings";
 import {SkillsSettings} from "./settings/SkillsSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
+import {UpdateIndicator, UpdateSettings, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
 import {UsageSettings,archiveChats} from "./settings/UsageSettings";
 import {AsciiField} from "./chat/AsciiField";
 import {ProfileAvatar} from "./ProfileAvatar";
@@ -824,6 +825,14 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const conversationTarget=chatId||draftChatId.current;
   const running=conversationTarget in runs;
   const anyRunning=Object.keys(runs).length>0;
+  // Clem's own updates (src/desktop/AppUpdate.tsx). Restarting saves the workspace first and waits for running answers.
+  const appUpdate=useAppUpdate();
+  const installUpdate=async()=>{
+    if(anyRunning){setToast("An answer is still running. Update once it finishes.");return;}
+    await flushSaveRef.current();
+    const result=await updateRequest({op:"install"})?.catch(()=>undefined);
+    if(result?.busy)setToast("Something is still running. Update once it finishes.");
+  };
   viewing.current=route==='/app'?chatId:null;
   useEffect(()=>{if(chatId&&route==='/app')setUnseen(u=>{if(!u.has(chatId))return u;const next=new Set(u);next.delete(chatId);return next;});},[chatId,route]);
   // When Clem revises the file that is open beside the chat, the panel follows it.
@@ -2661,6 +2670,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         <SettingRow title="Sidebar" description="Put it away for more room."><Switch label="Show the sidebar" checked={!sideClosed} onChange={show=>setSideClosed(!show)}/></SettingRow>
                       </SettingsCard>
                       <BackgroundSettings/>
+                      <UpdateSettings state={appUpdate} onInstall={()=>void installUpdate()}/>
                       <SettingsCard title="Shortcuts">
                         <SettingRow title="Command palette" description="Jump to any chat, space, page or setting."><Keys keys={["Ctrl","K"]}/></SettingRow>
                         <SettingRow title="Search everything"><Keys keys={["Ctrl","Shift","F"]}/></SettingRow>
@@ -2723,6 +2733,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 </span>
                 <Icon name="down" size={15} />
               </button>
+              <UpdateIndicator state={appUpdate} onInstall={()=>void installUpdate()} onOpen={()=>openSettings("General")}/>
               <button
                 className="profile-settings icon-button"
                 aria-label={signals.unread?`Settings, ${signals.unread} new support ${signals.unread===1?"reply":"replies"}`:"Settings"}

@@ -223,6 +223,20 @@ export type DesktopStatus = {
   error?: string;
   mfaFactor?: string;
 };
+/** Where Clem is in updating itself, as the window shows it (sidebar indicator, Settings → General → Updates). */
+export type UpdateState = {
+  automatic: boolean;
+  /** This build; updates only work in an installed copy, not when run from source. */
+  version: string;
+  supported: boolean;
+  phase: "idle" | "checking" | "current" | "available" | "downloading" | "ready" | "error";
+  /** The version being offered, downloaded or waiting to install. */
+  next?: string;
+  /** 0–100 while downloading. */
+  percent?: number;
+  error?: string;
+  checkedAt?: number;
+};
 export type DesktopBridge = {
   onAuth: (listener: () => void) => () => void;
   invoke: (request: DesktopRequest) => Promise<any>;
@@ -238,6 +252,11 @@ export type DesktopBridge = {
   setWindowTone?: (tone: "normal" | "dim" | "light" | "light-dim") => void;
   /** Reads, or changes, whether closing keeps Clem running in the tray and whether it starts with Windows. */
   background?: (next?: { keepRunning?: boolean; startWithWindows?: boolean }) => Promise<{ keepRunning: boolean; startWithWindows: boolean }>;
+  /** Reads Clem's update state, turns automatic updates on or off, or checks, downloads or installs (desktop/app-update.ts).
+   *  `busy` comes back when installing was refused because an answer or run is still working. */
+  update?: (request?: { automatic: boolean } | { op: "check" | "download" | "install" }) => Promise<UpdateState & { busy?: boolean }>;
+  /** Every change in the update state: checking, progress while downloading, ready to install. */
+  onUpdate?: (listener: (state: UpdateState) => void) => () => void;
   onChat: (
     listener: (event: {
       id: string;

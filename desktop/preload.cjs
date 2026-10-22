@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("clem:folder", handler);
       return () => ipcRenderer.removeListener("clem:folder", handler);
     },
+    update: (request) => ipcRenderer.invoke("clem:update", request && typeof request === "object" ? (typeof request.automatic === "boolean" ? { automatic: request.automatic } : { op: String(request.op) }) : undefined),
+    onUpdate: (listener) => {
+      const handler = (_event, payload) => listener(payload);
+      ipcRenderer.on("clem:update", handler);
+      return () => ipcRenderer.removeListener("clem:update", handler);
+    },
     runCode: (request) => ipcRenderer.invoke("clem:code", request),
     onCode: (listener) => {
       const handler = (_event, payload) => listener(payload);

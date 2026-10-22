@@ -30,7 +30,8 @@ await writeFile(join('Installer','README.txt'),[
   '"Windows protected your PC": choose More info, then Run anyway.',
   '',
   'Verify the file in PowerShell:  Get-FileHash .\\'+name,
-  'Publish: upload the .exe to the clem-releases GitHub release, run npm run installer:release',
+  'Publish: upload the .exe with release/latest.yml and the .exe.blockmap to the clem-releases GitHub release',
+  '(installed copies of Clem update themselves from latest.yml), run npm run installer:release',
   '(checks the upload, then updates desktop-release.json and the /download/windows redirect) and deploy the website.',
   '',
 ].join('\r\n'));
@@ -43,6 +44,10 @@ const live=await fetch(asset,{method:'HEAD',redirect:'follow'}).catch(e=>({ok:fa
 if(!live.ok)throw Error(`${asset} is not live (${live.status}). Upload ${name} to the v${pkg.version} release on mowfxy/clem-releases first; nothing was changed.`);
 const liveSize=Number(live.headers.get('content-length'));
 if(liveSize&&liveSize!==info.size)throw Error(`The uploaded ${name} is ${liveSize} bytes but the local build is ${info.size}. Re-upload it; nothing was changed.`);
+// Installed copies update from latest.yml on the newest release (desktop/app-update.ts): it must be there and name this build.
+const feed=await fetch(`https://github.com/mowfxy/clem-releases/releases/download/v${pkg.version}/latest.yml`,{redirect:'follow'}).then(r=>r.ok?r.text():'').catch(()=>'');
+const local=await readFile(join(RELEASE,'latest.yml'),'utf8').catch(()=>'');
+if(!feed||feed.trim()!==local.trim()||!feed.includes(`version: ${pkg.version}`))throw Error(`latest.yml on the v${pkg.version} release is missing or differs from ${join(RELEASE,'latest.yml')}. Upload it so installed copies can update; nothing was changed.`);
 const vercelFile='vercel.json',vercel=await readFile(vercelFile,'utf8');
 const redirect=JSON.parse(vercel).redirects?.find(r=>r.source==='/download/windows');
 if(!redirect)throw Error(`${vercelFile} has no /download/windows redirect; nothing was changed.`);

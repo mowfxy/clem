@@ -109,6 +109,8 @@ export class CodeRunner {
   }
 
   /** Ends every run (the window is closing). */
+  /** A program is running, so restarting Clem now would cut it off. */
+  get busy() { return this.runs.size > 0; }
   stopAll() { for (const run of this.runs.values()) { run.stopped = true; if (run.child) kill(run.child); } }
 
   private async start(id: string, lang: string, code: string) {

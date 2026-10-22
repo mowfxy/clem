@@ -6,6 +6,8 @@ Owner and release tasks: building the installer, deploying the website and accou
 
 **The installer:** `npm run desktop:installer` builds it and copies the finished EXE, its SHA-256 and install notes to the top-level **`Installer/`** folder (build intermediates stay in `release/`). After uploading it to the releases repository, run `npm run installer:release` to update the website's download metadata, and point `/download/windows` in `vercel.json` at the new file. It bundles the official Codex CLI. Sign in, complete setup, and connect ChatGPT from Settings. Owner exemptions are verified server-side; other accounts cannot purchase until Lemon Squeezy is configured. Unsigned previews show Windows publisher warnings.
 
+**Updates:** installed copies of Clem update themselves from the newest release (`desktop/app-update.ts`; on or off in Settings → General → Updates). Every release must carry three files from `release/`: the EXE, `latest.yml` (version and SHA-512, which Clem checks before installing) and the `.exe.blockmap` (smaller downloads). The release must be marked Latest and not a pre-release, because Clem reads `releases/latest/download/latest.yml`. `npm run installer:release` refuses to update the website until `latest.yml` is live. `node scripts/verify/update-flow.mjs` runs a copy of the packaged build against a local feed: it checks that a mismatched download is refused and the real one is verified, and it stops before installing.
+
 The website's download page reads `public/desktop-release.json`. Releases are published at [mowfxy/clem-releases](https://github.com/mowfxy/clem-releases/releases).
 
 ## Website and account service
