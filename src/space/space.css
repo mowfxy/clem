@@ -211,3 +211,7 @@
 /* Delete and other destructive items read clearly red, in every place these menus appear. */
 .sp-menu-list button.danger,.space-page .sp-menu-list button.danger{color:#ff5a4e}
 .sp-menu-list button.danger:hover,.space-page .sp-menu-list button.danger:hover{background:#ff5a4e1f;color:#ff6b60}
+/* The sample subject from setup (src/sample-subject.ts): what it is, a first question, and a way out. */
+.sp-sample{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 14px;padding:12px 14px;border:1px dashed var(--sp-line-2);border-radius:14px;color:var(--sp-muted);font-size:var(--t-small)}
+.sp-sample p{margin:0;flex:1 1 280px;line-height:1.5}
+.sp-sample div{display:flex;gap:8px;flex-wrap:wrap}

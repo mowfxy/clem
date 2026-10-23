@@ -22,6 +22,8 @@ import {appUpdates, type UpdateRequest} from "./app-update";
 import {cp,access,stat as statFile,readFile as readDiskFile} from "node:fs/promises";
 import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
+import {StudyReminders} from "./study-reminders";
+import {BackupService,readEditsScript,writeEditsScript,type BackupDestination} from "./backup-service";
 import {UsageTally} from "./usage-tally";
 import { securityActions, handleSecurity } from "./security";
 import { contentSecurityPolicy } from "./csp";
@@ -39,6 +41,7 @@ import {
   session,
   nativeTheme,
   Tray,
+  Notification,
 } from "electron";
 import { captureRegion } from "./capture";
 import { clipboardFiles } from "./clipboard-files";
@@ -80,7 +83,8 @@ import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook} from '../core/clem-skills';
 import {cleanAiName,namingPrompt} from '../core/file-naming';
 import {readPictures} from './ocr';
-import {installCli} from './cli-install';
+import {installCli,installedPath} from './cli-install';
+import {detectPcSignIns} from './ai-detect';
 import {CodexEngine,daily} from './engines';
 import {CLEM_FILE,cliFileToolsGuide,distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
 import {
@@ -277,6 +281,20 @@ void app.whenReady().then(async () => {
   const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   const driveMedia=new DriveMediaServer(driveLive,async()=>!!await auth.user());
   app.on("before-quit",()=>driveMedia.stop());
+  /** Runs a backup's IndexedDB script (desktop/backup-service.ts) in the window, where the store is. */
+  const inWindow=(script:string)=>{
+    if(!window||window.isDestroyed())throw Error("Open Clem and try again.");
+    return window.webContents.executeJavaScript(script);
+  };
+  const backups=new BackupService({
+    vault, root:workspaceRoot, temp:join(app.getPath("temp"),"Clem","backups"), app:app.getVersion(), drive:driveLive,
+    edits:{read:async(owner)=>JSON.parse(await inWindow(readEditsScript(owner))),write:async(owner,entries)=>{await inWindow(writeEditsScript(owner,entries));}},
+    reload:()=>{if(!window.isDestroyed())window.webContents.reload();},
+  });
+  // Scheduled backups run from here, so they keep happening while Clem sits in the tray.
+  const backupTick=()=>void auth.user(false).then((user)=>user&&backups.tick(user.id)).catch(()=>{});
+  setTimeout(backupTick,120_000).unref();
+  setInterval(backupTick,10*60_000).unref();
   /**
    * Keeps Codex, Claude Code and Grok current in the background, since each provider offers a new model only to a
    * program new enough to use it. Codex is checked every six hours (or on Refresh), the others once a day when installed.
@@ -881,6 +899,7 @@ void app.whenReady().then(async () => {
     }
     if(url.pathname==='/api/local/state'||/^\/api\/local\/files\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
       try{const user=await auth.user();if(!user)return Response.json({error:'Sign in first.'},{status:401});if(request.headers.get('X-Clem-Owner')!==user.id)return Response.json({error:'Account changed.'},{status:409});
+      if(backups.restoring&&request.method!=='GET')return Response.json({error:'Restoring a backup. Clem reloads in a moment.'},{status:423});
       if(url.pathname.endsWith('/state')){if(request.method==='GET')return Response.json(await disk.readState(user.id));if(request.method==='PUT'){const value=await request.json();await disk.writeState(user.id,value);return Response.json({ok:true});}}
       else {const id=url.pathname.split('/').at(-1)!;if(request.method==='GET'){const file=await disk.readFile(user.id,id);return file?new Response(new Uint8Array(file)):new Response(null,{status:404});}if(request.method==='PUT'){await disk.writeFile(user.id,id,new Uint8Array(await request.arrayBuffer()));return Response.json({ok:true});}if(request.method==='DELETE'){await disk.deleteFile(user.id,id);return Response.json({ok:true});}}
       return new Response(null,{status:405});}catch{return Response.json({error:'Could not access your Documents/Clem workspace. Check available disk space and permissions.'},{status:500});}
@@ -964,6 +983,23 @@ void app.whenReady().then(async () => {
   tray.setToolTip("Clem");
   tray.setContextMenu(Menu.buildFromTemplate([{ label: "Open Clem", click: showWindow }, { type: "separator" }, { label: "Quit Clem", click: () => { quitting = true; app.quit(); } }]));
   tray.on("click", showWindow);
+  // Flashcard reminders (desktop/study-reminders.ts), checked every few minutes, so they arrive with Clem in the tray.
+  // Each shown notification is kept until it is clicked or closed: one that is collected loses its click.
+  const shown = new Set<Notification>();
+  const reminders = new StudyReminders({
+    vault, workspace: (owner) => disk.readState(owner),
+    notify: ({ title, body, spaceId, silent }) => {
+      if (!Notification.isSupported()) return;
+      const note = new Notification({ title, body, silent, icon: join(__dirname, "../desktop/icon.ico") });
+      shown.add(note);
+      note.on("click", () => { shown.delete(note); showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", { review: spaceId }); });
+      note.on("close", () => shown.delete(note));
+      note.show();
+    },
+  });
+  const reminderTick = () => void auth.user(false).then((user) => user && reminders.tick(user.id)).catch((error) => console.warn("[reminders]", (error as Error)?.message));
+  setTimeout(reminderTick, 90_000).unref();
+  setInterval(reminderTick, 5 * 60_000).unref();
   // Signing out or shutting down Windows must never be held up by hiding to the tray.
   // Back at the window after a pause: the AI is made ready while the person types, not after they send.
   window.on("focus", () => { if (providerOwner && providerOwner !== "signed-out") prepareLast(providerOwner); });
@@ -975,6 +1011,7 @@ void app.whenReady().then(async () => {
     if (details.reason !== "clean-exit" && !window.isDestroyed()) setTimeout(() => { if (!window.isDestroyed()) window.webContents.reload(); }, 800);
   });
   window.on("unresponsive", () => noteEvent("window not responding"));
+  window.webContents.on("did-finish-load", () => backups.reloaded());
   window.on("responsive", () => noteEvent("window responding again"));
   app.on("child-process-gone", (_event, details) => { if (details.reason !== "clean-exit") noteEvent("helper stopped:", details.type, details.reason, details.name || ""); });
   window.on("session-end", () => { quitting = true; updates.sessionEnding(); });
@@ -1292,6 +1329,11 @@ void app.whenReady().then(async () => {
     }
     if (request.action === "youtubePlaylist") return youtubePlaylist(request.id);
     if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
+    if (request.action === "aiDetect") {
+      // Read-only: whether each official CLI is installed and signed in on this PC on its own (desktop/ai-detect.ts).
+      const home = process.env.USERPROFILE || app.getPath("home");
+      return { ...(await detectPcSignIns(home)), claudeInstalled: installedPath("claude", "") !== "" };
+    }
     if (request.action === "grokStatus") return (await grokFor(user.id)).status(true);
     if (request.action === "antigravityStatus") return (await antigravityFor(user.id)).status(true);
     if (request.action === "antigravityLogin") return antigravitySignIn(await antigravityFor(user.id));
@@ -1412,6 +1454,41 @@ void app.whenReady().then(async () => {
       // A document with crops in it reads them from the workspace, as when it was made.
       return { bytes: (await makeFile("pdf", spec, { assets: (id) => readAsset(diskCrops(user.id), id) })).bytes };
     }
+    if (request.action === "ankiRead") {
+      // In a worker thread (desktop/anki-worker.ts), so a large deck never holds up the main process.
+      const { Worker } = await import("node:worker_threads");
+      const worker = new Worker(join(__dirname, "anki-worker.cjs"), { workerData: { bytes: request.data, name: request.name }, resourceLimits: { maxOldGenerationSizeMb: 2048 } });
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { void worker.terminate(); reject(Error("This deck took too long to read.")); }, 180_000);
+        worker.once("message", (message: { result?: unknown; error?: string }) => { clearTimeout(timer); void worker.terminate(); message.error ? reject(Error(message.error)) : resolve(message.result); });
+        worker.once("error", () => { clearTimeout(timer); reject(Error("This deck couldn't be read. It may be too large or damaged.")); });
+      });
+    }
+    if (request.action === "reminders") return request.set ? reminders.configure(user.id, request.set) : reminders.settings(user.id);
+    if (request.action === "backupStatus") return backups.status(user.id);
+    if (request.action === "backupConfigure") {
+      let destination: BackupDestination | null | undefined = request.destination;
+      if (request.chooseFolder) {
+        const selection = await dialog.showOpenDialog(window, { title: "Choose where Clem keeps backups", buttonLabel: "Back up here", properties: ["openDirectory", "createDirectory"] });
+        if (selection.canceled) return backups.status(user.id);
+        destination = { kind: "folder", path: selection.filePaths[0] };
+      }
+      await backups.configure(user.id, { ...(destination !== undefined ? { destination } : {}), schedule: request.schedule, keep: request.keep, passphrase: request.passphrase });
+      if (destination?.kind === "folder") backups.allowFolder(destination.path);
+      return backups.status(user.id);
+    }
+    if (request.action === "backupNow") return backups.backupNow(user.id);
+    if (request.action === "backupList") {
+      if (request.from === "file") {
+        const selection = await dialog.showOpenDialog(window, { title: "Choose a Clem backup", filters: [{ name: "Clem backups", extensions: ["clembackup"] }], properties: ["openFile"] });
+        if (selection.canceled) return null;
+        backups.allowFolder(dirname(selection.filePaths[0]));
+        return { items: await backups.list(user.id, { kind: "folder", path: dirname(selection.filePaths[0]) }), chosen: selection.filePaths[0] };
+      }
+      return { items: await backups.list(user.id, request.from === "drive" ? { kind: "drive" } : undefined) };
+    }
+    if (request.action === "backupPreview") return backups.preview(user.id, request.item, request.passphrase);
+    if (request.action === "backupRestore") return backups.restore(user.id, request.item, request.passphrase, request.confirmed);
     if (request.action === "shareSave") {
       const folder = join(app.getPath("downloads"), "Clem");
       await mkdir(folder, { recursive: true });

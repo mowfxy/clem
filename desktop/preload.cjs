@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("clem:code", handler);
       return () => ipcRenderer.removeListener("clem:code", handler);
     },
+    onOpen: (listener) => {
+      const handler = (_event, payload) => listener({ review: typeof payload?.review === "string" ? payload.review : undefined });
+      ipcRenderer.on("clem:open", handler);
+      return () => ipcRenderer.removeListener("clem:open", handler);
+    },
     onPack: (listener) => {
       const handler = (_event, payload) => listener(payload);
       ipcRenderer.on("clem:pack", handler);

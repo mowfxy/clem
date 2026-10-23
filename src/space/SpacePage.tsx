@@ -1,3 +1,4 @@
+import {SAMPLE_STARTER} from "../sample-subject";
 import {shortWhen,dayBefore} from '../ui/when';
 import {Fragment,useEffect,useMemo,useRef,useState,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {Icon} from '../Icons';
@@ -65,6 +66,8 @@ export type SpaceActions={
   onRenameDrive:(file:DriveItem,name:string)=>Promise<boolean>;
   onTrashDrive:(file:DriveItem)=>Promise<boolean>;
   onStudyNew:(kind:'flashcards'|'summary')=>void;
+  /** Opens the import from Anki or Quizlet (src/local/FlashcardImport.tsx) for this subject. */
+  onImportCards:()=>void;
   onUpload:(files:FileList,folderId:string|null)=>void;
   onMake:(kind:'flashcards'|'quiz'|'worksheet'|'summary',folderId?:string|null)=>void;
   onShare:(folderId?:string)=>void;
@@ -118,7 +121,7 @@ function useChatMenu(onDelete:(chat:Chat)=>void){
 }
 
 
-export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={},plan,planDraft,planActions,canAsk=false,memoryPlaces=[],memoryLabel}:{space:Space;memoryPlaces?:MemoryPlace[];memoryLabel?:(scope:string)=>string;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>;plan?:SpacePlan;planDraft?:PlanDraftView|null;planActions:PlanActions;canAsk?:boolean}){
+export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={},plan,planDraft,planActions,canAsk=false,memoryPlaces=[],memoryLabel,reviewNow=false,onReviewStarted}:{/** Start the review now (a flashcard reminder was clicked); `onReviewStarted` says it did. */ reviewNow?:boolean;onReviewStarted?:()=>void;space:Space;memoryPlaces?:MemoryPlace[];memoryLabel?:(scope:string)=>string;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>;plan?:SpacePlan;planDraft?:PlanDraftView|null;planActions:PlanActions;canAsk?:boolean}){
   const subject=space.kind==='subject';
   const now=Date.now();
   const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
@@ -136,6 +139,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   const chatMenu=useChatMenu(actions.onDeleteChat);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
+  useEffect(()=>{if(reviewNow){startReview();onReviewStarted?.();}},[reviewNow]);
   useEffect(()=>warmMemory(),[]);
   // The underline glides to the chosen tab instead of jumping.
   const tabBar=useRef<HTMLElement>(null);
@@ -164,6 +168,10 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
           <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
       </div>
+      {space.sample&&<div className="sp-sample" role="note">
+        <p>This is a sample subject: the notes and cards are examples, and any answer here comes from your own AI.</p>
+        <div><button className="primary" onClick={()=>actions.onAsk(SAMPLE_STARTER)}>Try: “{SAMPLE_STARTER.split(':')[0]}”</button><button className="secondary" onClick={actions.onDelete}>Delete sample</button></div>
+      </div>}
       <form className="sp-ask" onSubmit={e=>{e.preventDefault();if(ask.trim()){actions.onAsk(ask.trim());setAsk('');}}}>
         <Icon name="chat" size={18}/>
         <input value={ask} onChange={e=>setAsk(e.target.value)} placeholder={subject?`Ask anything about ${space.name}…`:`Work on ${space.name}…`} aria-label={`Ask about ${space.name}`}/>
@@ -221,7 +229,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
 
       {tab==='plan'&&<PlanView space={space} plan={plan} draft={planDraft} actions={planActions} canAsk={canAsk}/>}
       {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onMenu={chatMenu.open} onNew={()=>actions.onDraft('')}/>}
-      {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
+      {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} onImport={actions.onImportCards} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
       {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals you save in this {space.kind} appear here.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}

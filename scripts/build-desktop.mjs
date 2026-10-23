@@ -42,6 +42,7 @@ await build({
   ],
 });
 await build({entryPoints:["desktop/kinetra-worker.ts"],outfile:"desktop-dist/kinetra-worker.cjs",bundle:true,platform:"node",format:"cjs"});
+await build({entryPoints:["desktop/anki-worker.ts"],outfile:"desktop-dist/anki-worker.cjs",bundle:true,platform:"node",format:"cjs"});
 await copyFile("desktop/preload.cjs", "desktop-dist/preload.cjs");
 await copyFile("desktop/capture-preload.cjs", "desktop-dist/capture-preload.cjs");
 await mkdir("desktop-package/desktop", { recursive: true });

@@ -22,7 +22,7 @@ export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
  ]},
  {label:'Data',tabs:[
   {name:'Usage',icon:'analysis',scene:'telescope',line:'Your threads, tokens and habits.',keywords:'usage stats statistics tokens activity graph habits streak threads messages'},
-  {name:'Data & privacy',icon:'files',scene:'house',line:'Your work stays on this device.',keywords:'export delete chats privacy policy'},
+  {name:'Data & privacy',icon:'files',scene:'house',line:'Your work stays on this device.',keywords:'export delete chats privacy policy backup restore new pc move'},
   {name:'Help & support',icon:'research',scene:'lifebuoy',line:'Questions, bugs and ideas.',keywords:'help contact bug support github open source'},
  ]},
 ];

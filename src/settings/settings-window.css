@@ -225,3 +225,19 @@
 @media(max-width:640px){.usage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.usage-ws{grid-template-columns:1fr;gap:0}.usage-ws .usage-tokens{border-bottom:1px solid var(--st-line)}.usage-hero-head{flex-wrap:wrap}.usage-hero-side span{text-align:left}}
 @media (prefers-reduced-motion:reduce){.usage-bar i{animation:none}}
 [data-quiet=true] .usage-bar i{animation:none}
+/* Backups (BackupSettings.tsx): the passphrase row, and the restore picker in its dialog. */
+.st .backup-phrase{gap:8px;justify-content:flex-start}
+.st .backup-phrase input{flex:1;min-width:0}
+.backup-restore{display:flex;flex-direction:column;gap:10px}
+.backup-sources{display:flex;flex-wrap:wrap}
+.backup-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto}
+dialog.settings-dialog .settings-dialog-body .backup-list button{width:100%;margin:0;justify-content:space-between;gap:12px;min-height:44px;background:transparent;border-color:#3d3d38;text-align:left}
+dialog.settings-dialog .settings-dialog-body .backup-list button.chosen{border-color:#8a8983;background:#ffffff08}
+.backup-list strong{font-weight:400}
+.backup-list span{font-size:12px;opacity:.7}
+.backup-open{display:flex;gap:8px;align-items:center}
+.backup-open input{flex:1}
+.backup-preview{padding:12px 14px;border:1px solid #3d3d38;border-radius:10px}
+.backup-preview strong{font-weight:400}
+.st select.backup-keep{width:auto;min-height:36px;padding:6px 10px;font-size:var(--t-small)}
+.st input.reminder-time{width:auto;min-height:36px;padding:6px 10px}

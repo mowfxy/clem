@@ -23,6 +23,8 @@ import {SettingsWindow} from "./settings/SettingsWindow";
 import {ProfileSettings} from "./settings/ProfileSettings";
 import {SkillsSettings} from "./settings/SkillsSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
+import {BackupSettings} from "./settings/BackupSettings";
+import {ReminderSettings} from "./settings/ReminderSettings";
 import {UpdateIndicator, UpdateSettings, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
 import {UsageSettings,archiveChats} from "./settings/UsageSettings";
 import {AsciiField} from "./chat/AsciiField";
@@ -155,12 +157,15 @@ import "./chat/reply.css";
 import "./enhance.css";
 import "./theme/light.css";
 import { applyTheme, setThemeChoice, themeChoice, type ThemeChoice } from "./theme/theme";
+import { afterSetup, modelOf } from "./after-setup";
+import { sampleSubject } from "./sample-subject";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
 const FolderWatchSetting = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderWatchSetting })));
 const ShareSheet = lazy(() => import("./local/StudyPack").then(m => ({ default: m.ShareSheet })));
 const PackPreview = lazy(() => import("./local/StudyPack").then(m => ({ default: m.PackPreview })));
+const FlashcardImport = lazy(() => import("./local/FlashcardImport").then(m => ({ default: m.FlashcardImport })));
 const SpacePage = lazy(() => import("./space/SpacePage").then(m => ({ default: m.SpacePage })));
 const Visual = lazy(() => import("./Visual"));
 const SavedVisuals = lazy(() => import("./visuals/SavedVisuals").then(m => ({ default: m.SavedVisuals })));
@@ -312,6 +317,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const modelsRef = useRef(models);
   modelsRef.current = models;
   const [defaultModel, setDefaultModel] = useState("");
+  /** The AI picked in the last setup step (src/after-setup.ts), until the models are listed. */
+  const firstAi = useRef<import("./desktop/FirstProvider").Service | undefined>(undefined);
   const [defaultReasoning,setDefaultReasoning]=useState("");
   const savedSelection=state.chats.find(c=>c.id===chatId);
   const model=savedSelection?.model ?? defaultModel;
@@ -460,6 +467,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [folderView,setFolderView]=useState<{file?:OpenFolderFile;folderId?:string}|null>(null);
   const [packShare,setPackShare]=useState<{space:Space;folderId?:string}|null>(null);
   const [spaceTab,setSpaceTab]=useState<SpaceTab>('overview');
+  /** A subject whose review starts as soon as its page opens (a flashcard reminder was clicked). */
+  const [reviewFor,setReviewFor]=useState<string|null>(null);
+  /** Cards being imported from Anki or Quizlet (src/local/FlashcardImport.tsx), and the subject they go to first. */
+  const [cardImport,setCardImport]=useState<{source:import('./local/FlashcardImport').CardSource;target?:string}|null>(null);
   // Where the next generated file from a space should land (e.g. "Make a worksheet" → Worksheets).
   const artifactTarget=useRef<{spaceId:string;folderId:string|null;until:number;label?:string}|null>(null);
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
@@ -582,7 +593,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       if (!r.ok) throw Error();
       const list: Model[] = await r.json();
       setModels((desktop ? list : (list.length ? list : modelPlaceholders)).filter(m=>m.id!=='google').map(m=>m.id==='anthropic'?{...m,name:'Claude',connected:false}:m));
-      setDefaultModel((m) => list.some(x=>x.id===m&&x.connected)?m:list.find(x=>x.connected&&x.isDefault)?.id||list.find(x=>x.connected)?.id||"");
+      // The AI chosen in setup answers first.
+      const chosen=firstAi.current;
+      setDefaultModel((m) => list.some(x=>x.id===m&&x.connected)?m:(chosen&&(list.find(x=>x.connected&&x.isDefault&&modelOf(chosen,x.id))||list.find(x=>x.connected&&modelOf(chosen,x.id)))?.id)||list.find(x=>x.connected&&x.isDefault)?.id||list.find(x=>x.connected)?.id||"");
       setApiReady(true);
     } catch {
       setApiReady(false);
@@ -2218,6 +2231,27 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     setQueued({prompt:prompt.trim(),chat:chatId,from:messageId});
     stopChat(chatId);
   }
+  /** Adds imported cards as study sets (one per Anki deck), with the pictures they show as the subject's files. */
+  async function addImportedCards(deck:import('./local/FlashcardImport').ReadDeck,spaceId:string|null){
+    const owner=ownerRef.current,now=Date.now();
+    const space:Space|undefined=spaceId?stateRef.current.spaces.find(x=>x.id===spaceId):{id:crypto.randomUUID(),name:deck.name.slice(0,100)||'Imported cards',kind:'subject',description:'',memory:'',sources:[],folders:[]};
+    if(!space)throw Error('That subject isn’t here any more.');
+    const folder=deck.media.length?{id:crypto.randomUUID(),name:'Pictures from Anki',parentId:null,created:now}:undefined;
+    const files:StoredFile[]=[];
+    for(const m of deck.media){
+      const id=crypto.randomUUID(),type=/\.png$/i.test(m.name)?'image/png':/\.gif$/i.test(m.name)?'image/gif':/\.webp$/i.test(m.name)?'image/webp':'image/jpeg';
+      await storeBlob(id,new Blob([m.data as Uint8Array<ArrayBuffer>],{type}),owner);
+      files.push({id,name:m.name,size:m.data.length,type,created:now,spaceId:space.id,folderId:folder!.id});
+    }
+    if(owner!==ownerRef.current)throw Error('Account changed. Import the cards again in your account.');
+    const groups=new Map<string,typeof deck.cards>();
+    for(const c of deck.cards){const k=c.deck||'';groups.set(k,[...(groups.get(k)||[]),c]);}
+    const sets:import("../core/types").StudySet[]=[...groups].map(([name,cards])=>({id:crypto.randomUUID(),spaceId:space.id,kind:'flashcards' as const,title:(groups.size>1&&name?name:deck.name).slice(0,120),created:now,attempts:[],items:cards.map(c=>({question:c.question,answer:c.answer})),...(cards.some(c=>c.state)?{cards:cards.map(c=>c.state||null)}:{})}));
+    patch(s=>({...s,spaces:spaceId?s.spaces.map(x=>x.id===space.id?{...x,sources:[...x.sources,...files.map(f=>f.id)],folders:folder?[...(x.folders||[]),folder]:x.folders}:x):[...s.spaces,{...space,sources:files.map(f=>f.id),folders:folder?[folder]:[]}],files:[...files,...s.files],studySets:[...s.studySets,...sets]}));
+    setCardImport(null);
+    setToast(`Added ${deck.cards.length.toLocaleString()} card${deck.cards.length===1?'':'s'}${files.length?` and ${files.length} picture${files.length===1?'':'s'}`:''} to ${space.name}.`);
+    openSpace(space.id,'flashcards');
+  }
   async function openPackBytes(bytes:Uint8Array,name:string){
     try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast(cleanError(e));}
   }
@@ -2235,13 +2269,38 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       openSpace(added.spaceId);
     }catch(e){setToast(cleanError(e));}
   }
+  // Right after setup: the AI chosen there answers first, the sample subject is added (and opened), or Settings →
+  // Models opens for someone who connects later.
+  useEffect(()=>{
+    if(!ready||!desktop)return;
+    const next=afterSetup.take();
+    if(!next)return;
+    if(next.ai){firstAi.current=next.ai;void refreshModels();}
+    if(next.sample&&!stateRef.current.spaces.some(x=>x.sample))void addSample(!next.settings);
+    if(next.settings)openSettings(next.settings);
+  },[ready]);
+  async function addSample(open:boolean){
+    const owner=ownerRef.current,{space,files,studySet}=sampleSubject();
+    try{
+      for(const f of files)await storeBlob(f.file.id,new Blob([f.text],{type:f.file.type}),owner);
+      if(owner!==ownerRef.current)return;
+      patch(s=>({...s,spaces:[...s.spaces,space],files:[...files.map(f=>f.file),...s.files],studySets:[...s.studySets,studySet]}));
+      if(open)openSpace(space.id);
+    }catch(e){setToast(cleanError(e));}
+  }
+  // A flashcard reminder clicked: that subject opens at its review.
+  useEffect(()=>{if(!desktop?.onOpen)return;return desktop.onOpen(({review})=>{if(review&&stateRef.current.spaces.some(x=>x.id===review)){openSpace(review,'flashcards');setReviewFor(review);}});},[]);
   useEffect(()=>{if(!desktop?.onPack)return;return desktop.onPack(({bytes,name})=>void openPackBytes(bytes,name));},[]);
   // A study pack dropped anywhere on the window opens for review. While anything is dragged, holding it near the top or
   // bottom of a scrolling area scrolls it (the wheel does not reach the page mid-drag), so far-off folders stay reachable.
   useEffect(()=>{
-    const isPack=(e:DragEvent)=>[...(e.dataTransfer?.items||[])].some(i=>i.kind==='file')&&[...(e.dataTransfer?.files||[])].some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION));
+    const isPack=(e:DragEvent)=>[...(e.dataTransfer?.items||[])].some(i=>i.kind==='file')&&[...(e.dataTransfer?.files||[])].some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION)||/\.apkg$/i.test(f.name));
     const over=(e:DragEvent)=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault();};
-    const drop=(e:DragEvent)=>{if(e.defaultPrevented||!isPack(e))return;e.preventDefault();const file=[...e.dataTransfer!.files].find(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION))!;void file.arrayBuffer().then(b=>openPackBytes(new Uint8Array(b),file.name));};
+    const drop=(e:DragEvent)=>{if(e.defaultPrevented||!isPack(e))return;e.preventDefault();
+      // An Anki deck opens the import, aimed at the subject on screen.
+      const deck=[...e.dataTransfer!.files].find(f=>/\.apkg$/i.test(f.name));
+      if(deck){const here=/^\/app\/space\/(.+)$/.exec(workspaceRoute())?.[1];void import('./local/FlashcardImport').then(m=>m.sourceOf(deck)).then(source=>setCardImport({source,target:stateRef.current.spaces.some(x=>x.id===here&&x.kind==='subject')?here:undefined}),err=>setToast(cleanError(err)));return;}
+      const file=[...e.dataTransfer!.files].find(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION))!;void file.arrayBuffer().then(b=>openPackBytes(new Uint8Array(b),file.name));};
     window.addEventListener('dragover',over);window.addEventListener('drop',drop);window.addEventListener('dragover',edgeScroll,true);
     return()=>{window.removeEventListener('dragover',over);window.removeEventListener('drop',drop);window.removeEventListener('dragover',edgeScroll,true);};
   },[]);
@@ -2265,7 +2324,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       depth=0;setDropping(false);
       if(e.defaultPrevented||!hasFiles(e))return;
       const files=[...(e.dataTransfer?.files||[])];
-      if(files.some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION)))return;
+      if(files.some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION)||/\.apkg$/i.test(f.name)))return;
       if(chatDrop.current(files))e.preventDefault();
     };
     const end=()=>{depth=0;setDropping(false);};
@@ -2369,6 +2428,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       onDeleteSet:id=>patch(s=>({...s,studySets:s.studySets.filter(x=>x.id!==id)})),
       onRemoveVisual:id=>patch(s=>({...s,visuals:s.visuals.filter(x=>x.id!==id)})),
       onExport:()=>void archiveCourse(space),
+      onImportCards:()=>setCardImport({source:{kind:'paste'},target:space.id}),
       onDelete:()=>void deleteCourse(space).then(()=>{if(!stateRef.current.spaces.some(x=>x.id===space.id))navigate(space.kind==='project'?'/app/projects':'/app/subjects');}),
       onBrowseLinked:folderId=>setFolderView({folderId}),
       onBack:()=>navigate(space.kind==='project'?'/app/projects':'/app/subjects'),
@@ -2675,6 +2735,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         <SettingRow title="Sidebar" description="Put it away for more room."><Switch label="Show the sidebar" checked={!sideClosed} onChange={show=>setSideClosed(!show)}/></SettingRow>
                       </SettingsCard>
                       <BackgroundSettings/>
+                      <ReminderSettings/>
                       <UpdateSettings state={appUpdate} onInstall={()=>void installUpdate()}/>
                       <SettingsCard title="Shortcuts">
                         <SettingRow title="Command palette" description="Jump to any chat, space, page or setting."><Keys keys={["Ctrl","K"]}/></SettingRow>
@@ -2711,13 +2772,14 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     ) : settingsTab === "Help & support" ? (
                       <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Open source" description="Clem is free and open source. Read the code, report a bug or suggest an idea on GitHub."><a className="secondary" href="https://github.com/mowfxy/clem" target="_blank" rel="noreferrer">GitHub</a></SettingRow></SettingsCard></>
                     ) : (<>
-                      <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
+                      <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Back up the rest below. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
                         <SettingRow title="Conversations" description={`${savedChats.length} saved on this PC`}><button className="secondary danger" disabled={!savedChats.length||anyRunning} onClick={async()=>{
                           if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC, with what Clem only noted from them. Saved files, skills and memory you kept stay. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
                           try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));if(desktop)void desktop.invoke({action:"memoryForgetChat",chats:state.chats.map(c=>c.id).filter(id=>/^[a-zA-Z0-9_-]{1,80}$/.test(id)).slice(0,5000)}).catch(()=>{});patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
                         }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
+                      {desktop&&<BackupSettings onError={setToast}/>}
                       <SettingsCard>
                         <SettingRow title="Privacy policy" description="How Clem handles your information."><a className="secondary" href="https://m4labs.xyz/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
                       </SettingsCard>
@@ -2901,7 +2963,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 onPoint={(p) => { setPointers((all) => [...all, p].slice(-6)); setTimeout(() => composer.current?.focus(), 30); }} />}
               </div>
             ) : pageSpace ? (
-              <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
+              <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab} reviewNow={reviewFor===pageSpace.id} onReviewStarted={()=>setReviewFor(null)}
                 chats={savedChats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} driveSync={driveSync} actions={spaceActions(pageSpace)}
                 plan={(state.plans||[]).find(p=>p.spaceId===pageSpace.id)} planDraft={planDrafts[pageSpace.id]||null} planActions={planActionsFor(pageSpace)} canAsk={models.some(m=>m.connected)&&!offline} memoryPlaces={memoryPlaces} memoryLabel={memoryLabel}/></Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (
@@ -3334,6 +3396,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         onOpenChat={chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}} onOpenSpace={space=>openSpace(space.id)} onOpenFile={file=>setViewer(file)} onOpenFolderFile={file=>setFolderView({file,folderId:file.folderId})}/></Suspense>}
       {folderView&&<Suspense fallback={null}><FolderBrowser initial={folderView.file} folderId={folderView.folderId} key={(folderView.folderId||'')+(folderView.file?.path||'')} scopeLabel={scopeLabel} onAsk={askAboutFolderFile} onClose={()=>setFolderView(null)}/></Suspense>}
       {packShare&&<Suspense fallback={null}><ShareSheet space={packShare.space} folderId={packShare.folderId} sets={state.studySets.filter(x=>x.spaceId===packShare.space.id)} files={state.files.filter(f=>f.spaceId===packShare.space.id)} author={state.name} onClose={()=>setPackShare(null)} onDone={message=>setToast(message)}/></Suspense>}
+      {cardImport&&<Suspense fallback={null}><FlashcardImport source={cardImport.source} target={cardImport.target} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addImportedCards} onCancel={()=>setCardImport(null)}/></Suspense>}
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
       {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
       {savingVideo && <SaveVideoDialog places={savingVideo.choose ? [{ id: null, name: "Personal" }, ...state.spaces.map((x) => ({ id: x.id, name: x.name }))] : []} place={savingVideo.place} folderId={savingVideo.folderId ?? null} existing={state.files} store={(id, blob) => storeBlob(id, blob)} onSaved={(r) => videosSaved(r, savingVideo.folderId ?? null)} onClose={() => setSavingVideo(null)} />}

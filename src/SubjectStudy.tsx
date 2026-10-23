@@ -32,8 +32,10 @@ function withCard(set: StudySet, index: number, state: CardState): StudySet {
 }
 
 export function SubjectStudy({
-  sets, onGenerate, onUpdate, onDelete, kind, autoStart = 0,
+  sets, onGenerate, onUpdate, onDelete, onImport, kind, autoStart = 0,
 }: {
+  /** Import cards from Anki or Quizlet (flashcards only). */
+  onImport?: () => void;
   /** Shows one kind of set only (the subject page's Flashcards and Quizzes tabs). */
   kind?: "quiz" | "flashcards";
   /** Changing this number starts a review session, e.g. from the subject overview. */
@@ -184,10 +186,12 @@ export function SubjectStudy({
               );
             })}
             <button type="button" className="study-new" onClick={() => onGenerate(make)}><Icon name="plus" size={16} />New</button>
+            {onImport && <button type="button" className="study-new" onClick={onImport}><Icon name="import" size={16} />Import</button>}
           </div>
         ) : (
           <EmptyState scene={kind === "quiz" ? "checklist" : "cards"} line={kind === "quiz" ? "No quizzes yet." : "No cards yet."}>
             <button type="button" className="primary" onClick={() => onGenerate(make)}>{kind === "quiz" ? "Make a quiz" : "Make flashcards"}</button>
+            {onImport && <button type="button" className="secondary" onClick={onImport}>Import from Anki or Quizlet</button>}
           </EmptyState>
         )
       )}

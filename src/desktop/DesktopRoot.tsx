@@ -3,7 +3,8 @@ import type { Scene } from "../vectorFilm";
 import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon, Logo } from "../Icons";
 import { desktop } from "./bridge";
-import { FirstProvider } from "./FirstProvider";
+import { FirstProvider, type Service } from "./FirstProvider";
+import { afterSetup } from "../after-setup";
 import { bootDone } from "../boot";
 import type { DesktopStatus } from "../../desktop/contracts";
 import "./desktop.css";
@@ -29,7 +30,8 @@ function SetupContent() {
     [name, setName] = useState(""),
     [memory, setMemory] = useState(true),
     [availability, setAvailability] = useState(""),
-    [aiConnected, setAiConnected] = useState(false);
+    [ai, setAi] = useState<Service | null>(null),
+    [sample, setSample] = useState(true);
   // Which way the steps are moving, and whether the current one is on its way out.
   const [direction, setDirection] = useState<"next" | "back">("next"),
     [leaving, setLeaving] = useState(false);
@@ -163,14 +165,14 @@ function SetupContent() {
     "It’s yours alone, and how people find you.",
     "Your name, the way you like to hear it.",
     "Clem can keep useful context between chats. It syncs to your account; files stay on this PC.",
-    "Use the subscription you already have. You can add more in Settings → Models.",
+    "Clem looked for the AI apps already on this PC. Connect the one you use; you can add more later in Settings → Models.",
   ];
   // Every screen gets its own drawing, so the setup reads as a short walk rather than one form.
   const scene: Scene = !state?.user
     ? browserPending ? "plane" : "house"
     : state.entitlement.reason === "suspended" ? "lock"
     : state.entitlement.reason === "offline" && step >= 3 ? "unlink"
-    : (["key", "wave", "jar", aiConnected ? "link" : "plug"] as const)[Math.min(step, 3)];
+    : (["key", "wave", "jar", ai ? "link" : "plug"] as const)[Math.min(step, 3)];
   const initial = name.trim().charAt(0).toUpperCase();
   return (
     <main className="desktop-setup" data-step={state?.user ? Math.min(step, 3) : "welcome"}>
@@ -255,8 +257,12 @@ function SetupContent() {
               <p>{lines[Math.min(step, 3)]}</p>
               {step >= 3 ? (
                 <>
-                  <FirstProvider onConnected={setAiConnected} />
-                  <button className="primary setup-finish" data-ready={aiConnected} disabled={busy || !aiConnected} onClick={() => void run(() => move(4, () => save(4)))}>
+                  <FirstProvider onChosen={setAi} />
+                  <label className="setup-sample">
+                    <input type="checkbox" checked={sample} onChange={(e) => setSample(e.target.checked)} />
+                    <span><b>Start with a sample subject</b><small>A few cell biology notes and flashcards to try Clem on. Delete it whenever you like.</small></span>
+                  </label>
+                  <button className="primary setup-finish" data-ready={!!ai} disabled={busy || !ai} onClick={() => void run(() => move(4, async () => { afterSetup.set({ sample, ai: ai! }); await save(4); }))}>
                     {busy ? "Saving…" : "Open workspace"}
                   </button>
                 </>
@@ -345,8 +351,8 @@ function SetupContent() {
                   </button>
                 )}
                 {step === 3 && (
-                  <button disabled={busy} onClick={() => void run(() => move(4, () => save(4)))}>
-                    Skip for now
+                  <button disabled={busy} onClick={() => void run(() => move(4, async () => { afterSetup.set({ sample, settings: "Models" }); await save(4); }))}>
+                    I’ll do this later
                   </button>
                 )}
                 <button
