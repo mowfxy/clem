@@ -200,6 +200,64 @@ export class DriveLive {
     return await done.json() as {id:string;modifiedTime?:string};
   }
 
+  /** The "Clem backups" folder in My Drive (desktop/backup-service.ts), made the first time it is needed. */
+  async backupFolder(){
+    await this.canWrite();
+    const url=new URL(API);
+    url.search=new URLSearchParams({q:`name = 'Clem backups' and mimeType = '${FOLDER}' and 'root' in parents and trashed = false`,fields:"files(id)",pageSize:"1"}).toString();
+    const found=await this.google(url.href,{timeout:20000});
+    if(!found.ok)throw Error(await unread(found,"Google Drive could not be read."));
+    const id=((await found.json()) as {files?:{id:string}[]}).files?.[0]?.id;
+    if(id)return id;
+    const made=await this.google(`${API}?fields=id`,{method:"POST",timeout:20000,headers:{"Content-Type":"application/json; charset=UTF-8"},body:JSON.stringify({name:"Clem backups",mimeType:FOLDER,parents:["root"]})});
+    if(made.status===403)throw Error(await refusal(made));
+    if(!made.ok)throw Error("Google Drive did not make the Clem backups folder.");
+    return ((await made.json()) as {id:string}).id;
+  }
+  /** Backup files in a folder, newest first. */
+  async backupFiles(folderId:string){
+    const url=new URL(API);
+    url.search=new URLSearchParams({q:`${quote(folderId)} in parents and name contains '.clembackup' and trashed = false`,fields:"files(id,name,size,createdTime)",pageSize:"200",orderBy:"createdTime desc"}).toString();
+    const r=await this.google(url.href,{timeout:20000});
+    if(!r.ok)throw Error(await unread(r,"Google Drive could not list your backups."));
+    return (((await r.json()) as {files?:{id:string;name:string;size?:string;createdTime?:string}[]}).files||[]).map(f=>({id:f.id,name:f.name,size:Number(f.size||0),at:Date.parse(f.createdTime||"")||0}));
+  }
+  /** Uploads a file from disk in 8 MB pieces (resumable), so a large backup is never held in memory whole. */
+  async uploadFile(folderId:string,name:string,path:string){
+    await this.canWrite();
+    const {open}=await import("node:fs/promises");
+    const handle=await open(path,"r");
+    try{
+      const size=(await handle.stat()).size,mime="application/octet-stream";
+      const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",{
+        method:"POST",timeout:30000,
+        headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(size)},
+        body:JSON.stringify({name:name.replace(/[\x00-\x1f]/g,"").slice(0,200),parents:[folderId],mimeType:mime}),
+      });
+      if(start.status===403)throw Error(await refusal(start));
+      const session=start.headers.get("Location");
+      if(!start.ok||!session)throw Error("Google Drive did not accept the backup.");
+      const piece=8*1024*1024;
+      for(let at=0;;){
+        const length=Math.min(piece,size-at),bytes=Buffer.alloc(length);
+        if(length)await handle.read(bytes,0,length,at);
+        const r=await this.fetcher(session,{method:"PUT",headers:{"Content-Range":length?`bytes ${at}-${at+length-1}/${size}`:`bytes */${size}`},body:bytes as unknown as BodyInit,signal:AbortSignal.timeout(300_000)});
+        if(r.ok)return await r.json() as {id:string};
+        if(r.status!==308)throw Error(r.status===403?await refusal(r):"Google Drive did not finish saving the backup. Try again.");
+        const range=/bytes=0-(\d+)/.exec(r.headers.get("Range")||"");
+        at=range?Number(range[1])+1:at+length;
+      }
+    }finally{await handle.close();}
+  }
+  /** Downloads a Drive file to a path on this PC. */
+  async downloadFile(id:string,path:string){
+    const r=await this.google(`${API}/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`,{timeout:600_000});
+    if(r.status===404)throw Error("That backup is no longer in Drive.");
+    if(!r.ok||!r.body)throw Error(await unread(r,"Google Drive could not send the backup."));
+    const [{createWriteStream},{pipeline}]=await Promise.all([import("node:fs"),import("node:stream/promises")]);
+    await pipeline(Readable.fromWeb(r.body as import("node:stream/web").ReadableStream),createWriteStream(path));
+  }
+
   /** Replaces the contents of a file Clem saved to Drive earlier (after an approved edit), keeping its id, name and place. */
   async update(fileId:string,type:string,data:Uint8Array){
     await this.canWrite();

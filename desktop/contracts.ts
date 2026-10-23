@@ -7,6 +7,8 @@ export type FolderEvent = FolderDelta & { folderId: string; scope: string; folde
 export const scopeSchema = z
   .string()
   .regex(/^(chat|project|subject|user):[a-zA-Z0-9_-]{1,100}$/);
+/** A backup to preview or restore (desktop/backup-service.ts): a file in a folder the person chose, or one in Drive. */
+const backupItem = z.union([z.object({ source: z.literal("folder"), path: z.string().min(3).max(1000) }), z.object({ source: z.literal("drive"), id: z.string().regex(/^[\w-]{10,150}$/) })]);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000), diagnostics:z.boolean().optional() }),
@@ -80,6 +82,12 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderChanges"), scope: scopeSchema.optional() }),
   z.object({ action: z.literal("folderChangeUndo"), id: z.string().uuid() }),
   z.object({ action: z.literal("pdfRender"), spec: z.string().min(2).max(16_000_000) }),
+  z.object({ action: z.literal("backupStatus") }),
+  z.object({ action: z.literal("backupConfigure"), destination: z.union([z.object({ kind: z.literal("drive") }), z.null()]).optional(), chooseFolder: z.boolean().optional(), schedule: z.enum(["off", "daily", "weekly"]).optional(), keep: z.number().int().min(1).max(60).optional(), passphrase: z.string().min(8).max(200).optional() }),
+  z.object({ action: z.literal("backupNow") }),
+  z.object({ action: z.literal("backupList"), from: z.enum(["destination", "file", "drive"]).optional() }),
+  z.object({ action: z.literal("backupPreview"), item: backupItem, passphrase: z.string().max(200).optional() }),
+  z.object({ action: z.literal("backupRestore"), item: backupItem, passphrase: z.string().max(200).optional(), confirmed: z.boolean() }),
   z.object({ action: z.literal("shareSave"), name: z.string().min(1).max(160), data: z.instanceof(Uint8Array).refine((d) => d.length <= 105_000_000, "Share files are limited to 100 MB.") }),
   z.object({ action: z.literal("shareReveal"), path: z.string().min(3).max(600) }),
   z.object({ action: z.literal("foldersAll") }),

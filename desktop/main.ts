@@ -22,6 +22,7 @@ import {appUpdates, type UpdateRequest} from "./app-update";
 import {cp,access,stat as statFile,readFile as readDiskFile} from "node:fs/promises";
 import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
+import {BackupService,readEditsScript,writeEditsScript,type BackupDestination} from "./backup-service";
 import {UsageTally} from "./usage-tally";
 import { securityActions, handleSecurity } from "./security";
 import { contentSecurityPolicy } from "./csp";
@@ -275,6 +276,20 @@ void app.whenReady().then(async () => {
   const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   const driveMedia=new DriveMediaServer(driveLive,async()=>!!await auth.user());
   app.on("before-quit",()=>driveMedia.stop());
+  /** Runs a backup's IndexedDB script (desktop/backup-service.ts) in the window, where the store is. */
+  const inWindow=(script:string)=>{
+    if(!window||window.isDestroyed())throw Error("Open Clem and try again.");
+    return window.webContents.executeJavaScript(script);
+  };
+  const backups=new BackupService({
+    vault, root:workspaceRoot, temp:join(app.getPath("temp"),"Clem","backups"), app:app.getVersion(), drive:driveLive,
+    edits:{read:async(owner)=>JSON.parse(await inWindow(readEditsScript(owner))),write:async(owner,entries)=>{await inWindow(writeEditsScript(owner,entries));}},
+    reload:()=>{if(!window.isDestroyed())window.webContents.reload();},
+  });
+  // Scheduled backups run from here, so they keep happening while Clem sits in the tray.
+  const backupTick=()=>void auth.user(false).then((user)=>user&&backups.tick(user.id)).catch(()=>{});
+  setTimeout(backupTick,120_000).unref();
+  setInterval(backupTick,10*60_000).unref();
   /**
    * Keeps Codex, Claude Code and Grok current in the background, since each provider offers a new model only to a
    * program new enough to use it. Codex is checked every six hours (or on Refresh), the others once a day when installed.
@@ -875,6 +890,7 @@ void app.whenReady().then(async () => {
     }
     if(url.pathname==='/api/local/state'||/^\/api\/local\/files\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
       try{const user=await auth.user();if(!user)return Response.json({error:'Sign in first.'},{status:401});if(request.headers.get('X-Clem-Owner')!==user.id)return Response.json({error:'Account changed.'},{status:409});
+      if(backups.restoring&&request.method!=='GET')return Response.json({error:'Restoring a backup. Clem reloads in a moment.'},{status:423});
       if(url.pathname.endsWith('/state')){if(request.method==='GET')return Response.json(await disk.readState(user.id));if(request.method==='PUT'){const value=await request.json();await disk.writeState(user.id,value);return Response.json({ok:true});}}
       else {const id=url.pathname.split('/').at(-1)!;if(request.method==='GET'){const file=await disk.readFile(user.id,id);return file?new Response(new Uint8Array(file)):new Response(null,{status:404});}if(request.method==='PUT'){await disk.writeFile(user.id,id,new Uint8Array(await request.arrayBuffer()));return Response.json({ok:true});}if(request.method==='DELETE'){await disk.deleteFile(user.id,id);return Response.json({ok:true});}}
       return new Response(null,{status:405});}catch{return Response.json({error:'Could not access your Documents/Clem workspace. Check available disk space and permissions.'},{status:500});}
@@ -969,6 +985,7 @@ void app.whenReady().then(async () => {
     if (details.reason !== "clean-exit" && !window.isDestroyed()) setTimeout(() => { if (!window.isDestroyed()) window.webContents.reload(); }, 800);
   });
   window.on("unresponsive", () => noteEvent("window not responding"));
+  window.webContents.on("did-finish-load", () => backups.reloaded());
   window.on("responsive", () => noteEvent("window responding again"));
   app.on("child-process-gone", (_event, details) => { if (details.reason !== "clean-exit") noteEvent("helper stopped:", details.type, details.reason, details.name || ""); });
   window.on("session-end", () => { quitting = true; updates.sessionEnding(); });
@@ -1401,6 +1418,30 @@ void app.whenReady().then(async () => {
       // A document with crops in it reads them from the workspace, as when it was made.
       return { bytes: (await makeFile("pdf", spec, { assets: (id) => readAsset(diskCrops(user.id), id) })).bytes };
     }
+    if (request.action === "backupStatus") return backups.status(user.id);
+    if (request.action === "backupConfigure") {
+      let destination: BackupDestination | null | undefined = request.destination;
+      if (request.chooseFolder) {
+        const selection = await dialog.showOpenDialog(window, { title: "Choose where Clem keeps backups", buttonLabel: "Back up here", properties: ["openDirectory", "createDirectory"] });
+        if (selection.canceled) return backups.status(user.id);
+        destination = { kind: "folder", path: selection.filePaths[0] };
+      }
+      await backups.configure(user.id, { ...(destination !== undefined ? { destination } : {}), schedule: request.schedule, keep: request.keep, passphrase: request.passphrase });
+      if (destination?.kind === "folder") backups.allowFolder(destination.path);
+      return backups.status(user.id);
+    }
+    if (request.action === "backupNow") return backups.backupNow(user.id);
+    if (request.action === "backupList") {
+      if (request.from === "file") {
+        const selection = await dialog.showOpenDialog(window, { title: "Choose a Clem backup", filters: [{ name: "Clem backups", extensions: ["clembackup"] }], properties: ["openFile"] });
+        if (selection.canceled) return null;
+        backups.allowFolder(dirname(selection.filePaths[0]));
+        return { items: await backups.list(user.id, { kind: "folder", path: dirname(selection.filePaths[0]) }), chosen: selection.filePaths[0] };
+      }
+      return { items: await backups.list(user.id, request.from === "drive" ? { kind: "drive" } : undefined) };
+    }
+    if (request.action === "backupPreview") return backups.preview(user.id, request.item, request.passphrase);
+    if (request.action === "backupRestore") return backups.restore(user.id, request.item, request.passphrase, request.confirmed);
     if (request.action === "shareSave") {
       const folder = join(app.getPath("downloads"), "Clem");
       await mkdir(folder, { recursive: true });

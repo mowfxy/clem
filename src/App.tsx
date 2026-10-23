@@ -22,6 +22,7 @@ import {SettingsWindow} from "./settings/SettingsWindow";
 import {ProfileSettings} from "./settings/ProfileSettings";
 import {SkillsSettings} from "./settings/SkillsSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
+import {BackupSettings} from "./settings/BackupSettings";
 import {UpdateIndicator, UpdateSettings, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
 import {UsageSettings,archiveChats} from "./settings/UsageSettings";
 import {AsciiField} from "./chat/AsciiField";
@@ -2706,13 +2707,14 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     ) : settingsTab === "Help & support" ? (
                       <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Open source" description="Clem is free and open source. Read the code, report a bug or suggest an idea on GitHub."><a className="secondary" href="https://github.com/mowfxy/clem" target="_blank" rel="noreferrer">GitHub</a></SettingRow></SettingsCard></>
                     ) : (<>
-                      <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Selected context goes to your AI provider when you ask.">
+                      <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Back up the rest below. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
                         <SettingRow title="Conversations" description={`${savedChats.length} saved on this PC`}><button className="secondary danger" disabled={!savedChats.length||anyRunning} onClick={async()=>{
                           if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC, with what Clem only noted from them. Saved files, skills and memory you kept stay. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
                           try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));if(desktop)void desktop.invoke({action:"memoryForgetChat",chats:state.chats.map(c=>c.id).filter(id=>/^[a-zA-Z0-9_-]{1,80}$/.test(id)).slice(0,5000)}).catch(()=>{});patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
                         }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
+                      {desktop&&<BackupSettings onError={setToast}/>}
                       <SettingsCard>
                         <SettingRow title="Privacy policy" description="How Clem handles your information."><a className="secondary" href="https://m4labs.xyz/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
                       </SettingsCard>
