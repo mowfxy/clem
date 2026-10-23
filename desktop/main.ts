@@ -1443,6 +1443,16 @@ void app.whenReady().then(async () => {
       // A document with crops in it reads them from the workspace, as when it was made.
       return { bytes: (await makeFile("pdf", spec, { assets: (id) => readAsset(diskCrops(user.id), id) })).bytes };
     }
+    if (request.action === "ankiRead") {
+      // In a worker thread (desktop/anki-worker.ts), so a large deck never holds up the main process.
+      const { Worker } = await import("node:worker_threads");
+      const worker = new Worker(join(__dirname, "anki-worker.cjs"), { workerData: { bytes: request.data, name: request.name }, resourceLimits: { maxOldGenerationSizeMb: 2048 } });
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { void worker.terminate(); reject(Error("This deck took too long to read.")); }, 180_000);
+        worker.once("message", (message: { result?: unknown; error?: string }) => { clearTimeout(timer); void worker.terminate(); message.error ? reject(Error(message.error)) : resolve(message.result); });
+        worker.once("error", () => { clearTimeout(timer); reject(Error("This deck couldn't be read. It may be too large or damaged.")); });
+      });
+    }
     if (request.action === "reminders") return request.set ? reminders.configure(user.id, request.set) : reminders.settings(user.id);
     if (request.action === "backupStatus") return backups.status(user.id);
     if (request.action === "backupConfigure") {

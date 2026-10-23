@@ -164,6 +164,7 @@ const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ defaul
 const FolderWatchSetting = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderWatchSetting })));
 const ShareSheet = lazy(() => import("./local/StudyPack").then(m => ({ default: m.ShareSheet })));
 const PackPreview = lazy(() => import("./local/StudyPack").then(m => ({ default: m.PackPreview })));
+const FlashcardImport = lazy(() => import("./local/FlashcardImport").then(m => ({ default: m.FlashcardImport })));
 const SpacePage = lazy(() => import("./space/SpacePage").then(m => ({ default: m.SpacePage })));
 const Visual = lazy(() => import("./Visual"));
 const SavedVisuals = lazy(() => import("./visuals/SavedVisuals").then(m => ({ default: m.SavedVisuals })));
@@ -467,6 +468,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [spaceTab,setSpaceTab]=useState<SpaceTab>('overview');
   /** A subject whose review starts as soon as its page opens (a flashcard reminder was clicked). */
   const [reviewFor,setReviewFor]=useState<string|null>(null);
+  /** Cards being imported from Anki or Quizlet (src/local/FlashcardImport.tsx), and the subject they go to first. */
+  const [cardImport,setCardImport]=useState<{source:import('./local/FlashcardImport').CardSource;target?:string}|null>(null);
   // Where the next generated file from a space should land (e.g. "Make a worksheet" → Worksheets).
   const artifactTarget=useRef<{spaceId:string;folderId:string|null;until:number;label?:string}|null>(null);
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
@@ -2223,6 +2226,27 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     setQueued({prompt:prompt.trim(),chat:chatId,from:messageId});
     stopChat(chatId);
   }
+  /** Adds imported cards as study sets (one per Anki deck), with the pictures they show as the subject's files. */
+  async function addImportedCards(deck:import('./local/FlashcardImport').ReadDeck,spaceId:string|null){
+    const owner=ownerRef.current,now=Date.now();
+    const space:Space|undefined=spaceId?stateRef.current.spaces.find(x=>x.id===spaceId):{id:crypto.randomUUID(),name:deck.name.slice(0,100)||'Imported cards',kind:'subject',description:'',memory:'',sources:[],folders:[]};
+    if(!space)throw Error('That subject isn’t here any more.');
+    const folder=deck.media.length?{id:crypto.randomUUID(),name:'Pictures from Anki',parentId:null,created:now}:undefined;
+    const files:StoredFile[]=[];
+    for(const m of deck.media){
+      const id=crypto.randomUUID(),type=/\.png$/i.test(m.name)?'image/png':/\.gif$/i.test(m.name)?'image/gif':/\.webp$/i.test(m.name)?'image/webp':'image/jpeg';
+      await storeBlob(id,new Blob([m.data as Uint8Array<ArrayBuffer>],{type}),owner);
+      files.push({id,name:m.name,size:m.data.length,type,created:now,spaceId:space.id,folderId:folder!.id});
+    }
+    if(owner!==ownerRef.current)throw Error('Account changed. Import the cards again in your account.');
+    const groups=new Map<string,typeof deck.cards>();
+    for(const c of deck.cards){const k=c.deck||'';groups.set(k,[...(groups.get(k)||[]),c]);}
+    const sets:import("../core/types").StudySet[]=[...groups].map(([name,cards])=>({id:crypto.randomUUID(),spaceId:space.id,kind:'flashcards' as const,title:(groups.size>1&&name?name:deck.name).slice(0,120),created:now,attempts:[],items:cards.map(c=>({question:c.question,answer:c.answer})),...(cards.some(c=>c.state)?{cards:cards.map(c=>c.state||null)}:{})}));
+    patch(s=>({...s,spaces:spaceId?s.spaces.map(x=>x.id===space.id?{...x,sources:[...x.sources,...files.map(f=>f.id)],folders:folder?[...(x.folders||[]),folder]:x.folders}:x):[...s.spaces,{...space,sources:files.map(f=>f.id),folders:folder?[folder]:[]}],files:[...files,...s.files],studySets:[...s.studySets,...sets]}));
+    setCardImport(null);
+    setToast(`Added ${deck.cards.length.toLocaleString()} card${deck.cards.length===1?'':'s'}${files.length?` and ${files.length} picture${files.length===1?'':'s'}`:''} to ${space.name}.`);
+    openSpace(space.id,'flashcards');
+  }
   async function openPackBytes(bytes:Uint8Array,name:string){
     try{const {readPack}=await import('./local/StudyPack');setPackOpen(await readPack(bytes,name));}catch(e){setToast(cleanError(e));}
   }
@@ -2265,9 +2289,13 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   // A study pack dropped anywhere on the window opens for review. While anything is dragged, holding it near the top or
   // bottom of a scrolling area scrolls it (the wheel does not reach the page mid-drag), so far-off folders stay reachable.
   useEffect(()=>{
-    const isPack=(e:DragEvent)=>[...(e.dataTransfer?.items||[])].some(i=>i.kind==='file')&&[...(e.dataTransfer?.files||[])].some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION));
+    const isPack=(e:DragEvent)=>[...(e.dataTransfer?.items||[])].some(i=>i.kind==='file')&&[...(e.dataTransfer?.files||[])].some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION)||/\.apkg$/i.test(f.name));
     const over=(e:DragEvent)=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault();};
-    const drop=(e:DragEvent)=>{if(e.defaultPrevented||!isPack(e))return;e.preventDefault();const file=[...e.dataTransfer!.files].find(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION))!;void file.arrayBuffer().then(b=>openPackBytes(new Uint8Array(b),file.name));};
+    const drop=(e:DragEvent)=>{if(e.defaultPrevented||!isPack(e))return;e.preventDefault();
+      // An Anki deck opens the import, aimed at the subject on screen.
+      const deck=[...e.dataTransfer!.files].find(f=>/\.apkg$/i.test(f.name));
+      if(deck){const here=/^\/app\/space\/(.+)$/.exec(workspaceRoute())?.[1];void import('./local/FlashcardImport').then(m=>m.sourceOf(deck)).then(source=>setCardImport({source,target:stateRef.current.spaces.some(x=>x.id===here&&x.kind==='subject')?here:undefined}),err=>setToast(cleanError(err)));return;}
+      const file=[...e.dataTransfer!.files].find(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION))!;void file.arrayBuffer().then(b=>openPackBytes(new Uint8Array(b),file.name));};
     window.addEventListener('dragover',over);window.addEventListener('drop',drop);window.addEventListener('dragover',edgeScroll,true);
     return()=>{window.removeEventListener('dragover',over);window.removeEventListener('drop',drop);window.removeEventListener('dragover',edgeScroll,true);};
   },[]);
@@ -2291,7 +2319,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       depth=0;setDropping(false);
       if(e.defaultPrevented||!hasFiles(e))return;
       const files=[...(e.dataTransfer?.files||[])];
-      if(files.some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION)))return;
+      if(files.some(f=>f.name.toLowerCase().endsWith(PACK_EXTENSION)||/\.apkg$/i.test(f.name)))return;
       if(chatDrop.current(files))e.preventDefault();
     };
     const end=()=>{depth=0;setDropping(false);};
@@ -2395,6 +2423,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       onDeleteSet:id=>patch(s=>({...s,studySets:s.studySets.filter(x=>x.id!==id)})),
       onRemoveVisual:id=>patch(s=>({...s,visuals:s.visuals.filter(x=>x.id!==id)})),
       onExport:()=>void archiveCourse(space),
+      onImportCards:()=>setCardImport({source:{kind:'paste'},target:space.id}),
       onDelete:()=>void deleteCourse(space).then(()=>{if(!stateRef.current.spaces.some(x=>x.id===space.id))navigate(space.kind==='project'?'/app/projects':'/app/subjects');}),
       onBrowseLinked:folderId=>setFolderView({folderId}),
       onBack:()=>navigate(space.kind==='project'?'/app/projects':'/app/subjects'),
@@ -3362,6 +3391,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         onOpenChat={chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');}} onOpenSpace={space=>openSpace(space.id)} onOpenFile={file=>setViewer(file)} onOpenFolderFile={file=>setFolderView({file,folderId:file.folderId})}/></Suspense>}
       {folderView&&<Suspense fallback={null}><FolderBrowser initial={folderView.file} folderId={folderView.folderId} key={(folderView.folderId||'')+(folderView.file?.path||'')} scopeLabel={scopeLabel} onAsk={askAboutFolderFile} onClose={()=>setFolderView(null)}/></Suspense>}
       {packShare&&<Suspense fallback={null}><ShareSheet space={packShare.space} folderId={packShare.folderId} sets={state.studySets.filter(x=>x.spaceId===packShare.space.id)} files={state.files.filter(f=>f.spaceId===packShare.space.id)} author={state.name} onClose={()=>setPackShare(null)} onDone={message=>setToast(message)}/></Suspense>}
+      {cardImport&&<Suspense fallback={null}><FlashcardImport source={cardImport.source} target={cardImport.target} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addImportedCards} onCancel={()=>setCardImport(null)}/></Suspense>}
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
       {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
       {savingVideo && <SaveVideoDialog places={savingVideo.choose ? [{ id: null, name: "Personal" }, ...state.spaces.map((x) => ({ id: x.id, name: x.name }))] : []} place={savingVideo.place} folderId={savingVideo.folderId ?? null} existing={state.files} store={(id, blob) => storeBlob(id, blob)} onSaved={(r) => videosSaved(r, savingVideo.folderId ?? null)} onClose={() => setSavingVideo(null)} />}

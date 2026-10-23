@@ -74,3 +74,11 @@ dialog.share-sheet::backdrop{background:#0009;backdrop-filter:blur(5px)}
 @media (prefers-reduced-motion:reduce){dialog.share-sheet[open],.sh-file,.sh-burst i,.po-sample div{animation:none}.sh-burst{display:none}}
 [data-quiet=true] .sh-burst{display:none}
 .sh-empty{margin:0;padding:14px 16px;border:1px dashed #3a3a36;border-radius:12px;color:#a9a8a0;font-size:13px;line-height:1.55}
+/* Importing cards from Anki or Quizlet (FlashcardImport.tsx). */
+dialog.card-import .sh-body{display:flex;flex-direction:column;gap:12px}
+.ci-text{width:100%;box-sizing:border-box;min-height:110px;padding:10px 12px;border:1px solid #3d3d38;border-radius:12px;background:#141413;color:inherit;font:13px/1.5 var(--mono);resize:vertical}
+.ci-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;color:#a3a29a}
+.ci-row select,.ci-row input{flex:1;max-width:300px;min-height:36px;padding:6px 10px;border:1px solid #3d3d38;border-radius:10px;background:#141413;color:#eeede7}
+dialog.card-import .ci-note{display:flex;align-items:flex-start;gap:8px;color:#c9b98a}
+dialog.card-import .ci-note svg{flex:none;margin-top:2px}
+:root[data-theme=light] .ci-text,:root[data-theme=light] .ci-row select,:root[data-theme=light] .ci-row input{background:#fff;border-color:#0000001f;color:#262a35}

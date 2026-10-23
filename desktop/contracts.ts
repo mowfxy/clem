@@ -83,6 +83,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("folderChanges"), scope: scopeSchema.optional() }),
   z.object({ action: z.literal("folderChangeUndo"), id: z.string().uuid() }),
   z.object({ action: z.literal("pdfRender"), spec: z.string().min(2).max(16_000_000) }),
+  z.object({ action: z.literal("ankiRead"), name: z.string().min(1).max(260), data: z.instanceof(Uint8Array).refine((d) => d.length > 0 && d.length <= 250_000_000, "Anki decks are limited to 250 MB.") }),
   z.object({ action: z.literal("reminders"), set: z.object({ enabled: z.boolean().optional(), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional() }).optional() }),
   z.object({ action: z.literal("backupStatus") }),
   z.object({ action: z.literal("backupConfigure"), destination: z.union([z.object({ kind: z.literal("drive") }), z.null()]).optional(), chooseFolder: z.boolean().optional(), schedule: z.enum(["off", "daily", "weekly"]).optional(), keep: z.number().int().min(1).max(60).optional(), passphrase: z.string().min(8).max(200).optional() }),

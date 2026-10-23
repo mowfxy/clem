@@ -66,6 +66,8 @@ export type SpaceActions={
   onRenameDrive:(file:DriveItem,name:string)=>Promise<boolean>;
   onTrashDrive:(file:DriveItem)=>Promise<boolean>;
   onStudyNew:(kind:'flashcards'|'summary')=>void;
+  /** Opens the import from Anki or Quizlet (src/local/FlashcardImport.tsx) for this subject. */
+  onImportCards:()=>void;
   onUpload:(files:FileList,folderId:string|null)=>void;
   onMake:(kind:'flashcards'|'quiz'|'worksheet'|'summary',folderId?:string|null)=>void;
   onShare:(folderId?:string)=>void;
@@ -227,7 +229,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
 
       {tab==='plan'&&<PlanView space={space} plan={plan} draft={planDraft} actions={planActions} canAsk={canAsk}/>}
       {tab==='chats'&&<ChatList chats={recentChats} onOpen={actions.onOpenChat} onMenu={chatMenu.open} onNew={()=>actions.onDraft('')}/>}
-      {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
+      {tab==='flashcards'&&<SubjectStudy key="cards" kind="flashcards" autoStart={review} onImport={actions.onImportCards} sets={sets.filter(s=>s.kind==='flashcards')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
       {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals you save in this {space.kind} appear here.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
