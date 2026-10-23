@@ -22,12 +22,14 @@ export function requestSpec(id:string,messages:ChatInput[],credential?:ProviderC
  const body=anthropic?anthropicBody(model,messages):{model,messages,stream:true,...(c.id==='openai'?{max_completion_tokens:4096}:{max_tokens:4096})};
  return {url:c.url,headers,body};
 }
-/** Anthropic's request with prompt caching: the system prompt (the same on every request) and the conversation up to the
- *  latest message are cached, so a chat's next request reads them from the cache instead of paying for them again. */
+/** Anthropic's request with prompt caching: Clem's policy (the first system message, the same in every chat), the whole
+ *  system prompt and the conversation up to the latest message are cached, so a chat's next request reads them from the
+ *  cache instead of paying for them again, and a new chat (or one with its own instructions) still reads the policy there. */
 const cached={type:'ephemeral'} as const;
 function anthropicBody(model:string,messages:ChatInput[]){
- const system=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),turns=messages.filter(m=>m.role!=='system');
- return {model,stream:true,max_tokens:4096,...(system?{system:[{type:'text',text:system,cache_control:cached}]}:{}),messages:turns.map((m,i)=>i===turns.length-1&&m.role==='user'?{role:m.role,content:[{type:'text',text:m.content,cache_control:cached}]}:m)};
+ const system=messages.filter(m=>m.role==='system').map(m=>m.content),turns=messages.filter(m=>m.role!=='system');
+ const blocks=system.map((text,i)=>({type:'text',text:(i?'\n':'')+text,...(i===0||i===system.length-1?{cache_control:cached}:{})}));
+ return {model,stream:true,max_tokens:4096,...(blocks.length?{system:blocks}:{}),messages:turns.map((m,i)=>i===turns.length-1&&m.role==='user'?{role:m.role,content:[{type:'text',text:m.content,cache_control:cached}]}:m)};
 }
 export async function* parseProviderStream(body:ReadableStream<Uint8Array>,signal:AbortSignal):AsyncGenerator<string>{
  const reader=body.getReader(),decoder=new TextDecoder();let buffer='';let doneMarker=false;

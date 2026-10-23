@@ -98,7 +98,10 @@ test("a deployment uses the server's own provider keys only when it opts in", as
     // The system prompt and the conversation up to the latest message are cached between requests.
     const body = requestSpec("anthropic", [{ role: "system", content: "RULES" }, { role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: "c" }]).body as any;
     assert.deepEqual(body.system, [{ type: "text", text: "RULES", cache_control: { type: "ephemeral" } }]);
-    assert.deepEqual(body.messages, [{ role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: [{ type: "text", text: "c", cache_control: { type: "ephemeral" } }] }]);
+    // Clem's policy (the first system message) is cached on its own too, so chats with other instructions still share it.
+    const two = requestSpec("anthropic", [{ role: "system", content: "POLICY" }, { role: "system", content: "CHAT" }, { role: "user", content: "a" }]).body as any;
+    assert.deepEqual(two.system, [{ type: "text", text: "POLICY", cache_control: { type: "ephemeral" } }, { type: "text", text: "\nCHAT", cache_control: { type: "ephemeral" } }]);
+    assert.deepEqual(body.messages, [{ role: "user", content: "a" },{ role: "assistant", content: "b" }, { role: "user", content: [{ type: "text", text: "c", cache_control: { type: "ephemeral" } }] }]);
     process.env.VERCEL = "1";
     assert.equal(serverKeysAllowed(), false);
     assert.throws(() => requestSpec("anthropic", [{ role: "user", content: "hi" }]), /connect your own model/);

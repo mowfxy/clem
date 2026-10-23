@@ -60,8 +60,10 @@ export const WRITERS_NOTE=`SEVERAL DOCUMENTS: when the request needs two or more
  * ignores the person's own Claude Code settings; `settingsFile` adds the rules for this answer (linked folders are
  * read-only). acceptEdits lets it write in its folder without asking; anything else that would ask is refused.
  */
-export function claudeCliArgs(model:string,effort:string|undefined,session:{id:string;resume:boolean}|undefined,{mcpConfig,addDirs=[],settingsFile,agentsFile}:{mcpConfig?:string;addDirs?:string[];settingsFile?:string;agentsFile?:string}={}){
-  const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model,
+/** `steady`: Claude Code's per-machine sections (this chat's folder, its environment and git status) go in the first
+ *  message instead of its system prompt, so that prompt is the same in every chat and its prompt cache serves them all. */
+export function claudeCliArgs(model:string,effort:string|undefined,session:{id:string;resume:boolean}|undefined,{mcpConfig,addDirs=[],settingsFile,agentsFile,steady=true}:{mcpConfig?:string;addDirs?:string[];settingsFile?:string;agentsFile?:string;steady?:boolean}={}){
+  const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--model',model,...(steady?[STEADY_PROMPT]:[]),
     '--restricted','--no-chrome','--strict-mcp-config','--tools',agentsFile?CLAUDE_CLI_TOOLS+','+CLAUDE_AGENT_TOOLS:CLAUDE_CLI_TOOLS,'--allowedTools',`WebSearch,WebFetch${mcpConfig?','+CLAUDE_TOOL:''}${agentsFile?','+CLAUDE_AGENT_TOOLS:''}`,
     '--permission-mode','acceptEdits','--permission-prompts','none','--disable-slash-commands','--max-turns',String(MAX_CALLS+10),
     ...(mcpConfig?['--mcp-config',mcpConfig]:[]),...(settingsFile?['--settings',settingsFile]:[]),...(agentsFile?['--agents',agentsFile]:[]),...addDirs.flatMap(dir=>['--add-dir',dir])];
@@ -69,6 +71,8 @@ export function claudeCliArgs(model:string,effort:string|undefined,session:{id:s
   if(effort)args.push('--effort',effort);
   return args;
 }
+/** Claude Code's flag for a system prompt that is the same in every folder (older ones refuse it: see noSteadyPrompt). */
+export const STEADY_PROMPT='--exclude-dynamic-system-prompt-sections';
 /** A path as Claude Code's permission rules name it: "//c/Users/…" for C:\Users\… (an absolute path from the root). */
 export const rulePath=(path:string)=>'//'+path.replace(/\\/g,'/').replace(/^([A-Za-z]):/,(_,d:string)=>d.toLowerCase()).replace(/^\/+/,'').replace(/\/+$/,'');
 /** The settings for one answer: the linked folders it may read but never change itself (edits to them are proposed). */
@@ -264,6 +268,8 @@ export class ClaudeProvider {
   private noSystemFile=false;
   /** Set when this Claude Code refused --agents: answers then write every document themselves. */
   private noAgents=false;
+  /** Set when this Claude Code refused --exclude-dynamic-system-prompt-sections: its prompt then keeps the folder as before. */
+  private noSteadyPrompt=false;
   private statusCache:{at:number;value:ReturnType<typeof claudeSubscriptionStatus>}|null=null;
   /** The last sign-in check while it is recent: each step of a tool loop reuses it instead of starting `claude auth status` again. */
   private recentStatus(){return this.statusCache&&Date.now()-this.statusCache.at<10*60_000?this.statusCache.value:undefined;}
@@ -466,7 +472,7 @@ export class ClaudeProvider {
     try{
       if(mcpFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(mcpFile,claudeMcpConfig(endpoint!),{mode:0o600});}
       child=workspace
-        ?await this.start([...claudeCliArgs(model.slice(7),effort,session,{mcpConfig:mcpFile,addDirs:workspace.readOnly||[],settingsFile,agentsFile}),...(systemFile?['--append-system-prompt-file',systemFile]:[])],workspace.root)
+        ?await this.start([...claudeCliArgs(model.slice(7),effort,session,{mcpConfig:mcpFile,addDirs:workspace.readOnly||[],settingsFile,agentsFile,steady:!this.noSteadyPrompt}),...(systemFile?['--append-system-prompt-file',systemFile]:[])],workspace.root)
         :await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile,bare),...(systemFile?['--system-prompt-file',systemFile]:[])]);
     }
     catch(error){endpoint?.close();await removeFiles();throw error;}
@@ -527,6 +533,8 @@ export class ClaudeProvider {
           // A finished answer is kept even when Claude Code's exit code says otherwise (a fault while shutting down).
           if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&!apiError){finish(result.result);return;}
           const detail=String(result?.result||'')+' '+(Array.isArray(result?.errors)?result.errors.join(' '):'')+' '+apiText+' '+error;
+          // Checked first: its name has "system-prompt" in it too. Nothing ran: the same step again without it.
+          if(workspace&&!this.noSteadyPrompt&&unsupportedFlag.test(detail)&&/exclude-dynamic/i.test(detail)){this.noSteadyPrompt=true;return finish(undefined,new NoSystemFile());}
           if(systemFile&&unsupportedFlag.test(detail)&&/system-prompt/i.test(detail)){this.noSystemFile=true;return finish(undefined,new NoSystemFile());}
           // Nothing ran: the same step again without writers.
           if(agentsFile&&unsupportedFlag.test(detail)&&/agents/i.test(detail)){this.noAgents=true;return finish(undefined,new NoSystemFile());}

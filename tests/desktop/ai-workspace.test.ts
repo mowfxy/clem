@@ -8,7 +8,7 @@ import { mirrorFor, mirroredId, syncMirror, workspaceLane, workspaceNote, worksp
 import { officeText } from "../../desktop/office-text.ts";
 import { zipSync, strToU8 } from "fflate";
 import { markdownSource, withMarkdownSource } from "../../desktop/markdown-source.ts";
-import { claudeCliArgs, claudeCliSettings, claudeWriters, rulePath, CLAUDE_CLI_TOOLS, WRITER, WRITERS_NOTE } from "../../desktop/claude.ts";
+import { claudeCliArgs, claudeCliSettings, claudeWriters, rulePath, CLAUDE_CLI_TOOLS, STEADY_PROMPT, WRITER, WRITERS_NOTE } from "../../desktop/claude.ts";
 import { folderThread } from "../../desktop/codex-stream.ts";
 import { documentsNote } from "../../core/clem-skills.ts";
 import { kinetraCli, kinetraFiles, kinetraCompact, kinetraCliBrief, kinetraFilesBrief } from "../../desktop/kinetra-runtime.ts";
@@ -198,6 +198,9 @@ test("Claude runs as itself in the folder: its own prompt, file tools, no comman
   assert.match(writer.prompt, /^RULES\n\nYOU ARE A CLEM DOCUMENT WRITER/);
   assert.match(WRITERS_NOTE, /word for word/);
   assert.ok(!args.includes("--system-prompt-file") && !args.includes("--safe-mode"));
+  // Its system prompt is the same in every chat's folder (the folder goes in the message), so the prompt cache serves them all.
+  assert.ok(args.includes(STEADY_PROMPT));
+  assert.ok(!claudeCliArgs("sonnet", "high", undefined, { steady: false }).includes(STEADY_PROMPT));
   assert.equal(rulePath("D:\\Course\\Week 1\\"), "//d/Course/Week 1");
   assert.deepEqual(JSON.parse(claudeCliSettings(["D:\\Course"])).permissions.deny, ["Edit(//d/Course/**)", "Write(//d/Course/**)", "NotebookEdit(//d/Course/**)"]);
   // Grok's own names only: one unknown name makes Grok load every tool, the terminal included.
