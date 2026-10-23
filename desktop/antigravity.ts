@@ -240,7 +240,7 @@ export class AntigravityProvider {
   /** Every agent process of this account, started or still starting (a sign-in waits on the person for minutes). */
   private processes = new Set<Live>();
   /** The session /usage is asked in (no model call); it lives with the process. */
-  private probe: {session: string; live: Live} | null = null;
+  private probe: {session: string; live: Live; defaultModel?: string} | null = null;
   /**
    * A session opened ahead for the next new chat message: the agent takes about three seconds to open one (it starts a
    * helper for each), which the person would otherwise wait for at every new chat. `lastSpec` is what chats open.
@@ -491,13 +491,23 @@ export class AntigravityProvider {
   }
   /** The account's models and each one's thinking levels, from a session that is never prompted. */
   private async listModels(live: Live) {
-    const cwd = join(this.root, 'probe');
-    await mkdir(cwd, {recursive: true});
-    const setup = await live.acp.request('session/new', {cwd, mcpServers: [], _meta: {antigravity: {enabledTools: []}}}, 120_000);
-    const session = String(setup?.sessionId || '');
-    live.sessions.set(session, {cwd, folder: false});
-    live.opened++;
-    this.dropped.add(session);
+    // Read again on the probe session this agent already has: every session/new starts a helper process (about 90 MB)
+    // that the agent keeps until it closes, and counts toward PROCESS_SESSIONS, past which the agent restarts after
+    // every answer (a cold start is 12-15 seconds). Selecting its default model again returns the whole list.
+    const again = this.probe?.live === live && live.sessions.has(this.probe.session) && this.probe.defaultModel
+      ? await live.acp.request('session/set_config_option', {sessionId: this.probe.session, configId: 'model', value: this.probe.defaultModel}, 30_000).catch(() => null)
+      : null;
+    let session: string, setup: any;
+    if (again && parseAntigravityModels(again).models.length) { session = this.probe!.session; setup = again; }
+    else {
+      const cwd = join(this.root, 'probe');
+      await mkdir(cwd, {recursive: true});
+      setup = await live.acp.request('session/new', {cwd, mcpServers: [], _meta: {antigravity: {enabledTools: []}}}, 120_000);
+      session = String(setup?.sessionId || '');
+      live.sessions.set(session, {cwd, folder: false});
+      live.opened++;
+      this.dropped.add(session);
+    }
     const {models, current} = parseAntigravityModels(setup);
     const efforts: AntigravityEfforts = {};
     // Thinking levels belong to the selected model: each model is selected in turn and its levels read.
@@ -509,7 +519,7 @@ export class AntigravityProvider {
       if (levels.length) efforts[model.id] = {levels, default: level};
     }
     this.modelsAt = Date.now();
-    this.probe = {session, live};
+    this.probe = {session, live, defaultModel: current};
     return {models, defaultModel: current, efforts, tier: antigravityTier(setup)};
   }
   /** The agent's own /usage report, which its server answers itself (no model call, no usage spent). */

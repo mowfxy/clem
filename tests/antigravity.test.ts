@@ -67,6 +67,21 @@ test('status: signed in with the account’s models, thinking levels, plan and u
   } finally { p.stop(); }
 });
 
+test('reading the models again reuses the probe session: no new session (and helper process) every few minutes', async () => {
+  const p = new FakeAgent('ok');
+  try {
+    const first = await p.status(true);
+    const live = await (p as any).live;
+    const opened = live.opened;
+    (p as any).modelsAt = 0;
+    const again = await p.status(true);
+    assert.equal(live.opened, opened);
+    assert.deepEqual(again.models, first.models);
+    assert.equal(again.defaultModel, first.defaultModel);
+    assert.deepEqual(again.efforts, first.efforts);
+  } finally { p.stop(); }
+});
+
 test('signed out: the check says so at once and never opens a sign-in page', async () => {
   const p = new FakeAgent('signed-out');
   try {
