@@ -155,6 +155,8 @@ import "./chat/reply.css";
 import "./enhance.css";
 import "./theme/light.css";
 import { applyTheme, setThemeChoice, themeChoice, type ThemeChoice } from "./theme/theme";
+import { afterSetup, modelOf } from "./after-setup";
+import { sampleSubject } from "./sample-subject";
 const SearchEverything = lazy(() => import("./local/SearchEverything").then(m => ({ default: m.SearchEverything })));
 const FolderBrowser = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.FolderBrowser })));
 const PcFolders = lazy(() => import("./local/FolderBrowser").then(m => ({ default: m.PcFolders })));
@@ -312,6 +314,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const modelsRef = useRef(models);
   modelsRef.current = models;
   const [defaultModel, setDefaultModel] = useState("");
+  /** The AI picked in the last setup step (src/after-setup.ts), until the models are listed. */
+  const firstAi = useRef<import("./desktop/FirstProvider").Service | undefined>(undefined);
   const [defaultReasoning,setDefaultReasoning]=useState("");
   const savedSelection=state.chats.find(c=>c.id===chatId);
   const model=savedSelection?.model ?? defaultModel;
@@ -582,7 +586,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       if (!r.ok) throw Error();
       const list: Model[] = await r.json();
       setModels((desktop ? list : (list.length ? list : modelPlaceholders)).filter(m=>m.id!=='google').map(m=>m.id==='anthropic'?{...m,name:'Claude',connected:false}:m));
-      setDefaultModel((m) => list.some(x=>x.id===m&&x.connected)?m:list.find(x=>x.connected&&x.isDefault)?.id||list.find(x=>x.connected)?.id||"");
+      // The AI chosen in setup answers first.
+      const chosen=firstAi.current;
+      setDefaultModel((m) => list.some(x=>x.id===m&&x.connected)?m:(chosen&&(list.find(x=>x.connected&&x.isDefault&&modelOf(chosen,x.id))||list.find(x=>x.connected&&modelOf(chosen,x.id)))?.id)||list.find(x=>x.connected&&x.isDefault)?.id||list.find(x=>x.connected)?.id||"");
       setApiReady(true);
     } catch {
       setApiReady(false);
@@ -2229,6 +2235,25 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       const cards=added.studySets.reduce((n,x)=>n+x.items.length,0);
       setToast(`Added ${[cards?`${cards} cards`:'',added.files.length?`${added.files.length} files`:''].filter(Boolean).join(' and ')} to ${added.space?.name||target?.name}.`);
       openSpace(added.spaceId);
+    }catch(e){setToast(cleanError(e));}
+  }
+  // Right after setup: the AI chosen there answers first, the sample subject is added (and opened), or Settings →
+  // Models opens for someone who connects later.
+  useEffect(()=>{
+    if(!ready||!desktop)return;
+    const next=afterSetup.take();
+    if(!next)return;
+    if(next.ai){firstAi.current=next.ai;void refreshModels();}
+    if(next.sample&&!stateRef.current.spaces.some(x=>x.sample))void addSample(!next.settings);
+    if(next.settings)openSettings(next.settings);
+  },[ready]);
+  async function addSample(open:boolean){
+    const owner=ownerRef.current,{space,files,studySet}=sampleSubject();
+    try{
+      for(const f of files)await storeBlob(f.file.id,new Blob([f.text],{type:f.file.type}),owner);
+      if(owner!==ownerRef.current)return;
+      patch(s=>({...s,spaces:[...s.spaces,space],files:[...files.map(f=>f.file),...s.files],studySets:[...s.studySets,studySet]}));
+      if(open)openSpace(space.id);
     }catch(e){setToast(cleanError(e));}
   }
   useEffect(()=>{if(!desktop?.onPack)return;return desktop.onPack(({bytes,name})=>void openPackBytes(bytes,name));},[]);

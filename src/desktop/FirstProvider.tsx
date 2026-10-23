@@ -6,59 +6,77 @@ import { OpenAILogo, ClaudeLogo, GrokLogo, GeminiLogo } from "../BrandLogos";
 import { Icon } from "../Icons";
 import "../models-settings.css";
 
-type Cli = { installed?: boolean; connected?: boolean; email?: string };
-type Service = "chatgpt" | CliKind;
+import { foundFor, orderServices, type Cli, type Detected, type Found, type Service } from "./ai-found";
+export type { Service };
 
-/** The last setup step: connect the AI subscription someone already has. Reports whether any is connected. */
-export function FirstProvider({ onConnected }: { onConnected: (connected: boolean) => void }) {
-  const [chatgpt, setChatgpt] = useState(false), [claude, setClaude] = useState<Cli>({}), [grok, setGrok] = useState<Cli>({}), [antigravity, setAntigravity] = useState<Cli>({});
-  const [tab, setTab] = useState<Service>("chatgpt"), [error, setError] = useState(""), [checked, setChecked] = useState(false);
+const names: Record<Service, { name: string; cli: string; logo: ReactNode; account: string }> = {
+  chatgpt: { name: "ChatGPT", cli: "Codex", logo: <OpenAILogo size={22} title="ChatGPT" />, account: "OpenAI" },
+  claude: { name: "Claude", cli: "Claude Code", logo: <ClaudeLogo size={22} title="Claude" />, account: "Claude" },
+  grok: { name: "Grok", cli: "Grok", logo: <GrokLogo size={22} title="Grok" />, account: "X or xAI" },
+  antigravity: { name: "Gemini", cli: "Antigravity", logo: <GeminiLogo size={22} title="Gemini" />, account: "Google" },
+};
+/**
+ * The last setup step: what's on this PC, read without signing in or spending anything, and one button per AI:
+ * Connect (connected or signed in already), Sign in (installed), or Install and connect. Reports the AI chosen.
+ */
+export function FirstProvider({ onChosen }: { onChosen: (service: Service | null) => void }) {
+  const [chatgpt, setChatgpt] = useState(false), [cli, setCli] = useState<Record<CliKind, Cli>>({ claude: {}, grok: {}, antigravity: {} }), [detected, setDetected] = useState<Detected>({});
+  const [checked, setChecked] = useState(false), [error, setError] = useState(""), [chosen, setChosen] = useState<Service | null>(null), [codexOpen, setCodexOpen] = useState(false);
+  const [waiting, setWaiting] = useState<Service | null>(null);
   async function refresh() {
-    const [accounts, claudeStatus, grokStatus, antigravityStatus] = await Promise.all([
+    const [accounts, claude, grok, antigravity, found] = await Promise.all([
       desktop!.invoke({ action: "providerAccounts" }).catch(() => null),
       desktop!.invoke({ action: "claudeStatus" }).catch(() => ({})),
       desktop!.invoke({ action: "grokStatus" }).catch(() => ({})),
       desktop!.invoke({ action: "antigravityStatus" }).catch(() => ({})),
+      desktop!.invoke({ action: "aiDetect" }).catch(() => ({})),
     ]);
     setChatgpt(!!accounts?.accounts?.some((a: { connected?: boolean }) => a.connected));
     // A status that comes back empty means not connected; it must never blank the setup screen.
-    setClaude(claudeStatus || {}); setGrok(grokStatus || {}); setAntigravity(antigravityStatus || {}); setChecked(true);
+    setCli({ claude: claude || {}, grok: grok || {}, antigravity: antigravity || {} });
+    setDetected(found || {});
+    setChecked(true);
   }
-  const store = (kind: CliKind, status: Cli) => kind === "claude" ? setClaude(status) : kind === "grok" ? setGrok(status) : setAntigravity(status);
-  const { setup, connect } = useCliConnect(store, refresh, setError);
+  const store = (kind: CliKind, status: Cli) => setCli((c) => ({ ...c, [kind]: status }));
+  const { setup, connect } = useCliConnect(store, async () => { await refresh(); }, setError);
   useEffect(() => { void refresh(); }, []);
-  const connected = { chatgpt, claude: !!claude.connected, grok: !!grok.connected, antigravity: !!antigravity.connected };
-  const any = connected.chatgpt || connected.claude || connected.grok || connected.antigravity;
-  useEffect(() => { onConnected(any); }, [any]);
-  // Someone who already connected one (on another PC, or before setup changed) starts on it.
-  useEffect(() => { if (checked) setTab((t) => connected[t] ? t : connected.chatgpt ? "chatgpt" : connected.claude ? "claude" : connected.grok ? "grok" : connected.antigravity ? "antigravity" : t); }, [checked]);
-  const services: { id: Service; name: string; logo: ReactNode }[] = [
-    { id: "chatgpt", name: "ChatGPT", logo: <OpenAILogo size={16} /> },
-    { id: "claude", name: "Claude", logo: <ClaudeLogo size={16} /> },
-    { id: "grok", name: "Grok", logo: <GrokLogo size={16} /> },
-    { id: "antigravity", name: "Gemini", logo: <GeminiLogo size={16} /> },
-  ];
-  const cli = tab === "claude" ? claude : tab === "grok" ? grok : antigravity;
-  const card = { claude: { name: "Claude", install: "Claude Code", logo: <ClaudeLogo size={24} title="Claude" />, about: "Use your Claude plan through Claude Code.", account: "Claude" }, grok: { name: "Grok", install: "Grok", logo: <GrokLogo size={24} title="Grok" />, about: "Use your SuperGrok or X Premium plan.", account: "X or xAI" }, antigravity: { name: "Gemini", install: "Gemini", logo: <GeminiLogo size={24} title="Gemini" />, about: "Use your Google AI plan with Gemini.", account: "Google" } };
-  return <div className="first-provider">
-    <div className="provider-switch" role="tablist" aria-label="AI services">
-      {services.map((s) => <button key={s.id} type="button" role="tab" aria-selected={s.id === tab} className={"provider-switch-tab provider-" + s.id + (s.id === tab ? " on" : "")} onClick={() => setTab(s.id)}>
-        <span className="provider-switch-logo">{s.logo}</span>{s.name}{connected[s.id] && <span className="provider-dot" aria-label="connected"><Icon name="plug" size={13} /></span>}
-      </button>)}
-    </div>
-    <div key={tab} className="first-provider-body" role="tabpanel">
-      {connected[tab]
-        ? <p className="first-provider-done"><Icon name="check" size={16} />{services.find((s) => s.id === tab)!.name} is connected.{tab !== "chatgpt" && cli.email ? " " + cli.email : ""}</p>
-        : tab === "chatgpt"
-          ? <LocalProvider onDone={() => void refresh()} />
-          : <article className={"provider-card provider-" + tab}>
-            <div className="provider-card-top">
-              <span className="provider-logo">{card[tab].logo}</span>
-              <div className="provider-title"><h3>{card[tab].name}</h3><small>{card[tab].about}</small></div>
-            </div>
-            <SetupButton kind={tab} setup={setup} disabled={!checked} label={cli.installed ? `Sign in to ${card[tab].name}` : `Install ${card[tab].install}`} account={card[tab].account} onClick={() => void connect(tab, cli.installed)} />
-          </article>}
-    </div>
+  const found = Object.fromEntries((["chatgpt", "claude", "grok", "antigravity"] as Service[]).map((s) => [s, foundFor(s, s === "chatgpt" ? {} : cli[s], detected, chatgpt)])) as Record<Service, Found>;
+  // A sign-in started here that has finished: that AI is the one chosen.
+  useEffect(() => { if (waiting && found[waiting] === "connected") { setChosen(waiting); setWaiting(null); } }, [waiting, found[waiting || "chatgpt"]]);
+  useEffect(() => { onChosen(chosen); }, [chosen]);
+  const press = (service: Service) => {
+    setError("");
+    if (found[service] === "connected") return setChosen(service);
+    if (service === "chatgpt") return setCodexOpen(true);
+    setWaiting(service);
+    void connect(service, found[service] !== "missing");
+  };
+  const detail = (service: Service) => {
+    const f = found[service], n = names[service], status = service === "chatgpt" ? {} : cli[service];
+    if (f === "connected") return `Connected in Clem${status.email ? " as " + status.email : ""}${status.plan ? " · " + status.plan : ""}.`;
+    // Clem keeps a sign-in of its own, so connecting asks once and never changes the CLI's own settings.
+    if (f === "pc") return `${n.cli} is signed in on this PC${service === "claude" && detected.claude?.email ? " as " + detected.claude.email : ""}. Clem signs in once with its own copy, so your ${n.cli} settings stay as they are.`;
+    if (f === "out") return service === "chatgpt" ? "Sign in with your ChatGPT account." : `${n.cli} is installed. Sign in with your ${n.account} account.`;
+    return service === "antigravity" ? "Uses your Google account. What you can use without a paid Google AI plan is up to Google." : `${n.cli} isn't installed. Clem can install it for you.`;
+  };
+  const label = (service: Service) => found[service] === "connected" || found[service] === "pc" ? "Connect" : found[service] === "out" ? "Sign in" : "Install and connect";
+  return <div className="first-provider first-ai">
+    {!checked && <p className="first-ai-checking" role="status"><span className="provider-spinner" aria-hidden="true" />Looking for AI apps on this PC…</p>}
+    {checked && <ul className="first-ai-list" aria-label="AI services">
+      {orderServices(found).map((service) => {
+        const n = names[service], on = chosen === service;
+        return <li key={service} className={"first-ai-row provider-" + service} data-found={found[service]} data-chosen={on || undefined}>
+          <span className="provider-logo">{n.logo}</span>
+          <div className="first-ai-text"><h3>{n.name}</h3><small>{detail(service)}</small></div>
+          <div className="first-ai-action">
+            {on ? <span className="first-provider-done"><Icon name="check" size={16} />Connected</span>
+              : service === "chatgpt" ? (!codexOpen && <button className="provider-action" disabled={!!setup} onClick={() => press(service)}>{label(service)}<Icon name="arrow" size={14} /></button>)
+              : <SetupButton kind={service} setup={setup} disabled={!!setup && setup.kind !== service} label={label(service)} account={n.account} onClick={() => press(service)} />}
+          </div>
+          {service === "chatgpt" && codexOpen && !on && <div className="first-ai-codex"><LocalProvider onDone={() => { setCodexOpen(false); void refresh().then(() => setChosen("chatgpt")); }} /></div>}
+        </li>;
+      })}
+    </ul>}
     {error && <p className="inline-error" role="alert">{error}</p>}
   </div>;
 }

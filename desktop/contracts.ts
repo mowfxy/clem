@@ -47,6 +47,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("cliAccountRemove"), kind:z.enum(["claude","grok","antigravity"]), id:z.string().regex(/^(default|[a-f0-9-]{36})$/) }),
   z.object({ action: z.literal("claudeInstall") }),
   z.object({ action: z.literal("grokStatus") }),
+  z.object({ action: z.literal("aiDetect") }),
   z.object({ action: z.literal("driveSearch"), query: z.string().min(1).max(2000) }),
   z.object({ action: z.literal("driveOpenWeb"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("driveStatus"), refresh: z.boolean().optional() }),

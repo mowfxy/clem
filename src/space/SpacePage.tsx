@@ -1,3 +1,4 @@
+import {SAMPLE_STARTER} from "../sample-subject";
 import {shortWhen,dayBefore} from '../ui/when';
 import {Fragment,useEffect,useMemo,useRef,useState,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {Icon} from '../Icons';
@@ -164,6 +165,10 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
           <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},...(subject?[{label:'Export subject ZIP',icon:'download',run:actions.onExport}]:[]),{label:`Delete ${space.kind}`,icon:'trash',danger:true,run:actions.onDelete}]}/>
         </div>
       </div>
+      {space.sample&&<div className="sp-sample" role="note">
+        <p>This is a sample subject: the notes and cards are examples, and any answer here comes from your own AI.</p>
+        <div><button className="primary" onClick={()=>actions.onAsk(SAMPLE_STARTER)}>Try: “{SAMPLE_STARTER.split(':')[0]}”</button><button className="secondary" onClick={actions.onDelete}>Delete sample</button></div>
+      </div>}
       <form className="sp-ask" onSubmit={e=>{e.preventDefault();if(ask.trim()){actions.onAsk(ask.trim());setAsk('');}}}>
         <Icon name="chat" size={18}/>
         <input value={ask} onChange={e=>setAsk(e.target.value)} placeholder={subject?`Ask anything about ${space.name}…`:`Work on ${space.name}…`} aria-label={`Ask about ${space.name}`}/>

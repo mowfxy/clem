@@ -81,7 +81,8 @@ import {toolStatus} from './codex';
 import {documentsNote,foldersPlaybook} from '../core/clem-skills';
 import {cleanAiName,namingPrompt} from '../core/file-naming';
 import {readPictures} from './ocr';
-import {installCli} from './cli-install';
+import {installCli,installedPath} from './cli-install';
+import {detectPcSignIns} from './ai-detect';
 import {CodexEngine,daily} from './engines';
 import {CLEM_FILE,cliFileToolsGuide,distinctNames,fileTool,fileToolsGuide,findFile,type LibraryFile} from '../core/file-tools';
 import {
@@ -1303,6 +1304,11 @@ void app.whenReady().then(async () => {
     }
     if (request.action === "youtubePlaylist") return youtubePlaylist(request.id);
     if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
+    if (request.action === "aiDetect") {
+      // Read-only: whether each official CLI is installed and signed in on this PC on its own (desktop/ai-detect.ts).
+      const home = process.env.USERPROFILE || app.getPath("home");
+      return { ...(await detectPcSignIns(home)), claudeInstalled: installedPath("claude", "") !== "" };
+    }
     if (request.action === "grokStatus") return (await grokFor(user.id)).status(true);
     if (request.action === "antigravityStatus") return (await antigravityFor(user.id)).status(true);
     if (request.action === "antigravityLogin") return antigravitySignIn(await antigravityFor(user.id));
