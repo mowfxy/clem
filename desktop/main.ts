@@ -22,6 +22,7 @@ import {appUpdates, type UpdateRequest} from "./app-update";
 import {cp,access,stat as statFile,readFile as readDiskFile} from "node:fs/promises";
 import {mkdirSync,existsSync,copyFileSync,writeFileSync} from "node:fs";
 import {EssentialSync} from "./essential-sync";
+import {StudyReminders} from "./study-reminders";
 import {BackupService,readEditsScript,writeEditsScript,type BackupDestination} from "./backup-service";
 import {UsageTally} from "./usage-tally";
 import { securityActions, handleSecurity } from "./security";
@@ -40,6 +41,7 @@ import {
   session,
   nativeTheme,
   Tray,
+  Notification,
 } from "electron";
 import { captureRegion } from "./capture";
 import { clipboardFiles } from "./clipboard-files";
@@ -975,6 +977,23 @@ void app.whenReady().then(async () => {
   tray.setToolTip("Clem");
   tray.setContextMenu(Menu.buildFromTemplate([{ label: "Open Clem", click: showWindow }, { type: "separator" }, { label: "Quit Clem", click: () => { quitting = true; app.quit(); } }]));
   tray.on("click", showWindow);
+  // Flashcard reminders (desktop/study-reminders.ts), checked every few minutes, so they arrive with Clem in the tray.
+  // Each shown notification is kept until it is clicked or closed: one that is collected loses its click.
+  const shown = new Set<Notification>();
+  const reminders = new StudyReminders({
+    vault, workspace: (owner) => disk.readState(owner),
+    notify: ({ title, body, spaceId, silent }) => {
+      if (!Notification.isSupported()) return;
+      const note = new Notification({ title, body, silent, icon: join(__dirname, "../desktop/icon.ico") });
+      shown.add(note);
+      note.on("click", () => { shown.delete(note); showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", { review: spaceId }); });
+      note.on("close", () => shown.delete(note));
+      note.show();
+    },
+  });
+  const reminderTick = () => void auth.user(false).then((user) => user && reminders.tick(user.id)).catch((error) => console.warn("[reminders]", (error as Error)?.message));
+  setTimeout(reminderTick, 90_000).unref();
+  setInterval(reminderTick, 5 * 60_000).unref();
   // Signing out or shutting down Windows must never be held up by hiding to the tray.
   // Back at the window after a pause: the AI is made ready while the person types, not after they send.
   window.on("focus", () => { if (providerOwner && providerOwner !== "signed-out") prepareLast(providerOwner); });
@@ -1424,6 +1443,7 @@ void app.whenReady().then(async () => {
       // A document with crops in it reads them from the workspace, as when it was made.
       return { bytes: (await makeFile("pdf", spec, { assets: (id) => readAsset(diskCrops(user.id), id) })).bytes };
     }
+    if (request.action === "reminders") return request.set ? reminders.configure(user.id, request.set) : reminders.settings(user.id);
     if (request.action === "backupStatus") return backups.status(user.id);
     if (request.action === "backupConfigure") {
       let destination: BackupDestination | null | undefined = request.destination;

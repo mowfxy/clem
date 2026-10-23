@@ -240,3 +240,4 @@ dialog.settings-dialog .settings-dialog-body .backup-list button.chosen{border-c
 .backup-preview{padding:12px 14px;border:1px solid #3d3d38;border-radius:10px}
 .backup-preview strong{font-weight:400}
 .st select.backup-keep{width:auto;min-height:36px;padding:6px 10px;font-size:var(--t-small)}
+.st input.reminder-time{width:auto;min-height:36px;padding:6px 10px}

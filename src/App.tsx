@@ -23,6 +23,7 @@ import {ProfileSettings} from "./settings/ProfileSettings";
 import {SkillsSettings} from "./settings/SkillsSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
 import {BackupSettings} from "./settings/BackupSettings";
+import {ReminderSettings} from "./settings/ReminderSettings";
 import {UpdateIndicator, UpdateSettings, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
 import {UsageSettings,archiveChats} from "./settings/UsageSettings";
 import {AsciiField} from "./chat/AsciiField";
@@ -464,6 +465,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [folderView,setFolderView]=useState<{file?:OpenFolderFile;folderId?:string}|null>(null);
   const [packShare,setPackShare]=useState<{space:Space;folderId?:string}|null>(null);
   const [spaceTab,setSpaceTab]=useState<SpaceTab>('overview');
+  /** A subject whose review starts as soon as its page opens (a flashcard reminder was clicked). */
+  const [reviewFor,setReviewFor]=useState<string|null>(null);
   // Where the next generated file from a space should land (e.g. "Make a worksheet" → Worksheets).
   const artifactTarget=useRef<{spaceId:string;folderId:string|null;until:number;label?:string}|null>(null);
   const [packOpen,setPackOpen]=useState<OpenedPack|null>(null);
@@ -2256,6 +2259,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       if(open)openSpace(space.id);
     }catch(e){setToast(cleanError(e));}
   }
+  // A flashcard reminder clicked: that subject opens at its review.
+  useEffect(()=>{if(!desktop?.onOpen)return;return desktop.onOpen(({review})=>{if(review&&stateRef.current.spaces.some(x=>x.id===review)){openSpace(review,'flashcards');setReviewFor(review);}});},[]);
   useEffect(()=>{if(!desktop?.onPack)return;return desktop.onPack(({bytes,name})=>void openPackBytes(bytes,name));},[]);
   // A study pack dropped anywhere on the window opens for review. While anything is dragged, holding it near the top or
   // bottom of a scrolling area scrolls it (the wheel does not reach the page mid-drag), so far-off folders stay reachable.
@@ -2696,6 +2701,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         <SettingRow title="Sidebar" description="Put it away for more room."><Switch label="Show the sidebar" checked={!sideClosed} onChange={show=>setSideClosed(!show)}/></SettingRow>
                       </SettingsCard>
                       <BackgroundSettings/>
+                      <ReminderSettings/>
                       <UpdateSettings state={appUpdate} onInstall={()=>void installUpdate()}/>
                       <SettingsCard title="Shortcuts">
                         <SettingRow title="Command palette" description="Jump to any chat, space, page or setting."><Keys keys={["Ctrl","K"]}/></SettingRow>
@@ -2923,7 +2929,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 onPoint={(p) => { setPointers((all) => [...all, p].slice(-6)); setTimeout(() => composer.current?.focus(), 30); }} />}
               </div>
             ) : pageSpace ? (
-              <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
+              <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab} reviewNow={reviewFor===pageSpace.id} onReviewStarted={()=>setReviewFor(null)}
                 chats={savedChats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} driveSync={driveSync} actions={spaceActions(pageSpace)}
                 plan={(state.plans||[]).find(p=>p.spaceId===pageSpace.id)} planDraft={planDrafts[pageSpace.id]||null} planActions={planActionsFor(pageSpace)} canAsk={models.some(m=>m.connected)&&!offline}/></Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (

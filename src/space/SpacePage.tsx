@@ -119,7 +119,7 @@ function useChatMenu(onDelete:(chat:Chat)=>void){
 }
 
 
-export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={},plan,planDraft,planActions,canAsk=false}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>;plan?:SpacePlan;planDraft?:PlanDraftView|null;planActions:PlanActions;canAsk?:boolean}){
+export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={},plan,planDraft,planActions,canAsk=false,reviewNow=false,onReviewStarted}:{/** Start the review now (a flashcard reminder was clicked); `onReviewStarted` says it did. */ reviewNow?:boolean;onReviewStarted?:()=>void;space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>;plan?:SpacePlan;planDraft?:PlanDraftView|null;planActions:PlanActions;canAsk?:boolean}){
   const subject=space.kind==='subject';
   const now=Date.now();
   const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
@@ -137,6 +137,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   const chatMenu=useChatMenu(actions.onDeleteChat);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
   const startReview=()=>{onTab('flashcards');setReview(n=>n+1);};
+  useEffect(()=>{if(reviewNow){startReview();onReviewStarted?.();}},[reviewNow]);
   useEffect(()=>warmMemory(),[]);
   // The underline glides to the chosen tab instead of jumping.
   const tabBar=useRef<HTMLElement>(null);
