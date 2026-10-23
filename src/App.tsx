@@ -14,6 +14,7 @@ import {ShortcutsSheet} from "./command/ShortcutsSheet";
 import {usePlaceHistory} from "./command/usePlaceHistory";
 import {hasCapacity,isBelowSwitchThreshold} from '../core/account-usage';
 import {studyRequest,studyInstructions} from '../core/study-request';
+import {studyStanding} from '../core/study-standing';
 import {MemoryConversation} from "./MemoryConversation";
 import {LocalAutomations,nextAutomation,firstAutomationRun} from "./LocalAutomations";
 import {SettingsPopup} from "./SettingsPopup";
@@ -1366,6 +1367,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
         return;
       }
       const struggling = activeSpace?.kind === "subject" ? weakConcepts(stateRef.current.studySets.filter((x) => x.spaceId === activeSpace.id)) : [];
+      const standing = activeSpace?.kind === "subject" ? studyStanding(stateRef.current.studySets.filter((x) => x.spaceId === activeSpace.id), activeSpace.examDate) : "";
       // Plans: the model sees every subject and project with its plan when planning is in play (asked about, the space
       // has a plan, or plans were made earlier in this chat), so a chat anywhere can make or change any plan.
       const plansHere = !isVisual && (next.messages.some((m) => m.role === "assistant" && m.content.includes("```plan")) || (!!activeSpace && (stateRef.current.plans || []).some((p) => p.spaceId === activeSpace.id)));
@@ -1388,6 +1390,7 @@ ${answerInstructions}`,
                 memory ? `User-authorized memory for this scope: ${memory}` : "",
                 planNote,
                 titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined, chat.messages.some((m) => m.chapter) ? chaptersOf(chat).map((c) => c.title).slice(-12) : [], !!chat.renamed),
+                standing ? `Where the learner stands in this subject, from their own flashcards and quizzes (pitch explanations to it and suggest what to review when it helps; do not recite it): ${standing}` : "",
                 struggling.length ? `In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : "",
               ].filter(Boolean).join("\n\n"),
             },
@@ -1747,6 +1750,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       patchMessage(chat.id,messageId,m=>({...m,verify:(e as Error).name==="AbortError"?undefined:{status:"error",error:cleanError(e)}}));
     }finally{end(chat.id,controller);}
   }
+  /** Every project and subject, where a memory can be moved or shared. */
+  const memoryPlaces=state.spaces.map(s=>({scope:`${s.kind}:${s.id}`,label:s.name}));
   /** Where a memory applies, in words: the person, a space by name, or the chat it came from. */
   function memoryLabel(scope:string){
     if(scope==="user:me")return "About you";
@@ -2693,7 +2698,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       <><SettingsCard note="Clem indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes())}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Clem made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
                     ) : settingsTab === "Memory" ? (
                       <SettingsCard note="Projects and subjects keep their own memory.">
-                        {desktop ? <SettingsPopup title="Memory" description="What Clem remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
+                        {desktop ? <SettingsPopup title="Memory" description="What Clem remembers about you and your work." action="Open memory"><MemoryConversation labelFor={memoryLabel} places={memoryPlaces} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Skills" ? (
                       <SkillsSettings skills={skills} onOpen={skill=>{setEditingSkill(skill);setModal("skill-detail");}} onCreate={()=>{setSettingsOpen(false);newChat();setDraft("/skill-creator ");}} onImport={()=>setModal("skill-import")}/>
@@ -2898,7 +2903,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             ) : pageSpace ? (
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab}
                 chats={savedChats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} driveSync={driveSync} actions={spaceActions(pageSpace)}
-                plan={(state.plans||[]).find(p=>p.spaceId===pageSpace.id)} planDraft={planDrafts[pageSpace.id]||null} planActions={planActionsFor(pageSpace)} canAsk={models.some(m=>m.connected)&&!offline}/></Suspense>
+                plan={(state.plans||[]).find(p=>p.spaceId===pageSpace.id)} planDraft={planDrafts[pageSpace.id]||null} planActions={planActionsFor(pageSpace)} canAsk={models.some(m=>m.connected)&&!offline} memoryPlaces={memoryPlaces} memoryLabel={memoryLabel}/></Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (
               (() => {
                 const projects = route.endsWith("projects"), kind = projects ? "project" : "subject";

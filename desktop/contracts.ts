@@ -155,6 +155,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   /** Deleted chats: what Clem only learned from them is forgotten; what the person kept stays. */
   z.object({ action: z.literal("memoryForgetChat"), chats: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/)).max(5000) }),
   z.object({ action: z.literal("memoryConfirm"), id: z.string().uuid() }),
+  /** The person's change to one memory: new words, where it applies (about them, or one space), or spaces it is shared with. */
+  z.object({ action: z.literal("memoryUpdate"), id: z.string().uuid(), text: z.string().trim().min(1).max(2000).optional(), scope: scopeSchema.optional(), sharedWith: z.array(scopeSchema).max(10).optional() }),
   z.object({ action: z.literal("memoryToggle"), enabled: z.boolean() }),
   z.object({ action: z.literal("securityInfo") }),
   z.object({

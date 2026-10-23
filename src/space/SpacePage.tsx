@@ -16,7 +16,7 @@ import {sizeLabel} from '../store';
 import {kinds as fileKinds,kindOf,type FileKind} from '../files/StorageSummary';
 import {confirmDialog} from '../dialogs';
 import {desktop} from '../desktop/bridge';
-import {MemoryConversation,warmMemory} from '../MemoryConversation';
+import {MemoryConversation,warmMemory,type MemoryPlace} from '../MemoryConversation';
 import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './InstructionsDialog';
 import type {Chat,Space,SpaceFolder,StoredFile,StudySet,VisualRecord} from '../../core/types';
 import {SavedVisuals} from '../visuals/SavedVisuals';
@@ -118,7 +118,7 @@ function useChatMenu(onDelete:(chat:Chat)=>void){
 }
 
 
-export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={},plan,planDraft,planActions,canAsk=false}:{space:Space;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>;plan?:SpacePlan;planDraft?:PlanDraftView|null;planActions:PlanActions;canAsk?:boolean}){
+export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,driveSync={},plan,planDraft,planActions,canAsk=false,memoryPlaces=[],memoryLabel}:{space:Space;memoryPlaces?:MemoryPlace[];memoryLabel?:(scope:string)=>string;chats:Chat[];files:StoredFile[];sets:StudySet[];visuals?:VisualRecord[];tab:SpaceTab;onTab:(tab:SpaceTab)=>void;actions:SpaceActions;driveSync?:Record<string,DriveSyncState>;plan?:SpacePlan;planDraft?:PlanDraftView|null;planActions:PlanActions;canAsk?:boolean}){
   const subject=space.kind==='subject';
   const now=Date.now();
   const cards=sets.flatMap(s=>s.items.map((_,i)=>s.cards?.[i]||undefined));
@@ -225,7 +225,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
       {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals you save in this {space.kind} appear here.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
-      {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Clem remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={()=>space.name} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
+      {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Clem remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={memoryLabel||(()=>space.name)} places={memoryPlaces} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
     {describing&&<DescriptionDialog space={space} onSave={description=>actions.onUpdateSpace({...space,description})} onClose={()=>setDescribing(false)}/>}

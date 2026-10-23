@@ -164,3 +164,43 @@ test("memory stays well under the sync limit: old replaced and expired records a
   assert.equal(many.records.length, MEMORY_LIMIT);
   assert.equal(many.records.filter((m) => m.confirmed).length, 600, "learned records go before confirmed ones");
 });
+import { updateMemory, unshareScope, memoryLines, PROFILE_SCOPE, learnMemories } from "../../desktop/memory.ts";
+test("editing a memory keeps it, confirms a learned one and refuses secrets", () => {
+  let state = learnMemories(base, [{ key: "exam", text: "The user has a chemistry exam soon.", kind: "fact", about: "space" }], { scope: "subject:chem", sourceId: "chat:1", explicit: false, now: "2026-10-01T00:00:00Z" });
+  const learned = state.records[0];
+  assert.equal(learned.confirmed, false);
+  state = updateMemory(state, learned.id, { text: "The user's chemistry exam is on 12 November." }, "2026-10-02T00:00:00Z");
+  const live = state.records.filter((m) => !m.supersededBy);
+  assert.equal(live.length, 1);
+  assert.equal(live[0].text, "The user's chemistry exam is on 12 November.");
+  assert.equal(live[0].confirmed, true);
+  assert.equal(live[0].kind, "fact");
+  assert.throws(() => updateMemory(state, live[0].id, { text: "My password is hunter22" }), /never keeps/);
+  assert.throws(() => updateMemory(state, "00000000-0000-4000-8000-000000000000", { text: "x y z" }), /no longer exists/);
+});
+test("a memory moved into another space never replaces one that shares its key", () => {
+  let state = putMemory(base, input("project:a"));
+  state = putMemory(state, { ...input("project:b"), text: "Use feet for length" });
+  const fromA = state.records.find((m) => m.scope === "project:a")!;
+  state = updateMemory(state, fromA.id, { scope: "project:b" });
+  const inB = state.records.filter((m) => m.scope === "project:b" && !m.supersededBy).map((m) => m.text).sort();
+  assert.deepEqual(inB, ["Use feet for length", "Use metres for length"]);
+  assert.equal(retrieveMemory(state, "project:a", "length").length, 0);
+});
+test("sharing applies a space's memory in the spaces it is shared with only, and labels it", () => {
+  let state = putMemory(base, input("project:a"));
+  state = updateMemory(state, state.records[0].id, { sharedWith: ["project:b", "chat:x", "project:a"] });
+  const shared = state.records.find((m) => !m.supersededBy)!;
+  assert.deepEqual(shared.sharedWith, ["project:b"]);
+  const inB = retrieveMemory(state, "project:b", "length");
+  assert.equal(inB.length, 1);
+  assert.equal(retrieveMemory(state, "project:c", "length").length, 0);
+  assert.match(memoryLines(inB, "project:b"), /shared by the user from another project/);
+  assert.match(memoryLines(retrieveMemory(state, "project:a", "length"), "project:a"), /this project/);
+  // Moving it to the person makes it apply everywhere, so it is no longer shared one by one.
+  const everywhere = updateMemory(state, shared.id, { scope: PROFILE_SCOPE });
+  assert.deepEqual(everywhere.records.find((m) => !m.supersededBy)!.sharedWith, []);
+  assert.equal(retrieveMemory(everywhere, "project:c", "length").length, 1);
+  // A deleted space stops receiving what was shared with it.
+  assert.equal(retrieveMemory(unshareScope(state, "project:b"), "project:b", "length").length, 0);
+});

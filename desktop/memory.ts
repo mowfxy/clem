@@ -207,12 +207,20 @@ export function retrieveMemory(
 }
 /** How the person wants answers: a confirmed preference, or one learned from what they asked for or corrected. */
 export const isPreference = (m: Pick<Memory, "kind" | "key">) => m.kind === "preference" || m.key.startsWith("pref:");
+/** Where a memory applies, as the model reads it: about the user, this subject/project/chat, or shared from another space. */
+function whereLabel(memoryScope: string, scope?: string) {
+  if (memoryScope === PROFILE_SCOPE) return "about the user";
+  const kind = memoryScope.split(":")[0];
+  const noun = kind === "subject" || kind === "project" || kind === "chat" ? kind : "space";
+  if (!scope || memoryScope === scope) return "this " + noun;
+  return "shared by the user from another " + noun;
+}
 /**
  * Compact lines for the model, preferences first: how the user wants answers matters on every
  * turn, while facts matter when they are relevant. Far fewer tokens than records.
  */
-export function memoryLines(records: Omit<Memory, "embedding">[]) {
-  const line = (m: Omit<Memory, "embedding">) => `- ${m.text.trim()} (${m.scope === PROFILE_SCOPE ? "about the user" : "this space"}; ${m.confirmed ? "confirmed" : "learned from conversation"}; ${m.updatedAt.slice(0, 10)}${m.expiresAt ? "; until " + m.expiresAt.slice(0, 10) : ""})`;
+export function memoryLines(records: Omit<Memory, "embedding">[], scope?: string) {
+  const line = (m: Omit<Memory, "embedding">) => `- ${m.text.trim()} (${whereLabel(m.scope, scope)}; ${m.confirmed ? "confirmed" : "learned from conversation"}; ${m.updatedAt.slice(0, 10)}${m.expiresAt ? "; until " + m.expiresAt.slice(0, 10) : ""})`;
   const prefs = records.filter(isPreference), facts = records.filter((m) => !isPreference(m));
   return [
     prefs.length ? "How the user wants answers (follow these every time unless they ask otherwise now):\n" + prefs.map(line).join("\n") : "",
@@ -368,4 +376,48 @@ export function confirmMemory(state: MemoryState, id: string, now = new Date().t
   if (record.confirmed) return state;
   const kind: MemoryKind = record.kind === "temporary" && record.expiresAt ? "temporary" : isPreference(record) || /\b(prefer|likes?|wants?|style|format|length|tone)\b/i.test(record.text) ? "preference" : "fact";
   return putMemory({ ...state, records: state.records.filter((m) => m.id !== id) }, { ...record, kind, confirmed: true, confidence: 1, source: { ...record.source, locator: "Kept by you in memory settings", at: now } }, now);
+}
+
+/**
+ * The person's own change to one memory: new words, a new home (about them everywhere, or one subject or project),
+ * or other spaces that should use it too. Changing it is keeping it, so a learned memory becomes confirmed.
+ */
+export function updateMemory(state: MemoryState, id: string, change: { text?: string; scope?: string; sharedWith?: string[] }, now = new Date().toISOString()) {
+  const record = state.records.find((m) => m.id === id && !m.supersededBy);
+  if (!record) throw Error("That memory no longer exists.");
+  const text = (change.text ?? record.text).replace(/\s+/g, " ").trim();
+  if (!text) throw Error("A memory needs some words.");
+  if (looksSecret(text)) throw Error("That looks like a password, key or account number. Clem never keeps those in memory.");
+  const scope = change.scope ?? record.scope;
+  // Something about the person already applies everywhere; a space's memory is never shared into itself or into chats.
+  const sharedWith = scope === PROFILE_SCOPE ? [] : [...new Set((change.sharedWith ?? record.sharedWith).filter((s) => s !== scope && /^(?:project|subject):/.test(s)))].slice(0, 10);
+  if (text === record.text && scope === record.scope && JSON.stringify([...sharedWith].sort()) === JSON.stringify([...record.sharedWith].sort()) && record.confirmed) return state;
+  // A memory moved into another space keeps its own key there, so it never replaces an unrelated memory that happens to share it.
+  const taken = scope !== record.scope && state.records.some((m) => m.scope === scope && m.key === record.key && !m.supersededBy);
+  const key = taken ? (record.key + ":" + randomUUID().slice(0, 8)).slice(0, 100) : record.key;
+  const kind: MemoryKind = record.kind === "temporary" && record.expiresAt ? "temporary" : record.kind === "inference" ? (isPreference(record) ? "preference" : "fact") : record.kind;
+  const { id: _id, createdAt: _created, updatedAt: _updated, supersededBy: _replaced, embedding, ...rest } = record;
+  const next = putMemory({ ...state, records: state.records.filter((m) => m.id !== id) }, {
+    ...rest,
+    ...(text === record.text && embedding ? { embedding } : {}),
+    scope, key, text, kind, sharedWith,
+    confirmed: true,
+    confidence: 1,
+    source: { ...record.source, locator: "Changed by you in memory", at: now },
+  }, now);
+  // Records that pointed at the old one (what it replaced, what was derived from it) follow it to its new id. When the
+  // same memory already lived there, that one stays and stands in for it.
+  const before = new Set(state.records.map((m) => m.id));
+  const added = next.records.find((m) => !before.has(m.id)) || next.records.find((m) => m.scope === scope && m.text === text && !m.supersededBy);
+  if (!added) return next;
+  return { ...next, records: next.records.map((m) => ({
+    ...m,
+    ...(m.supersededBy === id ? { supersededBy: added.id } : {}),
+    ...(m.derivedFrom.includes(id) ? { derivedFrom: m.derivedFrom.map((d) => (d === id ? added.id : d)) } : {}),
+  })) };
+}
+/** A space's memory that is shared into other spaces stops being shared there when that space is deleted. */
+export function unshareScope(state: MemoryState, scope: string) {
+  if (!state.records.some((m) => m.sharedWith.includes(scope))) return state;
+  return { ...state, records: state.records.map((m) => (m.sharedWith.includes(scope) ? { ...m, sharedWith: m.sharedWith.filter((s) => s !== scope) } : m)) };
 }
