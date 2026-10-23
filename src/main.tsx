@@ -36,6 +36,8 @@ function Root(){
  return <Suspense fallback={loading}>{route==="/check"?<ProvenanceChecker/>:isPublic?publicPage(route):(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect'))?(ready?<Login key={route}/>:loading):<Download account={route.startsWith('/app')&&ready} returning={route==='/desktop-return'}/>}</Suspense>;
 }
 applyTheme();
+// Coming back to the window (Alt+Tab) makes Chromium ring whatever button was clicked last. Drop that focus on the way out; fields keep it so typing resumes.
+window.addEventListener('blur',()=>{const el=document.activeElement;if(el instanceof HTMLElement&&!el.matches('input,textarea,select,iframe,[contenteditable]:not([contenteditable=false])'))el.blur();});
 if(desktop)void import('./desktop/window-tone').then(m=>m.followWindowTone());
 // Supabase sends OAuth returns it doesn't recognise to clem.m4labs.xyz. If admin.m4labs.xyz started this sign-in
 // (it sets a short-lived cookie), hand the code back there: only the admin origin holds the PKCE verifier.

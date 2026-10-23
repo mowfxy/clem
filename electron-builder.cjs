@@ -31,7 +31,7 @@ module.exports = {
   },
   // Writes app-update.yml into the app and latest.yml (version + SHA-512) beside the installer, which the release
   // carries so installed copies update themselves (desktop/app-update.ts). Nothing is uploaded by the build.
-  // One channel for every build, so even 0.3.0-preview.N versions publish and read latest.yml (not preview.yml).
+  // One channel for every build, so every version (old 0.3.0-preview.N ones too) publishes and reads latest.yml.
   publish: [{ provider: "generic", url: "https://github.com/mowfxy/clem-releases/releases/latest/download", channel: "latest" }],
   forceCodeSigning: process.env.CLEM_REQUIRE_SIGNING === "true",
 };
