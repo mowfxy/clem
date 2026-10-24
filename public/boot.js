@@ -6,6 +6,13 @@
   // dark: the choice from Settings, or by default the system's (Windows') light or dark setting. Same rule as src/theme/theme.ts.
   var theme = "dark";
   try { var chosen = localStorage.getItem("clem-theme"); theme = chosen === "light" || chosen === "dark" ? chosen : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; } catch (e) {}
+  // The public website keeps the visitor's clock instead: paper from 6:00 to 19:00, ink at night, unless they picked
+  // one on the site (src/site/clock.ts).
+  if (location.protocol !== "clem:" && location.hostname !== "admin.m4labs.xyz" && /^#?\/?(features.*|support|about|pricing)?$/.test(location.hash.replace(/^#\/?#.*/, ""))) {
+    var h = new Date().getHours(), site = null;
+    try { site = localStorage.getItem("clem-site-theme"); } catch (e) {}
+    theme = site === "light" || site === "dark" ? site : h >= 6 && h < 19 ? "light" : "dark";
+  }
   document.documentElement.dataset.theme = theme;
   if (location.protocol !== "clem:") return;
   var light = theme === "light", paper = light ? "#faf8f3" : "#141414", ink = light ? "#0b0b0a" : "#F4F2EC";

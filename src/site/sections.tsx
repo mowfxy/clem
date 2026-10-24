@@ -1,5 +1,3 @@
-import {Prompt} from './SiteHeader';
-
 /** Clem's public source repository. */
 export const REPO='https://github.com/mowfxy/clem';
 
@@ -12,20 +10,7 @@ export const faqs=[
   ['Who makes Clem?','M4 Labs, an AI research lab that also builds apps. Clem is its first.'],
 ];
 
-/** The open-source pitch: where the code lives and what the license lets people do. */
-export function OpenSource(){
-  return <>
-    <Prompt>cat LICENSE | head -1</Prompt>
-    <h2>Open source. All of it.</h2>
-    <ul className="cx-out">
-      <li><span>license</span><span>MIT</span></li>
-      <li><span>code</span><span>every line of the app, the site and the account service</span></li>
-      <li><span>yours to</span><span>read, build, fork and improve</span></li>
-      <li><span>repo</span><a href={REPO}>github.com/mowfxy/clem</a></li>
-    </ul>
-  </>;
-}
-
+/** Questions as ruled lines: each opens beneath itself. */
 export function Faq(){
-  return <div className="cx-faq">{faqs.map(([q,a])=><details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>;
+  return <div className="cl-faq">{faqs.map(([q,a])=><details key={q}><summary><span>{q}</span><i aria-hidden="true"/></summary><p>{a}</p></details>)}</div>;
 }

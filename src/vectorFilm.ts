@@ -544,6 +544,11 @@ function alarm(){
  return s+line(a([[240,142],[240,151]]),{w:FINE})+shape(striker,{fill:lit?CLAY:undefined,w:FINE});
 }
 const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards,checklist,calendar,steps,bell,alarm};
+/** The pen itself, for longer films drawn in the same hand (the website's ink film, src/site/film-script.ts). */
+export const pen={line,curve,shape,blob,arc,ellipse,rounded,X,pill,ring,wavy,stripes,behind,leaf,along,spline,pose,pop,back,clamp,lerp};
+export const inks={INK,BLUE,GREEN,LILAC,PINK,SAND,CLAY,LINE,FINE,THIN};
+/** Starts a frame of a pen film at `seconds`: the line boils on twos and every element keeps its own hand. */
+export function penFrame(seconds:number){T=Math.max(0,seconds);U=T;boil=Math.floor(T*6)%3;seed=0;}
 /** One frame of a scene as SVG markup for a 480×390 stage. At 0 seconds every scene shows its finished pose. */
 export function filmFrame(scene:Scene,seconds:number,_id:string){
  T=Math.max(0,seconds);U=T%loopSeconds[scene];boil=Math.floor(T*6)%3;seed=0;

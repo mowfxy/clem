@@ -1,5 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
-import {Prompt,Site} from './SiteHeader';
+import {Icon} from '../Icons';
+import {Illustration} from '../Illustrations';
+import {Thinking} from './Landing';
+import {Site} from './SiteHeader';
 import {SecuritySettings} from '../AccountSettings';
 import {getSupabase} from '../supabase';
 import {REPO} from './sections';
@@ -40,22 +43,24 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
     return()=>{abort.abort();removeEventListener('hashchange',onHash);};
   },[]);
   return <Site>
-    <section className="cx-cmd cx-page"><div className="cx-wrap">
-      {returning?<><Prompt>clem --return</Prompt><h1>Welcome back.</h1><p className="cx-status">Return to the Clem app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></>:<>
-        <Prompt>clem --download windows</Prompt>
-        <h1>{started?'Your download has started.':'Get Clem for Windows.'}<span className="cx-caret" aria-hidden="true"/></h1>
-        <p className="cx-status">Free and open source, for Windows 10 and 11.</p>
-        {link?<>
-          <div className="cx-actions"><a className="cx-btn" href={link} onClick={()=>setStarted(true)}>{started?'download again':'download for windows'}</a><a href={REPO}>source on github</a></div>
-          <ul className="cx-out">
-            <li><span>version</span><span>{release!.version}</span></li>
-            <li><span>system</span><span>Windows 10 &amp; 11, 64-bit</span></li>
-            {release!.size?<li><span>size</span><span>{Math.round(release!.size/1048576)} MB</span></li>:null}
-            {release!.sha256?<li><span>sha256</span><span className="cx-hash">{release!.sha256}</span></li>:null}
-          </ul>
-        </>:failed?<p role="alert" className="cx-status">We couldn’t load the latest release. <a href="/download/windows">Try the direct link</a> or email <a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a>.</p>:<p role="status" className="cx-status">finding the latest version<span className="cx-spin"/></p>}
-      </>}
-      {account&&signedIn&&<div className="cx-account"><SecuritySettings/></div>}
-    </div></section>
+    <article className="cl-page"><div className="cl-wrap">
+      <header className="cl-page-head">
+        <div>{returning?<><h1>Welcome back.</h1><p className="cl-lede">Return to the Clem app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></>:<>
+          <h1>{started?<>Your download<br/>has started.</>:<>Get Clem<br/>for Windows.</>}</h1>
+          <p className="cl-lede">Free and open source, for Windows 10 and 11.</p>
+          {link?<div className="cl-actions"><a className="cl-btn" href={link} onClick={()=>setStarted(true)}><Icon name="download" size={18}/>{started?'Download again':'Download for Windows'}</a><a className="cl-link" href={REPO}><Icon name="github" size={18}/>Source on GitHub</a></div>
+          :failed?<p role="alert" className="cl-lede">We couldn’t load the latest release. <a href="/download/windows">Try the direct link</a> or email <a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a>.</p>
+          :<p className="cl-actions"><Thinking label="Finding the latest version"/></p>}
+        </>}</div>
+        <Illustration scene={returning?'door':started?'plane':'box'} className="cl-plate cl-page-plate"/>
+      </header>
+      {!returning&&link?<div className="cl-page-body"><ul className="cl-rows">
+        <li><b>Version</b><span>{release!.version}</span></li>
+        <li><b>System</b><span>Windows 10 and 11, 64-bit</span></li>
+        {release!.size?<li><b>Size</b><span>{Math.round(release!.size/1048576)} MB</span></li>:null}
+        {release!.sha256?<li><b>SHA-256</b><span className="cl-hash">{release!.sha256}</span></li>:null}
+      </ul></div>:null}
+      {account&&signedIn&&<div className="cl-account"><SecuritySettings/></div>}
+    </div></article>
   </Site>;
 }
