@@ -5,7 +5,7 @@ import {MARK_CURSOR} from '../../core/mark';
  * The website's film: a short story in Clem's pen, the same wandering ivory line, one colour per shot and the same
  * pose-to-pose timing as the app's illustrations, only longer and wider (a 960 × 540 stage, framed in close at VIEW). The block cursor from
  * Clem's mark is its one character: it blinks the film open, hops while Clem thinks and comes home at the end.
- * Shots that share an object continue straight on; a new place is reached through a stroke of the brush.
+ * Shots that share an object continue straight on; a new place fades in as the last one fades out.
  */
 const {line,curve,shape,arc,ellipse,rounded,X,ring,wavy,pose,pop,clamp,lerp}=pen;
 const {INK,BLUE,GREEN,LILAC,SAND,CLAY,FINE,THIN}=inks;
@@ -16,7 +16,7 @@ const ease=(u:number,a:number,b:number)=>{const x=clamp((u-a)/(b-a));return 1-(1
 
 /** `dx` slides a shot sideways so its drawings sit in the middle of the framed view; shots that continue into each
  *  other share one so nothing jumps at the cut. */
-export type Shot={id:string;caption:string;seconds:number;draw:(u:number)=>string;into?:'cut'|'brush';dx?:number};
+export type Shot={id:string;caption:string;seconds:number;draw:(u:number)=>string;into?:'cut'|'fade';dx?:number};
 
 // ---------- the mark ----------
 const END=Math.atan2(20.07,22.29),CX=540,CY=246,S=2.9;
@@ -103,7 +103,7 @@ export const shots:Shot[]=[
     if(drop>0&&!blink)s+=cursor(hx,hy-(1-drop)*70,{opacity:clamp(drop*1.4)});
     return s;
   }},
-  {id:'ask',caption:'Bring a question, and the notes it came from.',seconds:6,dx:10,into:'brush',draw(u){
+  {id:'ask',caption:'Bring a question, and the notes it came from.',seconds:6,dx:10,into:'fade',draw(u){
     return page(u,{drawIn:true})+bubble(u,{scale:pop(u,2.3,.34),write:ease(u,2.9,3.9)});
   }},
   {id:'think',caption:'Clem reads them, and says what it is doing.',seconds:6,dx:10,draw(u){
@@ -121,7 +121,7 @@ export const shots:Shot[]=[
     if(out>.05)s+=hop(u,640,286,40,2.4,out);
     return s+answer(u,{k:ease(u,.5,1.9),thread:ease(u,2.3,3.3),tick:ease(u,3.9,4.6)});
   }},
-  {id:'see',caption:'Ideas become things you can play with.',seconds:7,dx:45,into:'brush',draw(u){
+  {id:'see',caption:'Ideas become things you can play with.',seconds:7,dx:45,into:'fade',draw(u){
     const knob=pose(u,[2.4,4.8],[0,1,.55],.5),z=lerp(.72,.22,knob);
     let s=line([[256,96],[256,382],[734,382]],{k:ease(u,.05,.8)});
     s+=line([[266,240],[724,240]],{w:THIN,k:ease(u,.5,1.1),opacity:.55});
@@ -130,7 +130,7 @@ export const shots:Shot[]=[
     s+=line([[336,414],[632,414]],{w:FINE,k:ease(u,.3,1)});
     return s+shape(ellipse(kx,414,15),{fill:BLUE,w:FINE,k:ease(u,.9,1.3)});
   }},
-  {id:'keep',caption:'What you learn, it helps you keep.',seconds:6.5,dx:10,into:'brush',draw(u){
+  {id:'keep',caption:'What you learn, it helps you keep.',seconds:6.5,dx:10,into:'fade',draw(u){
     const flip=u<1.5?1:u<1.8?1-(u-1.5)/.3:u<2.1?(u-1.8)/.3:1,back=u>=1.8;
     const top=rounded(250,150,196,240,16),f=(pts:P[])=>X(pts,{sx:Math.max(.02,flip),ox:348,oy:270});
     let s=shape(rounded(274,128,196,240,16),{w:THIN})+shape(rounded(262,139,196,240,16),{w:FINE})+shape(f(top));
@@ -143,7 +143,7 @@ export const shots:Shot[]=[
     for(let r=0;r<4;r++)for(let c=0;c<5;c++){const i=r*5+c,x=600+c*42,y=220+r*44;if(i===13){const kk=ease(u,3.1,3.8);if(kk>0)s+=shape(ellipse(x,y,17),{fill:pop(u,3.8,.3)>.5?CLAY:undefined,w:FINE,k:kk});else s+=ring(x,y,3.2,{fill:INK,w:0});}else s+=ring(x,y,3.2,{fill:INK,w:0,opacity:i<13?.35:1});}
     return s;
   }},
-  {id:'home',caption:'And all of it stays home, on your PC.',seconds:6.5,dx:0,into:'brush',draw(u){
+  {id:'home',caption:'And all of it stays home, on your PC.',seconds:6.5,dx:0,into:'fade',draw(u){
     const drop=ease(u,1,1.6),go=pose(u,[2.3],[0,1],.9),shut=u>3.7,lit=u>4.1;
     // The house first, so the folder passes in front of it on its way in.
     const hx=608,hy=388;
@@ -164,7 +164,7 @@ export const shots:Shot[]=[
     }
     return s;
   }},
-  {id:'close',caption:'What’s on your mind?',seconds:4.8,into:'brush',draw(u){
+  {id:'close',caption:'What’s on your mind?',seconds:4.8,into:'fade',draw(u){
     const [hx,hy]=cursorHome(),merge=ease(u,2.6,3.1),blink=u>3.4&&u<4.3&&Math.floor((u-3.4)/.5)%2===0;
     let s=shape(cOutline());
     if(merge<1)s+=hop(u,hx-56*(1-merge),hy,56*(1-merge),S*.62,1-merge*.4);
@@ -180,26 +180,17 @@ export const filmSeconds=shots.reduce((t,s)=>t+s.seconds,0);
 export const starts=shots.reduce<number[]>((a,s,i)=>{a.push(i?a[i-1]+shots[i-1].seconds:0);return a;},[]);
 export const shotAt=(t:number)=>{let i=0;while(i<shots.length-1&&t>=starts[i+1])i++;return i;};
 
-const BRUSH:P[]=[[-340,300],[-60,262],[240,292],[520,252],[800,286],[1060,250],[1300,276]];
-const WIPE=.42,LAG=[.06,0,.11,.03,.09,0,.05];
-/** A dry brush of seven bristles crossing the frame: `q` 0 → 1 covers it from the left; leaving, it uncovers to the right. */
-function brush(q:number,leaving:boolean){
-  let s='';
-  LAG.forEach((lag,j)=>{
-    const pts=BRUSH.map(([x,y])=>[x,y+(j-3)*92] as P),k=clamp(q*1.16-lag);
-    s+=leaving?line(pts.reverse(),{w:122,k:1-k}):line(pts,{w:122,k});
-  });
-  return s;
-}
+// Between places the drawing lets go and the next one arrives: a short fade out, then a fade in that settles from a
+// few units below. It is stepped like everything else, twelve drawings a second.
+const FADE=.45;
 /** The film at `t` seconds, as SVG markup for a 960 × 540 stage. */
 export function filmFrame(t:number){
   t=((t%filmSeconds)+filmSeconds)%filmSeconds;
   const i=shotAt(t),local=t-starts[i];
   penFrame(t);
-  // Into a brushed shot: the brush crosses, the shot changes under it, and the brush leaves by the far side.
   const next=shots[(i+1)%shots.length],toEnd=shots[i].seconds-local;
-  const art=`<g transform="translate(${shots[i].dx||0} 0)">${shots[i].draw(local)}</g>`;
-  if(local<WIPE&&shots[i].into==='brush')return art+brush(local/WIPE,true);
-  if(toEnd<WIPE&&next.into==='brush')return art+brush((WIPE-toEnd)/WIPE,false);
-  return art;
+  let o=1,lift=0;
+  if(local<FADE&&shots[i].into==='fade'){const q=ease(local,0,FADE);o=q;lift=(1-q)*10;}
+  else if(toEnd<FADE&&next.into==='fade')o=clamp(toEnd/FADE);
+  return `<g transform="translate(${shots[i].dx||0} ${lift.toFixed(1)})"${o<1?` opacity="${o.toFixed(3)}"`:''}>${shots[i].draw(local)}</g>`;
 }

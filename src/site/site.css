@@ -52,6 +52,11 @@ html:has(.cl-site),body:has(.cl-site){background:#faf8f3}
 .cl-kicker{font:500 14px/1 var(--sans);color:var(--muted);letter-spacing:.01em;margin-bottom:22px!important}
 .cl-num{font:500 13px/1 var(--sans);font-variant-numeric:tabular-nums;color:var(--muted);letter-spacing:.04em}
 
+/* Big serif capitals carry their own space on the left (0.01–0.03em in Mowafy Serif); hang it so the letters
+   line up with the text beneath, not their boxes. Centred headings stay centred. */
+.cl-display,.cl-h2,.cl-h3x,.cl-page-head h1{margin-left:-.028em!important}
+.cl-final-title{margin-left:0!important}
+
 /* A heading written in: each line rises from its own baseline, once. Visible without script. */
 .cl-line{display:block;overflow-x:visible;overflow-y:clip;padding:0 .04em .24em;margin:0 -.04em -.24em}
 .cl-line>span{display:block}
