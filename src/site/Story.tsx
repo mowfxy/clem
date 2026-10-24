@@ -186,7 +186,8 @@ export function Demo(){
     if(!playing)return;
     let raf=0,last=performance.now();
     const f=(t:number)=>{
-      const dt=Math.min(t-last,100)/1000;last=t;
+      // A frame's timestamp can be a hair before the performance.now() taken above; never run the clock backwards.
+      const dt=Math.max(0,Math.min(t-last,100))/1000;last=t;
       if(visible.current&&!document.hidden)clock.current=Math.min(N,clock.current+dt/CHAPTER);
       const s=Math.min(N-1,Math.floor(clock.current)),q=clock.current>=N?1:clock.current-s;
       setPos(o=>o.step===s&&Math.abs(o.p-q)<.004?o:{step:s,p:q});
