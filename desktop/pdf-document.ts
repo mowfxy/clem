@@ -2,6 +2,7 @@ import { textProblems } from "./figure-audit.ts";
 import { kinetraCall } from "./kinetra-runtime.ts";
 import { markdownHtml } from "./pdf-markdown.ts";
 import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
+import { asksTechnicalReport } from "../core/commands.ts";
 import { standardFonts, brandFont } from "../core/print-fonts.ts";
 import { visualBlocks, visualCaption } from "../core/visual-print.ts";
 import { assetOf, SLOT } from "./pdf-assets.ts";
@@ -125,16 +126,16 @@ export type Layout = "technical" | "notes" | "business" | "letter";
 const layouts = new Set<Layout>(["technical", "notes", "business", "letter"]);
 const kindLayout: Record<string, Layout> = { report: "technical", paper: "technical", notes: "notes", handout: "notes", manual: "notes", worksheet: "notes", document: "notes", brief: "business", proposal: "business", memo: "business", letter: "letter" };
 /**
- * The genre the person asked for. A technical report or paper prints only when their own words ask for one ("a
- * report", "like a research paper", "a lab write-up"); a study guide or an explanation of lectures the model filed as
- * a report becomes lecture notes (a handout when they asked for a handout or cheat sheet), so no one gets a "Technical
- * Report" they never wanted.
+ * The genre the person asked for. A technical report or paper prints only when the person used /report: a report
+ * asked for in words ("write a report on…") is a plain document, and a study guide or an explanation of lectures the
+ * model filed as a report becomes lecture notes (a handout when they asked for a handout or cheat sheet), so no one
+ * gets a "Technical Report" they never wanted.
  */
-const askedPaper = /\breports?\b|(?<!\b(?:past|exam|question|test|practice|sample) )\bpapers?\b|\bpreprints?\b|\bresearch\b|\bjournal\b|\barxiv\b|\bthes[ie]s\b|\bdissertations?\b|\bwrite-?ups?\b|\bieee\b|\barticles?\b/i;
 export function askedKind(kind: unknown, said: string): string {
   if (typeof kind === "string" && kind !== "report" && kind !== "paper") return kind;
-  if (askedPaper.test(said)) return typeof kind === "string" ? kind : "report";
-  return /\bhandouts?\b|\bcheat ?sheets?\b|\bone-?pager\b/i.test(said) ? "handout" : "notes";
+  if (asksTechnicalReport(said)) return typeof kind === "string" ? kind : "report";
+  if (/\bhandouts?\b|\bcheat ?sheets?\b|\bone-?pager\b/i.test(said)) return "handout";
+  return /\breports?\b|\bwhite ?papers?\b|\bwrite-?ups?\b/i.test(said) ? "document" : "notes";
 }
 export const layoutFor = (spec: Pick<DocumentSpec, "kind" | "style">): Layout =>
   layouts.has(spec.style as Layout) ? (spec.style as Layout) : kindLayout[String(spec.kind || "report")] || "technical";

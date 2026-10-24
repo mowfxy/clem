@@ -1,17 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { askedKind } from '../desktop/pdf-document.ts';
+import { expandCommand } from '../core/commands.ts';
 import { voiceProblems } from '../core/document-standard.ts';
 import { compileVisual, defaultValues, type Pen } from '../core/visual-spec.ts';
 import { recipesFor } from '../desktop/kinetra-recipes.ts';
 
-test('a technical report prints only when the person asks for a report or paper', () => {
+test('a technical report prints only when the person used /report', () => {
   assert.equal(askedKind('report', 'create a pdf or two explaining lectures 1-2 and worksheet 1'), 'notes');
   assert.equal(askedKind('paper', 'a study guide from the past papers'), 'notes');
   assert.equal(askedKind('report', 'a cheat sheet for the midterm'), 'handout');
   assert.equal(askedKind(undefined, 'make me a pdf of these notes'), 'notes');
-  assert.equal(askedKind('report', 'write a report on climate policy'), 'report');
-  assert.equal(askedKind('paper', 'format it like a research paper'), 'paper');
+  assert.equal(askedKind('report', 'write a technical report on climate policy'), 'document');
+  assert.equal(askedKind('paper', 'format it like a research paper'), 'notes');
+  assert.equal(askedKind('report', '/report climate policy'), 'report');
+  assert.equal(askedKind(undefined, expandCommand('/report climate policy')), 'report');
+  assert.equal(askedKind('paper', expandCommand('/report a preprint on solar cells')), 'paper');
   assert.equal(askedKind('worksheet', 'questions for worksheet 1'), 'worksheet');
 });
 

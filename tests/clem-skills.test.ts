@@ -111,10 +111,8 @@ test('built-in workflows are not triggered by passing words',()=>{
   assert.ok(!ids('find a video under 20 minutes on entropy').includes('meeting-notes'));
   assert.ok(ids('write up the minutes of the meeting').includes('meeting-notes'));
   assert.ok(!ids('explain page 3 of the pdf').includes('report'));
-  assert.ok(ids('turn this into a pdf report').includes('report'));
-  // A technical report only when one is asked for: never for a PDF of notes or a question about a report.
-  for(const q of ['make a pdf of my lecture notes','what does the report say about friction?','summarise this lab report','create a pdf explaining lectures 1-2'])assert.ok(!ids(q).includes('report'),q);
-  for(const q of ['write a technical report on friction','draft a report about our survey results','make me a white paper on solar'])assert.ok(ids(q).includes('report'),q);
+  // The technical report workflow comes only with /report, never from words in a message.
+  for(const q of ['turn this into a pdf report','make a pdf of my lecture notes','what does the report say about friction?','summarise this lab report','create a pdf explaining lectures 1-2','write a technical report on friction','draft a report about our survey results','make me a white paper on solar'])assert.ok(!ids(q).includes('report'),q);
   assert.ok(!ids('explain subject-verb agreement and relative clauses').includes('legal'));
   assert.ok(ids('draft an employment agreement for a freelancer').includes('legal'));
   assert.ok(ids('help me with statistics homework').includes('analysis'));

@@ -2864,7 +2864,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         [
                           "files",
                           "Make a document",
-                          "Help me create a technical report about ",
+                          "/report ",
                         ],
                         ["visuals", "See an idea", "/visual"],
                       ].map(([icon, label, prompt]) => (

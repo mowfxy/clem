@@ -2,6 +2,12 @@
 // becomes an explicit instruction for the model and pulls in the playbooks that do the job (see clem-skills.ts and
 // skills.ts), so a command never depends on the model guessing what "/pdf" means. /visual, /flashcards, /quiz and
 // /skill keep their own handling in the app; for those the text reaches the model as before.
+/** The words /report puts before a message. The technical report layout is only ever used when they are there, so
+ *  the person gets one by asking with the command, never because they said "report" in passing. */
+export const technicalReport = "Make this as a technical report";
+/** Whether these words (as typed, or as the model reads them) came with /report. */
+export const asksTechnicalReport = (said: string) => said.includes(technicalReport) || readCommand(said)?.command.id === "report";
+
 export type SlashCommand = {
   id: string;
   label: string;
@@ -25,6 +31,8 @@ export const slashCommands: SlashCommand[] = [
     instruction: () => "Draw this as a textbook figure: one ```visual block with \"kind\":\"figure\", started from the closest verified textbook figure and made physically correct (attachments through anchors, forces with the right directions and proportional lengths, computed field lines). If I ask for 3D, use a \"3d\" scene of real objects with materials and charges instead. Then say in two or three lines what the figure shows." },
   { id: "pdf", label: "PDF", icon: "cmd-pdf", description: "Make a formatted PDF document", placeholder: "What should the document cover?", skills: ["documents"],
     instruction: () => "Make this as a PDF document with the Kinetra pdf action, not as a chat answer. Choose the right kind of document, a specific title and one section per heading." },
+  { id: "report", label: "Report", icon: "files", description: "A typeset technical report", placeholder: "What should the report cover?", skills: ["documents"], workflow: "report",
+    instruction: () => `${technicalReport} with the Kinetra pdf action and "kind":"report": the technical report layout (abstract, numbered sections, figures, tables and references), not a chat answer.` },
   { id: "research", label: "Research", icon: "research", description: "Search the web and cite every source", placeholder: "What should Clem research?", skills: ["web", "numbers"], workflow: "research",
     instruction: () => "Research this properly: search the web with several specific queries, compare sources, and link every claim to its source. Say what is uncertain or disputed." },
   { id: "explain", label: "Explain", icon: "cmd-explain", description: "Teach it step by step", placeholder: "What should Clem explain?", skills: ["notation"], workflow: "tutor",
