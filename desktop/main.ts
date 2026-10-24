@@ -6,7 +6,7 @@ import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "
 import { LIBRARY, TEXT, laneFolders, mirrorFor, mirroredId, newOutputs, removeOldFolders, spaceFolders, syncMirror, workspaceLane, workspaceNote, workspacePath, workspaceRelative, type MirrorFile } from "./ai-workspace";
 import { officeText } from "./office-text";
 import { withMarkdownSource, uncheckedExamples } from "./markdown-source";
-import { answerReview, calculationIntent } from "./answer-review";
+import { answerReview, calculationIntent, retractedStatus } from "./answer-review";
 import { inflight, stoppedRuns } from "./inflight";
 import { wordDocument } from "./docx-document";
 import { powerpointDeck } from "./pptx-deck";
@@ -544,7 +544,7 @@ void app.whenReady().then(async () => {
       emit({ id, type: "worked" });
       emit({ id, type: "status", text: toolStatus(tool) });
       return (tools && await tools(tool, cancelled)) ?? kinetraTool(tool, pdf ? (spec) => pdf(spec, cancelled) : undefined);
-    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: () => emit({ id, type: "worked" }), stats, continued: !!kept, fresh: prompt }).then((text) => {
+    }, cancelled, { stateful: true, limit: Math.round(contextBudget(model).ceiling * 1.25), unfinished, review, sentBack: (why) => { screen.retract(); emit({ id, type: "retract" }); emit({ id, type: "status", text: retractedStatus(why) }); }, stats, continued: !!kept, fresh: prompt }).then((text) => {
       // The session that wrote the answer stays for the chat's next message; the context it was sent is remembered.
       const all = [...sessions], last = sessions.at(-1);
       if (keep && last && !cancelled()) {

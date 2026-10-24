@@ -43,3 +43,8 @@ export function answerReview(answer: string, history: { request: any; result: an
   if (!CHAIN.test(prose) && (prose.match(VALUE) || []).length < 3) return undefined;
   return `Your answer states computed results that no Kinetra call worked out and no check verifies. Verify them now: compute each with {"action":"call",…} where a module does (circuits: clem solveCircuit with the circuit's netlist), then write your whole answer again, ending with one \`\`\`check block of strict JSON {"checks":[{"label":…,"expr":…,"vars":{…},"claimed":…,"unit":…}]} for the key results. The person sees only the new answer.`;
 }
+
+/** What the chat says while an answer that was sent back (desktop/kinetra-turn.ts SentBack) is written again. */
+export function retractedStatus(why: "review" | "unfinished") {
+  return why === "review" ? "Double-checking the answer…" : "Finishing the document…";
+}

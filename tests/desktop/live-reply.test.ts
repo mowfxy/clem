@@ -95,3 +95,13 @@ test("Messages stream events give the reply text, a mark for each new message, a
   read(delta("Found it."));
   assert.deepEqual(got, [["I'll ", true], ["search.", false], ["Found it.", true]]);
 });
+
+test("an answer taken back is shown again in full when it comes back as the answer", () => {
+  const { screen: s, shown, pieces } = screen();
+  s.step();
+  s.reply("The answer is 4.");
+  s.retract();
+  pieces.length = 0;
+  s.answer("The answer is 4.");
+  assert.equal(shown(), "The answer is 4.", "no paragraph break and not skipped as already shown");
+});

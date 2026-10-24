@@ -371,8 +371,11 @@ function cutOffError(text: string) {
 export const MAX_BROKEN = 5;
 /** What holds a final answer back: see the options of runKinetraTurn. */
 export type AnswerGates = { unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined };
-/** Times one answer can be sent back over its own numbers (`review` in runKinetraTurn). */
-export const REVIEWS = 2;
+/** Why a final answer went back: its own review, or a document it made that is not finished yet. */
+export type SentBack = "review" | "unfinished";
+/** Times one answer can be sent back over its own numbers (`review` in runKinetraTurn). Once: an answer the person has
+ *  watched being written, taken away and written again, and again, reads as Clem answering over and over. */
+export const REVIEWS = 1;
 /** Without a thread every request carries the pages looked at so far: the newest few, within every provider's picture limits. */
 const recent = <T>(pictures: T[]) => pictures.slice(-12);
 /** One tool request run for a provider that calls tools natively (MCP): the result as the model sees it, and its pictures. */
@@ -437,11 +440,13 @@ export async function runKinetraTurn<Picture = unknown>(
   /** `stats` counts the steps, calls and broken requests for the timing log (desktop/turn-timing.ts). */
   /** `unfinished`: what a document made in this answer still lacks; the answer waits for it (two rounds without progress end it).
    *  `review`: what is wrong with a final answer itself (a check that does not hold, numbers nothing computed); each
-   *  problem goes back once, at most REVIEWS times, and `sentBack` is told first, so the screen folds the rejected answer away. */
+   *  problem goes back once, at most REVIEWS times. `sentBack` is told first (for either gate), so the screen takes the
+   *  rejected answer away instead of showing the next one below it. When the model then fails, the rejected answer is
+   *  still the answer: a check that could not finish never costs the person what they were already given. */
   /** `continued`: the first step goes on a session the provider already has (the chat's kept session,
    *  desktop/chat-sessions.ts), so `prompt` holds only this message; `fresh` is the whole prompt, sent instead if that
    *  session is gone (with `freshInstructions` in place of `instructions`, which a kept session may not need again). */
-  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined; sentBack?: () => void; stats?: TurnStats; continued?: boolean; fresh?: string; freshInstructions?: string } = {},
+  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined; sentBack?: (why: SentBack) => void; stats?: TurnStats; continued?: boolean; fresh?: string; freshInstructions?: string } = {},
 ) {
   const { limit = 3_000_000, unfinished, review, sentBack, stats = { steps: 0, calls: 0, broken: 0 } } = options;
   let continued = !!(options.continued && options.stateful);
@@ -456,6 +461,8 @@ export async function runKinetraTurn<Picture = unknown>(
     if (cancelled()) throw Error("Request cancelled");
   };
   let sent = 0, calls = 0, reported = 0, closing = false, lastGap = "", stale = 0, brokenInRow = 0, lastBroken = "";
+  // The last final answer sent back: what the person gets if the model cannot write the next one.
+  let rejected = "";
   // Pictures from "look" results: all of them go with every request when there is no thread, the new ones when there is.
   const looked: Picture[] = [];
   let newPictures: Picture[] = [];
@@ -571,6 +578,7 @@ export async function runKinetraTurn<Picture = unknown>(
       text = await model(input, stateful && (replies > 0 || continued), recent(stateful ? newPictures : looked), native);
       continued = false;
     } catch (error) {
+      if (rejected && !cancelled() && !(error instanceof SessionLost && stateful)) return rejected;
       if (!(error instanceof SessionLost) || !stateful) throw error;
       check();
       // The chat's kept session is gone (the CLI restarted, or the account changed): this message starts a new session
@@ -584,7 +592,10 @@ export async function runKinetraTurn<Picture = unknown>(
       if (input.length > limit && compact(history, input.length - limit)) input = full();
       sent += input.length;
       stats.steps++;
-      text = await model(input, false, recent(looked), native);
+      try { text = await model(input, false, recent(looked), native); } catch (error) {
+        if (rejected && !cancelled()) return rejected;
+        throw error;
+      }
     }
     // Native calls made during the reply were answered inside it: they are not sent again as new results.
     await settled();
@@ -606,7 +617,8 @@ export async function runKinetraTurn<Picture = unknown>(
         if (!problem || reviewed.has(problem)) return text;
         reviewed.add(problem);
         calls++;
-        sentBack?.();
+        rejected = text;
+        sentBack?.("review");
         history.push({ request: { answer: "not accepted yet" }, result: { error: problem } });
         continue;
       }
@@ -614,6 +626,8 @@ export async function runKinetraTurn<Picture = unknown>(
       lastGap = gap;
       if (stale >= 2) return text;
       calls++;
+      rejected = text;
+      sentBack?.("unfinished");
       history.push({ request: { answer: "not accepted yet" }, result: { error: gap } });
       continue;
     }

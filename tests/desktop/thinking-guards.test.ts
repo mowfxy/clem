@@ -165,3 +165,44 @@ test("an answer with a visual the chat cannot draw goes back with the reason", a
   assert.match(answerReview(broken, [], { calculation: false })!, /^Some of your visuals cannot be drawn: Visual 1: .*title/);
   assert.deepEqual(visualProblems("```visual\n{\"kind\":\"diagram\",\"title\":\"T\",\"nodes\":[{\"id\":\"a\",\"label\":\"A\"}]}\n```"), []);
 });
+
+test("a final answer goes back at most once, even for a new problem, and the screen is told why", async () => {
+  const replies = ["Answer v1", "Answer v2", "never asked"];
+  const why: string[] = [];
+  let n = 0;
+  const answer = await runKinetraTurn("q", "", async () => replies.shift()!, async () => 1, () => false, {
+    stateful: true,
+    review: () => `Problem ${++n}.`,
+    sentBack: (reason) => why.push(reason),
+  });
+  assert.equal(answer, "Answer v2", "a second, different problem does not send the answer back again");
+  assert.deepEqual(why, ["review"]);
+});
+
+test("an answer sent back is still the answer when its rewrite fails", async () => {
+  let step = 0;
+  const answer = await runKinetraTurn("q", "", async () => { if (step++) throw Error("The service failed."); return "The first answer."; }, async () => 1, () => false, {
+    stateful: true,
+    review: () => "Your answer's numbers do not all hold.",
+    sentBack: () => {},
+  });
+  assert.equal(answer, "The first answer.");
+  // A stop is still a stop.
+  let stopped = false;
+  await assert.rejects(runKinetraTurn("q", "", async () => "First.", async () => 1, () => stopped, {
+    stateful: true, review: () => "Again.", sentBack: () => { stopped = true; },
+  }), /cancel/i);
+});
+
+test("an answer held back for an unfinished document is taken off the screen too", async () => {
+  const replies = ["Done: here is your PDF.", "Here is your finished PDF."];
+  const why: string[] = [];
+  let gaps = ["Section 3 is missing."];
+  const answer = await runKinetraTurn("q", "", async () => { const r = replies.shift()!; if (!replies.length) gaps = []; return r; }, async () => 1, () => false, {
+    stateful: true,
+    unfinished: () => gaps[0],
+    sentBack: (reason) => why.push(reason),
+  });
+  assert.equal(answer, "Here is your finished PDF.");
+  assert.deepEqual(why, ["unfinished"]);
+});

@@ -72,6 +72,13 @@ export class LiveScreen {
     this.last = reply.slice(0, this.delivered);
     this.step();
   }
+  /** A final answer that was sent back (desktop/kinetra-turn.ts): the chat took it away, so it no longer counts as shown
+   *  and the next part of the answer starts with nothing above it. */
+  retract() {
+    this.step();
+    this.last = "";
+    this.shown = false;
+  }
   /** The loop's answer: shown unless the last step already showed it (its reply, or the lead-in kept as the answer). */
   answer(answer: string) {
     const text = answer.trim(), last = this.last.trim();

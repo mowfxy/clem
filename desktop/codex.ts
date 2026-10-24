@@ -6,6 +6,7 @@ import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
 import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
 import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn,SessionLost,type AnswerGates} from "./kinetra-turn.ts";
+import {retractedStatus} from "./answer-review.ts";
 import {blockPrint,sentAfter,type ChatSessions} from "./chat-sessions.ts";
 import {addTokens,type TurnStats} from "./turn-timing.ts";
 import {StepCounter} from "./tool-status.ts";
@@ -532,7 +533,8 @@ export class Codex {
     const guide=kept&&kept.sent.has(blockPrint(instructions))?"":instructions;
     let ownSent=false,keepIt=false;
     try{
-      let shown=false;
+      // `retracted`: a rejected answer was taken off the screen and nothing has been shown since.
+      let shown=false,retracted=false;
       const answer=await runKinetraTurn<{path:string}>(kept?keep!.continuation(kept.sent):prompt,guide,async(input,followUp,looked,call)=>{
         if((pdf||tools)&&!endpoint){
           const r:{call?:NativeCall}={};
@@ -549,7 +551,7 @@ export class Codex {
         if(endpoint&&!session.threadId)input=NATIVE_NOTE+input;
         let output="",delivered=0;
         // A lead-in shown before a tool ran ("Let me calculate that.") is its own paragraph, never glued to the answer.
-        const show=(end:number)=>{if(end<=delivered)return;emit({id,type:"delta",text:(shown&&!delivered?"\n\n":"")+output.slice(delivered,end)});delivered=end;shown=true;};
+        const show=(end:number)=>{if(end<=delivered)return;emit({id,type:"delta",text:(shown&&!delivered?"\n\n":"")+output.slice(delivered,end)});delivered=end;shown=true;retracted=false;};
         try{
           await this.runOnce(id,input,event=>{
             if(event.type==="status"){emit({id,...event});return;}
@@ -571,8 +573,9 @@ export class Codex {
         emit({id,type:"worked"});
         emit({id,type:"status",text:toolStatus(request)});
         return (tools&&await tools(request,()=>turn.cancelled))??kinetraTool(request,pdf?spec=>pdf(spec,()=>turn.cancelled):undefined);
-      },()=>turn.cancelled,{stateful:true,...gates,sentBack:()=>emit({id,type:"worked"}),stats,continued:!!kept,fresh:prompt,freshInstructions:instructions});
-      void answer;
+      },()=>turn.cancelled,{stateful:true,...gates,sentBack:why=>{shown=false;retracted=true;emit({id,type:"retract"});emit({id,type:"status",text:retractedStatus(why)});},stats,continued:!!kept,fresh:prompt,freshInstructions:instructions});
+      // A rejected answer is still the answer when its rewrite failed: taken off the screen, it shows again.
+      if(retracted&&answer.trim())emit({id,type:"delta",text:answer.trim()});
       // The thread that wrote the answer stays for the chat's next message, with its endpoint (routed to nothing between answers).
       const threadId=session.threadId,server=this.server;
       if(keep&&threadId&&server&&!turn.cancelled){

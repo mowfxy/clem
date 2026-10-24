@@ -96,6 +96,9 @@ export async function desktopChat(
       if (event.type === "status") onStatus?.(String(event.text || ""));
       if (event.type === "condensed") onCondensed?.();
       if (event.type === "worked") { clearTimeout(paint); paint = undefined; work = result.length; onText(result, work); }
+      // A final answer that was sent back to be written again goes from the screen, so the new one is never shown below
+      // it as a second answer. Notes written before it (folded under "Task completed") stay.
+      if (event.type === "retract") { clearTimeout(paint); paint = undefined; result = result.slice(0, work ?? 0).trimEnd(); if (work !== undefined) work = result.length; onText(result, work); }
       if (event.type === "look" && event.look) {
         const reply = (result: { images?: { name: string; data: string }[]; error?: string }) => void desktop!.invoke({ action: "pageImages", id: event.look!, ...result }).catch(() => {});
         if (!look) reply({ error: "Pages cannot be looked at in this conversation." });
@@ -107,7 +110,8 @@ export async function desktopChat(
         else pdfTask(String(event.op || ""), event.args || {}).then(reply, (error: unknown) => reply({ error: (error as Error).message || "That could not be done." }));
       }
       if (event.type === "delta") {
-        result += event.text || "";
+        // The first text of an answer (or of one written again) never opens with blank lines.
+        result += result ? event.text || "" : (event.text || "").trimStart();
         paint ??= setTimeout(() => { paint = undefined; onText(result, work); }, STREAM_MS);
       }
       if (event.type === "done") {
