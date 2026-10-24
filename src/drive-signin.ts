@@ -1,4 +1,9 @@
 const key = "clem-drive-return";
+// Kept in localStorage, not sessionStorage: the round trip through Google's sign-in can come back without the tab's
+// session storage, which left people on "You're in." instead of continuing to Drive.
+const store = { get: () => { try { return localStorage.getItem(key); } catch { return null; } },
+  set: (value: string) => { try { localStorage.setItem(key, value); } catch {} },
+  clear: () => { try { localStorage.removeItem(key); } catch {} } };
 /** A desktop request to choose files or a folder in Google's own picker, matched back to the app by `request`. */
 type Pick = { pick?: "files" | "folder"; request?: string };
 export function rememberDriveReturn() {
@@ -9,15 +14,14 @@ export function rememberDriveReturn() {
     throw Error("Invalid Drive connection link.");
   if ((pick && pick !== "files" && pick !== "folder") || (request && !/^[\w-]{16,64}$/.test(request)) || !pick !== !request)
     throw Error("Invalid Drive connection link.");
-  sessionStorage.setItem(
-    key,
+  store.set(
     JSON.stringify({ account, ...(pick ? { pick, request } : {}), expires: Date.now() + 600000 }),
   );
 }
 export function returnToDrive() {
-  const raw = sessionStorage.getItem(key);
+  const raw = store.get();
   if (!raw) return false;
-  sessionStorage.removeItem(key);
+  store.clear();
   try {
     const saved = JSON.parse(raw) as Pick & { account: string; expires: number };
     if (saved.expires < Date.now() || !/^[a-f0-9-]{36}$/.test(saved.account))
