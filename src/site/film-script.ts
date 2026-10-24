@@ -14,10 +14,12 @@ const TAU=Math.PI*2;
 /** 0 → 1 across [a, b] seconds, eased out. */
 const ease=(u:number,a:number,b:number)=>{const x=clamp((u-a)/(b-a));return 1-(1-x)**3;};
 
-export type Shot={id:string;caption:string;seconds:number;draw:(u:number)=>string;into?:'cut'|'brush'};
+/** `dx` slides a shot sideways so its drawings sit in the middle of the framed view; shots that continue into each
+ *  other share one so nothing jumps at the cut. */
+export type Shot={id:string;caption:string;seconds:number;draw:(u:number)=>string;into?:'cut'|'brush';dx?:number};
 
 // ---------- the mark ----------
-const END=Math.atan2(20.07,22.29),CX=480,CY=246,S=2.9;
+const END=Math.atan2(20.07,22.29),CX=540,CY=246,S=2.9;
 /** The C as a pen outline of its thick round-capped arc: outer edge, cap, inner edge, cap. */
 function cOutline(cx=CX,cy=CY,s=S):P[]{
   const R=30*s,h=6.5*s,a0=END,a1=TAU-END,end=(a:number):P=>[cx+Math.cos(a)*R,cy+Math.sin(a)*R];
@@ -101,10 +103,10 @@ export const shots:Shot[]=[
     if(drop>0&&!blink)s+=cursor(hx,hy-(1-drop)*70,{opacity:clamp(drop*1.4)});
     return s;
   }},
-  {id:'ask',caption:'Bring a question, and the notes it came from.',seconds:6,into:'brush',draw(u){
+  {id:'ask',caption:'Bring a question, and the notes it came from.',seconds:6,dx:10,into:'brush',draw(u){
     return page(u,{drawIn:true})+bubble(u,{scale:pop(u,2.3,.34),write:ease(u,2.9,3.9)});
   }},
-  {id:'think',caption:'Clem reads them, and says what it is doing.',seconds:6,draw(u){
+  {id:'think',caption:'Clem reads them, and says what it is doing.',seconds:6,dx:10,draw(u){
     const away=ease(u,.2,.8),ly=pose(u,[1.4,2.4,3.4],[176,244,346,278],.34),lx=pose(u,[1.4,2.4,3.4],[400,360,420,380],.34);
     const found=u>3.75,mark=found?ease(u,3.75,4.3):0;
     let s=page(u,{mark})+bubble(u,{scale:lerp(1,.46,away),x:lerp(0,150,away),y:lerp(0,-150,away)});
@@ -112,14 +114,14 @@ export const shots:Shot[]=[
     if(u>.7)s+=hop(u,640,286,40,2.4,pop(u,.7,.3));
     return s;
   }},
-  {id:'answer',caption:'Every claim points back to the page it came from.',seconds:6.5,draw(u){
+  {id:'answer',caption:'Every claim points back to the page it came from.',seconds:6.5,dx:10,draw(u){
     const out=1-ease(u,.15,.6);
     let s=page(u,{mark:1})+bubble(u,{scale:.46*out,x:150,y:-150});
     s+=lens(380,278,out);
     if(out>.05)s+=hop(u,640,286,40,2.4,out);
     return s+answer(u,{k:ease(u,.5,1.9),thread:ease(u,2.3,3.3),tick:ease(u,3.9,4.6)});
   }},
-  {id:'see',caption:'Ideas become things you can play with.',seconds:7,into:'brush',draw(u){
+  {id:'see',caption:'Ideas become things you can play with.',seconds:7,dx:45,into:'brush',draw(u){
     const knob=pose(u,[2.4,4.8],[0,1,.55],.5),z=lerp(.72,.22,knob);
     let s=line([[256,96],[256,382],[734,382]],{k:ease(u,.05,.8)});
     s+=line([[266,240],[724,240]],{w:THIN,k:ease(u,.5,1.1),opacity:.55});
@@ -128,7 +130,7 @@ export const shots:Shot[]=[
     s+=line([[336,414],[632,414]],{w:FINE,k:ease(u,.3,1)});
     return s+shape(ellipse(kx,414,15),{fill:BLUE,w:FINE,k:ease(u,.9,1.3)});
   }},
-  {id:'keep',caption:'What you learn, it helps you keep.',seconds:6.5,into:'brush',draw(u){
+  {id:'keep',caption:'What you learn, it helps you keep.',seconds:6.5,dx:10,into:'brush',draw(u){
     const flip=u<1.5?1:u<1.8?1-(u-1.5)/.3:u<2.1?(u-1.8)/.3:1,back=u>=1.8;
     const top=rounded(250,150,196,240,16),f=(pts:P[])=>X(pts,{sx:Math.max(.02,flip),ox:348,oy:270});
     let s=shape(rounded(274,128,196,240,16),{w:THIN})+shape(rounded(262,139,196,240,16),{w:FINE})+shape(f(top));
@@ -141,10 +143,10 @@ export const shots:Shot[]=[
     for(let r=0;r<4;r++)for(let c=0;c<5;c++){const i=r*5+c,x=600+c*42,y=220+r*44;if(i===13){const kk=ease(u,3.1,3.8);if(kk>0)s+=shape(ellipse(x,y,17),{fill:pop(u,3.8,.3)>.5?CLAY:undefined,w:FINE,k:kk});else s+=ring(x,y,3.2,{fill:INK,w:0});}else s+=ring(x,y,3.2,{fill:INK,w:0,opacity:i<13?.35:1});}
     return s;
   }},
-  {id:'home',caption:'And all of it stays home, on your PC.',seconds:6.5,into:'brush',draw(u){
+  {id:'home',caption:'And all of it stays home, on your PC.',seconds:6.5,dx:0,into:'brush',draw(u){
     const drop=ease(u,1,1.6),go=pose(u,[2.3],[0,1],.9),shut=u>3.7,lit=u>4.1;
     // The house first, so the folder passes in front of it on its way in.
-    const hx=650,hy=388;
+    const hx=608,hy=388;
     let s=line([[hx-160,hy],[hx+170,hy]],{w:FINE});
     s+=shape([[hx-110,hy],[hx-110,hy-150],[hx,hy-238],[hx+110,hy-150],[hx+110,hy]]);
     s+=shape(rounded(hx+40,hy-118,44,44,6),{fill:lit?SAND:undefined,w:FINE})+line([[hx+62,hy-118],[hx+62,hy-74]],{w:THIN})+line([[hx+40,hy-96],[hx+84,hy-96]],{w:THIN});
@@ -196,7 +198,8 @@ export function filmFrame(t:number){
   penFrame(t);
   // Into a brushed shot: the brush crosses, the shot changes under it, and the brush leaves by the far side.
   const next=shots[(i+1)%shots.length],toEnd=shots[i].seconds-local;
-  if(local<WIPE&&shots[i].into==='brush')return shots[i].draw(local)+brush(local/WIPE,true);
-  if(toEnd<WIPE&&next.into==='brush')return shots[i].draw(local)+brush((WIPE-toEnd)/WIPE,false);
-  return shots[i].draw(local);
+  const art=`<g transform="translate(${shots[i].dx||0} 0)">${shots[i].draw(local)}</g>`;
+  if(local<WIPE&&shots[i].into==='brush')return art+brush(local/WIPE,true);
+  if(toEnd<WIPE&&next.into==='brush')return art+brush((WIPE-toEnd)/WIPE,false);
+  return art;
 }
