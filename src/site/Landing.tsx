@@ -84,7 +84,6 @@ export function Landing(){
           <p className="cl-kicker">/visual</p>
           <Written as="h2" lines={['See it','move.']} className="cl-h2"/>
           <p className="cl-lede" id="visuals-title">Ask for any idea and Clem draws it as something you can play with: sliders with consequences, 3D you can turn, steps you can replay. This is the same engine the app runs. Try it.</p>
-          <Illustration scene="build" className="cl-plate cl-visual-plate"/>
         </div>
         <VisualDemo/>
       </div>

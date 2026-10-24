@@ -49,8 +49,8 @@ export function InkFilm(){
   return <figure className="cl-film" ref={box} aria-label="Clem, a short film drawn in ink">
     <div className="cl-film-frame">
       <svg ref={svg} viewBox={VIEW} aria-hidden="true"/>
-      <p className="cl-film-caption" aria-hidden="true"><span key={shot}>{shots[shot].caption}</span></p>
     </div>
+    <p className="cl-film-caption" aria-hidden="true"><span key={shot}>{shots[shot].caption}</span></p>
     <figcaption className="cl-sr">An animated film in Clem’s ink drawing style. {shots.map(s=>s.caption).join(' ')}</figcaption>
   </figure>;
 }
