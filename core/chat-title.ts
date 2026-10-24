@@ -1,5 +1,5 @@
 // Chat titles and summaries follow what a conversation is about, not just its first message. The answering model adds
-// hidden <!--title: …--> and <!--summary: …--> markers at the end of a reply, so naming costs no extra request and
+// hidden <!--title: …--> (first, so a new chat is named while the work runs) and <!--summary: …--> (last) markers to a reply, so naming costs no extra request and
 // never waits on the single-request desktop runtime. The markers are removed before anything is shown or saved.
 import type { Chat } from './types.ts';
 
@@ -11,7 +11,7 @@ export function titleInstruction(current: string | null, mark?: { kind: string; 
     ? ""
     : current
     ? `This chat is titled “${current}”. Only if the conversation as a whole has clearly moved on to a different subject, end your reply with <!--title: New Title--> (2–6 words naming what the whole chat is now about).`
-    : `End your reply with <!--title: Short Title--> (2–6 words naming what this chat is about, in the user's language, no quotes).`;
+    : `Begin your reply with <!--title: Short Title--> (2–6 words naming what this chat is about, in the user's language, no quotes) as the very first thing you write, before any other text or tool request, so the chat is named while you work.`;
   const chapter = chapters.length
     ? ` This chat is divided into chapters by topic: ${chapters.map((c) => `“${c}”`).join(", ")}. Only if the user's latest message starts a clearly different topic or task from the current chapter “${chapters.at(-1)}” (not a follow-up, clarification or next step of it), also add <!--chapter: Name--> (2–5 words naming the new topic).`
     : ` Also add <!--chapter: Name--> (2–5 words naming the topic of the user's request).`;

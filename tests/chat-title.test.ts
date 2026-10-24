@@ -14,7 +14,7 @@ test('a marker that is still streaming in never flashes on screen',()=>{
   assert.equal(hideTitleMarker('Use <!DOCTYPE html> first'),'Use <!DOCTYPE html> first');
 });
 test('the model is only asked to rename when the subject has moved on',()=>{
-  assert.match(titleInstruction(null),/End your reply with/);
+  assert.match(titleInstruction(null),/Begin your reply with <!--title/);
   assert.match(titleInstruction('Partial Derivatives'),/Only if the conversation as a whole has clearly moved on/);
 });
 test('a chat the person named is never retitled, but still gets its chapters and summary',()=>{

@@ -495,6 +495,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const sessionVersion = useRef(0);
   const navigate = (path: string) => {
     location.hash = path;
+    // Same render as the caller's state changes: waiting for hashchange showed the empty home for a frame.
+    setRoute(workspaceRoute());
     setSidebar(false);
     setSearch("");
   };
@@ -1213,6 +1215,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const controller = begin(id);
     const started = Date.now();
     let work: number | undefined;
+    let earlyTitle: string | undefined;
     try {
       const memory = activeSpace ? stateRef.current.spaces.find((s) => s.id === activeSpace.id)?.memory ?? activeSpace.memory : stateRef.current.memory;
       // The model sees the files, not only their text: attached pictures, PDF pages with diagrams or scans, and the
@@ -1427,8 +1430,12 @@ ${answerInstructions}`,
         controller.signal,
         (text, at) => {
           work = at;
+          // A new chat's title comes first in the reply: name the chat as soon as it arrives, not when the work ends.
+          const early = !isVisual && !earlyTitle ? takeTitle(text).title : undefined;
+          if (early) earlyTitle = early;
           updateChat(id, (c) => ({
             ...c,
+            ...(early && !c.titled && !c.renamed ? { title: early, titled: true } : {}),
             messages: c.messages.map((m) =>
               m.id === messageId ? { ...m, content: isVisual ? text : hideTitleMarker(text) } : m,
             ),

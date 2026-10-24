@@ -3,7 +3,7 @@
 
 /* Chats: a plain list, a title on the left and when on the right. */
 .space-page .sp-chats{display:flex;flex-direction:column;gap:2px}
-.space-page .sp-chats .sp-find{margin:0 0 10px}
+.space-page .sp-chats .sp-find{flex:none;margin:0 0 10px}
 .space-page .sp-chats .sp-chat{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;width:calc(100% + 28px);margin:0 -14px;padding:14px;border:0;border-radius:12px;background:none;text-align:left;color:inherit}
 .space-page .sp-chats .sp-chat:hover{background:#ffffff08}
 .space-page .sp-chats .sp-chat strong{flex:1;min-width:0;font:400 17px/1.3 var(--serif);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

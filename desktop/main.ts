@@ -1811,12 +1811,15 @@ void app.whenReady().then(async () => {
       // Planned sections each document made in this answer still lacks; for one made from a Markdown file, also those
       // still a stub, its worked examples whose numbers have no check (their lines), and that file's path. The answer
       // waits until they are written.
-      const gaps = new Map<string, { missing: string[]; draft?: string; unchecked?: number[] }>();
+      const gaps = new Map<string, { missing: string[]; draft?: string; unchecked?: number[]; figures?: string }>();
+      // Documents whose maker said their sources have no figures to carry over ("noFigures"): not asked again this answer.
+      const figuresWaived = new Set<string>();
       const unfinished = () => {
-        const open = [...gaps].filter(([, gap]) => gap.missing.length || gap.unchecked?.length);
+        const open = [...gaps].filter(([, gap]) => gap.missing.length || gap.unchecked?.length || gap.figures);
         if (!open.length) return undefined;
-        return open.map(([doc, { missing, draft, unchecked = [] }]) => {
+        return open.map(([doc, { missing, draft, unchecked = [], figures }]) => {
           const action = documents.get(doc)!.split(".").pop()!.toLowerCase(), key = partsKey[action] || "sections";
+          if (figures && !missing.length && !unchecked.length) return `"${documents.get(doc)}" is not finished: ${figures}`;
           const list = `${missing.slice(0, 12).join("; ")}${missing.length > 12 ? "; …" : ""}`;
           if (draft) {
             const parts = [
@@ -1897,7 +1900,7 @@ void app.whenReady().then(async () => {
         const revise = typeof spec?.revise === "string" ? spec.revise : undefined;
         if (revise && !documents.has(revise)) throw Error(`No file with id "${revise}" in this conversation. Use an id from the files list, or leave out "revise" to make a new file.`);
         if (revise && !sameFormat(action, documents.get(revise)!)) throw Error(`"${documents.get(revise)}" is a .${documents.get(revise)!.split(".").pop()} file: revise it with the action that made it, or leave out "revise" to make a new ${action} file.`);
-        const { revise: _revise, change, action: _action, append, patch, ...rest } = spec || {};
+        const { revise: _revise, change, action: _action, append, patch, noFigures, ...rest } = spec || {};
         let clean = rest;
         const key = partsKey[action];
         // A long file is written in parts: "append" adds sections (or slides, or sheets) to the end of the same file, and
@@ -1938,6 +1941,19 @@ void app.whenReady().then(async () => {
         // Pictures of the result (a deck's slides, its new figures) go back to the model with this result, so it checks what it made.
         const look = made.previews?.length ? { attachPictures: await savePictures(made.previews.map((p) => ({ name: p.name, data: Buffer.from(p.image).toString("base64") }))), pictures: made.previews.map((p) => p.name) } : {};
         const missing = key === "sections" ? unwritten(clean, { stubs: sourced }) : key === "slides" ? unwritten({ plan: clean.plan, sections: (clean.slides || []).map((s: any) => ({ heading: s?.title || "" })) }) : [];
+        // A study document or report made from the person's files carries their pictures: the figures, graphs and circuits
+        // the text discusses cropped from the source, or drawn with Kinetra where the source explains without one. Models
+        // skip this when left to judge it, so a document with almost no figures waits for them unless its maker says
+        // the sources have none.
+        const waived = (typeof noFigures === "string" && noFigures.trim().length > 0) || (!!revise && figuresWaived.has(revise));
+        const figured = key === "sections" ? (clean.sections || []).filter((s: any) => s?.figure).length : 0;
+        const parts = key === "sections" ? Math.max(clean.plan?.length || 0, (clean.sections || []).filter((s: any) => s?.heading).length) : 0;
+        const wanted = Math.max(1, Math.floor(parts / 6));
+        const fromSources = (action === "pdf" || action === "docx") && key === "sections" && (library.length > 0 || pdfs.length > 0 || !!request.pdfs?.length)
+          && !/^(?:letter|memo|brief|proposal)$/i.test(String(clean.kind || ""));
+        const figures = fromSources && !waived && !missing.length && figured < wanted
+          ? `it is made from the person's files but has ${figured ? `only ${figured} figure${figured === 1 ? "" : "s"}` : "no figures"} for ${parts} sections. Open the source pages it covers and carry their pictures over: send {"action":"regions"} for every page with a figure, graph, circuit, diagram or table drawn as a picture (all of them in one batch), then crop each one the text discusses ({"action":"crop"}, again all in one batch) and put it in the section that discusses it as ${sourced ? 'a ```figure block {"asset":"crop-…","source":true}' : 'its figure {"asset":"crop-…","source":true}'}; draw with a Kinetra figure (clem visual or illustration) what the source explains without a picture. Never describe a picture instead of including it. Then send the ${action} request again${sourced ? ` with "markdown":"${draft!.path}"` : ""}. Only if the sources truly have no pictures for these parts, send it again with "noFigures":"one line saying why".`
+          : undefined;
         const checks = unchecked.length ? { unchecked: `${unchecked.length} worked example${unchecked.length === 1 ? " states" : "s state"} computed results with no check after it (line${unchecked.length === 1 ? "" : "s"} ${unchecked.slice(0, 200).join(", ")}). Verify those numbers (a Kinetra call where a module computes them), add a check block after each example, and send the request again.` } : {};
         // How long the file really is, so the model can tell a 4-page sketch from the complete document that was asked for.
         const pages = action === "pdf" ? await pageCount(made.bytes).catch(() => undefined) : undefined;
@@ -1962,7 +1978,8 @@ void app.whenReady().then(async () => {
           } else if (earlier && change) before.get(revise)!.summary = String(change).slice(0, 200);
           await disk.writeFile(user.id, revise, made.bytes);
           await disk.writeFile(user.id, "spec-" + revise, specBytes);
-          gaps.set(revise, { missing, draft: draft?.path, unchecked });
+          if (waived) figuresWaived.add(revise);
+          gaps.set(revise, { missing, draft: draft?.path, unchecked, figures });
           if (earlier) {
             const file = { id: revise, name: documents.get(revise)!, size: made.bytes.byteLength, type: made.type, created: Date.now(), updated: Date.now(), spaceId: null, made: true };
             delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope, revised: { version: before.get(revise) } });
@@ -1971,7 +1988,7 @@ void app.whenReady().then(async () => {
             madeNow.set(revise, file);
             delivery.set(revise, { id: request.id, type: "artifact", file, scope: request.scope });
           }
-          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, ...checks, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
+          return { created: true, revised: true, file: { id: revise, name: documents.get(revise), size: made.bytes.byteLength }, ...made.info, ...length, ...checks, ...(figures ? { figures: `Not finished: ${figures}` } : {}), ...look, ...(draft ? { madeFrom: draft.path } : {}), note: earlier ? "The same file was updated; the person's earlier version is kept for Undo. The person receives the file when you finish your answer." : "Your draft was updated. The person receives the file when you finish your answer." };
         }
         const id = randomUUID();
         const file = { id, name: made.name, size: made.bytes.byteLength, type: made.type, created: Date.now(), spaceId: spaceOf, made: true };
@@ -1979,9 +1996,10 @@ void app.whenReady().then(async () => {
         await disk.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
         madeNow.set(id, file);
-        gaps.set(id, { missing, draft: draft?.path, unchecked });
+        if (waived) figuresWaived.add(id);
+        gaps.set(id, { missing, draft: draft?.path, unchecked, figures });
         delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
-        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...checks, ...look, ...(draft ? { madeFrom: draft.path } : {}), note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
+        return { created: true, file: { id, name: file.name, size: file.size }, ...made.info, ...length, ...checks, ...(figures ? { figures: `Not finished: ${figures}` } : {}), ...look, ...(draft ? { madeFrom: draft.path } : {}), note: `The person receives this file when you finish your answer. To change it, send {"action":"${action}","revise":"${id}",…}${key ? `; to continue it, {"action":"${action}","revise":"${id}","append":true,"${key}":[…]}` : ""}.` };
       };
       /** A stopped answer leaves no trace: files it made are removed and files it changed get their earlier contents back. */
       const rollback = async () => {
