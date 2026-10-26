@@ -2,6 +2,7 @@ import {bootDone} from "./boot";
 import {ModelsSettings} from "./ModelsSettings";
 import {confirmDialog} from './dialogs';
 import {CLEM_FILE} from '../core/file-tools';
+import {filesOfDeletedChat} from '../core/chat-files';
 import {relevantSkills,skillText,documentGuidance,builtinSkills} from '../core/skills';
 import {readCommand,expandCommand,leadingCommand} from '../core/commands';
 import type {AccountsData} from "./ModelsSettings";
@@ -653,6 +654,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!previous || previous === chatId || !stateRef.current.chats.find((c) => c.id === previous)?.temporary) return;
     stopChat(previous);
     void deleteWorkflowCheckpoints(ownerRef.current, stateRef.current.chats.find((c) => c.id === previous)?.messages.flatMap((m) => (m.plan ? [m.plan] : [])) || []).catch(() => {});
+    // Its sent files were never meant to outlast it either.
+    deleteChatFiles([previous]);
     patch((s) => ({ ...s, chats: s.chats.filter((c) => c.id !== previous), visuals: s.visuals.filter((v) => v.chatId !== previous) }));
   }, [chatId]);
   /** Keeps a temporary chat: from here on it is an ordinary saved chat. */
@@ -1044,7 +1047,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const sending = pendingRef.current.filter((f) => user.attachments.includes(f.id));
     if (sending.length) {
       setPending((p) => p.filter((f) => !sending.includes(f)));
-      const kept = sending.map(({ owner: _owner, ...f }) => f);
+      // Tagged with this chat, so deleting the chat deletes what was sent in it (core/chat-files.ts).
+      const kept = sending.map(({ owner: _owner, ...f }) => ({ ...f, chatId: id }));
       patch((s) => ({ ...s, files: [...kept, ...s.files], spaces: s.spaces.map((x) => kept.some((f) => f.spaceId === x.id) ? { ...x, sources: [...new Set([...x.sources, ...kept.filter((f) => f.spaceId === x.id).map((f) => f.id)])] } : x) }));
     }
     const chat = activeChat || {
@@ -2172,6 +2176,19 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     if(panelFile?.id===file.id)setPanelFile(null);
     return true;
   }
+  /** Deleting chats deletes the files that came with them (core/chat-files.ts), so they stop taking up space. Run before
+   *  the chats leave the state. The index is saved first, so an interruption cannot leave references to deleted files. */
+  function deleteChatFiles(chatIds:string[]){
+    const current=stateRef.current,deleting=new Set(chatIds),kept=current.chats.filter(c=>!deleting.has(c.id));
+    const gone=current.chats.filter(c=>deleting.has(c.id)).flatMap(c=>filesOfDeletedChat(c,[...kept,c],current.files));
+    if(!gone.length)return;
+    const ids=new Set(gone.map(f=>f.id)),owner=ownerRef.current;
+    patch(s=>({...s,files:s.files.filter(f=>!ids.has(f.id)),spaces:s.spaces.map(x=>({...x,sources:x.sources.filter(f=>!ids.has(f))}))}));
+    if(panelFile&&ids.has(panelFile.id))setPanelFile(null);
+    setAttachments(a=>a.filter(x=>!ids.has(x)));
+    const next=stateRef.current,persistence=saveQueue.current.then(()=>saveState(next,owner));saveQueue.current=persistence.catch(()=>{});
+    void persistence.then(()=>Promise.allSettled([...gone].flatMap(f=>[...(f.remote?[api("files/"+f.id,"DELETE")]:[]),deleteBlob(f.id,owner),deleteBlob('spec-'+f.id,owner),...(f.versions||[]).flatMap(v=>[deleteBlob(v.blob,owner),deleteBlob('spec-'+v.blob,owner)])]))).catch(()=>{});
+  }
   /** Settings acts on a scope the person picks (never a throwaway draft chat): the open chat when it is a real one
    *  outside a space, or a project or subject. */
   function settingsScopes(){
@@ -2782,8 +2799,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Back up the rest below. Selected context goes to your AI provider when you ask.">
                         <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
                         <SettingRow title="Conversations" description={`${savedChats.length} saved on this PC`}><button className="secondary danger" disabled={!savedChats.length||anyRunning} onClick={async()=>{
-                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC, with what Clem only noted from them. Saved files, skills and memory you kept stay. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
-                          try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));if(desktop)void desktop.invoke({action:"memoryForgetChat",chats:state.chats.map(c=>c.id).filter(id=>/^[a-zA-Z0-9_-]{1,80}$/.test(id)).slice(0,5000)}).catch(()=>{});patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
+                          if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC, with the files sent in them and the files Clem made outside subjects and projects. Skills and memory you kept stay. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
+                          try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));if(desktop)void desktop.invoke({action:"memoryForgetChat",chats:state.chats.map(c=>c.id).filter(id=>/^[a-zA-Z0-9_-]{1,80}$/.test(id)).slice(0,5000)}).catch(()=>{});deleteChatFiles(state.chats.map(c=>c.id));patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
                         }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
                       {desktop&&<BackupSettings onError={setToast}/>}
@@ -3088,7 +3105,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           e.target.value = "";
         }}
       />
-      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>This removes the conversation from this device, with what Clem only noted from it. Saved files and memory you kept stay.</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);if(desktop&&/^[a-zA-Z0-9_-]{1,80}$/.test(id))void desktop.invoke({action:"memoryForgetChat",chats:[id]}).catch(()=>{});patch(s=>({...s,usageArchive:archiveChats(s.usageArchive,s.chats.filter(c=>c.id===id)),chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
+      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>{state.chats.find(c=>c.id===deleteChatId)?.spaceId?"This removes the conversation and the files sent in it from this device. Files Clem made stay in this subject or project's files.":"This removes the conversation from this device, with the files sent in it and the files Clem made in it. Memory you kept stays."}</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);if(desktop&&/^[a-zA-Z0-9_-]{1,80}$/.test(id))void desktop.invoke({action:"memoryForgetChat",chats:[id]}).catch(()=>{});deleteChatFiles([id]);patch(s=>({...s,usageArchive:archiveChats(s.usageArchive,s.chats.filter(c=>c.id===id)),chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
       {modal && (
         <Modal
           title={

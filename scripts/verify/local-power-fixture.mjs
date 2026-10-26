@@ -112,7 +112,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
     window.writeNote = (path, text) => { files[path] = text; };
     const stream = (id, text, extra) => {
       let i = 0;
-      const tick = () => { for (const fn of chat) fn({ id, type: "delta", text: text.slice(i, i + 24) }); i += 24; if (i < text.length) setTimeout(tick, 22); else { extra?.(); for (const fn of chat) fn({ id, type: "done" }); } };
+      const tick = () => { for (const fn of chat) fn({ id, type: "delta", text: text.slice(i, i + 24) }); i += 24; if (i < text.length) setTimeout(tick, 22); else void Promise.resolve(extra?.()).then(() => { for (const fn of chat) fn({ id, type: "done" }); }); };
       setTimeout(tick, 500);
     };
     const put = (id, body) => fetch("/api/local/files/" + id, { method: "PUT", body, headers: { "X-Clem-Owner": "fixture-owner" } });
@@ -158,7 +158,8 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
                 const bytes = new Uint8Array(await window.__renderSpec(JSON.stringify(spec)));
                 await put(id, bytes); await put("spec-" + id, JSON.stringify(spec));
                 const file = { id, name: "Week 3 worksheet.pdf", size: bytes.length, type: "application/pdf", created: Date.now(), spaceId: r.scope.split(":")[1], made: true };
-                window.dispatchEvent(new CustomEvent("clem:artifact", { detail: { id: r.id, type: "artifact", file, scope: r.scope } }));
+                // Through the chat stream, as the real bridge receives it (src/desktop/bridge.ts).
+                for (const fn of chat) fn({ id: r.id, type: "artifact", file, scope: r.scope });
               });
             } else stream(r.id, replies.shift() || "Done.");
             return { started: true };
