@@ -4,7 +4,7 @@
 :root{--pm-ease:cubic-bezier(.16,1,.3,1);--pm-ink:#f2f1ec;--pm-soft:#c9c8c1;--pm-muted:#8f8e88;--pm-line:#2a2a27;--pm-raise:#232321;--pm-hover:#1e1e1d}
 
 /* ---------- Sidebar ---------- */
-body .sidebar .nav-item{height:36px;border-radius:9px;font-size:14.5px;color:#e4e3dd;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
+body .sidebar .nav-item{height:34px;border-radius:8px;font-size:13.5px;color:#e4e3dd;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
 body .sidebar .nav-item .drawn-icon{color:#bdbcb5;transition:color .3s var(--pm-ease)}
 body .sidebar .nav-item:hover{background:#1d1d1c}
 body .sidebar .nav-item.active{background:#252523;color:var(--pm-ink)}
@@ -12,13 +12,13 @@ body .sidebar .nav-item.active .drawn-icon,body .sidebar .nav-item:hover .drawn-
 body .sidebar .nav-shortcut{opacity:0;transition:opacity .25s var(--pm-ease)}
 body .sidebar .nav-item:hover .nav-shortcut{opacity:1}
 /* History reads like a list of titles: no marks, no slide, a soft row on hover. */
-body .history-item{font-size:14px;color:#d8d7d1;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
+body .history-item{font-size:13.5px;color:#d8d7d1;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
 body .history-item:hover{padding-left:12px;color:var(--pm-ink)}
 body .history-item .space-mark{display:none}
-body .history-label,body .history-label span{font-size:12.5px;color:#8f8e88}
+body .history-label,body .history-label span{font-size:11.5px;color:#8f8e88}
 
 /* ---------- Top bar ---------- */
-body .workspace-top .top-title{font-weight:500;color:#cfcec8}
+body .workspace-top .top-title{font-weight:500;color:#e4e3dd}
 
 /* ---------- Home ---------- */
 body .new-chat-content .greeting-row h1{font-size:46px}
@@ -117,7 +117,7 @@ body .files-page .pc-folder-row{border-color:#262624;background:#1a1a19;border-r
 
 /* The sidebar highlight glides to the page you open. */
 body .sidebar nav.glide-nav{position:relative}
-body .sidebar nav.glide-nav::before{content:'';position:absolute;left:0;right:0;top:0;height:var(--glide-h,36px);border-radius:9px;background:#252523;opacity:var(--glide-o,0);transform:translateY(var(--glide-y,0));pointer-events:none}
+body .sidebar nav.glide-nav::before{content:'';position:absolute;left:0;right:0;top:0;height:var(--glide-h,34px);border-radius:8px;background:#252523;opacity:var(--glide-o,0);transform:translateY(var(--glide-y,0));pointer-events:none}
 body .sidebar nav.glide-nav[data-ready]::before{transition:transform .55s var(--pm-ease),opacity .3s var(--pm-ease),height .3s var(--pm-ease)}
 body .sidebar nav.glide-nav .nav-item{position:relative}
 body .sidebar nav.glide-nav .nav-item.active{background:transparent}
@@ -153,7 +153,7 @@ html[data-quiet=true] body .visual-drafting .drafting-text{animation:none;-webki
 body .sidebar-bottom{border-top-color:transparent}
 body .account-button{border-radius:10px;transition:background .3s var(--pm-ease)}
 body .account-button:hover{background:#1d1d1c}
-body .account-button>span:not(.avatar){font-size:14px;font-weight:500}
+body .account-button>span:not(.avatar){font-size:13.5px;font-weight:500}
 
 /* Lists arrive in a short cascade: cards, file rows and folders fade up one after another, the first eight staggered
    and the rest together, so a long list never waits. Only on arrival; filtering or re-rendering doesn't replay it. */

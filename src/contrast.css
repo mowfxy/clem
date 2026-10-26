@@ -35,7 +35,7 @@ body .send-button:disabled{color:#6f6e68}
 
 
 /* Sidebar history grouped by day: quiet grey day labels, bright titles that fade out at the edge instead of an ellipsis. */
-body .sidebar-history{overflow-y:auto;overflow-x:hidden;scrollbar-width:none;min-height:0;padding-bottom:12px;mask-image:linear-gradient(#000 calc(100% - 18px),transparent)}
+body .sidebar-history{overflow-y:auto;overflow-x:hidden;scrollbar-width:none;min-height:0;padding-bottom:12px;mask-image:linear-gradient(#000 calc(100% - 28px),transparent)}
 body .sidebar-history::-webkit-scrollbar{display:none}
 body .history-group{margin-bottom:18px}
 body .history-group .history-label{margin:0 0 4px;min-height:30px;font-size:13px}
