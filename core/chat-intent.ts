@@ -24,3 +24,11 @@ export function smallTalk(text: string) {
   if (!plain || plain.split(" ").length > 8) return false;
   return ONLY_TALK.test(plain);
 }
+
+/** True when the message asks for the files sent in a subject or project chat to be kept there ("save this to the
+ *  project", "add these to Biology 101's files"). Without it, files sent in a chat stay in the normal Files tab. */
+export function asksToKeepInSpace(text: string, spaceName = "") {
+  const plain = text.toLowerCase().replace(/[’‘]/g, "'");
+  const place = ["project", "subject", "course", "class", ...(spaceName.trim() ? [spaceName.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")] : [])].join("|");
+  return new RegExp(`\\b(?:save|add|put|keep|store|move|file|upload|attach)\\b[^.?!\\n]{0,60}?\\b(?:in|into|to|under|with)\\b[^.?!\\n]{0,30}?(?:${place})`, "i").test(plain);
+}

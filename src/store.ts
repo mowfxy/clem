@@ -88,7 +88,12 @@ function restoreState(value: unknown): State {
       );
   if (typeof saved.name !== "string" || typeof saved.memory !== "string")
     throw Error("Invalid workspace settings.");
-  return { ...structuredClone(emptyState), ...saved } as State;
+  const state = { ...structuredClone(emptyState), ...saved } as State;
+  // 0.3.6 filed uploads sent in a subject or project chat under it. Sent files belong in the normal Files tab; ones kept
+  // there on request carry no chat, so a file still tagged with its chat is moved back.
+  const sent = new Set(state.files.filter((f) => f.chatId && !f.made && f.spaceId).map((f) => f.id));
+  if (!sent.size) return state;
+  return { ...state, files: state.files.map((f) => (sent.has(f.id) ? { ...f, spaceId: null, folderId: null } : f)), spaces: state.spaces.map((s) => ({ ...s, sources: s.sources.filter((id) => !sent.has(id)) })) };
 }
 export async function loadState(): Promise<State> {
   const owner = namespace;

@@ -146,7 +146,7 @@ import { pastedFiles, pasteTarget } from "./chat/paste";
 import { ComposerFiles } from "./chat/ComposerFiles";
 import { VisualSaveContext } from "./chat/visual-save";
 import { driveIntent, driveContext, linkedDriveIds, viewFormat, type DriveRef } from "../core/drive-search";
-import { smallTalk } from "../core/chat-intent";
+import { smallTalk, asksToKeepInSpace } from "../core/chat-intent";
 import "./conversation.css";
 import "./motion.css";
 import "./visuals/visuals-page.css";
@@ -1048,8 +1048,20 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (sending.length) {
       setPending((p) => p.filter((f) => !sending.includes(f)));
       // Tagged with this chat, so deleting the chat deletes what was sent in it (core/chat-files.ts).
-      const kept = sending.map(({ owner: _owner, ...f }) => ({ ...f, chatId: id }));
+      const kept = sending.map(({ owner: _owner, ...f }): StoredFile => ({ ...f, chatId: id }));
       patch((s) => ({ ...s, files: [...kept, ...s.files], spaces: s.spaces.map((x) => kept.some((f) => f.spaceId === x.id) ? { ...x, sources: [...new Set([...x.sources, ...kept.filter((f) => f.spaceId === x.id).map((f) => f.id)])] } : x) }));
+    }
+    // "Save this to the project": the files sent with this message (or, with none, the ones sent earlier in this chat)
+    // move into the subject's or project's files and stay when the chat is deleted.
+    const space = spaceId ? stateRef.current.spaces.find((x) => x.id === spaceId) : undefined;
+    if (space && asksToKeepInSpace(prompt, space.name)) {
+      const ids = new Set(user.attachments.length ? user.attachments : stateRef.current.files.filter((f) => f.chatId === id && !f.made).map((f) => f.id));
+      const moving = stateRef.current.files.filter((f) => ids.has(f.id) && !f.made && !f.spaceId);
+      if (moving.length) {
+        const moved = new Set(moving.map((f) => f.id));
+        patch((s) => ({ ...s, files: s.files.map((f) => moved.has(f.id) ? (({ chatId: _chat, ...rest }) => ({ ...rest, spaceId: space.id, folderId: null }))(f) : f), spaces: s.spaces.map((x) => x.id === space.id ? { ...x, sources: [...new Set([...x.sources, ...moved])] } : x) }));
+        setToast(moving.length === 1 ? `${moving[0].name} saved to ${space.name}.` : `${moving.length} files saved to ${space.name}.`);
+      }
     }
     const chat = activeChat || {
       id,
@@ -1989,10 +2001,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   }
   function upload(files: FileList | null, attachNow = false, target?: { spaceId: string; folderId: string | null }) {
     if (!files) return;
-    const destination = target ? target.spaceId : spaceId;
-    const batch = Array.from(files);
     const owner=ownerRef.current;
     const toBox = !target && (route === "/app" || attachNow);
+    // Files sent in a chat go to the normal Files tab, even in a subject or project: they join its files only when the
+    // message asks for that (see send), and otherwise are deleted with the chat.
+    const destination = target ? target.spaceId : toBox ? null : spaceId;
+    const batch = Array.from(files);
     fileQueue.current = fileQueue.current.then(async () => {
       const added: StoredFile[] = [];
       const reused: StoredFile[] = [];
@@ -3105,7 +3119,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           e.target.value = "";
         }}
       />
-      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>{state.chats.find(c=>c.id===deleteChatId)?.spaceId?"This removes the conversation and the files sent in it from this device. Files Clem made stay in this subject or project's files.":"This removes the conversation from this device, with the files sent in it and the files Clem made in it. Memory you kept stays."}</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);if(desktop&&/^[a-zA-Z0-9_-]{1,80}$/.test(id))void desktop.invoke({action:"memoryForgetChat",chats:[id]}).catch(()=>{});deleteChatFiles([id]);patch(s=>({...s,usageArchive:archiveChats(s.usageArchive,s.chats.filter(c=>c.id===id)),chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
+      {deleteChatId&&<Modal title="Delete conversation?" onClose={()=>setDeleteChatId(null)}><p>{state.chats.find(c=>c.id===deleteChatId)?.spaceId?"This removes the conversation and the files sent in it from this device. Files Clem made, and files you asked to keep here, stay in this subject or project.":"This removes the conversation from this device, with the files sent in it and the files Clem made in it. Memory you kept stays."}</p><div className="modal-actions"><button onClick={()=>setDeleteChatId(null)}>Cancel</button><button className="primary" onClick={async()=>{const id=deleteChatId;stopChat(id);try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.find(c=>c.id===id)?.messages.flatMap(m=>m.plan?[m.plan]:[])||[]);if(desktop&&/^[a-zA-Z0-9_-]{1,80}$/.test(id))void desktop.invoke({action:"memoryForgetChat",chats:[id]}).catch(()=>{});deleteChatFiles([id]);patch(s=>({...s,usageArchive:archiveChats(s.usageArchive,s.chats.filter(c=>c.id===id)),chats:s.chats.filter(c=>c.id!==id),visuals:s.visuals.filter(v=>v.chatId!==id)}));if(chatId===id){if(route==="/app")newChat();else setChatId(null);}setDeleteChatId(null);}catch{setToast("Could not delete this conversation. Please try again.");}}}>Delete conversation</button></div></Modal>}
       {modal && (
         <Modal
           title={
