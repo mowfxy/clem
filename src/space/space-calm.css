@@ -85,5 +85,7 @@ html[data-quiet=true] :is(.sp-hero,.sp-body){animation:none}
 .sp-files .sp-toolbar.is-empty{display:none}
 @media (hover:hover){
   .sp-file :is(.sp-rename,.sp-menu,.sp-source:not(:has(input:checked))),.sp-folder .sp-menu{opacity:0;transition:opacity .3s var(--sp-ease,cubic-bezier(.16,1,.3,1))}
-  .sp-files .sp-file:is(:hover,:focus-within) :is(.sp-rename,.sp-menu,.sp-source),.sp-folder:is(:hover,:focus-within) .sp-menu,.sp-menu:has([aria-expanded=true]){opacity:1}
+  .sp-files .sp-file:is(:hover,:focus-within) :is(.sp-rename,.sp-menu,.sp-source),.sp-folder:is(:hover,:focus-within) .sp-menu{opacity:1}
+  /* An open menu always shows, row hovered or not (the hidden rule above outranks a plain .sp-menu:has(...)). */
+  :is(.sp-file,.sp-folder) .sp-menu.sp-menu.sp-menu:has(>[aria-expanded=true]){opacity:1}
 }
