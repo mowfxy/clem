@@ -27,10 +27,14 @@ const ago = (at?: number) => {
 /** Beside the name in the sidebar, the size of the settings button: a ring filling while a new version downloads, then
  *  a full coral ring with an arrow up to restart into it. With automatic updates off, an empty ring with an arrow down
  *  downloads the version on offer. Nothing at all otherwise. */
-export function UpdateIndicator({ state, onInstall, onOpen }: { state: UpdateState | null; onInstall: () => void; onOpen: () => void }) {
+export function updateChipPhase(state: UpdateState | null) {
   if (!state?.supported) return null;
   const phase = state.phase === "available" && !state.automatic ? "available" : state.phase;
-  if (phase !== "downloading" && phase !== "ready" && phase !== "available") return null;
+  return phase === "downloading" || phase === "ready" || phase === "available" ? phase : null;
+}
+export function UpdateIndicator({ state, onInstall, onOpen }: { state: UpdateState | null; onInstall: () => void; onOpen: () => void }) {
+  const phase = updateChipPhase(state);
+  if (!state || !phase) return null;
   const percent = phase === "ready" ? 100 : phase === "downloading" ? state.percent ?? 0 : 0, r = 8.5, length = 2 * Math.PI * r;
   const [label, click] = phase === "ready" ? [`Restart to update Clem to ${state.next}`, onInstall]
     : phase === "downloading" ? [`Downloading Clem ${state.next}, ${percent} percent`, onOpen]

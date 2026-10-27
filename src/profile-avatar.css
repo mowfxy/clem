@@ -20,6 +20,13 @@
 .av-slide{animation:av-slide 8s linear infinite}
 .av-pulse{animation:av-pulse 3s ease-in-out infinite}
 .av-breathe{animation:av-breathe 4.5s ease-in-out infinite}
+/* The sidebar's copy is on screen all day: its slow turns and slides step 15 times a second (as the new-chat sky draws),
+   under half a pixel a step at that size, so the compositor is not redrawing it at the display's full rate. */
+.sidebar-bottom .av-spin{animation-timing-function:steps(135)}
+.sidebar-bottom .av-turn{animation-timing-function:steps(390)}
+.sidebar-bottom .av-turn.slow{animation-timing-function:steps(600)}
+.sidebar-bottom .av-drift{animation-timing-function:steps(90)}
+.sidebar-bottom .av-slide{animation-timing-function:steps(120)}
 .avatar-resting *{animation-play-state:paused!important}
 @keyframes av-spin{to{transform:rotate(360deg)}}
 @keyframes av-drift{to{transform:translateX(50%)}}
