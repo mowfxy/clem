@@ -44,7 +44,7 @@ type Detail={user:Person;owner:boolean;moderation:{status:string;reason:string;u
 function PersonDrawer({id,staff,onClose,onChanged,go}:{id:string;staff:Staff;onClose:()=>void;onChanged:()=>void;go:Go}){
   const toast=useToast();
   const {data,error,loading,reload}=useLoad(()=>adminApi<Detail>('/admin/users/'+id),[id]);
-  const [dialog,setDialog]=useState<null|'suspend'|'username'>(null);
+  const [dialog,setDialog]=useState<null|'suspend'>(null);
   const [busy,setBusy]=useState(false);
   const [note,setNote]=useState('');
   const admin=staff.role!=='support';
@@ -58,8 +58,8 @@ function PersonDrawer({id,staff,onClose,onChanged,go}:{id:string;staff:Staff;onC
       <dl className="adm-facts">
         <div><dt>Products</dt><dd>{d.user.products?.length?d.user.products.map(productName).join(', '):'None yet'}</dd></div>
         <div><dt>Account created</dt><dd>{date(d.directory?.created_at||d.user.created_at)}</dd></div>
-        <div><dt>Username</dt><dd className="adm-fact-edit">{d.user.username?'@'+d.user.username:'Not chosen yet'}{admin&&<button className="adm-link" onClick={()=>setDialog('username')}>{d.user.username?'Change':'Set'}</button>}</dd></div>
         {!!d.user.products?.includes('clem')&&<>
+        <div><dt>Clem username</dt><dd>{d.user.username?'@'+d.user.username:'—'}</dd></div>
         <div><dt>Clem setup</dt><dd>{(d.user.setup_step??0)>=4?'Finished':`${d.user.setup_step??0} of 4 steps`}</dd></div>
         <div><dt>First in Clem</dt><dd>{date(d.user.first_seen_at)}</dd></div>
         <div><dt>Last in Clem</dt><dd>{ago(d.user.last_seen_at)}</dd></div></>}
@@ -81,10 +81,6 @@ function PersonDrawer({id,staff,onClose,onChanged,go}:{id:string;staff:Staff;onC
       {!!d.history.length&&<section className="adm-drawer-section"><h3>History</h3><ul className="adm-timeline compact">{d.history.map(h=><li key={h.id}><span className="dot"/><div><strong>{h.action.replace(/[._]/g,' ')}</strong><small>{h.actor_email} · {ago(h.created_at)}</small>{h.detail&&<p>{h.detail}</p>}</div></li>)}</ul></section>}
     </>}
   </aside>
-  {dialog==='username'&&d&&<Modal title="Change username" line="One username for every M4 Labs product." onClose={()=>setDialog(null)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void act('username',{username:String(f.get('username'))},'Username changed');}}>
-    <label>Username<input name="username" required minLength={3} maxLength={24} pattern="[A-Za-z][A-Za-z0-9_]{2,23}" defaultValue={d.user.username||''} autoComplete="off" spellCheck={false} autoFocus/></label>
-    <p className="adm-muted">3–24 letters, numbers or underscores, starting with a letter. The person sees the new name the next time a product loads their account.</p>
-    <footer><button type="button" onClick={()=>setDialog(null)}>Cancel</button><button className="adm-primary" disabled={busy}>Save</button></footer></form></Modal>}
   {dialog==='suspend'&&<Modal title="Suspend this account" onClose={()=>setDialog(null)}><form className="adm-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);const days=String(f.get('days'));void act('suspend',{reason:String(f.get('reason')),days:days==='forever'?null:Number(days)},'Account suspended');}}>
     <label>Reason shown to the person<textarea name="reason" required minLength={3} maxLength={500} rows={3} placeholder="Explain what happened and how to appeal."/></label>
     <label>Length<Select name="days" defaultValue="7" options={[{value:'1',label:'1 day'},{value:'7',label:'1 week'},{value:'30',label:'1 month'},{value:'forever',label:'Until lifted'}]}/></label>
