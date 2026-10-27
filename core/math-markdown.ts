@@ -69,7 +69,8 @@ function prose(text: string, first: boolean, last: boolean) {
   text = (first ? '\n' : '\u0000') + text + (last ? '\n' : '\u0000');
   // Bracket delimiters and bare environments become $$…$$ first, so the dollar pass sees one dialect.
   text = text
-    .replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => display(m))
+    // \[…\] in a table row stays on its line: a line break there would end the table.
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_, m: string, at: number, all: string) => !m.includes('\n') && /^[ \t]*\|/.test(all.slice(all.lastIndexOf('\n', at) + 1)) ? `$$${m.trim()}$$` : display(m))
     .replace(/\\\((.+?)\\\)/g, (_, m) => `$$${m}$$`);
   // Existing $$…$$ is kept as is (display when it spans lines or stands alone on its line); only the text between is scanned.
   return text.split(/(\$\$[\s\S]+?\$\$)/g).map((part, i) => {
@@ -94,5 +95,27 @@ function prose(text: string, first: boolean, last: boolean) {
 /** Rewrites every maths dialect into remark-math's $$…$$, leaving code spans and fenced blocks untouched. */
 export function normalizeMath(text: string) {
   const parts = text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g);
-  return parts.map((part, i) => (i % 2 ? part : prose(part, i === 0, i === parts.length - 1))).join('');
+  return tableMath(parts.map((part, i) => (i % 2 ? part : prose(part, i === 0, i === parts.length - 1))).join(''));
 }
+
+const DELIMITER_ROW = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/;
+/**
+ * Maths inside a Markdown table. A table splits its rows at every "|", including the bars of |x|, \left|…\right| and
+ * \|v\|, which cut a formula in two and left "$$dQ = \sum \left" printed as text. In table rows those bars become
+ * \vert and \Vert, which draw the same. Display maths has no place in a cell, so a cell's $$…$$ stays inline.
+ */
+function tableMath(text: string) {
+  const lines = text.split('\n');
+  let fenced = false, inTable = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^[ \t]*```/.test(line)) { fenced = !fenced; inTable = false; continue; }
+    if (fenced) continue;
+    if (DELIMITER_ROW.test(line) && i > 0 && lines[i - 1].includes('|')) { inTable = true; lines[i - 1] = barsInMath(lines[i - 1]); continue; }
+    if (!inTable) continue;
+    if (!line.trim() || !line.includes('|')) { inTable = false; continue; }
+    lines[i] = barsInMath(line);
+  }
+  return lines.join('\n');
+}
+const barsInMath = (row: string) => row.replace(/\$\$([^\n]+?)\$\$/g, (_, m: string) => '$$' + m.replace(/\\\|/g, '\\Vert ').replace(/(?<!\\)\|/g, '\\vert ') + '$$');

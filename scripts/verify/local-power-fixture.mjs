@@ -150,7 +150,14 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
           case "shareReveal": return { ok: true };
           case "chat": {
             const system = r.messages[0]?.content || "", all = r.messages.map((m) => m.content).join("\n");
-            if (system.includes("You edit a document that Clem typeset")) stream(r.id, JSON.stringify({ summary: "Made every question harder and added an answer key.", spec: harderWorksheet }));
+            // Edits to a Clem-made document come back as plain-text @@@ blocks (core/edit-patch.ts), only the parts that change.
+            if (system.includes("You edit a document that Clem typeset")) {
+              const was = worksheetSpec.sections.length, block = (s) => `HEADING: ${s.heading}\n${s.text}`;
+              stream(r.id, ["SUMMARY: Made every question harder and added an answer key.", `@@@ SET subtitle\n${harderWorksheet.subtitle}`,
+                ...harderWorksheet.sections.slice(0, was).map((s, i) => `@@@ SECTION ${i + 1}\n${block(s)}`),
+                ...worksheetSpec.sections.slice(harderWorksheet.sections.length).map((_, i) => `@@@ DELETE ${harderWorksheet.sections.length + i + 1}`),
+                ...harderWorksheet.sections.slice(was).map((s) => `@@@ INSERT AFTER ${was}\n${block(s)}`)].join("\n"));
+            }
             else if (system.includes("You edit an existing PDF in place")) stream(r.id, JSON.stringify(handoutEdits));
             else if (/worksheet PDF/.test(all)) {
               const id = crypto.randomUUID(), spec = { ...worksheetSpec, title: "Week 3 worksheet", subtitle: "Biology 101 · Cells and membranes" };

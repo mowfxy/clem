@@ -9,11 +9,14 @@
 const LATEX = /^(?:f[a-z]|b[a-z]|n(?:abla|eq|eg|u|leq|geq|subset|exists|parallel|ewline)\b|t(?:heta|au|imes|ext|frac|o|ilde|op|riangle|herefore)\b|r(?:ho|ight|angle|ceil|floor|ightarrow|m)\b)/;
 
 /** Escapes what JSON does not allow inside strings, leaving everything outside strings alone. */
-export function mendJsonStrings(text: string) {
+export function mendJsonStrings(text: string, { quotes = false } = {}) {
   let out = '', inString = false;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (!inString) { out += c; if (c === '"') inString = true; continue; }
+    // With `quotes`, a quote ends the string only where JSON could go on after it; any other is a quote in the text
+    // ("the "inconclusive" case") that the model forgot to escape.
+    if (c === '"' && quotes && !closes(text, i + 1)) { out += '\\"'; continue; }
     if (c === '"') { out += c; inString = false; continue; }
     if (c === '\\') {
       const next = text[i + 1] ?? '';
@@ -27,6 +30,15 @@ export function mendJsonStrings(text: string) {
     else out += c;
   }
   return out;
+}
+
+/** Whether what follows a quote is what can follow the end of a JSON string: , : } ] or the end. After a comma, the next
+ *  thing must start a value or key, so "a "b", c" keeps its inner quotes as text. */
+function closes(text: string, at: number) {
+  const rest = /^\s*([\s\S]?)/.exec(text.slice(at, at + 200))!, c = rest[1];
+  if (c === '' || c === '}' || c === ']' || c === ':') return true;
+  if (c !== ',') return false;
+  return /^\s*,\s*(?:["{[\]}\d-]|true|false|null)/.test(text.slice(at, at + 200));
 }
 
 /** The outermost {…} (or […]) of a model's reply, parsed, mending strings when the plain parse fails or would turn LaTeX into
@@ -47,5 +59,9 @@ export function parseModelJson<T = any>(raw: string, missing = 'The reply held n
 function readBody(body: string) {
   // A strict parse would accept "\frac" as a form feed followed by "rac", so mend first whenever such an escape is there.
   if (!/\\[bfnrt]/.test(body)) { try { return JSON.parse(body); } catch { /* mend below */ } }
-  return JSON.parse(mendJsonStrings(body));
+  try { return JSON.parse(mendJsonStrings(body)); }
+  catch (error) {
+    // Last, quotes the model left unescaped inside strings; the first error is kept when even that does not help.
+    try { return JSON.parse(mendJsonStrings(body, { quotes: true })); } catch { throw error; }
+  }
 }
