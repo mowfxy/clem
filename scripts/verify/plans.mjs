@@ -103,7 +103,7 @@ try {
   await page.evaluate(() => { location.hash = "/app/subjects"; });
   const late = page.locator(".lib-card-late");
   await late.waitFor({ timeout: 5000 });
-  check((await late.textContent()).trim() === "1", "the Biology card shows 1 overdue");
+  check((await late.locator("b").textContent()).trim() === "1", "the Biology card shows 1 overdue");
   await page.locator(".lib-grid").screenshot({ path: `${out}/subject-card.png` });
 
   // 4. The Plan tab.

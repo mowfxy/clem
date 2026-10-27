@@ -126,23 +126,46 @@ dialog.app-modal .modal-actions button{margin:0}
 
 
 
+/* Memory: a ledger of what Clem keeps. Each memory reads as a lead and dated points, not a paragraph; what Clem picked
+   up on its own is marked New and waits for Keep or Not right, under the words rather than beside the options. */
+.memory-panel{display:grid;gap:22px}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lede{margin:-8px 0 0;font-size:12.5px;color:#8a8982;font-variant-numeric:tabular-nums}
+.memory-lede .memory-fresh{color:#d9c48f}
+.memory-group h4{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}
+.memory-count{font:500 11.5px/1 var(--sans);color:#6f6e68;font-variant-numeric:tabular-nums}
+.memory-group>ul{list-style:none;margin:0;padding:0;border:1px solid #2b2b28;border-radius:14px;background:#171716}
+.memory-group>ul>li{position:relative;display:flex;align-items:flex-start;gap:12px;padding:16px 10px 15px 18px;color:#e6e5de}
+.memory-group>ul>li+li{border-top:1px solid #262624}
+.memory-group>ul>li:first-child{border-radius:14px 14px 0 0}
+.memory-group>ul>li:last-child{border-radius:0 0 14px 14px}
+.memory-group>ul>li:only-child{border-radius:14px}
+/* New: a gold rule down the left edge, the only colour on the row until it is kept. */
+.memory-group>ul>li.learned::before{content:'';position:absolute;left:-1px;top:14px;bottom:14px;width:2px;border-radius:2px;background:#d9c48f}
+.memory-body{flex:1;min-width:0;display:grid;gap:10px}
+.memory-words{display:grid;gap:8px}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lead{margin:0;font:400 14px/1.5 var(--sans);color:#ecebe4;text-wrap:pretty}
+.memory-points{display:grid;gap:0;margin:0;padding:0;list-style:none;border-left:1px solid #2f2f2c}
+.memory-points li{display:flex;align-items:baseline;gap:14px;padding:4px 0 4px 14px;font:400 13.5px/1.45 var(--sans);color:#cfcec7}
+.memory-points li>span{flex:1;min-width:0;text-wrap:pretty}
+.memory-points li{position:relative}
+.memory-points li::before{content:'';position:absolute;left:-3px;top:calc(4px + .72em - 2.5px);width:5px;height:5px;border-radius:50%;background:#171716;box-shadow:inset 0 0 0 1.5px #77766f}
+.memory-points time{flex:none;min-width:46px;padding:2px 7px;border-radius:6px;background:#ffffff08;font:500 11.5px/1.3 var(--sans);font-variant-numeric:tabular-nums;color:#a9a8a0;text-align:center}
+.memory-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:11.5px;line-height:1.4;color:#77766f}
+.memory-tag{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;background:#ffffff0a;color:#a9a8a0;font:500 11px/1 var(--sans)}
+.memory-tag.new{background:#d9c48f1a;color:#e3cf9b}
+.memory-review{display:flex;align-items:center;gap:6px;margin-top:2px}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review button{display:inline-flex;align-items:center;gap:6px;min-height:30px;margin:0;padding:0 12px;border-radius:9px;font:500 12.5px/1 var(--sans);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review .memory-keep{border:1px solid #d9c48f55;background:#d9c48f14;color:#ead7a4}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review .memory-keep:hover{border-color:#d9c48f99;background:#d9c48f24;color:#f5e6bd}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review .memory-drop{border:1px solid transparent;background:transparent;color:#8a8982}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review .memory-drop:hover{background:#ffffff0a;color:#e6e5de}
+.memory-actions{display:flex;align-items:center;flex:none;margin-top:-4px}
+.memory-group>ul>li:not(:hover):not(:focus-within) .memory-actions .sp-menu:not(:has([aria-expanded=true])){opacity:.35}
+.memory-actions .sp-menu{position:relative;transition:opacity .15s}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .sp-menu-trigger{display:grid;place-items:center;width:30px;height:30px;min-height:30px;margin:0;padding:0;border:0;border-radius:8px;background:transparent;color:#a3a29a}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .sp-menu-trigger:hover,:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .sp-menu-trigger[aria-expanded=true]{background:#ffffff0d;color:#f0efe9}
+.memory-actions .sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:20}
 /* Memory: a quiet list of what Clem keeps, grouped by where it applies, with one field to add more. */
-.memory-panel{display:grid;gap:18px}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lede{margin:-6px 0 0;font-size:12px;color:#8a8982}
-.memory-group h4{margin:0 0 8px;font:400 11px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:#8a8982}
-.memory-group ul{list-style:none;margin:0;padding:0;border:1px solid #2e2e2b;border-radius:12px;background:#181817;overflow:hidden}
-.memory-group li{display:flex;align-items:center;gap:10px;min-height:44px;padding:9px 8px 9px 14px;font-size:13px;font-weight:400;line-height:1.5;color:#e6e5de}
-.memory-group li+li{border-top:1px solid #2a2a27}
-.memory-text{flex:1;min-width:0;white-space:pre-wrap;font-weight:400!important}
-.memory-group li.learned .memory-text{color:#bdbcb4}
-.memory-group li.learned .memory-text .drawn-icon{display:inline-block;margin:0 7px -2px 0;color:#c9b27a}
-.memory-actions{display:flex;align-items:center;gap:2px;flex:none}
-.memory-group li:not(.learned) .memory-actions{opacity:0;transition:opacity .15s}
-.memory-group li:hover .memory-actions,.memory-group li:focus-within .memory-actions{opacity:1}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions button{min-height:28px;margin:0;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#a3a29a;font-size:12px}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions button:hover{background:#ffffff0d;color:#f0efe9}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .memory-keep{color:#e3cf9b}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .memory-icon{width:28px;padding:0}
 .memory-empty{display:grid;justify-items:center;gap:10px;padding:26px 18px;border:1px dashed #33332f;border-radius:14px;text-align:center}
 .memory-empty-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#ffffff08;color:#c9c8c0}
 :is(dialog.settings-dialog,.sp-memory) .memory-empty p{margin:0;max-width:300px;font-size:13px;color:#9b9a93}
@@ -157,10 +180,8 @@ dialog.app-modal .modal-actions button{margin:0}
 .memory-none{margin:0;font-size:13px;color:#9b9a93}
 .memory-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
 .memory-group-head h4{margin:0}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-keep-all{min-height:24px;margin:0;padding:0 8px;border:0;border-radius:7px;background:transparent;color:#e3cf9b;font-size:11.5px}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-keep-all{min-height:24px;margin:0 0 0 auto;padding:0 8px;border:0;border-radius:7px;background:transparent;color:#e3cf9b;font-size:11.5px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-keep-all:hover{background:#ffffff0d}
-.memory-body{flex:1;min-width:0;display:grid;gap:3px}
-.memory-meta{font-size:11.5px;line-height:1.4;color:#7d7c75}
 .memory-edit,.memory-place{display:grid;gap:8px;margin:2px 0 4px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit textarea{width:100%;min-height:0;margin:0;padding:8px 10px;border:1px solid #3a3a36;border-radius:9px;background:#141413;color:#e6e5de;font:400 13px/1.5 var(--sans);resize:vertical}
 .memory-place label{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#bdbcb4}
@@ -173,13 +194,3 @@ dialog.app-modal .modal-actions button{margin:0}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions button{min-height:28px;margin:0;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#a3a29a;font-size:12px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions button:hover{background:#ffffff0d;color:#f0efe9}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions .memory-keep{color:#e3cf9b}
-.memory-group li{align-items:flex-start}
-.memory-actions{margin-top:-2px}
-.memory-actions .sp-menu{position:relative}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .sp-menu .icon-button{width:28px;min-height:28px;height:28px;padding:0;display:grid;place-items:center}
-.memory-actions .sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:20}
-/* The ⋯ menu opens past the list's edge, so the list does not clip; its rows keep the rounded corners instead. */
-.memory-group ul{overflow:visible}
-.memory-group li:first-child{border-radius:12px 12px 0 0}
-.memory-group li:last-child{border-radius:0 0 12px 12px}
-.memory-group li:only-child{border-radius:12px}

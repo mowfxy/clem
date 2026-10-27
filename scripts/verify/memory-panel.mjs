@@ -15,6 +15,8 @@ try {
       record("11111111-1111-4111-8111-111111111111", "user:me", "The user prefers short answers with one worked example.", true, { kind: "preference", key: "pref:short" }),
       record("22222222-2222-4222-8222-222222222222", "subject:space-test", "The user's calculus exam is on 12 November.", false, { expiresAt: "2026-11-13T00:00:00.000Z" }),
       record("33333333-3333-4333-8333-333333333333", "subject:space-test", "The user finds integration by parts hard.", false),
+      record("55555555-5555-4555-8555-555555555555", "subject:space-test", "The user is preparing for a DSA lab test and EC quiz on October 15, 2026; a DSA midterm covering L1–6 on October 22; Physics 3 covering L1–4 on October 25; EC 1 on October 27; and Math 3 covering L1–9 on October 29, using worksheets 1–5 selectively.", true, { expiresAt: "2026-10-30T00:00:00.000Z" }),
+      record("66666666-6666-4666-8666-666666666666", "user:me", "The user prefers study plans that work backward from deadlines, show fixed dates as milestones, break work into dated tasks small enough to start immediately, use one plan block per subject or project, and ask only when a deadline or required work is missing.", false, { kind: "preference", key: "pref:plans" }),
       record("44444444-4444-4444-8444-444444444444", "project:space-project", "The user's thesis models heat flow in rods.", true, { sharedWith: ["subject:space-test"] }),
     ];
     window.clemDesktop = {
@@ -75,14 +77,14 @@ try {
   await page.getByRole("button", { name: /^Calculus\b/ }).click();
   await page.getByRole("tab", { name: /^Memory/ }).click();
   const panel = page.locator(".sp-memory .memory-panel");
-  await panel.getByText("3 things remembered here, plus 1 about you that applies everywhere").waitFor();
+  await panel.getByText("4 things remembered here, plus 2 about you that apply everywhere").waitFor();
   await panel.getByText("Shared from other spaces").waitFor();
   await panel.getByText("from Thesis", { exact: false }).waitFor();
   await panel.getByText("until", { exact: false }).first().waitFor();
-  await page.screenshot({ path: "artifacts/memory-subject.png" });
+  await page.locator(".sp-memory").screenshot({ path: "artifacts/memory-subject.png" });
   // Keep all keeps both learned memories.
   await panel.getByRole("button", { name: "Keep all 2" }).click();
-  await page.waitForFunction(() => window.memory.every((m) => m.confirmed));
+  await page.waitForFunction(() => window.memory.filter((m) => m.scope === "subject:space-test").every((m) => m.confirmed));
   // Edit one in place.
   await panel.getByRole("button", { name: /^Options for: The user finds integration/ }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();

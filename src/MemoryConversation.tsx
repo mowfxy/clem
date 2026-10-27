@@ -3,6 +3,7 @@ import { desktop } from "./desktop/bridge";
 import { Icon } from "./Icons";
 import { confirmDialog } from "./dialogs";
 import { Menu } from "./space/SpaceMenu";
+import { memoryPoints } from "../core/memory-points";
 type Fact = {
   id: string;
   text: string;
@@ -27,11 +28,27 @@ export function warmMemory() { if (desktop && !remembered) void desktop.invoke({
 const cleanError = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 const day = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "");
 const isPreference = (m: Fact) => m.kind === "preference" || !!m.key?.startsWith("pref:");
+/** Three dots: the options beside a memory. */
+const Dots = () => <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" fill="currentColor"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="12.5" cy="8" r="1.25" fill="currentColor"/></svg>;
+const Tick = () => <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.6l3 2.9 6.6-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+/** A memory's words as a lead and dated points, so a long sentence reads like a list. */
+function MemoryWords({ text }: { text: string }) {
+  const { lead, points } = memoryPoints(text);
+  return (
+    <div className="memory-words">
+      {lead && <p className="memory-lead">{lead}{points.length ? ":" : ""}</p>}
+      {points.length > 0 && (
+        <ul className="memory-points">
+          {points.map((p, i) => <li key={i}><span>{p.text}</span>{p.when && <time>{p.when}</time>}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
 /** One quiet line under a memory: how Clem came to know it, when, until when, and where else it applies. */
 function metaOf(m: Fact, labelFor: (scope: string) => string, home?: string) {
   const parts = [
-    isPreference(m) ? "How you like answers" : "",
-    m.confirmed ? (/chat/i.test(m.source?.locator || "") && /remember/i.test(m.source?.locator || "") ? "You asked Clem to remember" : "Kept") : "Learned from a chat",
+    m.confirmed ? (/chat/i.test(m.source?.locator || "") && /remember/i.test(m.source?.locator || "") ? "You asked Clem to remember" : /by you/i.test(m.source?.locator || "") ? "Added by you" : "Kept") : "Picked up in a chat",
     day(m.updatedAt),
     m.expiresAt ? "until " + day(m.expiresAt) : "",
     m.scope !== home && home && m.scope !== PROFILE ? "from " + labelFor(m.scope) : "",
@@ -106,11 +123,12 @@ export function MemoryConversation({
   const update = (id: string, change: { text?: string; scope?: string; sharedWith?: string[] }) => run(() => desktop!.invoke({ action: "memoryUpdate", id, ...change }));
   const keepAll = (items: Fact[]) => run(async () => { for (const m of items.filter((x) => !x.confirmed)) await desktop!.invoke({ action: "memoryConfirm", id: m.id }); });
   const count = total + (summary.trim() ? 1 : 0);
+  const fresh = (facts || []).filter((f) => !f.confirmed && (!only || f.scope === home || (home && f.sharedWith?.includes(home)))).length;
   const homes: MemoryPlace[] = [{ scope: PROFILE, label: "About you (everywhere)" }, ...places];
   return (
     <section className="memory-panel">
       <div className="memory-head">
-        <p className="memory-lede">{facts === null ? " " : count ? `${count} ${count === 1 ? "thing" : "things"} remembered${aboutYou ? ` here, plus ${aboutYou} about you that ${aboutYou === 1 ? "applies" : "apply"} everywhere` : ""}` : "Nothing remembered yet"}</p>
+        <p className="memory-lede">{facts === null ? " " : count ? <>{`${count} ${count === 1 ? "thing" : "things"} remembered${aboutYou ? ` here, plus ${aboutYou} about you that ${aboutYou === 1 ? "applies" : "apply"} everywhere` : ""}`}{fresh > 0 && <span className="memory-fresh"> · {fresh} new to review</span>}</> : "Nothing remembered yet"}</p>
         {total > 6 && (
           <label className="memory-search">
             <Icon name="search" size={13} />
@@ -128,7 +146,7 @@ export function MemoryConversation({
       {summary.trim() && onSummary && !query.trim() && (
         <div className="memory-group">
           <h4>{summaryLabel}</h4>
-          <ul><li><span className="memory-text">{summary.trim()}</span><span className="memory-actions"><button type="button" className="memory-icon" disabled={busy} aria-label="Forget your notes" aria-description="Forget" onClick={async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Clem stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); }}><Icon name="close" size={13} /></button></span></li></ul>
+          <ul><li><div className="memory-body"><MemoryWords text={summary.trim()} /></div><span className="memory-actions"><Menu label="Options for your notes" trigger={<Dots />} items={[{ label: "Forget", icon: "trash", danger: true, run: async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Clem stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); } }]} /></span></li></ul>
         </div>
       )}
       {groups.map(({ scope, items }) => {
@@ -137,7 +155,7 @@ export function MemoryConversation({
           <div className="memory-group" key={scope}>
             {(!only || scope === SHARED || learned > 1) && (
               <div className="memory-group-head">
-                {(scope === SHARED || !only) && <h4>{scope === SHARED ? "Shared from other spaces" : labelFor(scope)}</h4>}
+                {(scope === SHARED || !only) && <h4>{scope === SHARED ? "Shared from other spaces" : labelFor(scope)}<span className="memory-count">{items.length}</span></h4>}
                 {learned > 1 && <button type="button" className="memory-keep-all" disabled={busy} onClick={() => void keepAll(items)}>Keep all {learned}</button>}
               </div>
             )}
@@ -153,9 +171,21 @@ export function MemoryConversation({
                         <span className="memory-edit-actions"><button type="button" onClick={() => setEditing(null)}>Cancel</button><button type="submit" className="memory-keep" disabled={busy || !editing.text.trim()}>Save</button></span>
                       </form>
                     ) : (
-                      <span className="memory-text">{!m.confirmed && <Icon name="idea" size={13} />}{m.text}</span>
+                      <MemoryWords text={m.text} />
                     )}
-                    {editing?.id !== m.id && <span className="memory-meta">{metaOf(m, labelFor, only ? home : undefined)}</span>}
+                    {editing?.id !== m.id && (
+                      <span className="memory-meta">
+                        {!m.confirmed && <span className="memory-tag new">New</span>}
+                        {isPreference(m) && <span className="memory-tag">How you like answers</span>}
+                        <span>{metaOf(m, labelFor, only ? home : undefined)}</span>
+                      </span>
+                    )}
+                    {!m.confirmed && editing?.id !== m.id && placing?.id !== m.id && (
+                      <span className="memory-review">
+                        <button type="button" className="memory-keep" disabled={busy} aria-description="Clem picked this up in a chat. Keep it?" onClick={() => void act("memoryConfirm", m.id)}><Tick />Keep</button>
+                        <button type="button" className="memory-drop" disabled={busy} onClick={() => void act("memoryForget", m.id)}>Not right</button>
+                      </span>
+                    )}
                     {placing?.id === m.id && (
                       <form className="memory-place" onSubmit={async (e) => { e.preventDefault(); if (await update(m.id, { scope: placing.scope, sharedWith: placing.scope === PROFILE ? [] : placing.shared })) setPlacing(null); }}>
                         <label>Applies to
@@ -178,8 +208,7 @@ export function MemoryConversation({
                   </div>
                   {editing?.id !== m.id && placing?.id !== m.id && (
                     <span className="memory-actions">
-                      {!m.confirmed && <button type="button" className="memory-keep" disabled={busy} aria-description="Learned from a chat. Keep it?" onClick={() => void act("memoryConfirm", m.id)}>Keep</button>}
-                      <Menu label={"Options for: " + m.text.slice(0, 60)} items={[
+                      <Menu label={"Options for: " + m.text.slice(0, 60)} trigger={<Dots />} items={[
                         { label: "Edit", icon: "rename", run: () => { setPlacing(null); setEditing({ id: m.id, text: m.text }); } },
                         ...(homes.length > 1 ? [{ label: m.scope === PROFILE ? "Move to a project or subject" : "Where it applies…", run: () => { setEditing(null); setPlacing({ id: m.id, scope: m.scope, shared: m.sharedWith || [] }); } }] : []),
                         ...(only && home && m.scope !== home && m.sharedWith?.includes(home) ? [{ label: "Stop using here", run: () => void update(m.id, { sharedWith: (m.sharedWith || []).filter((s) => s !== home) }) }] : []),
