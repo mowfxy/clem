@@ -1,6 +1,6 @@
 import { desktop } from "../desktop/bridge";
 import { searchDocs, type SearchDoc } from "../../core/search";
-import { isGoogleFormat } from "../drive/drive";
+import { driveFolder, isGoogleFormat } from "../drive/drive";
 import type { Space, StoredFile } from "../../core/types";
 
 /**
@@ -18,6 +18,9 @@ export type Finder = {
   opened: StoredFile[];
   /** Drive files this answer's searches found, by id, so they can be attached. */
   found: Map<string, { name: string; mimeType: string; size?: number }>;
+  /** Google Drive folders linked to subjects and projects (this chat's own first): searched file by file, so a file
+   *  in one is found even when Drive's search of the whole Drive ranks others first. */
+  driveFolders?: () => { id: string; name: string; where: string }[];
   signal?: AbortSignal;
 };
 
@@ -59,16 +62,32 @@ async function find(finder: Finder, query: string, driveOnly = false) {
     const pages = pagesOf(h.doc.text);
     return { file: file.name, id: file.id, where: h.doc.meta, ...(pages ? { pages } : {}), excerpt: h.snippet.text.slice(0, 400) };
   });
+  // The linked Drive folders, every file in them: by name and path here, by what they say through Drive's own index.
+  const linked: { file: string; id: string; where: string }[] = [];
+  const add = (f: { id: string; name: string; mimeType: string; size?: number }, place: string) => {
+    if (/^(video|audio|image)\//.test(f.mimeType) || linked.some((x) => x.id === "drive:" + f.id)) return;
+    finder.found.set(f.id, { name: f.name, mimeType: f.mimeType, size: f.size });
+    linked.push({ file: f.name, id: "drive:" + f.id, where: place });
+  };
+  await Promise.all((finder.driveFolders?.() || []).slice(0, 8).map(async (folder) => {
+    try {
+      const found = await driveFolder(folder.id, query, false, 20);
+      const files = found.items.filter((i) => !i.folder);
+      const named = searchDocs(files.map((f) => ({ id: f.id, kind: "file", title: f.name, text: f.path || "", meta: "", updated: Date.parse(f.modified || "") || 0 })), query, 20).map((h) => files.find((f) => f.id === h.doc.id)!);
+      for (const f of [...named, ...found.hits]) add(f, `Google Drive folder "${folder.name}"${"path" in f && f.path ? " / " + f.path : ""} (linked to ${folder.where})`);
+    } catch { /* a folder that cannot be listed now is left out; Drive's own search below still runs */ }
+  }));
   // Google Drive, when it is connected: its own search, by name and content.
   let drive: unknown[] = [], driveNote: string | undefined;
   try {
     const found = await desktop!.invoke({ action: "driveSearch", query });
-    if (found?.connected) drive = (found.files || []).filter((f: { mimeType: string }) => !/^(video|audio|image)\//.test(f.mimeType)).slice(0, 8).map((f: { id: string; name: string; mimeType: string; size?: number }) => {
+    if (found?.connected) drive = (found.files || []).filter((f: { id: string; mimeType: string }) => !/^(video|audio|image)\//.test(f.mimeType) && !linked.some((x) => x.id === "drive:" + f.id)).slice(0, 8).map((f: { id: string; name: string; mimeType: string; size?: number }) => {
       finder.found.set(f.id, { name: f.name, mimeType: f.mimeType, size: f.size });
       return { file: f.name, id: "drive:" + f.id, where: "Google Drive" };
     });
     else driveNote = "Google Drive is not connected, so only files saved in Clem were searched.";
   } catch { driveNote = "Google Drive could not be searched right now."; }
+  drive = [...linked.slice(0, 20), ...drive];
   return {
     query,
     results: [...hits, ...drive],

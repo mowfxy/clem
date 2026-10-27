@@ -219,7 +219,9 @@ test("figure recipes come for the topic at hand, and none a request needs is lef
   for (const r of diagramRecipes) assert.ok(history.includes(JSON.stringify(r.figure)), `concept diagrams always go: ${r.name}`);
   assert.ok(!has(history, "renderCircuit") && !has(history, "renderOptics"));
   assert.match(history, /\{"action":"recipes"\} returns every recipe/);
-  assert.equal(await kinetraTool({ action: "recipes" }), (await import("../../desktop/kinetra-recipes.ts")).recipeText(allRecipes()));
+  const { recipeText, composeIndex } = await import("../../desktop/kinetra-recipes.ts");
+  assert.equal(await kinetraTool({ action: "recipes" }), recipeText(allRecipes()) + "\n" + composeIndex());
+  assert.ok(!has(history, "compose"), "no composed engineering figure in a history report");
   const circuits = kinetraInstructionsFor("Explain nodal analysis with dependent sources as a PDF");
   assert.ok(has(circuits, "renderCircuit") && has(circuits, "solveCircuit"), "the circuit recipe comes with its solver");
   assert.ok(!has(circuits, "renderOptics"));
@@ -303,7 +305,7 @@ test("PDF figures are checked together and every problem is reported at once", a
   );
   const spec = { title: "Motion <b>", sections: [{ heading: "Range", text: "Range $R=\\frac{v^2\\sin 2\\theta}{g}$\n\n| a | b |\n|---|---|\n| 1 | 2 |", figure: kinetraRecipes[1].figure, caption: "Launch at 40°" }] };
   const html = documentHtml(spec, await renderFigures(spec));
-  assert.match(html, /<math/);
+  assert.match(html, /<x-math><span class="katex">/);
   assert.match(html, /<table>/);
   assert.match(html, /<figure id="fig-1"><a class="figure-slot"[^>]*><img [^>]*src="data:image\/svg\+xml;base64,/);
   assert.match(html, /<span class="cap-label">Figure&#160;1:<\/span> Launch at 40°/);
@@ -451,7 +453,7 @@ test("professional layout: technical report title block, abstract, numbered sect
   assert.match(html, /Table <a class="ref" href="#tab-1">1<\/a>/);
   assert.match(html, /Section <a class="ref" href="#sec-2-1">2\.1<\/a>/);
   assert.match(html, /<span class="cite">\[<a href="#ref-1">1<\/a>\]<\/span>/);
-  assert.match(html, /<div class="katex-display">/);
+  assert.match(html, /<x-math><span class="katex-display">/);
   assert.match(html, /<li id="ref-1">Serway, R\. <em>Physics for Scientists and Engineers<\/em>/);
   assert.ok(!/Mowafy/i.test(html), "documents never use the app's fonts");
   // A report's text face is a serif chosen for it (desktop/pdf-design.ts), never a sans.
@@ -488,7 +490,7 @@ test("figures in documents and exported files are set in standard fonts", async 
   assert.match(standardFonts(svg, "'Palatino Linotype',serif"), /font-family="Palatino Linotype,serif">a/);
   const spec = { title: "T", sections: [{ text: "x", figure: kinetraRecipes[1].figure }] };
   const html = documentHtml(spec, await renderFigures(spec));
-  const image = Buffer.from(/base64,([^"]+)"/.exec(html)![1], "base64").toString();
+  const image = Buffer.from(/src="data:image\/svg\+xml;base64,([^"]+)"/.exec(html)![1], "base64").toString();
   assert.ok(image.includes("<svg") && !/Mowafy/.test(image));
 });
 
@@ -501,7 +503,7 @@ test("definitions, theorems, examples and proofs print as numbered environments"
   const doc = documentHtml({ title: "T", sections: [{ heading: "A", text: "x" }, { heading: "B", text: "> [!THEOREM] T\n> Claim.\n\n> [!EXAMPLE]\n> Case." }] }, []);
   assert.match(doc, /Theorem 2\.1<\/span>/);
   assert.match(doc, /Example 2\.2<\/span>/);
-  assert.match(markdownHtml("$\\ce{H2O}$ and $\\vb{F} = \\dv{p}{t}$ and \\(x^2\\)"), /<math/);
+  assert.match(markdownHtml("$\\ce{H2O}$ and $\\vb{F} = \\dv{p}{t}$ and \\(x^2\\)"), /<x-math>/);
   assert.ok(!/katex-error/.test(markdownHtml("$\\ce{2H2 + O2 -> 2H2O}$ $\\SI{3}{m/s}$ $\\pdv{f}{x}$")), "chemistry and physics shortcuts render in PDFs as in the chat");
 });
 
@@ -566,4 +568,73 @@ test("printed PDFs are read quickly: page count, section pages and bookmarks", a
   const outlines = marked.catalog.lookup(PDFName.of("Outlines")) as any;
   assert.ok(outlines && outlines.get(PDFName.of("First")));
   assert.ok(marked.catalog.lookup(PDFName.of("Dests")) && !(marked.catalog.lookup(PDFName.of("Dests")) instanceof PDFArray));
+});
+
+test("composed engineering figures render with the real worker, come with their topic, and failures say what to fix", async () => {
+  const { composeRecipes, recipesFor, recipeTopics } = await import("../../desktop/kinetra-recipes.ts");
+  const { needsKinetra, composeGuide } = await import("../../desktop/kinetra-runtime.ts");
+  for (const recipe of composeRecipes) {
+    assert.ok(recipeTopics[recipe.name]?.test(recipe.name + " " + recipe.use), `${recipe.name} has a topic`);
+    const svg = await kinetraCall(recipe.figure);
+    assert.match(svg, /^<svg[\s\S]*<\/svg>\s*$/, recipe.name);
+    assert.deepEqual(textProblems(svg), [], recipe.name);
+  }
+  // Only the request's topic brings a model (each is kB); by name, any of them.
+  const beam = kinetraInstructionsFor("Draw the shear force and bending moment diagrams for a simply supported beam in a PDF");
+  assert.ok(beam.includes("composed: beam shear and bending moment") && !beam.includes("composed: Mohr's circle"));
+  assert.equal(recipesFor("a PDF on lenses, logic gates and a mass on a spring").composed, 0);
+  assert.equal(recipesFor("Solve this", { pictures: true }).composed, 0, "pictures do not bring every composed model");
+  assert.match(await kinetraTool({ action: "recipes", name: "mohr" }), /"fn":"compose"/);
+  assert.match(await kinetraTool({ action: "recipes", name: "nothing like this" }), /Composed figures \(clem compose/);
+  for (const ask of ["Draw a Bode plot of this transfer function", "a state machine for a sequence detector", "Mohr's circle for this stress state", "an op-amp inverting amplifier"]) assert.ok(needsKinetra(ask), ask);
+  // The Clem skill: how to call it here, no imports or npm scripts, and the bundled cheat-sheet.
+  const guide = await kinetraTool({ action: "skill", name: "kinetra-compose" });
+  assert.equal(guide, composeGuide);
+  assert.equal(await kinetraTool({ action: "skill", name: "compose" }), composeGuide);
+  assert.match(guide, /"fn":"compose"/);
+  assert.match(guide, /composeParts/);
+  assert.match(guide, /E_COLLISION/);
+  assert.match(guide, /coilSpring/);
+  assert.doesNotMatch(guide, /\bimport \{|npm run|examples\/toolkit/);
+  // Parts on demand: just the ones asked for, with an example, and a hint for a wrong name.
+  const parts = await kinetraCall({ module: "clem", fn: "composeParts", args: [["beam", "spring"]] });
+  assert.deepEqual(parts.parts.map((p: any) => p.type), ["beam"]);
+  assert.ok(parts.parts[0].anchors.includes("top(t)") && parts.parts[0].example.length);
+  assert.match(parts.unknown[0], /coilSpring/);
+  assert.ok((await kinetraCall({ module: "clem", fn: "composeParts", args: [] })).mechanics.includes("truss"));
+  const mohr = composeRecipes.find((r) => r.name === "composed: Mohr's circle")!.figure.args[0] as any;
+  const checked = await kinetraCall({ module: "clem", fn: "composeCheck", args: [mohr] });
+  assert.ok(checked.ok && checked.checks.length && checked.checks.every((c: any) => c.pass));
+  // A broken composition throws every issue with the elements and a fix, so it goes back to the model.
+  await assert.rejects(kinetraCall({ module: "clem", fn: "compose", args: [{ ...mohr, elements: [...mohr.elements, { id: "zz", type: "nope" }] }] }), /E_UNKNOWN_PART \[zz\].*Fix:/);
+  const wrong = { ...mohr, checks: [...mohr.checks, { id: "bogus", type: "equal", left: "C", right: "C + 1" }] };
+  await assert.rejects(kinetraCall({ module: "clem", fn: "compose", args: [wrong] }), /E_CHECK_FAILED/);
+  // In a document, a composed figure prints like any other, and a failing one is reported with the PDF's other problems.
+  const spec = { title: "Stress", sections: [{ heading: "Mohr's circle", text: "The circle.", figure: { module: "clem", fn: "compose", args: [mohr] }, caption: "Plane stress" }] };
+  assert.match(documentHtml(spec, await renderFigures(spec)), /<figure id="fig-1"><a class="figure-slot"[^>]*><img [^>]*src="data:image\/svg\+xml;base64,/);
+  await assert.rejects(renderFigures({ title: "T", sections: [{ text: "x", figure: { module: "clem", fn: "compose", args: [wrong] } }] }), /Section 1 figure \(clem\.compose\) failed: .*E_CHECK_FAILED/);
+});
+
+test("a chat figure that does not draw goes back to the model with Kinetra's errors", async () => {
+  const { figureDrawReview } = await import("../../desktop/answer-review.ts");
+  const { composeRecipes } = await import("../../desktop/kinetra-recipes.ts");
+  const draw = (figure: any) => kinetraCall({ action: "call", ...figure });
+  const model = composeRecipes[0].figure.args[0] as any;
+  const block = (args: unknown[]) => "Here it is.\n\n```kinetra\n" + JSON.stringify({ title: "Beam", caption: "c", module: "clem", fn: "compose", args }) + "\n```\n";
+  assert.equal(await figureDrawReview(block([model]), draw), undefined);
+  const sent = await figureDrawReview(block([{ ...model, elements: [...model.elements, { id: "zz", type: "nope" }] }]), draw);
+  assert.match(sent!, /Figure 1 \(clem compose\): .*E_UNKNOWN_PART/);
+  assert.match(sent!, /write your whole answer again/);
+  assert.equal(await figureDrawReview("No figures here.", draw), undefined);
+});
+
+test("the design skill comes only when a document's look is described", async () => {
+  const { fileGuidesFor, fileGuides } = await import("../../desktop/file-guides.ts");
+  assert.match(fileGuidesFor("Make a PDF report in Garamond with a navy accent and two columns"), /DESIGN SKILL/);
+  assert.match(fileGuidesFor("notes like an IEEE paper"), /DESIGN SKILL/);
+  assert.doesNotMatch(fileGuidesFor("what colour is the sky?"), /DESIGN SKILL/);
+  assert.doesNotMatch(fileGuidesFor("Make a PDF report on photosynthesis"), /DESIGN SKILL/);
+  assert.equal(await kinetraTool({ action: "skill", name: "design" }), fileGuides.design);
+  assert.match(kinetraInstructions, /"name":"design"/);
+  assert.doesNotMatch(kinetraInstructions, /Font presets/, "the compact guide keeps one line about design");
 });

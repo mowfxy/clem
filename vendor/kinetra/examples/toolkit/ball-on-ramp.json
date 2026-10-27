@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "canvas": { "width": 800, "height": 480, "world": { "xMin": -0.6, "xMax": 10, "yMin": -0.8, "yMax": 5.6 } },
+  "title": "Ball resting on a 25° ramp",
+  "vars": { "theta": "25 deg", "r": 0.6, "run": 9 },
+  "elements": [
+    { "id": "ground", "type": "segment", "from": { "x": 0, "y": 0 }, "to": { "x": "run", "y": 0 }, "width": 1.6, "mayTouch": ["surface", "side"] },
+    { "id": "surface", "type": "segment", "from": { "x": 0, "y": 0 }, "to": { "x": "run", "y": "run*tan(theta)" }, "width": 1.6, "mayTouch": ["side"] },
+    { "id": "side", "type": "segment", "from": "ground.end", "to": "surface.end", "width": 1.6 },
+    { "id": "angle", "type": "arc", "at": { "x": 0, "y": 0 }, "r": 1.6, "from": 0, "to": "theta", "label": "θ", "mayTouch": ["ground", "surface"] },
+    { "id": "ball", "type": "circle", "r": "r", "fill": "bodyFill", "stroke": "body", "place": [{ "tangentTo": "surface", "side": "above" }, { "x": 5 }], "label": { "text": "m", "position": "center" }, "mayTouch": ["surface"] },
+    { "id": "contact", "type": "point", "at": "ball.rim(theta - 90 deg)", "label": "contact point", "mayTouch": ["ball", "surface"] }
+  ],
+  "checks": [
+    { "id": "touches-surface", "type": "onCurve", "point": "ball.rim(theta - 90 deg)", "curve": "surface", "tol": 1e-9 },
+    { "id": "slope", "type": "equal", "left": "surface.angle", "right": "theta" }
+  ]
+}

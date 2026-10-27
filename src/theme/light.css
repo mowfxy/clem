@@ -22,3 +22,5 @@ html:root[data-theme=light] .profile-character [stroke="#63635e"]{stroke:#c3bdaf
 /* The thinking bar's cursors: ink on the pale fill (the dark theme's difference blend would cancel out on paper). */
 html:root[data-theme=light] .effort-bit{background:#20253a;mix-blend-mode:normal}
 html:root[data-theme=light] .effort-pop[data-provider=Anthropic] .effort-bit{background:#fff4ee;box-shadow:none}
+/* A Kinetra figure is printed on white paper in both themes (src/chat/KinetraFigure.tsx). */
+:root[data-theme=light] .v2.kinetra-figure .visual-stage,:root[data-theme=light] .v2.kinetra-figure .visual-figure{background:#fff}

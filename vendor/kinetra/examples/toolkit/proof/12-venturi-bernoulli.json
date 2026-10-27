@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "title": "Venturi meter: continuity and Bernoulli",
+  "caption": "D₁ = 20 cm, D₂ = 10 cm, Q = 40 L/s; heads differ by (v₂² − v₁²)/2g",
+  "canvas": { "width": 820, "height": 560, "world": { "xMin": -12, "xMax": 312, "yMin": -42, "yMax": 200 }, "worldUnit": "cm" },
+  "vars": { "D1": "20 cm", "D2": "10 cm", "Q": "40 litre/s", "g": "9.81 m/s^2",
+            "A1": "pi*D1^2/4", "A2": "pi*D2^2/4", "v1": "Q/A1", "v2": "Q/A2",
+            "h1": "160 cm", "dh": "(v2^2 - v1^2)/(2*g)", "h2": "h1 - dh" },
+  "scales": { "velocity": { "per": "0.1 m/s" } },
+  "elements": [
+    { "id": "fluid", "type": "polygon", "points": [{ "x": 0, "y": "D1/2" }, { "x": 90, "y": "D1/2" }, { "x": 140, "y": "D2/2" }, { "x": 180, "y": "D2/2" }, { "x": 280, "y": "D1/2" }, { "x": 300, "y": "D1/2" },
+      { "x": 300, "y": "-D1/2" }, { "x": 280, "y": "-D1/2" }, { "x": 180, "y": "-D2/2" }, { "x": 140, "y": "-D2/2" }, { "x": 90, "y": "-D1/2" }, { "x": 0, "y": "-D1/2" }], "fill": "bodyFill", "stroke": "white", "background": true },
+    { "id": "top", "type": "polyline", "width": 2, "color": "mechanism", "points": [{ "x": 0, "y": "D1/2" }, { "x": 47, "y": "D1/2" }, { "x": 47, "y": 185 }], "mayTouch": ["fluid"] },
+    { "id": "top2", "type": "polyline", "width": 2, "color": "mechanism", "points": [{ "x": 53, "y": 185 }, { "x": 53, "y": "D1/2" }, { "x": 90, "y": "D1/2" }, { "x": 140, "y": "D2/2" }, { "x": 157, "y": "D2/2" }, { "x": 157, "y": 185 }], "mayTouch": ["fluid"] },
+    { "id": "top3", "type": "polyline", "width": 2, "color": "mechanism", "points": [{ "x": 163, "y": 185 }, { "x": 163, "y": "D2/2" }, { "x": 180, "y": "D2/2" }, { "x": 280, "y": "D1/2" }, { "x": 300, "y": "D1/2" }], "mayTouch": ["fluid"] },
+    { "id": "bot", "type": "polyline", "width": 2, "color": "mechanism", "points": [{ "x": 0, "y": "-D1/2" }, { "x": 90, "y": "-D1/2" }, { "x": 140, "y": "-D2/2" }, { "x": 180, "y": "-D2/2" }, { "x": 280, "y": "-D1/2" }, { "x": 300, "y": "-D1/2" }], "mayTouch": ["fluid"] },
+    { "id": "col1", "type": "rect", "at": { "x": 50, "y": "(D1/2 + h1)/2" }, "w": 6, "h": "h1 - D1/2", "fill": "bodyFill", "stroke": "white", "mayTouch": ["top", "top2", "fluid"] },
+    { "id": "col2", "type": "rect", "at": { "x": 160, "y": "(D2/2 + h2)/2" }, "w": 6, "h": "h2 - D2/2", "fill": "bodyFill", "stroke": "white", "mayTouch": ["top2", "top3", "fluid"] },
+    { "id": "v1a", "type": "arrow", "from": { "x": 10, "y": 0 }, "angle": 0, "magnitude": "v1", "color": "velocity", "label": "v_1", "mayTouch": ["fluid"] },
+    { "id": "v2a", "type": "arrow", "from": { "x": 135, "y": 0 }, "angle": 0, "magnitude": "v2", "color": "velocity", "label": "v_2", "mayTouch": ["fluid"] },
+    { "id": "lvl1", "type": "segment", "from": "col1.top", "to": { "x": 120, "y": "h1" }, "dashed": true, "color": "guide", "width": 1, "mayTouch": ["col1", "top", "top2"] },
+    { "id": "lvl2", "type": "segment", "from": "col2.top", "to": { "x": 120, "y": "h2" }, "dashed": true, "color": "guide", "width": 1, "mayTouch": ["col2", "top2"] },
+    { "id": "dhd", "type": "dimension", "from": { "x": 120, "y": "h2" }, "to": { "x": 120, "y": "h1" }, "offset": 0, "text": "Δh = 124 cm", "mayTouch": ["lvl1", "lvl2"] },
+    { "id": "s1", "type": "text", "text": "section 1", "at": { "x": 26, "y": -26 } },
+    { "id": "s2", "type": "text", "text": "throat 2", "at": { "x": 160, "y": -26 } }
+  ],
+  "checks": [
+    { "id": "continuity", "type": "equal", "left": "A1*v1a.magnitude", "right": "A2*v2a.magnitude", "tol": "1e-12 m^3/s" },
+    { "id": "bernoulli_heads", "type": "equal", "left": "col1.top.y - col2.top.y", "right": "(v2a.magnitude^2 - v1a.magnitude^2)/(2*g)", "tol": "1e-9 m" },
+    { "id": "throat_faster", "type": "greater", "left": "v2a.magnitude", "right": "v1a.magnitude" }
+  ]
+}

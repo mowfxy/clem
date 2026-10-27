@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "title": "Bode plot of G(s) = ωₙ²/(s² + 2ζωₙs + ωₙ²), ωₙ = 10 rad/s, ζ = 0.2",
+  "caption": "Resonant peak M_r = 1/(2ζ√(1−ζ²)) at ω_r = ωₙ√(1−2ζ²); phase is −90° at ωₙ",
+  "canvas": { "width": 760, "height": 640, "world": { "xMin": -1.5, "xMax": 11.3, "yMin": -6.6, "yMax": 4.2 } },
+  "vars": { "wn": "10", "z": "0.2", "wr": "wn*sqrt(1 - 2*z^2)", "Mr": "1/(2*z*sqrt(1 - z^2))" },
+  "elements": [
+    { "id": "axm", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 10, "h": 3.4, "frame": "box",
+      "x": { "min": 0.1, "max": 1000, "scale": "log", "grid": true },
+      "y": { "min": -80, "max": 40, "ticks": [-80, -40, 0, 40], "label": "|G|", "unit": "dB", "grid": true } },
+    { "id": "mag", "type": "series", "axes": "axm", "fn": "-10*log10((1 - (x/wn)^2)^2 + (2*z*x/wn)^2)", "samples": 800, "color": "rayAlt" },
+    { "id": "pk", "type": "plotPoint", "axes": "axm", "series": "mag", "x": "wr", "marker": "circle", "label": "M_r = 8.1 dB" },
+    { "id": "axp", "type": "axes", "at": { "x": 0, "y": -5.0 }, "w": 10, "h": 3.4, "frame": "box",
+      "x": { "min": 0.1, "max": 1000, "scale": "log", "label": "ω", "unit": "rad/s", "grid": true },
+      "y": { "min": -180, "max": 0, "ticks": [-180, -135, -90, -45, 0], "label": "∠G", "unit": "deg", "grid": true } },
+    { "id": "ph", "type": "series", "axes": "axp", "fn": "-atan2(2*z*x/wn, 1 - (x/wn)^2)", "samples": 800, "color": "force" },
+    { "id": "p90", "type": "plotPoint", "axes": "axp", "series": "ph", "x": "wn", "marker": "circle", "label": { "text": "−90° at ωₙ", "position": "right" } }
+  ],
+  "checks": [
+    { "id": "resonant_peak", "type": "equal", "left": "pk.dataY", "right": "20*log10(Mr)", "tol": 1e-9 },
+    { "id": "peak_on_magnitude", "type": "onCurve", "point": "pk", "curve": "mag" },
+    { "id": "phase_at_wn", "type": "equal", "left": "p90.dataY", "right": -90, "tol": 1e-9 },
+    { "id": "linked_frequency_axes", "type": "equal", "left": "axm.bottomRight.x - axm.bottomLeft.x", "right": "axp.bottomRight.x - axp.bottomLeft.x", "tol": "1e-12 m" },
+    { "id": "linked_frequency_origin", "type": "equal", "left": "axm.bottomLeft.x", "right": "axp.bottomLeft.x", "tol": "1e-12 m" },
+    { "id": "underdamped_peak_exists", "type": "less", "left": "z", "right": "1/sqrt(2)" }
+  ]
+}

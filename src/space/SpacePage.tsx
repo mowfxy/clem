@@ -25,6 +25,7 @@ import {DriveFolderView,DriveExtras} from '../drive/DriveFolderView';
 import {PlanView,PlanOverviewCard,type PlanActions,type PlanDraftView} from './PlanView';
 import {planStatus,type SpacePlan} from '../../core/plans';
 import type {DriveItem,DriveSyncState} from '../drive/drive';
+import {driveFolder} from '../drive/drive';
 import {menuKeys,useMenuKeys} from '../menuKeys';
 import {Squiggle,Templates,EmptyState} from '../ui/Calm';
 import './space.css';
@@ -337,6 +338,28 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
   const flat=!!q||shownKind!=='all';
   const found=flat?files.filter(f=>(shownKind==='all'||kindOf(f)===shownKind)&&(!q||(f.name+' '+(f.video?.channel||'')+' '+(f.video?.playlist?.title||'')).toLowerCase().includes(q))).sort((a,b)=>(b.updated||b.created)-(a.updated||a.created)):[];
   const where=(f:StoredFile)=>f.folderId?folderPath(folders,f.folderId):'';
+  // Files in the linked Drive folders are found too, in every linked folder and every subfolder: by name and folder here,
+  // and by what they say through Drive's own search. Those with a copy here are already found above.
+  const [driveFound,setDriveFound]=useState<{item:DriveItem;folder:string}[]>([]),[driveSearching,setDriveSearching]=useState(false);
+  const links=[space.drive,...(space.drives||[])].filter((d):d is NonNullable<typeof d>=>!!d);
+  const linkKey=links.map(d=>d.folderId).join(',');
+  useEffect(()=>{
+    if(!q||shownKind!=='all'||!desktop||!links.length){setDriveFound([]);setDriveSearching(false);return;}
+    let live=true;setDriveSearching(true);
+    const words=q.split(/\s+/).filter(Boolean);
+    const timer=setTimeout(()=>void Promise.all(links.map(d=>driveFolder(d.folderId,q,false,30).then(r=>{
+      const all=r.items.filter(i=>!i.folder);
+      const named=all.filter(i=>{const hay=((i.path||'')+' '+i.name).toLowerCase();return words.every(w=>hay.includes(w));});
+      const said=r.hits.map(h=>all.find(i=>i.id===h.id)).filter((i):i is DriveItem=>!!i);
+      return [...named,...said].map(item=>({item,folder:d.folderName}));
+    }).catch(()=>[]))).then(lists=>{
+      if(!live)return;
+      const seen=new Set(files.map(f=>f.driveId).filter(Boolean));
+      setDriveFound(lists.flat().filter(({item})=>!seen.has(item.id)&&!!seen.add(item.id)).slice(0,80));
+      setDriveSearching(false);
+    }),250);
+    return()=>{live=false;clearTimeout(timer);};
+  },[q,shownKind,linkKey]);
   /** A file of this PC to copy into the Drive folder shown ("Save copy in Drive"); the Drive view uploads it. */
   const [toDrive,setToDrive]=useState<{key:string;id:string}|null>(null);
   const setSource=(f:StoredFile,on:boolean)=>actions.onUpdateSpace({...space,sources:on?[...new Set([...space.sources,f.id])]:space.sources.filter(id=>id!==f.id)});
@@ -358,7 +381,7 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
       {at?<nav className="sp-path" aria-label="Folder path">
         <button className={over==='crumb-root'?'over':''} onClick={()=>setAt(null)} onDrop={drop(null)} {...dragTarget('crumb-root')}><Icon name="files" size={15}/>Files</button>
         {path.map(f=><span key={f.id}><i>/</i><button className={over==='crumb-'+f.id?'over':''} onClick={()=>setAt(f.id)} onDrop={drop(f.id)} {...dragTarget('crumb-'+f.id)}>{f.name}</button></span>)}
-      </nav>:files.length>0&&<label className="sp-find"><Icon name="research" size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'&&query){e.preventDefault();setQuery('');}}} placeholder="Find" aria-label={`Find files in ${space.name}`}/></label>}
+      </nav>:(files.length>0||links.length>0)&&<label className="sp-find"><Icon name="research" size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'&&query){e.preventDefault();setQuery('');}}} placeholder="Find" aria-label={`Find files in ${space.name}`}/></label>}
       <Menu label="Add" trigger={<><Icon name="plus" size={15}/>Add</>} items={[
         {label:'Upload files',icon:'attach',run:()=>input.current?.click()},
         {label:'YouTube video',icon:'play',run:()=>actions.onSaveVideo(at)},
@@ -374,7 +397,12 @@ function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile
     </div>}
     {flat&&<div className="sp-file-list sp-found" aria-label="Matching files">
       {found.map(f=><div key={f.id} className="sp-file">{fileOpen(f,where(f))}{fileTools(f)}</div>)}
-      {!found.length&&<p className="sp-empty-line sp-found-none">Nothing found. <button type="button" onClick={()=>{setQuery('');setKind('all');}}>Clear</button></p>}
+      {driveFound.map(({item,folder})=><div key={'drive-'+item.id} className="sp-file gd-file">
+        <button className="sp-file-open" onClick={()=>actions.onOpenDrive(item)}><FileGlyph file={{name:item.name+(({document:'.docx',presentation:'.pptx',spreadsheet:'.xlsx'} as Record<string,string>)[item.mimeType.replace('application/vnd.google-apps.','')]||''),type:item.mimeType}} size={36}/><span><strong>{item.name}</strong><small>{['Google Drive · '+folder+(item.path?' / '+item.path:''),item.modified?ago(Date.parse(item.modified)):''].filter(Boolean).join(' · ')}</small></span></button>
+        <Menu label={`${item.name} options`} items={[{label:'Open',run:()=>actions.onOpenDrive(item)},{label:'Ask about it',icon:'chat',run:()=>actions.onAskDrive([item])}]}/>
+      </div>)}
+      {driveSearching&&!found.length&&!driveFound.length&&<p className="sp-empty-line sp-found-none" role="status">Searching Google Drive…</p>}
+      {!found.length&&!driveFound.length&&!driveSearching&&<p className="sp-empty-line sp-found-none">Nothing found. <button type="button" onClick={()=>{setQuery('');setKind('all');}}>Clear</button></p>}
     </div>}
     {!flat&&space.drive&&!at&&<DriveFolderView space={space} files={files} driveSync={driveSync} actions={actions}
       copy={toDrive}

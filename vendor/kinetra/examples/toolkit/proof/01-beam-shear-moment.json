@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "title": "Simply supported beam: shear and bending moment",
+  "caption": "P at a = 2 m, L = 6 m; R₁ = Pb/L, R₂ = Pa/L",
+  "canvas": { "width": 620, "height": 680, "world": { "xMin": -1.0, "xMax": 7.0, "yMin": -7.6, "yMax": 2.2 } },
+  "vars": { "L": "6 m", "a": "2 m", "P": "12 kN", "RA": "P*(L - a)/L", "RB": "P*a/L", "Mmax": "RA*a" },
+  "scales": { "force": { "per": "8 kN" } },
+  "elements": [
+    { "id": "beam", "type": "beam", "from": { "x": 0, "y": 0 }, "to": { "x": "L", "y": 0 }, "depth": 0.22 },
+    { "id": "sA", "type": "pinSupport", "scale": 1.2, "place": { "attach": "top", "to": "beam.bottom(0)" } },
+    { "id": "sB", "type": "rollerSupport", "scale": 1.2, "place": { "attach": "top", "to": "beam.bottom(1)" } },
+    { "id": "Pl", "type": "pointLoad", "tip": { "ref": "beam.top(0)", "dx": "a" }, "magnitude": "P", "label": "P = 12 kN" },
+    { "id": "R1", "type": "pointLoad", "tip": "sA.base", "angle": 90, "magnitude": "RA", "color": "normal", "label": "R_1 = 8 kN" },
+    { "id": "R2", "type": "pointLoad", "tip": "sB.base", "angle": 90, "magnitude": "RB", "color": "normal", "label": "R_2 = 4 kN" },
+    { "id": "axV", "type": "axes", "at": { "x": 0, "y": -3.7 }, "w": "L", "h": 1.9,
+      "x": { "min": 0, "max": 6, "ticks": [0, 2, 4, 6], "label": "x", "unit": "m" },
+      "y": { "min": -6, "max": 10, "ticks": [-4, 0, 4, 8], "label": "V", "unit": "kN", "grid": true } },
+    { "id": "Vshade", "type": "shade", "axes": "axV", "series": "V", "from": 0, "to": "a/(1 m)", "fill": "bodyFill" },
+    { "id": "V", "type": "series", "axes": "axV", "style": "line", "color": "rayAlt",
+      "data": [[0, "RA/(1 kN)"], ["a/(1 m)", "RA/(1 kN)"], ["a/(1 m)", "-RB/(1 kN)"], ["L/(1 m)", "-RB/(1 kN)"]] },
+    { "id": "V0", "type": "guideLine", "axes": "axV", "y": 0, "mayTouch": ["V", "Vshade"] },
+    { "id": "axM", "type": "axes", "at": { "x": 0, "y": -6.4 }, "w": "L", "h": 1.7,
+      "x": { "min": 0, "max": 6, "ticks": [0, 2, 4, 6], "label": "x", "unit": "m" },
+      "y": { "min": 0, "max": 20, "ticks": [0, 8, 16], "label": "M", "unit": "kN·m", "grid": true } },
+    { "id": "M", "type": "series", "axes": "axM", "style": "line", "color": "force",
+      "data": [[0, 0], ["a/(1 m)", "Mmax/(1 kN*m)"], ["L/(1 m)", 0]] },
+    { "id": "Mpk", "type": "plotPoint", "axes": "axM", "series": "M", "x": "a/(1 m)", "marker": "circle", "label": { "text": "M_{max} = 16 kN·m", "position": "above-right" } }
+  ],
+  "checks": [
+    { "id": "sumF", "type": "vectorSum", "vectors": ["Pl", "R1", "R2"], "tol": "1e-9 N" },
+    { "id": "sumM_A", "type": "momentSum", "about": "beam.start", "vectors": ["Pl", "R1", "R2"], "tol": "1e-9 N*m" },
+    { "id": "areaV_equals_M", "type": "equal", "left": "Vshade.area", "right": "Mpk.dataY", "tol": 1e-9 },
+    { "id": "Mmax_value", "type": "equal", "left": "Mpk.dataY", "right": 16, "tol": 1e-9 }
+  ]
+}

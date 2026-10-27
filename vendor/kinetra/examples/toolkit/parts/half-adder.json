@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "title": "Half adder",
+  "canvas": {
+    "width": 640,
+    "height": 380,
+    "world": {
+      "xMin": -0.6,
+      "xMax": 7.4,
+      "yMin": -1.1,
+      "yMax": 3.65
+    }
+  },
+  "elements": [
+    {
+      "id": "xor",
+      "type": "logicGate",
+      "kind": "XOR",
+      "at": {
+        "x": 4,
+        "y": 2.15
+      },
+      "w": 1.12
+    },
+    {
+      "id": "and",
+      "type": "logicGate",
+      "kind": "AND",
+      "at": {
+        "x": 4,
+        "y": 0.15
+      },
+      "w": 1.12
+    },
+    {
+      "id": "A",
+      "type": "point",
+      "at": {
+        "ref": "xor.in0",
+        "dx": -3.04
+      },
+      "label": {
+        "text": "A",
+        "position": "left"
+      }
+    },
+    {
+      "id": "B",
+      "type": "point",
+      "at": {
+        "ref": "xor.in1",
+        "dx": -3.04
+      },
+      "label": {
+        "text": "B",
+        "position": "left"
+      }
+    },
+    {
+      "id": "wA",
+      "type": "wire",
+      "points": [
+        "A",
+        "xor.in0"
+      ]
+    },
+    {
+      "id": "wB",
+      "type": "wire",
+      "points": [
+        "B",
+        "xor.in1"
+      ]
+    },
+    {
+      "id": "wA2",
+      "type": "wire",
+      "points": [
+        {
+          "ref": "A",
+          "dx": 1.0
+        },
+        "and.in0"
+      ],
+      "orthogonal": "vh",
+      "mayTouch": [
+        "wB",
+        "wB2"
+      ]
+    },
+    {
+      "id": "wB2",
+      "type": "wire",
+      "points": [
+        {
+          "ref": "B",
+          "dx": 1.9
+        },
+        "and.in1"
+      ],
+      "orthogonal": "vh"
+    },
+    {
+      "id": "jA",
+      "type": "junction",
+      "at": {
+        "ref": "A",
+        "dx": 1.0
+      },
+      "wires": [
+        "wA",
+        "wA2"
+      ]
+    },
+    {
+      "id": "jB",
+      "type": "junction",
+      "at": {
+        "ref": "B",
+        "dx": 1.9
+      },
+      "wires": [
+        "wB",
+        "wB2"
+      ]
+    },
+    {
+      "id": "S",
+      "type": "point",
+      "at": {
+        "x": 6.4,
+        "y": 2.15
+      },
+      "label": {
+        "text": "S = A ⊕ B",
+        "position": "right"
+      }
+    },
+    {
+      "id": "C",
+      "type": "point",
+      "at": {
+        "x": 6.4,
+        "y": 0.15
+      },
+      "label": {
+        "text": "C = AB",
+        "position": "right"
+      }
+    },
+    {
+      "id": "wS",
+      "type": "wire",
+      "points": [
+        "xor.out",
+        "S"
+      ]
+    },
+    {
+      "id": "wC",
+      "type": "wire",
+      "points": [
+        "and.out",
+        "C"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "inputs",
+      "type": "equal",
+      "left": "xor.inputs + and.inputs",
+      "right": 4
+    },
+    {
+      "id": "rows",
+      "type": "greater",
+      "left": "xor.y",
+      "right": "and.y"
+    }
+  ]
+}

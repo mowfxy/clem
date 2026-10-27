@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "title": "Pumping between two open tanks",
+  "caption": "Q = 12 L/s through D = 80 mm pipe; pump head H_p = Δz + h_L",
+  "canvas": { "width": 820, "height": 500, "world": { "xMin": -0.9, "xMax": 12.9, "yMin": -1.3, "yMax": 7.1 } },
+  "vars": { "Q": "12 litre/s", "D": "80 mm", "A": "pi*D^2/4", "v": "Q/A", "g": "9.81 m/s^2",
+            "z1": "1.2 m", "z2": "5.4 m", "hL": "1.35 m", "Hp": "(z2 - z1) + hL",
+            "rho": "1000 kg/m^3", "Pw": "rho*g*Q*Hp" },
+  "elements": [
+    { "id": "TA", "type": "tank", "at": { "x": 1.4, "y": 0 }, "w": 2.2, "h": 1.8, "level": "z1/1.8 m", "label": { "text": "tank A", "position": "below" } },
+    { "id": "TB", "type": "tank", "at": { "x": 10.6, "y": 3.9 }, "w": 2.2, "h": 1.8, "level": "(z2 - 3.9 m)/1.8 m", "label": "tank B" },
+    { "id": "pmp", "type": "pump", "at": { "x": 4.8, "y": 0.35 }, "r": 0.42, "label": { "text": "pump", "position": "below" } },
+    { "id": "vlv", "type": "valve", "at": { "x": 7.4, "y": 0.35 }, "size": 0.6, "label": "gate valve" },
+    { "id": "p1", "type": "pipe", "points": ["TA.rightAt(0.19)", "pmp.inlet"], "d": 0.2, "mayTouch": ["TA"] },
+    { "id": "p2", "type": "pipe", "points": ["pmp.outlet", "vlv.inlet"], "d": 0.2 },
+    { "id": "p3", "type": "pipe", "points": ["vlv.outlet", { "x": 8.9, "y": 0.35 }, { "x": 8.9, "y": 4.25 }, "TB.leftAt(0.19)"], "d": 0.2, "mayTouch": ["TB"] },
+    { "id": "dz", "type": "dimension", "from": { "x": 12.1, "y": "z1" }, "to": { "x": 12.1, "y": "z2" }, "offset": 0, "text": "Δz = 4.2 m" },
+    { "id": "g1", "type": "segment", "from": "TA.surface", "to": { "x": 12.1, "y": "z1" }, "dashed": true, "color": "guide", "width": 1, "mayTouch": ["dz", "TA", "p3"] },
+    { "id": "g2", "type": "segment", "from": "TB.surface", "to": { "x": 12.1, "y": "z2" }, "dashed": true, "color": "guide", "width": 1, "mayTouch": ["dz", "TB"] },
+    { "id": "hp", "type": "textBlock", "at": { "x": 4.6, "y": 4.4 }, "lines": ["v = Q/A = 2.39 m/s", "h_L = 1.35 m (pipe + valve)", "H_p = Δz + h_L = 5.55 m", "P = ρgQH_p = 653 W"], "align": "left", "frame": true, "size": 12 }
+  ],
+  "checks": [
+    { "id": "surfaces_at_design_elevations", "type": "equal", "left": "TB.surface.y - TA.surface.y", "right": "z2 - z1", "tol": "1e-9 m" },
+    { "id": "energy_equation", "type": "equal", "left": "Hp", "right": "(z2 - z1) + hL", "tol": "1e-12 m" },
+    { "id": "velocity_value", "type": "equal", "left": "v", "right": "2.3873 m/s", "tol": "0.0001 m/s" },
+    { "id": "pump_power", "type": "equal", "left": "Pw", "right": "653.3 W", "tol": "0.1 W" }
+  ]
+}

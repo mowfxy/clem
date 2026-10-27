@@ -1,6 +1,7 @@
 import { textProblems } from "./figure-audit.ts";
 import { kinetraCall } from "./kinetra-runtime.ts";
 import { markdownHtml } from "./pdf-markdown.ts";
+import { katexPrintCss } from "./katex-print.ts";
 import { voiceProblems, type DocumentKind } from "../core/document-standard.ts";
 import { asksTechnicalReport } from "../core/commands.ts";
 import { standardFonts, brandFont } from "../core/print-fonts.ts";
@@ -367,9 +368,12 @@ pre code{font-size:inherit}
 blockquote{margin:8pt 0 10pt;padding:0 0 0 11pt;border-left:.8pt solid #888;color:#222}
 blockquote p{text-align:left}
 hr{border:0;border-top:.5pt solid #999;margin:12pt 0}
-math{font-family:'Cambria Math','STIX Two Math',math}
+/* Maths is KaTeX's own layout (desktop/katex-print.ts), a little smaller than on screen to sit with a serif text face. */
+.katex{font-size:1.1em;hyphens:none;text-indent:0}
+/* A formula cannot hyphenate, so justifying its line opens wide gaps between words (or stretches the line before
+   it): text with maths, and list steps, are set ragged right. */
+p:has(>x-math),li,.env p:has(>x-math){text-align:left}
 .katex-display{display:block;margin:7pt 0 9pt;text-align:center;break-inside:avoid;position:relative}
-.katex-display math{display:block math;font-size:1.08em}
 .katex-error{color:#b00020}
 .eqnum{counter-reset:eq}
 .eqnum .katex-display{counter-increment:eq;padding:0 3.2em}
@@ -413,7 +417,6 @@ sup{font-size:.7em;line-height:0}
 .env-dot{font-weight:700}
 .env-plain>p{font-style:italic}.env-plain .env-head,.env-plain .env-title,.env-plain .env-dot{font-style:normal}
 .env-remark .env-head,.env-remark .env-dot,.env-proof .env-head,.env-proof .env-dot{font-style:italic;font-weight:400}
-.env-proof>:last-child::after{content:"\\25A1";float:right;margin-left:1em}
 .env-box{padding:6pt 10pt 1pt;border:.5pt solid #9a9a96;background:#f6f6f3;break-inside:avoid}
 .env-warning,.env-caution,.env-mistake{border-color:#b48a3c;background:#fbf6ea}
 /* Title block, contents, summary and references. */
@@ -533,7 +536,7 @@ const sectionWords = /\b(Figure|Fig\.|Table|Section|§)\s?(\d+(?:\.\d+)*)\b/g;
 /** Cross-references and citations become links, as in a LaTeX document: "Figure 2", "Table 1", "Section 3.2" and
  *  [4] or [2, 5–7] when those exist. Code, preformatted text and maths are left alone. */
 function linkText(html: string, targets: Set<string>, references: number) {
-  return html.split(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<math[\s\S]*?<\/math>|<[^>]+>)/g).map((part, i) => {
+  return html.split(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<x-math>[\s\S]*?<\/x-math>|<[^>]+>)/g).map((part, i) => {
     if (i % 2) return part;
     let out = part.replace(sectionWords, (whole, word: string, n: string) => {
       const id = (/^(?:Figure|Fig\.)$/.test(word) ? "fig-" : word === "Table" ? "tab-" : "sec-") + n.replace(/\./g, "-");
@@ -693,7 +696,7 @@ export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[]
     (design.fontSize || design.lineHeight ? `body{${design.fontSize ? `font-size:${design.fontSize}pt;` : ""}${design.lineHeight ? `line-height:${design.lineHeight}` : ""}}` : "") +
     (design.css ? cleanCss(design.css) : "");
   return (
-    '<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(spec.title) + '</title><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'"><style>' +
+    '<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(spec.title) + '</title><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; font-src data:; style-src \'unsafe-inline\'"><style>' + katexPrintCss() +
     pageCss(layout, type, spec.title, label, design) + ":root{--body:" + type.body + ";--head:" + type.head + "}" + documentCss + custom + '</style><body class="' + classes + '">' + body + "</body></html>"
   );
 }

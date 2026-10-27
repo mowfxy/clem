@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "title": "Sequence detector for 101",
+  "canvas": { "width": 720, "height": 360, "world": { "xMin": -0.8, "xMax": 9.2, "yMin": -2.2, "yMax": 2.8 } },
+  "elements": [
+    { "id": "S0", "type": "state", "at": { "x": 1, "y": 0 }, "r": 0.5, "text": "S0", "initial": 180 },
+    { "id": "S1", "type": "state", "at": { "x": 4, "y": 0 }, "r": 0.5, "text": "S1" },
+    { "id": "S2", "type": "state", "at": { "x": 7, "y": 0 }, "r": 0.5, "text": "S2", "accepting": true },
+    { "id": "t01", "type": "transition", "from": "S0", "to": "S1", "bend": 0.2, "label": "1" },
+    { "id": "t10", "type": "transition", "from": "S1", "to": "S0", "bend": 0.2, "label": "0" },
+    { "id": "t12", "type": "transition", "from": "S1", "to": "S2", "bend": 0.2, "label": "0" },
+    { "id": "t21", "type": "transition", "from": "S2", "to": "S1", "bend": 0.2, "label": "1" },
+    { "id": "l0", "type": "selfLoop", "state": "S0", "angle": 90, "label": "0" },
+    { "id": "l1", "type": "selfLoop", "state": "S1", "angle": 90, "label": "1" }
+  ],
+  "checks": [
+    { "id": "row", "type": "equal", "left": "S0.y", "right": "S2.y" },
+    { "id": "spacing", "type": "equal", "left": "S1.x - S0.x", "right": "S2.x - S1.x" }
+  ]
+}

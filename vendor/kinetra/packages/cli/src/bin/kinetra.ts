@@ -11,6 +11,7 @@ import { runWorkflowC } from "../workflows/workflow-c.js";
 import { runWorkflowD } from "../workflows/workflow-d.js";
 import { runBenchmarkCli } from "../workflows/benchmark.js";
 import { runDiagram } from "../workflows/diagram.js";
+import { runCompose } from "../workflows/compose.js";
 
 const USAGE = `kinetra <command>
 
@@ -22,6 +23,7 @@ Commands:
   workflow-d          retrieval + learning
   benchmark           retrieval benchmark
   diagram             charged-rod illustration from optional JSON model
+  compose             composed diagram from a toolkit model: compose <model.json> <out.svg>
 `;
 
 async function main(argv: string[]): Promise<void> {
@@ -34,6 +36,7 @@ async function main(argv: string[]): Promise<void> {
     case "workflow-d": return runWorkflowD();
     case "benchmark": return runBenchmarkCli();
     case "diagram": return runDiagram(argv[3], argv[4]);
+    case "compose": return runCompose(argv[3], argv[4]);
     case undefined:
     case "--help":
     case "-h":

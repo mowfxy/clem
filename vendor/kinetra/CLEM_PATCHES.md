@@ -36,4 +36,11 @@ Audit fixes (`test/audit_fixes.test.ts`):
 - `solveTransient` refuses `dt ≤ 0` (dt = 0 looped forever); plots survive a zero-width x range (NaN) and a y range below double spacing (tick loop overflow); SVG backgrounds are escaped.
 - Plugin test: SKILL.md frontmatter is read with CRLF line endings (Windows checkouts).
 
+Composition toolkit (merged from upstream `00c2bd4`: `core/src/toolkit/`, `cli/src/workflows/compose.ts`, the `kinetra-compose` skill, `docs/toolkit/` and `examples/toolkit/`):
+
+- `Scene2DModel.fixedLabels` (`diagram/scene2d.ts`, `queue()`): Clem's scene renderer moves every label clear of strokes, which undid the toolkit's own label placement; with `fixedLabels` each label is drawn exactly where it is given. `toolkit/compose.ts` sets `scene.fixedLabels = true`.
+- `test/toolkit/parts_behaviour.test.ts` reads pins through `layoutSchematic(...).pins`, because Clem's schematic draws its wires as one path; `test/toolkit/priority_fixes.test.ts` expects `-3^2 = -9` from Clem's repaired parser. The toolkit code itself is unchanged except for one type: `parts/circuits.ts` `TEMPLATE_PINS` is keyed by the seven wrapped symbol kinds, since Clem's `ComponentKind` has more.
+- Not taken: `kinetra-textbook-diagrams` (needs Python and cairo, which Clem cannot run) and upstream's `kinetra-diagrams/SKILL.md`, `docs/diagrams.md` and `plugin.json` text that point at it; the `test/compat` goldens (Clem's renderer output differs on purpose; only `api_surface.ts`, which the CLI example test imports, is kept).
+- In Clem: `desktop/kinetra-adapters.ts` `compose` / `composeCheck` / `composeParts`, the Clem `kinetra-compose` guide (`desktop/kinetra-runtime.ts` `composeGuide`, with the rules.md cheat-sheet bundled by `scripts/build-kinetra.mjs`) and the "composed:" recipes in `desktop/kinetra-recipes.ts`.
+
 The desktop bridge, JSON adapters, skill/API loader and illustrated PDF exporter live in `desktop/`. PDF figures use Chromium SVG rendering; the upstream PDF `addFigure` placeholder is not used. Original license: Apache-2.0.

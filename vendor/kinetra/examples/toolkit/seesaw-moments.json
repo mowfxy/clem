@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "canvas": { "width": 800, "height": 420, "world": { "xMin": -5, "xMax": 5, "yMin": -2.6, "yMax": 2.4 } },
+  "title": "Balanced seesaw",
+  "caption": "Moments about the pivot cancel: m₁g·d₁ = m₂g·d₂",
+  "vars": { "m1": "6 kg", "m2": "4 kg", "g": "9.81 m/s^2", "d1": "2 m", "d2": "d1*m1/m2" },
+  "scales": { "force": { "per": "40 N" } },
+  "elements": [
+    { "id": "ground", "type": "segment", "from": { "x": -1.5, "y": -1.2 }, "to": { "x": 1.5, "y": -1.2 }, "width": 1.6, "mayTouch": ["pivot"] },
+    { "id": "pivot", "type": "polygon", "points": [{ "x": -0.4, "y": -1.2 }, { "x": 0.4, "y": -1.2 }, { "x": 0, "y": -0.5 }], "fill": "mechanismFill", "stroke": "mechanism" },
+    { "id": "beam", "type": "block", "w": 8, "h": 0.2, "place": { "attach": "bottom", "to": "pivot.vertex(2)" }, "mayTouch": ["pivot"] },
+    { "id": "box1", "type": "block", "w": 0.8, "h": 0.6, "place": { "attach": "bottom", "to": { "ref": "beam.top", "dx": "-d1" } }, "label": { "text": "m_1", "position": "center" }, "mayTouch": ["beam"] },
+    { "id": "box2", "type": "block", "w": 0.8, "h": 0.6, "place": { "attach": "bottom", "to": { "ref": "beam.top", "dx": "d2" } }, "label": { "text": "m_2", "position": "center" }, "mayTouch": ["beam"] },
+    { "id": "W1", "type": "force", "from": { "ref": "beam.bottom", "dx": "-d1" }, "angle": -90, "magnitude": "m1*g", "label": "m_1g", "mayTouch": ["beam"] },
+    { "id": "W2", "type": "force", "from": { "ref": "beam.bottom", "dx": "d2" }, "angle": -90, "magnitude": "m2*g", "label": "m_2g", "mayTouch": ["beam"] },
+    { "id": "d1text", "type": "text", "text": "d_1 = 2 m", "at": { "ref": "beam.top", "dx": "-d1/2", "dy": 0.3 } },
+    { "id": "d2text", "type": "text", "text": "d_2 = 3 m", "at": { "ref": "beam.top", "dx": "d2/2", "dy": 0.3 } }
+  ],
+  "checks": [
+    { "id": "moments", "type": "momentSum", "about": "pivot.vertex(2)", "vectors": ["W1", "W2"], "tol": "1e-9 N*m" },
+    { "id": "d2-value", "type": "equal", "left": "d2", "right": "3 m", "tol": "1e-12 m" }
+  ]
+}

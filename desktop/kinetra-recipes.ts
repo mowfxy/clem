@@ -4,6 +4,30 @@
  * guessing argument shapes. Adapt values; keep the structure.
  */
 import { figureRecipes, figureVocabulary } from "../core/figure-recipes.ts";
+import beam from "../vendor/kinetra/examples/toolkit/proof/01-beam-shear-moment.json" with { type: "json" };
+import truss from "../vendor/kinetra/examples/toolkit/proof/02-truss-method-of-joints.json" with { type: "json" };
+import ladder from "../vendor/kinetra/examples/toolkit/proof/03-ladder-equilibrium.json" with { type: "json" };
+import damper from "../vendor/kinetra/examples/toolkit/proof/06-mass-spring-damper-response.json" with { type: "json" };
+import mohr from "../vendor/kinetra/examples/toolkit/proof/07-mohr-circle.json" with { type: "json" };
+import stressStrain from "../vendor/kinetra/examples/toolkit/proof/08-stress-strain.json" with { type: "json" };
+import carnot from "../vendor/kinetra/examples/toolkit/proof/09-carnot-pv.json" with { type: "json" };
+import heatEngine from "../vendor/kinetra/examples/toolkit/proof/10-heat-engine-energy-flow.json" with { type: "json" };
+import pumpTank from "../vendor/kinetra/examples/toolkit/proof/11-pump-tank-system.json" with { type: "json" };
+import venturi from "../vendor/kinetra/examples/toolkit/proof/12-venturi-bernoulli.json" with { type: "json" };
+import refraction from "../vendor/kinetra/examples/toolkit/proof/13-refraction-tir.json" with { type: "json" };
+import standingWave from "../vendor/kinetra/examples/toolkit/proof/14-standing-wave.json" with { type: "json" };
+import wireField from "../vendor/kinetra/examples/toolkit/proof/16-wire-magnetic-field.json" with { type: "json" };
+import wheatstone from "../vendor/kinetra/examples/toolkit/proof/17-wheatstone-bridge.json" with { type: "json" };
+import opamp from "../vendor/kinetra/examples/toolkit/proof/18-inverting-amplifier.json" with { type: "json" };
+import rlcPhasors from "../vendor/kinetra/examples/toolkit/proof/19-rlc-phasors.json" with { type: "json" };
+import threePhase from "../vendor/kinetra/examples/toolkit/proof/20-three-phase-phasors.json" with { type: "json" };
+import bode from "../vendor/kinetra/examples/toolkit/proof/21-bode-second-order.json" with { type: "json" };
+import step from "../vendor/kinetra/examples/toolkit/proof/22-step-response.json" with { type: "json" };
+import feedback from "../vendor/kinetra/examples/toolkit/proof/24-feedback-block-diagram.json" with { type: "json" };
+import fsm from "../vendor/kinetra/examples/toolkit/proof/25-moore-fsm.json" with { type: "json" };
+import datapath from "../vendor/kinetra/examples/toolkit/proof/27-cpu-datapath.json" with { type: "json" };
+import hydrogen from "../vendor/kinetra/examples/toolkit/proof/29-hydrogen-energy-levels.json" with { type: "json" };
+import minkowski from "../vendor/kinetra/examples/toolkit/proof/30-minkowski-diagram.json" with { type: "json" };
 
 export type KinetraRecipe = { name: string; use: string; figure: { module: string; fn: string; args: unknown[] }; notes: string };
 
@@ -164,10 +188,56 @@ export const illustrationRecipes: KinetraRecipe[] = figureRecipes.map((r) => ({ 
 export const illustrationGuide = `${figureVocabulary}
 Call it as {"module":"clem","fn":"illustration","args":[{"items":[…],"view"?:{…}}]}. Start from the closest textbook figure recipe and change positions, sizes and labels; keep every id unique and refer only to anchors of items that exist.`;
 
+/**
+ * Composed figures (vendor/kinetra/examples/toolkit/proof): checked toolkit models for engineering figures no other
+ * recipe draws. Each is 1–4 kB, so they go only with a request about their topic (recipeTopics) or by name
+ * ({"action":"recipes","name":…}); the long generated ones (dipole field lines, root locus) are left out, and the
+ * K-map, flowchart, incline and Atwood figures already have recipes of their own.
+ */
+const proof = (name: string, use: string, model: unknown): KinetraRecipe => ({
+  name: `composed: ${name}`,
+  use,
+  figure: { module: "clem", fn: "compose", args: [model] },
+  notes: "Keep the structure and the checks; change vars, then compose. In a chat ```kinetra block the card shows the title, so leave the model's \"title\" out. Read new parts with clem composeParts; {\"action\":\"skill\",\"name\":\"kinetra-compose\"} has the rules.",
+});
+export const composeRecipes: KinetraRecipe[] = [
+  proof("beam shear and bending moment", "simply supported beam with a point load, reactions, shear force and bending moment diagrams", beam),
+  proof("truss (method of joints)", "plane truss with member forces in tension and compression", truss),
+  proof("ladder equilibrium", "ladder against a wall: free-body diagram with friction and moments", ladder),
+  proof("mass–spring–damper response", "damped oscillator: system sketch and free response x(t)", damper),
+  proof("Mohr's circle", "plane stress: Mohr's circle with principal stresses and maximum shear", mohr),
+  proof("stress–strain curve", "engineering stress–strain curve: yield, ultimate strength, fracture, toughness area", stressStrain),
+  proof("Carnot cycle on a P–V diagram", "thermodynamic cycle on P–V axes with isotherms, adiabats and the work area", carnot),
+  proof("heat engine energy flow", "heat engine between two reservoirs: Q_H, W, Q_C and efficiency", heatEngine),
+  proof("pump and tank system", "pumping between two tanks: pipe, pump head, elevation and head loss", pumpTank),
+  proof("Venturi meter (Bernoulli)", "Venturi meter: continuity, Bernoulli and the head difference", venturi),
+  proof("refraction and total internal reflection", "light at a boundary: Snell's law, critical angle, total internal reflection", refraction),
+  proof("standing wave", "standing wave on a string: harmonics, nodes and antinodes", standingWave),
+  proof("magnetic field of a wire", "magnetic field around a long straight current-carrying wire", wireField),
+  proof("Wheatstone bridge", "Wheatstone bridge circuit with solved branch currents", wheatstone),
+  proof("inverting op-amp amplifier", "op-amp inverting amplifier with virtual ground and gain", opamp),
+  proof("RLC phasor diagram", "series RLC circuit: voltage phasors and impedance", rlcPhasors),
+  proof("three-phase phasors", "balanced three-phase supply: phase and line voltage phasors", threePhase),
+  proof("Bode plot", "Bode magnitude and phase plot of a second-order system with its resonant peak", bode),
+  proof("step response", "second-order step response: overshoot, peak time, settling time", step),
+  proof("feedback block diagram", "control system block diagram: unity feedback loop with a summing junction", feedback),
+  proof("Moore state machine", "finite state machine (Moore): states, transitions and outputs", fsm),
+  proof("CPU datapath", "single-cycle CPU datapath: PC, memories, register file, ALU and multiplexers", datapath),
+  proof("hydrogen energy levels", "atomic energy level diagram with emission lines and wavelengths", hydrogen),
+  proof("Minkowski diagram", "special relativity spacetime diagram with a moving frame's axes", minkowski),
+];
+/** One recipe by name, or every one whose name has the word ("composed" lists the composed figures). */
+export function recipesNamed(name: string) {
+  const want = name.trim().toLowerCase();
+  return [...allRecipes(), ...composeRecipes].filter((r) => r.name.toLowerCase().includes(want));
+}
+
 /** Every recipe: the science recipes, the concept diagrams and the textbook figures. */
 export const allRecipes = () => [...kinetraRecipes, ...diagramRecipes, ...illustrationRecipes];
 export const recipeText = (recipes: KinetraRecipe[] = allRecipes()) =>
   recipes.map((r) => `- ${r.name} (${r.use}): {"figure":${JSON.stringify(r.figure)}} — ${r.notes}`).join("\n");
+/** The composed figures by name only, for {"action":"recipes"}: each model is sent when asked for or when the topic is. */
+export const composeIndex = () => `Composed figures (clem compose; {"action":"recipes","name":"composed: …"} returns the model): ${composeRecipes.map((r) => r.name.slice(10)).join("; ")}.`;
 
 /**
  * What each science recipe is about. A recipe goes with the instructions when the request, the conversation or its
@@ -203,6 +273,31 @@ export const recipeTopics: Record<string, RegExp> = {
   "textbook figure: electric dipole field": topic(`dipole|point charges?|${ELECTROSTATICS}`),
   "textbook figure: rotating liquid in a vessel": /liquid|fluid|vessel|beaker|container|buoyan|pressure|meniscus|rotat|hydro|archimedes|water/i,
   "textbook figure: mass on a spring": /spring|hooke|oscillat|harmonic|\bshm\b|vibrat|pendulum|elastic/i,
+  // Composed figures: specific engineering words only, since each model is several kB.
+  "composed: beam shear and bending moment": /\bbeams?\b|shear (?:force|diagram)|bending moment|\bsfd\b|\bbmd\b|cantilever|simply supported|reactions? at/i,
+  "composed: truss (method of joints)": /\btruss(?:es)?\b|method of (?:joints|sections)|member forces?/i,
+  "composed: ladder equilibrium": /\bladders?\b/i,
+  "composed: mass–spring–damper response": /damp(?:er|ed|ing)\b|dashpot|spring[- –]mass|mass[- –]spring|free response|natural frequency|damping ratio/i,
+  "composed: Mohr's circle": /\bmohr|principal stress|plane stress|stress transformation|maximum shear stress/i,
+  "composed: stress–strain curve": /stress[- –]strain|yield (?:strength|point|stress)|ultimate (?:tensile )?strength|young'?s modulus|tensile test|necking/i,
+  "composed: Carnot cycle on a P–V diagram": /\bcarnot|\bp[- –]?v diagram|pressure[- –]volume|thermodynamic cycles?|isotherm|adiabat|otto cycle|diesel cycle|rankine|brayton/i,
+  "composed: heat engine energy flow": /heat engines?|heat pumps?|refrigerators?|thermal efficiency|\bcarnot|second law of thermo|(?:hot|cold|thermal) reservoirs?/i,
+  "composed: pump and tank system": /\bpumps?\b|head loss|pump head|pipe flow|piping/i,
+  "composed: Venturi meter (Bernoulli)": /venturi|bernoulli|continuity equation|flow meter|nozzle/i,
+  "composed: refraction and total internal reflection": /refract|snell|total internal reflection|critical angle|\btir\b|optical fib/i,
+  "composed: standing wave": /standing waves?|(?:first|second|third|fundamental) harmonic|\bnodes? and antinodes?|antinode|vibrating string|resonan(?:ce|t) (?:on|in) a (?:string|pipe|tube)/i,
+  "composed: magnetic field of a wire": /magnetic field|right[- ]hand rule|biot|amp[eè]re'?s law|current[- ]carrying wire|solenoid/i,
+  "composed: Wheatstone bridge": /wheatstone|bridge circuit|galvanometer|strain gauge/i,
+  "composed: inverting op-amp amplifier": /op[- ]?amps?\b|operational amplifier|inverting amplifier|virtual ground|amplifier gain/i,
+  "composed: RLC phasor diagram": /phasors?|\brlc\b|impedance|reactance|power factor|\bac circuits?/i,
+  "composed: three-phase phasors": /three[- ]phase|3[- ]phase|line voltage|phase voltage|\bdelta\b.*\bwye\b|\bwye\b|star[- ]delta/i,
+  "composed: Bode plot": /\bbode|frequency response|gain margin|phase margin|resonant peak|transfer function/i,
+  "composed: step response": /step response|overshoot|settling time|rise time|peak time|second[- ]order system|damping ratio|transient response/i,
+  "composed: feedback block diagram": /block diagrams?|feedback (?:loop|control|system)|control (?:loop|system)s?|closed[- ]loop|summing junction|\bpid control/i,
+  "composed: Moore state machine": /state machines?|\bfsm\b|finite[- ]state|moore|mealy|state (?:diagram|transition)|sequence detector|automat(?:on|a)\b|\bdfa\b|\bnfa\b/i,
+  "composed: CPU datapath": /datapath|data path|\bcpu\b|\balu\b|register file|instruction (?:fetch|cycle|set)|single[- ]cycle|pipelin|mips|risc[- ]?v|computer architecture|control unit/i,
+  "composed: hydrogen energy levels": /energy levels?|bohr|hydrogen atom|emission (?:line|spectr)|absorption spectr|electron transition|spectral lines?|photon emi/i,
+  "composed: Minkowski diagram": /minkowski|spacetime|space-time|special relativity|lorentz|light cone|time dilation|length contraction|worldline/i,
 };
 
 /**
@@ -213,5 +308,7 @@ export const recipeTopics: Record<string, RegExp> = {
 export function recipesFor(text: string, { pictures = false }: { pictures?: boolean } = {}) {
   const science = [...kinetraRecipes, ...illustrationRecipes];
   const chosen = new Set(pictures ? science : science.filter((r) => recipeTopics[r.name]?.test(text) ?? true));
-  return { recipes: allRecipes().filter((r) => !science.includes(r) || chosen.has(r)), omitted: science.length - chosen.size };
+  // Composed figures go only by topic, pictures or not: all of them would be most of the prompt.
+  const composed = composeRecipes.filter((r) => recipeTopics[r.name].test(text));
+  return { recipes: [...allRecipes().filter((r) => !science.includes(r) || chosen.has(r)), ...composed], omitted: science.length - chosen.size, composed: composed.length };
 }

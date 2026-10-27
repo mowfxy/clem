@@ -50,9 +50,21 @@ const usesCrlf = (text: string) => {
 };
 const BOM = '﻿';
 
-/** Applies a single exact find/replace; the find text must occur exactly once. Models write line breaks as \n, so in a
- *  file with \r\n line breaks the find text also matches with \r\n, and new text gets the file's line breaks. A whole
- *  new `content` keeps the file's line breaks and byte-order mark too, so an edit does not rewrite every line. */
+/** Characters models type in place of what a file holds: curly quotes for straight ones and the reverse. */
+const lookalikes: Record<string, string> = { "'": "['‘’]", '‘': "['‘’]", '’': "['‘’]", '"': '["“”]', '“': '["“”]', '”': '["“”]' };
+/** `find` as a pattern that ignores how the text is spaced: any run of spaces and tabs matches any other, a line break
+ *  matches any line break and indentation (blank lines included), and quotes match their curly or straight forms. */
+function loosePattern(find: string) {
+  return find.trim().split(/(\s+)/).map((part) => /^\s+$/.test(part) ? (part.includes('\n') ? '[ \\t]*(?:\\r?\\n[ \\t]*)+' : '[ \\t]+') : [...part].map((c) => lookalikes[c] ?? c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('')).join('');
+}
+const indentOf = (line: string) => /^[ \t]*/.exec(line)![0];
+
+/** Applies a single find/replace; the find text must occur exactly once. Models write line breaks as \n, so in a
+ *  file with \r\n line breaks the find text also matches with \r\n, and new text gets the file's line breaks. When the
+ *  find text is not in the file as written, it is matched again ignoring spacing, indentation and quote style (models
+ *  often re-indent or retype what they copy), still only when that finds exactly one place; the new text is then
+ *  indented as the file is there. A whole new `content` keeps the file's line breaks and byte-order mark too, so an
+ *  edit does not rewrite every line. */
 export function applyEdit(current: string, edit: { find?: string; replace?: string; content?: string }) {
   const crlf = usesCrlf(current);
   const native = (text: string) => (crlf ? text.replace(/\r?\n/g, '\r\n') : text);
@@ -60,12 +72,26 @@ export function applyEdit(current: string, edit: { find?: string; replace?: stri
     const content = native(edit.content);
     return current.startsWith(BOM) && !content.startsWith(BOM) ? BOM + content : content;
   }
-  if (!edit.find) throw Error('The change does not say what to replace.');
+  if (!edit.find?.trim()) throw Error('The change does not say what to replace.');
   let find = edit.find, replace = edit.replace ?? '';
   let first = current.indexOf(find);
   if (first < 0 && crlf && native(find) !== find) { find = native(find); first = current.indexOf(find); }
-  if (crlf) replace = native(replace);
-  if (first < 0) throw Error('The text to replace is no longer in the file.');
-  if (current.indexOf(find, first + 1) >= 0) throw Error('The text to replace appears more than once. Ask for a more specific change.');
-  return current.slice(0, first) + replace + current.slice(first + find.length);
+  if (first >= 0) {
+    if (current.indexOf(find, first + 1) >= 0) throw Error('The text to replace appears more than once in the file, so it is not clear which one to change.');
+    return current.slice(0, first) + native(replace) + current.slice(first + find.length);
+  }
+  const matches = [...current.matchAll(new RegExp(loosePattern(edit.find), 'g'))].slice(0, 2);
+  if (!matches.length) throw Error('The text to replace is not in the file as it is now.');
+  if (matches.length > 1) throw Error('The text to replace appears more than once in the file, so it is not clear which one to change.');
+  const at = matches[0].index!, found = matches[0][0];
+  // The find text was matched without its surrounding spaces and line breaks; the new text loses the same ones, and
+  // its lines move from the indentation the model wrote to the file's own.
+  const lead = /^\s*/.exec(edit.find)![0], trail = /\s*$/.exec(edit.find)![0];
+  if (replace.startsWith(lead)) replace = replace.slice(lead.length);
+  if (trail && replace.endsWith(trail)) replace = replace.slice(0, -trail.length);
+  // Only a find that starts a line says how its lines are indented.
+  const written = indentOf(edit.find.split('\n').find((line) => line.trim()) ?? '');
+  const actual = current.slice(current.lastIndexOf('\n', at - 1) + 1, at);
+  if (/^[ \t]*$/.test(actual) && written !== actual) replace = replace.split('\n').map((line, i) => (i > 0 && line.startsWith(written) ? actual + line.slice(written.length) : line)).join('\n');
+  return current.slice(0, at) + native(replace) + current.slice(at + found.length);
 }

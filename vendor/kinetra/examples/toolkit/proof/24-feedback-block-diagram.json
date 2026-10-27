@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "title": "Unity-feedback control loop",
+  "caption": "T(s) = KG/(1 + KGH) = K/(s² + s + K); K = 4 gives ωₙ = 2 rad/s, ζ = 0.25, zero steady-state step error",
+  "canvas": { "width": 860, "height": 360, "world": { "xMin": -0.6, "xMax": 11.6, "yMin": -3.0, "yMax": 1.9 } },
+  "vars": { "K": "4", "wn": "sqrt(K)", "zeta": "1/(2*wn)", "T0": "K/(0^2 + 0 + K)" },
+  "elements": [
+    { "id": "R", "type": "text", "text": "R(s)", "at": { "x": 0.2, "y": 0.35 } },
+    { "id": "sum", "type": "summingJunction", "at": { "x": 1.9, "y": 0 }, "r": 0.28, "signs": { "left": "+", "bottom": "−" } },
+    { "id": "Cb", "type": "roundedBox", "at": { "x": 4.2, "y": 0 }, "w": 1.9, "h": 0.95, "r": 0.08, "text": "K = 4" },
+    { "id": "Gb", "type": "roundedBox", "at": { "x": 7.2, "y": 0 }, "w": 2.2, "h": 0.95, "r": 0.08, "text": "G(s) = 1/(s(s + 1))" },
+    { "id": "Hb", "type": "roundedBox", "at": { "x": 5.7, "y": -2.0 }, "w": 1.9, "h": 0.85, "r": 0.08, "text": "H(s) = 1" },
+    { "id": "tk", "type": "takeoff", "at": { "x": 9.6, "y": 0 } },
+    { "id": "Y", "type": "text", "text": "Y(s)", "at": { "x": 10.9, "y": 0.35 } },
+    { "id": "c0", "type": "connector", "from": { "x": -0.2, "y": 0 }, "to": "sum.left" },
+    { "id": "c1", "type": "connector", "from": "sum.right", "to": "Cb.left", "label": { "text": "E(s)", "position": "above" } },
+    { "id": "c2", "type": "connector", "from": "Cb.right", "to": "Gb.left", "label": { "text": "U(s)", "position": "above" } },
+    { "id": "c3", "type": "connector", "from": "Gb.right", "to": "tk", "end": "none" },
+    { "id": "c4", "type": "connector", "from": "tk", "to": { "x": 11.4, "y": 0 }, "mayTouch": ["c3"] },
+    { "id": "fb1", "type": "connector", "from": "tk", "to": "Hb.right", "route": "orthogonal", "fromSide": "down", "end": "arrow", "mayTouch": ["c3", "c4"] },
+    { "id": "fb2", "type": "connector", "from": "Hb.left", "to": "sum.bottom", "route": "orthogonal", "label": "B(s)" }
+  ],
+  "checks": [
+    { "id": "char_poly_wn", "type": "equal", "left": "wn^2", "right": "K", "tol": 1e-12 },
+    { "id": "char_poly_damping", "type": "equal", "left": "2*zeta*wn", "right": 1, "tol": 1e-12 },
+    { "id": "type1_zero_step_error", "type": "equal", "left": "1 - T0", "right": 0, "tol": 1e-12 },
+    { "id": "forward_path_aligned", "type": "equal", "left": "Cb.y", "right": "Gb.y", "tol": "1e-12 m" },
+    { "id": "signal_flows_left_to_right", "type": "less", "left": "Cb.x", "right": "Gb.x" }
+  ]
+}

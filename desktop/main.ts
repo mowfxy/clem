@@ -6,7 +6,7 @@ import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "
 import { LIBRARY, TEXT, laneFolders, mirrorFor, mirroredId, newOutputs, removeOldFolders, spaceFolders, syncMirror, workspaceLane, workspaceNote, workspacePath, workspaceRelative, type MirrorFile } from "./ai-workspace";
 import { officeText } from "./office-text";
 import { withMarkdownSource, uncheckedExamples } from "./markdown-source";
-import { answerReview, calculationIntent, retractedStatus } from "./answer-review";
+import { answerReview, calculationIntent, editReview, figureDrawReview, retractedStatus } from "./answer-review";
 import { inflight, stoppedRuns } from "./inflight";
 import { wordDocument } from "./docx-document";
 import { powerpointDeck } from "./pptx-deck";
@@ -46,7 +46,7 @@ import {
 import { captureRegion } from "./capture";
 import { clipboardFiles } from "./clipboard-files";
 import { spawn } from "node:child_process";
-import { applyChange, undoChange, locate, readText, type Change } from "./folder-edits";
+import { applyChange, changeProblem, undoChange, locate, readText, type Change } from "./folder-edits";
 import { editLanguage } from "../core/answer-format";
 import { join, resolve, basename, dirname, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -59,7 +59,8 @@ import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { attachedSources, cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
 import { ChatSessions, type KeptSession, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrint, sentAfter, sourcePrint } from "./chat-sessions";
-import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraCliBrief, kinetraFilesBrief, kinetraExtrasFor, needsKinetra } from "./kinetra-runtime";
+import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraCliBrief, kinetraFilesBrief, kinetraExtrasFor, needsKinetra, kinetraCall } from "./kinetra-runtime";
+import { unsafeSvg } from "./svg-safety";
 import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeOpensPdfPages} from './claude';
@@ -116,6 +117,7 @@ import {
   parseExtraction,
   learnMemories,
   rememberedWords,
+  memoryBlocks,
   confirmMemory,
   pruneMemory,
   updateMemory,
@@ -715,6 +717,29 @@ void app.whenReady().then(async () => {
     const next = (folderEditLocks.get(owner) || Promise.resolve()).catch(() => {}).then(task);
     folderEditLocks.set(owner, next.catch(() => {}));
     return next;
+  }
+  /**
+   * What the AI saved in ```memory blocks because the person asked it to remember something (core rules in
+   * desktop/prompt.ts): their own instruction, so it is kept as confirmed, in this space when it is "about":"space".
+   * With memory off nothing is kept, and the person is told so instead of believing it was saved.
+   */
+  function rememberAsked(owner: string, scope: string, eventId: string, sourceId: string, items: Learned[]) {
+    memoryWrites = memoryWrites.then(async () => {
+      const key = "memory-" + owner;
+      const result = await withMemory(owner, async () => {
+        const latest = await vault.read<MemoryState>(key, { enabled: (await vault.read("setup-" + owner, setupDefault)).memory, records: [] });
+        if (!latest.enabled) return null;
+        const before = new Set(latest.records.map((m) => m.id));
+        const next = learnMemories(latest, items, { scope, sourceId, explicit: true });
+        await vault.write(key, next);
+        return next.records.filter((m) => !before.has(m.id) && !m.supersededBy);
+      });
+      if (window.isDestroyed()) return;
+      if (!result) { window.webContents.send("clem:chat", { id: eventId, type: "memory", off: true, text: items.map((m) => m.text).join("\n"), memories: [] }); return; }
+      if (!result.length) return;
+      scheduleMemorySync(owner);
+      window.webContents.send("clem:chat", { id: eventId, type: "memory", text: result.map((m) => m.text).join("\n"), memories: result.map((m) => ({ id: m.id, text: m.text, confirmed: m.confirmed })) });
+    }).catch((error) => console.warn("[memory] could not save what was asked:", (error as Error).message));
   }
   /**
    * After a reply, a short low-effort pass notes durable facts the person shared about themselves.
@@ -1318,7 +1343,7 @@ void app.whenReady().then(async () => {
     if (request.action === "driveRename") return driveLive.rename(request.id,request.name);
     if (request.action === "driveTrash") return driveLive.trash(request.id);
     if (request.action === "driveMove") return driveLive.move(request.root,request.id,request.to);
-    if (request.action === "driveFolder") return driveLive.folder(request.folder,request.query||"",request.refresh);
+    if (request.action === "driveFolder") return driveLive.folder(request.folder,request.query||"",request.refresh,request.limit);
     if (request.action === "driveMediaUrl") return {url:await driveMedia.url(request.id)};
     if (request.action === "driveText") return {text:await driveLive.text(request.id)};
     if (request.action === "videoCaptions") {
@@ -1447,6 +1472,15 @@ void app.whenReady().then(async () => {
         sharedWith: request.sharedWith,
       }));
       return { ok: true };
+    }
+    if (request.action === "kinetraFigure") {
+      let figure: any;
+      try { figure = JSON.parse(request.figure); } catch { throw Error("This figure's specification is not valid JSON."); }
+      if (typeof figure?.module !== "string" || typeof figure?.fn !== "string" || !Array.isArray(figure?.args)) throw Error('A Kinetra figure needs "module", "fn" and "args".');
+      const svg = await kinetraCall({ action: "call", module: figure.module, fn: figure.fn, args: figure.args });
+      if (typeof svg !== "string" || !svg.includes("<svg")) throw Error(`${figure.module}.${figure.fn} returned data, not a drawing.`);
+      if (unsafeSvg.test(svg)) throw Error("The drawing contains content Clem does not show.");
+      return { svg };
     }
     if (request.action === "pdfRender") {
       let spec: unknown;
@@ -1799,7 +1833,15 @@ void app.whenReady().then(async () => {
       // times on the way, and the person should get the final file, not every draft (and not one card per tool call).
       const delivery = new Map<string, any>();
       const deliver = () => { for (const event of delivery.values()) send(event); delivery.clear(); };
-      const emit = (event: any) => { if (event.type === "done") deliver(); send(event); };
+      // The answer as the person sees it (an answer sent back is written again from the start), for its ```memory blocks.
+      let answered = "";
+      const emit = (event: any) => {
+        if (event.type === "delta") answered += event.text || "";
+        else if (event.type === "separator") answered += "\n\n";
+        else if (event.type === "retract") answered = "";
+        if (event.type === "done") deliver();
+        send(event);
+      };
       // Files Clem made earlier in this conversation. Asking to change one revises that same file.
       const documents = new Map<string, string>();
       // Files made in this answer, and the version each earlier file had before this answer first changed it. One answer
@@ -1833,7 +1875,11 @@ void app.whenReady().then(async () => {
       };
       // The answer's own numbers (desktop/answer-review.ts): its checks recomputed, and a calculation's results verified.
       const calculation = calculationIntent(query);
-      const review: AnswerGates["review"] = (answer, history) => answerReview(answer, history, { calculation });
+      // Proposed changes to linked-folder files are tried against the live files first, so one that cannot apply goes back.
+      const review: AnswerGates["review"] = async (answer, history) =>
+        (folders.length ? await editReview(answer, (edit) => changeProblem(folders, edit)) : undefined) ?? answerReview(answer, history, { calculation }) ??
+        // Every chat figure drawn first, so one Kinetra refuses (a composition that fails its checks) goes back, not to the person.
+        await figureDrawReview(answer, (figure) => kinetraCall({ action: "call", ...figure }));
       const known = await Promise.all((request.documents || []).map((doc) => disk.hasFile(user.id, "spec-" + doc.id)));
       (request.documents || []).forEach((doc, i) => { if (known[i]) documents.set(doc.id, doc.name); });
       // The Markdown file each document was last made from (kept with its source): written back when it is missing from
@@ -2189,6 +2235,8 @@ void app.whenReady().then(async () => {
         const held = heldOutputs.get(work.root + "|" + work.lane);
         heldOutputs.delete(work.root + "|" + work.lane);
         for (const out of await newOutputs(work.root, Math.min(started, held ?? started), work.lane)) {
+          // A short readme the AI left about its own work ("Clem delivers image files…") is not a file the person asked for.
+          if (/^read[ _-]?me(?:\.(?:txt|md))?$/i.test(basename(out.name)) && out.size < 4096 && !/\bread[ _-]?me\b/i.test(query)) continue;
           const bytes = await readDiskFile(out.path).catch(() => null);
           if (!bytes) continue;
           const id = randomUUID(), name = basename(out.name);
@@ -2208,7 +2256,11 @@ void app.whenReady().then(async () => {
       if (!request.chat) void run.finally(() => temporaryCrops.drop(request.id)).catch(() => {});
       void run.then(() => {
           // A stopped answer teaches nothing.
-          if (!cancelledRuns.has(request.id) && !request.temporary) learnFromTurn(user.id, request.scope, request.id, "chat:" + (request.chat || request.id), query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
+          if (cancelledRuns.has(request.id) || request.temporary) return;
+          // Asked to remember something: what the AI wrote down is kept as it is, and no second pass guesses at it.
+          const asked = memoryBlocks(answered);
+          if (asked.length) rememberAsked(user.id, request.scope, request.id, "chat:" + (request.chat || request.id), asked);
+          else learnFromTurn(user.id, request.scope, request.id, "chat:" + (request.chat || request.id), query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
         })
         .catch(async (error) => {
           const stopped = cancelledRuns.has(request.id) || /Request cancelled/.test(String((error as Error)?.message));

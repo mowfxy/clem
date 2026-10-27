@@ -1,0 +1,26 @@
+/* The chat's files: a button in the top bar and a card that grows out of it (src/chat/ChatFiles.tsx). */
+.chat-files{position:relative;display:flex;align-items:center;-webkit-app-region:no-drag}
+.chat-files-button{position:relative;border-radius:10px;transition:background .15s,color .15s}
+.chat-files-button.on{background:color-mix(in srgb,var(--ink) 9%,transparent)}
+.cf-count{position:absolute;top:2px;right:1px;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--ink);color:var(--bg);font:700 9.5px/15px var(--sans);text-align:center;pointer-events:none;box-shadow:0 0 0 2px var(--bg)}
+.cf-card{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:min(360px,calc(100vw - 32px));max-height:min(520px,calc(100vh - 120px));overflow:auto;padding:6px 6px 8px;border-radius:16px;background:var(--panel);border:1px solid var(--line);box-shadow:0 24px 60px -12px #0000006b,0 2px 8px #0000001f;color:var(--ink);transform-origin:calc(100% - 17px) -8px;animation:cf-grow .26s cubic-bezier(.2,.9,.25,1.15) both}
+@keyframes cf-grow{from{opacity:0;transform:scale(.6) translateY(-6px);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+.cf-card header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:10px 10px 8px}
+.cf-card header strong{font:600 14px/1.2 var(--sans)}
+.cf-card header span{font:400 12px/1 var(--sans);color:var(--muted)}
+.cf-card section{padding-top:4px;animation:cf-rows .3s .06s ease-out both}
+.cf-card section+section{margin-top:4px;border-top:1px solid var(--line);padding-top:8px}
+@keyframes cf-rows{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.cf-card h3{display:flex;align-items:center;gap:6px;margin:0;padding:4px 10px 6px;font:600 11px/1 var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.cf-card h3 span{margin-left:auto;font-weight:500;letter-spacing:0}
+.cf-card ul{list-style:none;margin:0;padding:0}
+.cf-card li{display:flex;align-items:center;gap:2px;border-radius:10px}
+.cf-card li:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.cf-open{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-start;gap:10px;padding:7px 8px;background:none;border:0;color:inherit;text-align:left;cursor:pointer;border-radius:10px}
+.cf-open>span{min-width:0;display:grid;gap:2px}
+.cf-open strong{font:500 13px/1.3 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-open small{font:400 11.5px/1.2 var(--sans);color:var(--muted)}
+.cf-download{flex:none;width:30px;height:30px;margin-right:4px;opacity:0;color:var(--muted);transition:opacity .15s}
+.cf-card li:hover .cf-download,.cf-download:focus-visible{opacity:1}
+.cf-empty{margin:0;padding:6px 10px 10px;font:400 13px/1.45 var(--sans);color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.cf-card,.cf-card section{animation:none}}

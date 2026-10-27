@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "title": "Series RLC circuit: voltage phasors",
+  "caption": "I = 2 A at 0° (reference); R = 10 Ω, X_L = 15 Ω, X_C = 8 Ω; V = V_R + V_L + V_C",
+  "canvas": { "width": 640, "height": 600, "world": { "xMin": -4.4, "xMax": 4.4, "yMin": -4.2, "yMax": 4.0 } },
+  "vars": { "I": "2", "R": "10", "XL": "15", "XC": "8",
+            "VRm": "I*R", "VLm": "I*XL", "VCm": "I*XC",
+            "Vm": "I*sqrt(R^2 + (XL - XC)^2)", "phi": "atan2(XL - XC, R)" },
+  "elements": [
+    { "id": "pa", "type": "polarAxes", "at": { "x": 0, "y": 0 }, "r": 3.4, "rMax": 35, "rings": 7, "spokes": 30, "ringLabels": false },
+    { "id": "VR", "type": "phasor", "axes": "pa", "magnitude": "VRm", "angle": 0, "color": "ink", "label": "V_R = 20 V" },
+    { "id": "VL", "type": "phasor", "axes": "pa", "magnitude": "VLm", "angle": 90, "color": "friction", "label": "V_L = 30 V" },
+    { "id": "VC", "type": "phasor", "axes": "pa", "magnitude": "VCm", "angle": -90, "color": "normal", "label": "V_C = 16 V" },
+    { "id": "V", "type": "phasor", "axes": "pa", "magnitude": "Vm", "angle": "phi", "color": "force", "label": "V = 24.4 V ∠35°" },
+    { "id": "cons", "type": "segment", "from": "VR.tip", "to": "V.tip", "dashed": true, "color": "guide", "width": 1, "mayTouch": ["VR", "V"] },
+    { "id": "ph", "type": "angleArc", "vertex": "pa.center", "fromAngle": 0, "toAngle": "phi", "r": 1.1, "text": "\\phi", "mayTouch": ["VR", "V", "VL", "VC"] }
+  ],
+  "checks": [
+    { "id": "kvl_real", "type": "equal", "left": "V.re", "right": "VR.re + VL.re + VC.re", "tol": 1e-9 },
+    { "id": "kvl_imag", "type": "equal", "left": "V.im", "right": "VR.im + VL.im + VC.im", "tol": 1e-9 },
+    { "id": "impedance_magnitude", "type": "equal", "left": "V.magnitude/I", "right": "sqrt(R^2 + (XL - XC)^2)", "tol": 1e-9 },
+    { "id": "inductive_leads", "type": "greater", "left": "V.angle", "right": "0 deg" }
+  ]
+}

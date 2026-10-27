@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "title": "Carnot cycle on a P–V diagram (1 mol ideal diatomic gas)",
+  "caption": "T_H = 500 K, T_C = 300 K, γ = 1.4; shaded area = net work W = nR(T_H − T_C) ln(V₂/V₁)",
+  "canvas": { "width": 800, "height": 520, "world": { "xMin": -1.4, "xMax": 10.4, "yMin": -1.5, "yMax": 6.2 } },
+  "vars": { "nR": "8.314", "TH": "500", "TC": "300", "g": "1.4",
+            "V1": "10", "V2": "20", "r": "(TH/TC)^(1/(g - 1))", "V3": "V2*r", "V4": "V1*r",
+            "P1": "nR*TH/V1", "P2": "nR*TH/V2", "P3": "nR*TC/V3", "P4": "nR*TC/V4",
+            "QH": "nR*TH*ln(V2/V1)", "Wnet": "nR*(TH - TC)*ln(V2/V1)" },
+  "elements": [
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 8.8, "h": 5.0,
+      "x": { "min": 0, "max": 80, "ticks": [0, 20, 40, 60, 80], "label": "V", "unit": "L" },
+      "y": { "min": 0, "max": 450, "ticks": [0, 100, 200, 300, 400], "label": "P", "unit": "kPa" } },
+    { "id": "w1", "type": "shade", "axes": "ax", "upper": "nR*TH/x", "lower": "P1*(V1/x)^g", "from": "V1", "to": "V2", "fill": "bodyFill" },
+    { "id": "w2", "type": "shade", "axes": "ax", "upper": "P2*(V2/x)^g", "lower": "P1*(V1/x)^g", "from": "V2", "to": "V4", "fill": "bodyFill", "mayTouch": ["w1", "iH"] },
+    { "id": "w3", "type": "shade", "axes": "ax", "upper": "P2*(V2/x)^g", "lower": "nR*TC/x", "from": "V4", "to": "V3", "fill": "bodyFill", "mayTouch": ["w2"] },
+    { "id": "iH", "type": "series", "axes": "ax", "fn": "nR*TH/x", "domain": ["V1", "V2"], "color": "force", "mayTouch": ["w1"] },
+    { "id": "a23", "type": "series", "axes": "ax", "fn": "P2*(V2/x)^g", "domain": ["V2", "V3"], "color": "ink", "mayTouch": ["iH", "w1", "w2", "w3"] },
+    { "id": "iC", "type": "series", "axes": "ax", "fn": "nR*TC/x", "domain": ["V4", "V3"], "color": "rayAlt", "mayTouch": ["a23", "w3", "w2"] },
+    { "id": "a41", "type": "series", "axes": "ax", "fn": "P1*(V1/x)^g", "domain": ["V1", "V4"], "color": "ink", "mayTouch": ["iC", "iH", "w1", "w2", "w3"] },
+    { "id": "s1", "type": "plotPoint", "axes": "ax", "series": "iH", "x": "V1", "mayTouch": ["a41", "w1"], "label": { "text": "1", "position": "above-right" } },
+    { "id": "s2", "type": "plotPoint", "axes": "ax", "series": "iH", "x": "V2", "mayTouch": ["a23", "w1", "w2"], "label": { "text": "2", "position": "above-right" } },
+    { "id": "s3", "type": "plotPoint", "axes": "ax", "series": "iC", "x": "V3", "mayTouch": ["a23", "w3"], "label": { "text": "3", "position": "above-right" } },
+    { "id": "s4", "type": "plotPoint", "axes": "ax", "series": "iC", "x": "V4", "mayTouch": ["a41", "w2", "w3"], "label": { "text": "4", "position": "below-left" } },
+    { "id": "wl", "type": "leader", "target": { "x": "27/80*8.8", "y": "120/450*5" }, "text": "net work W = 1153 J", "dx": 1.7, "dy": 1.9, "marker": "dot", "mayTouch": ["w2", "a23"] },
+    { "id": "lg", "type": "legend", "at": { "x": 7.2, "y": 4.2 }, "entries": [
+      { "text": "isotherm T_H", "kind": "line", "color": "force" },
+      { "text": "isotherm T_C", "kind": "line", "color": "rayAlt" },
+      { "text": "adiabat", "kind": "line", "color": "ink" } ] }
+  ],
+  "checks": [
+    { "id": "state3_on_adiabat", "type": "onCurve", "point": "s3", "curve": "a23" },
+    { "id": "state4_on_adiabat", "type": "onCurve", "point": "s4", "curve": "a41" },
+    { "id": "state2_on_adiabat", "type": "onCurve", "point": "s2", "curve": "a23" },
+    { "id": "net_work_area", "type": "equal", "left": "w1.area + w2.area + w3.area", "right": "Wnet", "tol": 3 },
+    { "id": "carnot_efficiency", "type": "equal", "left": "(w1.area + w2.area + w3.area)/QH", "right": "1 - TC/TH", "tol": 0.002 }
+  ]
+}

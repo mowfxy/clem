@@ -21,6 +21,69 @@ import {
 import { solveNetlist, solveNetlistTransient } from "../vendor/kinetra/packages/core/src/circuit/spice";
 import type { Netlist } from "../vendor/kinetra/packages/core/src/circuit/circuit";
 import { formatValue } from "../vendor/kinetra/packages/core/src/diagram/schematic_kit";
+import {
+  compose as composeModel,
+  listToolkitParts,
+  TOOLKIT_PART_CATALOG,
+  TOOLKIT_PART_SAMPLES,
+  type ComposeModel,
+  type ToolkitIssue,
+} from "../vendor/kinetra/packages/core/src/toolkit/index";
+const issueText = (e: ToolkitIssue) =>
+  `${e.code}${e.elements.length ? ` [${e.elements.join(", ")}]` : ""}: ${e.message}${e.measured ? ` (measured ${JSON.stringify(e.measured)})` : ""}${e.suggestion ? ` Fix: ${e.suggestion}` : ""}`;
+/**
+ * A composed engineering or physics figure (beams, trusses, Mohr's circle, P–V cycles, Bode plots, block diagrams, state
+ * machines, datapaths, phasors, op-amps…) from a toolkit model: parts placed by relations, quantities as formulas with
+ * units, declared checks and an overlap gate. Returns the SVG only when every check and the gate pass; otherwise throws
+ * every problem at once, each with the elements involved and a fix, so a figure, PDF or chat block goes back to the model.
+ */
+export function compose(model: ComposeModel): string {
+  const r = composeModel(model);
+  // Without its XML prolog, so it embeds in a page like every other Kinetra figure.
+  if (r.ok) return r.svg.replace(/^<\?xml[^>]*>\s*/, "");
+  throw Error(`The composition did not render (stage ${r.report.stage}): ${r.errors.map(issueText).join(" | ")}`);
+}
+/** The same model checked without keeping the drawing: every declared check (expected, actual, pass), the gate and the errors, for stating what was verified. */
+export function composeCheck(model: ComposeModel) {
+  const r = composeModel(model);
+  return {
+    ok: r.ok,
+    checks: r.report.checks.map((c) => ({ label: c.id, type: c.type, expected: c.expected, actual: c.actual, pass: c.pass, unit: c.unit })),
+    overlapsTested: r.report.gate,
+    errors: r.ok ? [] : r.errors.map(issueText),
+  };
+}
+const PART_GROUPS = ["basic", "general", "mechanics", "fields", "fluids", "circuits", "logic", "plots"];
+/** A seeded generator, so a part's example is the same every time (scripts/toolkit-parts-doc.mjs uses the same one). */
+function seeded(seed: number) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+/**
+ * The reference for the toolkit parts a composition needs, and only those: names or aliases ("beam", "pinSupport",
+ * "opamp") or a category (basic, general, mechanics, fields, fluids, circuits, logic, plots), each with its options,
+ * anchors and an example. No argument lists every part type by category.
+ */
+export function composeParts(names?: string | string[]) {
+  const kit = new Map(TOOLKIT_PART_CATALOG.map((p) => [p.type, p]));
+  const all = listToolkitParts().map((d) => kit.get(d.type) ?? { type: d.type, aliases: d.aliases ?? [], category: "basic", description: d.description, anchors: d.anchorNames, options: d.propKeys, positioning: d.positioning });
+  if (names === undefined || (Array.isArray(names) && !names.length))
+    return Object.fromEntries(PART_GROUPS.map((g) => [g, all.filter((p) => p.category === g).map((p) => p.type)]));
+  const wanted = (Array.isArray(names) ? names : [names]).map((n) => String(n).trim().toLowerCase());
+  const found = all.filter((p) => wanted.some((w) => w === p.category || w === p.type.toLowerCase() || p.aliases.some((a) => a.toLowerCase() === w)));
+  const missing = wanted.filter((w) => !PART_GROUPS.includes(w) && !found.some((p) => p.type.toLowerCase() === w || p.aliases.some((a) => a.toLowerCase() === w)));
+  if (!found.length) throw Error(`No toolkit part or category named ${wanted.join(", ")}. Categories: ${PART_GROUPS.join(", ")}; composeParts() lists every part.`);
+  return {
+    parts: found.map((p) => {
+      const example = TOOLKIT_PART_SAMPLES.get(p.type)?.(p.type.replace(/[^A-Za-z0-9_]/g, "_"), { x: 2, y: 1.5 }, seeded(7));
+      return { type: p.type, ...(p.aliases.length ? { aliases: p.aliases } : {}), positioning: p.positioning, description: p.description, options: p.options, anchors: p.anchors, ...(example ? { example } : {}) };
+    }),
+    ...(missing.length ? { unknown: missing.map((w) => {
+      const near = all.filter((p) => [p.type, ...p.aliases].some((n) => n.toLowerCase().includes(w))).map((p) => p.type);
+      return near.length ? `${w} (did you mean ${near.join(", ")}?)` : w;
+    }) } : {}),
+  };
+}
 /**
  * The DC solution of the netlist renderCircuit draws ({elements:[{kind,from,to,label,value,unit}]}, node "0" is
  * ground): node voltages, each element's voltage (V(from) − V(to)), current (from → to) and absorbed power, and every

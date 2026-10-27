@@ -42,6 +42,10 @@ test("paths cannot escape the folder, reach secrets or unsupported files", async
     await assert.rejects(() => locate(folders, "src/tool.exe"), /only changes text/);
     await assert.rejects(() => locate(folders, "src/missing.py"), /not in a linked folder/);
     assert.ok((await locate(folders, "project/src/app.py")).exists, "a leading folder name is accepted");
+    // An AI working in its own folder sees the linked folder by its full path.
+    assert.ok((await locate(folders, join(folders[0].path, "src", "app.py"))).exists, "a full path into the linked folder is accepted");
+    await assert.rejects(() => locate(folders, join(base, "other", "secret.txt")), /inside a linked folder/);
+    await assert.rejects(() => locate(folders, join(folders[0].path, "..", "other", "secret.txt")), /inside a linked folder|outside/);
   } finally { await rm(base, { recursive: true, force: true }); }
 });
 
@@ -55,7 +59,7 @@ test("undo refuses to overwrite newer work and new files are removed on undo", a
     assert.equal(created.before, null);
     await undoChange(folders, created);
     assert.equal(existsSync(join(root, "notes", "todo.md")), false);
-    await assert.rejects(() => applyChange(folders, "chat:a", { path: "src/app.py", find: "not there", replace: "x" }), /no longer in the file/);
+    await assert.rejects(() => applyChange(folders, "chat:a", { path: "src/app.py", find: "not there", replace: "x" }), /not in the file as it is now/);
   } finally { await rm(base, { recursive: true, force: true }); }
 });
 

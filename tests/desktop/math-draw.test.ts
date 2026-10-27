@@ -47,7 +47,15 @@ test("an arrow with a label is drawn as wide as its label, above and below; othe
 
 test("PDFs draw labelled arrows and upright chemistry as well", () => {
   const html = markdownHtml("Photosynthesis:\n\n$$6CO_2 + 6H_2O \\xrightarrow{\\text{light}} C_6H_{12}O_6 + 6O_2$$\n\nInline $H_2O$ and physics $P_1V_1 = P_2V_2$.");
-  assert.doesNotMatch(html, /stretchy="true" minsize/);
-  assert.match(html, /<mi mathvariant="normal">C<\/mi>/);
-  assert.match(html, /<mi>P<\/mi>/, "physics stays italic");
+  // PDFs use KaTeX's HTML layout, which draws the arrow to its label's width itself (an SVG under the label).
+  assert.match(html, /class="mrel x-arrow"[\s\S]*?light[\s\S]*?<svg/);
+  assert.match(html, /<span class="mord mathrm">C<\/span>/);
+  assert.match(html, /<span class="mord mathnormal"[^>]*>P<\/span>/, "physics stays italic");
+});
+
+test("PDF maths is fenced, so cross-reference links never reach inside a formula", () => {
+  const html = markdownHtml("See $\\text{Figure 2}$ and\n\n$$\\begin{aligned} a &= 1 \\\\ b &= 2 \\end{aligned}$$");
+  assert.equal((html.match(/<x-math>/g) || []).length, 2);
+  assert.match(html, /<x-math><span class="katex-display">/);
+  assert.doesNotMatch(html, /<math/);
 });

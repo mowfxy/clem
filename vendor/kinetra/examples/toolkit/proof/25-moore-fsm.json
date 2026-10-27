@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "Moore machine: output 1 after two or more consecutive 1s",
+  "caption": "State / output; input on each arrow. A = no 1 yet, B = one 1, C = at least two 1s in a row",
+  "canvas": { "width": 760, "height": 450, "world": { "xMin": -0.6, "xMax": 9.0, "yMin": -3.0, "yMax": 2.7 } },
+  "vars": { "dx": "3 m" },
+  "elements": [
+    { "id": "A", "type": "state", "at": { "x": 1.2, "y": 0 }, "r": 0.55, "text": "A / 0", "initial": 180 },
+    { "id": "B", "type": "state", "at": { "x": "1.2 m + dx", "y": 0 }, "r": 0.55, "text": "B / 0" },
+    { "id": "C", "type": "state", "at": { "x": "1.2 m + 2*dx", "y": 0 }, "r": 0.55, "text": "C / 1", "accepting": true },
+    { "id": "tAB", "type": "transition", "from": "A", "to": "B", "bend": 0.22, "label": "1" },
+    { "id": "tBA", "type": "transition", "from": "B", "to": "A", "bend": 0.22, "label": "0" },
+    { "id": "tBC", "type": "transition", "from": "B", "to": "C", "bend": 0.22, "label": "1" },
+    { "id": "tCA", "type": "transition", "from": "C", "to": "A", "bend": 0.42, "label": "0" },
+    { "id": "lA", "type": "selfLoop", "state": "A", "angle": 90, "label": "0" },
+    { "id": "lC", "type": "selfLoop", "state": "C", "angle": 90, "label": "1" }
+  ],
+  "checks": [
+    { "id": "states_in_a_row", "type": "equal", "left": "A.y", "right": "C.y", "tol": "1e-12 m" },
+    { "id": "even_spacing", "type": "equal", "left": "B.x - A.x", "right": "C.x - B.x", "tol": "1e-12 m" },
+    { "id": "spacing_value", "type": "equal", "left": "B.x - A.x", "right": "dx", "tol": "1e-12 m" }
+  ]
+}

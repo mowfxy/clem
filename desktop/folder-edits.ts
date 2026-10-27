@@ -30,10 +30,22 @@ async function existingAncestor(path: string): Promise<string> {
   }
 }
 
+/** A full path into a linked folder ("C:\Users\…\project\src\a.py", as an AI working in its own folder sees the linked
+ *  folder) as a path relative to that folder; any other path as it is. */
+function withinFolder(folders: Folder[], path: string) {
+  if (!isAbsolute(path) && !/^[a-z]:/i.test(path)) return path;
+  const full = normalize(path.trim()).toLowerCase();
+  for (const folder of folders) {
+    const root = normalize(folder.path).replace(/[\\/]+$/, "");
+    if (full.startsWith(root.toLowerCase() + sep)) return normalize(path.trim()).slice(root.length + 1);
+  }
+  return path;
+}
+
 /** Finds the one linked folder that holds `path`. New files are allowed only when a single folder is linked.
  *  Files the folder's .gitignore or .clemignore leave out of the index are out of reach here too. */
 export async function locate(folders: Folder[], path: string, create = false) {
-  const parts = cleanRelative(path);
+  const parts = cleanRelative(withinFolder(folders, path));
   const matches: { folder: Folder; absolute: string; exists: boolean }[] = [];
   for (const folder of folders) {
     const root = await realpath(folder.path).catch(() => null);
@@ -96,6 +108,18 @@ export async function applyChange(folders: Folder[], scope: string, edit: { path
   await writeAtomic(target.absolute, after);
   const stats = diffStats(lineDiff(before ?? "", after));
   return { id: randomUUID(), scope, folderId: target.folder.id, path: edit.path, before, after, afterHash: sha(after), at: Date.now(), summary: (edit.summary || "").slice(0, 200), ...stats };
+}
+
+/** Why a proposed change could not be shown or applied as it stands (the file is not there, its find text is not in
+ *  the file or is in it twice, it would change nothing), checked against the live file without writing; undefined when it applies. */
+export async function changeProblem(folders: Folder[], edit: { path: string; find?: string; replace?: string; content?: string }) {
+  try {
+    const target = await locate(folders, edit.path, edit.content !== undefined);
+    const before = target.exists ? await readText(target.absolute) : null;
+    if (applyEdit(before ?? "", edit) === before) return "This change would not alter the file.";
+  } catch (error) {
+    return (error as Error).message;
+  }
 }
 
 /** Restores the previous content, refusing if the file changed after Clem wrote it. */

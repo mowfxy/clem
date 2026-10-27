@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "title": "RC charging circuit",
+  "canvas": {
+    "width": 640,
+    "height": 420,
+    "world": {
+      "xMin": -0.6,
+      "xMax": 6.6,
+      "yMin": -0.9,
+      "yMax": 3.9
+    }
+  },
+  "vars": {
+    "E": "9 V",
+    "R": "10 kohm",
+    "C": "47 uF",
+    "tau": "R*C"
+  },
+  "elements": [
+    {
+      "id": "B",
+      "type": "battery",
+      "at": {
+        "x": 0,
+        "y": 1.5
+      },
+      "rotation": -90,
+      "scale": 2,
+      "span": 1.4,
+      "label": "E = 9 V"
+    },
+    {
+      "id": "S",
+      "type": "switch",
+      "at": {
+        "x": 2,
+        "y": 3
+      },
+      "scale": 2,
+      "span": 1.2,
+      "label": "S"
+    },
+    {
+      "id": "R1",
+      "type": "resistor",
+      "at": {
+        "x": 4.2,
+        "y": 3
+      },
+      "scale": 2,
+      "span": 1.6,
+      "label": "R = 10 kΩ"
+    },
+    {
+      "id": "C1",
+      "type": "capacitor",
+      "at": {
+        "x": 6,
+        "y": 1.5
+      },
+      "rotation": -90,
+      "scale": 2,
+      "span": 1.4,
+      "label": "C = 47 μF"
+    },
+    {
+      "id": "V",
+      "type": "voltmeter",
+      "at": {
+        "x": 4.2,
+        "y": 1.5
+      },
+      "rotation": -90,
+      "scale": 2.2,
+      "span": 1.4
+    },
+    {
+      "id": "w1",
+      "type": "wire",
+      "points": [
+        "B.pin0",
+        {
+          "x": 0,
+          "y": 3
+        },
+        "S.pin0"
+      ]
+    },
+    {
+      "id": "w2",
+      "type": "wire",
+      "points": [
+        "S.pin1",
+        "R1.pin0"
+      ]
+    },
+    {
+      "id": "w3",
+      "type": "wire",
+      "points": [
+        "R1.pin1",
+        {
+          "x": 6,
+          "y": 3
+        },
+        "C1.pin0"
+      ]
+    },
+    {
+      "id": "w4",
+      "type": "wire",
+      "points": [
+        "C1.pin1",
+        {
+          "x": 6,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": 0
+        },
+        "B.pin1"
+      ]
+    },
+    {
+      "id": "w5",
+      "type": "wire",
+      "points": [
+        "V.pin0",
+        {
+          "x": 4.2,
+          "y": 2.4
+        },
+        {
+          "x": 6,
+          "y": 2.4
+        }
+      ]
+    },
+    {
+      "id": "w6",
+      "type": "wire",
+      "points": [
+        "V.pin1",
+        {
+          "x": 4.2,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "j1",
+      "type": "junction",
+      "at": {
+        "x": 6,
+        "y": 2.4
+      },
+      "wires": [
+        "w3",
+        "w5"
+      ]
+    },
+    {
+      "id": "j2",
+      "type": "junction",
+      "at": {
+        "x": 4.2,
+        "y": 0
+      },
+      "wires": [
+        "w4",
+        "w6"
+      ]
+    },
+    {
+      "id": "Ia",
+      "type": "currentArrow",
+      "from": {
+        "x": 0,
+        "y": 3
+      },
+      "to": "S.pin0",
+      "t": 0.5,
+      "style": "beside",
+      "label": "I"
+    }
+  ],
+  "checks": [
+    {
+      "id": "tau",
+      "type": "equal",
+      "left": "tau",
+      "right": "0.47 s",
+      "tol": "1e-12 s"
+    },
+    {
+      "id": "kcl",
+      "type": "kcl",
+      "node": "j2",
+      "currents": [
+        {
+          "value": "0.9 mA",
+          "direction": "in"
+        },
+        {
+          "value": "0.9 mA",
+          "direction": "out"
+        }
+      ]
+    }
+  ]
+}

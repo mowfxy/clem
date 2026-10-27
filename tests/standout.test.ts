@@ -160,7 +160,7 @@ test('file changes diff by line and require a unique match', () => {
   assert.ok(hunks(lines, 0).some(h => h.kind === 'gap'));
   assert.equal(applyEdit('x = 1\ny = 2', { find: 'y = 2', replace: 'y = 3' }), 'x = 1\ny = 3');
   assert.throws(() => applyEdit('a a', { find: 'a', replace: 'b' }), /more than once/);
-  assert.throws(() => applyEdit('abc', { find: 'zzz', replace: 'b' }), /no longer/);
+  assert.throws(() => applyEdit('abc', { find: 'zzz', replace: 'b' }), /not in the file as it is now/);
   assert.equal(applyEdit('old', { content: 'new' }), 'new');
   assert.deepEqual(lineDiff('a\nb\nc', 'a\nB\nc').map(l => l.kind), ['same', 'remove', 'add', 'same'], 'removals before additions');
   assert.deepEqual(lineDiff('', 'x\ny'), [{ kind: 'add', text: 'x', b: 1 }, { kind: 'add', text: 'y', b: 2 }], 'a new file has no phantom removed line');

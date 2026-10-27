@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "title": "Inverting amplifier with an ideal op-amp",
+  "caption": "Virtual ground at the inverting input: i_in = i_f, so v_out = −(R_f/R_in) v_in",
+  "canvas": { "width": 720, "height": 420, "world": { "xMin": -0.9, "xMax": 7.9, "yMin": -1.7, "yMax": 3.4 } },
+  "vars": { "vin": "0.5 V", "Rin": "10 kohm", "Rf": "47 kohm", "iin": "vin/Rin", "vout": "-Rf/Rin*vin", "iF": "(0 V - vout)/Rf" },
+  "elements": [
+    { "id": "U1", "type": "opamp", "at": { "x": 4.2, "y": 0.6 }, "scale": 2.4 },
+    { "id": "Ri", "type": "resistor", "at": { "x": 1.9, "y": 0.96 }, "scale": 1.8, "span": 1.6, "label": "R_{in} = 10 kΩ" },
+    { "id": "Rfb", "type": "resistor", "at": { "x": 4.2, "y": 2.4 }, "scale": 1.8, "span": 1.6, "label": { "text": "R_f = 47 kΩ", "position": "above" } },
+    { "id": "G", "type": "circuitGround", "at": { "x": 2.7, "y": -0.3 }, "scale": 1.8 },
+    { "id": "vi", "type": "point", "at": { "x": 0.3, "y": 0.96 }, "label": { "text": "v_{in} = 0.5 V", "position": "above" } },
+    { "id": "vo", "type": "point", "at": { "x": 6.9, "y": 0.6 }, "label": { "text": "v_{out} = −2.35 V", "position": "below" } },
+    { "id": "w1", "type": "wire", "points": ["vi", "Ri.pin0"] },
+    { "id": "w2", "type": "wire", "points": ["Ri.pin1", "U1.inMinus"] },
+    { "id": "w3", "type": "wire", "points": [{ "x": 2.95, "y": 0.96 }, { "x": 2.95, "y": 2.4 }, "Rfb.pin0"] },
+    { "id": "w4", "type": "wire", "points": ["Rfb.pin1", { "x": 5.8, "y": 2.4 }, { "x": 5.8, "y": 0.6 }] },
+    { "id": "w5", "type": "wire", "points": ["U1.out", "vo"] },
+    { "id": "w6", "type": "wire", "points": ["U1.inPlus", { "x": 2.7, "y": 0.24 }, "G.pin0"] },
+    { "id": "jm", "type": "junction", "at": { "x": 2.95, "y": 0.96 }, "wires": ["w2", "w3"] },
+    { "id": "jo", "type": "junction", "at": { "x": 5.8, "y": 0.6 }, "wires": ["w4", "w5"] },
+    { "id": "ci", "type": "currentArrow", "from": "vi", "to": "Ri.pin0", "t": 0.5, "label": "i_{in}" },
+    { "id": "cf", "type": "currentArrow", "from": "Rfb.pin1", "to": { "x": 5.8, "y": 2.4 }, "t": 0.45, "label": { "text": "i_f", "position": "above" } }
+  ],
+  "checks": [
+    { "id": "kcl_inverting_node", "type": "kcl", "node": "v−", "currents": [{ "value": "iin", "direction": "in" }, { "value": "iF", "direction": "out" }] },
+    { "id": "gain", "type": "equal", "left": "vout/vin", "right": -4.7, "tol": 1e-12 },
+    { "id": "output_within_rails", "type": "less", "left": "abs(vout)", "right": "12 V" }
+  ]
+}

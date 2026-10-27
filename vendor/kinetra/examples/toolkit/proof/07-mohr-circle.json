@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "title": "Mohr's circle for plane stress",
+  "caption": "σₓ = 80 MPa, σᵧ = −40 MPa, τₓᵧ = 30 MPa; point X = (σₓ, τₓᵧ), Y = (σᵧ, −τₓᵧ)",
+  "canvas": { "width": 900, "height": 560, "world": { "xMin": -1.3, "xMax": 14.6, "yMin": -1.4, "yMax": 8.3 } },
+  "vars": { "sx": "80", "sy": "-40", "txy": "30",
+            "C": "(sx + sy)/2", "R": "sqrt(((sx - sy)/2)^2 + txy^2)",
+            "s1": "C + R", "s2": "C - R", "thp": "atan2(2*txy, sx - sy)/2" },
+  "elements": [
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 7.2, "h": 7.2, "frame": "cross",
+      "x": { "min": -80, "max": 100, "ticks": [-60, -30, 30, 60], "label": "σ", "unit": "MPa" },
+      "y": { "min": -90, "max": 90, "ticks": [-80, -40, 40, 80], "label": "τ", "unit": "MPa" } },
+    { "id": "circ", "type": "series", "axes": "ax", "x": "C + R*cos(t rad)", "y": "R*sin(t rad)", "t": [0, 6.2832], "samples": 720, "color": "rayAlt" },
+    { "id": "dia", "type": "series", "axes": "ax", "data": [["sx", "txy"], ["sy", "-txy"]], "style": "line", "dashed": true, "color": "ink", "width": 1, "mayTouch": ["circ"] },
+    { "id": "X", "type": "plotPoint", "axes": "ax", "x": "sx", "y": "txy", "color": "force", "mayTouch": ["circ", "dia"], "label": { "text": "X (80, 30)", "position": "above-right" } },
+    { "id": "Y", "type": "plotPoint", "axes": "ax", "x": "sy", "y": "-txy", "color": "force", "mayTouch": ["circ", "dia"], "label": { "text": "Y (−40, −30)", "position": "below-left" } },
+    { "id": "Cc", "type": "plotPoint", "axes": "ax", "x": "C", "y": 0, "marker": "cross", "mayTouch": ["dia"], "label": "C" },
+    { "id": "P1", "type": "plotPoint", "axes": "ax", "x": "s1", "y": 0, "marker": "circle", "mayTouch": ["circ"], "label": "σ_1 = 87.1" },
+    { "id": "P2", "type": "plotPoint", "axes": "ax", "x": "s2", "y": 0, "marker": "circle", "mayTouch": ["circ"], "label": { "text": "σ_2 = −47.1", "position": "above-left" } },
+    { "id": "el", "type": "rect", "at": { "x": 11.4, "y": 3.6 }, "w": 1.6, "h": 1.6, "fill": "bodyFill", "stroke": "body" },
+    { "id": "sxR", "type": "arrow", "from": { "ref": "el.right", "dx": 0.32 }, "angle": 0, "length": 0.9, "color": "force", "label": { "text": "σ_x", "position": "below" } },
+    { "id": "sxL", "type": "arrow", "from": { "ref": "el.left", "dx": -0.32 }, "angle": 180, "length": 0.9, "color": "force" },
+    { "id": "syT", "type": "arrow", "from": { "ref": "el.top", "dy": 1.15 }, "to": { "ref": "el.top", "dy": 0.32 }, "color": "force", "label": "σ_y" },
+    { "id": "syB", "type": "arrow", "from": { "ref": "el.bottom", "dy": -1.15 }, "to": { "ref": "el.bottom", "dy": -0.32 }, "color": "force" },
+    { "id": "tR", "type": "arrow", "from": { "ref": "el.right", "dx": 0.18, "dy": -0.55 }, "to": { "ref": "el.right", "dx": 0.18, "dy": 0.55 }, "color": "friction", "label": { "text": "τ_{xy}", "position": "right" } },
+    { "id": "tL", "type": "arrow", "from": { "ref": "el.left", "dx": -0.18, "dy": 0.55 }, "to": { "ref": "el.left", "dx": -0.18, "dy": -0.55 }, "color": "friction" },
+    { "id": "tT", "type": "arrow", "from": { "ref": "el.top", "dx": -0.55, "dy": 0.18 }, "to": { "ref": "el.top", "dx": 0.55, "dy": 0.18 }, "color": "friction" },
+    { "id": "tB", "type": "arrow", "from": { "ref": "el.bottom", "dx": 0.55, "dy": -0.18 }, "to": { "ref": "el.bottom", "dx": -0.55, "dy": -0.18 }, "color": "friction" },
+    { "id": "elT", "type": "text", "text": "Stress element", "at": { "x": 11.4, "y": 6.3 } },
+    { "id": "thT", "type": "text", "text": "θₚ = 13.3° (2θₚ on the circle)", "size": 11, "at": { "x": 11.4, "y": 0.9 } }
+  ],
+  "checks": [
+    { "id": "X_on_circle", "type": "onCurve", "point": "X", "curve": "circ", "tol": "0.002 m" },
+    { "id": "Y_on_circle", "type": "onCurve", "point": "Y", "curve": "circ", "tol": "0.002 m" },
+    { "id": "s1_on_circle", "type": "onCurve", "point": "P1", "curve": "circ", "tol": "0.002 m" },
+    { "id": "s2_on_circle", "type": "onCurve", "point": "P2", "curve": "circ", "tol": "0.002 m" },
+    { "id": "first_invariant", "type": "equal", "left": "P1.dataX + P2.dataX", "right": "X.dataX + Y.dataX", "tol": 1e-9 },
+    { "id": "second_invariant", "type": "equal", "left": "P1.dataX*P2.dataX", "right": "X.dataX*Y.dataX - X.dataY^2", "tol": 1e-9 },
+    { "id": "principal_angle", "type": "equal", "left": "thp", "right": "13.2825 deg", "tol": "0.0001 deg" }
+  ]
+}

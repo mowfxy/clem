@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "canvas": { "width": 640, "height": 440, "world": { "xMin": -3.4, "xMax": 3.4, "yMin": -0.7, "yMax": 3.1 } },
+  "title": "Points on y = x²/4",
+  "vars": { "k": 0.25 },
+  "elements": [
+    { "id": "xaxis", "type": "arrow", "from": { "x": -3.2, "y": 0 }, "to": { "x": 3.2, "y": 0 }, "color": "axis", "label": { "text": "x", "position": "below" }, "mayTouch": ["yaxis", "path"] },
+    { "id": "yaxis", "type": "arrow", "from": { "x": 0, "y": -0.5 }, "to": { "x": 0, "y": 2.9 }, "color": "axis", "label": { "text": "y", "position": "right" }, "mayTouch": ["path"] },
+    { "id": "path", "type": "curve", "fn": "k*x^2", "domain": [-3, 3], "width": 1.6, "color": "rayAlt" },
+    { "id": "P", "type": "point", "at": "path.at(2)", "label": "P(2, 1)", "mayTouch": ["path"] },
+    { "id": "Q", "type": "point", "at": "path.at(-1.5)", "label": "Q", "mayTouch": ["path"] },
+    { "id": "eq", "type": "text", "text": "y = x^2/4", "at": { "x": -2.2, "y": 2.4 } }
+  ],
+  "checks": [
+    { "id": "P-on-curve", "type": "onCurve", "point": "P", "curve": "path" },
+    { "id": "Q-on-curve", "type": "onCurve", "point": "Q", "curve": "path" },
+    { "id": "values", "type": "table", "fn": "k*x^2", "var": "x", "rows": [[0, 0], [1, 0.25], [2, 1], [3, 2.25]] },
+    { "id": "P-height", "type": "equal", "left": "P.y", "right": "1 m" }
+  ]
+}

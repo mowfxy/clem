@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "title": "Magnetic field of a long straight wire",
+  "caption": "I = 10 A; B = μ₀I/(2πr), circulating by the right-hand rule",
+  "canvas": { "width": 860, "height": 490, "world": { "xMin": -3.6, "xMax": 11.4, "yMin": -4.3, "yMax": 4.2 }, "worldUnit": "cm" },
+  "vars": { "I": "10 A", "mu0": "4e-7*pi*T*m/A", "r1": "1.2 cm", "r2": "2.4 cm", "B1": "mu0*I/(2*pi*r1)", "B2": "mu0*I/(2*pi*r2)" },
+  "scales": { "magneticField": { "per": "0.25 mT" } },
+  "elements": [
+    { "id": "wire", "type": "pageVector", "at": { "x": 0, "y": 0 }, "direction": "in", "r": 0.32, "label": "I (into page)" },
+    { "id": "c1", "type": "circle", "at": { "x": 0, "y": 0 }, "r": "r1", "fill": "none", "stroke": "guide" },
+    { "id": "c2", "type": "circle", "at": { "x": 0, "y": 0 }, "r": "r2", "fill": "none", "stroke": "guide" },
+    { "id": "B1t", "type": "arrow", "from": { "x": "r1", "y": 0 }, "angle": -90, "magnitude": "B1", "color": "rayAlt", "label": "B_1", "mayTouch": ["c1"] },
+    { "id": "B2t", "type": "arrow", "from": { "x": "r2", "y": 0 }, "angle": -90, "magnitude": "B2", "color": "rayAlt", "label": "B_2", "mayTouch": ["c2"] },
+    { "id": "B1l", "type": "arrow", "from": { "x": "-r1", "y": 0 }, "angle": 90, "magnitude": "B1", "color": "rayAlt", "mayTouch": ["c1"] },
+    { "id": "B2l", "type": "arrow", "from": { "x": "-r2", "y": 0 }, "angle": 90, "magnitude": "B2", "color": "rayAlt", "mayTouch": ["c2"] },
+    { "id": "B1u", "type": "arrow", "from": { "x": 0, "y": "r1" }, "angle": 0, "magnitude": "B1", "color": "rayAlt", "mayTouch": ["c1"] },
+    { "id": "B2u", "type": "arrow", "from": { "x": 0, "y": "r2" }, "angle": 0, "magnitude": "B2", "color": "rayAlt", "mayTouch": ["c2"] },
+    { "id": "wire2", "type": "segment", "from": { "x": 4.4, "y": 0 }, "to": { "x": 10.8, "y": 0 }, "width": 2.5, "color": "mechanism" },
+    { "id": "cur", "type": "currentArrow", "from": "wire2.start", "to": "wire2.end", "t": 0.5, "label": { "text": "I", "position": "below" } },
+    { "id": "above", "type": "fieldGrid", "from": { "x": 4.6, "y": 0.7 }, "to": { "x": 10.6, "y": 3.0 }, "nx": 6, "ny": 3, "kind": "out" },
+    { "id": "below", "type": "fieldGrid", "from": { "x": 4.6, "y": -3.0 }, "to": { "x": 10.6, "y": -0.7 }, "nx": 6, "ny": 3, "kind": "in" },
+    { "id": "tAbove", "type": "text", "text": "B out of page (•) above", "size": 11, "at": { "x": 7.6, "y": 3.55 } },
+    { "id": "tBelow", "type": "text", "text": "B into page (×) below", "size": 11, "at": { "x": 7.6, "y": -3.5 } }
+  ],
+  "checks": [
+    { "id": "B_inverse_r", "type": "equal", "left": "B1t.magnitude*r1", "right": "B2t.magnitude*r2", "tol": "1e-15 T*m" },
+    { "id": "B1_value", "type": "equal", "left": "B1t.magnitude", "right": "0.16667 mT", "tol": "0.00001 mT" },
+    { "id": "right_hand_rule_east", "type": "equal", "left": "B1t.angle", "right": "-90 deg", "tol": "1e-12 deg" },
+    { "id": "right_hand_rule_north", "type": "equal", "left": "B1u.angle", "right": "0 deg", "tol": "1e-12 deg" },
+    { "id": "arrows_to_scale", "type": "proportional", "arrows": ["B1t", "B2t", "B1l", "B2l", "B1u", "B2u"] }
+  ]
+}
