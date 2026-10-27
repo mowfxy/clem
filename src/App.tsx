@@ -26,7 +26,7 @@ import {SkillsSettings} from "./settings/SkillsSettings";
 import {BackgroundSettings} from "./settings/BackgroundSettings";
 import {BackupSettings} from "./settings/BackupSettings";
 import {ReminderSettings} from "./settings/ReminderSettings";
-import {UpdateIndicator, UpdateSettings, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
+import {UpdateIndicator, UpdateSettings, updateChipPhase, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
 import {UsageSettings,archiveChats} from "./settings/UsageSettings";
 import {AsciiField} from "./chat/AsciiField";
 import {ProfileAvatar} from "./ProfileAvatar";
@@ -2832,7 +2832,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             {shortcuts&&<ShortcutsSheet onClose={()=>setShortcuts(false)}/>}
             {!handoffs.length&&<NoticeStack notices={accountNotices} onDismiss={id=>setAccountNotices(items=>items.filter(n=>n.id!==id))}/>}
             {handoffs[0]&&<AccountHandoff key={handoffs[0].key} task={handoffs[0].task} models={models} onChoose={(model,reasoning)=>handoffs[0].resolve({model,reasoning})} onStay={()=>handoffs[0].resolve(null)}/>}
-            <div className="sidebar-bottom">
+            <div className={`sidebar-bottom${updateChipPhase(appUpdate) ? " has-update" : ""}`}>
               <button
                 className="account-button"
                 onClick={() => openSettings("Profile")}
@@ -3046,7 +3046,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       const last = chats.reduce((m, c) => Math.max(m, c.updated || 0), 0);
                       const late = lateBySpace.get(s.id) || 0;
                       return <article className="lib-card" key={s.id}>
-                        {late > 0 && <button type="button" className="lib-card-late" onClick={() => openSpace(s.id, "plan")} aria-label={`${late} overdue in ${s.name}'s plan`} title={`${late} overdue in the plan`}><i className="late-dot" aria-hidden="true"/><b>{late}</b> overdue</button>}
+                        {late > 0 && <button type="button" className="lib-card-late" onClick={() => openSpace(s.id, "plan")} aria-label={`${late} overdue in ${s.name}'s plan`} title={`${late} overdue in the plan`}><span className="late-sheet" aria-hidden="true"><i/><b>{late}</b></span>overdue</button>}
                         <button type="button" className="lib-card-open" onClick={() => openSpace(s.id)}>
                           <SpaceMark space={s} size={28} bare decorative />
                           <strong>{s.name}</strong>

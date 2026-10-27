@@ -181,7 +181,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       <nav className="sp-tabs" role="tablist" aria-label={`${space.name} sections`} ref={tabBar}>
         {tabs.map(([id,label,count],i)=><button key={id} role="tab" aria-selected={tab===id} tabIndex={tab===id?0:-1} className={tab===id?'active':''} onClick={()=>{setReview(0);onTab(id);}}
           // Arrow keys move along the tabs (Home and End to the ends), as tab lists do everywhere.
-          onKeyDown={e=>{const to=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i-1+tabs.length)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;if(to<0)return;e.preventDefault();setReview(0);onTab(tabs[to][0]);requestAnimationFrame(()=>tabBar.current?.querySelectorAll<HTMLButtonElement>('[role=tab]')[to]?.focus());}}>{label}{count!==undefined&&count>0&&<span className={id==='plan'?'late':undefined} aria-label={id==='plan'?`${count} overdue`:undefined}>{count}</span>}</button>)}
+          onKeyDown={e=>{const to=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i-1+tabs.length)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;if(to<0)return;e.preventDefault();setReview(0);onTab(tabs[to][0]);requestAnimationFrame(()=>tabBar.current?.querySelectorAll<HTMLButtonElement>('[role=tab]')[to]?.focus());}}>{label}{count!==undefined&&count>0&&(id==='plan'?<span className="late" aria-label={`${count} overdue`} title={`${count} overdue`}><i aria-hidden="true"/>{count}</span>:<span>{count}</span>)}</button>)}
       </nav>
     </header>
     </div>
