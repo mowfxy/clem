@@ -3,6 +3,7 @@
 import { ownerEligible, subscriptionActive } from "./account-policy.js";
 import { grantActive } from "./lib/account-state.js";
 import { HttpError, json, lemon, now, readJson, text } from "./lib/http.js";
+import { claimUsername } from "./lib/username.js";
 
 const ROLE_RANK = { support: 1, admin: 2, owner: 3 };
 const PRICE_CENTS = 200;
@@ -134,23 +135,26 @@ async function directory(env) {
   return users;
 }
 
+// A username alone (claimed from any lab product) makes a profile row without the person ever opening Clem.
+const clemProducts = (u) => (u.first_seen_at || u.setup_step || u.cases || u.plan !== "free" ? ["clem"] : []);
+
 // Every M4 Labs account, joined to what each product knows about it. Filters other than "account" are Clem's.
 async function accounts(env, { q = "", filter = "all", limit = 500 } = {}) {
   const listed = await directory(env).catch(() => null);
   if (!listed) {
     const found = await people(env, { q, filter, limit });
-    return { ...found, users: found.users.map((u) => ({ ...u, products: ["clem"] })), directory: false };
+    return { ...found, users: found.users.map((u) => ({ ...u, products: clemProducts(u) })), directory: false };
   }
   const clem = await people(env, { limit: 100000 });
   const byId = new Map(clem.users.map((u) => [u.id, u]));
   const merged = listed.map((a) => {
     const c = byId.get(a.id);
     byId.delete(a.id);
-    return c ? { ...c, email: c.email || a.email, created_at: a.created_at, last_sign_in_at: a.last_sign_in_at, products: ["clem"] }
+    return c ? { ...c, email: c.email || a.email, created_at: a.created_at, last_sign_in_at: a.last_sign_in_at, products: clemProducts(c) }
       : { id: a.id, email: a.email, created_at: a.created_at, last_sign_in_at: a.last_sign_in_at, suspended: false, cases: 0, plan: "free", products: [] };
   });
   // Clem records whose account is gone from the directory stay visible so their cases and history are reachable.
-  for (const c of byId.values()) merged.push({ ...c, products: ["clem"] });
+  for (const c of byId.values()) merged.push({ ...c, products: clemProducts(c) });
   const week = Date.now() - 7 * day;
   const after = (v) => !!v && Date.parse(v) > week;
   const needle = q.toLowerCase();
@@ -369,7 +373,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
       supabaseUser(env, userId).catch(() => null),
     ]);
     return json({
-      user: { ...row, suspended: !!row.suspended, ...planFor(userId, context), products: ["clem"] },
+      user: { ...row, suspended: !!row.suspended, ...planFor(userId, context), products: clemProducts({ ...row, ...planFor(userId, context) }) },
       subscriptions: context.subs,
       grants: context.grants.map((g) => ({ ...g, active: grantActive(g) })),
       owner: context.owners.has(userId),
@@ -381,7 +385,7 @@ export async function handleAdmin(request, env, user, path, authorization) {
     });
   }
 
-  if ((m = /^\/admin\/users\/([\w-]{3,64})\/(grant|revoke-grant|suspend|unsuspend|note|cancel-subscription|sync-subscription)$/.exec(path)) && !get) {
+  if ((m = /^\/admin\/users\/([\w-]{3,64})\/(grant|revoke-grant|suspend|unsuspend|note|username|cancel-subscription|sync-subscription)$/.exec(path)) && !get) {
     const [, userId, action] = m;
     if (action === "note") {
       need(staff, "support");
@@ -391,6 +395,11 @@ export async function handleAdmin(request, env, user, path, authorization) {
       return json({ ok: true });
     }
     need(staff, "admin");
+    if (action === "username") {
+      const { username, previous } = await claimUsername(env, userId, body.username);
+      await audit(env, staff, "user.username", userId, `${previous ? "@" + previous : "none"} → @${username}`);
+      return json({ ok: true, username });
+    }
     if (action === "grant") {
       const until = days(body.days);
       const reason = text(body.reason, 300, { required: false });
