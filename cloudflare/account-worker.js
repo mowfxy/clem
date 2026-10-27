@@ -19,6 +19,7 @@ import { handleAdmin } from "./admin.js";
 import { handleSupport } from "./support.js";
 import { handleUsage } from "./usage.js";
 import { purgeMailRecords } from "./lib/retention.js";
+import { claimUsername, mirrorUsername } from "./lib/username.js";
 
 // core/sync.ts allows notes up to 200 x 30,000 characters (about 6 MB as plain JSON); allow that with headroom.
 // Stored compressed, a collection must still fit D1's 2 MB value limit, checked after packing.
@@ -339,6 +340,9 @@ async function route(request, env) {
       if (path === "/username") {
         if (!(await limit(env, "username:" + user.id, 30)))
           return json({ error: "Try again shortly." }, 429);
+        // Any lab product claims or changes the account's username here.
+        if (request.method === "POST")
+          return json(await claimUsername(env, user.id, (await readJson(request)).username));
         const username = normalizeUsername(
           new URL(request.url).searchParams.get("value"),
         );
@@ -361,10 +365,11 @@ async function route(request, env) {
           )
             .bind(user.id)
             .first();
+          // A username chosen in any lab product already counts, so Clem's first setup step is skipped.
           return json(
             row
               ? {
-                  step: row.setup_step,
+                  step: row.username ? Math.max(row.setup_step, 1) : row.setup_step,
                   username: row.username || "",
                   displayName: row.display_name,
                   memory: !!row.memory,
@@ -384,6 +389,11 @@ async function route(request, env) {
           typeof body.memory !== "boolean"
         )
           return json({ error: "Invalid setup information" }, 400);
+        const before = await env.DB.prepare(
+          "SELECT username FROM desktop_profiles WHERE user_id=?",
+        )
+          .bind(user.id)
+          .first();
         try {
           await env.DB.prepare(
             "INSERT INTO desktop_profiles(user_id,username,display_name,setup_step,memory) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,display_name=excluded.display_name,setup_step=excluded.setup_step,memory=excluded.memory",
@@ -404,6 +414,8 @@ async function route(request, env) {
             );
           throw error;
         }
+        if (before?.username !== username)
+          await mirrorUsername(env, user.id, username);
         return json({ ok: true });
       }
       if (path === "/checkout" && request.method === "POST") {

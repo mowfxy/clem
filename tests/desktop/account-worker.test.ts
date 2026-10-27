@@ -153,3 +153,39 @@ test('essential sync rejects workspace data, isolates accounts and compares revi
   id='sync-b';assert.deepEqual(await(await call('notes')).json(),{revision:0,data:[]});
  }finally{globalThis.fetch=original;database.close();}
 });
+
+test("a username belongs to the M4 Labs account and is mirrored to Supabase", async () => {
+  const { database, env } = setup(),
+    original = globalThis.fetch,
+    mirrored: any[] = [];
+  Object.assign(env, { SUPABASE_SERVICE_ROLE_KEY: "service" });
+  let user = { id: "user-a", email: "a@example.com", email_confirmed_at: "2026-09-19" };
+  globalThis.fetch = async (url: any, init?: any) => {
+    if (String(url).includes("/auth/v1/admin/users/")) {
+      mirrored.push([String(url).split("/").pop(), JSON.parse(init.body)]);
+      return Response.json({});
+    }
+    return Response.json(user);
+  };
+  const call = (path: string, body?: unknown) =>
+    worker.fetch(new Request("https://account.example" + path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer test", "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }), env);
+  try {
+    // Claimed from another product: Clem's setup then starts past its username step.
+    assert.deepEqual(await (await call("/username", { username: "Lab_Name" })).json(), { username: "lab_name", previous: null });
+    assert.deepEqual(mirrored, [["user-a", { app_metadata: { username: "lab_name" } }]]);
+    const profile = await (await call("/profile")).json();
+    assert.equal(profile.step, 1);
+    assert.equal(profile.username, "lab_name");
+    // Saving Clem's setup with the same name does not mirror again; a new name does.
+    await call("/profile", { username: "lab_name", displayName: "A", step: 2, memory: true });
+    assert.equal(mirrored.length, 1);
+    await call("/profile", { username: "renamed", displayName: "A", step: 2, memory: true });
+    assert.deepEqual(mirrored[1], ["user-a", { app_metadata: { username: "renamed" } }]);
+    user = { ...user, id: "user-b" };
+    assert.equal((await call("/username", { username: "renamed" })).status, 409);
+    assert.equal((await call("/username", { username: "x" })).status, 400);
+  } finally {
+    globalThis.fetch = original;
+    database.close();
+  }
+});
