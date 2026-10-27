@@ -27,6 +27,8 @@ export interface Scene2DModel {
   axes?: { xLabel?: string; yLabel?: string; grid?: boolean };
   /** Structured shapes. */
   shapes: Scene2DShape[];
+  /** Draw every label exactly where it is given, in shape order, without moving it clear of strokes (callers that place labels themselves). */
+  fixedLabels?: boolean;
 }
 
 export type Scene2DShape =
@@ -235,6 +237,17 @@ export function renderScene2D(s: Scene2DModel): string {
 
 type LabelRequest = { text: string; size: number; color: string; anchor: "start" | "middle" | "end"; x: number; y: number; at: Vec2; backdrop: boolean };
 type Context = { labels: LabelRequest[]; strokes: Seg[]; boxes: Box[] };
+/** Holds a label for placement after all geometry, or draws it at its given spot when the scene asks for fixed labels. */
+function queue(s: Scene2DModel, ctx: Context, out: SvgElement[], l: LabelRequest) {
+  if (!s.fixedLabels) return void ctx.labels.push(l);
+  const tc = clampText(s, l.x, l.y, l.text, l.size, l.anchor, { dx: 0, dy: 0 });
+  if (l.backdrop) {
+    const w = textWidth(l.text, l.size);
+    const x = l.anchor === "middle" ? tc.x - w / 2 : l.anchor === "end" ? tc.x - w : tc.x;
+    out.push(el("rect", { x: x - 1, y: tc.y - l.size * 0.85 - 0.5, width: w + 2, height: l.size * 1.15 + 1, fill: "#ffffff", stroke: "none" }));
+  }
+  out.push(text(tc.x, tc.y, l.text, l.color, l.size, l.anchor));
+}
 const labelBox = (x: number, y: number, contents: string, size: number, anchor: "start" | "middle" | "end"): Box => {
   const w = measure(contents, size);
   return { x: anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x, y: y - size * 0.85, w, h: size * 1.15 };
@@ -281,7 +294,7 @@ function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[], ctx: Co
       const p = worldToView(s, sh.at);
       out.push(el("circle", { cx: p.x, cy: p.y, r: 3, fill: sh.color ?? "#222" }));
       ctx.boxes.push({ x: p.x - 3, y: p.y - 3, w: 6, h: 6 });
-      if (sh.label) ctx.labels.push({ text: sh.label, size: 12, color: sh.color ?? "#222", anchor: "start", x: p.x + 5, y: p.y - 5, at: p, backdrop: false });
+      if (sh.label) queue(s, ctx, out, { text: sh.label, size: 12, color: sh.color ?? "#222", anchor: "start", x: p.x + 5, y: p.y - 5, at: p, backdrop: false });
       return;
     }
     case "segment": {
@@ -312,7 +325,7 @@ function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[], ctx: Co
         out.push(line(tip.x, a.y, tip.x, tip.y, cc, 0.8, "3 3"));
       }
       ctx.strokes.push({ a, b: tip });
-      if (sh.label) ctx.labels.push({ text: sh.label, size: 12, color: sh.color ?? "#222", anchor: "start", x: tip.x + 5, y: tip.y - 5, at: tip, backdrop: false });
+      if (sh.label) queue(s, ctx, out, { text: sh.label, size: 12, color: sh.color ?? "#222", anchor: "start", x: tip.x + 5, y: tip.y - 5, at: tip, backdrop: false });
       return;
     }
     case "circle": {
@@ -362,7 +375,7 @@ function pushShape(s: Scene2DModel, sh: Scene2DShape, out: SvgElement[], ctx: Co
       const sz = sh.size ?? 12;
       const anchor = sh.anchor ?? "start";
       // A white backdrop keeps the label readable when grid lines or thin reference strokes pass behind it.
-      ctx.labels.push({ text: sh.text, size: sz, color: sh.color ?? "#222", anchor, x: p.x + dx, y: p.y + dy, at: { x: p.x + dx, y: p.y + dy - sz * 0.35 }, backdrop: true });
+      queue(s, ctx, out, { text: sh.text, size: sz, color: sh.color ?? "#222", anchor, x: p.x + dx, y: p.y + dy, at: { x: p.x + dx, y: p.y + dy - sz * 0.35 }, backdrop: true });
       return;
     }
     case "group": {

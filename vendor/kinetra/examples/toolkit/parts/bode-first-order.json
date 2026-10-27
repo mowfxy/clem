@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "title": "Bode plot of G(s) = 1/(1 + s)",
+  "canvas": { "width": 760, "height": 460, "world": { "xMin": -1.3, "xMax": 11.8, "yMin": -1.4, "yMax": 6.3 } },
+  "elements": [
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 10, "h": 5.4, "frame": "box",
+      "x": { "min": 0.01, "max": 100, "scale": "log", "label": "ω", "unit": "rad/s", "grid": true, "minor": true },
+      "y": { "min": -50, "max": 10, "ticks": [-50, -40, -30, -20, -10, 0, 10], "label": "|G|", "unit": "dB", "grid": true },
+      "y2": { "min": -100, "max": 20, "ticks": [-90, -60, -30, 0], "label": "∠G", "unit": "deg" } },
+    { "id": "mag", "type": "series", "axes": "ax", "fn": "-20*log10(sqrt(1 + x^2))", "color": "rayAlt", "label": "magnitude" },
+    { "id": "ph", "type": "series", "axes": "ax", "axis": "y2", "fn": "-atan(x)", "color": "force", "dashed": true, "label": "phase", "mayTouch": ["mag", "m3"] },
+    { "id": "m3", "type": "guideLine", "axes": "ax", "y": -3, "mayTouch": ["mag"] },
+    { "id": "pc", "type": "plotPoint", "axes": "ax", "x": 1, "series": "mag", "marker": "circle", "mayTouch": ["m3", "ph"], "label": { "text": "corner", "position": "below-left" } }
+  ],
+  "checks": [
+    { "id": "corner", "type": "equal", "left": "pc.dataY", "right": "-10*log10(2)", "tol": 1e-12 },
+    { "id": "onMag", "type": "onCurve", "point": "pc", "curve": "mag", "tol": 1e-9 }
+  ]
+}

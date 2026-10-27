@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "title": "Flowchart: iterative factorial",
+  "caption": "For n = 5 the loop runs four times and prints 120",
+  "canvas": { "width": 620, "height": 560, "world": { "xMin": -3.6, "xMax": 5.2, "yMin": -6.9, "yMax": 0.9 } },
+  "vars": { "step": "1.25 m", "n": "5", "fact": "5*4*3*2*1" },
+  "elements": [
+    { "id": "start", "type": "roundedBox", "at": { "x": 0, "y": 0 }, "w": 1.8, "h": 0.65, "r": 0.32, "text": "Start", "fill": "bodyFill", "stroke": "body" },
+    { "id": "read", "type": "roundedBox", "place": [{ "alignedWith": "start", "axis": "x" }, { "y": "-step" }], "w": 2.0, "h": 0.65, "text": "read n", "fill": "white" },
+    { "id": "init", "type": "roundedBox", "place": [{ "alignedWith": "start", "axis": "x" }, { "y": "-2*step" }], "w": 2.0, "h": 0.65, "text": "f ← 1", "fill": "white" },
+    { "id": "dec", "type": "polygon", "points": [{ "x": 0, "y": "-3*step + 0.6 m" }, { "x": 1.3, "y": "-3*step" }, { "x": 0, "y": "-3*step - 0.6 m" }, { "x": -1.3, "y": "-3*step" }], "fill": "surfaceFill", "stroke": "ink", "label": { "text": "n > 1 ?", "position": "center" } },
+    { "id": "body", "type": "roundedBox", "place": [{ "alignedWith": "start", "axis": "x" }, { "y": "-4.4*step" }], "w": 2.6, "h": 0.9, "text": "f ← f·n,  n ← n − 1", "fill": "white" },
+    { "id": "out", "type": "roundedBox", "at": { "x": 3.4, "y": "-3*step" }, "w": 1.7, "h": 0.65, "text": "print f", "fill": "white" },
+    { "id": "end", "type": "roundedBox", "at": { "x": 3.4, "y": "-4.4*step" }, "w": 1.6, "h": 0.65, "r": 0.32, "text": "End", "fill": "bodyFill", "stroke": "body" },
+    { "id": "c1", "type": "connector", "from": "start.bottom", "to": "read.top" },
+    { "id": "c2", "type": "connector", "from": "read.bottom", "to": "init.top" },
+    { "id": "c3", "type": "connector", "from": "init.bottom", "to": "dec.vertex(0)" },
+    { "id": "c4", "type": "connector", "from": "dec.vertex(2)", "to": "body.top", "label": { "text": "yes", "position": "right" } },
+    { "id": "c5", "type": "connector", "from": "dec.vertex(1)", "to": "out.left", "label": { "text": "no", "position": "above" } },
+    { "id": "c6", "type": "connector", "from": "out.bottom", "to": "end.top" },
+    { "id": "c7", "type": "connector", "from": "body.left", "to": "dec.vertex(3)", "route": "orthogonal", "via": [{ "x": -2.2, "y": "-4.4*step" }, { "x": -2.2, "y": "-3*step" }], "label": { "text": "loop", "position": "left" } }
+  ],
+  "checks": [
+    { "id": "main_column_aligned_read", "type": "equal", "left": "read.x", "right": "start.x", "tol": "1e-12 m" },
+    { "id": "main_column_aligned_body", "type": "equal", "left": "body.x", "right": "start.x", "tol": "1e-12 m" },
+    { "id": "even_vertical_rhythm", "type": "equal", "left": "start.y - read.y", "right": "read.y - init.y", "tol": "1e-12 m" },
+    { "id": "factorial_of_5", "type": "equal", "left": "fact", "right": 120 }
+  ]
+}

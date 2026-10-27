@@ -31,6 +31,13 @@
 .message-text .md tr:first-child td{border-top:0}
 .message-text .md .katex{font-size:1.06em}
 .message-text .md .katex-display{margin:1em 0;padding:.35em 0;overflow-x:auto;overflow-y:hidden}
+/* Selecting across a formula paints one even band over it, not a box per KaTeX piece at its own height
+   (src/chat/math-selection.ts); the colour is the app's selection colour (src/premium.css). */
+.katex ::selection,.katex::selection{background:transparent}
+.katex[data-selected]{background:#6a9bcc4d}
+.katex-display>.katex>.katex-html{width:fit-content;margin-inline:auto}
+.katex-display>.katex[data-selected]{background:none}
+.katex-display>.katex[data-selected]>.katex-html{background:#6a9bcc4d;border-radius:3px}
 
 /* Code */
 .code-block{margin:1.1em 0;border:1px solid var(--c-line);border-radius:16px;background:#151514;overflow:hidden}
@@ -250,3 +257,14 @@ html[data-quiet=true] .visual-drafting,html[data-quiet=true] .drafting-dot,html[
 .workspace:has(.chat-view.temporary){background-image:repeating-linear-gradient(135deg,transparent 0 14px,#ffffff04 14px 15px);background-attachment:fixed}
 .chat-view.temporary .composer{border-style:dashed;border-color:#5a5a5a}
 .chat-view.temporary .composer-note{color:#9a9a9a}
+/* What the AI saved because it was asked to remember something (src/chat/KinetraFigure.tsx MemoryNote). */
+.memory-note{display:flex;align-items:flex-start;gap:9px;margin:14px 0 4px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;font:400 13px/1.45 var(--sans);color:var(--c-soft)}
+.memory-note>svg{flex:none;margin-top:2px;color:var(--c-muted)}
+.memory-note>span{display:grid;gap:2px}
+.memory-note strong{font-weight:600;color:var(--c-muted);font-size:12px;letter-spacing:.02em}
+/* A Kinetra figure while the worker draws it: the paper is already there, so the answer does not jump. */
+.kinetra-figure .kinetra-pending{min-height:220px;color:#8a877e;font:400 13px/1 var(--sans)}
+/* A Kinetra figure sits on one sheet of paper, sized like a textbook figure rather than filling the column. */
+.v2.kinetra-figure .visual-stage{background:#fff}
+.v2.kinetra-figure .visual-figure{background:#fff;padding:16px 20px}
+.v2.kinetra-figure .visual-figure svg{width:100%;max-width:600px;height:auto;max-height:440px;margin:0 auto}

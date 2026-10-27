@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "title": "Engineering stress–strain curve (idealised ductile steel)",
+  "caption": "Linear to yield (E = 200 GPa), strain hardening to the UTS, necking to fracture; shaded area = toughness",
+  "canvas": { "width": 760, "height": 500, "world": { "xMin": -1.4, "xMax": 9.6, "yMin": -1.5, "yMax": 5.9 } },
+  "vars": { "E": "200 GPa", "sy": "250 MPa", "su": "400 MPa", "sf": "320 MPa",
+            "ey": "sy/E", "eu": "0.15", "ef": "0.25",
+            "Y": "sy/(1 MPa)", "U": "su/(1 MPa)", "F": "sf/(1 MPa)",
+            "toughness": "0.5*Y*ey + (eu - ey)*(Y + 2/3*(U - Y)) + (ef - eu)*(U - (U - F)/3)" },
+  "elements": [
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 8.4, "h": 4.8,
+      "x": { "min": 0, "max": 0.28, "ticks": [0, 0.05, 0.1, 0.15, 0.2, 0.25], "label": "ε" },
+      "y": { "min": 0, "max": 450, "ticks": [0, 100, 200, 300, 400], "label": "σ", "unit": "MPa", "grid": true } },
+    { "id": "sh1", "type": "shade", "axes": "ax", "upper": "E/(1 MPa)*x", "from": 0, "to": "ey", "fill": "bodyFill" },
+    { "id": "sh2", "type": "shade", "axes": "ax", "upper": "Y + (U - Y)*(1 - (1 - (x - ey)/(eu - ey))^2)", "from": "ey", "to": "eu", "fill": "bodyFill", "mayTouch": ["sh1", "el"] },
+    { "id": "sh3", "type": "shade", "axes": "ax", "upper": "U - (U - F)*((x - eu)/(ef - eu))^2", "from": "eu", "to": "ef", "fill": "bodyFill", "mayTouch": ["sh2", "hard"], "label": { "text": "toughness", "position": "center" } },
+    { "id": "el", "type": "series", "axes": "ax", "fn": "E/(1 MPa)*x", "domain": [0, "ey"], "color": "ink", "mayTouch": ["sh1"] },
+    { "id": "hard", "type": "series", "axes": "ax", "fn": "Y + (U - Y)*(1 - (1 - (x - ey)/(eu - ey))^2)", "domain": ["ey", "eu"], "color": "ink", "mayTouch": ["el", "sh2", "sh1"] },
+    { "id": "neck", "type": "series", "axes": "ax", "fn": "U - (U - F)*((x - eu)/(ef - eu))^2", "domain": ["eu", "ef"], "color": "ink", "mayTouch": ["hard", "sh3", "sh2"] },
+    { "id": "fr", "type": "series", "axes": "ax", "data": [["ef", "F"], ["ef", 0]], "style": "line", "dashed": true, "color": "guide", "width": 1, "mayTouch": ["neck", "sh3"] },
+    { "id": "yp", "type": "plotPoint", "axes": "ax", "series": "hard", "x": "ey", "marker": "circle", "mayTouch": ["el", "sh1", "sh2"] },
+    { "id": "ypc", "type": "leader", "target": "yp", "text": "yield σ_Y = 250 MPa", "dx": 0.35, "dy": 2.2, "marker": "none", "mayTouch": ["el", "hard", "sh1", "sh2"] },
+    { "id": "up", "type": "plotPoint", "axes": "ax", "series": "hard", "x": "eu", "marker": "circle", "mayTouch": ["neck", "sh2", "sh3"], "label": { "text": "UTS σ_U = 400 MPa", "position": "above" } },
+    { "id": "fp", "type": "plotPoint", "axes": "ax", "series": "neck", "x": "ef", "marker": "x", "mayTouch": ["fr", "sh3"], "label": "fracture" }
+  ],
+  "checks": [
+    { "id": "yield_on_elastic_line", "type": "equal", "left": "yp.dataY", "right": "E*ey/(1 MPa)", "tol": 1e-9 },
+    { "id": "uts_value", "type": "equal", "left": "up.dataY", "right": "U", "tol": 1e-9 },
+    { "id": "uts_is_maximum", "type": "greaterEqual", "left": "up.dataY", "right": "fp.dataY" },
+    { "id": "uts_above_yield", "type": "greater", "left": "up.dataY", "right": "yp.dataY" },
+    { "id": "toughness_area", "type": "equal", "left": "sh1.area + sh2.area + sh3.area", "right": "toughness", "tol": 0.05 }
+  ]
+}

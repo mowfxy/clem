@@ -282,7 +282,7 @@ export const MAX_CALLS = 2000;
 /** Large tool results are summarised for the model; SVG is rendered from its structured request instead. */
 function forModel(request: any, result: any) {
   if (typeof result === "string" && result.includes("<svg"))
-    return { rendered: true, format: "svg", characters: result.length, figure: request, note: "Drawing is valid. Put this same figure spec in a pdf section to include it." };
+    return { rendered: true, format: "svg", characters: result.length, figure: request, note: "Drawing is valid. To show it in the chat, put this same module, fn and args in a ```kinetra block of your answer (with a title and caption); for a document, in a pdf section's figure. Never make an image file to show it." };
   return result;
 }
 /** A document that was made is replayed as its outline, not its full text, so several long PDFs fit in one turn.
@@ -370,7 +370,7 @@ function cutOffError(text: string) {
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
 export const MAX_BROKEN = 5;
 /** What holds a final answer back: see the options of runKinetraTurn. */
-export type AnswerGates = { unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined };
+export type AnswerGates = { unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined | Promise<string | undefined> };
 /** Why a final answer went back: its own review, or a document it made that is not finished yet. */
 export type SentBack = "review" | "unfinished";
 /** Times one answer can be sent back over its own numbers (`review` in runKinetraTurn). Once: an answer the person has
@@ -446,7 +446,7 @@ export async function runKinetraTurn<Picture = unknown>(
   /** `continued`: the first step goes on a session the provider already has (the chat's kept session,
    *  desktop/chat-sessions.ts), so `prompt` holds only this message; `fresh` is the whole prompt, sent instead if that
    *  session is gone (with `freshInstructions` in place of `instructions`, which a kept session may not need again). */
-  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined; sentBack?: (why: SentBack) => void; stats?: TurnStats; continued?: boolean; fresh?: string; freshInstructions?: string } = {},
+  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined | Promise<string | undefined>; sentBack?: (why: SentBack) => void; stats?: TurnStats; continued?: boolean; fresh?: string; freshInstructions?: string } = {},
 ) {
   const { limit = 3_000_000, unfinished, review, sentBack, stats = { steps: 0, calls: 0, broken: 0 } } = options;
   let continued = !!(options.continued && options.stateful);
@@ -613,7 +613,7 @@ export async function runKinetraTurn<Picture = unknown>(
       const gap = !closing && calls < MAX_CALLS ? unfinished?.() : undefined;
       if (!gap) {
         // The answer itself is checked once per problem: a wrong or unverified number goes back before the person relies on it.
-        const problem = !closing && calls < MAX_CALLS && reviewed.size < REVIEWS ? review?.(text, history) : undefined;
+        const problem = !closing && calls < MAX_CALLS && reviewed.size < REVIEWS ? await review?.(text, history) : undefined;
         if (!problem || reviewed.has(problem)) return text;
         reviewed.add(problem);
         calls++;

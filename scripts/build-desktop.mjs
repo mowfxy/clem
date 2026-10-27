@@ -43,6 +43,10 @@ await build({
 });
 await build({entryPoints:["desktop/kinetra-worker.ts"],outfile:"desktop-dist/kinetra-worker.cjs",bundle:true,platform:"node",format:"cjs"});
 await build({entryPoints:["desktop/anki-worker.ts"],outfile:"desktop-dist/anki-worker.cjs",bundle:true,platform:"node",format:"cjs"});
+// KaTeX's stylesheet and woff2 fonts, inlined into the print page of generated PDFs (desktop/katex-print.ts).
+await mkdir("desktop-dist/katex/fonts", { recursive: true });
+await copyFile("node_modules/katex/dist/katex.min.css", "desktop-dist/katex/katex.min.css");
+await cp("node_modules/katex/dist/fonts", "desktop-dist/katex/fonts", { recursive: true, filter: (source) => !/\.(woff|ttf)$/.test(source) });
 await copyFile("desktop/preload.cjs", "desktop-dist/preload.cjs");
 await copyFile("desktop/capture-preload.cjs", "desktop-dist/capture-preload.cjs");
 await mkdir("desktop-package/desktop", { recursive: true });

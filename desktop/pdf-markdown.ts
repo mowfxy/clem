@@ -6,7 +6,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/contrib/mhchem";
 import { mathMacros, normalizeMath } from "../core/math-markdown.ts";
-import { drawnArrows, uprightChemistry } from "./math-draw.ts";
+import { uprightChemistry } from "./math-draw.ts";
 
 /** Block types written as `> [!DEFINITION] Optional title`, typeset like LaTeX theorem environments. */
 export const environments: Record<string, { label: string; style: "plain" | "definition" | "remark" | "proof" | "box" }> = {
@@ -41,8 +41,8 @@ export const unnumbered = new Set(["proof", "solution", "answer", "note", "tip",
 
 /**
  * Section text for generated PDFs: GitHub Markdown and LaTeX math ($…$, $$…$$, \(…\), \[…\], bare environments,
- * the physics/siunitx shortcuts and mhchem \ce, exactly as the chat renders them). Math renders to MathML, which
- * Chromium typesets natively, so no fonts or scripts are needed in the locked-down print page. Raw HTML is escaped,
+ * the physics/siunitx shortcuts and mhchem \ce, exactly as the chat renders them). KaTeX lays the maths out as HTML,
+ * exactly as in the chat; the print page inlines KaTeX's stylesheet and fonts (desktop/katex-print.ts). Raw HTML is escaped,
  * links become plain text and images are dropped: a document can only show Kinetra-computed figures.
  */
 /** Chemical formulas in $…$ and $$…$$ set upright before KaTeX reads them (desktop/math-draw.ts). */
@@ -72,7 +72,7 @@ export function markdownHtml(text: string, { top = 0, inline = false }: { top?: 
         // Footnotes get a small label, not the default hidden <h2>: the page styles every h2 as a numbered
         // section, so "Footnotes" would print as a section of its own and shift the numbers after it.
         remarkRehypeOptions: { footnoteLabelTagName: "p", footnoteLabelProperties: { className: ["footnote-label"] }, footnoteBackContent: () => [] },
-        rehypePlugins: [[rehypeKatex, { output: "mathml", throwOnError: false, strict: "ignore", macros: { ...mathMacros } }]],
+        rehypePlugins: [[rehypeKatex, { output: "html", throwOnError: false, strict: "ignore", macros: { ...mathMacros } }]],
         components: {
           a: ({ children }: { children?: unknown }) => createElement("span", null, children as never),
           img: () => null,
@@ -84,13 +84,36 @@ export function markdownHtml(text: string, { top = 0, inline = false }: { top?: 
   // Headings inside a section sit below it: the highest heading used becomes level `top`, the rest follow.
   const levels = [...html.matchAll(/<h([1-6])>/g)].map((m) => Number(m[1]));
   const shift = top && levels.length ? top - Math.min(...levels) : 0;
-  const shifted = shift ? html.replace(/<(\/?)h([1-6])>/g, (_, close, level) => `<${close}h${Math.max(1, Math.min(6, Number(level) + shift))}>`) : html;
+  const shifted = fencedMath(shift ? html.replace(/<(\/?)h([1-6])>/g, (_, close, level) => `<${close}h${Math.max(1, Math.min(6, Number(level) + shift))}>`) : html);
   return inline ? shifted.replace(/^<p>([\s\S]*)<\/p>\s*$/, "$1") : typeset(shifted);
 }
 
 /**
+ * Each formula KaTeX laid out, in an <x-math> element: the page turns "Figure 2" and "[3]" in running text into
+ * links, and this marks where maths starts and ends so nothing inside a formula is touched. Display maths keeps
+ * KaTeX's block (span.katex-display), which the page centres and, in reports, numbers.
+ */
+function fencedMath(html: string) {
+  let out = "", at = 0;
+  const open = /<span class="katex(?:-display|-error)?"/g;
+  for (let m; (m = open.exec(html)); ) {
+    const tags = /<span\b[^>]*>|<\/span>/g;
+    tags.lastIndex = m.index;
+    let depth = 0, end = -1;
+    for (let t; (t = tags.exec(html)); ) {
+      depth += t[0][1] === "/" ? -1 : 1;
+      if (depth === 0) { end = tags.lastIndex; break; }
+    }
+    if (end < 0) break;
+    out += html.slice(at, m.index) + "<x-math>" + html.slice(m.index, end) + "</x-math>";
+    at = open.lastIndex = end;
+  }
+  return out + html.slice(at);
+}
+
+/**
  * Typesetting that Markdown has no syntax for: `> [!DEFINITION] Title` blocks become numbered environments,
- * a "Table: caption" paragraph beside a table becomes its caption, and display maths becomes a block.
+ * and a "Table: caption" paragraph beside a table becomes its caption.
  * Environment numbers are filled in later by the document (they depend on the section), from data-env markers.
  */
 function typeset(html: string) {
@@ -104,10 +127,6 @@ function typeset(html: string) {
   });
   // An environment whose title line was its only line leaves an empty first paragraph: let the head run into the next one.
   html = html.replace(/(<span class="env-dot">\.<\/span> )<\/p>\s*<p>/g, "$1");
-  // Arrows with labels are drawn to full width: Chromium does not stretch them (desktop/math-draw.ts).
-  html = html.replace(/<math\b[\s\S]*?<\/math>/g, (math) => drawnArrows(math));
-  // Display maths gets its own block, so it can be centred and (in reports) numbered.
-  html = html.replace(/<span class="katex">(<math[^>]*display="block"[\s\S]*?<\/math>)<\/span>/g, '<div class="katex-display"><span class="katex">$1</span></div>');
   // Tables: "Table: caption" just before (or after) a table is its caption, as in Pandoc.
   html = html.replace(/<p>Table:\s*([\s\S]*?)<\/p>\s*<table>/g, (_, caption) => `<table><caption>${caption.trim()}</caption>`);
   html = html.replace(/<table>((?:(?!<\/table>)[\s\S])*)<\/table>\s*<p>Table:\s*([\s\S]*?)<\/p>/g, (_, inner, caption) => `<table><caption>${caption.trim()}</caption>${inner}</table>`);

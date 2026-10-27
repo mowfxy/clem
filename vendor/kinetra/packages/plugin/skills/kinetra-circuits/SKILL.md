@@ -67,6 +67,11 @@ import { samplePlot } from "../../../../core/src/graph/sample.js";
    `{ elements: [{ kind, from, to, label?, value?, unit?, current?, voltage? }] }`
    with node "0" as ground. It lays out the figure itself (right-angle
    wires, junction dots, clear labels); never give coordinates.
+6. **Inspect the exported figure.** Apply the visual acceptance checks in
+   [kinetra-diagrams](../kinetra-diagrams/SKILL.md#visual-acceptance-for-every-figure).
+   For symbols or geometry the renderer cannot represent, use that skill's
+   custom illustration fallback while preserving the actual netlist. A custom
+   symbol does not extend the circuit solver's supported components.
 
 ## Solver limits to surface honestly
 

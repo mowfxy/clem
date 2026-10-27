@@ -57,7 +57,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("driveRename"), id: z.string().regex(/^[\w-]{10,150}$/), name: z.string().trim().min(1).max(200) }),
   z.object({ action: z.literal("driveTrash"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("driveMove"), root: z.string().regex(/^[\w-]{10,150}$/), id: z.string().regex(/^[\w-]{10,150}$/), to: z.string().regex(/^[\w-]{10,150}$/) }),
-  z.object({ action: z.literal("driveFolder"), folder: z.string().regex(/^[\w-]{10,150}$/), query: z.string().max(4000).optional(), refresh: z.boolean().optional() }),
+  z.object({ action: z.literal("driveFolder"), folder: z.string().regex(/^[\w-]{10,150}$/), query: z.string().max(4000).optional(), refresh: z.boolean().optional(), limit: z.number().int().min(1).max(50).optional() }),
   z.object({ action: z.literal("driveMediaUrl"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("driveText"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("videoCaptions"), source: z.enum(["youtube", "drive"]), id: z.string().regex(/^[\w-]{10,150}$/), languages: z.array(z.string().regex(/^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$/)).max(4).optional() }),
@@ -151,6 +151,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("cancel"), id: z.string().uuid() }),
   z.object({ action: z.literal("memoryList"), scope: scopeSchema }),
   z.object({ action: z.literal("memoryAll") }),
+  /** A ```kinetra block in a chat answer: the figure drawn by the Kinetra worker, as SVG (src/chat/KinetraFigure.tsx). */
+  z.object({ action: z.literal("kinetraFigure"), figure: z.string().min(2).max(400_000) }),
   z.object({ action: z.literal("memoryClear"), scope: scopeSchema }),
   z.object({action:z.literal("memoryEdit"),scope:scopeSchema,expected:z.array(z.object({id:z.string().uuid(),text:z.string().max(2000)})).max(500),records:z.array(z.object({id:z.string().uuid(),text:z.string().min(1).max(2000)})).max(500)}),
   z.object({

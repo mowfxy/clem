@@ -45,3 +45,6 @@ docs/verification/frames/
 .verify-export/
 .verify-office/
 emails/preview/
+
+.vercel
+.env*

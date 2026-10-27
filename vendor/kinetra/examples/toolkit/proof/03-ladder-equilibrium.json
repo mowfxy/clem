@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "title": "Ladder against a smooth wall: free-body diagram",
+  "caption": "W = 200 N at mid-length, θ = 60°, μ = 0.35",
+  "canvas": { "width": 560, "height": 520, "world": { "xMin": -1.0, "xMax": 4.6, "yMin": -1.4, "yMax": 5.4 } },
+  "vars": { "L": "5 m", "theta": "60 deg", "W": "200 N", "mu": "0.35",
+            "Nw": "W/(2*tan(theta))", "Nf": "W", "f": "Nw" },
+  "scales": { "force": { "per": "100 N" } },
+  "elements": [
+    { "id": "lad", "type": "beam", "from": { "x": "L*cos(theta)", "y": 0 }, "to": { "x": 0, "y": "L*sin(theta)" }, "depth": 0.14 },
+    { "id": "wall", "type": "segment", "from": { "x": -0.1, "y": "L*sin(theta) - 1.2 m" }, "to": { "x": -0.1, "y": "L*sin(theta) + 0.6 m" }, "dashed": true, "color": "guide" },
+    { "id": "floor", "type": "segment", "from": { "x": "L*cos(theta) + 0.15 m", "y": -0.07 }, "to": { "x": "L*cos(theta) + 1.6 m", "y": -0.07 }, "dashed": true, "color": "guide" },
+    { "id": "Wa", "type": "force", "from": "lad.mid", "angle": -90, "magnitude": "W", "label": "W", "mayTouch": ["lad"] },
+    { "id": "Nfa", "type": "force", "from": "lad.start", "angle": 90, "magnitude": "Nf", "color": "normal", "label": "N_f", "mayTouch": ["lad"] },
+    { "id": "fa", "type": "force", "from": "lad.start", "angle": 180, "magnitude": "f", "color": "friction", "label": { "text": "f", "position": "below" }, "mayTouch": ["lad", "Nfa"] },
+    { "id": "Nwa", "type": "force", "from": "lad.end", "angle": 0, "magnitude": "Nw", "color": "normal", "label": "N_w", "mayTouch": ["lad", "wall"] },
+    { "id": "th", "type": "angleArc", "vertex": "lad.start", "fromAngle": 120, "toAngle": 180, "r": 0.6, "text": "\\theta", "mayTouch": ["lad", "fa"] },
+    { "id": "Lgd", "type": "text", "text": "L = 5 m", "at": { "x": 2.4, "y": 2.8 } }
+  ],
+  "checks": [
+    { "id": "sumF", "type": "vectorSum", "vectors": ["Wa", "Nfa", "fa", "Nwa"], "tol": "1e-9 N" },
+    { "id": "sumM_base", "type": "momentSum", "about": "lad.start", "vectors": ["Wa", "Nfa", "fa", "Nwa"], "tol": "1e-9 N*m" },
+    { "id": "no_slip", "type": "lessEqual", "left": "fa.magnitude", "right": "mu*Nfa.magnitude" }
+  ]
+}

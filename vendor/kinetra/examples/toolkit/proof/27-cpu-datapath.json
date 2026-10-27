@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "title": "Single-cycle CPU datapath (load/store and R-type)",
+  "caption": "Instruction flow left to right: fetch, decode/register read, execute, memory, write-back",
+  "canvas": { "width": 980, "height": 490, "world": { "xMin": -0.6, "xMax": 16.0, "yMin": -4.2, "yMax": 4.2 } },
+  "vars": { "gap": "1.0 m" },
+  "elements": [
+    { "id": "PC", "type": "roundedBox", "at": { "x": 0.8, "y": 0 }, "w": 0.9, "h": 1.4, "text": "PC", "fill": "bodyFill", "stroke": "body" },
+    { "id": "IM", "type": "roundedBox", "place": { "rightOf": "PC", "gap": "gap" }, "w": 2.0, "h": 2.2, "text": "Instr. mem", "fill": "surfaceFill", "stroke": "mechanism" },
+    { "id": "RF", "type": "roundedBox", "place": { "rightOf": "IM", "gap": "gap" }, "w": 2.2, "h": 2.6, "text": "Registers", "fill": "surfaceFill", "stroke": "mechanism" },
+    { "id": "ALU", "type": "roundedBox", "place": { "rightOf": "RF", "gap": "gap" }, "w": 1.5, "h": 2.0, "r": 0.2, "text": "ALU", "fill": "mechanismFill", "stroke": "mechanism" },
+    { "id": "DM", "type": "roundedBox", "place": { "rightOf": "ALU", "gap": "gap" }, "w": 2.0, "h": 2.2, "text": "Data mem", "fill": "surfaceFill", "stroke": "mechanism" },
+    { "id": "MX", "type": "roundedBox", "place": { "rightOf": "DM", "gap": "gap" }, "w": 0.6, "h": 1.6, "r": 0.25, "text": "M", "fill": "white", "stroke": "ink" },
+    { "id": "ADD", "type": "roundedBox", "at": { "x": 3.1, "y": 2.85 }, "w": 1.3, "h": 0.8, "r": 0.15, "text": "+4", "fill": "white", "stroke": "ink" },
+    { "id": "SX", "type": "roundedBox", "at": { "x": 7.5, "y": -2.6 }, "w": 1.6, "h": 0.7, "r": 0.3, "text": "sign-ext", "fill": "white", "stroke": "ink" },
+    { "id": "a1", "type": "connector", "from": "PC.right", "to": "IM.left", "label": { "text": "addr", "position": "above" } },
+    { "id": "a2", "type": "connector", "from": "IM.right", "to": "RF.left", "label": { "text": "instr", "position": "above" } },
+    { "id": "a3", "type": "connector", "from": { "ref": "RF.right", "dy": 0.6 }, "to": { "ref": "ALU.left", "dy": 0.6 }, "label": { "text": "A", "position": "above" } },
+    { "id": "a4", "type": "connector", "from": { "ref": "RF.right", "dy": -0.6 }, "to": { "ref": "ALU.left", "dy": -0.6 }, "label": { "text": "B", "position": "below" } },
+    { "id": "a5", "type": "connector", "from": "ALU.right", "to": "DM.left", "label": { "text": "address", "position": "above" } },
+    { "id": "a6", "type": "connector", "from": { "ref": "DM.right", "dy": 0.4 }, "to": { "ref": "MX.left", "dy": 0.4 }, "label": { "text": "load", "position": "above" } },
+    { "id": "a7", "type": "connector", "from": { "ref": "ALU.bottom", "dx": 0.3 }, "to": { "ref": "MX.left", "dy": -0.4 }, "route": "orthogonal", "via": [{ "x": 9.5, "y": -1.9 }, { "x": 13.4, "y": -1.9 }, { "x": 13.4, "y": -0.4 }], "label": { "text": "ALU result", "position": "below" } },
+    { "id": "wb", "type": "connector", "from": "MX.right", "to": "RF.bottom", "route": "orthogonal", "via": [{ "x": 15.2, "y": 0 }, { "x": 15.2, "y": -3.4 }, { "x": 6.35, "y": -3.4 }], "label": "write-back" },
+    { "id": "f1", "type": "connector", "from": "PC.top", "to": "ADD.left", "route": "orthogonal", "via": [{ "x": 0.8, "y": 2.85 }] },
+    { "id": "f2", "type": "connector", "from": "ADD.right", "to": "PC.left", "route": "orthogonal", "via": [{ "x": 4.3, "y": 2.85 }, { "x": 4.3, "y": 3.55 }, { "x": -0.3, "y": 3.55 }, { "x": -0.3, "y": 0 }], "end": "arrow", "label": "next PC" },
+    { "id": "s1", "type": "connector", "from": { "ref": "IM.bottom", "dx": 0.4 }, "to": "SX.left", "route": "orthogonal", "via": [{ "x": 3.65, "y": -2.6 }] },
+    { "id": "s2", "type": "connector", "from": "SX.right", "to": { "ref": "ALU.bottom", "dx": -0.3 }, "route": "orthogonal", "via": [{ "x": 8.9, "y": -2.6 }] }
+  ],
+  "checks": [
+    { "id": "stages_left_to_right_1", "type": "less", "left": "PC.x", "right": "IM.x" },
+    { "id": "stages_left_to_right_2", "type": "less", "left": "IM.x", "right": "RF.x" },
+    { "id": "stages_left_to_right_3", "type": "less", "left": "RF.x", "right": "ALU.x" },
+    { "id": "stages_left_to_right_4", "type": "less", "left": "ALU.x", "right": "DM.x" },
+    { "id": "stages_left_to_right_5", "type": "less", "left": "DM.x", "right": "MX.x" },
+    { "id": "main_row_aligned", "type": "equal", "left": "PC.y", "right": "MX.y", "tol": "1e-12 m" },
+    { "id": "uniform_stage_gap", "type": "equal", "left": "IM.left.x - PC.right.x", "right": "DM.left.x - ALU.right.x", "tol": "0.005 m" }
+  ]
+}

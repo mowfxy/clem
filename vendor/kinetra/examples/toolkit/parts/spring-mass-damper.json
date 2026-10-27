@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "title": "Spring–mass–damper",
+  "canvas": {
+    "width": 600,
+    "height": 340,
+    "world": {
+      "xMin": -0.4,
+      "xMax": 7.4,
+      "yMin": -0.9,
+      "yMax": 3.5
+    }
+  },
+  "vars": {
+    "k": "200 N/m",
+    "c": "8 N*s/m",
+    "mass": "2 kg",
+    "zeta": "c/(2*sqrt(k*mass))"
+  },
+  "elements": [
+    {
+      "id": "wall",
+      "type": "wall",
+      "from": {
+        "x": 0.4,
+        "y": 0
+      },
+      "to": {
+        "x": 0.4,
+        "y": 2.2
+      }
+    },
+    {
+      "id": "floor",
+      "type": "ground",
+      "from": {
+        "x": 0.4,
+        "y": 0
+      },
+      "to": {
+        "x": 6.9,
+        "y": 0
+      },
+      "mayTouch": [
+        "wall"
+      ]
+    },
+    {
+      "id": "M",
+      "type": "mass",
+      "at": {
+        "x": 4.2,
+        "y": 0.75
+      },
+      "w": 1.6,
+      "h": 1.5,
+      "text": "m",
+      "mayTouch": [
+        "floor"
+      ]
+    },
+    {
+      "id": "k1",
+      "type": "coilSpring",
+      "from": {
+        "x": 0.4,
+        "y": 1.15
+      },
+      "to": {
+        "ref": "M.left",
+        "dy": 0.4
+      },
+      "mayTouch": [
+        "wall"
+      ],
+      "label": "k"
+    },
+    {
+      "id": "c1",
+      "type": "damper",
+      "from": {
+        "x": 0.4,
+        "y": 0.4
+      },
+      "to": {
+        "ref": "M.left",
+        "dy": -0.35
+      },
+      "mayTouch": [
+        "wall"
+      ],
+      "label": "c"
+    },
+    {
+      "id": "F",
+      "type": "force",
+      "from": "M.right",
+      "angle": 0,
+      "length": 1.3,
+      "label": "F(t)",
+      "mayTouch": [
+        "M"
+      ]
+    },
+    {
+      "id": "ax",
+      "type": "triad",
+      "at": {
+        "x": 5.6,
+        "y": 2.2
+      },
+      "length": 0.7
+    }
+  ],
+  "checks": [
+    {
+      "id": "underdamped",
+      "type": "less",
+      "left": "zeta",
+      "right": 1
+    },
+    {
+      "id": "zetaValue",
+      "type": "equal",
+      "left": "zeta",
+      "right": 0.2,
+      "tol": 1e-12
+    }
+  ]
+}

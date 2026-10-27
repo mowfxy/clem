@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "title": "Block at rest on a rough incline",
+  "caption": "m = 5 kg, θ = 25°, μₛ = 0.6, block at rest",
+  "canvas": { "width": 780, "height": 420, "world": { "xMin": -0.6, "xMax": 12.4, "yMin": -0.9, "yMax": 6.1 } },
+  "vars": { "m": "5 kg", "g": "9.81 m/s^2", "theta": "25 deg", "mus": "0.6",
+            "Wt": "m*g", "N": "m*g*cos(theta)", "f": "m*g*sin(theta)" },
+  "scales": { "force": { "per": "25 N" } },
+  "elements": [
+    { "id": "ramp", "type": "incline", "at": { "x": 0, "y": 0 }, "base": 6.6, "angle": "theta" },
+    { "id": "blk", "type": "block", "w": 1.3, "h": 0.8, "rotation": "theta", "place": { "attach": "bottom", "to": "ramp.surface(0.55)" }, "mayTouch": ["ramp"] },
+    { "id": "fbdT", "type": "text", "text": "Free-body diagram", "at": { "x": 9.7, "y": 5.5 } },
+    { "id": "fb", "type": "block", "w": 1.0, "h": 0.6, "rotation": "theta", "at": { "x": 9.7, "y": 3.0 } },
+    { "id": "Wa", "type": "force", "from": "fb.center", "angle": -90, "magnitude": "Wt", "label": "W = mg", "mayTouch": ["fb"] },
+    { "id": "Na", "type": "force", "from": "fb.center", "angle": "90 deg + theta", "magnitude": "N", "color": "normal", "label": "F_N", "mayTouch": ["fb", "Wa", "nref"] },
+    { "id": "fa", "type": "force", "from": "fb.center", "angle": "theta", "magnitude": "f", "color": "friction", "label": "F_f", "mayTouch": ["fb", "Wa", "Na", "nref"] },
+    { "id": "tha", "type": "angleArc", "vertex": "fb.center", "fromAngle": -90, "toAngle": "-90 deg + theta", "r": 0.9, "text": "\\theta", "mayTouch": ["Wa", "fb"] },
+    { "id": "nref", "type": "segment", "from": "fb.center", "to": { "ref": "fb.center", "dx": "1.25 m*sin(theta)", "dy": "-1.25 m*cos(theta)" }, "dashed": true, "color": "guide", "mayTouch": ["fb", "Wa", "tha"] }
+  ],
+  "checks": [
+    { "id": "equilibrium", "type": "vectorSum", "vectors": ["Wa", "Na", "fa"], "tol": "1e-9 N" },
+    { "id": "static_friction_limit", "type": "lessEqual", "left": "fa.magnitude", "right": "mus*Na.magnitude" },
+    { "id": "normal_perpendicular_to_slope", "type": "equal", "left": "Na.angle - ramp.angle", "right": "90 deg", "tol": "1e-9 deg" },
+    { "id": "friction_along_slope_upward", "type": "equal", "left": "fa.angle", "right": "ramp.angle", "tol": "1e-9 deg" }
+  ]
+}

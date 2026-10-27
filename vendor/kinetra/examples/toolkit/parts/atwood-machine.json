@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "title": "Atwood machine",
+  "canvas": {
+    "width": 520,
+    "height": 580,
+    "world": {
+      "xMin": -2.5,
+      "xMax": 2.5,
+      "yMin": -4.6,
+      "yMax": 1.4
+    }
+  },
+  "vars": {
+    "m1": "2 kg",
+    "m2": "3 kg",
+    "g": "9.81 m/s^2",
+    "a": "(m2 - m1)*g/(m1 + m2)",
+    "T": "2*m1*m2*g/(m1 + m2)"
+  },
+  "scales": {
+    "force": {
+      "per": "20 N"
+    }
+  },
+  "elements": [
+    {
+      "id": "ceiling",
+      "type": "ceiling",
+      "from": {
+        "x": -1.6,
+        "y": 1.0
+      },
+      "to": {
+        "x": 1.6,
+        "y": 1.0
+      }
+    },
+    {
+      "id": "hanger",
+      "type": "segment",
+      "from": "ceiling.mid",
+      "to": "p.center",
+      "width": 2,
+      "color": "component",
+      "mayTouch": [
+        "ceiling",
+        "p",
+        "rope"
+      ]
+    },
+    {
+      "id": "p",
+      "type": "pulley",
+      "at": {
+        "x": 0,
+        "y": 0
+      },
+      "r": 0.55,
+      "label": {
+        "text": "pulley",
+        "position": "right"
+      }
+    },
+    {
+      "id": "M1",
+      "type": "mass",
+      "at": {
+        "x": -0.55,
+        "y": -1.7
+      },
+      "w": 0.6,
+      "h": 0.5,
+      "text": "m₁"
+    },
+    {
+      "id": "M2",
+      "type": "mass",
+      "at": {
+        "x": 0.55,
+        "y": -2.4
+      },
+      "w": 0.7,
+      "h": 0.6,
+      "text": "m₂"
+    },
+    {
+      "id": "rope",
+      "type": "rope",
+      "route": [
+        "M1.top",
+        {
+          "around": "p",
+          "dir": "cw"
+        },
+        "M2.top"
+      ]
+    },
+    {
+      "id": "W1",
+      "type": "force",
+      "from": "M1.bottom",
+      "angle": -90,
+      "magnitude": "m1*g",
+      "mayTouch": [
+        "M1"
+      ],
+      "label": {
+        "text": "m₁g",
+        "position": "left"
+      }
+    },
+    {
+      "id": "W2",
+      "type": "force",
+      "from": "M2.bottom",
+      "angle": -90,
+      "magnitude": "m2*g",
+      "mayTouch": [
+        "M2"
+      ],
+      "label": {
+        "text": "m₂g",
+        "position": "right"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "tension",
+      "type": "equal",
+      "left": "T - m1*g",
+      "right": "m1*a",
+      "tol": "1e-9 N"
+    },
+    {
+      "id": "heavier",
+      "type": "greater",
+      "left": "W2.magnitude",
+      "right": "W1.magnitude"
+    },
+    {
+      "id": "ropeLength",
+      "type": "greater",
+      "left": "rope.length",
+      "right": "3 m"
+    }
+  ]
+}

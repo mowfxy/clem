@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "title": "Standing wave on a string fixed at both ends: third harmonic",
+  "caption": "L = 1.2 m, wave speed v = 48 m/s: λ₃ = 2L/3, f₃ = 3v/(2L) = 60 Hz; nodes λ/2 apart",
+  "canvas": { "width": 880, "height": 440, "world": { "xMin": -1.2, "xMax": 12.6, "yMin": -2.8, "yMax": 3.6 } },
+  "vars": { "L": "1.2", "n": "3", "v": "48 m/s", "lam": "2*L/n", "f": "n*v/(2*L*1 m)", "A": "1" },
+  "elements": [
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": -1.6 }, "w": 10, "h": 3.2, "frame": "box",
+      "x": { "min": 0, "max": 1.2, "ticks": [0, 0.4, 0.8, 1.2], "label": "x", "unit": "m" },
+      "y": { "min": -1.25, "max": 1.25, "ticks": [-1, 0, 1], "label": "y/A" } },
+    { "id": "up", "type": "series", "axes": "ax", "fn": "A*sin(n*pi*x/L*1 rad)", "color": "rayAlt" },
+    { "id": "dn", "type": "series", "axes": "ax", "fn": "-A*sin(n*pi*x/L*1 rad)", "color": "rayAlt", "dashed": true, "mayTouch": ["up"] },
+    { "id": "mid", "type": "series", "axes": "ax", "fn": "0.45*A*sin(n*pi*x/L*1 rad)", "color": "guide", "width": 1, "mayTouch": ["up", "dn"] },
+    { "id": "N0", "type": "plotPoint", "axes": "ax", "series": "up", "x": 0, "marker": "circle", "mayTouch": ["dn", "mid"] },
+    { "id": "N1", "type": "plotPoint", "axes": "ax", "series": "up", "x": "lam/2", "marker": "circle", "mayTouch": ["dn", "mid"] },
+    { "id": "N2", "type": "plotPoint", "axes": "ax", "series": "up", "x": "lam", "marker": "circle", "mayTouch": ["dn", "mid"] },
+    { "id": "N3", "type": "plotPoint", "axes": "ax", "series": "up", "x": "3*lam/2", "marker": "circle", "mayTouch": ["dn", "mid"] },
+    { "id": "AN", "type": "plotPoint", "axes": "ax", "series": "up", "x": "lam/4", "marker": "dot" },
+    { "id": "lg", "type": "legend", "at": { "x": 10.55, "y": 2.6 }, "entries": [{ "text": "node", "kind": "circle", "color": "ink" }, { "text": "antinode", "kind": "dot", "color": "ink" }, { "text": "y(x, t) envelope", "kind": "line", "color": "rayAlt" }] },
+    { "id": "lamD", "type": "dimension", "from": { "x": 0, "y": 2.35 }, "to": { "x": "10/1.2*lam", "y": 2.35 }, "offset": 0, "text": "λ = 0.8 m" }
+  ],
+  "checks": [
+    { "id": "node1_zero", "type": "equal", "left": "N1.dataY", "right": 0, "tol": 1e-12 },
+    { "id": "node2_zero", "type": "equal", "left": "N2.dataY", "right": 0, "tol": 1e-12 },
+    { "id": "end_is_node", "type": "equal", "left": "N3.dataX", "right": "L", "tol": 1e-12 },
+    { "id": "node_spacing_half_wavelength", "type": "equal", "left": "N2.dataX - N1.dataX", "right": "lam/2", "tol": 1e-12 },
+    { "id": "antinode_amplitude", "type": "equal", "left": "AN.dataY", "right": "A", "tol": 1e-12 },
+    { "id": "frequency", "type": "equal", "left": "f", "right": "60 Hz", "tol": "1e-9 Hz" }
+  ]
+}

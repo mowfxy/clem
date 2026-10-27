@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "title": "Atwood machine",
+  "caption": "m₁ = 3 kg rises, m₂ = 5 kg falls",
+  "canvas": { "width": 720, "height": 560, "world": { "xMin": -1.6, "xMax": 7.6, "yMin": -0.9, "yMax": 6.3 } },
+  "vars": { "m1": "3 kg", "m2": "5 kg", "g": "9.81 m/s^2",
+            "a": "(m2 - m1)*g/(m1 + m2)", "T": "2*m1*m2*g/(m1 + m2)" },
+  "scales": { "force": { "per": "25 N" }, "acceleration": { "per": "2 m/s^2" } },
+  "elements": [
+    { "id": "ceil", "type": "ceiling", "from": { "x": 2.0, "y": 5.9 }, "to": { "x": 4.0, "y": 5.9 } },
+    { "id": "pl", "type": "pulley", "at": { "x": 3.0, "y": 4.9 }, "r": 0.6 },
+    { "id": "hang", "type": "segment", "from": "pl.center", "to": { "x": 3.0, "y": 5.9 }, "width": 2, "color": "mechanism", "mayTouch": ["pl", "ceil", "rope"] },
+    { "id": "M1", "type": "mass", "at": { "x": 2.4, "y": 2.9 }, "w": 0.7, "h": 0.7, "text": "m_1" },
+    { "id": "M2", "type": "mass", "at": { "x": 3.6, "y": 1.6 }, "w": 0.85, "h": 0.85, "text": "m_2" },
+    { "id": "rope", "type": "rope", "route": ["M1.top", { "around": "pl", "dir": "cw" }, "M2.top"] },
+    { "id": "T1", "type": "force", "from": { "ref": "M1.left", "dx": -0.18 }, "angle": 90, "magnitude": "T", "color": "normal", "label": { "text": "T", "position": "left" }, "mayTouch": ["W1"] },
+    { "id": "W1", "type": "force", "from": { "ref": "M1.left", "dx": -0.18 }, "angle": -90, "magnitude": "m1*g", "label": { "text": "m_1g", "position": "left" }, "mayTouch": ["T1"] },
+    { "id": "T2", "type": "force", "from": { "ref": "M2.right", "dx": 0.18 }, "angle": 90, "magnitude": "T", "color": "normal", "label": { "text": "T", "position": "right" }, "mayTouch": ["W2"] },
+    { "id": "W2", "type": "force", "from": { "ref": "M2.right", "dx": 0.18 }, "angle": -90, "magnitude": "m2*g", "label": { "text": "m_2g", "position": "right" }, "mayTouch": ["T2"] },
+    { "id": "a1", "type": "arrow", "from": { "ref": "M1.center", "dx": -1.3 }, "angle": 90, "magnitude": "a", "color": "acceleration", "label": "a" },
+    { "id": "a2", "type": "arrow", "from": { "ref": "M2.center", "dx": 1.3 }, "angle": -90, "magnitude": "a", "color": "acceleration", "label": "a" }
+  ],
+  "checks": [
+    { "id": "newton_m1", "type": "vectorSum", "vectors": ["T1", "W1"], "equals": { "x": "0 N", "y": "m1*a1.magnitude" }, "tol": "1e-9 N" },
+    { "id": "newton_m2", "type": "vectorSum", "vectors": ["T2", "W2"], "equals": { "x": "0 N", "y": "-m2*a2.magnitude" }, "tol": "1e-9 N" },
+    { "id": "same_tension", "type": "equal", "left": "T1.magnitude", "right": "T2.magnitude" },
+    { "id": "inextensible_rope", "type": "equal", "left": "a1.magnitude", "right": "a2.magnitude" },
+    { "id": "a_less_than_g", "type": "less", "left": "a1.magnitude", "right": "g" }
+  ]
+}

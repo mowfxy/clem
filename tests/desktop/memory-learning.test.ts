@@ -117,3 +117,17 @@ test("the same memory under two keys is sent to the model once", () => {
   const found = retrieveMemory(state, "chat:c", "convert this speed", { now: Date.parse("2026-09-03") });
   assert.equal(found.filter((m) => /SI units/.test(m.text)).length, 1);
 });
+
+test("asking to save something to memory counts, in the words people use", async () => {
+  const { explicitRemember, mentionsSelf, rememberedWords, memoryBlocks } = await import("../../desktop/memory.ts");
+  for (const said of ["save this to the project memory: we use SI units", "can you add this to your memory?", "remember this: exams are open book", "memorize that I prefer short answers", "don't forget the lab is on Friday"])
+    assert.ok(explicitRemember(said) && mentionsSelf(said), said);
+  assert.equal(explicitRemember("Remember the Krebs cycle steps?"), false);
+  const [space] = rememberedWords("save to the project memory that we use SI units");
+  assert.equal(space.about, "space");
+  assert.match(space.text, /^We use SI units/);
+  const answer = 'Saved.\n\n```memory\n{"remember":[{"text":"In this course, R_th is found with independent sources off.","about":"space"},{"text":"The user prefers short answers.","about":"user","kind":"preference"}]}\n```';
+  const items = memoryBlocks(answer);
+  assert.deepEqual(items.map((m) => [m.about, m.kind]), [["space", "fact"], ["user", "preference"]]);
+  assert.deepEqual(memoryBlocks('```memory\n{"remember":[{"text":"My password is hunter22","about":"user"}]}\n```'), []);
+});

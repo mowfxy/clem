@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "title": "Mass–spring–damper: free response from x₀",
+  "caption": "m = 1 kg, k = 100 N/m, c = 4 N·s/m: ωₙ = 10 rad/s, ζ = 0.2 (underdamped)",
+  "canvas": { "width": 900, "height": 420, "world": { "xMin": -0.4, "xMax": 16.4, "yMin": -3.7, "yMax": 4.0 } },
+  "vars": { "k": "100 N/m", "c": "4 N*s/m", "mass": "1 kg",
+            "wn": "sqrt(k/mass)", "zeta": "c/(2*sqrt(k*mass))", "wd": "wn*sqrt(1 - zeta^2)",
+            "tp": "pi/wd", "OS": "exp(-zeta*pi/sqrt(1 - zeta^2))" },
+  "elements": [
+    { "id": "wall", "type": "wall", "from": { "x": 0.2, "y": -1.0 }, "to": { "x": 0.2, "y": 1.6 } },
+    { "id": "floor", "type": "ground", "from": { "x": 0.2, "y": -1.0 }, "to": { "x": 5.4, "y": -1.0 }, "mayTouch": ["wall"] },
+    { "id": "M", "type": "mass", "at": { "x": 3.6, "y": -0.25 }, "w": 1.4, "h": 1.5, "text": "m", "mayTouch": ["floor"] },
+    { "id": "k1", "type": "coilSpring", "from": { "x": 0.2, "y": 0.15 }, "to": { "ref": "M.left", "dy": 0.4 }, "mayTouch": ["wall"], "label": "k" },
+    { "id": "c1", "type": "damper", "from": { "x": 0.2, "y": -0.6 }, "to": { "ref": "M.left", "dy": -0.35 }, "mayTouch": ["wall"], "label": "c" },
+    { "id": "xref", "type": "segment", "from": { "ref": "M.center", "dy": 0.95 }, "to": { "ref": "M.center", "dy": 1.9 }, "dashed": true, "color": "guide" },
+    { "id": "xarr", "type": "arrow", "from": { "ref": "M.center", "dy": 1.5 }, "length": 1.0, "angle": 0, "label": { "text": "x(t)", "position": "above" }, "mayTouch": ["xref"] },
+    { "id": "ax", "type": "axes", "at": { "x": 7.6, "y": -2.2 }, "w": 8.2, "h": 5.4,
+      "x": { "min": 0, "max": 2, "ticks": [0, 0.5, 1, 1.5, 2], "label": "t", "unit": "s", "grid": true },
+      "y": { "min": -1, "max": 1, "ticks": [-1, -0.5, 0, 0.5, 1], "label": "x/x₀", "grid": true } },
+    { "id": "env", "type": "series", "axes": "ax", "fn": "exp(-zeta*wn*x*1 s)", "color": "guide", "dashed": true, "width": 1 },
+    { "id": "resp", "type": "series", "axes": "ax", "fn": "exp(-zeta*wn*x*1 s)*(cos(wd*x*1 s*1 rad) + zeta/sqrt(1 - zeta^2)*sin(wd*x*1 s*1 rad))", "samples": 600, "color": "rayAlt", "mayTouch": ["env"] },
+    { "id": "pk", "type": "plotPoint", "axes": "ax", "series": "resp", "x": "tp/(1 s)", "marker": "circle", "label": { "text": "first undershoot −0.53x₀ at t_p", "position": "below-right" } }
+  ],
+  "checks": [
+    { "id": "underdamped", "type": "less", "left": "zeta", "right": 1 },
+    { "id": "peak_time_on_response", "type": "onCurve", "point": "pk", "curve": "resp" },
+    { "id": "overshoot_formula", "type": "equal", "left": "pk.dataY", "right": "-OS", "tol": 1e-9 },
+    { "id": "period_from_wd", "type": "equal", "left": "2*tp", "right": "2*pi/wd", "tol": "1e-12 s" }
+  ]
+}

@@ -46,6 +46,7 @@ export * from "./diagram/fields.js";
 export * from "./diagram/circuit_schematic.js";
 export * from "./diagram/logic_schematic.js";
 export * from "./diagram/timing_render.js";
+export * from "./toolkit/index.js";
 export * from "./scene3d/types.js";
 export * from "./scene3d/projection.js";
 export * from "./scene3d/coords.js";

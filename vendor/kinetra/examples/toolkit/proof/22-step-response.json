@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "title": "Unit step response of a second-order system (ζ = 0.3, ωₙ = 4 rad/s)",
+  "caption": "Overshoot M_p = exp(−ζπ/√(1−ζ²)) = 37.2% at t_p = π/ω_d; 2% settling time ≈ 4/(ζωₙ)",
+  "canvas": { "width": 800, "height": 480, "world": { "xMin": -1.4, "xMax": 11.4, "yMin": -1.5, "yMax": 6.2 } },
+  "vars": { "z": "0.3", "wn": "4", "wd": "wn*sqrt(1 - z^2)", "phi": "acos(z)",
+            "tp": "pi/wd", "Mp": "exp(-z*pi/sqrt(1 - z^2))", "ts": "4/(z*wn)" },
+  "elements": [
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 10, "h": 4.8,
+      "x": { "min": 0, "max": 5, "ticks": [0, 1, 2, 3, 4, 5], "label": "t", "unit": "s" },
+      "y": { "min": 0, "max": 1.5, "ticks": [0, 0.5, 1, 1.5], "label": "y(t)" } },
+    { "id": "ref", "type": "guideLine", "axes": "ax", "y": 1, "color": "guide" },
+    { "id": "bandHi", "type": "guideLine", "axes": "ax", "y": 1.02, "color": "componentLight" },
+    { "id": "bandLo", "type": "guideLine", "axes": "ax", "y": 0.98, "color": "componentLight" },
+    { "id": "y", "type": "series", "axes": "ax", "fn": "1 - exp(-z*wn*x)/sqrt(1 - z^2)*sin(wd*x*1 rad + phi)", "samples": 600, "color": "rayAlt", "mayTouch": ["ref", "bandHi", "bandLo"] },
+    { "id": "pk", "type": "plotPoint", "axes": "ax", "series": "y", "x": "tp", "marker": "circle", "mayTouch": ["ref", "bandHi", "bandLo"] },
+    { "id": "os", "type": "leader", "target": "pk", "text": "peak 1 + M_p = 1.372", "dx": 0.9, "dy": 0.55, "marker": "none", "mayTouch": ["y", "tpl", "ref", "bandHi", "bandLo"] },
+    { "id": "tpl", "type": "guideLine", "axes": "ax", "x": "tp", "color": "guide", "mayTouch": ["y", "pk", "ref", "bandHi", "bandLo"], "label": { "text": "t_p = 0.82 s", "color": "text" } },
+    { "id": "tsl", "type": "guideLine", "axes": "ax", "x": "ts", "color": "guide", "mayTouch": ["y", "ref", "bandHi", "bandLo"], "label": { "text": "t_s ≈ 3.33 s", "color": "text" } }
+  ],
+  "checks": [
+    { "id": "peak_value", "type": "equal", "left": "pk.dataY", "right": "1 + Mp", "tol": 1e-9 },
+    { "id": "peak_on_response", "type": "onCurve", "point": "pk", "curve": "y" },
+    { "id": "starts_at_rest", "type": "equal", "left": "1 - 1/sqrt(1 - z^2)*sin(phi)", "right": 0, "tol": 1e-12 },
+    { "id": "overshoot_percent", "type": "equal", "left": "100*Mp", "right": 37.2326, "tol": 1e-4 }
+  ]
+}

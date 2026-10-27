@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "title": "Heat engine: energy flow",
+  "caption": "Q_H = W + Q_C (first law); η = W/Q_H must not exceed 1 − T_C/T_H (second law)",
+  "canvas": { "width": 620, "height": 480, "world": { "xMin": -3.6, "xMax": 4.2, "yMin": -3.2, "yMax": 2.9 } },
+  "vars": { "TH": "600 K", "TC": "300 K", "QH": "1000 J", "eta": "0.35", "W": "eta*QH", "QC": "QH - W" },
+  "elements": [
+    { "id": "hot", "type": "reservoir", "at": { "x": 0, "y": 2.0 }, "w": 4.4, "h": 0.8, "kind": "hot", "text": "Hot reservoir T_H = 600 K" },
+    { "id": "cold", "type": "reservoir", "at": { "x": 0, "y": -2.3 }, "w": 4.4, "h": 0.8, "kind": "cold", "text": "Cold reservoir T_C = 300 K" },
+    { "id": "eng", "type": "circleNode", "at": { "x": 0, "y": -0.15 }, "r": 0.62, "text": "engine", "fill": "mechanismFill" },
+    { "id": "qh", "type": "heatFlow", "from": "hot.bottom", "to": "eng.top", "label": { "text": "Q_H = 1000 J", "position": "right" } },
+    { "id": "qc", "type": "heatFlow", "from": "eng.bottom", "to": "cold.top", "label": { "text": "Q_C = 650 J", "position": "right" } },
+    { "id": "w", "type": "connector", "from": "eng.right", "to": { "x": 3.0, "y": -0.15 }, "width": 2, "color": "velocity", "label": { "text": "W = 350 J", "position": "above" } }
+  ],
+  "checks": [
+    { "id": "first_law", "type": "equal", "left": "QH", "right": "W + QC", "tol": "1e-9 J" },
+    { "id": "second_law", "type": "lessEqual", "left": "W/QH", "right": "1 - TC/TH" },
+    { "id": "rejects_heat", "type": "greater", "left": "QC", "right": "0 J" }
+  ]
+}

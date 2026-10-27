@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "Negative feedback loop",
+  "canvas": { "width": 720, "height": 340, "world": { "xMin": -0.5, "xMax": 10.5, "yMin": -2.6, "yMax": 2.4 } },
+  "vars": { "G": "10", "H": "0.1", "T": "G/(1 + G*H)" },
+  "elements": [
+    { "id": "in", "type": "point", "at": { "x": 0.3, "y": 1 }, "label": { "text": "R(s)", "position": "above" } },
+    { "id": "sum", "type": "summingJunction", "at": { "x": 2.2, "y": 1 }, "r": 0.28, "signs": { "left": "+", "bottom": "-" } },
+    { "id": "Gb", "type": "tfBlock", "at": { "x": 4.8, "y": 1 }, "w": 1.8, "h": 1, "text": "G(s) = 10" },
+    { "id": "Hb", "type": "tfBlock", "at": { "x": 4.8, "y": -1.4 }, "w": 1.8, "h": 1, "text": "H(s) = 0.1" },
+    { "id": "tap", "type": "takeoff", "at": { "x": 7.6, "y": 1 } },
+    { "id": "out", "type": "point", "at": { "x": 9.8, "y": 1 }, "label": { "text": "Y(s)", "position": "above" } },
+    { "id": "e1", "type": "signal", "from": "in", "to": "sum.left" },
+    { "id": "e2", "type": "signal", "from": "sum.right", "to": "Gb.left", "label": { "text": "E(s)", "position": "above" } },
+    { "id": "e3", "type": "signal", "from": "Gb.right", "to": "out", "end": "arrow", "mayTouch": ["tap"] },
+    { "id": "fb1", "type": "signal", "from": "tap", "to": "Hb.right", "route": "orthogonal", "toSide": "left", "mayTouch": ["e3"] },
+    { "id": "fb2", "type": "signal", "from": "Hb.left", "to": "sum.bottom", "route": "orthogonal", "toSide": "up" }
+  ],
+  "checks": [
+    { "id": "closedLoop", "type": "equal", "left": "T", "right": 5, "tol": 1e-12 },
+    { "id": "aligned", "type": "equal", "left": "sum.y", "right": "Gb.y" }
+  ]
+}

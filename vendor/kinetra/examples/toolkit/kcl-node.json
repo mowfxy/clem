@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "canvas": { "width": 640, "height": 440, "world": { "xMin": -3.6, "xMax": 3.6, "yMin": -2.8, "yMax": 2.2 } },
+  "title": "Kirchhoff's current law at a node",
+  "vars": { "I1": "2 A", "I2": "1.5 A", "I3": "3.5 A" },
+  "scales": { "current": { "per": "1.25 A" } },
+  "elements": [
+    { "id": "node", "type": "point", "at": { "x": 0, "y": 0 }, "label": { "text": "node", "position": "above" } },
+    { "id": "a1", "type": "arrow", "from": { "ref": "node", "dx": -2.2 }, "angle": 0, "magnitude": "I1", "color": "rayAlt", "label": "I_1 = 2 A" },
+    { "id": "a2", "type": "arrow", "from": { "ref": "node", "dy": -2.0 }, "angle": 90, "magnitude": "I2", "color": "rayAlt", "label": "I_2 = 1.5 A" },
+    { "id": "a3", "type": "arrow", "from": { "ref": "node", "dx": 0.4 }, "angle": 0, "magnitude": "I3", "color": "ray", "label": "I_3 = 3.5 A" }
+  ],
+  "checks": [
+    { "id": "kcl", "type": "kcl", "node": "node", "currents": [{ "value": "a1.magnitude", "direction": "in" }, { "value": "a2.magnitude", "direction": "in" }, { "value": "a3.magnitude", "direction": "out" }] }
+  ]
+}

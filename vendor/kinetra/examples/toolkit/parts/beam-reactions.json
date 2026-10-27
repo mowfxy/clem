@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "title": "Simply supported beam: reactions",
+  "caption": "w = 2 kN/m over the left half, P = 12 kN at 7.5 m",
+  "canvas": { "width": 820, "height": 440, "world": { "xMin": -1.2, "xMax": 11.2, "yMin": -2.6, "yMax": 3.4 } },
+  "vars": { "w": "2 kN/m", "a": "5 m", "P": "12 kN", "xP": "7.5 m", "L": "10 m", "RB": "(w*a*a/2 + P*xP)/L", "RA": "w*a + P - RB" },
+  "scales": { "force": { "per": "10 kN" } },
+  "elements": [
+    { "id": "beam", "type": "beam", "from": { "x": 0, "y": 0 }, "to": { "x": 10, "y": 0 }, "depth": 0.3 },
+    { "id": "sA", "type": "pinSupport", "scale": 1.6, "place": { "attach": "top", "to": "beam.bottom(0)" } },
+    { "id": "sB", "type": "rollerSupport", "scale": 1.6, "place": { "attach": "top", "to": "beam.bottom(1)" } },
+    { "id": "q", "type": "distributedLoad", "from": "beam.top(0)", "to": "beam.top(0.5)", "height": 1.1, "label": "w = 2 kN/m" },
+    { "id": "Pl", "type": "pointLoad", "tip": "beam.top(0.75)", "magnitude": "P", "label": "P = 12 kN" },
+    { "id": "R1", "type": "pointLoad", "tip": "sA.base", "angle": 90, "magnitude": "RA", "color": "normal", "label": { "text": "R_1", "position": "left" } },
+    { "id": "R2", "type": "pointLoad", "tip": "sB.base", "angle": 90, "magnitude": "RB", "color": "normal", "label": { "text": "R_2", "position": "right" } },
+    { "id": "d1", "type": "dimension", "from": { "x": 0, "y": -2.05 }, "to": { "x": 5, "y": -2.05 }, "offset": 0 },
+    { "id": "d2", "type": "dimension", "from": { "x": 5, "y": -2.05 }, "to": { "x": 7.5, "y": -2.05 }, "offset": 0, "mayTouch": ["d1"] },
+    { "id": "d3", "type": "dimension", "from": { "x": 7.5, "y": -2.05 }, "to": { "x": 10, "y": -2.05 }, "offset": 0, "mayTouch": ["d2"] }
+  ],
+  "checks": [
+    { "id": "sumFy", "type": "equal", "left": "R1.magnitude + R2.magnitude", "right": "w*a + Pl.magnitude", "tol": "1e-9 kN" },
+    { "id": "sumMA", "type": "equal", "left": "R2.magnitude*L", "right": "w*a*a/2 + Pl.magnitude*xP", "tol": "1e-9 kN*m" },
+    { "id": "R1value", "type": "equal", "left": "R1.magnitude", "right": "10.5 kN", "tol": "1e-9 kN" }
+  ]
+}

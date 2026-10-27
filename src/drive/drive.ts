@@ -80,8 +80,8 @@ export async function driveBytes(id: string) {
 export const isGoogleFormat = (mimeType: string) => mimeType.startsWith("application/vnd.google-apps.");
 /** Strips Electron's wrapper from errors that come back from the desktop app. */
 export const driveError = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "") || "Google Drive did not accept the file.";
-export async function driveFolder(folder: string, query = "", refresh = false) {
-  return desktop!.invoke({ action: "driveFolder", folder, query: query.slice(0, 4000), refresh }) as Promise<{ items: DriveItem[]; hits: (DriveRef & { excerpt?: string })[]; checked: number }>;
+export async function driveFolder(folder: string, query = "", refresh = false, limit?: number) {
+  return desktop!.invoke({ action: "driveFolder", folder, query: query.slice(0, 4000), refresh, ...(limit ? { limit } : {}) }) as Promise<{ items: DriveItem[]; hits: (DriveRef & { excerpt?: string })[]; checked: number }>;
 }
 
 const media = new Map<string, Promise<string>>();

@@ -239,7 +239,7 @@ const otherLanguages = [
 ];
 /** Cheap gate: only messages where the person says something about themselves are worth a memory pass. */
 export function mentionsSelf(text: string) {
-  return correctsStyle(text) || otherLanguages.some((cue) => cue.test(text)) || /\b(i am|i'm|im|i work|i study|i teach|i live|i moved|my (?:name|job|role|major|degree|course|class|classes|exams?|goal|goals|level|company|team|field|background|school|university|college|teacher|professor|boss|thesis|project|research|students?|kids?|business|startup|native language|first language)|i have (?:a|an|my|to)|i need (?:this|it) for|i'?m (?:from|based in|in (?:year|grade|my))|i speak|i'?d (?:like|rather|prefer)|i would (?:like|rather|prefer)|i want (?:you|answers|replies)|i run|i own|i graduated|i'?m (?:taking|doing|writing|building|applying)|i prefer|i like|i love|i hate|i dislike|i don'?t like|i usually|i always|i never|i struggle|call me|remember|from now on|going forward|i'?ve been|i'?m (?:a|an|studying|learning|preparing|working))\b/i.test(text);
+  return correctsStyle(text) || otherLanguages.some((cue) => cue.test(text)) || /\b(i am|i'm|im|i work|i study|i teach|i live|i moved|my (?:name|job|role|major|degree|course|class|classes|exams?|goal|goals|level|company|team|field|background|school|university|college|teacher|professor|boss|thesis|project|research|students?|kids?|business|startup|native language|first language)|i have (?:a|an|my|to)|i need (?:this|it) for|i'?m (?:from|based in|in (?:year|grade|my))|i speak|i'?d (?:like|rather|prefer)|i would (?:like|rather|prefer)|i want (?:you|answers|replies)|i run|i own|i graduated|i'?m (?:taking|doing|writing|building|applying)|i prefer|i like|i love|i hate|i dislike|i don'?t like|i usually|i always|i never|i struggle|call me|remember|from now on|going forward|i'?ve been|i'?m (?:a|an|studying|learning|preparing|working))\b/i.test(text) || explicitRemember(text);
 }
 /** Corrections and standing instructions about answers ("shorter please", "stop using bullet points", "answer in Arabic"). */
 export function correctsStyle(text: string) {
@@ -251,14 +251,18 @@ export function correctsStyle(text: string) {
  */
 export function rememberedWords(text: string): Learned[] {
   const words = text
-    .replace(/^\s*(?:please\s+|pls\s+)?(?:remember|note|keep in mind)(?:\s+that)?[\s:,-]*/i, "")
+    .replace(/^\s*(?:please\s+|pls\s+)?(?:can you\s+|could you\s+)?(?:save|add|put|store|write|keep)\s+(?:this|that|it|the following)?\s*(?:in|to|into)\s+(?:your|the|my|this|clem'?s)?\s*(?:(?:project|subject|long[- ]term)\s+)?memor(?:y|ies)\b(?:\s+that\b)?[\s:,-]*/i, "")
+    .replace(/^\s*(?:please\s+|pls\s+)?(?:remember|note|keep in mind|memori[sz]e|don'?t forget)(?:\s+(?:that|this|in (?:your|the|my|this) (?:\w+ )?memory))?[\s:,-]*/i, "")
+    .replace(/[\s,;-]*(?:(?:in|to|into)\s+(?:your|the|my|this|clem'?s)?\s*(?:(?:project|subject|long[- ]term)\s+)?memor(?:y|ies))\s*[.!]*$/i, "")
     .replace(/^\s*(?:من فضلك\s+|رجاء\s+)?(?:تذكر|تذكّر|احفظ)(?:\s+أن|\s+ان)?[\s:،,-]*/u, "")
     .replace(/^\s*(?:souviens-toi (?:que|de)|retiens que|recuerda (?:que|esto)|merke? dir)[\s:,-]*/iu, "")
     .replace(/\s+/g, " ").trim().replace(/[.!]*$/, "");
   if (words.length < 3 || words.length > 400 || looksSecret(words)) return [];
   const preference = /\b(prefer|like|want|always|never|don'?t|please|answer|reply|explain|write|use)\b/i.test(words) || /(?:أفضل|أفضّل|أريد|اريد|دائما|دائماً|لا تستخدم|لا تكتب|جاوب|أجب|اجب|اكتب|استخدم)/u.test(words) || /\b(?:préfère|toujours|jamais|réponds|prefiero|siempre|nunca|responde|bevorzuge|immer|niemals|antworte)\b/iu.test(words);
   const key = (preference ? "pref:" : "note:") + (words.toLowerCase().match(/[\p{L}\p{N}]+/gu) || ["note"]).slice(0, 5).join("-");
-  return [{ key: key.slice(0, 60), text: words[0].toUpperCase() + words.slice(1) + ".", kind: preference ? "preference" : "fact", about: "user" }];
+  // "save this to the project memory" belongs to the subject or project the chat is in.
+  const about = /\b(?:project|subject|course|class)\s+memor(?:y|ies)\b/i.test(text) ? "space" : "user";
+  return [{ key: key.slice(0, 60), text: words[0].toUpperCase() + words.slice(1) + ".", kind: preference ? "preference" : "fact", about }];
 }
 /**
  * The person asking Clem to remember something: "remember that…", "remember: …", "remember I…", "keep in mind
@@ -267,8 +271,10 @@ export function rememberedWords(text: string): Learned[] {
  */
 export function explicitRemember(text: string) {
   const t = text.trim();
+  // "can you save this to the project memory?" asks for it even as a question.
+  if (/^(?:please\s+|pls\s+)?(?:can you\s+|could you\s+)?(?:save|add|put|store|write|keep)\b[^.?!\n]{0,80}?\b(?:in|to|into)\s+(?:your|the|my|this|clem'?s)?\s*(?:(?:project|subject|long[- ]term)\s+)?memor(?:y|ies)\b/i.test(t)) return true;
   if (/[?؟]\s*$/.test(t)) return false;
-  return /^(?:please\s+|pls\s+)?(?:(?:remember|keep in mind)\s*(?::|\bthat\b|\b(?:i|i'm|im|i've|i'd|my|me|to|for next time)\b)|note\s+(?:that\s+)?(?:i|i'm|im|i've|my|me)\b)/i.test(t) ||
+  return /^(?:please\s+|pls\s+)?(?:(?:remember|keep in mind)\s*(?::|\bthat\b|\b(?:i|i'm|im|i've|i'd|my|me|to|for next time|this|these|the following|in (?:your|the|my|this) (?:\w+ )?memory)\b)|note\s+(?:that\s+)?(?:i|i'm|im|i've|my|me)\b|memori[sz]e\b|don'?t forget\b)/i.test(t) ||
     /^(?:من فضلك\s+|رجاء\s+)?(?:تذكر|تذكّر|احفظ)(?:\s+أن|\s+ان|\s*:|\s+أني|\s+انني|\s+إني)/u.test(t) ||
     /^(?:souviens-toi (?:que|de)|retiens que|recuerda (?:que|esto)|merk dir|merke dir)\b/iu.test(t);
 }
@@ -302,7 +308,7 @@ export function looksSecret(text: string) {
   }
   return false;
 }
-export const extractionInstructions = `You maintain a private memory of durable facts about the user, so future answers fit them. From the user's latest message, extract only lasting information about the USER: identity (name, role, field, level, school/company), goals and deadlines, and stable preferences about how they want answers (length, tone, language, format, units, level of detail, words or styles to avoid). A correction of the previous answer ("too long", "stop using bullet points", "answer in Arabic") is a preference when it reads as a standing wish rather than a one-off edit. The previous answer is given only so corrections make sense; never store anything the assistant said. Ignore the topic of the question itself and one-off requests. Never store secrets, passwords, health, financial, or other sensitive details unless the user explicitly asked you to remember them. The message may be in any language: write "text" in the language the user wrote in, and "key" in short English.
+export const extractionInstructions = `You maintain a private memory of durable facts about the user, so future answers fit them. From the user's latest message, extract only lasting information about the USER: identity (name, role, field, level, school/company), goals and deadlines, and stable preferences about how they want answers (length, tone, language, format, units, level of detail, words or styles to avoid). A correction of the previous answer ("too long", "stop using bullet points", "answer in Arabic") is a preference when it reads as a standing wish rather than a one-off edit. The previous answer is given only so corrections make sense; never store anything the assistant said. Ignore the topic of the question itself and one-off requests, except when the user explicitly asks to remember, save or note something ("remember this", "save this to the project memory", "don't forget that…"): then store exactly what they asked to keep, even about the topic or the project, resolving "this" or "that" from the previous answer, as "space" when they name the project or subject memory or it is about the course or project rather than about them. Never store secrets, passwords, health, financial, or other sensitive details unless the user explicitly asked you to remember them. The message may be in any language: write "text" in the language the user wrote in, and "key" in short English.
 Return ONLY JSON: {"memories":[{"key":"short-stable-key","text":"one sentence in third person, e.g. The user is a second-year physics student.","kind":"fact"|"preference","about":"user"|"space","until":"YYYY-MM-DD (optional)"}]}. "about":"space" only for facts tied to the current project or subject. For time-bound facts (an exam, a deadline, a trip) set "until" to the day after it ends; leave it out for lasting facts. Reuse an existing key when the new information updates or contradicts it. Return {"memories":[]} when there is nothing durable. At most 5 items.`;
 export type Learned = { key: string; text: string; kind: "fact" | "preference"; about: "user" | "space"; until?: string };
 export function parseExtraction(raw: string): Learned[] {
@@ -420,4 +426,24 @@ export function updateMemory(state: MemoryState, id: string, change: { text?: st
 export function unshareScope(state: MemoryState, scope: string) {
   if (!state.records.some((m) => m.sharedWith.includes(scope))) return state;
   return { ...state, records: state.records.map((m) => (m.sharedWith.includes(scope) ? { ...m, sharedWith: m.sharedWith.filter((s) => s !== scope) } : m)) };
+}
+/**
+ * What the AI saved when the person asked it to remember something: each ```memory block of its answer holds
+ * {"remember":[{"text":"…","about":"user"|"space","kind"?:"fact"|"preference"}]}. The AI resolves "this" from the
+ * conversation, so these are kept as the person's own instruction (confirmed).
+ */
+export function memoryBlocks(answer: string): Learned[] {
+  const items: Learned[] = [];
+  for (const [, body] of answer.matchAll(/^[ \t]*```memory[^\n]*\n([\s\S]*?)\n[ \t]*```/gm)) {
+    let value: any;
+    try { value = JSON.parse(body); } catch { continue; }
+    for (const m of [value?.remember ?? value].flat().slice(0, 5)) {
+      const text = typeof m?.text === "string" ? m.text.replace(/\s+/g, " ").trim() : "";
+      if (text.length < 4 || text.length > 400 || looksSecret(text)) continue;
+      const kind = m.kind === "preference" ? "preference" : "fact";
+      const key = (kind === "preference" ? "pref:" : "note:") + (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || ["note"]).slice(0, 5).join("-");
+      items.push({ key: key.slice(0, 60), text, kind, about: m.about === "space" ? "space" : "user" });
+    }
+  }
+  return items.slice(0, 10);
 }

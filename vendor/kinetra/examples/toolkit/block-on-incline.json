@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "canvas": { "width": 800, "height": 520, "world": { "xMin": -1, "xMax": 9, "yMin": -0.8, "yMax": 5.6 } },
+  "title": "Block at rest on a 30° incline",
+  "caption": "Static friction balances the slope component of gravity",
+  "vars": { "theta": "30 deg", "m": "4 kg", "g": "9.81 m/s^2", "mu": "0.7", "L": "7" },
+  "scales": { "force": { "per": "20 N" } },
+  "elements": [
+    { "id": "wedge", "type": "polygon", "points": [{ "x": 0, "y": 0 }, { "x": "L", "y": 0 }, { "x": 0, "y": "L*tan(theta)" }], "stroke": "constraint" },
+    { "id": "block", "type": "block", "w": 1.4, "h": 0.9, "rotation": "-theta", "place": { "attach": "bottom", "to": "wedge.edge(1)" }, "mayTouch": ["wedge"] },
+    { "id": "W", "type": "force", "from": "block.center", "angle": -90, "magnitude": "m*g", "label": "mg", "mayTouch": ["block", "wedge", "N", "f"] },
+    { "id": "N", "type": "force", "from": "block.center", "angle": "90 deg - theta", "magnitude": "m*g*cos(theta)", "color": "normal", "label": "N", "mayTouch": ["block", "f"] },
+    { "id": "f", "type": "force", "from": "block.center", "angle": "180 deg - theta", "magnitude": "m*g*sin(theta)", "color": "friction", "label": "f_s", "mayTouch": ["block"] }
+  ],
+  "checks": [
+    { "id": "equilibrium", "type": "vectorSum", "vectors": ["W", "N", "f"], "tol": "1e-9 N" },
+    { "id": "friction-limit", "type": "lessEqual", "left": "f.magnitude", "right": "mu*N.magnitude" }
+  ]
+}

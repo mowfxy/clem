@@ -11,10 +11,12 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import 'katex/contrib/mhchem';
 import 'katex/contrib/copy-tex';
+import './math-selection';
 import { mathMacros, normalizeMath } from '../../core/math-markdown';
 import { linkCitations, readCitation, type Citation } from '../../core/citations';
 import { parseVisual } from '../../core/visual-spec';
 import { parseModelJson } from '../../core/model-json';
+import { KinetraFigure, MemoryNote } from './KinetraFigure';
 import { parseChecks, showNumber, type CheckResult } from '../../core/checks';
 import { Icon } from '../Icons';
 import { copyText } from '../clipboard';
@@ -240,6 +242,8 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
           const key = String(node?.properties?.dataBlockKey ?? lang + '-0');
           if (lang === 'visual') return <VisualBlock body={code} streaming={streaming} />;
           if (lang === 'check') return <CheckBlock body={code} streaming={streaming} />;
+          if (lang === 'kinetra') return <KinetraFigure body={code} streaming={streaming} />;
+          if (lang === 'memory') return <MemoryNote body={code} />;
           if (lang === 'edit') {
             let block: EditBlock | null = null;
             try { block = parseModelJson(code); } catch { /* still streaming or malformed */ }

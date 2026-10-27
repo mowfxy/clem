@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "title": "Three-process cycle on a P–V diagram",
+  "caption": "1→2 isobaric, 2→3 isochoric, 3→1 isothermal; shaded area = net work",
+  "canvas": { "width": 640, "height": 480, "world": { "xMin": -1.2, "xMax": 7.6, "yMin": -1.4, "yMax": 5.3 } },
+  "elements": [
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 6.4, "h": 4.6, "x": { "min": 0, "max": 4, "ticks": [0, 1, 2, 3, 4], "label": "V", "unit": "m³" }, "y": { "min": 0, "max": 2.5, "ticks": [0, 0.5, 1, 1.5, 2, 2.5], "label": "P", "unit": "MPa" } },
+    { "id": "W", "type": "shade", "axes": "ax", "upper": 2, "lowerSeries": "iso", "from": 1, "to": 3, "fill": "bodyFill", "label": { "text": "W", "size": 13 } },
+    { "id": "p12", "type": "series", "axes": "ax", "data": [[1, 2], [3, 2]], "style": "line", "color": "ink", "mayTouch": ["W"] },
+    { "id": "p23", "type": "series", "axes": "ax", "data": [[3, 2], [3, 0.6667]], "style": "line", "color": "ink", "mayTouch": ["W", "p12"] },
+    { "id": "iso", "type": "series", "axes": "ax", "fn": "2/x", "domain": [1, 3], "color": "ink", "mayTouch": ["p12", "p23"] },
+    { "id": "s1", "type": "plotPoint", "axes": "ax", "x": 1, "y": 2, "mayTouch": ["p12", "iso", "W"], "label": { "text": "1", "position": "above-left" } },
+    { "id": "s2", "type": "plotPoint", "axes": "ax", "x": 3, "y": 2, "mayTouch": ["p12", "p23", "W"], "label": { "text": "2", "position": "above-right" } },
+    { "id": "s3", "type": "plotPoint", "axes": "ax", "x": 3, "series": "iso", "mayTouch": ["p23", "W"], "label": { "text": "3", "position": "below-right" } }
+  ],
+  "checks": [
+    { "id": "work", "type": "equal", "left": "W.area", "right": "2*2 - 2*ln(3)", "tol": 1e-3 },
+    { "id": "state3", "type": "equal", "left": "s3.dataY", "right": "2/3", "tol": 1e-12 }
+  ]
+}

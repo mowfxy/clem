@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "title": "Balanced three-phase supply: phase and line voltages",
+  "caption": "230 V phases (abc); dashed: −V_b drawn from the tip of V_a",
+  "canvas": { "width": 640, "height": 600, "world": { "xMin": -4.3, "xMax": 4.3, "yMin": -4.2, "yMax": 4.0 } },
+  "vars": { "Vp": "230", "VLm": "sqrt(3)*Vp" },
+  "elements": [
+    { "id": "pa", "type": "polarAxes", "at": { "x": 0, "y": 0 }, "r": 3.4, "rMax": 420, "rings": 4, "spokes": 30, "ringLabels": false },
+    { "id": "Va", "type": "phasor", "axes": "pa", "magnitude": "Vp", "angle": 0, "color": "force", "label": "V_a" },
+    { "id": "Vb", "type": "phasor", "axes": "pa", "magnitude": "Vp", "angle": -120, "color": "normal", "label": "V_b" },
+    { "id": "Vc", "type": "phasor", "axes": "pa", "magnitude": "Vp", "angle": 120, "color": "rayAlt", "label": "V_c" },
+    { "id": "Vab", "type": "phasor", "axes": "pa", "magnitude": "VLm", "angle": 30, "color": "ink", "label": "V_{ab} = 398 V" },
+    { "id": "mVb", "type": "phasor", "axes": "pa", "from": "Va", "magnitude": "Vp", "angle": 60, "color": "normal", "dashed": true, "mayTouch": ["Vab"] },
+    { "id": "th", "type": "angleArc", "vertex": "pa.center", "fromAngle": 0, "toAngle": 30, "r": 1.2, "text": "30°", "mayTouch": ["Va", "Vab"] }
+  ],
+  "checks": [
+    { "id": "balanced_sum_re", "type": "equal", "left": "Va.re + Vb.re + Vc.re", "right": 0, "tol": 1e-9 },
+    { "id": "balanced_sum_im", "type": "equal", "left": "Va.im + Vb.im + Vc.im", "right": 0, "tol": 1e-9 },
+    { "id": "line_is_difference_re", "type": "equal", "left": "Vab.re", "right": "Va.re - Vb.re", "tol": 1e-9 },
+    { "id": "line_is_difference_im", "type": "equal", "left": "Vab.im", "right": "Va.im - Vb.im", "tol": 1e-9 },
+    { "id": "minus_Vb_closes_triangle", "type": "equal", "left": "mVb.re", "right": "-Vb.re", "tol": 1e-9 },
+    { "id": "sqrt3_ratio", "type": "equal", "left": "Vab.magnitude/Va.magnitude", "right": "sqrt(3)", "tol": 1e-12 }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "title": "Minkowski diagram: frame S′ moving at β = 0.6 relative to S",
+  "caption": "c = 1; the hyperbola ct² − x² = 1 calibrates the primed axes",
+  "canvas": { "width": 680, "height": 660, "world": { "xMin": -1.2, "xMax": 5.0, "yMin": -0.9, "yMax": 5.2 } },
+  "vars": { "beta": "0.6", "gam": "1/sqrt(1 - beta^2)", "xE": "2", "tE": "3",
+            "xp": "gam*(xE - beta*tE)", "tp": "gam*(tE - beta*xE)" },
+  "elements": [
+    { "id": "xa", "type": "arrow", "from": { "x": -0.6, "y": 0 }, "to": { "x": 4.6, "y": 0 }, "color": "axis", "label": { "text": "x", "position": "below" } },
+    { "id": "ta", "type": "arrow", "from": { "x": 0, "y": -0.6 }, "to": { "x": 0, "y": 4.6 }, "color": "axis", "label": { "text": "ct", "position": "left" }, "mayTouch": ["xa"] },
+    { "id": "light", "type": "segment", "from": { "x": 0, "y": 0 }, "to": { "x": 4.3, "y": 4.3 }, "dashed": true, "color": "ray", "width": 1, "mayTouch": ["xa", "ta"], "label": "light: x = ct" },
+    { "id": "tpa", "type": "arrow", "from": { "x": 0, "y": 0 }, "angle": "atan2(1, beta)", "length": 4.7, "color": "rayAlt", "mayTouch": ["xa", "ta", "light"], "label": { "text": "ct′", "position": "above" } },
+    { "id": "xpa", "type": "arrow", "from": { "x": 0, "y": 0 }, "angle": "atan2(beta, 1)", "length": 4.7, "color": "rayAlt", "mayTouch": ["xa", "ta", "light", "tpa"], "label": { "text": "x′", "position": "right" } },
+    { "id": "hyp", "type": "curve", "x": "sinh(t)", "y": "cosh(t)", "t": [-0.25, 1.15], "color": "guide", "mayTouch": ["ta", "tpa", "light"] },
+    { "id": "u1", "type": "point", "at": { "x": "gam*beta", "y": "gam" }, "mayTouch": ["tpa", "hyp"], "label": "ct′ = 1" },
+    { "id": "E", "type": "point", "at": { "x": "xE", "y": "tE" }, "color": "force", "label": { "text": "E", "position": "above-right" } },
+    { "id": "pt", "type": "segment", "from": "E", "to": { "x": "tp*gam*beta", "y": "tp*gam" }, "dashed": true, "color": "guide", "width": 1, "mayTouch": ["E", "tpa", "light", "px"] },
+    { "id": "px", "type": "segment", "from": "E", "to": { "x": "xp*gam", "y": "xp*gam*beta" }, "dashed": true, "color": "guide", "width": 1, "mayTouch": ["E", "xpa", "light", "hyp"] },
+    { "id": "coords", "type": "textBlock", "at": { "x": 3.55, "y": 4.75 }, "lines": ["S: x = 2, ct = 3", "S′: x′ = 0.25, ct′ = 2.25"], "align": "left", "frame": true, "size": 11 }
+  ],
+  "checks": [
+    { "id": "light_bisects_primed_axes", "type": "equal", "left": "(tpa.angle + xpa.angle)/2", "right": "45 deg", "tol": "1e-12 deg" },
+    { "id": "interval_invariant", "type": "equal", "left": "tE^2 - xE^2", "right": "tp^2 - xp^2", "tol": 1e-12 },
+    { "id": "unit_tick_on_hyperbola", "type": "onCurve", "point": "u1", "curve": "hyp", "tol": "0.002 m" },
+    { "id": "unit_tick_on_ct_prime", "type": "equal", "left": "atan2(u1.y, u1.x)", "right": "tpa.angle", "tol": "1e-12 deg" },
+    { "id": "projection_parallel_to_x_prime", "type": "equal", "left": "sin(pt.angle - xpa.angle)", "right": 0, "tol": 1e-12 },
+    { "id": "projection_parallel_to_ct_prime", "type": "equal", "left": "sin(px.angle - tpa.angle)", "right": 0, "tol": 1e-12 },
+    { "id": "subluminal", "type": "less", "left": "beta", "right": 1 }
+  ]
+}
