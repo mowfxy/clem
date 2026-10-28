@@ -49,8 +49,11 @@ export async function endOrphanedAgents(root: string) {
   return orphans.length;
 }
 
-/** Ends a process and everything it started before returning, for when Clem is quitting and cannot wait. */
-export function endTreeNow(pid: number | undefined) {
-  if (!pid) return;
-  try { spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore', timeout: 5000}); } catch { /* already gone */ }
+/** Ends a process and everything it started before returning, for when Clem is quitting and cannot wait. Without
+ *  taskkill (not Windows) the process itself is ended. */
+export function endTreeNow(child: {pid?: number; kill: () => boolean}) {
+  if (child.pid && process.platform === 'win32') {
+    try { if (spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore', timeout: 5000}).status === 0) return; } catch { /* ended below */ }
+  }
+  try { child.kill(); } catch { /* already gone */ }
 }

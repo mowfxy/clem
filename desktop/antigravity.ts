@@ -737,7 +737,7 @@ export class AntigravityProvider {
   /** Ends every agent of this account at once (Clem is quitting or signing out). taskkill must reach the launcher while
    *  it still runs: once Clem's pipes close it leaves on its own, and the agent it started would be left running. */
   stop() {
-    for (const live of this.processes) { clearTimeout(live.idle); endTreeNow(live.child.pid); }
+    for (const live of this.processes) { clearTimeout(live.idle); endTreeNow(live.child); }
     this.live = null; this.loginChild = null; this.probe = null;
   }
 }
