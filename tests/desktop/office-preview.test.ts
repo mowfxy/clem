@@ -36,15 +36,22 @@ const docx = () => zip({
   "word/_rels/document.xml.rels": rels(""),
 });
 
-/** Draws a file in the viewer; returns what the page shows (or that it fell back to the plain text view). */
+/** Draws a file in the viewer; returns what the page shows (or that it fell back to the plain text view). A run whose
+ *  Electron never got going (a cold first start on a CI machine once hung for the whole two minutes) is tried once more;
+ *  a drawing that fails twice fails the test with what Electron printed. */
 function draw(name: string, bytes: Uint8Array) {
   const dir = mkdtempSync(join(tmpdir(), "clem-preview-test-"));
   const file = join(dir, name);
   writeFileSync(file, bytes);
-  const run = spawnSync(process.execPath, ["scripts/verify/office-preview.mjs", file, dir, "900"], { encoding: "utf8", timeout: 120_000 });
+  let run = attempt(file, dir);
+  if (run.status !== 0 && run.status !== 3) run = attempt(file, dir);
   const text = /TEXT:(".*")/.exec(run.stdout)?.[1];
-  return { status: run.status, fallback: run.status === 3, text: text ? (JSON.parse(text) as string) : "", images: readdirSync(dir).filter((f) => f.endsWith(".png")) };
+  const log = `exit ${run.status ?? run.signal}\n${run.stdout ?? ""}\n${run.stderr ?? ""}`.slice(-3000);
+  return { status: run.status, fallback: run.status === 3, text: text ? (JSON.parse(text) as string) : log, images: readdirSync(dir).filter((f) => f.endsWith(".png")) };
 }
+// The script ends its own Electron after 60s, so a hung one never outlives the attempt.
+const attempt = (file: string, dir: string) =>
+  spawnSync(process.execPath, ["scripts/verify/office-preview.mjs", file, dir, "900"], { encoding: "utf8", timeout: 90_000, env: { ...process.env, CLEM_PREVIEW_TIMEOUT_MS: "60000" } });
 
 test("a presentation is drawn as slides, with text, bullets and numbering", () => {
   const out = draw("deck.pptx", pptx());
