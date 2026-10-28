@@ -6,7 +6,7 @@
 /* Small menus, one look everywhere (after Claude's): a quiet raised sheet sized to its words, compact 28px rows, soft hover, inset hairline
    separators, muted shortcut hints on the right, a soft red for destructive rows. */
 :root{--menu-bg:#252524;--menu-line:#3a3a37;--menu-ink:#ecebe6;--menu-hint:#8e8d87;--menu-hover:#ffffff10;--menu-danger:#ec7a6f}
-html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu){width:max-content;min-width:132px;max-width:280px;padding:4px;border:1px solid var(--menu-line);border-radius:10px;background:var(--menu-bg);color:var(--menu-ink);font:400 14px/1.2 var(--sans)}
+html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu){width:max-content;min-width:132px;max-width:280px;overflow-x:hidden;padding:4px;border:1px solid var(--menu-line);border-radius:10px;background:var(--menu-bg);color:var(--menu-ink);font:400 14px/1.2 var(--sans)}
 html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;height:28px;min-height:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--menu-ink);font:400 14px/1.2 var(--sans);letter-spacing:0;text-align:left;white-space:nowrap;transition:none}
 html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button:is(:hover,:focus-visible,.active,.on):not(:disabled){background:var(--menu-hover);color:#fff;outline:none}
 html body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button.danger{color:var(--menu-danger)}
@@ -31,3 +31,18 @@ html body dialog.settings-dialog>header{background:linear-gradient(var(--sheet-b
  html:not([data-quiet=true]) body dialog[open]:not(.st-dialog,.fp-dialog,.adm-modal),html:not([data-quiet=true]) body :is(.st,.file-panel.as-modal){animation:sheet-in .18s cubic-bezier(.2,.9,.3,1) backwards!important}
  html:not([data-quiet=true]) body dialog[open]::backdrop{animation:sheet-fade .18s ease-out backwards!important}
 }
+/* Dropdowns, one look everywhere: every <select> opens its list in the shared menu style above (Chromium's customizable
+   select) instead of the system's own list, with a quiet chevron and a tick beside the current choice. */
+html body select,html body ::picker(select){appearance:base-select}
+html body select{display:inline-flex;align-items:center;gap:10px;min-height:36px;padding:0 10px 0 12px;border:1px solid #3a3a37;border-radius:10px;background:#1b1b1a;color:var(--menu-ink);font:400 13px var(--sans);cursor:pointer;transition:border-color .15s}
+html body select:hover{border-color:#4a4a46}
+html body select:focus-visible{outline:none;border-color:#7a7a72}
+html body select:disabled{opacity:.5;cursor:default}
+html body select::picker-icon{margin-left:auto;color:#8e8d87;font-size:10px;transition:rotate .15s}
+html body select:open::picker-icon{rotate:180deg}
+html body ::picker(select){min-width:anchor-size(width);max-height:min(320px,60vh);margin:4px 0;padding:4px;border:1px solid var(--menu-line);border-radius:10px;background:var(--menu-bg);color:var(--menu-ink);box-shadow:var(--pop-shadow);overflow-x:hidden}
+html body select option{display:flex;align-items:center;gap:10px;min-height:28px;padding:0 8px;border-radius:6px;background:none;color:var(--menu-ink);font:400 14px/1.2 var(--sans);white-space:nowrap;cursor:pointer}
+html body select option:is(:hover,:focus-visible){background:var(--menu-hover);color:#fff;outline:none}
+html body select option:checked{font-weight:400}
+html body select option::checkmark{order:1;margin-left:auto;padding-left:16px;color:var(--menu-hint);content:"\2713"}
+html body select option:disabled{opacity:.45;cursor:default}

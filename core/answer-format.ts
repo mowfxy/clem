@@ -29,6 +29,22 @@ export const checkLanguage = `CHECKED NUMBERS: When your answer computes importa
 export const videoLanguage = 'VIDEOS: When a video would genuinely help or the user asks for one, find real videos with web search and link each with its full https://www.youtube.com/watch?v=… address inside the line that introduces it; Clem shows a playable video right there. Never invent a video address; if search is unavailable, give a https://www.youtube.com/results?search_query=… link instead. At most four per answer unless asked, and add &t= for a useful start time when you know it. When the user asks for the links, also write the URLs out as visible text.';
 export const formatLanguage = 'FORMATTING AND CODE: Clem renders Markdown. For longer answers use ## and ### headings to organise sections, **bold** for key terms, bullet lists for steps or options, and a Markdown table when comparing items or laying out a plan, schedule or reference. Keep short answers plain. Put code in fenced blocks with a language tag (```python, ```javascript, ```bash …); Clem colours them and adds Copy. A block gets a Run button only when you mark it runnable by writing run after the language tag (```python run, ```java run, ```cpp run): do that only for a complete, self-contained program the person would want to execute (all imports, a main where the language needs one, results printed), never for a fragment, a single line, pseudo-code, a signature or a snippet quoted while explaining, and never for shell commands. Runnable languages: Python, JavaScript, TypeScript, Java, C, C++, C#, Go and Rust (and Ruby, PHP, Kotlin and others when installed). A runnable program may read input (input(), Scanner, scanf, cin, Console.ReadLine, prompt()): the person types it in a box while it runs, so ask for it with a clear prompt instead of hard-coding values. Python runs with the standard library only; no files, network or third-party packages.';
 export const answerInstructions = [formatLanguage, mathLanguage,visualLanguage, checkLanguage, videoLanguage, citationInstructions].join('\n\n');
+/**
+ * What every desktop message carries. The interactive-visual schema (about 1.9k tokens) and the video rule go only with
+ * a message that may want them (answerExtras): the desktop draws its figures with Kinetra (figureLanguage), and a plain
+ * question paid for the schema on every fresh turn. The web keeps answerInstructions whole, since there ```visual is the
+ * only way to draw.
+ */
+export const coreAnswerInstructions = [formatLanguage, mathLanguage, checkLanguage, citationInstructions].join('\n\n');
+/** A request that may want an interactive or 3D picture, or a conversation that already holds one to change. */
+export const visualIntent = /(?:^|\s)\/visual\b|```visual|\binteractive\b|\bsimulat(?:e|es|ion|ions|or)\b|\banimat(?:e|ed|es|ion|ions)\b|\bsliders?\b|\b3-?d\b|\bvisuali[sz](?:e|ation)\b|\bvisuals?\b|\bmolecules?\b|\bconcept ?maps?\b|\bmind ?maps?\b|\borbit\b|\bstep (?:me )?through\b|\bplay with\b/i;
+/** A request that may want videos, or a conversation that already links one. */
+export const videoIntent = /\bvideos?\b|youtu\.?be|\bwatch\b|\bclips?\b/i;
+/** The parts of answerInstructions a desktop message carries only when the request or the chat may need them. */
+export function answerExtras(texts: string[]) {
+  const text = texts.join('\n');
+  return [visualIntent.test(text) ? visualLanguage : '', videoIntent.test(text) ? videoLanguage : ''].filter(Boolean).join('\n\n');
+}
 
 /** For "/visual <topic>" requests that no built-in model covers. These carry no playbooks, so the renderer rule and the
  *  textbook figure guide come with them (four core recipes: hanging pulley, incline forces, wheelbarrow, charges). */

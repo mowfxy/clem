@@ -26,6 +26,8 @@ export function liveText(onText: (text: string, fresh: boolean) => void) {
  * note; a note that is followed by another message before then never shows, as before streaming.
  */
 export const NOTE_HOLD = 240;
+/** Two finished sentences and the start of a third: longer than a note before a tool, so a short reply streams too. */
+const SETTLED = /[.!?][)"'”]?\s+\S[\s\S]*?[.!?][)"'”]?\s+\S/;
 
 /**
  * What of a Claude or Grok answer reaches the screen, as codex.ts does for ChatGPT: prose streams as it is written,
@@ -41,7 +43,9 @@ export class LiveScreen {
   /** What the last finished step showed of its reply. */
   private last = "";
   private put: (text: string) => void;
-  constructor(put: (text: string) => void) { this.put = put; }
+  /** How much of a message is held: NOTE_HOLD, or 0 on a request where no tool can follow (nothing is a note). */
+  private hold: number;
+  constructor(put: (text: string) => void, hold = NOTE_HOLD) { this.put = put; this.hold = hold; }
   private show(end: number) {
     // Trailing blank space waits for the text after it; a message's leading blank lines never show.
     end = this.text.slice(0, end).trimEnd().length;
@@ -60,7 +64,7 @@ export class LiveScreen {
   partial(piece: string, fresh = false) {
     if (fresh) this.step();
     this.text += piece;
-    if (this.text.length >= NOTE_HOLD && !mayBeTool(this.text)) this.show(shownLength(this.text));
+    if ((this.text.length >= this.hold || SETTLED.test(this.text)) && !mayBeTool(this.text)) this.show(shownLength(this.text));
   }
   /** The step's reply as the CLI reported it: the rest of it shows, or only its lead-in when it is a tool request. */
   reply(reply: string) {

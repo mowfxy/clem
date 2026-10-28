@@ -76,7 +76,10 @@ const kinetraIntent = new RegExp([
   String.raw`\bmatri(?:x|ces)\b|\beigen|\bdeterminants?\b|\bsolv(?:e|es|ing)\b|\bequations?\b|\bcalculat(?:e|es|ing|ion|ions)\b|\bcomput(?:e|es|ing|ation)\b|\bslopes?\b`,
   String.raw`\bsimplif\w*\b(?=[^.?!\n]{0,40}(?:expression|equation|fraction|function|boolean|logic|circuit|[\^=+*/]|\b[xyz]\b))`,
   // Study tools
-  String.raw`\bquiz(?:zes)?\b|\bflashcards?\b|\b(?:mock|practice|sample) (?:exams?|tests?)\b|\bexam (?:papers?|questions?)\b|\b(?:make|create|generate|write|build|give me)\b[^.?!\n]{0,30}\b(?:exam|test)\b|\bgrad(?:e|ing) (?:this|these|my|the following)\b|\bgrading\b|\brubrics?\b|\bstudy (?:plan|schedule)s?\b|\brevision (?:plan|schedule|timetable|notes)\b`,
+  String.raw`\bquiz(?:zes)?\b|\bflash[ -]?cards?\b|\bplan (?:my|the|our) (?:week|revision|study|studying|exam prep)\b`,
+  // A picture asked for in other words ("show me … as a picture")
+  String.raw`\bas an? (?:picture|image|figure|diagram|drawing)\b|\bshow me\b[^.?!\n]{0,40}\b(?:pictures?|images?|visuals?|figures?)\b`,
+  String.raw`\b(?:mock|practice|sample) (?:exams?|tests?)\b|\bexam (?:papers?|questions?)\b|\b(?:make|create|generate|write|build|give me)\b[^.?!\n]{0,30}\b(?:exam|test)\b|\bgrad(?:e|ing) (?:this|these|my|the following)\b|\bgrading\b|\brubrics?\b|\bstudy (?:plan|schedule)s?\b|\brevision (?:plan|schedule|timetable|notes)\b`,
 ].join("|"), "i");
 /** A quantity with a unit ("a 5 kg block", "20 m/s", "12 V", "4 Ω"): case matters, so "2 a day" is not one. */
 const quantity = /\d\s*(?:m\/s²?|km\/h|kg|N|Pa|Hz|V|mA|A|Ω|kΩ|ohms?|µF|uF|nF|mH)(?![\w\/])/;

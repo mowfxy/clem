@@ -8,7 +8,7 @@ import { GrokProvider } from "../../desktop/grok.ts";
 import { codexTokens } from "../../desktop/codex-stream.ts";
 import { addTokens, turnTimer, type AnswerEntry, type TurnStats } from "../../desktop/turn-timing.ts";
 import { answerLedger, readLedger, summarizeLedger, LEDGER_FILE, LEDGER_MAX_BYTES } from "../../desktop/answer-ledger.ts";
-import { memoryPrint, sourcePrint } from "../../desktop/chat-sessions.ts";
+import { memoryPrint, memoryPrints, sourcePrint } from "../../desktop/chat-sessions.ts";
 import { composePrompt } from "../../desktop/prompt.ts";
 
 test("a Claude side job runs with no tools, one turn and Clem's few-line prompt instead of Claude Code's own", () => {
@@ -81,4 +81,16 @@ test("on a kept session the memory and source excerpts go once, and again when t
   // What the continuation leaves out is simply absent from the prompt: no empty sections.
   const prompt = composePrompt({ messages: [{ role: "user", content: "next question" }], sources: [], memories: [], continued: true, rulesInSystem: true });
   assert.equal(prompt, "<clem-request>\nnext question\n</clem-request>");
+});
+
+test("a memory line matched to a new message goes alone on a kept session; the lines it already has stay out", () => {
+  const before = memoryPrints("Sam", [{ text: "Prefers SI units" }, { text: "Studies electrical engineering" }]);
+  const now = memoryPrints("Sam", [{ text: "Prefers SI units" }, { text: "Has a DSA midterm on October 22" }]);
+  const sent = new Set([before.name, ...before.items]);
+  assert.ok(sent.has(now.name));
+  assert.deepEqual(now.items.map((p) => sent.has(p)), [true, false]);
+  assert.notEqual(memoryPrints("Alex", []).name, now.name);
+  const prompt = composePrompt({ messages: [{ role: "user", content: "next" }], memories: [{ id: "m1", scope: "profile", key: "exam", text: "Has a DSA midterm on October 22", kind: "fact", confirmed: false, confidence: 0.6, source: { id: "chat:a", locator: "", at: "2026-10-28" }, createdAt: "2026-10-28T00:00:00Z", updatedAt: "2026-10-28T00:00:00Z" } as any], continued: true, rulesInSystem: true });
+  assert.match(prompt, /<clem-memory[^>]*>\n[^\n]*Has a DSA midterm on October 22/);
+  assert.doesNotMatch(prompt, /Prefers SI units|name is/);
 });

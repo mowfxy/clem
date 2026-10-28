@@ -131,6 +131,8 @@ export const requestSchema = z.discriminatedUnion("action", [
     /** A request Clem makes beside the chat (a plan, a review, a source check, a study set, a plan step): it neither goes
      *  on nor replaces the chat's kept CLI session (desktop/chat-sessions.ts). */
     side: z.boolean().optional(),
+    /** How long the window spent preparing this message (its files, Drive, captions) before sending it, for the timing log. */
+    queuedMs: z.number().int().min(0).max(3_600_000).optional(),
     /** The conversation: crops the model cuts are kept with it (desktop/pdf-assets.ts). */
     chat: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
     // Sized to the largest context budget (core/context-budget.ts): one message may carry whole files.

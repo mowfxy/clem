@@ -7,9 +7,12 @@ export function SettingsPopup({
   description,
   action = "Manage",
   bare = false,
+  className = "",
   children,
 }: {
   title: string;
+  /** Extra classes on the dialog, for a popup that needs its own size or layout. */
+  className?: string;
   /** Only the button, for rows that already show their own title. */
   bare?: boolean;
   description?: string;
@@ -43,7 +46,7 @@ export function SettingsPopup({
         createPortal(
           <dialog
             ref={ref}
-            className="settings-dialog"
+            className={`settings-dialog ${className}`.trim()}
             aria-labelledby={id}
             onCancel={() => setOpen(false)}
             onClick={(e) => {

@@ -136,6 +136,7 @@ export function MemoryConversation({
           </label>
         )}
       </div>
+      <div className="memory-scroll">
       {facts !== null && !count && (
         <div className="memory-empty">
           <span className="memory-empty-mark"><Icon name="subjects" size={22} /></span>
@@ -175,15 +176,14 @@ export function MemoryConversation({
                     )}
                     {editing?.id !== m.id && (
                       <span className="memory-meta">
-                        {!m.confirmed && <span className="memory-tag new">New</span>}
-                        {isPreference(m) && <span className="memory-tag">How you like answers</span>}
-                        <span>{metaOf(m, labelFor, only ? home : undefined)}</span>
+                        {!m.confirmed && <span className="memory-new">New</span>}
+                        <span>{[isPreference(m) ? "How you like answers" : "", metaOf(m, labelFor, only ? home : undefined)].filter(Boolean).join(" · ")}</span>
                       </span>
                     )}
                     {!m.confirmed && editing?.id !== m.id && placing?.id !== m.id && (
                       <span className="memory-review">
                         <button type="button" className="memory-keep" disabled={busy} aria-description="Clem picked this up in a chat. Keep it?" onClick={() => void act("memoryConfirm", m.id)}><Tick />Keep</button>
-                        <button type="button" className="memory-drop" disabled={busy} onClick={() => void act("memoryForget", m.id)}>Not right</button>
+                        <button type="button" className="memory-drop" disabled={busy} onClick={() => void act("memoryForget", m.id)}>Forget</button>
                       </span>
                     )}
                     {placing?.id === m.id && (
@@ -222,6 +222,7 @@ export function MemoryConversation({
           </div>
         );
       })}
+      </div>
       <form
         className="memory-add"
         onSubmit={async (e) => {

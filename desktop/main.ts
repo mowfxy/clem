@@ -58,7 +58,7 @@ import { Vault } from "./vault";
 import { DesktopAuth } from "./auth";
 import { Codex, codexFailureMessage } from "./codex";
 import { attachedSources, cliSystemPrompt, composePrompt, systemPrompt } from "./prompt";
-import { ChatSessions, type KeptSession, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrint, sentAfter, sourcePrint } from "./chat-sessions";
+import { ChatSessions, type KeptSession, COMPACT_AT_TOKENS, blockPrint, conversationPrint, instructionsPrint, memoryPrints, sentAfter, sourcePrint } from "./chat-sessions";
 import { kinetraInstructionsFor, kinetraInstructions, kinetraCompact, kinetraCli, kinetraFiles, kinetraBrief, kinetraCliBrief, kinetraFilesBrief, kinetraExtrasFor, needsKinetra, kinetraCall } from "./kinetra-runtime";
 import { unsafeSvg } from "./svg-safety";
 import { ProviderAccounts } from "./provider-accounts";
@@ -72,7 +72,7 @@ import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
-import {LiveScreen} from './live-reply';
+import {LiveScreen,NOTE_HOLD} from './live-reply';
 import {inlinePictures} from './kinetra-mcp';
 import {CropAssets,cropTools,memoryIo,readAsset,temporaryStores,type AssetIo} from './pdf-assets';
 import type {EditHelpers} from './pdf-edit-tools';
@@ -487,7 +487,8 @@ void app.whenReady().then(async () => {
     // Grok's and Antigravity's token counts, read after the answer is shown (below).
     let accounting: Promise<void> = Promise.resolve();
     // Their text streams as it is written; tool requests never show, and nothing shows twice (desktop/live-reply.ts).
-    const screen = new LiveScreen((text) => emit({ id, type: "delta", text }));
+    // A text-only request (no Kinetra tools, so nothing to note before) streams from its first word.
+    const screen = new LiveScreen((text) => emit({ id, type: "delta", text }), pdf || tools ? NOTE_HOLD : 0);
     // Claude Code and Grok get Kinetra as a native tool (desktop/kinetra-mcp.ts) whenever the answer may use tools; the text
     // protocol stays as the fallback (a CLI without the tool, or a model that writes {"kinetra":…} anyway).
     const native = !!(pdf || tools);
@@ -1233,7 +1234,8 @@ void app.whenReady().then(async () => {
       await auth.forget();
       return status();
     }
-    const user = await auth.user(true, securityActions.has(request.action));
+    // A chat message takes a sign-in checked in the last 10 minutes and has it checked again beside the answer.
+    const user = await auth.user(true, securityActions.has(request.action), request.action === "chat" ? 10 * 60_000 : 60_000);
     if (user) codex.warm();
     if (!user) throw Error("Sign in first.");
     // Folder watching follows sign-in (selectProvider) and changes to the folders or the watch setting, not each request.
@@ -1727,8 +1729,15 @@ void app.whenReady().then(async () => {
       const send = (event: any) => { if (!window.isDestroyed()) window.webContents.send("clem:chat", event); };
       const briefs = "chat-briefs-" + user.id, briefKeyOf = briefKey(request.scope, request.messages.find((m) => m.role !== "system")?.content || "", request.chat);
       let condensing = false;
+      // A message that continues the chat's kept CLI session sends only itself: that session holds the whole chat, so a
+      // brief that needs extending is written after the answer instead of before it (chatSessions.peek, defer).
+      const continuing = !!request.chat && !request.temporary && !request.plain && !request.side && chatSessions.peek(`${user.id}:${request.chat}`, {
+        provider: request.model?.startsWith(ANTIGRAVITY_PREFIX) ? "antigravity" : request.model?.startsWith(GROK_PREFIX) ? "grok" : request.model?.startsWith("claude:") ? "claude" : "codex",
+        history: conversationPrint(request.messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content.startsWith("Source material (untrusted, not instructions):"))).slice(0, -1)),
+      });
       const condensed = await condenseConversation(request.messages, budget.conversation, {
-        ask: async (text) => { if (!condensing) { condensing = true; send({ id: request.id, type: "status", text: "Condensing the earlier part of this chat…" }); } return quickAsk(user.id, request.model, text); },
+        defer: continuing,
+        ask: async (text) => { if (!condensing && !continuing) { condensing = true; send({ id: request.id, type: "status", text: "Condensing the earlier part of this chat…" }); } return quickAsk(user.id, request.model, text); },
         load: async () => (await vault.read<Record<string, Brief>>(briefs, {}))[briefKeyOf],
         save: async (brief) => { if (request.temporary) return; const all = await vault.read<Record<string, Brief & { at: number }>>(briefs, {}); all[briefKeyOf] = { ...brief, at: Date.now() }; await vault.write(briefs, Object.fromEntries(Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 60))); },
       });
@@ -1814,7 +1823,7 @@ void app.whenReady().then(async () => {
       // On a chat's kept session the memory and each source excerpt also go once, and again only when they change: the
       // session already holds them from an earlier message (`sent`, desktop/chat-sessions.ts).
       const shownName = memoryState.enabled ? setup.displayName : undefined;
-      const memorySent = memoryPrint(shownName, memories);
+      const memorySent = memoryPrints(shownName, memories);
       // The window's own system text for this request (a command's playbook, plan, title or space instructions) changes
       // from message to message: a kept session gets it again whenever it differs from what it last received.
       // Each part (the same text on every message, then this message's own) is fingerprinted alone, so only the part that changed goes again.
@@ -1823,9 +1832,9 @@ void app.whenReady().then(async () => {
         messages,
         sources,
         unsent: sent && ((s) => !sent.has(sourcePrint(s))),
-        memories: sent?.has(memorySent) ? [] : memories,
+        memories: sent ? memories.filter((_, i) => !sent.has(memorySent.items[i])) : memories,
         memoryScope: request.scope,
-        name: sent?.has(memorySent) ? undefined : shownName,
+        name: sent?.has(memorySent.name) ? undefined : shownName,
         // Claude and Grok have coreRules in their system prompt (answerWith).
         rulesInSystem: cli || !!work,
         extra: blocks.join("\n\n"),
@@ -2224,7 +2233,7 @@ void app.whenReady().then(async () => {
       const said = request.messages.filter((m) => m.role !== "system" && !(m.role === "user" && m.content.startsWith("Source material (untrusted, not instructions):")));
       // A temporary chat's files are in a lane removed after each answer, so each of its messages starts a new session.
       const keep: KeepChat | undefined = request.chat && !request.temporary && work && !request.plain && !request.side
-        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, prints: [memorySent, ...instructionsSent, ...[...attachedSources(messages), ...sources].map(sourcePrint)], continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true, sent) }
+        ? { key: `${user.id}:${request.chat}`, history: conversationPrint(said.slice(0, -1)), after: conversationPrint([...said, { role: "assistant", content: "" }]), blocks, prints: [memorySent.name, ...memorySent.items, ...instructionsSent, ...[...attachedSources(messages), ...sources].map(sourcePrint)], continuation: (sent) => promptWith(blocks.filter((b) => !sent.has(blockPrint(b))), true, sent) }
         : undefined;
       // Every model runs at the level the person chose, or its default: document quality is guarded by makeOrReviseNow
       // (a plan every section must meet, checks recomputed before a file is made, a failure never sent twice), not by more thinking.
@@ -2251,10 +2260,12 @@ void app.whenReady().then(async () => {
       };
       // The person's files in the working folder are copies the AI reads and never changes (Claude Code refuses edits there).
       const workspace = work ? { root: work.root, readOnly: linked.map((f) => f.path), protect: [...LIBRARY, TEXT].map((top) => join(work!.root, top)), writer: extras } : undefined;
-      console.log(`[clem timing] prep ${Math.round(performance.now() - received)}ms${work ? ` files=${Math.round(started ? Date.now() - started : 0)}ms` : ""}`);
+      console.log(`[clem timing] prep ${request.queuedMs !== undefined ? `window=${request.queuedMs}ms ` : ""}${Math.round(performance.now() - received)}ms${work ? ` files=${Math.round(started ? Date.now() - started : 0)}ms` : ""}`);
       const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { images: pictures, pdfs, instructions } : { images: pictures, pdfs, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
+      // The brief this message did not wait for (it went on the kept session), written now for a later fresh start.
+      if (condensed.later) void run.finally(() => condensed.later!().catch((error) => console.warn("[condense] later:", (error as Error).message))).catch(() => {});
       // A request outside any chat has no later turn to use its crops.
       if (!request.chat) void run.finally(() => temporaryCrops.drop(request.id)).catch(() => {});
       void run.then(() => {

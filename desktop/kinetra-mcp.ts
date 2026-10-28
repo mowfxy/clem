@@ -35,7 +35,7 @@ export const kinetraToolSpec = {
   name: TOOL_NAME,
   title: "Kinetra",
   description:
-    'Runs one Kinetra request: verified calculations, textbook figures, and real files (PDF, Word, PowerPoint, Excel, text files, images), plus reading the person\'s files. The arguments are exactly the object the instructions write inside {"kinetra":…}: an "action" and its fields, for example {"action":"call","module":"clem","fn":"solveCircuit","args":[…]} or {"action":"pdf","title":…,"sections":[…]}.',
+    'Runs one Kinetra request: verified calculations, textbook figures, and real files (PDF, Word, PowerPoint, Excel, text files, images), plus reading the person\'s files. The arguments are exactly the object the instructions write inside {"kinetra":…}: an "action" and its fields, for example {"action":"call","module":"clem","fn":"solveCircuit","args":[…]} or {"action":"pdf","title":…,"sections":[…]}. Use it for every PDF, Word, PowerPoint or Excel file, every figure or chart, and every calculation whose numbers matter; never make these with your own file, shell or code tools. When its guide is not already in the conversation, call {"action":"help"} once first.',
   inputSchema: {
     type: "object",
     // A call's own fields are named too: a model that fills arguments from the schema (Gemini) otherwise left "fn" out of

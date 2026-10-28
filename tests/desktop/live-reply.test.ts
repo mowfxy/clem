@@ -105,3 +105,20 @@ test("an answer taken back is shown again in full when it comes back as the answ
   s.answer("The answer is 4.");
   assert.equal(shown(), "The answer is 4.", "no paragraph break and not skipped as already shown");
 });
+
+test("a short reply that is clearly not a note streams before its step ends; a one-line note still waits", () => {
+  const { screen: s, pieces, shown } = screen();
+  s.step();
+  stream(s, "Ohm's law says V = IR. The current doubles when the voltage doubles. So");
+  assert.ok(pieces.length > 0, "two finished sentences are a reply, not a note before a tool");
+  assert.ok(shown().startsWith("Ohm's law says V = IR. The current doubles when the voltage doubles."));
+  const note = screen();
+  note.screen.step();
+  stream(note.screen, "I'll search for that. Let me");
+  assert.equal(note.pieces.length, 0);
+  // A request where no tool can follow holds nothing.
+  const plain = (() => { const out: string[] = []; return { out, s: new LiveScreen((t) => out.push(t), 0) }; })();
+  plain.s.step();
+  stream(plain.s, "Hi!");
+  assert.equal(plain.out.join(""), "Hi!");
+});

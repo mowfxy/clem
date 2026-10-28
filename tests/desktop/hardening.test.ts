@@ -229,3 +229,12 @@ test("Clem's own fonts are recognised wherever they are named", () => {
   for (const name of ["Mowafy Serif", "Clem Sans", "Kindred", "Soft Ink Serif"]) assert.ok(brandFont.test(name), name);
   assert.ok(!brandFont.test("Segoe UI"));
 });
+
+test("a chat request may say how long the window spent preparing it, within bounds", () => {
+  const chat = (extra: object) => requestSchema.safeParse({ action: "chat", id: crypto.randomUUID(), scope: "chat:" + crypto.randomUUID(), messages: [{ role: "user", content: "hi" }], ...extra });
+  assert.equal(chat({ queuedMs: 1240 }).success, true);
+  assert.equal(chat({}).success, true);
+  assert.equal(chat({ queuedMs: -1 }).success, false);
+  assert.equal(chat({ queuedMs: 1.5 }).success, false);
+  assert.equal(chat({ queuedMs: 4_000_000 }).success, false);
+});

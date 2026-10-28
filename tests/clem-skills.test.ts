@@ -131,3 +131,7 @@ test('an answer in a CLI working folder gets no playbook that contradicts its Ma
   assert.ok(!clemSkillsFor('/pdf lecture 3',{cli:true,force:['documents']}).some(s=>s.id==='documents'));
   assert.ok(!clemSkillText('make a pdf study guide',{cli:true}).includes('one reply holds about 3–5 pages'));
 });
+test('the memory playbook never lets the AI promise that something will be remembered without a memory block',()=>{
+  const memory=clemSkills.find(s=>s.id==='memory')!.steps.join('\n');
+  assert.match(memory,/never tell the person something will be remembered unless you wrote the memory block/);
+});

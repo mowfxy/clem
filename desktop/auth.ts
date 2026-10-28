@@ -3,10 +3,9 @@ import type { Vault } from "./vault";
 
 export class DesktopAuth {
   client: SupabaseClient | null = null;
-  constructor(
-    private vault: Vault,
-    private config: { url: string; key: string; service: string },
-  ) {}
+  private vault: Vault;
+  private config: { url: string; key: string; service: string };
+  constructor(vault: Vault, config: { url: string; key: string; service: string }) { this.vault = vault; this.config = config; }
   async initialize() {
     if (!this.config.url || !this.config.key) return;
     const storage = {
@@ -65,8 +64,10 @@ export class DesktopAuth {
   /** Server-verified user. A verification is reused for 60 s for the same access token,
    *  so a burst of requests (one chat message makes several) costs one network check.
    *  When the auth server cannot be reached (offline, timeout, 5xx), the last verified user is kept so local work
-   *  continues; only a real rejection by the server signs the person out. */
-  async user(requireMfa = true, fresh = false) {
+   *  continues; only a real rejection by the server signs the person out.
+   *  `reuse` lets a request take an older check (a chat message: up to 10 minutes) and ask the server again beside it,
+   *  so the message is not held up by the round trip; a sign-in the server rejected then fails the next request. */
+  async user(requireMfa = true, fresh = false, reuse = 60_000) {
     if (!this.client) return null;
     const current = await this.client.auth.getSession();
     const token = current.data.session?.access_token;
@@ -74,7 +75,9 @@ export class DesktopAuth {
       if (isAuthRetryableFetchError(current.error)) return this.known ?? (this.known = await this.storedUser());
       this.verified = null; this.known = null; return null;
     }
-    let user = !fresh && this.verified && this.verified.token === token && Date.now() - this.verified.at < 60_000 ? this.verified.user : null;
+    const age = this.verified && this.verified.token === token ? Date.now() - this.verified.at : Infinity;
+    let user = !fresh && age < Math.max(60_000, reuse) ? this.verified!.user : null;
+    if (user && age >= 60_000) this.recheck(token);
     if (!user) {
       const { data, error } = await this.client.auth.getUser();
       if (error && isAuthRetryableFetchError(error)) {
@@ -95,6 +98,16 @@ export class DesktopAuth {
     if (requireMfa && pending)
       throw Error("Complete authenticator verification before continuing.");
     return user;
+  }
+  private rechecking: Promise<void> | null = null;
+  /** Asks the server about this token again without waiting for it: a rejection clears the check, as user() would. */
+  private recheck(token: string) {
+    this.rechecking ??= (async () => {
+      const { data, error } = await this.client!.auth.getUser();
+      if (this.verified?.token !== token || error && isAuthRetryableFetchError(error)) return;
+      if (error || !data.user) { this.verified = null; this.known = null; }
+      else this.verified = { token, at: Date.now(), user: data.user };
+    })().catch(() => {}).finally(() => { this.rechecking = null; });
   }
   /** A signed-in request to the account service that hands back the raw response (files, form uploads). */
   async cloudFetch(path: string, init: { method?: string; body?: BodyInit; headers?: Record<string, string> } = {}, signal?: AbortSignal, timeout = 15000) {

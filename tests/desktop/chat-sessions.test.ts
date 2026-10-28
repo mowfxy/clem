@@ -202,3 +202,19 @@ test("Codex's steps are its model outputs, and the tool calls after each belong 
   await turn;
   assert.deepEqual([steps.steps, steps.calls], [2, 4]);
 });
+
+test("peek says whether the next message would continue the kept session, without taking or ending it", () => {
+  let now = 1000;
+  const store = new ChatSessions(() => now);
+  const ended: string[] = [];
+  store.keep("u:c", session({}, ended));
+  assert.equal(store.peek("u:c", { provider: "claude", history: "h1" }), true);
+  assert.equal(store.peek("u:c", { provider: "claude", history: "edited" }), false);
+  assert.equal(store.peek("u:c", { provider: "grok", history: "h1" }), false);
+  assert.equal(store.peek("u:other", { provider: "claude", history: "h1" }), false);
+  now += KEEP_MS;
+  assert.equal(store.peek("u:c", { provider: "claude", history: "h1" }), false);
+  assert.deepEqual(ended, []);
+  now -= KEEP_MS;
+  assert.ok(store.take("u:c", want), "still there to take");
+});

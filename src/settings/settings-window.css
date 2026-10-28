@@ -239,7 +239,6 @@ dialog.settings-dialog .settings-dialog-body .backup-list button.chosen{border-c
 .backup-open input{flex:1}
 .backup-preview{padding:12px 14px;border:1px solid #3d3d38;border-radius:10px}
 .backup-preview strong{font-weight:400}
-/* Sized and drawn like the schedule switch beside it: same height and frame, text centred, a drawn chevron instead of the OS arrow. */
-.st select.backup-keep{appearance:none;-webkit-appearance:none;width:auto;height:36px;min-height:0;padding:0 30px 0 12px;line-height:34px;border-radius:10px;background:#1b1b1a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a9a8a1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 11px center;border-color:#30302e;font-size:12.5px;cursor:pointer}
-.st select.backup-keep option{background:#1b1b1a;color:#ecebe5}
+/* Sized like the schedule switch beside it; its list is the shared dropdown (src/popups.css). */
+.st select.backup-keep{width:auto;height:36px;min-height:0;padding:0 10px 0 12px;border-radius:10px;background:#1b1b1a;border-color:#30302e;font-size:12.5px}
 .st input.reminder-time{width:auto;min-height:36px;padding:6px 10px}

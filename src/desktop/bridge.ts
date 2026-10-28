@@ -38,6 +38,8 @@ export type ChatOptions = {
   chat?: string;
   /** A request beside the chat (plan, review, source check, study set, plan step): it leaves the chat's kept CLI session alone. */
   side?: boolean;
+  /** When the window started on this message (Date.now()): the time it spent before sending goes in the timing log. */
+  queuedSince?: number;
 };
 /** Within the request's limits (desktop/contracts.ts): at most 400 files (as many as a chat reads, MAX_CHAT_SOURCES) and 40 MB of text, the first files first. */
 function fitLibrary(files: { name: string; text: string }[]) {
@@ -69,7 +71,8 @@ export async function desktopChat(
   selection?: ChatOptions,
   onArtifact?: (file: StoredFile, revised?: { version: FileVersion }) => void,
 ) {
-  const { onStatus, onCondensed, look, pdfTask, condense, ...options } = selection || {};
+  const { onStatus, onCondensed, look, pdfTask, condense, queuedSince, ...options } = selection || {};
+  const queuedMs = queuedSince ? Math.max(0, Math.min(3_600_000, Math.round(Date.now() - queuedSince))) : undefined;
   messages=condense?newestWithin(messages,2000,MAX_CHAT_CHARACTERS):boundedConversation(messages,contextBudget(options.model).conversation);
   const id = crypto.randomUUID();
   let result = "", work: number | undefined;
@@ -130,7 +133,7 @@ export async function desktopChat(
       return;
     }
     void desktop!
-      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.pdfs?.length ? { pdfs: options.pdfs.slice(0, 20) as { name: string; data: Uint8Array<ArrayBuffer> }[] } : {}), ...(options.pdfNotes?.length ? { pdfNotes: options.pdfNotes.slice(0, 40).map((n) => n.slice(0, 2000)) } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.chat && /^[a-zA-Z0-9_-]{1,80}$/.test(options.chat) ? { chat: options.chat } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.side ? { side: true } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
+      .invoke({ action: "chat", id, scope, messages: messages as any, ...(options.model ? { model: options.model } : {}), ...(options.reasoning ? { reasoning: options.reasoning as any } : {}), ...(options.images?.length ? { images: options.images } : {}), ...(options.pdfs?.length ? { pdfs: options.pdfs.slice(0, 20) as { name: string; data: Uint8Array<ArrayBuffer> }[] } : {}), ...(options.pdfNotes?.length ? { pdfNotes: options.pdfNotes.slice(0, 40).map((n) => n.slice(0, 2000)) } : {}), ...(options.documents?.length ? { documents: options.documents.slice(-20) } : {}), ...(options.plain ? { plain: true } : {}), ...(options.chat && /^[a-zA-Z0-9_-]{1,80}$/.test(options.chat) ? { chat: options.chat } : {}), ...(options.temporary ? { temporary: true } : {}), ...(options.side ? { side: true } : {}), ...(queuedMs !== undefined ? { queuedMs } : {}), ...(options.library?.length && !options.plain ? { library: fitLibrary(options.library) } : {}) })
       .catch((error) => {
         cleanup();
         reject(error);
