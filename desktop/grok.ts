@@ -5,7 +5,7 @@ import {basename, extname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {installedPath} from './cli-install.ts';
 import {SessionLost,UsageLimit,unsupportedFlag} from './kinetra-turn.ts';
-import {liveText} from './live-reply.ts';
+import {liveText,NOTE_HOLD} from './live-reply.ts';
 import {followGrokLog} from './grok-log.ts';
 import {kinetraMcp,keepingAlive,GROK_MCP_CONFIG,GROK_NATIVE_NOTE,GROK_TOOL,grokMcpEnv,type NativeCall} from './kinetra-mcp.ts';
 /** One Kinetra request for Grok's native tool: its result, and pictures (files on this PC) that go with it. */
@@ -83,6 +83,9 @@ export function grokStatus(event:any):string|null{
   // With partial messages a block says what it is when it opens, long before its whole message arrives.
   const block=event?.type==='stream_event'&&!event.parent_tool_use_id&&event.event?.type==='content_block_start'?event.event.content_block:null;
   if(block?.type==='thinking')return 'Thinking it through…';
+  // A tool request's input arrives whole when its block ends (one input_json_delta), which for a long document can take
+  // minutes: the person is told the next step is being written from the moment the block opens.
+  if(block?.type==='tool_use')return describeTool(block.name,block.input)||'Writing the next step…';
   // The answer itself shows as it is written: no status line under it.
   if(block?.type==='text')return '';
   if(event?.type==='assistant'){
@@ -130,6 +133,12 @@ export function picturesAsFiles(native:GrokNative,cwd:string,id:string):NativeCa
     return {result:{...base,pictures:names,look},pictures:[]};
   };
 }
+/**
+ * The line of a Grok error that says what it refused ("error: unexpected argument '--x' found"). Grok's usage line
+ * after it repeats every flag Clem passed, so matching the whole error blamed --include-partial-messages and --tools for
+ * any one refused flag: replies then arrived in one piece, and with Grok's full tool list, for every later answer.
+ */
+export const grokRefusal=(err:string)=>err.split(/\r?\n/).find(line=>unsupportedFlag.test(line))||'';
 export const grokNativeArgs=()=>['--trust','--allow',`MCPTool(${GROK_TOOL})`,...GUARDED_FOLDERS.flatMap(name=>['--deny',`Edit(./${name}/**)`]),...GUARDED_FILES.flatMap(name=>['--deny',`Edit(./${name})`])];
 /** Grok's reasoning levels, lowest first, as its agent lists them for each model. */
 const EFFORT_ORDER=['minimal','low','medium','high','xhigh','max'];
@@ -200,6 +209,8 @@ const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.t
 const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
 /** Without stdout or log activity for this long Grok is taken as stuck; a request in flight may run up to the second. */
 export const GROK_IDLE_LIMIT=10*60_000,GROK_REQUEST_LIMIT=60*60_000;
+/** Silence after which the person is told Grok is still working. */
+export const GROK_QUIET_NOTE=2*60_000;
 const GROK_OFFLINE='Grok lost its connection to xAI and could not get it back. Check your internet connection, then send your message again.';
 function friendly(detail:string){
   if(detail.includes(GROK_OFFLINE))return GROK_OFFLINE;
@@ -392,13 +403,14 @@ export class GrokProvider {
       if(session)await this.exited(session.id);
       let result=await this.attempt(id,args(),emit,env);
       // A Grok without folder trust answers with the text protocol, which the instructions still describe.
-      if(endpoint&&!this.noNative&&unsupportedFlag.test(result.err)&&/--trust|MCPTool/.test(result.err)){this.noNative=true;result=await this.attempt(id,args(),emit,env);}
+      // Each fallback reads only the flag Grok named as refused (grokRefusal), never its usage line.
+      if(endpoint&&!this.noNative&&/--trust|MCPTool/.test(grokRefusal(result.err))){this.noNative=true;result=await this.attempt(id,args(),emit,env);}
       // A Grok build without partial messages still answers, in one piece.
-      if(!this.noPartial&&unsupportedFlag.test(result.err)&&/include-partial-messages/.test(result.err)){this.noPartial=true;result=await this.attempt(id,args(),emit,env);}
+      if(!this.noPartial&&/include-partial-messages/.test(grokRefusal(result.err))){this.noPartial=true;console.warn('[grok] this Grok refused --include-partial-messages: its replies now arrive in one piece');result=await this.attempt(id,args(),emit,env);}
       // An older Grok without the tool list still answers, with all of its own tools.
-      if(!this.noToolList&&unsupportedFlag.test(result.err)&&/--tools|no-plan/.test(result.err)){this.noToolList=true;result=await this.attempt(id,args(),emit,env);}
+      if(!this.noToolList&&/--tools|no-plan/.test(grokRefusal(result.err))){this.noToolList=true;result=await this.attempt(id,args(),emit,env);}
       const reply=parseGrokReply(result.out);
-      if(session&&(reply.error||!reply.text)&&unsupportedFlag.test((reply.error||'')+result.err)){this.noSessions=true;throw new SessionLost('This Grok CLI does not keep sessions.');}
+      if(session&&(reply.error||!reply.text)&&/--session-id|--resume/.test(grokRefusal((reply.error||'')+'\n'+result.err))){this.noSessions=true;throw new SessionLost('This Grok CLI does not keep sessions.');}
       if(session?.resume&&(reply.error||!reply.text)&&/session/i.test((reply.error||'')+result.err)&&/not found|no such|unknown|does not exist|invalid/i.test((reply.error||'')+result.err))throw new SessionLost('Grok no longer has this session.');
       if((reply.error||!reply.text)&&outOfUsage(reply.error||result.err))throw new UsageLimit(friendly(reply.error||result.err));
       if((reply.error||!reply.text)&&signedOut.test((reply.error||'')+result.err))this.statusCache=null;
@@ -424,7 +436,7 @@ export class GrokProvider {
     let early=false;
     return new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
       let out='',err='',done=false;
-      const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);log?.stop();f?reject(f):resolve(v!);};
+      const finish=(v?:{code:number|null;out:string;err:string},f?:Error)=>{if(done)return;done=true;clearTimeout(timer);clearTimeout(quiet);log?.stop();f?reject(f):resolve(v!);};
       // An inactivity limit: any output from Grok, or any line in Grok's own log for this process, restarts it, so a
       // long answer that is still arriving is never cut off. While a model request is in flight (Grok prints nothing
       // while it thinks or writes a long document, and retries a dropped connection itself) the limit waits for it:
@@ -435,7 +447,11 @@ export class GrokProvider {
         if(inFlight&&Date.now()-seen<GROK_REQUEST_LIMIT){timer=setTimeout(limit,GROK_IDLE_LIMIT);return;}
         child.kill();finish(undefined,Error(retried?GROK_OFFLINE:'Grok took too long to respond.'));
       };
-      const touch=()=>{seen=Date.now();clearTimeout(timer);timer=setTimeout(limit,GROK_IDLE_LIMIT);};
+      // Two minutes with nothing from Grok (a long request in flight) is said on screen once, so a silent wait is not
+      // taken for a frozen app; the person can stop it there.
+      let quiet:ReturnType<typeof setTimeout>|undefined;
+      const hush=()=>{clearTimeout(quiet);quiet=setTimeout(()=>{if(!done)emit({id,type:'status',text:'Grok is still working on it. You can stop it at any time.'});},GROK_QUIET_NOTE);quiet.unref?.();};
+      const touch=()=>{seen=Date.now();clearTimeout(timer);timer=setTimeout(limit,GROK_IDLE_LIMIT);hush();};
       touch();
       let log:{stop():void}|undefined;
       if(child.pid)void followGrokLog(this.home||join(process.env.USERPROFILE||'','.grok'),child.pid,event=>{
@@ -450,7 +466,8 @@ export class GrokProvider {
       // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
       child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
       let pending='',last='',bytes=0;
-      const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
+      let pieces=0;
+      const live=liveText((text,fresh)=>{pieces++;emit({id,type:'partial',text,fresh});});
       // How many model steps asked for tools, and how many calls each carried (the timing log; desktop/tool-status.ts).
       const steps=new StepCounter();
       const read=(line:string)=>{
@@ -461,6 +478,7 @@ export class GrokProvider {
         if(event?.type==='stream_event')live(event);else out+=line+'\n';
         // Grok takes about three seconds to exit after its result (it saves the session meanwhile): a finished reply is
         // the answer now, and the session's next message waits for that exit instead (exiting, in run).
+        if(event?.type==='result')this.noteUnstreamed(pieces,args,parseGrokReply(out).text);
         if(event?.type==='result'&&event.subtype==='success'&&!event.is_error&&parseGrokReply(out).text){
           if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});
           early=true;finish({code:0,out,err});
@@ -473,6 +491,13 @@ export class GrokProvider {
       child.on('close',code=>{exited();if(early)return;read(pending);pending='';if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});finish({code,out,err:retried?(err+' '+GROK_OFFLINE).slice(-5000):err});});
       child.stdin.end();
     }).finally(()=>{this.active.delete(id);this.alive.delete(id);});
+  }
+  private warnedUnstreamed=false;
+  /** A long reply asked for in pieces that arrived whole says Grok's stream changed shape: logged once, with no text. */
+  private noteUnstreamed(pieces:number,args:string[],reply?:string){
+    if(this.warnedUnstreamed||pieces||!args.includes('--include-partial-messages')||(reply||'').length<NOTE_HOLD)return;
+    this.warnedUnstreamed=true;
+    console.warn(`[grok] a ${reply!.length}-character reply arrived with no partial text: check Grok's stream_event lines`);
   }
   /** Removes a turn's PDFs from the working folder once its answer is done. */
   async dropPdfs(turn:string){if(/^[0-9a-f-]{36}$/i.test(turn))await rm(join(this.workspace(),'.pdfs-'+turn),{recursive:true,force:true}).catch(()=>{});}

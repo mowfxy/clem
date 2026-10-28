@@ -13,8 +13,18 @@ const esc = (text: unknown) => String(text ?? "").replace(/[&<>"']/g, (c) => ({ 
 const num = (n: number) => (Math.round(n * 10) / 10).toString();
 /** Average glyph width of Segoe UI at 1px, for wrapping without a browser. */
 const textWidth = (text: string, size: number) => [...text].reduce((w, c) => w + (/[ilj.,:;'|!]/.test(c) ? 0.28 : /[mwMW@]/.test(c) ? 0.85 : /[A-Z0-9]/.test(c) ? 0.62 : 0.52), 0) * size;
+/** Greek letters spelled out and powers written with ^ in a label read as symbols (SVG text has no maths): "rho^2
+ *  sin(phi) drho" becomes "ρ² sin(φ) dρ", and LaTeX like \theta or $x^2$ loses its markup the same way. */
+const GREEK: Record<string, string> = { alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", theta: "θ", lambda: "λ", mu: "μ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", phi: "φ", omega: "ω", Delta: "Δ", Sigma: "Σ", Omega: "Ω", Phi: "Φ" };
+const SUPER: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "-": "⁻", n: "ⁿ" };
+export const symbols = (text: string) => text
+  .replace(/\$+/g, "")
+  .replace(/\\(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|rho|sigma|tau|phi|omega|Delta|Sigma|Omega|Phi)\b/g, (_, g: string) => GREEK[g])
+  .replace(/\b(d?)(alpha|beta|gamma|delta|epsilon|theta|lambda|rho|sigma|tau|phi|omega)\b/g, (_, d: string, g: string) => d + GREEK[g])
+  .replace(/\^\{?(-?[0-9n]+)\}?/g, (_, p: string) => [...p].map((c) => SUPER[c] ?? c).join(""))
+  .replace(/\\cdot\b/g, "·").replace(/\\times\b/g, "×").replace(/\\leq?\b/g, "≤").replace(/\\geq?\b/g, "≥").replace(/\\to\b/g, "→");
 function wrap(text: string, max: number, size: number, lines = 4) {
-  const words = String(text ?? "").replace(/\s+/g, " ").trim().split(" ");
+  const words = symbols(String(text ?? "")).replace(/\s+/g, " ").trim().split(" ");
   const out: string[] = [];
   let line = "";
   for (const word of words) {
@@ -84,13 +94,14 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
   const dims = new Map<string, { w: number; h: number; lines: string[] }>();
   for (const n of nodes) {
     const decision = n.shape === "decision";
-    const lines = wrap(n.label, decision ? boxW * 0.62 : boxW - 22, size, decision ? 3 : 4);
+    const lines = wrap(n.label, decision ? boxW * 0.62 : boxW - 22, size, decision ? 4 : 7);
     const h = Math.max(decision ? 70 : 42, lines.length * size * 1.25 + (decision ? 40 : 20));
     dims.set(n.id, { w: decision ? boxW + 10 : boxW, h, lines });
   }
   // Across, the gap between steps holds the widest edge label, so a label never covers a box.
   const labelRoom = Math.max(0, ...edges.map((e) => (e.label ? Math.max(...wrap(e.label, 110, 11, 2).map((l) => textWidth(l, 11))) + 26 : 0)));
-  const gapMain = across ? Math.max(70, labelRoom) : 54, gapCross = 34;
+  // Down the page, a labelled branch's label sits on its own drop to the step it leads to, below the shared rail.
+  const gapMain = across ? Math.max(70, labelRoom) : edges.some((e) => e.label) ? 74 : 54, gapCross = 34;
   const layerSize = layers.map((ids) => Math.max(...(ids || []).map((id) => across ? dims.get(id)!.w : dims.get(id)!.h)));
   const crossSize = layers.map((ids) => (ids || []).reduce((s, id) => s + (across ? dims.get(id)!.h : dims.get(id)!.w) + gapCross, -gapCross));
   const crossTotal = Math.max(...crossSize), margin = 34, loopRoom = back.size ? 46 : 0;
@@ -143,6 +154,14 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
     const lines = wrap(text, 110, 11, 2), w = Math.max(...lines.map((l) => textWidth(l, 11))) + 10, h = lines.length * 14 + 4;
     return `<rect x="${num(x - w / 2)}" y="${num(y - h / 2)}" width="${num(w)}" height="${num(h)}" rx="3" fill="${PAPER}"/>` + textBlock(lines, x, y, 11, { color: MUTED, weight: 700 });
   };
+  // The steps in each layer whose branches turn sideways, in drawing order, for their rails' heights.
+  const railOwners = new Map<number, string[]>();
+  for (const e of forward) {
+    const a = pos.get(e.from)!, b = pos.get(e.to)!, l = layer.get(e.from)!;
+    if (across || rows || Math.abs(a.x - b.x) < 2) continue;
+    const owners = railOwners.get(l) || [];
+    if (!owners.includes(e.from)) railOwners.set(l, [...owners, e.from]);
+  }
   let drawn = "";
   for (const e of edges) {
     const a = pos.get(e.from)!, b = pos.get(e.to)!;
@@ -171,8 +190,12 @@ export function flowchart(spec: { title?: string; direction?: "down" | "right"; 
       const s = { x: a.x + dims.get(e.from)!.w / 2, y: a.y }, t = { x: b.x - dims.get(e.to)!.w / 2, y: b.y }, m = (s.x + t.x) / 2;
       path = `M${num(s.x)} ${num(s.y)} L${num(m)} ${num(s.y)} L${num(m)} ${num(t.y)} L${num(t.x)} ${num(t.y)}`; mid = { x: m, y: (s.y + t.y) / 2 };
     } else {
-      const s = { x: a.x, y: a.y + dims.get(e.from)!.h / 2 }, t = { x: b.x, y: b.y - dims.get(e.to)!.h / 2 }, m = (s.y + t.y) / 2;
-      path = `M${num(s.x)} ${num(s.y)} L${num(s.x)} ${num(m)} L${num(t.x)} ${num(m)} L${num(t.x)} ${num(t.y)}`; mid = { x: (s.x + t.x) / 2, y: m };
+      // Branches from one step share a rail just below it; steps in the same layer that branch get rails at different
+      // heights, so two rails never run along the same line. Each label sits on its branch's drop, clear of the rail.
+      const s = { x: a.x, y: a.y + dims.get(e.from)!.h / 2 }, t = { x: b.x, y: b.y - dims.get(e.to)!.h / 2 };
+      const peers = railOwners.get(layer.get(e.from)!) || [e.from], slot = Math.max(0, peers.indexOf(e.from));
+      const m = Math.min(t.y - 30, s.y + 14 + slot * 8);
+      path = `M${num(s.x)} ${num(s.y)} L${num(s.x)} ${num(m)} L${num(t.x)} ${num(m)} L${num(t.x)} ${num(t.y)}`; mid = { x: t.x, y: (m + t.y) / 2 };
     }
     drawn += `<path d="${path}" fill="none" stroke="${LINE}" stroke-width="1.4" marker-end="url(#arrow)"/>` + label(e.label, mid.x, mid.y);
   }

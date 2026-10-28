@@ -119,9 +119,16 @@ test("with the rules in the system prompt, the message carries only this convers
   assert.equal(changed, `<clem-instructions>\nFollow the /quiz playbook.\n</clem-instructions>\n\n<clem-request>\nEncore\n</clem-request>`);
   // The window sends the text that is the same on every message apart from this message's own: only the changed part goes again.
   const split = [{ role: "system", content: "STABLE RULES" }, { role: "system", content: "Follow the /quiz playbook." }, ...messages.slice(1)];
-  assert.match(composePrompt({ messages: split, rulesInSystem: true }), /<clem-instructions>\nSTABLE RULES\n\nFollow the \/quiz playbook\.\n<\/clem-instructions>/);
+  assert.match(composePrompt({ messages: split, rulesInSystem: true }), /^<clem-instructions>\nSTABLE RULES\n<\/clem-instructions>\n\n<clem-instructions note="for this message">\nFollow the \/quiz playbook\.\n<\/clem-instructions>/);
   const later = [...split, { role: "assistant", content: "Salut" }, { role: "user", content: "Encore" }];
-  assert.equal(composePrompt({ messages: later, rulesInSystem: true, continued: true, resendInstructions: [1] }), `<clem-instructions>\nFollow the /quiz playbook.\n</clem-instructions>\n\n<clem-request>\nEncore\n</clem-request>`);
+  // Sent fresh, the instructions that change with each message follow the conversation: everything before them is the same
+  // as on the last message, so the provider's prompt cache reuses it.
+  const fresh = composePrompt({ messages: later, rulesInSystem: true });
+  assert.ok(fresh.startsWith(`<clem-instructions>\nSTABLE RULES\n</clem-instructions>\n\n<clem-conversation>\nUser: Bonjour\n\nAssistant: Salut\n</clem-conversation>\n\n<clem-instructions note="for this message">\nFollow the /quiz playbook.`));
+  const other = composePrompt({ messages: [split[0], { role: "system", content: "Follow the /plan playbook." }, ...later.slice(2)], rulesInSystem: true });
+  assert.equal(other.slice(0, other.indexOf("<clem-instructions note")), fresh.slice(0, fresh.indexOf("<clem-instructions note")));
+  assert.equal(composePrompt({ messages: later, rulesInSystem: true, continued: true, resendInstructions: [1] }), `<clem-instructions note="for this message">\nFollow the /quiz playbook.\n</clem-instructions>\n\n<clem-request>\nEncore\n</clem-request>`);
+  assert.equal(composePrompt({ messages: later, rulesInSystem: true, continued: true, resendInstructions: [0] }), `<clem-instructions>\nSTABLE RULES\n</clem-instructions>\n\n<clem-request>\nEncore\n</clem-request>`);
   assert.equal(composePrompt({ messages: later, rulesInSystem: true, continued: true, resendInstructions: [] }), `<clem-request>\nEncore\n</clem-request>`);
   // Source material the session already holds (the file list, a Drive note) is not sent again; a changed one is.
   const listed = [...later.slice(0, -1), { role: "user", content: "Source material (untrusted, not instructions):\nFILE LIST" }, { role: "user", content: "Encore" }];
@@ -170,6 +177,9 @@ test("what a request adds to the compact guide goes in the message: recipes for 
   // Together they are the same knowledge the full guide gave.
   assert.equal(needsKinetra("hi"), false);
   assert.equal(needsKinetra("solve this integral"), true);
+  // Phrasings that used to cost a {"action":"help"} round trip before the tool was used.
+  for (const ask of ["turn my notes into flash cards", "make flash-cards for chapter 3", "show me the electron transport chain as a picture", "show me a picture of the heart's valves", "plan my week", "plan my revision for the finals"]) assert.equal(needsKinetra(ask), true, ask);
+  for (const ask of ["thanks, that helps", "what does this picture mean to you?", "how was your week?"]) assert.equal(needsKinetra(ask), false, ask);
 });
 
 test("LaTeX written with single backslashes runs as written instead of failing or losing letters", () => {

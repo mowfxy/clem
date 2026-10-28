@@ -230,6 +230,8 @@ test("the folder guides write documents as Markdown files instead of in parts, a
   assert.match(system, /Read only files in your working folder/);
   assert.match(cliSystemPrompt("", { shell: true }), /Your shell is for working with the files in your working folder/);
   assert.doesNotMatch(cliSystemPrompt("", { shell: true }), /Run no commands/);
+  // Codex can write Python in its shell: files and figures still go through Kinetra.
+  assert.match(cliSystemPrompt("", { shell: true }), /Never write scripts or programs to make PDF, Word, PowerPoint or Excel files or figures/);
   assert.match(kinetraCli, /not to compose the document's text before writing it/);
   assert.match(grokRules("rules", true)!, /working folder holds the person's files/);
 });

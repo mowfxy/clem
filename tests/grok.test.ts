@@ -211,3 +211,31 @@ test('Kinetra pictures reach Grok as files in its folder, named in the result, n
   const plain:any=await picturesAsFiles(async()=>({result:'text',pictures:[]}),folder,'r9')({});
   assert.equal(plain.result,'text');
 });
+
+// Grok 1.0.70's --include-partial-messages framing, as its headless guide documents it (~/.grok/docs/user-guide/14-headless-mode.md):
+// message_start with input usage, content blocks with text deltas, a tool_use whose input arrives as one input_json_delta.
+const grokFraming=[
+  {type:'stream_event',event:{type:'message_start',message:{id:'resp_1',type:'message',role:'assistant',model:'grok-4.6',content:[],stop_reason:null,stop_sequence:null,usage:{input_tokens:812,cache_read_input_tokens:41000,cache_creation_input_tokens:0,output_tokens:0}}},parent_tool_use_id:null,session_id:'s',uuid:'u1'},
+  {type:'stream_event',event:{type:'content_block_start',index:0,content_block:{type:'text',text:''}},parent_tool_use_id:null,session_id:'s',uuid:'u2'},
+  {type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:'Ohm’s law '}},parent_tool_use_id:null,session_id:'s',uuid:'u3'},
+  {type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:'says V = IR.'}},parent_tool_use_id:null,session_id:'s',uuid:'u4'},
+  {type:'stream_event',event:{type:'content_block_stop',index:0},parent_tool_use_id:null,session_id:'s',uuid:'u5'},
+  {type:'stream_event',event:{type:'content_block_start',index:1,content_block:{type:'tool_use',id:'call_1',name:'use_tool',input:{}}},parent_tool_use_id:null,session_id:'s',uuid:'u6'},
+  {type:'stream_event',event:{type:'content_block_delta',index:1,delta:{type:'input_json_delta',partial_json:'{"tool_name":"kinetra__kinetra","tool_input":{"action":"pdf","title":"Ohm"}}'}},parent_tool_use_id:null,session_id:'s',uuid:'u7'},
+  {type:'stream_event',event:{type:'content_block_stop',index:1},parent_tool_use_id:null,session_id:'s',uuid:'u8'},
+  {type:'stream_event',event:{type:'message_delta',delta:{stop_reason:'tool_use',stop_sequence:null},usage:{output_tokens:40}},parent_tool_use_id:null,session_id:'s',uuid:'u9'},
+  {type:'stream_event',event:{type:'message_stop'},parent_tool_use_id:null,session_id:'s',uuid:'u10'},
+];
+test('Grok’s documented partial framing streams its text, and a tool request says so from the moment it opens',async()=>{
+  const {liveText}=await import('../desktop/live-reply.ts');
+  const {grokStatus}=await import('../desktop/grok.ts');
+  const pieces:[string,boolean][]=[];const read=liveText((text,fresh)=>pieces.push([text,fresh]));
+  const statuses:(string|null)[]=[];
+  for(const line of grokFraming){read(line);statuses.push(grokStatus(line));}
+  assert.deepEqual(pieces,[['Ohm’s law ',true],['says V = IR.',false]]);
+  assert.equal(statuses[1],'',"the reply's own text needs no status line");
+  assert.equal(statuses[5],'Writing the next step…','a tool request is announced before its input arrives');
+  // A subagent's text is never the reply.
+  const inner:string[]=[];liveText(t=>inner.push(t))({...grokFraming[2],parent_tool_use_id:'call_9'});
+  assert.deepEqual(inner,[]);
+});

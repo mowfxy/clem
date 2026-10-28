@@ -131,3 +131,41 @@ test("asking to save something to memory counts, in the words people use", async
   assert.deepEqual(items.map((m) => [m.about, m.kind]), [["space", "fact"], ["user", "preference"]]);
   assert.deepEqual(memoryBlocks('```memory\n{"remember":[{"text":"My password is hunter22","about":"user"}]}\n```'), []);
 });
+
+test("a request is not a memory pass: only self-descriptions, standing preferences, exams and explicit asks are", async () => {
+  const { extractionInstructions } = await import("../../desktop/memory.ts");
+  // Each of these used to start a side model call, and some left a dated task behind as a memory.
+  for (const m of [
+    "I want you to summarise this lecture",
+    "I'd like a table comparing BJT and MOSFET",
+    "I'm working on the thermodynamics homework, question 2 please",
+    "I have to submit the lab report tomorrow",
+    "My project is due on the 3rd",
+    "I need this for my presentation",
+    "I'm doing the circuits worksheet now",
+    "I have a question about entropy",
+    "I don't remember the formula for drift velocity",
+    "Je veux un résumé du chapitre 2",
+    "Quiero una tabla de los verbos",
+  ]) assert.equal(mentionsSelf(m), false, m);
+  // Self-descriptions, preferences, real exam dates and explicit asks still go to memory.
+  for (const m of [
+    "I'm a second-year physics student",
+    // A plan for "my exams" still reaches extraction, which keeps only the exams and their dates, never the plan.
+    "Make me a study plan for my exams next week",
+    "I'm 19 years old",
+    "I have an exam on Thursday",
+    "I have a DSA midterm on October 22",
+    "My exam is on the 14th of December",
+    "I prefer short answers",
+    "I'd rather you used SI units",
+    "Remember that my supervisor is Dr Khan",
+    "From now on answer in Arabic",
+    "too long, shorter answers please",
+  ]) assert.equal(mentionsSelf(m), true, m);
+  // The extraction pass keeps exam dates but never plans or one task's deadline.
+  assert.doesNotMatch(extractionInstructions, /goals and deadlines/);
+  assert.match(extractionInstructions, /fixed dates of exams/);
+  assert.match(extractionInstructions, /Never store plans, schedules/);
+  assert.match(extractionInstructions, /deadline for one piece of work[^.]*belongs to that task, not to memory/);
+});

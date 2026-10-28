@@ -300,3 +300,10 @@ test("Codex: a plain request (no tools) gets no MCP server, and other confirmati
   assert.equal(server.sent.find((r: any) => r.id === 901 && !r.method).error.code, -32601);
   codex.stop();
 });
+
+test("the tool's description says when to choose it over the CLI's own tools, and that help has the guide", async () => {
+  const { kinetraToolSpec } = await import("../../desktop/kinetra-mcp.ts");
+  assert.match(kinetraToolSpec.description, /every PDF, Word, PowerPoint or Excel file, every figure or chart/);
+  assert.match(kinetraToolSpec.description, /never make these with your own file, shell or code tools/);
+  assert.match(kinetraToolSpec.description, /\{"action":"help"\}/);
+});

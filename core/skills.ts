@@ -8,7 +8,7 @@ import { documentStandard, documentIntent } from './document-standard.ts';
  * them literally, so vague steps give vague work. The two that fit a request are added to it (see relevantSkills).
  */
 const DOC = 'Follow the document standard: write the document itself in a formal, impersonal voice, never a message to the requester.';
-const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (docx with the same specification when they want to edit it in Word; never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (flowchart, chart, timeline, cycle, mind map, tree, Venn or a science recipe) wherever a picture explains faster than text. A ```visual already drawn in this chat goes into the PDF unchanged as the figure {"module":"clem","fn":"visual","args":[the JSON of that visual]}.';
+const PDF = 'When a PDF is wanted, make it with the Kinetra pdf action (docx with the same specification when they want to edit it in Word; never paste the whole document into the chat): a specific title, the right kind, one section per heading, and Kinetra figures (a science or maths recipe, chart, timeline, cycle, mind map, tree, Venn, or a flowchart for a real step-by-step procedure) only where a picture explains faster than text; a comparison or a set of cases is a table, never a flowchart. A ```visual already drawn in this chat goes into the PDF unchanged as the figure {"module":"clem","fn":"visual","args":[the JSON of that visual]}.';
 export const builtinSkills: Skill[] = [
  // Learning
  {id:'tutor',name:'A thoughtful tutor',description:'Build understanding step by step, at your pace.',category:'Learning',icon:'subjects',steps:[
@@ -40,7 +40,7 @@ export const builtinSkills: Skill[] = [
   'Organise by the syllabus or the material’s own structure, one section per topic in a logical teaching order, not alphabetically.',
   'For each topic: the key ideas explained in plain words, precise definitions, every important formula with what each symbol means and its units, and the conditions under which it applies.',
   'Add one short worked example per core method, showing the reasoning, not only the steps.',
-  'Use figures where they carry the idea: a mind map of the whole topic, flowcharts for processes, timelines for sequences, tables for comparisons (Kinetra figures in a PDF, ```visual blocks in the chat).',
+  'Use figures where they carry the idea: a mind map of the whole topic, flowcharts only for real step-by-step processes, timelines for sequences, tables for comparisons (Kinetra figures in a PDF, ```visual blocks in the chat).',
   'Mark what examiners commonly test and the classic mistakes students make on each topic.',
   'Write 8–15 practice questions of rising difficulty covering every topic, mixing recall, application and one or two longer exam-style questions; put full answers in a separate section at the end.',
   'Close with a one-page recap of the most important points and a short revision checklist the learner can tick off.',

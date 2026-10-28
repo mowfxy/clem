@@ -58,6 +58,11 @@ export const blockPrint = (text: string) => createHash("sha256").update(text).di
 /** The fingerprint of what Clem knows about the person as one message carries it (their name and the memories chosen
  *  for it): on a kept session it goes again only when it changed. */
 export const memoryPrint = (name: string | undefined, memories: { text: string }[]) => blockPrint("memory\u0000" + (name || "") + "\u0000" + JSON.stringify(memories.map((m) => m.text)));
+/** Fingerprints of the person's name and of each memory line one message carries, one each: memory is chosen for each
+ *  message (the lines matching it change), so a kept session gets only the lines it has not had yet, not all of them
+ *  again whenever one changed. */
+export const memoryPrints = (name: string | undefined, memories: { text: string }[]) =>
+  ({ name: blockPrint("memory-name\u0000" + (name || "")), items: memories.map((m) => blockPrint("memory-item\u0000" + m.text)) });
 /** The fingerprint of one source excerpt (a passage of a linked file): sent once per kept session. */
 export const sourcePrint = (s: { source: string; text: string }) => blockPrint("source\u0000" + s.source + "\u0000" + s.text);
 
@@ -91,6 +96,12 @@ export class ChatSessions {
     if (usable) return found;
     found.end();
     return undefined;
+  }
+  /** Whether the chat's next message would likely continue its kept session (same AI, the conversation as it left it,
+   *  not idle too long), without taking it: the account and model are checked when it is taken. */
+  peek(key: string, want: Pick<SessionWant, "provider" | "history">) {
+    const found = this.kept.get(key);
+    return !!found && found.provider === want.provider && found.history === want.history && this.now() - found.at < KEEP_MS;
   }
   /** Keeps a finished answer's session for the chat's next message (ending the one it replaces, if different). */
   keep(key: string, session: Omit<KeptSession, "at">) {

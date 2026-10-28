@@ -80,3 +80,22 @@ test("chats are keyed by space and first message", () => {
   // Two chats that start the same way keep their own briefs.
   assert.notEqual(briefKey("project:a", "hello", "chat-1"), briefKey("project:a", "hello", "chat-2"));
 });
+
+test("a message that continues a kept session is not held up by the brief: it is written after the answer", async () => {
+  const { io, asked } = store();
+  const input = [...turns(120), { role: "user", content: "Now the conclusion." }];
+  const out = await condenseConversation(input, 60_000, { ...io, defer: true });
+  assert.equal(asked.length, 0, "nobody is asked before the answer");
+  assert.equal(out.condensed, false);
+  assert.ok(JSON.stringify(out.messages).length <= 60_000, "a fresh start would still fit");
+  assert.ok(out.later);
+  await out.later!();
+  const written = asked.length;
+  assert.ok(written >= 1);
+  // The next message that has to start fresh finds the brief ready, and asks nothing more.
+  const next = await condenseConversation(input, 60_000, io);
+  assert.equal(next.condensed, true);
+  assert.equal(asked.length, written);
+  // A chat that fits needs nothing written later.
+  assert.equal((await condenseConversation(turns(4, 100), 60_000, { ...io, defer: true })).later, undefined);
+});

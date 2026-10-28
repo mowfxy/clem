@@ -139,7 +139,7 @@ export function askedKind(kind: unknown, said: string): string {
   return /\breports?\b|\bwhite ?papers?\b|\bwrite-?ups?\b/i.test(said) ? "document" : "notes";
 }
 export const layoutFor = (spec: Pick<DocumentSpec, "kind" | "style">): Layout =>
-  layouts.has(spec.style as Layout) ? (spec.style as Layout) : kindLayout[String(spec.kind || "report")] || "technical";
+  layouts.has(spec.style as Layout) ? (spec.style as Layout) : kindLayout[String(spec.kind || "document")] || "notes";
 
 /** Standard document typefaces installed with Windows (with metric-compatible fallbacks), so a PDF reads like
  *  print. Clem's own interface fonts are never used in documents, even when asked for. */
@@ -266,10 +266,10 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
         // A crop's caption is the source's own words (or its attribution), not the document's voice.
         ...sections.map((s, i) => ({ where: `Section ${i + 1}${s.heading ? ` (${s.heading})` : ""}`, text: [s.heading, s.text, typeof (s.figure as any)?.asset === "string" ? "" : s.caption].filter(Boolean).join("\n") })),
       ],
-      spec.kind || "report",
+      spec.kind || "document",
     );
     if (voice.length)
-      problems.push(`The text does not meet the document standard (formal, impersonal, written as the document itself): ${voice.slice(0, 8).join("; ")}. Rewrite these passages impersonally (for example "This report…", "The results show…").`);
+      problems.push(`The text does not meet the document standard (formal, impersonal, written as the document itself): ${voice.slice(0, 8).join("; ")}. Rewrite these passages impersonally, about the subject itself (for example "Kinetic friction opposes…", "This guide covers…").`);
   }
   const figures = await inTurns(sections, 4, async (s, i) => {
       if (!s.figure) return undefined;
@@ -559,7 +559,7 @@ function linkText(html: string, targets: Set<string>, references: number) {
 /** `pictures`: print vector crops as their PNG (when placing the vectors failed); `bare`: and without the links that
  *  mark where each crop printed (when even those could not be read back). */
 export function documentHtml(spec: DocumentSpec, figures: (string | undefined)[], pages?: Map<string, number>, { pictures = false, bare = false }: { pictures?: boolean; bare?: boolean } = {}) {
-  const kind = String(spec.kind || "report");
+  const kind = String(spec.kind || "document");
   const layout = layoutFor(spec);
   spec = withDesign(spec);
   const type = documentFonts(spec);

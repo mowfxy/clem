@@ -9,6 +9,10 @@ type Io = {
   ask: (prompt: string) => Promise<string>;
   load: () => Promise<Brief | undefined>;
   save: (brief: Brief) => Promise<void>;
+  /** The message continues a kept CLI session that already holds the whole chat and never reads the brief: a brief that
+   *  needs writing is not waited for. The free shortening goes instead, and `later` writes the brief once the answer is
+   *  done, ready for a message that has to start a new session. */
+  defer?: boolean;
 };
 const cost = (m: ContextMessage) => JSON.stringify(m).length + 1;
 const isSource = (m: ContextMessage) => m.role === "user" && m.content.startsWith(SOURCE_PREFIX);
@@ -51,7 +55,7 @@ async function summarize(ask: Io["ask"], prior: string | undefined, turns: Conte
  * The brief is kept (see `Brief`) and only extended when the turns since it outgrow a quarter of the room, so most
  * messages cost no extra request. If the AI cannot write the brief, the free outline-based shortening is used instead.
  */
-export async function condenseConversation(messages: ContextMessage[], budget: number, io: Io): Promise<{ messages: ContextMessage[]; condensed: boolean }> {
+export async function condenseConversation(messages: ContextMessage[], budget: number, io: Io): Promise<{ messages: ContextMessage[]; condensed: boolean; later?: () => Promise<void> }> {
   const bounded = boundedConversation(messages, budget);
   if (!bounded.some((m) => m.role === "system" && (m.content.startsWith(BRIEF_PREFIX) || m.content.startsWith("Some older conversation turns")))) return { messages: bounded, condensed: false };
   const system = messages.filter((m) => m.role === "system");
@@ -73,6 +77,7 @@ export async function condenseConversation(messages: ContextMessage[], budget: n
     const tail = usable ? older.slice(usable.covered) : older;
     let summary = usable?.summary || "", verbatim: ContextMessage[] = [];
     if (usable && tail.reduce((n, m) => n + cost(m), 0) <= target * 0.25) verbatim = tail;
+    else if (io.defer) return { messages: bounded, condensed: false, later: async () => { await io.save({ covered: older.length, prefix: fingerprint(older), summary: await summarize(io.ask, usable?.summary, tail) }); } };
     else {
       summary = await summarize(io.ask, usable?.summary, tail);
       await io.save({ covered: older.length, prefix: fingerprint(older), summary });
