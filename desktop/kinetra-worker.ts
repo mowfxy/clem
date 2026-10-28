@@ -62,13 +62,16 @@ const modules: Record<string, any> = {
 };
 /** One call. Async so a lazily loaded function (clem.visual) can be awaited; every other function returns at once. */
 async function execute({ module: moduleName, fn, args }: { module: string; fn: string; args: any[] }) {
-  if (
-    !Object.hasOwn(modules, moduleName) ||
-    !Object.hasOwn(modules[moduleName], fn) ||
-    typeof modules[moduleName][fn] !== "function" ||
-    !Array.isArray(args)
-  )
-    throw Error("Unknown Kinetra operation");
+  // A call the model got wrong says exactly what to change, so it is corrected in one step rather than after reading
+  // the whole guide ({"action":"help"}), which every later step would re-read.
+  const shape = 'A call is {"action":"call","module":M,"fn":F,"args":[…]}.';
+  if (typeof moduleName !== "string" || !Object.hasOwn(modules, moduleName))
+    throw Error(`Unknown Kinetra operation: ${typeof moduleName === "string" && moduleName ? `no module "${moduleName}"` : 'the call has no "module"'}. ${shape} Modules: ${Object.keys(modules).join(", ")}.`);
+  const functions = Object.keys(modules[moduleName]).filter((name) => typeof modules[moduleName][name] === "function");
+  if (typeof fn !== "string" || !Object.hasOwn(modules[moduleName], fn) || typeof modules[moduleName][fn] !== "function")
+    throw Error(`Unknown Kinetra operation: ${typeof fn === "string" && fn ? `module "${moduleName}" has no function "${fn}"` : 'the call has no "fn"'}. ${shape} Functions in ${moduleName}: ${functions.join(", ")}.`);
+  if (!Array.isArray(args))
+    throw Error(`Unknown Kinetra operation: "args" must be the list of ${moduleName}.${fn}'s arguments, e.g. "args":[model]. ${shape}`);
   if (moduleName === "assessment/flashcards") {
     const index =
       fn === "dueCards" ? 1 : ["review", "applyReviews"].includes(fn) ? 2 : -1;

@@ -210,6 +210,11 @@ test("worker renders textbook SVG and expression-based fields, rejects arbitrary
     () => kinetraCall({ module: "fs", fn: "readFile", args: ["secret"] }),
     /Unknown/,
   );
+  // A call the model got wrong says what to change and lists the choices, so it is fixed without reading the whole guide.
+  await assert.rejects(() => kinetraCall({ module: "clem", args: [{}] }), (e: Error) => /no "fn"/.test(e.message) && /solveCircuit/.test(e.message));
+  await assert.rejects(() => kinetraCall({ fn: "solveCircuit", args: [{}] }), (e: Error) => /no "module"/.test(e.message) && /\bclem\b/.test(e.message));
+  await assert.rejects(() => kinetraCall({ module: "clem", fn: "solveCircuits", args: [{}] }), /has no function "solveCircuits"[\s\S]*solveCircuit/);
+  await assert.rejects(() => kinetraCall({ module: "clem", fn: "solveCircuit", args: {} }), /"args" must be the list/);
   await assert.rejects(() =>
     kinetraCall({
       module: "clem",
