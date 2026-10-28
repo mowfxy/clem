@@ -1,5 +1,5 @@
 import {spawn, spawnSync} from 'node:child_process';
-import {relative, resolve} from 'node:path';
+import {win32} from 'node:path';
 
 // Google's agent (desktop/antigravity.ts) runs as a small launcher that starts the real agent, which starts a helper per
 // session. When Clem ended without closing them (a crash, Windows signing out, or the launcher leaving as Clem's pipes
@@ -9,8 +9,9 @@ import {relative, resolve} from 'node:path';
 
 export type ProcessRow = {pid: number; ppid: number; path: string};
 
+// Windows paths on every platform: the sweep only runs on Windows, and its tests run everywhere.
 const inside = (root: string, path: string) => {
-  const r = relative(resolve(root), resolve(path));
+  const r = win32.relative(win32.resolve(root), win32.resolve(path));
   return !!path && r !== '' && !r.startsWith('..') && !/^[a-z]:/i.test(r);
 };
 
@@ -22,7 +23,7 @@ export function orphanedAgents(processes: ProcessRow[], root: string) {
 
 /** Every process on this PC with its parent, and the program path of those from `root` (Windows only). */
 export function listProcesses(root: string) {
-  const script = `$r='${resolve(root).replace(/'/g, "''")}\\';Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{i=[int]$_.ProcessId;p=[int]$_.ParentProcessId;x=$(if ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($r, [StringComparison]::OrdinalIgnoreCase)) { $_.ExecutablePath } else { '' })} } | ConvertTo-Json -Compress`;
+  const script = `$r='${win32.resolve(root).replace(/'/g, "''")}\\';Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{i=[int]$_.ProcessId;p=[int]$_.ParentProcessId;x=$(if ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($r, [StringComparison]::OrdinalIgnoreCase)) { $_.ExecutablePath } else { '' })} } | ConvertTo-Json -Compress`;
   return new Promise<ProcessRow[]>((done) => {
     let out = '';
     let child;
