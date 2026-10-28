@@ -5,6 +5,9 @@ export type Dated = { id: string; updated: number; pinned?: boolean };
 export type HistoryGroup<T> = { label: string; items: T[] };
 
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+// Made once: toLocaleDateString builds a new formatter on every call, and the sidebar labels every chat on each render.
+const thisYear = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+const otherYear = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** The label a chat's day reads under, relative to `now` in local time. */
 export function dayLabel(updated: number, now = Date.now()): string {
@@ -14,7 +17,7 @@ export function dayLabel(updated: number, now = Date.now()): string {
   if (diff <= 0) return 'Today';
   if (diff === 1) return 'Yesterday';
   const d = new Date(updated), sameYear = d.getFullYear() === new Date(now).getFullYear();
-  return d.toLocaleDateString('en-US', sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+  return (sameYear ? thisYear : otherYear).format(d);
 }
 
 /** Groups chats for the sidebar; `limit` caps how many unpinned chats are listed (pinned ones always show). */

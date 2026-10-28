@@ -32,12 +32,14 @@ export function ProfileAvatar({ value, size = 56 }: { value?: string; size?: num
   useEffect(() => {
     const el = ref.current!;
     let visible = true;
-    const sync = () => el.classList.toggle("avatar-resting", !visible || document.hidden);
+    // Rests while off screen, minimised or while another window has focus (the new-chat sky slows down then too).
+    const sync = () => el.classList.toggle("avatar-resting", !visible || document.hidden || !document.hasFocus());
     const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync(); });
     observer.observe(el);
     document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync); window.addEventListener("blur", sync);
     sync();
-    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", sync); };
+    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", sync); window.removeEventListener("focus", sync); window.removeEventListener("blur", sync); };
   }, []);
   return (
     <span ref={ref} style={{ width: size, height: size }} className={`profile-character mark-${mark.id}`} aria-hidden="true">

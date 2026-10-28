@@ -14,6 +14,7 @@
 .update-status{display:block}
 .update-status.error{color:#ec8a74}
 .update-progress{width:132px}
-/* The chip takes the chevron's place, so a long name keeps its room. */
-.sidebar-bottom:has(.update-chip) .account-button>.drawn-icon{display:none}
+/* The chip takes the chevron's place, so a long name keeps its room. A class from App.tsx rather than :has(.update-chip):
+   that :has() made Chromium restyle every icon in the window on each keystroke. */
+.sidebar-bottom.has-update .account-button>.drawn-icon{display:none}
 @media(prefers-reduced-motion:reduce){.update-chip{animation:none}.update-fill,.update-arrow{transition:none}}

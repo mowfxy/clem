@@ -68,7 +68,11 @@ export function FindBar({ scope, focusKey = 0, onClose }: { scope: string; focus
     if (current >= 0) css.set(CURRENT, new HighlightClass(ranges[current]));
     else css.delete(CURRENT);
   }, [ranges, current]);
-  useEffect(() => () => { registry()?.delete(ALL); registry()?.delete(CURRENT); }, []);
+  // The highlight colours apply only while this is open (src/enhance.css).
+  useEffect(() => {
+    document.documentElement.classList.add("clem-finding");
+    return () => { document.documentElement.classList.remove("clem-finding"); registry()?.delete(ALL); registry()?.delete(CURRENT); };
+  }, []);
 
   // Bring the current match into view when it changes (not on every recount while an answer streams).
   const shown = useRef<Range | null>(null);
