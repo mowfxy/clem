@@ -49,4 +49,7 @@ app.whenReady().then(async () => {
   app.exit(fallback ? 3 : 0);
 });`);
 const electron = createRequire(import.meta.url)("electron");
-process.exit(spawnSync(electron, [join(out, "main.cjs")], { stdio: "inherit", timeout: 180000 }).status ?? 1);
+const timeout = Number(process.env.CLEM_PREVIEW_TIMEOUT_MS) || 180000;
+const run = spawnSync(electron, [join(out, "main.cjs")], { stdio: "inherit", timeout });
+if (run.status === null) console.error(`Electron did not finish within ${timeout / 1000}s (${run.signal ?? run.error?.message})`);
+process.exit(run.status ?? 1);
