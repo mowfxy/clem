@@ -29,6 +29,9 @@ test("the MCP server speaks the protocol, lists one tool and runs calls through 
   const list = await rpc(endpoint.url, endpoint.token, { jsonrpc: "2.0", id: 2, method: "tools/list" });
   assert.deepEqual(list.body.result.tools.map((t: any) => t.name), ["kinetra"]);
   assert.ok(list.body.result.tools[0].inputSchema.properties.action.enum.includes("pdf"));
+  // A call's own fields are named, so a model that fills arguments from the schema does not leave "fn" out.
+  assert.deepEqual(Object.keys(list.body.result.tools[0].inputSchema.properties), ["action", "module", "fn", "args"]);
+  assert.equal(list.body.result.tools[0].inputSchema.additionalProperties, true);
   const call = await rpc(endpoint.url, endpoint.token, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "kinetra", arguments: { action: "help" } } });
   assert.deepEqual(call.body.result.content, [{ type: "text", text: '{"ran":"help"}' }, { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" }]);
   assert.equal(call.body.result.isError, false);

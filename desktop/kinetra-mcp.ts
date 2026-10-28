@@ -38,7 +38,14 @@ export const kinetraToolSpec = {
     'Runs one Kinetra request: verified calculations, textbook figures, and real files (PDF, Word, PowerPoint, Excel, text files, images), plus reading the person\'s files. The arguments are exactly the object the instructions write inside {"kinetra":…}: an "action" and its fields, for example {"action":"call","module":"clem","fn":"solveCircuit","args":[…]} or {"action":"pdf","title":…,"sections":[…]}.',
   inputSchema: {
     type: "object",
-    properties: { action: { type: "string", enum: [...ACTIONS], description: "call, pdf, docx, pptx, xlsx, file, image, open, recipes, api, skill, help, files, read, search, look, regions, crop, editpdf, find, attach, or batch (several requests in one call: {\"action\":\"batch\",\"requests\":[…]})" } },
+    // A call's own fields are named too: a model that fills arguments from the schema (Gemini) otherwise left "fn" out of
+    // calls now and then, and each such call cost a round trip to correct.
+    properties: {
+      action: { type: "string", enum: [...ACTIONS], description: "call, pdf, docx, pptx, xlsx, file, image, open, recipes, api, skill, help, files, read, search, look, regions, crop, editpdf, find, attach, or batch (several requests in one call: {\"action\":\"batch\",\"requests\":[…]})" },
+      module: { type: "string", description: "For call: the module, e.g. \"clem\" or \"diagram/circuit_schematic\" (required with call). For api: the module to describe." },
+      fn: { type: "string", description: "For call: the function in that module, e.g. \"solveCircuit\" (required with call)." },
+      args: { type: "array", items: {}, description: "For call: the function's arguments in order, e.g. [model] (required with call)." },
+    },
     required: ["action"],
     additionalProperties: true,
   },

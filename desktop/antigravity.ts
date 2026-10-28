@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {extname, join, relative, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {AcpClosed, AcpConnection, AcpError} from './acp.ts';
+import {endTreeNow} from './agent-sweep.ts';
 import type {AntigravityEngine} from './antigravity-engine.ts';
 import {inlinePictures, keepingAlive, kinetraMcp, NATIVE_NOTE, SERVER_NAME, type NativeEndpoint} from './kinetra-mcp.ts';
 import {SessionLost, Transient, UsageLimit} from './kinetra-turn.ts';
@@ -733,8 +734,10 @@ export class AntigravityProvider {
     const run = this.active.get(id);
     if (run?.session) void this.live?.then((live) => live.acp.notify('session/cancel', {sessionId: run.session}), () => {});
   }
+  /** Ends every agent of this account at once (Clem is quitting or signing out). taskkill must reach the launcher while
+   *  it still runs: once Clem's pipes close it leaves on its own, and the agent it started would be left running. */
   stop() {
-    for (const live of this.processes) this.kill(live);
+    for (const live of this.processes) { clearTimeout(live.idle); endTreeNow(live.child); }
     this.live = null; this.loginChild = null; this.probe = null;
   }
 }

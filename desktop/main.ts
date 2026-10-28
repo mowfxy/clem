@@ -67,6 +67,7 @@ import {ClaudeProvider,claudeOpensPdfPages} from './claude';
 import {GrokProvider,grokModels,grokPdfPath,grokUsage,GROK_PREFIX} from './grok';
 import {AntigravityProvider,antigravityModels,antigravityPdfPath,googleSignInUrl,ANTIGRAVITY_PREFIX} from './antigravity';
 import {AntigravityEngine} from './antigravity-engine';
+import {endOrphanedAgents} from './agent-sweep';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
@@ -324,6 +325,8 @@ void app.whenReady().then(async () => {
   // Google's Antigravity agent, installed once for every account; each account keeps its own sign-in folder (its GEMINI_HOME),
   // Clem's own, never the folder of an Antigravity app the person also uses.
   const antigravityEngine=new AntigravityEngine(local);
+  // Agents a closed Clem left running (desktop/agent-sweep.ts) are ended once Clem has started, out of the way of the first answer.
+  setTimeout(()=>void endOrphanedAgents(join(local,'engines','antigravity')),20_000).unref();
   const antigravityFolder=(owner:string,id:string)=>id==='default'?join(local,owner,'antigravity'):join(local,owner,'antigravity-accounts',id);
   const antigravities=antigravityAccounts=new CliAccounts<AntigravityProvider>('antigravity',vault,{
     make:(owner,id)=>new AntigravityProvider(antigravityFolder(owner,id),antigravityEngine),
