@@ -95,6 +95,52 @@ body .v2 .spec-steps,body .v2 .visual-body{border-top-color:#222220}
   body .visual-engine.v2:hover .visual-exports,body .visual-engine.v2:focus-within .visual-exports{opacity:1;transform:none}
 }
 body .v2 .visual-exports{border-top-color:#222220}
+/* Downloads: one icon in the heading opens a small menu, so the card ends on its caption instead of a row of buttons. */
+body .v2 .visual-menu-host{position:relative}
+body .v2 .visual-menu{position:absolute;z-index:5;top:calc(100% + 6px);right:0;min-width:180px;display:grid;padding:5px;border-radius:12px;background:#222220;box-shadow:0 0 0 1px #ffffff14,0 12px 32px #0009;animation:pm-menu .18s var(--pm-ease)}
+body .v2 .visual-menu button{display:flex;justify-content:space-between;align-items:center;gap:16px;height:34px;padding:0 10px;border-radius:8px;font:400 13px/1 var(--sans);color:#e4e3dd;text-align:left}
+body .v2 .visual-menu button span{font-size:11px;letter-spacing:.04em;color:#7d7c76}
+body .v2 .visual-menu button:hover,body .v2 .visual-menu button:focus-visible{background:#ffffff0f;outline:none}
+@keyframes pm-menu{from{opacity:0;transform:translateY(-4px)}}
+body .v2 .visual-exports.visual-status{opacity:1;transform:none;padding:10px 20px}
+body .v2 .visual-caption{padding:13px 20px 15px;font-size:12px;line-height:1.5;color:#8f8e88}
+/* The caption stays on narrow screens too; hiding its text there left an empty strip at the bottom of the card. */
+@media(max-width:700px){body .v2 .visual-caption span:not(.visual-equation){display:inline}}
+body .v2 .visual-controls .visual-reset{justify-self:start;display:inline-flex;align-items:center;gap:6px;height:28px;margin:-6px 0 -4px -8px;padding:0 8px;border-radius:7px;font:400 12px/1 var(--sans);color:#8f8e88}
+body .v2 .visual-controls .visual-reset:hover{background:#ffffff0d;color:#f2f1ec}
+/* Controls: a filled track shows where the value sits in its range; the thumb is a plain disc. */
+body .v2 .visual-controls{gap:18px;padding:18px 20px}
+body .v2 .visual-controls label{gap:10px;font-size:12.5px;color:#a9a8a2}
+body .v2 .visual-control-label output,body .v2 .visual-readouts dd{font-variant-numeric:lining-nums proportional-nums}
+body .v2 .visual-control-label output{font-size:13px;color:var(--v-ink)}
+body .v2 .visual-controls input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:2px;background:linear-gradient(90deg,#d6d5cf var(--fill,0%),#34342f var(--fill,0%))}
+body .v2 .visual-controls input[type=range]::-webkit-slider-thumb{width:14px;height:14px;margin-top:-6px;background:#f2f1ec;box-shadow:0 0 0 3px #191918}
+body .v2 .visual-controls input[type=range]:hover::-webkit-slider-thumb{box-shadow:0 0 0 3px #191918,0 0 0 5px #f2f1ec26}
+body .v2 .visual-controls input[type=range],body .v2 .visual-controls input[type=range]:focus{outline:none}
+body .v2 .visual-controls input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px #191918,0 0 0 5px #8197e2}
+/* The key: a small chip in the graph's corner showing its colours; it opens into what each colour names. */
+body .v2 .visual-key{position:absolute;top:10px;right:10px;z-index:2;display:grid;justify-items:end;gap:6px;max-width:min(320px,calc(100% - 20px))}
+body .v2 .visual-key-toggle{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 11px 0 9px;border-radius:999px;background:#1d1d1bf2;box-shadow:0 0 0 1px #ffffff17,0 4px 14px #0006;color:#d6d5cf;font:500 12.5px/1 var(--sans);cursor:pointer;transition:background .2s,color .2s}
+body .v2 .visual-key-toggle:hover,body .v2 .visual-key.open .visual-key-toggle{background:#262624f5;color:#f2f1ec}
+body .v2 .visual-key-dots{display:inline-flex}
+body .v2 .visual-key-dots i{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 2px #1d1d1b}
+body .v2 .visual-key-dots i+i{margin-left:-3px}
+body .v2 .visual-key-list{margin:0;padding:8px 4px;list-style:none;display:grid;gap:2px;border-radius:12px;background:#1d1d1bf5;box-shadow:0 0 0 1px #ffffff14,0 12px 32px #0009;animation:pm-menu .18s var(--pm-ease)}
+body .v2 .visual-key-list li{display:flex;align-items:center;gap:10px;padding:5px 10px;font:400 13px/1.35 var(--sans);color:#e4e3dd}
+body .v2 .visual-key-mark{flex:none;width:22px;height:12px;position:relative}
+body .v2 .visual-key-mark.line::before,body .v2 .visual-key-mark.dash::before{content:"";position:absolute;left:0;right:0;top:5px;border-top:2.5px solid var(--c)}
+body .v2 .visual-key-mark.dash::before{border-top-style:dashed}
+body .v2 .visual-key-mark.area{border-radius:3px;background:color-mix(in srgb,var(--c) 30%,transparent);box-shadow:inset 0 2px 0 var(--c)}
+body .v2 .visual-key-mark.point::before{content:"";position:absolute;left:6px;top:1px;width:10px;height:10px;border-radius:50%;background:var(--c)}
+body .v2 .visual-key-mark.note::before{content:"";position:absolute;left:4px;right:4px;top:5px;border-top:1.5px dotted #8f8e88}
+/* Readouts: the number is the point, its label a quiet line above it. */
+body .v2 .visual-readouts{padding:18px 20px;gap:16px 20px;border-left-color:#222220}
+body .v2 .visual-readouts dt{font-size:11.5px;letter-spacing:0;color:#7d7c76;margin-bottom:5px;white-space:normal}
+body .v2 .visual-readouts dd{font:400 22px/1.1 var(--sans);letter-spacing:-.01em;color:#f2f1ec}
+/* Save sits in the heading as a quiet control, not a bordered button. */
+body .visual-frame .visual-save{border-color:transparent;background:transparent;backdrop-filter:none;color:#a9a8a2;opacity:1}
+body .visual-frame .visual-save:hover,body .visual-frame .visual-save:focus-visible{background:#ffffff0d;border-color:transparent;color:#f2f1ec}
+body .visual-frame .visual-save .drawn-icon{color:currentColor}
 @keyframes pm-visual{from{opacity:0;transform:translateY(10px) scale(.99)}}
 
 /* ---------- Space lists ---------- */

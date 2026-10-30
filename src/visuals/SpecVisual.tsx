@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import 'katex/contrib/mhchem';
@@ -37,6 +37,15 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
   const use3d = !!visual.scene3d && !flat, figure = visual.figure;
   const figHost = useRef<HTMLDivElement>(null), film = useRef<HTMLCanvasElement | null>(null), filming = useRef(false);
   const [recording, setRecording] = useState(false), [note, setNote] = useState('');
+  // Downloads live behind one icon in the heading; the menu closes on a click elsewhere or Escape.
+  const [menu, setMenu] = useState(false), menuHost = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: PointerEvent) => { if (!menuHost.current?.contains(e.target as Node)) setMenu(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    document.addEventListener('pointerdown', away); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [menu]);
   // Gradient ids are per card, so two figures on one page never share them.
   const prefix = useMemo(() => 'f' + Math.random().toString(36).slice(2, 8), [visual]);
   const focusOf = (s?: number) => (s !== undefined && spec.steps?.[s]?.focus ? new Set(spec.steps[s].focus) : null);
@@ -53,7 +62,8 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
     if (!watched || (!use3d && !figure && !ctx)) return;
     const pen = ctx ? new CanvasPen(ctx, undefined, ink) : null;
     let raf = 0, last = 0, visible = true, lastReadout = 0;
-    const resize = () => { if (!el) return; const dpr = Math.min(devicePixelRatio || 1, 2), w = el.clientWidth; el.width = Math.round(w * dpr); el.height = Math.round(w * H / W * dpr); dirty.current = true; };
+    // Text is drawn larger when the card is narrower than the drawing, so it shows at its intended size on screen.
+    const resize = () => { if (!el) return; const dpr = Math.min(devicePixelRatio || 1, 2), w = el.clientWidth; el.width = Math.round(w * dpr); el.height = Math.round(w * H / W * dpr); if (pen && w) pen.textScale = Math.min(1.45, Math.max(1, W / w)); dirty.current = true; };
     const frame = (now: number) => {
       // While filming, frames keep coming even if the card is scrolled out of view; otherwise the loop sleeps until it is back.
       if ((!visible || document.hidden) && !filming.current) { raf = 0; last = 0; return; }
@@ -86,13 +96,13 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
   }, [visual, playing, rate, moving, looped, use3d, ink]);
   useEffect(() => { if (!moving || !playing) setReadouts(visual.readouts(values, local())); }, [values]);
 
-  const svg = () => { if (figure) return figureSvg(values, local(), step); const pen = new SvgPen(ink); visual.draw(pen, values, local(), step); return pen.toString(spec.title); };
+  const svg = () => { if (figure) return figureSvg(values, local(), step); const pen = new SvgPen(ink); pen.keyed = true; visual.draw(pen, values, local(), step); return pen.toString(spec.title); };
   // An export that fails says so beside the buttons instead of doing nothing.
   const exportFailed = (e: unknown) => setNote(`That export did not finish${(e as Error)?.message ? ': ' + (e as Error).message : ''}. Try again.`);
   const png = () => {
     setNote('');
     if (figure) { const out = svg(), m = /viewBox="0 0 (\d+) (\d+)"/.exec(out), c = document.createElement('canvas'); c.width = (m ? +m[1] : 760) * 2; c.height = (m ? +m[2] : 460) * 2; void paintSvg(c, standardFonts(out)).then(() => c.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png')).catch(exportFailed); return; }
-    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); return; } const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = ink(C.bg); ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); visual.draw(new CanvasPen(ctx, exportFonts, ink), values, local(), step); off.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png'); };
+    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); return; } const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = ink(C.bg); ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); const out = new CanvasPen(ctx, exportFonts, ink); out.keyed = true; visual.draw(out, values, local(), step); off.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png'); };
   // Films the visual as it plays: animations from the start for one loop, still 3D models as a turntable.
   const canFilm = (moving || use3d) && !!videoFormat();
   const video = async () => {
@@ -108,9 +118,12 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
       if (result) await downloadMade(result.blob, `${fileName(spec.title)}.${result.ext}`);
     } catch (e) { setNote((e as Error).message); } finally { filming.current = false; setRecording(false); }
   };
+  // The key: nothing is written on a plot, so what each colour names is shown here, folded until asked for.
+  const key = useMemo(() => visual.legend(values, 0), [visual, values]);
+  const [keyOpen, setKeyOpen] = useState(false);
   const current = step !== undefined ? steps[step] : undefined;
   const hasSide = params.length > 0 || readouts.length > 0;
-  const kindLabel = useMemo(() => spec.subject || (spec.kind === 'chart' ? 'Chart' : spec.kind === 'diagram' ? 'Diagram' : spec.kind === '3d' ? '3D model' : spec.kind === 'figure' ? 'Figure' : 'Model'), [spec]);
+  const kindLabel = useMemo(() => spec.subject || (spec.kind === 'chart' ? 'Chart' : spec.kind === 'diagram' ? 'Diagram' : spec.kind === '3d' ? '3D model' : spec.kind === 'figure' ? 'Figure' : params.length ? 'Interactive graph' : 'Graph'), [spec]);
 
   return <section className={`visual-engine v2 spec-visual ${compact ? 'compact' : ''} ${hasSide ? '' : 'no-side'}`} aria-label={`Interactive visual: ${spec.title}`}>
     <header className="visual-heading">
@@ -122,6 +135,15 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
           <button className="visual-icon" aria-label="Restart" aria-description="Restart" onClick={() => { time.current = 0; dirty.current = true; setPlaying(true); }}><Icon name="restart" size={16} /></button>
           <button className="visual-rate" aria-label={`Playback speed ${rate}×`} aria-description="Playback speed" onClick={() => setRate(rate === 1 ? 2 : rate === 2 ? 0.5 : 1)}>{rate}×</button>
         </>}
+        {!compact && <div className="visual-menu-host" ref={menuHost}>
+          <button className="visual-icon" aria-label="Download" aria-description="Download" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="download" size={16} /></button>
+          {menu && <div className="visual-menu" role="menu" onClick={() => setMenu(false)}>
+            <button role="menuitem" onClick={png}>Image <span>PNG</span></button>
+            <button role="menuitem" onClick={() => { setNote(''); void downloadMade(new Blob([standardFonts(svg())], { type: 'image/svg+xml' }), `${fileName(spec.title)}.svg`).catch(exportFailed); }}>Vector <span>SVG</span></button>
+            <button role="menuitem" onClick={() => { setNote(''); void import('../visual-pdf').then(m => m.exportDiagramPdf(standardFonts(svg()), `${fileName(spec.title)}.pdf`)).catch(exportFailed); }}>Document <span>PDF</span></button>
+            {canFilm && <button role="menuitem" onClick={() => void video()} disabled={recording}>{recording ? 'Recording…' : 'Video'} <span>{videoFormat()?.ext.toUpperCase()}</span></button>}
+          </div>}
+        </div>}
         {headerAction}
       </div>
     </header>
@@ -129,6 +151,13 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
       {use3d && visual.scene3d ? <Suspense fallback={<div className="visual-canvas-fallback">Building the 3D scene…</div>}><Spec3D scene={visual.scene3d} light={ink !== darkInk} clock={clock} handle={view3d} label={visual.describe()} onError={() => setFlat(true)} /><span className="visual-hint-3d">Drag to orbit · scroll to zoom</span></Suspense>
         : figure ? <div ref={figHost} className="visual-figure" role="img" aria-label={visual.describe()} />
         : <canvas ref={canvas} className="visual-canvas" role="img" aria-label={visual.describe()} />}
+      {key.length > 0 && <div className={`visual-key ${keyOpen ? 'open' : ''}`}>
+        <button type="button" className="visual-key-toggle" aria-expanded={keyOpen} aria-label={keyOpen ? 'Hide key' : 'Show key'} onClick={() => setKeyOpen(!keyOpen)}>
+          <span className="visual-key-dots" aria-hidden="true">{[...new Set(key.filter(k => k.mark !== 'note').map(k => k.color))].slice(0, 4).map(c => <i key={c} style={{ background: ink(c) }} />)}</span>
+          Key
+        </button>
+        {keyOpen && <ul className="visual-key-list">{key.map(k => <li key={k.label}><span className={`visual-key-mark ${k.mark}`} style={{ '--c': ink(k.color) } as CSSProperties} aria-hidden="true" />{k.label}</li>)}</ul>}
+      </div>}
     </div>
     {moving && looped && <input className="visual-scrub" type="range" min="0" max="1000" value={Math.round(progress * 1000)} aria-label="Timeline" onChange={e => { setPlaying(false); time.current = +e.target.value / 1000 * visual.period; dirty.current = true; setProgress(+e.target.value / 1000); }} />}
     {steps.length > 0 && <div className="spec-steps">
@@ -140,18 +169,12 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
       <div className="spec-step-text" aria-live="polite">{current ? <><strong>{current.title}</strong>{current.text && <p>{current.text}</p>}</> : <p className="spec-step-hint">Step through it — {steps.length} {steps.length === 1 ? 'stage' : 'stages'}.</p>}</div>
     </div>}
     {hasSide && <div className="visual-body">
-      {params.length > 0 && <div className="visual-controls">{params.map(p => <label key={p.key}><span className="visual-control-label">{p.label}<output>{Number(values[p.key].toFixed(6))}{p.unit && ` ${p.unit}`}</output></span><input type="range" min={p.min} max={p.max} step={p.step} value={values[p.key]} onChange={e => setValues(v => ({ ...v, [p.key]: +e.target.value }))} /></label>)}</div>}
+      {params.length > 0 && <div className="visual-controls">{params.map(p => <label key={p.key}><span className="visual-control-label">{p.label}<output>{Number(values[p.key].toFixed(6))}{p.unit && ` ${p.unit}`}</output></span><input type="range" min={p.min} max={p.max} step={p.step} value={values[p.key]} style={{ '--fill': `${((values[p.key] - p.min) / (p.max - p.min || 1)) * 100}%` } as CSSProperties} onChange={e => setValues(v => ({ ...v, [p.key]: +e.target.value }))} /></label>)}
+        {params.some(p => values[p.key] !== p.value) && <button type="button" className="visual-reset" onClick={() => setValues(defaultValues(visual))}><Icon name="restart" size={14} /> Reset</button>}</div>}
       {readouts.length > 0 && <dl className="visual-readouts">{readouts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
     </div>}
     {(spec.equation || spec.caption) && <footer className="visual-caption">{spec.equation && <Equation source={spec.equation} />}{spec.caption && <span>{spec.caption}</span>}</footer>}
-    {!compact && <div className="visual-exports">
-      <button onClick={png}><Icon name="download" size={16} /> Image</button>
-      <button onClick={() => { setNote(''); void downloadMade(new Blob([standardFonts(svg())], { type: 'image/svg+xml' }), `${fileName(spec.title)}.svg`).catch(exportFailed); }}>SVG</button>
-      {canFilm && <button onClick={() => void video()} disabled={recording} aria-busy={recording}><Icon name="playhead" size={16} /> {recording ? 'Recording…' : 'Video'}</button>}
-      <button onClick={() => { setNote(''); void import('../visual-pdf').then(m => m.exportDiagramPdf(standardFonts(svg()), `${fileName(spec.title)}.pdf`)).catch(exportFailed); }}>PDF</button>
-      {note && <span className="visual-note" role="status">{note}</span>}
-      {params.length > 0 && <button className="visual-reset" onClick={() => setValues(defaultValues(visual))}>Reset values</button>}
-    </div>}
+    {!compact && (note || recording) && <div className="visual-exports visual-status"><span className="visual-note" role="status">{recording ? 'Recording the video…' : note}</span></div>}
   </section>;
 }
 

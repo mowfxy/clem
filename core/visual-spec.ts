@@ -14,13 +14,16 @@ const figureViewSchema = z.object({ x: figureSpan.optional(), y: figureSpan.opti
 /* ── Drawing surface, shared with src/visuals/pen.ts ── */
 export type P = [number, number];
 export type Style = { stroke?: string; fill?: string; width?: number; dash?: number[]; alpha?: number };
-export type TextStyle = { size?: number; color?: string; align?: 'start' | 'middle' | 'end'; serif?: boolean; weight?: number; alpha?: number };
-export interface Pen { readonly w: number; readonly h: number; path(points: P[], style: Style, closed?: boolean): void; circle(x: number, y: number, r: number, style: Style): void; text(x: number, y: number, value: string, style?: TextStyle): void }
+export type TextStyle = { size?: number; color?: string; align?: 'start' | 'middle' | 'end'; serif?: boolean; weight?: number; alpha?: number; ui?: boolean };
+export interface Pen { readonly w: number; readonly h: number; textScale?: number; keyed?: boolean; path(points: P[], style: Style, closed?: boolean): void; circle(x: number, y: number, r: number, style: Style): void; text(x: number, y: number, value: string, style?: TextStyle): void }
 export const W = 800, H = 440;
 export const palette = { bg: '#161615', panel: '#1d1d1b', grid: '#242422', axis: '#4a4a45', ink: '#f0efeb', soft: '#a3a3a0', faint: '#6f6e68', blue: '#8197e2', coral: '#d87968', green: '#8fbf98', amber: '#d9b36c', violet: '#b49ddb', hot: '#262624', shadow: '#0a0a09' };
 const tones = ['ink', 'blue', 'coral', 'green', 'amber', 'violet', 'soft'] as const;
 type Tone = typeof tones[number];
 const tone = (value: unknown, fallback: Tone = 'ink') => palette[(tones as readonly string[]).includes(value as string) ? value as Tone : fallback];
+/** Plots use brighter, graphing-calculator colours for curves and regions, so a curve reads at a glance; ink and soft stay. */
+export const vivid = { blue: '#5b9cf5', coral: '#f2735f', green: '#4fbf73', amber: '#f5a14a', violet: '#a98af5' } as const;
+const vividTone = (value: unknown, fallback: Tone = 'ink') => { const name = (tones as readonly string[]).includes(value as string) ? value as Tone : fallback; return name in vivid ? vivid[name as keyof typeof vivid] : palette[name]; };
 const series = ['blue', 'coral', 'green', 'amber', 'violet'] as const;
 
 /* ── Schema ── */
@@ -66,6 +69,11 @@ export const visualSpecSchema = z.object({
 export type VisualSpec = z.infer<typeof visualSpecSchema>;
 
 export type SpecParam = { key: string; label: string; min: number; max: number; step: number; unit: string; value: number };
+/** How a key entry is drawn: a stroke, a dashed stroke, a tinted region, a dot, or a plain note. */
+export type KeyMark = 'line' | 'dash' | 'area' | 'point' | 'note';
+export type KeyItem = { label: string; color: string; mark: KeyMark };
+/** A key is only worth opening when its colours tell things apart: one colour (a domain and its boundary) needs none. */
+const showKey = (key: KeyItem[]) => (new Set(key.filter(k => k.mark !== 'note' && k.mark !== 'point').map(k => k.color)).size >= 2 ? key : []);
 export type CompiledVisual = {
   spec: VisualSpec;
   params: SpecParam[];
@@ -79,6 +87,8 @@ export type CompiledVisual = {
   figure?: CompiledFigure;
   draw(pen: Pen, values: Vars, t: number, step?: number): void;
   readouts(values: Vars, t: number): [string, string][];
+  /** A plot's key: what each colour on it names. Empty when there is nothing to tell apart. */
+  legend(values: Vars, t: number): KeyItem[];
   describe(): string;
 };
 
@@ -270,6 +280,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
   const c = (v: number | string, extra: string[] = []) => { let f: Compiled; try { f = numeric(v, [...base, ...extra]); } catch (e) { throw Error(`A formula in the visual could not be read: ${(e as Error).message} in “${String(v).slice(0, 60)}”.`); } exprs.push(f); return f; };
   const readouts = (spec.readouts || []).map(r => ({ ...r, fn: c(r.expr) }));
   let draw: CompiledVisual['draw'];
+  let legend: CompiledVisual['legend'] = () => [], lastKey: KeyItem[] = [];
   let hasFlow = false;
   let scene3d: Compiled3D | undefined;
   let figure: CompiledFigure | undefined;
@@ -312,86 +323,67 @@ export function compileVisual(raw: unknown): CompiledVisual {
       if (!(y1 > y0)) [y0, y1] = [Math.min(y0, y1) || 0, Math.max(y0, y1) || 1];
       if (!(x1 > x0)) x1 = x0 + 1;
       if (!(y1 > y0)) y1 = y0 + 1;
-      const b = { l: 66, r: W - 26, t: 30, b: H - 50 };
-      let sx = (b.r - b.l) / (x1 - x0), sy = (b.b - b.t) / (y1 - y0);
-      if (spec.equal) { const s = Math.min(sx, sy); b.r = b.l + s * (x1 - x0); b.t = b.b - s * (y1 - y0); sx = sy = s; const dx = (W - 26 - b.r) / 2; b.l += dx; b.r += dx; }
+      const tone = vividTone;
+      // Text is sized for the screen, not the drawing: a plot shown narrower than W draws its text larger to match.
+      const ts = pen.textScale ?? 1, fs = (n: number) => n * ts;
+      // The plot fills the whole stage, edge to edge, the way a graphing calculator shows the plane.
+      const b = { l: 0, r: W, t: 0, b: H };
+      // An equal-scale plot keeps its range centred and widens the short side to fill the stage, so it is never a small
+      // square in a wide frame. A curve or region drawn across the whole asked-for range runs across the wider view too.
+      const ox0 = x0, ox1 = x1;
+      if (spec.equal) {
+        const s = Math.min(W / (x1 - x0), H / (y1 - y0)), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        x0 = cx - W / s / 2; x1 = cx + W / s / 2; y0 = cy - H / s / 2; y1 = cy + H / s / 2;
+      }
+      const widen = (x: number) => (Math.abs(x - ox0) < 1e-9 * (1 + Math.abs(ox0)) ? x0 : Math.abs(x - ox1) < 1e-9 * (1 + Math.abs(ox1)) ? x1 : x);
+      const sx = W / (x1 - x0), sy = H / (y1 - y0);
       const X = (x: number) => b.l + (x - x0) * sx, Y = (y: number) => b.b - (y - y0) * sy;
       const inside = (y: number) => y > b.t - 400 && y < b.b + 400;
-      // Grid and axes
-      const stepX = niceStep(x1 - x0, 8), stepY = niceStep(y1 - y0, 6), dX = Math.max(0, -Math.floor(Math.log10(stepX))), dY = Math.max(0, -Math.floor(Math.log10(stepY)));
+      // Grid: faint major lines with a fainter minor grid between them; axes in a firmer grey; numbers along the axes.
+      const stepX = niceStep(x1 - x0, 10), stepY = niceStep(y1 - y0, 6), dX = Math.max(0, -Math.floor(Math.log10(stepX))), dY = Math.max(0, -Math.floor(Math.log10(stepY)));
+      // An axis off the plot pins its numbers to the nearest edge.
+      const ax = Math.min(Math.max(X(0), b.l), b.r), ay = Math.min(Math.max(Y(0), b.t), b.b);
+      const minus = (s: string) => s.replace(/^-/, '−');
       // Tick loops are capped: on a narrow range far from zero (2e18 to 2e18+1024) the step is below the
       // numbers' precision, so `x += step` never moves and an uncapped loop would freeze the page.
-      for (let i = 0, x = Math.ceil(x0 / stepX) * stepX; i < 100 && x <= x1 + stepX * 1e-6; i++, x += stepX) {
-        if (spec.grid !== false) pen.path([[X(x), b.t], [X(x), b.b]], { stroke: palette.grid, width: 1 });
-        pen.text(X(x), b.b + 18, fmt(x, dX), { size: 10.5, color: palette.faint, align: 'middle' });
+      const ticks = (lo: number, hi: number, step: number) => { const out: number[] = []; for (let i = 0, x = Math.ceil(lo / step) * step; i < 100 && x <= hi + step * 1e-6; i++, x += step) out.push(x); return out; };
+      const xTicks = ticks(x0, x1, stepX), yTicks = ticks(y0, y1, stepY);
+      if (spec.grid !== false) {
+        for (const x of ticks(x0, x1, stepX / 5)) pen.path([[X(x), b.t], [X(x), b.b]], { stroke: palette.ink, width: 1, alpha: 0.035 });
+        for (const y of ticks(y0, y1, stepY / 5)) pen.path([[b.l, Y(y)], [b.r, Y(y)]], { stroke: palette.ink, width: 1, alpha: 0.035 });
+        for (const x of xTicks) pen.path([[X(x), b.t], [X(x), b.b]], { stroke: palette.ink, width: 1, alpha: 0.08 });
+        for (const y of yTicks) pen.path([[b.l, Y(y)], [b.r, Y(y)]], { stroke: palette.ink, width: 1, alpha: 0.08 });
       }
-      for (let i = 0, y = Math.ceil(y0 / stepY) * stepY; i < 100 && y <= y1 + stepY * 1e-6; i++, y += stepY) {
-        if (spec.grid !== false) pen.path([[b.l, Y(y)], [b.r, Y(y)]], { stroke: palette.grid, width: 1 });
-        pen.text(b.l - 9, Y(y) + 4, fmt(y, dY), { size: 10.5, color: palette.faint, align: 'end' });
-      }
-      const ax = x0 <= 0 && x1 >= 0 ? X(0) : b.l, ay = y0 <= 0 && y1 >= 0 ? Y(0) : b.b;
-      pen.path([[b.l, ay], [b.r, ay]], { stroke: palette.axis, width: 1.4 });
-      pen.path([[ax, b.t], [ax, b.b]], { stroke: palette.axis, width: 1.4 });
-      if (spec.x?.label) pen.text(b.r, b.b + 38, spec.x.label, { size: 11, color: palette.faint, align: 'end' });
-      if (spec.y?.label) pen.text(b.l - 9, b.t - 14, spec.y.label, { size: 11, color: palette.faint });
+      if (X(0) >= b.l && X(0) <= b.r) pen.path([[ax, b.t], [ax, b.b]], { stroke: palette.soft, width: 1.5, alpha: 0.7 });
+      if (Y(0) >= b.t && Y(0) <= b.b) pen.path([[b.l, ay], [b.r, ay]], { stroke: palette.soft, width: 1.5, alpha: 0.7 });
+      // Numbers sit just below the x axis and just left of the y axis, plain, drawn over the curves.
+      const tick = fs(12), tickStyle = { size: tick, color: palette.soft, ui: true } as const;
+      // Drawn after the curves (see the end of draw), so a curve never runs over the digits.
+      const nx = Math.min(ay + 5 + tick, b.b - 6), numbers: (() => void)[] = [], plotPen = pen;
+      const number = (x: number, y: number, label: string, align: 'start' | 'middle' | 'end') => { numbers.push(() => plotPen.text(x, y, label, { ...tickStyle, align })); };
+      for (const x of xTicks) if (!(Math.abs(x) < stepX * 1e-6 || X(x) < b.l + 12 || X(x) > b.r - 12)) number(X(x), nx, minus(fmt(x, dX)), 'middle');
+      const left = ax - 7 < b.l + 30, nyx = left ? ax + 6 : ax - 6;
+      for (const y of yTicks) if (!(Math.abs(y) < stepY * 1e-6 || Y(y) < b.t + 12 || Y(y) > b.b - 12)) number(nyx, Y(y) + tick * 0.36, minus(fmt(y, dY)), left ? 'start' : 'end');
+      if (X(0) >= b.l && X(0) <= b.r && Y(0) >= b.t && Y(0) <= b.b) number(ax - 6, nx, '0', 'end');
+      // Axis names in the corners they point to, small and quiet.
+      const name = fs(13);
+      if (spec.x?.label) pen.text(b.r - 10, Math.max(ay - 8, b.t + name + 6), spec.x.label, { size: name, weight: 500, color: palette.soft, align: 'end', ui: true });
+      if (spec.y?.label) pen.text(Math.min(ax + 8, b.r - textWidth(spec.y.label, name) - 10), b.t + name + 6, spec.y.label, { size: name, weight: 500, color: palette.soft, ui: true });
       const clipY = (y: number) => Math.max(b.t - 2, Math.min(b.b + 2, y));
       let legend = 0;
-      // Curve labels are placed once every curve is drawn, clear of the ink and of each other: a label never sits on a
-      // line or on another label. Ink is kept as a set of 4 px cells the strokes pass through.
-      const inkCells = new Set<number>(), cell = (x: number, y: number) => Math.floor(x / 4) * 4096 + Math.floor(y / 4);
-      const mark = (x: number, y: number) => inkCells.add(cell(x, y));
-      const plotPen = pen;
-      pen = {
-        w: plotPen.w, h: plotPen.h,
-        path(points, s, closed) {
-          if (s.stroke) for (let k = 1; k < points.length + (closed ? 1 : 0); k++) {
-            const [ax2, ay2] = points[k - 1], [bx, by] = points[k % points.length], steps = Math.max(1, Math.ceil(Math.hypot(bx - ax2, by - ay2) / 3));
-            for (let m = 0; m <= steps; m++) mark(ax2 + (bx - ax2) * m / steps, ay2 + (by - ay2) * m / steps);
-          }
-          plotPen.path(points, s, closed);
-        },
-        circle(x, y, r, s) { for (let dx = -r; dx <= r; dx += 3) for (let dy = -r; dy <= r; dy += 3) if (dx * dx + dy * dy <= r * r) mark(x + dx, y + dy); plotPen.circle(x, y, r, s); },
-        text: (x, y, value, s) => plotPen.text(x, y, value, s),
-      };
-      type Box = [number, number, number, number];
-      const placed: Box[] = [], pending: { label: string; anchors: P[]; col: string; along: boolean }[] = [];
-      const offsets: [number, number, 'start' | 'end' | 'middle'][] = [[8, -8, 'start'], [8, 17, 'start'], [-8, -8, 'end'], [-8, 17, 'end'], [0, -12, 'middle'], [0, 24, 'middle'], [8, -24, 'start'], [-8, -24, 'end'], [8, 33, 'start'], [-8, 33, 'end']];
-      const boxAt = (label: string, px: number, py: number, [dx, dy, align]: typeof offsets[number]) => {
-        const w = textWidth(label, 12), x = px + dx, y = py + dy, left = align === 'start' ? x : align === 'end' ? x - w : x - w / 2;
-        return { x, y, align, box: [left, y - 12, left + w, y + 4] as Box };
-      };
-      const fits = (box: Box) => box[0] >= b.l + 2 && box[2] <= b.r - 2 && box[1] >= b.t + 2 && box[3] <= b.b - 2;
-      const onLabel = (box: Box) => placed.some(p => Math.min(p[2], box[2]) > Math.max(p[0], box[0]) - 4 && Math.min(p[3], box[3]) > Math.max(p[1], box[1]) - 4);
-      const inked = (box: Box) => { let n = 0; for (let x = box[0] - 2; x <= box[2] + 2; x += 4) for (let y = box[1] - 2; y <= box[3] + 2; y += 4) if (inkCells.has(cell(x, y))) n++; return n; };
-      const tag = (label: string | undefined, px: number, py: number, col: string) => { if (label) pending.push({ label, anchors: [[px, py]], col, along: false }); };
-      /** A label that may sit near any of several points of its curve (its end, or anywhere along a contour). */
-      const tagNear = (label: string | undefined, anchors: P[], col: string, along = false) => { if (label && anchors.length) pending.push({ label, anchors, col, along }); };
-      const placeLabels = () => {
-        for (const p of [...pending.filter(q => !q.along), ...pending.filter(q => q.along)]) {
-          let best: ReturnType<typeof boxAt> | undefined, score = -Infinity;
-          p.anchors.forEach(([px, py], i) => offsets.forEach((o, k) => {
-            const at = boxAt(p.label, px, py, o);
-            if (!fits(at.box) || onLabel(at.box)) return;
-            const cx = (at.box[0] + at.box[2]) / 2, cy = (at.box[1] + at.box[3]) / 2;
-            // Clear of ink first; then near its own point (an end label) or far from the other labels (a contour's).
-            const room = Math.min(300, ...placed.map(q => Math.hypot(cx - (q[0] + q[2]) / 2, cy - (q[1] + q[3]) / 2)));
-            const sc = -inked(at.box) * 1000 + (p.along ? room : -i * 2 - k);
-            if (sc > score) { score = sc; best = at; }
-          }));
-          if (!best) { const [px, py] = p.anchors[0]; best = boxAt(p.label, Math.min(Math.max(px, b.l + 10), b.r - 10), Math.min(Math.max(py, b.t + 20), b.b - 10), offsets[0]); }
-          placed.push(best.box);
-          plotPen.text(best.x, best.y, p.label, { size: 12, color: p.col, align: best.align });
-        }
-      };
+      // Nothing is written on the plot itself: every named curve, region, point and note goes into the key, which the
+      // card shows on demand. Each entry carries the colour and the mark it is drawn with.
+      const key: KeyItem[] = [];
+      const tag = (label: string | undefined, col: string, mark: KeyMark = 'line') => { if (label && !key.some(k => k.label === label)) key.push({ label, color: col, mark }); };
       for (const item of layers) {
         const l = item.l, col = tone(l.color, l.type === 'function' || l.type === 'parametric' || l.type === 'polar' || l.type === 'implicit' || l.type === 'points' ? series[legend % series.length] as Tone : 'ink');
         if (item.l.type === 'function' && 'f' in item && item.f) {
           legend++;
           const fl = item as { f: Compiled; from: Compiled | null; to: Compiled | null; l: Extract<typeof l, { type: 'function' }> };
-          const a = Math.max(x0, fl.from ? safeEval(fl.from, v) : x0), z1 = Math.min(x1, fl.to ? safeEval(fl.to, v) : x1);
+          const a = Math.max(x0, fl.from ? widen(safeEval(fl.from, v)) : x0), z1 = Math.min(x1, fl.to ? widen(safeEval(fl.to, v)) : x1);
           let run: P[] = [], last: P | null = null;
           const ends: P[] = [];
-          const flush = () => { if (run.length > 1) pen.path(run, { stroke: col, width: fl.l.width ?? 2.2, dash: fl.l.dash ? [5, 6] : undefined }); run = []; };
+          const flush = () => { if (run.length > 1) pen.path(run, { stroke: col, width: fl.l.width ?? 2.6, dash: fl.l.dash ? [9, 7] : undefined }); run = []; };
           // A curve that leaves the plot stops at the frame (cut where it crosses), never runs along it.
           let prev: P | null = null;
           const within = (y: number) => y >= b.t && y <= b.b;
@@ -408,7 +400,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
             prev = pt;
           }
           flush();
-          if (last) tagNear(fl.l.label, ends.slice().reverse().filter((_, k) => k % 4 === 0), col);
+          if (last) tag(fl.l.label, col, fl.l.dash ? 'dash' : 'line');
         } else if (l.type === 'parametric') {
           legend++;
           const pl = item as { fx: Compiled; fy: Compiled; from: Compiled; to: Compiled };
@@ -417,33 +409,38 @@ export function compileVisual(raw: unknown): CompiledVisual {
             const s = a + (z1 - a) * i / 400, x = safeEval(pl.fx, { ...v, s }), y = safeEval(pl.fy, { ...v, s });
             if (Number.isFinite(x) && Number.isFinite(y) && inside(Y(y))) pts.push([X(x), clipY(Y(y))]);
           }
-          pen.path(pts, { stroke: col, width: l.width ?? 2.2, dash: l.dash ? [5, 6] : undefined });
-          if (pts.length) tag(l.label, pts[pts.length - 1][0], pts[pts.length - 1][1], col);
+          pen.path(pts, { stroke: col, width: l.width ?? 2.6, dash: l.dash ? [9, 7] : undefined });
+          if (pts.length) tag(l.label, col, l.dash ? 'dash' : 'line');
         } else if (l.type === 'area') {
           const al = item as { f: Compiled; from: Compiled; to: Compiled; base: Compiled | null };
-          const a = Math.max(x0, safeEval(al.from, v)), z1 = Math.min(x1, safeEval(al.to, v));
+          const a = Math.max(x0, widen(safeEval(al.from, v))), z1 = Math.min(x1, widen(safeEval(al.to, v)));
           if (Number.isFinite(a) && Number.isFinite(z1) && z1 > a) {
             const top: P[] = [], bottom: P[] = [];
             for (let i = 0; i <= 200; i++) {
               const x = a + (z1 - a) * i / 200, y = safeEval(al.f, { ...v, x }), y2 = al.base ? safeEval(al.base, { ...v, x }) : 0;
               if (Number.isFinite(y) && Number.isFinite(y2)) { top.push([X(x), clipY(Y(y))]); bottom.unshift([X(x), clipY(Y(y2))]); }
             }
-            pen.path([...top, ...bottom], { fill: tone(l.color, 'blue'), alpha: 0.18 }, true);
-            if (l.label && top.length) pen.text((top[0][0] + top[top.length - 1][0]) / 2, (top[Math.floor(top.length / 2)][1] + bottom[Math.floor(bottom.length / 2)][1]) / 2, l.label, { size: 12, color: tone(l.color, 'blue'), align: 'middle' });
+            // A translucent wash of the region's colour; the grid still shows through it.
+            pen.path([...top, ...bottom], { fill: tone(l.color, 'blue'), alpha: 0.2 }, true);
+            tag(l.label, tone(l.color, 'blue'), 'area');
           }
         } else if (l.type === 'point') {
           const pl = item as { x: Compiled; y: Compiled }, px = safeEval(pl.x, v), py = safeEval(pl.y, v);
           if (Number.isFinite(px) && Number.isFinite(py)) {
-            const r = l.size ?? 6, cc = tone(l.color, 'coral');
-            pen.circle(X(px), Y(py), r * 2.2, { fill: cc, alpha: 0.13 }); pen.circle(X(px), Y(py), r, { fill: cc });
-            tag(l.label, X(px) + 4, Y(py), cc);
+            // Amber by default, so a point never shares its colour with the second curve (coral) it often sits on.
+            const r = l.size ?? 6, cc = tone(l.color, 'amber');
+            // A solid dot with a thin ring of background, so it sits clearly on top of the lines it touches.
+            pen.circle(X(px), Y(py), r + 2, { fill: palette.bg }); pen.circle(X(px), Y(py), r, { fill: cc });
+            // A short name on a point that moves carries its coordinates, so the picture reads like the readouts.
+            const moving = typeof l.x === 'string' || typeof l.y === 'string', trim = (n: number) => minus(fmt(n, 2).replace(/\.?0+$/, ''));
+            tag(l.label && moving && l.label.length <= 3 ? `${l.label} (${trim(px)}, ${trim(py)})` : l.label, cc, 'point');
           }
         } else if (l.type === 'vector') {
           const vl = item as { x: Compiled; y: Compiled; dx: Compiled; dy: Compiled }, px = safeEval(vl.x, v), py = safeEval(vl.y, v), dx = safeEval(vl.dx, v), dy = safeEval(vl.dy, v);
-          if ([px, py, dx, dy].every(Number.isFinite)) { const cc = tone(l.color, 'blue'); arrow(pen, X(px), Y(py), X(px + dx), Y(py + dy), { stroke: cc, width: 2.2 }, 10); if (l.label) pen.text(X(px + dx) + 7, Y(py + dy) - 4, l.label, { size: 13, color: cc, serif: true }); }
+          if ([px, py, dx, dy].every(Number.isFinite)) { const cc = tone(l.color, 'blue'); arrow(pen, X(px), Y(py), X(px + dx), Y(py + dy), { stroke: cc, width: 2.2 }, 10); tag(l.label, cc); }
         } else if (l.type === 'segment') {
           const sl = item as { x1: Compiled; y1: Compiled; x2: Compiled; y2: Compiled }, a = [safeEval(sl.x1, v), safeEval(sl.y1, v), safeEval(sl.x2, v), safeEval(sl.y2, v)];
-          if (a.every(Number.isFinite)) { const cc = tone(l.color, 'soft'); pen.path([[X(a[0]), Y(a[1])], [X(a[2]), Y(a[3])]], { stroke: cc, width: 1.5, dash: l.dash ? [4, 5] : undefined }); if (l.label) pen.text((X(a[0]) + X(a[2])) / 2 + 6, (Y(a[1]) + Y(a[3])) / 2 - 6, l.label, { size: 11.5, color: cc }); }
+          if (a.every(Number.isFinite)) { const cc = tone(l.color, 'soft'); pen.path([[X(a[0]), Y(a[1])], [X(a[2]), Y(a[3])]], { stroke: cc, width: 1.5, dash: l.dash ? [4, 5] : undefined }); tag(l.label, cc, l.dash ? 'dash' : 'line'); }
         } else if (l.type === 'circle') {
           const cl = item as { x: Compiled; y: Compiled; r: Compiled }, px = safeEval(cl.x, v), py = safeEval(cl.y, v), r = safeEval(cl.r, v);
           if ([px, py, r].every(Number.isFinite)) { const cc = tone(l.color, 'soft'), pts: P[] = []; for (let i = 0; i <= 90; i++) { const a = Math.PI * 2 * i / 90; pts.push([X(px + r * Math.cos(a)), Y(py + r * Math.sin(a))]); } pen.path(pts, l.fill ? { fill: cc, alpha: 0.2 } : { stroke: cc, width: 1.6 }, true); }
@@ -461,7 +458,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
             if (Number.isFinite(x) && Number.isFinite(y) && inside(Y(y))) pts.push([X(x), clipY(Y(y))]);
           }
           pen.path(pts, { stroke: col, width: l.width ?? 2.2, dash: l.dash ? [5, 6] : undefined });
-          if (pts.length) tag(l.label, pts[Math.floor(pts.length * 0.12)][0], pts[Math.floor(pts.length * 0.12)][1], col);
+          if (pts.length) tag(l.label, col, l.dash ? 'dash' : 'line');
         } else if (l.type === 'field') {
           // Arrows on a grid; length and brightness follow the magnitude, so strong and weak regions read at a glance.
           const fl = item as { dx: Compiled; dy: Compiled }, n = l.density ?? 16, cols = n, rows = Math.max(4, Math.round(n * (b.b - b.t) / (b.r - b.l)));
@@ -485,7 +482,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
             const level = safeEval(lv, v);
             if (!Number.isFinite(level)) return;
             const cc = il.levels.length > 1 ? tone(l.color, series[li % series.length] as Tone) : col;
-            const along: P[] = [];
+            const segs: [P, P][] = [];
             for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
               const a = grid[j * (nx + 1) + i] - level, b2 = grid[j * (nx + 1) + i + 1] - level, c2 = grid[(j + 1) * (nx + 1) + i + 1] - level, d = grid[(j + 1) * (nx + 1) + i] - level;
               if (![a, b2, c2, d].every(Number.isFinite)) continue;
@@ -494,31 +491,59 @@ export function compileVisual(raw: unknown): CompiledVisual {
               edge(a, b2, f => [px(i + f), py(j)]); edge(b2, c2, f => [px(i + 1), py(j + f)]); edge(c2, d, f => [px(i + 1 - f), py(j + 1)]); edge(d, a, f => [px(i), py(j + 1 - f)]);
               // A jump of sign across a pole (1/x) is not a contour.
               if (cross.length >= 2 && Math.max(Math.abs(a), Math.abs(b2), Math.abs(c2), Math.abs(d)) < 1e6) {
-                // The curve is drawn in pieces a cell long, so a dash pattern would restart on each and print solid:
-                // a dashed curve keeps the pieces on alternate squares of a 7 px checkerboard instead, in any direction.
-                const on = (p: P, q: P) => !l.dash || (Math.floor((p[0] + q[0]) / 14) + Math.floor((p[1] + q[1]) / 14)) % 2 === 0;
-                // The gaps of a dashed curve still count as ink, so no label is placed across the line.
-                const piece = (p: P, q: P) => { if (on(p, q)) pen.path([p, q], { stroke: cc, width: 2 }); else { mark(p[0], p[1]); mark((p[0] + q[0]) / 2, (p[1] + q[1]) / 2); mark(q[0], q[1]); } };
-                piece(cross[0], cross[1]);
-                if (cross.length === 4) piece(cross[2], cross[3]);
-                if ((i + j) % 3 === 0) along.push(cross[0]);
+                segs.push([cross[0], cross[1]]);
+                if (cross.length === 4) segs.push([cross[2], cross[3]]);
               }
             }
-            if (l.label) tagNear(il.levels.length > 1 ? `${l.label} = ${fmt(level, Math.abs(level) < 10 ? 2 : 0).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '').replace(/^-/, '−')}` : l.label, along, cc, true);
+            // The cell pieces are joined into whole curves (neighbouring cells share their crossing points), so a
+            // dashed curve gets one even dash pattern along its length instead of restarting in every cell.
+            const key = (p: P) => `${Math.round(p[0] * 20)},${Math.round(p[1] * 20)}`, ends = new Map<string, number[]>(), used = new Uint8Array(segs.length);
+            segs.forEach(([p, q], k) => { for (const e of [key(p), key(q)]) { const list = ends.get(e); if (list) list.push(k); else ends.set(e, [k]); } });
+            const next = (at: P) => (ends.get(key(at)) || []).find(k => !used[k]);
+            for (let s0 = 0; s0 < segs.length; s0++) {
+              if (used[s0]) continue;
+              used[s0] = 1;
+              const line: P[] = [segs[s0][0], segs[s0][1]];
+              for (const forward of [true, false]) {
+                for (let k = next(forward ? line[line.length - 1] : line[0]); k !== undefined; k = next(forward ? line[line.length - 1] : line[0])) {
+                  used[k] = 1;
+                  const [p, q] = segs[k], tip = forward ? line[line.length - 1] : line[0], far = key(p) === key(tip) ? q : p;
+                  if (forward) line.push(far); else line.unshift(far);
+                }
+              }
+              pen.path(line, { stroke: cc, width: 2.6, dash: l.dash ? [9, 7] : undefined });
+            }
+            if (l.label) tag(il.levels.length > 1 ? `${l.label} = ${fmt(level, Math.abs(level) < 10 ? 2 : 0).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '').replace(/^-/, '−')}` : l.label, cc, l.dash ? 'dash' : 'line');
           });
         } else if (l.type === 'points') {
           legend++;
           const gl = item as { pts: (readonly [Compiled, Compiled])[] }, pts = gl.pts.map(([a, bb]) => [safeEval(a, v), safeEval(bb, v)]).filter(p => p.every(Number.isFinite)).map(([a, bb]) => [X(a), Y(bb)] as P).filter(p => inside(p[1]));
           if (l.line) pen.path(pts, { stroke: col, width: 1.8 });
           for (const p of pts) { pen.circle(p[0], p[1], (l.size ?? 4) + 2.5, { fill: col, alpha: 0.14 }); pen.circle(p[0], p[1], l.size ?? 4, { fill: col, alpha: 0.95 }); }
-          if (l.label && pts.length) tag(l.label, pts[pts.length - 1][0], pts[pts.length - 1][1], col);
+          if (l.label && pts.length) tag(l.label, col, 'point');
         } else if (l.type === 'text') {
           const tl = item as { x: Compiled; y: Compiled }, px = safeEval(tl.x, v), py = safeEval(tl.y, v);
-          if (Number.isFinite(px) && Number.isFinite(py)) { const size = l.size ?? 12.5; placed.push([X(px), Y(py) - size, X(px) + textWidth(l.text, size), Y(py) + 4]); pen.text(X(px), Y(py), l.text, { size, color: tone(l.color, 'soft') }); }
+          if (Number.isFinite(px) && Number.isFinite(py)) tag(l.text, tone(l.color, 'soft'), 'note');
         }
       }
-      placeLabels();
+      numbers.forEach(draw => draw());
+      lastKey = key;
+      // A printed or exported copy has no key button, so it carries the key as a small panel in its top-right corner.
+      const shown = pen.keyed ? showKey(key) : [];
+      if (shown.length) {
+        const size = fs(12.5), row = size + 9 * ts, pad = 10 * ts, sw = 22 * ts, w = pad * 2 + sw + 8 * ts + Math.max(...shown.map(k => textWidth(k.label, size))), h = pad * 2 + row * shown.length - 4 * ts;
+        const kx = b.r - w - 10, ky = b.t + 10;
+        pen.path(roundRect(kx, ky, w, h, 8), { fill: palette.panel, stroke: palette.grid, width: 1, alpha: 0.96 }, true);
+        shown.forEach((k, i) => {
+          const y = ky + pad + row * i + row / 2 - 2 * ts, sx = kx + pad;
+          if (k.mark === 'area') pen.path(roundRect(sx, y - 5 * ts, sw, 10 * ts, 2), { fill: k.color, alpha: 0.35 }, true);
+          else if (k.mark === 'point') pen.circle(sx + sw / 2, y, 4.5 * ts, { fill: k.color });
+          else if (k.mark !== 'note') pen.path([[sx, y], [sx + sw, y]], { stroke: k.color, width: 2.5, dash: k.mark === 'dash' ? [5, 4] : undefined });
+          pen.text(sx + sw + 8 * ts, y + size * 0.36, k.label, { size, color: palette.ink, ui: true });
+        });
+      }
     };
+    legend = (values, t) => { draw({ w: W, h: H, path() {}, circle() {}, text() {} }, values, t); return showKey(lastKey); };
   } else if (spec.kind === 'diagram') {
     const nodes = spec.nodes || [];
     if (!nodes.length) throw Error('A diagram needs at least one node.');
@@ -637,7 +662,7 @@ export function compileVisual(raw: unknown): CompiledVisual {
   const period = spec.animate ? spec.animate.duration : Infinity;
   return {
     spec, params, period, moving: usesTime || !!spec.animate, steps: spec.steps || [],
-    draw, scene3d, figure,
+    draw, legend, scene3d, figure,
     readouts(values, t) { return readouts.map(r => { const v = safeEval(r.fn, { ...values, t }); return [r.label, `${fmt(v, r.digits ?? 2)}${r.unit ? ' ' + r.unit : ''}`]; }); },
     describe() { return `${spec.title}. ${spec.caption || ''}`.trim(); },
   };
