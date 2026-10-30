@@ -33,21 +33,19 @@ test('multivariable maths requests get the graph recipes', () => {
   assert.ok(!recipesFor('The causes of the French Revolution').recipes.some((r) => r.name === 'contour map / level curves'));
 });
 
-test('plot labels sit clear of every curve and of each other', () => {
-  const visual = compileVisual({ kind: 'plot', title: 'Contours', x: { min: -3, max: 3 }, y: { min: -3, max: 3 }, equal: true, layers: [{ type: 'implicit', expr: 'x^2 - y^2', levels: [-4, -1, 0, 1, 4], label: 'k' }, { type: 'implicit', expr: 'x-1', dash: true, label: 'x = 1 excluded' }] });
-  const strokes: [number, number][][] = [], labels: { x: number; y: number; w: number; align?: string; text: string }[] = [];
-  const pen: Pen = { w: 800, h: 440, path: (pts, s) => { if (s.stroke) strokes.push(pts); }, circle: () => {}, text: (x, y, text, s) => { if (s?.size === 12) labels.push({ x, y, w: text.length * 12 * 0.56, align: s.align, text }); } };
-  visual.draw(pen, defaultValues(visual), 0);
-  const boxes = labels.map((l) => { const left = l.align === 'end' ? l.x - l.w : l.align === 'middle' ? l.x - l.w / 2 : l.x; return { ...l, box: [left, l.y - 12, left + l.w, l.y + 4] }; });
-  assert.equal(boxes.filter((b) => b.text.startsWith('k = ')).length, 5);
-  for (const { box, text } of boxes) {
-    const hit = strokes.some((pts) => pts.some(([x, y]) => x > box[0] && x < box[2] && y > box[1] && y < box[3]));
-    assert.ok(!hit, `${text} sits on a curve`);
-  }
-  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
-    const a = boxes[i].box, c = boxes[j].box;
-    assert.ok(!(Math.min(a[2], c[2]) > Math.max(a[0], c[0]) && Math.min(a[3], c[3]) > Math.max(a[1], c[1])), `${boxes[i].text} overlaps ${boxes[j].text}`);
-  }
+test('a plot writes no labels on itself; its key names the colours only when there is more than one', () => {
+  const contours = compileVisual({ kind: 'plot', title: 'Contours', x: { min: -3, max: 3 }, y: { min: -3, max: 3 }, equal: true, layers: [{ type: 'implicit', expr: 'x^2 - y^2', levels: [-4, -1, 0, 1, 4], label: 'k' }, { type: 'implicit', expr: 'x-1', dash: true, label: 'x = 1 excluded' }] });
+  const texts: string[] = [];
+  const pen: Pen = { w: 800, h: 440, path: () => {}, circle: () => {}, text: (_x, _y, text) => { texts.push(text); } };
+  contours.draw(pen, defaultValues(contours), 0);
+  // Only tick numbers are written on the plot.
+  assert.ok(texts.every((t) => /^[−\d.]+$/.test(t)), texts.join(' | '));
+  const key = contours.legend(defaultValues(contours), 0);
+  assert.equal(key.filter((k) => k.label.startsWith('k = ')).length, 5);
+  assert.deepEqual(key.find((k) => k.label === 'x = 1 excluded')?.mark, 'dash');
+  // A domain: the region and its boundary lines share one colour, so there is nothing for a key to tell apart.
+  const domain = compileVisual({ kind: 'plot', title: 'Domain', x: { min: -4, max: 4 }, y: { min: -4, max: 4 }, equal: true, layers: [{ type: 'area', expr: 'abs(x)', from: -4, to: 4, base: '4', color: 'blue', label: 'D' }, { type: 'function', expr: 'x', color: 'blue', label: 'y = x' }, { type: 'point', x: 1, y: 2, label: 'P' }] });
+  assert.deepEqual(domain.legend(defaultValues(domain), 0), []);
 });
 
 test('chemistry superscripts and subscripts stay maths and never swallow the next sentence', async () => {

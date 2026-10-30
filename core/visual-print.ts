@@ -3,7 +3,7 @@
  * and standard fonts. PDFs (Kinetra clem.visual), answer exports and Word or PowerPoint files all print visuals
  * through here, so a diagram the AI drew in the chat goes into any file unchanged.
  */
-import { compileVisual, defaultValues, palette, W, H, type Pen, type P, type Style, type TextStyle } from './visual-spec.ts';
+import { compileVisual, defaultValues, palette, vivid, W, H, type Pen, type P, type Style, type TextStyle } from './visual-spec.ts';
 import { parseModelJson } from './model-json.ts';
 import { printSans, printSerif } from './print-fonts.ts';
 
@@ -13,6 +13,7 @@ const paper: Record<string, string> = {
   [palette.ink]: '#1b1d21', [palette.soft]: '#4a4f57', [palette.faint]: '#6b7078',
   [palette.blue]: '#1f4e79', [palette.coral]: '#c0504d', [palette.green]: '#3f7a31', [palette.amber]: '#b7801a', [palette.violet]: '#6b4c9a',
   [palette.hot]: '#e8f0f8', [palette.shadow]: '#ffffff',
+  [vivid.blue]: '#2d70b3', [vivid.coral]: '#c74440', [vivid.green]: '#388c46', [vivid.amber]: '#d96a0b', [vivid.violet]: '#6042a6',
 };
 const ink = (color: string | undefined) => (color ? paper[color.toLowerCase()] ?? color : undefined);
 const n = (v: number) => (Math.round(v * 10) / 10).toString();
@@ -21,6 +22,8 @@ const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt
 class PrintPen implements Pen {
   readonly w = W;
   readonly h = H;
+  /** Paper has no key button, so a plot draws its key onto the page. */
+  readonly keyed = true;
   parts: string[] = [];
   /** What was drawn, so the printed page can be cropped to it: [left, top, right, bottom]. */
   box = [Infinity, Infinity, -Infinity, -Infinity];

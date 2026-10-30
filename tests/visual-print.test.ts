@@ -23,7 +23,11 @@ test("every kind of chat visual prints on white paper in ink, never in the app's
   // A chart prints fully grown, not as the first frame of its animation (bars of zero height).
   const bars = printVisualSvg(visuals.chart).match(/<path d="[^"]+Z" fill="#1f4e79"/g) || [];
   assert.equal(bars.length, 2);
-  assert.match(printVisualSvg(visuals.plot), /y = ax²/);
+  // One curve needs no key on paper; two colours print their key in the corner.
+  assert.doesNotMatch(printVisualSvg(visuals.plot), /y = ax²/);
+  const two = printVisualSvg({ ...visuals.plot, layers: [...visuals.plot.layers, { type: "function", expr: "x", label: "y = x" }] });
+  assert.match(two, /y = ax²/);
+  assert.match(two, /y = x</);
   assert.throws(() => printVisualSvg({ kind: "chart", title: "x" }), /needs labels and series/);
 });
 

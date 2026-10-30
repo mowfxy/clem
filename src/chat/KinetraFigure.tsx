@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../Icons';
 import { desktop } from '../desktop/bridge';
 import { downloadMade } from '../store';
@@ -54,6 +54,15 @@ export function KinetraFigure({ body, streaming }: { body: string; streaming: bo
   // While it streams the JSON is incomplete, so nothing is drawn until the whole block has arrived.
   const parsed = useMemo(() => readKinetraBlock(body), [body]);
   const [svg, setSvg] = useState(''), [error, setError] = useState(''), [note, setNote] = useState('');
+  // Downloads live behind one icon in the heading, like the interactive visuals; the menu closes on a click elsewhere or Escape.
+  const [menu, setMenu] = useState(false), menuHost = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: PointerEvent) => { if (!menuHost.current?.contains(e.target as Node)) setMenu(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    document.addEventListener('pointerdown', away); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [menu]);
   const key = parsed ? JSON.stringify([parsed.module, parsed.fn, parsed.args]) : '';
   useEffect(() => {
     if (!parsed) return;
@@ -77,18 +86,21 @@ export function KinetraFigure({ body, streaming }: { body: string; streaming: bo
     <section className="visual-engine v2 spec-visual no-side kinetra-figure" aria-label={`${kindOf(parsed)}: ${title}`}>
       <header className="visual-heading">
         <div className="visual-title"><span className="visual-subject">{kindOf(parsed)}</span><strong>{title}</strong></div>
+        {svg && <div className="visual-transport"><div className="visual-menu-host" ref={menuHost}>
+          <button className="visual-icon" aria-label="Download" aria-description="Download" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="download" size={16} /></button>
+          {menu && <div className="visual-menu" role="menu" onClick={() => setMenu(false)}>
+            <button role="menuitem" onClick={png}>Image <span>PNG</span></button>
+            <button role="menuitem" onClick={() => { setNote(''); void downloadMade(new Blob([standardFonts(svg)], { type: 'image/svg+xml' }), `${fileName(title)}.svg`).catch(failed); }}>Vector <span>SVG</span></button>
+            <button role="menuitem" onClick={() => { setNote(''); void import('../visual-pdf').then((m) => m.exportDiagramPdf(standardFonts(svg), `${fileName(title)}.pdf`)).catch(failed); }}>Document <span>PDF</span></button>
+          </div>}
+        </div></div>}
       </header>
       <div className="visual-stage">
         {svg ? <div className="visual-figure" role="img" aria-label={parsed.caption || title} dangerouslySetInnerHTML={{ __html: svg }} />
           : <div className="visual-figure kinetra-pending" role="status"><span>Drawing the figure…</span></div>}
       </div>
       {parsed.caption && <footer className="visual-caption"><span>{parsed.caption}</span></footer>}
-      {svg && <div className="visual-exports">
-        <button onClick={png}><Icon name="download" size={16} /> Image</button>
-        <button onClick={() => { setNote(''); void downloadMade(new Blob([standardFonts(svg)], { type: 'image/svg+xml' }), `${fileName(title)}.svg`).catch(failed); }}>SVG</button>
-        <button onClick={() => { setNote(''); void import('../visual-pdf').then((m) => m.exportDiagramPdf(standardFonts(svg), `${fileName(title)}.pdf`)).catch(failed); }}>PDF</button>
-        {note && <span className="visual-note" role="status">{note}</span>}
-      </div>}
+      {note && <div className="visual-exports visual-status"><span className="visual-note" role="status">{note}</span></div>}
     </section>
   </div>;
 }
