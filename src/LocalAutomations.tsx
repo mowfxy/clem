@@ -32,7 +32,7 @@ export function LocalAutomations({
   onChange: (update: (items: Automation[]) => Automation[]) => void;
 }) {
   if (!items.length)
-    return <div className="automation-empty"><Icon name="clock" size={20} /><p>No routines yet. Ask in any chat, like “every morning at 8, summarise the news”.</p></div>;
+    return <div className="automation-empty"><Icon name="clock" size={20} /><p>No routines yet. Try “every morning at 8, summarise the news”.</p></div>;
   return (
     <div className="automation-list">
       {items.map((a) => (

@@ -111,7 +111,7 @@ export function LocalSecurity() {
       </p>
       <SettingsPopup
         title="Password"
-        description="Update the password you use to sign in."
+       
         action="Change"
       >
         <PasswordChange
@@ -149,7 +149,7 @@ export function LocalSecurity() {
       </SettingsPopup>
       <SettingsPopup
         title="Authenticator"
-        description="Protect your account with a verification code."
+       
         action="Manage"
       >
         {" "}
@@ -233,7 +233,7 @@ export function LocalSecurity() {
         )}
         {error && <p role="status">{error}</p>}
       </SettingsPopup>{" "}
-      <div className="settings-action"><div><h3>Sign out</h3><p>Sign out of Clem on this PC. Your files stay here.</p></div>
+      <div className="settings-action"><div><h3>Sign out</h3><p>Your files stay here.</p></div>
       <button
         disabled={busy}
         onClick={() =>
@@ -253,7 +253,7 @@ export function LocalSecurity() {
         Sign out
       </button>
       </div>
-      <div className="settings-action"><div><h3>Sessions</h3><p>Sign out your other devices.</p></div>
+      <div className="settings-action"><div><h3>Other devices</h3></div>
       <button
         disabled={busy}
         onClick={() =>
@@ -263,13 +263,13 @@ export function LocalSecurity() {
           )
         }
       >
-        Revoke other sessions
+        Sign them out
       </button>
       </div>
       {info?.google && (
         <SettingsPopup
           title="Google account"
-          description="Manage your linked Google sign-in."
+         
           action="Manage"
         >
           <form

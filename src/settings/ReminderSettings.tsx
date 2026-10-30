@@ -8,8 +8,8 @@ export function ReminderSettings() {
   useEffect(() => { void desktop?.invoke({ action: "reminders" }).then(setValue).catch(() => {}); }, []);
   if (!desktop || !value) return null;
   const change = (set: { enabled?: boolean; time?: string }) => { setValue({ ...value, ...set }); void desktop!.invoke({ action: "reminders", set }).then(setValue).catch(() => {}); };
-  return <SettingsCard title="Study reminders" note="Only when cards are due, once a day at most. Quiet mode sends it without a sound.">
-    <SettingRow title="Remind me when cards are due" description="A Windows notification, such as “12 cards due in Biology 101”. Clicking it opens that subject’s review."><Switch label="Remind me when cards are due" checked={value.enabled} onChange={(enabled) => change({ enabled })} /></SettingRow>
-    {value.enabled && <SettingRow title="Time" description="Sent at this time, or when Clem next opens that day."><input type="time" aria-label="Reminder time" className="reminder-time" value={value.time} onChange={(e) => { if (/^\d\d:\d\d$/.test(e.target.value)) change({ time: e.target.value }); }} /></SettingRow>}
+  return <SettingsCard title="Study reminders">
+    <SettingRow title="Remind me when cards are due" description="Once a day at most."><Switch label="Remind me when cards are due" checked={value.enabled} onChange={(enabled) => change({ enabled })} /></SettingRow>
+    {value.enabled && <SettingRow title="Time"><input type="time" aria-label="Reminder time" className="reminder-time" value={value.time} onChange={(e) => { if (/^\d\d:\d\d$/.test(e.target.value)) change({ time: e.target.value }); }} /></SettingRow>}
   </SettingsCard>;
 }

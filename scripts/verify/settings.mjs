@@ -165,7 +165,7 @@ try {
   await page.getByRole("radio", { name: "Tide", exact: true }).click();
   assert.equal(await page.getByRole("radio", { name: "Tide", exact: true }).getAttribute("aria-checked"), "true");
   await page.locator(".st-input input").fill("Sam Rivera");
-  await page.locator(".st-id-greeting").filter({ hasText: "Sam Rivera." }).waitFor();
+  await page.locator(".st-id-text").filter({ hasText: "Sam Rivera." }).waitFor();
   await page.locator(".st-input input").fill("Sam");
   await page.screenshot({
     path: "artifacts/settings-profile.png",
@@ -318,7 +318,7 @@ try {
   await page.waitForTimeout(450);
   await page.screenshot({path:'artifacts/settings-models-grok.png'});
   // Antigravity too: its Google plan by name, and its five-hour and weekly windows.
-  await page.getByRole('tab',{name:/Antigravity/}).click();
+  await page.getByRole('tab',{name:/Gemini/}).click();
   await page.getByText('80% left',{exact:true}).waitFor();
   await page.getByText('91% left',{exact:true}).waitFor();
   await page.getByText('Google AI Pro').first().waitFor();
@@ -338,19 +338,12 @@ try {
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await page.getByText('RETRY-CODE',{exact:true}).waitFor();
   await page.keyboard.press('Escape');
-  // Every section has its drawing; still ones hold their pose (their lines keep boiling).
-  {
-   await page.locator('.st-nav').getByRole('button',{name:'Memory',exact:true}).click();
-   await page.locator('.st-art svg').waitFor();
-  }
+  // Settings reads as a page of the app: each section is one serif title over plain rows, with no drawing.
   for(const tab of ['General','Security']){
    await page.locator('.st-nav').getByRole('button',{name:tab,exact:true}).click();
-   const art=page.locator('.st-art svg');await art.waitFor();
-   // The line boils through three drawings six times a second (it repeats every 0.5s) and poses hold, so one sample
-   // 600ms later can land on the same drawing: look at a few moments instead.
-   const seen=new Set();for(let i=0;i<5;i++){seen.add(await art.innerHTML());await page.waitForTimeout(110);}assert.ok(seen.size>1,'the drawing moves');
+   await page.locator('#st-title',{hasText:tab}).waitFor();
+   assert.equal(await page.locator('.st-art').count(),0);
    await page.screenshot({path:'artifacts/settings-'+tab.toLowerCase()+'.png'});
-   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(400);const still=await art.innerHTML();await page.waitForTimeout(200);assert.equal(await art.innerHTML(),still);await page.emulateMedia({reducedMotion:'no-preference'});
   }
   await page.getByRole('button',{name:'Close settings'}).click();
   await page.evaluate(()=>location.hash='/app/visuals');

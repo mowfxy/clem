@@ -9,23 +9,24 @@ export type ContactKind = "help" | "bug" | "idea";
 type Category = "Contact support" | "Report a bug" | "Suggest a feature";
 
 const variants: Record<ContactKind, { category: Category; title: string; lead: string; card: string; icon: string; send: string }> = {
-  help: { category: "Contact support", title: "Contact support", lead: "Questions about your account, models or files. A person from the Clem team reads every message.", card: "Questions about your account, models or files", icon: "chat", send: "Send to support" },
-  bug: { category: "Report a bug", title: "Report a bug", lead: "Tell us what went wrong. Clear steps help us fix it quickly.", card: "Something broke or behaved unexpectedly", icon: "alert", send: "Send report" },
-  idea: { category: "Suggest a feature", title: "Suggest a feature", lead: "What would make Clem more useful to you? We read every idea.", card: "Share an idea that would make Clem better", icon: "spark", send: "Send idea" },
+  help: { category: "Contact support", title: "Ask a question", lead: "Questions about your account, models or files. A person from the Clem team reads every message.", card: "Your account, models or files", icon: "chat", send: "Send to support" },
+  bug: { category: "Report a bug", title: "Report a bug", lead: "Tell us what went wrong. Clear steps help us fix it quickly.", card: "Something broke or looks wrong", icon: "alert", send: "Send report" },
+  idea: { category: "Suggest a feature", title: "Suggest an idea", lead: "What would make Clem more useful to you? We read every idea.", card: "What would make Clem better", icon: "spark", send: "Send idea" },
 };
 const helpTopics = ["Account & sign-in", "Models & usage", "Chats & files", "Something else"];
 const impact = ["Nice to have", "Important to me", "Blocking my work"];
 
-/** Chooser for the three kinds of request; each opens its own focused popup. */
+/** The three ways to reach the Clem team, as starting points (like Subjects' templates): a drawn tile, a title and
+ *  one short line. Each opens its own focused popup. */
 export function ContactOptions({ onSent }: { onSent?: () => void | Promise<void> }) {
   const [open, setOpen] = useState<ContactKind | null>(null);
   return (
     <div className="contact-options" role="list">
-      {(Object.keys(variants) as ContactKind[]).map((kind) => (
-        <button key={kind} role="listitem" type="button" className={"contact-option contact-" + kind} onClick={() => setOpen(kind)}>
+      {(Object.keys(variants) as ContactKind[]).map((kind, i) => (
+        <button key={kind} role="listitem" type="button" className={"contact-option contact-" + kind} style={{ ["--i" as string]: i }} onClick={() => setOpen(kind)}>
           <span className="contact-option-mark" aria-hidden="true"><ContactGlyph kind={kind} /></span>
           <span className="contact-option-text"><strong>{variants[kind].title}</strong><small>{variants[kind].card}</small></span>
-          <Icon name="arrow" size={15} />
+          <Icon name="arrow" size={16} />
         </button>
       ))}
       {open && <ContactDialog kind={open} onClose={() => setOpen(null)} onSent={onSent} />}

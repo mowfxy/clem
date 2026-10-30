@@ -2792,59 +2792,59 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       <ProfileSettings name={state.name} email={session.user?.email} avatar={state.avatar} storage={sizeLabel(bytes)} onName={name=>patch(s=>({...s,name}))} onAvatar={avatar=>patch(s=>({...s,avatar}))} onSecurity={()=>setSettingsTab("Security")} onFiles={()=>{setSettingsOpen(false);navigate("/app/files");}} onExport={exportWorkspace}/>
                     ) : settingsTab === "General" ? (<>
                       <SettingsCard title="Appearance">
-                        <SettingRow title="Theme" description="Follows Windows’ light or dark setting unless you pick one."><span className="text-size" role="radiogroup" aria-label="Theme">{([["system","System"],["light","Light"],["dark","Dark"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={theme===value} onClick={()=>{setThemeChoice(value);setTheme(value);}}>{label}</button>)}</span></SettingRow>
-                        <SettingRow title="Quiet mode" description="Keep drawings still and reduce motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
-                        <SettingRow title="Text size" description="How large answers and messages read."><span className="text-size" role="radiogroup" aria-label="Text size">{([["small","Small"],["default","Default"],["large","Large"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={textSize===value} onClick={()=>setTextSize(value)}>{label}</button>)}</span></SettingRow>
-                        <SettingRow title="Sidebar" description="Put it away for more room."><Switch label="Show the sidebar" checked={!sideClosed} onChange={show=>setSideClosed(!show)}/></SettingRow>
+                        <SettingRow title="Theme"><span className="text-size" role="radiogroup" aria-label="Theme">{([["system","System"],["light","Light"],["dark","Dark"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={theme===value} onClick={()=>{setThemeChoice(value);setTheme(value);}}>{label}</button>)}</span></SettingRow>
+                        <SettingRow title="Quiet mode" description="Still drawings, less motion."><Switch label="Reduce motion" checked={state.quiet} onChange={quiet=>patch((s) => ({ ...s, quiet }))}/></SettingRow>
+                        <SettingRow title="Text size"><span className="text-size" role="radiogroup" aria-label="Text size">{([["small","Small"],["default","Default"],["large","Large"]] as const).map(([value,label])=><button key={value} type="button" role="radio" aria-checked={textSize===value} onClick={()=>setTextSize(value)}>{label}</button>)}</span></SettingRow>
+                        <SettingRow title="Sidebar"><Switch label="Show the sidebar" checked={!sideClosed} onChange={show=>setSideClosed(!show)}/></SettingRow>
                       </SettingsCard>
                       <BackgroundSettings/>
                       <ReminderSettings/>
                       <UpdateSettings state={appUpdate} onInstall={()=>void installUpdate()}/>
                       <SettingsCard title="Shortcuts">
-                        <SettingRow title="Command palette" description="Jump to any chat, space, page or setting."><Keys keys={["Ctrl","K"]}/></SettingRow>
+                        <SettingRow title="Command palette"><Keys keys={["Ctrl","K"]}/></SettingRow>
                         <SettingRow title="Search everything"><Keys keys={["Ctrl","Shift","F"]}/></SettingRow>
                         <SettingRow title="New chat"><Keys keys={["Ctrl","N"]}/></SettingRow>
                         <SettingRow title="Open settings"><Keys keys={["Ctrl",","]}/></SettingRow>
                         <SettingRow title="Previous or next chat"><Keys keys={["Alt","↑ ↓"]}/></SettingRow>
                         <SettingRow title="Show or hide the sidebar"><Keys keys={["Ctrl","B"]}/></SettingRow>
-                        <SettingRow title="Every shortcut" description="The full list, from anywhere in Clem."><button className="secondary" onClick={()=>{setSettingsOpen(false);setShortcuts(true);}}>Show <Keys keys={["Ctrl","/"]}/></button></SettingRow>
-                        <SettingRow title="Capture screen" description="Works from any app while Clem is open."><Keys keys={["Ctrl","Shift","Space"]}/></SettingRow>
+                        <SettingRow title="All shortcuts"><button className="secondary" onClick={()=>{setSettingsOpen(false);setShortcuts(true);}}>Show <Keys keys={["Ctrl","/"]}/></button></SettingRow>
+                        <SettingRow title="Capture screen" description="From any app."><Keys keys={["Ctrl","Shift","Space"]}/></SettingRow>
                       </SettingsCard>
                     </>) : settingsTab === "Security" ? (
                       <SettingsCard><SecuritySettings/></SettingsCard>
                     ) : settingsTab === "Models" ? (
                       <ModelsSettings key={accountRevision} locked={anyRunning} liveData={accountData} models={models} onConnect={()=>setModal("connect-model")} onRefresh={refreshModels}/>
                     ) : settingsTab === "Connectors" ? (
-                      <SettingsCard note="Sources you add to a project or subject stay in that space.">
-                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Docs, Slides and videos, read live. Nothing is copied to this PC."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
+                      <SettingsCard>
+                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Read live, never copied."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
                       </SettingsCard>
                     ) : settingsTab === "Linked folders" ? (
-                      <><SettingsCard note="Clem indexes text only, skips secrets, and cites the files it uses.">{desktop ? <SettingsPopup title="Your folders" description="Choose folders for a project, subject or conversation." action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes())}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Clem made" note="Every change waits for your approval. Undo restores the file if nothing else has edited it since."><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
+                      <><SettingsCard>{desktop ? <SettingsPopup title="Your folders" action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes())}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Clem made"><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
                     ) : settingsTab === "Memory" ? (
-                      <SettingsCard note="Projects and subjects keep their own memory.">
-                        {desktop ? <SettingsPopup title="Memory" description="What Clem remembers about you and your work." action="Open memory" className="memory-dialog"><MemoryConversation labelFor={memoryLabel} places={memoryPlaces} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
+                      <SettingsCard>
+                        {desktop ? <SettingsPopup title="Memory" action="Open memory" className="memory-dialog"><MemoryConversation labelFor={memoryLabel} places={memoryPlaces} summary={state.memory} summaryLabel="Your notes" onSummary={text=>patch(s=>({...s,memory:text}))}/></SettingsPopup> : <p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Skills" ? (
                       <SkillsSettings skills={skills} onOpen={skill=>{setEditingSkill(skill);setModal("skill-detail");}} onCreate={()=>{setSettingsOpen(false);newChat();setDraft("/skill-creator ");}} onImport={()=>setModal("skill-import")}/>
                     ) : settingsTab === "Automations" ? (
-                      <SettingsCard note="New routines start in a chat. They run while Clem is open.">
+                      <SettingsCard note="Start a routine from any chat.">
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Usage" ? (
                       <UsageSettings archive={state.usageArchive} chats={savedChats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
                     ) : settingsTab === "Help & support" ? (
-                      <><SettingsCard><SupportInbox cases={signals.cases} onChanged={signals.refresh}/></SettingsCard><SettingsCard><SettingRow title="Open source" description="Clem is free and open source. Read the code, report a bug or suggest an idea on GitHub."><a className="secondary" href="https://github.com/mowfxy/clem" target="_blank" rel="noreferrer">GitHub</a></SettingRow></SettingsCard></>
+                      <SupportInbox cases={signals.cases} onChanged={signals.refresh}/>
                     ) : (<>
-                      <SettingsCard title="On this device" note="Only skills, memory and account essentials sync. Back up the rest below. Selected context goes to your AI provider when you ask.">
-                        <SettingRow title="Export your workspace" description="Chats, skills, spaces and settings as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
-                        <SettingRow title="Conversations" description={`${savedChats.length} saved on this PC`}><button className="secondary danger" disabled={!savedChats.length||anyRunning} onClick={async()=>{
+                      <SettingsCard title="On this device">
+                        <SettingRow title="Export" description="Everything, as JSON."><button className="secondary" onClick={exportWorkspace}>Export <Icon name="download" size={16} /></button></SettingRow>
+                        <SettingRow title="Conversations" description={`${savedChats.length} saved`}><button className="secondary danger" disabled={!savedChats.length||anyRunning} onClick={async()=>{
                           if(!await confirmDialog({title:"Delete all chats?",message:`All ${savedChats.length} conversations are removed from this PC, with the files sent in them and the files Clem made outside subjects and projects. Skills and memory you kept stay. This can’t be undone.`,confirm:"Delete all chats",danger:true}))return;
                           try{await deleteWorkflowCheckpoints(ownerRef.current,state.chats.flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));if(desktop)void desktop.invoke({action:"memoryForgetChat",chats:state.chats.map(c=>c.id).filter(id=>/^[a-zA-Z0-9_-]{1,80}$/.test(id)).slice(0,5000)}).catch(()=>{});deleteChatFiles(state.chats.map(c=>c.id));patch(s=>({...s,chats:[],visuals:[]}));newChat();setToast("All chats deleted.");}catch(e){setToast(cleanError(e));}
                         }}>Delete all chats</button></SettingRow>
                       </SettingsCard>
                       {desktop&&<BackupSettings onError={setToast}/>}
                       <SettingsCard>
-                        <SettingRow title="Privacy policy" description="How Clem handles your information."><a className="secondary" href="https://m4labs.xyz/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
+                        <SettingRow title="Privacy policy"><a className="secondary" href="https://m4labs.xyz/privacy" target="_blank" rel="noreferrer">Read</a></SettingRow>
                       </SettingsCard>
                     </>)}
             </SettingsWindow>}
