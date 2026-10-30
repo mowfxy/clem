@@ -62,7 +62,7 @@ export function UpdateSettings({ state, onInstall }: { state: UpdateState | null
     : "Clem checks for new versions every few hours.";
   const check = () => { setChecking(true); void updateRequest({ op: "check" })?.finally(() => setChecking(false)); };
   return <SettingsCard title="Updates">
-    <SettingRow title="Update automatically" description="New versions download in the background and install the next time Clem restarts. Off, Clem still tells you when one is out.">
+    <SettingRow title="Update automatically" description="Installs on the next restart.">
       <Switch label="Update automatically" checked={state.automatic} onChange={(automatic) => void updateRequest({ automatic })} />
     </SettingRow>
     <SettingRow title={`Clem ${state.version}`} description={<span className={state.phase === "error" ? "update-status error" : "update-status"} role="status">{status}</span>}>

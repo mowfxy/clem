@@ -32,12 +32,12 @@ export function BackupSettings({ onError }: { onError: (message: string) => void
   const lastLine = last?.error && (!last.at || (last.tried || 0) > last.at) ? `The last backup didn't finish: ${last.error}` : last?.at ? `Last backed up ${when(last.at)}${last.size ? " · " + sizeLabel(last.size) : ""}` : "Not backed up yet";
   const ready = !!status.destination && status.passphrase;
   return <>
-    <SettingsCard title="Backups" note="Backups are encrypted with your passphrase, so one sitting in a cloud folder can't be read without it. Clem can't recover a forgotten passphrase.">
+    <SettingsCard title="Backups" note="Encrypted with your passphrase. Clem can't recover it if you forget it.">
       <SettingRow title="Where" description={where}>
         <button className="secondary" onClick={() => void configure({ chooseFolder: true })}>Folder…</button>
         <button className="secondary" aria-pressed={status.destination?.kind === "drive"} onClick={() => void configure({ destination: { kind: "drive" } })}>Google Drive</button>
       </SettingRow>
-      <SettingRow title="Passphrase" description={status.passphrase ? "Set. You'll need it to restore on another PC." : "Needed before the first backup."}>
+      <SettingRow title="Passphrase" description={status.passphrase ? "Set" : "Needed before the first backup"}>
         {!phrase && <button className="secondary" onClick={() => setPhrase({ one: "", two: "" })}>{status.passphrase ? "Change" : "Set passphrase"}</button>}
       </SettingRow>
       {phrase && <form className="st-row backup-phrase" onSubmit={(e) => {
@@ -50,16 +50,16 @@ export function BackupSettings({ onError }: { onError: (message: string) => void
         <input type="password" aria-label="Type the passphrase again" placeholder="Again" autoComplete="new-password" maxLength={200} value={phrase.two} onChange={(e) => setPhrase({ ...phrase, two: e.target.value })} />
         <button type="submit">Save</button><button type="button" className="secondary" onClick={() => setPhrase(null)}>Cancel</button>
       </form>}
-      <SettingRow title="Back up automatically" description={status.schedule === "off" ? "Only when you press Back up now." : `Every ${status.schedule === "daily" ? "day" : "week"}, while Clem is open or in the tray. The newest ${status.keep} are kept.`}>
+      <SettingRow title="Back up automatically" description={status.schedule === "off" ? undefined : `Keeps the newest ${status.keep ?? 3}`}>
         <span className="text-size" role="radiogroup" aria-label="Backup schedule">{([["off", "Off"], ["daily", "Daily"], ["weekly", "Weekly"]] as const).map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={status.schedule === value} onClick={() => void configure({ schedule: value })}>{label}</button>)}</span>
         <select className="backup-keep" aria-label="Backups to keep" value={status.keep} onChange={(e) => void configure({ keep: Number(e.target.value) })}>{[3, 7, 14, 30].map((n) => <option key={n} value={n}>Keep {n}</option>)}</select>
       </SettingRow>
-      <SettingRow title={lastLine} description={ready ? undefined : "Choose where backups go and set a passphrase first."}>
+      <SettingRow title={lastLine} description={ready ? undefined : "Pick a place and a passphrase first"}>
         <button disabled={!ready || busy || status.running} onClick={() => { setBusy(true); void desktop!.invoke({ action: "backupNow" }).then(() => refresh(), (e) => { fail(e); void refresh(); }).finally(() => setBusy(false)); }}>{busy || status.running ? "Backing up…" : "Back up now"}</button>
       </SettingRow>
     </SettingsCard>
-    <SettingsCard title="Restore" note="Also how you move to a new PC: install Clem, sign in, then restore from your backup folder or Drive.">
-      <SettingRow title="Restore a backup" description="Pick a backup, see what's in it, then restore. What's here now is saved to Documents\Clem\Backups first.">
+    <SettingsCard title="Restore" note="Moving to a new PC? Install Clem, sign in, then restore.">
+      <SettingRow title="Restore a backup" description="What's here now is backed up first">
         <SettingsPopup bare title="Restore a backup" action="Restore…"><RestorePanel saved={status.passphrase} onError={onError} /></SettingsPopup>
       </SettingRow>
     </SettingsCard>

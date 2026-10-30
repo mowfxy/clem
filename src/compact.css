@@ -29,13 +29,13 @@ body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
 body .sidebar>.brand{font-size:30px;margin:0 8px 22px}
 body .sidebar>.brand svg{width:27px;height:27px}
 body .sidebar nav{gap:1px}
-body .sidebar .nav-item{height:36px;font-size:14.5px;font-weight:400;padding:7px 10px;gap:11px}
+body .sidebar .nav-item{height:36px;font-size:15px;font-weight:500;letter-spacing:-.006em;padding:7px 10px;gap:11px}
 body .sidebar .nav-item .drawn-icon{width:19px;height:19px}
 body .sidebar .sidebar-history{margin-top:18px}
 /* Day labels are small quiet captions, so the titles under them carry the list */
 body .sidebar .history-group{margin-bottom:8px}
-body .sidebar .history-group .history-label{font-size:13px;font-weight:500;letter-spacing:.01em;min-height:26px}
-body .sidebar .history-item{font-size:14.5px;height:34px;padding:7px 10px}
+body .sidebar .history-group .history-label{font-size:12.5px;font-weight:600;letter-spacing:.012em;min-height:26px}
+body .sidebar .history-item{font-size:14px;letter-spacing:-.004em;height:34px;padding:7px 10px}
 /* On the desktop the logo sits clear of the window's top edge, and the sidebar button shares its middle line */
 @media(min-width:761px){
   body .desktop-content .sidebar{padding-top:20px}

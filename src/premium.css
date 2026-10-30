@@ -199,7 +199,7 @@ html[data-quiet=true] body .visual-drafting .drafting-text{animation:none;-webki
 body .sidebar-bottom{border-top-color:transparent}
 body .account-button{border-radius:10px;transition:background .3s var(--pm-ease)}
 body .account-button:hover{background:#1d1d1c}
-body .account-button>span:not(.avatar){font-size:14.5px;font-weight:500}
+body .account-button>span:not(.avatar){font-size:15px;font-weight:600;letter-spacing:-.006em}
 
 /* Lists arrive in a short cascade: cards, file rows and folders fade up one after another, the first eight staggered
    and the rest together, so a long list never waits. Only on arrival; filtering or re-rendering doesn't replay it. */
@@ -219,5 +219,5 @@ body :is(.secondary,.lib-btn,.pl-btn,.sx-btn,.command-chip,.link-chip,.pointer-c
 body :is(.primary,.lib-btn.strong,.adm-primary,.contact-primary){font-weight:600}
 body .new-chat-content .suggestions button{font-weight:500}
 body .composer .mode-button.long-toggle,body .picker-trigger .picker-trigger-name,body .picker-trigger .effort-label{font-weight:500}
-body .sidebar .nav-item.active{font-weight:500}
-body .history-label,body .history-label span{font-weight:500}
+body .sidebar .nav-item.active{font-weight:600}
+body .history-label,body .history-label span{font-weight:600}

@@ -101,7 +101,7 @@ export function UsageSettings(data:UsageData){
       <ActivityGraph times={times} label="Threads" unit="thread" height={104}/>
     </div></section>
 
-    <SettingsCard title="Conversations" note={s.since?`Counted from ${new Date(s.since).toLocaleDateString([], {month:'long',day:'numeric',year:'numeric'})}, across every chat on this PC, including ones you deleted.`:undefined}>
+    <SettingsCard title="Conversations" note={s.since?`Since ${new Date(s.since).toLocaleDateString([], {month:'long',day:'numeric',year:'numeric'})}`:undefined}>
       <div className="usage-grid">
         <Stat value={s.threads.toLocaleString()} label="Threads" detail={`${s.perThread.toFixed(1)} messages each`}/>
         <Stat value={s.sent.toLocaleString()} label="Messages sent" detail={`${compact(s.words)} words written`}/>
@@ -109,7 +109,7 @@ export function UsageSettings(data:UsageData){
       </div>
     </SettingsCard>
 
-    <SettingsCard title="Tokens" note="Estimated from the text of your chats, at about four characters a token. Files and sources sent alongside aren’t counted.">
+    <SettingsCard title="Tokens" note="Estimated from chat text.">
       <div className="usage-tokens">
         <div className="usage-token-total"><b>{compact(s.tokens)}</b><span>total tokens</span></div>
         <div className="usage-bar" role="img" aria-label={`${compact(s.tokensIn)} tokens sent, ${compact(s.tokensOut)} tokens received`}>

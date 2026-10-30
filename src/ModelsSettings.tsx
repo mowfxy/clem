@@ -267,7 +267,7 @@ export function ModelsSettings({
           </div>}
         </div>
       </section>
-      {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>Moves to another account when one runs low.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
+      {desktop && <div className="setting-row auto-switch-setting"><div><h3>Switch accounts automatically</h3><p>When one runs low.</p></div><label className="switch-label"><input type="checkbox" aria-label="Switch accounts automatically" checked={!!data.autoSwitch} disabled={busy||locked} onChange={async e=>{const enabled=e.target.checked;setBusy(true);try{await desktop!.invoke({action:'providerAutoSwitch',enabled});setData(current=>({...current,autoSwitch:enabled}));}catch(error){setError((error as Error).message);}finally{setBusy(false);}}}/></label></div>}
       {desktop && <HelperModelSetting models={models} locked={locked} />}
       {retryId&&<Reconnect id={retryId} onClose={()=>setRetryId(null)} onDone={()=>{setRetryId(null);void refresh(true);}}/>}
       {error && <p role="alert">{error}</p>}

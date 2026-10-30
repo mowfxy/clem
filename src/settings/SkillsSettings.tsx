@@ -13,17 +13,17 @@ export function SkillsSettings({skills,onOpen,onCreate,onImport}:{skills:Skill[]
    <div className="st-chips" role="tablist" aria-label="Skill kinds">{kinds.map(k=><button type="button" role="tab" key={k} aria-selected={kind===k} className={kind===k?'on':''} onClick={()=>setKind(k)}>{k}</button>)}</div>
    <div className="st-skills-actions">
     <button type="button" className="secondary" onClick={onImport}><Icon name="attach" size={15}/>Import</button>
-    <button type="button" className="secondary st-strong" onClick={onCreate}><Icon name="plus" size={15}/>Create a skill</button>
+    <button type="button" className="secondary st-strong" onClick={onCreate}><Icon name="plus" size={15}/>New skill</button>
    </div>
   </div>
-  <SettingsCard note="Always available in chat. Describe your goal and Clem applies the skills that fit.">
+  <SettingsCard>
    {shown.map(s=><button type="button" className="st-skill" key={s.id} onClick={()=>onOpen(s)}>
     <span className="st-skill-icon"><Icon name={s.icon} size={20}/></span>
     <span className="st-skill-text"><strong>{s.name}</strong><small>{s.description}</small></span>
     <span className="st-skill-meta">{s.category||'Your skill'} · {s.steps.length} {s.steps.length===1?'step':'steps'}</span>
     <Icon name="arrow" size={16}/>
    </button>)}
-   {!shown.length&&<p>{skills.length?`No ${kind.toLowerCase()} skills yet.`:'No skills yet. Create a multi-step way of working, or import one as JSON.'}</p>}
+   {!shown.length&&<p>{skills.length?`No ${kind.toLowerCase()} skills yet.`:'No skills yet.'}</p>}
   </SettingsCard>
  </>;
 }

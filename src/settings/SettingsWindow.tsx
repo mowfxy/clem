@@ -1,18 +1,13 @@
 import {useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {Icon} from '../Icons';
-import {Illustration} from '../Illustrations';
 import {ProfileAvatar} from '../ProfileAvatar';
 import {settingsGroups, settingsTab} from './SettingsParts';
 
-/** The drawings share one centred frame; the header shows the middle of the 480×390 stage. The plug's socket sits
- *  higher on the stage, so its frame starts higher to keep the socket in. */
-const crop='60 30 360 300',crops:Record<string,string>={plug:'60 14 360 300'};
-
-/** Settings, as a large window over the workspace (the same frame as the file viewer). A rail on the left
- *  holds who you are, a finder and the sections; the section fills the rest. */
+/** Settings, as a window over the workspace that looks like the app: a rail like its sidebar (a finder, the
+ *  sections, you) and the section under a serif title, like the app's other pages. */
 export function SettingsWindow({tab,onTab,onClose,me,unread=0,children}:{tab:string;onTab:(name:string)=>void;onClose:()=>void;me:{name:string;email?:string;avatar?:string};unread?:number;children:ReactNode}){
- const dialog=useRef<HTMLDialogElement>(null),body=useRef<HTMLDivElement>(null),[find,setFind]=useState('');
+ const dialog=useRef<HTMLDialogElement>(null),body=useRef<HTMLElement>(null),[find,setFind]=useState('');
  const t=settingsTab(tab);
  useEffect(()=>{const d=dialog.current;if(d&&!d.open)d.showModal();return()=>d?.close();},[]);
  useEffect(()=>{body.current?.scrollTo({top:0});},[tab]);
@@ -24,6 +19,7 @@ export function SettingsWindow({tab,onTab,onClose,me,unread=0,children}:{tab:str
   onPointerDown={e=>{if(e.target===e.currentTarget)onClose();}}>
   <div className="st">
    <aside className="st-rail">
+    <div className="st-top"><h2>Settings</h2></div>
     <label className="st-find"><Icon name="research" size={17}/><input className="st-find-input" autoFocus value={find} placeholder="Search" aria-label="Search settings"
      onChange={e=>setFind(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&first){onTab(first.name);}if(e.key==='Escape'&&find){e.preventDefault();e.stopPropagation();setFind('');}}}/></label>
     <nav className="st-nav" aria-label="Settings sections">
@@ -36,20 +32,14 @@ export function SettingsWindow({tab,onTab,onClose,me,unread=0,children}:{tab:str
      {!groups.length&&<p className="st-none">Nothing matches “{find.trim()}”.</p>}
     </nav>
     <button type="button" className={'st-me st-rail-foot'+(t.name==='Profile'?' active':'')} onClick={()=>onTab('Profile')}>
-     <span className="avatar"><ProfileAvatar value={me.avatar} size={38}/></span>
-     <span className="st-me-text"><strong>{me.name}</strong><small>{me.email||'Your workspace'}</small></span>
+     <span className="avatar"><ProfileAvatar value={me.avatar} size={30}/></span>
+     <span className="st-me-text"><strong>{me.name}</strong>{me.email&&<small>{me.email}</small>}</span>
     </button>
    </aside>
-   <section className="st-main">
-    <header className="st-head" key={t.name}>
-     <div className="st-head-text">
-      <h1 id="st-title">{t.name}</h1>
-      <p>{t.line}</p>
-     </div>
-     <Illustration scene={t.scene} viewBox={crops[t.scene]||crop} className="st-art"/>
-    </header>
+   <section className="st-main" ref={body}>
     <button type="button" className="st-close" aria-label="Close settings" onClick={onClose}><Icon name="close" size={17}/></button>
-    <div className="st-body" ref={body} key={'b'+t.name}>{children}</div>
+    <header className="st-head" key={t.name}><h1 id="st-title">{t.name}</h1></header>
+    <div className="st-body" key={'b'+t.name}>{children}</div>
    </section>
   </div>
  </dialog>,document.body);

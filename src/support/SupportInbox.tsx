@@ -1,7 +1,8 @@
 import {splitLogs} from '../../core/support-logs';
 import {useEffect,useState} from 'react';
 import {desktop} from '../desktop/bridge';
-import {ContactSettings} from '../AccountSettings';
+import {ContactOptions} from './ContactDialog';
+import {SettingsCard, SettingRow} from '../settings/SettingsParts';
 import {Icon} from '../Icons';
 import type {SupportCase} from '../notices/useWorkspaceSignals';
 import './support.css';
@@ -9,20 +10,23 @@ import './support.css';
 const statusLabel:Record<SupportCase['status'],string>={open:'Open',pending:'Replied',resolved:'Resolved',closed:'Closed'};
 const when=(value:string)=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 
+/** Help & support: three ways to reach the team, your requests and their replies, and where else to find us. */
 export function SupportInbox({cases,onChanged}:{cases:SupportCase[];onChanged:()=>Promise<void>|void}){
   const [open,setOpen]=useState<string|null>(null);
   const active=cases.find(c=>c.id===open);
   useEffect(()=>{if(active?.unread)void desktop?.invoke({action:'supportSeen',id:active.id}).then(()=>onChanged()).catch(()=>{});},[active?.id,active?.unread]);
-  if(!desktop)return <ContactSettings/>;
   if(active)return <SupportThread item={active} onBack={()=>setOpen(null)} onChanged={onChanged}/>;
-  return <div className="support-inbox">
-    <ContactSettings onSent={onChanged}/>
-    {cases.length>0&&<header className="support-head"><div><h3>Your requests</h3><p className="muted">Replies from the Clem team appear here and in a notice above your account.</p></div></header>}
-    {cases.length>0&&<ul className="support-list">{cases.map((c,i)=><li key={c.id} style={{animationDelay:i*40+'ms'}}><button onClick={()=>setOpen(c.id)}>
+  return <div className="help">
+    <ContactOptions onSent={desktop?onChanged:undefined}/>
+    {cases.length>0&&<SettingsCard title="Your requests"><ul className="support-list">{cases.map((c,i)=><li key={c.id} style={{animationDelay:i*40+'ms'}}><button onClick={()=>setOpen(c.id)}>
       <span className={`support-status status-${c.status}`}>{statusLabel[c.status]}</span>
       <span className="support-subject">{c.unread&&<span className="support-unread" aria-label="New reply"><Icon name="new-reply" size={13}/></span>}{c.subject}</span>
       <small>{c.category} · {when(c.updated_at||c.created_at)} · {c.messages.length} {c.messages.length===1?'reply':'replies'}</small>
-    </button></li>)}</ul>}
+    </button></li>)}</ul></SettingsCard>}
+    <SettingsCard title="Elsewhere">
+     <SettingRow title="Email" description="support@m4labs.xyz"><a className="secondary" href="mailto:support@m4labs.xyz">Write <Icon name="arrow" size={15}/></a></SettingRow>
+     <SettingRow title="Source code" description="Free and open source"><a className="secondary" href="https://github.com/mowfxy/clem" target="_blank" rel="noreferrer">GitHub <Icon name="external" size={15}/></a></SettingRow>
+    </SettingsCard>
   </div>;
 }
 

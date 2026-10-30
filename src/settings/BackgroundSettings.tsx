@@ -10,7 +10,7 @@ export function BackgroundSettings() {
   if (!desktop?.background || !value) return null;
   const change = (next: Partial<typeof value>) => { setValue({ ...value, ...next }); void desktop!.background!(next).then(setValue).catch(() => {}); };
   return <SettingsCard title="Background">
-    <SettingRow title="Keep running when closed" description="Closing the window leaves Clem in the tray, so routines keep working. Quit from the tray icon."><Switch label="Keep running when closed" checked={value.keepRunning} onChange={(keepRunning) => change({ keepRunning })} /></SettingRow>
-    <SettingRow title="Start with Windows" description="Opens quietly in the tray when you sign in to Windows."><Switch label="Start with Windows" checked={value.keepRunning && value.startWithWindows} onChange={(startWithWindows) => change({ startWithWindows })} /></SettingRow>
+    <SettingRow title="Keep running when closed" description="Stays in the tray so routines keep working."><Switch label="Keep running when closed" checked={value.keepRunning} onChange={(keepRunning) => change({ keepRunning })} /></SettingRow>
+    <SettingRow title="Start with Windows"><Switch label="Start with Windows" checked={value.keepRunning && value.startWithWindows} onChange={(startWithWindows) => change({ startWithWindows })} /></SettingRow>
   </SettingsCard>;
 }
