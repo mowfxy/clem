@@ -3,7 +3,7 @@
 .desktop-content .toast.toast{top:50px}
 .toast-mark{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:50%;background:#f2f1ec;color:#141413}
 .toast.is-problem .toast-mark{background:#e5705b;color:#fff}
-.toast-mark b{font:700 12px/1 var(--sans)}
+.toast-mark b{font:700 13px/1 var(--sans)}
 .toast-text{min-width:0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .toast-close{width:26px;height:26px;flex:none;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:none;color:#8f8e87;cursor:pointer}
 .toast-close:hover{background:#ffffff12;color:#fff}

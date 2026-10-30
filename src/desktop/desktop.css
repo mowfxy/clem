@@ -163,7 +163,7 @@
   gap: 8px;
 }
 .setup-field-label {
-  font-size: 12px;
+  font-size: 13px;
   color: #bcbab0;
 }
 .setup-input {
@@ -249,7 +249,7 @@
 .availability {
   min-height: 20px;
   margin: -4px 0 0 !important;
-  font-size: 12.5px !important;
+  font-size: 13.5px !important;
   text-align: left !important;
   color: #a3a197;
   transition: color 0.2s;
@@ -357,7 +357,7 @@
 }
 .memory-option-text small {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: #96948b;
 }
@@ -431,7 +431,7 @@
   display: flex;
   gap: 22px;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 4px;
 }
 .setup-navigation button {
@@ -508,7 +508,7 @@
 
 .setup-legal {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: #77756d;
 }
 .setup-legal a:hover {
@@ -673,10 +673,10 @@
 }
 .desktop-folder-panel p {
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 13px;
 }
 .desktop-folder-panel button {
-  font-size: 12px;
+  font-size: 13px;
 }
 .desktop-provider {
   display: grid;
@@ -800,14 +800,14 @@ html:root[data-theme=light] .first-provider-done {
 .first-ai-row[data-chosen]{border-color:#cfcec7}
 .first-ai-text{min-width:0}
 .first-ai-text h3{margin:0;font:400 15px/1.3 var(--sans)}
-.first-ai-text small{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:#9b9a93}
+.first-ai-text small{display:block;margin-top:2px;font-size:13px;line-height:1.45;color:#9b9a93}
 .first-ai-action{display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:220px}
 .first-ai-action .provider-hint{margin:0;text-align:right}
 .first-ai-codex{grid-column:1/-1}
 .setup-sample{display:flex;align-items:flex-start;gap:10px;margin:14px 0 4px;text-align:left;cursor:pointer}
 .setup-sample input{margin-top:2px}
 .setup-sample b{display:block;font-weight:400;font-size:14px}
-.setup-sample small{display:block;font-size:12px;color:#9b9a93;line-height:1.45}
+.setup-sample small{display:block;font-size:13px;color:#9b9a93;line-height:1.45}
 :root[data-theme=light] .first-ai-row{border-color:#0000001a;background:#00000004}
 :root[data-theme=light] .first-ai-row[data-chosen]{border-color:#262a35}
 :root[data-theme=light] .first-ai-text small,:root[data-theme=light] .setup-sample small{color:#6f6e69}

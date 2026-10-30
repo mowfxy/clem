@@ -23,7 +23,7 @@ html[data-quiet=true] .activity-graph .line{animation:none;stroke-dashoffset:0}h
 /* The day under the pointer: a small dark label riding above the dot. */
 .ag-tip{position:absolute;left:0;top:0;display:grid;gap:3px;padding:8px 11px 7px;border-radius:11px;background:#141413e6;border:1px solid #ffffff17;box-shadow:0 10px 30px -8px #000c;backdrop-filter:blur(8px);pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .18s ease;will-change:transform}
 .activity-graph.scrubbing .ag-tip{opacity:1}
-.ag-tip-count{display:flex;align-items:baseline;gap:5px;font:400 12px/1 var(--sans);color:#b8b7b0}
+.ag-tip-count{display:flex;align-items:baseline;gap:5px;font:400 13px/1 var(--sans);color:#b8b7b0}
 .ag-tip-count b{font:700 15px/1 var(--sans);letter-spacing:-.01em;color:#f0efeb;font-variant-numeric:tabular-nums}
-.ag-tip-day{font:400 11px/1.1 var(--sans);color:#8a8983}
+.ag-tip-day{font:400 12px/1.1 var(--sans);color:#8a8983}
 @media (prefers-reduced-motion:reduce){.activity-graph .end,.ag-tip,.activity-graph .guide{transition:none}}

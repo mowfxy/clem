@@ -4,7 +4,7 @@
 :root{--pm-ease:cubic-bezier(.16,1,.3,1);--pm-ink:#f2f1ec;--pm-soft:#c9c8c1;--pm-muted:#8f8e88;--pm-line:#2a2a27;--pm-raise:#232321;--pm-hover:#1e1e1d}
 
 /* ---------- Sidebar ---------- */
-body .sidebar .nav-item{height:34px;border-radius:8px;font-size:13.5px;color:#e4e3dd;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
+body .sidebar .nav-item{height:36px;border-radius:8px;font-size:14.5px;color:#e4e3dd;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
 body .sidebar .nav-item .drawn-icon{color:#bdbcb5;transition:color .3s var(--pm-ease)}
 body .sidebar .nav-item:hover{background:#1d1d1c}
 body .sidebar .nav-item.active{background:#252523;color:var(--pm-ink)}
@@ -12,10 +12,10 @@ body .sidebar .nav-item.active .drawn-icon,body .sidebar .nav-item:hover .drawn-
 body .sidebar .nav-shortcut{opacity:0;transition:opacity .25s var(--pm-ease)}
 body .sidebar .nav-item:hover .nav-shortcut{opacity:1}
 /* History reads like a list of titles: no marks, no slide, a soft row on hover. */
-body .history-item{font-size:13.5px;color:#d8d7d1;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
+body .history-item{font-size:14.5px;color:#d8d7d1;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
 body .history-item:hover{padding-left:12px;color:var(--pm-ink)}
 body .history-item .space-mark{display:none}
-body .history-label,body .history-label span{font-size:11.5px;color:#8f8e88}
+body .history-label,body .history-label span{font-size:13px;color:#8f8e88}
 
 /* ---------- Top bar ---------- */
 body .workspace-top .top-title{font-weight:500;color:#e4e3dd}
@@ -87,7 +87,7 @@ body :is(.eyebrow,.lib-eyebrow,.sp-eyebrow,.st-eyebrow,.sh-eyebrow,.command-resu
 /* One soft frame, no inner rules shouting; the label is a quiet word; exports appear when you reach for them. */
 body .visual-engine.v2{--v-line:#262624;border-radius:18px;background:#191918;animation:pm-visual .8s var(--pm-ease) backwards}
 body .v2 .visual-heading{border-bottom-color:transparent;padding:16px 16px 6px 20px}
-body .v2 .visual-subject{font-size:12.5px;letter-spacing:0;text-transform:none;color:#8f8e88}
+body .v2 .visual-subject{font-size:13.5px;letter-spacing:0;text-transform:none;color:#8f8e88}
 body .v2 .visual-title strong{font-weight:500}
 body .v2 .spec-steps,body .v2 .visual-body{border-top-color:#222220}
 @media (hover:hover){
@@ -99,18 +99,18 @@ body .v2 .visual-exports{border-top-color:#222220}
 body .v2 .visual-menu-host{position:relative}
 body .v2 .visual-menu{position:absolute;z-index:5;top:calc(100% + 6px);right:0;min-width:180px;display:grid;padding:5px;border-radius:12px;background:#222220;box-shadow:0 0 0 1px #ffffff14,0 12px 32px #0009;animation:pm-menu .18s var(--pm-ease)}
 body .v2 .visual-menu button{display:flex;justify-content:space-between;align-items:center;gap:16px;height:34px;padding:0 10px;border-radius:8px;font:400 13px/1 var(--sans);color:#e4e3dd;text-align:left}
-body .v2 .visual-menu button span{font-size:11px;letter-spacing:.04em;color:#7d7c76}
+body .v2 .visual-menu button span{font-size:12px;letter-spacing:.04em;color:#7d7c76}
 body .v2 .visual-menu button:hover,body .v2 .visual-menu button:focus-visible{background:#ffffff0f;outline:none}
 @keyframes pm-menu{from{opacity:0;transform:translateY(-4px)}}
 body .v2 .visual-exports.visual-status{opacity:1;transform:none;padding:10px 20px}
-body .v2 .visual-caption{padding:13px 20px 15px;font-size:12px;line-height:1.5;color:#8f8e88}
+body .v2 .visual-caption{padding:13px 20px 15px;font-size:13px;line-height:1.5;color:#8f8e88}
 /* The caption stays on narrow screens too; hiding its text there left an empty strip at the bottom of the card. */
 @media(max-width:700px){body .v2 .visual-caption span:not(.visual-equation){display:inline}}
-body .v2 .visual-controls .visual-reset{justify-self:start;display:inline-flex;align-items:center;gap:6px;height:28px;margin:-6px 0 -4px -8px;padding:0 8px;border-radius:7px;font:400 12px/1 var(--sans);color:#8f8e88}
+body .v2 .visual-controls .visual-reset{justify-self:start;display:inline-flex;align-items:center;gap:6px;height:28px;margin:-6px 0 -4px -8px;padding:0 8px;border-radius:7px;font:400 13px/1 var(--sans);color:#8f8e88}
 body .v2 .visual-controls .visual-reset:hover{background:#ffffff0d;color:#f2f1ec}
 /* Controls: a filled track shows where the value sits in its range; the thumb is a plain disc. */
 body .v2 .visual-controls{gap:18px;padding:18px 20px}
-body .v2 .visual-controls label{gap:10px;font-size:12.5px;color:#a9a8a2}
+body .v2 .visual-controls label{gap:10px;font-size:13.5px;color:#a9a8a2}
 body .v2 .visual-control-label output,body .v2 .visual-readouts dd{font-variant-numeric:lining-nums proportional-nums}
 body .v2 .visual-control-label output{font-size:13px;color:var(--v-ink)}
 body .v2 .visual-controls input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:2px;background:linear-gradient(90deg,#d6d5cf var(--fill,0%),#34342f var(--fill,0%))}
@@ -120,7 +120,7 @@ body .v2 .visual-controls input[type=range],body .v2 .visual-controls input[type
 body .v2 .visual-controls input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px #191918,0 0 0 5px #8197e2}
 /* The key: a small chip in the graph's corner showing its colours; it opens into what each colour names. */
 body .v2 .visual-key{position:absolute;top:10px;right:10px;z-index:2;display:grid;justify-items:end;gap:6px;max-width:min(320px,calc(100% - 20px))}
-body .v2 .visual-key-toggle{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 11px 0 9px;border-radius:999px;background:#1d1d1bf2;box-shadow:0 0 0 1px #ffffff17,0 4px 14px #0006;color:#d6d5cf;font:500 12.5px/1 var(--sans);cursor:pointer;transition:background .2s,color .2s}
+body .v2 .visual-key-toggle{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 11px 0 9px;border-radius:999px;background:#1d1d1bf2;box-shadow:0 0 0 1px #ffffff17,0 4px 14px #0006;color:#d6d5cf;font:500 13.5px/1 var(--sans);cursor:pointer;transition:background .2s,color .2s}
 body .v2 .visual-key-toggle:hover,body .v2 .visual-key.open .visual-key-toggle{background:#262624f5;color:#f2f1ec}
 body .v2 .visual-key-dots{display:inline-flex}
 body .v2 .visual-key-dots i{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 2px #1d1d1b}
@@ -135,7 +135,7 @@ body .v2 .visual-key-mark.point::before{content:"";position:absolute;left:6px;to
 body .v2 .visual-key-mark.note::before{content:"";position:absolute;left:4px;right:4px;top:5px;border-top:1.5px dotted #8f8e88}
 /* Readouts: the number is the point, its label a quiet line above it. */
 body .v2 .visual-readouts{padding:18px 20px;gap:16px 20px;border-left-color:#222220}
-body .v2 .visual-readouts dt{font-size:11.5px;letter-spacing:0;color:#7d7c76;margin-bottom:5px;white-space:normal}
+body .v2 .visual-readouts dt{font-size:12.5px;letter-spacing:0;color:#7d7c76;margin-bottom:5px;white-space:normal}
 body .v2 .visual-readouts dd{font:400 22px/1.1 var(--sans);letter-spacing:-.01em;color:#f2f1ec}
 /* Save sits in the heading as a quiet control, not a bordered button. */
 body .visual-frame .visual-save{border-color:transparent;background:transparent;backdrop-filter:none;color:#a9a8a2;opacity:1}
@@ -174,7 +174,7 @@ body .study-weak h4{font:500 13px/1.3 var(--sans);letter-spacing:0;text-transfor
 body .app-modal{border-radius:20px;border-color:#2f2f2c;background:#1c1c1b;box-shadow:0 40px 120px -40px #000,0 0 0 1px #ffffff05}
 body .app-modal .modal-heading h2{font:400 26px/1.15 var(--serif);letter-spacing:-.02em}
 body .app-modal .field{font-size:13px;color:#a9a8a1}
-body .app-modal .field .optional{display:inline;margin-left:6px;color:#6f6e68;font-size:12px}
+body .app-modal .field .optional{display:inline;margin-left:6px;color:#6f6e68;font-size:13px}
 body .app-modal :is(input,textarea){border-radius:12px;border-color:#2f2f2c;background:#161615;transition:border-color .3s var(--pm-ease)}
 body .app-modal :is(input,textarea):focus{border-color:#4a4a45}
 body .app-modal form>.primary{border-radius:11px}
@@ -199,7 +199,7 @@ html[data-quiet=true] body .visual-drafting .drafting-text{animation:none;-webki
 body .sidebar-bottom{border-top-color:transparent}
 body .account-button{border-radius:10px;transition:background .3s var(--pm-ease)}
 body .account-button:hover{background:#1d1d1c}
-body .account-button>span:not(.avatar){font-size:13.5px;font-weight:500}
+body .account-button>span:not(.avatar){font-size:14.5px;font-weight:500}
 
 /* Lists arrive in a short cascade: cards, file rows and folders fade up one after another, the first eight staggered
    and the rest together, so a long list never waits. Only on arrival; filtering or re-rendering doesn't replay it. */

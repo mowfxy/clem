@@ -1,7 +1,7 @@
 /* Slash commands: the menu above the composer and the chip a chosen command becomes. */
 .slash-field{position:relative;display:flex;align-items:flex-start;gap:8px;width:100%}
 .slash-field textarea{flex:1;min-width:0}
-.command-chip{flex:none;display:inline-flex;align-items:center;gap:7px;height:auto;padding:0;margin:0;border:0;background:none;color:#a9a8a1;font:700 11px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;cursor:default}
+.command-chip{flex:none;display:inline-flex;align-items:center;gap:7px;height:auto;padding:0;margin:0;border:0;background:none;color:#a9a8a1;font:700 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;cursor:default}
 .command-chip .drawn-icon{flex:none;width:15px;height:15px;color:#d9d8d2}
 button.command-chip{cursor:pointer;transition:color .15s}
 button.command-chip:hover{color:#f0efeb}
@@ -28,4 +28,4 @@ html[data-quiet=true] .slash-menu{animation:none}
 .message.user .message-text .command-chip{display:flex;width:fit-content;margin:0 0 7px}
 .message.user .message-text .command-chip:last-child{margin:0}
 /* A /compact or /handoff brief: later requests start from it. */
-.compact-note{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:3px 9px 3px 7px;border:1px solid #3a3a36;border-radius:999px;color:#b9b8b1;font:400 12px/1.4 var(--sans)}
+.compact-note{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:3px 9px 3px 7px;border:1px solid #3a3a36;border-radius:999px;color:#b9b8b1;font:400 13px/1.4 var(--sans)}

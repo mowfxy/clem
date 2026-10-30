@@ -6,7 +6,7 @@
 .picker-trigger>svg{color:#8f8e87;flex:none;transition:transform .2s}
 .picker-trigger[aria-expanded=true]>svg{transform:rotate(180deg)}
 .picker-trigger-name{overflow:hidden;text-overflow:ellipsis;max-width:170px}
-.picker-trigger-effort{flex:none;padding:3px 7px;border-radius:6px;background:#ffffff0d;color:#aeada5;font-size:11px;line-height:1}
+.picker-trigger-effort{flex:none;padding:3px 7px;border-radius:6px;background:#ffffff0d;color:#aeada5;font-size:12px;line-height:1}
 .picker-trigger-effort[data-level=high],.picker-trigger-effort[data-level=xhigh],.picker-trigger-effort[data-level=ultra]{background:#ffffff1a;color:#f4f3ee}
 .picker-trigger-effort[data-level=low],.picker-trigger-effort[data-level=minimal]{background:#ffffff08;color:#8f8e87}
 .picker-mark{width:18px;height:18px;flex:none;display:grid;place-items:center;color:#f0efeb}
@@ -20,17 +20,17 @@
 
 
 .picker-group+.picker-group{margin-top:4px;padding-top:4px;border-top:1px solid #ffffff0a}
-.picker-group-name{padding:7px 10px 4px;font-size:11px;letter-spacing:.02em;color:#8c8b84}
+.picker-group-name{padding:7px 10px 4px;font-size:12px;letter-spacing:.02em;color:#8c8b84}
 .unified-picker-panel .picker-model-row{width:100%;gap:10px;text-align:left;padding:8px 10px;border-radius:10px}
 .unified-picker-panel .picker-model-row:hover{background:#ffffff08}
 .unified-picker-panel .picker-model-row[aria-pressed=true]{background:#ffffff0f}
 .picker-model-row>svg{flex:none;color:#e8e7e0}
 
 .picker-model-name{display:flex;align-items:center;gap:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#efeee8}
-.picker-model-name em{font-style:normal;font-size:10px;padding:2px 6px;border-radius:99px;border:1px solid #ffffff17;color:#9d9c95}
+.picker-model-name em{font-style:normal;font-size:11.5px;padding:2px 6px;border-radius:99px;border:1px solid #ffffff17;color:#9d9c95}
 
-.picker-empty{font-size:12px;color:#aaa99f;padding:8px 10px 12px;margin:0}
-.unified-picker-panel .picker-connect{border-top:1px solid #ffffff0c;border-radius:0;width:100%;justify-content:space-between;margin-top:6px;padding:10px 10px 5px;font-size:11px;color:#a5a59c}
+.picker-empty{font-size:13px;color:#aaa99f;padding:8px 10px 12px;margin:0}
+.unified-picker-panel .picker-connect{border-top:1px solid #ffffff0c;border-radius:0;width:100%;justify-content:space-between;margin-top:6px;padding:10px 10px 5px;font-size:12px;color:#a5a59c}
 .unified-picker-panel .picker-connect:hover{color:#eeede7}
 /* Long task: a quiet chip at rest that lights up, with a small lit dot, when it is on */
 .composer .mode-button.long-toggle{display:inline-flex;align-items:center;gap:0;height:32px;padding:0 8px;border-radius:99px;border:1px solid transparent;background:transparent;color:#a9a8a0;font:12px var(--sans);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
@@ -62,7 +62,7 @@
 
 /* Two compact popovers: model list and thinking level */
 .unified-model-picker{gap:2px;align-items:center}
-.picker-trigger.picker-trigger-effort{padding:0 9px;gap:7px;font-size:12px;color:#aeada5;background:transparent}
+.picker-trigger.picker-trigger-effort{padding:0 9px;gap:7px;font-size:13px;color:#aeada5;background:transparent}
 .picker-trigger.picker-trigger-effort[data-level=high],.picker-trigger.picker-trigger-effort[data-level=xhigh],.picker-trigger.picker-trigger-effort[data-level=ultra]{background:transparent;color:#f4f3ee}
 .effort-label{display:inline-grid;text-align:left}
 .effort-label>span{grid-area:1/1;visibility:hidden}
@@ -73,8 +73,8 @@
 .model-pop .picker-model-row:hover,.model-pop .picker-model-row:focus-visible{background:#ffffff0b}
 .model-pop .picker-model-row[aria-checked=true]{background:#ffffff10}
 .model-pop .picker-model-name{flex:1;min-width:0;font-size:13px}
-.model-pop .picker-group-name{padding:6px 9px 3px;font-size:11px}
-.model-pop .picker-connect{margin-top:4px;padding:8px 9px 4px;font-size:11px}
+.model-pop .picker-group-name{padding:6px 9px 3px;font-size:12px}
+.model-pop .picker-connect{margin-top:4px;padding:8px 9px 4px;font-size:12px}
 .unified-picker-panel.effort-pop{width:250px;padding:12px 12px 14px;border-radius:14px}
 .effort-pop .picker-effort{margin:0;padding:0;border:0}
 
@@ -84,7 +84,7 @@
 .effort-head{display:flex;align-items:center;gap:10px;padding:0 2px 12px;min-height:26px}
 .effort-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px}
 .effort-title b{font:700 14px/1.2 var(--sans);color:#f6f5f0;letter-spacing:.005em}
-.effort-title small{font-size:11px;color:#8f8e87}
+.effort-title small{font-size:12px;color:#8f8e87}
 .effort-track{--k:26px;position:relative;height:32px;box-sizing:border-box;border-radius:99px;background:#141413;border:1px solid #ffffff12;cursor:pointer;touch-action:none;outline:none;transition:--p .5s cubic-bezier(.22,1,.36,1),--glow .5s ease}
 .effort-track.is-dragging{transition:--glow .3s ease}
 .effort-stop{position:absolute;top:50%;left:calc(15px + (100% - 30px) * var(--at));width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:#ffffff30;transition:opacity .3s}

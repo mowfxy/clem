@@ -15,11 +15,11 @@
 .cf-file{display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px 10px}
 .cf-file:hover{background:#222221}
 .cf-name{padding-right:16px;font:400 13px/1.38 var(--sans);color:#ecebe6;word-break:break-all;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow:hidden}
-.cf-badge{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;max-width:100%;padding:3px 7px;border-radius:6px;background:#ffffff12;font:500 11px/1.2 var(--sans);letter-spacing:.02em;color:#c9c7bf;white-space:nowrap}
+.cf-badge{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;max-width:100%;padding:3px 7px;border-radius:6px;background:#ffffff12;font:500 12px/1.2 var(--sans);letter-spacing:.02em;color:#c9c7bf;white-space:nowrap}
 .cf-badge svg{flex:0 0 auto}
 
 body .composer .cf-remove{position:absolute;top:6px;right:6px;display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:#141413e6;color:#e6e4dd;box-shadow:0 0 0 1px #ffffff1a;opacity:0;transition:opacity .15s,background .15s;cursor:pointer;z-index:1}
 .composer-files>*:hover .cf-remove,body .composer .cf-remove:focus-visible{opacity:1}
 body .composer .cf-remove:hover{background:#000}
 @media(hover:none){body .composer .cf-remove{opacity:1}}
-@media(max-width:520px){.cf-tile{width:96px;height:96px}.cf-name{-webkit-line-clamp:3;line-clamp:3;font-size:12px}}
+@media(max-width:520px){.cf-tile{width:96px;height:96px}.cf-name{-webkit-line-clamp:3;line-clamp:3;font-size:13px}}

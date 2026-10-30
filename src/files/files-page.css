@@ -18,7 +18,7 @@
 .files-page .files-kinds button .brand-youtube{margin-right:-1px}
 
 .fx-group{margin-top:18px}
-.lib .fx-group-title{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;padding:0 8px;font:500 12.5px/1.3 var(--sans);letter-spacing:0;color:var(--lb-muted)}
+.lib .fx-group-title{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;padding:0 8px;font:500 13.5px/1.3 var(--sans);letter-spacing:0;color:var(--lb-muted)}
 .fx-group-title span{font-weight:400;color:#6c6b66}
 
 /* Rows */
@@ -33,7 +33,7 @@
 .fx-main{flex:1;min-width:0;display:grid;gap:3px}
 .lib .fx-name{justify-content:flex-start;min-width:0;max-width:100%;padding:0;border-radius:4px;color:var(--lb-ink);font:400 14.5px/1.35 var(--sans);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .lib .fx-name:hover{background:none;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#ffffff40}
-.fx-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 0;font-size:12px;color:var(--lb-muted);min-width:0}
+.fx-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 0;font-size:13px;color:var(--lb-muted);min-width:0}
 .fx-meta>*:not(:first-child)::before{content:'·';margin:0 7px;color:#5f5e59}
 .fx-place{color:var(--lb-soft)}
 .fx-captions.none{color:#c9a66b}
@@ -52,7 +52,7 @@
 .fx-cover .yt-thumb{width:100%;height:100%;border-radius:0}
 .fx-card .fx-main{padding:11px 13px 13px}
 .fx-card .fx-tools{position:absolute;top:8px;right:8px;padding:2px;border-radius:10px;background:#141413e6;backdrop-filter:blur(6px)}
-.fx-card .fx-meta{font-size:11.5px}
+.fx-card .fx-meta{font-size:12.5px}
 
 @media (max-width:760px){
   .files-page .calm-head{flex-wrap:wrap;align-items:flex-start}

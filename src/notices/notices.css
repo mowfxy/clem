@@ -5,7 +5,7 @@
 .notice-stack:not(.expanded) .notice-card.behind{position:absolute;inset:0}
 .notice-card.behind>*{visibility:hidden}
 .notice-stack.expanded{display:flex;flex-direction:column;gap:8px}
-.notice-count{position:absolute;top:-8px;right:-6px;z-index:5;min-width:19px;height:19px;padding:0 6px;border-radius:99px;display:grid;place-items:center;font-size:11px;font-weight:400;background:#2c2c2a;color:var(--n-ink);border:1px solid #ffffff1c}
+.notice-count{position:absolute;top:-8px;right:-6px;z-index:5;min-width:19px;height:19px;padding:0 6px;border-radius:99px;display:grid;place-items:center;font-size:12px;font-weight:400;background:#2c2c2a;color:var(--n-ink);border:1px solid #ffffff1c}
 .expanded .notice-count{opacity:0;transition:opacity .2s}
 
 .notice-card{--depth:0;position:relative;display:flex;align-items:flex-start;gap:10px;padding:12px 8px 13px 10px;border-radius:14px;color:var(--n-ink);
@@ -18,9 +18,9 @@
 .notice-art{flex:none;width:50px;height:50px;margin:-3px 0 -3px -2px;display:grid;place-items:center}
 .notice-drawing,.notice-drawing svg{display:block;width:50px;height:50px;overflow:visible}
 .notice-copy{min-width:0;flex:1;padding-top:2px}
-.notice-copy strong{display:block;font-size:12.5px;font-weight:400;letter-spacing:.01em}
-.notice-copy p{margin:3px 0 0;color:var(--n-soft);font-size:11.5px;line-height:1.42;overflow-wrap:anywhere}
-.notice-card .notice-action{margin-top:8px;padding:5px 10px;border-radius:8px;font-size:11.5px;gap:5px;color:var(--n-ink);background:#2a2a28;border:1px solid #ffffff14}
+.notice-copy strong{display:block;font-size:13.5px;font-weight:400;letter-spacing:.01em}
+.notice-copy p{margin:3px 0 0;color:var(--n-soft);font-size:12.5px;line-height:1.42;overflow-wrap:anywhere}
+.notice-card .notice-action{margin-top:8px;padding:5px 10px;border-radius:8px;font-size:12.5px;gap:5px;color:var(--n-ink);background:#2a2a28;border:1px solid #ffffff14}
 .notice-card .notice-action:hover{background:#333331}
 .notice-card .notice-action svg{transition:transform .2s}
 .notice-card .notice-action:hover svg{transform:translateX(2px)}
@@ -32,18 +32,18 @@
 @keyframes notice-pop{from{transform:scale(0)}}
 
 /* The long-task handoff shares the same material. */
-.account-handoff{position:fixed;left:13px;bottom:78px;z-index:46;width:min(300px,calc(100vw - 26px));padding:15px;border-radius:16px;color:#f1f2ed;font-size:12px;font-family:var(--sans);
+.account-handoff{position:fixed;left:13px;bottom:78px;z-index:46;width:min(300px,calc(100vw - 26px));padding:15px;border-radius:16px;color:#f1f2ed;font-size:13px;font-family:var(--sans);
   background:#1f1f1d;border:1px solid #ffffff17;box-shadow:0 24px 60px -12px #000c;animation:notice-in .5s cubic-bezier(.2,.9,.3,1) backwards}
 .handoff-heading{display:flex;gap:11px;align-items:flex-start;margin-bottom:12px}
 .handoff-heading .notice-art{width:52px;height:52px}
 .handoff-heading strong{display:block;font-size:13px;font-weight:400}
-.handoff-heading p{margin:4px 0 0;color:#b7bcb0;font-size:11px;line-height:1.4}
-.account-handoff label{display:grid;gap:5px;margin:9px 0;color:#b8bdb2;font-size:11px}
-.account-handoff label>span,.account-handoff select{display:block;width:100%;border:1px solid #4c4a45;border-radius:8px;background:#161615;padding:7px 8px;color:#f0f1e9;font-size:12px}
+.handoff-heading p{margin:4px 0 0;color:#b7bcb0;font-size:12px;line-height:1.4}
+.account-handoff label{display:grid;gap:5px;margin:9px 0;color:#b8bdb2;font-size:12px}
+.account-handoff label>span,.account-handoff select{display:block;width:100%;border:1px solid #4c4a45;border-radius:8px;background:#161615;padding:7px 8px;color:#f0f1e9;font-size:13px}
 .handoff-actions{display:flex;justify-content:flex-end;gap:5px;margin-top:14px}
-.handoff-actions button{font-size:11px;padding:7px 10px;border-radius:8px}
+.handoff-actions button{font-size:12px;padding:7px 10px;border-radius:8px}
 .account-handoff button.primary{background:#f0e0d7;border-color:#f0e0d7;color:#2a1a14}
-.handoff-limit-note{margin:7px 0 0;color:#aeb5a8;font-size:11px;line-height:1.4}
+.handoff-limit-note{margin:7px 0 0;color:#aeb5a8;font-size:12px;line-height:1.4}
 
 @media (max-width:600px){.notice-stack,.account-handoff{left:12px;bottom:74px}}
 @media (prefers-reduced-motion:reduce){.notice-stack *,.account-handoff{animation:none!important;transition:none!important}}

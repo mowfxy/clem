@@ -3,12 +3,12 @@ dialog.command-palette[open]{display:flex;animation:command-in .28s cubic-bezier
 dialog.command-palette::backdrop{background:#0009;backdrop-filter:blur(4px)}
 .command-input{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid #30302e;color:#8f8e88}
 .command-input input{flex:1;border:0!important;outline:0!important;background:none!important;padding:0!important;font-size:16px;color:#f0efe9}
-.command-palette kbd{font:400 11px/1 var(--sans);padding:4px 6px;border-radius:5px;border:1px solid #3d3d3a;background:#2a2a28;color:#aaa9a2}
+.command-palette kbd{font:400 12px/1 var(--sans);padding:4px 6px;border-radius:5px;border:1px solid #3d3d3a;background:#2a2a28;color:#aaa9a2}
 .command-results{overflow:auto;padding:8px;flex:1}
-.command-results h3{margin:10px 10px 6px;font:400 11px/1 var(--sans);text-transform:uppercase;letter-spacing:.08em;color:#7f7e78}
+.command-results h3{margin:10px 10px 6px;font:400 12px/1 var(--sans);text-transform:uppercase;letter-spacing:.08em;color:#7f7e78}
 .command-results button{width:100%;justify-content:flex-start;gap:12px;padding:10px 12px;border-radius:10px;font-size:14px;color:#cfcec7;text-align:left}
 .command-results button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.command-results button small{color:#7f7e78;font-size:12px}
+.command-results button small{color:#7f7e78;font-size:13px}
 .command-results button{position:relative;transition:background-color .12s ease,color .12s ease}
 .command-results button:hover:not(.active){background:transparent}
 .command-results button.active{background:#ffffff0f;color:#fff}
@@ -18,7 +18,7 @@ dialog.command-palette::backdrop{background:#0009;backdrop-filter:blur(4px)}
 .command-results section:nth-child(2){animation-delay:.03s}.command-results section:nth-child(3){animation-delay:.06s}.command-results section:nth-child(n+4){animation-delay:.09s}
 .command-results button.active svg{color:#a9b3f7}
 .command-empty{padding:30px;text-align:center;color:#8f8e88;margin:0}
-.command-palette footer{display:flex;gap:16px;padding:10px 16px;border-top:1px solid #30302e;color:#7f7e78;font-size:11px}
+.command-palette footer{display:flex;gap:16px;padding:10px 16px;border-top:1px solid #30302e;color:#7f7e78;font-size:12px}
 .command-palette footer span{display:flex;align-items:center;gap:4px}
 @keyframes command-bar{from{transform:scaleY(0)}}
 @keyframes command-group{from{opacity:0;transform:translateY(4px)}}

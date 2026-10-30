@@ -4,7 +4,7 @@
    Sans is names and interface: every sub-heading, title of a thing, label, control and caption.
    Stylesheets name families only through --sans, --serif and --mono. */
 
-/* Mowafy Sans (mowfxy/sans e49bc9d), from scripts/import-sans.py: Light, Regular, Medium, SemiBold and Bold, each with an
+/* Mowafy Sans (mowfxy/sans 1edd83d), from scripts/import-sans.py: Light, Regular, Medium, SemiBold and Bold, each with an
    italic, plus script and math companions that only load when a page uses them. */
 @font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Light.woff2') format('woff2');font-weight:300;font-style:normal;font-display:swap}
 @font-face{font-family:'Mowafy Sans';src:url('/fonts/MowafySans-Regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
@@ -272,7 +272,7 @@ math{font-family:'Mowafy Math',serif;font-synthesis:none}
   --t-read:16px;     /* serif: answers, documents */
   --t-body:14px;     /* sans: interface text */
   --t-small:13px;    /* sans: captions, secondary text */
-  --t-label:11px;    /* sans bold, capitals: eyebrows and group labels */
+  --t-label:12px;    /* sans bold, capitals: eyebrows and group labels */
   --track-display:-.025em;
   --track-title:-.02em;
   --track-label:.08em;
