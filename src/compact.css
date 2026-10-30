@@ -5,13 +5,13 @@
 .workspace-top{gap:12px;min-width:0}
 .workspace-top .top-where{display:flex;align-items:center;gap:9px;min-width:0}
 .workspace-top .top-title{font:500 13.5px/1.3 var(--sans);letter-spacing:-.005em;color:#f2f1ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(52vw,560px)}
-body .workspace-top .top-space{display:inline-flex;align-items:center;flex:none;height:22px;padding:0 8px;border:0;border-radius:6px;background:#ffffff10;color:#bdbcb5;font:500 12px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
+body .workspace-top .top-space{display:inline-flex;align-items:center;flex:none;height:22px;padding:0 8px;border:0;border-radius:6px;background:#ffffff10;color:#bdbcb5;font:500 13px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 /* Pressing it never moves it (no press shrink, no text selection) */
 body .workspace-top .top-space:active{transform:none}
 .workspace-top{user-select:none}
 body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
-.workspace-top .temp-controls .secondary{padding:3px 10px;font-size:12.5px}
-.workspace-top .temp-pill{font-size:12.5px}
+.workspace-top .temp-controls .secondary{padding:3px 10px;font-size:13.5px}
+.workspace-top .temp-pill{font-size:13.5px}
 
 /* On the desktop the header lives in the title bar, beside the window buttons, and gives its height to the chat */
 .desktop-content .workspace-top{position:fixed!important;top:0!important;left:244px;right:160px;height:var(--tb)!important;display:flex!important;align-items:center!important;padding:1px 8px 0 20px!important;z-index:10001!important;background:transparent!important;box-sizing:border-box;-webkit-app-region:drag;app-region:drag}
@@ -25,17 +25,17 @@ body .workspace-top .top-space:hover{background:#ffffff1f;color:#fff}
 .file-panel{top:60px;height:calc(100dvh - 68px)}
 .desktop-content .file-panel{top:8px;height:calc(100dvh - var(--tb) - 16px)}
 
-/* Sidebar, a size smaller (the account row at the bottom stays as it is) */
+/* Sidebar: rows read at the interface size, on buttons tall enough for it */
 body .sidebar>.brand{font-size:30px;margin:0 8px 22px}
 body .sidebar>.brand svg{width:27px;height:27px}
 body .sidebar nav{gap:1px}
-body .sidebar .nav-item{height:34px;font-size:13.5px;font-weight:400;padding:7px 10px;gap:11px}
-body .sidebar .nav-item .drawn-icon{width:18px;height:18px}
+body .sidebar .nav-item{height:36px;font-size:14.5px;font-weight:400;padding:7px 10px;gap:11px}
+body .sidebar .nav-item .drawn-icon{width:19px;height:19px}
 body .sidebar .sidebar-history{margin-top:18px}
 /* Day labels are small quiet captions, so the titles under them carry the list */
 body .sidebar .history-group{margin-bottom:8px}
-body .sidebar .history-group .history-label{font-size:11.5px;font-weight:500;letter-spacing:.01em;min-height:26px}
-body .sidebar .history-item{font-size:13.5px;height:32px;padding:7px 10px}
+body .sidebar .history-group .history-label{font-size:13px;font-weight:500;letter-spacing:.01em;min-height:26px}
+body .sidebar .history-item{font-size:14.5px;height:34px;padding:7px 10px}
 /* On the desktop the logo sits clear of the window's top edge, and the sidebar button shares its middle line */
 @media(min-width:761px){
   body .desktop-content .sidebar{padding-top:20px}

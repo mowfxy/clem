@@ -35,7 +35,7 @@
 .contact-option:hover>svg{color:#dddcd5;transform:translateX(2px)}
 .contact-option-text{display:grid;gap:4px;min-width:0}
 .contact-option-text strong{font-weight:400;font-size:13px;white-space:normal}
-.contact-option-text small{font-size:12px;line-height:1.45;color:#8f8e87;white-space:normal}
+.contact-option-text small{font-size:13px;line-height:1.45;color:#8f8e87;white-space:normal}
 .contact-option-mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex:none;background:#ffffff08;border:1px solid #ffffff10;color:#dcdbd4}
 .contact-bug .contact-option-mark{color:#f0a493;background:#ec8a7412;border-color:#ec8a7430}
 .contact-idea .contact-option-mark{color:#e9cf8a;background:#e6c46e12;border-color:#e6c46e30}
@@ -49,21 +49,21 @@
 .contact-close{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:#9b9a93;cursor:pointer}
 .contact-close:hover{background:#ffffff0c;color:#eee}
 .contact-dialog form{display:grid;gap:14px;padding:14px 22px 20px}
-.contact-dialog label{display:grid;gap:7px;font-size:12px;color:#c9c8c0}
+.contact-dialog label{display:grid;gap:7px;font-size:13px;color:#c9c8c0}
 .contact-dialog input:not([type=checkbox]),.contact-dialog textarea{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #3d3d38;border-radius:10px;background:#141413;color:#eeede7;font:13px/1.5 var(--sans);resize:vertical;transition:border-color .15s,box-shadow .15s}
 .contact-dialog input::placeholder,.contact-dialog textarea::placeholder{color:#6f6e68}
 .contact-dialog input:focus,.contact-dialog textarea:focus{outline:none;border-color:#7a7a72;box-shadow:0 0 0 3px #ffffff0d}
-.contact-optional{font-size:11px;color:#7d7c75;margin-left:4px}
+.contact-optional{font-size:12px;color:#7d7c75;margin-left:4px}
 .contact-check{display:flex!important;align-items:center;gap:9px!important;color:#a9a8a0!important}
 .contact-check input{width:15px;height:15px;accent-color:#e8e7e0}
 .contact-chips{display:flex;flex-wrap:wrap;gap:7px;margin:0;padding:0;border:0}
-.contact-chips legend{font-size:12px;color:#c9c8c0;margin-bottom:8px;padding:0}
+.contact-chips legend{font-size:13px;color:#c9c8c0;margin-bottom:8px;padding:0}
 .contact-chips button{padding:6px 11px;border-radius:99px;border:1px solid #3d3d38;background:transparent;color:#bebdb5;font:12px var(--sans);cursor:pointer;transition:all .15s}
 .contact-chips button:hover{border-color:#5a5a53;color:#eee}
 .contact-chips button[aria-pressed=true]{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
-.contact-error{margin:0;font-size:12px;color:#f0a493}
+.contact-error{margin:0;font-size:13px;color:#f0a493}
 .contact-dialog footer{display:flex;align-items:center;gap:8px;padding-top:6px;border-top:1px solid #2d2d2a;margin-top:2px}
-.contact-dialog footer small{flex:1;font-size:11px;line-height:1.4;color:#7f7e77;padding-top:10px}
+.contact-dialog footer small{flex:1;font-size:12px;line-height:1.4;color:#7f7e77;padding-top:10px}
 .contact-dialog footer button{margin-top:10px}
 .contact-sent{display:grid;justify-items:center;text-align:center;padding:18px 28px 28px;gap:6px}
 .contact-sent h3{margin:6px 0 0;font:400 20px var(--serif)}
@@ -77,7 +77,7 @@
 
 /* Password change */
 .password-change{display:grid;gap:2px}
-.password-change small{font-size:11px;color:#7f7e77}
+.password-change small{font-size:12px;color:#7f7e77}
 .password-code{display:flex;align-items:flex-end;gap:8px}
 .password-code label{flex:1}
 .password-code button{margin-bottom:16px!important;white-space:nowrap}
@@ -100,7 +100,7 @@ dialog.settings-dialog .settings-dialog-body{padding:2px 22px 22px;font-size:13p
 dialog.settings-dialog .settings-dialog-body>h3:first-child,dialog.settings-dialog .settings-dialog-body form>h3:first-child{display:none}
 dialog.settings-dialog .settings-dialog-body h3{margin:18px 0 6px;font:400 13px var(--sans);color:#e6e5de}
 dialog.settings-dialog .settings-dialog-body p,dialog.app-modal p{margin:0 0 10px;font-size:13px;line-height:1.6;color:#a3a29a}
-dialog.settings-dialog .settings-dialog-body label,dialog.app-modal label{display:flex;flex-direction:column;gap:7px;margin:0 0 14px;font-size:12px;color:#c9c8c0}
+dialog.settings-dialog .settings-dialog-body label,dialog.app-modal label{display:flex;flex-direction:column;gap:7px;margin:0 0 14px;font-size:13px;color:#c9c8c0}
 dialog.settings-dialog .settings-dialog-body label:has(input[type=checkbox]),dialog.app-modal label:has(input[type=checkbox]){flex-direction:row;align-items:center;gap:9px}
 dialog.settings-dialog .settings-dialog-body input:not([type=checkbox]):not([type=radio]),dialog.settings-dialog .settings-dialog-body textarea,dialog.settings-dialog .settings-dialog-body select,dialog.app-modal input:not([type=checkbox]):not([type=radio]),dialog.app-modal textarea,dialog.app-modal select{width:100%;box-sizing:border-box;min-height:40px;padding:9px 12px;border:1px solid #3d3d38;border-radius:10px;background:#141413;color:#eeede7;font:13px var(--sans);transition:border-color .15s,box-shadow .15s}
 dialog.settings-dialog .settings-dialog-body input:focus,dialog.settings-dialog .settings-dialog-body textarea:focus,dialog.settings-dialog .settings-dialog-body select:focus,dialog.app-modal input:focus,dialog.app-modal textarea:focus{outline:none;border-color:#7a7a72;box-shadow:0 0 0 3px #ffffff0d}
@@ -110,9 +110,9 @@ dialog.settings-dialog .settings-dialog-body button:hover,dialog.app-modal .moda
 dialog.settings-dialog .settings-dialog-body form button:not([type=button]),dialog.settings-dialog .settings-dialog-body button.primary,dialog.app-modal .modal-actions button.primary{background:#e8e7e0;border-color:#e8e7e0;color:#1b1b19}
 dialog.settings-dialog .settings-dialog-body form button:not([type=button]):hover,dialog.settings-dialog .settings-dialog-body button.primary:hover,dialog.app-modal .modal-actions button.primary:hover{background:#fff}
 dialog.settings-dialog .settings-dialog-body button:disabled,dialog.app-modal button:disabled{opacity:.5;cursor:default}
-dialog.settings-dialog .settings-dialog-body [role=status]{margin-top:12px;padding:10px 12px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff0f;color:#d5d4cc;font-size:12px}
+dialog.settings-dialog .settings-dialog-body [role=status]{margin-top:12px;padding:10px 12px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff0f;color:#d5d4cc;font-size:13px}
 dialog.settings-dialog .settings-dialog-body form+form{margin-top:10px;padding-top:14px;border-top:1px solid #2d2d2a}
-dialog.settings-dialog .settings-dialog-body small{font-size:11px;color:#7f7e77}
+dialog.settings-dialog .settings-dialog-body small{font-size:12px;color:#7f7e77}
 dialog.app-modal .modal-actions{justify-content:flex-end;gap:8px;margin-top:18px}
 dialog.app-modal .modal-actions button{margin:0}
 /* Memory: a quiet list in the app's own grammar (like the sidebar's history), grouped under small captions. Each
@@ -121,16 +121,16 @@ dialog.app-modal .modal-actions button{margin:0}
    reach in. */
 .memory-panel{display:grid;gap:22px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:32px}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lede{margin:0;font-size:12.5px;line-height:1.4;color:#8a8982;font-variant-numeric:tabular-nums}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lede{margin:0;font-size:13.5px;line-height:1.4;color:#8a8982;font-variant-numeric:tabular-nums}
 .memory-lede .memory-fresh{color:#c9c8c0}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-search{display:flex;flex-direction:row;align-items:center;gap:7px;min-width:0;flex:0 1 220px;height:32px;margin:0;padding:0 10px;border:1px solid #2e2e2b;border-radius:9px;background:transparent;color:#77766f;transition:border-color .15s}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-search:focus-within{border-color:#4a4a45}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-search input:not([type=checkbox]){flex:1;min-width:0;height:30px;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#e6e5de;font:400 12.5px var(--sans);outline:none}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-search input:not([type=checkbox]){flex:1;min-width:0;height:30px;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#e6e5de;font:400 13.5px var(--sans);outline:none}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-search input::-webkit-search-cancel-button{display:none}
 .memory-none{margin:0;padding:0 10px;font-size:13px;color:#9b9a93}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:24px;margin:0 0 4px;padding:0 10px}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-group h4{display:flex;align-items:baseline;gap:7px;margin:0;font:500 11.5px/1.3 var(--sans);letter-spacing:.01em;color:#8a8982}
-.memory-count{font:400 11.5px/1 var(--sans);color:#5f5e58;font-variant-numeric:tabular-nums}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-group h4{display:flex;align-items:baseline;gap:7px;margin:0;font:500 12.5px/1.3 var(--sans);letter-spacing:.01em;color:#8a8982}
+.memory-count{font:400 12.5px/1 var(--sans);color:#5f5e58;font-variant-numeric:tabular-nums}
 .memory-group>ul{list-style:none;margin:0;padding:0}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-group>h4{min-height:24px;margin:0 0 4px;padding:0 10px}
 .memory-group>ul>li{position:relative;display:flex;align-items:flex-start;gap:8px;padding:11px 6px 11px 10px;border-radius:10px;color:#e6e5de;transition:background .12s}
@@ -144,12 +144,12 @@ dialog.app-modal .modal-actions button{margin:0}
 .memory-points li{position:relative;display:flex;align-items:baseline;gap:14px;padding:1px 0 1px 14px;font:400 13.5px/1.5 var(--sans);color:#c9c8c0}
 .memory-points li::before{content:"";position:absolute;left:3px;top:calc(.75em - 1.5px);width:3px;height:3px;border-radius:50%;background:#6f6e68}
 .memory-points li>span{flex:1;min-width:0;text-wrap:pretty}
-.memory-points time{flex:none;font:400 12px/1.5 var(--sans);font-variant-numeric:tabular-nums;color:#8a8982}
-.memory-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;line-height:1.4;color:#77766f}
+.memory-points time{flex:none;font:400 13px/1.5 var(--sans);font-variant-numeric:tabular-nums;color:#8a8982}
+.memory-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:13px;line-height:1.4;color:#77766f}
 .memory-meta .memory-new{display:inline-flex;align-items:center;gap:6px;color:#c9c8c0}
 .memory-meta .memory-new::before{content:"";width:6px;height:6px;border-radius:50%;background:#c9c8c0}
 .memory-review{display:flex;align-items:center;gap:2px;margin:3px 0 0 -9px}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review button{display:inline-flex;align-items:center;gap:6px;height:28px;min-height:0;margin:0;padding:0 9px;border:0;border-radius:8px;background:transparent;font:500 12.5px/1 var(--sans);cursor:pointer;transition:background .12s,color .12s}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review button{display:inline-flex;align-items:center;gap:6px;height:28px;min-height:0;margin:0;padding:0 9px;border:0;border-radius:8px;background:transparent;font:500 13.5px/1 var(--sans);cursor:pointer;transition:background .12s,color .12s}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review .memory-keep{color:#ecebe6}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review .memory-keep:hover{background:#ffffff0d;color:#fff}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-review .memory-drop{color:#8a8982}
@@ -161,7 +161,7 @@ dialog.app-modal .modal-actions button{margin:0}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .sp-menu-trigger{display:grid;place-items:center;width:28px;height:28px;min-height:0;margin:0;padding:0;border:0;border-radius:7px;background:transparent;color:#a3a29a}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .sp-menu-trigger:hover,:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-actions .sp-menu-trigger[aria-expanded=true]{background:#ffffff0d;color:#f0efe9}
 .memory-actions .sp-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:20}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-keep-all{height:24px;min-height:0;margin:0 0 0 auto;padding:0 8px;border:0;border-radius:7px;background:transparent;color:#c9c8c0;font:500 11.5px/1 var(--sans)}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-keep-all{height:24px;min-height:0;margin:0 0 0 auto;padding:0 8px;border:0;border-radius:7px;background:transparent;color:#c9c8c0;font:500 12.5px/1 var(--sans)}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-keep-all:hover{background:#ffffff0d;color:#fff}
 .memory-empty{display:grid;justify-items:center;gap:10px;padding:36px 18px;text-align:center}
 .memory-empty-mark{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#ffffff08;color:#a3a29a}
@@ -175,14 +175,14 @@ dialog.app-modal .modal-actions button{margin:0}
 /* Editing in place and choosing where a memory applies. */
 .memory-edit,.memory-place{display:grid;gap:10px;margin:2px 0 4px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit textarea{width:100%;min-height:0;margin:0;padding:8px 10px;border:1px solid #3a3a36;border-radius:9px;background:#141413;color:#e6e5de;font:400 13.5px/1.5 var(--sans);resize:vertical}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-place label{display:flex;flex-direction:row;align-items:center;gap:10px;margin:0;font-size:12.5px;color:#a3a29a}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-place label{display:flex;flex-direction:row;align-items:center;gap:10px;margin:0;font-size:13.5px;color:#a3a29a}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-place select{flex:1;min-width:0;width:auto}
 .memory-place fieldset{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;padding:0;border:0}
-.memory-place legend{float:left;width:100%;margin:0 0 4px;padding:0;font-size:12px;color:#8a8982}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-share{flex-direction:row;align-items:center;gap:7px;margin:0;font-size:12.5px;color:#c9c8c0}
+.memory-place legend{float:left;width:100%;margin:0 0 4px;padding:0;font-size:13px;color:#8a8982}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-share{flex-direction:row;align-items:center;gap:7px;margin:0;font-size:13.5px;color:#c9c8c0}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-share input{width:14px;height:14px;min-height:0;margin:0;accent-color:#e8e7e0}
 .memory-edit-actions{display:flex;justify-content:flex-end;gap:4px}
-:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions button{height:28px;min-height:0;margin:0;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#a3a29a;font-size:12.5px}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions button{height:28px;min-height:0;margin:0;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#a3a29a;font-size:13.5px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions button:hover{background:#ffffff0d;color:#f0efe9}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions .memory-keep{background:#e8e7e0;color:#1b1b19}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit-actions .memory-keep:hover{background:#fff;color:#1b1b19}

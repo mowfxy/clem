@@ -3,7 +3,7 @@ dialog.app-modal:has(.gd-picker){width:min(780px,calc(100vw - 32px));max-width:n
 .gd-picker{display:flex;flex-direction:column;gap:10px;min-height:0;font-family:var(--sans);color:#eceae3}
 .gd-top{display:flex;align-items:center;gap:10px}
 .gd-tabs{display:flex;padding:3px;border-radius:11px;background:#ffffff08;border:1px solid #ffffff0d}
-.gd-tabs button{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border:0;border-radius:8px;background:none;color:#a7a59d;font:400 12px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
+.gd-tabs button{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border:0;border-radius:8px;background:none;color:#a7a59d;font:400 13px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 .gd-tabs button:hover{color:#eceae3}
 .gd-tabs button[aria-selected=true]{background:#2e2e2b;color:#f5f4ee;box-shadow:0 1px 0 #ffffff12 inset,0 2px 8px -4px #000}
 .gd-search{flex:1;display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:11px;border:1px solid #ffffff12;background:#121211;color:#8f8d86;transition:border-color .15s,box-shadow .15s}
@@ -33,22 +33,22 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-play{position:absolute;right:3px;bottom:3px;display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#000b;color:#fff}
 .gd-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .gd-name strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;font-size:13px;color:#f1f0ea}
-.gd-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#8c8a83}
+.gd-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#8c8a83}
 .gd-check{flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;border:1.5px solid #ffffff38;color:#101010;transition:all .15s}
 .gd-check.on{background:#dfe6ff;border-color:#dfe6ff}
-.gd-link-folder{flex:none;margin-right:8px;height:28px;padding:0 13px;border-radius:8px;border:1px solid #ffffff1c;background:#ffffff0a;color:#e9e7e0;font:400 12px var(--sans);cursor:pointer;opacity:0;transition:opacity .15s,background .15s}
+.gd-link-folder{flex:none;margin-right:8px;height:28px;padding:0 13px;border-radius:8px;border:1px solid #ffffff1c;background:#ffffff0a;color:#e9e7e0;font:400 13px var(--sans);cursor:pointer;opacity:0;transition:opacity .15s,background .15s}
 .gd-row:hover .gd-link-folder,.gd-link-folder:focus-visible{opacity:1}
 .gd-link-folder:hover{background:#f1f0ea;color:#141414;border-color:#f1f0ea}
 .gd-skeleton{height:48px;margin:2px 0;border-radius:11px;background:linear-gradient(90deg,#ffffff06,#ffffff10,#ffffff06);background-size:200% 100%;animation:gd-shimmer 1.2s ease-in-out infinite}
 @keyframes gd-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 .gd-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;flex:1;color:#9a988f;text-align:center}
 .gd-empty strong{margin-top:6px;font-weight:400;color:#e7e5de}
-.gd-empty small{font-size:12px}
+.gd-empty small{font-size:13px}
 .gd-more{align-self:center;margin:8px 0;height:32px;padding:0 16px;border-radius:9px;border:1px solid #ffffff1a;background:#ffffff08;color:#e7e5de;cursor:pointer}
-.gd-error{margin:0;padding:9px 12px;border-radius:10px;background:#ff6b5a14;border:1px solid #ff6b5a33;color:#ffb4a8;font-size:12px}
+.gd-error{margin:0;padding:9px 12px;border-radius:10px;background:#ff6b5a14;border:1px solid #ff6b5a33;color:#ffb4a8;font-size:13px}
 .gd-retry{margin-left:6px;padding:0;border:0;background:none;color:inherit;font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .gd-foot{display:flex;align-items:center;gap:12px;padding-top:12px;border-top:1px solid #ffffff0d}
-.gd-count{flex:1;font-size:12px;color:#9a988f}
+.gd-count{flex:1;font-size:13px;color:#9a988f}
 .gd-count b{font-weight:700;color:#d9d7cf}
 .gd-foot .primary{height:36px;padding:0 16px;border-radius:10px;white-space:nowrap}
 .gd-disconnect{border:0;background:none;padding:6px 4px;color:#7f7d76;font:12px var(--sans);cursor:pointer}
@@ -70,18 +70,18 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-hero-tile{display:grid;place-items:center;width:68px;height:68px;border-radius:20px;background:linear-gradient(160deg,#fbfaf6,#e9e7df);box-shadow:0 18px 40px -18px #000,0 0 0 1px #ffffff20 inset}
 .gd-connect h3{margin:14px 0 4px;font:400 20px var(--sans);color:#f4f3ed}
 .gd-connect>p{max-width:430px;margin:0 0 14px;font-size:13px;line-height:1.5;color:#9f9d96}
-.gd-connect ul{list-style:none;display:flex;flex-direction:column;gap:7px;margin:0 0 18px;padding:12px 16px;border-radius:13px;background:#ffffff05;border:1px solid #ffffff0d;text-align:left;font-size:12px;color:#cfcdc6}
+.gd-connect ul{list-style:none;display:flex;flex-direction:column;gap:7px;margin:0 0 18px;padding:12px 16px;border-radius:13px;background:#ffffff05;border:1px solid #ffffff0d;text-align:left;font-size:13px;color:#cfcdc6}
 .gd-connect li{display:flex;align-items:center;gap:9px}
 .gd-connect li svg{color:#9bd0a0}
 .gd-google{display:flex;align-items:center;gap:10px;height:42px;padding:0 20px;border-radius:12px;border:0;background:#f4f3ee;color:#161616;font:700 13px var(--sans);cursor:pointer;transition:transform .15s,box-shadow .15s}
 .gd-google:hover:not(:disabled){box-shadow:0 10px 26px -12px #fff6}
 .gd-google:disabled{opacity:.75;cursor:progress}
-.gd-link{margin-top:10px;border:0;background:none;color:#a9b8ff;font-size:12px;cursor:pointer}
+.gd-link{margin-top:10px;border:0;background:none;color:#a9b8ff;font-size:13px;cursor:pointer}
 /* A linked Drive folder inside a subject or project */
 .gd-space{margin-top:18px;border-radius:16px;transition:background .15s,box-shadow .15s}
 .gd-space-head{display:flex;align-items:center;gap:10px;padding:2px 2px 10px}
 .gd-space-head strong{display:block;font-weight:400;font-size:13px;color:#f1f0ea}
-.gd-space-head small{display:block;font-size:11px;color:#8c8a83}
+.gd-space-head small{display:block;font-size:12px;color:#8c8a83}
 .gd-switch{position:relative;min-width:0;margin-left:-6px}
 .gd-switch-button{display:block;max-width:100%;margin:-4px 0;padding:4px 8px;border:0;border-radius:8px;background:none;text-align:left;cursor:pointer;color:inherit;font:inherit}
 .gd-switch-button:hover,.gd-switch-button[aria-expanded=true]{background:#ffffff0b}
@@ -89,30 +89,30 @@ dialog.app-modal .gd-search input:not([type=checkbox]){flex:1;min-width:0;width:
 .gd-switch-button strong .drawn-icon,.gd-switch-button strong svg{flex:none;opacity:.6}
 .gd-switch-list{position:absolute;z-index:30;top:calc(100% + 8px);left:0;right:auto;width:max-content;min-width:240px;max-width:min(420px,calc(100vw - 40px));transform-origin:0 0;animation:gd-menu-in .32s cubic-bezier(.16,1,.3,1) backwards}
 .space-page .gd-switch-list button{gap:24px}
-.gd-switch-list button>small{flex:none;margin-left:auto;font-size:12px;color:#8f8e88}
+.gd-switch-list button>small{flex:none;margin-left:auto;font-size:13px;color:#8f8e88}
 @keyframes gd-menu-in{from{opacity:0;transform:translateY(-4px) scale(.97)}}
 @media (prefers-reduced-motion:reduce){.gd-switch-list{animation:none}}
 .gd-switch-button small{white-space:nowrap}
 .gd-space-head .gd-space-actions{margin-left:auto;display:flex;gap:6px}
-.gd-space-head .gd-space-actions button{height:28px;padding:0 11px;border-radius:8px;border:1px solid #ffffff14;background:#ffffff06;color:#d8d6ce;font-size:12px;cursor:pointer}
+.gd-space-head .gd-space-actions button{height:28px;padding:0 11px;border-radius:8px;border:1px solid #ffffff14;background:#ffffff06;color:#d8d6ce;font-size:13px;cursor:pointer}
 .gd-space-head .gd-space-actions button:hover{background:#ffffff10;color:#fff}
 .gd-space .gd-trail{padding:0 0 8px}
-.gd-space-empty{padding:18px;border-radius:16px;border:1px dashed #ffffff1a;text-align:center;font-size:12px;color:#8f8d86}
+.gd-space-empty{padding:18px;border-radius:16px;border:1px dashed #ffffff1a;text-align:center;font-size:13px;color:#8f8d86}
 @media(prefers-reduced-motion:reduce){.gd-skeleton{animation:none}}
 .gd-space.is-drop{box-shadow:0 0 0 2px #9fb4ff66;background:#9fb4ff0a}
 .gd-row.is-drop{background:#9fb4ff1a;box-shadow:inset 0 0 0 1px #9fb4ff66}
-.gd-saving{margin:0;padding:8px 12px;font-size:12px;color:#c9c7bf}
+.gd-saving{margin:0;padding:8px 12px;font-size:13px;color:#c9c7bf}
 .gd-sync{flex:none;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;box-sizing:border-box}
 .gd-sync.is-uploading{border:2px solid #ffffff1f;border-top-color:#9fb4ff;animation:gd-turn .8s linear infinite;box-sizing:border-box}
 .gd-sync.is-synced{background:#7fd08a26;color:#9fd8a7;animation:gd-arrive .25s ease-out}
 .gd-sync.is-pending{background:none}
 .gd-sync.is-pending .drawn-icon{color:#e9c46a}
-.gd-sync.is-failed{background:#e8a39b26;color:#e8a39b;font:700 11px/1 var(--sans)}
+.gd-sync.is-failed{background:#e8a39b26;color:#e8a39b;font:700 12px/1 var(--sans)}
 @keyframes gd-turn{to{transform:rotate(360deg)}}
 @keyframes gd-arrive{from{transform:scale(.4);opacity:0}}
 @media (prefers-reduced-motion:reduce){.gd-sync.is-uploading{animation-duration:2.4s}.gd-sync.is-synced{animation:none}}
-.gd-reconnect{display:flex;align-items:center;gap:12px;margin:4px 6px 6px;padding:10px 12px;border-radius:11px;background:#9fb4ff12;font-size:12px;color:#d8d6ce}
-.gd-reconnect button{flex:none;margin-left:auto;height:28px;padding:0 12px;border-radius:8px;border:0;background:#f1f0ea;color:#141414;font:400 12px var(--sans);cursor:pointer}
+.gd-reconnect{display:flex;align-items:center;gap:12px;margin:4px 6px 6px;padding:10px 12px;border-radius:11px;background:#9fb4ff12;font-size:13px;color:#d8d6ce}
+.gd-reconnect button{flex:none;margin-left:auto;height:28px;padding:0 12px;border-radius:8px;border:0;background:#f1f0ea;color:#141414;font:400 13px var(--sans);cursor:pointer}
 /* Drive files listed like the files kept here; one on its way to Drive is dimmed until Drive has it */
 .gd-space .sp-folders{margin-bottom:12px}
 .gd-file.is-uploading .file-glyph,.gd-file.is-uploading .sp-file-open strong{opacity:.62}

@@ -2,11 +2,11 @@
    Motion here follows motion.css: short, on entry or in answer to the person, and off for reduced motion and quiet mode. */
 
 /* ── Conversation: back to the latest message ── */
-.jump-latest{position:absolute;left:50%;top:-46px;transform:translateX(-50%);z-index:2;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:999px;border:1px solid #3d3d3a;background:#262625;color:#e7e6e0;font:500 12.5px/1 var(--sans);box-shadow:0 10px 30px -10px #000c;backdrop-filter:blur(8px);animation:en-pop .32s var(--ease-spring,cubic-bezier(.2,1.25,.35,1)) backwards;white-space:nowrap}
+.jump-latest{position:absolute;left:50%;top:-46px;transform:translateX(-50%);z-index:2;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:999px;border:1px solid #3d3d3a;background:#262625;color:#e7e6e0;font:500 13.5px/1 var(--sans);box-shadow:0 10px 30px -10px #000c;backdrop-filter:blur(8px);animation:en-pop .32s var(--ease-spring,cubic-bezier(.2,1.25,.35,1)) backwards;white-space:nowrap}
 .jump-latest:hover{background:#2c2c2a;border-color:#55554f;color:#fff}
 
 /* When a message was sent or answered: a quiet time at the end of its tools row, shown while the pointer is on it. */
-.message-tools .message-time{padding:0 8px;font-size:12px;color:#85847d;white-space:nowrap;opacity:0;transition:opacity .2s}
+.message-tools .message-time{padding:0 8px;font-size:13px;color:#85847d;white-space:nowrap;opacity:0;transition:opacity .2s}
 .message-tools.user-tools .message-time{order:-1}
 .message:hover .message-time,.message:focus-within .message-time{opacity:1}
 
@@ -53,7 +53,7 @@ html[data-sidebar=closed] .drop-overlay{left:0}
 :root[data-text=large] .messages .message.user .message-text{font-size:17.5px}
 :root[data-text=large] .messages .message-text .md table{font-size:15.5px}
 .text-size{display:inline-flex;padding:3px;gap:2px;border-radius:10px;background:#1b1b1a;border:1px solid #30302e}
-.text-size button{height:28px;padding:0 12px;border-radius:7px;font-size:12.5px;color:#a9a8a1}
+.text-size button{height:28px;padding:0 12px;border-radius:7px;font-size:13.5px;color:#a9a8a1}
 .text-size button:hover{color:#ecebe5;background:#ffffff08}
 .text-size button[aria-checked=true]{background:#2e2e2c;color:#fff;box-shadow:0 1px 0 #ffffff10 inset}
 
@@ -67,23 +67,23 @@ dialog.shortcuts-sheet{width:min(560px,calc(100vw - 32px));padding:0;border-radi
 .shortcuts-sheet header h2{margin:0;font:600 16px/1.2 var(--sans);letter-spacing:0;color:#f0efe9}
 .shortcuts-sheet .sheet-body{padding:8px 20px 18px;max-height:min(70vh,560px);overflow:auto}
 .shortcuts-sheet section{margin-top:14px}
-.shortcuts-sheet h3{margin:0 0 6px;font:500 12.5px/1 var(--sans);letter-spacing:0;color:#8f8e88}
+.shortcuts-sheet h3{margin:0 0 6px;font:500 13.5px/1 var(--sans);letter-spacing:0;color:#8f8e88}
 .shortcuts-sheet .sheet-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid #2a2a28;font-size:13.5px;color:#d3d2cb;animation:en-rise .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)) backwards}
 .shortcuts-sheet .sheet-row:last-child{border-bottom:0}
 .shortcuts-sheet .sheet-keys{display:flex;gap:4px;flex:none}
-.shortcuts-sheet kbd{font:500 11px/1 var(--sans);min-width:22px;text-align:center;padding:5px 6px;border-radius:6px;border:1px solid #3d3d3a;border-bottom-width:2px;background:#2a2a28;color:#c9c8c1}
+.shortcuts-sheet kbd{font:500 12px/1 var(--sans);min-width:22px;text-align:center;padding:5px 6px;border-radius:6px;border:1px solid #3d3d3a;border-bottom-width:2px;background:#2a2a28;color:#c9c8c1}
 
 /* ── Files page ── */
 .files-tools{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:22px 0 14px}
 .files-tools .search-field{margin:0;flex:1;min-width:200px}
 .files-kinds{display:flex;flex-wrap:wrap;gap:6px}
-.files-kinds button{height:30px;padding:0 11px;border-radius:999px;border:1px solid #333331;background:none;color:#b3b2ab;font-size:12.5px;gap:6px}
-.files-kinds button small{color:#7f7e78;font-size:11.5px}
+.files-kinds button{height:30px;padding:0 11px;border-radius:999px;border:1px solid #333331;background:none;color:#b3b2ab;font-size:13.5px;gap:6px}
+.files-kinds button small{color:#7f7e78;font-size:12.5px}
 .files-kinds button:hover{border-color:#4a4a46;color:#ecebe5}
 .files-kinds button[aria-pressed=true]{background:#2a2a28;border-color:#5a5a55;color:#fff}
 .files-kinds button[aria-pressed=true] small{color:#b8b7b0}
-.files-sort{margin-left:auto;display:flex;align-items:center;gap:8px;color:#8f8e88;font-size:12.5px}
-.pick-trigger{height:30px;padding:0 9px 0 11px;gap:6px;border-radius:8px;border:1px solid #333331;background:none;color:#d6d5ce;font-size:12.5px}
+.files-sort{margin-left:auto;display:flex;align-items:center;gap:8px;color:#8f8e88;font-size:13.5px}
+.pick-trigger{height:30px;padding:0 9px 0 11px;gap:6px;border-radius:8px;border:1px solid #333331;background:none;color:#d6d5ce;font-size:13.5px}
 .pick-trigger:hover{border-color:#4a4a46;color:#fff}
 .pick-menu{min-width:180px}
 .file-list .file-row{animation:en-rise .3s var(--ease-out,cubic-bezier(.2,.8,.2,1)) backwards;transition:background .15s}
@@ -98,7 +98,7 @@ dialog.shortcuts-sheet{width:min(560px,calc(100vw - 32px));padding:0;border-radi
 /* ── Find on this page ── */
 .find-bar{position:fixed;top:calc(var(--tb,0px) + 12px);right:22px;z-index:40;display:flex;align-items:center;gap:4px;height:42px;padding:0 6px 0 12px;border-radius:12px;border:1px solid #3d3d3a;background:#20201f;color:#a8a7a0;box-shadow:0 18px 50px -18px #000;animation:en-drop .26s var(--ease-spring,cubic-bezier(.2,1.25,.35,1)) backwards}
 .find-bar input{width:210px;height:30px;border:0!important;outline:0!important;background:none!important;padding:0 6px!important;color:#f0efe9;font-size:14px}
-.find-bar .find-count{min-width:68px;text-align:right;padding-right:6px;font-size:12px;color:#8f8e88;white-space:nowrap}
+.find-bar .find-count{min-width:68px;text-align:right;padding-right:6px;font-size:13px;color:#8f8e88;white-space:nowrap}
 .find-bar .icon-button{width:30px;height:30px;padding:0;color:#c9c8c1}
 .find-bar .icon-button:disabled{opacity:.35}
 /* Only while the find bar is open (src/chat/FindBar.tsx sets the class): any ::highlight rule in the page makes

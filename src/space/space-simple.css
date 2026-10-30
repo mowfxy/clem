@@ -38,10 +38,10 @@
 .space-page .sp-file-list{padding:0;border:0;background:none;gap:2px}
 .space-page .sp-file{padding:6px 8px;border:0;border-radius:12px;transition:background .2s}
 .space-page .sp-file:hover,.space-page .sp-file:focus-within{background:#ffffff07}
-.space-page .sp-file-open small{font-size:12.5px}
+.space-page .sp-file-open small{font-size:13.5px}
 .space-page .sp-file-open:hover strong{text-decoration:none}
 /* Source shows as a small mark when on; the switch itself appears on hover. */
-.space-page .sp-source{height:24px;padding:0 9px 0 7px;font-size:11.5px}
+.space-page .sp-source{height:24px;padding:0 9px 0 7px;font-size:12.5px}
 .space-page .sp-files.drop{outline:2px dashed var(--sp-soft);outline-offset:6px;border-radius:16px}
 .space-page .sp-local-head{display:block;margin:20px 0 8px}
 
@@ -65,7 +65,7 @@
 .space-page .subject-study .study-item-open{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;gap:4px;min-height:96px;padding:16px;border:0;border-radius:16px;background:none;text-align:left;color:inherit;opacity:1;cursor:pointer}
 .space-page .subject-study .study-item-open:disabled{cursor:default}
 .space-page .subject-study .study-item-open strong{font:400 18px/1.25 var(--serif);color:var(--sp-ink)}
-.space-page .subject-study .study-item-open small{font-size:12.5px;color:var(--sp-muted);font-variant-numeric:tabular-nums}
+.space-page .subject-study .study-item-open small{font-size:13.5px;color:var(--sp-muted);font-variant-numeric:tabular-nums}
 .space-page .subject-study .study-item>.icon-button{position:absolute;top:8px;right:8px;color:var(--sp-muted)}
 .space-page .subject-study .study-new{display:flex;align-items:center;justify-content:center;gap:8px;min-height:96px;border:1px dashed var(--sp-line-2);border-radius:16px;background:none;color:var(--sp-soft)}
 .space-page .subject-study .study-new:hover{border-style:solid;background:#ffffff06;color:var(--sp-ink)}
@@ -79,7 +79,7 @@
 .space-page .sp-chats .sp-new-chat:hover{background:#ffffff08;border-color:#ffffff33;border-style:solid}
 .space-page .sp-new-chat>span:nth-child(2){display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
 .space-page .sp-new-chat strong{font:500 15px/1.3 var(--sans)}
-.space-page .sp-new-chat small{color:#8a8983;font-size:12.5px}
+.space-page .sp-new-chat small{color:#8a8983;font-size:13.5px}
 .space-page .sp-new-chat-icon{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:#ffffff0d;color:#e8e7e1;flex:none;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
 .space-page .sp-new-chat:hover .sp-new-chat-icon{transform:rotate(90deg)}
 .space-page .sp-new-chat>svg:last-child{color:#77766f;transition:transform .2s,color .2s}

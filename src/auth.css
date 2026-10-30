@@ -22,12 +22,12 @@
 .au-google{width:100%;display:flex;align-items:center;justify-content:center;gap:12px;padding:13px;border-radius:12px;border:1px solid #373733;background:#181817;color:#f0efeb;font-size:15px;transition:background .2s,border-color .2s}
 .au-google:hover{background:#1f1f1d;border-color:#4a4a45}
 .au-card .login-divider{margin:20px 0;border-top:1px solid #2a2a27;position:relative}
-.au-card .login-divider span{position:relative;top:-11px;padding:0 12px;background:#121211;color:#6f6e68;font-size:12px}
+.au-card .login-divider span{position:relative;top:-11px;padding:0 12px;background:#121211;color:#6f6e68;font-size:13px}
 .au-links{display:flex;justify-content:center;gap:4px 16px;flex-wrap:wrap;margin-top:16px}
 .au-card .login-text{font-size:13px;color:#a3a3a0;margin:8px auto 0;padding:6px 8px}
 .au-links .login-text{margin:0}
 .au-card .login-text:hover{color:#f0efeb}
-.au-card .login-terms{font-size:11px;color:#6f6e68;margin:24px 0 0}
+.au-card .login-terms{font-size:12px;color:#6f6e68;margin:24px 0 0}
 .au-card .login-terms a{color:#a3a3a0;text-decoration:underline;text-underline-offset:3px}
 .au-status{margin:16px 0 0;font-size:13px;color:#cfcec7;padding:10px 12px;border-radius:10px;background:#1b1b19;border:1px solid #2e2e2b}
 .au-error{margin:16px 0 0!important;color:#eda699!important;font-size:13px}

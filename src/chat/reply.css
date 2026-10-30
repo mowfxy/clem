@@ -48,16 +48,16 @@ body .messages .message-text .md :not(pre)>code{font-size:.84em;padding:.12em .3
 /* Tables: hairlines, a light header, figures that line up */
 body .messages .message-text .md .table-wrap{margin:1.3em 0;border:1px solid var(--r-line);border-radius:12px;background:#ffffff02}
 body .messages .message-text .md table{font-size:14px;line-height:1.55}
-body .messages .message-text .md th{font-size:12.5px;font-weight:500;letter-spacing:.01em;color:#a3a29b;background:var(--r-wash);padding:10px 16px;border-bottom:1px solid var(--r-line)}
+body .messages .message-text .md th{font-size:13.5px;font-weight:500;letter-spacing:.01em;color:#a3a29b;background:var(--r-wash);padding:10px 16px;border-bottom:1px solid var(--r-line)}
 body .messages .message-text .md td{padding:11px 16px;color:#dedcd5;border-top:1px solid #ffffff09}
 body .messages .message-text .md tbody tr{transition:background .15s}
 body .messages .message-text .md tbody tr:hover{background:#ffffff04}
 
 /* Code: one frame. The page's own pre style (a grey box with a border) used to draw a second box inside it. */
 body .messages .code-block{margin:1.3em 0;border:1px solid var(--r-line);border-radius:14px;background:#161615}
-body .messages .code-block .code-head{padding:5px 6px 5px 15px;min-height:40px;border-bottom:1px solid #ffffff08;font-size:12.5px;color:#a9a8a1}
+body .messages .code-block .code-head{padding:5px 6px 5px 15px;min-height:40px;border-bottom:1px solid #ffffff08;font-size:13.5px;color:#a9a8a1}
 body .messages .code-block .code-icon{width:28px;height:28px}
-body .messages .code-block .code-run{padding:6px 12px 6px 10px;font-size:12px}
+body .messages .code-block .code-run{padding:6px 12px 6px 10px;font-size:13px}
 body .messages .message-text .code-block>pre,body .messages .code-block>pre{margin:0;padding:14px 18px 16px;background:none;border:0;border-radius:0;box-shadow:none}
 body .messages .code-block code{font-size:13.5px;line-height:1.7}
 
