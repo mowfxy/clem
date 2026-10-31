@@ -1,7 +1,9 @@
 import type { StudySet } from "./types";
+import { isWeak } from "./srs.ts";
 
 const DAY = 86_400_000;
-/** A card the learner recalls for three weeks or more is one they know; below that it is still being learned. */
+/** A card the learner recalls for three weeks or more is one they know, unless they are struggling with it now (just
+ *  missed it, or relearning it after a lapse); below that it is still being learned. */
 const KNOWN_DAYS = 21;
 
 /**
@@ -18,7 +20,7 @@ export function studyStanding(sets: StudySet[], examDate?: string, now = Date.no
   const cards = sets.flatMap((set) => set.items.map((_, i) => set.cards?.[i] || null));
   const seen = cards.filter((c) => c && c.reps);
   if (seen.length) {
-    const known = seen.filter((c) => c!.stability >= KNOWN_DAYS && !(c!.lapses && c!.stability < KNOWN_DAYS)).length;
+    const known = seen.filter((c) => c!.stability >= KNOWN_DAYS && !isWeak(c)).length;
     const due = seen.filter((c) => c!.due <= now).length;
     lines.push(`Reviewed ${seen.length} of ${cards.length} cards and questions; knows ${known} well${due ? `, ${due} due for review now` : ""}.`);
   }

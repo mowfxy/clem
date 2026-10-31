@@ -9,7 +9,7 @@ import { gfmFromMarkdown } from "mdast-util-gfm";
 import { math } from "micromark-extension-math";
 import { mathFromMarkdown } from "mdast-util-math";
 import { normalizeMath } from "../core/math-markdown.ts";
-import { renderFigures, documentFonts, layoutFor, cleanHeading, type DocumentSpec, type Layout } from "./pdf-document.ts";
+import { renderFigures, documentFonts, layoutFor, cleanHeading, longDate, type DocumentSpec, type Layout } from "./pdf-document.ts";
 import { environments, unnumbered } from "./pdf-markdown.ts";
 import { rasterizer } from "./rasterize.ts";
 import { latexMathml, wordMath, wordUpright } from "./docx-math.ts";
@@ -321,8 +321,7 @@ async function build(spec: DocumentSpec, figures: (string | undefined)[], raster
     children: [new TextRun({ text: spec.title })],
   }));
   if (spec.subtitle) front.push(new Paragraph({ alignment: center ? AlignmentType.CENTER : AlignmentType.LEFT, spacing: { after: 160 }, children: [new TextRun({ text: spec.subtitle, italics: layout !== "business", size: size + 4, color: "444444", font: layout === "business" ? headFont : bodyFont })] }));
-  const date = spec.date && Number.isFinite(Date.parse(spec.date)) ? new Date(spec.date) : spec.date ? null : new Date();
-  const dateText = date ? date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : String(spec.date || "");
+  const dateText = longDate(spec.date);
   if (kind === "memo") {
     for (const [k, v] of [["Subject", spec.title], ["From", spec.author || ""], ["Date", dateText]] as const)
       if (v) front.push(new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: k + ":\t", bold: true, font: headFont }), new TextRun({ text: v })], tabStops: [{ type: TabStopType.LEFT, position: 1200 }] }));
