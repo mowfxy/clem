@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { checkContent } from "../core/provenance";
 import { Logo, Icon } from "./Icons";
 import { Illustration } from "./Illustrations";
@@ -36,6 +36,12 @@ export default function ProvenanceChecker() {
     [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null),
     checking = useRef(false);
+  useEffect(() => {
+    document.title = "Check a file · Clem";
+    document
+      .querySelector('link[rel="canonical"]')
+      ?.setAttribute("href", "https://check.clem.m4labs.xyz/");
+  }, []);
   async function check(file?: File) {
     if (!file || checking.current) return;
     checking.current = true;

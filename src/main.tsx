@@ -18,20 +18,23 @@ const Login=lazy(()=>import('./Login').then(m=>({default:m.Login})));
 const AuthCallback=lazy(()=>import('./Login').then(m=>({default:m.AuthCallback})));
 const AdminApp=lazy(()=>import('./admin/AdminApp'));
 const adminHost=location.hostname==='admin.m4labs.xyz';
+// check.clem.m4labs.xyz is the export checker on its own host, at any path.
+const checkHost=location.hostname==='check.clem.m4labs.xyz';
 let authReady:Promise<unknown>|undefined;
 // Clem is free, so the refund policy was retired; old links land on the Terms.
 if(location.hash==='#/refunds')history.replaceState(null,'',location.pathname+location.search+'#/terms');
 function Root(){
  const [route,setRoute]=useState(location.hash.slice(1)||'/'),[ready,setReady]=useState(false);
  // Arrivals from an email link (or its error) see a confirmation page until they navigate elsewhere.
- const [callback,setCallback]=useState(()=>!adminHost&&((location.search.includes('code=')&&!location.search.includes('recovery='))||/^#\/?error=/.test(location.hash)));
+ const [callback,setCallback]=useState(()=>!adminHost&&!checkHost&&((location.search.includes('code=')&&!location.search.includes('recovery='))||/^#\/?error=/.test(location.hash)));
  const publicPage=(path:string)=>path==='/'?<Landing/>:['/privacy','/terms'].includes(path)?<Legal route={path}/>:<Marketing route={path}/>;
  useEffect(()=>{const change=()=>{setRoute(location.hash.slice(1)||'/');setCallback(false);};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
  // admin.m4labs.xyz signs in with its own client; the app client must not consume its OAuth code.
- useEffect(()=>{if(adminHost)return;if(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect')||route.startsWith('/app')||location.search.includes('code=')||location.search.includes('recovery=')){authReady??=import('./supabase').then(module=>module.initSupabase());void authReady.finally(()=>{setReady(true);setRoute(location.hash.slice(1)||'/');});}},[route]);
+ useEffect(()=>{if(adminHost||checkHost)return;if(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect')||route.startsWith('/app')||location.search.includes('code=')||location.search.includes('recovery=')){authReady??=import('./supabase').then(module=>module.initSupabase());void authReady.finally(()=>{setReady(true);setRoute(location.hash.slice(1)||'/');});}},[route]);
  const isPublic=route==='/'||['/privacy','/terms','/pricing','/support','/about'].includes(route)||route.startsWith('/features');
  const loading=<main className="workspace-loading" role="status">{route.startsWith('/drive-connect')?'Opening Google Drive…':'Opening Clem…'}</main>;
  if(callback)return <Suspense fallback={loading}><AuthCallback ready={ready||/^#\/?error=/.test(location.hash)}/></Suspense>;
+ if(checkHost)return <Suspense fallback={loading}><ProvenanceChecker/></Suspense>;
  if(adminHost||route.startsWith('/admin'))return <Suspense fallback={loading}><AdminApp/></Suspense>;
  return <Suspense fallback={loading}>{route==="/check"?<ProvenanceChecker/>:isPublic?publicPage(route):(route.startsWith('/login')||route.startsWith('/desktop-signin')||route.startsWith('/drive-connect'))?(ready?<Login key={route}/>:loading):<Download account={route.startsWith('/app')&&ready} returning={route==='/desktop-return'}/>}</Suspense>;
 }
