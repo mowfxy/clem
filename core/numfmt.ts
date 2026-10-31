@@ -28,8 +28,10 @@ export function isDateFormat(code: string) {
   return /[dmyhs]/i.test(bare) && !/^\s*(general|@)\s*$/i.test(bare);
 }
 const pad = (n: number, width = 2) => String(n).padStart(width, "0");
-/** An Excel serial (days since 1899-12-30) as a UTC date. */
-export const serialDate = (serial: number, date1904 = false) => new Date(Math.round((serial - (date1904 ? 24107 : 25569)) * 86400000));
+/** An Excel serial (days since 1899-12-30) as a UTC date. Excel counts a 29 February 1900 that never was (serial 60),
+ *  so serials before it are a day further on: 1 is 1 January 1900, as Excel shows it. */
+export const serialDate = (serial: number, date1904 = false) =>
+  new Date(Math.round((serial + (!date1904 && serial >= 1 && serial < 60 ? 1 : 0) - (date1904 ? 24107 : 25569)) * 86400000));
 
 function formatDate(value: number, code: string, date1904: boolean) {
   // Without a fraction of a second on show, times round to the nearest second, as Excel does.
@@ -76,10 +78,15 @@ function formatDigits(value: number, pattern: string) {
   const scientific = /E[+-]0+/i.exec(pattern);
   if (scientific) {
     const mantissaPattern = pattern.slice(0, scientific.index);
-    const decimals = (mantissaPattern.split(".")[1] || "").replace(/[^0#?]/g, "").length;
-    const exponent = value === 0 ? 0 : Math.floor(Math.log10(value));
-    const mantissa = value / 10 ** exponent;
-    return mantissa.toFixed(decimals) + "E" + (exponent < 0 ? "-" : "+") + pad(Math.abs(exponent), scientific[0].length - 2);
+    const [wholePattern, decimalPattern = ""] = mantissaPattern.split(".");
+    const decimals = decimalPattern.replace(/[^0#?]/g, "").length;
+    // The exponent moves in steps of the whole-number places ("##0.0E+0" is engineering notation: 12.3E+3).
+    const step = Math.max(1, wholePattern.replace(/[^0#?]/g, "").length);
+    let exponent = value === 0 ? 0 : Math.floor(Math.floor(Math.log10(value)) / step) * step;
+    let mantissa = (value / 10 ** exponent).toFixed(decimals);
+    // Rounding can carry into another place (9.999 to "10.00"): the next exponent shows it as 1.00E+01.
+    if (value !== 0 && Number(mantissa) >= 10 ** step) { exponent += step; mantissa = (value / 10 ** exponent).toFixed(decimals); }
+    return mantissa + "E" + (exponent < 0 ? "-" : "+") + pad(Math.abs(exponent), scientific[0].length - 2);
   }
   const [intPattern, decPattern = ""] = pattern.split(".");
   const zeros = (decPattern.match(/0/g) || []).length, places = decPattern.replace(/[^0#?]/g, "").length;

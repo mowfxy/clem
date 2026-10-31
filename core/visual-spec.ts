@@ -318,7 +318,9 @@ export function compileVisual(raw: unknown): CompiledVisual {
     });
     draw = (pen, values, t) => {
       const v = { ...values, t };
-      let x0 = safeEval(xmin, v), x1 = safeEval(xmax, v), y0 = safeEval(ymin, v), y1 = safeEval(ymax, v);
+      // An axis can't run to infinity ("1/0", "inf"): such a bound counts as missing, like one that fails.
+      const bound = (f: Compiled) => { const n = safeEval(f, v); return Number.isFinite(n) ? n : NaN; };
+      let x0 = bound(xmin), x1 = bound(xmax), y0 = bound(ymin), y1 = bound(ymax);
       if (!(x1 > x0)) [x0, x1] = [Math.min(x0, x1) || 0, Math.max(x0, x1) || 1];
       if (!(y1 > y0)) [y0, y1] = [Math.min(y0, y1) || 0, Math.max(y0, y1) || 1];
       if (!(x1 > x0)) x1 = x0 + 1;

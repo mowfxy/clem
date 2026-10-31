@@ -31,7 +31,8 @@ export type SpacePlan = {
   spaceId: string;
   title: string;
   goal?: string;
-  /** The day the plan starts (the day it was made, unless the model set an earlier one). */
+  /** The day the plan starts: the day it was made, unless the model set one (earlier for work under way, later for a
+   *  plan that begins next week). */
   start: string;
   tasks: PlanTask[];
   created: number;
@@ -188,8 +189,9 @@ const freshId = (taken: Set<string>) => { let n = 1; for (const id of taken) { c
 export function newPlan(spaceId: string, draft: PlanDraft, now = Date.now(), id: string = crypto.randomUUID()): SpacePlan {
   const today = localDay(now);
   const first = draft.tasks.map((t) => t.due).filter((d): d is string => !!d).sort()[0];
-  // The plan starts today, or earlier when the person's own dates begin before it (a plan for work already under way).
-  const start = draft.start && draft.start <= today ? draft.start : first && first < today ? first : today;
+  // The plan starts on the day it names (earlier for work already under way, later for one that begins next week, so it
+  // shows as upcoming); without one, today or the first of the person's own dates already past.
+  const start = draft.start || (first && first < today ? first : today);
   return { id, spaceId, title: draft.title, ...(draft.goal ? { goal: draft.goal } : {}), start, tasks: draft.tasks.map((t) => ({ ...t })), created: now, updated: now, rev: 1, history: [] };
 }
 

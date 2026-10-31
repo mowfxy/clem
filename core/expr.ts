@@ -123,7 +123,8 @@ export function numeric(value: number | string, allowed?: Iterable<string>): Com
   return compile(value, allowed);
 }
 
-/** Evaluate once; non-finite or failing results become NaN. */
+/** Evaluate once; a failing result becomes NaN. Infinity passes through (`inf` is a constant, for open-ended ranges),
+ *  so a caller that needs a finite number checks for it. */
 export function safeEval(fn: Compiled, vars: Vars) {
   try { const r = fn(vars); return typeof r === 'number' ? r : NaN; } catch { return NaN; }
 }

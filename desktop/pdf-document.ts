@@ -299,8 +299,11 @@ export async function renderFigures(spec: any, { checkVoice = true }: { checkVoi
   return figures;
 }
 
-const longDate = (value?: string) => {
-  const date = value && Number.isFinite(Date.parse(value)) ? new Date(value) : value ? null : new Date();
+/** A document's date as "31 October 2026": today when none is given, the text as written when it is not a date. A bare
+ *  "2026-10-31" is that calendar day here (JavaScript reads it as UTC midnight, the day before west of Greenwich). */
+export const longDate = (value?: string) => {
+  const day = value && /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  const date = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : value && Number.isFinite(Date.parse(value)) ? new Date(value) : value ? null : new Date();
   return date ? date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : String(value);
 };
 /** A CSS string literal (for the running head), safe inside a <style> element. */
