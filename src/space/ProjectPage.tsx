@@ -5,15 +5,15 @@ import {SpaceMark} from './SpaceMark';
 import {Menu} from './SpaceMenu';
 import {Editable,FilesView,type SpaceActions} from './SpacePage';
 import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './InstructionsDialog';
-import {TeamDialog} from './ProjectTeam';
+import {ProjectSettingsDialog} from './ProjectSettings';
 import {MessageBody} from '../chat/MessageBody';
 import {ModelSelector} from '../ModelSelector';
 import {EmptyState} from '../ui/Calm';
 import {shortWhen} from '../ui/when';
 import {sizeLabel} from '../store';
-import {REACTIONS,teamOf} from '../../core/coordinator';
+import {REACTIONS,roleName,teamOf} from '../../core/coordinator';
 import {recall,serializeMemory,RECALL_CHARS,type MemoryEntry} from '../../core/project-memory';
-import type {Chat,Model,ProjectAgent,ProjectRoom,ProjectThread,Reaction,RoomMessage,Space,StoredFile} from '../../core/types';
+import type {Chat,Model,ProjectRoom,ProjectThread,Reaction,RoomMessage,Space,StoredFile} from '../../core/types';
 import type {DriveSyncState} from '../drive/drive';
 import type {MessageRef} from './useProjects';
 import './space.css';
@@ -34,13 +34,13 @@ export type ProjectActions={
 };
 
 const ago=(t:number)=>shortWhen(t);
-const who=(by:string,agents:ProjectAgent[])=>by==='you'?'You':by==='coordinator'?'Coordinator':agents.find(a=>a.id===by)?.name||'An agent';
+const who=(by:string)=>by==='you'?'You':by==='coordinator'?'Coordinator':roleName(by);
 const statusLine:Record<ProjectThread['status'],string>={working:'Working',done:'Done',failed:'Failed',stopped:'Stopped'};
 
-/** A project: the person talks to its coordinator, which hands work to the team in threads; Context holds what it knows. */
+/** A project: the person talks to its coordinator, which opens threads with subagents; Context holds what it knows. */
 export function ProjectPage({space,room,memory,models,fallbackModel,busy,chats,files,driveSync,section,onSection,actions,project}:{space:Space;room:ProjectRoom;memory?:MemoryEntry[];models:Model[];fallbackModel:string;busy:Record<string,true>;chats:Chat[];files:StoredFile[];driveSync:Record<string,DriveSyncState>;section:ProjectSection;onSection:(s:ProjectSection)=>void;actions:SpaceActions;project:ProjectActions}){
-  const team=teamOf(space),agents=team.agents;
-  const [teamOpen,setTeamOpen]=useState(false),[instructions,setInstructions]=useState(false),[describing,setDescribing]=useState(false);
+  const team=teamOf(space);
+  const [settingsOpen,setSettingsOpen]=useState(false),[instructions,setInstructions]=useState(false),[describing,setDescribing]=useState(false);
   const [openThread,setOpenThread]=useState<string|null>(null);
   const working=room.threads.filter(t=>t.status==='working').length;
   // Where Back goes from an open thread: the coordinator chat it was opened from, or the list of threads.
@@ -65,8 +65,8 @@ export function ProjectPage({space,room,memory,models,fallbackModel,busy,chats,f
             {space.description&&<p className="sp-desc">{space.description}</p>}
           </div>
           <div className="sp-actions">
-            <button className="sp-instructions pj-team-button" onClick={()=>setTeamOpen(true)} aria-description="Choose the coordinator's model and the agents it can hand work to">
-              <Icon name="users" size={16}/>Team</button>
+            <button className="sp-instructions pj-team-button" onClick={()=>setSettingsOpen(true)} aria-description="Choose the model and thinking level of the coordinator and its subagents">
+              <Icon name="settings" size={16}/>Settings</button>
             <button className={`sp-instructions ${space.memory.trim()?'set':''}`} onClick={()=>setInstructions(true)}><InstructionsGlyph/>Instructions</button>
             <Menu label="More" items={[{label:space.description?'Edit description':'Add a description',icon:'cmd-notes',run:()=>setDescribing(true)},{label:'Share files',icon:'import',run:()=>actions.onShare()},{label:'Clear conversation',icon:'refresh',run:project.clear},{label:'Delete project',icon:'trash',danger:true,run:actions.onDelete}]}/>
           </div>
@@ -78,11 +78,11 @@ export function ProjectPage({space,room,memory,models,fallbackModel,busy,chats,f
       </header>
     </div>
     <div className={`sp-body pj-body pj-in-${section}`} key={section}>
-      {section==='coordinator'&&<CoordinatorChat space={space} room={room} agents={agents} models={models} model={team.coordinatorModel||fallbackModel} running={!!busy[space.id]} project={project} onThread={showThread} onTeam={()=>setTeamOpen(true)} onModel={id=>actions.onUpdateSpace({...space,team:{...team,coordinatorModel:id}})}/>}
-      {section==='threads'&&<Threads room={room} agents={agents} models={models} busy={busy} open={openThread} cameFrom={cameFrom} onOpen={id=>{setOpenThread(id);setCameFrom('list');}} onBack={()=>{setOpenThread(null);if(cameFrom==='coordinator')onSection('coordinator');}} project={project} onCoordinator={()=>onSection('coordinator')}/>}
+      {section==='coordinator'&&<CoordinatorChat space={space} room={room} models={models} model={team.coordinatorModel||fallbackModel} effort={team.coordinatorEffort} running={!!busy[space.id]} project={project} onThread={showThread} onModel={id=>actions.onUpdateSpace({...space,team:{...team,coordinatorModel:id,coordinatorEffort:undefined}})} onEffort={e=>actions.onUpdateSpace({...space,team:{...team,coordinatorEffort:e}})}/>}
+      {section==='threads'&&<Threads room={room} models={models} agentModel={team.agentModel||team.coordinatorModel||fallbackModel} busy={busy} open={openThread} cameFrom={cameFrom} onOpen={id=>{setOpenThread(id);setCameFrom('list');}} onBack={()=>{setOpenThread(null);if(cameFrom==='coordinator')onSection('coordinator');}} project={project} onCoordinator={()=>onSection('coordinator')}/>}
       {section==='context'&&<Context space={space} memory={memory} chats={chats} files={files} driveSync={driveSync} actions={actions} project={project} onInstructions={()=>setInstructions(true)}/>}
     </div>
-    {teamOpen&&<TeamDialog space={space} models={models} fallbackModel={fallbackModel} onConnect={project.onConnect} onSave={next=>actions.onUpdateSpace({...space,team:next})} onClose={()=>setTeamOpen(false)}/>}
+    {settingsOpen&&<ProjectSettingsDialog space={space} models={models} fallbackModel={fallbackModel} onConnect={project.onConnect} onSave={next=>actions.onUpdateSpace({...space,team:next})} onClose={()=>setSettingsOpen(false)}/>}
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
     {describing&&<DescriptionDialog space={space} onSave={description=>actions.onUpdateSpace({...space,description})} onClose={()=>setDescribing(false)}/>}
   </div>;
@@ -93,7 +93,7 @@ export function ProjectPage({space,room,memory,models,fallbackModel,busy,chats,f
 function SmileGlyph(){return <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="9" cy="10" r="6.5"/><path d="M6.6 11.6c.6.9 1.4 1.4 2.4 1.4s1.8-.5 2.4-1.4"/><circle cx="7" cy="8.4" r=".6" fill="currentColor" stroke="none"/><circle cx="11" cy="8.4" r=".6" fill="currentColor" stroke="none"/><path d="M16.5 2.5v4M14.5 4.5h4"/></svg>;}
 
 /** The reactions under a message, grouped by emoji, and the button that adds one. */
-function Reactions({reactions=[],agents,onToggle,label}:{reactions?:Reaction[];agents:ProjectAgent[];onToggle:(emoji:string)=>void;label:string}){
+function Reactions({reactions=[],onToggle,label}:{reactions?:Reaction[];onToggle:(emoji:string)=>void;label:string}){
   const [open,setOpen]=useState(false);
   const root=useRef<HTMLDivElement>(null);
   useEffect(()=>{if(!open)return;const close=(e:Event)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){setOpen(false);root.current?.querySelector<HTMLButtonElement>('.pj-react-add')?.focus();}};
@@ -120,11 +120,10 @@ function MessageMeta({m,memory,label}:{m:RoomMessage;memory?:boolean;label?:Reac
 }
 
 /** One message, in the app's own bubble style: the person's on the right, the AI's as text. */
-function Message({m,agents,models,thread,onReact,latest,children}:{m:RoomMessage;agents:ProjectAgent[];models:Model[];thread?:ProjectThread;onReact:(emoji:string)=>void;latest:boolean;children?:ReactNode}){
+function Message({m,thread,onReact,latest,children}:{m:RoomMessage;thread?:ProjectThread;onReact:(emoji:string)=>void;latest:boolean;children?:ReactNode}){
   const mine=m.from==='you',writing=m.status==='writing';
-  const agent=agents.find(a=>a.id===m.from);
   const inThread=!!thread;
-  const name=mine?'You':m.from==='coordinator'?'Coordinator':agent?.name||'Agent';
+  const name=who(m.from);
   return <article className={`message ${mine?'user':'assistant'} pj-message${writing&&!m.content?' waiting':''}${latest?' latest':''}`} data-from={m.from}>
     {writing&&!m.content?<div className="pj-waiting"><Thinking label={inThread?`${name} is working…`:'Thinking…'}/></div>
       :<div className="message-text">{mine?m.content:<MessageBody content={m.content} streaming={writing}/>}</div>}
@@ -132,30 +131,30 @@ function Message({m,agents,models,thread,onReact,latest,children}:{m:RoomMessage
     {m.status==='stopped'&&<p className="pj-stopped">Stopped</p>}
     {children}
     {!writing&&<div className="pj-under">
-      <Reactions reactions={m.reactions} agents={agents} label={mine?'your message':`${name}’s message`} onToggle={onReact}/>
+      <Reactions reactions={m.reactions} label={mine?'your message':`${name}’s message`} onToggle={onReact}/>
       <MessageMeta m={m} memory={!mine} label={<time dateTime={new Date(m.at).toISOString()}>{ago(m.at)}</time>}/>
     </div>}
   </article>;
 }
 
-/** A handoff, as one small line under the coordinator's message: who got a message from it, and how it is going.
- *  Pressing it opens the conversation between the coordinator and that agent right there; Open thread goes to it. */
-function HandoffNote({thread,agent,agents,index=0,onOpen}:{thread:ProjectThread;agent?:ProjectAgent;agents:ProjectAgent[];index?:number;onOpen:()=>void}){
+/** A thread the coordinator opened, as one small line under its message: the subagent, the task and how it is going.
+ *  Pressing it opens the conversation between the coordinator and that subagent right there; Open thread goes to it. */
+function HandoffNote({thread,index=0,onOpen}:{thread:ProjectThread;index?:number;onOpen:()=>void}){
   const [open,setOpen]=useState(false);
   const chat=useRef<HTMLDivElement>(null);
   // Opened, the conversation is brought into view above the message box.
   useEffect(()=>{if(open)chat.current?.scrollIntoView({block:'nearest',behavior:'smooth'});},[open]);
-  const name=agent?.name||'A removed agent';
+  const name=roleName(thread.agent);
   const replies=thread.messages.filter(m=>m.from!=='coordinator'||m!==thread.messages[0]).length;
   return <div className={`pj-handoff is-${thread.status}${open?' open':''}`} style={{'--i':index} as CSSProperties}>
     <button type="button" className="pj-handoff-line" aria-expanded={open} onClick={()=>setOpen(!open)}>
       <span className="pj-handoff-dot" aria-hidden="true"/>
-      <span className="pj-handoff-text"><b>{name}</b> received a message from the coordinator<i aria-hidden="true">·</i><span>{thread.title}</span></span>
+      <span className="pj-handoff-text">Thread with <b>{name}</b><i aria-hidden="true">·</i><span>{thread.title}</span></span>
       <span key={thread.status} className={`pj-handoff-state is-${thread.status}`}>{thread.status==='working'?'Working…':statusLine[thread.status]}</span>
       <Icon name="down" size={13}/>
     </button>
     {open&&<div className="pj-handoff-chat" ref={chat}>
-      {thread.messages.map(m=>{const who_=m.from==='coordinator'?'Coordinator':m.from==='you'?'You':agents.find(a=>a.id===m.from)?.name||name;
+      {thread.messages.map(m=>{const who_=who(m.from);
         return <div key={m.id} className={`pj-handoff-msg from-${m.from==='coordinator'?'coordinator':m.from==='you'?'you':'agent'}`}>
           <small>{who_}{m.from==='coordinator'&&<> → {name}</>}</small>
           {m.status==='writing'&&!m.content?<Thinking label="Working…"/>:<div className="pj-handoff-body"><MessageBody content={m.content} streaming={m.status==='writing'}/></div>}
@@ -196,7 +195,7 @@ function useFollow(dep:unknown){
   return end;
 }
 
-function CoordinatorChat({space,room,agents,models,model,running,project,onThread,onTeam,onModel}:{space:Space;room:ProjectRoom;agents:ProjectAgent[];models:Model[];model:string;running:boolean;project:ProjectActions;onThread:(id:string)=>void;onTeam:()=>void;onModel:(id:string)=>void}){
+function CoordinatorChat({space,room,models,model,effort,running,project,onThread,onModel,onEffort}:{space:Space;room:ProjectRoom;models:Model[];model:string;effort?:string;running:boolean;project:ProjectActions;onThread:(id:string)=>void;onModel:(id:string)=>void;onEffort:(e:string)=>void}){
   // Nothing to follow yet: the page stays at its top, where the introduction is.
   const end=useFollow(room.messages.length&&room.messages.map(m=>m.id+m.content.length+(m.reactions?.length||0)).join()+room.threads.map(t=>t.status).join());
   const canAsk=models.some(m=>m.connected);
@@ -206,23 +205,20 @@ function CoordinatorChat({space,room,agents,models,model,running,project,onThrea
     {!room.messages.length?<div className="pj-intro">
       <Illustration scene="relay" viewBox="104 62 272 290" className="pj-intro-art"/>
       <h2>Tell the coordinator what you’re working on.</h2>
-      <p>It answers you, and hands bigger pieces to {agents.length?'your team':'agents you add in Team'}. Each handoff opens a thread you can read.</p>
+      <p>It answers you, and opens threads with subagents for bigger pieces. Ask for a thread any time.</p>
       <div className="pj-starters">{[`Plan the next two weeks`,'Research the options for me','Draft it, then have it reviewed'].map(s=><button key={s} type="button" disabled={!canAsk} onClick={()=>project.send(s)}>{s}<Icon name="arrow" size={14}/></button>)}</div>
     </div>
     :<div className="messages pj-messages">
-      {room.messages.map((m,i)=><Message key={m.id} m={m} agents={agents} models={models} latest={i===room.messages.length-1} onReact={e=>project.react({message:m.id},e)}>
-        {!!m.threads?.length&&<div className="pj-handoffs">{m.threads.map((id,i)=>{const t=room.threads.find(x=>x.id===id);return t?<HandoffNote key={id} index={i} thread={t} agent={agents.find(a=>a.id===t.agent)} agents={agents} onOpen={()=>onThread(id)}/>:null;})}</div>}
+      {room.messages.map((m,i)=><Message key={m.id} m={m} latest={i===room.messages.length-1} onReact={e=>project.react({message:m.id},e)}>
+        {!!m.threads?.length&&<div className="pj-handoffs">{m.threads.map((id,i)=>{const t=room.threads.find(x=>x.id===id);return t?<HandoffNote key={id} index={i} thread={t} onOpen={()=>onThread(id)}/>:null;})}</div>}
       </Message>)}
-      {waitingOnThreads&&<div className="pj-waiting pj-after"><Thinking label="Waiting for the team to report back…"/></div>}
+      {waitingOnThreads&&<div className="pj-waiting pj-after"><Thinking label="Waiting for the threads to report back…"/></div>}
     </div>}
     <div ref={end}/>
     <div className="chat-composer pj-composer">
       <Composer placeholder={room.messages.length?'Reply to the coordinator…':`What should ${space.name} get done?`} running={running} onSend={project.send} onStop={()=>project.stop(space.id)} disabled={canAsk?undefined:'Connect an AI in Settings → Models to start'}>
-        <button type="button" className="pj-roster" onClick={onTeam} aria-label={`Team: ${agents.map(a=>a.name).join(', ')||'no agents'}. Change in Team`}>
-          <Icon name="users" size={15}/><span>{agents.length?agents.map(a=>a.name).join(', '):'Add agents'}</span>
-        </button>
+        <ModelSelector models={models} value={model} onChange={onModel} effort={effort} onEffort={onEffort} onConnect={project.onConnect} label="Coordinator model"/>
       </Composer>
-      <div className="pj-composer-model"><span>Coordinator</span><ModelSelector models={models} value={model} onChange={onModel} onConnect={project.onConnect} label="Coordinator model"/></div>
     </div>
   </section>;
 }
@@ -233,12 +229,12 @@ function CoordinatorChat({space,room,agents,models,model,running,project,onThrea
 function dayGroup(t:number,now=Date.now()){const d=new Date(t).toDateString();if(d===new Date(now).toDateString())return 'Today';if(d===new Date(now-864e5).toDateString())return 'Yesterday';return new Date(t).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});}
 
 /** Every handoff, newest first and grouped by day; opening one shows it on its own page with a way back. */
-function Threads({room,agents,models,busy,open,cameFrom,onOpen,onBack,project,onCoordinator}:{room:ProjectRoom;agents:ProjectAgent[];models:Model[];busy:Record<string,true>;open:string|null;cameFrom:'coordinator'|'list';onOpen:(id:string)=>void;onBack:()=>void;project:ProjectActions;onCoordinator:()=>void}){
+function Threads({room,models,agentModel,busy,open,cameFrom,onOpen,onBack,project,onCoordinator}:{room:ProjectRoom;models:Model[];agentModel:string;busy:Record<string,true>;open:string|null;cameFrom:'coordinator'|'list';onOpen:(id:string)=>void;onBack:()=>void;project:ProjectActions;onCoordinator:()=>void}){
   const [filter,setFilter]=useState<string>('all');
   const current=room.threads.find(t=>t.id===open)||null;
   useEffect(()=>{if(open&&!current)onBack();},[open,current]);
-  if(current)return <ThreadView key={current.id} thread={current} agents={agents} models={models} running={!!busy['thread:'+current.id]||current.status==='working'} project={project} backLabel={cameFrom==='coordinator'?'Coordinator':'All threads'} onBack={onBack}/>;
-  if(!room.threads.length)return <section className="pj-threads-empty"><EmptyState scene="conversation" line="When the coordinator hands work to an agent, the thread appears here."><button className="primary" onClick={onCoordinator}>Talk to the coordinator</button></EmptyState></section>;
+  if(current)return <ThreadView key={current.id} thread={current} model={models.find(x=>x.id===agentModel)?.name} running={!!busy['thread:'+current.id]||current.status==='working'} project={project} backLabel={cameFrom==='coordinator'?'Coordinator':'All threads'} onBack={onBack}/>;
+  if(!room.threads.length)return <section className="pj-threads-empty"><EmptyState scene="conversation" line="When the coordinator opens a thread with a subagent, it appears here."><button className="primary" onClick={onCoordinator}>Talk to the coordinator</button></EmptyState></section>;
   const used=[...new Set(room.threads.map(t=>t.agent))];
   const shown=[...room.threads].filter(t=>filter==='all'||t.agent===filter).sort((a,b)=>(b.status==='working'?1:0)-(a.status==='working'?1:0)||b.updated-a.updated);
   const groups:[string,ProjectThread[]][]=[];
@@ -246,15 +242,15 @@ function Threads({room,agents,models,busy,open,cameFrom,onOpen,onBack,project,on
   return <section className="pj-threads" aria-label="Threads">
     {used.length>1&&<div className="pj-thread-filter" role="group" aria-label="Show threads from">
       <button type="button" aria-pressed={filter==='all'} onClick={()=>setFilter('all')}>All<span>{room.threads.length}</span></button>
-      {used.map(id=><button type="button" key={id} aria-pressed={filter===id} onClick={()=>setFilter(filter===id?'all':id)}>{who(id,agents)}<span>{room.threads.filter(t=>t.agent===id).length}</span></button>)}
+      {used.map(id=><button type="button" key={id} aria-pressed={filter===id} onClick={()=>setFilter(filter===id?'all':id)}>{who(id)}<span>{room.threads.filter(t=>t.agent===id).length}</span></button>)}
     </div>}
     {groups.map(([label,list])=><div key={label} className="pj-thread-group">
       <h4>{label}</h4>
-      <ul>{list.map(t=>{const agent=agents.find(a=>a.id===t.agent),turns=t.messages.filter(m=>m.from!=='coordinator').length;
+      <ul>{list.map(t=>{const turns=t.messages.filter(m=>m.from!=='coordinator').length;
         return <li key={t.id}><button type="button" className={`pj-thread-row is-${t.status}`} onClick={()=>onOpen(t.id)}>
           <span className="pj-handoff-dot" aria-hidden="true"/>
           <span className="pj-thread-row-text">
-            <span className="pj-thread-row-top"><strong>{t.title}</strong><small>{agent?.name||'Removed agent'}</small></span>
+            <span className="pj-thread-row-top"><strong>{t.title}</strong><small>{roleName(t.agent)}</small></span>
             <span className="pj-thread-row-sum">{t.status==='working'?'Working on it…':t.summary||statusLine[t.status]}</span>
           </span>
           <span className="pj-thread-row-side"><small>{ago(t.updated)}</small><small>{turns} {turns===1?'reply':'replies'}</small></span>
@@ -264,9 +260,8 @@ function Threads({room,agents,models,busy,open,cameFrom,onOpen,onBack,project,on
   </section>;
 }
 
-function ThreadView({thread,agents,models,running,project,backLabel,onBack}:{thread:ProjectThread;agents:ProjectAgent[];models:Model[];running:boolean;project:ProjectActions;backLabel:string;onBack:()=>void}){
-  const agent=agents.find(a=>a.id===thread.agent);
-  const model=models.find(x=>x.id===agent?.model)?.name;
+function ThreadView({thread,model,running,project,backLabel,onBack}:{thread:ProjectThread;model?:string;running:boolean;project:ProjectActions;backLabel:string;onBack:()=>void}){
+  const name=roleName(thread.agent);
   const end=useFollow(thread.messages.map(m=>m.id+m.content.length).join());
   // Escape goes back too, unless something is being typed.
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!(e.target as Element)?.closest?.('input,textarea,dialog,[role=menu]'))onBack();};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key);},[onBack]);
@@ -275,23 +270,23 @@ function ThreadView({thread,agents,models,running,project,backLabel,onBack}:{thr
     <header className="pj-thread-head">
       <div>
         <h3>{thread.title}</h3>
-        <p className="pj-thread-sub"><span className={`pj-handoff-dot is-${thread.status}`} aria-hidden="true"/><b>{agent?.name||'Removed agent'}</b>{model&&<> · {model}</>} · {thread.status==='working'?'Working…':statusLine[thread.status]} · started {ago(thread.created)}</p>
+        <p className="pj-thread-sub"><span className={`pj-handoff-dot is-${thread.status}`} aria-hidden="true"/><b>{name}</b>{model&&<> · {model}</>} · {thread.status==='working'?'Working…':statusLine[thread.status]} · started {ago(thread.created)}</p>
       </div>
     </header>
     <div className="messages pj-messages pj-thread-messages">
       {thread.messages.map((m,i)=>{const react=(e:string)=>project.react({thread:thread.id,message:m.id},e);
-        return m.from==='coordinator'?<Received key={m.id} m={m} agents={agents} onReact={react}/>:<Message key={m.id} m={m} agents={agents} models={models} thread={thread} latest={i===thread.messages.length-1} onReact={react}/>;})}
+        return m.from==='coordinator'?<Received key={m.id} m={m} onReact={react}/>:<Message key={m.id} m={m} thread={thread} latest={i===thread.messages.length-1} onReact={react}/>;})}
       <div ref={end}/>
     </div>
     <div className="chat-composer pj-composer pj-thread-composer">
-      <Composer placeholder={agent?`Add to this thread; ${agent.name} answers here…`:'This agent was removed from the team'} disabled={agent?undefined:'This agent was removed from the team'} running={running} onSend={t=>project.reply(thread.id,t)} onStop={()=>project.stop('thread:'+thread.id)}/>
+      <Composer placeholder={`Add to this thread; ${name} answers here…`} running={running} onSend={t=>project.reply(thread.id,t)} onStop={()=>project.stop('thread:'+thread.id)}/>
     </div>
   </div>;
 }
 
 /** A message the coordinator handed into this thread: one small line, as in the coordinator chat. Pressing it shows
  *  what it said; reactions to it stay visible either way. */
-function Received({m,agents,onReact}:{m:RoomMessage;agents:ProjectAgent[];onReact:(emoji:string)=>void}){
+function Received({m,onReact}:{m:RoomMessage;onReact:(emoji:string)=>void}){
   const [open,setOpen]=useState(false);
   return <div className={`pj-received${open?' open':''}`}>
     <button type="button" className="pj-handoff-line" aria-expanded={open} onClick={()=>setOpen(!open)}>
@@ -302,7 +297,7 @@ function Received({m,agents,onReact}:{m:RoomMessage;agents:ProjectAgent[];onReac
     </button>
     {open&&<div className="pj-handoff-chat pj-received-body">
       <div className="pj-handoff-body"><MessageBody content={m.content} streaming={false}/></div>
-      <Reactions reactions={m.reactions} agents={agents} label="the coordinator’s message" onToggle={onReact}/>
+      <Reactions reactions={m.reactions} label="the coordinator’s message" onToggle={onReact}/>
     </div>}
   </div>;
 }
@@ -318,6 +313,14 @@ function Context({space,memory,chats,files,driveSync,actions,project,onInstructi
   const bytes=useMemo(()=>new Blob([serializeMemory(list)]).size,[list]);
   const add=(e:FormEvent)=>{e.preventDefault();const {text,tags}=splitTags(adding);if(text){project.memory.add(text,tags);setAdding('');}};
   return <div className="pj-context">
+    <section className="pj-panel pj-files">
+      <div className="pj-panel-head"><div><h3>Files</h3><p>Mark a file Source and the coordinator and subagents read it when it matters.</p></div></div>
+      <FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>
+    </section>
+    <section className="pj-panel pj-instructions">
+      <div className="pj-panel-head"><div><h3>Instructions</h3><p>Every message to the coordinator and its subagents carries these.</p></div><button type="button" className="sp-instructions" onClick={onInstructions}><InstructionsGlyph/>{space.memory.trim()?'Edit':'Add'}</button></div>
+      {space.memory.trim()?<blockquote>{space.memory.trim().slice(0,600)}{space.memory.length>600?'…':''}</blockquote>:<p className="pj-muted">No instructions yet: goals, tone, constraints.</p>}
+    </section>
     <section className="pj-panel pj-memory" aria-labelledby="pj-memory-title">
       <div className="pj-panel-head">
         <div><h3 id="pj-memory-title">Memory</h3>
@@ -345,18 +348,10 @@ function Context({space,memory,chats,files,driveSync,actions,project,onInstructi
         <button disabled={!adding.trim()}>Add</button>
       </form>
     </section>
-    <section className="pj-panel pj-instructions">
-      <div className="pj-panel-head"><div><h3>Instructions</h3><p>Every message to the coordinator and the team carries these.</p></div><button type="button" className="sp-instructions" onClick={onInstructions}><InstructionsGlyph/>{space.memory.trim()?'Edit':'Add'}</button></div>
-      {space.memory.trim()?<blockquote>{space.memory.trim().slice(0,600)}{space.memory.length>600?'…':''}</blockquote>:<p className="pj-muted">No instructions yet: goals, tone, constraints.</p>}
-    </section>
     {chats.length>0&&<section className="pj-panel pj-older">
       <div className="pj-panel-head"><div><h3>Earlier chats</h3><p>Chats from this project before it had a coordinator.</p></div></div>
       {[...chats].sort((a,b)=>b.updated-a.updated).slice(0,6).map(c=><button className="sp-row" key={c.id} onClick={()=>actions.onOpenChat(c)}><span>{c.title}</span><small>{ago(c.updated)}</small></button>)}
     </section>}
-    <section className="pj-panel pj-files">
-      <div className="pj-panel-head"><div><h3>Files</h3><p>Mark a file Source and the team reads it when it matters.</p></div></div>
-      <FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>
-    </section>
   </div>;
 }
 
