@@ -10,6 +10,7 @@ import type {
   Automation,
   StudySet,
   FileVersion,
+  ProjectRoom,
 } from "../core/types";
 import type { SpacePlan } from "../core/plans";
 import type { UsageArchive } from "./settings/UsageSettings";
@@ -17,6 +18,8 @@ export type State = {
   studySets: StudySet[];
   /** One plan per subject or project at most (core/plans.ts). Absent in workspaces saved before plans existed. */
   plans?: SpacePlan[];
+  /** Each project's coordinator chat and its threads (core/coordinator.ts). Absent in workspaces saved before them. */
+  rooms?: ProjectRoom[];
   essentialNotes?: { id: string; text: string }[];
   chats: Chat[];
   spaces: Space[];

@@ -51,6 +51,9 @@ import {LinkedFolders} from './desktop/LinkedFolders';
 import type {OpenFolderFile} from './local/SearchEverything';
 import type {OpenedPack} from './local/StudyPack';
 import type {SpaceTab} from './space/SpacePage';
+import type {ProjectSection} from './space/ProjectPage';
+import {useProjects,projectMemoryId} from './space/useProjects';
+import type {Ask} from '../core/coordinator';
 import {PACK_EXTENSION} from '../core/study-pack';
 import {FileCard,DocumentCard} from './FileCard';
 import './documents.css';
@@ -171,6 +174,7 @@ const ShareSheet = lazy(() => import("./local/StudyPack").then(m => ({ default: 
 const PackPreview = lazy(() => import("./local/StudyPack").then(m => ({ default: m.PackPreview })));
 const FlashcardImport = lazy(() => import("./local/FlashcardImport").then(m => ({ default: m.FlashcardImport })));
 const SpacePage = lazy(() => import("./space/SpacePage").then(m => ({ default: m.SpacePage })));
+const ProjectPage = lazy(() => import("./space/ProjectPage").then(m => ({ default: m.ProjectPage })));
 const Visual = lazy(() => import("./Visual"));
 const SavedVisuals = lazy(() => import("./visuals/SavedVisuals").then(m => ({ default: m.SavedVisuals })));
 const modelPlaceholders: Model[] = [
@@ -471,6 +475,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [folderView,setFolderView]=useState<{file?:OpenFolderFile;folderId?:string}|null>(null);
   const [packShare,setPackShare]=useState<{space:Space;folderId?:string}|null>(null);
   const [spaceTab,setSpaceTab]=useState<SpaceTab>('overview');
+  const [projectSection,setProjectSection]=useState<ProjectSection>('coordinator');
   /** A subject whose review starts as soon as its page opens (a flashcard reminder was clicked). */
   const [reviewFor,setReviewFor]=useState<string|null>(null);
   /** Cards being imported from Anki or Quizlet (src/local/FlashcardImport.tsx), and the subject they go to first. */
@@ -1007,6 +1012,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!doneEvent) throw new Error("The response was interrupted. Try again.");
     return result;
   }
+  // Projects: the coordinator and its agents answer through the same providers, scoped to the project (core/coordinator.ts).
+  const projectAsk: Ask = (messages, { model, scope, chat, signal, onText, tools }) => desktop
+    ? desktopChat(messages, scope, signal, (text) => onText(text), { model: model || undefined, chat, side: true, ...(tools ? {} : { plain: true }) })
+    : streamChat(messages, model || "", signal, onText, "step", undefined, undefined, { chat, side: true, plain: !tools });
+  const projects = useProjects({ stateRef, patch, ask: projectAsk, fallbackModel: () => defaultModel || undefined, onError: (message) => setToast(message) });
   async function send(e?: FormEvent, override?: string, carry?: Carry) {
     e?.preventDefault();
     // A command typed mid-message is read as if it came first (see core/commands.ts).
@@ -2111,12 +2121,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     if(!await confirmDialog({title:`Delete ${space.name}?`,message:'Its chats, study sets and files are removed from this device. Export a ZIP first if you want to keep or share it.',confirm:'Delete',danger:true}))return;
     const owner=ownerRef.current,current=stateRef.current,ids=new Set(current.files.filter(f=>f.spaceId===space.id).map(f=>f.id));
     // Earlier versions and saved specs go with their files.
-    const blobs=current.files.filter(f=>ids.has(f.id)).flatMap(f=>[f.id,'spec-'+f.id,...(f.versions||[]).flatMap(v=>[v.blob,'spec-'+v.blob])]);
+    const blobs=[...current.files.filter(f=>ids.has(f.id)).flatMap(f=>[f.id,'spec-'+f.id,...(f.versions||[]).flatMap(v=>[v.blob,'spec-'+v.blob])]),...(space.kind==='project'?[projectMemoryId(space.id)]:[])];
     // Answers still streaming into this space's chats stop; their updates would land on nothing.
-    for(const c of current.chats)if(c.spaceId===space.id)stopChat(c.id);
+    for(const c of current.chats)if(c.spaceId===space.id)stopChat(c.id);projects.stop(space.id);
     try{
       await deleteWorkflowCheckpoints(owner,current.chats.filter(c=>c.spaceId===space.id).flatMap(c=>c.messages.flatMap(m=>m.plan?[m.plan]:[])));
-      const next={...current,usageArchive:archiveChats(current.usageArchive,current.chats.filter(c=>c.spaceId===space.id)),essentialNotes:current.essentialNotes?.filter(n=>n.id!==space.id),spaces:current.spaces.filter(s=>s.id!==space.id).map(s=>({...s,sources:s.sources.filter(id=>!ids.has(id))})),chats:current.chats.filter(c=>c.spaceId!==space.id).map(c=>({...c,messages:c.messages.map(m=>({...m,attachments:m.attachments?.filter(id=>!ids.has(id))}))})),files:current.files.filter(f=>!ids.has(f.id)),studySets:current.studySets.filter(s=>s.spaceId!==space.id),plans:(current.plans||[]).filter(p=>p.spaceId!==space.id),automations:current.automations.filter(a=>a.spaceId!==space.id),visuals:current.visuals.filter(v=>!current.chats.some(c=>c.spaceId===space.id&&c.id===v.chatId))};
+      const next={...current,usageArchive:archiveChats(current.usageArchive,current.chats.filter(c=>c.spaceId===space.id)),essentialNotes:current.essentialNotes?.filter(n=>n.id!==space.id),spaces:current.spaces.filter(s=>s.id!==space.id).map(s=>({...s,sources:s.sources.filter(id=>!ids.has(id))})),chats:current.chats.filter(c=>c.spaceId!==space.id).map(c=>({...c,messages:c.messages.map(m=>({...m,attachments:m.attachments?.filter(id=>!ids.has(id))}))})),files:current.files.filter(f=>!ids.has(f.id)),studySets:current.studySets.filter(s=>s.spaceId!==space.id),plans:(current.plans||[]).filter(p=>p.spaceId!==space.id),rooms:(current.rooms||[]).filter(r=>r.spaceId!==space.id),automations:current.automations.filter(a=>a.spaceId!==space.id),visuals:current.visuals.filter(v=>!current.chats.some(c=>c.spaceId===space.id&&c.id===v.chatId))};
       // Commit the index before removing blobs, so interruption cannot leave live references to deleted files.
       if(owner!==ownerRef.current)return;stateRef.current=next;setState(next);
       const persistence=saveQueue.current.then(()=>saveState(next,owner));saveQueue.current=persistence.catch(()=>{});await persistence;
@@ -2385,9 +2395,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     return()=>{window.removeEventListener('dragenter',enter);window.removeEventListener('dragleave',leave);window.removeEventListener('drop',drop);window.removeEventListener('dragend',end);};
   },[]);
   /** A project or subject opens as its own page. */
-  function openSpace(id:string,tab:SpaceTab='overview'){setSpaceId(id);setChatId(null);setSpaceTab(tab);navigate('/app/space/'+id);}
+  function openSpace(id:string,tab:SpaceTab='overview'){if(id!==spaceRoute)setProjectSection('coordinator');setSpaceId(id);setChatId(null);setSpaceTab(tab);navigate('/app/space/'+id);}
   const spaceRoute=route.match(/^\/app\/space\/([\w-]+)$/)?.[1];
   const pageSpace=spaceRoute?state.spaces.find(x=>x.id===spaceRoute):undefined;
+  useEffect(() => { if (pageSpace?.kind === "project") void projects.loadMemory(pageSpace.id); }, [pageSpace?.id]);
   // The window's title names where the person is (shown in the taskbar and when switching windows).
   const placeName=route==="/app"?(activeChat?activeChat.title||"Conversation":temporaryNext?"Temporary chat":"New chat"):pageSpace?pageSpace.name:nav.find(([icon])=>route===`/app/${icon}`)?.[1];
   useEffect(()=>{if(route.startsWith("/app"))document.title=placeName?`${placeName} · Clem`:"Clem";},[route,placeName]);
@@ -3030,6 +3041,11 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 onPoint={(p) => { setPointers((all) => [...all, p].slice(-6)); setTimeout(() => composer.current?.focus(), 30); }} />}
               </div>
             ) : pageSpace ? (
+              pageSpace.kind === "project" ? <Suspense fallback={<div className="page"/>}><ProjectPage key={pageSpace.id} space={pageSpace} room={projects.roomOf(pageSpace.id)} memory={projects.memoryOf(pageSpace.id)} models={models} fallbackModel={defaultModel} busy={projects.busy}
+                chats={savedChats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} driveSync={driveSync} section={projectSection} onSection={setProjectSection} actions={spaceActions(pageSpace)}
+                project={{send:(text)=>void projects.send(pageSpace,text),reply:(thread,text)=>void projects.reply(pageSpace,thread,text),stop:projects.stop,react:(ref,emoji)=>projects.react(pageSpace.id,ref,emoji),
+                  clear:()=>void confirmDialog({title:"Clear the conversation?",message:"The coordinator chat and its threads are removed. The memory file and files stay.",confirm:"Clear",danger:true}).then(ok=>{if(ok)projects.clearRoom(pageSpace.id);}),
+                  memory:projects.memoryActions(pageSpace),onConnect:()=>openSettings("Models")}}/></Suspense> :
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab} reviewNow={reviewFor===pageSpace.id} onReviewStarted={()=>setReviewFor(null)}
                 chats={savedChats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} driveSync={driveSync} actions={spaceActions(pageSpace)}
                 plan={(state.plans||[]).find(p=>p.spaceId===pageSpace.id)} planDraft={planDrafts[pageSpace.id]||null} planActions={planActionsFor(pageSpace)} canAsk={models.some(m=>m.connected)&&!offline} memoryPlaces={memoryPlaces} memoryLabel={memoryLabel}/></Suspense>

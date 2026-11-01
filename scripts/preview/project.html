@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Clem · project preview</title>
+<link rel="preload" href="/fonts/MowafySerif-Regular.woff2" as="font" type="font/woff2" crossorigin/>
+<link rel="preload" href="/fonts/Outfit.woff2" as="font" type="font/woff2" crossorigin/>
+<link rel="preload" href="/fonts/MowafySans-Regular.woff2" as="font" type="font/woff2" crossorigin/>
+</head>
+<body>
+<!-- A dev-only preview of the desktop app: the real boot path (src/main.tsx → DesktopRoot → App) behind a scripted
+     desktop bridge and local API (./bridge.js). Nothing here reaches a model; replies are scripted. -->
+<script src="/boot.js"></script>
+<div id="root"></div>
+<script type="module" src="./bridge.js"></script>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

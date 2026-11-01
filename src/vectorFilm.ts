@@ -9,9 +9,9 @@
  * something moves, and the thing it reaches takes the colour (the shackle clicks shut and the keyhole fills, the lens
  * finds the gem). Each loop starts on its finished pose, so a single painted frame is always the complete drawing.
  */
-export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards'|'checklist'|'calendar'|'steps'|'bell'|'alarm';
+export type Scene='balance'|'untangle'|'build'|'discover'|'learn'|'orchestrate'|'sprout'|'kite'|'telescope'|'pencil'|'bridge'|'conversation'|'envelope'|'key'|'door'|'swap'|'invite'|'keypad'|'shield'|'lock'|'unlock'|'link'|'unlink'|'plane'|'hourglass'|'box'|'jar'|'folder'|'plug'|'house'|'lifebuoy'|'profile'|'safe'|'expired'|'wave'|'cards'|'checklist'|'calendar'|'steps'|'bell'|'alarm'|'relay';
 /** How long each scene's loop runs, in seconds. A loop's first frame is its finished pose. */
-export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,build:5.5,discover:6,learn:5,orchestrate:7,sprout:6,kite:6,telescope:6,pencil:5.5,bridge:5.5,conversation:5,envelope:5,key:5,door:5.5,swap:5,invite:5,keypad:4.5,shield:5,lock:5,unlock:5,link:5,unlink:5,plane:5,hourglass:7,box:5,jar:5.5,folder:5,plug:5,house:5.5,lifebuoy:5,profile:5,safe:5,expired:5.5,wave:4,cards:5,checklist:5,calendar:5.5,steps:5.5,bell:5,alarm:5};
+export const loopSeconds:Readonly<Record<Scene,number>>={balance:5,untangle:5,build:5.5,discover:6,learn:5,orchestrate:7,sprout:6,kite:6,telescope:6,pencil:5.5,bridge:5.5,conversation:5,envelope:5,key:5,door:5.5,swap:5,invite:5,keypad:4.5,shield:5,lock:5,unlock:5,link:5,unlink:5,plane:5,hourglass:7,box:5,jar:5.5,folder:5,plug:5,house:5.5,lifebuoy:5,profile:5,safe:5,expired:5.5,wave:4,cards:5,checklist:5,calendar:5.5,steps:5.5,bell:5,alarm:5,relay:7.2};
 /** Scenes that move: all of them now, each on its own loop. */
 export const animated:ReadonlySet<Scene>=new Set(Object.keys(loopSeconds) as Scene[]);
 type P=[number,number];
@@ -543,7 +543,39 @@ function alarm(){
  const striker=a(rounded(230,128,20,14,4));
  return s+line(a([[240,142],[240,151]]),{w:FINE})+shape(striker,{fill:lit?CLAY:undefined,w:FINE});
 }
-const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards,checklist,calendar,steps,bell,alarm};
+function relay(){
+ // A message, and the notepads of the people it is handed to. A folded note flies down to each pad in turn and sticks;
+ // each pad types, ticks itself off, and a small note goes back up to the message, which ticks too. It starts over.
+ const pads:P[]=[[150,290],[240,302],[330,290]];
+ const cleared=U>=.5&&U<6.4;
+ let s=shape(rounded(168,82,144,70,24))+line([[226,152],[220,176],[250,152]]);
+ s+=line([[192,108],[288,108]],{w:FINE})+line([[192,128],[258,128]],{w:FINE});
+ pads.forEach(([x,y],i)=>{
+  const t0=.8+i*.85,arrive=t0+.62,done=4.1+i*.32;
+  const pad=rounded(x-34,y-26,68,52,9);
+  s+=shape(pad,{w:FINE})+line([[x-20,y+8],[x+20,y+8]],{w:THIN});
+  // The note in flight: out of the message's tail, over and down onto the pad.
+  if(cleared&&U>=t0&&U<arrive){
+   const path=spline([[240,176],[lerp(240,x,.45),200],[x,y-48],[x+2,y-30]],false),k=clamp((U-t0)/.62),e=k<.5?2*k*k:1-(-2*k+2)**2/2;
+   const [nx,ny]=along(path,e),tilt=(x-240)/600*(1-e);
+   s+=shape(X(rounded(nx-11,ny-8,22,16,3),{r:tilt,ox:nx,oy:ny}),{fill:CLAY,w:THIN});
+  }
+  // Stuck on: the note sits on the pad's corner from the moment it lands.
+  const stuck=!cleared||U>=arrive?(cleared?pop(U,arrive,.28):1):0;
+  if(stuck>.05){const note=X(rounded(x+10,y-34,22,16,3),{s:stuck,r:.12,ox:x+21,oy:y-26});s+=shape(note,{fill:CLAY,w:THIN});}
+  // Working: three dots rise in turn until the pad ticks itself off.
+  if(cleared&&U>=arrive+.2&&U<done){const hop=Math.floor(T*5+i)%4;for(let j=0;j<3;j++)s+=shape(ellipse(x-12+j*12,y-8-(hop===j?4:0),3.4),{fill:INK,w:0});}
+  const tick=!cleared?1:U<done?0:clamp((U-done)/.3);
+  if(tick>0)s+=line([[x-11,y-10],[x-3,y-2],[x+12,y-18]],{w:FINE,k:tick});
+  // The answer going back up.
+  const up=5.1+i*.18;
+  if(cleared&&U>=up&&U<up+.5){const k=clamp((U-up)/.5),[nx,ny]=along([[x,y-30],[lerp(x,240,.6),190],[240,162]],k);s+=ring(nx,ny,4,{w:THIN,opacity:1-k*.6});}
+ });
+ const ok=!cleared?1:U<5.75?0:clamp((U-5.75)/.3);
+ if(ok>0)s+=shape(ellipse(306,90,13),{fill:SAND,w:FINE,k:ok})+line([[300,90],[305,95],[313,85]],{w:THIN,k:ok});
+ return s;
+}
+const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards,checklist,calendar,steps,bell,alarm,relay};
 /** The pen itself, for longer films drawn in the same hand (the website's ink film, src/site/film-script.ts). */
 export const pen={line,curve,shape,blob,arc,ellipse,rounded,X,pill,ring,wavy,stripes,behind,leaf,along,spline,pose,pop,back,clamp,lerp};
 export const inks={INK,BLUE,GREEN,LILAC,PINK,SAND,CLAY,LINE,FINE,THIN};
