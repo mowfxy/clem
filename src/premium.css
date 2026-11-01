@@ -171,13 +171,44 @@ body .sidebar nav.glide-nav .nav-item.active{background:transparent}
 body .study-weak h4{font:500 13px/1.3 var(--sans);letter-spacing:0;text-transform:none}
 
 /* ---------- Dialogs ---------- */
-body .app-modal{border-radius:20px;border-color:#2f2f2c;background:#1c1c1b;box-shadow:0 40px 120px -40px #000,0 0 0 1px #ffffff05}
-body .app-modal .modal-heading h2{font:400 26px/1.15 var(--serif);letter-spacing:-.02em}
-body .app-modal .field{font-size:13px;color:#a9a8a1}
-body .app-modal .field .optional{display:inline;margin-left:6px;color:#6f6e68;font-size:13px}
-body .app-modal :is(input,textarea){border-radius:12px;border-color:#2f2f2c;background:#161615;transition:border-color .3s var(--pm-ease)}
-body .app-modal :is(input,textarea):focus{border-color:#4a4a45}
-body .app-modal form>.primary{border-radius:11px}
+/* Compact and plain: a sans title beside the close button, labels above lighter fields, actions at the bottom right. */
+body .app-modal,body .pj-dialog{width:min(560px,calc(100vw - 32px));border-radius:16px;border:1px solid #3a3a37;background:#2a2a28;color:#eeede7;box-shadow:0 40px 120px -30px #000,0 0 0 1px #ffffff05 inset}
+body .app-modal{padding:20px 24px 22px}
+body .app-modal .modal-heading{margin-bottom:14px}
+body .app-modal .modal-heading h2{font:600 19px/1.25 var(--sans);letter-spacing:-.005em;color:#f4f3ee}
+body .app-modal .field{font-size:14px;color:#e6e5df}
+body .app-modal .field .optional{display:inline;margin-left:6px;color:#8d8c85;font-size:13.5px}
+body .app-modal :is(input:not([type=checkbox]):not([type=radio]),textarea){border-radius:10px;border:1px solid #42423e;background:#323230;color:#f0efea;font-size:14.5px;transition:border-color .2s,box-shadow .2s}
+body .app-modal :is(input,textarea)::placeholder{color:#85847d}
+body .app-modal :is(input,textarea):focus{outline:none;border-color:#8a8a82;box-shadow:0 0 0 3px #ffffff10}
+body .app-modal form>.primary{border-radius:10px}
+body .app-modal .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
+body .app-modal .modal-actions button{min-height:36px;padding:0 16px;border-radius:10px;background:#3c3c39;color:#eeede8;font:500 14px var(--sans)}
+body .app-modal .modal-actions button:hover{background:#464643}
+body .app-modal .modal-actions button.primary{background:#ecebe5;border-color:#ecebe5;color:#1b1b19}
+body .app-modal .modal-actions button.primary:hover{background:#fff}
+
+/* New project / subject */
+.space-create{display:grid;gap:18px}
+.space-create-field{display:grid!important;gap:8px!important;margin:0!important}
+.space-create-field>span,.space-create-context-head>span{font:500 14.5px var(--sans);color:#efeee8}
+.space-create small{font-weight:400;color:#8d8c85;font-size:13.5px}
+.app-modal .space-create textarea{min-height:92px;resize:vertical;line-height:1.5}
+.space-create-context{display:grid;gap:10px;margin-top:4px;padding:14px 16px 16px;border-radius:12px;border:1px solid #393936;background:#262624;transition:border-color .15s,background .15s}
+.space-create-context.over{border-color:#8a8a82;background:#2e2e2c}
+.space-create-context-head{display:flex;align-items:center;justify-content:space-between}
+.space-create-context-head button{display:grid;place-items:center;width:30px;height:30px;padding:0;border-radius:8px;color:#c9c8c1}
+.space-create-context-head button:hover{background:#ffffff10;color:#fff}
+.space-create-drop{width:100%;min-height:46px;border:1px dashed #4a4a46!important;border-radius:10px;color:#9a9992;font:14px var(--sans)}
+.space-create-drop:hover{border-color:#6a6a65!important;color:#d8d7d0;background:#ffffff05}
+.space-create-context ul{list-style:none;margin:0;padding:0;display:grid;gap:2px;max-height:180px;overflow:auto}
+.space-create-context li{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 4px 0 8px;border-radius:8px;font-size:13.5px;color:#dcdbd4}
+.space-create-context li:hover{background:#ffffff08}
+.space-create-context li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.space-create-context li small{font-size:12px}
+.space-create-context li button{display:grid;place-items:center;width:26px;height:26px;padding:0;border-radius:6px;color:#8d8c85}
+.space-create-context li button:hover{background:#ffffff10;color:#fff}
+.app-modal .space-create .modal-actions{margin-top:6px}
 
 /* ---------- Type finish ---------- */
 body :is(h1,h2,h3){text-wrap:balance}

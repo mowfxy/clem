@@ -20,8 +20,8 @@
 /* coordinator chat */
 .pj-chat{position:relative;display:flex;flex-direction:column;min-height:calc(100dvh - 270px)}
 .pj .pj-messages{width:auto;max-width:none;margin:30px 0 0;padding:0}
-.pj .messages .pj-message{margin-bottom:22px}
-.pj .messages .pj-message.user{margin-bottom:22px}
+.pj .messages .pj-message{position:relative;margin-bottom:34px}
+.pj .messages .pj-message.user{margin-bottom:34px}
 .pj .messages .pj-message.assistant .message-text{max-width:720px}
 .pj-waiting{display:flex;align-items:center;gap:14px}
 .pj-waiting .message-mark{margin:0}
@@ -30,6 +30,10 @@
 .pj-error{margin:8px 0 0;color:var(--pj-coral);font:13.5px/1.5 var(--sans)}
 .pj-stopped{margin:6px 0 0;color:var(--pj-muted);font:13px var(--sans)}
 .pj-under{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:6px;min-height:28px}
+/* The row under a message (time, react button) sits in the gap below it, so messages without reactions stay close
+   together; once a message has reactions the row takes its own space. */
+.pj-message>.pj-under{position:absolute;top:100%;left:0;right:0;margin-top:3px}
+.pj-message>.pj-under:has(.pj-reactions.has){position:static;margin-top:6px}
 .pj-message.user .pj-under{flex-direction:row-reverse}
 .pj-meta{display:inline-flex;align-items:center;gap:10px;color:var(--pj-faint);font:12px/1 var(--sans);opacity:0;transition:opacity .2s}
 .pj-meta span{display:inline-flex;align-items:center;gap:4px}
@@ -199,45 +203,35 @@
 .pj-older .sp-row small{color:var(--pj-faint)}
 .pj-files .sp-files{margin:0}
 
-/* team dialog */
-.contact-dialog.pj-team-dialog{width:min(680px,calc(100vw - 32px));max-width:none}
-.pj-team-body{display:grid;gap:10px;padding-bottom:6px}
-.pj-team-label{display:flex;align-items:baseline;gap:8px;margin:12px 0 0;font:500 13px var(--sans);color:var(--pj-soft,#b8b7b0)}
-.pj-team-label small{font-weight:400;color:#7f7e77}
-.pj-team-none{margin:0;font-size:13.5px;color:#8a8983}
-.pj-team-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.pj-team-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:10px 12px;border-radius:12px;border:1px solid #33332f;background:#1d1d1c}
-.pj-team-row.coordinator{background:#262624}
-.pj-team-row .pj-coord-mark{width:30px;height:30px}
-.pj-team-who{display:grid;gap:2px;flex:1;min-width:140px}
-.pj-team-who strong{font-size:14.5px;font-weight:500;color:#f0efeb}
-.pj-team-who small{font-size:12px;color:#8a8983;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pj-team-dialog .pj-team-who input{width:100%;height:26px;margin:0 0 0 -6px;padding:0 6px;border-radius:6px;border:1px solid transparent;background:none;color:#f0efeb;font:500 14.5px var(--sans);outline:0}
-.pj-team-dialog .pj-team-who input:hover{border-color:#3a3a36}
-.pj-team-dialog .pj-team-who input:focus{border-color:#5a5a55;background:#171716}
-.pj-team-icon{display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:none;color:#8a8983;cursor:pointer}
-.pj-team-icon:hover,.pj-team-icon[aria-expanded=true]{background:#ffffff0d;color:#f0efeb}
-.pj-team-instructions{display:grid;gap:6px;flex-basis:100%;font-size:12.5px;color:#8a8983}
-.pj-team-dialog .pj-team-instructions textarea{width:100%;min-height:72px;padding:10px 12px;border-radius:10px;border:1px solid #3a3a36;background:#171716;color:#f0efeb;font:13.5px/1.55 var(--sans);resize:vertical;outline:0}
-.pj-team-dialog .pj-team-instructions textarea:focus{border-color:#5a5a55}
-.pj-team-kinds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-.pj-team-kinds button{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 12px;border-radius:11px;border:1px solid #33332f;background:none;color:#f0efeb;text-align:left;font-family:var(--sans);cursor:pointer;transition:background .15s,border-color .15s}
-.pj-team-kinds button:hover{background:#ffffff08;border-color:#4a4a46}
-.pj-team-kinds .pj-kind-text{display:grid;gap:2px;flex:1;min-width:0}
-.pj-team-kinds strong{font-size:13.5px;font-weight:500}
-.pj-team-kinds em{font-style:normal;font-weight:400;color:#8a8983}
-.pj-team-kinds small{font-size:12px;color:#8a8983}
-.pj-team-kinds button>svg{color:#6f6e68;flex:none}
-.pj-team-dialog .model-selector{flex:none}
+/* project settings: the same compact dialog as New project (premium.css) */
+.pj-dialog{max-height:calc(100dvh - 48px);padding:0;overflow:visible;font-family:var(--sans)}
+.pj-dialog::backdrop{background:#000a;backdrop-filter:blur(4px)}
+.pj-dialog[open]{animation:dialog-in .22s cubic-bezier(.2,.9,.3,1)}
+.pj-dialog form{display:grid;gap:10px;padding:20px 24px 22px}
+.pj-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+.pj-dialog-head h2{margin:0;font:600 19px/1.25 var(--sans);color:#f4f3ee;letter-spacing:-.005em}
+.pj-dialog-close{display:grid;place-items:center;width:32px;height:32px;padding:0;margin-right:-6px;border-radius:9px;color:#b4b3ac}
+.pj-dialog-close:hover{background:#ffffff10;color:#fff}
+.pj-setting{display:flex;align-items:center;gap:16px;padding:14px 16px;border-radius:12px;border:1px solid #393936;background:#262624}
+.pj-setting>div:first-child{display:grid;gap:3px;flex:1;min-width:0}
+.pj-setting strong{font:500 14.5px var(--sans);color:#efeee8}
+.pj-setting small{font-size:12.5px;line-height:1.4;color:#8d8c85}
+.pj-setting .model-selector{flex:none}
+.pj-dialog-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.pj-dialog-foot button{min-height:36px;padding:0 16px;border-radius:10px;font:500 14px var(--sans)}
+.pj-dialog-secondary{background:#3c3c39;color:#eeede8}
+.pj-dialog-secondary:hover{background:#464643}
+.pj-dialog-primary{background:#ecebe5;color:#1b1b19}
+.pj-dialog-primary:hover:not(:disabled){background:#fff}
+.pj-dialog-primary:disabled{opacity:.45}
 
 @media (max-width:900px){
   .pj-thread-row-side small+small{display:none}
-  .pj-team-kinds{grid-template-columns:1fr}
   .pj-panel{padding:16px}
   .pj .messages .pj-message.user .message-text{max-width:88%}
 }
 @media (max-width:560px){
-  .pj-team-row .model-selector{order:5;flex-basis:100%}
+  .pj-setting{flex-wrap:wrap}
   .pj-intro h2{font-size:24px}
 }
 @media (prefers-reduced-motion:reduce){.pj-starters button,.pj-reaction,.pj-react-pick,.pj-handoff,.pj-handoff-state,.pj-handoff-chat{animation:none}.pj-tab-live i,.pj-status.is-working i{animation:none}}

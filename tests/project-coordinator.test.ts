@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { entry, forget, parseMemory, recall, remember, serializeMemory, MEMORY_LIMIT } from "../core/project-memory.ts";
-import { coordinatorHistory, coordinatorTurn, emptyRoom, findAgent, makeAgent, readReply, runThread, toggleReaction, type Ask, type Room } from "../core/coordinator.ts";
+import { coordinatorHistory, coordinatorTurn, emptyRoom, modelsOf, readReply, runThread, toggleReaction, type Ask, type Room } from "../core/coordinator.ts";
 import type { ProjectRoom, Space } from "../core/types.ts";
 import type { MemoryEntry } from "../core/project-memory.ts";
 
@@ -58,6 +58,16 @@ test("directives are read and hidden, even half-written while streaming", () => 
   assert.equal(readReply("Working on it [[delega", true).text, "Working on it");
   assert.equal(readReply("[[react: hello]]").directives.react, undefined);
   assert.equal(readReply("[[react: 🎉]]").text, "");
+  // [[thread: …]] is read like [[delegate: …]]; a missing role becomes a plain subagent.
+  assert.deepEqual(readReply("[[thread: Analyst | Numbers | Size it]]").directives.delegate, [{ agent: "Analyst", title: "Numbers", task: "Size it" }]);
+  assert.deepEqual(readReply("[[thread: Say hello | Say hello to the person]]").directives.delegate, [{ agent: "Subagent", title: "Say hello", task: "Say hello to the person" }]);
+});
+
+test("subagents follow the coordinator's model and thinking unless set apart", () => {
+  assert.deepEqual(modelsOf({}, "gpt"), { coordinator: { model: "gpt", effort: undefined }, agent: { model: "gpt", effort: undefined } });
+  assert.deepEqual(modelsOf({ coordinatorModel: "a", coordinatorEffort: "high" }).agent, { model: "a", effort: "high" });
+  assert.deepEqual(modelsOf({ coordinatorModel: "a", coordinatorEffort: "high", agentEffort: "low" }).agent, { model: "a", effort: "low" });
+  assert.deepEqual(modelsOf({ coordinatorModel: "a", coordinatorEffort: "high", agentModel: "b" }).agent, { model: "b", effort: undefined });
 });
 
 test("reactions toggle per person and emoji", () => {
@@ -68,7 +78,7 @@ test("reactions toggle per person and emoji", () => {
 });
 
 const space: Space = { id: "p1", name: "Launch", kind: "project", description: "Product launch", memory: "", sources: [] };
-const agents = [makeAgent("researcher"), makeAgent("writer")];
+const runs = modelsOf({ coordinatorModel: "claude:sonnet", coordinatorEffort: "high" });
 function harness(start: MemoryEntry[] = []) {
   let room: ProjectRoom = emptyRoom("p1");
   let memory = start;
@@ -84,7 +94,7 @@ const say = (h: ReturnType<typeof harness>, content: string) => {
 test("a reply that is only a reaction leaves just the reaction", async () => {
   const h = harness();
   const msg = say(h, "thanks!");
-  await coordinatorTurn(space, agents, undefined, msg, h.io, async () => "[[react: 🙏]]", new AbortController().signal);
+  await coordinatorTurn(space, runs, msg, h.io, async () => "[[react: 🙏]]", new AbortController().signal);
   assert.equal(h.room().messages.length, 1);
   assert.deepEqual(h.room().messages[0].reactions, [{ emoji: "🙏", by: "coordinator" }]);
 });
@@ -94,7 +104,9 @@ test("the coordinator delegates, threads run in parallel, then it answers from t
   const msg = say(h, "Plan the launch announcement");
   const seen: string[][] = [];
   let open = 0, most = 0;
-  const ask: Ask = async (messages, { chat, onText }) => {
+  const ask: Ask = async (messages, { chat, onText, model, effort }) => {
+    assert.equal(model, "claude:sonnet");
+    assert.equal(effort, "high");
     seen.push(messages.map((m) => m.content));
     if (chat.startsWith("thr-")) {
       open++; most = Math.max(most, open);
@@ -105,15 +117,16 @@ test("the coordinator delegates, threads run in parallel, then it answers from t
     }
     if (messages.some((m) => m.content.startsWith("(Thread reports"))) return "Here is the plan: date confirmed, draft ready.";
     onText("On it: research");
-    return "On it.\n[[delegate: researcher | Check facts | Check the facts for the launch]]\n[[delegate: Writer | Draft | Write the announcement]]\n[[react: 👀]]";
+    return "On it.\n[[thread: Researcher | Check facts | Check the facts for the launch]]\n[[delegate: Writer | Draft | Write the announcement]]\n[[react: 👀]]";
   };
-  await coordinatorTurn(space, agents, "claude:sonnet", msg, h.io, ask, new AbortController().signal);
+  await coordinatorTurn(space, runs, msg, h.io, ask, new AbortController().signal);
   const room = h.room();
   assert.equal(most, 2, "both threads ran at once");
   assert.equal(room.threads.length, 2);
   assert.deepEqual(room.threads.map((t) => t.status), ["done", "done"]);
   assert.equal(room.threads[0].summary, "Confirmed the date");
-  assert.deepEqual(room.threads[0].messages[0].reactions, [{ emoji: "✅", by: "researcher" }]);
+  assert.deepEqual(room.threads.map((t) => t.agent), ["Researcher", "Writer"]);
+  assert.deepEqual(room.threads[0].messages[0].reactions, [{ emoji: "✅", by: "Researcher" }]);
   assert.deepEqual(room.messages.map((m) => m.content), ["Plan the launch announcement", "On it.", "Here is the plan: date confirmed, draft ready."]);
   assert.deepEqual(room.messages[0].reactions, [{ emoji: "👀", by: "coordinator" }]);
   assert.equal(room.messages[1].threads?.length, 2);
@@ -121,7 +134,7 @@ test("the coordinator delegates, threads run in parallel, then it answers from t
   // Memory that matched was sent, and only as matching lines.
   assert.ok(seen[0][0].includes("Launch is on December 3."));
   // Later turns see one-line thread outcomes, not the thread text.
-  const history = coordinatorHistory(room, agents).map((t) => t.content).join("\n");
+  const history = coordinatorHistory(room).map((t) => t.content).join("\n");
   assert.match(history, /Confirmed the date/);
   assert.doesNotMatch(history, /Dec 3 confirmed\./);
 });
@@ -130,7 +143,7 @@ test("a recall looks in the memory file and asks once more", async () => {
   const h = harness([entry("The ad budget is 4000 euros.", ["budget"])]);
   const msg = say(h, "what did we decide?");
   let calls = 0;
-  await coordinatorTurn(space, agents, undefined, msg, h.io, async (messages) => {
+  await coordinatorTurn(space, runs, msg, h.io, async (messages) => {
     calls++;
     if (calls === 1) return "[[recall: ad budget]]";
     assert.match(messages.at(-1)!.content, /4000 euros/);
@@ -146,15 +159,15 @@ test("a stopped turn marks the reply stopped and the threads stopped", async () 
   const stop = new AbortController();
   const ask: Ask = (messages, { chat, signal }) => chat.startsWith("thr-")
     ? new Promise((_, reject) => { setTimeout(() => stop.abort(), 5); signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError"))); })
-    : Promise.resolve("[[delegate: researcher | Dig | Dig into it]]");
-  await assert.rejects(coordinatorTurn(space, agents, undefined, msg, h.io, ask, stop.signal));
+    : Promise.resolve("[[thread: Researcher | Dig | Dig into it]]");
+  await assert.rejects(coordinatorTurn(space, runs, msg, h.io, ask, stop.signal));
   assert.equal(h.room().threads[0].status, "stopped");
 });
 
 test("the person can add to a thread and the agent answers there", async () => {
   const h = harness();
   h.io.set((r) => ({ ...r, threads: [{ id: "t1", agent: "writer", title: "Draft", status: "done", created: 1, updated: 1, messages: [{ id: "a", from: "coordinator", content: "Write it", at: 1 }, { id: "b", from: "writer", content: "Draft one", at: 2 }, { id: "c", from: "you", content: "Make it shorter", at: 3 }] }] }));
-  const text = await runThread(space, findAgent(agents, "writer")!, "t1", h.io, async (messages) => {
+  const text = await runThread(space, runs.agent, "t1", h.io, async (messages) => {
     assert.equal(messages.at(-1)!.content, "(The person, not the coordinator:) Make it shorter");
     assert.equal(messages.at(-2)!.role, "assistant");
     return "Short draft. [[react: 👍]]";

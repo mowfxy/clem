@@ -6,17 +6,17 @@ export type Skill = { id: string; name: string; description: string; category: s
 /** A folder made inside Clem to organise a space's files; `parentId` nests it. */
 /** `rank`: where the person placed it among its neighbours by dragging its handle (none: the usual order). */
 export type SpaceFolder = { id: string; name: string; parentId: string | null; created: number; rank?: number };
-export type Space = { id: string; name: string; kind: 'project' | 'subject'; /** The sample subject offered at the end of setup (src/sample-subject.ts); its page offers to delete it. */ sample?: boolean; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[]; drive?: SpaceDrive; /** Other linked Drive folders, read like `drive`, which is the one shown; picking one swaps it in. */ drives?: SpaceDrive[]; /** Files from anywhere in Google Drive (outside the linked folder) this space reads as sources, live. */ driveFiles?: import('./drive-search').DriveRef[]; /** Sidebar mark the model picked for this name (see src/space/SpaceMark.tsx); asked again once the name changes. */ mark?: { key: string; for: string }; /** A project's team: the coordinator's model and the agent types it hands work to (core/coordinator.ts). */ team?: ProjectTeam };
+export type Space = { id: string; name: string; kind: 'project' | 'subject'; /** The sample subject offered at the end of setup (src/sample-subject.ts); its page offers to delete it. */ sample?: boolean; description: string; memory: string; sources: string[]; examDate?: string; folders?: SpaceFolder[]; drive?: SpaceDrive; /** Other linked Drive folders, read like `drive`, which is the one shown; picking one swaps it in. */ drives?: SpaceDrive[]; /** Files from anywhere in Google Drive (outside the linked folder) this space reads as sources, live. */ driveFiles?: import('./drive-search').DriveRef[]; /** Sidebar mark the model picked for this name (see src/space/SpaceMark.tsx); asked again once the name changes. */ mark?: { key: string; for: string }; /** A project's settings: the model and thinking level of its coordinator and of the subagents it starts (core/coordinator.ts). */ team?: ProjectTeam };
 /** An agent a project's coordinator can hand work to: one of the kinds in core/coordinator.ts (or 'custom'), with its own model. */
-export type ProjectAgent = { id: string; kind: string; name: string; instructions: string; model?: string };
-export type ProjectTeam = { coordinatorModel?: string; agents: ProjectAgent[] };
+/** Model and thinking level for the coordinator and for every subagent; unset fields fall back to the coordinator's, then the app's. */
+export type ProjectTeam = { coordinatorModel?: string; coordinatorEffort?: string; agentModel?: string; agentEffort?: string };
 /** `by`: 'you', 'coordinator' or an agent's id. */
 export type Reaction = { emoji: string; by: string };
 /** A message in a project's coordinator chat or one of its threads. `from`: 'you', 'coordinator' or an agent's id.
  *  `threads`: threads this coordinator message started; `recalled`: ids of the memory lines it was given. */
 export type RoomMessage = { id: string; from: string; content: string; at: number; reactions?: Reaction[]; threads?: string[]; recalled?: string[]; remembered?: number; status?: 'writing' | 'error' | 'stopped'; error?: string };
 /** Work the coordinator handed one agent: its brief, the agent's replies, and anything the person added. */
-export type ProjectThread = { id: string; agent: string; title: string; status: 'working' | 'done' | 'failed' | 'stopped'; messages: RoomMessage[]; created: number; updated: number; summary?: string; from?: string };
+export type ProjectThread = { id: string; /** The subagent's role, as the coordinator named it ("Researcher"); also its `from` on its messages. */ agent: string; title: string; status: 'working' | 'done' | 'failed' | 'stopped'; messages: RoomMessage[]; created: number; updated: number; summary?: string; from?: string };
 export type ProjectRoom = { spaceId: string; messages: RoomMessage[]; threads: ProjectThread[] };
 /** A Google Drive folder linked to a space. It is read live from Drive whenever it is shown or asked about; nothing is
  *  downloaded. `seen` remembers each file's last modified time so new and changed files can be pointed out; `fresh`

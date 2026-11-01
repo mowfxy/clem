@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { coordinatorTurn, emptyRoom, runThread, teamOf, toggleReaction, type Ask, type Room } from "../../core/coordinator";
+import { coordinatorTurn, emptyRoom, modelsOf, runThread, teamOf, toggleReaction, type Ask, type Room } from "../../core/coordinator";
 import { entry, forget, parseMemory, remember, serializeMemory, type MemoryEntry } from "../../core/project-memory";
 import type { ProjectRoom, RoomMessage, Space } from "../../core/types";
 import { getBlob, storeBlob, type State } from "../store";
@@ -68,26 +68,23 @@ export function useProjects({ stateRef, patch, ask, fallbackModel, onError }: {
   async function send(space: Space, text: string) {
     if (runs.current.has(space.id)) return;
     const c = start(space.id);
-    const team = teamOf(space);
     const message: RoomMessage = { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() };
     setRoom(space.id, (r) => ({ ...r, messages: [...r.messages, message] }));
     try {
       await loadMemory(space.id);
-      await coordinatorTurn(space, team.agents, team.coordinatorModel || fallbackModel(), message, io(space), ask, c.signal);
+      await coordinatorTurn(space, modelsOf(teamOf(space), fallbackModel()), message, io(space), ask, c.signal);
     } catch (e) { failed(e, c); }
     finally { finish(space.id, c); }
   }
-  /** The person writes in a thread: its agent answers there. */
+  /** The person writes in a thread: its subagent answers there. */
   async function reply(space: Space, threadId: string, text: string) {
     const key = "thread:" + threadId;
     if (runs.current.has(key)) return;
-    const team = teamOf(space), thread = roomOf(stateRef.current, space.id).threads.find((t) => t.id === threadId);
-    const agent = team.agents.find((a) => a.id === thread?.agent);
+    const thread = roomOf(stateRef.current, space.id).threads.find((t) => t.id === threadId);
     if (!thread) return;
     setRoom(space.id, (r) => ({ ...r, threads: r.threads.map((t) => t.id === threadId ? { ...t, updated: Date.now(), messages: [...t.messages, { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() }] } : t) }));
-    if (!agent) { onError("That agent is no longer on this project’s team. Add it back in Team to continue the thread."); return; }
     const c = start(key);
-    try { await loadMemory(space.id); await runThread(space, agent, threadId, io(space), ask, c.signal, team.coordinatorModel || fallbackModel()); }
+    try { await loadMemory(space.id); await runThread(space, modelsOf(teamOf(space), fallbackModel()).agent, threadId, io(space), ask, c.signal); }
     catch (e) { failed(e, c); }
     finally { finish(key, c); }
   }

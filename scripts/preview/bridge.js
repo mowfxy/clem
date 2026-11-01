@@ -40,16 +40,12 @@ function seed() {
   const thanks = msg("you", "perfect, thanks", now - day + 60e3, { reactions: [{ emoji: "🙏", by: "coordinator" }] });
   return {
     name: "Mo", memory: "", quiet: false, studySets: [], plans: [], skills: [], visuals: [], automations: [], files: [],
-    spaces: [{ id: PROJECT, name: "Studio launch", kind: "project", description: "Everything for the Studio plan launch on December 3.", memory: "Lead every page with the yearly price.", sources: [], team: { coordinatorModel: "claude:sonnet", agents: [
-      { id: "researcher", kind: "researcher", name: "Researcher", instructions: "Find what is true and what the options are. Prefer primary sources, say where each fact comes from, and say plainly what you could not confirm.", model: "codex:gpt-5.5" },
-      { id: "writer", kind: "writer", name: "Writer", instructions: "Write and rewrite text the person can use as is: clear, specific, in their voice, no filler.", model: "claude:opus" },
-      { id: "critic", kind: "critic", name: "Critic", instructions: "Review the work you are given. List the real problems first, most serious first, each with a concrete fix. Do not praise.", model: "claude:sonnet" },
-    ] } }],
+    spaces: [{ id: PROJECT, name: "Studio launch", kind: "project", description: "Everything for the Studio plan launch on December 3.", memory: "Lead every page with the yearly price.", sources: [], team: { coordinatorModel: "claude:sonnet" } }],
     chats: [],
     rooms: [{ spaceId: PROJECT, messages: [ask, handoff, closing, yes, handoff2, closing2, thanks], threads: [
-      { id: t1, agent: "researcher", title: "Competitor scan", status: "done", created: now - 2 * day, updated: research.at, from: handoff.id, summary: "Both competitors lead with organising; nobody leads with studying from your own files.", messages: [brief1, research] },
-      { id: t2, agent: "writer", title: "Hero options", status: "done", created: now - 2 * day, updated: draft.at, from: handoff.id, summary: "Three calm hero options; option 2 names studying from your own files.", messages: [brief2, draft] },
-      { id: t3, agent: "critic", title: "Pressure-test hero option 2", status: "done", created: now - day, updated: critique.at, from: handoff2.id, summary: "Three fixes: say what Clem makes, add the yearly price, say lectures.", messages: [msg("coordinator", "Pressure-test hero option 2 (\"Bring the course. Clem brings the rest.\") against the competitor claims. The 99 € yearly price must appear. List problems with fixes.", now - day + 4e3), critique] },
+      { id: t1, agent: "Researcher", title: "Competitor scan", status: "done", created: now - 2 * day, updated: research.at, from: handoff.id, summary: "Both competitors lead with organising; nobody leads with studying from your own files.", messages: [brief1, research] },
+      { id: t2, agent: "Writer", title: "Hero options", status: "done", created: now - 2 * day, updated: draft.at, from: handoff.id, summary: "Three calm hero options; option 2 names studying from your own files.", messages: [brief2, draft] },
+      { id: t3, agent: "Critic", title: "Pressure-test hero option 2", status: "done", created: now - day, updated: critique.at, from: handoff2.id, summary: "Three fixes: say what Clem makes, add the yearly price, say lectures.", messages: [msg("coordinator", "Pressure-test hero option 2 (\"Bring the course. Clem brings the rest.\") against the competitor claims. The 99 € yearly price must appear. List problems with fixes.", now - day + 4e3), critique] },
     ] }],
   };
 }
@@ -89,10 +85,9 @@ function stream(id, text) {
   const tick = () => { if (!live.has(id)) return; send({ id, type: "delta", text: text.slice(i, i + 18) }); i += 18; if (i < text.length) live.set(id, setTimeout(tick, 16)); else { live.delete(id); send({ id, type: "done" }); } };
   live.set(id, setTimeout(tick, 650));
 }
-const roster = (system) => [...system.matchAll(/^- ([a-z0-9-]+): ([^.\n]+)\./gm)].map((m) => ({ id: m[1], name: m[2] }));
 function coordinator(system, messages) {
   const last = messages.at(-1)?.content || "";
-  const team = roster(system);
+  const team = [{ name: "Researcher" }, { name: "Writer" }];
   if (last.startsWith("(Memory search results)")) return "Here's what's in the project memory: " + (last.split("\n").slice(1, 3).join(" ").replace(/- \([^)]*\) /g, "").trim() || "nothing on that yet.");
   if (last.startsWith("(Thread reports")) {
     const names = [...last.matchAll(/^### ([^·\n]+) · /gm)].map((m) => m[1].trim());
@@ -101,17 +96,17 @@ function coordinator(system, messages) {
   if (/^(thanks|thank you|ty|ok|okay|cool|great|perfect|nice|👍|❤️)[\s!.,]*\w{0,8}[\s!.]*$/i.test(last.trim())) return "[[react: 🙏]]";
   if (/\b(what did we|remind me|recall|what was)\b/i.test(last)) return "[[recall: " + last.replace(/[^\w\s]/g, "").slice(0, 60) + "]]";
   const remember = /\b(remember|from now on|always|decided|budget is|deadline)\b/i.test(last) ? `\n[[remember: note | ${last.replace(/^(please )?remember( that)?:?\s*/i, "").replace(/\s+/g, " ").slice(0, 160)}]]` : "";
-  if (remember && last.length < 140) return "Noted — I've saved that to the project memory." + remember + "\n[[react: ✅]]";
-  if (team.length && (last.length > 60 || /\b(plan|research|draft|write|compare|review|check|scan|analy[sz]e|design|estimate)\b/i.test(last))) {
+  if (remember && last.length < 140) return "Noted — I've saved that to the project memory." + remember;
+  if (/\b(thread|subagent|agent)\b/i.test(last) || last.length > 60 || /\b(plan|research|draft|write|compare|review|check|scan|analy[sz]e|design|estimate)\b/i.test(last)) {
     const pick = team.slice(0, Math.min(2, team.length));
     const titles = ["Find what works", "Draft it", "Check it"];
     return `On it. ${pick.map((a) => a.name).join(" and ")} ${pick.length > 1 ? "are" : "is"} taking a first pass; I'll pull it together when they report back.\n` +
-      pick.map((a, i) => `[[delegate: ${a.id} | ${titles[i]} | ${last}\nWork from the project memory and keep it short.]]`).join("\n") + remember + "\n[[react: 👀]]";
+      pick.map((a, i) => `[[thread: ${a.name} | ${titles[i]} | ${last}\nWork from the project memory and keep it short.]]`).join("\n") + remember;
   }
-  return "Short answer: yes — and it fits what's already in the project memory. Want me to hand any of it to the team?" + remember + "\n[[react: 👍]]";
+  return "Short answer: yes — and it fits what's already in the project memory. Want me to open a thread on any of it?" + remember;
 }
 function agent(system, messages) {
-  const name = /^You are ([^,(]+)/.exec(system)?.[1].trim() || "Agent";
+  const name = /working as: ([^.\n]+)\./.exec(system)?.[1].trim() || "Agent";
   const last = messages.at(-1)?.content || "";
   const said = last.replace(/^\(The person, not the coordinator:\)\s*/, "");
   if (/^(thanks|ok|okay|great|perfect)\b/i.test(said.trim())) return "[[react: 👍]]";
@@ -122,7 +117,7 @@ function agent(system, messages) {
   };
   const summaries = { Researcher: "Everyone sells organising; studying from your own files is the open gap.", Writer: "A hero built on lectures, with the 99 € yearly price.", Critic: "Three fixes: add proof, compare the price, cut the repeat." };
   const body = bodies[name] || "Done. Here is the result, short and ready to use.";
-  return (last.startsWith("(The person") ? "Good call — adjusted:\n\n" : "") + body + "\n[[react: ✅]]\n[[summary: " + (summaries[name] || "Done.") + "]]";
+  return (last.startsWith("(The person") ? "Good call — adjusted:\n\n" : "") + body + "\n[[summary: " + (summaries[name] || "Done.") + "]]";
 }
 window.clemDesktop = {
   onAuth: () => () => {}, onAttachment: () => () => {}, onCapture: () => () => {}, onFolder: () => () => {}, onPack: () => () => {}, onOpen: () => () => {}, onUpdate: () => () => {}, onCode: () => () => {},
@@ -141,7 +136,7 @@ window.clemDesktop = {
       case "cancel": { clearTimeout(live.get(r.id)); live.delete(r.id); return {}; }
       case "chat": {
         const system = r.messages.find((m) => m.role === "system")?.content || "", rest = r.messages.filter((m) => m.role !== "system");
-        stream(r.id, system.startsWith("You are the coordinator") ? coordinator(system, rest) : /^You are [^\n]*an agent on a project team/.test(system) ? agent(system, rest) : "Done.");
+        stream(r.id, system.startsWith("You are the coordinator") ? coordinator(system, rest) : /^You are a subagent/.test(system) ? agent(system, rest) : "Done.");
         return { started: true };
       }
       default: return {};

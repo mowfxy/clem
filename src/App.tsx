@@ -53,6 +53,7 @@ import type {OpenedPack} from './local/StudyPack';
 import type {SpaceTab} from './space/SpacePage';
 import type {ProjectSection} from './space/ProjectPage';
 import {useProjects,projectMemoryId} from './space/useProjects';
+import {CreateSpaceForm} from './space/CreateSpace';
 import type {Ask} from '../core/coordinator';
 import {PACK_EXTENSION} from '../core/study-pack';
 import {FileCard,DocumentCard} from './FileCard';
@@ -1013,9 +1014,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     return result;
   }
   // Projects: the coordinator and its agents answer through the same providers, scoped to the project (core/coordinator.ts).
-  const projectAsk: Ask = (messages, { model, scope, chat, signal, onText, tools }) => desktop
-    ? desktopChat(messages, scope, signal, (text) => onText(text), { model: model || undefined, chat, side: true, ...(tools ? {} : { plain: true }) })
-    : streamChat(messages, model || "", signal, onText, "step", undefined, undefined, { chat, side: true, plain: !tools });
+  const projectAsk: Ask = (messages, { model, effort, scope, chat, signal, onText, tools }) => desktop
+    ? desktopChat(messages, scope, signal, (text) => onText(text), { model: model || undefined, reasoning: effort || undefined, chat, side: true, ...(tools ? {} : { plain: true }) })
+    : streamChat(messages, model || "", signal, onText, "step", effort, undefined, { chat, side: true, plain: !tools });
   const projects = useProjects({ stateRef, patch, ask: projectAsk, fallbackModel: () => defaultModel || undefined, onError: (message) => setToast(message) });
   async function send(e?: FormEvent, override?: string, carry?: Carry) {
     e?.preventDefault();
@@ -2023,7 +2024,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     }
     return undefined;
   }
-  function upload(files: FileList | null, attachNow = false, target?: { spaceId: string; folderId: string | null }) {
+  function upload(files: FileList | File[] | null, attachNow = false, target?: { spaceId: string; folderId: string | null }) {
     if (!files) return;
     const owner=ownerRef.current;
     const toBox = !target && (route === "/app" || attachNow);
@@ -3181,9 +3182,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       : modal === "skill-import"
                         ? "Bring your own skill"
                         : modal === "project-create"
-                          ? "A new project"
+                          ? "New project"
                           : modal === "subject-create"
-                            ? "A new subject"
+                            ? "New subject"
                             : modal === "drive"
                                 ? "Google Drive"
                                 : modal === "drive-folder"
@@ -3260,53 +3261,15 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               )}
             </>
           ) : modal === "project-create" || modal === "subject-create" ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const data = new FormData(e.currentTarget);
-                const s: Space = {
-                  id: uid(),
-                  name: String(data.get("name")).trim(),
-                  description: String(data.get("description")),
-                  kind: modal === "project-create" ? "project" : "subject",
-                  memory: "",
-                  sources: [],
-                };
+            <CreateSpaceForm kind={modal === "project-create" ? "project" : "subject"} preset={spacePreset} onCancel={() => { setModal(null); setSpacePreset(null); }}
+              onCreate={(name, description, files) => {
+                const s: Space = { id: uid(), name, description, kind: modal === "project-create" ? "project" : "subject", memory: "", sources: [] };
                 patch((st) => ({ ...st, spaces: [s, ...st.spaces] }));
+                if (files.length) upload(files, false, { spaceId: s.id, folderId: null });
                 setModal(null);
                 setSpacePreset(null);
                 openSpace(s.id);
-              }}
-            >
-              <label className="field">
-                Name
-                <input
-                  name="name"
-                  required
-                  maxLength={100}
-                  autoFocus
-                  defaultValue={spacePreset?.name || ""}
-                  placeholder={
-                    modal === "project-create"
-                      ? "A book, a business, a big idea…"
-                      : "Physics, philosophy, organic chemistry…"
-                  }
-                />
-              </label>
-              <label className="field">
-                Description <small className="optional">optional</small>
-                <textarea
-                  name="description"
-                  defaultValue={spacePreset?.description || ""}
-                  rows={3}
-                  maxLength={400}
-                  placeholder={modal === "project-create" ? "What is this project about?" : "What are you learning, and why?"}
-                />
-              </label>
-              <button className="primary">
-                Create {modal === "project-create" ? "project" : "subject"} <Icon name="arrow" size={18} />
-              </button>
-            </form>
+              }}/>
           ) : modal === "skill-detail" && editingSkill ? (
             <><IconPicker value={editingSkill.icon} onChange={icon=>{setEditingSkill({...editingSkill,icon});patch(s=>({...s,skills:s.skills.map(x=>x.id===editingSkill.id?{...x,icon}:x)}));}}/>
               <p className="muted">{editingSkill.description}</p>

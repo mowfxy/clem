@@ -1,43 +1,37 @@
 /**
- * A project's coordinator: the person talks to it, and it hands parts of the work to the agents picked in the project's
- * settings, each in its own thread. Replies carry a few directives on their own lines, read here and never shown:
+ * A project's coordinator: the person talks to it, and it opens threads with subagents it starts for parts of the work.
+ * Each subagent gets a role the coordinator names and a brief; the models and thinking levels come from the project's
+ * settings. Replies carry a few directives on their own lines, read here and never shown:
  *
- *   [[react: 👍]]                         react to the message being answered (alone: a reaction instead of a reply)
- *   [[delegate: researcher | Title | Brief]]  start a thread with that agent
- *   [[remember: launch, dates | Fact]]    keep a fact in the project's memory file (core/project-memory.ts)
- *   [[recall: words]]                     look something up in that file before answering
- *   [[summary: One sentence]]             (agents) what the thread produced, for the coordinator's later turns
+ *   [[react: 👍]]                           react to the message being answered (alone: a reaction instead of a reply)
+ *   [[thread: Researcher | Title | Brief]]  open a thread with a subagent in that role ([[delegate: …]] is read the same)
+ *   [[remember: launch, dates | Fact]]      keep a fact in the project's memory file (core/project-memory.ts)
+ *   [[recall: words]]                       look something up in that file before answering
+ *   [[summary: One sentence]]               (subagents) what the thread produced, for the coordinator's later turns
  *
  * Only what each turn needs is sent: the last few messages, one-line outcomes of threads instead of their text, and the
  * memory lines that match. Threads run at the same time; their reports come back for one closing reply.
  */
-import type { ProjectAgent, ProjectRoom, ProjectTeam, ProjectThread, Reaction, RoomMessage, Space } from "./types";
+import type { ProjectRoom, ProjectTeam, ProjectThread, Reaction, RoomMessage, Space } from "./types";
 import { entry, memoryLines, recall, remember, type MemoryEntry } from "./project-memory.ts";
 
 export const REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅", "🤔", "🙏"];
 
-/** The agent kinds a project can pick from (Settings → Team). */
-export const AGENT_KINDS: { kind: string; name: string; line: string; instructions: string }[] = [
-  { kind: "researcher", name: "Researcher", line: "Finds facts, sources and options", instructions: "Find what is true and what the options are. Prefer primary sources, say where each fact comes from, and say plainly what you could not confirm." },
-  { kind: "writer", name: "Writer", line: "Drafts and edits clear prose", instructions: "Write and rewrite text the person can use as is: clear, specific, in their voice, no filler." },
-  { kind: "critic", name: "Critic", line: "Finds flaws, gaps and risks", instructions: "Review the work you are given. List the real problems first, most serious first, each with a concrete fix. Do not praise." },
-  { kind: "planner", name: "Planner", line: "Breaks work into dated steps", instructions: "Turn goals into ordered, dated steps with owners and the order they depend on. Flag what blocks what." },
-  { kind: "analyst", name: "Analyst", line: "Numbers, data and estimates", instructions: "Work with numbers: show the calculation, state assumptions, give ranges when inputs are uncertain, and check units." },
-  { kind: "engineer", name: "Engineer", line: "Writes and reviews code", instructions: "Write working, minimal code and explain how to run it. When reviewing, point to the exact line and the fix." },
-  { kind: "designer", name: "Designer", line: "Layout, UX and visual direction", instructions: "Give concrete design direction: structure, hierarchy, wording, states. Describe exactly what to change and why it helps the user." },
-  { kind: "factchecker", name: "Fact-checker", line: "Checks claims before they ship", instructions: "Check each claim in what you are given. Mark it supported, unclear or wrong, with the reason and a source where you can." },
-];
-export const DEFAULT_KINDS = ["researcher", "writer", "critic"];
-
-export function makeAgent(kind: string, taken: string[] = []): ProjectAgent {
-  const k = AGENT_KINDS.find((x) => x.kind === kind);
-  let id = kind, n = 2;
-  while (taken.includes(id)) id = `${kind}-${n++}`;
-  return { id, kind, name: k?.name || "Custom agent", instructions: k?.instructions || "" };
-}
-export const defaultTeam = (): ProjectTeam => ({ agents: DEFAULT_KINDS.map((k) => makeAgent(k)) });
-export const teamOf = (space: Space) => space.team || defaultTeam();
+export const teamOf = (space: Space): ProjectTeam => space.team || {};
 export const emptyRoom = (spaceId: string): ProjectRoom => ({ spaceId, messages: [], threads: [] });
+
+/** A subagent's name as shown: the role the coordinator gave it (older threads stored a lower-case id like "researcher"). */
+export const roleName = (role: string) => {
+  const r = role.trim() || "Subagent";
+  return /^[a-z][a-z-]*(-\d+)?$/.test(r) ? r.replace(/-\d+$/, "").replace(/^./, (c) => c.toUpperCase()).replace(/-/g, " ") : r;
+};
+
+/** Model and thinking for the coordinator and for subagents; subagents follow the coordinator unless set apart. */
+export function modelsOf(team: ProjectTeam, fallback?: string) {
+  const coordinator = { model: team.coordinatorModel || fallback, effort: team.coordinatorEffort };
+  return { coordinator, agent: team.agentModel ? { model: team.agentModel, effort: team.agentEffort } : { model: coordinator.model, effort: team.agentEffort ?? coordinator.effort } };
+}
+export type Run = { model?: string; effort?: string };
 
 // ---------------------------------------------------------------- directives
 
@@ -48,7 +42,7 @@ export type Directives = {
   recall: string[];
   summary?: string;
 };
-const DIRECTIVE = /\[\[\s*(react|delegate|remember|recall|summary)\s*:\s*([\s\S]*?)\]\]/gi;
+const DIRECTIVE = /\[\[\s*(react|delegate|thread|remember|recall|summary)\s*:\s*([\s\S]*?)\]\]/gi;
 const isEmoji = (s: string) => /^\p{Extended_Pictographic}/u.test(s) && s.length <= 8;
 
 /** The text to show and the directives in a reply. While streaming, a directive still being written is hidden too. */
@@ -58,10 +52,12 @@ export function readReply(raw: string, streaming = false): { text: string; direc
     const value = body.trim();
     switch (kind.toLowerCase()) {
       case "react": { const e = value.split(/\s+/)[0]; if (isEmoji(e)) d.react = e; break; }
-      case "delegate": {
-        const [agent, title, ...rest] = value.split("|").map((s) => s.trim());
+      case "thread": case "delegate": {
+        const parts = value.split("|").map((s) => s.trim());
+        // Role | Title | Brief; Title | Brief and a bare brief work too.
+        const [agent, title, ...rest] = parts.length >= 3 ? parts : parts.length === 2 ? ["Subagent", ...parts] : ["Subagent", "", parts[0]];
         const task = rest.join(" | ").trim() || title || "";
-        if (agent && task) d.delegate.push({ agent, title: (rest.length ? title : task).slice(0, 80), task: task.slice(0, 6000) });
+        if (task) d.delegate.push({ agent: (agent || "Subagent").slice(0, 40), title: (title || task).slice(0, 80), task: task.slice(0, 6000) });
         break;
       }
       case "remember": {
@@ -80,30 +76,24 @@ export function readReply(raw: string, streaming = false): { text: string; direc
   return { text: text.replace(/\n{3,}/g, "\n\n").trim(), directives: d };
 }
 
-/** A delegation's agent, by id or name (models sometimes write the name). */
-export function findAgent(agents: ProjectAgent[], ref: string) {
-  const r = ref.trim().toLowerCase();
-  return agents.find((a) => a.id === r) || agents.find((a) => a.name.toLowerCase() === r) || agents.find((a) => a.kind === r);
-}
-
 // ---------------------------------------------------------------- what each request carries
 
 type Turn = { role: "system" | "user" | "assistant"; content: string };
 const HISTORY_CHARS = 7000, HISTORY_COUNT = 14, REPORT_CHARS = 5000;
 
-const nameOf = (agents: ProjectAgent[], by: string) => by === "you" ? "the person" : by === "coordinator" ? "you" : agents.find((a) => a.id === by)?.name || by;
-const reactionNote = (reactions: Reaction[] | undefined, agents: ProjectAgent[]) => reactions?.length ? `\n(reactions: ${reactions.map((r) => `${nameOf(agents, r.by)} ${r.emoji}`).join(", ")})` : "";
+const nameOf = (by: string) => by === "you" ? "the person" : by === "coordinator" ? "you" : roleName(by);
+const reactionNote = (reactions: Reaction[] | undefined) => reactions?.length ? `\n(reactions: ${reactions.map((r) => `${nameOf(r.by)} ${r.emoji}`).join(", ")})` : "";
 
 /** The newest messages that fit, oldest first; each coordinator message notes its threads' one-line outcomes. */
-export function coordinatorHistory(room: ProjectRoom, agents: ProjectAgent[], chars = HISTORY_CHARS, count = HISTORY_COUNT): Turn[] {
+export function coordinatorHistory(room: ProjectRoom, chars = HISTORY_CHARS, count = HISTORY_COUNT): Turn[] {
   const out: Turn[] = [];
   let room_ = chars;
   for (let i = room.messages.length - 1; i >= 0 && out.length < count; i--) {
     const m = room.messages[i];
     if (m.status === "writing") continue;
     const threads = (m.threads || []).map((id) => room.threads.find((t) => t.id === id)).filter((t): t is ProjectThread => !!t)
-      .map((t) => `\n(thread ${t.id.slice(0, 6)} · ${agents.find((a) => a.id === t.agent)?.name || t.agent} · "${t.title}" · ${t.status}${t.summary ? ": " + t.summary : ""})`).join("");
-    let content = (m.content || (m.reactions?.some((r) => r.by === "coordinator") ? "(you reacted instead of replying)" : "")) + threads + reactionNote(m.reactions, agents);
+      .map((t) => `\n(thread ${t.id.slice(0, 6)} · ${roleName(t.agent)} · "${t.title}" · ${t.status}${t.summary ? ": " + t.summary : ""})`).join("");
+    let content = (m.content || (m.reactions?.some((r) => r.by === "coordinator") ? "(you reacted instead of replying)" : "")) + threads + reactionNote(m.reactions);
     if (!content.trim()) continue;
     if (content.length > room_) { if (out.length) break; content = content.slice(-room_); }
     room_ -= content.length;
@@ -116,19 +106,16 @@ function projectBlock(space: Space) {
   return [`Project: ${space.name}`, space.description && `About it: ${space.description.slice(0, 600)}`, space.memory.trim() && `The person's instructions for this project (follow them):\n${space.memory.trim().slice(0, 2000)}`].filter(Boolean).join("\n");
 }
 
-export function coordinatorSystem(space: Space, agents: ProjectAgent[], memory: MemoryEntry[]) {
-  const roster = agents.length ? agents.map((a) => `- ${a.id}: ${a.name}. ${AGENT_KINDS.find((k) => k.kind === a.kind)?.line || a.instructions.slice(0, 120)}`).join("\n") : "(no agents: do the work yourself)";
-  return `You are the coordinator of a project in Clem. The person talks to you; you answer them and, when it helps, hand parts of the work to your team. Each handoff opens a thread the person can read.
+export function coordinatorSystem(space: Space, memory: MemoryEntry[]) {
+  return `You are the coordinator of a project in Clem. The person talks to you; you answer them and open threads with subagents for parts of the work. Each thread is a separate subagent with a role you choose; the person can open and read it.
 
 ${projectBlock(space)}
 
-Your team:
-${roster}
-
 How to reply:
-- Answer directly when you can. Delegate only work that benefits from a specialist or from running in parallel; never delegate a simple question.
-- To delegate, add one line per thread: [[delegate: agent-id | short title | the full brief, with everything the agent needs, since it cannot see this chat]]. Say in one short sentence what you handed to whom. You will get their reports and then write one combined answer.
-- To react to the person's message, add [[react: emoji]] (one of ${REACTIONS.join(" ")}). When a message needs no words (thanks, ok, a sign-off), reply with only the reaction line.
+- To open a thread, add one line per thread: [[thread: Role | short title | the full brief, with everything the subagent needs, since it cannot see this chat]]. Pick a role that fits the work (Researcher, Writer, Critic, Analyst, Engineer, Designer, Planner, Fact-checker, or your own). Say in one short sentence what you handed off. You will get each thread's report and then write one combined answer.
+- When the person asks for a thread, an agent, a subagent or work in the background, always open a thread for it, even for something small, and give the subagent the actual task.
+- Otherwise open threads for work that benefits from a specialist or from running in parallel (up to ${MAX_THREADS} at once); answer simple questions yourself.
+- Reactions are rare. Most replies carry none; never add one just to acknowledge a request you are answering. When a message asks for nothing (thanks, ok, a sign-off), reply with only [[react: emoji]] (one of ${REACTIONS.join(" ")}) instead of words.
 - To keep a durable fact (a decision, deadline, preference, constraint, number), add [[remember: tag, tag | the fact in one sentence]]. Never store what is already in the memory below.
 - If the memory below may be missing something you need, reply with only [[recall: search words]] and you will get the matching lines.
 - Directive lines are hidden from the person. Keep answers short and concrete.
@@ -137,18 +124,15 @@ Project memory that matches this message (not the whole file):
 ${memory.length ? memoryLines(memory) : "(nothing relevant)"}`;
 }
 
-export function agentSystem(space: Space, agent: ProjectAgent, memory: MemoryEntry[]) {
-  const kind = AGENT_KINDS.find((k) => k.kind === agent.kind);
-  return `You are ${agent.name}${kind && kind.name !== agent.name ? ` (${kind.name})` : ""}, an agent on a project team in Clem. The project's coordinator hands you a task in this thread; the person may read along and add messages.
+export function agentSystem(space: Space, role: string, memory: MemoryEntry[]) {
+  return `You are a subagent on a project in Clem, working as: ${roleName(role)}. The project's coordinator started you for one task in this thread; the person may read along and add messages.
 
 ${projectBlock(space)}
 
-Your role: ${agent.instructions || kind?.instructions || "Do the task well."}
-
 How to reply:
 - Do the task fully and reply with the result itself, written for the coordinator. No greeting, no restating the brief.
-- If a message only needs acknowledging, reply with only [[react: emoji]] (one of ${REACTIONS.join(" ")}). You may also react to the brief while answering it.
-- Keep a durable fact the team should not lose with [[remember: tag, tag | fact]].
+- If a message only needs acknowledging, reply with only [[react: emoji]] (one of ${REACTIONS.join(" ")}). Otherwise do not react.
+- Keep a durable fact the project should not lose with [[remember: tag, tag | fact]].
 - End with [[summary: one sentence on what you found or made]].
 
 Project memory that matches this task:
@@ -171,7 +155,7 @@ export function threadHistory(thread: ProjectThread, chars = 24000): Turn[] {
 
 // ---------------------------------------------------------------- running a turn
 
-export type Ask = (messages: Turn[], opts: { model?: string; scope: string; chat: string; signal: AbortSignal; onText: (text: string) => void; tools?: boolean }) => Promise<string>;
+export type Ask = (messages: Turn[], opts: { model?: string; effort?: string; scope: string; chat: string; signal: AbortSignal; onText: (text: string) => void; tools?: boolean }) => Promise<string>;
 export type Room = {
   get: () => ProjectRoom;
   set: (fn: (room: ProjectRoom) => ProjectRoom) => void;
@@ -207,21 +191,21 @@ function memoryQuery(room: ProjectRoom, text: string) {
 }
 
 /**
- * Answers the person's latest message in the coordinator chat: the coordinator replies (or reacts), threads it starts
- * run in parallel, then it writes one reply from their reports. `space` and the team are read once at the start.
+ * Answers the person's latest message in the coordinator chat: the coordinator replies (or reacts), threads it opens
+ * run in parallel, then it writes one reply from their reports. `space` and the settings are read once at the start.
  */
-export async function coordinatorTurn(space: Space, agents: ProjectAgent[], coordinatorModel: string | undefined, userMessage: RoomMessage, io: Room, ask: Ask, signal: AbortSignal) {
+export async function coordinatorTurn(space: Space, runs: { coordinator: Run; agent: Run }, userMessage: RoomMessage, io: Room, ask: Ask, signal: AbortSignal) {
   const chat = `proj-${space.id}`.slice(0, 80);
   let found = recall(io.memory(), memoryQuery(io.get(), userMessage.content));
   let extra: Turn[] = [];
   for (let round = 0, looked = false; round < ROUNDS; round++) {
     const id = uid();
     io.set((r) => ({ ...r, messages: [...r.messages, { id, from: "coordinator", content: "", at: Date.now(), status: "writing", recalled: found.map((e) => e.id) }] }));
-    const history = coordinatorHistory({ ...io.get(), messages: io.get().messages.filter((m) => m.id !== id) }, agents);
+    const history = coordinatorHistory({ ...io.get(), messages: io.get().messages.filter((m) => m.id !== id) });
     let raw: string;
     try {
-      raw = await ask([{ role: "system", content: coordinatorSystem(space, agents, found) }, ...history, ...extra], {
-        model: coordinatorModel, scope: `project:${space.id}`, chat, signal,
+      raw = await ask([{ role: "system", content: coordinatorSystem(space, found) }, ...history, ...extra], {
+        ...runs.coordinator, scope: `project:${space.id}`, chat, signal,
         onText: (t) => io.set((r) => patchMessage(r, id, (m) => ({ ...m, content: readReply(t, true).text }))),
       });
     } catch (error) {
@@ -240,9 +224,9 @@ export async function coordinatorTurn(space: Space, agents: ProjectAgent[], coor
       continue;
     }
     const remembered = await keep(io, directives.remember);
-    // The last round writes the reply; a handoff asked for then is not started.
-    const jobs = (round === ROUNDS - 1 ? [] : directives.delegate.slice(0, MAX_THREADS)).map((d) => ({ ...d, agent: findAgent(agents, d.agent) })).filter((d): d is typeof d & { agent: ProjectAgent } => !!d.agent);
-    const threads: ProjectThread[] = jobs.map((j) => ({ id: uid(), agent: j.agent.id, title: j.title || j.task.slice(0, 60), status: "working", created: Date.now(), updated: Date.now(), from: id,
+    // The last round writes the reply; a thread asked for then is not opened.
+    const jobs = round === ROUNDS - 1 ? [] : directives.delegate.slice(0, MAX_THREADS);
+    const threads: ProjectThread[] = jobs.map((j) => ({ id: uid(), agent: roleName(j.agent), title: j.title || j.task.slice(0, 60), status: "working", created: Date.now(), updated: Date.now(), from: id,
       messages: [{ id: uid(), from: "coordinator", content: j.task, at: Date.now() }] }));
     const target = round === 0 ? userMessage.id : undefined;
     io.set((r) => {
@@ -254,41 +238,39 @@ export async function coordinatorTurn(space: Space, agents: ProjectAgent[], coor
     });
     if (!text && !threads.length && !directives.react) io.set((r) => ({ ...r, messages: [...r.messages, { id, from: "coordinator", content: "I couldn’t put an answer together. Try asking again.", at: Date.now(), status: "error" }] }));
     if (!threads.length) return;
-    const reports = await Promise.all(threads.map((t, i) => runThread(space, jobs[i].agent, t.id, io, ask, signal, coordinatorModel).catch(() => null)));
+    const reports = await Promise.all(threads.map((t) => runThread(space, runs.agent, t.id, io, ask, signal).catch(() => null)));
     signal.throwIfAborted();
-    const body = threads.map((t, i) => {
-      const agent = agents.find((a) => a.id === t.agent)!;
-      return `### ${agent.name} · ${t.title}\n${reports[i] ? reports[i]!.slice(0, REPORT_CHARS) : "(this thread failed; work around it)"}`;
-    }).join("\n\n");
-    extra = [{ role: "user", content: `(Thread reports, for you only; the person can open the threads)\n\n${body}\n\nNow write the person one reply that uses these reports. Do not repeat them whole. ${round + 1 === ROUNDS - 1 ? "Do not delegate again." : "Delegate again only if something essential is still missing."}` }];
+    const body = threads.map((t, i) => `### ${t.agent} · ${t.title}\n${reports[i] ? reports[i]!.slice(0, REPORT_CHARS) : "(this thread failed; work around it)"}`).join("\n\n");
+    extra = [{ role: "user", content: `(Thread reports, for you only; the person can open the threads)\n\n${body}\n\nNow write the person one reply that uses these reports. Do not repeat them whole. ${round + 1 === ROUNDS - 1 ? "Do not open more threads." : "Open another thread only if something essential is still missing."}` }];
     found = recall(io.memory(), memoryQuery(io.get(), userMessage.content));
   }
 }
 
-/** Runs one thread's agent on everything in the thread so far; returns its reply, or throws. */
-export async function runThread(space: Space, agent: ProjectAgent, threadId: string, io: Room, ask: Ask, signal: AbortSignal, fallbackModel?: string) {
+/** Runs one thread's subagent on everything in the thread so far; returns its reply, or throws. */
+export async function runThread(space: Space, run: Run, threadId: string, io: Room, ask: Ask, signal: AbortSignal) {
   const thread = io.get().threads.find((t) => t.id === threadId);
   if (!thread) throw Error("That thread is gone.");
+  const role = thread.agent;
   const id = uid();
-  const last = [...thread.messages].reverse().find((m) => m.from !== agent.id);
+  const last = [...thread.messages].reverse().find((m) => m.from !== role);
   const found = recall(io.memory(), `${thread.title} ${last?.content.slice(0, 600) || ""}`, { count: 6, chars: 900 });
-  io.set((r) => patchThread(r, threadId, (t) => ({ ...t, status: "working", messages: [...t.messages, { id, from: agent.id, content: "", at: Date.now(), status: "writing", recalled: found.map((e) => e.id) }] })));
+  io.set((r) => patchThread(r, threadId, (t) => ({ ...t, status: "working", messages: [...t.messages, { id, from: role, content: "", at: Date.now(), status: "writing", recalled: found.map((e) => e.id) }] })));
   let raw: string;
   try {
-    raw = await ask([{ role: "system", content: agentSystem(space, agent, found) }, ...threadHistory(thread)], {
-      model: agent.model || fallbackModel, scope: `project:${space.id}`, chat: `thr-${threadId}`.slice(0, 80), signal, tools: true,
+    raw = await ask([{ role: "system", content: agentSystem(space, role, found) }, ...threadHistory(thread)], {
+      ...run, scope: `project:${space.id}`, chat: `thr-${threadId}`.slice(0, 80), signal, tools: true,
       onText: (t) => io.set((r) => patchThread(r, threadId, (th) => ({ ...th, messages: th.messages.map((m) => m.id === id ? { ...m, content: readReply(t, true).text } : m) }))),
     });
   } catch (error) {
     const stopped = signal.aborted;
-    io.set((r) => patchThread(r, threadId, (t) => ({ ...t, status: stopped ? "stopped" : "failed", messages: t.messages.map((m) => m.id === id ? { ...m, status: stopped ? "stopped" : "error", error: stopped ? undefined : (error as Error).message || "The agent could not answer." } : m) })));
+    io.set((r) => patchThread(r, threadId, (t) => ({ ...t, status: stopped ? "stopped" : "failed", messages: t.messages.map((m) => m.id === id ? { ...m, status: stopped ? "stopped" : "error", error: stopped ? undefined : (error as Error).message || "The subagent could not answer." } : m) })));
     throw error;
   }
   const { text, directives } = readReply(raw);
   const remembered = await keep(io, directives.remember);
   io.set((r) => patchThread(r, threadId, (t) => {
     let messages = t.messages.map((m) => m.id === id ? { ...m, content: text, status: undefined, at: Date.now(), remembered: remembered || undefined } : m);
-    if (directives.react && last) messages = messages.map((m) => m.id === last.id ? { ...m, reactions: addReaction(m.reactions, directives.react!, agent.id) } : m);
+    if (directives.react && last) messages = messages.map((m) => m.id === last.id ? { ...m, reactions: addReaction(m.reactions, directives.react!, role) } : m);
     if (!text) messages = messages.filter((m) => m.id !== id);
     return { ...t, messages, status: "done", summary: directives.summary || t.summary || (text ? text.split(/(?<=[.!?])\s/)[0].slice(0, 200) : t.summary) };
   }));
