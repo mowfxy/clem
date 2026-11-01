@@ -243,7 +243,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   </div>;
 }
 
-function Editable({value,onSave,className,max,label,placeholder}:{value:string;onSave:(v:string)=>void;className:string;max:number;label:string;placeholder?:string}){
+export function Editable({value,onSave,className,max,label,placeholder}:{value:string;onSave:(v:string)=>void;className:string;max:number;label:string;placeholder?:string}){
   const [editing,setEditing]=useState(false),[text,setText]=useState(value);
   useEffect(()=>setText(value),[value]);
   const commit=()=>{setEditing(false);const next=text.trim();if(next!==value&&(next||label!=='Name'))onSave(next);else setText(value);};
@@ -266,7 +266,7 @@ function ChatList({chats,onOpen,onMenu,onNew}:{chats:Chat[];onOpen:(c:Chat)=>voi
   </section>;
 }
 
-function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile[];actions:SpaceActions;driveSync:Record<string,DriveSyncState>}){
+export function FilesView({space,files,actions,driveSync}:{space:Space;files:StoredFile[];actions:SpaceActions;driveSync:Record<string,DriveSyncState>}){
   const folders=space.folders||[];
   const [at,setAt]=useState<string|null>(null);
   const [naming,setNaming]=useState<{id?:string;name:string}|null>(null);
