@@ -160,7 +160,9 @@ export type Room = {
   get: () => ProjectRoom;
   set: (fn: (room: ProjectRoom) => ProjectRoom) => void;
   memory: () => MemoryEntry[];
-  saveMemory: (entries: MemoryEntry[]) => Promise<void> | void;
+  saveMemory: (entries: MemoryEntry[]) => Promise<unknown> | void;
+  /** A signal of its own for a thread a coordinator turn opens, so the thread can be stopped alone; `done` when it ends. */
+  thread?: (threadId: string, parent: AbortSignal) => { signal: AbortSignal; done: () => void };
 };
 /** At most: a reply that hands work out, one that may ask for a little more, and the closing reply. */
 const MAX_THREADS = 4, ROUNDS = 3;
@@ -178,10 +180,22 @@ export function toggleReaction(reactions: Reaction[] | undefined, emoji: string,
 }
 const addReaction = (reactions: Reaction[] | undefined, emoji: string, by: string) => (reactions || []).some((r) => r.by === by && r.emoji === emoji) ? reactions! : [...(reactions || []), { emoji, by }];
 
+/** Saves the facts a reply asked to keep. A failed write (reported by whoever saves) never loses the reply itself. */
 async function keep(io: Room, facts: Directives["remember"]) {
   if (!facts.length) return 0;
-  await io.saveMemory(remember(io.memory(), facts.map((f) => entry(f.text, f.tags))));
+  try { await io.saveMemory(remember(io.memory(), facts.map((f) => entry(f.text, f.tags)))); } catch { return 0; }
   return facts.length;
+}
+
+/**
+ * A room as saved by a run that never finished (the app closed mid-reply): replies still marked writing become stopped
+ * (dropped when empty) and working threads stop, so nothing waits forever on a run that is gone.
+ */
+export function settleRoom(room: ProjectRoom): ProjectRoom {
+  const settle = (list: RoomMessage[]) => list.filter((m) => m.status !== "writing" || m.content.trim()).map((m) => m.status === "writing" ? { ...m, status: "stopped" as const } : m);
+  const live = (list: RoomMessage[]) => list.some((m) => m.status === "writing");
+  if (!live(room.messages) && !room.threads.some((t) => t.status === "working" || live(t.messages))) return room;
+  return { ...room, messages: settle(room.messages), threads: room.threads.map((t) => ({ ...t, messages: settle(t.messages), status: t.status === "working" ? "stopped" : t.status })) };
 }
 
 /** The query memory is searched with: the message, plus the last thing said before it for short follow-ups. */
@@ -236,11 +250,16 @@ export async function coordinatorTurn(space: Space, runs: { coordinator: Run; ag
       if (directives.react && target) next = patchMessage(next, target, (m) => ({ ...m, reactions: addReaction(m.reactions, directives.react!, "coordinator") }));
       return { ...next, threads: [...next.threads, ...threads] };
     });
-    if (!text && !threads.length && !directives.react) io.set((r) => ({ ...r, messages: [...r.messages, { id, from: "coordinator", content: "I couldn’t put an answer together. Try asking again.", at: Date.now(), status: "error" }] }));
+    // Nothing shown: no words, no threads and no reaction that landed (a closing reply has no message to react to).
+    if (!text && !threads.length && !(directives.react && target)) io.set((r) => ({ ...r, messages: [...r.messages, { id, from: "coordinator", content: "I couldn’t put an answer together. Try asking again.", at: Date.now(), status: "error" }] }));
     if (!threads.length) return;
-    const reports = await Promise.all(threads.map((t) => runThread(space, runs.agent, t.id, io, ask, signal).catch(() => null)));
+    const reports = await Promise.all(threads.map((t) => {
+      const own = io.thread?.(t.id, signal);
+      return runThread(space, runs.agent, t.id, io, ask, own?.signal || signal).catch(() => null).finally(() => own?.done());
+    }));
     signal.throwIfAborted();
-    const body = threads.map((t, i) => `### ${t.agent} · ${t.title}\n${reports[i] ? reports[i]!.slice(0, REPORT_CHARS) : "(this thread failed; work around it)"}`).join("\n\n");
+    const stoppedAlone = (id: string) => io.get().threads.find((t) => t.id === id)?.status === "stopped";
+    const body = threads.map((t, i) => `### ${t.agent} · ${t.title}\n${reports[i] ? reports[i]!.slice(0, REPORT_CHARS) : stoppedAlone(t.id) ? "(the person stopped this thread; work without it)" : "(this thread failed; work around it)"}`).join("\n\n");
     extra = [{ role: "user", content: `(Thread reports, for you only; the person can open the threads)\n\n${body}\n\nNow write the person one reply that uses these reports. Do not repeat them whole. ${round + 1 === ROUNDS - 1 ? "Do not open more threads." : "Open another thread only if something essential is still missing."}` }];
     found = recall(io.memory(), memoryQuery(io.get(), userMessage.content));
   }

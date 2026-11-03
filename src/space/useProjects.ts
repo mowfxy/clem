@@ -60,9 +60,17 @@ export function useProjects({ stateRef, patch, ask, fallbackModel, onError }: {
     set: (fn) => setRoom(space.id, fn),
     memory: () => memory.current.get(space.id) || [],
     saveMemory: (entries) => saveMemory(space, entries),
+    // Threads a coordinator turn opens run under their own key too, so a thread's Stop button reaches them.
+    thread: (threadId, parent) => {
+      const key = "thread:" + threadId, c = start(key);
+      const follow = () => c.abort();
+      if (parent.aborted) c.abort(); else parent.addEventListener("abort", follow, { once: true });
+      return { signal: c.signal, done: () => { parent.removeEventListener("abort", follow); finish(key, c); } };
+    },
   });
   const start = (key: string) => { const c = new AbortController(); runs.current.set(key, c); setBusy((b) => ({ ...b, [key]: true })); return c; };
-  const finish = (key: string, c: AbortController) => { if (runs.current.get(key) === c) runs.current.delete(key); setBusy((b) => { const n = { ...b }; delete n[key]; return n; }); };
+  // Only the run that owns the key clears it: a newer run under the same key keeps its busy mark.
+  const finish = (key: string, c: AbortController) => { if (runs.current.get(key) !== c) return; runs.current.delete(key); setBusy((b) => { const n = { ...b }; delete n[key]; return n; }); };
   const failed = (e: unknown, c: AbortController) => { if (!c.signal.aborted) onError((e as Error)?.message || "That didn’t go through. Try again."); };
 
   async function send(space: Space, text: string) {
@@ -102,8 +110,9 @@ export function useProjects({ stateRef, patch, ask, fallbackModel, onError }: {
     edit: (id: string, text: string, tags: string[]) => {
       const list = memory.current.get(space.id) || [], at = list.findIndex((e) => e.id === id);
       if (at < 0) return;
-      const next = forget(list, id);
-      next.splice(at, 0, entry(text, tags));
+      // An edit that now says what another line says replaces both with one (ids come from the text).
+      const fact = entry(text, tags), next = list.filter((e) => e.id !== id && e.id !== fact.id);
+      next.splice(Math.min(at, next.length), 0, fact);
       void saveMemory(space, next);
     },
     forget: (id: string) => void saveMemory(space, forget(memory.current.get(space.id) || [], id)),
