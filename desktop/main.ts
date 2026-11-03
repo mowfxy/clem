@@ -342,7 +342,7 @@ void app.whenReady().then(async () => {
    *  keeps the person signed in to claude.ai next time; other schemes (claude://) are never followed. */
   const signInDenied=new Set(["media","geolocation","notifications","display-capture","midi","midiSysex","idle-detection","clipboard-read","openExternal","window-management","fileSystem"]);
   const claudeSignInPage=(url:string)=>{
-    const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Clem",parent:window,autoHideMenuBar:true,backgroundColor:"#141414",icon:join(__dirname,"../desktop/icon.ico"),
+    const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Clem",parent:window,autoHideMenuBar:true,backgroundColor:"#2a2a2a",icon:join(__dirname,"../desktop/icon.ico"),
       webPreferences:{partition:"persist:claude-signin",contextIsolation:true,nodeIntegration:false,sandbox:true}});
     // A plain Chrome identity: Google refuses sign-in to pages it thinks are embedded in an app.
     page.webContents.setUserAgent(page.webContents.getUserAgent().replace(/\s(?:Electron|Clem)\/\S+/g,""));
@@ -987,9 +987,9 @@ void app.whenReady().then(async () => {
     minHeight: 600,
     title: "Clem",
     // Painted before the page loads, so it follows Windows' light or dark setting, the app's default theme.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#141414" : "#faf8f3",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#2a2a2a" : "#faf8f3",
     titleBarStyle: "hidden",
-    titleBarOverlay: nativeTheme.shouldUseDarkColors ? { color: "#141414", symbolColor: "#eeece4", height: 38 } : { color: "#faf8f3", symbolColor: "#262a35", height: 38 },
+    titleBarOverlay: nativeTheme.shouldUseDarkColors ? { color: "#2a2a2a", symbolColor: "#eeece4", height: 38 } : { color: "#faf8f3", symbolColor: "#262a35", height: 38 },
     autoHideMenuBar: true,
     icon: join(__dirname, "../desktop/icon.ico"),
     webPreferences: {
@@ -1143,8 +1143,8 @@ void app.whenReady().then(async () => {
   const dragIcon = nativeImage.createFromPath(join(__dirname, "../dist/logo.png")).resize({ width: 56, height: 56 });
   // The caption buttons are drawn by Windows, not the page, so they're recoloured to match what the page shows.
   const tones: Record<string, { color: string; symbolColor: string }> = {
-    normal: { color: "#141414", symbolColor: "#eeece4" },
-    dim: { color: "#080808", symbolColor: "#6f6e69" },
+    normal: { color: "#2a2a2a", symbolColor: "#eeece4" },
+    dim: { color: "#0e0e0e", symbolColor: "#6f6e69" },
     light: { color: "#faf8f3", symbolColor: "#262a35" },
     "light-dim": { color: "#d9d7d2", symbolColor: "#6f6e69" },
   };

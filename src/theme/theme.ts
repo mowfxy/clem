@@ -12,7 +12,7 @@ const resolve = (choice: ThemeChoice) => (choice === "system" ? (media?.matches 
 export function applyTheme(choice: ThemeChoice = themeChoice()) {
   const theme = resolve(choice), root = document.documentElement;
   root.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#faf8f3" : "#171717");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#faf8f3" : "#2a2a2a");
   window.dispatchEvent(new CustomEvent("clem-theme", { detail: theme }));
 }
 export function setThemeChoice(choice: ThemeChoice) {

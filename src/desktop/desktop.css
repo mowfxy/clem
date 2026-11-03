@@ -9,7 +9,7 @@
   align-items: center;
   gap: 8px;
   padding: 0 16px;
-  background: #141414;
+  background: var(--bg);
   color: #eeece4;
   app-region: drag;
   -webkit-app-region: drag;
@@ -24,7 +24,7 @@
   height: calc(100vh - var(--tb));
   margin-top: var(--tb);
   overflow: auto;
-  background: #141414;
+  background: var(--bg);
 }
 .desktop-content .app {
   height: calc(100vh - var(--tb));
@@ -713,7 +713,7 @@ body:has(.desktop-content) {
 }
 .desktop-titlebar:has(+ .desktop-content .sidebar) {
   left: 244px;
-  background: #141414;
+  background: var(--bg);
 }
 .desktop-content .workspace {
   height: 100%;
@@ -746,7 +746,7 @@ body:has(.desktop-content) {
 }
 ::-webkit-scrollbar-thumb {
   background: #454540;
-  border: 2px solid #141414;
+  border: 2px solid var(--bg);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
