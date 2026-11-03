@@ -6,8 +6,8 @@
 /* ---------- Sidebar ---------- */
 body .sidebar .nav-item{height:36px;border-radius:8px;font-size:14.5px;color:#e4e3dd;transition:background .3s var(--pm-ease),color .3s var(--pm-ease)}
 body .sidebar .nav-item .drawn-icon{color:#bdbcb5;transition:color .3s var(--pm-ease)}
-body .sidebar .nav-item:hover{background:#2a2a2a}
-body .sidebar .nav-item.active{background:#252523;color:var(--pm-ink)}
+body .sidebar .nav-item:hover{background:#333}
+body .sidebar .nav-item.active{background:#383838;color:var(--pm-ink)}
 body .sidebar .nav-item.active .drawn-icon,body .sidebar .nav-item:hover .drawn-icon{color:var(--pm-ink)}
 body .sidebar .nav-shortcut{opacity:0;transition:opacity .25s var(--pm-ease)}
 body .sidebar .nav-item:hover .nav-shortcut{opacity:1}
@@ -28,11 +28,11 @@ body .new-chat-content .greeting-row h1>.clem-mark{display:inline-block;width:.9
 body .new-chat-content .suggestions{gap:8px}
 body .new-chat-content .suggestions button{height:36px;padding:0 14px;border:1px solid #2c2c29;border-radius:10px;background:transparent;color:#cfcec8;font-size:13.5px;box-shadow:none;transition:background .3s var(--pm-ease),border-color .3s var(--pm-ease),color .3s var(--pm-ease)}
 body .new-chat-content .suggestions button .drawn-icon{color:#a9a8a1;transition:color .3s var(--pm-ease)}
-body .new-chat-content .suggestions button:hover{transform:none;background:#333;border-color:#3a3a36;color:var(--pm-ink)}
+body .new-chat-content .suggestions button:hover{transform:none;background:#2a2a2a;border-color:#3a3a36;color:var(--pm-ink)}
 body .new-chat-content .suggestions button:hover .drawn-icon{color:var(--pm-ink)}
 
 /* ---------- Composer ---------- */
-body .composer{border-radius:20px;border-color:#3d3d3d;background:#333;transition:border-color .35s var(--pm-ease),box-shadow .5s var(--pm-ease)}
+body .composer{border-radius:20px;border-color:#383838;background:#2a2a2a;transition:border-color .35s var(--pm-ease),box-shadow .5s var(--pm-ease)}
 body .composer:focus-within{border-color:#3d3d39;box-shadow:0 0 0 1px #ffffff06,0 24px 60px -28px #000}
 body .chat-composer .composer-note{color:#7d7c76}
 
@@ -42,18 +42,18 @@ body .messages .message{animation:pm-message .6s var(--pm-ease) backwards}
 
 /* ---------- Library pages ---------- */
 body .page.lib{max-width:960px}
-body .lib-card{border-color:#383838;background:#303030;transition:background .35s var(--pm-ease),border-color .35s var(--pm-ease)}
-body .lib-card:hover{transform:none;background:#353535;border-color:#33332f}
+body .lib-card{border-color:#333;background:#262626;transition:background .35s var(--pm-ease),border-color .35s var(--pm-ease)}
+body .lib-card:hover{transform:none;background:#2c2c2c;border-color:#33332f}
 body .lib-card footer{border-top-color:#262624}
 body .lib .lib-btn{height:36px;border-radius:10px;font-size:13px;transition:background .3s var(--pm-ease),border-color .3s var(--pm-ease)}
 body .lib .lib-btn.strong{font-weight:600}
-body .lib-ask{margin:0 0 40px;border-radius:16px;border-color:#3d3d3d;background:#333;animation:pm-in .7s var(--pm-ease) .08s backwards}
+body .lib-ask{margin:0 0 40px;border-radius:16px;border-color:#383838;background:#2a2a2a;animation:pm-in .7s var(--pm-ease) .08s backwards}
 body .lib-ask:focus-within{border-color:#3d3d39}
 body .lib-section{margin-bottom:8px}
 
 /* Files */
 body .files-page .file-row{border-radius:12px;transition:background .3s var(--pm-ease)}
-body .files-page .file-row:hover{background:#313131}
+body .files-page .file-row:hover{background:#282828}
 body .files-page .file-row>.icon-button{opacity:0;transition:opacity .25s var(--pm-ease),background .25s}
 body .files-page .file-row:hover>.icon-button,body .files-page .file-row:focus-within>.icon-button{opacity:1}
 body .files-page .pc-folders h2{font:500 13.5px/1.3 var(--sans)!important;letter-spacing:0;color:#8f8e88;margin:30px 0 10px}
@@ -85,7 +85,7 @@ body :is(.eyebrow,.lib-eyebrow,.sp-eyebrow,.st-eyebrow,.sh-eyebrow,.command-resu
 
 /* ---------- Visuals in a reply ---------- */
 /* One soft frame, no inner rules shouting; the label is a quiet word; exports appear when you reach for them. */
-body .visual-engine.v2{--v-line:#383838;border-radius:18px;background:#303030;animation:pm-visual .8s var(--pm-ease) backwards}
+body .visual-engine.v2{--v-line:#333;border-radius:18px;background:#262626;animation:pm-visual .8s var(--pm-ease) backwards}
 body .v2 .visual-heading{border-bottom-color:transparent;padding:16px 16px 6px 20px}
 body .v2 .visual-subject{font-size:13.5px;letter-spacing:0;text-transform:none;color:#8f8e88}
 body .v2 .visual-title strong{font-weight:500}
@@ -159,11 +159,11 @@ body .files-page .storage-bar{height:4px;gap:2px}
 body .files-page .file-list{border:0;background:none}
 body .files-page .file-row{border:0;border-bottom:1px solid #222220;border-radius:0;padding-left:8px;padding-right:8px}
 body .files-page .file-row:hover{border-radius:12px;border-bottom-color:transparent}
-body .files-page .pc-folder-row{border-color:#383838;background:#303030;border-radius:14px}
+body .files-page .pc-folder-row{border-color:#333;background:#262626;border-radius:14px}
 
 /* The sidebar highlight glides to the page you open. */
 body .sidebar nav.glide-nav{position:relative}
-body .sidebar nav.glide-nav::before{content:'';position:absolute;left:0;right:0;top:0;height:var(--glide-h,34px);border-radius:8px;background:#252523;opacity:var(--glide-o,0);transform:translateY(var(--glide-y,0));pointer-events:none}
+body .sidebar nav.glide-nav::before{content:'';position:absolute;left:0;right:0;top:0;height:var(--glide-h,34px);border-radius:8px;background:#383838;opacity:var(--glide-o,0);transform:translateY(var(--glide-y,0));pointer-events:none}
 body .sidebar nav.glide-nav[data-ready]::before{transition:transform .55s var(--pm-ease),opacity .3s var(--pm-ease),height .3s var(--pm-ease)}
 body .sidebar nav.glide-nav .nav-item{position:relative}
 body .sidebar nav.glide-nav .nav-item.active{background:transparent}
@@ -216,7 +216,7 @@ body :is(p,li){text-wrap:pretty}
 body ::selection{background:#6a9bcc4d}
 
 /* ---------- Something is still arriving ---------- */
-body .visual-drafting{background:#303030;border-color:#262624;border-radius:18px;animation:pm-in .6s var(--pm-ease) backwards}
+body .visual-drafting{background:#262626;border-color:#262624;border-radius:18px;animation:pm-in .6s var(--pm-ease) backwards}
 body .visual-drafting.with-art{flex-direction:column;gap:6px}
 body .visual-drafting.line{aspect-ratio:auto;justify-content:flex-start;height:52px;padding:0 18px}
 body .visual-drafting .drafting-art{width:120px;height:100px}
@@ -229,7 +229,7 @@ html[data-quiet=true] body .visual-drafting .drafting-text{animation:none;-webki
 /* The account corner: your picture and your name, nothing else. */
 body .sidebar-bottom{border-top-color:transparent}
 body .account-button{border-radius:10px;transition:background .3s var(--pm-ease)}
-body .account-button:hover{background:#2a2a2a}
+body .account-button:hover{background:#333}
 body .account-button>span:not(.avatar){font-size:15px;font-weight:600;letter-spacing:-.006em}
 
 /* Lists arrive in a short cascade: cards, file rows and folders fade up one after another, the first eight staggered
