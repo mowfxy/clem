@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { entry, forget, parseMemory, recall, remember, serializeMemory, MEMORY_LIMIT } from "../core/project-memory.ts";
-import { coordinatorHistory, coordinatorTurn, emptyRoom, modelsOf, readReply, runThread, toggleReaction, type Ask, type Room } from "../core/coordinator.ts";
+import { coordinatorHistory, coordinatorTurn, emptyRoom, modelsOf, readReply, runThread, settleRoom, toggleReaction, type Ask, type Room } from "../core/coordinator.ts";
 import type { ProjectRoom, Space } from "../core/types.ts";
 import type { MemoryEntry } from "../core/project-memory.ts";
 
@@ -175,4 +175,63 @@ test("the person can add to a thread and the agent answers there", async () => {
   assert.equal(text, "Short draft.");
   const t = h.room().threads[0];
   assert.deepEqual(t.messages.find((m) => m.id === "c")!.reactions, [{ emoji: "👍", by: "writer" }]);
+});
+
+test("recall folds accents, in words and in tags", () => {
+  const m = [entry("Send the résumé by Friday."), entry("Budget is fixed.", ["café"])];
+  assert.equal(recall(m, "resume")[0]?.text, "Send the résumé by Friday.");
+  assert.equal(recall(m, "Résumé")[0]?.text, "Send the résumé by Friday.");
+  assert.equal(recall(m, "café")[0]?.text, "Budget is fixed.");
+});
+
+test("a closing reply that is only a reaction still leaves the person an answer", async () => {
+  const h = harness();
+  const msg = say(h, "research it");
+  let n = 0;
+  await coordinatorTurn(space, runs, msg, h.io, async (_, { chat }) => chat.startsWith("thr-") ? "Found it. [[summary: Found it]]" : n++ === 0 ? "On it.\n[[thread: Researcher | Dig | Dig in]]" : "[[react: 👍]]", new AbortController().signal);
+  const last = h.room().messages.at(-1)!;
+  assert.equal(last.from, "coordinator");
+  assert.equal(last.status, "error");
+});
+
+test("a memory file that cannot be saved does not lose the reply", async () => {
+  const h = harness();
+  h.io.saveMemory = async () => { throw Error("disk full"); };
+  const msg = say(h, "launch is Dec 3");
+  await coordinatorTurn(space, runs, msg, h.io, async () => "Noted.\n[[remember: launch | Launch is Dec 3]]", new AbortController().signal);
+  const reply = h.room().messages.at(-1)!;
+  assert.equal(reply.content, "Noted.");
+  assert.equal(reply.status, undefined);
+  assert.equal(reply.remembered, undefined);
+});
+
+test("one thread can be stopped alone; the coordinator answers from the rest", async () => {
+  const h = harness();
+  const own = new Map<string, AbortController>();
+  h.io.thread = (id, parent) => { const c = new AbortController(); parent.addEventListener("abort", () => c.abort()); own.set(id, c); return { signal: c.signal, done: () => own.delete(id) }; };
+  const msg = say(h, "two things");
+  let closing = "";
+  await coordinatorTurn(space, runs, msg, h.io, (messages, { chat, signal }) => {
+    if (chat.startsWith("thr-")) {
+      if (messages.at(-1)!.content === "slow") return new Promise((_, reject) => { signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError"))); own.get(chat.slice(4))!.abort(); });
+      return Promise.resolve("Quick result. [[summary: Quick]]");
+    }
+    if (messages.some((m) => m.content.startsWith("(Thread reports"))) { closing = messages.at(-1)!.content; return Promise.resolve("Done with what we have."); }
+    return Promise.resolve("[[thread: A | Slow | slow]]\n[[thread: B | Fast | fast]]");
+  }, new AbortController().signal);
+  assert.deepEqual(h.room().threads.map((t) => t.status), ["stopped", "done"]);
+  assert.match(closing, /the person stopped this thread/);
+  assert.equal(h.room().messages.at(-1)!.content, "Done with what we have.");
+  assert.equal(own.size, 0, "every thread's run was ended");
+});
+
+test("a room saved mid-run comes back stopped, not working forever", () => {
+  const room: ProjectRoom = { spaceId: "p1", messages: [{ id: "u", from: "you", content: "go", at: 1 }, { id: "w", from: "coordinator", content: "", at: 2, status: "writing" }, { id: "x", from: "coordinator", content: "Half an ans", at: 3, status: "writing" }],
+    threads: [{ id: "t", agent: "Researcher", title: "Dig", status: "working", created: 1, updated: 1, messages: [{ id: "b", from: "coordinator", content: "Dig", at: 1 }, { id: "r", from: "Researcher", content: "", at: 2, status: "writing" }] }] };
+  const settled = settleRoom(room);
+  assert.deepEqual(settled.messages.map((m) => [m.id, m.status]), [["u", undefined], ["x", "stopped"]]);
+  assert.equal(settled.threads[0].status, "stopped");
+  assert.deepEqual(settled.threads[0].messages.map((m) => m.id), ["b"]);
+  const calm = emptyRoom("p2");
+  assert.equal(settleRoom(calm), calm);
 });

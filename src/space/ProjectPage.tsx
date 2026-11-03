@@ -355,8 +355,8 @@ function Context({space,memory,chats,files,driveSync,actions,project,onInstructi
   </div>;
 }
 
-/** "#launch #dates Launch is on Dec 3" → tags and text. */
-function splitTags(raw:string){const tags=[...raw.matchAll(/#([\p{L}\p{N}-]+)/gu)].map(m=>m[1]);return {tags,text:raw.replace(/#[\p{L}\p{N}-]+/gu,'').replace(/\s+/g,' ').trim()};}
+/** "#launch #dates Launch is on Dec 3" → tags and text. Only leading tags count, so "Issue #42 blocks it" keeps its #42. */
+function splitTags(raw:string){const lead=/^\s*(?:#[\p{L}\p{N}-]+\s*)*/u.exec(raw)![0];return {tags:[...lead.matchAll(/#([\p{L}\p{N}-]+)/gu)].map(m=>m[1]),text:raw.slice(lead.length).replace(/\s+/g,' ').trim()};}
 
 function FactEdit({fact,onSave,onCancel}:{fact:MemoryEntry;onSave:(text:string,tags:string[])=>void;onCancel:()=>void}){
   const [value,setValue]=useState(`${fact.tags.map(t=>'#'+t).join(' ')} ${fact.text}`.trim());

@@ -18,9 +18,12 @@ export const RECALL_COUNT = 8;
 
 const STOP = new Set("a an and are as at be but by can could did do does for from had has have he her his how i if in into is it its just me my no not of on or our she so than that the their them then there these they this to too us was we were what when where which who why will with would you your yours i'm it's don't".split(" "));
 
+/** Lower case without accents, so "Résumé" and "resume" meet (decomposed marks would otherwise split words in two). */
+const fold = (s: string) => s.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "");
+
 /** Lower-case words without stop words, each cut to a rough stem so "launches", "launched" and "launch" meet. */
 export function terms(text: string): string[] {
-  return (text.toLowerCase().normalize("NFKD").match(/[\p{L}\p{N}]+/gu) || [])
+  return (fold(text).match(/[\p{L}\p{N}]+/gu) || [])
     .filter((w) => w.length > 1 && !STOP.has(w))
     .map(stem);
 }
@@ -94,7 +97,7 @@ export const forget = (entries: MemoryEntry[], id: string) => entries.filter((e)
 export function recall(entries: MemoryEntry[], query: string, { count = RECALL_COUNT, chars = RECALL_CHARS }: { count?: number; chars?: number } = {}): MemoryEntry[] {
   const q = [...new Set(terms(query))];
   if (!q.length || !entries.length) return [];
-  const docs = entries.map((e) => [...terms(e.text), ...e.tags.flatMap((t) => [stem(t), stem(t)])]);
+  const docs = entries.map((e) => [...terms(e.text), ...e.tags.flatMap((t) => { const w = stem(fold(t)); return [w, w]; })]);
   const avg = docs.reduce((n, d) => n + d.length, 0) / docs.length || 1;
   const df = new Map<string, number>();
   for (const d of docs) for (const w of new Set(d)) df.set(w, (df.get(w) || 0) + 1);

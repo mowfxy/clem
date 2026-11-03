@@ -1,5 +1,6 @@
 import { desktop } from "./desktop/bridge";
 import { withoutTemporary } from "../core/temporary-chat";
+import { settleRoom } from "../core/coordinator";
 import { get, set, del } from "idb-keyval";
 import type {
   Chat,
@@ -92,6 +93,8 @@ function restoreState(value: unknown): State {
   if (typeof saved.name !== "string" || typeof saved.memory !== "string")
     throw Error("Invalid workspace settings.");
   const state = { ...structuredClone(emptyState), ...saved } as State;
+  // A project reply or thread cut off when the app closed is shown as stopped, not as still working.
+  if (Array.isArray(state.rooms)) state.rooms = state.rooms.map(settleRoom);
   // 0.3.6 filed uploads sent in a subject or project chat under it. Sent files belong in the normal Files tab; ones kept
   // there on request carry no chat, so a file still tagged with its chat is moved back.
   const sent = new Set(state.files.filter((f) => f.chatId && !f.made && f.spaceId).map((f) => f.id));
