@@ -63,3 +63,13 @@ Motion: quick 160ms, moderate 280ms, slow 640ms; ease-out cubic-bezier(.2,.8,.2,
 Chrome: theme-color follows the clock theme; header transparent over the sky, paper with a rule after scroll.
 Themes: both, chosen by the clock, with a manual sun/moon override remembered per visitor.
 Defended risk: the site's theme and greeting are decided by the visitor's clock, not a toggle default — at 1 a.m. Clem's site is ink-dark and says "Late night, thinker."
+
+## Profile pictures (user, 2026-11-05)
+Asked for: animated pictures in the app's ink style, fitting the grey background, of "living real things". Rejected on the way: thick-line characters with faces ("too childish"), invented forms ("arent nearly like the ink like animations in app"), the real films reused as they are ("not same exact ones ofc"), and new films of plain shapes.
+Now: eight living things, each its own film (src/avatarFilms.ts, ids unchanged): Finch, Moth, Snail, Koi, Jellyfish, Bee, Whale, Sprig.
+Same ink, drawn from life: vectorFilm's pen on its 480×390 stage, thin line in empty space, one hatched colour spot, a small ink eye and no cartoon face, hold then snap with a small overshoot, and each moves as the creature does.
+Rule kept: nothing redraws an SVG in the sidebar. Each film is drawn once and played on its own canvas at 12 drawings a second.
+
+## Sidebar and settings (user, 2026-11-05)
+Wider column and larger buttons, after the user's Claude app screenshot: --side is clamp(260px,21vw,300px), nav rows 42px, type 16px, icons 22px, in src/roomy.css, with settings' rail matching.
+All Sans text in the sidebar and settings is Medium (the user: "slightly thicker ... but not bold"). The wordmark stays as the logo and the serif headings stay Regular.

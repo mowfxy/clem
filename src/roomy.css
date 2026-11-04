@@ -1,0 +1,25 @@
+/* The sidebar and settings: one wider column, larger buttons, and Regular text throughout.
+   Loaded last, because the older sizes are spread across several stylesheets. */
+
+body .sidebar>.brand{font-size:32px;margin:0 8px 24px}
+body .sidebar>.brand svg{width:29px;height:29px}
+body .sidebar nav{gap:3px}
+body .sidebar .nav-item{height:42px;font-size:16px;padding:9px 12px;gap:13px}
+body .sidebar .nav-item .drawn-icon{width:22px;height:22px}
+body .sidebar .sidebar-history{margin-top:22px}
+body .sidebar .history-group .history-label,body .sidebar .history-group .history-label span{font-size:13.5px}
+body .sidebar .history-item{font-size:15px;height:38px;padding:8px 12px}
+body .sidebar .history-item:hover{padding-left:14px}
+body .account-button>span:not(.avatar){font-size:16px}
+
+@media(min-width:901px){.st{grid-template-columns:var(--side) minmax(0,1fr)}}
+.st-nav{gap:3px}
+.st-group{gap:3px}
+.st-group-label{font-size:13.5px}
+.st-nav button{height:42px;font-size:16px;padding:9px 12px;gap:13px}
+.st-nav button .drawn-icon{width:22px;height:22px}
+.st-me-text strong{font-size:16px}
+
+/* Medium everywhere in both places: a touch more than Regular, never SemiBold or Bold. The wordmark is the logo, not text, and the serif headings stay Regular. */
+.sidebar :not(.wordmark),.st,.st *{font-weight:500!important}
+.st :is(.st-top h2,.st-head h1,.st-id-text strong,.usage-facts p,.usage-facts b){font-weight:400!important}

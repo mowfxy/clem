@@ -162,8 +162,8 @@ try {
   assert.equal(await page.locator(".st-body input:not([type=checkbox])").count(), 0);
   await page.locator(".st-nav").getByRole("button", { name: "Profile", exact: true }).click();
   await page.getByRole("radiogroup", { name: "Choose your picture" }).waitFor();
-  await page.getByRole("radio", { name: "Tide", exact: true }).click();
-  assert.equal(await page.getByRole("radio", { name: "Tide", exact: true }).getAttribute("aria-checked"), "true");
+  await page.getByRole("radio", { name: "Snail", exact: true }).click();
+  assert.equal(await page.getByRole("radio", { name: "Snail", exact: true }).getAttribute("aria-checked"), "true");
   await page.locator(".st-input input").fill("Sam Rivera");
   await page.locator(".st-id-text").filter({ hasText: "Sam Rivera." }).waitFor();
   await page.locator(".st-input input").fill("Sam");
