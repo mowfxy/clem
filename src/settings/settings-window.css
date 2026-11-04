@@ -25,7 +25,7 @@ body:has(.desktop-titlebar) .st-dialog{padding-block:calc(var(--tb) + 12px) 28px
 .st-nav button:hover{background:var(--st-hover);color:var(--st-ink)}
 .st-nav button.active{background:#252523;color:var(--st-ink);font-weight:600}
 .st-nav button:is(.active,:hover) .drawn-icon{color:var(--st-ink)}
-.st-count{margin-left:auto;display:grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:99px;background:var(--st-ink);color:#141413;font:700 var(--t-label)/1 var(--sans);font-variant-numeric:tabular-nums}
+.st-count{margin-left:auto;display:grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:99px;background:var(--st-ink);color:#141413;font:600 var(--t-label)/1 var(--sans);font-variant-numeric:tabular-nums}
 .st-none{margin:14px 10px;font-size:14px;color:var(--st-muted)}
 /* You: the sidebar's account row. */
 .st-me{flex:none;display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;margin-top:6px;padding:10px 7px;border-radius:10px;text-align:left;color:var(--st-ink);transition:background .3s var(--st-ease)}
@@ -70,7 +70,7 @@ body:has(.desktop-titlebar) .st-dialog{padding-block:calc(var(--tb) + 12px) 28px
 .st button.secondary.danger{background:transparent;color:#f0a594;box-shadow:inset 0 0 0 1px #6b3a31}
 .st button.secondary.danger:hover{background:#3a201b}
 .st button.secondary.icon-only{padding:0 9px}
-.st .primary{font:700 13px/1.2 var(--sans)}
+.st .primary{font:600 13px/1.2 var(--sans)}
 .st input:not([type=checkbox]):not([type=radio]):not([type=range]):not(.st-find-input),.st textarea,.st select{width:100%;max-width:none;box-sizing:border-box;min-height:40px;padding:9px 12px;border:1px solid var(--st-line-2);border-radius:10px;background:#1c1c1c;color:var(--st-ink);font:400 var(--t-body) var(--sans);transition:border-color .16s,box-shadow .16s}
 .st input:focus,.st textarea:focus,.st select:focus{outline:none;border-color:#6f6f6b;box-shadow:0 0 0 3px #ffffff0d}
 .st label.field,.st .security-block,.st .support-inbox label{display:grid;gap:8px;margin:0 0 14px;font-size:13px;color:var(--st-soft)}
@@ -106,7 +106,7 @@ body:has(.desktop-titlebar) .st-dialog{padding-block:calc(var(--tb) + 12px) 28px
 .st .security-settings>h2,.st .support-head h2,.st .models-heading h2,.st .models-heading>div>p{display:none}
 .st .security-settings{display:grid;gap:0;padding:4px 0 8px}
 .st .security-settings>p:first-of-type{margin:14px 0 4px;font-size:var(--t-small);color:var(--st-muted)}
-.st .security-settings h3,.st .security-block h3,.st .support-head h3{margin:18px 0 4px;font:700 var(--t-body)/1.3 var(--sans);letter-spacing:-.01em;color:var(--st-ink)}
+.st .security-settings h3,.st .security-block h3,.st .support-head h3{margin:18px 0 4px;font:600 var(--t-body)/1.3 var(--sans);letter-spacing:-.01em;color:var(--st-ink)}
 .st .settings-action{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:58px;padding:11px 0;margin:0;border:0;border-bottom:1px solid var(--st-line)}
 .st .settings-action h3{margin:0 0 2px;font:400 15px/1.35 var(--sans);color:var(--st-ink)}
 .st .settings-action p{margin:0;font-size:13px;line-height:1.45;color:var(--st-muted)}
@@ -154,7 +154,7 @@ body:has(.desktop-titlebar) .st-dialog{padding-block:calc(var(--tb) + 12px) 28px
 .st-chips button:hover{color:var(--st-ink)}
 .st-chips button.on{background:#252523;color:var(--st-ink);font-weight:500}
 .st-skills-actions{display:flex;gap:8px}
-.st button.secondary.st-strong{background:var(--st-ink);border-color:var(--st-ink);color:#141413;font-weight:700}
+.st button.secondary.st-strong{background:var(--st-ink);border-color:var(--st-ink);color:#141413;font-weight:600}
 .st button.secondary.st-strong:hover{background:#fff;border-color:#fff}
 .st button.secondary.st-strong .drawn-icon{color:#141413}
 .st-skill{display:flex;align-items:center;justify-content:flex-start;gap:14px;width:100%;padding:14px 0;border-bottom:1px solid var(--st-line);border-radius:0;text-align:left;color:var(--st-ink)}
@@ -172,21 +172,21 @@ body:has(.desktop-titlebar) .st-dialog{padding-block:calc(var(--tb) + 12px) 28px
 .usage-hero{padding:22px 0 12px;overflow:hidden}
 .usage-hero-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:0}
 .usage-hero-head>div:first-child{display:grid;gap:8px}
-.usage-hero-head strong{font:700 40px/1 var(--sans);letter-spacing:-.03em;color:var(--st-ink);font-variant-numeric:tabular-nums}
+.usage-hero-head strong{font:600 40px/1 var(--sans);letter-spacing:-.03em;color:var(--st-ink);font-variant-numeric:tabular-nums}
 .usage-hero-side{display:flex;gap:22px}
 .usage-hero-side span{display:grid;gap:2px;font-size:13px;color:var(--st-muted);text-align:right}
-.usage-hero-side b{font:700 var(--t-heading)/1.1 var(--sans);letter-spacing:-.02em;color:var(--st-ink);font-variant-numeric:tabular-nums}
+.usage-hero-side b{font:600 var(--t-heading)/1.1 var(--sans);letter-spacing:-.02em;color:var(--st-ink);font-variant-numeric:tabular-nums}
 .usage-hero .activity-graph{margin:0 -10px;padding-top:26px}
 .usage-hero .activity-graph figcaption{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .st-card:has(>.usage-grid){padding:0;overflow:hidden}
 .usage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
 .usage-stat{display:grid;gap:4px;align-content:start;padding:18px 20px 18px 0;background:var(--st-bg)}
-.usage-stat b{font:700 26px/1.1 var(--sans);letter-spacing:-.02em;color:var(--st-ink);font-variant-numeric:tabular-nums}
+.usage-stat b{font:600 26px/1.1 var(--sans);letter-spacing:-.02em;color:var(--st-ink);font-variant-numeric:tabular-nums}
 .usage-stat span{font-size:var(--t-small);color:var(--st-soft)}
 .usage-stat small{font-size:13px;color:var(--st-muted)}
 .usage-tokens{display:grid;gap:12px;padding:18px 0 20px}
 .usage-token-total{display:flex;align-items:baseline;gap:10px}
-.usage-token-total b{font:700 36px/1 var(--sans);letter-spacing:-.03em;color:var(--st-ink);font-variant-numeric:tabular-nums}
+.usage-token-total b{font:600 36px/1 var(--sans);letter-spacing:-.03em;color:var(--st-ink);font-variant-numeric:tabular-nums}
 .usage-token-total span{font-size:var(--t-small);color:var(--st-muted)}
 .usage-bar{display:flex;gap:3px;height:8px}
 .usage-bar i{flex-basis:0;min-width:3px;border-radius:99px;background:var(--st-ink);transform-origin:left;animation:usage-grow .9s var(--st-ease) .15s backwards}
@@ -206,7 +206,7 @@ body:has(.desktop-titlebar) .st-dialog{padding-block:calc(var(--tb) + 12px) 28px
 .usage-ws-list>div:last-child{border-bottom:0}
 .usage-ws-list dt{display:flex;align-items:baseline;gap:8px;font-size:var(--t-small);color:var(--st-soft)}
 .usage-ws-list dt small{font-size:13px;color:var(--st-muted)}
-.usage-ws-list dd{margin:0;font:700 var(--t-body)/1.2 var(--sans);color:var(--st-ink);font-variant-numeric:tabular-nums}
+.usage-ws-list dd{margin:0;font:600 var(--t-body)/1.2 var(--sans);color:var(--st-ink);font-variant-numeric:tabular-nums}
 .usage-ws-list .zero :is(dt,dd){color:var(--st-muted);font-weight:400}
 @keyframes usage-grow{from{transform:scaleX(0)}}
 @media(max-width:640px){.usage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.usage-ws{grid-template-columns:1fr;gap:0}.usage-ws .usage-tokens{border-bottom:1px solid var(--st-line)}.usage-hero-head{flex-wrap:wrap}.usage-hero-side span{text-align:left}}
@@ -250,3 +250,5 @@ dialog.settings-dialog .settings-dialog-body .backup-list button.chosen{border-c
 .st .help .support-subject{font-size:15px}
 @media(prefers-reduced-motion:reduce){.st .help .contact-option{animation:none}}
 [data-quiet=true] .st .help .contact-option{animation:none}
+/* Settings stops at SemiBold: plain <b>, <strong> and <h2> would otherwise take the default Bold. */
+.st :where(b,strong,h2){font-weight:600}

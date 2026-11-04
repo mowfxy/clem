@@ -30,4 +30,4 @@
 @keyframes support-in{from{opacity:0;transform:translateY(6px)}}
 @keyframes support-pulse{0%,100%{box-shadow:0 0 0 0 #ec8a7455}50%{box-shadow:0 0 0 5px #ec8a7400}}
 @media (prefers-reduced-motion:reduce){.support-inbox *{animation:none!important}}
-.support-inbox h2{font-family:var(--sans)!important;font-weight:700!important;letter-spacing:var(--track-title)}
+.support-inbox h2{font-family:var(--sans)!important;font-weight:600!important;letter-spacing:var(--track-title)}

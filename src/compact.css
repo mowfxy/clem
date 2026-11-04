@@ -77,7 +77,7 @@ html body .file-panel input.fp-page-field{width:44px;height:29px;font-size:13.5p
 
 /* The sidebar: 268 px on a usual window, never under 236 px.
    The title bar and the header in it start where the sidebar ends. */
-:root{--side:clamp(236px,20vw,268px)}
+:root{--side:clamp(260px,21vw,300px)}
 @media(min-width:761px){
   body .desktop-content .sidebar{width:var(--side)}
   body .desktop-content .workspace{margin-left:var(--side);width:calc(100% - var(--side))}
