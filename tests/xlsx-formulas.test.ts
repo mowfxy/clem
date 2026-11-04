@@ -127,3 +127,25 @@ test("elapsed and clock times round to the second the way Excel shows them", () 
   assert.equal(showValue(2, "[h]", false), "48");
   assert.ok(isDateFormat("[h]"));
 });
+
+test("a single-cell reference skips blanks and text the way a range does", () => {
+  const rows = [[10], [null], ["abc"], [20]];
+  assert.equal(calc(rows, "=AVERAGE(A1,A2,A4)"), 15);
+  assert.equal(calc(rows, "=COUNT(A1,A2,A3)"), 1);
+  assert.equal(calc(rows, "=COUNTA(A1,A2,A3)"), 2);
+  assert.equal(calc(rows, "=MIN(A1,A3)"), 10);
+  assert.equal(calc(rows, "=MAX(A2)"), 0);
+  // Typed directly, a number in text still counts, as in Excel.
+  assert.equal(calc([], '=SUM("3",4)'), 7);
+});
+
+test("dates before March 1900 count Excel's phantom 29 February", () => {
+  assert.equal(calc([], "=DATE(1900,1,1)"), 1);
+  assert.equal(calc([], "=DATE(1900,2,28)"), 59);
+  assert.equal(calc([], "=DATE(1900,3,1)"), 61);
+  assert.equal(calc([], "=DATE(2026,11,4)"), 46330);
+  assert.equal(calc([], "=YEAR(1)"), 1900);
+  assert.equal(calc([], "=DAY(1)"), 1);
+  assert.equal(calc([], "=MONTH(DATE(1900,2,28))"), 2);
+  assert.equal(calc([], "=DAY(DATE(2024,2,29))"), 29);
+});

@@ -145,9 +145,11 @@ export function ankiState(card: { type: number; queue: number; due: number; ivl:
   try { memory = JSON.parse(card.data || '{}') || {}; } catch { return undefined; }
   const stability = Number(memory.s), difficulty = Number(memory.d);
   if (!(stability > 0) || !(difficulty >= 1 && difficulty <= 10)) return undefined;
-  // Review cards are due in days from the collection's creation; learning ones at a time in seconds.
-  const due = card.type === 2 ? collectionCreated * 1000 + card.due * DAY : card.due * 1000;
+  // Review cards (queue 2) and learning steps of a day or more (queue 3) are due in days from the collection's creation;
+  // learning steps within the day (queue 1) at a time in seconds. A suspended or buried card keeps its type's reckoning.
+  const inDays = card.queue === 2 || card.queue === 3 || (card.queue < 0 && card.type === 2);
+  const due = inDays ? collectionCreated * 1000 + card.due * DAY : card.due * 1000;
   if (!Number.isFinite(due) || due <= 0) return undefined;
-  const last = lastReview && lastReview > 0 ? lastReview : card.type === 2 ? due - Math.max(1, card.ivl) * DAY : due - 10 * 60_000;
+  const last = lastReview && lastReview > 0 ? lastReview : inDays ? due - Math.max(1, card.ivl) * DAY : due - 10 * 60_000;
   return { due, stability, difficulty, reps: Math.max(1, card.reps), lapses: Math.max(0, card.lapses), last };
 }
