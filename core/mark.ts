@@ -15,7 +15,8 @@ export const CLEM_INK = "#0b0b0a";
 export const CLEM_PAPER = "#F4F2EC";
 export const CLEM_MUTED = "#8a897f";
 export const CLEM_LINE = "#23231f";
-export const CLEM_TILE = "#161614";
+/** The app icon's tile: the same background as the website, so the app and the site read as one. */
+export const CLEM_TILE = "#0e1017";
 
 /** The mark's inner SVG (no <svg> wrapper), drawn in `color`. */
 export function markInner(color = "currentColor") {
@@ -31,7 +32,7 @@ export function markSvg({ color = CLEM_PAPER, extra = "", attrs = "" }: { size?:
 /** The app icon: the mark at 72% on a rounded tile, black (dark ink tile, paper mark) or white (paper tile, ink mark). */
 export function tileSvg({ tone = "black", attrs = "" }: { tone?: "black" | "white"; attrs?: string } = {}) {
   const black = tone === "black";
-  const tile = `<rect width="100" height="100" rx="23" fill="${black ? CLEM_TILE : CLEM_PAPER}"/>` + (black ? `<rect x="0.5" y="0.5" width="99" height="99" rx="22.5" fill="none" stroke="#2a2a26"/>` : "");
+  const tile = `<rect width="100" height="100" rx="23" fill="${black ? CLEM_TILE : CLEM_PAPER}"/>` + (black ? `<rect x="0.5" y="0.5" width="99" height="99" rx="22.5" fill="none" stroke="#262a38"/>` : "");
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"${attrs}>${tile}<g transform="translate(50 50) scale(0.72) translate(-50 -50)">${markInner(black ? CLEM_PAPER : CLEM_INK)}</g></svg>`;
 }
 
