@@ -40,6 +40,8 @@ test("Anki review history is kept only when it maps onto FSRS", () => {
   assert.equal(ankiState({ ...base, data: '{"s":3,"d":12}' }, 1000), undefined, "difficulty out of range");
   assert.equal(ankiState({ ...base, data: "not json" }, 1000), undefined);
   assert.deepEqual(ankiState({ ...base, data: '{"s":3,"d":5}' }, 1000), { due: 1_000_000 + 10 * 86_400_000, stability: 3, difficulty: 5, reps: 4, lapses: 1, last: 1_000_000 + 5 * 86_400_000 });
-  // A card in (re)learning is due at a time in seconds.
-  assert.equal(ankiState({ ...base, type: 3, due: 1_800_000_000, data: '{"s":1,"d":7}' }, 1000)!.due, 1_800_000_000_000);
+  // A card in (re)learning steps within the day (queue 1) is due at a time in seconds.
+  assert.equal(ankiState({ ...base, type: 3, queue: 1, due: 1_800_000_000, data: '{"s":1,"d":7}' }, 1000)!.due, 1_800_000_000_000);
+  // A learning step of a day or more (queue 3) is due in days, like a review card.
+  assert.equal(ankiState({ ...base, type: 3, queue: 3, due: 12, data: '{"s":1,"d":7}' }, 1000)!.due, 1_000_000 + 12 * 86_400_000);
 });

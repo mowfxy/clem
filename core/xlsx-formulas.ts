@@ -1,4 +1,4 @@
-import { formatNumber } from "./numfmt.ts";
+import { formatNumber, serialDate } from "./numfmt.ts";
 
 /**
  * Excel formulas, calculated: the values a workbook shows when its file carries none (Clem's own workbooks leave Excel to
@@ -169,7 +169,8 @@ export class Calculator {
   private numbers(args: Node[], sheet: string) {
     const out: number[] = [];
     for (const a of args) {
-      const v = this.run(a, sheet);
+      // A cell reference is a range of one: Excel skips its blanks and text (AVERAGE(A1,A2) with A2 empty is A1).
+      const v = a.t === "ref" ? this.rangeOf(a, sheet) : this.run(a, sheet);
       if (isRange(v)) { for (const row of v.range) for (const x of row) { if (isError(x)) return x; if (typeof x === "number") out.push(x); } }
       else { const n = num(v); if (isError(n)) return n; out.push(n); }
     }
@@ -221,8 +222,8 @@ export class Calculator {
         const sorted = [...xs].sort((a, b) => a - b), mid = sorted.length >> 1;
         return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
       }
-      case "COUNT": { let c = 0; for (const a of args) { const v = this.run(a, sheet); if (isRange(v)) c += v.range.flat().filter((x) => typeof x === "number").length; else if (!isError(num(v as Value))) c++; } return c; }
-      case "COUNTA": return args.reduce((c, a) => { const v = this.run(a, sheet); return c + (isRange(v) ? v.range.flat().filter((x) => x !== null && x !== "").length : v !== null && v !== "" ? 1 : 0); }, 0);
+      case "COUNT": { let c = 0; for (const a of args) { const v = a.t === "ref" ? this.rangeOf(a, sheet) : this.run(a, sheet); if (isRange(v)) c += v.range.flat().filter((x) => typeof x === "number").length; else if (!isError(num(v as Value))) c++; } return c; }
+      case "COUNTA": return args.reduce((c, a) => { const v = a.t === "ref" ? this.rangeOf(a, sheet) : this.run(a, sheet); return c + (isRange(v) ? v.range.flat().filter((x) => x !== null && x !== "").length : v !== null && v !== "" ? 1 : 0); }, 0);
       case "COUNTBLANK": return flat(0).filter((x) => x === null || x === "").length;
       case "ABS": return math(Math.abs);
       case "SQRT": return math(Math.sqrt);
@@ -294,8 +295,11 @@ export class Calculator {
       case "ISNUMBER": return typeof arg(0) === "number";
       case "ISTEXT": return typeof arg(0) === "string";
       case "ISERROR": return isError(arg(0));
-      case "DATE": { const y = numberArg(0), m = numberArg(1), d = numberArg(2); return isError(y) ? y : isError(m) ? m : isError(d) ? d : Date.UTC(y, m - 1, d) / 86400000 + 25569; }
-      case "YEAR": case "MONTH": case "DAY": { const x = numberArg(0); if (isError(x)) return x; const dt = new Date(Math.round((x - 25569) * 86400000)); return name === "YEAR" ? dt.getUTCFullYear() : name === "MONTH" ? dt.getUTCMonth() + 1 : dt.getUTCDate(); }
+      case "DATE": { const y = numberArg(0), m = numberArg(1), d = numberArg(2);
+        if (isError(y)) return y; if (isError(m)) return m; if (isError(d)) return d;
+        // Excel counts a 29 February 1900 that never was, so days before 1 March 1900 are one serial lower.
+        const serial = Date.UTC(y, m - 1, d) / 86400000 + 25569; return serial < 61 ? serial - 1 : serial; }
+      case "YEAR": case "MONTH": case "DAY": { const x = numberArg(0); if (isError(x)) return x; const dt = serialDate(x); return name === "YEAR" ? dt.getUTCFullYear() : name === "MONTH" ? dt.getUTCMonth() + 1 : dt.getUTCDate(); }
       default: return err("#NAME?");
     }
   }

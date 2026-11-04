@@ -139,7 +139,7 @@ test('FSRS: first-time misses are not lapses and weakness follows recent reviews
   assert.equal(isWeak(card), true);
   let reviews = 0;
   while (isWeak(card) && reviews < 10) { card = review(card, 3, card.due); reviews++; }
-  assert.ok(reviews <= 5, `recovers after a few correct reviews (took ${reviews})`);
+  assert.ok(reviews <= 6, `recovers after a few correct reviews (took ${reviews})`);
   assert.equal(card.lapses, 1);
   assert.equal(isWeak(undefined), false);
 });
@@ -166,4 +166,15 @@ test('file changes diff by line and require a unique match', () => {
   assert.deepEqual(lineDiff('', 'x\ny'), [{ kind: 'add', text: 'x', b: 1 }, { kind: 'add', text: 'y', b: 2 }], 'a new file has no phantom removed line');
   assert.deepEqual(diffStats(lineDiff('x', '')), { added: 0, removed: 1 });
   assert.deepEqual(lineDiff('', ''), []);
+});
+
+test('FSRS grows stability from the difficulty the card had before the answer', () => {
+  const DAY = 86_400_000, now = 1_800_000_000_000;
+  const card = { due: now, stability: 10, difficulty: 5, reps: 3, lapses: 0, last: now - 10 * DAY };
+  const r = Math.pow(1 + (19 / 81) * 10 / 10, -0.5);
+  // Hard (2) lowers the next difficulty, but this answer's growth uses difficulty 5.
+  const expected = 10 * (1 + Math.exp(1.6474) * (11 - 5) * Math.pow(10, -0.1367) * (Math.exp(1.0461 * (1 - r)) - 1) * 0.2272);
+  const next = review(card, 2, now);
+  assert.ok(Math.abs(next.stability - expected) < 1e-9, `${next.stability} vs ${expected}`);
+  assert.ok(next.difficulty > 5);
 });

@@ -23,9 +23,11 @@ export function review(card: CardState | undefined, grade: Grade, now = Date.now
   }
   const elapsed = Math.max(0, (now - card.last) / DAY), r = retrievability(elapsed, card.stability);
   const nextD = clampD(w[7] * initialDifficulty(3) + (1 - w[7]) * (card.difficulty - w[6] * (grade - 3)));
+  // FSRS grows or shrinks stability from the difficulty the card had before this answer; the new one applies next time.
+  const d = card.difficulty;
   let stability: number;
-  if (grade === 1) stability = Math.min(card.stability, w[11] * Math.pow(nextD, -w[12]) * (Math.pow(card.stability + 1, w[13]) - 1) * Math.exp(w[14] * (1 - r)));
-  else stability = card.stability * (1 + Math.exp(w[8]) * (11 - nextD) * Math.pow(card.stability, -w[9]) * (Math.exp(w[10] * (1 - r)) - 1) * (grade === 2 ? w[15] : 1) * (grade === 4 ? w[16] : 1));
+  if (grade === 1) stability = Math.min(card.stability, w[11] * Math.pow(d, -w[12]) * (Math.pow(card.stability + 1, w[13]) - 1) * Math.exp(w[14] * (1 - r)));
+  else stability = card.stability * (1 + Math.exp(w[8]) * (11 - d) * Math.pow(card.stability, -w[9]) * (Math.exp(w[10] * (1 - r)) - 1) * (grade === 2 ? w[15] : 1) * (grade === 4 ? w[16] : 1));
   stability = Math.max(0.1, stability);
   const due = grade === 1 ? now + 60_000 * 10 : now + interval(stability) * DAY;
   // Only forgetting a card in the review state (scheduled a day or more out) is a lapse; misses while (re)learning are not.
