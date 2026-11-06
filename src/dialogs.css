@@ -91,7 +91,7 @@ dialog.settings-dialog::backdrop,dialog.app-modal::backdrop{background:#000a;bac
 dialog.settings-dialog[open]::backdrop,dialog.app-modal[open]::backdrop{animation:dialog-fade .2s ease-out}
 @media(prefers-reduced-motion:reduce){dialog.settings-dialog[open],dialog.app-modal[open],dialog.settings-dialog[open]::backdrop,dialog.app-modal[open]::backdrop{animation:none}}
 dialog.settings-dialog>header{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;padding:20px 22px 14px;border-bottom:0;background:linear-gradient(#232322 80%,#23232200)}
-dialog.settings-dialog>header h2,dialog.app-modal .modal-heading h2{flex:1;margin:0;font:700 20px/1.2 var(--sans);color:#f3f2ec;letter-spacing:var(--track-title)}
+dialog.settings-dialog>header h2,dialog.app-modal .modal-heading h2{flex:1;margin:0;font:600 20px/1.2 var(--sans);color:#f3f2ec;letter-spacing:var(--track-title)}
 dialog.app-modal .modal-heading{margin-bottom:14px}
 .dialog-logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#0d0d0d;color:#fff;border:1px solid #ffffff14}
 dialog.settings-dialog .dialog-close,dialog.app-modal .modal-heading .icon-button{width:32px;height:32px;padding:0!important;display:grid;place-items:center;border-radius:9px;border:0!important;background:transparent!important;color:#9b9a93;font-size:0;cursor:pointer;margin:0!important;transition:background .15s,color .15s}

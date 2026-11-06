@@ -40,7 +40,7 @@ dialog.share-sheet::backdrop{background:#0009;backdrop-filter:blur(5px)}
 .sh-foot .primary{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:12px;font-size:14px}
 .sh-ghost{padding:10px 14px;border-radius:11px;border:1px solid #3a3a37;color:#cfcec7}
 .sh-done{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding:34px 26px 24px}
-.sh-done h2{margin:8px 0 4px;font:400 30px/1.15 var(--serif);color:#f5f3ec}
+.sh-done h2{margin:8px 0 4px;font:400 30px/1.15 var(--serif-display);color:#f5f3ec}
 .sh-done>p{margin:0 0 20px;font-size:13px;color:#a9a8a1}
 .sh-file{position:relative;display:flex;align-items:center;gap:12px;width:100%;max-width:380px;padding:14px 16px;border-radius:16px;background:linear-gradient(135deg,#27305a,#1d1f33);border:1px solid #3d4775;box-shadow:0 18px 40px -16px #1d2a6bcc;text-align:left;cursor:grab;animation:sh-pop .5s .08s cubic-bezier(.2,1.4,.35,1) backwards}
 .sh-file:active{cursor:grabbing;transform:scale(.98)}
@@ -57,7 +57,7 @@ dialog.share-sheet::backdrop{background:#0009;backdrop-filter:blur(5px)}
 .sh-burst i{position:absolute;width:7px;height:7px;border-radius:2px;background:#e9c27a;transform:rotate(var(--a)) translateY(0);opacity:0;animation:sh-fly .9s var(--d) cubic-bezier(.15,.8,.3,1) both}
 .sh-burst i:nth-child(3n){background:#e2574c;border-radius:50%}.sh-burst i:nth-child(3n+1){background:#a9b3f7;width:9px;height:4px}
 .po-cover{padding:26px 24px 20px;background:radial-gradient(420px 200px at 90% 0,#2b3a78,transparent 70%),linear-gradient(135deg,#1e2547,#1b1b1a);border-bottom:1px solid #2f3659}
-.po-cover h2{margin:8px 0 6px;font:700 30px/1.1 var(--sans);letter-spacing:var(--track-title);color:#f5f3ec}
+.po-cover h2{margin:8px 0 6px;font:700 30px/1.1 var(--sans-display);letter-spacing:var(--track-title);color:#f5f3ec}
 .po-cover p{margin:0;font-size:13px;color:#b7bfdf;line-height:1.5}
 .po-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
 .po-chips span{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:#ffffff12;font-size:13px;color:#dfe3f3}

@@ -1,11 +1,12 @@
-# Imports Mowafy Serif from a checkout of mowfxy/serif (3.0 layout) into Clem.
+# Imports Mowafy Serif from a checkout of mowfxy/serif (3.2 layout) into Clem.
 #   python scripts/import-serif.py <path-to-serif-checkout>
 # Each style ships as a small Latin cut under the plain name (what the app, emails, server pages and films load)
 # plus MowafySerifFull-*, the whole Mowafy Serif file (Greek, Cyrillic, extended Latin), limited by unicode-range
 # to what the Latin cut leaves out. Arabic, Hebrew, Indic, Thai, Armenian, Georgian, math, science and Coptic come from the package's companion families,
 # declared under the same 'Mowafy Serif' name with unicode-ranges of only the characters nothing before them
 # covers, so browsers fetch each file only when a page uses those characters.
-# Writes public/fonts, scripts/eyepiece/fonts, core/serif-fonts.ts and the serif block in src/type.css.
+# 'Mowafy Serif Display' (headings, 28px and up) ships as Latin cuts only: --serif-display falls back to 'Mowafy Serif'.
+# Writes public/fonts, core/serif-fonts.ts and the serif block in src/type.css.
 import json, pathlib, re, shutil, subprocess, sys
 from fontTools.ttLib import TTFont
 from fontTools import subset
@@ -17,9 +18,9 @@ root = pathlib.Path(__file__).resolve().parent.parent
 fonts = root / "public" / "fonts"
 
 # style file, CSS weight band, CSS style
-# Medium is the bold inside running text (answers, file previews); Bold is for headings and display.
-STYLES = [("Light", "300", "normal"), ("Regular", "400", "normal"), ("Medium", "500", "normal"), ("Bold", "600 800", "normal"),
-          ("LightItalic", "300", "italic"), ("Italic", "400", "italic"), ("MediumItalic", "500", "italic"), ("BoldItalic", "600 800", "italic")]
+# Medium is the bold inside running text (answers, file previews); SemiBold and Bold are for headings and display.
+STYLES = [("Light", "300", "normal"), ("Regular", "400", "normal"), ("Medium", "500", "normal"), ("SemiBold", "600", "normal"), ("Bold", "700 800", "normal"),
+          ("LightItalic", "300", "italic"), ("Italic", "400", "italic"), ("MediumItalic", "500", "italic"), ("SemiBoldItalic", "600", "italic"), ("BoldItalic", "700 800", "italic")]
 # Companion families in fallback order; the bold file (when there is one) serves the 600-800 band.
 COMPANIONS = [("MowafyGreek", True), ("MowafyArabic", True), ("MowafyHebrew", True), ("MowafyDevanagari", True), ("MowafyBengali", True),
               ("MowafyTamil", True), ("MowafyThai", True), ("MowafyArmenian", True), ("MowafyGeorgian", True), ("MowafyMath", False), ("MowafyMathSupplement", False),
@@ -44,6 +45,11 @@ def ranges(cps):
 def cmap_of(path):
     return {c for c in TTFont(path).getBestCmap() if c >= 0x20}
 
+def latin_cut(full, latin, out):
+    opts = subset.Options(); opts.flavor = "woff2"; opts.layout_features = ["*"]; opts.name_IDs = ["*"]; opts.notdef_outline = True
+    font = TTFont(full); s = subset.Subsetter(opts); s.populate(unicodes=latin); s.subset(font)
+    subset.save_font(font, str(out), opts)
+
 wanted = codepoints(LATIN)
 companion_files = {}
 for family, has_bold in COMPANIONS:
@@ -57,23 +63,25 @@ for name, weight, style in STYLES:
     full = web / f"MowafySerif-{name}.woff2"
     cmap = cmap_of(full)
     latin = cmap & wanted
-    opts = subset.Options(); opts.flavor = "woff2"; opts.layout_features = ["*"]; opts.name_IDs = ["*"]; opts.notdef_outline = True
-    font = TTFont(full); s = subset.Subsetter(opts); s.populate(unicodes=latin); s.subset(font)
-    subset.save_font(font, str(fonts / f"MowafySerif-{name}.woff2"), opts)
+    latin_cut(full, latin, fonts / f"MowafySerif-{name}.woff2")
     shutil.copyfile(full, fonts / f"MowafySerifFull-{name}.woff2")
     faces.append({"file": f"MowafySerif-{name}", "weight": weight, "style": style, "range": ranges(latin)})
     faces.append({"file": f"MowafySerifFull-{name}", "weight": weight, "style": style, "range": ranges(cmap - latin), "full": True})
     covered = set(cmap)
-    bold = weight.startswith("6")
+    bold = int(weight.split()[0]) >= 600
     for family, has_bold in COMPANIONS:
         file = f"{family}-{'Bold' if has_bold and bold else 'Regular'}"
         extra = companion_files[file] - covered
         covered |= extra
         if extra:
             faces.append({"file": file, "weight": weight, "style": style, "range": ranges(extra), "full": True})
+display = []
+for name, weight, style in STYLES:
+    full = web / f"MowafySerifDisplay-{name}.woff2"
+    latin = cmap_of(full) & wanted
+    latin_cut(full, latin, fonts / f"MowafySerifDisplay-{name}.woff2")
+    display.append({"file": f"MowafySerifDisplay-{name}", "weight": weight, "style": style, "range": ranges(latin)})
 shutil.copyfile(web / "MowafyMath-Regular.woff2", fonts / "MowafyMath-Regular.woff2")
-for name in ("Regular", "Bold"):
-    shutil.copyfile(fonts / f"MowafySerif-{name}.woff2", root / "scripts" / "eyepiece" / "fonts" / f"MowafySerif-{name}.woff2")
 shutil.copyfile(src / "licenses" / "MowafySerif-OFL.txt", fonts / "licenses" / "MowafySerif-OFL.txt")
 
 (root / "core" / "serif-fonts.ts").write_text(
@@ -83,12 +91,14 @@ shutil.copyfile(src / "licenses" / "MowafySerif-OFL.txt", fonts / "licenses" / "
 
 css_path = root / "src" / "type.css"
 css = css_path.read_text(encoding="utf-8")
-block = (f"/* Mowafy Serif (mowfxy/serif {rev}), from scripts/import-serif.py: Light, Regular, Medium, Bold and italics. Each style is a\n"
-         "   small Latin cut plus the full Mowafy Serif file and its Arabic, math and symbol companions, which only load when used. */\n"
-         + "".join(f"@font-face{{font-family:'Mowafy Serif';src:url('/fonts/{f['file']}.woff2') format('woff2');font-weight:{f['weight']};font-style:{f['style']};font-display:swap;unicode-range:{f['range']}}}\n" for f in faces))
-css, n = re.subn(r"/\* Mowafy Serif \(mowfxy/serif [^)]*\).*?\*/\n(?:@font-face\{font-family:'Mowafy Serif';[^\n]*\n)+", lambda _: block, css, count=1, flags=re.S)
+block = (f"/* Mowafy Serif (mowfxy/serif {rev}), from scripts/import-serif.py: Light, Regular, Medium, SemiBold, Bold and italics. Each style is a\n"
+         "   small Latin cut plus the full Mowafy Serif file and its Arabic, math and symbol companions, which only load when used.\n"
+         "   Mowafy Serif Display is for headings of about 28px and up, in Latin cuts. */\n"
+         + "".join(f"@font-face{{font-family:'{family}';src:url('/fonts/{f['file']}.woff2') format('woff2');font-weight:{f['weight']};font-style:{f['style']};font-display:swap;unicode-range:{f['range']}}}\n"
+                   for family, group in (("Mowafy Serif", faces), ("Mowafy Serif Display", display)) for f in group))
+css, n = re.subn(r"/\* Mowafy Serif \(mowfxy/serif [^)]*\).*?\*/\n(?:@font-face\{font-family:'Mowafy Serif(?: Display)?';[^\n]*\n)+", lambda _: block, css, count=1, flags=re.S)
 if n != 1: sys.exit("Could not find the Mowafy Serif block in src/type.css")
 css_path.write_text(css, encoding="utf-8")
 for p in sorted(fonts.glob("Mowafy*.woff2")):
     if not p.name.startswith("MowafySans"): print(f"{p.name}: {p.stat().st_size // 1024} KB")
-print("Imported mowfxy/serif", rev, "-", len(faces), "faces")
+print("Imported mowfxy/serif", rev, "-", len(faces) + len(display), "faces")

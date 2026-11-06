@@ -9,7 +9,7 @@ body{font-variant-ligatures:no-common-ligatures}
 /* ---------- Page head ---------- */
 .calm-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:56px 0 30px;animation:calm-in .7s var(--calm-ease) backwards}
 .calm-head-text{min-width:0}
-body .calm-head h1{margin:0;font:400 40px/1.08 var(--serif);letter-spacing:-.025em;color:var(--calm-ink)}
+body .calm-head h1{margin:0;font:400 40px/1.08 var(--serif-display);letter-spacing:-.025em;color:var(--calm-ink)}
 .calm-head p{margin:12px 0 0;max-width:560px;font:400 17px/1.45 var(--sans);color:var(--calm-muted)}
 .calm-head-actions{display:flex;align-items:center;gap:10px;flex:none}
 
