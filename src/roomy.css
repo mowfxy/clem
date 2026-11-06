@@ -1,4 +1,4 @@
-/* The sidebar and settings: one wider column, larger buttons, and Regular text throughout.
+/* The sidebar and settings: one wider column, larger buttons, and the same weights in both.
    Loaded last, because the older sizes are spread across several stylesheets. */
 
 body .sidebar>.brand{font-size:32px;margin:0 8px 24px}
@@ -20,6 +20,11 @@ body .account-button>span:not(.avatar){font-size:16px}
 .st-nav button .drawn-icon{width:22px;height:22px}
 .st-me-text strong{font-size:16px}
 
-/* Medium everywhere in both places: a touch more than Regular, never SemiBold or Bold. The wordmark is the logo, not text, and the serif headings stay Regular. */
+/* Weight in both places: Medium is the floor, SemiBold carries every label and title, Bold is never used here.
+   The wordmark is the logo, not text, and the serif headings stay Regular. */
 .sidebar :not(.wordmark),.st,.st *{font-weight:500!important}
+.sidebar :is(.nav-item,.nav-item *,.history-label,.history-label *,.account-button>span:not(.avatar),.account-button>span:not(.avatar) *),
+.sidebar .history-item.chosen,.sidebar .history-item.chosen *,
+.st :is(b,strong,h2,h3,h4,.primary,.st-group-label,.st-count,.st-card-title,.st-nav button,.st-nav button *,.st-strong),
+.st :is(b,strong,h3,h4) *{font-weight:600!important}
 .st :is(.st-top h2,.st-head h1,.st-id-text strong,.usage-facts p,.usage-facts b){font-weight:400!important}

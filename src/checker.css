@@ -31,7 +31,7 @@
 }
 .provenance-page h1 {
   font:
-    400 clamp(36px, 4.3vw, 56px) / 1.08 var(--serif);
+    400 clamp(36px, 4.3vw, 56px) / 1.08 var(--serif-display);
   margin: 14px 0 20px;
   letter-spacing: -1.5px;
 }

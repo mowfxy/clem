@@ -9,7 +9,7 @@
 .sp-crumb:hover .drawn-icon{transform:rotate(180deg) translateX(2px)}
 .sp-title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-top:10px;padding-bottom:24px}
 .sp-title{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
-.space-page .sp-name{font:400 44px/1.05 var(--serif);letter-spacing:var(--track-display);color:var(--sp-ink);padding:0;background:none;border:0;text-align:left;cursor:text;max-width:100%}
+.space-page .sp-name{font:400 44px/1.05 var(--serif-display);letter-spacing:var(--track-display);color:var(--sp-ink);padding:0;background:none;border:0;text-align:left;cursor:text;max-width:100%}
 .space-page input.sp-name{width:100%;border-bottom:1px dashed var(--sp-line-2)!important;background:none!important;outline:0;padding:0!important;box-shadow:none}
 .sp-desc{margin:0;font-size:var(--t-body);line-height:1.5;color:var(--sp-soft);max-width:600px}
 .sp-actions{display:flex;gap:8px;align-items:center;margin-top:10px}

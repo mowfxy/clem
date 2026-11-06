@@ -1,6 +1,12 @@
 !ifdef BUILD_UNINSTALLER
 Var removeClemData
 !endif
+!macro customInstall
+  ; Windows caches a shortcut's icon by path, so an update with a new icon keeps showing the old one on the desktop and
+  ; taskbar until the shell is told to refresh. Runs on every install and update, and failing here is harmless.
+  nsExec::Exec '"$SYSDIR\ie4uinit.exe" -show'
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+!macroend
 !macro customUnInit
   StrCpy $removeClemData "no"
   ${if} ${isUpdated}

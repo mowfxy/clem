@@ -73,3 +73,6 @@ Rule kept: nothing redraws an SVG in the sidebar. Each film is drawn once and pl
 ## Sidebar and settings (user, 2026-11-05)
 Wider column and larger buttons, after the user's Claude app screenshot: --side is clamp(260px,21vw,300px), nav rows 42px, type 16px, icons 22px, in src/roomy.css, with settings' rail matching.
 All Sans text in the sidebar and settings is Medium (the user: "slightly thicker ... but not bold"). The wordmark stays as the logo and the serif headings stay Regular.
+
+## 2026-11-06 Type: Mowafy Sans 6.3 and Serif 3.2
+Both families now have Text and Display cuts; Display (--serif-display, --sans-display) is for headings of about 28px and up. In the sidebar and settings Medium is the floor, SemiBold carries labels and titles, and Bold is not used (src/roomy.css). This replaces the earlier "Medium everywhere" rule at the owner's request.
