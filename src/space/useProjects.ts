@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { coordinatorTurn, emptyRoom, modelsOf, reportsWaiting, teamOf, toggleReaction, workThread, type Ask, type Room } from "../../core/coordinator";
-import { entry, forget, parseMemory, remember, serializeMemory, type MemoryEntry } from "../../core/project-memory";
+import { entry, foldTopics, forget, parseMemory, remember, serializeMemory, type MemoryEntry } from "../../core/project-memory";
 import type { ProjectRoom, RoomFile, RoomMessage, Space } from "../../core/types";
 import { getBlob, storeBlob, type State } from "../store";
 
@@ -40,7 +40,8 @@ export function useProjects({ stateRef, patch, ask, fallbackModel, onError }: {
   function loadMemory(spaceId: string) {
     if (memory.current.has(spaceId)) return Promise.resolve(memory.current.get(spaceId)!);
     if (!loading.current.has(spaceId)) loading.current.set(spaceId, getBlob(projectMemoryId(spaceId)).then((b) => b ? b.text() : "").catch(() => "").then((text) => {
-      const list = parseMemory(text);
+      // Older files hold one fact per line. They read as topics at once; the file itself changes on the next save.
+      const list = foldTopics(parseMemory(text));
       if (!memory.current.has(spaceId)) memory.current.set(spaceId, list);
       setStamp((n) => n + 1);
       return memory.current.get(spaceId)!;

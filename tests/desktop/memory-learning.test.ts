@@ -31,7 +31,7 @@ test("a standing instruction confirms its preferences but only learns the facts 
     { key: "language", text: "The user wants answers in Arabic.", kind: "preference", about: "user" },
     { key: "role", text: "The user is a pharmacist.", kind: "fact", about: "user" },
   ], { scope: "chat:a", sourceId: "chat:a", explicit: "preferences" });
-  assert.deepEqual(state.records.map((m) => [m.key, m.confirmed]), [["pref:language", true], ["role", false]]);
+  assert.deepEqual(state.records.map((m) => [m.key, m.confirmed]), [["pref:topic:Language", true], ["topic:Role", false]]);
 });
 
 test("people writing in other languages start a memory pass too", () => {
@@ -44,17 +44,16 @@ test("people writing in other languages start a memory pass too", () => {
   assert.equal(a.text, "اسمي أحمد.");
 });
 
-test("a newer learned record outranks a kept one under the same key until the person decides", () => {
+test("a learned correction takes the place of the kept note it corrects", () => {
   let state = learnMemories(base, [{ key: "year", text: "The user is a second-year student.", kind: "fact", about: "user" }], { scope: "chat:a", sourceId: "chat:a", explicit: true, now: "2026-09-01T00:00:00.000Z" });
-  state = learnMemories(state, [{ key: "year", text: "The user is a third-year student.", kind: "fact", about: "user" }], { scope: "chat:b", sourceId: "chat:b", explicit: false, now: "2026-09-10T00:00:00.000Z" });
+  state = learnMemories(state, [{ key: "year", text: "The user is a third-year student.", kind: "fact", about: "user", replaces: "second-year student" }], { scope: "chat:b", sourceId: "chat:b", explicit: false, now: "2026-09-10T00:00:00.000Z" });
   const now = Date.parse("2026-09-11");
-  const learned = state.records.find((m) => !m.confirmed)!;
-  assert.deepEqual(retrieveMemory(state, "chat:c", "anything", { now }).map((m) => m.text), ["The user is a third-year student."]);
-  // Keeping it replaces the old kept one; forgetting it brings the old one back.
-  const kept = confirmMemory(state, learned.id, "2026-09-12T00:00:00.000Z");
-  assert.deepEqual(retrieveMemory(kept, "chat:c", "anything", { now }).map((m) => m.text), ["The user is a third-year student."]);
-  assert.equal(kept.records.filter((m) => !m.supersededBy).length, 1);
-  assert.deepEqual(retrieveMemory(forgetMemory(state, [learned.id]), "chat:c", "anything", { now }).map((m) => m.text), ["The user is a second-year student."]);
+  assert.deepEqual(retrieveMemory(state, "chat:c", "anything", { now }).map((m) => m.text), ["third-year student"]);
+  assert.equal(state.records[0].confirmed, false);
+  const kept = confirmMemory(state, state.records[0].id, "2026-09-12T00:00:00.000Z");
+  assert.deepEqual(retrieveMemory(kept, "chat:c", "anything", { now }).map((m) => m.text), ["third-year student"]);
+  assert.equal(kept.records[0].confirmed, true);
+  assert.equal(retrieveMemory(forgetMemory(state, [state.records[0].id]), "chat:c", "anything", { now }).length, 0);
 });
 
 test("passwords, keys and card numbers are never kept, even when asked", () => {
@@ -68,7 +67,7 @@ test("deleting a chat forgets what was only learned from it and keeps what the p
   let state = learnMemories(base, [{ key: "role", text: "The user is a nurse.", kind: "fact", about: "user" }], { scope: "chat:a", sourceId: "chat:a", explicit: false });
   state = learnMemories(state, [{ key: "units", text: "The user prefers SI units.", kind: "preference", about: "user" }], { scope: "chat:a", sourceId: "chat:a", explicit: true });
   state = learnMemories(state, [{ key: "city", text: "The user lives in Cairo.", kind: "fact", about: "user" }], { scope: "chat:b", sourceId: "chat:b", explicit: false });
-  assert.deepEqual(forgetChat(state, "a").records.map((m) => m.text).sort(), ["The user lives in Cairo.", "The user prefers SI units."]);
+  assert.deepEqual(forgetChat(state, "a").records.map((m) => m.text).sort(), ["SI units", "lives in Cairo"]);
 });
 
 test("a space's own facts apply without matching words; no kind crowds out the others", () => {
@@ -76,11 +75,11 @@ test("a space's own facts apply without matching words; no kind crowds out the o
   for (let i = 0; i < 60; i++) state = learnMemories(state, [{ key: "fact" + i, text: `The user has hobby number ${i}, described here at some considerable length.`, kind: "fact", about: "user" }], { scope: "chat:x", sourceId: "chat:x", explicit: false, now: "2026-09-02T00:00:00.000Z" });
   const found = retrieveMemory(state, "subject:med", "Explain heart murmurs", { now: Date.parse("2026-09-03") });
   assert.ok(found.some((m) => /cardiology/.test(m.text)), "space fact included");
-  assert.ok(found.filter((m) => m.scope === "user:me").reduce((n, m) => n + m.text.length, 0) <= 6000 * 0.35);
+  assert.ok(found.filter((m) => m.scope === "user:me").reduce((n, m) => n + m.text.length, 0) <= 2400 * 0.35 + 200);
   // "user" is in every memory, so a question about users matches none of them by that word alone.
   let p = learnMemories(base, [{ key: "db", text: "The user is building a Postgres app.", kind: "fact", about: "space" }], { scope: "project:p", sourceId: "chat:a", explicit: false, now: "2026-09-01T00:00:00.000Z" });
   p = learnMemories(p, [{ key: "pet", text: "The user has a cat.", kind: "fact", about: "space" }], { scope: "project:p", sourceId: "chat:a", explicit: false, now: "2026-09-02T00:00:00.000Z" });
-  assert.equal(retrieveMemory(p, "project:p", "how many users can postgres handle", { now: Date.parse("2026-09-03") })[0].text, "The user is building a Postgres app.");
+  assert.equal(retrieveMemory(p, "project:p", "how many users can postgres handle", { now: Date.parse("2026-09-03") })[0].text, "building a Postgres app");
 });
 
 test("keeping a dated memory keeps its date", () => {

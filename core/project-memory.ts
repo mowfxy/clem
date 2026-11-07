@@ -1,7 +1,10 @@
 /**
- * A project's memory, kept as one small Markdown file beside the project (never sent whole). Each line is one fact:
+ * A project's memory, kept as one small Markdown file beside the project (never sent whole). Each line is one topic,
+ * named by its first tag (one area of the project's work), with its notes in a few words:
  *
- *   - 2026-11-01 #launch #deadline | Launch is on December 3.
+ *   - 2026-11-01 #launch #deadline | December 3; soft launch Nov 28
+ *
+ * A note for a topic joins that topic's line; a line that is full, or a fact with no tag, stands alone.
  *
  * Every turn the coordinator gets only the few lines that match what is being talked about (BM25 over the words and
  * tags, a little weight for recent lines), inside a fixed character budget, so memory costs about the same few hundred
@@ -62,7 +65,7 @@ export function parseMemory(file: string): MemoryEntry[] {
 }
 
 export function serializeMemory(entries: MemoryEntry[], title = "Project memory") {
-  return `# ${title}\n\nOne fact per line: date, tags, then the fact. Clem reads only the lines that matter to each message.\n\n` +
+  return `# ${title}\n\nOne topic per line: date, topic and tags, then its notes. Clem reads only the lines that matter to each message.\n\n` +
     entries.map((e) => `- ${e.at} ${e.tags.map((t) => "#" + t).join(" ")}${e.tags.length ? " " : ""}| ${e.text}`).join("\n") + (entries.length ? "\n" : "");
 }
 
@@ -75,11 +78,36 @@ function overlap(a: string, b: string) {
   return both / (x.size + y.size - both);
 }
 
-/** Adds facts, newest last. A fact that restates one already kept (most words shared) replaces it, with the new date. */
+const CHARS = 400;
+const noteList = (text: string) => text.split(/;\s+/).map((n) => n.trim()).filter(Boolean);
+const topicOf = (e: MemoryEntry) => e.tags[0];
+/** The last line of a topic, or -1. */
+const lineOf = (entries: MemoryEntry[], topic: string | undefined) => { if (topic) for (let i = entries.length - 1; i >= 0; i--) if (topicOf(entries[i]) === topic) return i; return -1; };
+/** The line a note joins: the last line of its topic that has room for it, a restated note making way for the new one. */
+function joined(line: MemoryEntry, fact: MemoryEntry, exact = false) {
+  const notes = noteList(line.text).filter((n) => (exact ? n !== fact.text : overlap(n, fact.text) < 0.7));
+  const text = [...notes, fact.text].join("; ");
+  return text.length > CHARS ? undefined : entry(text, [...line.tags, ...fact.tags], fact.at > line.at ? fact.at : line.at);
+}
+/** Lines of the same topic, as older files have them, become one line, word for word. A full line stays apart, so nothing is cut. */
+export function foldTopics(entries: MemoryEntry[]): MemoryEntry[] {
+  const out: MemoryEntry[] = [];
+  for (const e of entries) {
+    const at = lineOf(out, topicOf(e));
+    const line = at >= 0 ? noteList(e.text).reduce<MemoryEntry | undefined>((held, n) => held && joined(held, { ...e, text: n }, true), out[at]) : undefined;
+    if (line) out[at] = line;
+    else out.push(e);
+  }
+  return out;
+}
+/** Adds facts, newest last. One with a topic joins that topic's line; one that restates a fact already kept (most words shared) replaces it, with the new date. */
 export function remember(entries: MemoryEntry[], added: MemoryEntry[]): MemoryEntry[] {
   let next = [...entries];
   for (const fact of added) {
     if (!fact.text) continue;
+    const at = lineOf(next, topicOf(fact));
+    const line = at >= 0 ? joined(next[at], fact) : undefined;
+    if (line) { next.splice(at, 1, line); continue; }
     const same = next.findIndex((e) => e.id === fact.id || overlap(e.text, fact.text) >= 0.7);
     if (same >= 0) next.splice(same, 1, { ...fact, tags: [...new Set([...fact.tags, ...next[same].tags])].slice(0, 6) });
     else next.push(fact);

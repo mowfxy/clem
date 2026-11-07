@@ -132,6 +132,18 @@ export function boundedConversation(
   return [...system, ...brief, ...notice, ...kept, ...required];
 }
 
+/** The most of the earlier conversation a replay carries on a CLI that has lost its session (about 68k tokens): a full
+ *  window's worth would leave no room to grow, and T3 Code hands over far less. The chat stays whole in Clem. */
+export const REPLAY_HISTORY = 240_000;
+/** A replay's budget: everything this request needs whole, plus REPLAY_HISTORY of what came before, within `ceiling`. */
+export function replayBudget(messages: ContextMessage[], ceiling: number) {
+  const history = messages.filter((m) => m.role !== "system");
+  let latest = history.length - 1;
+  while (latest > 0 && (history[latest].role !== "user" || isSource(history[latest]))) latest--;
+  const needed = [...messages.filter((m) => m.role === "system"), ...history.slice(Math.max(0, latest))].reduce((n, m) => n + m.content.length, 0);
+  return Math.min(ceiling, needed + REPLAY_HISTORY);
+}
+
 export function retrievalQuery(messages: ContextMessage[]) {
   return [...messages].reverse().find((m) => m.role === "user" && !isSource(m))?.content || "";
 }

@@ -1,3 +1,4 @@
+import { mergeTopicEdits } from "../core/memory-topics.ts";
 import {
   mergeSync,
   validateSync,
@@ -36,6 +37,7 @@ export class EssentialSync {
             base.data,
             data,
             answer.unchanged ? remote.data : validateSync(kind, remote.data),
+            kind === "memory" ? mergeTopicEdits as unknown as Parameters<typeof mergeSync>[3] : undefined,
           );
           let revision = remote.revision;
           if (JSON.stringify(merged) !== JSON.stringify(remote.data)) {

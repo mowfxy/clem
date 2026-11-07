@@ -103,9 +103,9 @@ test("learned answer preferences apply everywhere, come first, and merge instead
   const found = retrieveMemory(state, "project:x", "Explain the Krebs cycle", { now: Date.parse("2026-09-02") });
   assert.equal(found.length, 2);
   assert.match(memoryLines(found), /^How the user wants answers[\s\S]*short answers[\s\S]*About the user[\s\S]*nurse/);
-  // Same wish said differently under another key: the old one is superseded (kept, not deleted).
-  state = learnMemories(state, [{ key: "brevity", text: "The user wants short answers, no bullet points.", kind: "preference", about: "user" }], { ...ctx, now: "2026-09-03T00:00:00.000Z" });
-  assert.equal(state.records.length, 3);
+  // Same wish said differently under the same topic: it stays one note.
+  state = learnMemories(state, [{ key: "answer-length", text: "The user wants short answers, without bullet points.", kind: "preference", about: "user" }], { ...ctx, now: "2026-09-03T00:00:00.000Z" });
+  assert.equal(state.records.length, 2);
   assert.equal(retrieveMemory(state, "chat:a", "anything", { now: Date.parse("2026-09-04") }).filter((m) => /short answers/.test(m.text)).length, 1);
   assert.equal(correctsStyle("way too long, shorter answers please"), true);
   assert.equal(correctsStyle("stop using bullet points"), true);
@@ -169,10 +169,10 @@ test("editing a memory keeps it, confirms a learned one and refuses secrets", ()
   let state = learnMemories(base, [{ key: "exam", text: "The user has a chemistry exam soon.", kind: "fact", about: "space" }], { scope: "subject:chem", sourceId: "chat:1", explicit: false, now: "2026-10-01T00:00:00Z" });
   const learned = state.records[0];
   assert.equal(learned.confirmed, false);
-  state = updateMemory(state, learned.id, { text: "The user's chemistry exam is on 12 November." }, "2026-10-02T00:00:00Z");
+  state = updateMemory(state, learned.id, { text: "Chemistry exam on 12 November" }, "2026-10-02T00:00:00Z");
   const live = state.records.filter((m) => !m.supersededBy);
   assert.equal(live.length, 1);
-  assert.equal(live[0].text, "The user's chemistry exam is on 12 November.");
+  assert.equal(live[0].text, "Chemistry exam on 12 November");
   assert.equal(live[0].confirmed, true);
   assert.equal(live[0].kind, "fact");
   assert.throws(() => updateMemory(state, live[0].id, { text: "My password is hunter22" }), /never keeps/);
@@ -188,15 +188,15 @@ test("a memory moved into another space never replaces one that shares its key",
   assert.equal(retrieveMemory(state, "project:a", "length").length, 0);
 });
 test("sharing applies a space's memory in the spaces it is shared with only, and labels it", () => {
-  let state = putMemory(base, input("project:a"));
+  let state = putMemory(base, { ...input("project:a"), kind: "fact" });
   state = updateMemory(state, state.records[0].id, { sharedWith: ["project:b", "chat:x", "project:a"] });
   const shared = state.records.find((m) => !m.supersededBy)!;
   assert.deepEqual(shared.sharedWith, ["project:b"]);
   const inB = retrieveMemory(state, "project:b", "length");
   assert.equal(inB.length, 1);
   assert.equal(retrieveMemory(state, "project:c", "length").length, 0);
-  assert.match(memoryLines(inB, "project:b"), /shared by the user from another project/);
-  assert.match(memoryLines(retrieveMemory(state, "project:a", "length"), "project:a"), /this project/);
+  assert.match(memoryLines(inB, "project:b"), /Shared by the user from another project:/);
+  assert.match(memoryLines(retrieveMemory(state, "project:a", "length"), "project:a"), /This project:/);
   // Moving it to the person makes it apply everywhere, so it is no longer shared one by one.
   const everywhere = updateMemory(state, shared.id, { scope: PROFILE_SCOPE });
   assert.deepEqual(everywhere.records.find((m) => !m.supersededBy)!.sharedWith, []);
