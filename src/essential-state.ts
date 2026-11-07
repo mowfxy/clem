@@ -10,14 +10,17 @@ export function essentials(state: State) {
       .filter((s) => !s.builtin)
       .map((s) => ({ ...s, builtin: false as const })),
     notes: [...notes.values()].filter((n) => n.text.trim()),
+    ...(state.essentialsUnsynced ? { noBaseline: true } : {}),
   };
 }
 export function applyEssentials(
   state: State,
-  result: { skills: Skill[]; notes: { id: string; text: string }[] },
+  result: { skills: Skill[]; notes: { id: string; text: string }[]; error?: string },
 ): State {
+  // A failed sync hands back what it was given: the workspace still has not met the cloud's copy.
+  const { essentialsUnsynced, ...settled } = state;
   return {
-    ...state,
+    ...(result.error ? state : settled),
     skills: result.skills,
     essentialNotes: result.notes,
     memory: result.notes.find((n) => n.id === "personal")?.text || "",

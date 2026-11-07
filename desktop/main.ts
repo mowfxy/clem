@@ -1260,7 +1260,8 @@ void app.whenReady().then(async () => {
     }
     if(request.action==="essentialSync") {
       void usageTally.flush(user.id);
-      const [skills,notes]=await Promise.all([essentialSync.exchange(user.id,"skills",request.skills),essentialSync.exchange(user.id,"notes",request.notes)]);
+      const options={noBaseline:request.noBaseline};
+      const [skills,notes]=await Promise.all([essentialSync.exchange(user.id,"skills",request.skills,options),essentialSync.exchange(user.id,"notes",request.notes,options)]);
       return {skills:skills.data,notes:notes.data,error:skills.error||notes.error};
     }
     if (request.action === "ocr") {
