@@ -30,7 +30,6 @@ const day = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined,
 const isPreference = (m: Fact) => m.kind === "preference" || !!m.key?.startsWith("pref:");
 /** Three dots: the options beside a memory. */
 const Dots = () => <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" fill="currentColor"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="12.5" cy="8" r="1.25" fill="currentColor"/></svg>;
-const Tick = () => <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.6l3 2.9 6.6-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 /** A memory's words as a lead and dated points, so a long sentence reads like a list. */
 function MemoryWords({ text }: { text: string }) {
   const { lead, points } = memoryPoints(text);
@@ -119,16 +118,14 @@ export function MemoryConversation({
     catch (e) { setStatus(cleanError(e)); return false; }
     finally { setBusy(false); }
   }
-  const act = (action: "memoryConfirm" | "memoryForget", id: string) => run(() => desktop!.invoke({ action, id }));
+  const remove = (id: string) => run(() => desktop!.invoke({ action: "memoryForget", id }));
   const update = (id: string, change: { text?: string; scope?: string; sharedWith?: string[] }) => run(() => desktop!.invoke({ action: "memoryUpdate", id, ...change }));
-  const keepAll = (items: Fact[]) => run(async () => { for (const m of items.filter((x) => !x.confirmed)) await desktop!.invoke({ action: "memoryConfirm", id: m.id }); });
   const count = total + (summary.trim() ? 1 : 0);
-  const fresh = (facts || []).filter((f) => !f.confirmed && (!only || f.scope === home || (home && f.sharedWith?.includes(home)))).length;
   const homes: MemoryPlace[] = [{ scope: PROFILE, label: "About you (everywhere)" }, ...places];
   return (
     <section className="memory-panel">
       <div className="memory-head">
-        <p className="memory-lede">{facts === null ? " " : count ? <>{`${count} ${count === 1 ? "thing" : "things"} remembered${aboutYou ? ` here, plus ${aboutYou} about you that ${aboutYou === 1 ? "applies" : "apply"} everywhere` : ""}`}{fresh > 0 && <span className="memory-fresh"> · {fresh} new to review</span>}</> : "Nothing remembered yet"}</p>
+        <p className="memory-lede">{facts === null ? " " : count ? <>{`${count} ${count === 1 ? "thing" : "things"} remembered${aboutYou ? ` here, plus ${aboutYou} about you that ${aboutYou === 1 ? "applies" : "apply"} everywhere` : ""}`}</> : "Nothing remembered yet"}</p>
         {total > 6 && (
           <label className="memory-search">
             <Icon name="search" size={13} />
@@ -147,17 +144,15 @@ export function MemoryConversation({
       {summary.trim() && onSummary && !query.trim() && (
         <div className="memory-group">
           <h4>{summaryLabel}</h4>
-          <ul><li><div className="memory-body"><MemoryWords text={summary.trim()} /></div><span className="memory-actions"><Menu label="Options for your notes" trigger={<Dots />} items={[{ label: "Forget", icon: "trash", danger: true, run: async () => { if (await confirmDialog({ title: `Forget “${summaryLabel}”?`, message: "All of it is erased. Clem stops using it in new answers.", confirm: "Forget", danger: true })) onSummary(""); } }]} /></span></li></ul>
+          <ul><li><div className="memory-body"><MemoryWords text={summary.trim()} /></div><span className="memory-actions"><Menu label="Options for your notes" trigger={<Dots />} items={[{ label: "Delete", icon: "trash", danger: true, run: async () => { if (await confirmDialog({ title: `Delete “${summaryLabel}”?`, message: "All of it is erased. Clem stops using it in new answers.", confirm: "Delete", danger: true })) onSummary(""); } }]} /></span></li></ul>
         </div>
       )}
       {groups.map(({ scope, items }) => {
-        const learned = items.filter((m) => !m.confirmed).length;
         return (
           <div className="memory-group" key={scope}>
-            {(!only || scope === SHARED || learned > 1) && (
+            {(!only || scope === SHARED) && (
               <div className="memory-group-head">
                 {(scope === SHARED || !only) && <h4>{scope === SHARED ? "Shared from other spaces" : labelFor(scope)}<span className="memory-count">{items.length}</span></h4>}
-                {learned > 1 && <button type="button" className="memory-keep-all" disabled={busy} onClick={() => void keepAll(items)}>Keep all {learned}</button>}
               </div>
             )}
             <ul>
@@ -178,12 +173,6 @@ export function MemoryConversation({
                       <span className="memory-meta">
                         {!m.confirmed && <span className="memory-new">New</span>}
                         <span>{[isPreference(m) ? "How you like answers" : "", metaOf(m, labelFor, only ? home : undefined)].filter(Boolean).join(" · ")}</span>
-                      </span>
-                    )}
-                    {!m.confirmed && editing?.id !== m.id && placing?.id !== m.id && (
-                      <span className="memory-review">
-                        <button type="button" className="memory-keep" disabled={busy} aria-description="Clem picked this up in a chat. Keep it?" onClick={() => void act("memoryConfirm", m.id)}><Tick />Keep</button>
-                        <button type="button" className="memory-drop" disabled={busy} onClick={() => void act("memoryForget", m.id)}>Forget</button>
                       </span>
                     )}
                     {placing?.id === m.id && (
@@ -212,8 +201,8 @@ export function MemoryConversation({
                         { label: "Edit", icon: "rename", run: () => { setPlacing(null); setEditing({ id: m.id, text: m.text }); } },
                         ...(homes.length > 1 ? [{ label: m.scope === PROFILE ? "Move to a project or subject" : "Where it applies…", run: () => { setEditing(null); setPlacing({ id: m.id, scope: m.scope, shared: m.sharedWith || [] }); } }] : []),
                         ...(only && home && m.scope !== home && m.sharedWith?.includes(home) ? [{ label: "Stop using here", run: () => void update(m.id, { sharedWith: (m.sharedWith || []).filter((s) => s !== home) }) }] : []),
-                        { label: "Forget", icon: "trash", danger: true, run: () => void act("memoryForget", m.id) },
                       ]} />
+                      <button type="button" className="memory-delete" disabled={busy} aria-label={"Delete: " + m.text.slice(0, 60)} title="Delete" onClick={() => void remove(m.id)}><Icon name="trash" size={15} /></button>
                     </span>
                   )}
                 </li>

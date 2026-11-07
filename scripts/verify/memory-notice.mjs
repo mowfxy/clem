@@ -1,5 +1,5 @@
 // Checks the memory notice and chat deletion against the real App with a scripted desktop bridge:
-// a "memory" event after an answer shows a notice whose Forget button forgets exactly those records,
+// a "memory" event after an answer shows a notice whose Delete button removes exactly those records,
 // and deleting a chat asks the desktop to forget what was only learned from it.
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
@@ -39,10 +39,10 @@ try {
   check(await notice.getByText("second-year biology student").isVisible(), "notice shows what was noted");
   await page.waitForTimeout(1800);
   await page.screenshot({ path: `${out}/notice.png` });
-  await notice.getByRole("button", { name: /Forget/ }).click();
+  await notice.getByRole("button", { name: /Delete/ }).click();
   await page.waitForFunction(() => window.requests.some((r) => r.action === "memoryForget"));
   const forget = await page.evaluate(() => window.requests.find((r) => r.action === "memoryForget"));
-  check(JSON.stringify(forget.ids) === JSON.stringify(ids), "Forget sends both ids");
+  check(JSON.stringify(forget.ids) === JSON.stringify(ids), "Delete sends both ids");
 
   // A kept memory ("remember that…") says so.
   await page.evaluate(() => { for (const fn of window.__chatListeners) fn({ id: "run-2", type: "memory", text: "", memories: [{ id: "33333333-3333-4333-8333-333333333333", text: "The user prefers SI units.", confirmed: true }] }); });
@@ -54,7 +54,8 @@ try {
   await page.locator(".chat-options:popover-open").getByRole("menuitem", { name: "Delete" }).click();
   const modal = page.getByRole("dialog").filter({ hasText: "Delete conversation?" });
   await modal.waitFor({ timeout: 5000 });
-  check(await modal.getByText("memory you kept stay").isVisible(), "delete dialog explains what is forgotten");
+  // This chat is in a subject, so the dialog speaks about the files that stay there (src/App.tsx); chats outside one say "Memory you kept stays."
+  check(await modal.getByText("stay in this subject or project").isVisible(), "delete dialog explains what is kept");
   await page.screenshot({ path: `${out}/delete.png` });
   await modal.getByRole("button", { name: "Delete conversation" }).click();
   await page.waitForFunction(() => window.requests.some((r) => r.action === "memoryForgetChat"), null, { timeout: 5000 });
