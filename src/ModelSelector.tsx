@@ -64,6 +64,9 @@ function usePopover(trigger: RefObject<HTMLButtonElement | null>, open: boolean,
   const [position, setPosition] = useState({ left: 0, top: 0 });
   useLayoutEffect(() => {
     if (!open) return;
+    // A glass dialog is the box a fixed child is placed from and clipped to; the top layer answers to the window alone.
+    const box = panel.current;
+    if (box?.parentElement?.closest("dialog")) { box.popover = "manual"; box.showPopover(); }
     const place = () => {
       const anchor = trigger.current;
       if (!anchor || !panel.current) return;

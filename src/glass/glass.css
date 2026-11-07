@@ -27,7 +27,7 @@ html[data-sidebar=closed] body .sidebar{transform:translateX(calc(-100% - 12px))
 /* The top bar has no surface of its own. Text scrolling up into it goes soft under a veil that fades out with no edge,
    so nothing reads as a strip or a seam; on the home screen there is only the horizon. */
 html:root body .workspace-top{background:transparent!important;border:0;box-shadow:none}
-.workspace::before{content:'';position:fixed;top:0;left:var(--side);right:0;height:calc(var(--tb,0px) + 16px);z-index:5;pointer-events:none;background:linear-gradient(var(--pane-tint),transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);-webkit-mask-image:linear-gradient(#000 45%,transparent);mask-image:linear-gradient(#000 45%,transparent);transition:opacity .4s}
+.workspace::before{content:'';position:fixed;top:0;left:var(--side);right:0;height:calc(var(--tb,0px) + 16px);z-index:5;pointer-events:none;background:linear-gradient(var(--pane-tint),transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);-webkit-mask-image:linear-gradient(#000 45%,transparent),linear-gradient(90deg,transparent,#000 56px);mask-image:linear-gradient(#000 45%,transparent),linear-gradient(90deg,transparent,#000 56px);-webkit-mask-composite:source-in;mask-composite:intersect;transition:opacity .4s}
 .glass-clear .workspace::before{opacity:0}
 html[data-sidebar=closed] .workspace::before{left:0}
 @media(max-width:760px){.workspace::before{left:0}}
@@ -74,7 +74,8 @@ body .sidebar .profile-settings .drawn-icon{width:var(--icon);height:var(--icon)
 .sidebar :not(.wordmark),.st,.st *{font-weight:500!important}
 .sidebar :is(.nav-item.active,.nav-item.active *,.history-item.chosen,.history-item.chosen *){font-weight:600!important}
 .st :is(b,strong,.st-group-label,.st-count,.st-nav button.active,.st-nav button.active *,.st-strong,.primary){font-weight:600!important}
-.st :is(.st-top h2,.st-head h1,.st-id-text strong,.usage-facts p,.usage-facts b){font-weight:400!important}
+/* Doubled .st: the list above carries the weight of its longest selector, and these serif lines must still win. */
+.st.st :is(.st-top h2,.st-head h1,.st-id-text strong,.usage-facts p,.usage-facts b){font-weight:400!important}
 
 /* ---------- Settings: the same glass, the same controls ---------- */
 .st-dialog::backdrop{background:#02040a59;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
@@ -83,6 +84,9 @@ html:root .st{--st-bg:transparent;--st-rail:#ffffff08;--st-card:transparent;--st
   border-radius:24px;background:var(--glass-sheen),#08101f8c;-webkit-backdrop-filter:blur(40px) saturate(2.4) brightness(1.5);backdrop-filter:blur(40px) saturate(2.4) brightness(1.5);box-shadow:var(--glass-rim),0 30px 80px -20px #000d}
 html:root[data-theme=light] .st{--st-rail:#ffffff4d;--st-raise:#ffffffa6;--st-hover:#ffffff73;--st-line:#1b274014;--st-line-2:#1b274029;--st-soft:#33415c;
   background:var(--glass-sheen),#f2f6fbc7;-webkit-backdrop-filter:blur(40px) saturate(1.6);backdrop-filter:blur(40px) saturate(1.6);box-shadow:var(--glass-rim),0 30px 80px -24px #1b274066}
+/* The dialog itself never animates: while the full-window dialog fades, it cuts the glass inside off from the app behind
+   it, so the window looked unfrosted for half a second and then snapped. The window has its own entrance. */
+html:root body dialog.st-dialog[open]{animation:none!important}
 @media(min-width:901px){.st{grid-template-columns:var(--rail) minmax(0,1fr)}}
 .st-rail{padding:14px 10px 8px;border-right:1px solid var(--st-line)}
 .st-top{min-height:34px;margin:0 0 10px;padding:0 6px}
@@ -149,7 +153,9 @@ body .new-chat-content .suggestions button .drawn-icon{width:15px;height:15px;co
 body .new-chat-content .suggestions button:hover{background:#ffffff26}
 html:root[data-theme=light] body .new-chat-content .suggestions button{background:#ffffff80;box-shadow:inset 0 1px 0 #fff,0 0 0 1px #1b27400f}
 
-.study-home{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;margin-top:clamp(24px,5vh,48px);animation:home-in .7s cubic-bezier(.16,1,.3,1) .1s backwards}
+.study-home{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;margin-top:clamp(24px,5vh,48px)}
+/* Each widget fades itself in. A fading parent would cut the glass inside it off from the app behind, and it would snap in afterwards. */
+.study-home>*{animation:home-in .7s cubic-bezier(.16,1,.3,1) .1s backwards}
 @keyframes home-in{from{opacity:0;transform:translateY(10px)}}
 .sw{position:relative;display:flex;flex-direction:column;min-width:0;min-height:176px;padding:12px 16px 12px;border-radius:18px;background:var(--glass-sheen),var(--glass-tint);-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-drop);color:var(--ink)}
 .sw-activity{grid-column:span 7}.sw-recent{grid-column:span 5}.sw-exam{grid-column:span 3}.sw-next{grid-column:span 6}.sw-month{grid-column:span 3}
@@ -197,12 +203,17 @@ body .sw-big{flex:1;display:flex;flex-direction:column;align-items:flex-start;ju
 html:root[data-theme=light] .sw-month small.up{color:#127a4c}
 @media(max-width:1080px){.sw-activity,.sw-recent{grid-column:span 12}.sw-exam,.sw-month{grid-column:span 6}.sw-next{grid-column:span 12;order:3}}
 @media(max-width:620px){.sw-exam,.sw-month{grid-column:span 12}}
-@media(prefers-reduced-motion:reduce){.study-home,.horizon-field{animation:none}.glass-pane{transition:none}}
-html[data-quiet=true] :is(.study-home,.horizon-field){animation:none}
+@media(prefers-reduced-motion:reduce){.study-home>*,.horizon-field{animation:none}.glass-pane{transition:none}}
+html[data-quiet=true] :is(.study-home>*,.horizon-field){animation:none}
 
 /* ---------- A chat ---------- */
+/* No fade on the chat as a whole, for the same reason as the widgets: the composer's glass sits inside it. */
+html:root body .workspace>:is(.chat-split,.space-page.pj){animation:none}
 html:root .chat-composer,html:root[data-theme=light] .chat-composer{background:none}
-.chat-composer::before{inset:-34px -100vw 0!important;background:linear-gradient(#060a1400,#060a14c7 46%)!important;box-shadow:none!important;clip-path:none!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);-webkit-mask-image:linear-gradient(transparent,#000 40%);mask-image:linear-gradient(transparent,#000 40%)}
+.chat-composer::before{inset:-34px -100vw 0!important;background:linear-gradient(#060a1400,#060a14c7 46%)!important;box-shadow:none!important;clip-path:none!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);-webkit-mask-image:linear-gradient(transparent,#000 40%),linear-gradient(90deg,transparent var(--veil-start),#000 calc(var(--veil-start) + 56px));mask-image:linear-gradient(transparent,#000 40%),linear-gradient(90deg,transparent var(--veil-start),#000 calc(var(--veil-start) + 56px));-webkit-mask-composite:source-in;mask-composite:intersect;--veil-edge:var(--side);--veil-start:calc((100% + var(--veil-edge) - 100vw)/2)}
+/* The band runs past the workspace and is cut at its edge, so it fades in from there: --veil-start is that edge, measured from the band's own left. */
+html[data-sidebar=closed] .chat-composer::before{--veil-edge:0px}
+@media(max-width:760px){.chat-composer::before{--veil-edge:0px}}
 html:root[data-theme=light] .chat-composer::before{background:linear-gradient(#f2f6fb00,#f2f6fbdb 46%)!important}
 html:root .message.user .message-text,html:root[data-theme=light] .message.user .message-text{border-radius:16px;background:#ffffff14;box-shadow:inset 0 1px 0 #ffffff1f}
 html:root[data-theme=light] .message.user .message-text{background:#ffffffa6;box-shadow:inset 0 1px 0 #fff,0 0 0 1px #1b27400f}
@@ -335,3 +346,33 @@ html:root[data-theme=light] :is(.fp-paper,.fp-slide){background:#fbfaf7;color:#1
 
 /* Destructive rows keep one red in both themes. */
 html:root[data-theme=light] body :is(.chat-options,.composer .popover,.sp-menu-list,.space-page .sp-menu-list,.fp-menu,.review-menu) button.danger{color:var(--menu-danger)}
+
+/* The wavy rule is ink: white on the dark theme, black on the light one. */
+html:root .calm-squiggle{color:#fff}
+html:root[data-theme=light] .calm-squiggle{color:#000}
+/* Under a row of cards it keeps its distance. */
+html:root .lib .calm-squiggle{margin-top:44px}
+
+/* A menu inside a settings dialog is a menu, not a row of the dialog's buttons. */
+html:root dialog.settings-dialog .settings-dialog-body .sp-menu-list button,html:root[data-theme=light] dialog.settings-dialog .settings-dialog-body .sp-menu-list button{display:flex;justify-content:flex-start;width:100%;height:30px;min-height:30px;margin:0;padding:0 8px;border:0;border-radius:8px;background:none;box-shadow:none;color:var(--menu-ink);font-size:13px}
+html:root dialog.settings-dialog .settings-dialog-body .sp-menu-list button:is(:hover,:focus-visible),html:root[data-theme=light] dialog.settings-dialog .settings-dialog-body .sp-menu-list button:is(:hover,:focus-visible){background:var(--menu-hover);color:var(--menu-ink)}
+.settings-dialog-body .sp-menu-list .menu-key{margin-left:auto;padding-left:20px;color:var(--menu-hint)}
+html:root dialog.settings-dialog .settings-dialog-body .sp-menu-list button.danger,html:root[data-theme=light] dialog.settings-dialog .settings-dialog-body .sp-menu-list button.danger{color:var(--menu-danger)}
+
+/* The Drive search is one field: the frame is the bar, the input inside it has no box of its own. */
+html:root body dialog.app-modal .gd-search{height:var(--row);padding:0 14px;border:0;border-radius:11px;background:#ffffff12;box-shadow:inset 0 1px 0 #ffffff1a;color:var(--muted)}
+html:root body dialog.app-modal .gd-search:focus-within{background:#ffffff1a;box-shadow:inset 0 1px 0 #ffffff24,inset 0 0 0 1px #ffffff24}
+html:root[data-theme=light] body dialog.app-modal .gd-search{background:#ffffffa6;box-shadow:inset 0 1px 0 #fff,0 0 0 1px #1b27401a}
+html:root[data-theme=light] body dialog.app-modal .gd-search:focus-within{background:#ffffffd9;box-shadow:inset 0 1px 0 #fff,0 0 0 1px #1b274033}
+html:root body dialog.app-modal .gd-search input:not([type=checkbox]):not([type=radio]),html:root body dialog.app-modal .gd-search input:not([type=checkbox]):not([type=radio]):focus{height:100%;min-height:0;padding:0;border:0;border-radius:0;outline:0;background:none;box-shadow:none;color:var(--ink);font-size:var(--text-s)}
+html:root body dialog.app-modal .gd-search input::placeholder{color:var(--muted)}
+
+/* ---------- Scrollbars: one quiet pill, no arrows, on every scrolling surface ----------
+   Setting scrollbar-color or a thin width makes Chromium draw the system bar and ignore ::-webkit-scrollbar, which is
+   where the Windows arrows came from, so both go back to auto here. Strips that hide their bar are left out. */
+html:root *:not(.adm-segment,.message-tools,.se-filters,.cl-demo-list,.sp-tabs){scrollbar-width:auto!important;scrollbar-color:auto!important}
+html:root ::-webkit-scrollbar{width:10px;height:10px}
+html:root ::-webkit-scrollbar-button{display:none}
+html:root ::-webkit-scrollbar-track,html:root ::-webkit-scrollbar-corner{background:transparent}
+html:root ::-webkit-scrollbar-thumb{background:var(--scroll-thumb);background-clip:padding-box;border:3px solid transparent;border-radius:10px}
+html:root ::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:padding-box}
