@@ -54,7 +54,7 @@ test("every answer is recorded in the ledger with counts only, and the ledger st
   timer.end();
   await ledger.record({ at: 1, provider: "grok", outcome: "failed", totalMs: 50, steps: 1, calls: 0, broken: 1 });
   assert.equal(recorded.length, 1);
-  assert.deepEqual(Object.keys(recorded[0]).sort(), ["at", "calls", "broken", "continued", "firstTextMs", "model", "outcome", "provider", "steps", "tokens", "totalMs"].sort());
+  assert.deepEqual(Object.keys(recorded[0]).sort(), ["at", "calls", "broken", "continued", "firstTextMs", "model", "outcome", "provider", "stages", "steps", "tokens", "totalMs"].sort());
   const entries = readLedger(readFileSync(join(dir, LEDGER_FILE), "utf8") + "not json\n");
   assert.equal(entries.length, 2);
   const [claude, grok] = summarizeLedger(entries);
