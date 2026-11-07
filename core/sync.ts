@@ -73,13 +73,15 @@ function conflictId(item: SyncItem) {
   return `${item.id.slice(0, 100)}-copy-${h.toString(36)}`;
 }
 /** Three-way comparison includes deletions. Conflicts resolve per record so one never blocks the collection:
- * - both edited, timestamps on both (memory) → newest update wins, ties go to remote;
+ * - both edited, timestamps on both (memory) → newest update wins, ties go to remote, after `resolve` (given the base,
+ *   the newer and the older side) has had the chance to keep both (a memory topic keeps the notes each side added);
  * - both edited, no timestamps (notes, skills) → both are kept, the local copy under a derived id;
  * - edited on one side, deleted on the other → a timestamped record (memory) stays forgotten; notes and skills keep the edit. */
 export function mergeSync(
   base: SyncItem[],
   local: SyncItem[],
   remote: SyncItem[],
+  resolve?: (base: SyncItem | undefined, newer: SyncItem, older: SyncItem) => SyncItem | undefined,
 ) {
   const maps = [base, local, remote].map(
       (list) => new Map(list.map((x) => [x.id, x])),
@@ -92,7 +94,7 @@ export function mergeSync(
     if (equal(l, b) || equal(l, r)) { if (r) result.push(r); continue; }
     if (equal(r, b)) { if (l) result.push(l); continue; }
     if (l && r) {
-      if (stamped(l) && stamped(r)) result.push(at(l) > at(r) ? l : r);
+      if (stamped(l) && stamped(r)) { const [newer, older] = at(l) > at(r) ? [l, r] : [r, l]; result.push(resolve?.(b, newer, older) ?? newer); }
       else result.push(r, { ...l, id: conflictId(l) });
     } else {
       const edited = (l || r)!;

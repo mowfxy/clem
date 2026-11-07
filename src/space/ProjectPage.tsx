@@ -363,11 +363,11 @@ function Context({space,memory,chats,files,driveSync,actions,project,onInstructi
     <section className="pj-panel pj-memory" aria-labelledby="pj-memory-title">
       <div className="pj-panel-head">
         <div><h3 id="pj-memory-title">Memory</h3>
-          <p>The coordinator keeps decisions, dates and preferences in <code>memory.md</code>. Each message reads only the lines that match it, so memory stays small however much it holds.</p></div>
+          <p>The coordinator keeps decisions, dates and preferences in <code>memory.md</code>, one line per topic. Each message reads only the lines that match it, so memory stays small however much it holds.</p></div>
         {list.length>0&&<Menu label="Memory options" items={[{label:'Download memory.md',icon:'download',run:()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([serializeMemory(list,`${space.name} · project memory`)],{type:'text/markdown'}));a.download=`${space.name} memory.md`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}},{label:'Forget everything',icon:'trash',danger:true,run:project.memory.clear}]}/>}
       </div>
       <dl className="pj-memory-stats">
-        <div><dt>Facts</dt><dd>{memory?list.length:'…'}</dd></div>
+        <div><dt>Topics</dt><dd>{memory?list.length:'…'}</dd></div>
         <div><dt>File</dt><dd>{sizeLabel(bytes)}</dd></div>
         <div><dt>Per message</dt><dd title="The most memory one message carries, however large the file grows">≤ {perMessage.toLocaleString()} tokens</dd></div>
       </dl>
@@ -376,14 +376,14 @@ function Context({space,memory,chats,files,driveSync,actions,project,onInstructi
       <ul className="pj-facts">
         {shown.map(e=><li key={e.id} className="pj-fact">
           {editing===e.id?<FactEdit fact={e} onSave={(text,tags)=>{project.memory.edit(e.id,text,tags);setEditing(null);}} onCancel={()=>setEditing(null)}/>:<>
-            <div className="pj-fact-text"><span>{e.text}</span><small>{e.tags.map(t=><b key={t}>#{t}</b>)}<time>{e.at}</time></small></div>
+            <div className="pj-fact-text">{e.tags[0]&&<strong>{e.tags[0][0].toUpperCase()+e.tags[0].slice(1).replace(/-/g,' ')}</strong>}<span>{e.text}</span>{e.tags.length>1&&<small>{e.tags.slice(1).map(t=><b key={t}>#{t}</b>)}</small>}</div>
             <div className="pj-fact-tools"><button type="button" aria-label="Edit" onClick={()=>setEditing(e.id)}><Icon name="rename" size={15}/></button><button type="button" aria-label="Forget" onClick={()=>project.memory.forget(e.id)}><Icon name="trash" size={15}/></button></div>
           </>}
         </li>)}
         {memory&&!list.length&&<li className="pj-fact-empty">Nothing yet. Tell the coordinator a deadline, a decision or how you like things, and it keeps it here.</li>}
       </ul>
       <form className="pj-fact-add" onSubmit={add}>
-        <input value={adding} onChange={e=>setAdding(e.target.value)} maxLength={400} placeholder="Add a fact, e.g. #launch Launch is on December 3" aria-label="Add a fact to memory"/>
+        <input value={adding} onChange={e=>setAdding(e.target.value)} maxLength={400} placeholder="Add to a topic, e.g. #launch December 3" aria-label="Add a fact to memory"/>
         <button disabled={!adding.trim()}>Add</button>
       </form>
     </section>

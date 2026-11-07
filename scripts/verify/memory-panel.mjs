@@ -12,12 +12,12 @@ try {
     const at = "2026-10-20T10:00:00.000Z";
     const record = (id, scope, text, confirmed, extra = {}) => ({ id, scope, key: "note:" + id, text, kind: confirmed ? "fact" : "inference", confirmed, updatedAt: at, sharedWith: [], source: { locator: confirmed ? "Added by you in memory settings" : "Learned from your message in a chat" }, ...extra });
     window.memory = [
-      record("11111111-1111-4111-8111-111111111111", "user:me", "The user prefers short answers with one worked example.", true, { kind: "preference", key: "pref:short" }),
-      record("22222222-2222-4222-8222-222222222222", "subject:space-test", "The user's calculus exam is on 12 November.", false, { expiresAt: "2026-11-13T00:00:00.000Z" }),
-      record("33333333-3333-4333-8333-333333333333", "subject:space-test", "The user finds integration by parts hard.", false),
-      record("55555555-5555-4555-8555-555555555555", "subject:space-test", "The user is preparing for a DSA lab test and EC quiz on October 15, 2026; a DSA midterm covering L1–6 on October 22; Physics 3 covering L1–4 on October 25; EC 1 on October 27; and Math 3 covering L1–9 on October 29, using worksheets 1–5 selectively.", true, { expiresAt: "2026-10-30T00:00:00.000Z" }),
-      record("66666666-6666-4666-8666-666666666666", "user:me", "The user prefers study plans that work backward from deadlines, show fixed dates as milestones, break work into dated tasks small enough to start immediately, use one plan block per subject or project, and ask only when a deadline or required work is missing.", false, { kind: "preference", key: "pref:plans" }),
-      record("44444444-4444-4444-8444-444444444444", "project:space-project", "The user's thesis models heat flow in rods.", true, { sharedWith: ["subject:space-test"] }),
+      record("11111111-1111-4111-8111-111111111111", "user:me", "short answers; one worked example", true, { kind: "preference", key: "pref:topic:Answer style" }),
+      record("22222222-2222-4222-8222-222222222222", "subject:space-test", "calculus exam 12 November", false, { key: "topic:Exam date", expiresAt: "2026-11-13T00:00:00.000Z" }),
+      record("33333333-3333-4333-8333-333333333333", "subject:space-test", "finds it hard; forgets the LIATE order", false, { key: "topic:Integration by parts" }),
+      record("55555555-5555-4555-8555-555555555555", "subject:space-test", "DSA lab test Oct 15; DSA midterm L1–6 Oct 22; Physics 3 L1–4 Oct 25", true, { key: "topic:Exams" }),
+      record("66666666-6666-4666-8666-666666666666", "user:me", "2nd-year physics", true, { key: "topic:Studies" }),
+      record("44444444-4444-4444-8444-444444444444", "project:space-project", "models heat flow in rods", true, { key: "topic:Thesis", sharedWith: ["subject:space-test"] }),
     ];
     window.clemDesktop = {
       onAuth: () => () => {},
@@ -30,7 +30,7 @@ try {
         if (r.action === "memoryConfirm") { Object.assign(find(r.id), { confirmed: true, kind: "fact" }); return { ok: true }; }
         if (r.action === "memoryUpdate") {
           const m = find(r.id);
-          Object.assign(m, { confirmed: true, ...(r.text ? { text: r.text } : {}), ...(r.scope ? { scope: r.scope } : {}), ...(r.sharedWith ? { sharedWith: r.sharedWith } : {}) });
+          Object.assign(m, { confirmed: true, ...(r.text ? { text: r.text } : {}), ...(r.topic ? { key: "topic:" + r.topic } : {}), ...(r.scope ? { scope: r.scope } : {}), ...(r.sharedWith ? { sharedWith: r.sharedWith } : {}) });
           if (m.scope === "user:me") m.sharedWith = [];
           return { ok: true };
         }
@@ -77,22 +77,30 @@ try {
   await page.getByRole("button", { name: /^Calculus\b/ }).click();
   await page.getByRole("tab", { name: /^Memory/ }).click();
   const panel = page.locator(".sp-memory .memory-panel");
-  await panel.getByText("4 things remembered here, plus 2 about you that apply everywhere").waitFor();
+  await panel.getByText("4 topics here, plus 2 about you that apply everywhere").waitFor();
   await panel.getByText("Shared from other spaces").waitFor();
   await panel.getByText("from Thesis", { exact: false }).waitFor();
   await panel.getByText("until", { exact: false }).first().waitFor();
+  await panel.locator(".memory-lead", { hasText: "Integration by parts" }).waitFor();
+  await panel.locator(".memory-notes", { hasText: "forgets the LIATE order" }).waitFor();
+  assert.equal(await panel.locator(".memory-points").count(), 0, "no bullet points");
+  // Topics read in name order, not by time.
+  const names = await panel.locator(".memory-group").first().locator(".memory-lead").allTextContents();
+  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
   await page.locator(".sp-memory").screenshot({ path: "artifacts/memory-subject.png" });
   // The delete button removes that one memory.
-  await panel.getByRole("button", { name: /^Delete: The user is preparing for a DSA/ }).click();
+  await panel.getByRole("button", { name: /^Delete: Exams/ }).click();
   await page.waitForFunction(() => !window.memory.some((m) => m.id.startsWith("5555")));
   // Edit one in place.
-  await panel.getByRole("button", { name: /^Options for: The user finds integration/ }).click();
+  await panel.getByRole("button", { name: /^Options for: Integration by parts/ }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
-  await panel.getByLabel("Edit memory").fill("The user finds integration by parts hard, especially with logs.");
+  await panel.getByLabel("Topic").fill("By parts");
+  await panel.getByLabel("Edit memory").fill("finds it hard, especially with logs");
   await panel.getByRole("button", { name: "Save" }).click();
   await panel.getByText("especially with logs", { exact: false }).waitFor();
+  await panel.locator(".memory-lead", { hasText: "By parts" }).waitFor();
   // Share the exam with the thesis project.
-  await panel.getByRole("button", { name: /^Options for: The user's calculus exam/ }).click();
+  await panel.getByRole("button", { name: /^Options for: Exam date/ }).click();
   await page.getByRole("menuitem", { name: "Where it applies…" }).click();
   await panel.getByRole("checkbox", { name: "Thesis" }).check();
   await page.screenshot({ path: "artifacts/memory-place.png" });
@@ -100,10 +108,14 @@ try {
   await page.waitForFunction(() => window.memory.find((m) => m.id.startsWith("2222")).sharedWith.includes("project:space-project"));
   await panel.getByText("also in Thesis", { exact: false }).waitFor();
   // Stop using the project's memory here.
-  await panel.getByRole("button", { name: /^Options for: The user's thesis/ }).click();
+  await panel.getByRole("button", { name: /^Options for: Thesis/ }).click();
   await page.getByRole("menuitem", { name: "Stop using here" }).click();
   await page.waitForFunction(() => !window.memory.find((m) => m.id.startsWith("4444")).sharedWith.length);
   assert.equal(await panel.getByText("Shared from other spaces").count(), 0);
+  // A sync that failed is said on the page.
+  await page.evaluate(() => { const invoke = window.clemDesktop.invoke; window.clemDesktop.invoke = async (r) => (r.action === "memoryAll" ? { ...(await invoke(r)), syncError: "Saved locally. The account service did not answer." } : invoke(r)); });
+  await panel.getByRole("button", { name: /^Delete: Exam date/ }).click();
+  await panel.locator(".memory-sync", { hasText: "Saved locally." }).waitFor();
   console.log("memory panel verified");
 } finally {
   await browser.close();

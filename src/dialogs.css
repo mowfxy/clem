@@ -140,11 +140,8 @@ dialog.app-modal .modal-actions button{margin:0}
 .memory-body{flex:1;min-width:0;display:grid;gap:5px}
 .memory-words{display:grid;gap:4px}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lead{margin:0;font:400 14px/1.5 var(--sans);color:#ecebe4;text-wrap:pretty}
-.memory-points{display:grid;gap:1px;margin:0;padding:0;list-style:none}
-.memory-points li{position:relative;display:flex;align-items:baseline;gap:14px;padding:1px 0 1px 14px;font:400 13.5px/1.5 var(--sans);color:#c9c8c0}
-.memory-points li::before{content:"";position:absolute;left:3px;top:calc(.75em - 1.5px);width:3px;height:3px;border-radius:50%;background:#6f6e68}
-.memory-points li>span{flex:1;min-width:0;text-wrap:pretty}
-.memory-points time{flex:none;font:400 13px/1.5 var(--sans);font-variant-numeric:tabular-nums;color:#8a8982}
+.memory-notes{margin:0;font:400 13.5px/1.5 var(--sans);color:#c9c8c0;text-wrap:pretty}
+.memory-sync{margin:0;font-size:12px;line-height:1.4;color:#8a8982}
 .memory-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:13px;line-height:1.4;color:#77766f}
 .memory-meta .memory-new{display:inline-flex;align-items:center;gap:6px;color:#c9c8c0}
 .memory-meta .memory-new::before{content:"";width:6px;height:6px;border-radius:50%;background:#c9c8c0}
@@ -174,6 +171,7 @@ dialog.app-modal .modal-actions button{margin:0}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-add .memory-send:disabled{background:#2a2a28;color:#6f6e68;opacity:1}
 /* Editing in place and choosing where a memory applies. */
 .memory-edit,.memory-place{display:grid;gap:10px;margin:2px 0 4px}
+:is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit .memory-edit-topic{width:100%;margin:0 0 6px;padding:6px 10px;border:1px solid #3a3a36;border-radius:9px;background:#141413;color:#e6e5de;font:400 13px/1.4 var(--sans)}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-edit textarea{width:100%;min-height:0;margin:0;padding:8px 10px;border:1px solid #3a3a36;border-radius:9px;background:#141413;color:#e6e5de;font:400 13.5px/1.5 var(--sans);resize:vertical}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-place label{display:flex;flex-direction:row;align-items:center;gap:10px;margin:0;font-size:13.5px;color:#a3a29a}
 :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-place select{flex:1;min-width:0;width:auto}

@@ -1,29 +1,32 @@
+import { mergeTopicEdits } from "../core/memory-topics.ts";
 import {
   mergeSync,
   validateSync,
   type SyncItem,
   type SyncKind,
-} from "../core/sync";
+} from "../core/sync.ts";
 import type { Vault } from "./vault";
 import type { DesktopAuth } from "./auth";
 type Baseline = { data: SyncItem[]; revision: number };
 /** Only allowlisted collections cross the network. Queue prevents local races. */
 export class EssentialSync {
   private queues = new Map<string, Promise<unknown>>();
-  constructor(
-    private vault: Vault,
-    private auth: DesktopAuth,
-  ) {}
-  exchange(owner: string, kind: SyncKind, input: unknown) {
+  private vault: Vault;
+  private auth: DesktopAuth;
+  constructor(vault: Vault, auth: DesktopAuth) {
+    this.vault = vault;
+    this.auth = auth;
+  }
+  /** `noBaseline`: the local copy did not come from the last sync (it went missing and started again), so what it lacks
+   *  was not deleted. The cloud's copy is merged in as on a new PC, and nothing is treated as a deletion. */
+  exchange(owner: string, kind: SyncKind, input: unknown, { noBaseline = false }: { noBaseline?: boolean } = {}) {
     const key = `essential-${owner}-${kind}`,
       data = validateSync(kind, input);
     const operation = (this.queues.get(key) || Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        const base = await this.vault.read<Baseline>(key, {
-          data: [],
-          revision: 0,
-        });
+        const fresh: Baseline = { data: [], revision: 0 };
+        const base = noBaseline ? fresh : await this.vault.read<Baseline>(key, fresh);
         try {
           if ((await this.auth.user())?.id !== owner)
             throw Error("Account changed.");
@@ -34,6 +37,7 @@ export class EssentialSync {
             base.data,
             data,
             answer.unchanged ? remote.data : validateSync(kind, remote.data),
+            kind === "memory" ? mergeTopicEdits as unknown as Parameters<typeof mergeSync>[3] : undefined,
           );
           let revision = remote.revision;
           if (JSON.stringify(merged) !== JSON.stringify(remote.data)) {
