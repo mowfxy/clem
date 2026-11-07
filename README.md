@@ -78,7 +78,7 @@ Clem is one quiet place for the work you bring to an AI: a course, a research qu
 </table>
 
 <p align="center">
-  <img src="docs/assets/screenshots/website-visual.png" alt="A live 3D visual of partial derivatives with sliders for the point and the computed slopes" width="92%">
+  <img src="docs/assets/screenshots/website-visual.png" alt="A live graph of why a long cable rings, with a slider for the cable length" width="92%">
 </p>
 
 <details>
