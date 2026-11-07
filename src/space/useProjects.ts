@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { coordinatorTurn, emptyRoom, modelsOf, runThread, teamOf, toggleReaction, type Ask, type Room } from "../../core/coordinator";
+import { coordinatorTurn, emptyRoom, modelsOf, reportsWaiting, teamOf, toggleReaction, workThread, type Ask, type Room } from "../../core/coordinator";
 import { entry, forget, parseMemory, remember, serializeMemory, type MemoryEntry } from "../../core/project-memory";
 import type { ProjectRoom, RoomMessage, Space } from "../../core/types";
 import { getBlob, storeBlob, type State } from "../store";
@@ -12,7 +12,8 @@ export type MessageRef = { thread?: string; message: string };
 
 /**
  * Projects' coordinator chats, their threads and memory files. Turns keep running when the person leaves the page; each
- * project runs one coordinator turn at a time, and each thread one reply at a time.
+ * project runs one coordinator turn at a time, and each thread one reply at a time. Threads run beside the coordinator, so
+ * the person can keep talking to it; when the last one ends, the coordinator answers their reports.
  */
 export function useProjects({ stateRef, patch, ask, fallbackModel, onError }: {
   stateRef: { current: State };
@@ -60,41 +61,46 @@ export function useProjects({ stateRef, patch, ask, fallbackModel, onError }: {
     set: (fn) => setRoom(space.id, fn),
     memory: () => memory.current.get(space.id) || [],
     saveMemory: (entries) => saveMemory(space, entries),
-    // Threads a coordinator turn opens run under their own key too, so a thread's Stop button reaches them.
-    thread: (threadId, parent) => {
-      const key = "thread:" + threadId, c = start(key);
-      const follow = () => c.abort();
-      if (parent.aborted) c.abort(); else parent.addEventListener("abort", follow, { once: true });
-      return { signal: c.signal, done: () => { parent.removeEventListener("abort", follow); finish(key, c); } };
-    },
   });
   const start = (key: string) => { const c = new AbortController(); runs.current.set(key, c); setBusy((b) => ({ ...b, [key]: true })); return c; };
   // Only the run that owns the key clears it: a newer run under the same key keeps its busy mark.
   const finish = (key: string, c: AbortController) => { if (runs.current.get(key) !== c) return; runs.current.delete(key); setBusy((b) => { const n = { ...b }; delete n[key]; return n; }); };
   const failed = (e: unknown, c: AbortController) => { if (!c.signal.aborted) onError((e as Error)?.message || "That didn’t go through. Try again."); };
 
-  async function send(space: Space, text: string) {
-    if (runs.current.has(space.id)) return;
+  /** One coordinator reply, then the threads it opened start on their own. */
+  async function turn(space: Space, message: RoomMessage | null) {
     const c = start(space.id);
-    const message: RoomMessage = { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() };
-    setRoom(space.id, (r) => ({ ...r, messages: [...r.messages, message] }));
     try {
       await loadMemory(space.id);
-      await coordinatorTurn(space, modelsOf(teamOf(space), fallbackModel()), message, io(space), ask, c.signal);
+      const opened = await coordinatorTurn(space, modelsOf(teamOf(space), fallbackModel()), message, io(space), ask, c.signal);
+      for (const id of opened) void work(space, id);
     } catch (e) { failed(e, c); }
-    finally { finish(space.id, c); }
+    finally { finish(space.id, c); answerReports(space); }
   }
-  /** The person writes in a thread: its subagent answers there. */
-  async function reply(space: Space, threadId: string, text: string) {
-    const key = "thread:" + threadId;
-    if (runs.current.has(key)) return;
-    const thread = roomOf(stateRef.current, space.id).threads.find((t) => t.id === threadId);
-    if (!thread) return;
-    setRoom(space.id, (r) => ({ ...r, threads: r.threads.map((t) => t.id === threadId ? { ...t, updated: Date.now(), messages: [...t.messages, { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() }] } : t) }));
-    const c = start(key);
-    try { await loadMemory(space.id); await runThread(space, modelsOf(teamOf(space), fallbackModel()).agent, threadId, io(space), ask, c.signal); }
+  /** Runs a thread under its own key, so its Stop button reaches it. */
+  async function work(space: Space, threadId: string) {
+    const key = "thread:" + threadId, c = start(key);
+    try { await loadMemory(space.id); await workThread(space, modelsOf(teamOf(space), fallbackModel()).agent, threadId, io(space), ask, c.signal); }
     catch (e) { failed(e, c); }
-    finally { finish(key, c); }
+    finally { finish(key, c); answerReports(space); }
+  }
+  /** Once the coordinator is free and no thread is left working, it answers what the threads sent. */
+  function answerReports(space: Space) {
+    const room = roomOf(stateRef.current, space.id);
+    if (!runs.current.has(space.id) && !room.threads.some((t) => t.status === "working") && reportsWaiting(room)) void turn(space, null);
+  }
+  function send(space: Space, text: string) {
+    if (runs.current.has(space.id)) return;
+    const message: RoomMessage = { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() };
+    setRoom(space.id, (r) => ({ ...r, messages: [...r.messages, message] }));
+    return turn(space, message);
+  }
+  /** The person writes in a thread: its subagent answers there, then tells the coordinator. */
+  function reply(space: Space, threadId: string, text: string) {
+    if (runs.current.has("thread:" + threadId)) return;
+    if (!roomOf(stateRef.current, space.id).threads.some((t) => t.id === threadId)) return;
+    setRoom(space.id, (r) => ({ ...r, threads: r.threads.map((t) => t.id === threadId ? { ...t, updated: Date.now(), messages: [...t.messages, { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() }] } : t) }));
+    return work(space, threadId);
   }
   function stop(key: string) {
     runs.current.get(key)?.abort();

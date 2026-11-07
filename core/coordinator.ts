@@ -10,7 +10,8 @@
  *   [[summary: One sentence]]               (subagents) what the thread produced, for the coordinator's later turns
  *
  * Only what each turn needs is sent: the last few messages, one-line outcomes of threads instead of their text, and the
- * memory lines that match. Threads run at the same time; their reports come back for one closing reply.
+ * memory lines that match. Threads run in the background while the person keeps talking; each texts the coordinator when
+ * its work ends, and once none is left working the coordinator answers all the new reports in one reply.
  */
 import type { ProjectRoom, ProjectTeam, ProjectThread, Reaction, RoomMessage, Space } from "./types";
 import { entry, memoryLines, recall, remember, type MemoryEntry } from "./project-memory.ts";
@@ -84,13 +85,31 @@ const HISTORY_CHARS = 7000, HISTORY_COUNT = 14, REPORT_CHARS = 5000;
 const nameOf = (by: string) => by === "you" ? "the person" : by === "coordinator" ? "you" : roleName(by);
 const reactionNote = (reactions: Reaction[] | undefined) => reactions?.length ? `\n(reactions: ${reactions.map((r) => `${nameOf(r.by)} ${r.emoji}`).join(", ")})` : "";
 
+const lastIndex = (list: RoomMessage[], is: (m: RoomMessage) => boolean) => { for (let i = list.length - 1; i >= 0; i--) if (is(list[i])) return i; return -1; };
+const lastReply = (room: ProjectRoom) => lastIndex(room.messages, (m) => m.from === "coordinator" && m.status !== "writing");
+/** What a thread sent that the coordinator has not answered yet. */
+const unanswered = (room: ProjectRoom) => room.messages.slice(lastReply(room) + 1).filter((m) => m.report);
+/** Whether the coordinator owes the person a reply: a thread finished or failed. Only stopped threads ask for nothing. */
+export const reportsWaiting = (room: ProjectRoom) => unanswered(room).some((m) => room.threads.find((t) => t.id === m.report)?.status !== "stopped");
+
+function reportFor(room: ProjectRoom, m: RoomMessage) {
+  const t = room.threads.find((x) => x.id === m.report);
+  if (!t) return m.content;
+  const work = t.messages.filter((x) => x.from === t.agent && x.content.trim()).at(-1)?.content.slice(0, REPORT_CHARS);
+  const body = t.status === "stopped" ? "(the person stopped this thread; work without it)" : t.status === "failed" ? "(this thread failed; work around it)" : work || m.content;
+  return `(Thread report · ${t.agent} · "${t.title}")\n${body}`;
+}
+
 /** The newest messages that fit, oldest first; each coordinator message notes its threads' one-line outcomes. */
 export function coordinatorHistory(room: ProjectRoom, chars = HISTORY_CHARS, count = HISTORY_COUNT): Turn[] {
   const out: Turn[] = [];
   let room_ = chars;
+  const answered = lastReply(room);
   for (let i = room.messages.length - 1; i >= 0 && out.length < count; i--) {
     const m = room.messages[i];
     if (m.status === "writing") continue;
+    // A report in full until it is answered; after that the coordinator's message carries the thread's one-line outcome.
+    if (m.report) { if (i > answered) out.unshift({ role: "user", content: reportFor(room, m) }); continue; }
     const threads = (m.threads || []).map((id) => room.threads.find((t) => t.id === id)).filter((t): t is ProjectThread => !!t)
       .map((t) => `\n(thread ${t.id.slice(0, 6)} · ${roleName(t.agent)} · "${t.title}" · ${t.status}${t.summary ? ": " + t.summary : ""})`).join("");
     let content = (m.content || (m.reactions?.some((r) => r.by === "coordinator") ? "(you reacted instead of replying)" : "")) + threads + reactionNote(m.reactions);
@@ -113,6 +132,7 @@ ${projectBlock(space)}
 
 How to reply:
 - To open a thread, add one line per thread: [[thread: Role | short title | the full brief, with everything the subagent needs, since it cannot see this chat]]. Pick a role that fits the work (Researcher, Writer, Critic, Analyst, Engineer, Designer, Planner, Fact-checker, or your own). Say in one short sentence what you handed off. You will get each thread's report and then write one combined answer.
+- Threads run in the background and text you here when their work ends, so never wait for one or say you will check on it. The person can keep talking to you meanwhile. Once none is left working you get their reports and write the person one reply.
 - When the person asks for a thread, an agent, a subagent or work in the background, always open a thread for it, even for something small, and give the subagent the actual task.
 - Otherwise open threads for work that benefits from a specialist or from running in parallel (up to ${MAX_THREADS} at once); answer simple questions yourself.
 - Reactions are rare. Most replies carry none; never add one just to acknowledge a request you are answering. When a message asks for nothing (thanks, ok, a sign-off), reply with only [[react: emoji]] (one of ${REACTIONS.join(" ")}) instead of words.
@@ -161,10 +181,8 @@ export type Room = {
   set: (fn: (room: ProjectRoom) => ProjectRoom) => void;
   memory: () => MemoryEntry[];
   saveMemory: (entries: MemoryEntry[]) => Promise<unknown> | void;
-  /** A signal of its own for a thread a coordinator turn opens, so the thread can be stopped alone; `done` when it ends. */
-  thread?: (threadId: string, parent: AbortSignal) => { signal: AbortSignal; done: () => void };
 };
-/** At most: a reply that hands work out, one that may ask for a little more, and the closing reply. */
+/** Since the person last spoke, at most: a reply that hands work out, one that may ask for a little more, and the closing reply. */
 const MAX_THREADS = 4, ROUNDS = 3;
 const uid = () => crypto.randomUUID();
 
@@ -205,14 +223,17 @@ function memoryQuery(room: ProjectRoom, text: string) {
 }
 
 /**
- * Answers the person's latest message in the coordinator chat: the coordinator replies (or reacts), threads it opens
- * run in parallel, then it writes one reply from their reports. `space` and the settings are read once at the start.
+ * One coordinator reply: to the person's latest message, or (no message) to the reports threads have sent. Returns the
+ * threads it opened, ready to run with workThread; it does not wait for them. `space` and the settings are read once.
  */
-export async function coordinatorTurn(space: Space, runs: { coordinator: Run; agent: Run }, userMessage: RoomMessage, io: Room, ask: Ask, signal: AbortSignal) {
+export async function coordinatorTurn(space: Space, runs: { coordinator: Run; agent: Run }, userMessage: RoomMessage | null, io: Room, ask: Ask, signal: AbortSignal): Promise<string[]> {
   const chat = `proj-${space.id}`.slice(0, 80);
-  let found = recall(io.memory(), memoryQuery(io.get(), userMessage.content));
-  let extra: Turn[] = [];
-  for (let round = 0, looked = false; round < ROUNDS; round++) {
+  const before = io.get(), spoke = lastIndex(before.messages, (m) => m.from === "you");
+  const mayOpen = before.messages.slice(spoke + 1).filter((m) => m.threads?.length).length < ROUNDS - 1;
+  const query = userMessage ? memoryQuery(before, userMessage.content) : unanswered(before).map((m) => m.content).join(" ");
+  let found = recall(io.memory(), query);
+  let extra: Turn[] = userMessage ? [] : [{ role: "user", content: `(Those reports are for you only; the person can open the threads.) Now write the person one reply that uses them. Do not repeat them whole. ${mayOpen ? "Open another thread only if the work truly needs it." : "Do not open more threads."}` }];
+  for (let looked = false; ;) {
     const id = uid();
     io.set((r) => ({ ...r, messages: [...r.messages, { id, from: "coordinator", content: "", at: Date.now(), status: "writing", recalled: found.map((e) => e.id) }] }));
     const history = coordinatorHistory({ ...io.get(), messages: io.get().messages.filter((m) => m.id !== id) });
@@ -230,19 +251,18 @@ export async function coordinatorTurn(space: Space, runs: { coordinator: Run; ag
     const { text, directives } = readReply(raw);
     // A lookup first: search the memory file and ask again, once, with what it found.
     if (directives.recall.length && !looked && !text && !directives.delegate.length) {
-      looked = true; round--;
+      looked = true;
       const more = directives.recall.flatMap((q) => recall(io.memory(), q, { count: 6, chars: 900 })).filter((e, i, all) => !found.some((f) => f.id === e.id) && all.findIndex((x) => x.id === e.id) === i);
       found = [...found, ...more];
       io.set((r) => ({ ...r, messages: r.messages.filter((m) => m.id !== id) }));
-      extra = [...extra, { role: "assistant", content: raw.trim() }, { role: "user", content: `(Memory search results)\n${more.length ? memoryLines(more) : "(no matching lines)"}\nNow answer the person's message.` }];
+      extra = [...extra, { role: "assistant", content: raw.trim() }, { role: "user", content: `(Memory search results)\n${more.length ? memoryLines(more) : "(no matching lines)"}\nNow answer.` }];
       continue;
     }
     const remembered = await keep(io, directives.remember);
-    // The last round writes the reply; a thread asked for then is not opened.
-    const jobs = round === ROUNDS - 1 ? [] : directives.delegate.slice(0, MAX_THREADS);
+    const jobs = mayOpen ? directives.delegate.slice(0, MAX_THREADS) : [];
     const threads: ProjectThread[] = jobs.map((j) => ({ id: uid(), agent: roleName(j.agent), title: j.title || j.task.slice(0, 60), status: "working", created: Date.now(), updated: Date.now(), from: id,
       messages: [{ id: uid(), from: "coordinator", content: j.task, at: Date.now() }] }));
-    const target = round === 0 ? userMessage.id : undefined;
+    const target = userMessage?.id;
     io.set((r) => {
       let next = patchMessage(r, id, (m) => ({ ...m, content: text, status: undefined, at: Date.now(), threads: threads.length ? threads.map((t) => t.id) : undefined, remembered: remembered || undefined }));
       // A reply that is only a reaction leaves no message behind, just the reaction on the person's message.
@@ -250,19 +270,19 @@ export async function coordinatorTurn(space: Space, runs: { coordinator: Run; ag
       if (directives.react && target) next = patchMessage(next, target, (m) => ({ ...m, reactions: addReaction(m.reactions, directives.react!, "coordinator") }));
       return { ...next, threads: [...next.threads, ...threads] };
     });
-    // Nothing shown: no words, no threads and no reaction that landed (a closing reply has no message to react to).
+    // Nothing shown: no words, no threads and no reaction that landed (a reply to reports has no message to react to).
     if (!text && !threads.length && !(directives.react && target)) io.set((r) => ({ ...r, messages: [...r.messages, { id, from: "coordinator", content: "I couldn’t put an answer together. Try asking again.", at: Date.now(), status: "error" }] }));
-    if (!threads.length) return;
-    const reports = await Promise.all(threads.map((t) => {
-      const own = io.thread?.(t.id, signal);
-      return runThread(space, runs.agent, t.id, io, ask, own?.signal || signal).catch(() => null).finally(() => own?.done());
-    }));
-    signal.throwIfAborted();
-    const stoppedAlone = (id: string) => io.get().threads.find((t) => t.id === id)?.status === "stopped";
-    const body = threads.map((t, i) => `### ${t.agent} · ${t.title}\n${reports[i] ? reports[i]!.slice(0, REPORT_CHARS) : stoppedAlone(t.id) ? "(the person stopped this thread; work without it)" : "(this thread failed; work around it)"}`).join("\n\n");
-    extra = [{ role: "user", content: `(Thread reports, for you only; the person can open the threads)\n\n${body}\n\nNow write the person one reply that uses these reports. Do not repeat them whole. ${round + 1 === ROUNDS - 1 ? "Do not open more threads." : "Open another thread only if something essential is still missing."}` }];
-    found = recall(io.memory(), memoryQuery(io.get(), userMessage.content));
+    return threads.map((t) => t.id);
   }
+}
+
+/** A thread's work to its end, for the coordinator's sake: whatever happened, it texts the coordinator a line. */
+export async function workThread(space: Space, run: Run, threadId: string, io: Room, ask: Ask, signal: AbortSignal) {
+  await runThread(space, run, threadId, io, ask, signal).catch(() => null);
+  const t = io.get().threads.find((x) => x.id === threadId);
+  if (!t) return;
+  const note = t.status === "done" ? t.summary || "Finished." : t.status === "stopped" ? "Stopped." : "Couldn’t finish this.";
+  io.set((r) => ({ ...r, messages: [...r.messages, { id: uid(), from: t.agent, content: note, at: Date.now(), report: t.id }] }));
 }
 
 /** Runs one thread's subagent on everything in the thread so far; returns its reply, or throws. */

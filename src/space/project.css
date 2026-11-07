@@ -1,10 +1,7 @@
 /* A project: Coordinator (a chat), Threads (the team's work) and Context (memory, instructions, files). Built on the
    space page (space.css) and the chat's own message and composer styles (conversation.css), so it reads as Clem. */
-.pj{--pj-line:#2c2c29;--pj-line-2:#3a3a36;--pj-card:#1b1b1a;--pj-card-2:#20201f;--pj-ink:#f0efeb;--pj-soft:#b8b7b0;--pj-muted:#85847e;--pj-faint:#5f5e59;--pj-amber:#d9b36c;--pj-green:#8fbf98;--pj-coral:#d87968}
+.pj{--pj-line:#2c2c29;--pj-line-2:#3a3a36;--pj-card:#1b1b1a;--pj-card-2:#20201f;--pj-ink:#f0efeb;--pj-soft:#b8b7b0;--pj-muted:#85847e;--pj-faint:#5f5e59;--pj-coral:#d87968}
 .pj .pj-tabs button span{margin-left:7px}
-.pj-tab-live{display:inline-flex;align-items:center;gap:5px;color:var(--pj-amber)}
-.pj-tab-live i,.pj-status.is-working i{width:6px;height:6px;border-radius:50%;background:var(--pj-amber);animation:pj-pulse 1.4s ease-in-out infinite}
-@keyframes pj-pulse{50%{opacity:.35;transform:scale(.8)}}
 
 /* marks */
 .pj-agent-mark{display:inline-grid;place-items:center;flex:none;border-radius:50%;background:color-mix(in srgb,var(--agent) 20%,#1a1a18);color:var(--agent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--agent) 42%,transparent);font-family:var(--sans);font-weight:600;line-height:1;letter-spacing:0;user-select:none}
@@ -25,8 +22,7 @@
 .pj .messages .pj-message.assistant .message-text{max-width:720px}
 .pj-waiting{display:flex;align-items:center;gap:14px}
 .pj-waiting .message-mark{margin:0}
-.pj-after{margin:-6px 0 30px}
-.pj .thinking{font:16px/1.7 var(--sans);color:#a9a8a0}
+.pj-thinking{display:inline-flex;align-items:center;min-height:27px}
 .pj-error{margin:8px 0 0;color:var(--pj-coral);font:13.5px/1.5 var(--sans)}
 .pj-stopped{margin:6px 0 0;color:var(--pj-muted);font:13px var(--sans)}
 .pj-under{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:6px;min-height:28px}
@@ -38,8 +34,6 @@
 .pj-meta{display:inline-flex;align-items:center;gap:10px;color:var(--pj-faint);font:12px/1 var(--sans);opacity:0;transition:opacity .2s}
 .pj-meta span{display:inline-flex;align-items:center;gap:4px}
 .pj-meta span::before{content:"·";margin-right:6px;color:var(--pj-faint)}
-.pj-meta .pj-meta-saved{color:var(--pj-green)}
-.pj-meta .pj-meta-saved::before{color:var(--pj-faint)}
 .pj-message:is(:hover,:focus-within) .pj-meta,.pj-message.latest .pj-meta{opacity:1}
 
 /* reactions */
@@ -70,17 +64,11 @@
 .pj-handoff-line{display:flex;align-items:center;gap:9px;width:100%;min-height:30px;padding:4px 8px;margin-left:-8px;border:0;border-radius:8px;background:none;color:var(--pj-muted);font:12.5px/1.35 var(--sans);text-align:left;cursor:pointer;transition:background .15s,color .15s}
 .pj-handoff-line:hover,.pj-handoff.open .pj-handoff-line{background:#ffffff07;color:var(--pj-soft)}
 .pj-handoff-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--pj-faint)}
-.pj-handoff-dot.is-working,.pj-handoff.is-working .pj-handoff-dot{background:var(--pj-amber);animation:pj-pulse 1.4s ease-in-out infinite}
-.pj-handoff-dot.is-done,.pj-handoff.is-done .pj-handoff-dot{background:var(--pj-green)}
-.pj-handoff-dot.is-failed,.pj-handoff.is-failed .pj-handoff-dot{background:var(--pj-coral)}
 .pj-handoff-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pj-handoff-text b{font-weight:500;color:var(--pj-soft)}
 .pj-handoff-text i{font-style:normal;margin:0 6px;color:var(--pj-faint)}
 .pj-handoff-text span{color:var(--pj-faint)}
-.pj-handoff-state{flex:none;font-size:12px;color:var(--pj-faint)}
-.pj-handoff-state.is-working{color:var(--pj-amber)}
-.pj-handoff-state.is-done{color:var(--pj-green);animation:pj-pop .4s cubic-bezier(.2,1.25,.35,1)}
-.pj-handoff-state.is-failed{color:var(--pj-coral)}
+.pj-handoff-state{flex:none;font-size:12px;color:var(--pj-muted)}
 .pj-handoff-line>svg{flex:none;color:var(--pj-faint);transition:transform .2s}
 .pj-handoff.open .pj-handoff-line>svg{transform:rotate(180deg)}
 .pj-handoff-chat{scroll-margin-bottom:190px;display:grid;gap:12px;margin:6px 0 10px 3px;padding:4px 0 4px 16px;border-left:1px solid var(--pj-line-2);animation:pj-rise .2s ease-out}
@@ -94,10 +82,10 @@
 .pj-handoff-open{justify-self:start;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;margin-left:-10px;border:0;border-radius:8px;background:none;color:var(--pj-soft);font:12.5px var(--sans);cursor:pointer}
 .pj-handoff-open:hover{background:#ffffff0b;color:var(--pj-ink)}
 .pj .message-text .pj-handoff-body .table-wrap{width:auto;max-width:100%;left:auto;transform:none}
-.pj-status{display:inline-flex;align-items:center;gap:6px;flex:none;height:22px;padding:0 9px;border-radius:99px;font:12px/1 var(--sans);color:var(--pj-muted);background:#ffffff08}
-.pj-status.is-working{color:var(--pj-amber);background:#d9b36c14}
-.pj-status.is-done{color:var(--pj-green);background:#8fbf9812}
-.pj-status.is-failed{color:var(--pj-coral);background:#d8796814}
+
+/* a thread's note to the coordinator */
+.pj .pj-report{max-width:720px;margin:-22px 0 22px -8px;width:calc(100% + 8px)}
+.pj-report+.pj-report{margin-top:-20px}
 
 /* composer */
 .pj .pj-composer{position:sticky;bottom:0;width:auto;max-width:none;margin:auto 0 0;padding:14px 0 10px}
@@ -139,9 +127,6 @@
 .pj-thread-row{display:flex;align-items:center;gap:12px;width:100%;padding:13px 12px;border:0;border-top:1px solid transparent;border-radius:0;background:none;color:var(--pj-ink);text-align:left;font-family:var(--sans);cursor:pointer;transition:background .15s}
 .pj-thread-row:hover,.pj-thread-row:focus-visible{background:#ffffff07;border-radius:10px}
 .pj-thread-row:hover+*,.pj-thread-group li:hover+li .pj-thread-row{border-top-color:transparent}
-.pj-thread-row.is-working .pj-handoff-dot{background:var(--pj-amber);animation:pj-pulse 1.4s ease-in-out infinite}
-.pj-thread-row.is-done .pj-handoff-dot{background:var(--pj-green)}
-.pj-thread-row.is-failed .pj-handoff-dot{background:var(--pj-coral)}
 .pj-thread-row-text{display:grid;gap:4px;flex:1;min-width:0}
 .pj-thread-row-top{display:flex;align-items:baseline;gap:10px;min-width:0}
 .pj-thread-row-top strong{font-size:14.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -234,7 +219,7 @@
   .pj-setting{flex-wrap:wrap}
   .pj-intro h2{font-size:24px}
 }
-@media (prefers-reduced-motion:reduce){.pj-starters button,.pj-reaction,.pj-react-pick,.pj-handoff,.pj-handoff-state,.pj-handoff-chat{animation:none}.pj-tab-live i,.pj-status.is-working i{animation:none}}
+@media (prefers-reduced-motion:reduce){.pj-starters button,.pj-reaction,.pj-react-pick,.pj-handoff,.pj-handoff-chat{animation:none}}
 
 /* Tables in a reply stay inside their column here: in a chat they may spread wider than the text, but beside the
    thread list that would run over it. */
@@ -242,7 +227,6 @@
 
 /* A thread: a quiet header, the coordinator's messages as single lines, the agent's replies as plain text. */
 .pj-thread-sub{display:flex;align-items:center;flex-wrap:wrap;gap:0 4px;margin:6px 0 0;font:12.5px/1.5 var(--sans);color:var(--pj-muted)}
-.pj-thread-sub .pj-handoff-dot{display:inline-block;margin-right:5px}
 .pj-thread-sub b{font-weight:500;color:var(--pj-soft)}
 .pj .pj-thread-messages{margin-top:18px}
 .pj-received{margin:0 0 18px}
@@ -251,3 +235,7 @@
 .pj-received.open .pj-handoff-line>svg{transform:rotate(180deg)}
 .pj-received-body{margin-bottom:4px}
 .pj-received-body .pj-reactions{margin-top:2px}
+
+/* The page ends at the message box: nothing to scroll to beneath it. Nothing fades around its glass either. */
+.space-page.pj:has(.pj-chat){padding-bottom:0}
+.pj .sp-body{animation:none}
