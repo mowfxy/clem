@@ -48,10 +48,12 @@
 @keyframes pj-pop{from{transform:scale(.6);opacity:0}}
 .pj-react-add{display:inline-grid;place-items:center;width:28px;height:28px;padding:0;border-radius:50%;border:1px solid transparent;background:none;color:var(--pj-muted);cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s}
 .pj-react-add:hover,.pj-react-add[aria-expanded=true]{background:#ffffff0d;color:var(--pj-ink)}
-.pj-message:is(:hover,:focus-within) .pj-react-add,.pj-react-add[aria-expanded=true],.pj-react-add:focus-visible{opacity:1}
-.pj-react-pick{position:absolute;bottom:calc(100% + 6px);left:0;z-index:20;display:flex;gap:2px;padding:5px;border-radius:14px;border:1px solid #3c3c39;background:#232322;box-shadow:0 14px 40px #0008;animation:pj-rise .16s ease-out}
-.pj-message.user .pj-react-pick{left:auto;right:0}
-.pj-react-pick button{width:34px;height:34px;padding:0;border:0;border-radius:9px;background:none;font-size:18px;line-height:1;cursor:pointer;transition:background .12s,transform .15s}
+:is(.pj-message,.pj-received-body):is(:hover,:focus-within) .pj-react-add,.pj-react-add[aria-expanded=true],.pj-react-add:focus-visible{opacity:1}
+/* The picker opens in the row beside its button, pushing the time along: nothing covers the message above it. It is a
+   little taller than the row, so the row keeps its height and the button stays under the pointer. */
+.pj-react-pick{display:flex;align-items:center;gap:1px;height:32px;margin-block:-2px;padding:0 2px;box-sizing:border-box;border-radius:99px;border:1px solid #3c3c39;background:#232322;animation:pj-rise .16s ease-out}
+.pj-message.user .pj-react-pick{order:-1}
+.pj-react-pick button{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:none;font-size:15px;line-height:1;cursor:pointer;transition:background .12s,transform .15s}
 .pj-react-pick button:hover,.pj-react-pick button:focus-visible{background:#ffffff12;transform:translateY(-2px) scale(1.12)}
 .pj-react-pick button.on{background:#ffffff16}
 @keyframes pj-rise{from{opacity:0;transform:translateY(4px)}}
@@ -96,6 +98,10 @@
 .pj-roster .pj-stack .pj-agent-mark{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--agent) 42%,transparent),0 0 0 2px #1f1f1e}
 .pj-composer-model{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:6px;color:var(--pj-faint);font:12px var(--sans)}
 .pj-composer-form textarea:disabled{cursor:not-allowed}
+/* Files sent with a message, above its text. */
+.pj-message .composer-files{padding:0 0 8px;scrollbar-width:none}
+.pj-message.user .composer-files{justify-content:flex-end}
+.pj-message .cf-tile{width:96px;height:96px}
 
 /* empty coordinator */
 .pj-intro{display:grid;justify-items:center;gap:10px;max-width:720px;margin:28px auto 16px;text-align:center}
@@ -236,6 +242,7 @@
 .pj-received-body{margin-bottom:4px}
 .pj-received-body .pj-reactions{margin-top:2px}
 
-/* The page ends at the message box: nothing to scroll to beneath it. Nothing fades around its glass either. */
-.space-page.pj:has(.pj-chat){padding-bottom:0}
+/* The page ends at the message box, in a thread as in the coordinator chat: nothing to scroll to beneath it. Nothing
+   fades around its glass either. */
+.space-page.pj:has(.pj-chat,.pj-thread){padding-bottom:0}
 .pj .sp-body{animation:none}

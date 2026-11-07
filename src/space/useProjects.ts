@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { coordinatorTurn, emptyRoom, modelsOf, reportsWaiting, teamOf, toggleReaction, workThread, type Ask, type Room } from "../../core/coordinator";
 import { entry, forget, parseMemory, remember, serializeMemory, type MemoryEntry } from "../../core/project-memory";
-import type { ProjectRoom, RoomMessage, Space } from "../../core/types";
+import type { ProjectRoom, RoomFile, RoomMessage, Space } from "../../core/types";
 import { getBlob, storeBlob, type State } from "../store";
 
 /** The blob that holds a project's memory file (Markdown, core/project-memory.ts), beside its other files. */
@@ -89,17 +89,17 @@ export function useProjects({ stateRef, patch, ask, fallbackModel, onError }: {
     const room = roomOf(stateRef.current, space.id);
     if (!runs.current.has(space.id) && !room.threads.some((t) => t.status === "working") && reportsWaiting(room)) void turn(space, null);
   }
-  function send(space: Space, text: string) {
+  function send(space: Space, text: string, files: RoomFile[] = []) {
     if (runs.current.has(space.id)) return;
-    const message: RoomMessage = { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() };
+    const message: RoomMessage = { id: crypto.randomUUID(), from: "you", content: text, at: Date.now(), ...(files.length ? { files } : {}) };
     setRoom(space.id, (r) => ({ ...r, messages: [...r.messages, message] }));
     return turn(space, message);
   }
   /** The person writes in a thread: its subagent answers there, then tells the coordinator. */
-  function reply(space: Space, threadId: string, text: string) {
+  function reply(space: Space, threadId: string, text: string, files: RoomFile[] = []) {
     if (runs.current.has("thread:" + threadId)) return;
     if (!roomOf(stateRef.current, space.id).threads.some((t) => t.id === threadId)) return;
-    setRoom(space.id, (r) => ({ ...r, threads: r.threads.map((t) => t.id === threadId ? { ...t, updated: Date.now(), messages: [...t.messages, { id: crypto.randomUUID(), from: "you", content: text, at: Date.now() }] } : t) }));
+    setRoom(space.id, (r) => ({ ...r, threads: r.threads.map((t) => t.id === threadId ? { ...t, updated: Date.now(), messages: [...t.messages, { id: crypto.randomUUID(), from: "you", content: text, at: Date.now(), ...(files.length ? { files } : {}) }] } : t) }));
     return work(space, threadId);
   }
   function stop(key: string) {
