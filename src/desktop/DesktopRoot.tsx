@@ -6,8 +6,10 @@ import { desktop } from "./bridge";
 import { FirstProvider, type Service } from "./FirstProvider";
 import { afterSetup } from "../after-setup";
 import { bootDone } from "../boot";
+import { HorizonField } from "../glass/HorizonField";
 import type { DesktopStatus } from "../../desktop/contracts";
 import "./desktop.css";
+import "../glass/glass-base.css";
 
 const App = lazy(() => import("../App"));
 export default function DesktopRoot() {
@@ -176,6 +178,7 @@ function SetupContent() {
   const initial = name.trim().charAt(0).toUpperCase();
   return (
     <main className="desktop-setup" data-step={state?.user ? Math.min(step, 3) : "welcome"}>
+      <HorizonField live />
       <div className="setup-layout">
         {state?.user && state.entitlement.reason !== "suspended" && !(state.entitlement.reason === "offline" && step >= 3) && (
           <div className="setup-progress" role="progressbar" aria-label={`Step ${Math.min(step + 1, 4)} of 4`} aria-valuemin={1} aria-valuemax={4} aria-valuenow={Math.min(step + 1, 4)}>

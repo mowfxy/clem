@@ -74,11 +74,10 @@ for (const width of [1920, 1100]) {
         same: getComputedStyle(document.querySelector(".chat-composer"), "::before").backgroundColor === getComputedStyle(document.querySelector(".workspace")).backgroundColor };
     });
     if (width === 1920) {
-      // Beside the box, where the table runs under it, the screen shows only the page's background: the same pixels as an
-      // empty patch of the workspace at that height.
+      // Beside the box, where the table runs under it, the composer's frosted fade covers the whole width of the window.
       const box = await page.locator(".chat-composer .composer").boundingBox(), w = await page.locator(".message-text .table-wrap").first().boundingBox();
-      const y = Math.round(box.y + box.height / 2), side = { x: Math.round(w.x - 6), y, width: 16, height: 16 }, empty = { x: Math.round(w.x - 60), y, width: 16, height: 16 };
-      const same = (await page.screenshot({ clip: side })).equals(await page.screenshot({ clip: empty }));
+      const fade = await page.evaluate(() => { const s = getComputedStyle(document.querySelector(".chat-composer"), "::before"), r = document.querySelector(".chat-composer").getBoundingClientRect(); return { blur: s.backdropFilter.includes("blur"), wide: r.left + parseFloat(s.left) <= 0 && r.right - parseFloat(s.right) >= innerWidth }; });
+      const same = fade.blur && fade.wide, side = { x: Math.round(w.x - 6) };
       check(under.tableUnder && side.x + 16 < box.x && same, "1920: a wide table under the chat box is hidden beside the box too");
     }
     check(under.same, `${width}: the chat box's backdrop is the page's own colour`);
@@ -98,7 +97,7 @@ for (const width of [1920, 1100]) {
       await menu.waitFor();
       check(await menu.locator("svg").count() === 0, "the chat menu has no icons");
       const red = await menu.getByRole("menuitem", { name: "Delete" }).evaluate((b) => getComputedStyle(b).color);
-      check(red === "rgb(236, 122, 111)", "Delete chat is red, --menu-danger (" + red + ")");
+      check(red === "rgb(192, 57, 43)", "Delete chat is red, --menu-danger (" + red + ")");
       await menu.screenshot({ path: `${out}/chat-menu.png` });
     }
     check(!errors.length, `${width}: no page errors` + (errors.length ? ": " + errors.join("; ") : ""));

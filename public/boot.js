@@ -15,7 +15,7 @@
   }
   document.documentElement.dataset.theme = theme;
   if (location.protocol !== "clem:") return;
-  var light = theme === "light", paper = light ? "#faf8f3" : "#141414", ink = light ? "#0b0b0a" : "#F4F2EC";
+  var light = theme === "light", paper = light ? "#e9eff6" : "#05080f", ink = light ? "#0b0b0a" : "#F4F2EC";
   var style = document.createElement("style");
   style.textContent =
     "#clem-boot{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:" + paper + ";color:" + ink + ";transition:opacity .45s ease,visibility 0s linear .45s}" +

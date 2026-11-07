@@ -1,4 +1,4 @@
-// Memory in a subject: its own memories, what a project shares with it, Keep all, editing and moving a memory.
+// Memory in a subject: its own memories, what a project shares with it, deleting, editing and moving a memory.
 import { mockLocalStorage } from "./fixture-local-storage.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
@@ -82,9 +82,9 @@ try {
   await panel.getByText("from Thesis", { exact: false }).waitFor();
   await panel.getByText("until", { exact: false }).first().waitFor();
   await page.locator(".sp-memory").screenshot({ path: "artifacts/memory-subject.png" });
-  // Keep all keeps both learned memories.
-  await panel.getByRole("button", { name: "Keep all 2" }).click();
-  await page.waitForFunction(() => window.memory.filter((m) => m.scope === "subject:space-test").every((m) => m.confirmed));
+  // The delete button removes that one memory.
+  await panel.getByRole("button", { name: /^Delete: The user is preparing for a DSA/ }).click();
+  await page.waitForFunction(() => !window.memory.some((m) => m.id.startsWith("5555")));
   // Edit one in place.
   await panel.getByRole("button", { name: /^Options for: The user finds integration/ }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();

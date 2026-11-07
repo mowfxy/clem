@@ -987,9 +987,10 @@ void app.whenReady().then(async () => {
     minHeight: 600,
     title: "Clem",
     // Painted before the page loads, so it follows Windows' light or dark setting, the app's default theme.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1f1f1f" : "#faf8f3",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#05080f" : "#e9eff6",
     titleBarStyle: "hidden",
-    titleBarOverlay: nativeTheme.shouldUseDarkColors ? { color: "#1f1f1f", symbolColor: "#eeece4", height: 38 } : { color: "#faf8f3", symbolColor: "#262a35", height: 38 },
+    // See-through, so the horizon runs behind Windows' caption buttons.
+    titleBarOverlay: { color: "#00000000", symbolColor: nativeTheme.shouldUseDarkColors ? "#eaf0f8" : "#1b2740", height: 38 },
     autoHideMenuBar: true,
     icon: join(__dirname, "../desktop/icon.ico"),
     webPreferences: {
@@ -1142,15 +1143,15 @@ void app.whenReady().then(async () => {
   const sharedFiles = new Set<string>();
   const dragIcon = nativeImage.createFromPath(join(__dirname, "../dist/logo.png")).resize({ width: 56, height: 56 });
   // The caption buttons are drawn by Windows, not the page, so they're recoloured to match what the page shows.
-  const tones: Record<string, { color: string; symbolColor: string }> = {
-    normal: { color: "#1f1f1f", symbolColor: "#eeece4" },
-    dim: { color: "#0a0a0a", symbolColor: "#6f6e69" },
-    light: { color: "#faf8f3", symbolColor: "#262a35" },
-    "light-dim": { color: "#d9d7d2", symbolColor: "#6f6e69" },
+  const tones: Record<string, { base: string; symbolColor: string }> = {
+    normal: { base: "#05080f", symbolColor: "#eaf0f8" },
+    dim: { base: "#05080f", symbolColor: "#6c7688" },
+    light: { base: "#e9eff6", symbolColor: "#1b2740" },
+    "light-dim": { base: "#e9eff6", symbolColor: "#6c7688" },
   };
   ipcMain.on("clem:tone", (event, tone) => {
     if (event.sender !== window.webContents || !tones[tone]) return;
-    try { window.setTitleBarOverlay({ ...tones[tone], height: 38 }); if (!tone.endsWith("dim")) window.setBackgroundColor(tones[tone].color); } catch {}
+    try { window.setTitleBarOverlay({ color: "#00000000", symbolColor: tones[tone].symbolColor, height: 38 }); window.setBackgroundColor(tones[tone].base); } catch {}
   });
   ipcMain.on("clem:drag", (event, path) => {
     if (event.sender !== window.webContents || typeof path !== "string" || !sharedFiles.has(path)) return;

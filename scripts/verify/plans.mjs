@@ -161,7 +161,7 @@ try {
   const reminded = await notice.waitFor({ timeout: 8000 }).then(() => true, () => false);
   check(reminded, "an overdue reminder appears");
   if (reminded) {
-    check(await notice.locator(".ink-alarm").count() === 1, "the reminder has the alarm drawing");
+    check(await notice.locator(".notice-mark.hot").count() === 1, "the reminder has its attention mark");
     await page.waitForTimeout(900);
     await page.locator(".notice-stack").screenshot({ path: `${out}/reminder.png` });
     await notice.getByRole("button", { name: /Dismiss/ }).click();
