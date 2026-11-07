@@ -1,5 +1,5 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type ReactNode} from 'react';
-import {Icon} from '../Icons';
+import {Icon,Logo} from '../Icons';
 import {Illustration} from '../Illustrations';
 import {SpaceMark} from './SpaceMark';
 import {Menu} from './SpaceMenu';
@@ -35,26 +35,26 @@ export type ProjectActions={
 
 const ago=(t:number)=>shortWhen(t);
 const who=(by:string)=>by==='you'?'You':by==='coordinator'?'Coordinator':roleName(by);
-const statusLine:Record<ProjectThread['status'],string>={working:'Working',done:'Done',failed:'Failed',stopped:'Stopped'};
+/** Words only for what went wrong; a thread at work shows the thinking animation, and a finished one shows nothing. */
+const trouble=(t:ProjectThread)=>t.status==='failed'?'Failed':t.status==='stopped'?'Stopped':'';
 
 /** A project: the person talks to its coordinator, which opens threads with subagents; Context holds what it knows. */
 export function ProjectPage({space,room,memory,models,fallbackModel,busy,chats,files,driveSync,section,onSection,actions,project}:{space:Space;room:ProjectRoom;memory?:MemoryEntry[];models:Model[];fallbackModel:string;busy:Record<string,true>;chats:Chat[];files:StoredFile[];driveSync:Record<string,DriveSyncState>;section:ProjectSection;onSection:(s:ProjectSection)=>void;actions:SpaceActions;project:ProjectActions}){
   const team=teamOf(space);
   const [settingsOpen,setSettingsOpen]=useState(false),[instructions,setInstructions]=useState(false),[describing,setDescribing]=useState(false);
   const [openThread,setOpenThread]=useState<string|null>(null);
-  const working=room.threads.filter(t=>t.status==='working').length;
   // Where Back goes from an open thread: the coordinator chat it was opened from, or the list of threads.
   const [cameFrom,setCameFrom]=useState<'coordinator'|'list'>('list');
   const showThread=(id:string)=>{setOpenThread(id);setCameFrom('coordinator');onSection('threads');};
   const pickSection=(id:ProjectSection)=>{if(id==='threads')setOpenThread(null);onSection(id);};
-  const tabs:[ProjectSection,string,ReactNode?][]=[['coordinator','Coordinator'],['threads','Threads',working?<span className="pj-tab-live" aria-label={`${working} working`}><i aria-hidden="true"/>{working}</span>:room.threads.length?<span>{room.threads.length}</span>:null],['context','Context',memory?.length?<span>{memory.length}</span>:null]];
+  const tabs:[ProjectSection,string,ReactNode?][]=[['coordinator','Coordinator'],['threads','Threads',room.threads.length?<span>{room.threads.length}</span>:null],['context','Context',memory?.length?<span>{memory.length}</span>:null]];
   const tabBar=useRef<HTMLElement>(null);
   // The underline glides to the chosen tab, as on a subject's page.
   useEffect(()=>{
     const bar=tabBar.current;if(!bar)return;
     const place=()=>{const b=bar.querySelector<HTMLElement>('[aria-selected=true]');if(!b)return;bar.style.setProperty('--tab-x',b.offsetLeft+'px');bar.style.setProperty('--tab-w',b.offsetWidth+'px');bar.dataset.ready='1';};
     place();const ro=new ResizeObserver(place);ro.observe(bar);return()=>ro.disconnect();
-  },[section,working,room.threads.length,memory?.length]);
+  },[section,room.threads.length,memory?.length]);
   return <div className="space-page is-project pj">
     <div className="sp-top">
       <header className="sp-hero pj-hero">
@@ -111,7 +111,7 @@ function Reactions({reactions=[],onToggle,label}:{reactions?:Reaction[];onToggle
 
 // ---------------------------------------------------------------- messages
 
-function Thinking({label='Thinking…'}:{label?:string}){return <span className="thinking">{label}</span>;}
+function Thinking(){return <span className="pj-thinking"><Logo thinking size={20}/></span>;}
 
 function MessageMeta({m,memory,label}:{m:RoomMessage;memory?:boolean;label?:ReactNode}){
   const used=m.recalled?.length||0;
@@ -122,10 +122,9 @@ function MessageMeta({m,memory,label}:{m:RoomMessage;memory?:boolean;label?:Reac
 /** One message, in the app's own bubble style: the person's on the right, the AI's as text. */
 function Message({m,thread,onReact,latest,children}:{m:RoomMessage;thread?:ProjectThread;onReact:(emoji:string)=>void;latest:boolean;children?:ReactNode}){
   const mine=m.from==='you',writing=m.status==='writing';
-  const inThread=!!thread;
   const name=who(m.from);
   return <article className={`message ${mine?'user':'assistant'} pj-message${writing&&!m.content?' waiting':''}${latest?' latest':''}`} data-from={m.from}>
-    {writing&&!m.content?<div className="pj-waiting"><Thinking label={inThread?`${name} is working…`:'Thinking…'}/></div>
+    {writing&&!m.content?<div className="pj-waiting"><Thinking/></div>
       :<div className="message-text">{mine?m.content:<MessageBody content={m.content} streaming={writing}/>}</div>}
     {m.status==='error'&&<p className="pj-error" role="alert">{m.error||'This reply failed.'}</p>}
     {m.status==='stopped'&&<p className="pj-stopped">Stopped</p>}
@@ -148,16 +147,16 @@ function HandoffNote({thread,index=0,onOpen}:{thread:ProjectThread;index?:number
   const replies=thread.messages.filter(m=>m.from!=='coordinator'||m!==thread.messages[0]).length;
   return <div className={`pj-handoff is-${thread.status}${open?' open':''}`} style={{'--i':index} as CSSProperties}>
     <button type="button" className="pj-handoff-line" aria-expanded={open} onClick={()=>setOpen(!open)}>
-      <span className="pj-handoff-dot" aria-hidden="true"/>
+      {thread.status==='working'&&<Logo thinking size={13}/>}
       <span className="pj-handoff-text">Thread with <b>{name}</b><i aria-hidden="true">·</i><span>{thread.title}</span></span>
-      <span key={thread.status} className={`pj-handoff-state is-${thread.status}`}>{thread.status==='working'?'Working…':statusLine[thread.status]}</span>
+      {trouble(thread)&&<span className="pj-handoff-state">{trouble(thread)}</span>}
       <Icon name="down" size={13}/>
     </button>
     {open&&<div className="pj-handoff-chat" ref={chat}>
       {thread.messages.map(m=>{const who_=who(m.from);
         return <div key={m.id} className={`pj-handoff-msg from-${m.from==='coordinator'?'coordinator':m.from==='you'?'you':'agent'}`}>
           <small>{who_}{m.from==='coordinator'&&<> → {name}</>}</small>
-          {m.status==='writing'&&!m.content?<Thinking label="Working…"/>:<div className="pj-handoff-body"><MessageBody content={m.content} streaming={m.status==='writing'}/></div>}
+          {m.status==='writing'&&!m.content?<Thinking/>:<div className="pj-handoff-body"><MessageBody content={m.content} streaming={m.status==='writing'}/></div>}
           {!!m.reactions?.length&&<span className="pj-handoff-reacts">{m.reactions.map((r,i)=><span key={i}>{r.emoji}</span>)}</span>}
         </div>;})}
       <button type="button" className="pj-handoff-open" onClick={onOpen}>{replies?'Open thread to reply':'Open thread'}<Icon name="arrow" size={13}/></button>
@@ -165,8 +164,16 @@ function HandoffNote({thread,index=0,onOpen}:{thread:ProjectThread;index?:number
   </div>;
 }
 
+/** A thread texting the coordinator that its work ended: one line in the chat, opening the thread. */
+function ReportNote({m,onOpen}:{m:RoomMessage;onOpen:()=>void}){
+  return <button type="button" className="pj-handoff-line pj-report" onClick={onOpen}>
+    <span className="pj-handoff-text"><b>{who(m.from)}</b><i aria-hidden="true">·</i><span>{m.content}</span></span>
+    <Icon name="right" size={13}/>
+  </button>;
+}
+
 /** The message box, as in a chat: Enter sends, Shift+Enter breaks the line, and the button stops a running reply. */
-function Composer({placeholder,running,onSend,onStop,disabled,children,autoFocus}:{placeholder:string;running:boolean;onSend:(text:string)=>void;onStop:()=>void;disabled?:string;children?:ReactNode;autoFocus?:boolean}){
+function Composer({placeholder,running,background,onSend,onStop,disabled,children,autoFocus}:{placeholder:string;running:boolean;background?:boolean;onSend:(text:string)=>void;onStop:()=>void;disabled?:string;children?:ReactNode;autoFocus?:boolean}){
   const [text,setText]=useState('');
   const field=useRef<HTMLTextAreaElement>(null);
   // Grows with what is typed; empty, it goes back to the stylesheet's one-line height.
@@ -179,7 +186,7 @@ function Composer({placeholder,running,onSend,onStop,disabled,children,autoFocus
     <div className="composer-bottom">
       <div className="composer-tools pj-composer-left">{children}</div>
       <div className="composer-tools">
-        {running?<button type="button" className="send-button" aria-label="Stop" aria-description="Stops the reply and any threads it started" onClick={onStop}><span className="stop-square"/></button>
+        {running||(background&&!text.trim())?<button type="button" className="send-button" aria-label="Stop" aria-description="Stops the reply and any threads it started" onClick={onStop}><span className="stop-square"/></button>
           :<button className="send-button" aria-label="Send message" disabled={!text.trim()||!!disabled}><Icon name="up" size={22}/></button>}
       </div>
     </div>
@@ -199,8 +206,6 @@ function CoordinatorChat({space,room,models,model,effort,running,project,onThrea
   // Nothing to follow yet: the page stays at its top, where the introduction is.
   const end=useFollow(room.messages.length&&room.messages.map(m=>m.id+m.content.length+(m.reactions?.length||0)).join()+room.threads.map(t=>t.status).join());
   const canAsk=models.some(m=>m.connected);
-  const last=room.messages.at(-1);
-  const waitingOnThreads=running&&last?.from==='coordinator'&&!last.status&&!!last.threads?.length&&room.threads.some(t=>last.threads!.includes(t.id)&&t.status==='working');
   return <section className={`pj-chat${room.messages.length?'':' is-empty'}`} aria-label="Coordinator">
     {!room.messages.length?<div className="pj-intro">
       <Illustration scene="relay" viewBox="104 62 272 290" className="pj-intro-art"/>
@@ -209,14 +214,13 @@ function CoordinatorChat({space,room,models,model,effort,running,project,onThrea
       <div className="pj-starters">{[`Plan the next two weeks`,'Research the options for me','Draft it, then have it reviewed'].map(s=><button key={s} type="button" disabled={!canAsk} onClick={()=>project.send(s)}>{s}<Icon name="arrow" size={14}/></button>)}</div>
     </div>
     :<div className="messages pj-messages">
-      {room.messages.map((m,i)=><Message key={m.id} m={m} latest={i===room.messages.length-1} onReact={e=>project.react({message:m.id},e)}>
+      {room.messages.map((m,i)=>m.report?<ReportNote key={m.id} m={m} onOpen={()=>onThread(m.report!)}/>:<Message key={m.id} m={m} latest={i===room.messages.length-1} onReact={e=>project.react({message:m.id},e)}>
         {!!m.threads?.length&&<div className="pj-handoffs">{m.threads.map((id,i)=>{const t=room.threads.find(x=>x.id===id);return t?<HandoffNote key={id} index={i} thread={t} onOpen={()=>onThread(id)}/>:null;})}</div>}
       </Message>)}
-      {waitingOnThreads&&<div className="pj-waiting pj-after"><Thinking label="Waiting for the threads to report back…"/></div>}
     </div>}
     <div ref={end}/>
     <div className="chat-composer pj-composer">
-      <Composer placeholder={room.messages.length?'Reply to the coordinator…':`What should ${space.name} get done?`} running={running} onSend={project.send} onStop={()=>project.stop(space.id)} disabled={canAsk?undefined:'Connect an AI in Settings → Models to start'}>
+      <Composer placeholder={room.messages.length?'Reply to the coordinator…':`What should ${space.name} get done?`} running={running} background={room.threads.some(t=>t.status==='working')} onSend={project.send} onStop={()=>project.stop(space.id)} disabled={canAsk?undefined:'Connect an AI in Settings → Models to start'}>
         <ModelSelector models={models} value={model} onChange={onModel} effort={effort} onEffort={onEffort} onConnect={project.onConnect} label="Coordinator model"/>
       </Composer>
     </div>
@@ -238,7 +242,7 @@ function Threads({room,models,agentModel,busy,open,cameFrom,onOpen,onBack,projec
   const used=[...new Set(room.threads.map(t=>t.agent))];
   const shown=[...room.threads].filter(t=>filter==='all'||t.agent===filter).sort((a,b)=>(b.status==='working'?1:0)-(a.status==='working'?1:0)||b.updated-a.updated);
   const groups:[string,ProjectThread[]][]=[];
-  for(const t of shown){const g=t.status==='working'?'Working now':dayGroup(t.updated);const last=groups.at(-1);if(last&&last[0]===g)last[1].push(t);else groups.push([g,[t]]);}
+  for(const t of shown){const g=t.status==='working'?'Now':dayGroup(t.updated);const last=groups.at(-1);if(last&&last[0]===g)last[1].push(t);else groups.push([g,[t]]);}
   return <section className="pj-threads" aria-label="Threads">
     {used.length>1&&<div className="pj-thread-filter" role="group" aria-label="Show threads from">
       <button type="button" aria-pressed={filter==='all'} onClick={()=>setFilter('all')}>All<span>{room.threads.length}</span></button>
@@ -248,10 +252,10 @@ function Threads({room,models,agentModel,busy,open,cameFrom,onOpen,onBack,projec
       <h4>{label}</h4>
       <ul>{list.map(t=>{const turns=t.messages.filter(m=>m.from!=='coordinator').length;
         return <li key={t.id}><button type="button" className={`pj-thread-row is-${t.status}`} onClick={()=>onOpen(t.id)}>
-          <span className="pj-handoff-dot" aria-hidden="true"/>
+          {t.status==='working'&&<Logo thinking size={15}/>}
           <span className="pj-thread-row-text">
             <span className="pj-thread-row-top"><strong>{t.title}</strong><small>{roleName(t.agent)}</small></span>
-            <span className="pj-thread-row-sum">{t.status==='working'?'Working on it…':t.summary||statusLine[t.status]}</span>
+            {t.status!=='working'&&<span className="pj-thread-row-sum">{trouble(t)||t.summary}</span>}
           </span>
           <span className="pj-thread-row-side"><small>{ago(t.updated)}</small><small>{turns} {turns===1?'reply':'replies'}</small></span>
           <Icon name="right" size={15}/>
@@ -270,7 +274,7 @@ function ThreadView({thread,model,running,project,backLabel,onBack}:{thread:Proj
     <header className="pj-thread-head">
       <div>
         <h3>{thread.title}</h3>
-        <p className="pj-thread-sub"><span className={`pj-handoff-dot is-${thread.status}`} aria-hidden="true"/><b>{name}</b>{model&&<> · {model}</>} · {thread.status==='working'?'Working…':statusLine[thread.status]} · started {ago(thread.created)}</p>
+        <p className="pj-thread-sub"><b>{name}</b>{model&&<> · {model}</>}{trouble(thread)&&<> · {trouble(thread)}</>} · started {ago(thread.created)}</p>
       </div>
     </header>
     <div className="messages pj-messages pj-thread-messages">

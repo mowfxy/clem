@@ -87,8 +87,8 @@ html body .composer .slash-field textarea{max-height:min(264px,38vh);overflow-y:
 .composer :is(textarea,.slash-mirror)::-webkit-scrollbar{width:10px}
 .composer :is(textarea,.slash-mirror)::-webkit-scrollbar-button{display:none}
 .composer :is(textarea,.slash-mirror)::-webkit-scrollbar-track{background:transparent}
-.composer textarea::-webkit-scrollbar-thumb{background:#454540;border:3px solid transparent;background-clip:padding-box;border-radius:10px}
-.composer textarea::-webkit-scrollbar-thumb:hover{background-color:#5c5c55}
+.composer textarea::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border:3px solid transparent;background-clip:padding-box;border-radius:10px}
+.composer textarea::-webkit-scrollbar-thumb:hover{background-color:var(--scroll-thumb-hover)}
 .composer .slash-mirror::-webkit-scrollbar-thumb{background:transparent}
 /* The chat box sits on the page's own background across the whole workspace, so a table wider than the text column
    passes under it instead of showing beside it: the backdrop's colour is repeated sideways by a clipped shadow (no

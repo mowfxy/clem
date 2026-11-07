@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { entry, forget, parseMemory, recall, remember, serializeMemory, MEMORY_LIMIT } from "../core/project-memory.ts";
-import { coordinatorHistory, coordinatorTurn, emptyRoom, modelsOf, readReply, runThread, settleRoom, toggleReaction, type Ask, type Room } from "../core/coordinator.ts";
+import { coordinatorHistory, coordinatorTurn, emptyRoom, modelsOf, readReply, reportsWaiting, runThread, settleRoom, toggleReaction, workThread, type Ask, type Room } from "../core/coordinator.ts";
 import type { ProjectRoom, Space } from "../core/types.ts";
 import type { MemoryEntry } from "../core/project-memory.ts";
 
@@ -90,6 +90,15 @@ const say = (h: ReturnType<typeof harness>, content: string) => {
   h.io.set((r) => ({ ...r, messages: [...r.messages, m] }));
   return m;
 };
+/** A message through to quiet, as useProjects runs it: threads work on their own, then the coordinator answers their reports. */
+async function untilQuiet(h: ReturnType<typeof harness>, msg: { id: string; from: string; content: string; at: number }, ask: Ask, signal = new AbortController().signal, own?: (id: string) => AbortSignal) {
+  let opened = await coordinatorTurn(space, runs, msg, h.io, ask, signal);
+  while (opened.length) {
+    await Promise.all(opened.map((id) => workThread(space, runs.agent, id, h.io, ask, own?.(id) || signal)));
+    if (!reportsWaiting(h.io.get())) break;
+    opened = await coordinatorTurn(space, runs, null, h.io, ask, signal);
+  }
+}
 
 test("a reply that is only a reaction leaves just the reaction", async () => {
   const h = harness();
@@ -99,7 +108,7 @@ test("a reply that is only a reaction leaves just the reaction", async () => {
   assert.deepEqual(h.room().messages[0].reactions, [{ emoji: "🙏", by: "coordinator" }]);
 });
 
-test("the coordinator delegates, threads run in parallel, then it answers from their reports", async () => {
+test("the coordinator delegates, threads run in parallel and text it, then it answers from their reports", async () => {
   const h = harness([entry("Launch is on December 3.", ["launch"])]);
   const msg = say(h, "Plan the launch announcement");
   const seen: string[][] = [];
@@ -115,11 +124,11 @@ test("the coordinator delegates, threads run in parallel, then it answers from t
       const brief = messages.at(-1)!.content;
       return brief.includes("facts") ? "Dec 3 confirmed. [[react: ✅]]\n[[summary: Confirmed the date]]\n[[remember: venue | The launch venue is Berlin]]" : "Draft: We launch Dec 3.\n[[summary: Wrote a draft]]";
     }
-    if (messages.some((m) => m.content.startsWith("(Thread reports"))) return "Here is the plan: date confirmed, draft ready.";
+    if (messages.some((m) => m.content.startsWith("(Thread report"))) return "Here is the plan: date confirmed, draft ready.";
     onText("On it: research");
     return "On it.\n[[thread: Researcher | Check facts | Check the facts for the launch]]\n[[delegate: Writer | Draft | Write the announcement]]\n[[react: 👀]]";
   };
-  await coordinatorTurn(space, runs, msg, h.io, ask, new AbortController().signal);
+  await untilQuiet(h, msg, ask);
   const room = h.room();
   assert.equal(most, 2, "both threads ran at once");
   assert.equal(room.threads.length, 2);
@@ -127,7 +136,8 @@ test("the coordinator delegates, threads run in parallel, then it answers from t
   assert.equal(room.threads[0].summary, "Confirmed the date");
   assert.deepEqual(room.threads.map((t) => t.agent), ["Researcher", "Writer"]);
   assert.deepEqual(room.threads[0].messages[0].reactions, [{ emoji: "✅", by: "Researcher" }]);
-  assert.deepEqual(room.messages.map((m) => m.content), ["Plan the launch announcement", "On it.", "Here is the plan: date confirmed, draft ready."]);
+  assert.deepEqual(room.messages.map((m) => m.content), ["Plan the launch announcement", "On it.", "Confirmed the date", "Wrote a draft", "Here is the plan: date confirmed, draft ready."]);
+  assert.deepEqual(room.messages.slice(2, 4).map((m) => [m.from, m.report]), [["Researcher", room.threads[0].id], ["Writer", room.threads[1].id]]);
   assert.deepEqual(room.messages[0].reactions, [{ emoji: "👀", by: "coordinator" }]);
   assert.equal(room.messages[1].threads?.length, 2);
   assert.ok(h.memory().some((e) => e.text === "The launch venue is Berlin"));
@@ -153,15 +163,17 @@ test("a recall looks in the memory file and asks once more", async () => {
   assert.deepEqual(h.room().messages.map((m) => m.content), ["what did we decide?", "We set the ad budget at 4000 euros."]);
 });
 
-test("a stopped turn marks the reply stopped and the threads stopped", async () => {
+test("stopping everything stops the threads and asks the coordinator for nothing more", async () => {
   const h = harness();
   const msg = say(h, "go");
   const stop = new AbortController();
   const ask: Ask = (messages, { chat, signal }) => chat.startsWith("thr-")
     ? new Promise((_, reject) => { setTimeout(() => stop.abort(), 5); signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError"))); })
     : Promise.resolve("[[thread: Researcher | Dig | Dig into it]]");
-  await assert.rejects(coordinatorTurn(space, runs, msg, h.io, ask, stop.signal));
+  await untilQuiet(h, msg, ask, stop.signal);
   assert.equal(h.room().threads[0].status, "stopped");
+  assert.equal(reportsWaiting(h.room()), false);
+  assert.equal(h.room().messages.at(-1)!.content, "Stopped.");
 });
 
 test("the person can add to a thread and the agent answers there", async () => {
@@ -188,7 +200,7 @@ test("a closing reply that is only a reaction still leaves the person an answer"
   const h = harness();
   const msg = say(h, "research it");
   let n = 0;
-  await coordinatorTurn(space, runs, msg, h.io, async (_, { chat }) => chat.startsWith("thr-") ? "Found it. [[summary: Found it]]" : n++ === 0 ? "On it.\n[[thread: Researcher | Dig | Dig in]]" : "[[react: 👍]]", new AbortController().signal);
+  await untilQuiet(h, msg, async (_, { chat }) => chat.startsWith("thr-") ? "Found it. [[summary: Found it]]" : n++ === 0 ? "On it.\n[[thread: Researcher | Dig | Dig in]]" : "[[react: 👍]]");
   const last = h.room().messages.at(-1)!;
   assert.equal(last.from, "coordinator");
   assert.equal(last.status, "error");
@@ -208,21 +220,69 @@ test("a memory file that cannot be saved does not lose the reply", async () => {
 test("one thread can be stopped alone; the coordinator answers from the rest", async () => {
   const h = harness();
   const own = new Map<string, AbortController>();
-  h.io.thread = (id, parent) => { const c = new AbortController(); parent.addEventListener("abort", () => c.abort()); own.set(id, c); return { signal: c.signal, done: () => own.delete(id) }; };
   const msg = say(h, "two things");
   let closing = "";
-  await coordinatorTurn(space, runs, msg, h.io, (messages, { chat, signal }) => {
+  await untilQuiet(h, msg, (messages, { chat, signal }) => {
     if (chat.startsWith("thr-")) {
       if (messages.at(-1)!.content === "slow") return new Promise((_, reject) => { signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError"))); own.get(chat.slice(4))!.abort(); });
       return Promise.resolve("Quick result. [[summary: Quick]]");
     }
-    if (messages.some((m) => m.content.startsWith("(Thread reports"))) { closing = messages.at(-1)!.content; return Promise.resolve("Done with what we have."); }
+    if (messages.some((m) => m.content.startsWith("(Thread report"))) { closing = messages.map((m) => m.content).join("\n"); return Promise.resolve("Done with what we have."); }
     return Promise.resolve("[[thread: A | Slow | slow]]\n[[thread: B | Fast | fast]]");
-  }, new AbortController().signal);
+  }, undefined, (id) => { const c = new AbortController(); own.set(id, c); return c.signal; });
   assert.deepEqual(h.room().threads.map((t) => t.status), ["stopped", "done"]);
   assert.match(closing, /the person stopped this thread/);
   assert.equal(h.room().messages.at(-1)!.content, "Done with what we have.");
-  assert.equal(own.size, 0, "every thread's run was ended");
+});
+
+test("the coordinator does not wait for its threads, so the person can keep talking", async () => {
+  const h = harness();
+  const msg = say(h, "research it");
+  let release = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  const ask: Ask = async (messages, { chat }) => {
+    if (chat.startsWith("thr-")) { await held; return "Found it. [[summary: Found it]]"; }
+    if (messages.some((m) => m.content.startsWith("(Thread report"))) return "It turned up.";
+    return messages.at(-1)!.content === "research it" ? "On it.\n[[thread: Researcher | Dig | Dig in]]" : "Still here.";
+  };
+  const opened = await coordinatorTurn(space, runs, msg, h.io, ask, new AbortController().signal);
+  assert.equal(h.room().threads[0].status, "working");
+  const work = workThread(space, runs.agent, opened[0], h.io, ask, new AbortController().signal);
+  await coordinatorTurn(space, runs, say(h, "how's the weather"), h.io, ask, new AbortController().signal);
+  assert.equal(h.room().messages.at(-1)!.content, "Still here.");
+  release();
+  await work;
+  assert.equal(reportsWaiting(h.room()), true);
+  await coordinatorTurn(space, runs, null, h.io, ask, new AbortController().signal);
+  assert.equal(h.room().messages.at(-1)!.content, "It turned up.");
+  assert.equal(reportsWaiting(h.room()), false);
+});
+
+test("what the person adds in a thread comes back to the coordinator", async () => {
+  const h = harness();
+  const ask: Ask = async (messages, { chat }) => {
+    if (chat.startsWith("thr-")) return "Reworked it. [[summary: Reworked the draft]]";
+    assert.ok(messages.some((m) => m.content.includes("Reworked it.")), "the coordinator gets the thread's work");
+    return "The draft is reworked.";
+  };
+  const id = crypto.randomUUID(), now = Date.now();
+  h.io.set((r) => ({ ...r, threads: [{ id, agent: "Writer", title: "Draft", status: "done", created: now, updated: now, messages: [{ id: "a", from: "coordinator", content: "Write it", at: now }, { id: "b", from: "you", content: "Make it shorter", at: now }] }] }));
+  await workThread(space, runs.agent, id, h.io, ask, new AbortController().signal);
+  assert.equal(reportsWaiting(h.room()), true);
+  await coordinatorTurn(space, runs, null, h.io, ask, new AbortController().signal);
+  assert.equal(h.room().messages.at(-1)!.content, "The draft is reworked.");
+});
+
+test("a chain of threads stops after one more round", async () => {
+  const h = harness();
+  let opened = 0;
+  await untilQuiet(h, say(h, "go"), async (_, { chat }) => {
+    if (chat.startsWith("thr-")) return "Done. [[summary: Done]]";
+    opened++;
+    return "More.\n[[thread: Researcher | Again | Again]]";
+  });
+  assert.equal(h.room().threads.length, 2);
+  assert.equal(opened, 3);
 });
 
 test("a room saved mid-run comes back stopped, not working forever", () => {

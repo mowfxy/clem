@@ -12,7 +12,7 @@ html:root{
   --glass-drop:0 18px 50px -18px #000c,0 2px 8px #0005;
   --glass-sheen:linear-gradient(155deg,#ffffff1c 0%,#ffffff07 26%,#ffffff00 52%,#ffffff05 100%);
   --sky:#7fb2ff;--sky-deep:#3f6fd8;--ember:#ff9a5c;
-  --menu-bg:#0d1524f7;--menu-line:#ffffff1f;--menu-ink:#eef3fa;--menu-hint:#9eabc0;--menu-hover:#ffffff14;--menu-danger:#ff9a8c;
+  --scroll-thumb:#ffffff29;--scroll-thumb-hover:#ffffff52;--menu-bg:#0d1524f7;--menu-line:#ffffff1f;--menu-ink:#eef3fa;--menu-hint:#9eabc0;--menu-hover:#ffffff14;--menu-danger:#ff9a8c;
   --sheet-bg:#0b1424f5;--sheet-line:#ffffff1a;
   --rail:clamp(232px,18vw,262px);--side:calc(var(--rail) + 20px);
   --row:38px;--row-s:34px;--text:14px;--text-s:13.5px;--text-label:12px;--icon:18px;
@@ -27,7 +27,7 @@ html:root[data-theme=light]{
   --glass-rim:inset 0 1px 0 #ffffffd9,inset 1px 0 0 #ffffff80,inset 0 -1px 0 #ffffff59,0 0 0 1px #1b27400f;
   --glass-drop:0 18px 44px -20px #1b274059,0 2px 8px #1b27401a;
   --glass-sheen:linear-gradient(155deg,#ffffff8c 0%,#ffffff26 30%,#ffffff00 60%);
-  --menu-bg:#f8fafdf7;--menu-line:#1b27401f;--menu-ink:#141e33;--menu-hint:#5b6880;--menu-hover:#1b27400f;--menu-danger:#c0392b;
+  --scroll-thumb:#1b27402e;--scroll-thumb-hover:#1b274061;--menu-bg:#f8fafdf7;--menu-line:#1b27401f;--menu-ink:#141e33;--menu-hint:#5b6880;--menu-hover:#1b27400f;--menu-danger:#c0392b;
   --sheet-bg:#f4f7fbf7;--sheet-line:#1b27401a;
   --sky:#2f6fe0;--sky-deep:#2f6fe0;--ember:#c9561c
 }
