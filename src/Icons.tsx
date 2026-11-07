@@ -1,5 +1,4 @@
-import { useEffect,useState } from 'react';
-import { MARK_ARC,MARK_ARC_WIDTH,MARK_CURSOR,MARK_NUDGE } from '../core/mark';
+import { MARK_PATH } from '../core/mark';
 // Icons: one even line on a 32-unit grid, rounded ends, and at most one soft grey fill per icon.
 // A drawing is a list of strokes; a stroke starting with "F " is also filled. Hover motion in CSS
 // targets strokes by index (`.icon-<name> .stroke-<i>`), so keep each icon's stroke order.
@@ -122,17 +121,10 @@ device:['F '+box(6,6,20,14),'M3 25.5h26']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
 export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
-/** Clem's mark (geometry in core/mark.ts): a C with a block cursor in its opening. While thinking the cursor
- *  becomes three cursors that hop in turn, the identity's thinking animation; a click makes the cursor blink. */
-export function Logo({size=34,thinking=false,still=false}:{size?:number;thinking?:boolean;/** No motion at all, not even the click blink (the website). */still?:boolean}){
- const [moving,setMoving]=useState(true);
- const [poke,setPoke]=useState(false);
- useEffect(()=>{const media=matchMedia('(prefers-reduced-motion: reduce)');const sync=()=>setMoving(!media.matches&&document.documentElement.dataset.quiet!=='true');sync();media.addEventListener('change',sync);const observer=new MutationObserver(sync);observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-quiet']});return()=>{observer.disconnect();media.removeEventListener('change',sync);};},[]);
- useEffect(()=>{if(!poke)return;const t=setTimeout(()=>setPoke(false),620);return()=>clearTimeout(t);},[poke]);
- if(thinking)return <span className="clem-mark clem-hop" style={{width:size,height:size}} role="img" aria-label="Clem is thinking"><i/><i/><i/></span>;
- const c=MARK_CURSOR;
- return <svg width={size} height={size} viewBox="0 0 100 100" className={`clem-mark${poke?' is-poked':''}`} aria-hidden="true" onClick={still?undefined:()=>{if(moving)setPoke(true);}}>
-  <g transform={MARK_NUDGE}><path d={MARK_ARC} fill="none" stroke="currentColor" strokeWidth={MARK_ARC_WIDTH} strokeLinecap="round"/><rect className="mark-cursor" x={c.x} y={c.y} width={c.width} height={c.height} rx={c.rx} fill="currentColor"/></g>
- </svg>;
+/** Clem's mark (geometry in core/mark.ts), drawn in the text colour: white on dark themes, black on light. It never moves;
+ *  while thinking it gives way to one soft shape tumbling, the identity's thinking animation. */
+export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){
+ if(thinking)return <span className="clem-mark clem-tumble" style={{width:size,height:size}} role="img" aria-label="Clem is thinking"><i/></span>;
+ return <svg width={size} height={size} viewBox="0 0 100 100" className="clem-mark" aria-hidden="true"><path d={MARK_PATH} fill="currentColor" fillRule="evenodd"/></svg>;
 }
 export function GoogleLogo(){return <svg width="21" height="21" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M44 24.5c0-1.5-.1-3-.4-4.5H24v8.5h11.2c-.5 2.7-2 5-4.2 6.5v5.4h6.8C41.8 36.7 44 31.1 44 24.5Z"/><path fill="#34A853" d="M24 45c5.6 0 10.3-1.8 13.8-5.1L31 34.5c-1.9 1.3-4.3 2-7 2-5.4 0-10-3.6-11.6-8.5h-7v5.6A21 21 0 0 0 24 45Z"/><path fill="#FBBC05" d="M12.4 28a12.7 12.7 0 0 1 0-8v-5.6h-7a21 21 0 0 0 0 19.2Z"/><path fill="#EA4335" d="M24 11.5c3 0 5.6 1 7.7 3l5.8-5.8A20 20 0 0 0 24 3 21 21 0 0 0 5.4 14.4l7 5.6C14 15.1 18.6 11.5 24 11.5Z"/></svg>}

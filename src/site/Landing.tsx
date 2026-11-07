@@ -20,7 +20,7 @@ export const shown=features.filter(f=>f.id!=='multi-model-work');
 /** Each feature's plate: the ink drawing that acts it out. */
 export const plates:Record<string,Scene>={'financial-analysis':'balance','physics-diagrams':'build','technical-reports':'pencil',research:'telescope',learning:'sprout',presentations:'kite','professional-documents':'checklist','connected-work':'bridge'};
 
-/** Clem's thinking: three cursors hopping in turn, with what it is doing beside them. */
+/** Clem's thinking: one soft shape tumbling, with what it is doing beside it. */
 export function Thinking({label}:{label:string}){return <span className="cl-thinking" role="status"><Logo size={22} thinking/><span>{label}</span></span>;}
 
 const demos:{ask:string;spec:string;doing:string}[]=[
@@ -55,7 +55,7 @@ export function Landing(){
     <section className="cl-hero" aria-labelledby="cl-hero-title">
       <AsciiField/>
       <div className="cl-wrap cl-hero-inner">
-        <p className="cl-greet cl-hero-greet"><Logo size={34} still/>{greeting}, thinker.</p>
+        <p className="cl-greet cl-hero-greet"><Logo size={34}/>{greeting}, thinker.</p>
         <h1 id="cl-hero-title" className="cl-display"><span className="cl-line"><span>Your space</span></span><span className="cl-line"><span>to <Underline>think.</Underline></span></span></h1>
         <p className="cl-lede cl-hero-lede">Clem is a calm desktop workspace for study, research and writing. It keeps your notes, chats, flashcards and drafts together, and answers with the AI plan you already have.</p>
         <div className="cl-actions"><Download/><a className="cl-link" href={REPO}><Icon name="github" size={18}/>View source</a></div>

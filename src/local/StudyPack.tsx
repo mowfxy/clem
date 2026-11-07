@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState,type CSSProperties} from 'react';
 import {Icon} from '../Icons';
-import {MARK_ARC,MARK_CURSOR as C,MARK_NUDGE} from '../../core/mark';
+import {MARK_PATH} from '../../core/mark';
 import {getBlob,storeBlob,deleteBlob,download,sizeLabel} from '../store';
 import {desktop} from '../desktop/bridge';
 import {packStudy,unpackStudy,cardCount,packFileName,PACK_EXTENSION,type StudyPack} from '../../core/study-pack';
@@ -87,7 +87,7 @@ export function ShareSheet({space,sets,files,author,folderId,onClose,onDone}:{sp
       <h2>Drag it into any chat.</h2>
       <p>WhatsApp, Discord, Teams, email — anywhere you can drop a file.</p>
       <div className="sh-file" draggable={!!result.path} onDragStart={e=>{if(result.path&&desktop?.startDrag){e.preventDefault();desktop.startDrag(result.path);}}} aria-description={result.path?'Drag me':''}>
-        <span className="sh-file-icon"><svg viewBox="0 0 100 100" width="26" height="26" aria-hidden="true"><g transform={MARK_NUDGE}><path d={MARK_ARC} fill="none" stroke="currentColor" strokeWidth="13" strokeLinecap="round"/><rect x={C.x} y={C.y} width={C.width} height={C.height} rx={C.rx} fill="currentColor"/></g></svg></span>
+        <span className="sh-file-icon"><svg viewBox="0 0 100 100" width="26" height="26" aria-hidden="true"><path d={MARK_PATH} fill="currentColor" fillRule="evenodd"/></svg></span>
         <span><strong>{result.name}</strong><small>{result.summary} · {sizeLabel(result.size)}</small></span>
         {result.path&&<span className="sh-grip" aria-hidden="true">⠿</span>}
       </div>

@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import {chromium} from 'playwright';
 import gifenc from 'gifenc';
-import {markInner,MARK_ARC,MARK_ARC_WIDTH,MARK_NUDGE} from '../core/mark.ts';
+import {markInner} from '../core/mark.ts';
 import {filmFrame,loopSeconds} from '../src/vectorFilm.ts';
 import {emailArt,ART,artBackground} from '../server/email-layout.ts';
 const {GIFEncoder,quantize,applyPalette}=gifenc;
@@ -97,8 +97,7 @@ function writeGif(file,frames,w,h,colors=64){
 async function brand(){
  // Clem's mark only appears in Clem's emails, so it is drawn on Clem's page colour.
  const mark=(inner)=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${artBackground.mark}"/>${inner}</svg>`;
- const whole=mark(markInner(INK)),arcOnly=mark(`<g transform="${MARK_NUDGE}"><path d="${MARK_ARC}" fill="none" stroke="${INK}" stroke-width="${MARK_ARC_WIDTH}" stroke-linecap="round"/></g>`);
- const frames=[];for(const [svg,delay] of [[whole,530],[arcOnly,530]])frames.push({rgba:rgba(await page.evaluate(([s])=>raster(s,78,78),[svg])),delay});
+ const frames=[{rgba:rgba(await page.evaluate(([s])=>raster(s,78,78),[mark(markInner(INK))])),delay:1000}];
  console.log(writeGif('clem-mark.gif',frames,78,78,32));
  // The M4 Labs logo as m4labs.xyz sets it: "M4" in Mowafy Sans Bold and "labs" in a pill, at 3x for sharp screens,
  // on a transparent ground (PNG alpha works in every client) so it sits on both brands' pages.

@@ -14,7 +14,7 @@ export const LAB='https://m4labs.xyz';
 const links:[string,string][]=[['#/features','Features'],['#/#story','How it works'],['#/support','Support'],['#/about','About']];
 
 /** "clem" set as the identity's wordmark, beside the mark. */
-export function Brand({size=24}:{size?:number}){return <span className="cl-brand"><Logo size={size} still/><span className="wordmark">clem</span></span>;}
+export function Brand({size=24}:{size?:number}){return <span className="cl-brand"><Logo size={size}/><span className="wordmark">clem</span></span>;}
 
 /** Day and night drawn in the ink line: a sun whose rays turn into the moon's crescent. */
 function SkyToggle({theme,flip}:{theme:'light'|'dark';flip:()=>void}){

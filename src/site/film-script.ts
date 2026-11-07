@@ -1,10 +1,10 @@
 import {inks,pen,penFrame} from '../vectorFilm';
-import {MARK_CURSOR} from '../../core/mark';
+import {MARK_BODY,MARK_LEAF,TUMBLE_PERIOD,markOutline} from '../../core/mark';
 
 /**
  * The website's film: a short story in Clem's pen, the same wandering ivory line, one colour per shot and the same
- * pose-to-pose timing as the app's illustrations, only longer and wider (a 960 × 540 stage, framed in close at VIEW). The block cursor from
- * Clem's mark is its one character: it blinks the film open, hops while Clem thinks and comes home at the end.
+ * pose-to-pose timing as the app's illustrations, only longer and wider (a 960 × 540 stage, framed in close at VIEW). The tumbling shape
+ * is its one character: it rolls while Clem thinks and settles beside Clem's mark at the end.
  * Shots that share an object continue straight on; a new place fades in as the last one fades out.
  */
 const {line,curve,shape,arc,ellipse,rounded,X,ring,wavy,pose,pop,clamp,lerp}=pen;
@@ -19,27 +19,19 @@ const ease=(u:number,a:number,b:number)=>{const x=clamp((u-a)/(b-a));return 1-(1
 export type Shot={id:string;caption:string;seconds:number;draw:(u:number)=>string;into?:'cut'|'fade';dx?:number};
 
 // ---------- the mark ----------
-const END=Math.atan2(20.07,22.29),CX=540,CY=246,S=2.9;
-/** The C as a pen outline of its thick round-capped arc: outer edge, cap, inner edge, cap. */
-function cOutline(cx=CX,cy=CY,s=S):P[]{
-  const R=30*s,h=6.5*s,a0=END,a1=TAU-END,end=(a:number):P=>[cx+Math.cos(a)*R,cy+Math.sin(a)*R];
-  const [e1x,e1y]=end(a1),[e0x,e0y]=end(a0);
-  return [...arc(cx,cy,R+h,R+h,a0,a1,44),...arc(e1x,e1y,h,h,a1,a1+Math.PI,8).slice(1),...arc(cx,cy,R-h,R-h,a1,a0,44).slice(1),...arc(e0x,e0y,h,h,a0+Math.PI,a0+TAU,8).slice(1,-1)];
-}
-/** The cursor from the mark, at its place in the C, or anywhere: (x, y) is its centre. */
-function cursor(x:number,y:number,{s=S,opacity=1,lift=0,sc=1}:{s?:number;opacity?:number;lift?:number;sc?:number}={}){
-  const w=MARK_CURSOR.width*s*sc,h=MARK_CURSOR.height*s*sc;
-  return shape(rounded(x-w/2,y-h/2+lift,w,h,2*s*sc),{fill:INK,w:0,opacity});
-}
-const cursorHome=(cx=CX,cy=CY,s=S):P=>[cx+(MARK_CURSOR.x+MARK_CURSOR.width/2-50)*s,cy+(MARK_CURSOR.y+MARK_CURSOR.height/2-50)*s];
-/** Three cursors hopping in turn, as Clem does while it thinks: 1.35 s a round, 0.45 s apart. */
-function hop(u:number,x:number,y:number,gap:number,s:number,sc=1){
-  let out='';
-  for(let i=0;i<3;i++){
-    const ph=(((u-i*.45)%1.35)+1.35)%1.35/1.35,up=ph<.12?ph/.12:ph<.3?1-(ph-.12)/.18:0;
-    out+=cursor(x+i*gap,y,{s,sc,lift:-up*MARK_CURSOR.height*s*sc*.3,opacity:ph<.42?.35+.65*Math.max(up,ph<.3?1:0):.28});
-  }
-  return out;
+const CX=540,CY=246,S=2.9;
+/** One outline of the mark, placed on the stage. */
+const placed=(path:string):P[]=>markOutline(path).map(([x,y])=>[CX+(x-50)*S,CY+(y-50)*S]);
+const BODY=placed(MARK_BODY),LEAF=placed(MARK_LEAF);
+/** A pose's edge at angle `a`, measured from its centre, for a shape of unit half-width. */
+const squircle=(a:number)=>(Math.abs(Math.cos(a))**3.4+Math.abs(Math.sin(a))**3.4)**(-1/3.4);
+const leafEdge=(a:number,axis:number)=>{const s=Math.sin(a-axis),R=1.42,d=R-.72;return Math.min(...[1,-1].map(side=>{const b=side*d*s;return -b+Math.sqrt(b*b+R*R-d*d)}));};
+/** One soft shape tumbling, as Clem does while it thinks: a quarter turn at a time, square, leaf, circle, leaf, square. */
+function tumble(u:number,x:number,y:number,r:number,{opacity=1}:{opacity?:number}={}){
+  const turns=((u%TUMBLE_PERIOD)+TUMBLE_PERIOD)%TUMBLE_PERIOD/TUMBLE_PERIOD*4,step=Math.floor(turns),e=ease(turns-step,0,1),q=(step+e)/4,pts:P[]=[];
+  const poses=[squircle,(a:number)=>leafEdge(a,Math.PI/4),()=>1,(a:number)=>leafEdge(a,-Math.PI/4),squircle];
+  for(let i=0;i<72;i++){const a=i/72*TAU,edge=lerp(poses[step](a),poses[step+1](a),e)*r;pts.push([x+Math.cos(a+q*TAU)*edge,y+Math.sin(a+q*TAU)*edge]);}
+  return shape(pts,{fill:INK,w:0,opacity});
 }
 
 // ---------- the notes page, shared by the first shots ----------
@@ -97,11 +89,7 @@ function response(z:number,k:number){
 // ---------- shots ----------
 export const shots:Shot[]=[
   {id:'open',caption:'This is Clem, your space to think.',seconds:4.6,draw(u){
-    const [hx,hy]=cursorHome(),blink=u>1.9&&u<3.9&&Math.floor((u-1.9)/.5)%2===1;
-    let s=shape(cOutline(),{k:ease(u,.15,1.5)});
-    const drop=pop(u,1.5,.32);
-    if(drop>0&&!blink)s+=cursor(hx,hy-(1-drop)*70,{opacity:clamp(drop*1.4)});
-    return s;
+    return shape(BODY,{k:ease(u,.15,1.5)})+shape(LEAF,{k:ease(u,1.3,2.4)});
   }},
   {id:'ask',caption:'Bring a question, and the notes it came from.',seconds:6,dx:10,into:'fade',draw(u){
     return page(u,{drawIn:true})+bubble(u,{scale:pop(u,2.3,.34),write:ease(u,2.9,3.9)});
@@ -111,14 +99,14 @@ export const shots:Shot[]=[
     const found=u>3.75,mark=found?ease(u,3.75,4.3):0;
     let s=page(u,{mark})+bubble(u,{scale:lerp(1,.46,away),x:lerp(0,150,away),y:lerp(0,-150,away)});
     s+=lens(lx,ly,pop(u,1,.3));
-    if(u>.7)s+=hop(u,640,286,40,2.4,pop(u,.7,.3));
+    if(u>.7)s+=tumble(u,680,286,26*pop(u,.7,.3));
     return s;
   }},
   {id:'answer',caption:'Every claim points back to the page it came from.',seconds:6.5,dx:10,draw(u){
     const out=1-ease(u,.15,.6);
     let s=page(u,{mark:1})+bubble(u,{scale:.46*out,x:150,y:-150});
     s+=lens(380,278,out);
-    if(out>.05)s+=hop(u,640,286,40,2.4,out);
+    if(out>.05)s+=tumble(u,680,286,26*out);
     return s+answer(u,{k:ease(u,.5,1.9),thread:ease(u,2.3,3.3),tick:ease(u,3.9,4.6)});
   }},
   {id:'see',caption:'Ideas become things you can play with.',seconds:7,dx:45,into:'fade',draw(u){
@@ -165,10 +153,9 @@ export const shots:Shot[]=[
     return s;
   }},
   {id:'close',caption:'What’s on your mind?',seconds:4.8,into:'fade',draw(u){
-    const [hx,hy]=cursorHome(),merge=ease(u,2.6,3.1),blink=u>3.4&&u<4.3&&Math.floor((u-3.4)/.5)%2===0;
-    let s=shape(cOutline());
-    if(merge<1)s+=hop(u,hx-56*(1-merge),hy,56*(1-merge),S*.62,1-merge*.4);
-    if(merge>.6&&!blink)s+=cursor(hx,hy,{opacity:clamp((merge-.6)*2.5)});
+    const merge=ease(u,2.6,3.1);
+    let s=shape(BODY)+shape(LEAF);
+    if(merge<1)s+=tumble(u,CX+172,CY+8,lerp(24,6,merge),{opacity:1-merge});
     return s;
   }},
 ];

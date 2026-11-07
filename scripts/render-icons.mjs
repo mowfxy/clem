@@ -2,11 +2,11 @@
 //   desktop/icon.ico               the app, window, taskbar and shortcut icon (16–256 px, PNG entries)
 //   public/logo.png, logo.svg      a large copy for drag previews and the plain mark
 //   public/favicon.ico, favicon.svg  the browser tab icon (same tile as Windows), apple-touch-icon.png for iOS
-// The icon is the identity's black app tile: the paper-coloured mark at 72% on a near-black rounded tile with a hairline
+// The icon is the identity's black app tile: the paper-coloured mark on a near-black rounded tile with a hairline
 // edge, so it reads on any taskbar, light or dark. Run: node scripts/render-icons.mjs  (needs Playwright's Chromium).
 import { chromium } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
-import { CLEM_PAPER, CLEM_TILE, markInner, markSvg, tileSvg } from "../core/mark.ts";
+import { CLEM_PAPER, CLEM_TILE, MARK_TILE_SCALE, markInner, markSvg, tileSvg } from "../core/mark.ts";
 
 await writeFile("public/logo.svg", markSvg({ color: CLEM_PAPER }) + "\n");
 const icoSizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
@@ -45,7 +45,7 @@ await writeFile("public/favicon.ico", ico(images.filter((x) => [16, 32, 48].incl
 await writeFile("public/favicon.svg", tileSvg() + "\n");
 // iOS rounds the corners itself, so the touch icon is a full square tile.
 await page.setViewportSize({ width: 180, height: 180 });
-await page.setContent(`<html><body style="margin:0;width:180px;height:180px;background:${CLEM_TILE}"><svg viewBox="0 0 100 100" width="180" height="180"><g transform="translate(50 50) scale(0.72) translate(-50 -50)">${markInner(CLEM_PAPER)}</g></svg></body></html>`);
+await page.setContent(`<html><body style="margin:0;width:180px;height:180px;background:${CLEM_TILE}"><svg viewBox="0 0 100 100" width="180" height="180"><g transform="translate(50 50) scale(${MARK_TILE_SCALE}) translate(-50 -50)">${markInner(CLEM_PAPER)}</g></svg></body></html>`);
 await writeFile("public/apple-touch-icon.png", await page.screenshot({ clip: { x: 0, y: 0, width: 180, height: 180 } }));
 await browser.close();
 console.log(`Wrote public/logo.svg, desktop/icon.ico (${icoSizes.join(", ")} px), public/logo.png, favicon.ico, favicon.svg and apple-touch-icon.png.`);
