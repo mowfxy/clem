@@ -160,18 +160,19 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("memorySave"),
     scope: scopeSchema,
-    key: z.string().min(1).max(100),
     text: z.string().min(1).max(2000),
     kind: z.enum(["fact", "preference"]),
     sharedWith: z.array(scopeSchema).max(10),
     source: z.string().max(300).optional(),
   }),
   z.object({ action: z.literal("memoryForget"), id: z.string().uuid(), ids: z.array(z.string().uuid()).max(20).optional() }),
+  /** Single notes out of their topics: the Delete on the note Clem shows after saving something. */
+  z.object({ action: z.literal("memoryForgetNotes"), items: z.array(z.object({ id: z.string().uuid(), notes: z.array(z.string().max(2000)).min(1).max(20) })).max(20) }),
   /** Deleted chats: what Clem only learned from them is forgotten; what the person kept stays. */
   z.object({ action: z.literal("memoryForgetChat"), chats: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/)).max(5000) }),
   z.object({ action: z.literal("memoryConfirm"), id: z.string().uuid() }),
-  /** The person's change to one memory: new words, where it applies (about them, or one space), or spaces it is shared with. */
-  z.object({ action: z.literal("memoryUpdate"), id: z.string().uuid(), text: z.string().trim().min(1).max(2000).optional(), scope: scopeSchema.optional(), sharedWith: z.array(scopeSchema).max(10).optional() }),
+  /** The person's change to one memory: new words, its topic's name, where it applies (about them, or one space), or spaces it is shared with. */
+  z.object({ action: z.literal("memoryUpdate"), id: z.string().uuid(), text: z.string().trim().min(1).max(2000).optional(), topic: z.string().trim().min(1).max(60).optional(), scope: scopeSchema.optional(), sharedWith: z.array(scopeSchema).max(10).optional() }),
   z.object({ action: z.literal("memoryToggle"), enabled: z.boolean() }),
   z.object({ action: z.literal("securityInfo") }),
   z.object({
@@ -287,7 +288,7 @@ export type DesktopBridge = {
       /** type "error": the plan's usage limit stopped the answer; no files were sent. `resetsAt` (ms) when known. */
       limit?: { resetsAt?: number };
       /** type "memory": what Clem noted about the person after this answer. */
-      memories?: { id: string; text: string; confirmed: boolean }[];
+      memories?: { id: string; text: string; confirmed: boolean; notes?: string[] }[];
       /** An artifact that replaced an existing file's contents (a revised document) rather than a new file. */
       revised?: { version: import("../core/types").FileVersion };
       /** type "look": the model asks to see `pages` of `file`; answer with the pageImages action and this id. */

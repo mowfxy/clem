@@ -287,9 +287,8 @@ html:root[data-theme=light] .memory-group>ul>li.learned{background:#2f6fe012;box
 .memory-body{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 10px}
 .memory-words,.memory-edit,.memory-place{grid-column:1/-1}
 html:root :is(dialog.settings-dialog,.sp-memory) .memory-panel .memory-lead{font-size:var(--text);line-height:1.45;color:var(--ink)}
-html:root .memory-points li{padding-left:12px;font-size:var(--text-s);color:var(--calm-soft)}
-html:root .memory-points li::before{background:var(--muted)}
-html:root .memory-points time{font-size:12px;color:var(--muted)}
+html:root .memory-notes{font-size:var(--text-s);color:var(--calm-soft)}
+html:root .memory-sync{color:var(--muted)}
 html:root .memory-meta{font-size:12px;color:var(--muted)}
 html:root .memory-meta .memory-new{color:var(--sky)}
 html:root .memory-meta .memory-new::before{background:var(--sky)}

@@ -91,6 +91,6 @@ test("a memory line matched to a new message goes alone on a kept session; the l
   assert.deepEqual(now.items.map((p) => sent.has(p)), [true, false]);
   assert.notEqual(memoryPrints("Alex", []).name, now.name);
   const prompt = composePrompt({ messages: [{ role: "user", content: "next" }], memories: [{ id: "m1", scope: "profile", key: "exam", text: "Has a DSA midterm on October 22", kind: "fact", confirmed: false, confidence: 0.6, source: { id: "chat:a", locator: "", at: "2026-10-28" }, createdAt: "2026-10-28T00:00:00Z", updatedAt: "2026-10-28T00:00:00Z" } as any], continued: true, rulesInSystem: true });
-  assert.match(prompt, /<clem-memory[^>]*>\n[^\n]*Has a DSA midterm on October 22/);
+  assert.match(prompt, /<clem-memory[^>]*>\n[^\n]*\n- Has a DSA midterm on October 22/);
   assert.doesNotMatch(prompt, /Prefers SI units|name is/);
 });

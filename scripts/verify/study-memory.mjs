@@ -30,7 +30,7 @@ try {
         // Memory notes the person adds in Settings → Memory.
         window.memory ||= [];
         if (r.action === "memoryAll") return { enabled: true, records: [...window.memory] };
-        if (r.action === "memorySave") { window.memory.push({ id: r.key, scope: r.scope, text: r.text, kind: r.kind, confirmed: true, source: r.source, created: Date.now(), updated: Date.now() }); return { ok: true }; }
+        if (r.action === "memorySave") { window.memory.push({ id: crypto.randomUUID(), scope: r.scope, text: r.text, kind: r.kind, confirmed: true, source: r.source, created: Date.now(), updated: Date.now() }); return { ok: true }; }
         if (r.action === "folders") return [];
         if (r.action === "securityInfo")
           return {

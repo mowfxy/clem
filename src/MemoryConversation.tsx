@@ -3,7 +3,7 @@ import { desktop } from "./desktop/bridge";
 import { Icon } from "./Icons";
 import { confirmDialog } from "./dialogs";
 import { Menu } from "./space/SpaceMenu";
-import { memoryPoints } from "../core/memory-points";
+import { isTopicKey, topicName } from "../core/memory-topics";
 type Fact = {
   id: string;
   text: string;
@@ -19,10 +19,12 @@ type Fact = {
 /** A project or subject a memory can live in or be shared with. */
 export type MemoryPlace = { scope: string; label: string };
 const PROFILE = "user:me";
-const newestFirst = (records: Fact[]) => records.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+const topicOf = (m: Fact) => (m.key && isTopicKey(m.key) ? topicName(m.key) : "");
+/** Memory reads by topic, not by when it was learned. */
+const byTopic = (records: Fact[]) => records.sort((a, b) => (topicOf(a) || a.text).localeCompare(topicOf(b) || b.text));
 /** The last records read, so reopening Memory shows them at once while a fresh copy loads. */
 let remembered: Fact[] | null = null;
-const keep = (records: Fact[]) => (remembered = newestFirst(records));
+const keep = (records: Fact[]) => (remembered = byTopic(records));
 /** Reads memory ahead of time (the app calls this at start), so the first open is instant too. */
 export function warmMemory() { if (desktop && !remembered) void desktop.invoke({ action: "memoryAll" }).then((r) => keep(r.records)).catch(() => {}); }
 const cleanError = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
@@ -30,17 +32,12 @@ const day = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined,
 const isPreference = (m: Fact) => m.kind === "preference" || !!m.key?.startsWith("pref:");
 /** Three dots: the options beside a memory. */
 const Dots = () => <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" fill="currentColor"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="12.5" cy="8" r="1.25" fill="currentColor"/></svg>;
-/** A memory's words as a lead and dated points, so a long sentence reads like a list. */
-function MemoryWords({ text }: { text: string }) {
-  const { lead, points } = memoryPoints(text);
+/** A topic: its name, then its notes in one short run of words. */
+function MemoryWords({ topic, text }: { topic?: string; text: string }) {
   return (
     <div className="memory-words">
-      {lead && <p className="memory-lead">{lead}{points.length ? ":" : ""}</p>}
-      {points.length > 0 && (
-        <ul className="memory-points">
-          {points.map((p, i) => <li key={i}><span>{p.text}</span>{p.when && <time>{p.when}</time>}</li>)}
-        </ul>
-      )}
+      {topic && <p className="memory-lead">{topic}</p>}
+      <p className="memory-notes">{text}</p>
     </div>
   );
 }
@@ -48,7 +45,6 @@ function MemoryWords({ text }: { text: string }) {
 function metaOf(m: Fact, labelFor: (scope: string) => string, home?: string) {
   const parts = [
     m.confirmed ? (/chat/i.test(m.source?.locator || "") && /remember/i.test(m.source?.locator || "") ? "You asked Clem to remember" : /by you/i.test(m.source?.locator || "") ? "Added by you" : "Kept") : "Picked up in a chat",
-    day(m.updatedAt),
     m.expiresAt ? "until " + day(m.expiresAt) : "",
     m.scope !== home && home && m.scope !== PROFILE ? "from " + labelFor(m.scope) : "",
     m.sharedWith?.some((s) => s !== home) ? "also in " + m.sharedWith.filter((s) => s !== home).map(labelFor).join(", ") : "",
@@ -87,13 +83,14 @@ export function MemoryConversation({
     [busy, setBusy] = useState(false),
     [status, setStatus] = useState(""),
     [query, setQuery] = useState(""),
-    [editing, setEditing] = useState<{ id: string; text: string } | null>(null),
+    [syncIssue, setSyncIssue] = useState(""),
+    [editing, setEditing] = useState<{ id: string; topic: string; text: string } | null>(null),
     [placing, setPlacing] = useState<{ id: string; scope: string; shared: string[] } | null>(null);
-  const load = async () => setFacts(keep((await desktop!.invoke({ action: "memoryAll" })).records));
+  const load = async () => { const r = await desktop!.invoke({ action: "memoryAll" }); setSyncIssue(r.syncError || ""); setFacts(keep(r.records)); };
   useEffect(() => {
     let active = true;
     void desktop!.invoke({ action: "memoryAll" })
-      .then((r) => { const records = keep(r.records); if (active) setFacts(records); })
+      .then((r) => { const records = keep(r.records); if (active) { setFacts(records); setSyncIssue(r.syncError || ""); } })
       .catch(() => { if (active) { setFacts([]); setStatus("Memory could not be opened. Close and try again."); } });
     return () => { active = false; };
   }, []);
@@ -103,7 +100,7 @@ export function MemoryConversation({
     const order = (scope: string) => (scope === PROFILE ? 0 : scope === home ? 1 : scope === SHARED ? 2 : scope.startsWith("chat:") ? 4 : 3);
     const byScope = new Map<string, Fact[]>();
     for (const f of facts || []) {
-      if (wanted && !f.text.toLowerCase().includes(wanted) && !labelFor(f.scope).toLowerCase().includes(wanted)) continue;
+      if (wanted && !f.text.toLowerCase().includes(wanted) && !topicOf(f).toLowerCase().includes(wanted) && !labelFor(f.scope).toLowerCase().includes(wanted)) continue;
       // On a space's page: its own memories, then what other spaces share with it.
       const group = !only ? f.scope : f.scope === home ? home : home && f.sharedWith?.includes(home) ? SHARED : null;
       if (group) byScope.set(group, [...(byScope.get(group) || []), f]);
@@ -119,13 +116,13 @@ export function MemoryConversation({
     finally { setBusy(false); }
   }
   const remove = (id: string) => run(() => desktop!.invoke({ action: "memoryForget", id }));
-  const update = (id: string, change: { text?: string; scope?: string; sharedWith?: string[] }) => run(() => desktop!.invoke({ action: "memoryUpdate", id, ...change }));
+  const update = (id: string, change: { text?: string; topic?: string; scope?: string; sharedWith?: string[] }) => run(() => desktop!.invoke({ action: "memoryUpdate", id, ...change }));
   const count = total + (summary.trim() ? 1 : 0);
   const homes: MemoryPlace[] = [{ scope: PROFILE, label: "About you (everywhere)" }, ...places];
   return (
     <section className="memory-panel">
       <div className="memory-head">
-        <p className="memory-lede">{facts === null ? " " : count ? <>{`${count} ${count === 1 ? "thing" : "things"} remembered${aboutYou ? ` here, plus ${aboutYou} about you that ${aboutYou === 1 ? "applies" : "apply"} everywhere` : ""}`}</> : "Nothing remembered yet"}</p>
+        <p className="memory-lede">{facts === null ? " " : count ? <>{`${count} ${count === 1 ? "topic" : "topics"}${aboutYou ? ` here, plus ${aboutYou} about you that ${aboutYou === 1 ? "applies" : "apply"} everywhere` : ""}`}</> : "Nothing remembered yet"}</p>
         {total > 6 && (
           <label className="memory-search">
             <Icon name="search" size={13} />
@@ -160,14 +157,15 @@ export function MemoryConversation({
                 <li key={m.id} className={m.confirmed ? "" : "learned"}>
                   <div className="memory-body">
                     {editing?.id === m.id ? (
-                      <form className="memory-edit" onSubmit={async (e) => { e.preventDefault(); const value = editing.text.trim(); if (!value) return; if (value === m.text || await update(m.id, { text: value })) setEditing(null); }}>
+                      <form className="memory-edit" onSubmit={async (e) => { e.preventDefault(); const value = editing.text.trim(); if (!value) return; const topic = editing.topic.trim(); if ((value === m.text && (!topic || topic === topicOf(m))) || await update(m.id, { text: value, ...(topic ? { topic } : {}) })) setEditing(null); }}>
+                        {topicOf(m) && <input className="memory-edit-topic" value={editing.topic} maxLength={60} aria-label="Topic" placeholder="Topic" onChange={(e) => setEditing({ ...editing, topic: e.target.value })} />}
                         <textarea autoFocus value={editing.text} maxLength={2000} rows={Math.min(5, Math.max(1, Math.ceil(editing.text.length / 70)))} aria-label="Edit memory"
-                          onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
+                          onChange={(e) => setEditing({ ...editing, text: e.target.value })}
                           onKeyDown={(e) => { if (e.key === "Escape") setEditing(null); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
                         <span className="memory-edit-actions"><button type="button" onClick={() => setEditing(null)}>Cancel</button><button type="submit" className="memory-keep" disabled={busy || !editing.text.trim()}>Save</button></span>
                       </form>
                     ) : (
-                      <MemoryWords text={m.text} />
+                      <MemoryWords topic={topicOf(m)} text={m.text} />
                     )}
                     {editing?.id !== m.id && (
                       <span className="memory-meta">
@@ -197,12 +195,12 @@ export function MemoryConversation({
                   </div>
                   {editing?.id !== m.id && placing?.id !== m.id && (
                     <span className="memory-actions">
-                      <Menu label={"Options for: " + m.text.slice(0, 60)} trigger={<Dots />} items={[
-                        { label: "Edit", icon: "rename", run: () => { setPlacing(null); setEditing({ id: m.id, text: m.text }); } },
+                      <Menu label={"Options for: " + (topicOf(m) || m.text.slice(0, 60))} trigger={<Dots />} items={[
+                        { label: "Edit", icon: "rename", run: () => { setPlacing(null); setEditing({ id: m.id, topic: topicOf(m), text: m.text }); } },
                         ...(homes.length > 1 ? [{ label: m.scope === PROFILE ? "Move to a project or subject" : "Where it applies…", run: () => { setEditing(null); setPlacing({ id: m.id, scope: m.scope, shared: m.sharedWith || [] }); } }] : []),
                         ...(only && home && m.scope !== home && m.sharedWith?.includes(home) ? [{ label: "Stop using here", run: () => void update(m.id, { sharedWith: (m.sharedWith || []).filter((s) => s !== home) }) }] : []),
                       ]} />
-                      <button type="button" className="memory-delete" disabled={busy} aria-label={"Delete: " + m.text.slice(0, 60)} title="Delete" onClick={() => void remove(m.id)}><Icon name="trash" size={15} /></button>
+                      <button type="button" className="memory-delete" disabled={busy} aria-label={"Delete: " + (topicOf(m) || m.text.slice(0, 60))} title="Delete" onClick={() => void remove(m.id)}><Icon name="trash" size={15} /></button>
                     </span>
                   )}
                 </li>
@@ -218,13 +216,14 @@ export function MemoryConversation({
           e.preventDefault();
           const value = text.trim();
           if (!value || busy || facts === null) return;
-          if (await run(() => desktop!.invoke({ action: "memorySave", scope: home || PROFILE, key: "note:" + crypto.randomUUID().slice(0, 18), text: value, kind: /\b(prefer\w*|like|want|always|never|please|answers?|repl(?:y|ies)|explain\w*|use|avoid|keep|short|brief|concise|detailed|simple|formal|casual|tone|style|format\w*)\b/i.test(value) ? "preference" : "fact", sharedWith: [], source: "Added by you in memory settings" }))) setText("");
+          if (await run(() => desktop!.invoke({ action: "memorySave", scope: home || PROFILE, text: value, kind: /\b(prefer\w*|like|want|always|never|please|answers?|repl(?:y|ies)|explain\w*|use|avoid|keep|short|brief|concise|detailed|simple|formal|casual|tone|style|format\w*)\b/i.test(value) ? "preference" : "fact", sharedWith: [], source: "Added by you in memory settings" }))) setText("");
         }}
       >
-        <input value={text} disabled={busy || facts === null} maxLength={2000} onChange={(e) => setText(e.target.value)} placeholder={home ? "Add something Clem should remember here" : "Add something for Clem to remember"} aria-label="Add a memory" />
+        <input value={text} disabled={busy || facts === null} maxLength={2000} onChange={(e) => setText(e.target.value)} placeholder={home ? "Add something Clem should remember here, or “Topic: note”" : "Add something for Clem to remember, or “Topic: note”"} aria-label="Add a memory" />
         <button type="submit" className="memory-send" disabled={busy || facts === null || !text.trim()} aria-label="Remember"><Icon name="up" size={15} /></button>
       </form>
       {status && <p role="status">{status}</p>}
+      {syncIssue && !status && <p role="status" className="memory-sync">{syncIssue}</p>}
     </section>
   );
 }

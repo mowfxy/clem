@@ -30,24 +30,29 @@ try {
   const ids = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
   await page.evaluate((ids) => {
     for (const fn of window.__chatListeners) fn({ id: "run-1", type: "memory", text: "", memories: [
-      { id: ids[0], text: "The user is a second-year biology student.", confirmed: false },
-      { id: ids[1], text: "The user has a midterm on 20 October.", confirmed: false },
+      { id: ids[0], text: "Studies: second-year biology", confirmed: false, notes: ["second-year biology"] },
+      { id: ids[1], text: "Exams: midterm 20 October", confirmed: false, notes: ["midterm 20 October"] },
     ] });
   }, ids);
   const notice = page.locator(".notice-card", { hasText: "Clem noted this" });
   await notice.waitFor({ timeout: 5000 });
-  check(await notice.getByText("second-year biology student").isVisible(), "notice shows what was noted");
+  check(await notice.getByText("Studies: second-year biology").isVisible(), "notice shows what was noted");
   await page.waitForTimeout(1800);
   await page.screenshot({ path: `${out}/notice.png` });
   await notice.getByRole("button", { name: /Delete/ }).click();
-  await page.waitForFunction(() => window.requests.some((r) => r.action === "memoryForget"));
-  const forget = await page.evaluate(() => window.requests.find((r) => r.action === "memoryForget"));
-  check(JSON.stringify(forget.ids) === JSON.stringify(ids), "Delete sends both ids");
+  await page.waitForFunction(() => window.requests.some((r) => r.action === "memoryForgetNotes"));
+  const forget = await page.evaluate(() => window.requests.find((r) => r.action === "memoryForgetNotes"));
+  check(JSON.stringify(forget.items.map((i) => i.id)) === JSON.stringify(ids) && forget.items[0].notes[0] === "second-year biology", "Delete takes only the notes just added");
 
   // A kept memory ("remember that…") says so.
-  await page.evaluate(() => { for (const fn of window.__chatListeners) fn({ id: "run-2", type: "memory", text: "", memories: [{ id: "33333333-3333-4333-8333-333333333333", text: "The user prefers SI units.", confirmed: true }] }); });
+  await page.evaluate(() => { for (const fn of window.__chatListeners) fn({ id: "run-2", type: "memory", text: "", memories: [{ id: "33333333-3333-4333-8333-333333333333", text: "Answer style: SI units", confirmed: true, notes: ["SI units"] }] }); });
   await page.locator(".notice-card", { hasText: "Clem will remember this" }).waitFor({ timeout: 5000 });
   check(true, "kept memory notice");
+
+  // A sync that keeps failing is said once, with a way to Memory.
+  await page.evaluate(() => { for (const fn of window.__chatListeners) fn({ id: "memory-sync", type: "memorySync", error: "Saved locally. No answer." }); });
+  await page.locator(".notice-card", { hasText: "Memory isn’t syncing" }).waitFor({ timeout: 5000 });
+  check(true, "failed sync notice");
 
   // Deleting a chat forgets what was only learned from it.
   await page.getByRole("button", { name: "Chat options for Krebs cycle in plain words" }).click();

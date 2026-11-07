@@ -172,6 +172,7 @@
 .pj-fact{display:flex;align-items:flex-start;gap:12px;padding:11px 2px;border-top:1px solid #ffffff08}
 .pj-fact:first-child{border-top:0}
 .pj-fact-text{display:grid;gap:5px;flex:1;min-width:0}
+.pj-fact-text>strong{font-size:13px;font-weight:500;color:var(--pj-soft)}
 .pj-fact-text>span{font-size:14.5px;line-height:1.5;color:var(--pj-ink)}
 .pj-fact-text small{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:var(--pj-faint)}
 .pj-fact-text b{font-weight:400;color:var(--pj-soft);padding:1px 7px;border-radius:99px;background:#ffffff0a}

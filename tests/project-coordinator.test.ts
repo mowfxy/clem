@@ -1,11 +1,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { entry, forget, parseMemory, recall, remember, serializeMemory, MEMORY_LIMIT } from "../core/project-memory.ts";
+import { entry, foldTopics, forget, parseMemory, recall, remember, serializeMemory, MEMORY_LIMIT } from "../core/project-memory.ts";
 import { coordinatorHistory, coordinatorTurn, emptyRoom, filesInPlay, modelsOf, readReply, reportsWaiting, runThread, settleRoom, threadHistory, toggleReaction, workThread, type Ask, type Room } from "../core/coordinator.ts";
 import type { ProjectRoom, Space } from "../core/types.ts";
 import type { MemoryEntry } from "../core/project-memory.ts";
 
-test("the memory file round-trips and keeps one line per fact", () => {
+test("a fact joins its topic's line, the first tag naming it; a restated note makes way; a full line opens another", () => {
+  let m = remember([], [entry("December 3", ["launch"], "2026-11-01")]);
+  m = remember(m, [entry("soft launch Nov 28", ["launch", "dates"], "2026-11-05")]);
+  assert.equal(m.length, 1);
+  assert.equal(m[0].text, "December 3; soft launch Nov 28");
+  assert.deepEqual(m[0].tags, ["launch", "dates"]);
+  assert.equal(m[0].at, "2026-11-05");
+  m = remember(m, [entry("launch venue Berlin hall", ["launch"])]);
+  m = remember(m, [entry("launch venue Berlin main hall", ["launch"])]);
+  assert.equal(m[0].text.match(/Berlin/g)!.length, 1);
+  const untagged = remember(m, [entry("Budget is 12k")]);
+  assert.equal(untagged.length, 2);
+  let full = remember([], [entry("x".repeat(390), ["big"])]);
+  full = remember(full, [entry("twenty more letters here", ["big"])]);
+  assert.equal(full.length, 2);
+});
+
+test("older files read as topics, word for word, and a line that would overflow stays apart", () => {
+  const lines = [entry("Launch is December 3", ["launch"], "2026-10-01"), entry("Launch is December 10", ["launch", "date"], "2026-10-02"), entry("No tag here"), entry("y".repeat(395), ["launch"])];
+  const folded = foldTopics(lines);
+  assert.deepEqual(folded.map((e) => e.text), ["Launch is December 3; Launch is December 10", "No tag here", "y".repeat(395)]);
+  assert.deepEqual(folded[0].tags, ["launch", "date"]);
+  assert.deepEqual(foldTopics(folded).map((e) => e.text), folded.map((e) => e.text));
+});
+
+test("the memory file round-trips and keeps one line per topic", () => {
   const facts = [entry("Launch is on December 3.", ["launch", "#Deadline"], "2026-11-01"), entry("The budget is 4000 euros.", ["budget"], "2026-11-02")];
   const file = serializeMemory(facts);
   assert.match(file, /^- 2026-11-01 #launch #deadline \| Launch is on December 3\.$/m);

@@ -1,5 +1,5 @@
 import { safeStorage } from "electron";
-import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 /** Secrets never cross IPC. DPAPI is required; no plaintext fallback. */
@@ -19,6 +19,11 @@ export class Vault {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return fallback;
       throw Error("Protected local data could not be opened.");
     }
+  }
+  remove(key: string) {
+    const operation = this.queue.then(() => rm(join(this.directory, key + ".bin"), { force: true }));
+    this.queue = operation.catch(() => {});
+    return operation;
   }
   write(key: string, value: unknown) {
     const operation = this.queue.then(async () => {

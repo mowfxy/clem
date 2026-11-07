@@ -28,7 +28,6 @@ import {BackupSettings} from "./settings/BackupSettings";
 import {ReminderSettings} from "./settings/ReminderSettings";
 import {UpdateIndicator, UpdateSettings, updateChipPhase, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
 import {UsageSettings,archiveChats} from "./settings/UsageSettings";
-import {memoryPoints} from "../core/memory-points";
 import {HorizonField} from "./glass/HorizonField";
 import {StudyHome} from "./glass/StudyHome";
 import {ProfileAvatar} from "./ProfileAvatar";
@@ -2207,9 +2206,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     if(!desktop)return;
     return desktop.onChat(event=>{
       if(event.type==='memory'&&(event as {off?:boolean}).off){notify({kind:'warning',title:'Memory is off',detail:'This wasn’t saved.',action:{label:'Open memory',run:()=>openSettings('Memory')}});return;}
+      if(event.type==='memorySync'){notify({kind:'warning',title:'Memory isn’t syncing',detail:'It’s saved on this PC. Your other devices won’t see the changes yet.',action:{label:'Open memory',run:()=>openSettings('Memory')}});return;}
       if(event.type!=='memory'||!event.memories?.length)return;
-      const kept=event.memories.every(m=>m.confirmed),ids=event.memories.map(m=>m.id);
-      notify({kind:'info',icon:'note',title:kept?'Clem will remember this':'Clem noted this',detail:(memoryPoints(event.memories[0].text).lead||event.memories[0].text)+(event.memories.length>1?` (+${event.memories.length-1} more)`:''),action:{label:'Delete',run:()=>{void desktop!.invoke({action:'memoryForget',id:ids[0],ids}).then(()=>setToast('Deleted.'),e=>setToast(cleanError(e)));}}});
+      const kept=event.memories.every(m=>m.confirmed),items=event.memories.flatMap(m=>m.notes?[{id:m.id,notes:m.notes}]:[]);
+      notify({kind:'info',icon:'note',title:kept?'Clem will remember this':'Clem noted this',detail:event.memories[0].text+(event.memories.length>1?` (+${event.memories.length-1} more)`:''),action:{label:'Delete',run:()=>{void desktop!.invoke({action:'memoryForgetNotes',items}).then(()=>setToast('Deleted.'),e=>setToast(cleanError(e)));}}});
     });
   },[]);
   /** Names a chat, project or subject scope in the person's own words. */
