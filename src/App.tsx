@@ -28,7 +28,9 @@ import {BackupSettings} from "./settings/BackupSettings";
 import {ReminderSettings} from "./settings/ReminderSettings";
 import {UpdateIndicator, UpdateSettings, updateChipPhase, updateRequest, useAppUpdate} from "./desktop/AppUpdate";
 import {UsageSettings,archiveChats} from "./settings/UsageSettings";
-import {AsciiField} from "./chat/AsciiField";
+import {memoryPoints} from "../core/memory-points";
+import {HorizonField} from "./glass/HorizonField";
+import {StudyHome} from "./glass/StudyHome";
 import {ProfileAvatar} from "./ProfileAvatar";
 import "./settings.css";
 import {cachedFileText,localSourceContext} from "./source-context";
@@ -164,7 +166,8 @@ import "./premium.css";
 import "./chat/reply.css";
 import "./enhance.css";
 import "./theme/light.css";
-import "./roomy.css";
+import "./glass/glass-base.css";
+import "./glass/glass.css";
 import { applyTheme, setThemeChoice, themeChoice, type ThemeChoice } from "./theme/theme";
 import { afterSetup, modelOf } from "./after-setup";
 import { sampleSubject } from "./sample-subject";
@@ -627,14 +630,14 @@ export default function App({offline=false}:{offline?:boolean}={}) {
         if(!live)return;
         if(observedActiveAccount.current && observedActiveAccount.current!==result.active){
           const active=result.accounts.find(a=>a.id===result.active);
-          notify({kind:'switch',title:'Account switched',detail:`Continuing with ${active?.email||'another connected account'}.`});
+          notify({kind:'switch',title:'Account switched',detail:active?.email||''});
           void refreshModels();
         }
         observedActiveAccount.current=result.active;
         // Polled every second but cached for ten in the app: an unchanged snapshot keeps the workspace from re-rendering.
         const {resets:_,...snapshot}=result,seen=JSON.stringify(snapshot);
         if(seen!==lastAccountSnapshot.current){lastAccountSnapshot.current=seen;setAccountData(result);}
-        if(result.resets?.length)for(const event of result.resets){const windows=[...new Set(event.windows.map(w=>w.endsWith('weekly')?'weekly':'short-window'))];notify({kind:'reset',title:'Usage limits reset',detail:`${event.email||'A connected account'} has fresh ${windows.join(' and ')} usage.`});}
+        if(result.resets?.length)for(const event of result.resets){const windows=[...new Set(event.windows.map(w=>w.endsWith('weekly')?'weekly':'short-window'))];notify({kind:'reset',title:'Usage limits reset',detail:event.email||windows.join(' and ')});}
       }catch{/* Keep the last confirmed snapshot until the connection returns. */}
       finally{inFlight=false;}
     };
@@ -1768,7 +1771,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         const space=stateRef.current.spaces.find(x=>x.id===plan.spaceId),mark=plan.id+'@'+today;
         if(!space||fresh.includes(mark))continue;
         fresh.push(mark);
-        notify({kind:'reminder',title:overdue.length===1?`“${overdue[0].title}” is overdue`:`${overdue.length} tasks overdue`,detail:`${space.name} · ${plan.title}`,action:{label:'Open plan',run:()=>openSpace(space.id,'plan')}});
+        notify({kind:'reminder',title:overdue.length===1?'Overdue':`${overdue.length} tasks overdue`,detail:overdue.length===1?`${overdue[0].title} · ${space.name}`:space.name,action:{label:'Open plan',run:()=>openSpace(space.id,'plan')}});
       }
       try{localStorage.setItem(key,JSON.stringify(fresh.slice(-200)));}catch{/* Without storage a reminder may repeat; nothing else depends on it. */}
     };
@@ -1945,7 +1948,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               for(const remaining of executionPlan.tasks.slice(index)){if(remaining.status!=='complete'){remaining.model=handoffChoice.model;remaining.reasoning=handoffChoice.reasoning;}}
               current={...current,tasks:current.tasks.map(item=>executionPlan.tasks.find(next=>next.id===item.id)?.status!=='complete'?{...item,model:handoffChoice!.model,reasoning:handoffChoice!.reasoning}:item)};
               await workflow.save(current);updatePlan(id,messageId,current);
-              notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':handoffChoice.model.startsWith('antigravity:')?'Gemini':'Claude'),detail:'Completed steps and their outputs are preserved.'});
+              notify({kind:'handoff',title:'Task handed to '+(handoffChoice.model.startsWith('grok:')?'Grok':handoffChoice.model.startsWith('antigravity:')?'Gemini':'Claude'),detail:'Finished steps are kept.'});
             }
           }
           // The chat's PDFs as this step's AI reads them: short ones whole, the pages of longer ones that fit the step.
@@ -2170,10 +2173,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   useEffect(()=>{
     if(!desktop)return;
     return desktop.onChat(event=>{
-      if(event.type==='memory'&&(event as {off?:boolean}).off){notify({kind:'warning',title:'Memory is off, so this was not saved',detail:String(event.text||''),action:{label:'Open memory',run:()=>openSettings('Memory')}});return;}
+      if(event.type==='memory'&&(event as {off?:boolean}).off){notify({kind:'warning',title:'Memory is off',detail:'This wasn’t saved.',action:{label:'Open memory',run:()=>openSettings('Memory')}});return;}
       if(event.type!=='memory'||!event.memories?.length)return;
       const kept=event.memories.every(m=>m.confirmed),ids=event.memories.map(m=>m.id);
-      notify({kind:'info',art:'jar',title:kept?'Clem will remember this':'Clem noted this',detail:event.memories.map(m=>m.text).join(' ')+(kept?'':' Keep it in Settings → Memory, or forget it now.'),action:{label:'Forget',run:()=>{void desktop!.invoke({action:'memoryForget',id:ids[0],ids}).then(()=>setToast('Forgotten.'),e=>setToast(cleanError(e)));}}});
+      notify({kind:'info',icon:'note',title:kept?'Clem will remember this':'Clem noted this',detail:(memoryPoints(event.memories[0].text).lead||event.memories[0].text)+(event.memories.length>1?` (+${event.memories.length-1} more)`:''),action:{label:'Delete',run:()=>{void desktop!.invoke({action:'memoryForget',id:ids[0],ids}).then(()=>setToast('Deleted.'),e=>setToast(cleanError(e)));}}});
     });
   },[]);
   /** Names a chat, project or subject scope in the person's own words. */
@@ -2505,10 +2508,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   folderEvent.current=event=>{
     const paths=[...event.changed,...event.added],removed=event.removed.length,count=paths.length+removed;
     const names=paths.map(p=>p.split(/[\\/]/).pop()!);
-    const detail=(names.length?names.slice(0,3).join(', ')+(names.length>3?` and ${names.length-3} more`:''):`${removed} removed`)+' · '+scopeLabel(event.scope);
+    const detail=(names.length?names[0]+(names.length>1?` and ${names.length-1} more`:''):`${removed} removed`)+' · '+scopeLabel(event.scope);
     const subject=event.scope.startsWith('subject:');
     const list=paths.slice(0,8).map(p=>'`'+p+'`').join(', ');
-    notify({kind:'info',art:'folder',title:`${count} file${count===1?'':'s'} changed in ${event.folder}`,detail,sticky:true,action:paths.length?{label:subject?'Update flashcards':'Summarize changes',run:()=>{
+    notify({kind:'info',icon:'folder',title:`${count} file${count===1?'':'s'} changed`,detail,sticky:true,action:paths.length?{label:subject?'Update flashcards':'Summarize changes',run:()=>{
       goToScope(event.scope);
       setDraft(subject?`/flashcards Update this subject's flashcards to cover what changed in ${list}.`:`Summarize what changed in ${list} and flag anything I should follow up on.`);
       setTimeout(()=>composer.current?.focus(),80);
@@ -2714,7 +2717,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           <Legal route={route}/>
         )
       ) : (
-        <div className="app-shell">
+        <div className={`app-shell ${route === "/app" && !activeChat?.messages.length ? "glass-clear" : ""}`}>
+          <HorizonField live={route === "/app" && !activeChat?.messages.length} />
+          <div className="glass-pane" aria-hidden="true" />
           <button
             className="mobile-menu icon-button"
             aria-label="Open navigation"
@@ -2918,7 +2923,6 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               <div
                 className={`chat-view ${activeChat?.messages.length ? "has-messages" : ""} ${isTemporary ? "temporary" : ""}`}
               >
-                {!activeChat?.messages.length && <AsciiField />}
                 {!activeChat?.messages.length ? (
                   <div className="new-chat-content">
                     <div className="greeting-row">
@@ -2959,6 +2963,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         </button>
                       ))}
                     </div>
+                    {!activeSpace && !temporaryNext && <StudyHome chats={savedChats} spaces={state.spaces} studySets={state.studySets} plans={state.plans || []} onChat={(c) => { setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); }} onSpace={openSpace} onSubjects={() => navigate("/app/subjects")} onSearch={() => setEverything("")} />}
                   </div>
                 ) : (
                   <>

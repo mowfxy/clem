@@ -1,19 +1,17 @@
 import {useEffect,useRef,useState,type CSSProperties} from 'react';
-import {Illustration} from '../Illustrations';
 import {Icon} from '../Icons';
-import type {Scene} from '../vectorFilm';
 import './notices.css';
 
 export type NoticeKind='switch'|'reset'|'handoff'|'announcement'|'support'|'success'|'warning'|'info'|'reminder';
-/** `art`: a drawing that suits this one notice better than its kind's (a memory gets the jar, changed files the folder). */
-export type Notice={id:string;kind:NoticeKind;title:string;detail:string;action?:{label:string;run:()=>void};sticky?:boolean;art?:Scene};
+/** `icon`: a mark that suits this one notice better than its kind's. `also`: a second, quieter action. */
+export type Notice={id:string;kind:NoticeKind;title:string;detail:string;action?:{label:string;run:()=>void};also?:{label:string;run:()=>void};sticky?:boolean;icon?:string};
 
 const LIFETIME=9000;
-/** Each kind of notice has its own small ink drawing, playing its loop; the card itself stays plain. */
-const ART:Record<NoticeKind,Scene>={switch:'swap',reset:'key',handoff:'plane',announcement:'bell',support:'conversation',success:'checklist',warning:'expired',info:'bell',reminder:'alarm'};
+const MARK:Record<NoticeKind,string>={switch:'refresh',reset:'clock',handoff:'send',announcement:'megaphone',support:'mail',success:'check',warning:'alert',info:'spark',reminder:'clock'};
 
-export function NoticeArt({kind,art}:{kind:NoticeKind;art?:Scene}){
-  return <Illustration scene={art||ART[kind]} viewBox="92 40 296 296" className="notice-drawing"/>;
+/** Each notice opens with one small mark on a bead of glass: sky by default, ember when it wants attention. */
+export function NoticeMark({kind,icon}:{kind:NoticeKind;icon?:string}){
+  return <span className={`notice-mark ${kind==='warning'||kind==='reminder'?'hot':''}`}><Icon name={icon||MARK[kind]} size={15}/></span>;
 }
 
 function NoticeCard({notice,depth,onDismiss,paused}:{notice:Notice;depth:number;onDismiss:()=>void;paused:boolean}){
@@ -30,13 +28,16 @@ function NoticeCard({notice,depth,onDismiss,paused}:{notice:Notice;depth:number;
     return()=>{clearTimeout(timer);remaining.current=Math.max(0,remaining.current-(Date.now()-started.current));};
   },[running]);
   return <aside className={`notice-card kind-${notice.kind} ${depth?'behind':''} ${leaving?'leaving':''}`} style={{'--depth':depth} as CSSProperties} role={depth===0?'status':undefined} aria-live={depth===0?'polite':undefined} aria-hidden={depth>0||undefined}>
-    <span className="notice-art"><NoticeArt kind={notice.kind} art={notice.art}/></span>
+    <NoticeMark kind={notice.kind} icon={notice.icon}/>
     <div className="notice-copy">
       <strong>{notice.title}</strong>
-      <p>{notice.detail}</p>
-      {notice.action&&<button type="button" className="notice-action" tabIndex={depth?-1:0} onClick={()=>{notice.action!.run();close.current();}}>{notice.action.label}<Icon name="arrow" size={14}/></button>}
+      {notice.detail&&<p>{notice.detail}</p>}
+      {(notice.action||notice.also)&&<div className="notice-actions">
+        {notice.action&&<button type="button" className="notice-action" tabIndex={depth?-1:0} onClick={()=>{notice.action!.run();close.current();}}>{notice.action.label}</button>}
+        {notice.also&&<button type="button" className="notice-also" tabIndex={depth?-1:0} onClick={()=>{notice.also!.run();close.current();}}>{notice.also.label}</button>}
+      </div>}
     </div>
-    <button type="button" className="notice-close" tabIndex={depth?-1:0} aria-label={`Dismiss: ${notice.title}`} onClick={()=>close.current()}><Icon name="close" size={15}/></button>
+    <button type="button" className="notice-close" tabIndex={depth?-1:0} aria-label={`Dismiss: ${notice.title}`} onClick={()=>close.current()}><Icon name="close" size={13}/></button>
   </aside>;
 }
 

@@ -1,0 +1,48 @@
+/* The materials of Clem's glass, and sign-in and first-run setup. Separate from glass.css because those screens show
+   before the workspace's stylesheets have loaded; glass.css has to stay last, after them. */
+
+/* ---------- Materials ---------- */
+html:root{
+  --bg:#05080f;--sidebar:transparent;--panel:#ffffff0d;--line:#ffffff17;--muted:#9eabc0;--ink:#eef3fa;--accent:#dfe8f5;
+  --calm-ink:#eef3fa;--calm-soft:#c6d0df;--calm-muted:#93a0b5;--calm-line:#ffffff17;--calm-tile:#ffffff12;--calm-hover:#ffffff0d;
+  --pane-tint:#060a1485;--pane-filter:blur(56px) saturate(2.1) brightness(.62);
+  --glass-tint:#0a101c47;--glass-filter:blur(20px) saturate(1.8) brightness(.78);
+  --float-tint:#0c121fe0;--float-filter:blur(30px) saturate(1.6);
+  --glass-rim:inset 0 1px 0 #ffffff33,inset 1px 0 0 #ffffff12,inset 0 -1px 0 #ffffff0d,inset -1px 0 0 #ffffff0a;
+  --glass-drop:0 18px 50px -18px #000c,0 2px 8px #0005;
+  --glass-sheen:linear-gradient(155deg,#ffffff1c 0%,#ffffff07 26%,#ffffff00 52%,#ffffff05 100%);
+  --sky:#7fb2ff;--sky-deep:#3f6fd8;--ember:#ff9a5c;
+  --menu-bg:#0d1524f7;--menu-line:#ffffff1f;--menu-ink:#eef3fa;--menu-hint:#9eabc0;--menu-hover:#ffffff14;--menu-danger:#ff9a8c;
+  --sheet-bg:#0b1424f5;--sheet-line:#ffffff1a;
+  --rail:clamp(232px,18vw,262px);--side:calc(var(--rail) + 20px);
+  --row:38px;--row-s:34px;--text:14px;--text-s:13.5px;--text-label:12px;--icon:18px;
+  background:var(--bg)
+}
+html:root[data-theme=light]{
+  --bg:#e9eff6;--sidebar:transparent;--panel:#ffffff73;--line:#1b27401a;--muted:#55627a;--ink:#141e33;--accent:#1b2740;
+  --calm-ink:#141e33;--calm-soft:#33415c;--calm-muted:#5b6880;--calm-line:#1b27401a;--calm-tile:#ffffff80;--calm-hover:#ffffff66;
+  --pane-tint:#f2f6fbb0;--pane-filter:blur(44px) saturate(1.5) brightness(1.08);
+  --glass-tint:#ffffff6b;--glass-filter:blur(26px) saturate(1.7) brightness(1.1);
+  --float-tint:#f7fafdeb;--float-filter:blur(30px) saturate(1.6);
+  --glass-rim:inset 0 1px 0 #ffffffd9,inset 1px 0 0 #ffffff80,inset 0 -1px 0 #ffffff59,0 0 0 1px #1b27400f;
+  --glass-drop:0 18px 44px -20px #1b274059,0 2px 8px #1b27401a;
+  --glass-sheen:linear-gradient(155deg,#ffffff8c 0%,#ffffff26 30%,#ffffff00 60%);
+  --menu-bg:#f8fafdf7;--menu-line:#1b27401f;--menu-ink:#141e33;--menu-hint:#5b6880;--menu-hover:#1b27400f;--menu-danger:#c0392b;
+  --sheet-bg:#f4f7fbf7;--sheet-line:#1b27401a;
+  --sky:#2f6fe0;--sky-deep:#2f6fe0;--ember:#c9561c
+}
+html:root body,html:root[data-theme=light] body{background:var(--bg)}
+.horizon-field{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;animation:horizon-in 1.1s ease both}
+@keyframes horizon-in{from{opacity:0}}
+@media print{.horizon-field,.glass-pane{display:none}}
+
+/* The title bar and the window behind every screen let the horizon through, up to Windows' caption buttons. */
+html:root .desktop-titlebar,html:root .desktop-content,html:root[data-theme=light] .desktop-titlebar,html:root[data-theme=light] .desktop-content{background:transparent}
+
+/* ---------- Sign-in and first-run setup: one sheet of glass over the horizon ---------- */
+html:root .desktop-setup,html:root[data-theme=light] .desktop-setup{--setup-ink:var(--ink);--setup-muted:var(--muted);position:relative;background:transparent}
+.desktop-setup>.setup-layout{position:relative;z-index:1}
+html:root .setup-card{padding:28px 32px;border-radius:26px;background:var(--glass-sheen),#0a101c8c;-webkit-backdrop-filter:blur(30px) saturate(1.9) brightness(.6);backdrop-filter:blur(30px) saturate(1.9) brightness(.6);box-shadow:var(--glass-rim),var(--glass-drop)}
+html:root[data-theme=light] .setup-card{background:var(--glass-sheen),#ffffff9e;-webkit-backdrop-filter:blur(30px) saturate(1.7);backdrop-filter:blur(30px) saturate(1.7)}
+html:root .setup-card button.primary,html:root .setup-card .primary{background:#ffffffeb;border:0;color:#0a1020}
+html:root[data-theme=light] .setup-card button.primary,html:root[data-theme=light] .setup-card .primary{background:#141e33;color:#fff}

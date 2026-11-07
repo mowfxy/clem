@@ -22,3 +22,7 @@ Both are licensed under the GNU Lesser General Public License v3.0; the full tex
 - The library is used **unmodified**, loaded at run time from its own file (`libheif.wasm`, with its JavaScript loader in a separate worker script), not merged into Clem's code, so it can be replaced by another build of the same library.
 - Source code: the versions above, from the repositories linked; `npm pack libheif-js@1.23.2` gives the exact package Clem ships.
 - HEVC (the codec inside HEIC) is covered by patents in some countries; the library is provided as is.
+
+## Horizon photograph
+
+`src/glass/horizon.webp` is a retouched crop of a NASA photograph of Earth's limb from orbit (the shuttle silhouette in the original is painted out). NASA imagery is generally not subject to copyright in the United States.

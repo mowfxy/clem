@@ -76,3 +76,19 @@ All Sans text in the sidebar and settings is Medium (the user: "slightly thicker
 
 ## 2026-11-06 Type: Mowafy Sans 6.3 and Serif 3.2
 Both families now have Text and Display cuts; Display (--serif-display, --sans-display) is for headings of about 28px and up. In the sidebar and settings Medium is the floor, SemiBold carries labels and titles, and Bold is not used (src/roomy.css). This replaces the earlier "Medium everywhere" rule at the owner's request.
+
+## 2026-11-07 App redesign: the horizon in glass (user)
+Reference: a dark coding-agent home with a dithered orbital sunrise behind glass panels; and a NASA photo of Earth's limb, shuttle removed by request. "Liquid glass feel, not grey." "Use Mowafy Serif and Sans, nothing else." "Text is so large compared to button sizes", in the sidebar and in settings.
+Thesis: the app should feel like looking out at the sunrise from orbit through a pane of glass, because study is long, quiet, solitary work that still needs one thing worth looking up at.
+Backdrop: src/glass/HorizonField.tsx, the photo (rotated flatter, regraded, 900 px) set in Mowafy Sans characters over a dimmed copy of itself, covering the whole window, with a slow twinkle only on home. Replaces the mountain sky in the app; the website keeps AsciiField.
+Glass: scripts/glass-theme.mjs converts the old greys at build time (surfaces to sheets of light, ink to a cool tint, paper twins to white glass). src/glass/glass.css sets the materials. A chat or page frosts the window with .glass-pane, a separate layer because a filter on .workspace would capture fixed children. Colour source: the photo's sky blue and ember orange.
+Proportions (replaces the 2026-11-05 and 2026-11-06 sidebar rules; roomy.css is gone): row 38, text 14, icon 18; small row 34, text 13.5; label 12. Sidebar and settings share them. Medium is the floor, SemiBold only marks where you are and group labels.
+Home: greeting, composer, chips, then src/glass/StudyHome.tsx: study activity, recent chats, next exam, up next, this month. All counted from the person's own data.
+Type: the app's wordmark is Mowafy Serif Display, not Outfit. A fixed-width face stays only in code. The website is unchanged.
+Defended risk: the whole window, not a hero, is a photograph in type; a study app that puts a sunrise behind its sidebar.
+
+Later the same day (user): the home chips stay small pills, centred under the textbox ("you expanded the button, before it was great just misplaced"). ASCII dimmed. Notices are glass slips: a small mark on a bead of glass instead of an ink drawing, one-line title, two lines of detail that open on hover, shorter wording. Memory is a row list in solid glass; every pop-up window shares that glass (src/popups.css forces dialogs with !important, so glass.css answers with !important).
+
+Memory has no Keep or Forget (user, 2026-11-07): one Delete button on every memory and on the notice, the add field stays at the bottom. Learned memories stay unconfirmed in the data.
+
+Rollout (2026-11-07): the top bar has no surface. Text scrolling under it goes soft beneath a veil (.workspace::before) that fades out with no edge, and Windows' caption buttons sit on a transparent overlay. glass-base.css holds the materials plus sign-in and setup, because those screens show before the workspace's stylesheets load; glass.css stays last. Sign-in and first-run setup are one glass sheet over the horizon. Do not set z-index on .workspace or .desktop-titlebar: a stacking context there puts the title bar over the top bar's buttons.

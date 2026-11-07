@@ -235,7 +235,7 @@ try {
     await page.setViewportSize({ width, height: 960 });
     const sidebar = await page.locator(".sidebar").boundingBox();
     const titlebar = await page.locator(".desktop-titlebar").boundingBox();
-    assert.ok(Math.abs(titlebar.x - sidebar.x - sidebar.width) < 1, `Titlebar meets sidebar at ${width}px`);
+    assert.ok(Math.abs(titlebar.x - sidebar.x - sidebar.width - 10) < 1, `Titlebar starts one margin past the floating sidebar at ${width}px`);
   }
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.evaluate(() => (location.hash = "/app"));
