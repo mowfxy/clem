@@ -8,11 +8,11 @@ import "./model-selector.css";
 export const effortName = (value: string) =>
   value === "low" ? "Light" : value === "minimal" ? "Minimal" : value === "xhigh" ? "Extra high" : value.charAt(0).toUpperCase() + value.slice(1);
 const EFFORT_NAMES = ["minimal", "low", "medium", "high", "xhigh", "max"];
-/** A row of Clem's block cursors inside the filled part of the bar; a wave rolls through them toward the knob. */
+/** A row of dots inside the filled part of the bar; a wave rolls through them toward the knob. */
 const BITS = 26;
 const bits = Array.from({ length: BITS }, (_, i) => ({ left: 12 + i * 9, delay: -(BITS - i) * 0.07 }));
 
-/** How hard the model thinks: a bar to drag, with a wave of Clem's cursors that rolls faster and brighter as it climbs. */
+/** How hard the model thinks: a bar to drag, with a wave of dots that rolls faster and brighter as it climbs. */
 function EffortSlider({ levels, level, onChange }: {
   levels: string[]; level: string; onChange: (effort: string) => void;
 }) {
@@ -26,7 +26,7 @@ function EffortSlider({ levels, level, onChange }: {
   const pick = (p: number) => { const next = levels[Math.round(p * last)]; if (next && next !== level) onChange(next); };
   const intensity = levels.length > 1 ? index / last : 1;
   const live = drag ?? intensity;
-  // The wave speeds up through its playback rate, so every cursor keeps its phase instead of the loop restarting.
+  // The wave speeds up through its playback rate, so every dot keeps its phase instead of the loop restarting.
   useEffect(() => {
     const rate = 0.6 + live * 1.5;
     for (const animation of track.current?.getAnimations({ subtree: true }) || []) if (animation instanceof CSSAnimation && animation.animationName === "effort-wave") animation.updatePlaybackRate(rate);
