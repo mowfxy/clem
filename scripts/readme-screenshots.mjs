@@ -30,9 +30,8 @@ await site.listen();
 try {
   const web = await (await browser.newContext({ viewport })).newPage();
   await web.goto("http://127.0.0.1:5200/#/");
-  await web.waitForSelector(".cx-hero");
-  await shot(web, "website-visual", async () => { await web.locator("#visuals").scrollIntoViewIfNeeded(); await web.evaluate(() => scrollBy(0, 40)); await web.waitForSelector(".cx-demo-stage canvas", { timeout: 20000 }); await web.waitForTimeout(2500); });
-  await shot(web, "website-open-source", async () => { await web.locator("#open-source").scrollIntoViewIfNeeded(); await web.evaluate(() => scrollBy(0, -140)); await web.waitForTimeout(900); });
+  await web.waitForSelector(".cl-hero-lede");
+  await shot(web, "website-visual", async () => { await web.locator("#visuals").scrollIntoViewIfNeeded(); await web.evaluate(() => scrollBy(0, 40)); await web.waitForSelector("#visuals canvas", { timeout: 15000 }); });
   // The banner at the top of the README, in M4 Labs' terminal style with Clem's lockup (also a good GitHub social preview, 1280×640).
   const banner = await (await browser.newContext({ viewport: { width: 1280, height: 640 }, deviceScaleFactor: 2 })).newPage();
   await banner.goto("http://127.0.0.1:5200/");
