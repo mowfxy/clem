@@ -14,7 +14,9 @@ export type ProjectTeam = { coordinatorModel?: string; coordinatorEffort?: strin
 export type Reaction = { emoji: string; by: string };
 /** A message in a project's coordinator chat or one of its threads. `from`: 'you', 'coordinator' or an agent's id.
  *  `threads`: threads this coordinator message started; `recalled`: ids of the memory lines it was given. */
-export type RoomMessage = { id: string; from: string; content: string; at: number; reactions?: Reaction[]; threads?: string[]; recalled?: string[]; remembered?: number; /** Set on a note a thread sent the coordinator when its work ended: that thread's id. */ report?: string; status?: 'writing' | 'error' | 'stopped'; error?: string };
+/** A file the person sent with a project message: kept in the project's files, named here for the model and the message. */
+export type RoomFile = { id: string; name: string; type: string };
+export type RoomMessage = { id: string; from: string; content: string; at: number; /** Files the person sent with it. */ files?: RoomFile[]; reactions?: Reaction[]; threads?: string[]; recalled?: string[]; remembered?: number; /** Set on a note a thread sent the coordinator when its work ended: that thread's id. */ report?: string; status?: 'writing' | 'error' | 'stopped'; error?: string };
 /** Work the coordinator handed one agent: its brief, the agent's replies, and anything the person added. */
 export type ProjectThread = { id: string; /** The subagent's role, as the coordinator named it ("Researcher"); also its `from` on its messages. */ agent: string; title: string; status: 'working' | 'done' | 'failed' | 'stopped'; messages: RoomMessage[]; created: number; updated: number; summary?: string; from?: string };
 export type ProjectRoom = { spaceId: string; messages: RoomMessage[]; threads: ProjectThread[] };

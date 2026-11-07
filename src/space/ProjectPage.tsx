@@ -1,4 +1,4 @@
-import {useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type ReactNode} from 'react';
+import {createContext,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type MutableRefObject,type ReactNode} from 'react';
 import {Icon,Logo} from '../Icons';
 import {Illustration} from '../Illustrations';
 import {SpaceMark} from './SpaceMark';
@@ -7,13 +7,14 @@ import {Editable,FilesView,type SpaceActions} from './SpacePage';
 import {InstructionsDialog,InstructionsGlyph,DescriptionDialog} from './InstructionsDialog';
 import {ProjectSettingsDialog} from './ProjectSettings';
 import {MessageBody} from '../chat/MessageBody';
+import {ComposerFiles} from '../chat/ComposerFiles';
 import {ModelSelector} from '../ModelSelector';
 import {EmptyState} from '../ui/Calm';
 import {shortWhen} from '../ui/when';
 import {sizeLabel} from '../store';
 import {REACTIONS,roleName,teamOf} from '../../core/coordinator';
 import {recall,serializeMemory,RECALL_CHARS,type MemoryEntry} from '../../core/project-memory';
-import type {Chat,Model,ProjectRoom,ProjectThread,Reaction,RoomMessage,Space,StoredFile} from '../../core/types';
+import type {Chat,Model,ProjectRoom,ProjectThread,Reaction,RoomFile,RoomMessage,Space,StoredFile} from '../../core/types';
 import type {DriveSyncState} from '../drive/drive';
 import type {MessageRef} from './useProjects';
 import './space.css';
@@ -24,14 +25,20 @@ import './project.css';
 
 export type ProjectSection='coordinator'|'threads'|'context';
 export type ProjectActions={
-  send:(text:string)=>void;
-  reply:(thread:string,text:string)=>void;
+  /** Sends a message with its files, which join the project's files; false when none of them could be kept. */
+  send:(text:string,files?:File[])=>boolean|Promise<boolean>;
+  reply:(thread:string,text:string,files?:File[])=>boolean|Promise<boolean>;
+  /** Set by the message box on the page: where files pasted or dropped on the window go. */
+  inbox:MutableRefObject<((files:File[])=>void)|null>;
   stop:(key:string)=>void;
   react:(ref:MessageRef,emoji:string)=>void;
   clear:()=>void;
   memory:{add:(text:string,tags:string[])=>void;edit:(id:string,text:string,tags:string[])=>void;forget:(id:string)=>void;clear:()=>void};
   onConnect:()=>void;
 };
+
+/** What the message box and the sent messages need from the page, wherever they sit in it. */
+const ProjectFiles=createContext<{files:StoredFile[];open:(file:StoredFile)=>void;inbox:MutableRefObject<((files:File[])=>void)|null>}|null>(null);
 
 const ago=(t:number)=>shortWhen(t);
 const who=(by:string)=>by==='you'?'You':by==='coordinator'?'Coordinator':roleName(by);
@@ -77,11 +84,13 @@ export function ProjectPage({space,room,memory,models,fallbackModel,busy,chats,f
         </nav>
       </header>
     </div>
+    <ProjectFiles.Provider value={{files,open:actions.onOpenFile,inbox:project.inbox}}>
     <div className={`sp-body pj-body pj-in-${section}`} key={section}>
       {section==='coordinator'&&<CoordinatorChat space={space} room={room} models={models} model={team.coordinatorModel||fallbackModel} effort={team.coordinatorEffort} running={!!busy[space.id]} project={project} onThread={showThread} onModel={id=>actions.onUpdateSpace({...space,team:{...team,coordinatorModel:id,coordinatorEffort:undefined}})} onEffort={e=>actions.onUpdateSpace({...space,team:{...team,coordinatorEffort:e}})}/>}
       {section==='threads'&&<Threads room={room} models={models} agentModel={team.agentModel||team.coordinatorModel||fallbackModel} busy={busy} open={openThread} cameFrom={cameFrom} onOpen={id=>{setOpenThread(id);setCameFrom('list');}} onBack={()=>{setOpenThread(null);if(cameFrom==='coordinator')onSection('coordinator');}} project={project} onCoordinator={()=>onSection('coordinator')}/>}
       {section==='context'&&<Context space={space} memory={memory} chats={chats} files={files} driveSync={driveSync} actions={actions} project={project} onInstructions={()=>setInstructions(true)}/>}
     </div>
+    </ProjectFiles.Provider>
     {settingsOpen&&<ProjectSettingsDialog space={space} models={models} fallbackModel={fallbackModel} onConnect={project.onConnect} onSave={next=>actions.onUpdateSpace({...space,team:next})} onClose={()=>setSettingsOpen(false)}/>}
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}
     {describing&&<DescriptionDialog space={space} onSave={description=>actions.onUpdateSpace({...space,description})} onClose={()=>setDescribing(false)}/>}
@@ -119,13 +128,20 @@ function MessageMeta({m,memory,label}:{m:RoomMessage;memory?:boolean;label?:Reac
   return <div className="pj-meta">{label}{memory&&used>0&&<span title="Lines from the project memory file this reply was given">Read {used} {used===1?'memory':'memories'}</span>}{memory&&!!m.remembered&&<span className="pj-meta-saved"><Icon name="check" size={12}/>Saved {m.remembered} to memory</span>}</div>;
 }
 
+/** The files sent with a message, as they looked in the box; pressing one opens it while the project still has it. */
+function SentFiles({files}:{files:RoomFile[]}){
+  const page=useContext(ProjectFiles);
+  return <ComposerFiles items={files.map(f=>{const kept=page?.files.find(x=>x.id===f.id);return {key:f.id,fileId:kept&&f.id,name:kept?.name||f.name,type:f.type,onOpen:kept&&(()=>page?.open(kept))};})}/>;
+}
+
 /** One message, in the app's own bubble style: the person's on the right, the AI's as text. */
 function Message({m,thread,onReact,latest,children}:{m:RoomMessage;thread?:ProjectThread;onReact:(emoji:string)=>void;latest:boolean;children?:ReactNode}){
   const mine=m.from==='you',writing=m.status==='writing';
   const name=who(m.from);
   return <article className={`message ${mine?'user':'assistant'} pj-message${writing&&!m.content?' waiting':''}${latest?' latest':''}`} data-from={m.from}>
+    {!!m.files?.length&&<SentFiles files={m.files}/>}
     {writing&&!m.content?<div className="pj-waiting"><Thinking/></div>
-      :<div className="message-text">{mine?m.content:<MessageBody content={m.content} streaming={writing}/>}</div>}
+      :(!mine||m.content)&&<div className="message-text">{mine?m.content:<MessageBody content={m.content} streaming={writing}/>}</div>}
     {m.status==='error'&&<p className="pj-error" role="alert">{m.error||'This reply failed.'}</p>}
     {m.status==='stopped'&&<p className="pj-stopped">Stopped</p>}
     {children}
@@ -156,7 +172,7 @@ function HandoffNote({thread,index=0,onOpen}:{thread:ProjectThread;index?:number
       {thread.messages.map(m=>{const who_=who(m.from);
         return <div key={m.id} className={`pj-handoff-msg from-${m.from==='coordinator'?'coordinator':m.from==='you'?'you':'agent'}`}>
           <small>{who_}{m.from==='coordinator'&&<> → {name}</>}</small>
-          {m.status==='writing'&&!m.content?<Thinking/>:<div className="pj-handoff-body"><MessageBody content={m.content} streaming={m.status==='writing'}/></div>}
+          {m.status==='writing'&&!m.content?<Thinking/>:<div className="pj-handoff-body"><MessageBody content={m.content||(m.files||[]).map(f=>f.name).join(', ')} streaming={m.status==='writing'}/></div>}
           {!!m.reactions?.length&&<span className="pj-handoff-reacts">{m.reactions.map((r,i)=><span key={i}>{r.emoji}</span>)}</span>}
         </div>;})}
       <button type="button" className="pj-handoff-open" onClick={onOpen}>{replies?'Open thread to reply':'Open thread'}<Icon name="arrow" size={13}/></button>
@@ -172,22 +188,41 @@ function ReportNote({m,onOpen}:{m:RoomMessage;onOpen:()=>void}){
   </button>;
 }
 
-/** The message box, as in a chat: Enter sends, Shift+Enter breaks the line, and the button stops a running reply. */
-function Composer({placeholder,running,background,onSend,onStop,disabled,children,autoFocus}:{placeholder:string;running:boolean;background?:boolean;onSend:(text:string)=>void;onStop:()=>void;disabled?:string;children?:ReactNode;autoFocus?:boolean}){
+/** The message box, as in a chat: Enter sends, Shift+Enter breaks the line, and the button stops a running reply. Files
+ *  wait here, from the + button or pasted or dropped on the window, and are kept only once the message goes. */
+function Composer({placeholder,running,background,onSend,onStop,disabled,children,autoFocus}:{placeholder:string;running:boolean;background?:boolean;onSend:(text:string,files:File[])=>boolean|Promise<boolean>;onStop:()=>void;disabled?:string;children?:ReactNode;autoFocus?:boolean}){
   const [text,setText]=useState('');
-  const field=useRef<HTMLTextAreaElement>(null);
+  const [tray,setTray]=useState<{key:string;file:File}[]>([]);
+  const [sending,setSending]=useState(false);
+  const field=useRef<HTMLTextAreaElement>(null),picker=useRef<HTMLInputElement>(null);
+  const page=useContext(ProjectFiles);
+  const add=(files:File[])=>setTray(t=>[...t,...files.map(file=>({key:crypto.randomUUID(),file}))]);
+  useEffect(()=>{if(disabled||!page)return;const inbox=page.inbox;inbox.current=add;return()=>{inbox.current=null;};},[disabled]);
   // Grows with what is typed; empty, it goes back to the stylesheet's one-line height.
   useLayoutEffect(()=>{const el=field.current;if(!el)return;el.style.height='';if(text)el.style.height=Math.min(el.scrollHeight,264)+'px';},[text]);
   useEffect(()=>{if(autoFocus)field.current?.focus();},[autoFocus]);
-  const submit=(e?:FormEvent)=>{e?.preventDefault();const t=text.trim();if(!t||running||disabled)return;onSend(t);setText('');};
+  const submit=async(e?:FormEvent)=>{
+    e?.preventDefault();const t=text.trim();if((!t&&!tray.length)||running||disabled||sending)return;
+    // The message stays in the box until its files are kept, so a file that can't be saved loses nothing.
+    setSending(true);
+    const sent=await onSend(t,tray.map(x=>x.file));
+    setSending(false);
+    if(sent){setText('');setTray([]);}
+  };
+  const ready=!!text.trim()||tray.length>0;
   return <form className="composer pj-composer-form" onSubmit={submit}>
+    <ComposerFiles items={tray.map(({key,file})=>({key,file,name:file.name,type:file.type,size:file.size,onRemove:()=>setTray(t=>t.filter(x=>x.key!==key))}))}/>
     <textarea ref={field} rows={1} value={text} aria-label="Your message" placeholder={disabled||placeholder} disabled={!!disabled} onChange={e=>setText(e.target.value)}
       onKeyDown={e=>{if(e.nativeEvent.isComposing)return;if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}/>
     <div className="composer-bottom">
-      <div className="composer-tools pj-composer-left">{children}</div>
+      <div className="composer-tools pj-composer-left">
+        <button type="button" className="icon-button" aria-label="Add files" disabled={!!disabled} onClick={()=>picker.current?.click()}><Icon name="plus" size={19}/></button>
+        <input ref={picker} type="file" multiple hidden onChange={e=>{add([...(e.target.files||[])]);e.target.value='';}}/>
+        {children}
+      </div>
       <div className="composer-tools">
-        {running||(background&&!text.trim())?<button type="button" className="send-button" aria-label="Stop" aria-description="Stops the reply and any threads it started" onClick={onStop}><span className="stop-square"/></button>
-          :<button className="send-button" aria-label="Send message" disabled={!text.trim()||!!disabled}><Icon name="up" size={22}/></button>}
+        {running||(background&&!ready)?<button type="button" className="send-button" aria-label="Stop" aria-description="Stops the reply and any threads it started" onClick={onStop}><span className="stop-square"/></button>
+          :<button className="send-button" aria-label="Send message" disabled={!ready||sending||!!disabled}><Icon name="up" size={22}/></button>}
       </div>
     </div>
   </form>;
@@ -211,7 +246,7 @@ function CoordinatorChat({space,room,models,model,effort,running,project,onThrea
       <Illustration scene="relay" viewBox="104 62 272 290" className="pj-intro-art"/>
       <h2>Tell the coordinator what you’re working on.</h2>
       <p>It answers you, and opens threads with subagents for bigger pieces. Ask for a thread any time.</p>
-      <div className="pj-starters">{[`Plan the next two weeks`,'Research the options for me','Draft it, then have it reviewed'].map(s=><button key={s} type="button" disabled={!canAsk} onClick={()=>project.send(s)}>{s}<Icon name="arrow" size={14}/></button>)}</div>
+      <div className="pj-starters">{[`Plan the next two weeks`,'Research the options for me','Draft it, then have it reviewed'].map(s=><button key={s} type="button" disabled={!canAsk} onClick={()=>void project.send(s)}>{s}<Icon name="arrow" size={14}/></button>)}</div>
     </div>
     :<div className="messages pj-messages">
       {room.messages.map((m,i)=>m.report?<ReportNote key={m.id} m={m} onOpen={()=>onThread(m.report!)}/>:<Message key={m.id} m={m} latest={i===room.messages.length-1} onReact={e=>project.react({message:m.id},e)}>
@@ -283,7 +318,7 @@ function ThreadView({thread,model,running,project,backLabel,onBack}:{thread:Proj
       <div ref={end}/>
     </div>
     <div className="chat-composer pj-composer pj-thread-composer">
-      <Composer placeholder={`Add to this thread; ${name} answers here…`} running={running} onSend={t=>project.reply(thread.id,t)} onStop={()=>project.stop('thread:'+thread.id)}/>
+      <Composer placeholder={`Add to this thread; ${name} answers here…`} running={running} onSend={(t,files)=>project.reply(thread.id,t,files)} onStop={()=>project.stop('thread:'+thread.id)}/>
     </div>
   </div>;
 }

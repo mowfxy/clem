@@ -18,6 +18,7 @@
 .cf-badge{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;max-width:100%;padding:3px 7px;border-radius:6px;background:#ffffff12;font:500 12px/1.2 var(--sans);letter-spacing:.02em;color:#c9c7bf;white-space:nowrap}
 .cf-badge svg{flex:0 0 auto}
 
+button.cf-open{position:absolute;inset:0;padding:0;border:0;border-radius:inherit;background:none;cursor:pointer}
 body .composer .cf-remove{position:absolute;top:6px;right:6px;display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:#141413e6;color:#e6e4dd;box-shadow:0 0 0 1px #ffffff1a;opacity:0;transition:opacity .15s,background .15s;cursor:pointer;z-index:1}
 .composer-files>*:hover .cf-remove,body .composer .cf-remove:focus-visible{opacity:1}
 body .composer .cf-remove:hover{background:#000}

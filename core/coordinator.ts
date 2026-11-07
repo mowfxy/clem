@@ -80,9 +80,11 @@ export function readReply(raw: string, streaming = false): { text: string; direc
 // ---------------------------------------------------------------- what each request carries
 
 type Turn = { role: "system" | "user" | "assistant"; content: string };
-const HISTORY_CHARS = 7000, HISTORY_COUNT = 14, REPORT_CHARS = 5000;
+const HISTORY_CHARS = 7000, HISTORY_COUNT = 14, REPORT_CHARS = 5000, FILES_IN_PLAY = 8;
 
 const nameOf = (by: string) => by === "you" ? "the person" : by === "coordinator" ? "you" : roleName(by);
+/** What the model reads about a message's files; their contents reach it through `Ask`'s `files`. */
+const filesNote = (m: RoomMessage) => m.files?.length ? `${m.content ? "\n" : ""}(the person sent: ${m.files.map((f) => f.name).join(", ")})` : "";
 const reactionNote = (reactions: Reaction[] | undefined) => reactions?.length ? `\n(reactions: ${reactions.map((r) => `${nameOf(r.by)} ${r.emoji}`).join(", ")})` : "";
 
 const lastIndex = (list: RoomMessage[], is: (m: RoomMessage) => boolean) => { for (let i = list.length - 1; i >= 0; i--) if (is(list[i])) return i; return -1; };
@@ -112,7 +114,7 @@ export function coordinatorHistory(room: ProjectRoom, chars = HISTORY_CHARS, cou
     if (m.report) { if (i > answered) out.unshift({ role: "user", content: reportFor(room, m) }); continue; }
     const threads = (m.threads || []).map((id) => room.threads.find((t) => t.id === id)).filter((t): t is ProjectThread => !!t)
       .map((t) => `\n(thread ${t.id.slice(0, 6)} · ${roleName(t.agent)} · "${t.title}" · ${t.status}${t.summary ? ": " + t.summary : ""})`).join("");
-    let content = (m.content || (m.reactions?.some((r) => r.by === "coordinator") ? "(you reacted instead of replying)" : "")) + threads + reactionNote(m.reactions);
+    let content = (m.content || (m.reactions?.some((r) => r.by === "coordinator") ? "(you reacted instead of replying)" : "")) + filesNote(m) + threads + reactionNote(m.reactions);
     if (!content.trim()) continue;
     if (content.length > room_) { if (out.length) break; content = content.slice(-room_); }
     room_ -= content.length;
@@ -164,8 +166,9 @@ export function threadHistory(thread: ProjectThread, chars = 24000): Turn[] {
   let room = chars;
   for (let i = thread.messages.length - 1; i >= 0; i--) {
     const m = thread.messages[i];
-    if (m.status === "writing" || !m.content.trim()) continue;
-    const content = m.from === "you" ? `(The person, not the coordinator:) ${m.content}` : m.content;
+    const said = m.content + filesNote(m);
+    if (m.status === "writing" || !said.trim()) continue;
+    const content = m.from === "you" ? `(The person, not the coordinator:) ${said}` : said;
     if (content.length > room && out.length) break;
     room -= content.length;
     out.unshift({ role: m.from === thread.agent ? "assistant" : "user", content: content.slice(-chars) });
@@ -175,7 +178,15 @@ export function threadHistory(thread: ProjectThread, chars = 24000): Turn[] {
 
 // ---------------------------------------------------------------- running a turn
 
-export type Ask = (messages: Turn[], opts: { model?: string; effort?: string; scope: string; chat: string; signal: AbortSignal; onText: (text: string) => void; tools?: boolean }) => Promise<string>;
+/** The files a turn reads, newest first: the whole project shares them, so a thread sees what the person gave the
+ *  coordinator and the other way round; a thread's own come first. */
+export function filesInPlay(room: ProjectRoom, thread?: ProjectThread, max = FILES_IN_PLAY) {
+  const all = [...room.messages, ...room.threads.flatMap((t) => t.messages)].sort((a, b) => b.at - a.at);
+  const order = thread ? [...[...thread.messages].reverse(), ...all] : all;
+  return [...new Set(order.flatMap((m) => (m.files || []).map((f) => f.id)))].slice(0, max);
+}
+
+export type Ask = (messages: Turn[], opts: { model?: string; effort?: string; scope: string; chat: string; signal: AbortSignal; onText: (text: string) => void; tools?: boolean; /** Stored files this turn reads. */ files?: string[] }) => Promise<string>;
 export type Room = {
   get: () => ProjectRoom;
   set: (fn: (room: ProjectRoom) => ProjectRoom) => void;
@@ -240,7 +251,7 @@ export async function coordinatorTurn(space: Space, runs: { coordinator: Run; ag
     let raw: string;
     try {
       raw = await ask([{ role: "system", content: coordinatorSystem(space, found) }, ...history, ...extra], {
-        ...runs.coordinator, scope: `project:${space.id}`, chat, signal,
+        ...runs.coordinator, scope: `project:${space.id}`, chat, signal, files: filesInPlay(io.get()),
         onText: (t) => io.set((r) => patchMessage(r, id, (m) => ({ ...m, content: readReply(t, true).text }))),
       });
     } catch (error) {
@@ -297,7 +308,7 @@ export async function runThread(space: Space, run: Run, threadId: string, io: Ro
   let raw: string;
   try {
     raw = await ask([{ role: "system", content: agentSystem(space, role, found) }, ...threadHistory(thread)], {
-      ...run, scope: `project:${space.id}`, chat: `thr-${threadId}`.slice(0, 80), signal, tools: true,
+      ...run, scope: `project:${space.id}`, chat: `thr-${threadId}`.slice(0, 80), signal, tools: true, files: filesInPlay(io.get(), thread),
       onText: (t) => io.set((r) => patchThread(r, threadId, (th) => ({ ...th, messages: th.messages.map((m) => m.id === id ? { ...m, content: readReply(t, true).text } : m) }))),
     });
   } catch (error) {

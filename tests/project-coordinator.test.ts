@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { entry, forget, parseMemory, recall, remember, serializeMemory, MEMORY_LIMIT } from "../core/project-memory.ts";
-import { coordinatorHistory, coordinatorTurn, emptyRoom, modelsOf, readReply, reportsWaiting, runThread, settleRoom, toggleReaction, workThread, type Ask, type Room } from "../core/coordinator.ts";
+import { coordinatorHistory, coordinatorTurn, emptyRoom, filesInPlay, modelsOf, readReply, reportsWaiting, runThread, settleRoom, threadHistory, toggleReaction, workThread, type Ask, type Room } from "../core/coordinator.ts";
 import type { ProjectRoom, Space } from "../core/types.ts";
 import type { MemoryEntry } from "../core/project-memory.ts";
 
@@ -294,4 +294,23 @@ test("a room saved mid-run comes back stopped, not working forever", () => {
   assert.deepEqual(settled.threads[0].messages.map((m) => m.id), ["b"]);
   const calm = emptyRoom("p2");
   assert.equal(settleRoom(calm), calm);
+});
+
+test("a file sent with no words still reaches the model, by name in the history and by id for the turn", () => {
+  const file = { id: "f1", name: "brief.pdf", type: "application/pdf" };
+  const room: ProjectRoom = { ...emptyRoom("s"), messages: [{ id: "m", from: "you", content: "", at: 1, files: [file] }] };
+  assert.match(coordinatorHistory(room).at(-1)!.content, /brief\.pdf/);
+  const thread = { id: "t", agent: "Writer", title: "T", status: "done" as const, created: 1, updated: 1, messages: [{ id: "n", from: "you", content: "", at: 2, files: [{ ...file, id: "f2", name: "photo.png" }] }] };
+  assert.match(threadHistory(thread).at(-1)!.content, /photo\.png/);
+});
+
+test("the files in play are shared across the project, newest first, with a thread's own ahead", () => {
+  const f = (id: string) => ({ id, name: id, type: "text/plain" });
+  const mine = { id: "t1", agent: "Writer", title: "A", status: "done" as const, created: 1, updated: 1, messages: [{ id: "a", from: "you", content: "x", at: 1, files: [f("own")] }] };
+  const other = { ...mine, id: "t2", messages: [{ id: "b", from: "you", content: "x", at: 5, files: [f("other")] }] };
+  const room: ProjectRoom = { ...emptyRoom("s"), threads: [mine, other], messages: [{ id: "c", from: "you", content: "x", at: 3, files: [f("room"), f("other")] }] };
+  assert.deepEqual(filesInPlay(room), ["other", "room", "own"]);
+  assert.deepEqual(filesInPlay(room, mine), ["own", "other", "room"]);
+  assert.deepEqual(filesInPlay(room, undefined, 1), ["other"]);
+  assert.deepEqual(filesInPlay(emptyRoom("s")), []);
 });
