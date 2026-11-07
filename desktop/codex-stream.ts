@@ -15,7 +15,9 @@ export const WEB_SEARCH = "live";
 /** `folder`: the thread works in the conversation's folder of files (desktop/ai-workspace.ts) as Codex itself: its own base
  *  instructions (Clem's go in as developer instructions) and its shell, sandboxed to write only there with no network. */
 /** `steps`: counts the answer's tool steps across its turns (desktop/tool-status.ts StepCounter). */
-export type TurnSession = { threadId?: string; mcp?: Record<string, unknown>; folder?: { root: string; instructions: string }; steps?: StepCounter; tokens?: (t: { input: number; cacheRead: number; cacheWrite: number; output: number }) => void };
+/** `keep`: the thread is saved on disk, so it outlives this app-server and can be resumed by id. `resume`: the saved thread
+ *  to open instead of starting one. `context`: the tokens the latest model step read. */
+export type TurnSession = { threadId?: string; keep?: boolean; resume?: string; context?: number; mcp?: Record<string, unknown>; folder?: { root: string; instructions: string }; steps?: StepCounter; tokens?: (t: { input: number; cacheRead: number; cacheWrite: number; output: number }) => void };
 /** One model response's tokens from Codex's thread/tokenUsage/updated (its `last`): its input counts the cached and cache-written parts too. */
 export function codexTokens(params: any) {
   const last = params?.tokenUsage?.last ?? params?.tokenUsage?.last_token_usage ?? params?.info?.last_token_usage;
@@ -57,8 +59,42 @@ const TOOL_ITEMS = new Set(["mcpToolCall", "dynamicToolCall", "fileChange", "web
 export type TurnControl = { interrupt?: () => void; alive?: () => void; steps?: StepCounter };
 
 /**
- * Runs one turn on a shared app-server. The first turn opens an ephemeral, read-only thread;
- * later turns (Kinetra tool results) continue the same thread, so the provider keeps the
+ * What a thread is opened with, started or resumed: a resumed thread takes the current instructions, tools and folder.
+ */
+function threadSettings(session: TurnSession, selection: { model?: string } | undefined) {
+  const folder = session.folder ? folderThread(session.folder) : undefined;
+  return {
+    model: selection?.model,
+    approvalPolicy: "never",
+    ...(folder ? { cwd: folder.cwd, sandbox: folder.sandbox, developerInstructions: folder.developerInstructions } : { sandbox: "read-only", baseInstructions }),
+    config: {
+      "features.shell_tool": false,
+      "features.unified_exec": false,
+      ...folder?.config,
+      web_search: WEB_SEARCH,
+      project_doc_max_bytes: 0,
+      ...session.mcp,
+    },
+  };
+}
+/** Gives the session its thread: the one it has, the saved one it names, or a new one (ephemeral unless `keep`). */
+export async function openThread(server: AppServer, session: TurnSession, selection: { model?: string } | undefined) {
+  if (session.threadId) return session.threadId;
+  await server.ready;
+  // The turn's inactivity limit starts only with the turn, so a thread that never starts is given up here.
+  if (session.resume) {
+    const resumed = await server.request("thread/resume", { threadId: session.resume, ...threadSettings(session, selection) }, THREAD_START_MS);
+    if (resumed?.thread?.id !== session.resume) throw Error("Codex opened a different thread.");
+    session.threadId = session.resume;
+    session.resume = undefined;
+    return session.threadId;
+  }
+  const started = await server.request("thread/start", { ...threadSettings(session, selection), ephemeral: !session.keep }, THREAD_START_MS);
+  return (session.threadId = started.thread.id as string);
+}
+/**
+ * Runs one turn on a shared app-server. The first turn opens the session's thread (a new read-only one unless it says
+ * otherwise); later turns (Kinetra tool results) continue the same thread, so the provider keeps the
  * context instead of Clem resending it.
  */
 export async function streamTurn(
@@ -75,26 +111,7 @@ export async function streamTurn(
 ) {
   await server.ready;
   if (cancelled()) throw Error("Request cancelled");
-  if (!session.threadId) {
-    const folder = session.folder ? folderThread(session.folder) : undefined;
-    const started = await server.request("thread/start", {
-      model: selection?.model,
-      ephemeral: true,
-      approvalPolicy: "never",
-      ...(folder ? { cwd: folder.cwd, sandbox: folder.sandbox, developerInstructions: folder.developerInstructions } : { sandbox: "read-only", baseInstructions }),
-      config: {
-        "features.shell_tool": false,
-        "features.unified_exec": false,
-        ...folder?.config,
-        web_search: WEB_SEARCH,
-        project_doc_max_bytes: 0,
-        ...session.mcp,
-      },
-      // The turn's inactivity limit starts only with the turn, so a thread that never starts is given up here.
-    }, THREAD_START_MS);
-    session.threadId = started.thread.id as string;
-  }
-  const threadId = session.threadId!;
+  const threadId = await openThread(server, session, selection);
   let bytes = 0, turnId = "";
   const received = new Map<string, string>();
   const summaries = new Map<string, string>();
@@ -138,7 +155,7 @@ export async function streamTurn(
       onFail: (error) => finish(cancelled() ? Error("Request cancelled") : error),
       onMessage: (method, p) => {
         if (!ended) touch();
-        if (method === "thread/tokenUsage/updated") { const t = codexTokens(p); if (t) session.tokens?.(t); return; }
+        if (method === "thread/tokenUsage/updated") { const t = codexTokens(p); if (t) { session.context = t.input + t.cacheRead + t.cacheWrite; session.tokens?.(t); } return; }
         if (method === "item/started" && (p.item?.type === "reasoning" || p.item?.type === "agentMessage")) step++;
         else if (method === "item/started" && TOOL_ITEMS.has(p.item?.type)) control.steps?.add(`${turnId}:${step}`, String(p.item.id || ""));
         try {
@@ -205,6 +222,34 @@ export async function streamTurn(
         if (cancelled()) interrupt();
       })
       .catch((error) => finish(error));
+  });
+}
+
+/** How long a compaction may stay silent before it is given up. */
+export const COMPACT_MS = 5 * 60_000;
+/** Compacts a thread that is open on this app-server: Codex summarises it as a turn of its own and the thread goes on from the summary. */
+export function compactThread(server: AppServer, threadId: string, timeoutMs = COMPACT_MS) {
+  return new Promise<void>((resolve, reject) => {
+    let ended = false;
+    const finish = (error?: Error) => {
+      if (ended) return;
+      ended = true;
+      clearTimeout(timer);
+      unsubscribe();
+      error ? reject(error) : resolve();
+    };
+    let timer: ReturnType<typeof setTimeout>;
+    const touch = () => { clearTimeout(timer); timer = setTimeout(() => finish(Error("Codex compaction timed out")), timeoutMs); };
+    touch();
+    const unsubscribe = server.subscribe(threadId, {
+      onFail: finish,
+      onMessage: (method, p) => {
+        touch();
+        if (method === "turn/completed") p.turn?.status === "completed" ? finish() : finish(Error(p.turn?.error?.message || "Codex compaction failed."));
+        else if (method === "error" && p.willRetry === false) finish(Error(String(p.error?.message || "Codex compaction failed.")));
+      },
+    });
+    server.request("thread/compact/start", { threadId }).catch(finish);
   });
 }
 

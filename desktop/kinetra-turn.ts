@@ -370,7 +370,20 @@ function cutOffError(text: string) {
 /** Broken requests in a row before the model's text is taken as the answer instead of being sent back again. */
 export const MAX_BROKEN = 5;
 /** What holds a final answer back: see the options of runKinetraTurn. */
-export type AnswerGates = { unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined | Promise<string | undefined> };
+/** Saves a large tool result where the model can open it, and says where. */
+export type SpillResult = (text: string) => Promise<string>;
+/** Past this a tool result goes to a file and the model gets its start and the path: a CLI re-reads every result at
+ *  every later step, so one huge result costs far more than opening what it needs (Hermes's tool-result storage). */
+export const SPILL_CHARS = 60_000;
+const SPILL_PREVIEW = 4_000;
+export async function spilled(result: unknown, spill: SpillResult): Promise<unknown> {
+  const text = typeof result === "string" ? result : JSON.stringify(result) ?? "";
+  if (text.length <= SPILL_CHARS) return result;
+  try {
+    return { truncated: true, chars: text.length, preview: text.slice(0, SPILL_PREVIEW), file: await spill(text), note: "This result was too long to send whole. The preview is its start; open or search the file for the rest." };
+  } catch { return result; }
+}
+export type AnswerGates = { spill?: SpillResult; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined | Promise<string | undefined> };
 /** Why a final answer went back: its own review, or a document it made that is not finished yet. */
 export type SentBack = "review" | "unfinished";
 /** Times one answer can be sent back over its own numbers (`review` in runKinetraTurn). Once: an answer the person has
@@ -446,7 +459,7 @@ export async function runKinetraTurn<Picture = unknown>(
   /** `continued`: the first step goes on a session the provider already has (the chat's kept session,
    *  desktop/chat-sessions.ts), so `prompt` holds only this message; `fresh` is the whole prompt, sent instead if that
    *  session is gone (with `freshInstructions` in place of `instructions`, which a kept session may not need again). */
-  options: { stateful?: boolean; limit?: number; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined | Promise<string | undefined>; sentBack?: (why: SentBack) => void; stats?: TurnStats; continued?: boolean; fresh?: string; freshInstructions?: string } = {},
+  options: { stateful?: boolean; limit?: number; spill?: SpillResult; unfinished?: () => string | undefined; review?: (answer: string, history: { request: any; result: any }[]) => string | undefined | Promise<string | undefined>; sentBack?: (why: SentBack) => void; stats?: TurnStats; continued?: boolean; fresh?: string; freshInstructions?: string } = {},
 ) {
   const { limit = 3_000_000, unfinished, review, sentBack, stats = { steps: 0, calls: 0, broken: 0 } } = options;
   let continued = !!(options.continued && options.stateful);
@@ -490,7 +503,7 @@ export async function runKinetraTurn<Picture = unknown>(
       result = { ...rest, note: typeof rest.note === "string" ? rest.note + " " + seen : seen };
     }
     entry.request = sentBefore(request, result);
-    entry.result = forModel(request, result);
+    entry.result = options.spill ? await spilled(forModel(request, result), options.spill) : forModel(request, result);
     return { result: entry.result as unknown, pictures };
   };
   // Requests that only compute or read run side by side (the envelopes of one reply, or native calls sent together). One

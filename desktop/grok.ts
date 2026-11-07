@@ -208,7 +208,7 @@ export const GROK_FOLDER_NOTE='IN CLEM: your working folder holds the person\'s 
 const outOfUsage=(detail:string)=>/limit|quota|429|credits|exhausted|billing/i.test(detail);
 const signedOut=/not authenticated|authentication required|grok login|unauthori[sz]ed|401|sign in/i;
 /** Without stdout or log activity for this long Grok is taken as stuck; a request in flight may run up to the second. */
-export const GROK_IDLE_LIMIT=10*60_000,GROK_REQUEST_LIMIT=60*60_000;
+export const GROK_IDLE_LIMIT=3*60_000,GROK_REQUEST_LIMIT=15*60_000;
 /** Silence after which the person is told Grok is still working. */
 export const GROK_QUIET_NOTE=2*60_000;
 const GROK_OFFLINE='Grok lost its connection to xAI and could not get it back. Check your internet connection, then send your message again.';
@@ -426,6 +426,7 @@ export class GrokProvider {
    */
   private async attempt(id:string,args:string[],emit:(event:any)=>void,env:Record<string,string>={}){
     let child:ChildProcessWithoutNullStreams;
+    emit({id,type:'stage',stage:'prompt'});
     try{child=await this.start(args,undefined,env);}
     catch{throw Error('Grok could not start. Install it in Settings → Models.');}
     this.active.set(id,child);

@@ -2,7 +2,12 @@
  *  back for correction. `cliSteps`/`cliCalls`: the CLI's own model steps that asked for tools and every tool call in
  *  them, its file tools included (desktop/tool-status.ts StepCounter). `continued`: the answer went on the chat's kept
  *  CLI session (desktop/chat-sessions.ts), so the conversation so far was not sent again. */
-export type TurnStats = { steps: number; calls: number; broken: number; cliSteps?: number; cliCalls?: number; continued?: boolean; compacted?: boolean; tokens?: TokenTally };
+export type TurnStats = { steps: number; calls: number; broken: number; cliSteps?: number; cliCalls?: number; continued?: boolean; compacted?: boolean; tokens?: TokenTally;
+  /** Before the AI was asked: the window's own wait, Clem's preparation, and the thinking level chosen. */
+  windowMs?: number; prepMs?: number; filesMs?: number; effort?: string;
+  /** Milliseconds from the answer's start to each stage reached (session, prompt, thought, text, screen): the first of each.
+   *  `spare`: the answer took a session opened ahead. `clock` is when the answer started; it never reaches the ledger. */
+  stages?: Record<string, number>; spare?: boolean; clock?: number };
 /** The tokens one answer's model steps read and wrote, as the CLI reported them: fresh input, prompt-cache reads and
  *  writes, and output (thinking included). Grok's come from its own usage.json, read once the answer ends. */
 export type TokenTally = { input: number; cacheRead: number; cacheWrite: number; output: number };
@@ -11,6 +16,11 @@ const count = (value: unknown) => Math.max(0, Number(value) || 0);
 export function addTokens(stats: TurnStats, t: Partial<TokenTally>) {
   const now = stats.tokens ??= { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
   now.input += count(t.input); now.cacheRead += count(t.cacheRead); now.cacheWrite += count(t.cacheWrite); now.output += count(t.output);
+}
+/** Notes the first time an answer reaches a stage, so a slow answer shows which stretch took the time. */
+export function markStage(stats: TurnStats, stage: string, at = performance.now()) {
+  const stages = stats.stages ??= {};
+  if (stages[stage] === undefined) stages[stage] = Math.round(at - (stats.clock ?? at));
 }
 /** One answer as the ledger keeps it (desktop/answer-ledger.ts): counts and milliseconds only. */
 export type AnswerEntry = { at: number; provider: string; model?: string; outcome: "ok" | "failed"; firstTextMs?: number; totalMs: number } & TurnStats;
@@ -22,20 +32,21 @@ export type AnswerEntry = { at: number; provider: string; model?: string; outcom
 export function turnTimer(provider: string, { model, record }: { model?: string; record?: (entry: AnswerEntry) => void } = {}) {
   const started = performance.now();
   let first = 0, ended = false;
-  const stats: TurnStats = { steps: 0, calls: 0, broken: 0 };
+  const stats: TurnStats = { steps: 0, calls: 0, broken: 0, clock: started };
   const ms = (at: number) => Math.round(at - started) + "ms";
   return {
     stats,
     /** Wraps an answer's events so the first text that reaches the screen is timed. */
     watch: <E extends { type?: string; text?: string }>(emit: (event: E) => void) => (event: E) => {
-      if (!first && event?.type === "delta" && event.text) first = performance.now();
+      if (!first && event?.type === "delta" && event.text) { first = performance.now(); markStage(stats, "screen", first); }
       emit(event);
     },
     end(outcome: "ok" | "failed" = "ok") {
       if (ended) return;
       ended = true;
       const total = Math.round(performance.now() - started);
-      try { record?.({ at: Date.now(), provider, ...(model ? { model } : {}), outcome, ...(first ? { firstTextMs: Math.round(first - started) } : {}), totalMs: total, ...stats }); } catch { /* the ledger never costs an answer */ }
+      const { clock: _clock, ...counts } = stats;
+      try { record?.({ at: Date.now(), provider, ...(model ? { model } : {}), outcome, ...(first ? { firstTextMs: Math.round(first - started) } : {}), totalMs: total, ...counts }); } catch { /* the ledger never costs an answer */ }
       const t = stats.tokens;
       console.log(`[clem timing] ${provider} ${outcome} first-text=${first ? ms(first) : "none"} total=${ms(performance.now())} steps=${stats.steps} calls=${stats.calls} broken=${stats.broken} cli-steps=${stats.cliSteps || 0} cli-calls=${stats.cliCalls || 0}${stats.cliSteps ? ` per-step=${((stats.cliCalls || 0) / stats.cliSteps).toFixed(1)}` : ""} session=${stats.continued ? "continued" : "new"}${t ? ` tokens in=${t.input} cache-read=${t.cacheRead} cache-write=${t.cacheWrite} out=${t.output}` : ""}`);
     },
