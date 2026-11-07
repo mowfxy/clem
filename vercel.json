@@ -87,7 +87,7 @@
     },
     {
       "source": "/download/windows",
-      "destination": "https://github.com/mowfxy/clem-releases/releases/download/v0.3.19/Clem-Setup-0.3.19.exe",
+      "destination": "https://github.com/mowfxy/clem-releases/releases/download/v0.3.20/Clem-Setup-0.3.20.exe",
       "permanent": false
     },
     {
