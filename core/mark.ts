@@ -1,14 +1,13 @@
-// Clem's mark: a letter C drawn as one thick round-capped arc, with a block cursor sitting in its opening.
+// Clem's mark: a soft pebble with a leaf cut out of it. The mark never animates; thinking is the separate tumble below.
 // Everything that draws the mark (the app's Logo, the boot screen, icons, favicons, email art, the browser sign-in page)
 // uses this file, so the geometry lives in one place. Coordinates are in a 100-unit box.
 
-/** The C: a 30-unit-radius arc that opens to the right. */
-export const MARK_ARC = "M72.29 29.93A30 30 0 1 0 72.29 70.07";
-export const MARK_ARC_WIDTH = 13;
-/** The block cursor in the C's opening. */
-export const MARK_CURSOR = { x: 56, y: 40, width: 11, height: 20, rx: 2 };
-/** Optical centring: the C's weight sits left of its box, so the drawing shifts right a little. */
-export const MARK_NUDGE = "translate(3.8 0)";
+/** The pebble's outline, centred in the box. */
+export const MARK_BODY = "M70.89 15.56C78.88 19.44 86.71 29.77 89.89 37.94C92.77 45.35 92.92 52.63 88.85 59.66C84.46 67.24 65.87 80.58 57.77 84.27C51.49 87.13 44.84 87.6 38.77 83.89C35.63 81.96 11.04 58.55 9.48 55.83C7.34 52.07 7.45 48.27 10.22 44.88C13.26 41.13 44.74 19.42 50.21 16.47C56.68 12.98 64.17 12.31 70.89 15.56Z";
+/** The leaf cut out of it, tip to tip. */
+export const MARK_LEAF = "M73.25 31.75C61.68 33.22 51.39 38.98 45.85 44.76C40.22 50.65 34.1 61.01 37.34 74.86C43.36 65.18 53.84 64.07 60.49 58.13C66.5 52.76 73.53 45 73.25 31.75Z";
+/** Both outlines as one path; draw it with fill-rule evenodd so the leaf is a real hole. */
+export const MARK_PATH = MARK_BODY + MARK_LEAF;
 
 /** Brand colours from the identity sheet. */
 export const CLEM_INK = "#0b0b0a";
@@ -20,8 +19,7 @@ export const CLEM_TILE = "#0e1017";
 
 /** The mark's inner SVG (no <svg> wrapper), drawn in `color`. */
 export function markInner(color = "currentColor") {
-  const c = MARK_CURSOR;
-  return `<g transform="${MARK_NUDGE}"><path d="${MARK_ARC}" fill="none" stroke="${color}" stroke-width="${MARK_ARC_WIDTH}" stroke-linecap="round"/><rect x="${c.x}" y="${c.y}" width="${c.width}" height="${c.height}" rx="${c.rx}" fill="${color}"/></g>`;
+  return `<path d="${MARK_PATH}" fill="${color}" fill-rule="evenodd"/>`;
 }
 
 /** A standalone SVG of the mark in a 100-unit box, for icons, email frames and static pages. */
@@ -29,16 +27,31 @@ export function markSvg({ color = CLEM_PAPER, extra = "", attrs = "" }: { size?:
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"${attrs}>${extra}${markInner(color)}</svg>`;
 }
 
-/** The app icon: the mark at 72% on a rounded tile, black (dark ink tile, paper mark) or white (paper tile, ink mark). */
+/** One of the mark's outlines as points along its curves, for drawings that trace it by hand (the website's film). */
+export function markOutline(path: string, steps = 14): [number, number][] {
+  const n = path.match(/-?\d*\.?\d+/g)!.map(Number), points: [number, number][] = [[n[0], n[1]]];
+  for (let i = 2; i + 5 < n.length; i += 6) {
+    const [ax, ay] = [n[i - 2], n[i - 1]];
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps, m = 1 - t;
+      points.push([m ** 3 * ax + 3 * m * m * t * n[i] + 3 * m * t * t * n[i + 2] + t ** 3 * n[i + 4], m ** 3 * ay + 3 * m * m * t * n[i + 1] + 3 * m * t * t * n[i + 3] + t ** 3 * n[i + 5]]);
+    }
+  }
+  return points;
+}
+
+/** How much of the app icon's tile the mark fills: it is a solid shape, so it needs the size to hold up on a taskbar. */
+export const MARK_TILE_SCALE = 0.84;
+
+/** The app icon: the mark on a rounded tile, black (dark ink tile, paper mark) or white (paper tile, ink mark). */
 export function tileSvg({ tone = "black", attrs = "" }: { tone?: "black" | "white"; attrs?: string } = {}) {
   const black = tone === "black";
   const tile = `<rect width="100" height="100" rx="23" fill="${black ? CLEM_TILE : CLEM_PAPER}"/>` + (black ? `<rect x="0.5" y="0.5" width="99" height="99" rx="22.5" fill="none" stroke="#262a38"/>` : "");
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"${attrs}>${tile}<g transform="translate(50 50) scale(0.72) translate(-50 -50)">${markInner(black ? CLEM_PAPER : CLEM_INK)}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"${attrs}>${tile}<g transform="translate(50 50) scale(${MARK_TILE_SCALE}) translate(-50 -50)">${markInner(black ? CLEM_PAPER : CLEM_INK)}</g></svg>`;
 }
 
-/** The thinking animation: three block cursors that hop in turn, 1.35 s loop, 0.45 s apart. Shared CSS keyframes. */
-export const HOP_PERIOD = 1.35;
-export const HOP_STAGGER = 0.45;
-export function hopKeyframes(name = "clem-hop", lift = "-30%") {
-  return `@keyframes ${name}{0%{opacity:.18;transform:translateY(0)}12%{opacity:1;transform:translateY(${lift})}30%{opacity:1;transform:translateY(0)}42%,100%{opacity:.18;transform:translateY(0)}}`;
+/** The thinking animation: one soft shape rolling a quarter turn at a time, 2.4 s a full turn. Shared CSS keyframes. */
+export const TUMBLE_PERIOD = 2.4;
+export function tumbleKeyframes(name = "clem-tumble") {
+  return `@keyframes ${name}{0%{transform:rotate(0) scale(1);border-radius:34%}25%{transform:rotate(90deg) scale(.86);border-radius:0 100% 0 100%}50%{transform:rotate(180deg) scale(1);border-radius:50%}75%{transform:rotate(270deg) scale(.86);border-radius:100% 0 100% 0}100%{transform:rotate(360deg) scale(1);border-radius:34%}}`;
 }

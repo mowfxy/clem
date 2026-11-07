@@ -8,15 +8,12 @@
 
 
 .workspace-loading{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;font-size:14px;color:#aaa}
-/* Clem's mark: a click blinks the cursor like a terminal's. Thinking is three cursors hopping in turn (the identity's
-   hop loop: 1.35 s, each cursor 0.45 s after the last). Cursor proportions follow the mark's 11×20 block. */
+/* Clem's mark stays still. Thinking is one soft shape tumbling: every 0.6 s it rolls a quarter turn, becoming a leaf, a
+   circle, the opposite leaf, then itself again (the keyframes match core/mark.ts). Motion off leaves the rounded square. */
 .clem-mark{flex-shrink:0;overflow:visible}
-.clem-mark.is-poked .mark-cursor{animation:clem-blink .62s steps(1) 1}
-@keyframes clem-blink{0%,40%{opacity:0}20%,60%,100%{opacity:1}}
-.clem-hop{display:inline-flex;align-items:center;justify-content:center;gap:12.5%;vertical-align:middle}
-.clem-hop i{display:block;width:22%;height:44%;border-radius:14%/8%;background:currentColor;opacity:.5;animation:clem-hop 1.35s ease-in-out infinite}
-.clem-hop i:nth-child(2){animation-delay:.45s}.clem-hop i:nth-child(3){animation-delay:.9s}
-@keyframes clem-hop{0%{opacity:.18;transform:translateY(0)}12%{opacity:1;transform:translateY(-30%)}30%{opacity:1;transform:translateY(0)}42%,100%{opacity:.18;transform:translateY(0)}}
+.clem-tumble{position:relative;display:inline-block;vertical-align:middle}
+.clem-tumble i{position:absolute;inset:14%;border-radius:34%;background:currentColor;animation:clem-tumble 2.4s cubic-bezier(.65,0,.2,1) infinite}
+@keyframes clem-tumble{0%{transform:rotate(0) scale(1);border-radius:34%}25%{transform:rotate(90deg) scale(.86);border-radius:0 100% 0 100%}50%{transform:rotate(180deg) scale(1);border-radius:50%}75%{transform:rotate(270deg) scale(.86);border-radius:100% 0 100% 0}100%{transform:rotate(360deg) scale(1);border-radius:34%}}
 @media(prefers-reduced-motion:reduce){.clem-mark,.clem-mark *{animation:none!important}}[data-quiet=true] .clem-mark,[data-quiet=true] .clem-mark *{animation:none!important}
 /* The wordmark beside the mark is always the identity's Outfit, never the reading serif. */
 .brand .wordmark,.au-home .wordmark{font-family:var(--wordmark);font-weight:600;letter-spacing:-.03em}

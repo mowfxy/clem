@@ -31,7 +31,7 @@ export function Window({step,p}:{step:number;p:number}){
   const state=(i:number)=>i===step?'on':i<step?'past':'next';
   return <div className="cl-win" data-step={chapters[step].id}>
     <aside className="cl-win-side" aria-hidden="true">
-      <span className="cl-win-brand"><Logo size={20} still/><span className="wordmark">clem</span></span>
+      <span className="cl-win-brand"><Logo size={20}/><span className="wordmark">clem</span></span>
       <ul>{nav.map(([icon,label])=><li key={icon} className={on(navFor[step]===icon)}><Icon name={icon} size={17}/>{label}</li>)}</ul>
       <p className="cl-win-label">Recent thoughts</p>
       <ul className="cl-win-recent">
@@ -57,7 +57,7 @@ export function Window({step,p}:{step:number;p:number}){
 function Ask({p}:{p:number}){
   const typed=QUESTION.slice(0,Math.round(span(p,.08,.75)*QUESTION.length)),done=p>.82;
   return <div className="cl-ask">
-    <p className="cl-greet"><Logo size={30} still/>{greeting(new Date().getHours())}, thinker.</p>
+    <p className="cl-greet"><Logo size={30}/>{greeting(new Date().getHours())}, thinker.</p>
     <div className={'cl-composer'+on(done)}>
       <span className={'cl-file'+on(p>.02)}><Icon name="files" size={16}/>lab-3-notes.pdf<small>4 pages</small></span>
       <p className="cl-typed">{typed||<span className="cl-ph">How can I help you today?</span>}{!done&&<i className="cl-caret"/>}</p>
