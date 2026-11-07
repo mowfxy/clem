@@ -73,7 +73,7 @@ export function antigravityModels(status: Pick<AntigravityStatus, 'models' | 'de
     const levels = effort?.levels || [];
     return {id: ANTIGRAVITY_PREFIX + m.id, name: m.name, provider: 'Google', connected: true, context: 32000, specialties: [], tools: [], description: m.description || 'On your Google AI plan',
       reasoningEfforts: levels.map((reasoningEffort) => ({reasoningEffort, description: effortNames[reasoningEffort] || reasoningEffort})),
-      defaultReasoningEffort: effort?.default && levels.includes(effort.default) ? effort.default : levels.includes('high') ? 'high' : levels[0] || ''};
+      defaultReasoningEffort: /flash/i.test(m.id) && levels.includes('low') ? 'low' : effort?.default && levels.includes(effort.default) ? effort.default : levels.includes('high') ? 'high' : levels[0] || ''};
   });
 }
 
@@ -143,6 +143,11 @@ export function replyProblem(text: string): {kind: 'limit' | 'error' | 'transien
   return null;
 }
 
+/** What the model is thinking about, from its thought text so far: the heading of its latest thought, as Gemini writes them. */
+export function thoughtStatus(text: string) {
+  const heading = [...text.matchAll(/\*\*([^*\n]{3,80})\*\*/g)].at(-1)?.[1]?.trim();
+  return heading ? heading.replace(/[.:…]+$/, '') + '…' : 'Thinking it through…';
+}
 /** A few words on what the agent is doing, from one of its tool calls (null when it says nothing new). */
 export function antigravityToolStatus(update: any): string | null {
   const title = String(update?.title || ''), input = update?.rawInput && typeof update.rawInput === 'object' ? update.rawInput : {};
@@ -174,12 +179,13 @@ export const ANTIGRAVITY_FOLDER_NOTE = 'IN CLEM: your working folder holds the p
 export const ANTIGRAVITY_NATIVE_NOTE = NATIVE_NOTE;
 /** The most of one Kinetra result the agent passes to the model, in bytes (a guide or a passage of a file goes whole). */
 export const ANTIGRAVITY_MAX_OUTPUT_BYTES = 4_000_000;
-/** Without any word from the agent for this long an answer is taken as stuck (a native Kinetra call keeps it alive). */
-export const ANTIGRAVITY_IDLE_LIMIT = 10 * 60_000;
+/** Without any word from the agent for this long an answer is taken as stuck (a native Kinetra call keeps it alive).
+ *  Hermes's stale-stream limit: a dead connection should not hold a person for ten minutes. */
+export const ANTIGRAVITY_IDLE_LIMIT = 3 * 60_000;
 /**
  * An agent with no answer running is closed after this long; its sessions stay on disk and resume in the next one.
  * Starting it again unpacks it (about 11 s on this PC) and opening a session again costs about 3 s, so it stays for as
- * long as a chat keeps its session (desktop/chat-sessions.ts KEEP_MS).
+ * long as a chat keeps its session (desktop/chat-sessions.ts RESUMABLE_KEEP_MS).
  */
 const PROCESS_IDLE = 55 * 60_000;
 /** A process that has held this many sessions is closed once idle, since the agent keeps every one in memory. */
@@ -213,7 +219,7 @@ const inside = (root: string, path: string) => { const r = relative(resolve(root
  * as the session and is routed to whichever answer runs on it now (`route`), so a chat's next message goes on without
  * opening the session again.
  */
-type Held = {cwd: string; folder: boolean; endpoint?: NativeEndpoint; route?: {id: string; native: AntigravityNative}; ended?: boolean};
+type Held = {cwd: string; folder: boolean; endpoint?: NativeEndpoint; route?: {id: string; native: AntigravityNative}; ended?: boolean; model?: string; effort?: string};
 type Live = {acp: AcpConnection; child: ChildProcessWithoutNullStreams; tier?: string; version?: string;
   sessions: Map<string, Held>; opened: number; idle?: ReturnType<typeof setTimeout>};
 /** What a session is opened with: its folder, Clem's rules for it, whether it may write there, and whether Kinetra is a tool. */
@@ -250,6 +256,16 @@ export class AntigravityProvider {
   private lastSpec: AntigravitySpec | undefined;
   constructor(root: string, engine: AntigravityEngine) { this.root = root; this.engine = engine; this.home = join(root, 'home'); }
   private workspace() { return join(this.root, 'workspace'); }
+  /** The agent's name for one of Clem's sessions, kept across a restart (desktop/chat-sessions.ts). */
+  agentId(session: string) { return this.agentIds.get(session); }
+  adopt(session: string, agent: string) { this.agentIds.set(session, agent); }
+  /** The lightest way to run a side job: a Flash model when the plan has one, at its lowest thinking level. */
+  lightest(model: string): {model: string; effort?: string} {
+    const status = this.statusCache?.value;
+    const slug = model.slice(ANTIGRAVITY_PREFIX.length);
+    const light = /flash/i.test(slug) ? slug : status?.models.find((m) => /flash/i.test(m.id))?.id || slug;
+    return {model: ANTIGRAVITY_PREFIX + light, effort: status?.efforts?.[light]?.levels[0]};
+  }
   /** The agent unpacks itself (about 1 GB) into its temporary folder at each start, members up to 120 characters deep: the
    *  folder is short, so Windows' 260-character limit holds, and it is this account's own, so a leftover can be cleared. */
   private temp() { return join(tmpdir(), 'clem-agy', createHash('sha256').update(this.root).digest('hex').slice(0, 10)); }
@@ -588,17 +604,19 @@ export class AntigravityProvider {
     let agentSession: string | undefined;
     let held: Held | undefined;
     const counter = new StepCounter();
-    let stepKey = randomUUID(), fresh = true, segment = '', last = '', said = '', timedOut = false;
+    let stepKey = randomUUID(), fresh = true, segment = '', last = '', said = '', timedOut = false, thoughts = '', wrote = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let rejectIdle: (error: Error) => void = () => {};
     const idle = new Promise<never>((_, reject) => { rejectIdle = reject; });
     idle.catch(() => {});
-    const touch = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; if (agentSession) live.acp.notify('session/cancel', {sessionId: agentSession}); rejectIdle(Error('Gemini took too long to respond.')); }, ANTIGRAVITY_IDLE_LIMIT); };
+    const touch = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; if (agentSession) live.acp.notify('session/cancel', {sessionId: agentSession}); rejectIdle(wrote ? Error('Gemini took too long to respond.') : new Transient('Gemini took too long to respond.')); }, ANTIGRAVITY_IDLE_LIMIT); };
     const read = (_: string, update: any) => {
       switch (update?.sessionUpdate) {
         case 'agent_message_chunk': {
           const piece = update.content?.type === 'text' ? String(update.content.text || '') : '';
           if (!piece) return;
+          if (!wrote) emit({id, type: 'stage', stage: 'text'});
+          wrote = true;
           segment += piece;
           emit({id, type: 'partial', text: piece, fresh});
           // The answer itself shows as it is written: no status line under it.
@@ -606,8 +624,16 @@ export class AntigravityProvider {
           fresh = false;
           return;
         }
-        case 'agent_thought_chunk': emit({id, type: 'status', text: 'Thinking it through…'}); return;
+        case 'agent_thought_chunk': {
+          if (!thoughts) emit({id, type: 'stage', stage: 'thought'});
+          wrote = true;
+          thoughts = (thoughts + (update.content?.type === 'text' ? String(update.content.text || '') : ' ')).slice(-2000);
+          const text = thoughtStatus(thoughts);
+          if (text !== said) { said = text; emit({id, type: 'status', text}); }
+          return;
+        }
         case 'tool_call': {
+          wrote = true;
           // Text before a tool call was a note on the work; the reply is what the agent writes after its last tool.
           if (segment.trim()) last = segment;
           segment = ''; fresh = true;
@@ -637,6 +663,7 @@ export class AntigravityProvider {
       } else {
         // A new chat message takes the session opened ahead for it, and the next one is opened meanwhile.
         agentSession = await this.takeSpare(live, spec);
+        emit({id, type: 'stage', stage: 'spare', spare: !!agentSession});
         if (!agentSession) {
           try { agentSession = await this.openSession(live, spec); }
           catch (error) { if (error instanceof AcpClosed) throw new Transient('Gemini stopped.'); throw error; }
@@ -646,9 +673,14 @@ export class AntigravityProvider {
       held = live.sessions.get(agentSession)!;
       held.route = native ? {id, native} : undefined;
       this.active.get(id)!.session = agentSession;
+      emit({id, type: 'stage', stage: 'session'});
       try {
-        const chosen = await live.acp.request('session/set_config_option', {sessionId: agentSession, configId: 'model', value: slug}, 30_000);
-        if (effort && parseAntigravityLevels(chosen?.configOptions).levels.includes(effort)) await live.acp.request('session/set_config_option', {sessionId: agentSession, configId: 'thinking_level', value: effort}, 30_000).catch(() => {});
+        // Only what changed: each step of a chat would otherwise ask the agent again.
+        if (held.model !== slug || (effort && held.effort !== effort)) {
+          const chosen = await live.acp.request('session/set_config_option', {sessionId: agentSession, configId: 'model', value: slug}, 30_000);
+          held.model = slug;
+          if (effort && parseAntigravityLevels(chosen?.configOptions).levels.includes(effort)) { await live.acp.request('session/set_config_option', {sessionId: agentSession, configId: 'thinking_level', value: effort}, 30_000).catch(() => {}); held.effort = effort; }
+        }
       } catch (error) {
         if (error instanceof AcpClosed) throw new Transient('Gemini stopped.');
         throw Error('This Gemini model is not available on your plan. Pick another one.');
@@ -669,6 +701,7 @@ export class AntigravityProvider {
         }
       }
       touch();
+      emit({id, type: 'stage', stage: 'prompt'});
       let result: any;
       try { result = await Promise.race([live.acp.request('session/prompt', {sessionId: agentSession, prompt: blocks}), idle]); }
       catch (error) {

@@ -73,6 +73,18 @@ export function claudeCliArgs(model:string,effort:string|undefined,session:{id:s
 }
 /** Claude Code's flag for a system prompt that is the same in every folder (older ones refuse it: see noSteadyPrompt). */
 export const STEADY_PROMPT='--exclude-dynamic-system-prompt-sections';
+/**
+ * A chat's Claude Code stays open between its messages, as T3 Code holds one query per thread: the next message goes
+ * straight in, without starting the program, its tool server and a resumed transcript again (500-600 ms each time,
+ * against about 40 ms on a process that is already open). Each one holds memory, so only the chats in use keep one; a
+ * chat whose process has gone resumes its session as before.
+ */
+export const HELD_MAX=4,HELD_IDLE=15*60_000;
+/** Without any output for this long a step is taken as stuck (Hermes's stale-stream limit); a tool call keeps it alive. */
+export const CLAUDE_IDLE_LIMIT=3*60_000;
+/** A chat's open Claude Code: what it was started with, and the tool endpoint each answer on it takes over. */
+type HeldClaude={child:ChildProcessWithoutNullStreams;signature:string;route:ClaudeRoute;busy:boolean;idle?:ReturnType<typeof setTimeout>;close:()=>Promise<void>};
+type ClaudeRoute={native?:NativeCall;alive:()=>void};
 /** A path as Claude Code's permission rules name it: "//c/Users/…" for C:\Users\… (an absolute path from the root). */
 export const rulePath=(path:string)=>'//'+path.replace(/\\/g,'/').replace(/^([A-Za-z]):/,(_,d:string)=>d.toLowerCase()).replace(/^\/+/,'').replace(/\/+$/,'');
 /** The settings for one answer: the linked folders it may read but never change itself (edits to them are proposed). */
@@ -290,6 +302,27 @@ export class ClaudeProvider {
    * check is checked, so the answer can share that check instead of starting its own.
    */
   prepare(ahead=false){if(ahead?!this.recentStatus():!this.knownStatus())void this.status().catch(()=>{});}
+  private held=new Map<string,HeldClaude>();
+  /** Test seam: off, each answer runs its own process, as every side job does. */
+  holding=true;
+  /** Closes a chat's open process, if it has one, and waits for it to go: its session can then be resumed or removed. */
+  private async release(session:string){
+    const held=this.held.get(session);
+    if(!held)return;
+    this.held.delete(session);
+    clearTimeout(held.idle);
+    held.child.kill();
+    await held.close();
+  }
+  /** After an answer: the process waits for the chat's next message, and the longest idle goes past HELD_MAX. */
+  private rest(session:string,held:HeldClaude){
+    held.busy=false;
+    clearTimeout(held.idle);
+    held.idle=setTimeout(()=>void this.release(session),HELD_IDLE);
+    held.idle.unref?.();
+    this.held.delete(session);this.held.set(session,held);
+    for(const [other,open] of this.held){if(this.held.size<=HELD_MAX)break;if(!open.busy)void this.release(other);}
+  }
   /** The plan windows Claude Code last reported (it says so with each answer), and when. */
   private limits=new Map<string,ClaudeLimit>();
   private limitsAt=0;
@@ -450,43 +483,63 @@ export class ClaudeProvider {
     if(!(this.knownStatus()?.connected||(await this.status(true)).connected))throw Error('Sign in to a Claude subscription through Claude Code first.');
     // A new session learns that requests go to the tool (a resumed one already has it in its history).
     if(native&&!session?.resume)prompt=NATIVE_NOTE+prompt;
+    // A chat's answer stays on an open process (HELD_MAX). One started differently (another model, thinking level or
+    // folder list) closes, and the session resumes on a new one.
+    const holds=!!(session&&workspace&&native&&this.holding);
+    const signature=holds?JSON.stringify([model,effort,system,workspace!.root,workspace!.readOnly,workspace!.protect,workspace!.writer]):'';
+    let open=holds?this.held.get(session!.id):undefined;
+    if(open&&(open.signature!==signature||typeof open.child.exitCode==='number')){await this.release(session!.id);open=undefined;}
+    if(open){clearTimeout(open.idle);open.busy=true;}
     // While a native Kinetra call runs Claude Code prints nothing, so the inactivity limit below is kept from firing.
-    let alive=()=>{};
+    const route:ClaudeRoute=open?.route||{native,alive:()=>{}};
+    route.native=native;
     // Clem's own system prompt replaces Claude Code's coding-agent one (a file: it is far past Windows' command-line limit).
     // A resumed session reuses the one it recorded; it is passed again for a Claude Code that does not record it.
-    const systemFile=system?join(this.root,'workspace','.system-'+randomUUID()+'.txt'):undefined;
+    const systemFile=system&&!open?join(this.root,'workspace','.system-'+randomUUID()+'.txt'):undefined;
     // In a working folder Claude Code keeps its own prompt and Clem's rules follow it; the linked folders it may only read go in its settings.
-    const settingsFile=workspace?.readOnly?.length||workspace?.protect?.length?join(this.root,'workspace','.settings-'+randomUUID()+'.json'):undefined;
+    const settingsFile=!open&&(workspace?.readOnly?.length||workspace?.protect?.length)?join(this.root,'workspace','.settings-'+randomUUID()+'.json'):undefined;
     if(settingsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(settingsFile,claudeCliSettings([...(workspace!.readOnly||[]),...(workspace!.protect||[])]));}
     // Writers need Kinetra, so they come only with the native tool; a Claude Code too old for --agents runs without them.
-    const agentsFile=workspace&&native&&system&&workspace.writer!==undefined&&!this.noAgents?join(this.root,'workspace','.agents-'+randomUUID()+'.json'):undefined;
+    const agentsFile=!open&&workspace&&native&&system&&workspace.writer!==undefined&&!this.noAgents?join(this.root,'workspace','.agents-'+randomUUID()+'.json'):undefined;
     if(agentsFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(agentsFile,claudeWriters(system+(workspace!.writer?'\n\n'+workspace!.writer:'')));}
     if(agentsFile&&!session?.resume)prompt=WRITERS_NOTE+'\n\n'+prompt;
+    emit({id,type:'stage',stage:'session',spare:!!open});
     if(systemFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(systemFile,system!);}
-    const endpoint=native?await kinetraMcp.open(request=>keepingAlive(()=>native(request),()=>alive())):undefined;
+    const endpoint=native&&!open?await kinetraMcp.open(request=>keepingAlive(()=>route.native?route.native(request):Promise.reject(Error('No answer is running in this conversation.')),()=>route.alive())):undefined;
     // The endpoint's token goes in a file in this account's own folder (owner-only), never on the command line, which
     // other programs and process listings can read.
     const mcpFile=endpoint?join(this.root,'workspace','.mcp-'+randomUUID()+'.json'):undefined;
     const removeFiles=async()=>{for(const file of [systemFile,mcpFile,settingsFile,agentsFile])if(file)await rm(file,{force:true}).catch(()=>{});};
     let child:ChildProcessWithoutNullStreams;
-    try{
+    if(open)child=open.child;
+    else try{
       if(mcpFile){await mkdir(join(this.root,'workspace'),{recursive:true});await writeFile(mcpFile,claudeMcpConfig(endpoint!),{mode:0o600});}
       child=workspace
         ?await this.start([...claudeCliArgs(model.slice(7),effort,session,{mcpConfig:mcpFile,addDirs:workspace.readOnly||[],settingsFile,agentsFile,steady:!this.noSteadyPrompt}),...(systemFile?['--append-system-prompt-file',systemFile]:[])],workspace.root)
         :await this.start([...claudeArgs(model.slice(7),effort,session,mcpFile,bare),...(systemFile?['--system-prompt-file',systemFile]:[])]);
     }
     catch(error){endpoint?.close();await removeFiles();throw error;}
+    if(holds&&!open){
+      // Its endpoint and files last as long as it does.
+      const gone=new Promise<void>(done=>child.once('close',()=>{endpoint?.close();void removeFiles().finally(done);}));
+      const started=child;
+      open={child:started,signature,route,busy:true,close:()=>Promise.race([gone,new Promise<void>(done=>{const wait=setTimeout(done,3000);wait.unref?.();})])};
+      this.held.set(session!.id,open);
+      child.once('close',()=>{if(this.held.get(session!.id)?.child===started){clearTimeout(this.held.get(session!.id)!.idle);this.held.delete(session!.id);}});
+    }
     this.active.set(id,child);
+    let kept=false;
+    emit({id,type:'stage',stage:'prompt'});
     try{
       const answer=await new Promise<string>((resolve,reject)=>{
         let buffer='',bytes=0,error='',done=false,result:any=null;
         // What Claude Code said about a failure besides its result (claudeFailure): its synthetic error message, and a refused window.
         let apiError:string|undefined,apiText='',refused:ClaudeLimit|undefined,streamed=false;
-        const finish=(value?:string,failure?:Error)=>{if(done)return;done=true;clearTimeout(timer);failure?reject(failure):resolve(value||'');};
+        const finish=(value?:string,failure?:Error)=>{if(done)return;done=true;clearTimeout(timer);child.stdout.off('data',onOut);child.stderr.off('data',onErr);child.off('error',onError);child.off('close',onClose);route.alive=()=>{};failure?reject(failure):resolve(value||'');};
         // An inactivity limit: any output from Claude Code restarts it, so a long answer that keeps streaming is never cut off.
         let timer:ReturnType<typeof setTimeout>;
-        const touch=()=>{if(done)return;clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,Error('Claude took too long to respond.'));},600000);};
-        touch();alive=touch;
+        const touch=()=>{if(done)return;clearTimeout(timer);timer=setTimeout(()=>{child.kill();finish(undefined,streamed?Error('Claude took too long to respond.'):new Transient('Claude took too long to respond.'));},CLAUDE_IDLE_LIMIT);};
+        touch();route.alive=touch;
         let last='';
         const live=liveText((text,fresh)=>emit({id,type:'partial',text,fresh}));
         // How many model steps asked for tools, and how many calls each carried (the timing log; desktop/tool-status.ts).
@@ -498,6 +551,8 @@ export class ClaudeProvider {
             result=event;logUsage(model,event);
             const u=event.usage;
             if(u)emit({id,type:'tokens',input:Number(u.input_tokens)||0,cacheRead:Number(u.cache_read_input_tokens)||0,cacheWrite:Number(u.cache_creation_input_tokens)||0,output:Number(u.output_tokens)||0});
+            // An open process stays after its answer, so the result, not its exit, ends the answer.
+            if(open)settle();
             return;
           }
           if(event.type==='assistant'&&(typeof event.error==='string'||event.isApiErrorMessage||event.message?.model==='<synthetic>')){
@@ -505,7 +560,10 @@ export class ClaudeProvider {
             apiText=(event.message?.content||[]).filter((part:any)=>part?.type==='text').map((part:any)=>String(part.text||'')).join(' ').slice(0,2000)||apiText;
             return;
           }
-          if(event.type==='stream_event'&&event.event?.type==='content_block_delta')streamed=true;
+          if(event.type==='stream_event'&&event.event?.type==='content_block_delta'){
+            if(!streamed)emit({id,type:'stage',stage:'text'});
+            streamed=true;
+          }
           // How much context the session's latest step read (a writer's steps are its own): the chat's next message
           // compacts this session first when that is large (desktop/chat-sessions.ts COMPACT_AT_TOKENS).
           const used=event.type==='assistant'&&!event.parent_tool_use_id?event.message?.usage:undefined;
@@ -519,16 +577,21 @@ export class ClaudeProvider {
         };
         // Decoded as a stream: a character split between two chunks (é, —, Arabic) must not turn into �.
         child.stdout.setEncoding('utf8');
-        child.stdout.on('data',(part:string)=>{
+        function onOut(part:string){
           if(!done)touch();
           bytes+=part.length;if(bytes>64_000_000){child.kill();finish(undefined,Error('Claude response exceeded the safe limit.'));return;}
           buffer+=part;let newline;
-          while((newline=buffer.indexOf('\n'))>=0){read(buffer.slice(0,newline));buffer=buffer.slice(newline+1);}
-        });
-        child.stderr.setEncoding('utf8');child.stderr.on('data',(part:string)=>{error=(error+part).slice(-5000);});
-        child.on('error',()=>finish(undefined,Error('Claude Code could not start. Install its native CLI.')));
-        child.on('close',code=>{
-          read(buffer);
+          while(!done&&(newline=buffer.indexOf('\n'))>=0){read(buffer.slice(0,newline));buffer=buffer.slice(newline+1);}
+        }
+        function onErr(part:string){error=(error+part).slice(-5000);}
+        function onError(){finish(undefined,Error('Claude Code could not start. Install its native CLI.'));}
+        function onClose(){read(buffer);if(!done)settle();}
+        child.stdout.on('data',onOut);
+        child.stderr.setEncoding('utf8');child.stderr.on('data',onErr);
+        child.on('error',onError);
+        child.on('close',onClose);
+        /** The answer's end, from its result or the process's exit: a success, or what went wrong. */
+        const settle=()=>{
           if(steps.calls)emit({id,type:'toolsteps',steps:steps.steps,calls:steps.calls});
           // A finished answer is kept even when Claude Code's exit code says otherwise (a fault while shutting down).
           if(result&&!result.is_error&&result.subtype==='success'&&typeof result.result==='string'&&!apiError){finish(result.result);return;}
@@ -545,11 +608,13 @@ export class ClaudeProvider {
           if(failure.kind==='signin'||signedOut.test(detail))this.statusCache=null;
           if(failure.kind==='busy')return finish(undefined,new Transient(failure.message));
           finish(undefined,Error(failure.message));
-        });
+        };
         // A Claude Code that exits without reading the message (a flag it refuses) fails the pending write: its exit says why, above.
-        child.stdin.on('error',()=>{});
-        child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[...pdfs.map(pdf=>({type:'document',source:{type:'base64',media_type:'application/pdf',data:pdf.data},title:pdf.name})),{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
+        child.stdin.removeAllListeners('error');child.stdin.on('error',()=>{});
+        const message=(JSON.stringify({type:'user',message:{role:'user',content:[...pdfs.map(pdf=>({type:'document',source:{type:'base64',media_type:'application/pdf',data:pdf.data},title:pdf.name})),{type:'text',text:prompt},...images.map(image=>({type:'image',source:{type:'base64',media_type:image.mime,data:image.data}}))]}})+'\n');
+        if(open)child.stdin.write(message);else child.stdin.end(message);
       });
+      kept=!!open;
       emit({id,type:'delta',text:answer});emit({id,type:'done'});
     }catch(error){
       // Nothing ran: the same step again, with the rules in the message instead.
@@ -561,7 +626,11 @@ export class ClaudeProvider {
       }
       throw error;
     // The plan's windows after the step, at most every 15 s: a tool loop's steps follow each other within seconds.
-    }finally{this.active.delete(id);endpoint?.close();this.recheck();if(Date.now()-this.planAt>15_000)void this.readUsage(true);await removeFiles();}
+    }finally{
+      this.active.delete(id);this.recheck();if(Date.now()-this.planAt>15_000)void this.readUsage(true);
+      if(open){route.native=undefined;if(kept)this.rest(session!.id,open);else await this.release(session!.id);}
+      else{endpoint?.close();await removeFiles();}
+    }
   }
   /**
    * Compacts a kept session in place with Claude Code's own /compact, so the chat's next message goes on a summary of
@@ -571,6 +640,7 @@ export class ClaudeProvider {
    */
   async compact(sessionId:string,model:string,cwd?:string,id?:string):Promise<number>{
     if(!/^[0-9a-f-]{36}$/i.test(sessionId)||!model.startsWith('claude:'))throw Error('Nothing to compact.');
+    await this.release(sessionId);
     const child=await this.start(['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--model',model.slice(7),'--strict-mcp-config','--tools','','--resume',sessionId],cwd);
     // Under the answer's id, so Stop (cancel) and quitting (stop) end it too.
     if(id)this.active.set(id,child);
@@ -595,6 +665,7 @@ export class ClaudeProvider {
   /** Removes the transcript of a tool loop's session once its answer is done, so steps do not pile up on disk.
    *  CLEM_KEEP_SESSIONS=1 keeps them, to see afterwards what every step sent and cost. */
   async endSession(sessionId:string){
+    await this.release(sessionId);
     if(!/^[0-9a-f-]{36}$/i.test(sessionId)||process.env.CLEM_KEEP_SESSIONS)return;
     const projects=join(this.root,'projects');
     for(const folder of await readdir(projects).catch(()=>[] as string[])){
@@ -610,5 +681,5 @@ export class ClaudeProvider {
     await new Promise<void>(resolve=>{const timer=setTimeout(()=>{child.kill();resolve();},20000);child.stdout.resume();child.stderr.resume();child.on('error',()=>{clearTimeout(timer);resolve();});child.on('close',()=>{clearTimeout(timer);resolve();});child.stdin.end();});
   }
   cancel(id:string){this.active.get(id)?.kill();}
-  stop(){for(const child of this.active.values())child.kill();}
+  stop(){for(const child of this.active.values())child.kill();for(const session of [...this.held.keys()])void this.release(session);}
 }

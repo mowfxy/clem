@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ChatSessions, COMPACT_AT_TOKENS, KEEP_MS, MAX_KEPT, blockPrint, conversationPrint, instructionsPrint, sentAfter } from "../../desktop/chat-sessions.ts";
+import { ChatSessions, COMPACT_AT_TOKENS, RESUMABLE_KEEP_MS as KEEP_MS, MAX_KEPT, blockPrint, conversationPrint, instructionsPrint, sentAfter } from "../../desktop/chat-sessions.ts";
 import { runKinetraTurn, SessionLost, BATCH_NOTE, LONE_STEPS, batchParts } from "../../desktop/kinetra-turn.ts";
 import { StepCounter } from "../../desktop/tool-status.ts";
 import { fileIndex } from "../../core/source-context.ts";
@@ -18,13 +18,13 @@ test("a chat's next message goes on its kept session only when nothing about it 
   // Taken by the answer that continues it: a second answer at the same time never shares it.
   assert.equal(store.take("u:c1", want)?.session, "s1");
   assert.equal(store.take("u:c1", want), undefined);
-  // A different AI, account, model or conversation starts a new session, and the old one is removed.
-  for (const change of [{ provider: "grok" }, { account: "a2" }, { model: "claude:opus" }, { history: "edited" }]) {
+  // A different AI, account or conversation starts a new session, and the old one is removed.
+  for (const change of [{ provider: "grok" }, { account: "a2" }, { history: "edited" }]) {
     store.keep("u:c1", session({ session: "s-" + Object.keys(change)[0] }, ended));
     assert.equal(store.take("u:c1", { ...want, ...change }), undefined);
   }
-  assert.deepEqual(ended, ["s-provider", "s-account", "s-model", "s-history"]);
-  // Idle past the providers' prompt cache: replaying it would cost more than the text it saves.
+  assert.deepEqual(ended, ["s-provider", "s-account", "s-history"]);
+  // Idle past the time the CLI's session is kept for.
   store.keep("u:c1", session({ session: "old" }, ended));
   now += KEEP_MS;
   assert.equal(store.take("u:c1", want), undefined);
