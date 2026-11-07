@@ -8,7 +8,7 @@ fs.mkdirSync(path.join(out,'desktop'),{recursive:true});for(const file of ['cont
 fs.mkdirSync(path.join(out,'server'),{recursive:true});fs.copyFileSync('server/email-layout.ts',path.join(out,'server/email-layout.ts'));
 for(const file of ['package.json','package-lock.json','index.html','tsconfig.json','vite.config.ts','vercel.json'])fs.copyFileSync(file,path.join(out,file));
 // vite.config.ts builds the light theme's twins with this script.
-fs.mkdirSync(path.join(out,'scripts'),{recursive:true});fs.copyFileSync('scripts/light-theme.mjs',path.join(out,'scripts/light-theme.mjs'));
+fs.mkdirSync(path.join(out,'scripts'),{recursive:true});for(const file of ['light-theme.mjs','glass-theme.mjs'])fs.copyFileSync('scripts/'+file,path.join(out,'scripts',file));
 fs.mkdirSync(path.join(out,'api'),{recursive:true});fs.copyFileSync('.deploy/api/index.js',path.join(out,'api/index.js'));
 fs.mkdirSync(path.join(out,'.vercel'),{recursive:true});fs.copyFileSync('.vercel/project.json',path.join(out,'.vercel/project.json'));
 const config=JSON.parse(fs.readFileSync(path.join(out,'vercel.json'),'utf8'));// The site needs no Kinetra reference bundle (desktop-only), so skip scripts/build-kinetra.mjs.
