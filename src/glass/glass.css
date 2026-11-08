@@ -370,7 +370,7 @@ html:root body dialog.app-modal .gd-search input::placeholder{color:var(--muted)
 /* ---------- Scrollbars: one quiet pill, no arrows, on every scrolling surface ----------
    Setting scrollbar-color or a thin width makes Chromium draw the system bar and ignore ::-webkit-scrollbar, which is
    where the Windows arrows came from, so both go back to auto here. Strips that hide their bar are left out. */
-html:root *:not(.adm-segment,.message-tools,.se-filters,.cl-demo-list,.sp-tabs){scrollbar-width:auto!important;scrollbar-color:auto!important}
+html:root *:not(.adm-segment,.message-tools,.se-filters,.sp-tabs){scrollbar-width:auto!important;scrollbar-color:auto!important}
 html:root ::-webkit-scrollbar{width:10px;height:10px}
 html:root ::-webkit-scrollbar-button{display:none}
 html:root ::-webkit-scrollbar-track,html:root ::-webkit-scrollbar-corner{background:transparent}

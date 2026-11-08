@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://clem.m4labs.xyz"><img src="docs/assets/banner.png" alt="Clem: your space to think" width="100%"></a>
+  <a href="https://clem.m4labs.xyz"><img src="docs/assets/banner.png" alt="Clem: study with the AI you already pay for, over Earth's limb at sunrise set in characters" width="100%"></a>
 </p>
 
 <p align="center">
@@ -78,7 +78,7 @@ Clem is one quiet place for the work you bring to an AI: a course, a research qu
 </table>
 
 <p align="center">
-  <img src="docs/assets/screenshots/website-visual.png" alt="A live graph of why a long cable rings, with a slider for the cable length" width="92%">
+  <img src="docs/assets/screenshots/website-visual.png" alt="The website showing Clem drawing methane as a 3D molecule you can turn" width="92%">
 </p>
 
 <details>
@@ -89,7 +89,7 @@ Clem is one quiet place for the work you bring to an AI: a course, a research qu
 | :---: | :---: |
 | <img src="docs/assets/screenshots/subject.png" alt="The Biology 101 subject page with flashcards to review, recent chats and files"> | <img src="docs/assets/screenshots/files.png" alt="The Files page showing a linked folder and PDFs kept on this PC"> |
 | **A chat** | **Open source, on the website** |
-| <img src="docs/assets/screenshots/chat.png" alt="A chat about an osmosis lab with Second opinion, Check sources and Export"> | <img src="docs/assets/screenshots/website-open-source.png" alt="The website section saying Clem is open source under the MIT License"> |
+| <img src="docs/assets/screenshots/chat.png" alt="A chat about an osmosis lab with Second opinion, Check sources and Export"> | <img src="docs/assets/screenshots/website-open-source.png" alt="The website's closing line: Make room for doubt. Check the things that matter. Every line of Clem is on GitHub under the MIT License."> |
 
 <sub>Screenshots come from the built-in demo workspace with scripted replies. Re-shoot them with <code>node scripts/readme-screenshots.mjs</code>.</sub>
 </details>
@@ -145,7 +145,7 @@ Release, deploy and admin tasks are in [Maintaining Clem](docs/MAINTAINING.md).
 ```text
 desktop/      Electron main process: storage, sign-in, AI CLIs, folders, memory
 src/          React interface (chat, spaces, files, visuals, settings)
-src/site/     The marketing website at clem.m4labs.xyz
+src/site/     The website at clem.m4labs.xyz (site.css; app captures in public/shots from scripts/site/capture.mjs)
 core/         Shared workflows, built-in skills, spaced repetition, search
 cloudflare/   Account and support Worker
 vendor/       Kinetra: calculations, figures, PDF and Office tools

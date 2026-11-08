@@ -1,151 +1,87 @@
-import {lazy,Suspense,useEffect,useState} from 'react';
-import {Icon,Logo} from '../Icons';
-import {ClaudeLogo,GeminiLogo,GrokLogo,OpenAILogo} from '../BrandLogos';
-import {features} from '../features';
-import {Illustration} from '../Illustrations';
-import {AsciiField} from '../chat/AsciiField';
-import '../chat/ascii-field.css';
-import type {Scene} from '../vectorFilm';
-import {useClock} from './clock';
-import {Arrive,Underline,useSeen,Written} from './motion';
-import {InkFilm} from './InkFilm';
-import {Demo} from './Story';
-import {Site} from './SiteHeader';
-import {Faq,REPO} from './sections';
+import { Descent } from './Descent';
+import { DownloadButton, SitePage, Window, megabytes, usePageTitle, useRelease } from './shell';
 
-const SpecDemo=lazy(()=>import('./SpecDemo'));
+/** The home page. Every picture of Clem is a whole window of the real desktop build; nothing of the app is rebuilt. */
+export function Landing() {
+  usePageTitle('Clem: study with the AI you already pay for', 'Clem is a free Windows app for subjects, plans, flashcards and answers that cite your own files, running on the ChatGPT, Claude, Grok or Google AI plan you already have.');
+  const release = useRelease();
+  return (
+    <SitePage route="/" className="cs-landing">
+      <Descent
+        copy={<>
+          <h1>Study with the AI you already pay&nbsp;for.</h1>
+          <p className="cs-lede">Clem is a free Windows app for subjects, plans, flashcards and answers that cite your own files. It runs on the ChatGPT, Claude, Grok or Google AI plan you have now.</p>
+          <div className="cs-actions">
+            <DownloadButton />
+            <a className="cs-link" href="#/features">What it does</a>
+          </div>
+          <p className="cs-meta">Free · Windows 10 and 11 · {release ? `Preview ${release.version}` : 'Preview'}</p>
+        </>}
+        arrival={<Window shot="home" eager alt="Clem’s home screen at night: the greeting “Late night, Sam.”, a message box, study activity, recent chats, the next exam in 11 days, and what is up next." caption={<><b>Home.</b> Your greeting, the message box, and what is due, counted from your own work.</>} />}
+      />
 
-// Provider-specific pages are not part of the product story.
-export const shown=features.filter(f=>f.id!=='multi-model-work');
-/** Each feature's plate: the ink drawing that acts it out. */
-export const plates:Record<string,Scene>={'financial-analysis':'balance','physics-diagrams':'build','technical-reports':'pencil',research:'telescope',learning:'sprout',presentations:'kite','professional-documents':'checklist','connected-work':'bridge'};
-
-/** Clem's thinking: one soft shape tumbling, with what it is doing beside it. */
-export function Thinking({label}:{label:string}){return <span className="cl-thinking" role="status"><Logo size={22} thinking/><span>{label}</span></span>;}
-
-const demos:{ask:string;spec:string;doing:string}[]=[
-  {ask:'why a long cable rings',spec:'ringing',doing:'drawing the response'},
-  {ask:'partial derivatives in 3D',spec:'partials',doing:'drawing the surface'},
-  {ask:'a methane molecule',spec:'methane',doing:'placing the atoms'},
-];
-/** The real visual engine, the one the app runs, loaded as its section comes near. */
-function VisualDemo(){
-  const [ref,near]=useSeen<HTMLDivElement>('400px'),[pick,setPick]=useState(0),demo=demos[pick];
-  return <div ref={ref} className="cl-visual">
-    <div className="cl-visual-asks" role="tablist" aria-label="Choose a visual">{demos.map((d,i)=><button key={d.ask} type="button" role="tab" aria-selected={pick===i} onClick={()=>setPick(i)}><span>/visual</span> {d.ask}</button>)}</div>
-    <div className="cl-visual-stage">{near?<Suspense fallback={<div className="cl-visual-wait"><Thinking label={demo.doing}/></div>}><SpecDemo key={demo.spec} name={demo.spec}/></Suspense>:<div className="cl-visual-wait"><Thinking label={demo.doing}/></div>}</div>
-  </div>;
-}
-
-const providers=[
-  {name:'ChatGPT',plan:'A paid ChatGPT plan',logo:<OpenAILogo size={34}/>},
-  {name:'Claude',plan:'Pro or Max',logo:<ClaudeLogo size={34}/>},
-  {name:'Grok',plan:'SuperGrok or X Premium+',logo:<GrokLogo size={34}/>},
-  {name:'Gemini',plan:'A Google AI plan',logo:<GeminiLogo size={34}/>},
-];
-
-function Download({label='Download for Windows'}:{label?:string}){
-  return <a className="cl-btn" href="/download/windows"><svg className="cl-win-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 2.6 6.6 1.8v5.4H1zM7.4 1.7 15 .6v6.6H7.4zM1 8h5.6v5.4L1 12.6zm6.4 0H15v6.6l-7.6-1.1z"/></svg>{label}</a>;
-}
-
-export function Landing(){
-  const {greeting}=useClock();
-  useEffect(()=>{document.title='Clem: your space to think';},[]);
-  return <Site>
-    <section className="cl-hero" aria-labelledby="cl-hero-title">
-      <AsciiField/>
-      <div className="cl-wrap cl-hero-inner">
-        <p className="cl-greet cl-hero-greet"><Logo size={34}/>{greeting}, thinker.</p>
-        <h1 id="cl-hero-title" className="cl-display"><span className="cl-line"><span>Your space</span></span><span className="cl-line"><span>to <Underline>think.</Underline></span></span></h1>
-        <p className="cl-lede cl-hero-lede">Clem is a calm desktop workspace for study, research and writing. It keeps your notes, chats, flashcards and drafts together, and answers with the AI plan you already have.</p>
-        <div className="cl-actions"><Download/><a className="cl-link" href={REPO}><Icon name="github" size={18}/>View source</a></div>
-        <p className="cl-fine">Free · Open source · Windows 10 and 11</p>
-      </div>
-    </section>
-
-    <section className="cl-section cl-film-section" id="film" aria-label="The film">
-      <div className="cl-wrap"><InkFilm/></div>
-    </section>
-
-    <section className="cl-section" id="how" aria-labelledby="how-title">
-      <div className="cl-wrap">
-        <div className="cl-head">
-          <p className="cl-kicker">How it works</p>
-          <Written as="h2" lines={['One question,','all the way through.']} className="cl-h2"/>
-          <p className="cl-lede" id="how-title">A real study question, from the first line typed to the report handed in. Pick any step, or let it play.</p>
+      <section className="cs-chapter cs-split" aria-labelledby="h-research">
+        <div className="cs-words">
+          <h2 id="h-research">Answers that open your file at the page.</h2>
+          <p>Ask about your reading and every claim carries its page. Click one and the PDF opens beside the chat, right there. Under each answer, Clem checks which claims your files actually support.</p>
+          <a className="cs-link" href="#/features/research">Research in Clem</a>
         </div>
-        <Demo/>
-      </div>
-    </section>
+        <Window shot="cited" alt="A Clem chat explaining why a potato gains mass in pure water, with three citations to Lab handout.pdf and the handout open beside it." />
+      </section>
 
-    <section className="cl-section cl-band" id="visuals" aria-labelledby="visuals-title">
-      <div className="cl-wrap cl-visual-grid">
-        <div className="cl-head">
-          <p className="cl-kicker">/visual</p>
-          <Written as="h2" lines={['See it','move.']} className="cl-h2"/>
-          <p className="cl-lede" id="visuals-title">Ask for any idea and Clem draws it as something you can play with: sliders with consequences, 3D you can turn, steps you can replay. This is the same engine the app runs. Try it.</p>
+      <section className="cs-chapter cs-centred" aria-labelledby="h-play">
+        <div className="cs-words is-centred">
+          <h2 id="h-play">Type /visual, then turn the idea over.</h2>
+          <p>Ask why methane is a tetrahedron and Clem builds the molecule in 3D, from real bond lengths and angles, for you to turn.</p>
+          <a className="cs-link" href="#/features/physics-diagrams">Visuals in Clem</a>
         </div>
-        <VisualDemo/>
-      </div>
-    </section>
+        <Window shot="visual" alt="Clem showing a 3D model of methane: a carbon atom with four hydrogens at the corners of a tetrahedron, in the chat that asked why methane has that shape." />
+      </section>
 
-    <section className="cl-section" id="features" aria-labelledby="features-title">
-      <div className="cl-wrap">
-        <div className="cl-head cl-head-row">
-          <Written as="h2" lines={['Bring any kind','of work.']} className="cl-h2"/>
-          <p className="cl-lede" id="features-title">Subjects and projects hold your files, chats and drafts together, so the next question starts where the last one ended.</p>
+      <section className="cs-chapter cs-split" aria-labelledby="h-study">
+        <div className="cs-words">
+          <h2 id="h-study">A subject that knows when the exam&nbsp;is.</h2>
+          <p>Each course gets a subject: its files, its chats, its flashcards and a plan for the weeks before the exam. Cards are scheduled with FSRS spaced repetition, so the six due today are the six worth doing.</p>
+          <a className="cs-link" href="#/features/learning">Learning in Clem</a>
         </div>
-        <Arrive as="ul" className="cl-plates" step={60}>{shown.map((f,i)=><li key={f.id}><a href={'#/features/'+f.id}>
-          <Illustration scene={plates[f.id]} className="cl-plate"/>
-          <span className="cl-num">{String(i+1).padStart(2,'0')}</span>
-          <h3>{f.title}</h3>
-          <p>{f.line}</p>
-          <span className="cl-more">Read more<Icon name="arrow" size={16}/></span>
-        </a></li>)}</Arrive>
-      </div>
-    </section>
+        <Window shot="subject" alt="The Biology 101 subject: six cards to review, the midterm plan 25% done and on track, recent chats and recent files." />
+      </section>
 
-    <section className="cl-section cl-band" id="ai" aria-labelledby="ai-title">
-      <div className="cl-wrap cl-ai">
-        <div className="cl-head">
-          <Written as="h2" lines={['Bring the AI you','already pay for.']} className="cl-h2"/>
-          <p className="cl-lede" id="ai-title">Clem is the workspace. The thinking comes from the plan you have, signed in on your PC. No second subscription, no API keys.</p>
+      <section className="cs-chapter cs-split is-flipped" aria-labelledby="h-plans">
+        <div className="cs-words">
+          <h2 id="h-plans">No new subscription.</h2>
+          <p>Clem works through the official tools of the AI you already pay for, signed in on your PC: Codex, Claude Code, the Grok CLI and Antigravity. Pick a model per chat, ask another for a second opinion, and keep going when one account runs low.</p>
+          <a className="cs-link" href="#/features/multi-model-work">Multi-model work</a>
         </div>
-        <Illustration scene="plug" className="cl-plate cl-ai-plate"/>
-        <Arrive as="ul" className="cl-providers" step={80}>{providers.map(p=><li key={p.name}>{p.logo}<b>{p.name}</b><span>{p.plan}</span></li>)}</Arrive>
-      </div>
-    </section>
+        <Window shot="models" alt="Clem’s Settings on the Models page, with ChatGPT, Claude, Grok and Gemini, one ChatGPT account in use, and automatic account switching on." />
+      </section>
 
-    <section className="cl-section" id="yours" aria-label="Yours, and open">
-      <div className="cl-wrap cl-pair">
-        <div>
-          <Illustration scene="house" className="cl-plate"/>
-          <Written as="h2" lines={['Yours.','On your PC.']} className="cl-h3x"/>
-          <p className="cl-body">Every chat, card and draft is a plain file in <code>Documents\Clem</code>. Open it, move it, back it up. Only what you choose is sent, and only to the AI you choose.</p>
+      <section className="cs-chapter cs-split" aria-labelledby="h-files">
+        <div className="cs-words">
+          <h2 id="h-files">Your work stays in Documents\Clem.</h2>
+          <p>Chats, files, flashcards and drafts are plain files on your PC. Link a folder, here or in Google Drive, and Clem reads it in place. When it wants to change a file, it shows you first.</p>
+          <a className="cs-link" href="#/features/connected-work">Connected work</a>
         </div>
-        <div>
-          <Illustration scene="key" className="cl-plate"/>
-          <Written as="h2" lines={['Open source.','All of it.']} className="cl-h3x"/>
-          <p className="cl-body">The app, the website and the account service are on GitHub under the MIT License. Read every line, build it yourself or send a fix.</p>
-          <a className="cl-link" href={REPO}><Icon name="github" size={18}/>github.com/mowfxy/clem</a>
-        </div>
-      </div>
-    </section>
+        <Window shot="files" alt="Clem’s Files page: everything you have added, kept on this PC, private to the device." />
+      </section>
 
-    <section className="cl-section" id="faq" aria-labelledby="faq-title">
-      <div className="cl-wrap cl-faq-grid">
-        <div className="cl-head"><Written as="h2" lines={['Questions.']} className="cl-h2"/><p className="cl-lede" id="faq-title">Anything else: <a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a></p></div>
-        <Faq/>
-      </div>
-    </section>
+      <section className="cs-chapter cs-open" aria-labelledby="h-open">
+        <p className="cs-quote" id="h-open">“Make room for doubt. Check the things that matter.”</p>
+        <p className="cs-quote-note">The line under every message box in Clem. The same goes for the app: every line of it is on GitHub under the MIT License.</p>
+        <a className="cs-link" href="https://github.com/mowfxy/clem">Read the source</a>
+      </section>
 
-    <section className="cl-section cl-final" aria-label="Download Clem">
-      <div className="cl-wrap">
-        <Illustration scene="plane" className="cl-plate cl-final-plate"/>
-        <Written as="h2" lines={['What’s on','your mind?']} className="cl-display cl-final-title"/>
-        <div className="cl-actions"><Download/></div>
-        <p className="cl-fine">Free and open source. Windows 10 and 11, 64-bit.</p>
-      </div>
-    </section>
-  </Site>;
+      <section className="cs-chapter cs-final" aria-labelledby="h-final">
+        <h2 id="h-final">Clem for Windows.</h2>
+        <DownloadButton />
+        <dl className="cs-facts">
+          <div><dt>Price</dt><dd>Free, no card</dd></div>
+          <div><dt>Version</dt><dd>{release ? `${release.version} preview` : 'Preview'}</dd></div>
+          <div><dt>Size</dt><dd>{release ? megabytes(release.size) : '—'}</dd></div>
+          <div><dt>Needs</dt><dd>Windows 10 or 11, 64-bit, and an AI plan</dd></div>
+        </dl>
+        <p className="cs-small">{release && !release.signed ? 'The installer is not code-signed yet, so Windows may ask whether you trust it. ' : ''}<a href="#/download">Checksums and details</a></p>
+      </section>
+    </SitePage>
+  );
 }
