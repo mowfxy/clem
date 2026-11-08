@@ -15,8 +15,22 @@ const MAIN_LOG_MAX = 1_000_000;
 export const DIAGNOSTICS_MAX = 60_000;
 
 let logFile: string | undefined;
+/**
+ * Writing to the console is a courtesy, never something Clem depends on. Started by the updater (or from a shortcut whose
+ * parent has gone), stdout and stderr are pipes nobody reads any more, and a write there fails with EPIPE: thrown at once
+ * on Windows, or raised later as the stream's "error" event. Either one was an uncaught exception that stopped Clem with
+ * "A JavaScript error occurred in the main process" the first time anything logged a warning (an update check did).
+ */
+export function quietConsole() {
+  for (const stream of [process.stdout, process.stderr]) if (stream && !stream.listenerCount("error")) stream.on("error", () => {});
+  for (const level of ["log", "info", "warn", "error", "debug"] as const) {
+    const original = console[level].bind(console);
+    console[level] = (...args: unknown[]) => { try { original(...args); } catch { /* the console is gone */ } };
+  }
+}
 export function startMainLog(dir: string) {
   if (logFile) return;
+  quietConsole();
   try { mkdirSync(dir, { recursive: true }); } catch { return; }
   logFile = join(dir, MAIN_LOG);
   const keep = (level: string, args: unknown[]) => {

@@ -5,7 +5,7 @@
  *
  *   [[react: 👍]]                           react to the message being answered (alone: a reaction instead of a reply)
  *   [[thread: Researcher | Title | Brief]]  open a thread with a subagent in that role ([[delegate: …]] is read the same)
- *   [[remember: launch, dates | Fact]]      keep a fact in the project's memory file (core/project-memory.ts)
+ *   [[remember: launch, dates | Dec 3]]     keep a note under a topic (the first tag) in the project's memory file (core/project-memory.ts)
  *   [[recall: words]]                       look something up in that file before answering
  *   [[summary: One sentence]]               (subagents) what the thread produced, for the coordinator's later turns
  *
@@ -138,7 +138,7 @@ How to reply:
 - When the person asks for a thread, an agent, a subagent or work in the background, always open a thread for it, even for something small, and give the subagent the actual task.
 - Otherwise open threads for work that benefits from a specialist or from running in parallel (up to ${MAX_THREADS} at once); answer simple questions yourself.
 - Reactions are rare. Most replies carry none; never add one just to acknowledge a request you are answering. When a message asks for nothing (thanks, ok, a sign-off), reply with only [[react: emoji]] (one of ${REACTIONS.join(" ")}) instead of words.
-- To keep a durable fact (a decision, deadline, preference, constraint, number), add [[remember: tag, tag | the fact in one sentence]]. Never store what is already in the memory below.
+- To keep a durable fact (a decision, deadline, preference, constraint, number), add [[remember: topic, tag | a few words]]. The first tag is its topic, one area of the project's work (launch, pricing, audience): reuse a topic that exists so the fact joins it. Write a fragment, not a sentence. Never store what is already in the memory below.
 - If the memory below may be missing something you need, reply with only [[recall: search words]] and you will get the matching lines.
 - Directive lines are hidden from the person. Keep answers short and concrete.
 
@@ -154,7 +154,7 @@ ${projectBlock(space)}
 How to reply:
 - Do the task fully and reply with the result itself, written for the coordinator. No greeting, no restating the brief.
 - If a message only needs acknowledging, reply with only [[react: emoji]] (one of ${REACTIONS.join(" ")}). Otherwise do not react.
-- Keep a durable fact the project should not lose with [[remember: tag, tag | fact]].
+- Keep a durable fact the project should not lose with [[remember: topic, tag | a few words]]; the first tag is its topic.
 - End with [[summary: one sentence on what you found or made]].
 
 Project memory that matches this task:

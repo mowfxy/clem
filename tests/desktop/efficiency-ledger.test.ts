@@ -54,7 +54,7 @@ test("every answer is recorded in the ledger with counts only, and the ledger st
   timer.end();
   await ledger.record({ at: 1, provider: "grok", outcome: "failed", totalMs: 50, steps: 1, calls: 0, broken: 1 });
   assert.equal(recorded.length, 1);
-  assert.deepEqual(Object.keys(recorded[0]).sort(), ["at", "calls", "broken", "continued", "firstTextMs", "model", "outcome", "provider", "steps", "tokens", "totalMs"].sort());
+  assert.deepEqual(Object.keys(recorded[0]).sort(), ["at", "calls", "broken", "continued", "firstTextMs", "model", "outcome", "provider", "stages", "steps", "tokens", "totalMs"].sort());
   const entries = readLedger(readFileSync(join(dir, LEDGER_FILE), "utf8") + "not json\n");
   assert.equal(entries.length, 2);
   const [claude, grok] = summarizeLedger(entries);
@@ -91,6 +91,6 @@ test("a memory line matched to a new message goes alone on a kept session; the l
   assert.deepEqual(now.items.map((p) => sent.has(p)), [true, false]);
   assert.notEqual(memoryPrints("Alex", []).name, now.name);
   const prompt = composePrompt({ messages: [{ role: "user", content: "next" }], memories: [{ id: "m1", scope: "profile", key: "exam", text: "Has a DSA midterm on October 22", kind: "fact", confirmed: false, confidence: 0.6, source: { id: "chat:a", locator: "", at: "2026-10-28" }, createdAt: "2026-10-28T00:00:00Z", updatedAt: "2026-10-28T00:00:00Z" } as any], continued: true, rulesInSystem: true });
-  assert.match(prompt, /<clem-memory[^>]*>\n[^\n]*Has a DSA midterm on October 22/);
+  assert.match(prompt, /<clem-memory[^>]*>\n[^\n]*\n- Has a DSA midterm on October 22/);
   assert.doesNotMatch(prompt, /Prefers SI units|name is/);
 });

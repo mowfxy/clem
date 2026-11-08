@@ -1,6 +1,6 @@
-import { desktop } from "./desktop/bridge";
-import { withoutTemporary } from "../core/temporary-chat";
-import { settleRoom } from "../core/coordinator";
+import { desktop } from "./desktop/bridge.ts";
+import { withoutTemporary } from "../core/temporary-chat.ts";
+import { settleRoom } from "../core/coordinator.ts";
 import { get, set, del } from "idb-keyval";
 import type {
   Chat,
@@ -22,6 +22,12 @@ export type State = {
   /** Each project's coordinator chat and its threads (core/coordinator.ts). Absent in workspaces saved before them. */
   rooms?: ProjectRoom[];
   essentialNotes?: { id: string; text: string }[];
+  /**
+   * This workspace did not come from the last sync: its file was missing and it started again. The sync baseline says
+   * what the skills and notes held then, so an empty list here would read as the person deleting everything. Saved with
+   * the workspace, so it lasts until a sync has worked, and cleared by that sync (src/essential-state.ts).
+   */
+  essentialsUnsynced?: boolean;
   chats: Chat[];
   spaces: Space[];
   files: StoredFile[];
@@ -115,7 +121,7 @@ export async function loadState(): Promise<State> {
       }
       await local("state", "PUT", JSON.stringify(legacy), owner);
     }
-    return { ...structuredClone(emptyState), ...legacy };
+    return { ...structuredClone(emptyState), ...(legacy || { essentialsUnsynced: true }) };
   }
   const stored = await get<State>(stateKey(owner));
   return stored ? restoreState(stored) : structuredClone(emptyState);

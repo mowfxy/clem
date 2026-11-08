@@ -396,8 +396,8 @@ test("space facts stay in their space; retrieval matches word forms", () => {
 
 test("new information replaces an older learned item; kept items become confirmed", () => {
   let state = learnMemories(empty, [{ key: "city", text: "The user lives in Cairo.", kind: "fact", about: "user" }], { scope: "chat:a", sourceId: "chat:1", explicit: false });
-  state = learnMemories(state, [{ key: "city", text: "The user lives in Berlin.", kind: "fact", about: "user" }], { scope: "chat:a", sourceId: "chat:2", explicit: false });
-  assert.deepEqual(state.records.map((m) => m.text), ["The user lives in Berlin."]);
+  state = learnMemories(state, [{ key: "city", text: "The user lives in Berlin.", kind: "fact", about: "user", replaces: "Lives in Cairo" }], { scope: "chat:a", sourceId: "chat:2", explicit: false });
+  assert.deepEqual(state.records.map((m) => m.text), ["lives in Berlin"]);
   state = confirmMemory(state, state.records[0].id);
   assert.equal(state.records[0].confirmed, true);
   const explicit = learnMemories(empty, [{ key: "length", text: "The user prefers short answers.", kind: "preference", about: "user" }], { scope: "chat:a", sourceId: "chat:3", explicit: true });
@@ -408,7 +408,7 @@ test("new information replaces an older learned item; kept items become confirme
 test("extraction output is validated and the gate skips ordinary questions", () => {
   assert.deepEqual(parseExtraction("not json"), []);
   assert.deepEqual(parseExtraction('{"memories":[{"key":"bad key!!","text":"x","kind":"fact","about":"user"}]}'), []);
-  assert.equal(parseExtraction('```json\n{"memories":[{"key":"Role","text":"The user is a nurse.","kind":"fact","about":"user"}]}\n```')[0].key, "role");
+  assert.equal(parseExtraction('```json\n{"memories":[{"key":"Role","text":"The user is a nurse.","kind":"fact","about":"user"}]}\n```')[0].key, "Role");
   assert.equal(mentionsSelf("What is the derivative of sin x?"), false);
   assert.equal(mentionsSelf("I'm a nurse and I prefer short answers"), true);
   assert.equal(explicitRemember("Remember that I use SI units"), true);

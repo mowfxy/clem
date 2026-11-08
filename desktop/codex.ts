@@ -1,18 +1,18 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir, rm, readFile } from "node:fs/promises";
+import { mkdir, rm, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import {kinetraInstructions, kinetraTool} from "./kinetra-runtime.ts";
-import {streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
+import {compactThread,openThread,streamTurn,WEB_SEARCH,type TurnSession,type TurnControl} from "./codex-stream.ts";
 import {AppServer} from "./app-server.ts";
 import {toolRequests,brokenToolRequest,shownLength,runKinetraTurn,SessionLost,type AnswerGates} from "./kinetra-turn.ts";
 import {retractedStatus} from "./answer-review.ts";
-import {blockPrint,sentAfter,type ChatSessions} from "./chat-sessions.ts";
+import {COMPACT_AT_TOKENS,HARD_COMPACT_AT_TOKENS,blockPrint,sentAfter,type ChatSessions} from "./chat-sessions.ts";
 import {addTokens,type TurnStats} from "./turn-timing.ts";
 import {StepCounter} from "./tool-status.ts";
 import {kinetraMcp,codexMcpConfig,inlinePictures,keepingAlive,NATIVE_NOTE,type NativeEndpoint,type NativeCall} from "./kinetra-mcp.ts";
 /** A chat answer that may go on, and is kept as, the chat's thread (desktop/main.ts KeepChat, with the store and account). */
-export type KeepCodex={key:string;history:string;after:string;blocks:string[];prints?:string[];continuation:(sent:Set<string>)=>string;store:ChatSessions;account:string};
+export type KeepCodex={key:string;history:string;after:string;blocks:string[];prints?:string[];continuation:(sent:Set<string>)=>string;store:ChatSessions;account:string;/** Asks for the kept thread to be compacted once the chat has been idle a while. */idle?:(model:string)=>void};
 
 /** While a reply might still turn out to be a tool envelope, hold it instead of streaming it. */
 export function mayBeTool(text: string) {
@@ -82,7 +82,7 @@ export class Codex {
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private controls = new Map<string, TurnControl>();
   /** Chats' kept threads (desktop/chat-sessions.ts): the app-server that holds each, and its Kinetra endpoint and route. */
-  private threads = new Map<string, { server: AppServer; endpoint?: NativeEndpoint; route?: { call?: NativeCall }; mcp?: Record<string, unknown> }>();
+  private threads = new Map<string, { server: AppServer; endpoint?: NativeEndpoint; route?: { call?: NativeCall }; mcp?: Record<string, unknown>; folder?: TurnSession["folder"] }>();
   /** A warm, shared app-server. Starting the CLI is the slowest part of a request, so it is reused. */
   private async connection(): Promise<AppServer> {
     if (this.server && !this.server.dead) return this.server;
@@ -527,28 +527,54 @@ export class Codex {
     // The chat's kept thread (desktop/chat-sessions.ts), when this message can go on it: only on the app-server that has it.
     let kept=keep?keep.store.take(keep.key,{provider:"codex",account:keep.account,model:selection?.model||"",history:keep.history}):undefined;
     const thread=kept?this.threads.get(kept.session):undefined;
-    if(kept&&(!thread||!this.server||thread.server!==this.server)){kept.end();kept=undefined;}
-    if(kept&&thread){session.threadId=kept.session;session.mcp=thread.mcp;endpoint=thread.endpoint;route=thread.route;if(stats)stats.continued=true;}
-    // On a kept thread the tool guide is sent again only when it changed.
-    const guide=kept&&kept.sent.has(blockPrint(instructions))?"":instructions;
+    // A thread lives on disk, so it outlasts the app-server that opened it: on another one, or after a restart, it is resumed by id.
+    if(keep)session.keep=true;
+    if(kept){
+      if(thread){session.mcp=thread.mcp;endpoint=thread.endpoint;route=thread.route;}
+      if(thread&&this.server&&!this.server.dead&&thread.server===this.server)session.threadId=kept.session;else session.resume=kept.session;
+      if(stats)stats.continued=true;
+    }
+    const openTools=async()=>{
+      if((pdf||tools)&&!endpoint){
+        const r:{call?:NativeCall}={};
+        endpoint=await kinetraMcp.open(request=>r.call?r.call(request):Promise.resolve({result:{error:"This answer has finished."},pictures:[]}));
+        route=r;
+        session.mcp=codexMcpConfig(endpoint);
+      }
+    };
     let ownSent=false,keepIt=false;
     try{
+      // A thread grown very large is compacted first: every step would re-read all of it. Below that the message goes on
+      // from the cache, and an idle chat is compacted later, so nobody waits. When it fails, the message starts a new
+      // thread with the conversation as text.
+      if(kept&&(kept.context??0)>HARD_COMPACT_AT_TOKENS){
+        emit({id,type:"status",text:"Summarising the work so far…"});
+        try{
+          await openTools();
+          const server=await this.connection();
+          await openThread(server,session,selection);
+          await compactThread(server,session.threadId!);
+          kept.context=0;kept.sent=new Set();if(stats)stats.compacted=true;
+        }catch{
+          session.threadId=undefined;session.resume=undefined;session.mcp=undefined;endpoint=undefined;route=undefined;
+          if(stats)stats.continued=false;
+          kept.end();kept=undefined;
+        }
+        if(turn.cancelled)throw Error("Request cancelled");
+      }
+      // On a kept thread the tool guide is sent again only when it changed.
+      const guide=kept&&kept.sent.has(blockPrint(instructions))?"":instructions;
       // `retracted`: a rejected answer was taken off the screen and nothing has been shown since.
       let shown=false,retracted=false;
       const answer=await runKinetraTurn<{path:string}>(kept?keep!.continuation(kept.sent):prompt,guide,async(input,followUp,looked,call)=>{
-        if((pdf||tools)&&!endpoint){
-          const r:{call?:NativeCall}={};
-          endpoint=await kinetraMcp.open(request=>r.call?r.call(request):Promise.resolve({result:{error:"This answer has finished."},pictures:[]}));
-          route=r;
-          session.mcp=codexMcpConfig(endpoint);
-        }
+        await openTools();
         // While a call runs Codex sends nothing, so the turn's inactivity limit is kept from firing.
         if(route){const native=inlinePictures(call,path=>readFile(path));route.call=request=>keepingAlive(()=>native(request),()=>this.controls.get(id)?.alive?.());}
         // A first step (or one after a lost thread) opens a new thread; the others go on the current one.
-        if(!followUp)session.threadId=undefined;
-        const continuing=!!session.threadId&&!ownSent;
+        if(!followUp){session.threadId=undefined;session.resume=undefined;}
+        const continuing=(!!session.threadId||!!session.resume)&&!ownSent;
         // A new thread learns that requests go to the tool (a continued one already has it in its history).
-        if(endpoint&&!session.threadId)input=NATIVE_NOTE+input;
+        if(endpoint&&!session.threadId&&!session.resume)input=NATIVE_NOTE+input;
         let output="",delivered=0;
         // A lead-in shown before a tool ran ("Let me calculate that.") is its own paragraph, never glued to the answer.
         const show=(end:number)=>{if(end<=delivered)return;emit({id,type:"delta",text:(shown&&!delivered?"\n\n":"")+output.slice(delivered,end)});delivered=end;shown=true;retracted=false;};
@@ -581,9 +607,10 @@ export class Codex {
       if(keep&&threadId&&server&&!turn.cancelled){
         const sent=sentAfter(stats?.continued&&kept?kept.sent:[],[...keep.blocks.map(blockPrint),...(keep.prints||[]),blockPrint(instructions)]);
         const ep=endpoint,mcp=session.mcp;
-        this.threads.set(threadId,{server,endpoint:ep,route,mcp});
-        keep.store.keep(keep.key,{provider:"codex",account:keep.account,model:selection?.model||"",session:threadId,history:keep.after,sent,end:()=>{this.threads.delete(threadId);ep?.close();}});
+        this.threads.set(threadId,{server,endpoint:ep,route,mcp,folder});
+        keep.store.keep(keep.key,{provider:"codex",account:keep.account,model:selection?.model||"",session:threadId,history:keep.after,sent,context:session.context??kept?.context,end:()=>void this.endSession(threadId)});
         keepIt=true;
+        if((session.context??kept?.context??0)>COMPACT_AT_TOKENS)keep.idle?.(selection?.model||"");
       }
       emit({id,type:"done"});
     }finally{
@@ -592,10 +619,43 @@ export class Codex {
       // A kept thread that this answer did not keep (it failed, or moved to a new thread) goes with its endpoint.
       if(kept&&!keepIt)kept.end();
       // The answer moved off a lost kept thread onto a new one: the old one's entry goes, and its endpoint unless the new thread uses it.
-      else if(kept&&session.threadId!==kept.session){this.threads.delete(kept.session);if(thread?.endpoint&&thread.endpoint!==endpoint)thread.endpoint.close();}
+      else if(kept&&session.threadId!==kept.session){this.threads.delete(kept.session);if(thread?.endpoint&&thread.endpoint!==endpoint)thread.endpoint.close();void this.forget(kept.session);}
       if(!keepIt&&endpoint&&endpoint!==thread?.endpoint)endpoint.close();
       if(this.turns.get(id)===turn)this.turns.delete(id);this.scheduleIdle();
     }
+  }
+  /** Ends a chat's thread: its endpoint closes and its saved copy is removed. */
+  async endSession(threadId:string){
+    const entry=this.threads.get(threadId);
+    this.threads.delete(threadId);
+    entry?.endpoint?.close();
+    await this.forget(threadId);
+  }
+  private async forget(threadId:string){
+    if(!/^[0-9a-f-]{36}$/i.test(threadId)||process.env.CLEM_KEEP_SESSIONS)return;
+    if(this.server&&!this.server.dead)await this.server.request("thread/delete",{threadId},5000).catch(()=>{});
+    const root=join(this.home,"sessions");
+    for(const name of await readdir(root,{recursive:true}).catch(()=>[] as string[]))
+      if(name.endsWith(`-${threadId}.jsonl`))await rm(join(root,name),{force:true}).catch(()=>{});
+  }
+  /**
+   * Compacts a chat's thread while the chat is idle (T3 Code's idle compaction), opening it again first if its app-server
+   * has gone, with the tools it had. Undefined when this run of Clem does not hold the thread's tools: a thread opened
+   * without them could not get them back, so it waits for the next message, which has them.
+   */
+  async compact(threadId:string,model:string){
+    const entry=this.threads.get(threadId);
+    if(!entry)return undefined;
+    this.quicks++;
+    try{
+      const server=await this.connection();
+      if(entry.server!==server){
+        await openThread(server,{keep:true,resume:threadId,mcp:entry.mcp,folder:entry.folder},{model});
+        entry.server=server;
+      }
+      await compactThread(server,threadId);
+      return 0;
+    }finally{this.quicks--;this.scheduleIdle();}
   }
   /** A short internal request (memory notes): never blocks the user's turn or streams to the screen. */
   /** `images`: pictures on this PC the request is about (a PDF's first page, when naming it). */
