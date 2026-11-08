@@ -27,7 +27,7 @@ export function markSvg({ color = CLEM_PAPER, extra = "", attrs = "" }: { size?:
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"${attrs}>${extra}${markInner(color)}</svg>`;
 }
 
-/** One of the mark's outlines as points along its curves, for drawings that trace it by hand (the website's film). */
+/** One of the mark's outlines as points along its curves, for drawings that trace it by hand. */
 export function markOutline(path: string, steps = 14): [number, number][] {
   const n = path.match(/-?\d*\.?\d+/g)!.map(Number), points: [number, number][] = [[n[0], n[1]]];
   for (let i = 2; i + 5 < n.length; i += 6) {

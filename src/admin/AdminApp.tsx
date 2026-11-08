@@ -2,7 +2,7 @@ import {useCallback,useEffect,useState} from 'react';
 import {GoogleLogo,Icon} from '../Icons';
 import {AdminError,adminApi,adminClient,demo,type Staff} from './api';
 import {Avatar,I,ToastHost} from './ui';
-import {useDarkOnly} from '../site/SiteHeader';
+import {useDarkOnly} from './dark';
 import {products,type ProductSection} from './products';
 import {Overview} from './Overview';
 import {Stats} from './Stats';

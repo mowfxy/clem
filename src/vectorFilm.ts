@@ -576,7 +576,7 @@ function relay(){
  return s;
 }
 const scenes:Record<Scene,()=>string>={balance,untangle,build,discover,learn,orchestrate,sprout,kite,telescope,pencil,bridge,conversation,envelope,key,door,swap,invite,keypad,shield,lock,unlock,link,unlink,plane,hourglass,box,jar,folder,plug,house,lifebuoy,profile,safe,expired,wave,cards,checklist,calendar,steps,bell,alarm,relay};
-/** The pen itself, for longer films drawn in the same hand (the website's ink film, src/site/film-script.ts). */
+/** The pen itself, for longer films drawn in the same hand (the profile pictures in src/avatarFilms.ts). */
 export const pen={line,curve,shape,blob,arc,ellipse,rounded,X,pill,ring,wavy,stripes,behind,leaf,along,spline,pose,pop,back,clamp,lerp};
 export const inks={INK,BLUE,GREEN,LILAC,PINK,SAND,CLAY,LINE,FINE,THIN};
 /** Starts a frame of a pen film at `seconds`: the line boils on twos and every element keeps its own hand. */

@@ -7,7 +7,7 @@
 // Used as a PostCSS plugin from vite.config.ts, after the light theme.
 
 const SKIP_FILES = [/office-preview/, /[\\/]glass[\\/]/, /[\\/]theme[\\/]light\.css$/, /[\\/]site[\\/]/, /[\\/]admin[\\/]/, /katex/];
-const SKIP_SELECTORS = [/\.kinetra/, /\.clem-mark/, /\.brand-logo/, /\.office-/, /\.yt-thumb/, /\.fp-page/, /\.pdf/, /\.ascii-field/];
+const SKIP_SELECTORS = [/\.kinetra/, /\.clem-mark/, /\.brand-logo/, /\.office-/, /\.yt-thumb/, /\.fp-page/, /\.pdf/];
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b/g;
 const INK_PROPS = /^(color|fill|stroke|caret-color|accent-color|outline(-color)?|text-decoration-color|-webkit-text-fill-color)$/;
 const PAINT_PROPS = /^(background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|box-shadow)$/;

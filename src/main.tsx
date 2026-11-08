@@ -4,7 +4,6 @@ import {desktop} from './desktop/bridge';
 import './type.css';
 import './style.css';
 import './revamp.css';
-import './marketing.css';
 import './production.css';
 import './popups.css';
 import {applyTheme} from './theme/theme';
