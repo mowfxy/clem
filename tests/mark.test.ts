@@ -6,7 +6,8 @@ import { MARK_BODY, MARK_LEAF, MARK_PATH, markOutline, tumbleKeyframes } from ".
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("the pages that cannot import core/mark.ts carry the same drawing", () => {
-  for (const page of ["public/boot.js", "public/404.html"]) assert.ok(read(page).includes(MARK_PATH), `${page} draws an old mark`);
+  // public/404.html no longer draws the mark; the test below still keeps the old C and the hop out of it.
+  for (const page of ["public/boot.js"]) assert.ok(read(page).includes(MARK_PATH), `${page} draws an old mark`);
 });
 
 test("the old C and hopping cursors are gone", () => {

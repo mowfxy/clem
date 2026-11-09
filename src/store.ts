@@ -113,15 +113,16 @@ export async function loadState(): Promise<State> {
     const saved = await (await local("state", "GET", undefined, owner)).json();
     if (saved) return restoreState(saved);
     const legacy = await get<State>(stateKey(owner));
-    if (legacy) {
-      restoreState(legacy);
-      for (const file of legacy.files) {
-        const blob = await get<Blob>(blobKey(file.id, owner));
-        if (blob) await local("files/" + file.id, "PUT", blob, owner);
-      }
-      await local("state", "PUT", JSON.stringify(legacy), owner);
+    // No workspace on disk or in the browser: it starts again, marked so a sync does not read empty lists as deletions.
+    if (!legacy) return { ...structuredClone(emptyState), essentialsUnsynced: true };
+    // Validated and migrated like any saved workspace, so the copy moved to disk is the one the app then uses.
+    const restored = restoreState(legacy);
+    for (const file of legacy.files) {
+      const blob = await get<Blob>(blobKey(file.id, owner));
+      if (blob) await local("files/" + file.id, "PUT", blob, owner);
     }
-    return { ...structuredClone(emptyState), ...(legacy || { essentialsUnsynced: true }) };
+    await local("state", "PUT", JSON.stringify(restored), owner);
+    return restored;
   }
   const stored = await get<State>(stateKey(owner));
   return stored ? restoreState(stored) : structuredClone(emptyState);
