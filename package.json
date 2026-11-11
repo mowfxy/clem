@@ -35,7 +35,7 @@
     "film:live-setup": "node scripts/film/capture.mjs --live-setup",
     "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live",
     "ads": "node scripts/ads/build.mjs",
-    "db:remove-telegram": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/remove-telegram.sql",
+    "db:telegram": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/telegram-schema.sql",
     "db:email": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/email-schema.sql",
     "emails:announce": "node scripts/announce-release.mjs"
   },
@@ -53,6 +53,7 @@
     "express": "^5.1.0",
     "fflate": "0.8.3",
     "fuse.js": "^7.5.0",
+    "grammy": "^1.46.0",
     "httpntlm": "^1.8.14",
     "idb-keyval": "^6.2.2",
     "ignore": "7.0.5",

@@ -5,12 +5,13 @@
 import { pack, unpack } from "./lib/pack.js";
 import { HttpError, readJson } from "./lib/http.js";
 
-// "telegram" rows from earlier versions can still be read (so Clem deletes them) but no new ones are stored.
+// "telegram" rows are bot tokens from the first Telegram (removed 6 October 2026): never stored again, ignored by the app,
+// and deleted by hand with cloudflare/remove-telegram.sql. Today's Telegram is one Clem bot (telegram.js), sealed here too.
 const KINDS = new Set(["codex", "claude"]);
 const MAX_ITEMS = 12, MAX_BYTES = 64_000;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
-async function key(env) {
+export async function key(env) {
   if (!env.PROVIDER_VAULT_KEY) throw Error("Account linking is not configured.");
   const raw = Uint8Array.from(atob(env.PROVIDER_VAULT_KEY), (c) => c.charCodeAt(0));
   if (raw.length !== 32) throw Error("Account linking is misconfigured.");
@@ -18,14 +19,14 @@ async function key(env) {
 }
 const bound = (userId, id) => new TextEncoder().encode(userId + ":" + id);
 
-async function seal(env, userId, id, text) {
+export async function seal(env, userId, id, text) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: bound(userId, id) }, await key(env), await pack(text)));
   const out = new Uint8Array(12 + cipher.length);
   out.set(iv); out.set(cipher, 12);
   return out;
 }
-async function open(k, userId, id, sealed) {
+export async function open(k, userId, id, sealed) {
   const bytes = sealed instanceof Uint8Array ? sealed : new Uint8Array(sealed);
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.subarray(0, 12), additionalData: bound(userId, id) }, k, bytes.subarray(12));
   return unpack(new Uint8Array(plain));

@@ -228,8 +228,8 @@ void app.whenReady().then(async () => {
   // Copies of files opened in the browser from earlier runs.
   void rm(join(app.getPath("temp"),"Clem","view"),{recursive:true,force:true}).catch(()=>{});
   const vault = new Vault(join(app.getPath("userData"), "protected"));
-  // Earlier versions kept a progress file per chat and Telegram request, and Telegram connections, conversations and choices; Telegram is gone, so they are removed.
-  void readdir(join(app.getPath("userData"), "protected")).then((names) => Promise.all(names.filter((name) => /^(?:task|telegram)-.+\.bin$/.test(name)).map((name) => unlink(join(app.getPath("userData"), "protected", name)).catch(() => {})))).catch(() => {});
+  // Earlier versions kept a progress file per chat; they are removed. (Telegram's files stay: it is back, docs/DESKTOP.md.)
+  void readdir(join(app.getPath("userData"), "protected")).then((names) => Promise.all(names.filter((name) => /^task-.+\.bin$/.test(name)).map((name) => unlink(join(app.getPath("userData"), "protected", name)).catch(() => {})))).catch(() => {});
   const auth = new DesktopAuth(vault, config);
   // Restoring a session can require the network. Always open the window first.
   const authReady = auth.initialize().catch(()=>{});
