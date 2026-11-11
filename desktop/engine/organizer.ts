@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { cardBlock, type ClemCard } from "../../core/guc/cards.ts";
 import { cairo, type HubDeadline } from "../../core/guc/hub.ts";
+import { PASSWORD_NOTICE, PASSWORD_REMINDER, PASSWORD_ROUTE, passwordChannels, passwordDue } from "../../core/guc/password.ts";
 import type { GucNow } from "../../core/guc/ai-tools.ts";
 import type { SubjectLink } from "../../core/guc/settings.ts";
 import type { GucSlot } from "../../core/guc/types.ts";
@@ -284,7 +285,20 @@ export class Organizer {
         }
       }
     }
+    await this.gucPassword().catch((e) => this.host.log("warn", "[organizer] guc password: " + (e as Error).message));
     return this.flush();
+  }
+  /** GUC stopped accepting the password (docs/GUC-VPS-ENGINE.md "Password expiry"): on the day it failed, the card in
+   *  the main thread and an urgent notice on every channel the person turned on, once (guc-auth:<that day>); after that
+   *  at most one gentle reminder a day, never in quiet hours. Called when it fails and on every tick. */
+  async gucPassword() {
+    const [row] = await this.db.query<{ since: Date | null }>("select password_needed as since from guc_account where owner_id = $1", [this.owner]);
+    const s = await this.settings(), due = passwordDue(ms(row?.since) || null, this.clock(), s);
+    if (!due) return null;
+    const card = cardBlock({ type: "guc_password" }), said = due.kind === "notice" ? PASSWORD_NOTICE : PASSWORD_REMINDER;
+    if (due.kind === "notice") await this.post(card, due.key);
+    await this.push(due.key, said.title, said.body, { route: "#" + PASSWORD_ROUTE }, s, { channels: passwordChannels(s), cards: card });
+    return due.kind;
   }
   /** Sends what quiet hours held back, once each. */
   async flush() {

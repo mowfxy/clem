@@ -1458,6 +1458,7 @@ void app.whenReady().then(async () => {
     await selectProvider(user.id);
     if (request.action === "gucStatus") return gucStatus(user.id);
     if (request.action === "gucConnect") return (await engineFor(user.id)).connect(request.username, request.password, gucProgress);
+    if (request.action === "gucPassword") return (await engineFor(user.id)).updatePassword(request.password, gucProgress);
     if (request.action === "gucSync") { const engine = await engineFor(user.id); return engine.sync(gucProgress).catch(() => engine.status()); }
     if (request.action === "gucDisconnect") return (await engineFor(user.id)).disconnect();
     // Clem's organizer (desktop/engine/organizer.ts): settings, the window's inbox and Undo, the log, mutes and watches.

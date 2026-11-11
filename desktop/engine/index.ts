@@ -6,6 +6,7 @@ import { extname, join } from "node:path";
 import { gucNow, type FileText, type GucNow } from "../../core/guc/ai-tools.ts";
 import { cairo, materialFile, type HubFile, type HubOverview } from "../../core/guc/hub.ts";
 import { urls } from "../../core/guc/parse.ts";
+import { AUTH_RETRY_MS, PASSWORD_SAID } from "../../core/guc/password.ts";
 import { active, cronLines } from "../../core/guc/schedule-rules.ts";
 import type { InboxItem, SettingsPatch, SubjectView } from "../../core/guc/settings.ts";
 import { saveFiles, type SaveStats } from "./check.ts";
@@ -42,6 +43,7 @@ export class Engine {
   private jobs?: Jobs;
   private http?: Http;
   private sleep?: (ms: number) => Promise<void>;
+  private clock: () => number;
   private running?: Promise<GucStatus>;
   private light?: Promise<GucStatus>;
   private reader?: GucClient;
@@ -64,7 +66,7 @@ export class Engine {
   readonly telegram: TelegramRelay;
 
   private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore; text?: TextCacheOptions; clock?: () => number }) {
-    this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep; this.texts = textCache(o.text);
+    this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep; this.texts = textCache(o.text); this.clock = o.clock || Date.now;
     this.organizer = new Organizer({ db, owner, host, clock: o.clock, guc: () => this.gucFacts() });
     this.telegram = new TelegramRelay({ db, owner, host, organizer: this.organizer, clock: o.clock, engine: { checkNow: (id) => this.check(id, "now"), file: (id) => this.file(id) } });
     if (host.account) this.organizer.telegram = this.telegram;
@@ -86,16 +88,16 @@ export class Engine {
     this.jobs = new Jobs(this.pg, (m) => this.host.log("warn", m));
     await this.jobs.start();
     await this.jobs.queue("guc.sync", async () => {
-      if (!(await this.credentials())) return;
+      if (!(await this.credentials()) || await this.paused()) return;
       // A wrong password is not retried: it needs the person, and they have been told once.
       try { await this.syncNow(); } catch (e) { if (!(e instanceof GucError && e.kind === "auth")) throw e; }
     }, { retries: 3, delay: 120 });
     // A subject's own checks (its schedule rules): a light sync of its course.
     await this.jobs.queue("guc.check", async ({ subjectId }: { subjectId: string }) => {
-      if (!(await this.credentials())) return;
+      if (!(await this.credentials()) || await this.paused()) return;
       try { await this.check(subjectId, "schedule"); } catch (e) { if (!(e instanceof GucError && (e.kind === "auth" || e.detail === "not linked"))) throw e; }
     }, { retries: 2, delay: 120 });
-    if (await this.credentials()) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
+    if (await this.credentials() && !(await this.paused())) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
     await this.organizer.start(this.jobs);
     this.telegram.start();
     // First run without Telegram paired: the pair card, once, in the main thread.
@@ -111,6 +113,51 @@ export class Engine {
 
   private key() { return "guc-" + this.owner; }
   private credentials() { return this.host.secrets.get<Credentials>(this.key()); }
+  /** The credentials for a request to GUC; none while the password is needed, so nothing hammers GUC into a lockout. */
+  private async signIn() {
+    const credentials = await this.credentials();
+    if (!credentials) throw new GucError("auth", "not connected");
+    if (await this.paused()) throw new GucError("auth", "password needed", PASSWORD_SAID);
+    return credentials;
+  }
+
+  // ---------- Password expiry (docs/GUC-VPS-ENGINE.md "Password expiry", core/guc/password.ts) ----------
+  /** When GUC first stopped accepting the password, while it still doesn't. */
+  async paused(): Promise<number | null> {
+    const [row] = await this.db.query<{ at: Date | null }>("select password_needed as at from guc_account where owner_id = $1", [this.owner]);
+    return row?.at ? new Date(row.at).getTime() : null;
+  }
+  /** The retry failed too: mark `password_needed`, pause every GUC job (no data or settings change), tell the person once. */
+  private async passwordFailed() {
+    await this.db.query("update guc_account set password_needed = coalesce(password_needed, $2), last_error = $3 where owner_id = $1", [this.owner, new Date(this.clock()), { kind: "auth", message: PASSWORD_SAID }]);
+    await this.jobs?.unschedule("guc.sync").catch(() => {});
+    for (const s of await this.jobs?.schedules("guc.check").catch(() => []) || []) await this.jobs?.unschedule("guc.check", s.key).catch(() => {});
+    this.version++;
+    this.host.changed?.();
+    await this.organizer.gucPassword().catch((e) => this.host.log("warn", "[guc] password notice: " + (e as Error).message));
+  }
+  /** Settings → Connectors → GUC → New password: checked with GUC, kept in the Vault, the flag cleared, the jobs back,
+   *  then a catch-up check (a sync, then each linked subject's save rules). A wrong one changes nothing. */
+  async updatePassword(password: string, progress?: (p: GucProgress) => void) {
+    const was = await this.credentials();
+    if (!was) throw Error("Connect GUC first.");
+    progress?.({ phase: "login", done: 0, total: 1, label: "Checking with GUC…" });
+    const client = await login(was.domain ? `${was.domain}\\${was.username}` : was.username, password, urls.home, this.http, this.sleep).catch((e) => {
+      throw e instanceof GucError && e.kind === "auth" ? new GucError("auth", e.detail, "GUC didn't accept that password. Check it and try again.") : e;
+    });
+    await this.host.secrets.set(this.key(), { username: client.username, password, domain: client.domain } satisfies Credentials);
+    await this.db.query("update guc_account set password_needed = null, last_error = null where owner_id = $1", [this.owner]);
+    this.reader = undefined;
+    await this.jobs?.schedule("guc.sync", GUC_SYNC_CRON);
+    const linked = await this.links();
+    for (const l of linked) await this.reschedule(l.subjectId);
+    this.version++;
+    this.host.changed?.();
+    this.catchUp = this.sync(progress, false, client).then(async () => { for (const l of linked) await this.check(l.subjectId, "rules").catch(() => null); }, () => {}).finally(() => { this.catchUp = undefined; });
+    return this.status();
+  }
+  /** The catch-up after a new password (tests wait for it). */
+  catchUp?: Promise<void>;
 
   async status(): Promise<GucStatus> {
     const [account] = await this.db.query<{ username: string; last_sync: Date | null; last_error: { kind: GucErrorKind; message: string } | null; stats: GucSyncStats | null }>(
@@ -118,7 +165,8 @@ export class Engine {
     const connected = !!account && !!(await this.credentials());
     const [{ n: courses }] = await this.db.query<{ n: number }>("select count(*)::int as n from guc_courses where owner_id = $1 and active", [this.owner]);
     const [{ n: linked }] = await this.db.query<{ n: number }>("select count(*)::int as n from subject_links where owner_id = $1", [this.owner]);
-    return { connected, username: connected ? account.username : undefined, syncing: !!this.running, lastSync: account?.last_sync ? new Date(account.last_sync).getTime() : undefined, courses, linked, stats: account?.stats || undefined, error: connected ? account.last_error || undefined : undefined };
+    const passwordNeeded = connected && !!(await this.paused());
+    return { connected, username: connected ? account.username : undefined, syncing: !!this.running, lastSync: account?.last_sync ? new Date(account.last_sync).getTime() : undefined, courses, linked, stats: account?.stats || undefined, error: connected ? account.last_error || undefined : undefined, ...(passwordNeeded ? { passwordNeeded } : {}) };
   }
 
   /** Checks the username and password with GUC, keeps them encrypted, then runs the first sync. */
@@ -147,9 +195,15 @@ export class Engine {
   private async run(progress: ((p: GucProgress) => void) | undefined, initial: boolean, client?: GucClient, only?: string, out?: { result?: SyncResult }) {
     const credentials = await this.credentials();
     if (!credentials) throw Error("Connect GUC first.");
+    if (await this.paused()) throw new GucError("auth", "password needed", PASSWORD_SAID);
     client ||= new GucClient(credentials, this.http, this.sleep);
     try {
-      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress });
+      // A wrong password is tried once more after a short wait, to rule out a blip.
+      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress }).catch(async (e) => {
+        if (asGucError(e).kind !== "auth") throw e;
+        await (this.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(AUTH_RETRY_MS);
+        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress });
+      });
       if (out) out.result = result;
       this.version++;
       const { eventList, warnings, ...stats } = result;
@@ -162,6 +216,7 @@ export class Engine {
     } catch (e) {
       const error = asGucError(e);
       this.host.log("warn", `[guc] sync failed: ${error.kind}${error.detail ? " (" + error.detail + ")" : ""}`);
+      if (error.kind === "auth") { await this.passwordFailed(); throw new GucError("auth", error.detail, PASSWORD_SAID); }
       await this.db.query("update guc_account set last_error = $2 where owner_id = $1", [this.owner, { kind: error.kind, message: error.message }]);
       // One notice per kind of failure until a sync works again.
       const fresh = await this.db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, $2, 'desktop') on conflict do nothing returning 1", [this.owner, "guc-error:" + error.kind]);
@@ -173,7 +228,7 @@ export class Engine {
   // ---------- The GUC hub's reads (src/guc/GucHub.tsx) ----------
   async overview(): Promise<HubOverview> {
     const [status, counts] = await Promise.all([this.status(), read.counts(this.db, this.owner)]);
-    return { connected: status.connected, syncing: status.syncing, username: status.username, lastSync: status.lastSync, error: status.error, counts };
+    return { connected: status.connected, syncing: status.syncing, username: status.username, lastSync: status.lastSync, error: status.error, ...(status.passwordNeeded ? { passwordNeeded: true } : {}), counts };
   }
   courses() { return read.courses(this.db, this.owner); }
   schedule(weekStart: string) { return read.schedule(this.db, this.owner, weekStart); }
@@ -236,15 +291,19 @@ export class Engine {
     const started = Date.now(), v = await this.subject(subjectId);
     if (!v.course) throw new GucError("unavailable", "not linked", "Link a CMS course first.");
     if (trigger === "schedule" && !active(v.settings.check, started)) return null;
-    const credentials = await this.credentials();
-    if (!credentials) throw new GucError("auth", "not connected");
+    const credentials = await this.signIn();
     const client = new GucClient(credentials, this.http, this.sleep), out: { result?: SyncResult } = {};
     let stats: SaveStats = { requests: 0, bytes: 0, saved: 0, skipped: 0, deduped: 0, ms: 0 }, drive: MirrorResult | undefined, error: string | undefined;
     try {
       if (trigger !== "rules") await this.syncCourse(v.course.key, progress, client, out);
       stats = await saveFiles({ db: this.db, owner: this.owner, subjectId, courseKey: v.course.key, rules: v.settings.save, client: () => client, store: this.store });
       if (v.settings.drive.enabled && (stats.saved || trigger !== "schedule" || (await this.subject(subjectId)).drive.waiting)) drive = await this.copyToDrive(subjectId, v);
-    } catch (e) { error = asGucError(e).kind; throw e; }
+    } catch (e) {
+      const err = asGucError(e);
+      error = err.kind;
+      if (err.kind === "auth" && !(await this.paused())) await this.passwordFailed();
+      throw e;
+    }
     finally {
       await this.db.query("insert into guc_checks (owner_id, subject_id, trigger, page_changed, requests, bytes, saved, skipped, deduped, uploaded, ms, error) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         [this.owner, subjectId, trigger, !!out.result?.changed, client.requests, stats.bytes, stats.saved, stats.skipped, stats.deduped, drive?.uploaded || 0, Date.now() - started, error ?? drive?.error ?? null]);
@@ -270,8 +329,8 @@ export class Engine {
    *  that changed are added or removed; none once unlinked or off. */
   private async reschedule(subjectId: string) {
     if (!this.jobs) return { added: 0, removed: 0 };
-    const v = await this.subject(subjectId);
-    const want = new Map((v.course ? cronLines(v.settings.check) : []).map((l) => [subjectId + "/" + l.key, l.cron]));
+    const v = await this.subject(subjectId), paused = !!(await this.paused());
+    const want = new Map((v.course && !paused ? cronLines(v.settings.check) : []).map((l) => [subjectId + "/" + l.key, l.cron]));
     const have = (await this.jobs.schedules("guc.check")).filter((s) => s.key?.startsWith(subjectId + "/"));
     let added = 0, removed = 0;
     for (const s of have) if (want.get(s.key) !== s.cron) { await this.jobs.unschedule("guc.check", s.key); removed++; }
@@ -321,9 +380,7 @@ export class Engine {
           const temp = viewing && await viewing.then((f) => readFile(f.path), () => undefined);
           if (temp) bytes = new Uint8Array(temp);
           else {
-            const credentials = await this.credentials();
-            if (!credentials) throw new GucError("auth", "not connected");
-            this.reader ||= new GucClient(credentials, this.http, this.sleep);
+            this.reader ||= new GucClient(await this.signIn(), this.http, this.sleep);
             bytes = (await fetchFile(this.reader, m.url)).bytes;
           }
         }
@@ -348,9 +405,7 @@ export class Engine {
     let job = this.temp.get(materialId);
     if (!job) {
       job = (async () => {
-        const credentials = await this.credentials();
-        if (!credentials) throw new GucError("auth", "not connected");
-        this.reader ||= new GucClient(credentials, this.http, this.sleep);
+        this.reader ||= new GucClient(await this.signIn(), this.http, this.sleep);
         const file = await fetchFile(this.reader, m.url);
         await mkdir(this.tempDir(), { recursive: true });
         const path = join(this.tempDir(), materialId.replace(/[^\w-]/g, "_") + extname(name));
@@ -380,6 +435,7 @@ export class Engine {
   }
 
   async close() {
+    await this.catchUp;
     await this.organizer.close()?.catch(() => {});
     await this.telegram.stop();
     for (const { timer } of this.settling.values()) clearTimeout(timer);

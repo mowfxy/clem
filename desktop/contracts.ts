@@ -27,6 +27,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   // GUC (desktop/engine): the password goes straight to the Vault and is never sent back.
   z.object({ action: z.literal("gucConnect"), username: z.string().trim().regex(/^(guc\\)?[\w.@-]{2,80}$/i, "Enter your GUC username."), password: z.string().min(1).max(200) }),
   z.object({ action: z.literal("gucStatus") }),
+  // A new password after GUC stopped accepting the old one (docs/GUC-VPS-ENGINE.md "Password expiry"); never sent back.
+  z.object({ action: z.literal("gucPassword"), password: z.string().min(1).max(200) }),
   z.object({ action: z.literal("gucSync") }),
   z.object({ action: z.literal("gucDisconnect") }),
   // The GUC hub's reads (desktop/engine/guc-read.ts), all for the signed-in owner only.

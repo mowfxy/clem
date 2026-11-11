@@ -3,6 +3,7 @@
 // telegram.ts), so Telegram carries only "b:<token>" and the tap comes back through the inbox to the same appliers.
 import { cardsIn, readCard, type ClemCard } from "../guc/cards.ts";
 import { hubPath } from "../guc/hub.ts";
+import { PASSWORD_NOTICE, PASSWORD_ROUTE } from "../guc/password.ts";
 import { TG_TEXT_LIMIT } from "./pairing.ts";
 
 /** What a button does once tapped in Telegram. `open` shows the route or chat in Clem on the person's PC. */
@@ -126,6 +127,9 @@ export function cardMessage(card: ClemCard, c: RenderContext = {}): TgMessage | 
     }
     case "telegram_pair":
       return null;
+    case "guc_password":
+      return { html: `<b>${esc(PASSWORD_NOTICE.title)}</b>
+${esc(PASSWORD_NOTICE.body)}`, buttons: [[{ text: "Update password", tap: { t: "open", route: "#" + PASSWORD_ROUTE } }]] };
   }
 }
 

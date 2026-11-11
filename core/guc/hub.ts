@@ -11,6 +11,7 @@ export type Page<T> = { items: T[]; next?: string };
 export type HubOverview = {
   connected: boolean; syncing: boolean; username?: string; lastSync?: number;
   error?: { kind: GucErrorKind; message: string };
+  passwordNeeded?: boolean;
   counts: { courses: number; unread: number; materials: number; deadlines: number; grades: number };
 };
 export type HubCourse = { key: string; code: string; name: string; season: string; active: boolean; subjectId?: string; unread: number; materials: number };

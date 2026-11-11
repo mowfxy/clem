@@ -78,6 +78,11 @@ GUC can force a password change every 30 days. When sign-in fails with an `auth`
 - **On save:** verify the new password, store it in the Vault, clear the flag, resume the jobs, and run a catch-up check.
 - **Hub and subject pages** show the same banner.
 - **Reminders:** at most one gentle reminder per day while the flag is still set, and none during quiet hours.
+- **How it is built** (`core/guc/password.ts`, tested in `tests/guc-password.test.ts`):
+  - The flag is `guc_account.password_needed` (migration 006): when it first failed. The retry waits `AUTH_RETRY_MS` (8 s) with a fresh client; a check's auth failure flags it without a second retry, since its page read already retried.
+  - Pausing unschedules `guc.sync` and every `guc.check` schedule; while flagged, `reschedule` adds none, the job handlers return, and every path to GUC (sync, checks, viewing or reading a CMS file) throws the friendly auth error without a request. Resuming schedules `guc.sync` again and rebuilds each linked subject's checks from its settings as they are now. The catch-up is a sync, then each linked subject's check with trigger `rules`.
+  - The notice is `Organizer.gucPassword()`, called when it fails and on every `organizer.tick`: the `guc_password` card (live: once it works, it says so) posted once under `guc-auth:<Cairo day>`, and a push under the same key on every outward channel turned on for any event (urgent, so the level doesn't hold it; quiet hours queue its pushes). Later days push `guc-auth-reminder:<day>` outside quiet hours, with no new card.
+  - Update password is the route `#/app/connectors/guc`: Settings → Connectors with the GUC dialog, which shows the "New password" field while flagged (`gucPassword` IPC → `Engine.updatePassword`). Telegram's card button opens the same route in Clem.
 
 ## Jobs
 - **Runner:** pg-boss, running on PGlite on the desktop and on Postgres on the VPS.

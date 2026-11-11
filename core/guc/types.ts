@@ -34,6 +34,8 @@ export type GucStatus = {
   linked: number;
   stats?: GucSyncStats;
   error?: { kind: GucErrorKind; message: string };
+  /** GUC stopped accepting the password: its checks are paused until a new one is entered (core/guc/password.ts). */
+  passwordNeeded?: boolean;
 };
 export type GucProgress = { phase: "login" | "courses" | "schedule" | "grades" | "course" | "done"; done: number; total: number; label: string };
 

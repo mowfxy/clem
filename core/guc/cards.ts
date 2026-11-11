@@ -70,8 +70,11 @@ export const newCoursesCard = z.object({ type: z.literal('new_courses'), courses
 /** Pair Telegram from the main thread: the link, the code and its countdown, then "Connected as @name" with Unpair. Its
  *  state is read live from the account (never frozen in the message), so every copy of it shows the same thing. */
 export const telegramPairCard = z.object({ type: z.literal('telegram_pair') });
+/** GUC stopped accepting the password (docs/GUC-VPS-ENGINE.md "Password expiry"): Update password while it lasts, read
+ *  live from the engine, so an old card says it works again once it does. */
+export const gucPasswordCard = z.object({ type: z.literal('guc_password') });
 
-export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, organizerCard, lectureCard, watchCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard, telegramPairCard]);
+export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, organizerCard, lectureCard, watchCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard, telegramPairCard, gucPasswordCard]);
 export type ClemCard = z.infer<typeof clemCard>;
 export type HandoffCard = z.infer<typeof handoffCard>;
 export type OrganizerCard = z.infer<typeof organizerCard>;
