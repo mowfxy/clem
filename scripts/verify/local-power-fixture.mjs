@@ -139,6 +139,8 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       invoke: async (r) => {
         window.requests.push(r);
         if (/^(guc|pro|tg)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
+        // Without an engine, GUC is simply not connected (an empty object read as a subject view broke subject chats).
+        if (/^guc/.test(r.action)) { if (r.action === "gucStatus" || r.action === "gucOverview") return { connected: false, syncing: false, courses: 0, linked: 0, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } }; throw Error("Connect GUC first."); }
         switch (r.action) {
           case "securityInfo": return { email: "sam@example.com", verified: true, factors: [], identities: [], google: false, password: true };
           case "essentialSync": return { skills: r.skills, notes: r.notes };

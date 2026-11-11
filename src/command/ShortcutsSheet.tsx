@@ -8,6 +8,7 @@ export const SHORTCUTS: { group: string; items: [string, string[]][] }[] = [
     ["Search everything", ["Ctrl", "Shift", "F"]],
     ["New chat", ["Ctrl", "N"]],
     ["New temporary chat", ["Ctrl", "Shift", "N"]],
+    ["New chat in a subject or project", ["Ctrl", "J"]],
     ["New chat · Visuals · Projects · Subjects · Files", ["Ctrl", "1–5"]],
     ["Back · Forward", ["Alt", "← / →"]],
     ["Show or hide the sidebar", ["Ctrl", "B"]],

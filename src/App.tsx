@@ -68,6 +68,8 @@ import {TELEGRAM_GUIDE} from '../core/telegram/guide';
 import {createPro} from './proactivity/pro';
 import type {ProActions} from './proactivity/ProCards';
 import {MainThread} from './main-thread/MainThread';
+import {morph} from './main-thread/morph';
+import {HomePicker} from './main-thread/HomePicker';
 import {SidebarSpaces} from './main-thread/SidebarSpaces';
 import {EarlierChats,MoveToSpace} from './main-thread/EarlierChats';
 import {useFolding} from './main-thread/useFolding';
@@ -342,6 +344,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   useEffect(()=>{if(chatId)draftChatId.current=crypto.randomUUID();},[chatId]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // The box's text as last drawn, for work that runs a frame later (the home → thread morph).
+  const draftNow = useRef(draft); draftNow.current = draft;
   // Each conversation keeps its own unsent message: switching chats puts the other chat's draft back, and returning
   // brings this one back. Text set on purpose while moving (a cleared new chat, a suggested prompt) is kept as it is.
   const drafts = useRef(new Map<string, string>());
@@ -697,6 +701,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const spaceChats = useMemo(() => state.chats.filter(isSpaceChat), [state.chats]);
   const mainChat = useMemo(() => mainThreadOf(state.chats), [state.chats]);
   const isMain = activeChat?.kind === "main";
+  // Where the window is, for the morph between home and the main thread (read by handlers bound once per route).
+  const placeRef = useRef<"home" | "main" | "other">("other");
+  /** Ctrl J: home's picker opens on Find (src/main-thread/HomePicker.tsx). */
+  const [homePick, setHomePick] = useState(0);
+  placeRef.current = route !== "/app" || temporaryNext ? "other" : isMain ? "main" : !activeChat && !spaceId ? "home" : "other";
   const isTemporary = activeChat ? !!activeChat.temporary : temporaryNext;
   // Leaving a temporary chat deletes it without a word; nothing was ever written to disk.
   const lastChat = useRef<string | null>(null);
@@ -977,8 +986,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setAttach(false);
     setLong(false);
     navigate("/app");
-    // The message box takes the caret, unless the person has already started typing somewhere else.
-    setTimeout(() => { const typing = document.activeElement?.closest?.("input,textarea,[contenteditable=true]"); if (!typing || typing === composer.current) composer.current?.focus(); }, 50);
+    // The message box takes the caret, unless the person has already started typing somewhere else. Not on home with a
+    // main thread: focusing that box opens the thread, so Home would bounce straight back.
+    setTimeout(() => { if (placeRef.current === "home" && mainThreadOf(stateRef.current.chats)) return; const typing = document.activeElement?.closest?.("input,textarea,[contenteditable=true]"); if (!typing || typing === composer.current) composer.current?.focus(); }, 50);
   }
   /** Opens the main thread. From home's box (`carry`) what was typed, attached and mentioned comes along, the caret
    *  stays in the box, and the thread shows its newest page at once from the saved workspace. */
@@ -986,7 +996,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const main = mainThreadOf(stateRef.current.chats);
     if (!main) return;
     if (carry) {
-      drafts.current.set(main.id, draft); drafts.current.set("new", "");
+      drafts.current.set(main.id, draftNow.current); drafts.current.set("new", "");
       // New arrays, so the box's files are not taken for files left behind in another chat (see shownFiles).
       setAttachments((a) => [...a]); setDriveRefs((r) => [...r]);
       carriedChat.current = main.id; panelByChat.current.set(main.id, panelFile?.id || "");
@@ -994,6 +1004,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     setTemporaryNext(false); setChatId(main.id); setSpaceId(null); navigate("/app");
     if (carry) requestAnimationFrame(() => { const el = composer.current; if (!el) return; el.focus({ preventScroll: true }); el.setSelectionRange(el.value.length, el.value.length); });
   }
+  /** Home ⇄ main thread: the box morphs between them (src/main-thread/morph.ts); anywhere else it is a plain swap. */
+  function goMain(carry = false) { if (placeRef.current === "home") morph("in", () => openMain(carry)); else openMain(carry); }
+  function goHome() { if (placeRef.current === "main") morph("out", () => newChat()); else newChat(); }
   /** A main-thread message that belongs to one subject or project carries on in that space's latest chat (or a new one).
    *  The thread keeps the question and a card linking there; the chat gets the question with a short note of what was
    *  said before, and answers it. */
@@ -2836,6 +2849,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       else if(key==='f'){if(document.querySelector('dialog[open]'))return;e.preventDefault();setFinding(n=>n+1);}
       else if(key==='n'){e.preventDefault();setSettingsOpen(false);setPalette(false);newChat(e.shiftKey?null:spaceKeyRef.current);if(e.shiftKey)setTemporaryNext(true);}
       else if(key===','){e.preventDefault();openSettings();}
+      else if(key==='j'&&!e.shiftKey){e.preventDefault();setPalette(false);setSettingsOpen(false);if(placeRef.current!=='home')goHome();setHomePick(n=>n+1);}
       else if(key==='/'){e.preventDefault();setPalette(false);setShortcuts(open=>!open);}
       else if(key==='b'&&!e.shiftKey){e.preventDefault();setSideClosed(closed=>!closed);}
       else if(key==='='||key==='+'){e.preventDefault();setTextSize(size=>size==='small'?'default':'large');}
@@ -2844,7 +2858,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       else if(!e.shiftKey&&/^[1-6]$/.test(key)){
         e.preventDefault();e.stopImmediatePropagation();setPalette(false);setSettingsOpen(false);
         const [page]=nav[Number(key)-1];
-        if(page==='home')newChat();else if(page==='main')openMain(false);else navigate(`/app/${page}`);
+        if(page==='home')goHome();else if(page==='main')goMain(false);else navigate(`/app/${page}`);
       }
     };
     window.addEventListener('keydown',onKey);
@@ -2856,8 +2870,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   const searchMatches=modal==="search"?savedChats.filter((c)=>searchableText(c).includes(searchQuery)):[];
   // Built only while the palette is open.
   const commands:Command[]=!palette?[]:[
-    {id:'home',group:'Actions',label:'Home',hint:'Ctrl 1',icon:'home',run:()=>newChat()},
-    {id:'main-thread',group:'Actions',label:'Clem, your main thread',hint:'Ctrl 2',icon:'chat',keywords:'organizer main thread talk',run:()=>openMain(false)},
+    {id:'home',group:'Actions',label:'Home',hint:'Ctrl 1',icon:'home',run:()=>goHome()},
+    {id:'main-thread',group:'Actions',label:'Clem, your main thread',hint:'Ctrl 2',icon:'chat',keywords:'organizer main thread talk',run:()=>goMain(false)},
     {id:'temporary-chat',group:'Actions',label:'New temporary chat',hint:'Ctrl Shift N',icon:'temp',keywords:'private incognito not saved',run:()=>{newChat();setTemporaryNext(true);}},
     {id:'shortcuts',group:'Actions',label:'Keyboard shortcuts',hint:'Ctrl /',icon:'cmd-explain',keywords:'keys hotkeys help',run:()=>setShortcuts(true)},
     {id:'long-task',group:'Actions',label:'Start a long task',icon:'long',keywords:'plan workflow steps',run:()=>{newChat();setLong(true);}},
@@ -2967,7 +2981,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
         inputRef={composer}
         spaces={mentionSpaces}
         onMention={(sp) => setMentions((all) => all.some((x) => x.id === sp.id) ? all : [...all, sp])}
-        onFocus={route === "/app" && !activeChat && !spaceId && !temporaryNext && mainChat ? () => openMain() : undefined}
+        onFocus={route === "/app" && !activeChat && !spaceId && !temporaryNext && mainChat ? () => goMain(true) : undefined}
         inSubject={activeSpace?.kind === "subject"}
         onEnter={() => void send()}
         placeholder={
@@ -3111,7 +3125,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   key={icon}
                   className={`nav-item ${here ? "active" : ""} ${icon === "main" && mainChat && (mainChat.id in runs) ? "is-working" : ""}`}
                   aria-current={here ? "page" : undefined}
-                  onClick={() => icon === "home" ? newChat() : icon === "main" ? openMain(false) : navigate(`/app/${icon}`)}
+                  onClick={() => icon === "home" ? goHome() : icon === "main" ? goMain(false) : navigate(`/app/${icon}`)}
                   onPointerEnter={icon === "guc" ? () => { void loadHub(); gucPrefetch({ action: "gucOverview" }, 30_000); } : undefined}
                 >
                   {icon === "main" ? <span className="nav-mark"><Logo size={17} /></span> : <Icon name={icon} />}
@@ -3292,6 +3306,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     </div>
                     {temporaryNext && <p className="temp-note">Not saved and never remembered. Clem can still use your files and memory.</p>}
                     {composerUI}
+                    {!activeSpace && !temporaryNext && <HomePicker spaces={state.spaces} chats={spaceChats} onPick={(id) => newChat(id)} openSignal={homePick} onOpened={() => setHomePick(0)} />}
                     <div className="suggestions">
                       {[
                         [

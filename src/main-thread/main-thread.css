@@ -89,3 +89,33 @@ html:root .pro-lines li>button.pro-mute:hover{color:var(--ink);background:color-
 .earlier-bar strong{font-size:var(--text-s);font-weight:600}
 .earlier-bar small{font-size:var(--text-label);color:var(--muted)}
 .earlier-actions{display:inline-flex;align-items:center;gap:8px}
+
+/* ---------- Home's quick picker (src/main-thread/HomePicker.tsx): quiet, text-sized, no glass of its own ---------- */
+.new-chat-content .home-pick{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px;margin:10px auto 0;font-size:var(--text-label)}
+.home-pick-label{color:var(--muted);margin-right:4px}
+html:root body .home-pick .home-pick-chip{height:26px;padding:0 9px 0 7px;gap:6px;border:0;border-radius:99px;background:transparent;color:color-mix(in srgb,var(--ink) 82%,transparent);font-size:var(--text-label);max-width:200px}
+html:root body .home-pick .home-pick-chip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html:root body .home-pick .home-pick-chip .drawn-icon{width:13px;height:13px;flex:none;opacity:.7}
+html:root body .home-pick .home-pick-chip:hover,html:root body .home-pick .home-pick-chip[aria-expanded=true]{background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--ink)}
+.home-pick-find kbd{font:inherit;font-size:11px;color:var(--muted);margin-left:2px}
+.home-pick .home-pick-menu{top:calc(100% + 6px);bottom:auto;width:min(320px,calc(100% - 16px));text-align:left}
+.home-pick-input{display:block;width:100%;height:30px;margin:0 0 3px;padding:0 9px;border:0!important;border-radius:7px;background:color-mix(in srgb,var(--ink) 6%,transparent)!important;outline:none!important;color:var(--ink);font-size:var(--text-label)}
+.home-pick-none{margin:6px 8px;font-size:var(--text-label);color:var(--muted)}
+
+/* ---------- Home ⇄ main thread (src/main-thread/morph.ts): the box grows into the thread's, the thread rises in and
+   home's widgets recede; reversed on the way back. Names exist only while it runs. The composer's group carries the
+   glass's own backdrop-filter, so its blur is live throughout instead of a flat snapshot snapping in at the end. */
+html[data-morph] body .composer{view-transition-name:clem-composer}
+html[data-morph] .new-chat-content{view-transition-name:clem-home}
+html[data-morph] .main-thread-list,html[data-morph] .main-thread-empty{view-transition-name:clem-thread}
+::view-transition-group(clem-composer){animation-duration:.32s;animation-timing-function:var(--ease-out);border-radius:22px;-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter)}
+::view-transition-old(clem-composer),::view-transition-new(clem-composer){height:100%;object-fit:fill;animation-duration:.32s;animation-timing-function:var(--ease-out)}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.32s}
+:root[data-morph=in]::view-transition-old(clem-home){animation:mt-recede .24s var(--ease-out) both}
+:root[data-morph=in]::view-transition-new(clem-thread){animation:mt-rise .32s var(--ease-out) .04s both}
+:root[data-morph=out]::view-transition-old(clem-thread){animation:mt-sink .22s var(--ease-out) both}
+:root[data-morph=out]::view-transition-new(clem-home){animation:mt-return .32s var(--ease-out) .04s both}
+@keyframes mt-recede{to{opacity:0;transform:translateY(14px) scale(.97)}}
+@keyframes mt-rise{from{opacity:0;transform:translateY(18px)}}
+@keyframes mt-sink{to{opacity:0;transform:translateY(18px)}}
+@keyframes mt-return{from{opacity:0;transform:translateY(14px) scale(.97)}}
