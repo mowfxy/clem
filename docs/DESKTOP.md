@@ -65,7 +65,32 @@ The tests are correctness fixtures, not a state-of-the-art accuracy benchmark. A
 
 ## Telegram
 
-Telegram was removed at the owner's request (6 October 2026), as WhatsApp was before it. On sign-in Clem deletes any Telegram connection an earlier version kept on the PC or with the account; `npm run db:remove-telegram` clears what is left in the database.
+Re-added on 11 November 2026 at the owner's request (it was removed on 6 October 2026, as WhatsApp was before it). Clem no longer deletes Telegram files or rows on sign-in. The first Telegram's per-person bot tokens may still sit in `provider_links` (kind `telegram`): the app ignores them, and `cloudflare/remove-telegram.sql` deletes them by hand only; no npm script runs it.
+
+**One Clem bot, on the account Worker.** `cloudflare/telegram.js` runs grammY in a webhook (`POST /webhooks/telegram`, checked by Telegram's `X-Telegram-Bot-Api-Secret-Token`). The token (`TELEGRAM_BOT_TOKEN`) and the webhook secret (`TELEGRAM_WEBHOOK_SECRET`) are Worker secrets; the bot's username is `TELEGRAM_BOT_USERNAME` in `account.wrangler.jsonc`. Until all three are set, Telegram is off everywhere (the routes say so; the app shows "not available yet"). Tables: `cloudflare/telegram-schema.sql`.
+
+**Pairing lives in the main thread.** The organizer posts a `telegram_pair` card once on first run, once when a Telegram channel is turned on in Settings → Proactivity, and whenever asked (the AI's `telegram.pair` for "connect my Telegram", or Settings → Channels → Telegram → Pair in chat). The card shows the `t.me/<bot>?start=<code>` link and a 6-digit code with a live 10-minute countdown and New code; it turns into "Connected as @name" with Unpair the moment the chat sends the code. Settings → Channels → Telegram shows the same shared state (`src/telegram/telegram.ts`). Codes: 10 minutes, single use (deleted as they are read), kept only as an HMAC under the webhook secret, 5 per account an hour, 5 tries per chat a minute. One chat per account and one account per chat. Only the paired person in the paired chat is answered; anyone else is told the bot only talks to paired Clem accounts. `/unpair` in Telegram, Unpair in the card or in Settings ends it (the chat is told); pairing again works the same way.
+
+**Two-way chat.** What the paired chat sends (text, and button taps) waits in `telegram_inbox`, sealed as `provider_links` is (AES-GCM under `PROVIDER_VAULT_KEY`, bound to the owner and item), until the person's engine pulls it. `desktop/engine/telegram.ts` is host-agnostic: it reaches `/telegram/*` through `EngineHost.account` (the desktop's signed-in Supabase session; a VPS's own later), long-polls `/telegram/inbox` (leased two minutes, acknowledged by id; each item handled once, `telegram_seen`), shows "typing…" while it works, and answers through `EngineHost.converse`. On the desktop that is the window's main thread: the message is sent as if typed there, one at a time, marked "From Telegram" (the model sees "[From Telegram]"), with the same agent, tools, data and hand-off to a subject; the finished answer and the files it made go back through `tgAnswered`. With no engine online for two minutes, a message is answered once an hour with "your Clem isn't online right now". Text only for now: photos and files sent to the bot are declined politely.
+
+**Cards and buttons.** `core/telegram/render.ts` turns answers and every clem-card (brief, organizer, reminder, digest, watch, lecture, file_saved, announcement, grade, deadline, handoff, the settings cards) into escaped Telegram HTML under 4096 characters, with buttons where they make sense: Undo, Do it / Not now, Mute, Stop watching, Summarize, Make flashcards, Send me the file, Check now, Open in Clem. A button carries only `b:<token>` (`telegram_buttons` in the engine); its tap comes back through the inbox and runs through the same appliers as the window's buttons (Undo and Do it in the window, Stop, Mute, Not now and Check now in the engine; Summarize and Make flashcards ask in the subject). Open in Clem opens the item in Clem on the PC (Telegram links can't open Clem directly).
+
+**Files.** `telegram.sendFile` ("send me lecture 3 slides") finds the CMS file as `guc.read` does and fetches it the same way (saved copy, else CMS), then uploads it through `/telegram/file` (`sendDocument`). Over Telegram's 50 MB the person gets a short note and Open in Clem instead.
+
+**Notifications.** Telegram is a real channel in the notifier (Settings → Proactivity, per kind of update): once per key on it (`notifications_sent` with channel `telegram`), held by quiet hours, counted once with the desktop against the daily cap, sent with the sweep's or reminder's card. Nothing goes while unpaired; a failed send waits ten minutes.
+
+Tests: `tests/telegram-worker.test.ts` (codes, expiry, single use, limits, only paired chats, the inbox's pull and ack, replies, files), `tests/telegram-engine.test.ts` (rendering and escaping, the relay, taps, the channel and its dedupe, the pair card, the 50 MB path, the tools), all against a fake Telegram API (`tests/telegram-fake.ts`). `scripts/verify/telegram.mjs` checks the card and Settings in dark and light (`tg-*.png`).
+
+### Deploying Telegram (owner)
+
+1. In Telegram, ask @BotFather for `/newbot` (name "Clem", a username ending in `bot`). Keep the token private. Optionally `/setdescription` and `/setuserpic`; `/setjoingroups` → Disable.
+2. Put the username (without @) in `TELEGRAM_BOT_USERNAME` in `cloudflare/account.wrangler.jsonc`.
+3. Set the secrets: `npx wrangler secret put TELEGRAM_BOT_TOKEN --config cloudflare/account.wrangler.jsonc`, and `TELEGRAM_WEBHOOK_SECRET` the same way (a random string of 32 to 256 letters, digits, `_` or `-`). `PROVIDER_VAULT_KEY` must already be set (it is, for linked accounts).
+4. Create the tables: `npm run db:telegram`.
+5. Deploy the Worker: `npm run deploy:accounts`.
+6. Point Telegram at it: `curl "https://api.telegram.org/bot<TOKEN>/setWebhook" -d url=https://<account worker host>/webhooks/telegram -d secret_token=<TELEGRAM_WEBHOOK_SECRET> -d 'allowed_updates=["message","callback_query"]' -d drop_pending_updates=true`, then check it with `getWebhookInfo`.
+7. Optionally list the commands: `setMyCommands` with `unpair` ("Stop Clem answering here") and `help`.
+8. Ship the desktop build; Settings → Channels → Telegram then shows Get a code.
 
 ## Sources checked
 

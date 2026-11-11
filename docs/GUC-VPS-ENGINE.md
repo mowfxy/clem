@@ -173,7 +173,9 @@ GUC can force a password change every 30 days. When sign-in fails with an `auth`
   - The bot token is a Worker secret, never shipped to a user's engine.
   - Pairing codes are 6 digits and expire after 10 minutes.
   - Inbound messages from a paired chat go into an inbox. The user's engine (VPS or desktop) pulls the inbox, answers using the agent and tools, then posts the reply through the relay.
-- **Removal code:** the old Telegram removal code must be taken out. The user re-approved Telegram on 2026-11-11.
+- **Built (2026-11-11, re-approved by the owner):** `cloudflare/telegram.js` (the bot, `/webhooks/telegram`, `/telegram/*`), `cloudflare/telegram-schema.sql` (`npm run db:telegram`), `core/telegram/` (pairing codes, card and answer rendering, the AI guide), `desktop/engine/telegram.ts` (the relay) and migration `005_telegram.sql` (`telegram_seen`, `telegram_buttons`; `telegram_link` caches the last status). The removal code is gone. Details, and the owner's deploy checklist: docs/DESKTOP.md "Telegram".
+- **Host-agnostic:** the relay needs only `EngineHost.account` (the account service as the owner) and `EngineHost.converse` (an answer from the main thread's agent); `EngineHost.open` is optional. A VPS host gives it its own session for `account`. Its `converse` must run the main-thread agent headless; until then a VPS engine can deliver Telegram notifications and cards and run taps the engine owns (Stop, Mute, Not now, Check now, Send me the file), while messages wait for the desktop's window.
+- **Notifier:** `push` takes channels (`push`, `telegram`); `notifications_sent` dedupes per channel, quiet hours queue per channel (`notify_queue.channel`), the daily cap counts an event once across both.
 
 ## Tests
 - Location: `tests/guc-*.test.ts` and `tests/vps-*.test.ts`, run with `node --test` like the existing tests.
