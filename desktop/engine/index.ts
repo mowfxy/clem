@@ -1,15 +1,17 @@
 // Clem's background engine for one signed-in owner: its database, jobs and the GUC connector.
 // Hosted in-process by desktop/main.ts; worker/ will host the same class headless.
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
-import { materialFile, type HubFile, type HubOverview } from "../../core/guc/hub.ts";
+import { gucNow, type FileText, type GucNow } from "../../core/guc/ai-tools.ts";
+import { cairo, materialFile, type HubFile, type HubOverview } from "../../core/guc/hub.ts";
 import { urls } from "../../core/guc/parse.ts";
 import { active, cronLines } from "../../core/guc/schedule-rules.ts";
 import type { InboxItem, SettingsPatch, SubjectView } from "../../core/guc/settings.ts";
 import { saveFiles, type SaveStats } from "./check.ts";
 import { mirror, type MirrorResult } from "./drive-mirror.ts";
 import { DeviceStore, type FileStore } from "./storage.ts";
+import { extractText, textCache, type TextCacheOptions } from "./file-text.ts";
 import type { SyncResult } from "./guc-sync.ts";
 import type { GucErrorKind, GucProgress, GucStatus, GucSyncStats } from "../../core/guc/types.ts";
 import { migrate, openPglite, type Db } from "./db.ts";
@@ -48,14 +50,20 @@ export class Engine {
   /** One check per subject at a time; a second waits for the first. */
   private checks = new Map<string, Promise<unknown>>();
   private settling = new Map<string, { timer: ReturnType<typeof setTimeout>; files: boolean }>();
+  /** Text the AI read from CMS files (guc.read), kept briefly; this owner's only, since each owner has an engine. */
+  private texts: ReturnType<typeof textCache>;
+  private reading = new Map<string, Promise<FileText & { stored: boolean }>>();
+  /** Bumped whenever GUC data changes (a sync, a check, marking read), so the Now card's cached rows are read again. */
+  private version = 0;
+  private nowCache?: { key: string; value: GucNow };
 
-  private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore }) {
-    this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep;
+  private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore; text?: TextCacheOptions }) {
+    this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep; this.texts = textCache(o.text);
     this.store = o.store || new DeviceStore(host.paths.files || (host.paths.data ? join(host.paths.data, "..", "Files") : join(tmpdir(), "clem-guc-files", owner)));
   }
 
   /** `memory` keeps the database in memory (tests); `jobs: false` runs no background jobs. */
-  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore } = {}) {
+  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore; text?: TextCacheOptions } = {}) {
     if (!/^[\w-]{1,100}$/.test(owner)) throw Error("Invalid account");
     if (!o.memory) await mkdir(host.paths.data, { recursive: true });
     const { pg, db } = await openPglite(o.memory ? undefined : host.paths.data);
@@ -123,6 +131,7 @@ export class Engine {
     try {
       const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress });
       if (out) out.result = result;
+      this.version++;
       const { eventList, warnings, ...stats } = result;
       if (warnings.length) this.host.log("warn", "[guc] skipped: " + warnings.join(", "));
       if (!only) await this.db.query("update guc_account set last_sync = now(), last_error = null, stats = $2 where owner_id = $1", [this.owner, stats]);
@@ -148,7 +157,7 @@ export class Engine {
   courses() { return read.courses(this.db, this.owner); }
   schedule(weekStart: string) { return read.schedule(this.db, this.owner, weekStart); }
   announcements(o: { courseKey?: string; cursor?: string } = {}) { return read.announcements(this.db, this.owner, o); }
-  markRead(ids: string[]) { return read.markRead(this.db, this.owner, ids); }
+  markRead(ids: string[]) { this.version++; return read.markRead(this.db, this.owner, ids); }
   materials(courseKey: string) { return read.materials(this.db, this.owner, courseKey); }
   search(query: string) { return read.search(this.db, this.owner, query); }
   grades(courseKey?: string) { return read.grades(this.db, this.owner, courseKey); }
@@ -220,6 +229,7 @@ export class Engine {
         [this.owner, subjectId, trigger, !!out.result?.changed, client.requests, stats.bytes, stats.saved, stats.skipped, stats.deduped, drive?.uploaded || 0, Date.now() - started, error ?? drive?.error ?? null]);
       await this.db.query("delete from guc_checks where owner_id = $1 and subject_id = $2 and id not in (select id from guc_checks where owner_id = $1 and subject_id = $2 order by id desc limit 200)", [this.owner, subjectId]);
     }
+    this.version++;
     this.host.log("info", `[guc] check ${trigger}: ${client.requests} requests, ${stats.bytes} bytes, ${stats.saved} saved, ${stats.deduped} deduped, ${Date.now() - started} ms`);
     if (stats.saved || out.result?.events) this.host.changed?.();
     return { ...stats, requests: client.requests, ms: Date.now() - started, trigger, pageChanged: !!out.result?.changed, uploaded: drive?.uploaded || 0, drive };
@@ -248,6 +258,63 @@ export class Engine {
     return { added, removed };
   }
 
+  /** The main thread's Now card from GUC: today's classes, deadlines in the next 7 days and unread news. Cached until
+   *  the data changes (sync, check, marking read) or the Cairo hour turns. */
+  async now(t = Date.now()): Promise<GucNow> {
+    const c = cairo(t), key = `${this.version}:${c.ymd}:${c.time.slice(0, 2)}`;
+    if (this.nowCache?.key === key) return this.nowCache.value;
+    const [slots, deadlines, counts] = await Promise.all([read.schedule(this.db, this.owner, c.ymd).then((s) => s.slots), read.deadlines(this.db, this.owner), read.counts(this.db, this.owner)]);
+    const value = gucNow({ slots, deadlines, unread: counts.unread }, t);
+    this.nowCache = { key, value };
+    return value;
+  }
+
+  /** Where a saved CMS file's bytes are, in whichever store holds them: this PC now; a VPS or Drive store plugs in by
+   *  its location. A copy in a store this host can't reach reads as not saved (fetched from CMS instead). */
+  private stores(): Partial<Record<"device" | "vps" | "drive", FileStore>> { return { [this.store.location]: this.store }; }
+  private async savedBytes(materialId: string) {
+    const rows = await this.db.query<{ location: "device" | "vps" | "drive"; path: string }>("select location, path from file_objects where owner_id = $1 and file_id = $2", [this.owner, "guc:" + materialId]);
+    for (const r of rows) {
+      const store = this.stores()[r.location];
+      if (store && await store.has(r.path)) return store.read(r.path);
+    }
+    return undefined;
+  }
+  /** A CMS file's text for the AI (guc.read), whether or not it is saved: the saved copy, else the bytes fetched now
+   *  into memory only (never written, never recorded as saved), extracted, then dropped. The text stays in a small
+   *  LRU for TEXT_TTL_MS, so reading on costs no second download. */
+  async fileText(materialId: string): Promise<FileText & { stored: boolean; cached: boolean }> {
+    const [m] = await this.db.query<{ title: string; url: string; stored: boolean }>("select title, url, exists (select 1 from file_objects f where f.owner_id = $1 and f.file_id = 'guc:' || $2) as stored from guc_materials where owner_id = $1 and material_id = $2", [this.owner, materialId]);
+    if (!m?.url) throw new GucError("unavailable", "no such file", "This file is no longer on the CMS.");
+    const key = materialId + "\n" + m.url, hit = this.texts.get(key);
+    if (hit) return { ...hit, stored: m.stored, cached: true };
+    let job = this.reading.get(key);
+    if (!job) {
+      job = (async () => {
+        const { name, type } = materialFile(m.url, m.title);
+        let bytes = await this.savedBytes(materialId);
+        const stored = !!bytes;
+        if (!bytes) {
+          // The viewer's temp copy when it has one, else straight from CMS into memory.
+          const viewing = this.temp.get(materialId);
+          const temp = viewing && await viewing.then((f) => readFile(f.path), () => undefined);
+          if (temp) bytes = new Uint8Array(temp);
+          else {
+            const credentials = await this.credentials();
+            if (!credentials) throw new GucError("auth", "not connected");
+            this.reader ||= new GucClient(credentials, this.http, this.sleep);
+            bytes = (await fetchFile(this.reader, m.url)).bytes;
+          }
+        }
+        const text = await extractText(bytes, name, type);
+        this.texts.set(key, text);
+        return { ...text, stored };
+      })().finally(() => this.reading.delete(key));
+      this.reading.set(key, job);
+    }
+    return { ...(await job), cached: false };
+  }
+
   private tempDir() { return this.host.paths.temp || join(tmpdir(), "clem-guc", this.owner); }
   /** A CMS file to view: the saved copy when there is one, else fetched now into a temp folder (once per file per session).
    *  What save rules keep is saved by checks (desktop/engine/check.ts); anything else is only ever a temp copy. */
@@ -274,12 +341,13 @@ export class Engine {
     }
     return job;
   }
-  private async dropTemp() { this.temp.clear(); this.reader = undefined; await rm(this.tempDir(), { recursive: true, force: true }).catch(() => {}); }
+  private async dropTemp() { this.temp.clear(); this.texts.clear(); this.reader = undefined; await rm(this.tempDir(), { recursive: true, force: true }).catch(() => {}); }
 
   /** Forgets the password and every GUC row of this owner. */
   async disconnect() {
     await Promise.allSettled([this.running, this.light]);
     await this.dropTemp();
+    this.version++;
     await this.host.secrets.delete(this.key());
     await this.jobs?.unschedule("guc.sync").catch(() => {});
     for (const s of await this.jobs?.schedules("guc.check").catch(() => []) || []) await this.jobs?.unschedule("guc.check", s.key).catch(() => {});

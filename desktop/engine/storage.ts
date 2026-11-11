@@ -1,7 +1,7 @@
 // Where saved CMS files' bytes live (docs/GUC-VPS-ENGINE.md → Checks and saved files). Bytes are stored once per
 // content hash; a VPS store comes with the VPS step behind the same interface.
 import { createHash } from "node:crypto";
-import { copyFile, link, mkdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface FileStore {
@@ -9,6 +9,8 @@ export interface FileStore {
   /** Keeps `bytes` under their sha256 (written once: the same bytes are never stored twice); returns where. */
   put(sha256: string, ext: string, bytes: Uint8Array): Promise<string>;
   has(path: string): Promise<boolean>;
+  /** The stored bytes at `path` (the AI's guc.read; a VPS store fetches them over its tunnel). */
+  read(path: string): Promise<Uint8Array>;
   /** Shows a stored file in the workspace's Files under `fileId`, as the same bytes (a hard link, not a copy). */
   expose(fileId: string, path: string): Promise<void>;
   remove(path: string): Promise<void>;
@@ -33,6 +35,7 @@ export class DeviceStore implements FileStore {
     return path;
   }
   has(path: string) { return stat(path).then((s) => s.isFile(), () => false); }
+  async read(path: string) { return new Uint8Array(await readFile(path)); }
   async expose(fileId: string, path: string) {
     if (!/^[\w-]{1,100}$/.test(fileId)) throw Error("Invalid file");
     const target = join(this.files, fileId + ".blob");

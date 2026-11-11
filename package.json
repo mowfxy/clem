@@ -59,6 +59,7 @@
     "jose": "^6.2.12",
     "katex": "^0.16.47",
     "libheif-js": "1.23.2",
+    "lru-cache": "^11.5.3",
     "minisearch": "^7.2.0",
     "nodemailer": "10.0.9",
     "pdf-lib": "1.17.1",
