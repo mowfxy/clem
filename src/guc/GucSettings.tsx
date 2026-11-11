@@ -1,0 +1,83 @@
+import { useEffect, useState } from "react";
+import type { GucProgress, GucStatus } from "../../core/guc/types";
+import { Icon } from "../Icons";
+import { desktop } from "../desktop/bridge";
+import { confirmDialog } from "../dialogs";
+import { SettingRow } from "../settings/SettingsParts";
+import "../drive/drive.css";
+import "./guc.css";
+
+const offline: GucStatus = { connected: false, syncing: false, courses: 0, linked: 0 };
+const message = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
+const ago = (t?: number) => {
+  if (!t) return "not synced yet";
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? "synced just now" : m < 60 ? `synced ${m} min ago` : m < 1440 ? `synced ${Math.round(m / 60)} h ago` : "synced " + new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
+};
+
+/** The GUC status the main process keeps (desktop/engine), refreshed on mount and after every change. */
+export function useGuc() {
+  const [status, setStatus] = useState<GucStatus | null>(null);
+  const refresh = async () => { if (!desktop) return setStatus(offline); try { setStatus(await desktop.invoke({ action: "gucStatus" })); } catch { setStatus(offline); } };
+  useEffect(() => { void refresh(); }, []);
+  return { status, setStatus, refresh };
+}
+
+/** Settings → Connectors → GUC, under Google Drive. */
+export function GucRow({ onManage }: { onManage: () => void }) {
+  const { status } = useGuc();
+  const description = !status ? "Courses, grades and announcements." : status.connected ? (status.error ? "Needs attention" : `Connected · ${ago(status.lastSync)}`) : "Courses, grades and announcements.";
+  return <SettingRow lead={<span className="connector-tile"><Icon name="guc" size={22} /></span>} title="GUC" description={description}>
+    <button className="secondary" onClick={onManage}>{status?.connected ? "Manage" : "Connect"}</button>
+  </SettingRow>;
+}
+
+/** Sign in, watch the first sync, then sync now or disconnect. */
+export function GucManage() {
+  const { status, setStatus, refresh } = useGuc();
+  const [username, setUsername] = useState(""), [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false), [progress, setProgress] = useState<GucProgress | null>(null), [error, setError] = useState("");
+  useEffect(() => desktop?.onGuc?.((p) => setProgress(p)), []);
+  async function run(task: () => Promise<GucStatus>) {
+    setBusy(true); setError(""); setProgress(null);
+    try { setStatus(await task()); } catch (e) { setError(message(e)); await refresh(); } finally { setBusy(false); setProgress(null); }
+  }
+  const connect = () => {
+    const name = username.trim();
+    if (!/^(guc\\)?[\w.@-]{2,80}$/i.test(name)) return setError("Enter your GUC username, the one you use for the CMS.");
+    if (!password) return setError("Enter your GUC password.");
+    void run(async () => { const next = await desktop!.invoke({ action: "gucConnect", username: name, password }); setPassword(""); return next; });
+  };
+  const working = busy && <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />{progress?.label || "Signing in to GUC…"}</p>;
+
+  if (!desktop) return <div className="gd-picker gd-connect guc-manage"><p>GUC works in the Clem desktop app.</p></div>;
+  if (!status) return <div className="gd-picker gd-connect guc-manage"><div className="gd-skeleton" /><div className="gd-skeleton" /></div>;
+
+  if (!status.connected) return <form className="gd-picker gd-connect guc-manage" onSubmit={(e) => { e.preventDefault(); connect(); }}>
+    <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile guc-tile"><Icon name="guc" size={34} /></span></div>
+    <h3>Connect GUC</h3>
+    <p>Sign in with your GUC username and password. Clem reads your courses, schedule, grades and announcements from the CMS and the student portal.</p>
+    <label className="guc-field"><span>Username</span><input autoComplete="username" spellCheck={false} value={username} disabled={busy} onChange={(e) => setUsername(e.target.value)} placeholder="first.last" autoFocus /></label>
+    <label className="guc-field"><span>Password</span><input type="password" autoComplete="current-password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} /></label>
+    <p className="guc-note"><Icon name="verify" size={14} />Your password stays encrypted on this device and is never shown to the AI.</p>
+    {working || <button className="gd-google" type="submit">Connect</button>}
+    {error && <p className="gd-error" role="alert">{error}</p>}
+  </form>;
+
+  return <div className="gd-picker gd-connect guc-manage">
+    <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile guc-tile"><Icon name="guc" size={34} /></span></div>
+    <h3>GUC is connected</h3>
+    <p>Signed in as <b>{status.username}</b> · {ago(status.lastSync)}</p>
+    <ul>
+      <li><Icon name="check" size={14} />{status.courses ? `${status.courses} courses this term` : "Your courses"}</li>
+      <li><Icon name="check" size={14} />{status.linked ? `${status.linked} linked to subjects, checked every few hours` : "Link a course to a subject to check it for new files"}</li>
+      {status.stats && <li><Icon name="check" size={14} />Last check: {status.stats.requests} pages, {status.stats.skipped} unchanged</li>}
+    </ul>
+    {status.error && <p className="gd-error" role="alert">{status.error.message}</p>}
+    {error && <p className="gd-error" role="alert">{error}</p>}
+    {working || <button className="gd-google" onClick={() => void run(() => desktop!.invoke({ action: "gucSync" }))}>Sync now</button>}
+    <footer className="gd-foot guc-foot">
+      <button className="gd-disconnect" disabled={busy} onClick={() => void confirmDialog({ title: "Disconnect GUC?", message: "Clem forgets your GUC password and the courses, grades and announcements it saved. Nothing on GUC changes.", confirm: "Disconnect", danger: true }).then((yes) => { if (yes) void run(() => desktop!.invoke({ action: "gucDisconnect" })); })}>Disconnect</button>
+    </footer>
+  </div>;
+}

@@ -64,6 +64,8 @@ import {DriveLogo} from './BrandLogos';
 import {FilePanel,canEditInPanel,type FileFocus,type FilePanelHandle,type FilePointer,type PointerBox} from './files/FilePanel';
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
+import {GucManage,GucRow} from './guc/GucSettings';
+import {visibleConnectors} from '../core/connectors';
 import {DriveIcon} from './drive/DriveIcon';
 import {refreshDrive,driveSources,driveFolder,driveList as driveListText,uploadToDrive,updateInDrive,renameInDrive,trashInDrive,driveBytes,driveError,isGoogleFormat,type DriveItem,type DriveSyncState} from './drive/drive';
 import {capabilityIndex,clemPlaybooks,plansPlaybook,planIntent} from '../core/clem-skills';
@@ -2869,6 +2871,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     ) : settingsTab === "Connectors" ? (
                       <SettingsCard>
                         <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Read live, never copied."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
+                        {visibleConnectors().map(c=>c.id==="guc"?<GucRow key={c.id+(modal==="guc"?"-open":"")} onManage={()=>setModal("guc")}/>:null)}
                       </SettingsCard>
                     ) : settingsTab === "Linked folders" ? (
                       <><SettingsCard>{desktop ? <SettingsPopup title="Your folders" action="Manage folders">{(({value,picker})=>value?<>{picker}<LinkedFolders scope={value}/></>:<p className="muted">Create a project or subject, or start a chat, to link folders to it.</p>)(settingsScopes())}</SettingsPopup> : <p className="muted">Available in the desktop app.</p>}</SettingsCard>{desktop&&<SettingsCard title="Changes Clem made"><FolderChanges onError={setToast}/></SettingsCard>}{desktop&&<SettingsCard title="Files and changes"><Suspense fallback={null}><FolderWatchSetting onBrowse={()=>setFolderView({})}/></Suspense></SettingsCard>}</>
@@ -3227,6 +3230,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                             ? "New subject"
                             : modal === "drive"
                                 ? "Google Drive"
+                                : modal === "guc"
+                                ? "GUC"
                                 : modal === "drive-folder"
                                 ? "Link a Google Drive folder"
                                 : modal === "drive-space-files"
@@ -3473,6 +3478,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               if (route !== "/app") navigate("/app");
               setTimeout(() => composer.current?.focus(), 80);
             }} />
+          ) : modal === "guc" ? (
+            <GucManage />
           ) : modal === "attach-existing" ? (
             <SavedFilePicker files={state.files} spaceId={spaceId} attached={attachments} onPick={(f) => { setAttachments((a) => (a.includes(f.id) ? a : [...a, f.id])); setModal(null); }} />
           ) : null}
