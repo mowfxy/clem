@@ -1,0 +1,18 @@
+# Clem's worker without Docker: a systemd user unit running Node 22+ (installed to ~/.config/systemd/user by the desktop).
+# No Postgres here: the worker keeps its database with PGlite under state/. Its port listens on 127.0.0.1 only.
+[Unit]
+Description=Clem background worker
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/clem/OWNER/worker
+Environment=CLEM_DATA=%h/clem/OWNER/worker/state
+Environment=CLEM_FILES=%h/clem/OWNER/files
+Environment=CLEM_KEY_FILE=%h/clem/OWNER/worker/.key
+EnvironmentFile=-%h/clem/OWNER/worker/.env
+ExecStart=/usr/bin/env node index.cjs
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
