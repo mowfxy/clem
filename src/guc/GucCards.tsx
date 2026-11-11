@@ -123,8 +123,8 @@ export function SaveRules({ subjectId, setup = false, actions }: { subjectId: st
 function useNow(every = 30_000) { const [now, setNow] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setNow(Date.now()), every); return () => clearInterval(t); }, [every]); return now; }
 /** "Sun 15 Nov, 12:00" on Cairo's clock. */
 const runLabel = (t: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t).replace(/^(\w+) (\d+ \w+),? /, "$1 $2, ");
-/** One time on every GUC day, nothing else: what the Daily button makes. */
-const isDaily = (c: CheckSchedule) => c.mode === "custom" && !c.every && !c.during && c.times.length === GUC_DAYS.length && new Set(c.times.map((t) => t.time)).size === 1 && GUC_DAYS.every((d) => c.times.some((t) => t.day === d));
+/** One time on every GUC day (Friday too or not), nothing else: what the Daily button makes or "every day at 8pm". */
+const isDaily = (c: CheckSchedule) => c.mode === "custom" && !c.every && !c.during && new Set(c.times.map((t) => t.day)).size === c.times.length && new Set(c.times.map((t) => t.time)).size === 1 && GUC_DAYS.every((d) => c.times.some((t) => t.day === d));
 export function CheckSchedule({ subjectId, setup = false, actions }: { subjectId: string; setup?: boolean; actions?: GucActions }) {
   const v = useSubject(subjectId), now = useNow(), [checking, setChecking] = useState(false);
   if (!v.data) return <Loading icon="clock" />;
@@ -140,7 +140,7 @@ export function CheckSchedule({ subjectId, setup = false, actions }: { subjectId
       <button type="button" role="radio" aria-checked={isDaily(check)} onClick={() => set({ check: { mode: "custom", times: dailyChecks(daily), tz: check.tz } })}>Daily</button>
       {custom && <button type="button" role="radio" aria-checked>Custom</button>}
       <button type="button" role="radio" aria-checked={check.mode === "off"} onClick={() => set({ check: { mode: "off", times: [], tz: check.tz } })}>Off</button>
-      {isDaily(check) && <label className="guc-time"><span>at</span><input type="time" aria-label="Check time" value={daily} onChange={(e) => /^\d{2}:\d{2}$/.test(e.target.value) && set({ check: { mode: "custom", times: dailyChecks(e.target.value), tz: check.tz } })} /></label>}
+      {isDaily(check) && <label className="guc-time"><span>at</span><input type="time" aria-label="Check time" value={daily} onChange={(e) => /^\d{2}:\d{2}$/.test(e.target.value) && set({ check: { mode: "custom", times: check.times.map((t) => ({ ...t, time: e.target.value })), tz: check.tz } })} /></label>}
     </div>
     <p className="guc-card-line">{describeChecks(check)}{check.mode !== "off" ? " · Cairo time" : ""}</p>
     {runs.length > 1 && <p className="guc-card-line">Coming up: {runs.map(runLabel).join(" · ")}</p>}
