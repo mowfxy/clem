@@ -1174,11 +1174,12 @@ void app.whenReady().then(async () => {
   const engines = new Map<string, Promise<Engine>>();
   const engineHost = (owner: string): EngineHost => ({
     secrets: { get: async (key) => vault.read(key, undefined), set: (key, value) => vault.write(key, value), delete: (key) => vault.remove(key) },
-    notify: ({ title, body }) => {
+    // Works with the window closed to the tray; a click opens the exact item (a #/app route, or a chat and its message).
+    notify: ({ title, body, open }) => {
       if (!Notification.isSupported()) return;
       const note = new Notification({ title, body, icon: join(__dirname, "../desktop/icon.ico") });
       shown.add(note);
-      note.on("click", () => { shown.delete(note); showWindow(); });
+      note.on("click", () => { shown.delete(note); showWindow(); if (open && !window.isDestroyed()) window.webContents.send("clem:open", open); });
       note.on("close", () => shown.delete(note));
       note.show();
     },
@@ -1187,6 +1188,14 @@ void app.whenReady().then(async () => {
     // The subject copies go through the same Drive connection as the rest of Clem (desktop/drive-live.ts).
     drive: { connected: () => driveLive.connected(), folder: (parent, name) => driveLive.folderIn(parent, name), upload: (folder, name, path, type) => driveLive.uploadFile(folder, name, path, type) },
     changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }),
+    // The organizer's sweeps read the saved workspace (the window writes it) and ask Clem's organizer model for short
+    // JSON answers through the same path as any answer, without tools.
+    workspace: () => disk.readState(owner),
+    complete: async ({ system, user, model, reasoning }) => {
+      let text = "";
+      await answerWith(owner, "organizer-" + randomUUID(), model, reasoning, user, (event) => { if (event?.type === "delta") text += event.text || ""; }, { instructions: system });
+      return text;
+    },
   });
   const engineFor = (owner: string) => {
     let engine = engines.get(owner);
@@ -1201,7 +1210,8 @@ void app.whenReady().then(async () => {
   const gucProgress = (progress: unknown) => { if (!window.isDestroyed()) window.webContents.send("clem:guc", progress); };
   const gucStatus = async (owner: string) => engines.has(owner) || await vault.read("guc-" + owner, undefined) ? (await engineFor(owner)).status() : { connected: false, syncing: false, courses: 0, linked: 0 };
   // Scheduled GUC syncs run while Clem is open (in the tray too), so the engine starts with a connected account.
-  void authReady.then(async () => { const user = await auth.user(false); if (user && await vault.read("guc-" + user.id, undefined)) await engineFor(user.id); }).catch(() => {});
+  // The organizer runs for every signed-in owner, GUC or not, so its sweeps and reminders work with Clem in the tray.
+  void authReady.then(async () => { const user = await auth.user(false); if (user) await engineFor(user.id); }).catch(() => {});
   const reminderTick = () => void auth.user(false).then((user) => user && reminders.tick(user.id)).catch((error) => console.warn("[reminders]", (error as Error)?.message));
   setTimeout(reminderTick, 90_000).unref();
   setInterval(reminderTick, 5 * 60_000).unref();
@@ -1433,6 +1443,24 @@ void app.whenReady().then(async () => {
     if (request.action === "gucConnect") return (await engineFor(user.id)).connect(request.username, request.password, gucProgress);
     if (request.action === "gucSync") { const engine = await engineFor(user.id); return engine.sync(gucProgress).catch(() => engine.status()); }
     if (request.action === "gucDisconnect") return (await engineFor(user.id)).disconnect();
+    // Clem's organizer (desktop/engine/organizer.ts): settings, the window's inbox and Undo, the log, mutes and watches.
+    if (request.action.startsWith("pro")) {
+      const o = (await engineFor(user.id)).organizer;
+      if (request.action === "proSettings") return request.set ? o.setSettings(request.set) : o.settings();
+      if (request.action === "proInbox") return o.inbox();
+      if (request.action === "proAck") return o.ack(request);
+      if (request.action === "proLog") return o.log();
+      if (request.action === "proStatus") return o.statuses(request.keys);
+      if (request.action === "proUndo") return o.undo(request.key);
+      if (request.action === "proConfirm") return o.confirm(request.key);
+      if (request.action === "proDismiss") return o.dismiss(request.key);
+      if (request.action === "proMute") return o.mute(request.key);
+      if (request.action === "proUnmute") return o.unmute(request.key);
+      if (request.action === "proMutes") return o.mutesList();
+      if (request.action === "proPoke") return o.poke(request.reason);
+      if (request.action === "proWatches") return o.watches();
+      if (request.action === "proStopWatch") return o.stopWatch(request.id);
+    }
     if (request.action.startsWith("guc")) {
       // Reads open the engine only for a connected account; anything else has nothing to show yet.
       if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) {
@@ -2336,6 +2364,15 @@ void app.whenReady().then(async () => {
       };
       const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
+        // A watch ("tell me when the midterm room is posted"): kept by the organizer, answered with its card.
+        if (tool?.action === "clem.watch" || tool?.action === "clem.unwatch") {
+          const o = (await engineFor(user.id)).organizer;
+          if (tool.action === "clem.unwatch") { await o.stopWatch(String(tool.id || "")); return { ok: true }; }
+          if (typeof tool.text !== "string" || tool.text.trim().length < 3) return { error: "Say what to watch for in \"text\"." };
+          const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string }[];
+          const w = await o.watch(tool.text.slice(0, 300), spaces.map((s) => ({ id: s.id, name: s.name, ...(/^[A-Z]{2,5} ?\d{3}/.test(s.description || "") ? { code: s.description!.match(/^[A-Z]{2,5} ?\d{3}/)![0] } : {}) })), { repeat: tool.repeat === true, channel: tool.push === false ? "app" : "push" });
+          return { ok: true, watch: w, card: "Put this card in your reply so they can stop it:\n```clem-card\n" + JSON.stringify({ type: "watch", id: w.id, text: w.text }) + "\n```" };
+        }
         // GUC (desktop/engine/ai-tools.ts): the signed-in owner's engine only; a subject chat's own subject is the default.
         if (isGucAction(tool?.action)) {
           if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) return { error: "GUC isn't connected. The person can connect it in Settings → Connectors → GUC." };

@@ -22,6 +22,7 @@ import * as subjects from "./subjects.ts";
 import { syncGuc } from "./guc-sync.ts";
 import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
+import { Organizer } from "./organizer.ts";
 import type { PGlite } from "@electric-sql/pglite";
 
 const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive"];
@@ -56,14 +57,17 @@ export class Engine {
   /** Bumped whenever GUC data changes (a sync, a check, marking read), so the Now card's cached rows are read again. */
   private version = 0;
   private nowCache?: { key: string; value: GucNow };
+  /** Clem's organizer: sweeps, reminders, watches and notifications (docs/MAIN-THREAD.md "Proactivity"). */
+  readonly organizer: Organizer;
 
-  private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore; text?: TextCacheOptions }) {
+  private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore; text?: TextCacheOptions; clock?: () => number }) {
     this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep; this.texts = textCache(o.text);
+    this.organizer = new Organizer({ db, owner, host, clock: o.clock, guc: () => this.gucFacts() });
     this.store = o.store || new DeviceStore(host.paths.files || (host.paths.data ? join(host.paths.data, "..", "Files") : join(tmpdir(), "clem-guc-files", owner)));
   }
 
   /** `memory` keeps the database in memory (tests); `jobs: false` runs no background jobs. */
-  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore; text?: TextCacheOptions } = {}) {
+  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore; text?: TextCacheOptions; clock?: () => number } = {}) {
     if (!/^[\w-]{1,100}$/.test(owner)) throw Error("Invalid account");
     if (!o.memory) await mkdir(host.paths.data, { recursive: true });
     const { pg, db } = await openPglite(o.memory ? undefined : host.paths.data);
@@ -87,6 +91,13 @@ export class Engine {
       try { await this.check(subjectId, "schedule"); } catch (e) { if (!(e instanceof GucError && (e.kind === "auth" || e.detail === "not linked"))) throw e; }
     }, { retries: 2, delay: 120 });
     if (await this.credentials()) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
+    await this.organizer.start(this.jobs);
+  }
+  /** What the organizer reads from GUC: this week's classes, deadlines, links and the Now card; nothing while unconnected. */
+  private async gucFacts() {
+    if (!(await this.credentials())) return { slots: [], deadlines: [], links: [], now: null };
+    const [slots, deadlines, links, now] = await Promise.all([read.schedule(this.db, this.owner, cairo(Date.now()).ymd).then((s) => s.slots), read.deadlines(this.db, this.owner), this.links(), this.now()]);
+    return { slots, deadlines, links, now };
   }
 
   private key() { return "guc-" + this.owner; }
@@ -137,6 +148,7 @@ export class Engine {
       if (!only) await this.db.query("update guc_account set last_sync = now(), last_error = null, stats = $2 where owner_id = $1", [this.owner, stats]);
       await this.db.query("delete from notifications_sent where owner_id = $1 and event_key like 'guc-error:%'", [this.owner]);
       this.host.log("info", `[guc] synced: ${stats.requests} requests, ${stats.skipped} unchanged, ${stats.events} new, ${stats.ms} ms`);
+      if (stats.events) void this.organizer.poke("sync").catch(() => {});
       return this.status();
     } catch (e) {
       const error = asGucError(e);
@@ -231,7 +243,7 @@ export class Engine {
     }
     this.version++;
     this.host.log("info", `[guc] check ${trigger}: ${client.requests} requests, ${stats.bytes} bytes, ${stats.saved} saved, ${stats.deduped} deduped, ${Date.now() - started} ms`);
-    if (stats.saved || out.result?.events) this.host.changed?.();
+    if (stats.saved || out.result?.events) { this.host.changed?.(); void this.organizer.poke("check").catch(() => {}); }
     return { ...stats, requests: client.requests, ms: Date.now() - started, trigger, pageChanged: !!out.result?.changed, uploaded: drive?.uploaded || 0, drive };
   }
   /** Copies the subject's saved files Drive doesn't have yet (docs: Drive copy). */
@@ -359,6 +371,7 @@ export class Engine {
   }
 
   async close() {
+    await this.organizer.close()?.catch(() => {});
     for (const { timer } of this.settling.values()) clearTimeout(timer);
     this.settling.clear();
     await Promise.allSettled([this.running, this.light, ...this.checks.values()]);

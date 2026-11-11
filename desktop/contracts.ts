@@ -1,6 +1,7 @@
 import {syncSchemas} from "../core/sync.ts";
 import { z } from "zod";
 import { settingsPatch } from "../core/guc/settings.ts";
+import { proPatch } from "../core/proactivity/settings.ts";
 
 export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
 export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };
@@ -11,6 +12,7 @@ export const scopeSchema = z
 /** A backup to preview or restore (desktop/backup-service.ts): a file in a folder the person chose, or one in Drive. */
 const backupItem = z.union([z.object({ source: z.literal("folder"), path: z.string().min(3).max(1000) }), z.object({ source: z.literal("drive"), id: z.string().regex(/^[\w-]{10,150}$/) })]);
 /** A CMS course key ("<courseId>:<seasonId>") and a GUC row id. */
+const proKey = z.string().min(1).max(300);
 const gucCourse = z.string().regex(/^\d{1,10}:\d{1,10}$/), gucId = z.string().regex(/^[\w-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
@@ -55,6 +57,21 @@ export const requestSchema = z.discriminatedUnion("action", [
   // What checks saved and found for linked subjects that the window has not shown yet, and marking it shown.
   z.object({ action: z.literal("gucInbox") }),
   z.object({ action: z.literal("gucAckInbox"), keys: z.array(z.string().min(1).max(300)).min(1).max(300) }),
+  // Clem's organizer (desktop/engine/organizer.ts).
+  z.object({ action: z.literal("proSettings"), set: proPatch.optional() }),
+  z.object({ action: z.literal("proInbox") }),
+  z.object({ action: z.literal("proAck"), posts: z.array(z.string().regex(/^pro-[\w-]{1,60}$/)).max(100).optional(), results: z.array(z.object({ key: proKey, ok: z.boolean(), undo: z.any().optional(), error: z.string().max(300).optional() })).max(200).optional() }),
+  z.object({ action: z.literal("proLog") }),
+  z.object({ action: z.literal("proStatus"), keys: z.array(proKey).min(1).max(100) }),
+  z.object({ action: z.literal("proUndo"), key: proKey }),
+  z.object({ action: z.literal("proConfirm"), key: proKey }),
+  z.object({ action: z.literal("proDismiss"), key: proKey }),
+  z.object({ action: z.literal("proMute"), key: proKey }),
+  z.object({ action: z.literal("proUnmute"), key: proKey }),
+  z.object({ action: z.literal("proMutes") }),
+  z.object({ action: z.literal("proPoke"), reason: z.enum(["plans", "files", "study", "spaces", "open"]) }),
+  z.object({ action: z.literal("proWatches") }),
+  z.object({ action: z.literal("proStopWatch"), id: z.string().regex(/^[\w-]{1,80}$/) }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),
@@ -300,7 +317,7 @@ export type DesktopBridge = {
   /** Progress of a GUC sync the window asked for ("Checking your courses… 3 of 7"). */
   onGuc?: (listener: (event: import("../core/guc/types").GucProgress) => void) => () => void;
   /** Something to open from outside the window: a flashcard reminder's subject, at its review (desktop/study-reminders.ts). */
-  onOpen?: (listener: (event: { review?: string }) => void) => () => void;
+  onOpen?: (listener: (event: { review?: string; route?: string; chat?: string; message?: string }) => void) => () => void;
   startDrag?: (path: string) => void;
   /** Runs a chat code block on this computer (desktop/code-runner.ts): start it, send it a line of input (null ends input), or stop it. */
   runCode?: (request: { op: "start"; id: string; lang: string; code: string } | { op: "input"; id: string; text: string | null } | { op: "stop"; id: string }) => Promise<unknown>;

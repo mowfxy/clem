@@ -55,7 +55,7 @@ export function toolRequest(text: string): Record<string, unknown> | null {
   }
 }
 // Kinetra's own actions, the file tools (core/file-tools.ts) and GUC's (core/guc/ai-tools.ts).
-export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop", "editpdf", "find", "attach", "batch", ...GUC_ACTIONS]);
+export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop", "editpdf", "find", "attach", "batch", ...GUC_ACTIONS, "clem.watch", "clem.unwatch"]);
 const START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
 /** Index just past the JSON object that opens at `start`, or -1 when it never closes. Strings are skipped. */
 function objectEnd(text: string, start: number) {
