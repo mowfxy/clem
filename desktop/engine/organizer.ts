@@ -15,7 +15,7 @@ import { capPushes, muteFor, muteKey, slotChanges, type Change, type ChangeKind,
 import { datedSlots, deadlineReminders, dueAt, leftText, type Deadline } from "../../core/proactivity/rules.ts";
 import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, quietEnd, readPro, type EventKind, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
-import { digestLine, planSweep, readReply, sweepCard, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
+import { changeText, digestLine, planSweep, readReply, sweepCard, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
 import { live, parseWatch, type Watch } from "../../core/proactivity/watches.ts";
 import type { Db } from "./db.ts";
 import type { EngineHost } from "./host.ts";
@@ -169,7 +169,7 @@ export class Organizer {
     const pushable = [...said.filter((r) => s.events[KIND_OF[r.change.kind]].channels.includes("push") && s.events[KIND_OF[r.change.kind]].on && !asked.some((a) => a.change.key === r.change.key)), ...asked];
     const capped = capPushes(s.level, await this.pushedToday(), pushable.filter((p) => s.level !== "quiet" || p.level === "urgent"));
     const digest = plan.rated.filter((r) => r.level === "digest");
-    for (const r of said) await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: r.change.title.slice(0, 300) }, r.change.title.slice(0, 300), "said", { change: r.change, level: r.level });
+    for (const r of said) await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: changeText(r.change).slice(0, 300) }, changeText(r.change), "said", { change: r.change, level: r.level });
     const lectures = plan.lectures.filter((l) => !plan.rated.some((r) => r.level === "silent" && r.change.materialId === l.materialId));
     for (const l of lectures) await this.record(l.key, kind, { type: "note", kind: "lecture", text: `New lecture: ${l.title}`.slice(0, 300), spaceId: l.subjectId, key: l.key }, `New lecture: ${l.title}`, "said");
     const urgent = said.some((r) => r.level === "urgent") || plan.hits.length > 0 || taken.some((a) => needsConfirm(a) || (a.type === "note" && a.kind === "clash"));
