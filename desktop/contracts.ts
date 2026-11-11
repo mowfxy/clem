@@ -9,6 +9,8 @@ export const scopeSchema = z
   .regex(/^(chat|project|subject|user):[a-zA-Z0-9_-]{1,100}$/);
 /** A backup to preview or restore (desktop/backup-service.ts): a file in a folder the person chose, or one in Drive. */
 const backupItem = z.union([z.object({ source: z.literal("folder"), path: z.string().min(3).max(1000) }), z.object({ source: z.literal("drive"), id: z.string().regex(/^[\w-]{10,150}$/) })]);
+/** A CMS course key ("<courseId>:<seasonId>") and a GUC row id. */
+const gucCourse = z.string().regex(/^\d{1,10}:\d{1,10}$/), gucId = z.string().regex(/^[\w-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000), diagnostics:z.boolean().optional() }),
@@ -24,6 +26,19 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("gucStatus") }),
   z.object({ action: z.literal("gucSync") }),
   z.object({ action: z.literal("gucDisconnect") }),
+  // The GUC hub's reads (desktop/engine/guc-read.ts), all for the signed-in owner only.
+  z.object({ action: z.literal("gucOverview") }),
+  z.object({ action: z.literal("gucCourses") }),
+  z.object({ action: z.literal("gucSchedule"), weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  z.object({ action: z.literal("gucAnnouncements"), courseId: gucCourse.optional(), cursor: z.string().regex(/^\d{1,15}\.[\w-]{1,100}$/).optional() }),
+  z.object({ action: z.literal("gucMarkRead"), ids: z.array(gucId).min(1).max(200) }),
+  z.object({ action: z.literal("gucMaterials"), courseId: gucCourse }),
+  z.object({ action: z.literal("gucSearch"), query: z.string().trim().min(2).max(200) }),
+  z.object({ action: z.literal("gucGrades"), courseId: gucCourse.optional() }),
+  z.object({ action: z.literal("gucDeadlines") }),
+  /** Makes a CMS file ready to view (saved copy, or fetched to a temp folder) and returns its name, type and size; the
+   *  bytes come from clem://app/api/local/guc/file/<id>. */
+  z.object({ action: z.literal("gucFile"), materialId: gucId }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),

@@ -1,51 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { stableId, urls } from "../core/guc/parse.ts";
+import { urls } from "../core/guc/parse.ts";
 import { diffSnapshots } from "../core/guc/diff.ts";
 import { emptySnapshot } from "../core/guc/types.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { GucError } from "../desktop/engine/errors.ts";
 import { GucClient, login, type Http } from "../desktop/engine/guc-client.ts";
-import type { EngineHost } from "../desktop/engine/host.ts";
-
-const fixture = (name: string) => readFileSync(new URL(`./fixtures/guc/${name}.html`, import.meta.url), "utf8");
-const migrations = fileURLToPath(new URL("../desktop/engine/migrations/", import.meta.url));
-const noWait = async () => {};
-
-/** A fake GUC: pages by URL, ETags, a password check and a log of every request. */
-function fakeGuc(pages: Record<string, string>, o: { password?: string; domain?: string; etags?: boolean } = {}) {
-  const log: { url: string; method: string; domain?: string; conditional: boolean }[] = [];
-  const http: Http = async (r, c) => {
-    log.push({ url: r.url, method: r.method, domain: c.domain, conditional: !!r.headers?.["If-None-Match"] });
-    if (c.password !== (o.password ?? "secret") || (o.domain !== undefined && c.domain !== o.domain)) return { status: 401, headers: {}, body: "<h1>401 - Unauthorized: Access is denied due to invalid credentials.</h1>" };
-    const body = pages[r.url];
-    if (body === undefined) return { status: 404, headers: {}, body: "Not found" };
-    const etag = '"' + stableId(body) + '"';
-    if (o.etags && r.headers?.["If-None-Match"] === etag) return { status: 304, headers: { etag }, body: "" };
-    return { status: 200, headers: o.etags ? { etag } : {}, body };
-  };
-  return { http, log };
-}
-function host(): EngineHost & { notices: string[]; store: Map<string, unknown> } {
-  const store = new Map<string, unknown>(), notices: string[] = [];
-  return {
-    store, notices,
-    secrets: { get: async (k) => store.get(k) as any, set: async (k, v) => { store.set(k, v); }, delete: async (k) => { store.delete(k); } },
-    notify: (n) => notices.push(n.body),
-    paths: { data: "", migrations },
-    log: () => {},
-  };
-}
-const site = () => ({
-  [urls.home]: fixture("cms-home"),
-  [urls.schedule]: fixture("schedule"),
-  [urls.transcript]: fixture("transcript"),
-  [urls.course(1201, 64)]: fixture("cms-course"),
-  [urls.course(1202, 64)]: fixture("cms-course").replaceAll("900", "800").replaceAll("Embedded Systems", "Microprocessors"),
-  [urls.course(1203, 64)]: fixture("cms-course").replaceAll("900", "700"),
-});
+import { fakeGuc, fixture, host, noWait, site } from "./guc-fake.ts";
 
 test("connecting checks the password, keeps it encrypted, and the first sync is a quiet baseline", async () => {
   const pages = site(), guc = fakeGuc(pages), h = host();

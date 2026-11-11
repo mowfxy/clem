@@ -1,11 +1,15 @@
 // Clem's background engine for one signed-in owner: its database, jobs and the GUC connector.
 // Hosted in-process by desktop/main.ts; worker/ will host the same class headless.
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { extname, join } from "node:path";
+import { materialFile, type HubFile, type HubOverview } from "../../core/guc/hub.ts";
 import { urls } from "../../core/guc/parse.ts";
 import type { GucErrorKind, GucProgress, GucStatus, GucSyncStats } from "../../core/guc/types.ts";
 import { migrate, openPglite, type Db } from "./db.ts";
 import { GucError, asGucError } from "./errors.ts";
-import { GucClient, login, type Credentials, type Http } from "./guc-client.ts";
+import { GucClient, fetchFile, login, type Credentials, type Http } from "./guc-client.ts";
+import * as read from "./guc-read.ts";
 import { syncGuc } from "./guc-sync.ts";
 import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
@@ -24,6 +28,9 @@ export class Engine {
   private http?: Http;
   private sleep?: (ms: number) => Promise<void>;
   private running?: Promise<GucStatus>;
+  private reader?: GucClient;
+  /** CMS files fetched for viewing: kept in a temp folder for this session only, never in the workspace. */
+  private temp = new Map<string, Promise<HubFile & { path: string }>>();
 
   private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void> }) {
     this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep;
@@ -103,9 +110,52 @@ export class Engine {
     }
   }
 
+  // ---------- The GUC hub's reads (src/guc/GucHub.tsx) ----------
+  async overview(): Promise<HubOverview> {
+    const [status, counts] = await Promise.all([this.status(), read.counts(this.db, this.owner)]);
+    return { connected: status.connected, syncing: status.syncing, username: status.username, lastSync: status.lastSync, error: status.error, counts };
+  }
+  courses() { return read.courses(this.db, this.owner); }
+  schedule(weekStart: string) { return read.schedule(this.db, this.owner, weekStart); }
+  announcements(o: { courseKey?: string; cursor?: string } = {}) { return read.announcements(this.db, this.owner, o); }
+  markRead(ids: string[]) { return read.markRead(this.db, this.owner, ids); }
+  materials(courseKey: string) { return read.materials(this.db, this.owner, courseKey); }
+  search(query: string) { return read.search(this.db, this.owner, query); }
+  grades(courseKey?: string) { return read.grades(this.db, this.owner, courseKey); }
+  deadlines() { return read.deadlines(this.db, this.owner); }
+
+  private tempDir() { return this.host.paths.temp || join(tmpdir(), "clem-guc", this.owner); }
+  /** A CMS file to view: the saved copy when there is one, else fetched now into a temp folder (once per file per session).
+   *  Save rules (a later step) decide what is kept for good; until then nothing is. */
+  async file(materialId: string): Promise<HubFile & { path: string }> {
+    const [m] = await this.db.query<{ title: string; url: string }>("select title, url from guc_materials where owner_id = $1 and material_id = $2", [this.owner, materialId]);
+    if (!m?.url) throw new GucError("unavailable", "no such file", "This file is no longer on the CMS.");
+    const { name, type } = materialFile(m.url, m.title);
+    const [saved] = await this.db.query<{ path: string; size: string }>("select path, size from file_objects where owner_id = $1 and file_id = $2 and location = 'device'", [this.owner, "guc:" + materialId]);
+    if (saved && await stat(saved.path).then(() => true, () => false)) return { id: materialId, name, type, size: Number(saved.size), stored: true, path: saved.path };
+    let job = this.temp.get(materialId);
+    if (!job) {
+      job = (async () => {
+        const credentials = await this.credentials();
+        if (!credentials) throw new GucError("auth", "not connected");
+        this.reader ||= new GucClient(credentials, this.http, this.sleep);
+        const file = await fetchFile(this.reader, m.url);
+        await mkdir(this.tempDir(), { recursive: true });
+        const path = join(this.tempDir(), materialId.replace(/[^\w-]/g, "_") + extname(name));
+        await writeFile(path, file.bytes);
+        return { id: materialId, name, type: type === "application/octet-stream" && file.type ? file.type : type, size: file.bytes.length, stored: false, path };
+      })();
+      this.temp.set(materialId, job);
+      job.catch(() => this.temp.delete(materialId));
+    }
+    return job;
+  }
+  private async dropTemp() { this.temp.clear(); this.reader = undefined; await rm(this.tempDir(), { recursive: true, force: true }).catch(() => {}); }
+
   /** Forgets the password and every GUC row of this owner. */
   async disconnect() {
     await this.running?.catch(() => {});
+    await this.dropTemp();
     await this.host.secrets.delete(this.key());
     await this.jobs?.unschedule("guc.sync").catch(() => {});
     await this.db.tx(async (t) => {
@@ -118,6 +168,7 @@ export class Engine {
   async close() {
     await this.running?.catch(() => {});
     await this.jobs?.stop().catch(() => {});
+    await this.dropTemp();
     await this.pg.close();
   }
 }

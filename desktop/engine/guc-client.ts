@@ -7,16 +7,17 @@ import { createHash } from "node:crypto";
 import { pageState } from "../../core/guc/parse.ts";
 import { GucError, asGucError } from "./errors.ts";
 
-export type HttpRequest = { method: "GET" | "POST"; url: string; headers?: Record<string, string>; form?: Record<string, string> };
-export type HttpResponse = { status: number; headers: Record<string, string | undefined>; body: string };
+export type HttpRequest = { method: "GET" | "POST"; url: string; headers?: Record<string, string>; form?: Record<string, string>; /** The body as bytes (a file), not text. */ binary?: boolean };
+export type HttpResponse = { status: number; headers: Record<string, string | undefined>; body: string; bytes?: Uint8Array };
 export type Credentials = { username: string; password: string; domain?: string };
 /** One NTLM exchange. Swapped for a fake in tests. */
 export type Http = (request: HttpRequest, credentials: Credentials) => Promise<HttpResponse>;
 
 export function ntlmHttp(agent = new Agent({ keepAlive: true, maxSockets: 4 })): Http {
   return (request, c) => new Promise((resolve, reject) => {
-    const options = { url: request.url, username: c.username, password: c.password, domain: c.domain || "", workstation: "", agent, headers: request.headers, parameters: request.form, timeout: 30_000 };
-    (request.method === "POST" ? httpntlm.post : httpntlm.get)(options, (error, res) => error ? reject(error) : resolve({ status: res.statusCode, headers: res.headers || {}, body: res.body || "" }));
+    const options = { url: request.url, username: c.username, password: c.password, domain: c.domain || "", workstation: "", agent, headers: request.headers, parameters: request.form, timeout: request.binary ? 120_000 : 30_000, binary: request.binary };
+    (request.method === "POST" ? httpntlm.post : httpntlm.get)(options, (error, res) => error ? reject(error)
+      : resolve(request.binary ? { status: res.statusCode, headers: res.headers || {}, body: "", bytes: new Uint8Array(res.body as unknown as Buffer) } : { status: res.statusCode, headers: res.headers || {}, body: res.body || "" }));
   });
 }
 
@@ -66,7 +67,7 @@ export class GucClient {
       if (response.status >= 300 && response.status < 400 && response.status !== 304 && location) {
         url = new URL(location, url).href;
         if (!/^https:\/\/([\w-]+\.)*guc\.edu\.eg\//.test(url)) throw new GucError("unavailable", "redirected away");
-        request = { method: "GET", url, headers: request.headers };
+        request = { method: "GET", url, headers: request.headers, binary: request.binary };
         continue;
       }
       return { ...response, url };
@@ -86,6 +87,16 @@ export class GucClient {
     const hash = contentHash(res.body);
     return { url: res.url, status: res.status, body: res.body, memo: { hash, etag: res.headers.etag, modified: res.headers["last-modified"] }, unchanged: hash === memo.hash };
   }
+}
+
+/** A CMS file as bytes. Only GUC's own https hosts; a login page instead of the file is a credentials failure. */
+export async function fetchFile(client: GucClient, url: string) {
+  if (!/^https:\/\/([\w-]+\.)*guc\.edu\.eg\//.test(url)) throw new GucError("unavailable", "not a GUC file");
+  const res = await client.send({ method: "GET", url, binary: true });
+  if (res.status !== 200 || !res.bytes) throw new GucError("unavailable", "http " + res.status);
+  const type = (res.headers["content-type"] || "").split(";")[0].trim();
+  if (/text\/html/i.test(type) && pageState(new TextDecoder().decode(res.bytes.slice(0, 20000)), res.url) !== "ok") throw new GucError("auth", "login page");
+  return { bytes: res.bytes, type };
 }
 
 /** Signs in to the CMS home page, as typed and then as GUC\username, and returns the client that worked. */

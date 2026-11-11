@@ -2,6 +2,7 @@
 // a#download, the course description box) follows AhmedAshrafAZ/cms-downloader (MIT, see THIRD-PARTY-NOTICES.md);
 // the schedule and transcript tables follow the GroupSchedule.aspx / Transcript_001.aspx layouts other student tools read.
 import * as cheerio from "cheerio";
+import { PERIOD_TIMES } from "./hub.ts";
 import type { GucAnnouncement, GucCourse, GucCoursePage, GucGrade, GucMaterial, GucSlot, GucWeek } from "./types.ts";
 
 const P = "ContentPlaceHolderright_ContentPlaceHoldercontent_";
@@ -97,7 +98,7 @@ export function parseCoursePage(html: string, courseKey: string): GucCoursePage 
 
 const DAYS = ["saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"];
 const PERIODS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"];
-const TIMES: [string, string][] = [["08:15", "09:45"], ["10:00", "11:30"], ["11:45", "13:15"], ["13:45", "15:15"], ["15:45", "17:15"], ["17:30", "19:00"], ["19:15", "20:45"], ["21:00", "22:30"]];
+const TIMES = PERIOD_TIMES;
 const TYPE = /\b(lab|lecture|lec|tutorial|tut|seminar|sem|practical)\s*$/i;
 const typeName = (t: string) => { const l = t.toLowerCase(); return l.startsWith("lec") ? "Lecture" : l.startsWith("tut") ? "Tutorial" : l.startsWith("lab") || l.startsWith("prac") ? "Lab" : l.startsWith("sem") ? "Seminar" : t; };
 

@@ -1058,6 +1058,21 @@ void app.whenReady().then(async () => {
       else {const id=url.pathname.split('/').at(-1)!;if(request.method==='GET'){const file=await disk.readFile(user.id,id);return file?new Response(new Uint8Array(file)):new Response(null,{status:404});}if(request.method==='PUT'){await disk.writeFile(user.id,id,new Uint8Array(await request.arrayBuffer()));return Response.json({ok:true});}if(request.method==='DELETE'){await disk.deleteFile(user.id,id);return Response.json({ok:true});}}
       return new Response(null,{status:405});}catch{return Response.json({error:'Could not access your Documents/Clem workspace. Check available disk space and permissions.'},{status:500});}
     }
+    // A GUC CMS file for the viewer (desktop/engine Engine.file): the saved copy, or fetched now into a temp folder.
+    const gucFile = /^\/api\/local\/guc\/file\/([\w-]{1,100})$/.exec(url.pathname);
+    if (request.method === "GET" && gucFile) {
+      try {
+        const user = await auth.user();
+        if (!user) return Response.json({ error: "Sign in first." }, { status: 401 });
+        if (request.headers.get("X-Clem-Owner") !== user.id) return Response.json({ error: "Account changed." }, { status: 409 });
+        if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) return Response.json({ error: "Connect GUC first." }, { status: 409 });
+        const file = await (await engineFor(user.id)).file(gucFile[1]);
+        return new Response(new Uint8Array(await readDiskFile(file.path)), { headers: { "Content-Type": file.type, "X-Clem-File-Name": encodeURIComponent(file.name), "Cache-Control": "no-store" } });
+      } catch (error) {
+        const kind = (error as { kind?: string }).kind;
+        return Response.json({ error: (error as Error).message || "This file could not be opened.", kind }, { status: kind === "auth" ? 401 : 502 });
+      }
+    }
     if (url.pathname === "/api/models") {
       const user = await auth.user();
       // Every list comes from the provider itself (Codex's model/list, Claude Code's model handshake, grok models), so a model added to the person's plan shows up here without a Clem update.
@@ -1413,6 +1428,21 @@ void app.whenReady().then(async () => {
     if (request.action === "gucConnect") return (await engineFor(user.id)).connect(request.username, request.password, gucProgress);
     if (request.action === "gucSync") { const engine = await engineFor(user.id); return engine.sync(gucProgress).catch(() => engine.status()); }
     if (request.action === "gucDisconnect") return (await engineFor(user.id)).disconnect();
+    if (request.action.startsWith("guc")) {
+      // Reads open the engine only for a connected account; anything else has nothing to show yet.
+      if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) { if (request.action === "gucOverview") return { connected: false, syncing: false, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } }; throw Error("Connect GUC first."); }
+      const engine = await engineFor(user.id);
+      if (request.action === "gucOverview") return engine.overview();
+      if (request.action === "gucCourses") return engine.courses();
+      if (request.action === "gucSchedule") return engine.schedule(request.weekStart);
+      if (request.action === "gucAnnouncements") return engine.announcements({ courseKey: request.courseId, cursor: request.cursor });
+      if (request.action === "gucMarkRead") return engine.markRead(request.ids);
+      if (request.action === "gucMaterials") return engine.materials(request.courseId);
+      if (request.action === "gucSearch") return engine.search(request.query);
+      if (request.action === "gucGrades") return engine.grades(request.courseId);
+      if (request.action === "gucDeadlines") return engine.deadlines();
+      if (request.action === "gucFile") { const { path: _path, ...file } = await engine.file(request.materialId); return file; }
+    }
     if (request.action === "driveConnect") {
       driveLive.forget();
       await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id));
