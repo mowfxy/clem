@@ -72,6 +72,13 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("proPoke"), reason: z.enum(["plans", "files", "study", "spaces", "open"]) }),
   z.object({ action: z.literal("proWatches") }),
   z.object({ action: z.literal("proStopWatch"), id: z.string().regex(/^[\w-]{1,80}$/) }),
+  // Telegram (desktop/engine/telegram.ts): status, a pairing code, unpair, the pair card in the main thread, and the
+  // window's answer to a Telegram message (its text and the files it made).
+  z.object({ action: z.literal("tgStatus"), fresh: z.boolean().optional() }),
+  z.object({ action: z.literal("tgPair") }),
+  z.object({ action: z.literal("tgUnpair") }),
+  z.object({ action: z.literal("tgOffer") }),
+  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(/^[mt]\d{1,20}$/), text: z.string().max(200_000), files: z.array(z.object({ id: z.string().regex(/^[\w-]{1,100}$/), name: z.string().min(1).max(300), type: z.string().max(200) })).max(5).optional() }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),
@@ -318,6 +325,9 @@ export type DesktopBridge = {
   onGuc?: (listener: (event: import("../core/guc/types").GucProgress) => void) => () => void;
   /** Something to open from outside the window: a flashcard reminder's subject, at its review (desktop/study-reminders.ts). */
   onOpen?: (listener: (event: { review?: string; route?: string; chat?: string; message?: string }) => void) => () => void;
+  /** A Telegram message (or a tap that needs the agent or the workspace) for the main thread to answer; the window
+   *  replies with { action: "tgAnswered", id, text }. */
+  onTelegram?: (listener: (event: import("./engine/host").TelegramTurn) => void) => () => void;
   startDrag?: (path: string) => void;
   /** Runs a chat code block on this computer (desktop/code-runner.ts): start it, send it a line of input (null ends input), or stop it. */
   runCode?: (request: { op: "start"; id: string; lang: string; code: string } | { op: "input"; id: string; text: string | null } | { op: "stop"; id: string }) => Promise<unknown>;

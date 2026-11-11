@@ -13,7 +13,7 @@ import { localNowCard, withGuc } from "../../core/main-thread/context.ts";
 import { actionKey, describe, needsConfirm, type ProAction, type Undo } from "../../core/proactivity/actions.ts";
 import { capPushes, muteFor, muteKey, slotChanges, type Change, type ChangeKind, type Mute } from "../../core/proactivity/attention.ts";
 import { datedSlots, deadlineReminders, dueAt, leftText, type Deadline } from "../../core/proactivity/rules.ts";
-import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, quietEnd, readPro, type EventKind, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
+import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, quietEnd, readPro, type Channel, type EventKind, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
 import { changeText, digestLine, planSweep, readReply, sweepCard, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
 import { live, parseWatch, type Watch } from "../../core/proactivity/watches.ts";
@@ -31,10 +31,19 @@ export type ProInbox = { posts: { id: string; content: string; at: number }[]; a
 export const EVENT_DEBOUNCE_S = 60, EVENT_GAP_S = 600;
 const KIND_OF: Record<ChangeKind, EventKind> = { new_grade: "grade", new_announcement: "announcement", new_material: "lecture", file_saved: "lecture", deadline_added: "deadline", deadline_changed: "deadline", schedule_changed: "schedule", slot_cancelled: "schedule", slot_moved: "schedule", slot_added: "schedule", room_changed: "schedule" };
 const ms = (t: Date | string | null | undefined) => (t ? new Date(t).getTime() : 0);
+/** Channels that reach the person away from the window. */
+export type Outward = Exclude<Channel, "app">;
+const outward = (channels: Channel[]) => channels.filter((c): c is Outward => c !== "app");
+/** What the person asked to be told about goes wherever they can be reached. */
+const ASKED: Outward[] = ["push", "telegram"];
+/** The Telegram relay as the organizer sees it (desktop/engine/telegram.ts). */
+export type TelegramChannel = { available: boolean; paired(): Promise<boolean>; status(): Promise<{ configured: boolean }>; deliver(n: { title: string; body: string; cards?: string; open?: Open }): Promise<void> };
 
 export class Organizer {
   private db: Db; private owner: string; private host: EngineHost; private guc: () => Promise<GucFacts>; private clock: () => number;
   private jobs?: Jobs;
+  /** Telegram, when the host can reach the account service (set by the engine). */
+  telegram?: TelegramChannel;
   private timer?: ReturnType<typeof setTimeout>;
   private running?: Promise<unknown>;
   constructor(o: { db: Db; owner: string; host: EngineHost; guc: () => Promise<GucFacts>; clock?: () => number }) {
@@ -50,6 +59,8 @@ export class Organizer {
     const next = mergePro(await this.settings(), proPatch.parse(patch));
     await this.db.query("insert into organizer_settings (owner_id, settings) values ($1, $2) on conflict (owner_id) do update set settings = excluded.settings, updated_at = now()", [this.owner, next]);
     if (patch.jobs) await this.reschedule(next);
+    // Telegram turned on for something while it isn't paired: the pair card, once, in the main thread.
+    if (Object.values(patch.events || {}).some((e) => e?.channels?.includes("telegram"))) await this.offerTelegram("channel").catch(() => null);
     return next;
   }
   async start(jobs: Jobs) {
@@ -166,7 +177,8 @@ export class Organizer {
     for (const r of plan.rated.filter((r) => r.level === "urgent" || r.level === "notify")) if (await fresh("change:" + r.change.key)) said.push(r);
     // What the person asked to hear is pushed (once) even when its kind isn't; a change is never pushed twice.
     const asked = plan.hits.filter((h) => h.watch.channel !== "app").map((h) => ({ change: h.change, level: "urgent" as const, why: "You asked." }));
-    const pushable = [...said.filter((r) => s.events[KIND_OF[r.change.kind]].channels.includes("push") && s.events[KIND_OF[r.change.kind]].on && !asked.some((a) => a.change.key === r.change.key)), ...asked];
+    const out = (r: RatedChange) => (asked.some((a) => a.change.key === r.change.key) ? ASKED : outward(s.events[KIND_OF[r.change.kind]].channels));
+    const pushable = [...said.filter((r) => out(r).length && s.events[KIND_OF[r.change.kind]].on && !asked.some((a) => a.change.key === r.change.key)), ...asked];
     const capped = capPushes(s.level, await this.pushedToday(), pushable.filter((p) => s.level !== "quiet" || p.level === "urgent"));
     const digest = plan.rated.filter((r) => r.level === "digest");
     for (const r of said) await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: changeText(r.change).slice(0, 300) }, changeText(r.change), "said", { change: r.change, level: r.level });
@@ -181,10 +193,13 @@ export class Organizer {
     const postId = await this.post(blocks.map((b) => cardBlock(b)).join("\n\n"), `sweep:${kind}:${now}`);
     if (!postId) return false;
     const open: Open = { chat: snap.mainId || "main", message: postId };
-    for (const p of capped.push.filter((p) => p.level === "urgent")) await this.push("change:" + p.change.key, p.change.title, p.change.detail || "Tap to see it in Clem.", open, s);
+    // Telegram gets the card itself (with its buttons); a desktop notification gets a title and a line.
+    const cards = blocks.map((b) => cardBlock(b)).join("\n\n");
+    for (const p of capped.push.filter((p) => p.level === "urgent")) await this.push("change:" + p.change.key, p.change.title, p.change.detail || "Tap to see it in Clem.", open, s, { channels: out(p) });
     const batch = capped.push.filter((p) => p.level !== "urgent");
-    if (batch.length) await this.push(`batch:${postId}`, batch.length === 1 ? batch[0].change.title : `${batch.length} updates`, batch.map((b) => b.change.title).join(" · ").slice(0, 240), open, s);
-    if (!pushable.length && kind !== "event" && kind !== "midday" && say.channels.includes("push") && s.level === "proactive") await this.push(`job:${kind}:${cairo(now).ymd}`, card?.title || "Clem", (card?.lines || []).slice(0, 3).map((l) => l.text).join(" · ").slice(0, 240), open, s);
+    if (batch.length) await this.push(`batch:${postId}`, batch.length === 1 ? batch[0].change.title : `${batch.length} updates`, batch.map((b) => b.change.title).join(" · ").slice(0, 240), open, s, { channels: [...new Set(batch.flatMap(out))], cards });
+    const jobOut = say.channels.filter((c): c is Outward => c !== "app");
+    if (!pushable.length && kind !== "event" && kind !== "midday" && jobOut.length && s.level === "proactive") await this.push(`job:${kind}:${cairo(now).ymd}`, card?.title || "Clem", (card?.lines || []).slice(0, 3).map((l) => l.text).join(" · ").slice(0, 240), open, s, { channels: jobOut, cards });
     return true;
   }
   /** Records an action once (by key); false when it was already there. */
@@ -205,23 +220,45 @@ export class Organizer {
 
   // ---------- Notifications ----------
   private async pushedToday() {
-    const [{ n }] = await this.db.query<{ n: number }>("select count(*)::int as n from notifications_sent where owner_id = $1 and channel = 'push' and sent_at >= $2", [this.owner, new Date(cairoAt(cairo(this.clock()).ymd))]);
+    // One thing told on both channels counts once against the cap.
+    const [{ n }] = await this.db.query<{ n: number }>("select count(distinct event_key)::int as n from notifications_sent where owner_id = $1 and channel in ('push', 'telegram') and sent_at >= $2", [this.owner, new Date(cairoAt(cairo(this.clock()).ymd))]);
     return n;
   }
-  /** A desktop notification, once per key ever. In quiet hours it waits (notify_queue) and goes when they end. Telegram
-   *  is a channel to come (the next step): nothing is sent there yet. */
-  async push(key: string, title: string, body: string, open: Open, s?: ProSettings) {
+  /** A notification on each of `channels` (default: the desktop), once per key and channel ever
+   *  (notifications_sent). In quiet hours it waits (notify_queue) and goes when they end. Telegram goes only while it is
+   *  paired, with the cards when there are any; one that fails waits ten minutes and is tried again. */
+  async push(key: string, title: string, body: string, open: Open, s?: ProSettings, o: { channels?: Outward[]; cards?: string } = {}) {
     s ||= await this.settings();
+    const got: string[] = [];
+    for (const ch of o.channels || ["push"]) got.push(await this.pushOn(ch, key, title, body, open, s, o.cards));
+    return got.includes("sent") ? "sent" : got.includes("deferred") ? "deferred" : got.includes("sent-before") ? "sent-before" : "off";
+  }
+  private async pushOn(ch: Outward, key: string, title: string, body: string, open: Open, s: ProSettings, cards?: string) {
     const now = this.clock();
-    if ((await this.db.query("select 1 from notifications_sent where owner_id = $1 and event_key = $2 and channel = 'push'", [this.owner, key])).length) return "sent-before";
-    if (inQuiet(s, now)) {
-      await this.db.query("insert into notify_queue (owner_id, event_key, channel, payload, due_at) values ($1, $2, 'push', $3, $4) on conflict do nothing", [this.owner, key, { title, body, open }, new Date(quietEnd(s, now))]);
+    if (ch === "telegram" && !(await this.telegram?.paired().catch(() => false))) return "off";
+    if ((await this.db.query("select 1 from notifications_sent where owner_id = $1 and event_key = $2 and channel = $3", [this.owner, key, ch])).length) return "sent-before";
+    const later = (at: number) => this.db.query("insert into notify_queue (owner_id, event_key, channel, payload, due_at) values ($1, $2, $3, $4, $5) on conflict do nothing", [this.owner, key, ch, { title, body, open, ...(cards ? { cards } : {}) }, new Date(at)]);
+    if (inQuiet(s, now)) { await later(quietEnd(s, now)); return "deferred"; }
+    const fresh = await this.db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, $2, $3) on conflict do nothing returning 1", [this.owner, key, ch]);
+    if (!fresh.length) return "sent-before";
+    if (ch === "push") { this.host.notify({ key, title: title.slice(0, 120), body: body.slice(0, 240), open }); return "sent"; }
+    try { await this.telegram!.deliver({ title, body, cards, open }); return "sent"; }
+    catch (e) {
+      this.host.log("warn", "[organizer] telegram: " + (e as Error).message);
+      await this.db.query("delete from notifications_sent where owner_id = $1 and event_key = $2 and channel = 'telegram'", [this.owner, key]);
+      await later(now + 600_000);
       return "deferred";
     }
-    const fresh = await this.db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, $2, 'push') on conflict do nothing returning 1", [this.owner, key]);
-    if (!fresh.length) return "sent-before";
-    this.host.notify({ key, title: title.slice(0, 120), body: body.slice(0, 240), open });
-    return "sent";
+  }
+
+  // ---------- Telegram ----------
+  /** The pair card in the main thread, when Telegram isn't paired: once on first run, once when a Telegram channel is
+   *  turned on, and whenever the person asks (Settings → Pair in chat). Never twice for the same reason. */
+  async offerTelegram(why: "first" | "channel" | "asked") {
+    const t = this.telegram;
+    if (!t?.available || (why !== "asked" && await t.paired())) return null;
+    if (why === "first" && !(await t.status().catch(() => null))?.configured) return null;
+    return this.post(cardBlock({ type: "telegram_pair" }), why === "asked" ? `telegram-pair:asked:${this.clock()}` : `telegram-pair:${why}`);
   }
   /** Every 10 minutes: deadline reminders (48h and 3h before, by default), then what quiet hours held back. */
   async tick() {
@@ -240,9 +277,10 @@ export class Organizer {
       const tight = said.some((r) => r.hours <= 3);
       if (cards.length && delivery(s, { event: "deadline", urgent: tight }).post) {
         const postId = await this.post(cards.map((c) => cardBlock(c)).join("\n\n"), "reminders:" + said.map((r) => r.key).join(","));
-        if (postId && (s.level !== "quiet" || tight) && s.events.deadline.channels.includes("push")) for (const r of said) {
+        const channels = outward(s.events.deadline.channels);
+        if (postId && (s.level !== "quiet" || tight) && channels.length) for (const [i, r] of said.entries()) {
           const guc = !r.deadline.id.startsWith("plan-");
-          await this.push(r.key, `Due ${leftText(r.left)}`, r.deadline.title, guc ? { route: "#/app/guc/deadlines/" + encodeURIComponent(r.deadline.id) } : { chat: snap.mainId || "main", message: postId }, s);
+          await this.push(r.key, `Due ${leftText(r.left)}`, r.deadline.title, guc ? { route: "#/app/guc/deadlines/" + encodeURIComponent(r.deadline.id) } : { chat: snap.mainId || "main", message: postId }, s, { channels, cards: cardBlock(cards[i]) });
         }
       }
     }
@@ -252,9 +290,9 @@ export class Organizer {
   async flush() {
     const s = await this.settings();
     if (inQuiet(s, this.clock())) return 0;
-    const rows = await this.db.query<{ event_key: string; payload: { title: string; body: string; open: Open } }>("delete from notify_queue where owner_id = $1 and due_at <= $2 returning event_key, payload", [this.owner, new Date(this.clock())]);
+    const rows = await this.db.query<{ event_key: string; channel: Outward; payload: { title: string; body: string; open: Open; cards?: string } }>("delete from notify_queue where owner_id = $1 and due_at <= $2 returning event_key, channel, payload", [this.owner, new Date(this.clock())]);
     let sent = 0;
-    for (const r of rows) if ((await this.push(r.event_key, r.payload.title, r.payload.body, r.payload.open, s)) === "sent") sent++;
+    for (const r of rows) if ((await this.push(r.event_key, r.payload.title, r.payload.body, r.payload.open, s, { channels: [r.channel], cards: r.payload.cards })) === "sent") sent++;
     return sent;
   }
 

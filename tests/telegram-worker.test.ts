@@ -1,50 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { canIssue, codeHash, CODES_PER_HOUR, deepLink, keyboardOk, left, newCode, readCode, TG_FILE_LIMIT } from "../core/telegram/pairing.ts";
 // @ts-expect-error plain JavaScript worker module
-import { handleTelegram, telegramWebhook, NOT_PAIRED, PAIRED, BAD_CODE, OFFLINE } from "../cloudflare/telegram.js";
+import { NOT_PAIRED, PAIRED, BAD_CODE, OFFLINE } from "../cloudflare/telegram.js";
+import { call, fakeTelegram, hook, msg, tap, workerEnv as ENV } from "./telegram-fake.ts";
 
-/** D1 over in-memory SQLite (as tests/account-worker.test.ts). */
-function d1() {
-  const db = new DatabaseSync(":memory:");
-  for (const f of ["cloudflare/account-schema.sql", "cloudflare/provider-links.sql", "cloudflare/telegram-schema.sql"]) db.exec(fs.readFileSync(f, "utf8"));
-  return {
-    db,
-    prepare(sql: string) {
-      let args: any[] = [];
-      const st = {
-        bind(...v: any[]) { args = v; return st; },
-        async all() { return { results: db.prepare(sql).all(...args) }; },
-        async first() { return db.prepare(sql).get(...args) ?? null; },
-        async run() { const r = db.prepare(sql).run(...args); return { meta: { changes: Number(r.changes) } }; },
-      };
-      return st;
-    },
-  };
-}
-/** A fake Telegram Bot API: every call is logged; nothing leaves the machine. */
-function fakeTelegram() {
-  const calls: { method: string; body: any }[] = [];
-  let n = 100;
-  const fetch = async (url: string | URL, init?: any) => {
-    const method = String(url).split("/").pop()!;
-    let body: any = {};
-    if (typeof init?.body === "string") body = JSON.parse(init.body);
-    else if (init?.body) { const chunks: Buffer[] = []; for await (const c of init.body) chunks.push(Buffer.from(c)); body = { multipart: Buffer.concat(chunks).toString("latin1") }; }
-    calls.push({ method, body });
-    if (method === "sendMessage" && /<broken/.test(body.text || "") && body.parse_mode) return Response.json({ ok: false, error_code: 400, description: "Bad Request: can't parse entities" }, { status: 400 });
-    return Response.json({ ok: true, result: method === "sendChatAction" || method === "answerCallbackQuery" ? true : { message_id: n++, date: 0, chat: { id: 1, type: "private" } } });
-  };
-  return { calls, client: { fetch: fetch as any } };
-}
-const ENV = () => ({ DB: d1(), TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_WEBHOOK_SECRET: "s".repeat(40), TELEGRAM_BOT_USERNAME: "ClemBot", PROVIDER_VAULT_KEY: Buffer.alloc(32, 9).toString("base64") });
-let update = 1;
-const msg = (chat: number, text: string, from = chat) => ({ update_id: update++, message: { message_id: update, date: 1, chat: { id: chat, type: "private" }, from: { id: from, is_bot: false, first_name: "Sara", username: "sara" }, text } });
-const tap = (chat: number, data: string, from = chat) => ({ update_id: update++, callback_query: { id: "cq" + update, chat_instance: "x", from: { id: from, is_bot: false, first_name: "Sara" }, data, message: { message_id: 7, date: 1, chat: { id: chat, type: "private" } } } });
-const hook = (env: any, tg: any, body: any, secret = env.TELEGRAM_WEBHOOK_SECRET) => telegramWebhook(new Request("https://w/webhooks/telegram", { method: "POST", headers: { "X-Telegram-Bot-Api-Secret-Token": secret }, body: JSON.stringify(body) }), env, tg.client);
-const call = (env: any, tg: any, user: string, path: string, body?: unknown, query = "") => handleTelegram(new Request("https://w" + path + query, body === undefined ? {} : { method: "POST", body: body instanceof FormData ? body : JSON.stringify(body) }), env, { id: user }, path, { client: tg.client, sleep: async () => {} }).then((r: Response) => r.json());
 const said = (tg: any) => tg.calls.filter((c: any) => c.method === "sendMessage").map((c: any) => c.body.text);
 
 test("pairing codes: six digits, read from /start or typed, hashed, rate-limited, keyboards checked", async () => {

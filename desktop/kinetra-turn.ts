@@ -1,5 +1,6 @@
 import type { TurnStats } from "./turn-timing.ts";
 import { GUC_ACTIONS } from "../core/guc/ai-tools.ts";
+import { TELEGRAM_ACTIONS } from "../core/telegram/guide.ts";
 /** Thrown by a provider that could not use its session (the CLI no longer has it, or does not support sessions at all):
  *  the loop resends everything instead, for the rest of the turn. */
 export class SessionLost extends Error {}
@@ -55,7 +56,7 @@ export function toolRequest(text: string): Record<string, unknown> | null {
   }
 }
 // Kinetra's own actions, the file tools (core/file-tools.ts) and GUC's (core/guc/ai-tools.ts).
-export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop", "editpdf", "find", "attach", "batch", ...GUC_ACTIONS, "clem.watch", "clem.unwatch"]);
+export const ACTIONS = new Set(["call", "pdf", "docx", "pptx", "xlsx", "file", "image", "open", "recipes", "api", "skill", "help", "files", "read", "search", "look", "regions", "crop", "editpdf", "find", "attach", "batch", ...GUC_ACTIONS, "clem.watch", "clem.unwatch", ...TELEGRAM_ACTIONS]);
 const START = /(?:```(?:json)?\s*)?\{\s*"kinetra"\s*:/g;
 /** Index just past the JSON object that opens at `start`, or -1 when it never closes. Strings are skipped. */
 function objectEnd(text: string, start: number) {

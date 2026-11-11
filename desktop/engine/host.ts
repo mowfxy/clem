@@ -22,4 +22,13 @@ export type EngineHost = {
   workspace?(): Promise<unknown>;
   /** One short answer from Clem's organizer model (desktop: answerWith, no tools). Left out, sweeps use rules only. */
   complete?(request: { system: string; user: string; model?: string; reasoning?: string }): Promise<string>;
+  /** Clem's account service as this owner (desktop: the signed-in Supabase session; a VPS: its own). Telegram's relay
+   *  talks to the bot through it; left out, there is no Telegram. */
+  account?(path: string, init?: { method?: string; body?: BodyInit; headers?: Record<string, string> }, signal?: AbortSignal, timeout?: number): Promise<Response>;
+  /** A Telegram message (or a tap that needs the agent or the workspace) answered as the main thread answers: the same
+   *  agent, tools, data and hand-off (desktop: the window). The reply is Markdown with clem-cards, and any files made. */
+  converse?(turn: TelegramTurn): Promise<{ text: string; files?: { name: string; type: string; bytes: Uint8Array }[] }>;
+  /** Shows a route or a chat's message in Clem (a tap on Open in Clem). */
+  open?(o: { route?: string; chat?: string; message?: string }): void;
 };
+export type TelegramTurn = { id: string; text: string } | { id: string; tap: import("../../core/telegram/render.ts").Tap };

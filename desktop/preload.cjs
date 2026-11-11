@@ -44,6 +44,11 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("clem:open", handler);
       return () => ipcRenderer.removeListener("clem:open", handler);
     },
+    onTelegram: (listener) => {
+      const handler = (_event, payload) => { if (payload && typeof payload.id === "string") listener(payload); };
+      ipcRenderer.on("clem:telegram", handler);
+      return () => ipcRenderer.removeListener("clem:telegram", handler);
+    },
     onGuc: (listener) => {
       const handler = (_event, payload) => listener(payload);
       ipcRenderer.on("clem:guc", handler);

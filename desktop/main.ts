@@ -73,7 +73,9 @@ import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import { Engine } from './engine/index';
 import type { EngineHost } from './engine/host';
-import { runGucTool } from './engine/ai-tools';
+import { runGucTool, runTelegramTool } from './engine/ai-tools';
+import { ANSWER_MS } from './engine/telegram';
+import { TG_FILE_LIMIT } from '../core/telegram/pairing';
 import { isGucAction } from '../core/guc/ai-tools';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
@@ -1172,6 +1174,8 @@ void app.whenReady().then(async () => {
   // Clem's background engine (desktop/engine): one per signed-in owner, opened when GUC is used or already connected.
   // GUC passwords stay in the Vault ("guc-<owner>"); they never reach the window, a log or a prompt.
   const engines = new Map<string, Promise<Engine>>();
+  /** Telegram messages the window is answering, by inbox id. */
+  const telegramWaits = new Map<string, { owner: string; resolve: (reply: { text: string; files?: { name: string; type: string; bytes: Uint8Array }[] }) => void; reject: (error: Error) => void }>();
   const engineHost = (owner: string): EngineHost => ({
     secrets: { get: async (key) => vault.read(key, undefined), set: (key, value) => vault.write(key, value), delete: (key) => vault.remove(key) },
     // Works with the window closed to the tray; a click opens the exact item (a #/app route, or a chat and its message).
@@ -1196,6 +1200,19 @@ void app.whenReady().then(async () => {
       await answerWith(owner, "organizer-" + randomUUID(), model, reasoning, user, (event) => { if (event?.type === "delta") text += event.text || ""; }, { instructions: system });
       return text;
     },
+    // Telegram (desktop/engine/telegram.ts): the account service as this owner, only while they are signed in.
+    account: async (path, init, signal, timeout) => {
+      if ((await auth.user(false))?.id !== owner) throw Error("Sign in to Clem to use Telegram.");
+      return auth.cloudFetch(path, init, signal, timeout);
+    },
+    // A Telegram message is answered by the window's main thread: the same agent, tools and hand-off as typing there.
+    converse: (turn) => new Promise((resolve, reject) => {
+      if (window.isDestroyed()) { reject(Error("Clem's window is closed.")); return; }
+      telegramWaits.set(turn.id, { owner, resolve, reject });
+      window.webContents.send("clem:telegram", turn);
+      setTimeout(() => { if (telegramWaits.delete(turn.id)) reject(Error("timeout")); }, ANSWER_MS).unref();
+    }),
+    open: (o) => { showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", o); },
   });
   const engineFor = (owner: string) => {
     let engine = engines.get(owner);
@@ -1460,6 +1477,27 @@ void app.whenReady().then(async () => {
       if (request.action === "proPoke") return o.poke(request.reason);
       if (request.action === "proWatches") return o.watches();
       if (request.action === "proStopWatch") return o.stopWatch(request.id);
+    }
+    // Telegram (desktop/engine/telegram.ts; docs/DESKTOP.md "Telegram").
+    if (request.action.startsWith("tg")) {
+      const engine = await engineFor(user.id), t = engine.telegram;
+      if (request.action === "tgStatus") return t.status(request.fresh);
+      if (request.action === "tgPair") return t.pair();
+      if (request.action === "tgUnpair") return t.unpair();
+      if (request.action === "tgOffer") return engine.organizer.offerTelegram("asked");
+      if (request.action === "tgAnswered") {
+        const wait = telegramWaits.get(request.id);
+        if (!wait || wait.owner !== user.id) return { ok: false };
+        telegramWaits.delete(request.id);
+        // Files the answer made go with it (each within Telegram's 50 MB).
+        const files = [];
+        for (const f of request.files || []) {
+          const bytes = await disk.readFile(user.id, f.id).catch(() => null);
+          if (bytes && bytes.byteLength <= TG_FILE_LIMIT) files.push({ name: f.name, type: f.type, bytes: new Uint8Array(bytes) });
+        }
+        wait.resolve({ text: request.text, files });
+        return { ok: true };
+      }
     }
     if (request.action.startsWith("guc")) {
       // Reads open the engine only for a connected account; anything else has nothing to show yet.
@@ -2372,6 +2410,11 @@ void app.whenReady().then(async () => {
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string }[];
           const w = await o.watch(tool.text.slice(0, 300), spaces.map((s) => ({ id: s.id, name: s.name, ...(/^[A-Z]{2,5} ?\d{3}/.test(s.description || "") ? { code: s.description!.match(/^[A-Z]{2,5} ?\d{3}/)![0] } : {}) })), { repeat: tool.repeat === true, channel: tool.push === false ? "app" : "push" });
           return { ok: true, watch: w, card: "Put this card in your reply so they can stop it:\n```clem-card\n" + JSON.stringify({ type: "watch", id: w.id, text: w.text }) + "\n```" };
+        }
+        // Telegram: the pair card, and a CMS file sent to the paired chat ("send me lecture 3 slides").
+        if (typeof tool?.action === "string" && tool.action.startsWith("telegram.")) {
+          const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
+          return runTelegramTool({ engine: await engineFor(user.id), owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined }, tool);
         }
         // GUC (desktop/engine/ai-tools.ts): the signed-in owner's engine only; a subject chat's own subject is the default.
         if (isGucAction(tool?.action)) {

@@ -7,7 +7,7 @@ import { AI_RULES_FORMAT, describeSaveRules } from "../../core/guc/rules.ts";
 import { describeChecks } from "../../core/guc/schedule-rules.ts";
 import { settingsPatch, type SubjectView } from "../../core/guc/settings.ts";
 import { updatePatch } from "../../core/guc/setup-flow.ts";
-import { asGucError } from "./errors.ts";
+import { asGucError, GucError } from "./errors.ts";
 import type { Engine } from "./index.ts";
 
 export type GucToolContext = {
@@ -128,4 +128,33 @@ async function settings(ctx: GucToolContext, a: Record<string, any>, c: Resolved
   ctx.changed?.();
   const s = after.settings;
   return `Updated ${label(c)}: saves ${describeSaveRules(s.save)}; checks ${describeChecks(s.check)} (Cairo); Drive copy ${s.drive.enabled ? "on" : "off"}.${unread.length ? ` Not changed (couldn't read): ${unread.join("; ")}.` : ""} Tell the person in one sentence.`;
+}
+
+const PAIR_CARD = '```clem-card\n{"type":"telegram_pair"}\n```';
+/** telegram.pair (the pair card for the reply) and telegram.sendFile (a CMS file to the paired chat, through the same
+ *  file fetch as guc.read). */
+export async function runTelegramTool(ctx: GucToolContext, request: Record<string, unknown>): Promise<string | { error: string }> {
+  if (ctx.engine.owner !== ctx.owner) throw Error("Telegram tools: the engine is not this owner's.");
+  const t = ctx.engine.telegram;
+  if (!t.available) return { error: "Telegram isn't available in this Clem." };
+  try {
+    if (request.action === "telegram.pair") {
+      const paired = (await t.status(true)).paired;
+      return paired ? `Telegram is already paired as ${paired.name}. Say so; the card lets them unpair:\n${PAIR_CARD}` : `Put this card in your reply: it shows the link and the code, and says Connected once they send it.\n${PAIR_CARD}`;
+    }
+    if (request.action !== "telegram.sendFile") return { error: "Unknown Telegram action." };
+    const file = typeof request.file === "string" ? request.file.trim().slice(0, 300) : "";
+    if (!file) return { error: 'telegram.sendFile needs "file" (a CMS file id or name).' };
+    if (!(await t.paired())) return { error: 'Telegram isn\'t paired. Offer {"action":"telegram.pair"} so they can pair it.' };
+    const [links, courses] = await Promise.all([ctx.engine.links(), ctx.engine.courses()]);
+    const course = resolveSubject(typeof request.subject === "string" ? request.subject : undefined, { links, courses, subjects: ctx.subjects, scope: ctx.scope });
+    if (course && "error" in course) return course;
+    const id = await findMaterial(ctx.engine, file, course || undefined);
+    if (!id) return { error: `No CMS file "${file}". List a subject's files with {"action":"guc.materials","subject":…}.` };
+    if (typeof id === "object") return id;
+    const r = await t.sendFile(id);
+    return r.sent ? `Sent ${r.name} to their Telegram. Say so in one short sentence.` : `${r.name} is ${Math.round(r.size / 1048576)} MB, over Telegram's 50 MB: they were told in Telegram and offered Open in Clem. Say so briefly.`;
+  } catch (error) {
+    return { error: (error instanceof GucError ? error.message : (error as Error)?.message) || "Telegram couldn't be reached right now." };
+  }
 }

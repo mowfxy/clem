@@ -23,6 +23,7 @@ import { syncGuc } from "./guc-sync.ts";
 import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
 import { Organizer } from "./organizer.ts";
+import { TelegramRelay } from "./telegram.ts";
 import type { PGlite } from "@electric-sql/pglite";
 
 const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive"];
@@ -59,10 +60,14 @@ export class Engine {
   private nowCache?: { key: string; value: GucNow };
   /** Clem's organizer: sweeps, reminders, watches and notifications (docs/MAIN-THREAD.md "Proactivity"). */
   readonly organizer: Organizer;
+  /** Telegram: the paired chat's messages answered, cards and files sent, the notifier's channel (docs/DESKTOP.md). */
+  readonly telegram: TelegramRelay;
 
   private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore; text?: TextCacheOptions; clock?: () => number }) {
     this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep; this.texts = textCache(o.text);
     this.organizer = new Organizer({ db, owner, host, clock: o.clock, guc: () => this.gucFacts() });
+    this.telegram = new TelegramRelay({ db, owner, host, organizer: this.organizer, clock: o.clock, engine: { checkNow: (id) => this.check(id, "now"), file: (id) => this.file(id) } });
+    if (host.account) this.organizer.telegram = this.telegram;
     this.store = o.store || new DeviceStore(host.paths.files || (host.paths.data ? join(host.paths.data, "..", "Files") : join(tmpdir(), "clem-guc-files", owner)));
   }
 
@@ -92,6 +97,10 @@ export class Engine {
     }, { retries: 2, delay: 120 });
     if (await this.credentials()) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
     await this.organizer.start(this.jobs);
+    this.telegram.start();
+    // First run without Telegram paired: the pair card, once, in the main thread.
+    const offer = setTimeout(() => void this.organizer.offerTelegram("first").catch(() => {}), 30_000);
+    offer.unref?.();
   }
   /** What the organizer reads from GUC: this week's classes, deadlines, links and the Now card (all local rows; empty
    *  once GUC is disconnected). */
@@ -372,6 +381,7 @@ export class Engine {
 
   async close() {
     await this.organizer.close()?.catch(() => {});
+    await this.telegram.stop();
     for (const { timer } of this.settling.values()) clearTimeout(timer);
     this.settling.clear();
     await Promise.allSettled([this.running, this.light, ...this.checks.values()]);
