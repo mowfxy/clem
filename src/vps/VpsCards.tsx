@@ -25,7 +25,7 @@ export function VpsConfirmCardView({ card }: { card: z.infer<typeof vpsConfirmCa
   const cancel = () => { setState("cancelled"); void desktop?.invoke({ action: "vpsCancel", id: card.id }).catch(() => {}); };
   const run = card.action === "run";
   return <div className="edit-proposal clem-card guc-card" aria-busy={state === "running" || undefined}>
-    <header><Icon name={state === "done" && !result?.error ? "check" : "alert"} size={16} /><div><strong>{run ? "Run this on your VPS?" : "Replace this file on your VPS?"}</strong><small>{card.reason ? "Clem asks first: " + card.reason : run ? "It could change the server." : "The file already exists."}</small></div></header>
+    <header><Icon name={state === "done" && !result?.error ? "check" : "alert"} size={16} /><div><strong>{state === "done" && !result?.error ? (run ? "Ran on your VPS" : "Replaced on your VPS") : run ? "Run this on your VPS?" : "Replace this file on your VPS?"}</strong><small>{card.reason ? "Clem asks first: " + card.reason : run ? "It could change the server." : "The file already exists."}</small></div></header>
     <div className="guc-card-body">
       <pre className="vps-card-output">{run ? card.command : card.path}</pre>
       {result && <pre className="vps-card-output" role="status">{result.error || (run ? `${result.output || "(no output)"}\n\nexit ${result.exitCode}` : `Saved ${result.path}`)}</pre>}

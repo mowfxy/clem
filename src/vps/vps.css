@@ -78,5 +78,14 @@ html:root[data-theme=light] .vps-dot.is-on{background:#1f8a55}
 .vps-sent b{color:var(--ink);font-weight:600}
 .vps-row-buttons{display:flex;align-items:center;gap:8px}
 @media (max-width:520px){.vps-fields{grid-template-columns:1fr 70px}.vps-facts li{flex-direction:column;gap:0}.vps-facts b{text-align:left}}
+/* The Drive card's list look (src/drive/drive.css) is for its feature list only. */
+.vps-manage ol>li,.vps-manage .vps-test li{display:block}
+.vps-manage :is(.vps-test,.vps-pins) ul,.vps-manage ul:is(.vps-facts,.vps-sent){margin:0;padding:0;border:0;border-radius:0;background:none;font-size:inherit;color:inherit}
+.vps-manage .vps-pins ul{margin:0 0 8px}
+.vps-manage ul.vps-facts{margin-top:10px;font-size:12.5px}
+.vps-manage ul.vps-sent{font-size:12px}
+.vps-manage :is(.vps-facts,.vps-pins) li{display:flex}
+.vps-manage .vps-sent li{display:flex;flex-direction:column;align-items:flex-start}
+.vps-manage .vps-test ul{gap:0}
 /* Main-thread cards */
 .vps-card-output{margin:8px 0 0;max-height:220px;overflow:auto;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--ink) 7%,transparent);font:400 11.5px/1.5 ui-monospace,Consolas,monospace;color:var(--ink);white-space:pre-wrap;word-break:break-word}

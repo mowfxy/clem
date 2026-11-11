@@ -291,8 +291,9 @@ export class VpsManager {
 
   async status(): Promise<VpsStatus> {
     const v = await this.vault();
-    const storage = v.config ? await (await this.router()).usage() : { mode: "device" as const, device: 0, vps: 0, cache: 0, cap: v.storage?.cap || DEFAULT_CACHE_CAP, pinned: 0, files: { device: 0, vps: 0 } };
-    const migration = v.config ? await (await this.migratorFor()).view() : undefined;
+    const none = { mode: v.storage?.mode || "device" as const, device: 0, vps: 0, cache: 0, cap: v.storage?.cap || DEFAULT_CACHE_CAP, pinned: 0, files: { device: 0, vps: 0 } };
+    const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;
+    const migration = v.config ? await this.migratorFor().then((m) => m.view(), () => undefined) : undefined;
     const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}) };
     return { connected: !!v.config?.host && !!(v.privateKey || v.password), ...(v.config ? { config: v.config } : {}), ...(this.online !== undefined ? { online: this.online } : {}), ...(this.lastTest ? { lastTest: this.lastTest } : {}), storage, ...(migration ? { migration } : {}), worker, passwordAllowed: !!v.allowPassword };
   }

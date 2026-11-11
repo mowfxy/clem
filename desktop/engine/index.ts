@@ -52,7 +52,7 @@ export class Engine {
   /** CMS files fetched for viewing: kept in a temp folder for this session only, never in the workspace. */
   private temp = new Map<string, Promise<HubFile & { path: string }>>();
   /** Where newly saved CMS files go: the VPS when the host says files live there (and it is reachable), else this PC. */
-  get store(): FileStore { return this.host.store?.() || this.deviceStore; }
+  get store(): FileStore { return this.host.fileStore?.() || this.deviceStore; }
   /** One check per subject at a time; a second waits for the first. */
   private checks = new Map<string, Promise<unknown>>();
   private settling = new Map<string, { timer: ReturnType<typeof setTimeout>; files: boolean }>();
@@ -367,7 +367,7 @@ export class Engine {
 
   /** Where a saved CMS file's bytes are, in whichever store holds them: this PC now; a VPS or Drive store plugs in by
    *  its location. A copy in a store this host can't reach reads as not saved (fetched from CMS instead). */
-  private stores(): Partial<Record<"device" | "vps" | "drive", FileStore>> { return { device: this.deviceStore, ...(this.host.stores?.() || {}) }; }
+  private stores(): Partial<Record<"device" | "vps" | "drive", FileStore>> { return { device: this.deviceStore, ...(this.host.fileStores?.() || {}) }; }
   private async savedBytes(materialId: string) {
     const rows = await this.db.query<{ location: "device" | "vps" | "drive"; path: string }>("select location, path from file_objects where owner_id = $1 and file_id = $2", [this.owner, "guc:" + materialId]);
     for (const r of rows) {

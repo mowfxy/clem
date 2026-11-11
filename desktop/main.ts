@@ -1239,8 +1239,8 @@ void app.whenReady().then(async () => {
     }),
     open: (o) => { showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", o); },
     // Files live on the VPS while "Store my files on my VPS" is on and it answers (desktop/engine/vps).
-    store: () => { const m = vpsManagers.get(owner); return m && vpsModes.get(owner) === "vps" ? m.vpsStore() : undefined; },
-    stores: () => { const s = vpsManagers.get(owner)?.vpsStore(); return s ? { vps: s } : {}; },
+    fileStore: () => { const m = vpsManagers.get(owner); return m && vpsModes.get(owner) === "vps" ? m.vpsStore() : undefined; },
+    fileStores: () => { const s = vpsManagers.get(owner)?.vpsStore(); return s ? { vps: s } : {}; },
     vps: () => (vpsSet.get(owner) ? { files: vpsModes.get(owner) === "vps" } : undefined),
   });
   const rawEngineFor = (owner: string) => {

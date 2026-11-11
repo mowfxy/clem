@@ -40,10 +40,12 @@ export class Migrator {
   /** Starts moving (a run already going in the same direction just carries on). */
   async start(direction: MigrationDirection) {
     if (this.running) { const v = await this.view(); if (v?.direction === direction) return v; await this.abort(); }
+    // Listed first: PGlite runs one thing at a time, so nothing outside the transaction may query inside it.
+    const items = await this.items(direction);
     await this.db.tx(async (t) => {
       await t.query("delete from migration_state where owner_id = $1", [this.owner]);
       await t.query("insert into migration_runs (owner_id, direction, status) values ($1, $2, 'running') on conflict (owner_id) do update set direction = excluded.direction, status = 'running', error = null, started_at = now(), finished_at = null", [this.owner, direction]);
-      for (const it of await this.items(direction)) await t.query("insert into migration_state (owner_id, item, direction, status, size, sha256) values ($1, $2, $3, 'pending', $4, $5) on conflict do nothing", [this.owner, it.item, direction, it.size, it.sha256 || null]);
+      for (const it of items) await t.query("insert into migration_state (owner_id, item, direction, status, size, sha256) values ($1, $2, $3, 'pending', $4, $5) on conflict do nothing", [this.owner, it.item, direction, it.size, it.sha256 || null]);
     });
     this.loop();
     return this.view();

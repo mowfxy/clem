@@ -72,8 +72,8 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
         },
       }),
     } : {}),
-    store: () => disk,
-    stores: () => ({ vps: disk }),
+    fileStore: () => disk,
+    fileStores: () => ({ vps: disk }),
     vps: () => ({ files: true }),
   };
   const backend = o.backend || (env.DATABASE_URL ? await openPostgres(env.DATABASE_URL) : (await openPglite(join(data, "db"))).backend);
