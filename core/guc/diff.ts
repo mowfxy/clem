@@ -1,4 +1,5 @@
 // Snapshot diff → events. A course, the grades or the schedule seen for the first time is a baseline, not news.
+import { sameCode } from "./codes.ts";
 import { stableId } from "./parse.ts";
 import type { GucEvent, GucSnapshot } from "./types.ts";
 
@@ -34,7 +35,9 @@ export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen):
       const mark = g.letter || (g.numeric ?? "");
       if (mark === "") continue;
       const was = oldGrades.get(g.id), before = was ? was.letter || (was.numeric ?? "") : "";
-      if (String(before) !== String(mark)) events.push({ kind: "new_grade", key: `grade:${g.id}:${mark}`, title: `Grade out: ${g.code || g.name}`, detail: `${g.name} · ${mark} (${g.semester})` });
+      // A grade belongs to the newest course with its code, so it reaches that course's subject.
+      const courseKey = g.code ? next.courses.filter((c) => sameCode(c.code, g.code)).sort((a, b) => b.seasonId - a.seasonId)[0]?.key : undefined;
+      if (String(before) !== String(mark)) events.push({ kind: "new_grade", key: `grade:${g.id}:${mark}`, ...(courseKey ? { courseKey } : {}), title: `Grade out: ${g.code || g.name}`, detail: `${g.name} · ${mark} (${g.semester})` });
     }
   }
 

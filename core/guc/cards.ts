@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { aiSaveRules } from './rules.ts';
+import { checkSchema } from './settings.ts';
 
 /**
  * ```clem-card blocks: the JSON body of a card an assistant message carries (docs/GUC-VPS-ENGINE.md, docs/MAIN-THREAD.md).
@@ -33,19 +35,33 @@ export const setupDoneCard = z.object({ type: z.literal('setup_done'), subjectId
 export const settingsUpdateCard = z.object({
   type: z.literal('settings_update'), subjectId: text(80).optional(),
   save: z.partialRecord(z.enum(['slides', 'assignments', 'sheets', 'videos', 'links', 'other']), z.boolean()).optional(),
-  check: z.object({ mode: z.enum(['after_lectures', 'custom', 'off']), times: z.array(z.object({ day: z.number().int().min(0).max(6), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) })).max(42).default([]) }).optional(),
+  /** Kinds and filters together, through core/guc/rules.ts's strict schema. */
+  rules: aiSaveRules.optional(),
+  /** The person's own words, read by Clem's converters (core/guc/rules.ts, schedule-rules.ts) rather than the AI's guess. */
+  saveText: text(300).optional(), checkText: text(300).optional(),
+  check: checkSchema.extend({ times: checkSchema.shape.times.default([]), tz: z.string().max(60).optional() }).optional(),
   drive: z.object({ enabled: z.boolean() }).optional(),
   storage: z.object({ location: z.enum(['device', 'vps']) }).optional(),
   unlink: z.literal(true).optional(), checkNow: z.literal(true).optional(),
 });
+/** Files one check saved into the subject. Names are what CMS called them then; preview, open and summarize read the
+ *  saved copy live. */
+export const fileSavedCard = z.object({ type: z.literal('file_saved'), subjectId: text(80), files: z.array(z.object({ id: z.string().regex(/^[\w-]{1,100}$/), name: text(300), size: z.number().int().min(0).optional(), week: text(120).optional(), type: text(120).optional() })).min(1).max(50), more: z.number().int().min(0).optional() });
+/** News a check found in the subject's course: an announcement, a grade, a deadline added or moved. */
+const news = { subjectId: text(80).optional(), title: text(300), detail: text(1200).optional() };
+export const announcementCard = z.object({ type: z.literal('announcement'), ...news, id: text(100), courseKey: courseKey.optional() });
+export const gradeCard = z.object({ type: z.literal('grade'), ...news });
+export const deadlineCard = z.object({ type: z.literal('deadline'), ...news, id: text(160), changed: z.boolean().optional() });
 /** New courses a sync found that no subject is linked to (a new semester), posted in the main thread. */
 export const newCoursesCard = z.object({ type: z.literal('new_courses'), courses: z.array(z.object({ key: courseKey, code: z.string().max(20), name: text(200) })).min(1).max(20) });
 
-export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard]);
+export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard]);
 export type ClemCard = z.infer<typeof clemCard>;
 export type HandoffCard = z.infer<typeof handoffCard>;
 export type SettingsUpdateCard = z.infer<typeof settingsUpdateCard>;
 export type NewCoursesCard = z.infer<typeof newCoursesCard>;
+export type FileSavedCard = z.infer<typeof fileSavedCard>;
+export type NewsCard = z.infer<typeof announcementCard> | z.infer<typeof gradeCard> | z.infer<typeof deadlineCard>;
 
 /** Every ```clem-card in a message, in order (the ones this build can't read are left out). */
 export function cardsIn(content: string): ClemCard[] {

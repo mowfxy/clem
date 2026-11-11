@@ -90,14 +90,14 @@ test("checks: suggested after lectures, next run in Cairo time, cron lines and t
   assert.deepEqual(suggestChecks(slots, "CSEN701"), [{ day: 0, time: "12:00" }], "the Sunday lecture ends 11:30");
   assert.deepEqual(suggestChecks(slots, "CSEN 702"), [{ day: 0, time: "15:45" }], "no lecture: after its other classes");
   assert.equal(defaultCheckSchedule(slots, "HUMA 101").mode, "custom", "no classes: daily");
-  assert.equal(describeChecks(defaultCheckSchedule(slots, "HUMA 101")), "Saturday to Thursday at 20:00");
+  assert.equal(describeChecks(defaultCheckSchedule(slots, "HUMA 101")), "Sat–Thu (GUC week) at 20:00");
   const after = defaultCheckSchedule(slots, "CSEN 701");
-  assert.equal(describeChecks(after), "After each lecture: Sun 12:00");
+  assert.equal(describeChecks(after), "After each lecture: Sun 12:00 · evening check 21:00");
   // Wednesday 11 Nov 2026, 12:00 in Cairo (UTC+2): the next Sunday lecture check is 15 Nov 12:00 Cairo, 10:00 UTC.
   assert.equal(new Date(nextCheck(after, Date.parse("2026-11-11T10:00:00Z"))!).toISOString(), "2026-11-15T10:00:00.000Z");
   assert.equal(nextCheck({ ...after, mode: "off" }, Date.now()), undefined);
   assert.equal(new Date(cairoTime("2026-07-01", "12:00")).toISOString(), "2026-07-01T09:00:00.000Z", "summer time");
-  assert.deepEqual(cronLines(parseCheckSchedule("sunday and tuesday at 6pm")!), [{ time: "18:00", cron: "0 18 * * 0,2" }]);
+  assert.deepEqual(cronLines(parseCheckSchedule("sunday and tuesday at 6pm")!), [{ key: "m0h18d02", cron: "0 18 * * 0,2" }]);
   assert.equal(describeChecks(parseCheckSchedule("every day at 8pm")!), "Every day at 20:00");
   assert.equal(describeChecks(parseCheckSchedule("daily at 9:30 am")!), "Every day at 09:30");
   assert.equal(parseCheckSchedule("after each lecture", suggestChecks(slots, "CSEN 701"))?.mode, "after_lectures");

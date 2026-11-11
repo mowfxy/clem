@@ -4,8 +4,8 @@
 import { cardBlock, type ClemCard, type SettingsUpdateCard } from "./cards.ts";
 import { TZ } from "./hub.ts";
 import { matchCourse, type MatchCourse } from "./match.ts";
-import { NO, YES, parseSaveRules, SAVE_KINDS, SAVE_LABELS, type SaveKind, type SaveRules } from "./rules.ts";
-import { describeChecks, parseCheckSchedule, type CheckTime } from "./schedule-rules.ts";
+import { AI_RULES_FORMAT, aiSaveRules, NO, YES, convertSaveRules, describeSaveRules, fromAi, rulesPatch, SAVE_KINDS, SAVE_LABELS, type SaveKind, type SaveRules } from "./rules.ts";
+import { convertCheckSchedule, describeChecks, type CheckTime, type ScheduleContext } from "./schedule-rules.ts";
 import { checkSchema, type SettingsPatch } from "./settings.ts";
 
 export const SETUP_STEPS = ["link", "save", "check", "drive", "storage"] as const;
@@ -69,8 +69,9 @@ export function setupMessage(step: SetupStep | "done", i: SetupInfo) {
   }
 }
 
-export type Reply = { kind: "confirm" } | { kind: "skip" } | { kind: "link"; courseKey: string } | { kind: "settings"; patch: SettingsPatch } | { kind: "unknown" };
-export type ReplyContext = { courses: MatchCourse[]; save: SaveRules; suggested: CheckTime[] };
+/** `ask`: something only the person knows (an exam date); Clem says `text` and waits. */
+export type Reply = { kind: "confirm" } | { kind: "skip" } | { kind: "link"; courseKey: string } | { kind: "settings"; patch: SettingsPatch } | { kind: "ask"; text: string } | { kind: "unknown" };
+export type ReplyContext = { courses: MatchCourse[]; save: SaveRules; suggested: CheckTime[] } & Omit<ScheduleContext, "suggested">;
 
 /** A typed reply to the current step, read locally: yes, skip, a course, or the setting it describes. */
 export function readReply(step: SetupStep, text: string, ctx: ReplyContext): Reply {
@@ -85,13 +86,13 @@ export function readReply(step: SetupStep, text: string, ctx: ReplyContext): Rep
   }
   if (step === "save") {
     if (YES.test(t)) return { kind: "confirm" };
-    const r = parseSaveRules(t, ctx.save);
-    return r ? { kind: "settings", patch: { save: r.rules } } : NO.test(t) ? { kind: "skip" } : { kind: "unknown" };
+    const r = convertSaveRules(t, ctx.save);
+    return !("needsAI" in r) ? { kind: "settings", patch: { save: rulesPatch(r.rules) } } : NO.test(t) ? { kind: "skip" } : { kind: "unknown" };
   }
   if (step === "check") {
     if (YES.test(t) && ctx.suggested.length) return { kind: "confirm" };
-    const s = parseCheckSchedule(t, ctx.suggested);
-    return s ? { kind: "settings", patch: { check: s } } : { kind: "unknown" };
+    const s = convertCheckSchedule(t, ctx);
+    return "mode" in s ? { kind: "settings", patch: { check: s } } : "ask" in s ? { kind: "ask", text: s.ask } : { kind: "unknown" };
   }
   if (step === "drive") {
     if (YES.test(t) || /\b(turn (it )?on|enable|sync( it)?|yes please)\b/i.test(t)) return { kind: "settings", patch: { drive: { enabled: true } } };
@@ -105,8 +106,8 @@ export function readReply(step: SetupStep, text: string, ctx: ReplyContext): Rep
 
 const ASK: Record<SetupStep, string> = {
   link: 'Which CMS course is it? {"action":"link","course":"<key from the list>"} or {"action":"skip"}.',
-  save: `What to save? {"action":"set","save":{${SAVE_KINDS.map((k) => `"${k}":true|false`).join(",")}}} giving only the kinds they mention, or {"action":"confirm"} to keep the suggestion.`,
-  check: 'When to check? {"action":"set","check":{"mode":"custom","times":[{"day":0-6 (0 Sunday),"time":"HH:MM"}]}}, {"action":"set","check":{"mode":"off","times":[]}}, or {"action":"confirm"} for after each lecture.',
+  save: `What to save? {"action":"set","rules":${AI_RULES_FORMAT}}, or {"action":"confirm"} to keep the suggestion.`,
+  check: 'When to check? {"action":"set","check":{"mode":"custom","times":[{"day":0-6 (0 Sunday),"time":"HH:MM"}],"every":{"minutes":N (30 or more),"from":"HH:MM","to":"HH:MM","days":[0-6]} (only for a repeat),"during":{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"} (only for a date range)}}, {"action":"set","check":{"mode":"off","times":[]}}, or {"action":"confirm"} for after each lecture. At GUC "weekdays" are Saturday to Thursday (6,0,1,2,3,4).',
   drive: 'Copy to Google Drive? {"action":"set","drive":{"enabled":true|false}}.',
   storage: 'Where files live? {"action":"set","storage":{"location":"device"|"vps"}}.',
 };
@@ -125,6 +126,7 @@ export function readAiReply(step: SetupStep, json: any, courses: MatchCourse[]):
   if (a === "confirm") return { kind: "confirm" };
   if (step === "link" && a === "link") return courses.some((c) => c.key === json.course) ? { kind: "link", courseKey: json.course } : { kind: "unknown" };
   if (a !== "set") return { kind: "unknown" };
+  if (step === "save" && json.rules && typeof json.rules === "object") { const r = aiSaveRules.safeParse(json.rules); return r.success && Object.keys(r.data).length ? { kind: "settings", patch: { save: r.data } } : { kind: "unknown" }; }
   if (step === "save" && json.save && typeof json.save === "object") {
     const kinds = Object.fromEntries(SAVE_KINDS.filter((k) => typeof json.save[k] === "boolean").map((k) => [k, json.save[k]]));
     return Object.keys(kinds).length ? { kind: "settings", patch: { save: { kinds } } } : { kind: "unknown" };
@@ -135,11 +137,15 @@ export function readAiReply(step: SetupStep, json: any, courses: MatchCourse[]):
   return { kind: "unknown" };
 }
 
-/** A settings_update block as the settings patch it makes (the check's times in Cairo). */
-export function updatePatch(u: SettingsUpdateCard): SettingsPatch {
+/** A settings_update block as the settings patch it makes, through the same converters a typed reply uses: the person's
+ *  words (saveText, checkText) are read by Clem; structured fields pass the strict schemas; what doesn't read is left out. */
+export function updatePatch(u: SettingsUpdateCard, ctx: { save?: SaveRules } & ScheduleContext = {}): SettingsPatch {
+  const words = u.saveText ? convertSaveRules(u.saveText, ctx.save) : undefined, when = u.checkText ? convertCheckSchedule(u.checkText, ctx) : undefined;
+  const save = words && !("needsAI" in words) ? rulesPatch(words.rules) : u.rules || u.save ? { ...u.rules, ...(u.save || u.rules?.kinds ? { kinds: { ...u.rules?.kinds, ...u.save } } : {}) } : undefined;
+  const check = when && "mode" in when ? when : u.check ? { ...u.check, times: u.check.mode === "off" ? [] : u.check.times, tz: TZ } : undefined;
   return {
-    ...(u.save ? { save: { kinds: u.save } } : {}),
-    ...(u.check ? { check: { ...u.check, times: u.check.mode === "off" ? [] : u.check.times, tz: TZ } } : {}),
+    ...(save ? { save } : {}),
+    ...(check ? { check } : {}),
     ...(u.drive ? { drive: u.drive } : {}),
     ...(u.storage ? { storage: u.storage } : {}),
   };
@@ -150,6 +156,7 @@ export function updateSummary(u: SettingsUpdateCard) {
   const off = Object.entries(u.save || {}).filter(([, v]) => !v).map(([k]) => k), on = Object.entries(u.save || {}).filter(([, v]) => v).map(([k]) => k);
   const parts = [
     on.length ? `Saving ${list(on)} too` : "", off.length ? `Stopped saving ${list(off)}` : "",
+    u.rules || u.saveText ? "Save rules updated" : "", u.checkText ? "Checks updated" : "",
     u.check ? (u.check.mode === "off" ? "Checks turned off" : u.check.mode === "after_lectures" ? "Checking after each lecture" : `Checks: ${describeChecks({ ...u.check, tz: TZ })}`) : "",
     u.drive ? `Drive copy turned ${u.drive.enabled ? "on" : "off"}` : "", u.storage ? `Files now live ${u.storage.location === "vps" ? "on your VPS" : "on this device"}` : "",
     u.unlink ? "Unlinked from CMS" : "", u.checkNow ? "Checking CMS now" : "",
