@@ -30,6 +30,7 @@ const read = {
   gucMaterials: (r) => engine.materials(r.courseId), gucSearch: (r) => engine.search(r.query), gucGrades: (r) => engine.grades(r.courseId),
   gucDeadlines: () => engine.deadlines(), gucFile: async (r) => { const { path, ...f } = await engine.file(r.materialId); return f; },
   gucStatus: () => engine.status(), gucSync: () => engine.status(),
+  gucSubject: (r) => engine.subject(r.subjectId), gucLinks: () => engine.links(), gucNewCourses: () => engine.newCourses(),
 };
 const server = await createServer({ server: { host: "127.0.0.1", port: 5233, strictPort: true }, logLevel: "error" });
 await server.listen();
@@ -189,17 +190,17 @@ try {
       await page.locator(".fp-head", { hasText: "Lecture 1" }).waitFor({ timeout: 15000 }).then(() => check(true, `${theme}: #/app/guc/cms/<course>/<file> opens that file`), () => check(false, `${theme}: file deep link`));
       await page.keyboard.press("Escape");
 
-      // A subject's CMS tab deep-links to its linked course; an unlinked subject shows the placeholder.
+      // A subject's CMS tab shows its linked course and opens it in the hub; an unlinked subject offers courses to link.
       await page.locator(".side-space .history-title", { hasText: "Embedded Systems" }).click();
       await page.getByRole("tab", { name: "CMS" }).click();
-      await page.locator(".guc-linked").waitFor();
+      await page.locator(".guc-subject .guc-file").first().waitFor();
       await shot("subject-linked");
-      await page.locator(".guc-linked").getByRole("button", { name: "Files" }).click();
+      await page.locator(".guc-subject").getByRole("button", { name: "Open in CMS" }).click();
       await page.locator(".guc-courses button.active", { hasText: "CSEN 701" }).waitFor();
       check(await page.evaluate(() => location.hash) === "#/app/guc/cms/1201%3A64", `${theme}: a subject's CMS tab opens its course in the hub`);
       await page.locator(".side-space .history-title", { hasText: "Biology 101" }).click();
       await page.getByRole("tab", { name: "CMS" }).click();
-      await page.getByText("Link a CMS course to this subject").waitFor();
+      await page.locator(".guc-link-pick").getByText("Link a CMS course").waitFor();
       await shot("subject-unlinked");
       check(true, `${theme}: an unlinked subject shows "Link a CMS course"`);
 

@@ -90,7 +90,7 @@ export const handoutEdits = { summary: "Moved the due date to Monday and made qu
 
 
 /** Starts Vite, installs the fake desktop bridge and opens the workspace. Returns helpers. */
-export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1, extraChats = [], extraSpaces = [], extraState = {} } = {}) {
+export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1, extraChats = [], extraSpaces = [], extraState = {}, guc } = {}) {
   const server = await createServer({ server: { host: "127.0.0.1", port, strictPort: true }, logLevel: "error" });
   await server.listen();
   const print = await specPrinter(browser);
@@ -102,8 +102,11 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.exposeFunction("__renderSpec", async (json) => Array.from(await print(JSON.parse(json))));
+  // `guc`: answers GUC requests (an in-memory engine, scripts/verify/guc-setup.mjs); window.fireGuc sends sync progress.
+  if (guc) await page.exposeFunction("__guc", async (json) => JSON.stringify(await guc(JSON.parse(json)) ?? null));
   await page.addInitScript(({ FOLDER, notes, replies, harderWorksheet, handoutEdits, worksheetSpec }) => {
-    const chat = new Set(), folder = new Set(), pack = new Set();
+    const chat = new Set(), folder = new Set(), pack = new Set(), gucs = new Set();
+    window.fireGuc = (p) => { for (const fn of gucs) fn(p); };
     const files = { ...notes };
     window.requests = [];
     window.drags = [];
@@ -130,9 +133,11 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       onChat: (fn) => { chat.add(fn); return () => chat.delete(fn); },
       onFolder: (fn) => { folder.add(fn); return () => folder.delete(fn); },
       onPack: (fn) => { pack.add(fn); return () => pack.delete(fn); },
+      onGuc: (fn) => { gucs.add(fn); return () => gucs.delete(fn); },
       startDrag: (path) => window.drags.push(path),
       invoke: async (r) => {
         window.requests.push(r);
+        if (r.action.startsWith("guc") && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
         switch (r.action) {
           case "securityInfo": return { email: "sam@example.com", verified: true, factors: [], identities: [], google: false, password: true };
           case "essentialSync": return { skills: r.skills, notes: r.notes };
