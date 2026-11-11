@@ -3,7 +3,11 @@
 Decided by the user on 2026-11-11. It works alongside docs/GUC-VPS-ENGINE.md.
 
 ## What changes
-- **Opening the app** lands on the **main thread**: one never-ending conversation with Clem's organizer. All proactivity happens here: morning brief, deadline reminders, evening prep, weekly summary, organizing the day, and digests of subject and project events.
+- **Opening the app** lands on the **home screen**: today's new-chat screen, with its widgets, kept as home. Its message box is the way into the main thread:
+  - focusing or tapping the box opens the main thread;
+  - text already typed carries over;
+  - there is no blank flash, and the thread shows its cached newest page instantly.
+- **The main thread** is one never-ending conversation with Clem's organizer. All proactivity happens here: morning brief, deadline reminders, evening prep, weekly summary, organizing the day, and digests of subject and project events.
 - **The sidebar** lists **subjects and projects only**, each expandable to its chats. There are no chats outside a subject or project. "New chat" lives on a subject or project.
 - **Talking to Clem:** the user can talk freely in the main thread. When a message clearly belongs to one subject or project, Clem **hands off automatically**:
   - it opens that subject's chat, or creates one;
