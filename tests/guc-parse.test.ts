@@ -9,9 +9,9 @@ const page = (name: string) => readFileSync(new URL(`./fixtures/guc/${name}.html
 test("the CMS course list reads every season's courses with their ids", () => {
   const courses = parseCourseList(page("cms-home"));
   assert.equal(courses.length, 5);
-  assert.deepEqual(courses[0], { key: "1201:64", id: 1201, seasonId: 64, season: "Winter 2026", code: "CSEN701", name: "Embedded Systems Architecture", active: true });
-  assert.equal(courses.find((c) => c.code === "HUMA101")?.active, false);
-  assert.equal(courses.find((c) => c.code === "HUMA101")?.name, "Critical Thinking & Scientific Methods");
+  assert.deepEqual(courses[0], { key: "1201:64", id: 1201, seasonId: 64, season: "Winter 2026", code: "CSEN 701", name: "Embedded Systems Architecture", active: true });
+  assert.equal(courses.find((c) => c.code === "HUMA 101")?.active, false);
+  assert.equal(courses.find((c) => c.code === "HUMA 101")?.name, "Critical Thinking & Scientific Methods");
   assert.equal(courses.at(-1)?.key, "1105:63");
   assert.throws(() => parseCourseList("<html><body><p>Hello</p></body></html>"), SiteChanged);
 });
@@ -35,7 +35,7 @@ test("a course page gives weeks, files and course and weekly announcements", () 
 test("the group schedule reads periods, groups, rooms and types", () => {
   const slots = parseSchedule(page("schedule"));
   assert.equal(slots.length, 5);
-  assert.deepEqual({ ...slots[0], id: undefined }, { id: undefined, day: "Sunday", period: 1, start: "08:15", end: "09:45", code: "CSEN701", name: "CSEN701 Embedded Systems Architecture", type: "", group: "T07", location: "C7.301" });
+  assert.deepEqual({ ...slots[0], id: undefined }, { id: undefined, day: "Sunday", period: 1, start: "08:15", end: "09:45", code: "CSEN 701", name: "CSEN 701 Embedded Systems Architecture", type: "Tutorial", group: "T07", location: "C7.301" });
   assert.equal(slots[1].type, "Lecture");
   assert.equal(slots[2].type, "Lab");
   assert.equal(slots[2].period, 4);
@@ -45,7 +45,7 @@ test("the group schedule reads periods, groups, rooms and types", () => {
 test("the transcript reads each semester's grades, years and form, and the v= challenge", () => {
   const grades = parseTranscript(page("transcript"));
   assert.equal(grades.length, 4);
-  assert.deepEqual(grades[0], { id: grades[0].id, semester: "Winter 2025", code: "CSEN601", name: "Computer System Architecture", hours: 6, numeric: 1.3, letter: "A" });
+  assert.deepEqual(grades[0], { id: grades[0].id, semester: "Winter 2025", code: "CSEN 601", name: "Computer System Architecture", hours: 6, numeric: 1.3, letter: "A" });
   assert.equal(grades[2].numeric, null);
   assert.equal(grades[2].letter, "");
   assert.equal(grades[3].letter, "A+");

@@ -1,10 +1,13 @@
 // The GUC hub's reads (docs/GUC-VPS-ENGINE.md): every query filters on owner_id, and lists that can grow are paged.
 import { materialFile, semesterOrder, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubSchedule, type Page } from "../../core/guc/hub.ts";
+import { normCode, withCode } from "../../core/guc/codes.ts";
 import type { GucSlot } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
 
 export const ANNOUNCEMENT_PAGE = 40;
 const ms = (t: Date | string | null) => (t ? new Date(t).getTime() : 0);
+/** Rows saved before codes were canonical ("CSEN701") read as "CSEN 701" until the next sync rewrites them. */
+const canon = (code: string | null) => (code ? normCode(code) || code : "");
 const like = (s: string) => "%" + s.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
 
 export async function counts(db: Db, owner: string) {
@@ -24,13 +27,13 @@ export async function courses(db: Db, owner: string): Promise<HubCourse[]> {
       (select count(*)::int from guc_materials m where m.owner_id = $1 and m.course_key = c.course_key) as materials
     from guc_courses c left join subject_links l on l.owner_id = c.owner_id and l.course_key = c.course_key
     where c.owner_id = $1 order by c.active desc, c.season_id desc, c.code`, [owner]);
-  return rows.map((r) => ({ key: r.course_key, code: r.code, name: r.name, season: r.season, active: r.active, subjectId: r.subject_id || undefined, unread: r.unread, materials: r.materials }));
+  return rows.map((r) => ({ key: r.course_key, code: canon(r.code), name: r.name, season: r.season, active: r.active, subjectId: r.subject_id || undefined, unread: r.unread, materials: r.materials }));
 }
 
 export async function schedule(db: Db, owner: string, weekStart: string): Promise<HubSchedule> {
   const rows = await db.query<{ slot_id: string; day: string; period: number; starts: string; ends: string; code: string; name: string; kind: string; grp: string; location: string }>(
     "select * from guc_schedule_slots where owner_id = $1 order by period, day", [owner]);
-  const slots: GucSlot[] = rows.map((r) => ({ id: r.slot_id, day: r.day, period: r.period, start: r.starts, end: r.ends, code: r.code, name: r.name, type: r.kind, group: r.grp, location: r.location }));
+  const slots: GucSlot[] = rows.map((r) => ({ id: r.slot_id, day: r.day, period: r.period, start: r.starts, end: r.ends, code: canon(r.code), name: withCode(r.name), type: r.kind, group: r.grp, location: r.location }));
   return { weekStart, slots };
 }
 
@@ -44,7 +47,7 @@ export async function announcements(db: Db, owner: string, o: { courseKey?: stri
   const rows = await db.query<{ announcement_id: string; course_key: string; code: string | null; name: string | null; scope: "course" | "week"; week: string | null; body: string; first_seen: Date; read_at: Date | null }>(`select a.announcement_id, a.course_key, c.code, c.name, a.scope, a.week, a.body, date_trunc('milliseconds', a.first_seen) as first_seen, a.read_at
     from guc_announcements a left join guc_courses c on c.owner_id = a.owner_id and c.course_key = a.course_key
     where ${where} order by date_trunc('milliseconds', a.first_seen) desc, a.announcement_id desc limit $2`, params);
-  const items = rows.slice(0, ANNOUNCEMENT_PAGE).map((r): HubAnnouncement => ({ id: r.announcement_id, courseKey: r.course_key, code: r.code || "", course: r.name || "A course", scope: r.scope, week: r.week || undefined, text: r.body, firstSeen: ms(r.first_seen), read: !!r.read_at }));
+  const items = rows.slice(0, ANNOUNCEMENT_PAGE).map((r): HubAnnouncement => ({ id: r.announcement_id, courseKey: r.course_key, code: canon(r.code), course: r.name || "A course", scope: r.scope, week: r.week || undefined, text: r.body, firstSeen: ms(r.first_seen), read: !!r.read_at }));
   const last = items.at(-1);
   return { items, next: rows.length > ANNOUNCEMENT_PAGE && last ? `${last.firstSeen}.${last.id}` : undefined };
 }
@@ -86,8 +89,8 @@ export async function search(db: Db, owner: string, query: string, limit = 40): 
   ]);
   const snippet = (text: string) => { const at = Math.max(0, text.toLowerCase().indexOf(terms[0]) - 50); return (at ? "…" : "") + text.slice(at, at + 160).replace(/\s+/g, " "); };
   return [
-    ...files.map((m): HubHit => { const f = materialFile(m.url, m.title); return { type: "material", id: m.material_id, courseKey: m.course_key, code: m.code || "", title: m.title, snippet: [m.kind, m.week].filter(Boolean).join(" · "), week: m.week, name: f.name, fileType: f.type }; }),
-    ...notes.map((a): HubHit => ({ type: "announcement", id: a.announcement_id, courseKey: a.course_key, code: a.code || "", title: a.name || "Announcement", snippet: snippet(a.body), week: a.week || undefined })),
+    ...files.map((m): HubHit => { const f = materialFile(m.url, m.title); return { type: "material", id: m.material_id, courseKey: m.course_key, code: canon(m.code), title: m.title, snippet: [m.kind, m.week].filter(Boolean).join(" · "), week: m.week, name: f.name, fileType: f.type }; }),
+    ...notes.map((a): HubHit => ({ type: "announcement", id: a.announcement_id, courseKey: a.course_key, code: canon(a.code), title: a.name || "Announcement", snippet: snippet(a.body), week: a.week || undefined })),
   ];
 }
 
@@ -102,12 +105,12 @@ export async function grades(db: Db, owner: string, courseKey?: string): Promise
   ]);
   const fresh = new Set(events.map((e) => e.event_key.split(":")[1]));
   const latest = Math.max(0, ...rows.map((r) => semesterOrder(r.semester)));
-  return rows.map((r): HubGrade => ({ id: r.grade_id, semester: r.semester, code: r.code, name: r.name, hours: r.hours, numeric: r.numeric_grade, letter: r.letter, latest: semesterOrder(r.semester) === latest, fresh: fresh.has(r.grade_id) }))
+  return rows.map((r): HubGrade => ({ id: r.grade_id, semester: r.semester, code: canon(r.code), name: r.name, hours: r.hours, numeric: r.numeric_grade, letter: r.letter, latest: semesterOrder(r.semester) === latest, fresh: fresh.has(r.grade_id) }))
     .sort((a, b) => semesterOrder(b.semester) - semesterOrder(a.semester) || Number(b.fresh) - Number(a.fresh) || a.code.localeCompare(b.code));
 }
 
 export async function deadlines(db: Db, owner: string): Promise<HubDeadline[]> {
   const rows = await db.query<{ deadline_id: string; course_key: string; code: string | null; title: string; due: Date; source: string }>(`select d.deadline_id, d.course_key, c.code, d.title, d.due, d.source
     from guc_deadlines d left join guc_courses c on c.owner_id = d.owner_id and c.course_key = d.course_key where d.owner_id = $1 order by d.due`, [owner]);
-  return rows.map((r) => ({ id: r.deadline_id, courseKey: r.course_key, code: r.code || "", title: r.title, due: new Date(r.due).toISOString(), source: r.source }));
+  return rows.map((r) => ({ id: r.deadline_id, courseKey: r.course_key, code: canon(r.code), title: r.title, due: new Date(r.due).toISOString(), source: r.source }));
 }

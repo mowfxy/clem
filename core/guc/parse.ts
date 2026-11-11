@@ -2,6 +2,7 @@
 // a#download, the course description box) follows AhmedAshrafAZ/cms-downloader (MIT, see THIRD-PARTY-NOTICES.md);
 // the schedule and transcript tables follow the GroupSchedule.aspx / Transcript_001.aspx layouts other student tools read.
 import * as cheerio from "cheerio";
+import { normCode, withCode } from "./codes.ts";
 import { PERIOD_TIMES } from "./hub.ts";
 import type { GucAnnouncement, GucCourse, GucCoursePage, GucGrade, GucMaterial, GucSlot, GucWeek } from "./types.ts";
 
@@ -53,7 +54,7 @@ export function parseCourseList(html: string): GucCourse[] {
       const id = Number(/\((\d+)\)\s*$/.exec(raw)?.[1]);
       if (!id) return;
       const label = raw.slice(0, raw.lastIndexOf("(")).trim();
-      const code = /^\(([^)]+)\)/.exec(label)?.[1]?.trim() || /[A-Z]{2,5}\s?\d{3}[A-Z]?/.exec(label)?.[0] || "";
+      const code = normCode(/^\(([^)]+)\)/.exec(label)?.[1] || label);
       const name = label.replace(/^\([^)]*\)\s*/, "").trim() || label;
       courses.push({ key: `${id}:${sid}`, id, seasonId: sid, season, code, name, active: /^active$/i.test(oneLine(cells.eq(2).text())) });
     });
@@ -123,10 +124,11 @@ export function parseSchedule(html: string): GucSlot[] {
       const entries = $(cell).find("table tr").toArray().map((r) => $(r).children("td,th").toArray());
       for (const tds of entries.length ? entries : [[cell]]) {
         const parts = tds.map((t) => oneLine($(t).text()));
-        const last = tds.length >= 3 ? $(tds[2]).attr("title")?.trim() || parts[2] : parts.at(-1) || "";
-        const type = TYPE.exec(last)?.[1] || "", course = last.replace(TYPE, "").trim();
+        // The cell reads "CSEN 701 Tut"; its title, when there is one, names the course in full but not the type.
+        const shown = parts.at(tds.length >= 3 ? 2 : -1) || "", last = (tds.length >= 3 && $(tds[2]).attr("title")?.trim()) || shown;
+        const type = TYPE.exec(last)?.[1] || TYPE.exec(shown)?.[1] || "", course = withCode(last.replace(TYPE, "").trim());
         if (!course) continue;
-        const code = /[A-Z]{2,5}\s?\d{3}[A-Z]?/.exec(course)?.[0] || course;
+        const code = normCode(course) || course;
         const slot = { day: day[0].toUpperCase() + day.slice(1), period: period + 1, start: TIMES[period]?.[0] || "", end: TIMES[period]?.[1] || "", code, name: course, type: type && typeName(type), group: tds.length >= 3 ? parts[0] : "", location: tds.length >= 2 ? parts[tds.length - 2] : "" };
         slots.push({ id: stableId([slot.day, slot.period, slot.code, slot.type, slot.group].join("|")), ...slot });
       }
@@ -156,7 +158,7 @@ export function parseTranscript(html: string): GucGrade[] {
       if (letter < 0) letter = cells.findIndex((c) => /^[A-F][+-]?$|^FA$|^FF$/.test(c));
       if (hours < 0) hours = cells.findIndex((c, i) => i !== numeric && /^\d{1,2}$/.test(c));
       const title = cells[name] || "";
-      const courseCode = (code >= 0 ? cells[code] : /[A-Z]{2,5}\s?\d{3}[A-Z]?/.exec(title)?.[0]) || "";
+      const courseCode = normCode(code >= 0 ? cells[code] || "" : title) || (code >= 0 ? cells[code] || "" : "");
       if (!title) return;
       const n = Number.parseFloat(cells[numeric] ?? ""), h = Number.parseInt(cells[hours] ?? "");
       grades.push({ id: stableId(label + "|" + (courseCode || title)), semester: label, code: courseCode, name: title, hours: Number.isFinite(h) ? h : null, numeric: Number.isFinite(n) ? n : null, letter: letter >= 0 ? cells[letter] || "" : "" });

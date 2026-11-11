@@ -119,7 +119,7 @@ test("the hub's reads: overview, courses, schedule, materials by week, grades an
     assert.ok(o.counts.deadlines >= 2);
 
     const courses = await engine.courses();
-    assert.deepEqual(courses.slice(0, 3).map((c) => [c.code, c.subjectId, c.materials]), [["CSEN701", "circuits", 3], ["CSEN702", undefined, 3], ["DMET901", undefined, 3]]);
+    assert.deepEqual(courses.slice(0, 3).map((c) => [c.code, c.subjectId, c.materials]), [["CSEN 701", "circuits", 3], ["CSEN 702", undefined, 3], ["DMET 901", undefined, 3]]);
     assert.equal(courses.at(-1)!.active, false, "inactive courses come last");
 
     const schedule = await engine.schedule("2026-11-07");
@@ -137,7 +137,7 @@ test("the hub's reads: overview, courses, schedule, materials by week, grades an
 
     const deadlines = await engine.deadlines();
     assert.ok(deadlines.every((d, i) => i === 0 || deadlines[i - 1].due <= d.due), "sorted by due date");
-    assert.ok(deadlines.some((d) => d.code === "CSEN701" && /Assignment 1/.test(d.title)));
+    assert.ok(deadlines.some((d) => d.code === "CSEN 701" && /Assignment 1/.test(d.title)));
 
     // Another owner's rows never show.
     await other.engine.db.query("update guc_announcements set read_at = now() where owner_id = 'hub-2'");
@@ -160,7 +160,7 @@ test("announcements page newest first by cursor, filter by course, and marking r
     assert.equal(new Set([...first.items, ...second.items].map((a) => a.id)).size, 54, "no row twice across pages");
 
     const one = await engine.announcements({ courseKey: "1201:64" });
-    assert.ok(one.items.length === 3 && one.items.every((a) => a.courseKey === "1201:64" && a.code === "CSEN701"));
+    assert.ok(one.items.length === 3 && one.items.every((a) => a.courseKey === "1201:64" && a.code === "CSEN 701"));
 
     const ids = one.items.map((a) => a.id);
     assert.deepEqual(await engine.markRead(ids), { marked: 3 });
@@ -175,7 +175,7 @@ test("search finds file names and announcements across courses; every word must 
   try {
     const hits = await engine.search("lecture 3");
     assert.deepEqual([...new Set(hits.filter((h) => h.type === "material").map((h) => h.title))], ["Lecture 3"]);
-    assert.ok(hits.some((h) => h.code === "CSEN702"), "across courses");
+    assert.ok(hits.some((h) => h.code === "CSEN 702"), "across courses");
     const quiz = await engine.search("quiz tutorial");
     assert.ok(quiz.length && quiz.every((h) => h.type === "announcement" && /Quiz 1/.test(h.snippet)));
     assert.deepEqual(await engine.search("100%_"), [], "LIKE wildcards are literal");

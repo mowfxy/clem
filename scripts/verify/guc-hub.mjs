@@ -143,13 +143,13 @@ try {
       await page.waitForFunction(() => window.requests.some((r) => r.action === "gucMarkRead"), null, { timeout: 4000 }).then(() => check(true, `${theme}: announcements in view are marked read`), () => check(false, `${theme}: announcements in view are marked read`));
       await shot("announcements");
       await page.locator(".guc-bar .pick-trigger").click();
-      await page.locator(".pick-menu:popover-open").getByRole("menuitemradio", { name: "CSEN701" }).click();
-      await page.waitForFunction(() => [...document.querySelectorAll(".guc-ann header b")].every((b) => b.textContent === "CSEN701") && document.querySelectorAll(".guc-ann").length > 0);
+      await page.locator(".pick-menu:popover-open").getByRole("menuitemradio", { name: "CSEN 701" }).click();
+      await page.waitForFunction(() => [...document.querySelectorAll(".guc-ann header b")].every((b) => b.textContent === "CSEN 701") && document.querySelectorAll(".guc-ann").length > 0);
       check(true, `${theme}: announcements filter by course`);
 
       // CMS: course → week → files, hover prefetch, preview, search.
       await timeTab("CMS", ".guc-file");
-      await page.locator(".guc-courses button", { hasText: "CSEN701" }).click();
+      await page.locator(".guc-courses button", { hasText: "CSEN 701" }).click();
       await page.locator(".guc-week").first().waitFor();
       check((await page.locator(".guc-week").allTextContents()).length === 2, `${theme}: files are grouped by week`);
       await page.locator(".guc-file", { hasText: "Lecture 3" }).hover();
@@ -195,7 +195,7 @@ try {
       await page.locator(".guc-linked").waitFor();
       await shot("subject-linked");
       await page.locator(".guc-linked").getByRole("button", { name: "Files" }).click();
-      await page.locator(".guc-courses button.active", { hasText: "CSEN701" }).waitFor();
+      await page.locator(".guc-courses button.active", { hasText: "CSEN 701" }).waitFor();
       check(await page.evaluate(() => location.hash) === "#/app/guc/cms/1201%3A64", `${theme}: a subject's CMS tab opens its course in the hub`);
       await page.locator(".side-space .history-title", { hasText: "Biology 101" }).click();
       await page.getByRole("tab", { name: "CMS" }).click();
