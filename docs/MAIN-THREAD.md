@@ -7,6 +7,10 @@ Decided by the user on 2026-11-11. It works alongside docs/GUC-VPS-ENGINE.md.
   - focusing or tapping the box opens the main thread;
   - text already typed carries over;
   - there is no blank flash, and the thread shows its cached newest page instantly.
+- **Home to thread (user, 2026-11-12):**
+  - The home page stays as it is. Pressing its message box **expands it into the main thread with a smooth shared-element animation**: the box grows into the thread's composer while the thread rises in. There is no hard route swap, and you can go back to home the same way.
+  - Animate the glass element itself, never fade a parent of glass. Respect reduced motion.
+  - Home also has a **fast subject/project picker** (recent first, type-to-filter, keyboard-first) that opens a new chat in the chosen subject or project in one tap.
 - **The main thread** is one never-ending conversation with Clem's organizer. All proactivity happens here: morning brief, deadline reminders, evening prep, weekly summary, organizing the day, and digests of subject and project events.
 - **The sidebar** lists **subjects and projects only**, each expandable to its chats. There are no chats outside a subject or project. "New chat" lives on a subject or project.
 - **Talking to Clem:** the user can talk freely in the main thread. When a message clearly belongs to one subject or project, Clem **hands off automatically**:
