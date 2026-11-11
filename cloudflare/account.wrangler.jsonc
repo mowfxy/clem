@@ -22,7 +22,10 @@
     "LEMON_TEST_MODE": "true",
     "ADMIN_REQUIRE_MFA": "true",
     "SUPABASE_URL": "https://npdkvkikudvjrgnesuhc.supabase.co",
-    "SUPABASE_ANON_KEY": "sb_publishable_iuAX6xFMvThhHYTWkT3fMw_CtkABHLu"
+    "SUPABASE_ANON_KEY": "sb_publishable_iuAX6xFMvThhHYTWkT3fMw_CtkABHLu",
+    // The Clem bot's username (without @), from BotFather. Empty: Telegram is off. TELEGRAM_BOT_TOKEN and
+    // TELEGRAM_WEBHOOK_SECRET are secrets (wrangler secret put), never written here.
+    "TELEGRAM_BOT_USERNAME": ""
   },
   "preview_urls": false
 }

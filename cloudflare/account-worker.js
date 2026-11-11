@@ -1,4 +1,5 @@
 import { handleProviders } from "./provider-vault.js";
+import { handleTelegram, telegramWebhook } from "./telegram.js";
 import { pack, unpack } from "./lib/pack.js";
 import { validateSync } from "../core/sync.ts";
 import {
@@ -148,6 +149,8 @@ async function route(request, env) {
       const path = new URL(request.url).pathname;
       if (path === "/webhooks/lemon" && request.method === "POST")
         return await webhook(request, env);
+      if (path === "/webhooks/telegram" && request.method === "POST")
+        return await telegramWebhook(request, env);
       if (request.method !== "GET" && request.method !== "POST")
         return json({ error: "Method not allowed" }, 405);
       if (
@@ -214,6 +217,8 @@ async function route(request, env) {
       if (usageResponse) return usageResponse;
       const providerResponse = await handleProviders(request, env, user, path);
       if (providerResponse) return providerResponse;
+      const telegramResponse = await handleTelegram(request, env, user, path);
+      if (telegramResponse) return telegramResponse;
       if (path.startsWith("/sync/")) {
         const kind = path.slice(6);
         if (!["skills", "memory", "notes"].includes(kind))
