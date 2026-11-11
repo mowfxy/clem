@@ -6,6 +6,7 @@ import { LectureCardView, OrganizerCardView, WatchCardView, type ProActions } fr
 import { TelegramPairCard } from "../telegram/TelegramPair";
 import { GucPasswordCard } from "../guc/GucPassword";
 import { PASSWORD_ROUTE } from "../../core/guc/password";
+import { VpsConfirmCardView, VpsMovedCardView } from "../vps/VpsCards";
 
 export type CardHandlers = {
   /** A hand-off card was pressed: open the chat it continued in (or its subject or project when the chat is gone). */
@@ -40,6 +41,8 @@ export function ClemCardBlock({ body, handlers = {} }: { body: string; handlers?
   if (card.type === "lecture") return <LectureCardView card={card} actions={handlers.pro} />;
   if (card.type === "watch") return <WatchCardView card={card} actions={handlers.pro} />;
   if (card.type === "telegram_pair") return <TelegramPairCard />;
+  if (card.type === "vps_moved") return <VpsMovedCardView card={card} onOpen={handlers.guc ? () => handlers.guc!.openHub("/app/connectors/vps") : undefined} />;
+  if (card.type === "vps_confirm") return <VpsConfirmCardView card={card} />;
   if (card.type === "guc_password") return <GucPasswordCard onUpdate={handlers.guc ? () => handlers.guc!.openHub(PASSWORD_ROUTE) : undefined} />;
   if (card.type === "brief") return (
     <div className="edit-proposal clem-card">

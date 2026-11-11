@@ -9,6 +9,7 @@ import { documentIntent } from "./document-standard.ts";
 import { driveIntent } from "./drive-search.ts";
 import { figureRecipeText, figureVocabulary } from "./figure-recipes.ts";
 import { GUC_GUIDE } from "./guc/ai-tools.ts";
+import { VPS_GUIDE } from "./vps/tools.ts";
 
 export type ClemSkill = { id: string; name: string; description: string; when: RegExp; steps: string[] };
 
@@ -31,6 +32,8 @@ export type SkillContext = {
   plans?: boolean;
   /** GUC is connected (desktop): its tools are there for study questions, and always in a subject's chat. */
   guc?: boolean;
+  /** A VPS is connected (desktop): the vps.* tools, only when the message is about the server. */
+  vps?: boolean;
   /** The answer runs as the AI's own CLI in a working folder (desktop/ai-workspace.ts), whose system prompt carries the
    *  Kinetra guide for that way of working: documents are a Markdown draft made with one request and changed with small
    *  edits. The playbooks for the older way (the whole document as JSON, 3–5 pages a reply, every field resent on a
@@ -92,6 +95,12 @@ export const clemSkills: ClemSkill[] = [
     id: "guc", name: "GUC", description: "The person's GUC schedule, deadlines, announcements, CMS files and grades, read live.",
     when: /\b(guc|cms|schedule|timetable|class(?:es)?|lectures?|tutorials?|labs?|slides?|sheets?|materials?|announcements?|news|deadlines?|due|assignments?|quiz(?:zes)?|midterms?|finals?|exams?|grades?|gpa|transcript|course|week \d+|today|tomorrow|study|revise|revision)\b/i,
     steps: GUC_GUIDE.split("\n").map((l) => l.replace(/^- /, "")),
+  },
+  {
+    // core/vps/tools.ts (VPS_GUIDE, the vps.* actions); desktop/engine/vps/tools.ts runs them; desktop/main.ts tools.
+    id: "vps", name: "VPS", description: "The person's own server: Clem's worker, commands, files and services.",
+    when: /\b(vps|server|ssh|docker|systemd|systemctl|worker|disk space|uptime|logs?|nginx|container)\b/i,
+    steps: VPS_GUIDE.split("\n").map((l) => l.replace(/^- /, "")),
   },
   {
     // core/plans.ts readPlanBlock, applyUpdate, resolveSpace; src/chat/PlanProposal.tsx; src/space/PlanView.tsx; src/App.tsx (plan blocks applied when a reply finishes).
@@ -427,6 +436,7 @@ function fits(skill: ClemSkill, request: string, context: SkillContext) {
     case "plans": return !!context.plans || skill.when.test(request);
     // Only with GUC connected; a subject's chat is study by definition.
     case "guc": return !!context.guc && (!!context.subject || skill.when.test(request));
+    case "vps": return !!context.vps && skill.when.test(request);
     default: return skill.when.test(request);
   }
 }

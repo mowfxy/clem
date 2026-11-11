@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("clem:guc", handler);
       return () => ipcRenderer.removeListener("clem:guc", handler);
     },
+    onVps: (listener) => {
+      const handler = (_event, payload) => { if (payload && typeof payload.what === "string") listener({ what: payload.what.slice(0, 200) }); };
+      ipcRenderer.on("clem:vps", handler);
+      return () => ipcRenderer.removeListener("clem:vps", handler);
+    },
     onPack: (listener) => {
       const handler = (_event, payload) => listener(payload);
       ipcRenderer.on("clem:pack", handler);

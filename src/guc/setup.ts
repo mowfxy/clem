@@ -75,7 +75,7 @@ export function createSetup(deps: SetupDeps) {
     const guess = !v.course && space ? matchCourse({ name: space.name, description: space.description }, free.filter((c) => c.active)) : undefined;
     const course = v.course || guess?.best?.item;
     const check = v.suggested.mode === "after_lectures" ? `Half an hour after each lecture works well: ${describeChecks(v.suggested).replace("After each lecture: ", "")}` : `I'd check ${describeChecks(v.suggested).replace(/^Every/, "every")}`;
-    say(chat.id, lead + setupMessage(step, { subjectId, subject: space?.name || "this subject", course: course && { key: course.key, code: course.code, name: course.name }, linked: !!v.course, sure: guess?.sure, save: describeSaveRules(v.settings.save), check, first: !posted(chat).length }));
+    say(chat.id, lead + setupMessage(step, { subjectId, subject: space?.name || "this subject", course: course && { key: course.key, code: course.code, name: course.name }, linked: !!v.course, sure: guess?.sure, save: describeSaveRules(v.settings.save), check, first: !posted(chat).length, vpsFiles: !!v.vpsFiles }));
   }
 
   /** Opens the subject's setup thread, starting it the first time (linked to `courseKey` when made from a course). */

@@ -47,6 +47,8 @@ export type SetupInfo = {
   /** The linked course, or the best guess at it. */
   course?: { key: string; code: string; name: string }; linked: boolean; sure?: boolean; others?: number;
   save: string; check: string; first?: boolean;
+  /** "Store my files on my VPS" is on: files go there, so the step only says so. */
+  vpsFiles?: boolean;
 };
 const b = (s: string) => `**${s}**`;
 /** What Clem says for a step: one short question and its card. */
@@ -64,7 +66,7 @@ export function setupMessage(step: SetupStep | "done", i: SetupInfo) {
     case "save": return hi + `What should I save from CMS? I'd keep ${i.save.toLowerCase()}. Change anything below, or just tell me.` + card({ type: "save_rules", subjectId: id, setup: true });
     case "check": return hi + `When should I check CMS for new files? ${i.check}.` + card({ type: "check_schedule", subjectId: id, setup: true });
     case "drive": return hi + "Should I also keep a copy of saved files in a Google Drive folder?" + card({ type: "drive_folder", subjectId: id, setup: true });
-    case "storage": return hi + "Where should the files live, on this device or on your VPS?" + card({ type: "storage", subjectId: id, setup: true });
+    case "storage": return hi + (i.vpsFiles ? "Files will be stored on your VPS, and this device keeps the recent ones. All good?" : "Where should the files live, on this device or on your VPS?") + card({ type: "storage", subjectId: id, setup: true });
     default: return `All set${i.linked && i.course ? ` with ${b(i.course.code)}` : ""}. Change anything here or on the subject page, or just tell me (like "stop saving videos").` + card({ type: "setup_done", subjectId: id });
   }
 }

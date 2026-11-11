@@ -176,7 +176,12 @@ export function Storage({ subjectId, setup = false, actions }: { subjectId: stri
   if (!v.data) return <Loading icon="device" />;
   const { location } = v.data.settings.storage, s = v.data.storage, waiting = setup && pendingStep(v.data) === "storage";
   const pick = (to: "device" | "vps") => void editSubject(subjectId, { storage: { location: to } }).catch(fail(actions));
-  return <Frame icon="device" title="Where files live" sub={`${location === "vps" ? "On your VPS" : "On this device"} · ${s.files ? `${s.files} file${s.files === 1 ? "" : "s"}, ${sizeLabel(s.bytes)}` : "nothing saved yet"}`}
+  const split = s.files ? (s.onVps ? `${s.onVps} on your VPS, ${s.files - s.onVps} on this device · ${sizeLabel(s.bytes)}` : `${s.files} file${s.files === 1 ? "" : "s"}, ${sizeLabel(s.bytes)}`) : "nothing saved yet";
+  // "Store my files on my VPS" (Settings → Connectors → VPS) decides for every file, so there is nothing to pick here.
+  if (v.data.vpsFiles) return <Frame icon="server" title="Where files live" sub={`On your VPS · ${split}`} footer={waiting && <SetupButtons subjectId={subjectId} step="storage" actions={actions} busy={false} confirm="Sounds good" />}>
+    <p className="guc-card-line">Files will be stored on your VPS. This device keeps recent and pinned ones so they open instantly.</p>
+  </Frame>;
+  return <Frame icon="device" title="Where files live" sub={`${location === "vps" ? "On your VPS" : "On this device"} · ${split}`}
     footer={waiting && <SetupButtons subjectId={subjectId} step="storage" actions={actions} busy={false} />}>
     <div className="guc-seg" role="radiogroup" aria-label="Where files live">
       <button type="button" role="radio" aria-checked={location === "device"} onClick={() => pick("device")}>This device</button>

@@ -15,7 +15,7 @@ export type Connector = {
 
 export const connectors: Connector[] = [
   { id: "guc", name: "GUC", icon: "guc", description: "Courses, grades and announcements from CMS and the student portal.", status: "gucStatus" },
-  { id: "vps", name: "Your server", icon: "settings", description: "Run Clem's background jobs on your own VPS. Coming later.", status: "vpsStatus", hidden: true },
+  { id: "vps", name: "VPS", icon: "server", description: "Keep your files and Clem's background jobs on your own server, always on.", status: "vpsStatus" },
 ];
 
 export const visibleConnectors = () => connectors.filter((c) => !c.hidden);

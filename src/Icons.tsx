@@ -120,7 +120,8 @@ offline:['F '+cloud,'M5 5l22 22'],
 'cloud-up':['F '+cloud,'M16 22v-7.5','M12.5 18l3.5-3.5 3.5 3.5'],
 plug:['F M10 11h12v4.5a6 6 0 0 1-12 0Z','M13 4.5V11M19 4.5V11','M16 21.5V28'],
 hourglass:['M8 4h16M8 28h16','F M10 4c0 6.5 6 8 6 12s-6 5.5-6 12h12c0-6.5-6-8-6-12s6-5.5 6-12Z'],
-device:['F '+box(6,6,20,14),'M3 25.5h26']};
+device:['F '+box(6,6,20,14),'M3 25.5h26'],
+server:['F '+box(6,5,20,9),'F '+box(6,18,20,9),'M10.5 9.5h.01','M10.5 22.5h.01','M15 9.5h6','M15 22.5h6']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
 export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}

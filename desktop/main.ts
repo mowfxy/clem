@@ -49,7 +49,7 @@ import { clipboardFiles } from "./clipboard-files";
 import { spawn } from "node:child_process";
 import { applyChange, changeProblem, undoChange, locate, readText, type Change } from "./folder-edits";
 import { editLanguage } from "../core/answer-format";
-import { join, resolve, basename, dirname, relative, sep } from "node:path";
+import { join, resolve, basename, dirname, relative, sep, extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { mkdir, writeFile, unlink, rm, readdir } from "node:fs/promises";
 import { browserLogin } from "./browser-login";
@@ -73,6 +73,11 @@ import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import { Engine } from './engine/index';
 import type { EngineHost } from './engine/host';
+import { VpsManager } from './engine/vps/manager';
+import type { LocalBlobs, StorageRouter } from './engine/vps/router';
+import { RPC_METHODS } from './engine/vps/rpc';
+import { isVpsAction } from '../core/vps/tools';
+import { likelyNext, chatFiles } from '../core/vps/prefetch';
 import { runGucTool, runTelegramTool } from './engine/ai-tools';
 import { ANSWER_MS } from './engine/telegram';
 import { TG_FILE_LIMIT } from '../core/telegram/pairing';
@@ -218,6 +223,21 @@ if(primaryInstance&&!existsSync(cryptoMigration)){
 }
 app.setPath('sessionData',durableSession);
 const disk=new WorkspaceDisk(workspaceRoot);
+/** The workspace's files: through the VPS storage router once a VPS is set up (docs/GUC-VPS-ENGINE.md "Storage on the
+ *  VPS"), else straight to this PC's disk. The window's /api/local/files API is the same either way. */
+let routerFor: (owner: string) => Promise<StorageRouter | undefined> = async () => undefined;
+const asBuffer = (b: Uint8Array | null) => (b ? Buffer.from(b.buffer, b.byteOffset, b.byteLength) : null);
+const blobs = {
+  async readFile(owner: string, id: string) { const r = await routerFor(owner); return r ? asBuffer(await r.readFile(id)) : disk.readFile(owner, id); },
+  async writeFile(owner: string, id: string, data: Uint8Array) { const r = await routerFor(owner); return r ? r.writeFile(id, data) : disk.writeFile(owner, id, data); },
+  async deleteFile(owner: string, id: string) { const r = await routerFor(owner); return r ? r.deleteFile(id) : disk.deleteFile(owner, id); },
+  async hasFile(owner: string, id: string) { const r = await routerFor(owner); return r ? r.hasFile(id) : disk.hasFile(owner, id); },
+};
+const localBlobs = (owner: string): LocalBlobs => ({
+  read: async (id) => { const b = await disk.readFile(owner, id); return b ? new Uint8Array(b) : null; },
+  write: (id, b) => disk.writeFile(owner, id, b), remove: (id) => disk.deleteFile(owner, id), has: (id) => disk.hasFile(owner, id),
+  path: (id) => disk.blobPath(owner, id), list: () => disk.listFiles(owner),
+});
 void app.whenReady().then(async () => {
   if (!primaryInstance) return;
   startMainLog(join(app.getPath("userData"), "logs"));
@@ -753,7 +773,7 @@ void app.whenReady().then(async () => {
   const pendingTasks = new Map<string, { resolve: (result: { data: any; images: { name: string; data: string }[]; files: Uint8Array[] }) => void; reject: (error: Error) => void }>();
   /** Crops cut in temporary chats live only here (the few most recent chats), never on disk. */
   const temporaryCrops = temporaryStores();
-  const diskCrops = (owner: string): AssetIo => ({ read: async (k) => { const b = await disk.readFile(owner, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => disk.writeFile(owner, k, b), remove: (k) => disk.deleteFile(owner, k) });
+  const diskCrops = (owner: string): AssetIo => ({ read: async (k) => { const b = await blobs.readFile(owner, k); return b ? new Uint8Array(b) : null; }, write: (k, b) => blobs.writeFile(owner, k, b), remove: (k) => blobs.deleteFile(owner, k) });
   // A launch in the tray (--background) has no workspace asking for the session, so the signed-in person's
   // services (folder watching, provider sign-ins) start here once the saved session is restored.
   void authReady.then(async () => { const user = await auth.user(false); if (user) await selectProvider(user.id); }).catch(() => {});
@@ -1058,8 +1078,13 @@ void app.whenReady().then(async () => {
     if(url.pathname==='/api/local/state'||/^\/api\/local\/files\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
       try{const user=await auth.user();if(!user)return Response.json({error:'Sign in first.'},{status:401});if(request.headers.get('X-Clem-Owner')!==user.id)return Response.json({error:'Account changed.'},{status:409});
       if(backups.restoring&&request.method!=='GET')return Response.json({error:'Restoring a backup. Clem reloads in a moment.'},{status:423});
-      if(url.pathname.endsWith('/state')){if(request.method==='GET')return Response.json(await disk.readState(user.id));if(request.method==='PUT'){const value=await request.json();await disk.writeState(user.id,value);return Response.json({ok:true});}}
-      else {const id=url.pathname.split('/').at(-1)!;if(request.method==='GET'){const file=await disk.readFile(user.id,id);return file?new Response(new Uint8Array(file)):new Response(null,{status:404});}if(request.method==='PUT'){await disk.writeFile(user.id,id,new Uint8Array(await request.arrayBuffer()));return Response.json({ok:true});}if(request.method==='DELETE'){await disk.deleteFile(user.id,id);return Response.json({ok:true});}}
+      if(url.pathname.endsWith('/state')){if(request.method==='GET')return Response.json(await disk.readState(user.id));if(request.method==='PUT'){const value=await request.json();await disk.writeState(user.id,value);vpsManagers.get(user.id)?.pushWorkspace(false,value).catch(()=>{});return Response.json({ok:true});}}
+      else {const id=url.pathname.split('/').at(-1)!;if(request.method==='GET'){let file=await blobs.readFile(user.id,id).catch(()=>null);
+        // A CMS file the VPS worker saved: its bytes through the worker's engine, kept here like any file.
+        if(!file&&id.startsWith('guc_')&&vpsManagers.has(user.id)){const f=await(await engineFor(user.id)).file(id.slice(4)).catch(()=>null);if(f){file=await readDiskFile(f.path);await blobs.writeFile(user.id,id,new Uint8Array(file)).catch(()=>{});}}
+        // Files likely opened next (same space, same week) come from the VPS in the background.
+        if(file&&vpsSet.get(user.id))void disk.readState(user.id).then(async(s)=>(await routerFor(user.id))?.prefetch(likelyNext((s?.files||[]),id))).catch(()=>{});
+        return file?new Response(new Uint8Array(file)):new Response(null,{status:404});}if(request.method==='PUT'){await blobs.writeFile(user.id,id,new Uint8Array(await request.arrayBuffer()));return Response.json({ok:true});}if(request.method==='DELETE'){await blobs.deleteFile(user.id,id);return Response.json({ok:true});}}
       return new Response(null,{status:405});}catch{return Response.json({error:'Could not access your Documents/Clem workspace. Check available disk space and permissions.'},{status:500});}
     }
     // A GUC CMS file for the viewer (desktop/engine Engine.file): the saved copy, or fetched now into a temp folder.
@@ -1213,8 +1238,12 @@ void app.whenReady().then(async () => {
       setTimeout(() => { if (telegramWaits.delete(turn.id)) reject(Error("timeout")); }, ANSWER_MS).unref();
     }),
     open: (o) => { showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", o); },
+    // Files live on the VPS while "Store my files on my VPS" is on and it answers (desktop/engine/vps).
+    store: () => { const m = vpsManagers.get(owner); return m && vpsModes.get(owner) === "vps" ? m.vpsStore() : undefined; },
+    stores: () => { const s = vpsManagers.get(owner)?.vpsStore(); return s ? { vps: s } : {}; },
+    vps: () => (vpsSet.get(owner) ? { files: vpsModes.get(owner) === "vps" } : undefined),
   });
-  const engineFor = (owner: string) => {
+  const rawEngineFor = (owner: string) => {
     let engine = engines.get(owner);
     if (!engine) {
       engine = Engine.open(owner, engineHost(owner));
@@ -1223,7 +1252,66 @@ void app.whenReady().then(async () => {
     }
     return engine;
   };
-  closeEngines = async () => { const open = [...engines.values()]; engines.clear(); await Promise.all(open.map((e) => e.then((x) => x.close()).catch(() => {}))); };
+  // ---------- VPS (docs/GUC-VPS-ENGINE.md "VPS") ----------
+  const vpsManagers = new Map<string, VpsManager>(), vpsSet = new Map<string, boolean>(), vpsModes = new Map<string, string>();
+  const vpsEvent = (what: string) => { if (!window.isDestroyed()) window.webContents.send("clem:vps", { what }); };
+  const vpsFor = (owner: string) => {
+    let m = vpsManagers.get(owner);
+    if (!m) {
+      m = new VpsManager({
+        owner, secrets: { get: async (k) => vault.read(k, undefined), set: (k, v) => vault.write(k, v), delete: (k) => vault.remove(k) },
+        local: localBlobs(owner), files: join(workspaceRoot, "Accounts", owner, "Files"), engine: () => rawEngineFor(owner),
+        bundle: join(__dirname, "worker"), accountService: config.service,
+        engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
+        log: (msg) => console.warn(msg),
+        changed: (what) => { void m!.mode().then((mode) => vpsModes.set(owner, mode)); vpsEvent(what); },
+        notify: (n) => engineHost(owner).notify(n as Parameters<EngineHost["notify"]>[0]),
+      });
+      m.workspaceState = () => disk.readState(owner);
+      vpsManagers.set(owner, m);
+    }
+    return m;
+  };
+  /** Whether this owner set up a VPS (its Vault record), remembered until Settings changes it. */
+  const vpsConfigured = async (owner: string) => {
+    if (!vpsSet.has(owner)) { const v = await vault.read<{ config?: { host?: string }; storage?: { mode?: string } }>("vps-" + owner, {}).catch(() => ({} as { config?: { host?: string }; storage?: { mode?: string } })); vpsSet.set(owner, !!v.config?.host); vpsModes.set(owner, v.storage?.mode || "device"); }
+    return vpsSet.get(owner)!;
+  };
+  routerFor = async (owner) => (await vpsConfigured(owner) ? vpsFor(owner).router() : undefined);
+  /** The engine the window's requests reach: the worker's (through the tunnel) while it runs Clem's jobs, else this
+   *  one. Only RPC_METHODS go over; everything else is local. */
+  const engineFor = async (owner: string): Promise<Engine> => {
+    const engine = await rawEngineFor(owner);
+    if (!vpsManagers.has(owner)) return engine;
+    const wrap = (target: any, prefix: string): any => new Proxy(target, {
+      get(t, name) {
+        const v = t[name];
+        if (typeof name !== "string") return v;
+        const path = prefix + name;
+        if ((name === "organizer" || name === "telegram") && !prefix) return wrap(v, name + ".");
+        if (path === "file") return async (id: string) => {
+          const remote = await vpsManagers.get(owner)?.remote();
+          if (!remote) return v.call(t, id);
+          const f = await remote.call<{ id: string; name: string; type: string; size: number; stored: boolean; data: string }>("fileBytes", [id]);
+          const dir = join(app.getPath("temp"), "clem-guc", owner); await mkdir(dir, { recursive: true });
+          const p = join(dir, id.replace(/[^\w-]/g, "_") + extname(f.name)); await writeFile(p, Buffer.from(f.data, "base64"));
+          const { data: _data, ...rest } = f; return { ...rest, path: p };
+        };
+        if (typeof v !== "function" || !RPC_METHODS.has(path)) return typeof v === "function" ? v.bind(t) : v;
+        return async (...args: unknown[]) => { const remote = await vpsManagers.get(owner)?.remote(); return remote ? remote.call(path, args) : v.apply(t, args); };
+      },
+    });
+    return wrap(engine, "");
+  };
+  closeEngines = async () => { const open = [...engines.values()]; engines.clear(); await Promise.all([...vpsManagers.values()].map((m) => m.close().catch(() => {}))); await Promise.all(open.map((e) => e.then((x) => x.close()).catch(() => {}))); };
+  // A VPS set up earlier: carry on a move that was interrupted, and the worker's heartbeat.
+  void authReady.then(async () => {
+    const user = await auth.user(false);
+    if (!user || !(await vpsConfigured(user.id))) return;
+    const m = vpsFor(user.id);
+    await m.resumeMove().catch(() => {});
+    if ((await m.vault()).worker?.enabled) m.startHeartbeat();
+  }).catch(() => {});
   const gucProgress = (progress: unknown) => { if (!window.isDestroyed()) window.webContents.send("clem:guc", progress); };
   const gucStatus = async (owner: string) => engines.has(owner) || await vault.read("guc-" + owner, undefined) ? (await engineFor(owner)).status() : { connected: false, syncing: false, courses: 0, linked: 0 };
   // Scheduled GUC syncs run while Clem is open (in the tray too), so the engine starts with a connected account.
@@ -1457,10 +1545,35 @@ void app.whenReady().then(async () => {
     if (request.action === "announcements") return auth.cloud("/announcements");
     await selectProvider(user.id);
     if (request.action === "gucStatus") return gucStatus(user.id);
-    if (request.action === "gucConnect") return (await engineFor(user.id)).connect(request.username, request.password, gucProgress);
-    if (request.action === "gucPassword") return (await engineFor(user.id)).updatePassword(request.password, gucProgress);
+    // The password is checked and kept here; a VPS worker running Clem's jobs gets it too (over the tunnel, then sealed).
+    if (request.action === "gucConnect" || request.action === "gucPassword") {
+      const local = await rawEngineFor(user.id);
+      const status = request.action === "gucConnect" ? await local.connect(request.username, request.password, gucProgress) : await local.updatePassword(request.password, gucProgress);
+      const remote = await vpsManagers.get(user.id)?.remote();
+      if (remote) return remote.call(request.action === "gucConnect" ? "connect" : "updatePassword", request.action === "gucConnect" ? [request.username, request.password] : [request.password]).catch(() => status);
+      return status;
+    }
     if (request.action === "gucSync") { const engine = await engineFor(user.id); return engine.sync(gucProgress).catch(() => engine.status()); }
-    if (request.action === "gucDisconnect") return (await engineFor(user.id)).disconnect();
+    if (request.action === "gucDisconnect") { const remote = await vpsManagers.get(user.id)?.remote(); await remote?.call("disconnect").catch(() => {}); return (await rawEngineFor(user.id)).disconnect(); }
+    // Settings → Connectors → VPS (desktop/engine/vps/manager.ts). The key and password never come back to the window.
+    if (request.action.startsWith("vps")) {
+      const m = vpsFor(user.id), reset = () => { vpsSet.delete(user.id); return vpsConfigured(user.id); };
+      if (request.action === "vpsStatus") { if (await vpsConfigured(user.id)) return m.status(); const v = await m.vault(); return { connected: false, ...(v.config ? { config: v.config } : {}), storage: { mode: "device", device: 0, vps: 0, cache: 0, cap: 2 * 1024 ** 3, pinned: 0, files: { device: 0, vps: 0 } }, worker: { enabled: false, installed: false, runner: "desktop", model: "none" }, passwordAllowed: !!v.allowPassword }; }
+      if (request.action === "vpsSetup") { const r = await m.setup(request); await reset(); return r; }
+      if (request.action === "vpsGenerateKey") return m.generate();
+      if (request.action === "vpsPasteKey") return m.pasteKey(request.privateKey, request.passphrase);
+      if (request.action === "vpsTest") { const t = await m.test(); await reset(); return t; }
+      if (request.action === "vpsForget") { const r = await m.forget(); vpsManagers.delete(user.id); await reset(); return r; }
+      if (request.action === "vpsMove") { const r = await m.move(request.direction); vpsModes.set(user.id, request.direction === "up" ? "vps" : "device"); return r; }
+      if (request.action === "vpsAbortMove") { const r = await m.abortMove(); vpsModes.set(user.id, await m.mode()); return r; }
+      if (request.action === "vpsCap") return m.setCap(request.bytes);
+      if (request.action === "vpsPin") return { ok: await m.pin(request.id, request.on) };
+      if (request.action === "vpsPinned") return (await vpsConfigured(user.id)) ? (await m.router()).pinned() : [];
+      if (request.action === "vpsWorker") return request.on ? m.enableWorker((label) => vpsEvent("progress:" + label)) : m.disableWorker();
+      if (request.action === "vpsModelKey") return m.setModelKey(request.key ? { key: request.key, model: request.model } : undefined);
+      if (request.action === "vpsConfirm") return m.tools.confirm(user.id, request.id);
+      if (request.action === "vpsCancel") return m.tools.cancel(user.id, request.id);
+    }
     // Clem's organizer (desktop/engine/organizer.ts): settings, the window's inbox and Undo, the log, mutes and watches.
     if (request.action.startsWith("pro")) {
       const o = (await engineFor(user.id)).organizer;
@@ -1493,7 +1606,7 @@ void app.whenReady().then(async () => {
         // Files the answer made go with it (each within Telegram's 50 MB).
         const files = [];
         for (const f of request.files || []) {
-          const bytes = await disk.readFile(user.id, f.id).catch(() => null);
+          const bytes = await blobs.readFile(user.id, f.id).catch(() => null);
           if (bytes && bytes.byteLength <= TG_FILE_LIMIT) files.push({ name: f.name, type: f.type, bytes: new Uint8Array(bytes) });
         }
         wait.resolve({ text: request.text, files });
@@ -2053,6 +2166,13 @@ void app.whenReady().then(async () => {
         // Claude Code opens PDF pages only with poppler on the PATH (claudeOpensPdfPages); without it, as Codex does.
         const nativePdf = (!!request.model?.startsWith("claude:") && claudeOpensPdfPages()) || !!request.model?.startsWith(GROK_PREFIX) || agTurn;
         const plan = mirrorFor({ state, scope: request.scope, chat: chatId, lane, blob: (id) => disk.blobPath(user.id, id), officeText, library: library.filter((f) => f.kind === "file"), attached: request.pdfs || [], documents: request.documents || [], pdfText: !nativePdf, running: runningLanes });
+        // Files kept only on the VPS are fetched when the copy here is missing (the chat's own files first, ahead of time).
+        const router = await routerFor(user.id);
+        if (router) {
+          const convo = (state?.chats || []).find((c: { id: string }) => c.id === chatId);
+          router.prefetch(chatFiles(convo?.messages || []));
+          for (const f of plan.files) if (f.id && "file" in f.from && !(await disk.hasFile(user.id, f.id))) { const id = f.id; f.from = { make: async () => { const b = await router.readFile(id); if (!b) throw Error("This file isn't available right now."); return b; } }; }
+        }
         const paths = await syncMirror(root, plan.files, plan.keep, lane);
         runningLanes.set(lane, (runningLanes.get(lane) || 0) + 1);
         const sources = plan.files.filter((m) => m.source && paths.includes(m.path)).map((m) => m.path);
@@ -2163,7 +2283,7 @@ void app.whenReady().then(async () => {
         (folders.length ? await editReview(answer, (edit) => changeProblem(folders, edit)) : undefined) ?? answerReview(answer, history, { calculation }) ??
         // Every chat figure drawn first, so one Kinetra refuses (a composition that fails its checks) goes back, not to the person.
         await figureDrawReview(answer, (figure) => kinetraCall({ action: "call", ...figure }));
-      const known = await Promise.all((request.documents || []).map((doc) => disk.hasFile(user.id, "spec-" + doc.id)));
+      const known = await Promise.all((request.documents || []).map((doc) => blobs.hasFile(user.id, "spec-" + doc.id)));
       (request.documents || []).forEach((doc, i) => { if (known[i]) documents.set(doc.id, doc.name); });
       // The Markdown file each document was last made from (kept with its source): written back when it is missing from
       // the folder, so a change is still a small edit to it rather than the whole document again.
@@ -2173,7 +2293,7 @@ void app.whenReady().then(async () => {
       if (work) await Promise.all([...documents.keys()].map(async (id) => {
         // A damaged source file only loses this hint; it never fails the answer.
         let draft: any;
-        try { draft = JSON.parse((await disk.readFile(user.id, "spec-" + id))?.toString("utf8") || "{}")?.draft; } catch { return; }
+        try { draft = JSON.parse((await blobs.readFile(user.id, "spec-" + id))?.toString("utf8") || "{}")?.draft; } catch { return; }
         const full = typeof draft?.path === "string" && typeof draft.text === "string" ? workspacePath(work!.root, lanePath(draft.path)) : null;
         if (!full) return;
         drafts.set(id, lanePath(draft.path));
@@ -2211,7 +2331,7 @@ void app.whenReady().then(async () => {
           if (text === null) throw Error(`${spec.markdown} is not in your working folder: write it first.`);
           // A revision keeps the plan the document was made with, unless the request sends a new one.
           if (spec.plan === undefined && typeof spec.revise === "string" && documents.has(spec.revise)) {
-            const stored = JSON.parse((await disk.readFile(user.id, "spec-" + spec.revise))?.toString("utf8") || "{}");
+            const stored = JSON.parse((await blobs.readFile(user.id, "spec-" + spec.revise))?.toString("utf8") || "{}");
             if (Array.isArray(stored.plan)) spec = { ...spec, plan: stored.plan };
           }
           // A document built from the person's sources (a lecture, a chapter) is planned from their structure first, so
@@ -2238,7 +2358,7 @@ void app.whenReady().then(async () => {
           const verb = append ? "append" : "patch";
           if (!revise) throw Error(`"${verb}" needs "revise": the id of the file to ${append ? "add to" : "change"}.`);
           if (!key) throw Error(`"${verb}" works for pdf, docx, pptx and xlsx files; send the complete file instead.`);
-          const current = await disk.readFile(user.id, "spec-" + revise);
+          const current = await blobs.readFile(user.id, "spec-" + revise);
           if (!current) throw Error(`That file's source is missing, so it cannot be ${append ? "added to" : "changed in parts"}.`);
           // A change made without the Markdown file leaves the file behind the document, so it is no longer its source.
           const { action: _made, draft: _draft, ...base } = JSON.parse(current.toString("utf8"));
@@ -2254,7 +2374,7 @@ void app.whenReady().then(async () => {
         }
         // An edited PDF's revision replays its edits on the same original: the stored copy carries over.
         if (action === "editpdf" && revise) {
-          const stored = JSON.parse((await disk.readFile(user.id, "spec-" + revise))?.toString("utf8") || "{}");
+          const stored = JSON.parse((await blobs.readFile(user.id, "spec-" + revise))?.toString("utf8") || "{}");
           if (stored.action !== "editpdf") throw Error(`"${documents.get(revise)}" was not made by editpdf. To change it as a PDF, send {"action":"editpdf","file":"${revise}",…}: that makes an edited copy.`);
           if (!append && !clean.file && !clean.source) clean = { source: stored.source, name: stored.name, ...clean };
         }
@@ -2296,17 +2416,17 @@ void app.whenReady().then(async () => {
           const earlier = !madeNow.has(revise);
           if (earlier && !before.has(revise)) {
             // The first change this answer makes to a file the person already had: keep that file for Undo.
-            const previous = await disk.readFile(user.id, revise);
+            const previous = await blobs.readFile(user.id, revise);
             const version = { blob: "v-" + randomUUID(), at: Date.now(), summary: String(change || "Revised by Clem").slice(0, 200), size: previous?.length || 0 };
             if (previous) {
-              await disk.writeFile(user.id, version.blob, new Uint8Array(previous));
-              const oldSpec = await disk.readFile(user.id, "spec-" + revise);
-              if (oldSpec) await disk.writeFile(user.id, "spec-" + version.blob, new Uint8Array(oldSpec));
+              await blobs.writeFile(user.id, version.blob, new Uint8Array(previous));
+              const oldSpec = await blobs.readFile(user.id, "spec-" + revise);
+              if (oldSpec) await blobs.writeFile(user.id, "spec-" + version.blob, new Uint8Array(oldSpec));
             }
             before.set(revise, version);
           } else if (earlier && change) before.get(revise)!.summary = String(change).slice(0, 200);
-          await disk.writeFile(user.id, revise, made.bytes);
-          await disk.writeFile(user.id, "spec-" + revise, specBytes);
+          await blobs.writeFile(user.id, revise, made.bytes);
+          await blobs.writeFile(user.id, "spec-" + revise, specBytes);
           if (waived) figuresWaived.add(revise);
           gaps.set(revise, { missing, draft: draft?.path, unchecked, figures });
           if (earlier) {
@@ -2321,8 +2441,8 @@ void app.whenReady().then(async () => {
         }
         const id = randomUUID();
         const file = { id, name: made.name, size: made.bytes.byteLength, type: made.type, created: Date.now(), spaceId: spaceOf, made: true };
-        await disk.writeFile(user.id, id, made.bytes);
-        await disk.writeFile(user.id, "spec-" + id, specBytes);
+        await blobs.writeFile(user.id, id, made.bytes);
+        await blobs.writeFile(user.id, "spec-" + id, specBytes);
         documents.set(id, file.name);
         madeNow.set(id, file);
         if (waived) figuresWaived.add(id);
@@ -2334,15 +2454,15 @@ void app.whenReady().then(async () => {
       const rollback = async () => {
         await fileWork.stop();
         delivery.clear();
-        for (const id of madeNow.keys()) await Promise.all([disk.deleteFile(user.id, id), disk.deleteFile(user.id, "spec-" + id)]).catch(() => {});
-        for (const id of sourcesNow.values()) await disk.deleteFile(user.id, id).catch(() => {});
+        for (const id of madeNow.keys()) await Promise.all([blobs.deleteFile(user.id, id), blobs.deleteFile(user.id, "spec-" + id)]).catch(() => {});
+        for (const id of sourcesNow.values()) await blobs.deleteFile(user.id, id).catch(() => {});
         for (const [id, version] of before) {
-          const previous = await disk.readFile(user.id, version.blob).catch(() => undefined);
+          const previous = await blobs.readFile(user.id, version.blob).catch(() => undefined);
           if (!previous) continue;
-          await disk.writeFile(user.id, id, new Uint8Array(previous));
-          const oldSpec = await disk.readFile(user.id, "spec-" + version.blob).catch(() => undefined);
-          if (oldSpec) await disk.writeFile(user.id, "spec-" + id, new Uint8Array(oldSpec));
-          await Promise.all([disk.deleteFile(user.id, version.blob), disk.deleteFile(user.id, "spec-" + version.blob)]).catch(() => {});
+          await blobs.writeFile(user.id, id, new Uint8Array(previous));
+          const oldSpec = await blobs.readFile(user.id, "spec-" + version.blob).catch(() => undefined);
+          if (oldSpec) await blobs.writeFile(user.id, "spec-" + id, new Uint8Array(oldSpec));
+          await Promise.all([blobs.deleteFile(user.id, version.blob), blobs.deleteFile(user.id, "spec-" + version.blob)]).catch(() => {});
         }
       };
       /** Reading a file's current source, so a change keeps everything the person did not ask to change. */
@@ -2363,21 +2483,21 @@ void app.whenReady().then(async () => {
       const keepSource = async (key: string, bytes: Uint8Array) => {
         if (sourcesNow.has(key)) return sourcesNow.get(key)!;
         const id = "src-" + randomUUID();
-        await disk.writeFile(user.id, id, bytes);
+        await blobs.writeFile(user.id, id, bytes);
         sourcesNow.set(key, id);
         return id;
       };
       const editHelpers: EditHelpers = {
         load: async (ref) => {
           if (/^src-[0-9a-f-]{36}$/.test(ref)) {
-            const bytes = await disk.readFile(user.id, ref);
+            const bytes = await blobs.readFile(user.id, ref);
             if (!bytes) throw Error("The original this edit was made from is missing.");
             return { bytes: new Uint8Array(bytes), source: ref };
           }
           // A file Clem made in this conversation, by id.
           if (documents.has(ref)) {
             if (!/\.pdf$/i.test(documents.get(ref)!)) throw Error(`${documents.get(ref)} is not a PDF.`);
-            const bytes = await disk.readFile(user.id, ref);
+            const bytes = await blobs.readFile(user.id, ref);
             if (!bytes) throw Error(`${documents.get(ref)} is missing.`);
             return { bytes: new Uint8Array(bytes), source: await keepSource("id:" + ref, new Uint8Array(bytes)), name: documents.get(ref) };
           }
@@ -2416,6 +2536,11 @@ void app.whenReady().then(async () => {
         if (typeof tool?.action === "string" && tool.action.startsWith("telegram.")) {
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
           return runTelegramTool({ engine: await engineFor(user.id), owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined }, tool);
+        }
+        // The person's VPS (desktop/engine/vps/tools.ts): anything that could change it waits for their tap on a card.
+        if (isVpsAction(tool?.action)) {
+          if (!(await vpsConfigured(user.id))) return { error: "No VPS is connected. The person can add one in Settings → Connectors → VPS." };
+          return vpsFor(user.id).tools.run(user.id, tool).catch((e: Error) => ({ error: e.message }));
         }
         // GUC (desktop/engine/ai-tools.ts): the signed-in owner's engine only; a subject chat's own subject is the default.
         if (isGucAction(tool?.action)) {
@@ -2492,7 +2617,7 @@ void app.whenReady().then(async () => {
         }
         if (tool?.action !== "open") return undefined;
         if (!documents.has(tool.id)) return { error: `No Clem-made file with id "${tool.id}" in this conversation.` };
-        const spec = await disk.readFile(user.id, "spec-" + tool.id);
+        const spec = await blobs.readFile(user.id, "spec-" + tool.id);
         if (!spec) return { error: "That file's source is missing, so it can only be edited in the file panel." };
         const { action, draft, ...specification } = JSON.parse(spec.toString("utf8"));
         // A document made from a Markdown file is changed there: its path, not its text again.
@@ -2544,7 +2669,7 @@ void app.whenReady().then(async () => {
           if (!bytes) continue;
           const id = randomUUID(), name = basename(out.name);
           const file = { id, name, size: bytes.byteLength, type: MIME[name.split(".").pop()!.toLowerCase()] || "application/octet-stream", created: Date.now(), spaceId: spaceOf, made: true };
-          await disk.writeFile(user.id, id, new Uint8Array(bytes));
+          await blobs.writeFile(user.id, id, new Uint8Array(bytes));
           madeNow.set(id, file);
           delivery.set(id, { id: request.id, type: "artifact", file, scope: request.scope });
         }

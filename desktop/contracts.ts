@@ -2,6 +2,7 @@ import {syncSchemas} from "../core/sync.ts";
 import { z } from "zod";
 import { settingsPatch } from "../core/guc/settings.ts";
 import { proPatch } from "../core/proactivity/settings.ts";
+import { vpsHostOk, vpsUserOk } from "../core/vps/types.ts";
 
 export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
 export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };
@@ -30,6 +31,22 @@ export const requestSchema = z.discriminatedUnion("action", [
   // A new password after GUC stopped accepting the old one (docs/GUC-VPS-ENGINE.md "Password expiry"); never sent back.
   z.object({ action: z.literal("gucPassword"), password: z.string().min(1).max(200) }),
   z.object({ action: z.literal("gucSync") }),
+  // The VPS connector (desktop/engine/vps): keys and passwords go to the Vault and never come back.
+  z.object({ action: z.literal("vpsStatus") }),
+  z.object({ action: z.literal("vpsSetup"), host: z.string().trim().min(1).max(253).refine(vpsHostOk, "Enter the server's address, like 203.0.113.5 or vps.example.com."), port: z.number().int().min(1).max(65535), user: z.string().trim().refine(vpsUserOk, "Enter the user name you sign in with on the server."), auth: z.enum(["key", "password"]), password: z.string().min(1).max(200).optional(), allowPassword: z.boolean().optional() }),
+  z.object({ action: z.literal("vpsGenerateKey") }),
+  z.object({ action: z.literal("vpsPasteKey"), privateKey: z.string().min(40).max(20_000), passphrase: z.string().max(200).optional() }),
+  z.object({ action: z.literal("vpsTest") }),
+  z.object({ action: z.literal("vpsForget") }),
+  z.object({ action: z.literal("vpsMove"), direction: z.enum(["up", "down"]) }),
+  z.object({ action: z.literal("vpsAbortMove") }),
+  z.object({ action: z.literal("vpsCap"), bytes: z.number().min(0).max(2 ** 50) }),
+  z.object({ action: z.literal("vpsPin"), id: gucId, on: z.boolean() }),
+  z.object({ action: z.literal("vpsPinned") }),
+  z.object({ action: z.literal("vpsWorker"), on: z.boolean() }),
+  z.object({ action: z.literal("vpsModelKey"), key: z.string().trim().max(300).optional(), model: z.string().trim().regex(/^[\w.-]{1,80}$/).optional() }),
+  z.object({ action: z.literal("vpsConfirm"), id: z.string().regex(/^[a-f0-9]{16}$/) }),
+  z.object({ action: z.literal("vpsCancel"), id: z.string().regex(/^[a-f0-9]{16}$/) }),
   z.object({ action: z.literal("gucDisconnect") }),
   // The GUC hub's reads (desktop/engine/guc-read.ts), all for the signed-in owner only.
   z.object({ action: z.literal("gucOverview") }),
@@ -325,6 +342,8 @@ export type DesktopBridge = {
   onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
   /** Progress of a GUC sync the window asked for ("Checking your courses… 3 of 7"). */
   onGuc?: (listener: (event: import("../core/guc/types").GucProgress) => void) => () => void;
+  /** The VPS connector changed: status, a move's progress, the worker, or an install step ("progress:<label>"). */
+  onVps?: (listener: (event: { what: string }) => void) => () => void;
   /** Something to open from outside the window: a flashcard reminder's subject, at its review (desktop/study-reminders.ts). */
   onOpen?: (listener: (event: { review?: string; route?: string; chat?: string; message?: string }) => void) => () => void;
   /** A Telegram message (or a tap that needs the agent or the workspace) for the main thread to answer; the window

@@ -1,0 +1,82 @@
+/* Settings → Connectors → VPS (src/vps/VpsSettings.tsx): the Drive/GUC connect card, with the glass scale and tokens. */
+dialog.app-modal:has(.gd-picker.vps-manage){width:min(540px,calc(100vw - 32px))}
+.vps-manage{--vps-ok:#5fd39a;text-align:center}
+html:root[data-theme=light] .vps-manage{--vps-ok:#1f8a55}
+.vps-manage .gd-hero-tile.vps-tile{background:color-mix(in srgb,var(--ink) 9%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 12%,transparent) inset;color:var(--ink)}
+.vps-row-title{display:inline-flex;align-items:center;gap:8px}
+.vps-dot{flex:none;display:inline-block;width:8px;height:8px;border-radius:50%;background:color-mix(in srgb,var(--muted) 60%,transparent)}
+.vps-dot.is-on{background:var(--vps-ok,#5fd39a);box-shadow:0 0 0 3px color-mix(in srgb,var(--vps-ok,#5fd39a) 22%,transparent)}
+html:root[data-theme=light] .vps-dot.is-on{background:#1f8a55}
+.vps-dot.is-warn{background:var(--ember)}
+.vps-steps{list-style:none;margin:6px 0 0;padding:0;width:100%;display:grid;gap:18px;text-align:left}
+.vps-steps h4{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:var(--text-s);font-weight:650;color:var(--ink)}
+.vps-steps h4 span{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:color-mix(in srgb,var(--ink) 10%,transparent);font-size:11px;font-weight:700}
+.vps-fields{display:grid;grid-template-columns:1fr 84px;gap:10px}
+.vps-manage .guc-field{max-width:none}
+.vps-manage .guc-field input,.vps-manage .guc-field textarea,.vps-find,.vps-select{height:var(--row-s);padding:0 11px;border-radius:10px;border:1px solid var(--line);background:var(--calm-tile);color:var(--ink);font:400 var(--text-s) var(--sans)}
+.vps-manage .guc-field textarea{height:auto;padding:8px 11px;font:400 12px ui-monospace,Consolas,monospace;resize:vertical}
+.vps-manage .guc-note{max-width:none}
+.vps-choice{display:inline-flex;gap:2px;padding:3px;margin:0 0 10px;border-radius:11px;background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.vps-choice button{height:28px;padding:0 12px;border-radius:8px;font-size:var(--text-label);color:var(--muted)}
+.vps-choice button[aria-checked=true]{background:var(--calm-tile);color:var(--ink);font-weight:600;box-shadow:var(--glass-rim)}
+.vps-small{height:var(--row-s);padding:0 13px;font-size:var(--text-label)}
+.vps-key p{margin:0 0 6px;font-size:12px;color:var(--muted)}
+.vps-code{position:relative;margin:0 0 12px;padding:10px 78px 10px 12px;border-radius:10px;background:color-mix(in srgb,var(--ink) 7%,transparent);box-shadow:inset 0 0 0 1px var(--line);font:400 11.5px/1.5 ui-monospace,Consolas,monospace;color:var(--ink);white-space:pre-wrap;word-break:break-all;text-align:left}
+.vps-copy{position:absolute;top:7px;right:7px;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:8px;background:var(--calm-tile);color:var(--ink);font:600 11px var(--sans);box-shadow:var(--glass-rim)}
+.vps-test{display:flex;gap:10px;align-items:flex-start;width:100%;margin:4px 0 12px;padding:11px 13px;border-radius:12px;background:color-mix(in srgb,var(--vps-ok,#5fd39a) 11%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--vps-ok,#5fd39a) 28%,transparent);text-align:left;font-size:12.5px;color:var(--ink)}
+.vps-test>.drawn-icon{flex:none;margin-top:2px;color:var(--vps-ok,#5fd39a)}
+.vps-test.is-bad{background:color-mix(in srgb,var(--ember) 11%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ember) 28%,transparent)}
+.vps-test.is-bad>.drawn-icon{color:var(--ember)}
+.vps-test p,.vps-test ul{margin:3px 0 0;padding:0;list-style:none;color:var(--muted);line-height:1.5}
+.vps-test small{display:block;margin-top:6px;color:var(--muted);line-height:1.45}
+.vps-test code,.vps-manage p code,.vps-sent code{font:500 11px ui-monospace,Consolas,monospace;word-break:break-all}
+.vps-advanced{width:100%;margin:14px 0 0;text-align:left;font-size:12.5px;color:var(--muted)}
+.vps-advanced summary{cursor:pointer;font-size:var(--text-label);font-weight:600;color:var(--muted);padding:4px 0}
+.vps-advanced[open] summary{margin-bottom:6px}
+.vps-where{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.vps-where b{color:var(--ink);font-weight:650;word-break:break-all}
+.vps-where span{color:var(--muted)}
+.vps-section{width:100%;margin:20px 0 0;padding:16px 0 0;border-top:1px solid var(--line);text-align:left}
+.vps-section>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}
+.vps-section h4{margin:0;font-size:var(--text-s);font-weight:650;color:var(--ink)}
+.vps-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:7px;background:color-mix(in srgb,var(--sky) 16%,transparent);color:var(--ink);font-size:11px;font-weight:600}
+.vps-section .gd-google{margin:6px auto 0}
+.vps-fine{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.vps-line{display:flex;align-items:center;gap:7px;margin:4px 0 10px;font-size:12.5px;color:var(--ink)}
+.vps-line .drawn-icon{color:var(--vps-ok,#5fd39a)}
+.vps-line.is-warn .drawn-icon{color:var(--ember)}
+.vps-usage{margin:0 0 12px}
+.vps-bar{display:flex;height:8px;border-radius:5px;overflow:hidden;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.vps-bar span{height:100%;transition:width .4s cubic-bezier(.16,1,.3,1)}
+.vps-bar .is-device,.vps-usage i.is-device{background:color-mix(in srgb,var(--ink) 45%,transparent)}
+.vps-bar .is-vps,.vps-usage i.is-vps{background:var(--sky)}
+.vps-usage dl{display:flex;gap:18px;flex-wrap:wrap;margin:8px 0 0;font-size:12px}
+.vps-usage dl div{display:flex;gap:6px;align-items:baseline}
+.vps-usage dt{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.vps-usage dd{margin:0;color:var(--ink);font-weight:600}
+.vps-usage i{display:inline-block;width:8px;height:8px;border-radius:2px}
+.vps-moving{padding:12px;border-radius:12px;background:color-mix(in srgb,var(--ink) 5%,transparent);box-shadow:inset 0 0 0 1px var(--line)}
+.vps-moving p{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
+.vps-moving p b{color:var(--ink)}
+.vps-moving .vps-small{margin-top:10px}
+.vps-progress{height:6px;border-radius:4px;overflow:hidden;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.vps-progress span{display:block;height:100%;background:var(--sky);transition:width .5s cubic-bezier(.16,1,.3,1)}
+.vps-select{width:auto;min-width:96px}
+.vps-pins{margin:14px 0 0}
+.vps-pins h5{margin:0 0 6px;font-size:var(--text-label);font-weight:650;color:var(--ink)}
+.vps-pins ul{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:4px}
+.vps-pins li{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 8px;border-radius:9px;background:color-mix(in srgb,var(--ink) 4%,transparent);font-size:12.5px;color:var(--ink)}
+.vps-pins li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vps-find{width:100%}
+.vps-link{height:26px;padding:0 8px;border-radius:7px;font-size:11.5px;font-weight:600;color:var(--sky)}
+.vps-facts{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px;font-size:12.5px}
+.vps-facts li{display:flex;justify-content:space-between;gap:12px}
+.vps-facts span{color:var(--muted)}
+.vps-facts b{color:var(--ink);font-weight:600;text-align:right}
+.vps-sent{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.vps-sent li{display:flex;flex-direction:column;gap:1px}
+.vps-sent b{color:var(--ink);font-weight:600}
+.vps-row-buttons{display:flex;align-items:center;gap:8px}
+@media (max-width:520px){.vps-fields{grid-template-columns:1fr 70px}.vps-facts li{flex-direction:column;gap:0}.vps-facts b{text-align:left}}
+/* Main-thread cards */
+.vps-card-output{margin:8px 0 0;max-height:220px;overflow:auto;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--ink) 7%,transparent);font:400 11.5px/1.5 ui-monospace,Consolas,monospace;color:var(--ink);white-space:pre-wrap;word-break:break-word}

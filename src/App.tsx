@@ -82,6 +82,7 @@ import {FilePanel,canEditInPanel,remoteFile,type FileFocus,type FilePanelHandle,
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {GucManage,GucRow} from './guc/GucSettings';
+import {VpsManage,VpsRow} from './vps/VpsSettings';
 import {PASSWORD_ROUTE} from '../core/guc/password';
 import {createSetup,cardActions} from './guc/setup';
 import {editSubject} from './guc/subject';
@@ -1647,7 +1648,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
               content: [
                 // The visual schema and the video rule, when this message or the chat's latest turns may want them (the web always has them).
                 desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "",
-                workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected}),
+                workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}),
                 memory ? `User-authorized memory for this scope: ${memory}` : "",
                 planNote,
                 gucNote,
@@ -1664,7 +1665,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
       // The main thread sends its layers within a budget (core/main-thread/context.ts), never the whole thread.
       const conversation = chat.kind === "main" && !isVisual ? mainRequest(next, (user.via ? "[From Telegram] " : "") + expandCommand(prompt) + pointerNote, {
         prefix: [systems[0]?.content || "", MAIN_THREAD_NOTE, ownWorkflows()].filter(Boolean),
-        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected}), planNote].filter(Boolean).join("\n\n"),
+        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}), planNote].filter(Boolean).join("\n\n"),
         memory,
         // Today's classes, deadlines and unread from the engine (cached there until a sync changes them).
         guc: desktop && gucConnected ? (await desktop.invoke({ action: "gucNow" }).catch(() => null)) as GucNow | null : null,
@@ -2452,13 +2453,14 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   // pages open it over the page you were on.
   const lastRoute=useRef("/app");
   useEffect(()=>{
-    const tab=route==="/app/settings"?"General":route==="/app/account"?"Profile":route==="/app/connectors"||route===PASSWORD_ROUTE?"Connectors":route==="/app/skills"?"Skills":"";
+    const tab=route==="/app/settings"?"General":route==="/app/account"?"Profile":route==="/app/connectors"||route===PASSWORD_ROUTE||route==="/app/connectors/vps"?"Connectors":route==="/app/skills"?"Skills":"";
     if(!tab){lastRoute.current=route;return;}
     history.replaceState(null,"",location.pathname+location.search+"#"+lastRoute.current);
     setRoute(lastRoute.current);
     openSettings(tab);
     // GUC's Update password: Settings → Connectors → GUC, on the "New password" field.
     if(route===PASSWORD_ROUTE)setModal("guc");
+    if(route==="/app/connectors/vps")setModal("vps");
   },[route]);
   const signals=useWorkspaceSignals(!!desktop&&ready&&!!session.user,
     announcement=>notify({kind:announcement.tone==='warning'?'warning':announcement.tone==='success'?'success':'announcement',title:announcement.title,detail:announcement.body,sticky:true,action:announcement.link?{label:'Learn more',run:()=>window.open(announcement.link!,'_blank','noopener')}:undefined}),
@@ -2707,6 +2709,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   // The GUC hub (#/app/guc/<tab>/<id>): in the sidebar only while GUC is connected; its routes are deep links.
   const hubRoute=parseHubRoute(route);
   const gucConnected=!!useGuc<HubOverview>(desktop&&ready?{action:'gucOverview'}:null).data?.connected;
+  const vpsConnected=!!useGuc<{connected:boolean}>(desktop&&ready?{action:"vpsStatus"}:null).data?.connected;
   const navItems=gucConnected?[...nav.slice(0,5),["guc","GUC"],...nav.slice(5)]:nav;
   const pageSpace=spaceRoute?state.spaces.find(x=>x.id===spaceRoute):undefined;
   useEffect(() => { if (pageSpace?.kind === "project") void projects.loadMemory(pageSpace.id); }, [pageSpace?.id]);
@@ -3185,7 +3188,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     ) : settingsTab === "Connectors" ? (
                       <SettingsCard>
                         <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Read live, never copied."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>
-                        {visibleConnectors().map(c=>c.id==="guc"?<GucRow key={c.id+(modal==="guc"?"-open":"")} onManage={()=>setModal("guc")}/>:null)}
+                        {visibleConnectors().map(c=>c.id==="guc"?<GucRow key={c.id+(modal==="guc"?"-open":"")} onManage={()=>setModal("guc")}/>:c.id==="vps"&&desktop?<VpsRow key={c.id+(modal==="vps"?"-open":"")} onManage={()=>setModal("vps")}/>:null)}
                       </SettingsCard>
                     ) : settingsTab === "Telegram" ? (
                       desktop ? <TelegramSettings onPairInChat={()=>void pairInChat()} onProactivity={()=>setSettingsTab("Proactivity")}/> : <SettingsCard><p className="muted">Available in the desktop app.</p></SettingsCard>
@@ -3517,6 +3520,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                             ? "New subject"
                             : modal === "drive"
                                 ? "Google Drive"
+                                : modal === "vps"
+                                ? "VPS"
                                 : modal === "guc"
                                 ? "GUC"
                                 : modal === "drive-folder"
@@ -3772,6 +3777,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               if (route !== "/app") navigate("/app");
               setTimeout(() => composer.current?.focus(), 80);
             }} />
+          ) : modal === "vps" ? (
+            <VpsManage files={state.files} />
           ) : modal === "guc" ? (
             <GucManage actions={gucActions} subjects={state.spaces.filter((x) => x.kind === "subject")} />
           ) : modal === "attach-existing" ? (
