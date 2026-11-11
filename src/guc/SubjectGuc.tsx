@@ -11,6 +11,8 @@ import { CheckSchedule, CourseLink, DriveFolder, SaveRules, Storage, dayShort, t
 import { Announcements, CourseFiles, Deadlines, Grades, Problem, Skeleton } from "./GucHub";
 import { useSubject } from "./subject";
 import { useGuc } from "./useGuc";
+import { SubjectPasswordBanner } from "./GucPassword";
+import { PASSWORD_ROUTE } from "../../core/guc/password";
 import "../library.css";
 import "./guc.css";
 
@@ -32,6 +34,7 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
   if (!course) return <LinkPicker space={space} actions={actions} />;
   const slots = [...v.data.slots].sort((a, b) => ORDER.indexOf(a.day.toLowerCase()) - ORDER.indexOf(b.day.toLowerCase()) || a.period - b.period);
   return <div className="guc-hub guc-subject">
+    <SubjectPasswordBanner onUpdate={() => actions.openHub(PASSWORD_ROUTE)} />
     <CourseLink subjectId={space.id} actions={actions} />
     <nav className="guc-tabs" role="tablist" aria-label={`${course.code} on GUC`} ref={bar}>
       {TABS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>

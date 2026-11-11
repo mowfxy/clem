@@ -80,6 +80,7 @@ import {FilePanel,canEditInPanel,remoteFile,type FileFocus,type FilePanelHandle,
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {GucManage,GucRow} from './guc/GucSettings';
+import {PASSWORD_ROUTE} from '../core/guc/password';
 import {createSetup,cardActions} from './guc/setup';
 import {editSubject} from './guc/subject';
 import {useGuc,gucPrefetch,gucCache,gucKey} from './guc/useGuc';
@@ -2438,11 +2439,13 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   // pages open it over the page you were on.
   const lastRoute=useRef("/app");
   useEffect(()=>{
-    const tab=route==="/app/settings"?"General":route==="/app/account"?"Profile":route==="/app/connectors"?"Connectors":route==="/app/skills"?"Skills":"";
+    const tab=route==="/app/settings"?"General":route==="/app/account"?"Profile":route==="/app/connectors"||route===PASSWORD_ROUTE?"Connectors":route==="/app/skills"?"Skills":"";
     if(!tab){lastRoute.current=route;return;}
     history.replaceState(null,"",location.pathname+location.search+"#"+lastRoute.current);
     setRoute(lastRoute.current);
     openSettings(tab);
+    // GUC's Update password: Settings → Connectors → GUC, on the "New password" field.
+    if(route===PASSWORD_ROUTE)setModal("guc");
   },[route]);
   const signals=useWorkspaceSignals(!!desktop&&ready&&!!session.user,
     announcement=>notify({kind:announcement.tone==='warning'?'warning':announcement.tone==='success'?'success':'announcement',title:announcement.title,detail:announcement.body,sticky:true,action:announcement.link?{label:'Learn more',run:()=>window.open(announcement.link!,'_blank','noopener')}:undefined}),

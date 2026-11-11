@@ -4,6 +4,8 @@ import { Icon } from "../Icons";
 import { GUC_CARDS, GucCardView, type GucActions } from "../guc/GucCards";
 import { LectureCardView, OrganizerCardView, WatchCardView, type ProActions } from "../proactivity/ProCards";
 import { TelegramPairCard } from "../telegram/TelegramPair";
+import { GucPasswordCard } from "../guc/GucPassword";
+import { PASSWORD_ROUTE } from "../../core/guc/password";
 
 export type CardHandlers = {
   /** A hand-off card was pressed: open the chat it continued in (or its subject or project when the chat is gone). */
@@ -38,6 +40,7 @@ export function ClemCardBlock({ body, handlers = {} }: { body: string; handlers?
   if (card.type === "lecture") return <LectureCardView card={card} actions={handlers.pro} />;
   if (card.type === "watch") return <WatchCardView card={card} actions={handlers.pro} />;
   if (card.type === "telegram_pair") return <TelegramPairCard />;
+  if (card.type === "guc_password") return <GucPasswordCard onUpdate={handlers.guc ? () => handlers.guc!.openHub(PASSWORD_ROUTE) : undefined} />;
   if (card.type === "brief") return (
     <div className="edit-proposal clem-card">
       <header><Icon name="spark" size={16} /><div><strong>{card.title}</strong>{card.when && <small>{card.when === "morning" ? "Morning brief" : "Evening prep"}</small>}</div></header>

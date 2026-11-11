@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { GucProgress, GucStatus } from "../../core/guc/types";
 import type { SubjectLink } from "../../core/guc/settings";
 import type { Space } from "../../core/types";
 import { CheckSchedule, DriveFolder, SaveRules, Storage, type GucActions } from "./GucCards";
-import { useGuc as useGucRead } from "./useGuc";
+import { gucCache, useGuc as useGucRead } from "./useGuc";
+import { PASSWORD_SAID } from "../../core/guc/password";
 import { Icon } from "../Icons";
 import { desktop } from "../desktop/bridge";
 import { confirmDialog } from "../dialogs";
@@ -30,7 +31,7 @@ export function useGuc() {
 /** Settings → Connectors → GUC, under Google Drive. */
 export function GucRow({ onManage }: { onManage: () => void }) {
   const { status } = useGuc();
-  const description = !status ? "Courses, grades and announcements." : status.connected ? (status.error ? "Needs attention" : `Connected · ${ago(status.lastSync)}`) : "Courses, grades and announcements.";
+  const description = !status ? "Courses, grades and announcements." : status.connected ? (status.passwordNeeded ? "Needs your new password" : status.error ? "Needs attention" : `Connected · ${ago(status.lastSync)}`) : "Courses, grades and announcements.";
   return <SettingRow lead={<span className="connector-tile"><Icon name="guc" size={22} /></span>} title="GUC" description={description}>
     <button className="secondary" onClick={onManage}>{status?.connected ? "Manage" : "Connect"}</button>
   </SettingRow>;
@@ -77,14 +78,28 @@ export function GucManage({ actions, subjects = [] }: { actions?: GucActions; su
       <li><Icon name="check" size={14} />{status.linked ? `${status.linked} linked to subjects, checked every few hours` : "Link a course to a subject to check it for new files"}</li>
       {status.stats && <li><Icon name="check" size={14} />Last check: {status.stats.requests} pages, {status.stats.skipped} unchanged</li>}
     </ul>
-    {status.error && <p className="gd-error" role="alert">{status.error.message}</p>}
-    {error && <p className="gd-error" role="alert">{error}</p>}
-    {working || <button className="gd-google" onClick={() => void run(() => desktop!.invoke({ action: "gucSync" }))}>Sync now</button>}
+    {status.passwordNeeded ? <NewPassword busy={busy} working={working} error={error} onSave={(pw) => run(async () => { const next = await desktop!.invoke({ action: "gucPassword", password: pw }); void gucCache.revalidateAll(); return next; })} /> : <>
+      {status.error && <p className="gd-error" role="alert">{status.error.message}</p>}
+      {error && <p className="gd-error" role="alert">{error}</p>}
+      {working || <button className="gd-google" onClick={() => void run(() => desktop!.invoke({ action: "gucSync" }))}>Sync now</button>}
+    </>}
     {actions && <LinkedSubjects actions={actions} subjects={subjects} />}
     <footer className="gd-foot guc-foot">
       <button className="gd-disconnect" disabled={busy} onClick={() => void confirmDialog({ title: "Disconnect GUC?", message: "Clem forgets your GUC password and the courses, grades and announcements it saved. Nothing on GUC changes.", confirm: "Disconnect", danger: true }).then((yes) => { if (yes) void run(() => desktop!.invoke({ action: "gucDisconnect" })); })}>Disconnect</button>
     </footer>
   </div>;
+}
+
+/** GUC stopped accepting the password (docs/GUC-VPS-ENGINE.md "Password expiry"): the new one, checked with GUC before
+ *  it is kept. Not a disconnect: nothing else changes. */
+function NewPassword({ busy, working, error, onSave }: { busy: boolean; working: ReactNode; error: string; onSave: (password: string) => Promise<unknown> }) {
+  const [password, setPassword] = useState("");
+  return <form className="guc-new-password" onSubmit={(e) => { e.preventDefault(); if (password) void onSave(password).then(() => setPassword("")); }}>
+    <p className="guc-note"><Icon name="alert" size={14} />{PASSWORD_SAID}</p>
+    <label className="guc-field"><span>New password</span><input type="password" autoComplete="current-password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} autoFocus /></label>
+    {working || <button className="gd-google" type="submit" disabled={!password}>Save password</button>}
+    {error && <p className="gd-error" role="alert">{error}</p>}
+  </form>;
 }
 
 /** Each linked subject with its settings, the same cards as its chat and page. */

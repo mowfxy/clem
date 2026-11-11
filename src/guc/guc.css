@@ -7,6 +7,7 @@ dialog.app-modal:has(.gd-picker.guc-manage){width:min(460px,calc(100vw - 32px))}
 .guc-note svg{flex:none}
 .guc-progress{display:flex;align-items:center;gap:10px;height:42px;margin:0;font-size:13px;color:var(--ink)}
 .guc-manage .gd-error{margin-top:12px;max-width:380px}
+.guc-new-password{display:flex;flex-direction:column;align-items:center;width:100%}
 .guc-foot{align-self:stretch;justify-content:center;margin-top:16px}
 
 /* ---------- The GUC hub (src/guc/GucHub.tsx): the library page's head and buttons, glass.css's scale and tokens ---------- */

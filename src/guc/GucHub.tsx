@@ -15,6 +15,8 @@ import { EmptyState, PageHead } from "../ui/Calm";
 import { PickMenu } from "../ui/PickMenu";
 import type { GucActions } from "./GucCards";
 import { gucAsk, gucCache, gucPatch, gucPrefetch, useGuc } from "./useGuc";
+import { PasswordBanner } from "./GucPassword";
+import { PASSWORD_ROUTE } from "../../core/guc/password";
 import "../library.css";
 import "./guc.css";
 
@@ -90,7 +92,7 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
     <PageHead title="GUC" line={busy ? progress || "Syncing…" : ago(o.lastSync)}>
       <button type="button" className="lib-btn" disabled={busy} onClick={() => void sync()}><Icon name="refresh" size={15} />{busy ? "Syncing" : "Sync now"}</button>
     </PageHead>
-    {o.error && <div className="guc-banner" role="status">
+    {o.passwordNeeded ? <PasswordBanner onUpdate={() => go(PASSWORD_ROUTE)} /> : o.error && <div className="guc-banner" role="status">
       <Icon name="alert" size={16} /><span>{o.error.kind === "auth" ? "GUC didn't accept your password, so this may be out of date." : o.error.message}</span>
       {o.error.kind === "auth" ? <button type="button" className="lib-btn strong" onClick={onConnect}>Reconnect</button> : <button type="button" className="lib-btn" disabled={busy} onClick={() => void sync()}>Try again</button>}
     </div>}
