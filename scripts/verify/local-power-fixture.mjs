@@ -138,7 +138,8 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       startDrag: (path) => window.drags.push(path),
       invoke: async (r) => {
         window.requests.push(r);
-        if (/^(guc|pro|tg)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
+        if (/^(guc|pro|tg|vps)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
+        if (r.action === "vpsStatus") return { connected: false, storage: { mode: "device", device: 0, vps: 0, cache: 0, cap: 2 * 1024 ** 3, pinned: 0, files: { device: 0, vps: 0 } }, worker: { enabled: false, installed: false, runner: "desktop", model: "none" }, passwordAllowed: false };
         // Without an engine, GUC is simply not connected (an empty object read as a subject view broke subject chats).
         if (/^guc/.test(r.action)) { if (r.action === "gucStatus" || r.action === "gucOverview") return { connected: false, syncing: false, courses: 0, linked: 0, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } }; throw Error("Connect GUC first."); }
         switch (r.action) {
