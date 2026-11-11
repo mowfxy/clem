@@ -37,6 +37,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("gucSearch"), query: z.string().trim().min(2).max(200) }),
   z.object({ action: z.literal("gucGrades"), courseId: gucCourse.optional() }),
   z.object({ action: z.literal("gucDeadlines") }),
+  /** The main thread's Now card from GUC (today's classes, deadlines in 7 days, unread): cached in the engine. */
+  z.object({ action: z.literal("gucNow") }),
   /** Makes a CMS file ready to view (saved copy, or fetched to a temp folder) and returns its name, type and size; the
    *  bytes come from clem://app/api/local/guc/file/<id>. */
   z.object({ action: z.literal("gucFile"), materialId: gucId }),

@@ -73,6 +73,8 @@ import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
 import { Engine } from './engine/index';
 import type { EngineHost } from './engine/host';
+import { runGucTool } from './engine/ai-tools';
+import { isGucAction } from '../core/guc/ai-tools';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
 import {LiveScreen,NOTE_HOLD} from './live-reply';
@@ -1436,6 +1438,7 @@ void app.whenReady().then(async () => {
       if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) {
         if (request.action === "gucOverview") return { connected: false, syncing: false, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } };
         if (request.action === "gucLinks" || request.action === "gucNewCourses" || request.action === "gucInbox") return [];
+        if (request.action === "gucNow") return null;
         if (request.action === "gucForgetSubject") return null;
         throw Error("Connect GUC first.");
       }
@@ -1449,6 +1452,7 @@ void app.whenReady().then(async () => {
       if (request.action === "gucSearch") return engine.search(request.query);
       if (request.action === "gucGrades") return engine.grades(request.courseId);
       if (request.action === "gucDeadlines") return engine.deadlines();
+      if (request.action === "gucNow") return (await engine.status()).connected ? engine.now() : null;
       if (request.action === "gucFile") { const { path: _path, ...file } = await engine.file(request.materialId); return file; }
       if (request.action === "gucLinks") return engine.links();
       if (request.action === "gucLink") return engine.link(request.subjectId, request.courseId, gucProgress);
@@ -2332,6 +2336,12 @@ void app.whenReady().then(async () => {
       };
       const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
+        // GUC (desktop/engine/ai-tools.ts): the signed-in owner's engine only; a subject chat's own subject is the default.
+        if (isGucAction(tool?.action)) {
+          if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) return { error: "GUC isn't connected. The person can connect it in Settings → Connectors → GUC." };
+          const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
+          return runGucTool({ engine: await engineFor(user.id), owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined, changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }) }, tool);
+        }
         // A file named by its path in the working folder ("Subjects/Physics/Week 1/notes.pdf") is that Clem file, whichever
         // subject or project it is in: the window opens it by its id. Any other path is the file of that name.
         if (typeof tool?.file === "string" && /[\\/]/.test(tool.file) && !findFile(library, tool.file)) {

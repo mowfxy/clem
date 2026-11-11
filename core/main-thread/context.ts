@@ -22,8 +22,16 @@ export type NowCard = {
   subjects?: string[];
   projects?: string[];
 };
-/** Where the Now card comes from. Local state now; the GUC engine adds schedule, deadlines and unread counts later. */
+/** Where the Now card comes from: local state (localNowCard), plus the GUC engine's schedule, deadlines and unread (withGuc). */
 export interface NowProvider { now(): NowCard | Promise<NowCard> }
+
+/** The local card with GUC's part (core/guc/ai-tools.ts gucNow): today's classes, its deadlines before the plans' (7 days,
+ *  at most 10 in all) and the unread count. */
+export function withGuc(card: NowCard, guc: Pick<NowCard, 'schedule' | 'deadlines' | 'unread'> | null | undefined): NowCard {
+  if (!guc) return card;
+  const deadlines = [...(guc.deadlines || []), ...(card.deadlines || [])].slice(0, 10);
+  return { ...card, ...(guc.schedule?.length ? { schedule: guc.schedule } : {}), ...(deadlines.length ? { deadlines } : {}), ...(guc.unread ? { unread: guc.unread } : {}) };
+}
 
 type LocalSpace = { id: string; name: string; kind: 'subject' | 'project'; examDate?: string };
 type LocalPlan = { spaceId: string; tasks: { title: string; due?: string; done?: number; kind?: 'task' | 'milestone' }[] };

@@ -58,7 +58,8 @@ import {PACK_EXTENSION} from '../core/study-pack';
 import {FileCard,DocumentCard} from './FileCard';
 import {withMainThread,mainThreadOf,isSpaceChat,earlierChats,moveEarlier} from '../core/main-thread/migrate';
 import {routeMessage,carriedNote} from '../core/main-thread/route';
-import {buildContext,localNowCard,type NowCard} from '../core/main-thread/context';
+import {buildContext,localNowCard,withGuc,type NowCard} from '../core/main-thread/context';
+import type {GucNow} from '../core/guc/ai-tools';
 import {recallIndex,recall} from '../core/main-thread/recall';
 import {applyFold,foldPrompt} from '../core/main-thread/fold';
 import {cardBlock} from '../core/guc/cards';
@@ -1016,14 +1017,14 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   }
   /** The main thread's request: its layers within the budget (core/main-thread/context.ts), never the whole thread.
    *  Recall searches the thread, folded notes and the summaries of subject and project chats. */
-  function mainRequest(chat: Chat, current: string, { prefix, instructions, memory }: { prefix: string[]; instructions: string; memory: string }) {
+  function mainRequest(chat: Chat, current: string, { prefix, instructions, memory, guc }: { prefix: string[]; instructions: string; memory: string; guc?: GucNow | null }) {
     const s = stateRef.current, earlier = chat.messages.slice(0, -1);
     const docs = [
       ...earlier.filter((m) => m.content.trim() && !m.content.includes("```clem-card") && (!m.digest || m.digest.into)).map((m) => ({ id: m.id, text: m.content, source: m.digest ? `Notes (${m.digest.level})` : "Main thread", at: m.at })),
       ...s.chats.filter((c) => isSpaceChat(c) && c.summary).map((c) => ({ id: "chat:" + c.id, text: `${c.title}. ${c.summary}`, source: `${s.spaces.find((x) => x.id === c.spaceId)?.name || "A"} chat`, at: c.updated })),
     ];
     const snippets = recall(recallIndex(docs), current, { k: 4 });
-    return buildContext({ prefix, profile: memory, now: nowCard(), instructions, messages: earlier, current, recall: snippets }).messages;
+    return buildContext({ prefix, profile: memory, now: withGuc(nowCard(), guc), instructions, messages: earlier, current, recall: snippets }).messages;
   }
   // GUC subject setup (src/guc/setup.ts): the setup thread, card answers, the AI's setting changes, new-term courses.
   const gucAskRef = useRef<(messages: { role: string; content: string }[], subjectId: string) => Promise<string>>(async () => "");
@@ -1624,7 +1625,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
               content: [
                 // The visual schema and the video rule, when this message or the chat's latest turns may want them (the web always has them).
                 desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "",
-                workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere}),
+                workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected}),
                 memory ? `User-authorized memory for this scope: ${memory}` : "",
                 planNote,
                 gucNote,
@@ -1641,8 +1642,10 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
       // The main thread sends its layers within a budget (core/main-thread/context.ts), never the whole thread.
       const conversation = chat.kind === "main" && !isVisual ? mainRequest(next, expandCommand(prompt) + pointerNote, {
         prefix: [systems[0]?.content || "", MAIN_THREAD_NOTE, ownWorkflows()].filter(Boolean),
-        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere}), planNote].filter(Boolean).join("\n\n"),
+        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected}), planNote].filter(Boolean).join("\n\n"),
         memory,
+        // Today's classes, deadlines and unread from the engine (cached there until a sync changes them).
+        guc: desktop && gucConnected ? (await desktop.invoke({ action: "gucNow" }).catch(() => null)) as GucNow | null : null,
       }) : [...systems, ...sentTurns];
       const reply = await streamChat(
         [
