@@ -2,16 +2,18 @@
 // core/guc/setup-flow.ts decides; this posts Clem's questions into the subject's pinned "Setup" chat, applies answers
 // from cards and typed replies through the engine (src/guc/subject.ts), asks the AI only to read a reply the local
 // parser can't, applies the settings_update blocks a subject chat's AI writes, and posts new-semester courses in the
-// main thread. App.tsx gives it the workspace through `SetupDeps`.
+// main thread, and shows what checks saved and found (the engine's inbox): saved files join the subject's Files and a
+// card goes into its Setup chat. App.tsx gives it the workspace through `SetupDeps`.
 import { cardBlock, cardsIn } from "../../core/guc/cards";
 import type { HubCourse } from "../../core/guc/hub";
 import { matchCourse } from "../../core/guc/match";
 import { describeSaveRules } from "../../core/guc/rules";
 import { describeChecks } from "../../core/guc/schedule-rules";
-import type { NewCourse, SubjectView } from "../../core/guc/settings";
+import type { InboxItem, NewCourse, SubjectView } from "../../core/guc/settings";
+import type { ClemCard } from "../../core/guc/cards";
 import { NOT_UNDERSTOOD, interpretPrompt, readAiReply, readReply, setupMessage, startSetup, stepOfCard, toPost, answer as answerStep, updatePatch, updateSummary, type Reply, type SetupStep } from "../../core/guc/setup-flow";
 import { parseModelJson } from "../../core/model-json";
-import type { Chat, Space } from "../../core/types";
+import type { Chat, Space, StoredFile } from "../../core/types";
 import { pendingStep, type GucActions } from "./GucCards";
 import { checkSubjectNow, editSubject, linkSubject, subjectView, unlinkSubject } from "./subject";
 import { gucAsk, gucCache, gucKey } from "./useGuc";
@@ -23,6 +25,9 @@ export type SetupDeps = {
   addChat: (chat: Chat) => void;
   updateChat: (id: string, fn: (c: Chat) => Chat) => void;
   addSpace: (space: Space) => void;
+  files: () => StoredFile[];
+  /** Adds files to the workspace (a check's saved CMS files, shown in their subject's Files). */
+  addFiles: (files: StoredFile[]) => void;
   openChat: (chatId: string, spaceId: string) => void;
   /** One short side request on the chat's model (or Clem's organizer); the raw reply. */
   ask: (messages: { role: string; content: string }[], subjectId: string) => Promise<string>;
@@ -36,6 +41,8 @@ export const setupChatOf = (chats: Chat[], subjectId: string) => chats.find((c) 
 const posted = (chat?: Chat) => (chat?.messages || []).flatMap((m) => (m.role === "assistant" ? cardsIn(m.content).map(stepOfCard).filter((s): s is SetupStep | "done" => !!s) : []));
 
 export function createSetup(deps: SetupDeps) {
+  /** What the schedule converter needs: "after each lecture", the lecture days, the exam date. */
+  const scheduleContext = (v: SubjectView) => ({ suggested: v.suggested.mode === "after_lectures" ? v.suggested.times : [], slots: v.slots, code: v.course?.code, exam: deps.spaces().find((x) => x.id === v.subjectId)?.examDate?.slice(0, 10) || undefined });
   const queues = new Map<string, Promise<unknown>>();
   /** One setup change per subject at a time: two quick taps never post a question twice. */
   const serial = <T,>(subjectId: string, job: () => Promise<T>) => {
@@ -118,7 +125,7 @@ export function createSetup(deps: SetupDeps) {
     const step = pendingStep(v);
     if (!step) return false;
     const all = await courses().catch(() => [] as HubCourse[]);
-    let r = readReply(step, text, { courses: all, save: v.settings.save, suggested: v.suggested.mode === "after_lectures" ? v.suggested.times : [] });
+    let r = readReply(step, text, { courses: all, save: v.settings.save, ...scheduleContext(v) });
     if (r.kind === "unknown") {
       // Only now the AI: one short JSON answer, while Clem's mark shows it is thinking.
       const wait = uid();
@@ -127,6 +134,7 @@ export function createSetup(deps: SetupDeps) {
       deps.updateChat(chat.id, (c) => ({ ...c, messages: c.messages.filter((m) => m.id !== wait) }));
     }
     if (r.kind === "unknown") { say(chat.id, NOT_UNDERSTOOD[step]); return true; }
+    if (r.kind === "ask") { say(chat.id, r.text); return true; }
     try { await answer(subjectId, step, r, r.kind === "skip" ? "No problem, skipped.\n\n" : "Got it.\n\n"); }
     catch (e) { say(chat.id, clean(e) || "That didn't save. Try again, or use the card above."); }
     return true;
@@ -139,7 +147,8 @@ export function createSetup(deps: SetupDeps) {
       const subjectId = card.subjectId || spaceId;
       if (!subjectId || !deps.spaces().some((s) => s.id === subjectId && s.kind === "subject")) continue;
       try {
-        const patch = updatePatch(card);
+        const v = await subjectView(subjectId);
+        const patch = updatePatch(card, { save: v.settings.save, ...scheduleContext(v) });
         if (Object.keys(patch).length) await editSubject(subjectId, patch);
         if (card.unlink) await unlinkSubject(subjectId);
         if (card.checkNow) void checkSubjectNow(subjectId).catch(() => {});
@@ -161,7 +170,7 @@ When the user asks to change one of these (e.g. "stop saving videos", "check eve
 \`\`\`clem-card
 {"type":"settings_update","save":{"videos":false}}
 \`\`\`
-Fields: "save": {"slides"|"assignments"|"sheets"|"videos"|"links"|"other": true|false}; "check": {"mode":"after_lectures"|"custom"|"off","times":[{"day":0-6 (0 is Sunday),"time":"HH:MM"}]}; "drive": {"enabled": true|false}; "unlink": true; "checkNow": true. Never write it unless the user asked for that change.`;
+Fields: "saveText": the user's own words about what to save (Clem reads them, e.g. "only PDFs from week 3"); "checkText": their own words about when to check (e.g. "every 2 hours on weekdays 8am-10pm"; GUC weekdays are Sat-Thu); "save": {"slides"|"assignments"|"sheets"|"videos"|"links"|"other": true|false}; "check": {"mode":"after_lectures"|"custom"|"off","times":[{"day":0-6 (0 is Sunday),"time":"HH:MM"}]}; "drive": {"enabled": true|false}; "unlink": true; "checkNow": true. Never write it unless the user asked for that change.`;
   }
 
   /** Courses of a new term that no subject has: one card in the main thread, each with Set up. */
@@ -178,6 +187,39 @@ Fields: "save": {"slides"|"assignments"|"sheets"|"videos"|"links"|"other": true|
     } catch { /* not connected, or nothing new */ } finally { posting = false; }
   }
 
+  /** What checks saved and found since last time: files into the subject's Files (once each, by material), and one
+   *  message per subject in its Setup chat with a file_saved card and a card per piece of news. Then acknowledged. */
+  let inboxing = false;
+  async function applyInbox() {
+    if (inboxing) return;
+    inboxing = true;
+    try {
+      const items = await gucAsk<InboxItem[]>({ action: "gucInbox" });
+      if (!items.length) return;
+      const subjects = new Set(deps.spaces().filter((x) => x.kind === "subject").map((x) => x.id)), have = new Set(deps.files().map((f) => f.id));
+      const add: StoredFile[] = [];
+      for (const i of items) if (i.file && subjects.has(i.subjectId) && !have.has("guc_" + i.file.id)) {
+        have.add("guc_" + i.file.id);
+        add.push({ id: "guc_" + i.file.id, name: i.file.name, size: i.file.size, type: i.file.type, created: i.at || Date.now(), spaceId: i.subjectId, folderId: null });
+      }
+      if (add.length) deps.addFiles(add);
+      for (const subjectId of new Set(items.map((i) => i.subjectId))) {
+        if (!subjects.has(subjectId)) continue;
+        const mine = items.filter((i) => i.subjectId === subjectId), files = mine.filter((i) => i.file), news = mine.filter((i) => !i.file).slice(-10);
+        const cards: ClemCard[] = [
+          ...(files.length ? [{ type: "file_saved" as const, subjectId, files: files.slice(0, 50).map((i) => ({ id: i.file!.id, name: i.file!.name, size: i.file!.size, type: i.file!.type, ...(i.file!.week ? { week: i.file!.week } : {}) })), ...(files.length > 50 ? { more: files.length - 50 } : {}) }] : []),
+          ...news.map((i): ClemCard => i.kind === "new_announcement" ? { type: "announcement", subjectId, id: i.key.replace(/^ann:/, ""), courseKey: i.courseKey, title: i.title, ...(i.detail ? { detail: i.detail } : {}) }
+            : i.kind === "new_grade" ? { type: "grade", subjectId, title: i.title, ...(i.detail ? { detail: i.detail } : {}) }
+            : { type: "deadline", subjectId, id: i.key.replace(/^dl:/, "").split(":")[0], changed: i.kind === "deadline_changed", title: i.title, ...(i.detail ? { detail: i.detail } : {}) }),
+        ];
+        const lead = [files.length ? `Saved ${files.length} new file${files.length === 1 ? "" : "s"} from CMS.` : "", news.length ? `${news.length === 1 ? "Something new" : news.length + " new things"} on CMS.` : ""].filter(Boolean).join(" ");
+        const blocks = cards.flatMap((c) => { try { return [cardBlock(c)]; } catch { return []; } });
+        if (blocks.length) say(ensureChat(subjectId), lead + "\n\n" + blocks.join("\n\n"));
+      }
+      await gucAsk({ action: "gucAckInbox", keys: items.map((i) => i.key) });
+    } catch { /* not connected, or the window closed mid-way: picked up next time */ } finally { inboxing = false; }
+  }
+
   /** A new subject named after a CMS course, linked to it, with its setup thread open. */
   function createFromCourse(course: Pick<HubCourse, "key" | "code" | "name">, from?: string) {
     const space: Space = { id: uid(), name: course.name, description: course.code, kind: "subject", memory: "", sources: [] };
@@ -188,7 +230,7 @@ Fields: "save": {"slides"|"assignments"|"sheets"|"videos"|"links"|"other": true|
     return space.id;
   }
 
-  return { begin, resume, answer, reply, applyUpdates, note, postNewCourses, createFromCourse };
+  return { begin, resume, answer, reply, applyUpdates, note, postNewCourses, applyInbox, createFromCourse };
 }
 export type Setup = ReturnType<typeof createSetup>;
 

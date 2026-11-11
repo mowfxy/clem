@@ -3,10 +3,11 @@
 // engine (src/guc/subject.ts), never a copy frozen in the message. Edits show at once and are written back behind.
 // The same cards sit on the subject page and in Settings → Connectors → GUC.
 import { useEffect, useState, type ReactNode } from "react";
-import type { ClemCard, NewCoursesCard, SettingsUpdateCard } from "../../core/guc/cards";
+import type { ClemCard, FileSavedCard, NewCoursesCard, NewsCard, SettingsUpdateCard } from "../../core/guc/cards";
 import { hubPath, relativeDue, type HubCourse } from "../../core/guc/hub";
-import { SAVE_KINDS, SAVE_LABELS, describeSaveRules } from "../../core/guc/rules";
-import { DAY_NAMES, dailyChecks, describeChecks } from "../../core/guc/schedule-rules";
+import { SAVE_KINDS, SAVE_LABELS, describeSaveRules, hasFilters } from "../../core/guc/rules";
+import { DAY_NAMES, GUC_DAYS, dailyChecks, describeChecks, nextRuns, type CheckSchedule } from "../../core/guc/schedule-rules";
+import type { StoredFile } from "../../core/types";
 import { nextStep, updateSummary, type Reply, type SetupStep } from "../../core/guc/setup-flow";
 import type { SubjectView } from "../../core/guc/settings";
 import { Icon } from "../Icons";
@@ -29,14 +30,19 @@ export type GucActions = {
   openHub: (path: string) => void;
   openSpace: (subjectId: string) => void;
   spaceName: (subjectId: string) => string | undefined;
-  /** The Drive folder linked to the subject, which its CMS copies go to unless another is chosen. */
-  spaceDrive: (subjectId: string) => { folderId: string; folderName: string } | undefined;
+  /** Chooses the Drive folder the subject's CMS copies go to (its week folders are made inside). */
   pickDrive: (subjectId: string) => void;
   openDriveWeb: (folderId: string) => void;
+  /** Settings → Connectors, where Google Drive is connected again. */
+  reconnectDrive: () => void;
+  /** A saved file in Clem's viewer; the subject's Files tab; a new chat in the subject that summarizes a file. */
+  openFile: (file: StoredFile) => void;
+  showFiles: (subjectId: string) => void;
+  summarize: (subjectId: string, file: { id: string; name: string }) => void;
   toast: (message: string) => void;
 };
-type GucCard = Extract<ClemCard, { type: "course_link" | "save_rules" | "check_schedule" | "drive_folder" | "storage" | "setup_done" | "settings_update" | "new_courses" }>;
-export const GUC_CARDS = new Set<string>(["course_link", "save_rules", "check_schedule", "drive_folder", "storage", "setup_done", "settings_update", "new_courses"]);
+type GucCard = Extract<ClemCard, { type: "course_link" | "save_rules" | "check_schedule" | "drive_folder" | "storage" | "setup_done" | "settings_update" | "new_courses" | "file_saved" | "announcement" | "grade" | "deadline" }>;
+export const GUC_CARDS = new Set<string>(["course_link", "save_rules", "check_schedule", "drive_folder", "storage", "setup_done", "settings_update", "new_courses", "file_saved", "announcement", "grade", "deadline"]);
 
 const clean = (e: unknown) => String((e as Error)?.message || e || "").replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
 /** The step the setup thread is waiting on, from the live settings. */
@@ -60,6 +66,8 @@ function SetupButtons({ subjectId, step, actions, busy, confirm = "Looks good" }
 
 export function GucCardView({ card, actions, spaceId }: { card: GucCard; actions?: GucActions; spaceId?: string | null }) {
   if (card.type === "new_courses") return <NewCourses card={card} actions={actions} />;
+  if (card.type === "file_saved") return <FileSaved card={card} actions={actions} />;
+  if (card.type === "announcement" || card.type === "grade" || card.type === "deadline") return <News card={card} actions={actions} />;
   if (card.type === "settings_update") return <Updated card={card} actions={actions} subjectId={card.subjectId || spaceId || ""} />;
   if (card.type === "setup_done") return <SetupDone subjectId={card.subjectId} actions={actions} />;
   const setup = !!card.setup;
@@ -98,35 +106,45 @@ export function CourseLink({ subjectId, suggest, setup = false, actions }: { sub
 export function SaveRules({ subjectId, setup = false, actions }: { subjectId: string; setup?: boolean; actions?: GucActions }) {
   const v = useSubject(subjectId);
   if (!v.data) return <Loading icon="download" />;
-  const rules = v.data.settings.save, waiting = setup && pendingStep(v.data) === "save";
-  return <Frame icon="download" title="What Clem saves from CMS" sub={describeSaveRules(rules)} footer={waiting && <SetupButtons subjectId={subjectId} step="save" actions={actions} busy={false} />}>
+  const rules = v.data.settings.save, waiting = setup && pendingStep(v.data) === "save", filters = hasFilters(rules);
+  const clear = () => void editSubject(subjectId, { save: { types: null, weeks: null, names: null, maxMB: null } }).catch(fail(actions));
+  return <Frame icon="download" title="What Clem saves from CMS" sub={describeSaveRules(rules)}
+    footer={(filters || waiting) && <>{filters && <button type="button" onClick={clear}>Clear filters</button>}{waiting && <SetupButtons subjectId={subjectId} step="save" actions={actions} busy={false} />}</>}>
     <div className="guc-chips" role="group" aria-label="File kinds to save">
       {SAVE_KINDS.map((k) => { const on = rules.kinds[k]; return <button key={k} type="button" className="guc-chip" aria-pressed={on} onClick={() => void editSubject(subjectId, { save: { kinds: { [k]: !on } } }).catch(fail(actions))}>
         {on && <Icon name="check" size={13} />}{SAVE_LABELS[k]}
       </button>; })}
     </div>
+    {!filters && setup && <p className="guc-card-line">Or say it, like “only PDFs from week 3” or “nothing over 50 MB”.</p>}
   </Frame>;
 }
 
 // ---------- When to check ----------
 function useNow(every = 30_000) { const [now, setNow] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setNow(Date.now()), every); return () => clearInterval(t); }, [every]); return now; }
+/** "Sun 15 Nov, 12:00" on Cairo's clock. */
+const runLabel = (t: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t).replace(/^(\w+) (\d+ \w+),? /, "$1 $2, ");
+/** One time on every GUC day, nothing else: what the Daily button makes. */
+const isDaily = (c: CheckSchedule) => c.mode === "custom" && !c.every && !c.during && c.times.length === GUC_DAYS.length && new Set(c.times.map((t) => t.time)).size === 1 && GUC_DAYS.every((d) => c.times.some((t) => t.day === d));
 export function CheckSchedule({ subjectId, setup = false, actions }: { subjectId: string; setup?: boolean; actions?: GucActions }) {
   const v = useSubject(subjectId), now = useNow(), [checking, setChecking] = useState(false);
   if (!v.data) return <Loading icon="clock" />;
   const { check } = v.data.settings, after = v.data.suggested.mode === "after_lectures", waiting = setup && pendingStep(v.data) === "check";
-  const daily = check.mode === "custom" ? check.times[0]?.time || "20:00" : "20:00";
+  const daily = isDaily(check) ? check.times[0].time : "20:00", custom = check.mode === "custom" && !isDaily(check);
   const set = (patch: Parameters<typeof editSubject>[1]) => void editSubject(subjectId, patch).catch(fail(actions));
-  const next = v.data.nextCheck ? relativeDue(v.data.nextCheck, now) : undefined;
-  const checkNow = () => { setChecking(true); void checkSubjectNow(subjectId).then(() => actions?.toast("Checked CMS just now."), fail(actions)).finally(() => setChecking(false)); };
-  return <Frame icon="clock" title="When Clem checks CMS" sub={!v.data.course ? "Link a CMS course first" : next ? `Next check ${next.label} (${next.date})` : "Checks are off"}
+  const next = v.data.nextCheck ? relativeDue(v.data.nextCheck, now) : undefined, runs = v.data.course ? nextRuns(check, now, 3) : [];
+  const checkNow = () => { setChecking(true); void checkSubjectNow(subjectId).then((x) => actions?.toast(x.lastCheck?.saved ? `Checked CMS just now · saved ${x.lastCheck.saved} file${x.lastCheck.saved === 1 ? "" : "s"}.` : "Checked CMS just now · nothing new."), fail(actions)).finally(() => setChecking(false)); };
+  return <Frame icon="clock" title="When Clem checks CMS" sub={!v.data.course ? "Link a CMS course first" : next ? `Next check ${next.label} (${next.date})` : check.during ? "Waiting for its dates" : "Checks are off"}
     footer={<>{v.data.course && <button type="button" disabled={checking} onClick={checkNow}><Icon name="refresh" size={14} />{checking ? "Checking…" : "Check now"}</button>}{waiting && <SetupButtons subjectId={subjectId} step="check" actions={actions} busy={false} />}</>}>
     <div className="guc-seg" role="radiogroup" aria-label="When to check">
       {after && <button type="button" role="radio" aria-checked={check.mode === "after_lectures"} onClick={() => set({ check: v.data!.suggested })}>After lectures</button>}
-      <button type="button" role="radio" aria-checked={check.mode === "custom"} onClick={() => set({ check: { mode: "custom", times: dailyChecks(daily), tz: check.tz } })}>Daily</button>
+      <button type="button" role="radio" aria-checked={isDaily(check)} onClick={() => set({ check: { mode: "custom", times: dailyChecks(daily), tz: check.tz } })}>Daily</button>
+      {custom && <button type="button" role="radio" aria-checked>Custom</button>}
       <button type="button" role="radio" aria-checked={check.mode === "off"} onClick={() => set({ check: { mode: "off", times: [], tz: check.tz } })}>Off</button>
-      {check.mode === "custom" && <label className="guc-time"><span>at</span><input type="time" aria-label="Check time" value={daily} onChange={(e) => /^\d{2}:\d{2}$/.test(e.target.value) && set({ check: { mode: "custom", times: dailyChecks(e.target.value), tz: check.tz } })} /></label>}
+      {isDaily(check) && <label className="guc-time"><span>at</span><input type="time" aria-label="Check time" value={daily} onChange={(e) => /^\d{2}:\d{2}$/.test(e.target.value) && set({ check: { mode: "custom", times: dailyChecks(e.target.value), tz: check.tz } })} /></label>}
     </div>
     <p className="guc-card-line">{describeChecks(check)}{check.mode !== "off" ? " · Cairo time" : ""}</p>
+    {runs.length > 1 && <p className="guc-card-line">Coming up: {runs.map(runLabel).join(" · ")}</p>}
+    {v.data.lastCheck && <p className="guc-card-line">Last checked {relativeDue(v.data.lastCheck.at, now).label}{v.data.lastCheck.error ? " · it didn't finish" : v.data.lastCheck.saved ? ` · saved ${v.data.lastCheck.saved}` : ""}</p>}
   </Frame>;
 }
 
@@ -134,16 +152,21 @@ export function CheckSchedule({ subjectId, setup = false, actions }: { subjectId
 export function DriveFolder({ subjectId, setup = false, actions }: { subjectId: string; setup?: boolean; actions?: GucActions }) {
   const v = useSubject(subjectId);
   if (!v.data) return <Loading icon="drive" />;
-  const d = v.data.settings.drive, waiting = setup && pendingStep(v.data) === "drive";
-  const folder = d.folderId && d.folderName ? { folderId: d.folderId, folderName: d.folderName } : actions?.spaceDrive(subjectId);
-  return <Frame icon="drive" title="Copy to Google Drive" sub={folder ? `Folder: ${folder.folderName}` : "No Drive folder chosen yet"}
+  const d = v.data.settings.drive, live = v.data.drive, waiting = setup && pendingStep(v.data) === "drive";
+  const chosen = !!(d.folderId && d.folderName), reconnect = d.enabled && live.error === "reconnect";
+  const status = !d.enabled ? "Saved files stay on this device only." : reconnect ? "Google Drive is disconnected, so copies are waiting."
+    : live.error ? live.message || "The last copy didn't finish. Clem tries again on the next check."
+    : live.copied || live.waiting ? `${live.copied} copied${live.waiting ? ` · ${live.waiting} waiting` : ""} · a folder per week` : "Saved files are copied here, a folder per week.";
+  return <Frame icon="drive" title="Copy to Google Drive" sub={d.enabled ? `Folder: ${live.path}` : "Off"}
     footer={<>
-      {folder && <button type="button" onClick={() => actions?.openDriveWeb(folder.folderId)}><Icon name="external" size={14} />Open</button>}
-      <button type="button" onClick={() => actions?.pickDrive(subjectId)}>{folder ? "Change" : "Choose folder"}</button>
+      {reconnect && <button type="button" className="primary" onClick={() => actions?.reconnectDrive()}>Reconnect Drive</button>}
+      {d.enabled && live.folderId && !reconnect && <button type="button" onClick={() => actions?.openDriveWeb(live.folderId!)}><Icon name="external" size={14} />Open</button>}
+      {d.enabled && <button type="button" onClick={() => actions?.pickDrive(subjectId)}>Change folder</button>}
+      {d.enabled && chosen && <button type="button" onClick={() => void editSubject(subjectId, { drive: { folderId: "", folderName: "" } }).catch(fail(actions))}>Use Clem/GUC</button>}
       {waiting && <SetupButtons subjectId={subjectId} step="drive" actions={actions} busy={false} confirm="Done" />}
     </>}>
     <label className="guc-switch-row"><span>Keep a copy of saved files there</span><Switch label="Copy saved files to Google Drive" checked={d.enabled} onChange={(on) => void editSubject(subjectId, { drive: { enabled: on } }).catch(fail(actions))} /></label>
-    {d.enabled && <p className="guc-card-line">Copies start once Drive sync for CMS files is ready.</p>}
+    <p className="guc-card-line">{status}</p>
   </Frame>;
 }
 
@@ -204,6 +227,30 @@ function NewCourses({ card, actions }: { card: NewCoursesCard; actions?: GucActi
       })}
     </ul>
   </Frame>;
+}
+
+// ---------- What a check saved ----------
+function FileSaved({ card, actions }: { card: FileSavedCard; actions?: GucActions }) {
+  const n = card.files.length + (card.more || 0), name = actions?.spaceName(card.subjectId);
+  const asFile = (f: FileSavedCard["files"][number]): StoredFile => ({ id: "guc_" + f.id, name: f.name, type: f.type || "application/octet-stream", size: f.size || 0, created: Date.now(), spaceId: card.subjectId });
+  return <Frame icon="download" title={`Saved ${n} new file${n === 1 ? "" : "s"} from CMS`} sub={name ? `In ${name}'s Files` : "In this subject's Files"}
+    footer={<button type="button" onClick={() => actions?.showFiles(card.subjectId)}><Icon name="files" size={14} />Show in Files</button>}>
+    <ul className="guc-new guc-saved">
+      {card.files.map((f) => <li key={f.id}>
+        <span className="guc-new-name"><span className="guc-saved-name">{f.name}</span>{(f.size || f.week) && <small>{[f.size ? sizeLabel(f.size) : "", f.week?.replace(/^Week:\s*/, "Week of ")].filter(Boolean).join(" · ")}</small>}</span>
+        <button type="button" onClick={() => actions?.openFile(asFile(f))} aria-label={`Preview ${f.name}`}>Preview</button>
+        <button type="button" onClick={() => actions?.summarize(card.subjectId, { id: "guc_" + f.id, name: f.name })} aria-label={`Summarize ${f.name}`}>Summarize</button>
+      </li>)}
+    </ul>
+    {card.more ? <p className="guc-card-line">and {card.more} more in Files</p> : null}
+  </Frame>;
+}
+
+// ---------- News a check found ----------
+function News({ card, actions }: { card: NewsCard; actions?: GucActions }) {
+  const [icon, path] = card.type === "announcement" ? ["megaphone", hubPath("announcements", card.id)] : card.type === "grade" ? ["spark", hubPath("grades")] : ["hourglass", hubPath("deadlines", card.id)];
+  return <Frame icon={icon} className="guc-news" title={card.title} sub={card.detail}
+    footer={<button type="button" onClick={() => actions?.openHub(path)}><Icon name="external" size={14} />{card.type === "announcement" ? "Open announcement" : card.type === "grade" ? "Open grades" : "Open deadlines"}</button>} />;
 }
 
 /** A day name for the check list ("Sun"), exported for the subject page's classes. */

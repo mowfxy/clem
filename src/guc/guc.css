@@ -182,6 +182,12 @@ html:root :is(.guc-new li,.guc-link-pick :is(li,footer))>button{border:0;backgro
 html:root :is(.guc-new li,.guc-link-pick :is(li,footer))>button.primary{background:#ffffffeb;color:#0a1020}
 html:root[data-theme=light] :is(.guc-new li,.guc-link-pick :is(li,footer))>button.primary,html:root[data-theme=light] .edit-proposal .guc-new li>button.primary{background:#141e33;color:#fff}
 .guc-updated header>.drawn-icon{color:var(--sky);opacity:1}
+/* Files a check saved: name over size and week, Preview and Summarize beside it */
+.guc-saved .guc-new-name{flex-direction:column;gap:2px}
+.guc-saved-name{overflow:hidden;text-overflow:ellipsis}
+.guc-saved .guc-new-name small{font-size:var(--text-label);color:var(--muted)}
+.guc-saved li>button{height:28px;padding:0 10px}
+.guc-news header small{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 
 /* A subject's CMS tab: its course, the hub's views for that course, and the setting cards */
 .guc-subject{display:grid;gap:14px;max-width:none}

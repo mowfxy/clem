@@ -75,6 +75,7 @@ import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {GucManage,GucRow} from './guc/GucSettings';
 import {createSetup,cardActions} from './guc/setup';
+import {editSubject} from './guc/subject';
 import {useGuc,gucPrefetch,gucCache,gucKey} from './guc/useGuc';
 import {parseHubRoute,type HubOverview} from '../core/guc/hub';
 import {visibleConnectors} from '../core/connectors';
@@ -1036,6 +1037,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     addChat: (chat) => patch((s) => ({ ...s, chats: [chat, ...s.chats] })),
     updateChat: (id, fn) => patch((s) => ({ ...s, chats: s.chats.map((c) => (c.id === id ? fn(c) : c)) })),
     addSpace: (space) => patch((s) => ({ ...s, spaces: [space, ...s.spaces] })),
+    files: () => stateRef.current.files,
+    addFiles: (files) => patch((s) => ({ ...s, files: [...files.filter((f) => !s.files.some((x) => x.id === f.id)), ...s.files] })),
     openChat: (id, space) => { setTemporaryNext(false); setChatId(id); setSpaceId(space); navigate("/app"); },
     ask: (messages, subjectId) => gucAskRef.current(messages, subjectId),
     toast: (message) => setToast(message),
@@ -1044,10 +1047,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const gucOn = () => gucCache.get<HubOverview>(gucKey({ action: "gucOverview" }))?.data?.connected;
   // Opening a setup thread posts what a restart left unasked.
   useEffect(() => { if (desktop && activeChat?.setup && activeChat.spaceId) void gucSetup.resume(activeChat.spaceId); }, [activeChat?.id]);
-  // A sync that found courses of a new term no subject has: one card in the main thread.
+  // A sync that found courses of a new term no subject has: one card in the main thread. What checks saved and found:
+  // files into their subject and cards into its Setup chat.
   useEffect(() => {
     if (!ready || !desktop) return;
-    const post = () => void gucSetup.postNewCourses(mainThreadOf(stateRef.current.chats)?.id);
+    const post = () => { void gucSetup.postNewCourses(mainThreadOf(stateRef.current.chats)?.id); void gucSetup.applyInbox(); };
     post();
     return desktop.onGuc?.((p) => { if (p.phase === "done") post(); });
   }, [ready]);
@@ -2013,9 +2017,13 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   const gucActions=cardActions(gucSetup,{
     openHub:path=>navigate(path),openSpace:id=>openSpace(id),
     spaceName:id=>stateRef.current.spaces.find(x=>x.id===id)?.name,
-    spaceDrive:id=>{const d=stateRef.current.spaces.find(x=>x.id===id)?.drive;return d?{folderId:d.folderId,folderName:d.folderName}:undefined;},
-    pickDrive:id=>{setDriveFolderFor(id);setModal('drive-folder');},
+    pickDrive:id=>{setDriveFolderFor(id);setModal('guc-drive-folder');},
     openDriveWeb:id=>void desktop?.invoke({action:'driveOpenWeb',id}).catch(e=>setToast(cleanError(e))),
+    reconnectDrive:()=>openSettings('Connectors'),
+    openFile:f=>setViewer(f),
+    showFiles:id=>openSpace(id,'files'),
+    // A new chat in the subject with the saved file attached and the request typed, ready to send.
+    summarize:(id,file)=>{setTemporaryNext(false);setSpaceId(id);setChatId(null);navigate('/app');setAttachments([file.id]);setDraft(`Summarize ${file.name}: the main ideas, then what I should remember for the exam.`);setTimeout(()=>composer.current?.focus(),80);},
     toast:setToast,
   });
   function bodyHandlers(chat:Chat,message:Chat["messages"][number]):BodyHandlers{
@@ -3661,6 +3669,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 }}
               />
             </>
+          ) : modal === "guc-drive-folder" ? (
+            <DrivePicker mode="folder" onFolder={(folder)=>{const id=driveFolderFor;setModal(null);if(!id)return;
+              void editSubject(id,{drive:{enabled:true,folderId:folder.id,folderName:folder.name}}).then(()=>setToast(`CMS copies go to ${folder.name} now, a folder per week.`),e=>setToast(cleanError(e)));}}/>
           ) : modal === "drive-folder" ? (
             <DrivePicker mode="folder" onFolder={(folder)=>{const id=driveFolderFor;setModal(null);if(!id)return;// A new folder is linked beside the others and shown; one already linked is just shown.
               patch(s=>({...s,spaces:s.spaces.map(x=>{if(x.id!==id)return x;const all=[...(x.drive?[x.drive]:[]),...(x.drives||[])],had=all.find(d=>d.folderId===folder.id);
