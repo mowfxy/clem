@@ -68,6 +68,19 @@ button.edit-proposal.clem-handoff:focus-visible{outline:2px solid var(--focus,#9
 .clem-card-list time{flex:none;font-variant-numeric:tabular-nums;color:var(--muted)}
 .clem-card-list small{margin-left:auto;flex:none;color:var(--muted);font-size:12px}
 
+/* ---------- The organizer's cards (src/proactivity/ProCards.tsx) ---------- */
+.pro-lines li{align-items:center;min-height:34px}
+.pro-lines time{flex:none;width:44px;font-size:var(--text-label);font-variant-numeric:tabular-nums;color:var(--muted)}
+.pro-line{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;font-size:var(--text-s);line-height:1.4;color:var(--ink)}
+.pro-line a{color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--ink) 30%,transparent);text-underline-offset:3px}
+.pro-line small{margin-left:auto;flex:none;font-size:var(--text-label);color:var(--muted)}
+.pro-lines li>small{flex:none;font-size:var(--text-label);color:var(--muted)}
+.pro-lines li[data-status=undone] .pro-line,.pro-lines li[data-status=dismissed] .pro-line{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 60%,transparent)}
+html:root .pro-lines li>button.pro-mute{background:transparent;color:var(--muted)}
+html:root .pro-lines li>button.pro-mute:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.mt-row.focused .message{animation:pro-focus 2.4s ease-out}
+@keyframes pro-focus{0%,40%{box-shadow:0 0 0 2px color-mix(in srgb,var(--focus,#9fb4ff) 70%,transparent);border-radius:18px}100%{box-shadow:0 0 0 2px transparent;border-radius:18px}}
+
 /* ---------- Earlier chats ---------- */
 .earlier-bar{display:flex;align-items:center;gap:12px;max-width:760px;margin:0 auto;padding:12px 14px;border-radius:18px;background:var(--float-tint);box-shadow:var(--glass-rim);-webkit-backdrop-filter:var(--float-filter);backdrop-filter:var(--float-filter);color:var(--ink)}
 .earlier-bar>.drawn-icon{flex:none;opacity:.7}

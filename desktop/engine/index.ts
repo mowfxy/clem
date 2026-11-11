@@ -93,9 +93,9 @@ export class Engine {
     if (await this.credentials()) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
     await this.organizer.start(this.jobs);
   }
-  /** What the organizer reads from GUC: this week's classes, deadlines, links and the Now card; nothing while unconnected. */
+  /** What the organizer reads from GUC: this week's classes, deadlines, links and the Now card (all local rows; empty
+   *  once GUC is disconnected). */
   private async gucFacts() {
-    if (!(await this.credentials())) return { slots: [], deadlines: [], links: [], now: null };
     const [slots, deadlines, links, now] = await Promise.all([read.schedule(this.db, this.owner, cairo(Date.now()).ymd).then((s) => s.slots), read.deadlines(this.db, this.owner), this.links(), this.now()]);
     return { slots, deadlines, links, now };
   }

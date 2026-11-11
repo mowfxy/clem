@@ -63,6 +63,9 @@ import type {GucNow} from '../core/guc/ai-tools';
 import {recallIndex,recall} from '../core/main-thread/recall';
 import {applyFold,foldPrompt} from '../core/main-thread/fold';
 import {cardBlock} from '../core/guc/cards';
+import {WATCH_GUIDE} from '../core/proactivity/watches';
+import {createPro} from './proactivity/pro';
+import type {ProActions} from './proactivity/ProCards';
 import {MainThread} from './main-thread/MainThread';
 import {SidebarSpaces} from './main-thread/SidebarSpaces';
 import {EarlierChats,MoveToSpace} from './main-thread/EarlierChats';
@@ -97,7 +100,7 @@ type Carry = { attachments: string[]; drive: DriveItem[] };
  *  handed to a subject's chat, the note of what came before. */
 type Turn = { mentions?: string[]; carried?: string };
 /** Said once, first, in every main-thread request, so it stays byte-stable for the CLIs' prompt caches. */
-const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. A question that clearly belongs to one subject or project is moved to that space's chat before you see it, so answer what is asked here; when a request needs one subject's files, suggest mentioning it with @.";
+const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. A question that clearly belongs to one subject or project is moved to that space's chat before you see it, so answer what is asked here; when a request needs one subject's files, suggest mentioning it with @.\n" + WATCH_GUIDE;
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
 const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Gemini" : "ChatGPT";
@@ -1052,7 +1055,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // files into their subject and cards into its Setup chat.
   useEffect(() => {
     if (!ready || !desktop) return;
-    const post = () => { void gucSetup.postNewCourses(mainThreadOf(stateRef.current.chats)?.id); void gucSetup.applyInbox(); };
+    const post = () => { void gucSetup.postNewCourses(mainThreadOf(stateRef.current.chats)?.id); void gucSetup.applyInbox(); void pro.pull(); };
     post();
     return desktop.onGuc?.((p) => { if (p.phase === "done") post(); });
   }, [ready]);
@@ -2017,6 +2020,17 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     return "Other";
   }
   /** What GUC cards (chat, subject page, hub, Settings) ask of the app. */
+  // Clem's organizer (src/proactivity/pro.ts): what it decided is applied here, its cards land in the main thread.
+  const pro=useMemo(()=>createPro({state:()=>stateRef.current,patch,toast:(m)=>setToast(m)}),[]);
+  const [focusMessage,setFocusMessage]=useState<string>();
+  const proActions:ProActions={...pro,spaceName:(id)=>stateRef.current.spaces.find(x=>x.id===id)?.name,open:(href)=>navigate(href.slice(1)),
+    // A new lecture's one-tap buttons: a chat in the subject with the request typed, the saved file attached when there is one.
+    lecture:(id,file,want)=>{const saved=stateRef.current.files.some(f=>f.id==="guc_"+file.id);setTemporaryNext(false);setSpaceId(id);setChatId(null);navigate('/app');setAttachments(saved?["guc_"+file.id]:[]);
+      setDraft(want==="summary"?`Summarize ${saved?file.name:`the CMS file “${file.name}”`} in 3 lines, then what I should remember for the exam.`:`Make flashcards from ${saved?file.name:`the CMS file “${file.name}”`} for this subject.`);setTimeout(()=>composer.current?.focus(),80);}};
+  // Plans, files, study sets and exam dates changing is a reason for a sweep (the engine waits and spaces them out).
+  const proSignal=useMemo(()=>[(state.plans||[]).map(p=>p.spaceId+p.rev).join(),state.files.filter(f=>!f.spaceId).length,state.studySets.length,state.spaces.map(s=>s.id+(s.examDate||'')).join()].join('|'),[state.plans,state.files,state.studySets,state.spaces]);
+  const proFirst=useRef(true);
+  useEffect(()=>{if(!ready||!desktop)return;if(proFirst.current){proFirst.current=false;return;}const t=setTimeout(()=>void desktop!.invoke({action:"proPoke",reason:"plans"}).catch(()=>{}),8000);return()=>clearTimeout(t);},[proSignal,ready]);
   const gucActions=cardActions(gucSetup,{
     openHub:path=>navigate(path),openSpace:id=>openSpace(id),
     spaceName:id=>stateRef.current.spaces.find(x=>x.id===id)?.name,
@@ -2031,7 +2045,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   });
   function bodyHandlers(chat:Chat,message:Chat["messages"][number]):BodyHandlers{
     return {
-      guc:desktop?gucActions:undefined,chatSpace:chat.spaceId,
+      guc:desktop?gucActions:undefined,chatSpace:chat.spaceId,pro:desktop?proActions:undefined,
       scope:desktopScope,edits:message.edits,canCite,onCite:openCitation,
       onOpenChat:(id,spaceId)=>{const c=stateRef.current.chats.find(x=>x.id===id);if(c){setChatId(c.id);setSpaceId(c.spaceId);navigate('/app');}else if(stateRef.current.spaces.some(x=>x.id===spaceId))openSpace(spaceId);else setToast('That chat isn’t here any more.');},
       spaceName:(id)=>stateRef.current.spaces.find(x=>x.id===id)?.name,
@@ -2582,7 +2596,13 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     }catch(e){setToast(cleanError(e));}
   }
   // A flashcard reminder clicked: that subject opens at its review.
-  useEffect(()=>{if(!desktop?.onOpen)return;return desktop.onOpen(({review})=>{if(review&&stateRef.current.spaces.some(x=>x.id===review)){openSpace(review,'flashcards');setReviewFor(review);}});},[]);
+  useEffect(()=>{if(!desktop?.onOpen)return;return desktop.onOpen(({review,route,chat,message})=>{
+    if(review&&stateRef.current.spaces.some(x=>x.id===review)){openSpace(review,'flashcards');setReviewFor(review);return;}
+    // A notification's exact item: a #/app route (a GUC deadline, a subject), or a chat and the card to scroll to.
+    if(route){navigate(route.slice(1));return;}
+    if(chat){const c=chat==='main'?mainThreadOf(stateRef.current.chats):stateRef.current.chats.find(x=>x.id===chat);if(!c)return;setChatId(c.id);setSpaceId(c.spaceId);navigate('/app');
+      if(message){setFocusMessage(message);setTimeout(()=>document.querySelector(`[data-message-id="${CSS.escape(message)}"]`)?.scrollIntoView({block:'center'}),400);}}
+  });},[]);
   useEffect(()=>{if(!desktop?.onPack)return;return desktop.onPack(({bytes,name})=>void openPackBytes(bytes,name));},[]);
   // A study pack dropped anywhere on the window opens for review. While anything is dragged, holding it near the top or
   // bottom of a scrolling area scrolls it (the wheel does not reach the page mid-drag), so far-off folders stay reachable.
@@ -3122,7 +3142,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Proactivity" ? (
-                      <ProactivitySettings models={models} organizer={state.organizer} fallback={defaultModel} onChange={(organizer) => patch((s) => ({ ...s, organizer }))} onConnect={() => openSettings("Models")} />
+                      <ProactivitySettings models={models} organizer={state.organizer} fallback={defaultModel} onChange={(organizer) => patch((s) => ({ ...s, organizer }))} onConnect={() => openSettings("Models")} onUndo={desktop ? (key) => pro.undo(key) : undefined} />
                     ) : settingsTab === "Usage" ? (
                       <UsageSettings archive={state.usageArchive} chats={savedChats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
                     ) : settingsTab === "Help & support" ? (
@@ -3204,7 +3224,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   <>
                     <VisualSaveContext.Provider value={chatVisualSaves}>
                       {activeChat.messages.some((m) => !m.digest)
-                        ? <MainThread chat={activeChat} listRef={chatScroll.messages} render={(m, i) => renderMessage(activeChat, m, i)} />
+                        ? <MainThread chat={activeChat} listRef={chatScroll.messages} focus={focusMessage} render={(m, i) => renderMessage(activeChat, m, i)} />
                         : <div className="main-thread-empty"><EmptyState scene="conversation" line={<>This is your thread with Clem. Plan the day, ask anything, or type <b>@</b> to bring in a subject or project. Questions about one of them continue in its chat.</>} /></div>}
                     </VisualSaveContext.Provider>
                     <div className="chat-composer">

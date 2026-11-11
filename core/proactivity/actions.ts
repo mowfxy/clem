@@ -48,14 +48,16 @@ export function actionKey(a: ProAction): string {
 export const needsConfirm = (a: ProAction) => a.type === "automation";
 export const changesWorkspace = (a: ProAction) => a.type !== "note";
 
+/** "Wed, Nov 11" for a YYYY-MM-DD day. */
+export const dayText = (ymd: string) => new Date(ymd + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 /** One line for the card and the log. */
 export function describe(a: ProAction, spaceName: (id: string) => string | undefined = () => undefined): string {
   const sp = (x?: string) => (x && spaceName(x) ? ` · ${spaceName(x)}` : "");
   switch (a.type) {
-    case "plan_task": return `${a.milestone ? "Added to the timeline" : "Added task"}: ${a.title}${a.due ? ` (${a.due}${a.time ? " " + a.time : ""})` : ""}${sp(a.spaceId)}`;
+    case "plan_task": return `${a.milestone ? "Added to the timeline" : "Added task"}: ${a.title}${a.due ? ` (${dayText(a.due)}${a.time ? " " + a.time : ""})` : ""}${sp(a.spaceId)}`;
     case "time_block": return `${a.time} ${a.title}${sp(a.spaceId)}`;
-    case "plan_move": return `Moved “${a.title}” to ${a.due}${a.time ? " " + a.time : ""}${sp(a.spaceId)}`;
-    case "revision_plan": return `Revision plan: ${a.sessions.length} session${a.sessions.length === 1 ? "" : "s"} before the exam on ${a.examDate}${sp(a.spaceId)}`;
+    case "plan_move": return `Moved “${a.title}” to ${dayText(a.due)}${a.time ? " " + a.time : ""}${sp(a.spaceId)}`;
+    case "revision_plan": return `Revision plan: ${a.sessions.length} session${a.sessions.length === 1 ? "" : "s"} before the exam on ${dayText(a.examDate)}${sp(a.spaceId)}`;
     case "file_move": return `Filed ${a.name}${sp(a.spaceId) || " in its subject"}`;
     case "memory": return `Remembered: ${a.text}`;
     case "automation": return `Make a ${a.schedule} routine “${a.name}” at ${a.time}?`;

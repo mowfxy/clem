@@ -17,7 +17,8 @@ function scrollerOf(node: Element | null): HTMLElement | null {
  * the saved workspace on the first frame (no loading step, no blank flash) starting at the newest page; `render` is the
  * same message rendering every chat uses. Digests (core/main-thread/fold.ts) are context, never shown.
  */
-export function MainThread({ chat, render, listRef }: { chat: Chat; render: (m: Message, index: number) => ReactNode; listRef: RefObject<HTMLDivElement | null> }) {
+/** `focus`: a message to bring into view (a notification's card), loading older pages until it is there. */
+export function MainThread({ chat, render, listRef, focus }: { chat: Chat; render: (m: Message, index: number) => ReactNode; listRef: RefObject<HTMLDivElement | null>; focus?: string }) {
   const visible = useMemo(() => chat.messages.flatMap((m, i) => (m.digest ? [] : [{ m, i }])), [chat.messages]);
   const [shown, setShown] = useState(PAGE);
   const rows = visible.slice(Math.max(0, visible.length - shown));
@@ -58,11 +59,20 @@ export function MainThread({ chat, render, listRef }: { chat: Chat; render: (m: 
     anchor.current = null;
     el.scrollTop = was.top + (virtual.getTotalSize() - was.total);
   }, [shown]);
+  useEffect(() => {
+    if (!focus) return;
+    const at = visible.findIndex((v) => v.m.id === focus);
+    if (at < 0) return;
+    const need = visible.length - at;
+    if (need > shown) { setShown(Math.ceil(need / PAGE) * PAGE); return; }
+    const row = rows.findIndex((r) => r.m.id === focus);
+    if (row >= 0) requestAnimationFrame(() => virtual.scrollToIndex(row, { align: "center" }));
+  }, [focus, shown, visible.length]);
   return (
     <div className="messages main-thread-list" ref={listRef} style={{ height: virtual.getTotalSize(), position: "relative" }} aria-label="Main thread" data-older={visible.length - rows.length}>
       {virtual.getVirtualItems().map((item) => {
         const { m, i } = rows[item.index];
-        return <div key={item.key} data-index={item.index} ref={virtual.measureElement} className="mt-row" style={{ transform: `translateY(${item.start - margin}px)` }}>{render(m, i)}</div>;
+        return <div key={item.key} data-index={item.index} ref={virtual.measureElement} className={m.id === focus ? "mt-row focused" : "mt-row"} style={{ transform: `translateY(${item.start - margin}px)` }}>{render(m, i)}</div>;
       })}
     </div>
   );

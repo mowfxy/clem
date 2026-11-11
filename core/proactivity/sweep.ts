@@ -112,6 +112,9 @@ export function digestLine(items: RatedChange[], name: (id?: string) => string |
   return "Also new: " + [...by].map(([k, n]) => `${n} update${n === 1 ? "" : "s"} in ${k}`).join(" · ");
 }
 
+/** A change as one line: an announcement says what it says, the rest their title. */
+export const changeText = (c: Change) => (c.kind === "new_announcement" && c.detail ? `${c.title.replace(/^New announcement in /, "")}: ${c.detail}` : c.title);
+
 /** Template lines for the timed briefs. */
 function briefLines(kind: SweepKind, f: rules.Facts) {
   const c = cairo(f.now), tomorrow = addDay(c.ymd), out: SweepPlan["brief"] = [];
@@ -146,10 +149,11 @@ const TITLES: Record<SweepKind, (ymd: string) => string> = {
 export function sweepCard(kind: SweepKind, now: number, parts: { said: RatedChange[]; digest?: string; hits: { watch: Watch; change: Change }[]; brief: SweepPlan["brief"]; actions: ProAction[] }, spaceName: (id?: string) => string | undefined): OrganizerCard | null {
   const lines: OrganizerCard["lines"] = [
     ...parts.hits.map((h) => ({ text: `You asked to hear: ${h.change.title}`.slice(0, 300), key: "watch:" + h.watch.id + ":" + h.change.key })),
-    ...parts.said.map((r) => ({ text: r.change.title.slice(0, 300), key: "change:" + r.change.key.slice(0, 180), ...(spaceName(r.change.subjectId) ? { space: spaceName(r.change.subjectId)!.slice(0, 120) } : {}) })),
+    ...parts.said.map((r) => ({ text: changeText(r.change).slice(0, 300), key: "change:" + r.change.key.slice(0, 180), ...(spaceName(r.change.subjectId) ? { space: spaceName(r.change.subjectId)!.slice(0, 120) } : {}) })),
     ...(parts.digest ? [{ text: parts.digest.slice(0, 300) }] : []),
     ...parts.brief.map((b) => ({ text: b.text.slice(0, 300), ...(b.time ? { time: b.time } : {}), ...(b.space ? { space: b.space.slice(0, 120) } : {}) })),
-    ...parts.actions.map((a) => ({ text: describe(a, (id) => spaceName(id)).slice(0, 300), key: actionKey(a).slice(0, 200), ...(a.type === "time_block" ? { time: a.time } : {}) })),
+    // A time block's time is its own column.
+    ...parts.actions.map((a) => ({ text: (a.type === "time_block" ? a.title : describe(a, (id) => spaceName(id))).slice(0, 300), key: actionKey(a).slice(0, 200), ...(a.type === "time_block" ? { time: a.time, ...(spaceName(a.spaceId) ? { space: spaceName(a.spaceId)!.slice(0, 120) } : {}) } : {}) })),
   ].slice(0, 30);
   if (!lines.length) return null;
   return { type: "organizer", title: TITLES[kind](cairo(now).ymd), when: kind, lines };
