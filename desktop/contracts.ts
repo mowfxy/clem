@@ -19,6 +19,11 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({action:z.literal("essentialSync"),skills:syncSchemas.skills,notes:syncSchemas.notes,noBaseline:z.boolean().optional()}),
   z.object({ action: z.literal("browserLogin") }),
   z.object({ action: z.literal("driveConnect") }),
+  // GUC (desktop/engine): the password goes straight to the Vault and is never sent back.
+  z.object({ action: z.literal("gucConnect"), username: z.string().trim().regex(/^(guc\\)?[\w.@-]{2,80}$/i, "Enter your GUC username."), password: z.string().min(1).max(200) }),
+  z.object({ action: z.literal("gucStatus") }),
+  z.object({ action: z.literal("gucSync") }),
+  z.object({ action: z.literal("gucDisconnect") }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),
@@ -261,6 +266,8 @@ export type DesktopBridge = {
   onCapture?: (listener: (event: { bytes: Uint8Array; name: string; mime: string }) => void) => () => void;
   onFolder?: (listener: (event: FolderEvent) => void) => () => void;
   onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
+  /** Progress of a GUC sync the window asked for ("Checking your courses… 3 of 7"). */
+  onGuc?: (listener: (event: import("../core/guc/types").GucProgress) => void) => () => void;
   /** Something to open from outside the window: a flashcard reminder's subject, at its review (desktop/study-reminders.ts). */
   onOpen?: (listener: (event: { review?: string }) => void) => () => void;
   startDrag?: (path: string) => void;

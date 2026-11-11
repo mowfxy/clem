@@ -71,6 +71,8 @@ import {AntigravityEngine} from './antigravity-engine';
 import {endOrphanedAgents} from './agent-sweep';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
+import { Engine } from './engine/index';
+import type { EngineHost } from './engine/host';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
 import {LiveScreen,NOTE_HOLD} from './live-reply';
@@ -191,7 +193,9 @@ app.on("before-quit", () => {
   grokAccounts?.stop();
   antigravityAccounts?.stop();
   folderWatcher?.stop();
+  void closeEngines?.();
 });
+let closeEngines: (() => Promise<void>) | undefined;
 const workspaceRoot=app.commandLine.hasSwitch('user-data-dir')?join(app.getPath('userData'),'Workspace'):join(app.getPath('documents'),'Clem');
 const previousSession=app.getPath('sessionData');
 const durableSession=join(workspaceRoot,'Local data');
@@ -1148,6 +1152,36 @@ void app.whenReady().then(async () => {
       note.show();
     },
   });
+  // Clem's background engine (desktop/engine): one per signed-in owner, opened when GUC is used or already connected.
+  // GUC passwords stay in the Vault ("guc-<owner>"); they never reach the window, a log or a prompt.
+  const engines = new Map<string, Promise<Engine>>();
+  const engineHost = (owner: string): EngineHost => ({
+    secrets: { get: async (key) => vault.read(key, undefined), set: (key, value) => vault.write(key, value), delete: (key) => vault.remove(key) },
+    notify: ({ title, body }) => {
+      if (!Notification.isSupported()) return;
+      const note = new Notification({ title, body, icon: join(__dirname, "../desktop/icon.ico") });
+      shown.add(note);
+      note.on("click", () => { shown.delete(note); showWindow(); });
+      note.on("close", () => shown.delete(note));
+      note.show();
+    },
+    paths: { data: join(workspaceRoot, "Accounts", owner, "engine"), migrations: join(__dirname, "migrations") },
+    log: (level, message) => console[level === "info" ? "log" : level](message),
+  });
+  const engineFor = (owner: string) => {
+    let engine = engines.get(owner);
+    if (!engine) {
+      engine = Engine.open(owner, engineHost(owner));
+      engines.set(owner, engine);
+      engine.catch((error) => { engines.delete(owner); console.warn("[engine]", (error as Error).message); });
+    }
+    return engine;
+  };
+  closeEngines = async () => { const open = [...engines.values()]; engines.clear(); await Promise.all(open.map((e) => e.then((x) => x.close()).catch(() => {}))); };
+  const gucProgress = (progress: unknown) => { if (!window.isDestroyed()) window.webContents.send("clem:guc", progress); };
+  const gucStatus = async (owner: string) => engines.has(owner) || await vault.read("guc-" + owner, undefined) ? (await engineFor(owner)).status() : { connected: false, syncing: false, courses: 0, linked: 0 };
+  // Scheduled GUC syncs run while Clem is open (in the tray too), so the engine starts with a connected account.
+  void authReady.then(async () => { const user = await auth.user(false); if (user && await vault.read("guc-" + user.id, undefined)) await engineFor(user.id); }).catch(() => {});
   const reminderTick = () => void auth.user(false).then((user) => user && reminders.tick(user.id)).catch((error) => console.warn("[reminders]", (error as Error)?.message));
   setTimeout(reminderTick, 90_000).unref();
   setInterval(reminderTick, 5 * 60_000).unref();
@@ -1352,6 +1386,7 @@ void app.whenReady().then(async () => {
       antigravityAccounts?.stop();
       await selectProvider("signed-out");
       driveLive.forget();driveMedia.forget();
+      await closeEngines?.();
       await auth.client?.auth.signOut().catch(() => {});
       await auth.forget();
       return status();
@@ -1374,6 +1409,10 @@ void app.whenReady().then(async () => {
     if (request.action === "supportSeen") return auth.cloud(`/support/cases/${request.id}/seen`, {});
     if (request.action === "announcements") return auth.cloud("/announcements");
     await selectProvider(user.id);
+    if (request.action === "gucStatus") return gucStatus(user.id);
+    if (request.action === "gucConnect") return (await engineFor(user.id)).connect(request.username, request.password, gucProgress);
+    if (request.action === "gucSync") { const engine = await engineFor(user.id); return engine.sync(gucProgress).catch(() => engine.status()); }
+    if (request.action === "gucDisconnect") return (await engineFor(user.id)).disconnect();
     if (request.action === "driveConnect") {
       driveLive.forget();
       await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id));

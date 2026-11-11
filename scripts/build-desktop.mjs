@@ -28,7 +28,11 @@ await build({
   bundle: true,
   platform: "node",
   format: "cjs",
-  external: ["electron"],
+  // pg-native is node-postgres' optional native driver; pg-boss runs on PGlite through its adapter instead.
+  external: ["electron", "pg-native"],
+  // ES modules bundled into CommonJS (PGlite finds its .wasm files from import.meta.url) see this file's own URL.
+  banner: { js: 'const __importMetaUrl = require("url").pathToFileURL(__filename).href;' },
+  define: { "import.meta.url": "__importMetaUrl" },
   plugins: [
     {
       name: "public-config",
@@ -43,6 +47,10 @@ await build({
 });
 await build({entryPoints:["desktop/kinetra-worker.ts"],outfile:"desktop-dist/kinetra-worker.cjs",bundle:true,platform:"node",format:"cjs"});
 await build({entryPoints:["desktop/anki-worker.ts"],outfile:"desktop-dist/anki-worker.cjs",bundle:true,platform:"node",format:"cjs"});
+// The engine's database: PGlite loads its WebAssembly and data files from beside the bundle, and the engine applies
+// its SQL migrations from desktop-dist/migrations (desktop/engine).
+for (const file of ["pglite.wasm", "pglite.data", "initdb.wasm"]) await copyFile("node_modules/@electric-sql/pglite/dist/" + file, "desktop-dist/" + file);
+await cp("desktop/engine/migrations", "desktop-dist/migrations", { recursive: true });
 // KaTeX's stylesheet and woff2 fonts, inlined into the print page of generated PDFs (desktop/katex-print.ts).
 await mkdir("desktop-dist/katex/fonts", { recursive: true });
 await copyFile("node_modules/katex/dist/katex.min.css", "desktop-dist/katex/katex.min.css");

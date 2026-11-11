@@ -13,6 +13,13 @@ and modified under the OFL, but not sold on their own.
 Calculations, figures, PDF and Office tools in `vendor/kinetra/`. License: `vendor/kinetra/LICENSE`. Clem's changes are
 listed in `vendor/kinetra/CLEM_PATCHES.md`.
 
+## cms-downloader — MIT
+
+How Clem reads the GUC CMS (`core/guc/parse.ts`) follows [AhmedAshrafAZ/cms-downloader](https://github.com/AhmedAshrafAZ/cms-downloader)
+(MIT, Copyright (c) 2020 Ahmed Ashraf): the season and course grid on `HomePageStn.aspx`, the `CourseViewStn.aspx?id=&sid=` page,
+its `div.weeksdata` weeks, `a#download` files and the course description box, and NTLM sign-in with `httpntlm`. No code is
+copied; the page layout knowledge is ported.
+
 ## libheif (through libheif-js 1.23.2) — LGPL-3.0
 
 Clem converts iPhone HEIC/HEIF photos to JPEG on attach with **libheif**, compiled to WebAssembly and packaged as the

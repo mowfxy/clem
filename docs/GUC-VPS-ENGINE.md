@@ -71,7 +71,10 @@ These are the working notes for the `feature/guc-connector` branch. Every step f
 
 ## Jobs
 - **Runner:** pg-boss, running on PGlite on the desktop and on Postgres on the VPS.
-  - This must be proven in step 1. If pg-boss can't run on PGlite, fall back to croner plus a persistent `jobs` table with retries and backoff, and record that decision here.
+  - **Decision (step 1, proven):** pg-boss 12 runs on PGlite 0.5 through its own `fromPglite` adapter (`backend: "pglite"`, schema `pgboss`). The spike and `tests/guc-jobs.test.ts` show a failed job retried with backoff, and jobs and cron schedules (with `tz`) surviving a close and reopen. So there is no `jobs` table and no croner. The wrapper is `desktop/engine/jobs.ts`.
+  - Each owner has their own database, so queue names leave the owner out (`guc.sync`, not `guc.sync:<owner>`). Per-subject checks will be `guc.check` jobs keyed by subject id (`singletonKey`).
+  - `guc.sync` runs every three hours (`0 */3 * * *`, Cairo time) while GUC is connected. A wrong password is not retried. Offline and unavailable errors retry 3 times with backoff from 2 minutes.
+- **Bundling:** `scripts/build-desktop.mjs` maps `import.meta.url` to the bundle's own file URL, copies `pglite.wasm`, `pglite.data` and `initdb.wasm` beside `main.cjs`, and copies `desktop/engine/migrations` to `desktop-dist/migrations`. `pg-native` stays external.
 - **Job names:**
   - `guc.check:<owner>:<subjectId>`: one per subject, from its schedule rules.
   - `guc.sync:<owner>`
