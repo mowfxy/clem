@@ -66,7 +66,9 @@ export async function materials(db: Db, owner: string, courseKey: string): Promi
   const weeks = new Map<string, HubMaterial[]>();
   for (const r of rows) {
     const { name, type } = materialFile(r.url, r.title);
-    weeks.set(r.week, [...(weeks.get(r.week) || []), { id: r.material_id, courseKey, week: r.week, title: r.title, kind: r.kind, name, type, firstSeen: ms(r.first_seen), stored: r.stored }]);
+    let week = weeks.get(r.week);
+    if (!week) weeks.set(r.week, (week = []));
+    week.push({ id: r.material_id, courseKey, week: r.week, title: r.title, kind: r.kind, name, type, firstSeen: ms(r.first_seen), stored: r.stored });
   }
   return { courseKey, weeks: [...weeks].map(([week, items]) => ({ week, date: weekDate(week), items })).sort((a, b) => (b.date || "").localeCompare(a.date || "") || a.week.localeCompare(b.week)) };
 }

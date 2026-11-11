@@ -61,7 +61,7 @@ export async function view(db: Db, owner: string, subjectId: string, o: { now?: 
   const check = s.check || suggested;
   const [[kept], drive, [last]] = await Promise.all([
     course ? db.query<{ files: number; bytes: string | null; on_vps: number }>(`select count(*)::int as files, sum(f.size) as bytes, count(*) filter (where f.location = 'vps')::int as on_vps from file_objects f
-      join guc_materials m on m.owner_id = f.owner_id and f.file_id = 'guc:' || m.material_id where f.owner_id = $1 and m.course_key = $2`, [owner, course.key]) : Promise.resolve([] as { files: number; bytes: string | null; on_vps: number }[]),
+      join guc_materials m on m.owner_id = f.owner_id and m.material_id = f.material_id where f.owner_id = $1 and m.course_key = $2 and f.file_id like 'guc:%'`, [owner, course.key]) : Promise.resolve([] as { files: number; bytes: string | null; on_vps: number }[]),
     driveState(db, owner, subjectId, s.drive.enabled, s.drive.folderId || undefined),
     db.query<{ at: Date; saved: number; error: string | null }>("select at, saved, error from guc_checks where owner_id = $1 and subject_id = $2 order by id desc limit 1", [owner, subjectId]),
   ]);
@@ -72,6 +72,11 @@ export async function view(db: Db, owner: string, subjectId: string, o: { now?: 
     drive: { ...drive, path: s.drive.folderId && s.drive.folderName ? s.drive.folderName : `Clem/GUC/${course ? `${course.code} ${course.name}`.trim() : "…"}` },
     ...(last ? { lastCheck: { at: ms(last.at), saved: last.saved, ...(last.error ? { error: last.error } : {}) } } : {}),
   };
+}
+
+/** Marks events as shown in the window (channel 'thread'), all in one statement. */
+async function thread(db: Db, owner: string, keys: string[]) {
+  if (keys.length) await db.query("insert into notifications_sent (owner_id, event_key, channel) select $1::text, k, 'thread' from unnest($2::text[]) k on conflict do nothing", [owner, keys]);
 }
 
 /** New-term courses a sync found that no subject has taken since and the main thread hasn't been told about. */
@@ -85,7 +90,7 @@ export async function newCourses(db: Db, owner: string): Promise<NewCourse[]> {
   return rows.map((r) => ({ key: r.course_key, code: normCode(r.code) || r.code, name: r.name, season: r.season }));
 }
 export async function ackNewCourses(db: Db, owner: string, keys: string[]) {
-  for (const key of keys) await db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, $2, 'thread') on conflict do nothing", [owner, "course:" + key]);
+  await thread(db, owner, keys.map((k) => "course:" + k));
 }
 
 const INBOX = ["file_saved", "new_announcement", "new_grade", "deadline_added", "deadline_changed"];
@@ -104,5 +109,5 @@ export async function inbox(db: Db, owner: string): Promise<InboxItem[]> {
   });
 }
 export async function ackInbox(db: Db, owner: string, keys: string[]) {
-  for (const key of keys) await db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, $2, 'thread') on conflict do nothing", [owner, key]);
+  await thread(db, owner, keys);
 }

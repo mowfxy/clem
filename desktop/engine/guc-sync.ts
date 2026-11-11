@@ -93,8 +93,8 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   const stats: GucSyncStats = { requests: client.requests - before, skipped, changed, events: eventList.length, ms: Date.now() - started };
   await db.tx(async (t) => {
     if (changed) await save(t, owner, next);
-    for (const e of eventList)
-      await t.query("insert into guc_events (owner_id, event_key, kind, course_key, title, detail) values ($1, $2, $3, $4, $5, $6) on conflict do nothing", [owner, e.key, e.kind, e.courseKey ?? null, e.title, e.detail]);
+    if (eventList.length) await t.query("insert into guc_events (owner_id, event_key, kind, course_key, title, detail) select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) on conflict do nothing",
+      [owner, ...columns(eventList, (e) => e.key, (e) => e.kind, (e) => e.courseKey ?? null, (e) => e.title, (e) => e.detail)]);
     await t.query("insert into guc_snapshots (owner_id, pages, data, seen, stats) values ($1, $2, $3, $4, $5)", [owner, pages, next, seen, stats]);
     await t.query("delete from guc_snapshots where owner_id = $1 and id not in (select id from guc_snapshots where owner_id = $1 order by id desc limit 5)", [owner]);
   });
@@ -102,20 +102,30 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   return { ...stats, eventList, warnings };
 }
 
-/** Writes the normalized rows; announcements and materials keep when they were first seen and read. */
+/** Columns of `rows`, one array per field, for `insert … select … from unnest(…)`: a table in one statement. */
+const columns = <T,>(rows: T[], ...fields: ((r: T) => unknown)[]) => fields.map((f) => rows.map(f));
+/** The last row of each id (a page that lists a file twice keeps its last entry, as row-by-row upserts did). */
+const lastOf = <T extends { id: string }>(rows: T[]) => [...new Map(rows.map((r) => [r.id, r])).values()];
+
+/** Writes the normalized rows, one statement per table (not one per row); announcements and materials keep when they
+ *  were first seen and read. */
 async function save(t: Db, owner: string, s: GucSnapshot) {
   await t.query("delete from guc_courses where owner_id = $1", [owner]);
-  for (const c of s.courses) await t.query("insert into guc_courses values ($1, $2, $3, $4, $5, $6, $7, $8)", [owner, c.key, c.id, c.seasonId, c.season, c.code, c.name, c.active]);
+  await t.query("insert into guc_courses select $1::text, * from unnest($2::text[], $3::int[], $4::int[], $5::text[], $6::text[], $7::text[], $8::bool[])",
+    [owner, ...columns(s.courses, (c) => c.key, (c) => c.id, (c) => c.seasonId, (c) => c.season, (c) => c.code, (c) => c.name, (c) => c.active)]);
   await t.query("delete from guc_schedule_slots where owner_id = $1", [owner]);
-  for (const x of s.slots) await t.query("insert into guc_schedule_slots values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict do nothing", [owner, x.id, x.day, x.period, x.start, x.end, x.code, x.name, x.type, x.group, x.location]);
+  await t.query("insert into guc_schedule_slots select $1::text, * from unnest($2::text[], $3::text[], $4::int[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[]) on conflict do nothing",
+    [owner, ...columns(s.slots, (x) => x.id, (x) => x.day, (x) => x.period, (x) => x.start, (x) => x.end, (x) => x.code, (x) => x.name, (x) => x.type, (x) => x.group, (x) => x.location)]);
   await t.query("delete from guc_grades where owner_id = $1", [owner]);
-  for (const g of s.grades) await t.query("insert into guc_grades values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict do nothing", [owner, g.id, g.semester, g.code, g.name, g.hours, g.numeric, g.letter]);
+  await t.query("insert into guc_grades select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::real[], $8::text[]) on conflict do nothing",
+    [owner, ...columns(s.grades, (g) => g.id, (g) => g.semester, (g) => g.code, (g) => g.name, (g) => g.hours, (g) => g.numeric, (g) => g.letter)]);
   await t.query("delete from guc_deadlines where owner_id = $1", [owner]);
-  for (const d of s.deadlines) await t.query("insert into guc_deadlines values ($1, $2, $3, $4, $5, $6) on conflict do nothing", [owner, d.id, d.courseKey, d.title, d.due, d.source]);
+  await t.query("insert into guc_deadlines select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::text[]) on conflict do nothing",
+    [owner, ...columns(s.deadlines, (d) => d.id, (d) => d.courseKey, (d) => d.title, (d) => d.due, (d) => d.source)]);
   await t.query("delete from guc_announcements where owner_id = $1 and not (announcement_id = any($2::text[]))", [owner, s.announcements.map((a) => a.id)]);
-  for (const a of s.announcements)
-    await t.query("insert into guc_announcements (owner_id, announcement_id, course_key, scope, week, body) values ($1, $2, $3, $4, $5, $6) on conflict (owner_id, announcement_id) do nothing", [owner, a.id, a.courseKey, a.scope, a.week ?? null, a.text]);
+  await t.query("insert into guc_announcements (owner_id, announcement_id, course_key, scope, week, body) select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) on conflict (owner_id, announcement_id) do nothing",
+    [owner, ...columns(s.announcements, (a) => a.id, (a) => a.courseKey, (a) => a.scope, (a) => a.week ?? null, (a) => a.text)]);
   await t.query("delete from guc_materials where owner_id = $1 and not (material_id = any($2::text[]))", [owner, s.materials.map((m) => m.id)]);
-  for (const m of s.materials)
-    await t.query("insert into guc_materials (owner_id, material_id, course_key, week, title, kind, url) values ($1, $2, $3, $4, $5, $6, $7) on conflict (owner_id, material_id) do update set week = excluded.week, title = excluded.title, kind = excluded.kind, url = excluded.url", [owner, m.id, m.courseKey, m.week, m.title, m.kind, m.url]);
+  await t.query("insert into guc_materials (owner_id, material_id, course_key, week, title, kind, url) select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict (owner_id, material_id) do update set week = excluded.week, title = excluded.title, kind = excluded.kind, url = excluded.url",
+    [owner, ...columns(lastOf(s.materials), (m) => m.id, (m) => m.courseKey, (m) => m.week, (m) => m.title, (m) => m.kind, (m) => m.url)]);
 }

@@ -222,6 +222,8 @@ export class Engine {
       });
       if (out) out.result = result;
       this.version++;
+      // PGlite has no autovacuum: fresh row counts after a sync that rewrote rows, so the planner keeps using the indexes.
+      if (result.changed) await this.db.query("analyze guc_materials, guc_announcements, guc_events, file_objects").catch(() => {});
       const { eventList, warnings, ...stats } = result;
       if (warnings.length) this.host.log("warn", "[guc] skipped: " + warnings.join(", "));
       if (!only) await this.db.query("update guc_account set last_sync = now(), last_error = null, stats = $2 where owner_id = $1", [this.owner, stats]);
@@ -326,6 +328,7 @@ export class Engine {
       await this.db.query("delete from guc_checks where owner_id = $1 and subject_id = $2 and id not in (select id from guc_checks where owner_id = $1 and subject_id = $2 order by id desc limit 200)", [this.owner, subjectId]);
     }
     this.version++;
+    if (stats.saved > 10) await this.db.query("analyze file_objects").catch(() => {});
     this.host.log("info", `[guc] check ${trigger}: ${client.requests} requests, ${stats.bytes} bytes, ${stats.saved} saved, ${stats.deduped} deduped, ${Date.now() - started} ms`);
     if (stats.saved || out.result?.events) { this.host.changed?.(); void this.organizer.poke("check").catch(() => {}); }
     return { ...stats, requests: client.requests, ms: Date.now() - started, trigger, pageChanged: !!out.result?.changed, uploaded: drive?.uploaded || 0, drive };
