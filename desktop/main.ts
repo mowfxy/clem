@@ -1430,7 +1430,12 @@ void app.whenReady().then(async () => {
     if (request.action === "gucDisconnect") return (await engineFor(user.id)).disconnect();
     if (request.action.startsWith("guc")) {
       // Reads open the engine only for a connected account; anything else has nothing to show yet.
-      if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) { if (request.action === "gucOverview") return { connected: false, syncing: false, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } }; throw Error("Connect GUC first."); }
+      if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) {
+        if (request.action === "gucOverview") return { connected: false, syncing: false, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } };
+        if (request.action === "gucLinks" || request.action === "gucNewCourses") return [];
+        if (request.action === "gucForgetSubject") return null;
+        throw Error("Connect GUC first.");
+      }
       const engine = await engineFor(user.id);
       if (request.action === "gucOverview") return engine.overview();
       if (request.action === "gucCourses") return engine.courses();
@@ -1442,6 +1447,15 @@ void app.whenReady().then(async () => {
       if (request.action === "gucGrades") return engine.grades(request.courseId);
       if (request.action === "gucDeadlines") return engine.deadlines();
       if (request.action === "gucFile") { const { path: _path, ...file } = await engine.file(request.materialId); return file; }
+      if (request.action === "gucLinks") return engine.links();
+      if (request.action === "gucLink") return engine.link(request.subjectId, request.courseId, gucProgress);
+      if (request.action === "gucUnlink") return engine.unlink(request.subjectId);
+      if (request.action === "gucSubject") return engine.subject(request.subjectId);
+      if (request.action === "gucSetSettings") return engine.setSettings(request.subjectId, request.patch);
+      if (request.action === "gucCheckNow") return engine.checkNow(request.subjectId, gucProgress);
+      if (request.action === "gucForgetSubject") return engine.forgetSubject(request.subjectId);
+      if (request.action === "gucNewCourses") return engine.newCourses();
+      if (request.action === "gucAckNewCourses") return engine.ackNewCourses(request.keys);
     }
     if (request.action === "driveConnect") {
       driveLive.forget();

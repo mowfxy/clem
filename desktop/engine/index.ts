@@ -5,11 +5,14 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { materialFile, type HubFile, type HubOverview } from "../../core/guc/hub.ts";
 import { urls } from "../../core/guc/parse.ts";
+import { cronLines } from "../../core/guc/schedule-rules.ts";
+import type { SettingsPatch } from "../../core/guc/settings.ts";
 import type { GucErrorKind, GucProgress, GucStatus, GucSyncStats } from "../../core/guc/types.ts";
 import { migrate, openPglite, type Db } from "./db.ts";
 import { GucError, asGucError } from "./errors.ts";
 import { GucClient, fetchFile, login, type Credentials, type Http } from "./guc-client.ts";
 import * as read from "./guc-read.ts";
+import * as subjects from "./subjects.ts";
 import { syncGuc } from "./guc-sync.ts";
 import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
@@ -28,6 +31,7 @@ export class Engine {
   private http?: Http;
   private sleep?: (ms: number) => Promise<void>;
   private running?: Promise<GucStatus>;
+  private light?: Promise<GucStatus>;
   private reader?: GucClient;
   /** CMS files fetched for viewing: kept in a temp folder for this session only, never in the workspace. */
   private temp = new Map<string, Promise<HubFile & { path: string }>>();
@@ -55,6 +59,11 @@ export class Engine {
       // A wrong password is not retried: it needs the person, and they have been told once.
       try { await this.syncNow(); } catch (e) { if (!(e instanceof GucError && e.kind === "auth")) throw e; }
     }, { retries: 3, delay: 120 });
+    // A subject's own checks (its schedule rules): a light sync of its course.
+    await this.jobs.queue("guc.check", async ({ subjectId }: { subjectId: string }) => {
+      if (!(await this.credentials())) return;
+      try { await this.checkNow(subjectId); } catch (e) { if (!(e instanceof GucError && e.kind === "auth")) throw e; }
+    }, { retries: 2, delay: 120 });
     if (await this.credentials()) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
   }
 
@@ -80,22 +89,28 @@ export class Engine {
     return this.sync(progress, true, client).catch(() => this.status());
   }
 
-  /** One sync at a time; a second call while one runs waits for it. */
+  /** One sync at a time; a second call while one runs waits for it. Light syncs of one course queue behind it. */
   sync(progress?: (p: GucProgress) => void, initial = false, client?: GucClient) {
-    this.running ||= this.run(progress, initial, client).finally(() => { this.running = undefined; });
+    this.running ||= (this.light || Promise.resolve()).catch(() => {}).then(() => this.run(progress, initial, client)).finally(() => { this.running = undefined; });
     return this.running;
+  }
+  /** A light sync of one course (just linked, "Check now", its scheduled check): its page only. */
+  syncCourse(courseKey: string, progress?: (p: GucProgress) => void) {
+    const job = Promise.allSettled([this.running, this.light]).then(() => this.run(progress, false, undefined, courseKey));
+    this.light = job.finally(() => { if (this.light === job) this.light = undefined; });
+    return job;
   }
   private syncNow() { return this.sync(); }
 
-  private async run(progress: ((p: GucProgress) => void) | undefined, initial: boolean, client?: GucClient) {
+  private async run(progress: ((p: GucProgress) => void) | undefined, initial: boolean, client?: GucClient, only?: string) {
     const credentials = await this.credentials();
     if (!credentials) throw Error("Connect GUC first.");
     client ||= new GucClient(credentials, this.http, this.sleep);
     try {
-      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, progress });
+      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress });
       const { eventList, warnings, ...stats } = result;
       if (warnings.length) this.host.log("warn", "[guc] skipped: " + warnings.join(", "));
-      await this.db.query("update guc_account set last_sync = now(), last_error = null, stats = $2 where owner_id = $1", [this.owner, stats]);
+      if (!only) await this.db.query("update guc_account set last_sync = now(), last_error = null, stats = $2 where owner_id = $1", [this.owner, stats]);
       await this.db.query("delete from notifications_sent where owner_id = $1 and event_key like 'guc-error:%'", [this.owner]);
       this.host.log("info", `[guc] synced: ${stats.requests} requests, ${stats.skipped} unchanged, ${stats.events} new, ${stats.ms} ms`);
       return this.status();
@@ -123,6 +138,41 @@ export class Engine {
   search(query: string) { return read.search(this.db, this.owner, query); }
   grades(courseKey?: string) { return read.grades(this.db, this.owner, courseKey); }
   deadlines() { return read.deadlines(this.db, this.owner); }
+
+  // ---------- Subjects and their courses (core/guc/setup-flow.ts, src/guc/setup.ts) ----------
+  links() { return subjects.links(this.db, this.owner); }
+  subject(subjectId: string) { return subjects.view(this.db, this.owner, subjectId); }
+  /** Links a course and reads it now (a light sync in the background); its checks follow its settings. */
+  async link(subjectId: string, courseKey: string, progress?: (p: GucProgress) => void) {
+    const { movedFrom } = await subjects.link(this.db, this.owner, subjectId, courseKey);
+    if (movedFrom) await this.reschedule(movedFrom);
+    await this.reschedule(subjectId);
+    void this.syncCourse(courseKey, progress).catch((e) => this.host.log("warn", "[guc] light sync failed: " + asGucError(e).kind));
+    return this.subject(subjectId);
+  }
+  async unlink(subjectId: string) { await subjects.unlink(this.db, this.owner, subjectId); await this.reschedule(subjectId); return this.subject(subjectId); }
+  async setSettings(subjectId: string, patch: SettingsPatch) {
+    await subjects.saveSettings(this.db, this.owner, subjectId, patch);
+    if (patch.check) await this.reschedule(subjectId);
+    return this.subject(subjectId);
+  }
+  /** Reads the subject's course now ("Check now"), then its fresh view. */
+  async checkNow(subjectId: string, progress?: (p: GucProgress) => void) {
+    const v = await this.subject(subjectId);
+    if (!v.course) throw new GucError("unavailable", "not linked", "Link a CMS course first.");
+    await this.syncCourse(v.course.key, progress);
+    return this.subject(subjectId);
+  }
+  async forgetSubject(subjectId: string) { await subjects.forget(this.db, this.owner, subjectId); await this.reschedule(subjectId); }
+  newCourses() { return subjects.newCourses(this.db, this.owner); }
+  ackNewCourses(keys: string[]) { return subjects.ackNewCourses(this.db, this.owner, keys); }
+  /** One pg-boss schedule per check time of a linked subject ("guc.check", key "<subject>/HHMM"); none once unlinked or off. */
+  private async reschedule(subjectId: string) {
+    if (!this.jobs) return;
+    const v = await this.subject(subjectId);
+    for (const s of await this.jobs.schedules("guc.check")) if (s.key?.startsWith(subjectId + "/")) await this.jobs.unschedule("guc.check", s.key);
+    if (v.course) for (const { time, cron } of cronLines(v.settings.check)) await this.jobs.schedule("guc.check", cron, { subjectId }, subjectId + "/" + time.replace(":", ""));
+  }
 
   private tempDir() { return this.host.paths.temp || join(tmpdir(), "clem-guc", this.owner); }
   /** A CMS file to view: the saved copy when there is one, else fetched now into a temp folder (once per file per session).
@@ -154,10 +204,11 @@ export class Engine {
 
   /** Forgets the password and every GUC row of this owner. */
   async disconnect() {
-    await this.running?.catch(() => {});
+    await Promise.allSettled([this.running, this.light]);
     await this.dropTemp();
     await this.host.secrets.delete(this.key());
     await this.jobs?.unschedule("guc.sync").catch(() => {});
+    for (const s of await this.jobs?.schedules("guc.check").catch(() => []) || []) await this.jobs?.unschedule("guc.check", s.key).catch(() => {});
     await this.db.tx(async (t) => {
       for (const table of GUC_TABLES) await t.query(`delete from ${table} where owner_id = $1`, [this.owner]);
       await t.query("delete from notifications_sent where owner_id = $1 and event_key like 'guc-%'", [this.owner]);
@@ -166,7 +217,7 @@ export class Engine {
   }
 
   async close() {
-    await this.running?.catch(() => {});
+    await Promise.allSettled([this.running, this.light]);
     await this.jobs?.stop().catch(() => {});
     await this.dropTemp();
     await this.pg.close();

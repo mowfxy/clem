@@ -1,5 +1,6 @@
 import {syncSchemas} from "../core/sync.ts";
 import { z } from "zod";
+import { settingsPatch } from "../core/guc/settings.ts";
 
 export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
 export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };
@@ -39,6 +40,16 @@ export const requestSchema = z.discriminatedUnion("action", [
   /** Makes a CMS file ready to view (saved copy, or fetched to a temp folder) and returns its name, type and size; the
    *  bytes come from clem://app/api/local/guc/file/<id>. */
   z.object({ action: z.literal("gucFile"), materialId: gucId }),
+  // Subjects and their courses (desktop/engine/subjects.ts): links, settings, checks and new-term courses.
+  z.object({ action: z.literal("gucLinks") }),
+  z.object({ action: z.literal("gucLink"), subjectId: gucId, courseId: gucCourse }),
+  z.object({ action: z.literal("gucUnlink"), subjectId: gucId }),
+  z.object({ action: z.literal("gucSubject"), subjectId: gucId }),
+  z.object({ action: z.literal("gucSetSettings"), subjectId: gucId, patch: settingsPatch }),
+  z.object({ action: z.literal("gucCheckNow"), subjectId: gucId }),
+  z.object({ action: z.literal("gucForgetSubject"), subjectId: gucId }),
+  z.object({ action: z.literal("gucNewCourses") }),
+  z.object({ action: z.literal("gucAckNewCourses"), keys: z.array(gucCourse).min(1).max(50) }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),

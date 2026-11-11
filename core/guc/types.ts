@@ -19,7 +19,7 @@ export type GucSnapshot = {
   deadlines: GucDeadline[];
 };
 
-export type GucEventKind = "new_grade" | "new_announcement" | "new_material" | "deadline_added" | "deadline_changed" | "schedule_changed";
+export type GucEventKind = "new_grade" | "new_announcement" | "new_material" | "deadline_added" | "deadline_changed" | "schedule_changed" | "new_course";
 /** `key` is unique per real change, so an event is never stored or notified twice. */
 export type GucEvent = { kind: GucEventKind; key: string; courseKey?: string; title: string; detail: string };
 

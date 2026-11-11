@@ -22,8 +22,9 @@ export class Jobs {
     await this.boss.work(name, { pollingIntervalSeconds: o.poll ?? 15 }, async ([job]) => handler(job.data));
   }
   send(name: string, data: object = {}, o: { singletonKey?: string; startAfter?: number } = {}) { return this.boss.send(name, data, o); }
-  schedule(name: string, cron: string, data: object = {}) { return this.boss.schedule(name, cron, data, { tz: TIMEZONE }); }
-  unschedule(name: string) { return this.boss.unschedule(name); }
+  /** `key` keeps several schedules on one queue (a subject's checks: "guc.check", "<subject>/1015"). */
+  schedule(name: string, cron: string, data: object = {}, key?: string) { return this.boss.schedule(name, cron, data, { tz: TIMEZONE, ...(key ? { key } : {}) }); }
+  unschedule(name: string, key?: string) { return this.boss.unschedule(name, key); }
   job(name: string, id: string) { return this.boss.getJobById(name, id); }
-  schedules() { return this.boss.getSchedules(); }
+  schedules(name?: string) { return this.boss.getSchedules(name); }
 }

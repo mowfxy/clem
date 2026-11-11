@@ -44,3 +44,12 @@ export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen):
   }
   return events;
 }
+
+/** Courses of the newest term that weren't in the last snapshot and no subject is linked to: a new semester. The first
+ *  sync is a baseline and finds none. */
+export function newCourses(prev: GucSnapshot, next: GucSnapshot, linked: Set<string>): GucEvent[] {
+  if (!prev.courses.length) return [];
+  const before = new Set(prev.courses.map((c) => c.key)), latest = Math.max(0, ...next.courses.map((c) => c.seasonId));
+  return next.courses.filter((c) => c.active && c.seasonId === latest && !before.has(c.key) && !linked.has(c.key))
+    .map((c) => ({ kind: "new_course", key: "course:" + c.key, courseKey: c.key, title: c.code ? `${c.code} ${c.name}` : c.name, detail: c.season }));
+}

@@ -37,6 +37,7 @@ export function ClemCardBlock({ body, handlers = {} }: { body: string; handlers?
       {card.note && <p className="automation-prompt">{card.note}</p>}
     </div>
   );
+  if (card.type !== "digest") return null;
   return (
     <div className="edit-proposal clem-card">
       <header><Icon name="list" size={16} /><div><strong>{card.title || "Since you last looked"}</strong></div></header>

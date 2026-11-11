@@ -1,6 +1,6 @@
 // One GUC sync: the light course list, the schedule and grades, and the pages of linked courses (every active course on
 // the first sync, for announcements). Unchanged pages are skipped; changes become rows, a snapshot and events.
-import { diffSnapshots, type Seen } from "../../core/guc/diff.ts";
+import { diffSnapshots, newCourses, type Seen } from "../../core/guc/diff.ts";
 import { extractDeadlines } from "../../core/guc/deadlines.ts";
 import { formFields, parseCourseList, parseCoursePage, parseSchedule, parseTranscript, transcriptChallenge, transcriptYears, urls } from "../../core/guc/parse.ts";
 import { emptySnapshot, type GucEvent, type GucProgress, type GucSnapshot, type GucSyncStats } from "../../core/guc/types.ts";
@@ -20,7 +20,8 @@ export async function linkedCourses(db: Db, owner: string) {
   return (await db.query<{ course_key: string }>("select distinct course_key from subject_links where owner_id = $1", [owner])).map((r) => r.course_key);
 }
 
-export async function syncGuc(o: { db: Db; owner: string; client: GucClient; initial?: boolean; now?: Date; progress?: (p: GucProgress) => void }): Promise<SyncResult> {
+/** `only`: a light sync of one course's page (just linked, or "Check now"), leaving the course list and portal as they are. */
+export async function syncGuc(o: { db: Db; owner: string; client: GucClient; initial?: boolean; only?: string; now?: Date; progress?: (p: GucProgress) => void }): Promise<SyncResult> {
   const { db, owner, client } = o, started = Date.now(), now = o.now || new Date(), before = client.requests;
   const prev = await previousSnapshot(db, owner);
   const pages: Record<string, PageMemo> = { ...prev.pages }, warnings: string[] = [];
@@ -29,38 +30,40 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   let skipped = 0, changed = 0;
   const say = (phase: GucProgress["phase"], done: number, total: number, label: string) => o.progress?.({ phase, done, total, label });
 
-  say("courses", 0, 1, "Checking your courses…");
-  const home = await client.page(urls.home, pages[urls.home]);
-  if (home.unchanged) skipped++;
-  else { next.courses = parseCourseList(home.body); pages[urls.home] = home.memo; changed++; }
+  if (!o.only) {
+    say("courses", 0, 1, "Checking your courses…");
+    const home = await client.page(urls.home, pages[urls.home]);
+    if (home.unchanged) skipped++;
+    else { next.courses = parseCourseList(home.body); pages[urls.home] = home.memo; changed++; }
 
-  // The portal pages are optional: "available from…" or a broken layout keeps what was there.
-  const portal = async (key: "schedule" | "grades", url: string, read: () => Promise<boolean>) => {
-    try { if (await read()) changed++; else skipped++; if (pages[url]?.hash) seen[key] = true; }
-    catch (e) { if (e instanceof GucError && (e.kind === "auth" || e.kind === "offline")) throw e; warnings.push(key + ": " + ((e as GucError).kind || (e as Error).name)); }
-  };
-  say("schedule", 0, 1, "Reading your schedule…");
-  await portal("schedule", urls.schedule, async () => {
-    const page = await client.page(urls.schedule, pages[urls.schedule]);
-    if (page.unchanged) return false;
-    next.slots = parseSchedule(page.body); pages[urls.schedule] = page.memo; return true;
-  });
-  say("grades", 0, 1, "Reading your grades…");
-  await portal("grades", urls.transcript, async () => {
-    let page = await client.page(urls.transcript, pages[urls.transcript]);
-    if (page.unchanged) return false;
-    const challenge = transcriptChallenge(page.body, page.url);
-    if (challenge) page = await client.page(challenge);
-    const years = transcriptYears(page.body);
-    // The transcript shows a year only after its dropdown posts back; ask for the newest when it isn't shown.
-    if (years && !years.latest.selected) page = await client.page(page.url, {}, { method: "POST", form: { ...formFields(page.body), [years.field]: years.latest.value, __EVENTTARGET: years.field, __EVENTARGUMENT: "" } });
-    if (page.memo.hash && page.memo.hash === pages[urls.transcript]?.hash) return false;
-    next.grades = parseTranscript(page.body); pages[urls.transcript] = page.memo; return true;
-  });
+    // The portal pages are optional: "available from…" or a broken layout keeps what was there.
+    const portal = async (key: "schedule" | "grades", url: string, read: () => Promise<boolean>) => {
+      try { if (await read()) changed++; else skipped++; if (pages[url]?.hash) seen[key] = true; }
+      catch (e) { if (e instanceof GucError && (e.kind === "auth" || e.kind === "offline")) throw e; warnings.push(key + ": " + ((e as GucError).kind || (e as Error).name)); }
+    };
+    say("schedule", 0, 1, "Reading your schedule…");
+    await portal("schedule", urls.schedule, async () => {
+      const page = await client.page(urls.schedule, pages[urls.schedule]);
+      if (page.unchanged) return false;
+      next.slots = parseSchedule(page.body); pages[urls.schedule] = page.memo; return true;
+    });
+    say("grades", 0, 1, "Reading your grades…");
+    await portal("grades", urls.transcript, async () => {
+      let page = await client.page(urls.transcript, pages[urls.transcript]);
+      if (page.unchanged) return false;
+      const challenge = transcriptChallenge(page.body, page.url);
+      if (challenge) page = await client.page(challenge);
+      const years = transcriptYears(page.body);
+      // The transcript shows a year only after its dropdown posts back; ask for the newest when it isn't shown.
+      if (years && !years.latest.selected) page = await client.page(page.url, {}, { method: "POST", form: { ...formFields(page.body), [years.field]: years.latest.value, __EVENTTARGET: years.field, __EVENTARGUMENT: "" } });
+      if (page.memo.hash && page.memo.hash === pages[urls.transcript]?.hash) return false;
+      next.grades = parseTranscript(page.body); pages[urls.transcript] = page.memo; return true;
+    });
+  }
 
   const linked = new Set(await linkedCourses(db, owner));
   const latestSeason = Math.max(0, ...next.courses.map((c) => c.seasonId));
-  const wanted = next.courses.filter((c) => linked.has(c.key) || (o.initial && c.active && c.seasonId === latestSeason));
+  const wanted = next.courses.filter((c) => (o.only ? c.key === o.only : linked.has(c.key) || (o.initial && c.active && c.seasonId === latestSeason)));
   let done = 0;
   await Promise.all(wanted.map(async (course) => {
     const url = urls.course(course.id, course.seasonId);
@@ -86,7 +89,7 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
     say("course", ++done, wanted.length, `Checking your courses… ${done} of ${wanted.length}`);
   }));
 
-  const eventList = diffSnapshots(prev.data, next, prev.seen);
+  const eventList = [...diffSnapshots(prev.data, next, prev.seen), ...newCourses(prev.data, next, linked)];
   const stats: GucSyncStats = { requests: client.requests - before, skipped, changed, events: eventList.length, ms: Date.now() - started };
   await db.tx(async (t) => {
     if (changed) await save(t, owner, next);
