@@ -20,6 +20,18 @@ export const reminderCard = z.object({ type: z.literal('reminder'), title: text(
 /** A compact digest line of events from subjects and projects. */
 export const digestCard = z.object({ type: z.literal('digest'), title: text(120).optional(), lines: z.array(z.object({ text: text(300), space: text(120).optional(), spaceId: text(80).optional() })).min(1).max(30) });
 
+/** One organizer sweep (docs/MAIN-THREAD.md "Proactivity"): the brief's lines, and what Clem did or offers, each
+ *  action line keyed so its Undo or one-tap confirm reads its live state from the engine's organizer_actions. */
+export const organizerCard = z.object({
+  type: z.literal('organizer'), title: text(120), when: z.enum(['morning', 'midday', 'evening', 'weekly', 'event', 'reminder']).optional(),
+  lines: z.array(z.object({ text: text(300), key: text(200).optional(), space: text(120).optional(), time: text(20).optional(), href: z.string().regex(/^#\/app\/[\w\/%.:-]{0,200}$/).optional() })).min(1).max(30),
+});
+/** New lectures in a subject: one tap to summarize one or make flashcards from it (nothing is generated on its own). */
+export const lectureCard = z.object({ type: z.literal('lecture'), subjectId: text(80), files: z.array(z.object({ id: z.string().regex(/^[\w-]{1,100}$/), name: text(300), saved: z.boolean().optional() })).min(1).max(10) });
+
+/** Something the person asked Clem to watch for ("tell me when the midterm room is posted"), with Stop. */
+export const watchCard = z.object({ type: z.literal('watch'), id: z.string().regex(/^[\w-]{1,80}$/), text: text(300), detail: text(300).optional() });
+
 const subject = { subjectId: text(80), setup: z.boolean().optional() };
 const courseKey = z.string().regex(/^\d{1,10}:\d{1,10}$/);
 /** The subject's CMS course: Link / Change / Skip while unlinked (with the best guess), Open and Unlink once linked. */
@@ -55,9 +67,12 @@ export const deadlineCard = z.object({ type: z.literal('deadline'), ...news, id:
 /** New courses a sync found that no subject is linked to (a new semester), posted in the main thread. */
 export const newCoursesCard = z.object({ type: z.literal('new_courses'), courses: z.array(z.object({ key: courseKey, code: z.string().max(20), name: text(200) })).min(1).max(20) });
 
-export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard]);
+export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, organizerCard, lectureCard, watchCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard]);
 export type ClemCard = z.infer<typeof clemCard>;
 export type HandoffCard = z.infer<typeof handoffCard>;
+export type OrganizerCard = z.infer<typeof organizerCard>;
+export type LectureCard = z.infer<typeof lectureCard>;
+export type WatchCard = z.infer<typeof watchCard>;
 export type SettingsUpdateCard = z.infer<typeof settingsUpdateCard>;
 export type NewCoursesCard = z.infer<typeof newCoursesCard>;
 export type FileSavedCard = z.infer<typeof fileSavedCard>;

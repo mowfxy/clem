@@ -1,6 +1,7 @@
 // The AI's GUC tools (docs/GUC-VPS-ENGINE.md → AI tools): kinetra actions "guc.*", their guide, argument checks,
 // subject resolution, date ranges and the compact text each result is written as. Pure: the engine runs them
 // (desktop/engine/ai-tools.ts) for the signed-in owner only.
+import { WATCH_GUIDE } from "../proactivity/watches.ts";
 import { z } from "zod";
 import { settingsUpdateCard } from "./cards.ts";
 import { codeKey, normCode } from "./codes.ts";
@@ -32,7 +33,8 @@ export const GUC_GUIDE = `GUC (the person's university: CMS courses, schedule, g
 - {"kinetra":{"action":"guc.read","file":"<file id or name>","from":N}}: a CMS file's text (PDF, slides, Word, sheets) by page or slide, saved or not; a long one says where to continue.
 - {"kinetra":{"action":"guc.search","query":"words","subject":…}}: file names and announcements.
 - {"kinetra":{"action":"guc.grades","subject":…}}: grades, newest semester first.
-- {"kinetra":{"action":"guc.settings","subject":…,"saveText":"their words","checkText":"their words","rules":{…},"check":{…},"drive":{"enabled":true|false}}}: changes what Clem saves from CMS, when it checks, and the Drive copy, only when the person asks; give their own words in saveText/checkText.`;
+- {"kinetra":{"action":"guc.settings","subject":…,"saveText":"their words","checkText":"their words","rules":{…},"check":{…},"drive":{"enabled":true|false}}}: changes what Clem saves from CMS, when it checks, and the Drive copy, only when the person asks; give their own words in saveText/checkText.
+${WATCH_GUIDE}`;
 
 const subject = z.string().trim().max(200).optional();
 const range = z.string().trim().max(60).optional();
