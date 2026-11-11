@@ -96,6 +96,13 @@ These are the working notes for the `feature/guc-connector` branch. Every step f
 ## Libraries
 `httpntlm`, `cheerio`, `fuse.js`, `pg-boss`, `@electric-sql/pglite`, `chrono-node`, `croner`, `ssh2`, `ssh2-sftp-client`, `grammy` (Cloudflare relay), `@tanstack/react-virtual`, `officeparser`, `lru-cache`, `zod` (already present).
 
+## GUC hub
+- **Reads** (`desktop/engine/guc-read.ts`, owner-scoped): `gucOverview`, `gucCourses`, `gucSchedule(weekStart)`, `gucAnnouncements({courseId?, cursor})` (40 a page, keyset on first-seen time and id), `gucMarkRead(ids)`, `gucMaterials(courseId)` grouped by week, `gucSearch(query)` (ILIKE over file names and announcements, every word must match), `gucGrades({courseId?})`, `gucDeadlines`.
+- **Files:** `gucFile(materialId)` and `clem://app/api/local/guc/file/<id>` serve the saved copy (`file_objects`, `guc:<id>`) or fetch the file on demand through the NTLM client into a temp folder (`EngineHost.paths.temp`, else the system temp). Temp copies go when the engine closes or GUC disconnects; nothing is kept until save rules exist. The window reads them as `guc_<id>` through `getBlob`, so the existing viewer (PDF, slides, images) shows them read-only.
+- **Shared logic** (`core/guc/hub.ts`, tested): result types, the Sat–Thu week in Africa/Cairo, deadline order and relative times, semester order, and the `#/app/guc/<tab>/<id>/<sub>` routes (`schedule`, `announcements/<id>`, `cms/<course>/<file>`, `grades`, `deadlines/<id>`) for notifications to link to.
+- **Window cache** (`src/guc/swr.ts`, `src/guc/useGuc.ts`): stale-while-revalidate per owner, in memory and IndexedDB (idb-keyval, already present; no new library). One fetch per key at a time; a finished sync refreshes what is on screen; marking read updates every cached copy at once.
+- **UI:** `src/guc/GucHub.tsx` (the sidebar's GUC item, shown while connected) and a CMS tab on each subject (`SubjectCms`), with a "Link a CMS course" placeholder until linking arrives. `scripts/verify/guc-hub.mjs` checks it against the real engine reads.
+
 ## Telegram
 - **Hosting:** one Clem bot, using grammY in a webhook on the existing Cloudflare account worker.
   - The bot token is a Worker secret, never shipped to a user's engine.
