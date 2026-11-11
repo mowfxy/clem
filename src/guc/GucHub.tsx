@@ -2,7 +2,7 @@
 // database. Every tab draws its cached copy on the first frame and refreshes behind it (src/guc/useGuc.ts).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { hubPath, relativeDue, sortDeadlines, weekGrid, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
+import { hubPath, relativeDue, sortDeadlines, weekGrid, weekLabel, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
 import type { GucProgress } from "../../core/guc/types";
 import { sameCode } from "../../core/guc/codes";
 import { matchSubject } from "../../core/guc/match";
@@ -24,8 +24,6 @@ const TABS: [HubTab, string][] = [["schedule", "Schedule"], ["announcements", "A
 const clean = (e: unknown) => String((e as Error)?.message || e || "").replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
 const authFailed = (m?: string) => !!m && /password|connect guc first|sign in again/i.test(m);
 const ago = (t?: number) => { if (!t) return "Not synced yet"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "Synced just now" : m < 60 ? `Synced ${m} min ago` : m < 1440 ? `Synced ${Math.round(m / 60)} h ago` : "Synced " + new Date(t).toLocaleDateString([], { month: "short", day: "numeric" }); };
-/** "Week: 2026-11-07" → "Week of 7 November". */
-const weekLabel = (week: string, month: "long" | "short" = "long") => { const d = /(\d{4}-\d{2}-\d{2})/.exec(week)?.[1]; return d ? "Week of " + new Date(d + "T12:00:00Z").toLocaleDateString([], { day: "numeric", month, timeZone: "UTC" }) : week; };
 const asFile = (m: { id: string; name: string; type: string; firstSeen?: number }): StoredFile => ({ id: "guc_" + m.id, name: m.name, type: m.type, size: 0, created: m.firstSeen || Date.now(), spaceId: null, remote: true });
 
 function useNow(every = 60_000) { const [now, setNow] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setNow(Date.now()), every); return () => clearInterval(t); }, [every]); return now; }

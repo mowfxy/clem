@@ -27,6 +27,12 @@ export type HubFile = { id: string; name: string; type: string; size: number; st
 
 const TYPES: Record<string, string> = { pdf: "application/pdf", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ppt: "application/vnd.ms-powerpoint", doc: "application/msword", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", zip: "application/zip", txt: "text/plain", mp4: "video/mp4" };
 /** A material's file name from its download URL (the title when the URL has none), and its media type. */
+/** "Week: 2026-11-07" → "Week of November 7" (in the person's locale); the hub and the file_saved card both say it so. */
+export function weekLabel(week: string, month: "long" | "short" = "long") {
+  const d = /(\d{4}-\d{2}-\d{2})/.exec(week)?.[1];
+  return d ? "Week of " + new Date(d + "T12:00:00Z").toLocaleDateString([], { day: "numeric", month, timeZone: "UTC" }) : week;
+}
+
 export function materialFile(url: string, title: string) {
   let base = "";
   try { base = decodeURIComponent(new URL(url).pathname.split("/").at(-1) || ""); } catch {}

@@ -4,7 +4,7 @@
 // The same cards sit on the subject page and in Settings → Connectors → GUC.
 import { useEffect, useState, type ReactNode } from "react";
 import type { ClemCard, FileSavedCard, NewCoursesCard, NewsCard, SettingsUpdateCard } from "../../core/guc/cards";
-import { hubPath, relativeDue, type HubCourse } from "../../core/guc/hub";
+import { hubPath, relativeDue, weekLabel, type HubCourse } from "../../core/guc/hub";
 import { SAVE_KINDS, SAVE_LABELS, describeSaveRules, hasFilters } from "../../core/guc/rules";
 import { DAY_NAMES, GUC_DAYS, dailyChecks, describeChecks, nextRuns, type CheckSchedule } from "../../core/guc/schedule-rules";
 import type { StoredFile } from "../../core/types";
@@ -242,7 +242,7 @@ function FileSaved({ card, actions }: { card: FileSavedCard; actions?: GucAction
     footer={<button type="button" onClick={() => actions?.showFiles(card.subjectId)}><Icon name="files" size={14} />Show in Files</button>}>
     <ul className="guc-new guc-saved">
       {card.files.map((f) => <li key={f.id}>
-        <span className="guc-new-name"><span className="guc-saved-name">{f.name}</span>{(f.size || f.week) && <small>{[f.size ? sizeLabel(f.size) : "", f.week?.replace(/^Week:\s*/, "Week of ")].filter(Boolean).join(" · ")}</small>}</span>
+        <span className="guc-new-name"><span className="guc-saved-name">{f.name}</span>{(f.size || f.week) && <small>{[f.size ? sizeLabel(f.size) : "", f.week ? weekLabel(f.week) : ""].filter(Boolean).join(" · ")}</small>}</span>
         <button type="button" onClick={() => actions?.openFile(asFile(f))} aria-label={`Preview ${f.name}`}>Preview</button>
         <button type="button" onClick={() => actions?.summarize(card.subjectId, { id: "guc_" + f.id, name: f.name })} aria-label={`Summarize ${f.name}`}>Summarize</button>
       </li>)}

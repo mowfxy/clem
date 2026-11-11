@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cairo, hubPath, materialFile, parseHubRoute, relativeDue, semesterOrder, sortDeadlines, weekGrid, weekStart } from "../core/guc/hub.ts";
+import { cairo, hubPath, materialFile, parseHubRoute, relativeDue, semesterOrder, sortDeadlines, weekGrid, weekLabel, weekStart } from "../core/guc/hub.ts";
 import { Swr } from "../src/guc/swr.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { GucError } from "../desktop/engine/errors.ts";
@@ -199,4 +199,10 @@ test("a CMS file is fetched once on demand into a temp folder, never into the wo
   } finally { await engine.close(); }
   assert.deepEqual(await readdir(temp).catch(() => []), [], "the temp copies go when the engine closes");
   await rm(temp, { recursive: true, force: true });
+});
+
+test("a CMS week reads as a date, the same in the hub and on the file_saved card", () => {
+  assert.match(weekLabel("Week: 2026-11-07"), /^Week of (November 7|7 November)$/);
+  assert.match(weekLabel("Week: 2026-11-07", "short"), /^Week of (Nov 7|7 Nov)$/);
+  assert.equal(weekLabel("Orientation"), "Orientation");
 });
