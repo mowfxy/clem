@@ -22,6 +22,32 @@ Decided by the user on 2026-11-11. It works alongside docs/GUC-VPS-ENGINE.md.
   - scopes that turn's context and tools to the mentioned subject or project;
   - in the main thread, it is the explicit form of the hand-off.
 
+## Proactivity: maximum, and across everything (user, 2026-11-12)
+The organizer **acts first and asks only when it truly has to**. Proactivity covers ALL of Clem, not only CMS: subjects, projects, plans, deadlines, exams, flashcards and quizzes (spaced repetition), files, memory, automations and GUC.
+
+**What it does on its own:**
+- **Plans the day:** when the morning brief fires (and on first open each day) it builds today's plan. It reads the timetable, deadlines, exam dates, open plan tasks, due flashcards and free slots, then **writes the time blocks into the plan** instead of only suggesting them.
+- **Turns new information into work:** examples:
+  - A new deadline adds a plan task with a sensible start date.
+  - A new lecture gets a 3-line summary, and its flashcards are generated and queued in the subject.
+  - A moved lab is checked against the calendar; if it clashes, Clem says so.
+- **Keeps plans honest:** overdue tasks are rescheduled into the next free slot, an exam date pulls a revision plan back from it, and a slipping project gets a nudge with the next concrete step.
+- **Closes loops:** it follows up on things the user said they'd do, on unread announcements that matter, and on grades (it celebrates, or offers a review of weak concepts using `weakConcepts`).
+- **Manages the workspace:** it files loose uploads into the right subject, saves durable facts to memory, and suggests or creates automations when the user repeats a request.
+- **Covers projects too:** daily or weekly status of each project's coordinator threads, blockers, and the next step.
+
+**Guardrails:**
+- **Reversible actions** happen on their own and appear as a card with **Undo**: adding or rescheduling plan tasks, generating flashcards, filing files, saving memory.
+- **One confirm tap first:** anything destructive, outward-facing (sending messages, Telegram to others) or costly.
+- **Proactivity level** (quiet / balanced / proactive; **default proactive**), quiet hours, per-event toggles and channels shape *when and where* Clem speaks. Quiet means fewer messages, not less organizing: plan upkeep still happens silently.
+- **No repeats:** every proactive action is deduplicated by a stable key, so it never repeats on any channel. Everything is logged so the user can see "what Clem did today".
+
+**How it runs:**
+- **Jobs:** the engine scheduler runs the organizer's sweeps; it never relies on the UI being open, and on a VPS it runs always-on. The sweeps are:
+  - event-driven: right after a sync or check, on a plan change, on new files;
+  - timed: morning brief, midday check, evening prep, weekly review, deadline reminders (default 48h and 3h before).
+- **Each sweep** gets a compact Now card plus a diff since its last sweep (not history), decides on actions through tools, applies them, and posts one concise card. If nothing changed, no model call is made.
+
 ## Data
 - The main thread is a `Chat` with `kind: 'main'`. There is exactly one per owner. It is pinned and can't be deleted.
 - Standalone chats get `archived: 'earlier'` in a one-time, idempotent migration. They are not deleted.
