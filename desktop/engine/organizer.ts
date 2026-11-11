@@ -100,6 +100,8 @@ export class Organizer {
     return wait;
   }
   close() { if (this.timer) clearTimeout(this.timer); return this.running; }
+  /** Another engine runs the jobs now (core/vps/lease.ts): no queue, no pending event sweep here. */
+  detach() { this.jobs = undefined; if (this.timer) { clearTimeout(this.timer); this.timer = undefined; } }
 
   // ---------- A sweep ----------
   private async workspace(): Promise<Snapshot> { return snapshotOf(await this.host.workspace?.().catch(() => null), this.clock()); }
@@ -209,6 +211,8 @@ export class Organizer {
       [this.owner, key.slice(0, 300), sweep, { ...action, ...(extra || {}) }, text.slice(0, 300), status, new Date(this.clock())]);
     return rows.length > 0;
   }
+  /** A card from elsewhere in the engine (the VPS mover's "done"): posted once per key in the main thread. */
+  announce(content: string, key: string) { return this.post(content, key); }
   /** A main-thread message for the window to pick up (once per key, channel 'app'). */
   private async post(content: string, key: string) {
     const fresh = await this.db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, $2, 'app') on conflict do nothing returning 1", [this.owner, key]);

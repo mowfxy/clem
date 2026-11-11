@@ -30,5 +30,11 @@ export type EngineHost = {
   converse?(turn: TelegramTurn): Promise<{ text: string; files?: { name: string; type: string; bytes: Uint8Array }[] }>;
   /** Shows a route or a chat's message in Clem (a tap on Open in Clem). */
   open?(o: { route?: string; chat?: string; message?: string }): void;
+  /** Where newly saved CMS files go (the VPS store while files live there and it is reachable); left out: this PC. */
+  store?(): import("./storage.ts").FileStore | undefined;
+  /** Other stores this host can read saved files from, by location (a VPS reachable over SSH; the worker's own disk). */
+  stores?(): Partial<Record<"vps" | "drive", import("./storage.ts").FileStore>>;
+  /** A VPS is connected (subject cards offer "My VPS" for files). */
+  vps?(): { files: boolean } | undefined;
 };
 export type TelegramTurn = { id: string; text: string } | { id: string; tap: import("../../core/telegram/render.ts").Tap };

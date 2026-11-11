@@ -52,7 +52,7 @@ export async function forget(db: Db, owner: string, subjectId: string) {
 
 /** Everything a subject's cards and its page show, fresh: course, settings (with the suggested check when none was
  *  chosen), next check, the course's classes and the files kept. */
-export async function view(db: Db, owner: string, subjectId: string, o: { now?: number; vps?: boolean } = {}): Promise<SubjectView> {
+export async function view(db: Db, owner: string, subjectId: string, o: { now?: number; vps?: boolean; vpsFiles?: boolean } = {}): Promise<SubjectView> {
   const [all, s, [l]] = await Promise.all([readCourses(db, owner), settings(db, owner, subjectId), db.query<{ course_key: string; linked_at: Date }>("select course_key, linked_at from subject_links where owner_id = $1 and subject_id = $2", [owner, subjectId])]);
   const course = l && all.find((c) => c.key === l.course_key);
   const rows = course ? await db.query<{ slot_id: string; day: string; period: number; starts: string; ends: string; code: string; name: string; kind: string; grp: string; location: string }>("select * from guc_schedule_slots where owner_id = $1 order by period", [owner]) : [];
@@ -60,15 +60,15 @@ export async function view(db: Db, owner: string, subjectId: string, o: { now?: 
   const suggested = defaultCheckSchedule(slots, course?.code || "");
   const check = s.check || suggested;
   const [[kept], drive, [last]] = await Promise.all([
-    course ? db.query<{ files: number; bytes: string | null }>(`select count(*)::int as files, sum(f.size) as bytes from file_objects f
-      join guc_materials m on m.owner_id = f.owner_id and f.file_id = 'guc:' || m.material_id where f.owner_id = $1 and m.course_key = $2`, [owner, course.key]) : Promise.resolve([] as { files: number; bytes: string | null }[]),
+    course ? db.query<{ files: number; bytes: string | null; on_vps: number }>(`select count(*)::int as files, sum(f.size) as bytes, count(*) filter (where f.location = 'vps')::int as on_vps from file_objects f
+      join guc_materials m on m.owner_id = f.owner_id and f.file_id = 'guc:' || m.material_id where f.owner_id = $1 and m.course_key = $2`, [owner, course.key]) : Promise.resolve([] as { files: number; bytes: string | null; on_vps: number }[]),
     driveState(db, owner, subjectId, s.drive.enabled, s.drive.folderId || undefined),
     db.query<{ at: Date; saved: number; error: string | null }>("select at, saved, error from guc_checks where owner_id = $1 and subject_id = $2 order by id desc limit 1", [owner, subjectId]),
   ]);
   return {
     subjectId, course: course ? { ...course, linkedAt: ms(l.linked_at) } : undefined, settings: { ...s, check }, suggested,
     nextCheck: course ? nextCheck(check, o.now ?? Date.now()) : undefined, slots,
-    storage: { files: kept?.files || 0, bytes: Number(kept?.bytes || 0) }, vps: !!o.vps,
+    storage: { files: kept?.files || 0, bytes: Number(kept?.bytes || 0), onVps: kept?.on_vps || 0 }, vps: !!o.vps, ...(o.vpsFiles ? { vpsFiles: true } : {}),
     drive: { ...drive, path: s.drive.folderId && s.drive.folderName ? s.drive.folderName : `Clem/GUC/${course ? `${course.code} ${course.name}`.trim() : "…"}` },
     ...(last ? { lastCheck: { at: ms(last.at), saved: last.saved, ...(last.error ? { error: last.error } : {}) } } : {}),
   };

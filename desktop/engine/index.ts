@@ -25,7 +25,7 @@ import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
 import { Organizer } from "./organizer.ts";
 import { TelegramRelay } from "./telegram.ts";
-import type { PGlite } from "@electric-sql/pglite";
+import type { Backend } from "./db.ts";
 
 const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive"];
 /** Every three hours, Cairo time. */
@@ -38,7 +38,9 @@ export type CheckOutcome = SaveStats & { trigger: CheckTrigger; pageChanged: boo
 export class Engine {
   readonly owner: string;
   readonly db: Db;
-  private pg: PGlite;
+  private backend: Backend;
+  private deviceStore: FileStore;
+  private runnerOn = false;
   private host: EngineHost;
   private jobs?: Jobs;
   private http?: Http;
@@ -49,8 +51,8 @@ export class Engine {
   private reader?: GucClient;
   /** CMS files fetched for viewing: kept in a temp folder for this session only, never in the workspace. */
   private temp = new Map<string, Promise<HubFile & { path: string }>>();
-  /** Saved CMS files' bytes (this PC; a VPS store later). */
-  readonly store: FileStore;
+  /** Where newly saved CMS files go: the VPS when the host says files live there (and it is reachable), else this PC. */
+  get store(): FileStore { return this.host.store?.() || this.deviceStore; }
   /** One check per subject at a time; a second waits for the first. */
   private checks = new Map<string, Promise<unknown>>();
   private settling = new Map<string, { timer: ReturnType<typeof setTimeout>; files: boolean }>();
@@ -65,27 +67,41 @@ export class Engine {
   /** Telegram: the paired chat's messages answered, cards and files sent, the notifier's channel (docs/DESKTOP.md). */
   readonly telegram: TelegramRelay;
 
-  private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore; text?: TextCacheOptions; clock?: () => number }) {
-    this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep; this.texts = textCache(o.text); this.clock = o.clock || Date.now;
+  private constructor(owner: string, host: EngineHost, backend: Backend, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore; text?: TextCacheOptions; clock?: () => number }) {
+    this.owner = owner; this.host = host; this.backend = backend; this.db = db; this.http = o.http; this.sleep = o.sleep; this.texts = textCache(o.text); this.clock = o.clock || Date.now;
     this.organizer = new Organizer({ db, owner, host, clock: o.clock, guc: () => this.gucFacts() });
     this.telegram = new TelegramRelay({ db, owner, host, organizer: this.organizer, clock: o.clock, engine: { checkNow: (id) => this.check(id, "now"), file: (id) => this.file(id) } });
     if (host.account) this.organizer.telegram = this.telegram;
-    this.store = o.store || new DeviceStore(host.paths.files || (host.paths.data ? join(host.paths.data, "..", "Files") : join(tmpdir(), "clem-guc-files", owner)));
+    this.deviceStore = o.store || new DeviceStore(host.paths.files || (host.paths.data ? join(host.paths.data, "..", "Files") : join(tmpdir(), "clem-guc-files", owner)));
   }
 
-  /** `memory` keeps the database in memory (tests); `jobs: false` runs no background jobs. */
-  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore; text?: TextCacheOptions; clock?: () => number } = {}) {
+  /** `memory` keeps the database in memory (tests); `jobs: false` runs no background jobs (see `runner`); `backend`:
+   *  the worker's Postgres (or any opened database) instead of this owner's PGlite folder. */
+  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore; text?: TextCacheOptions; clock?: () => number; backend?: Backend } = {}) {
     if (!/^[\w-]{1,100}$/.test(owner)) throw Error("Invalid account");
-    if (!o.memory) await mkdir(host.paths.data, { recursive: true });
-    const { pg, db } = await openPglite(o.memory ? undefined : host.paths.data);
-    await migrate(pg, host.paths.migrations);
-    const engine = new Engine(owner, host, pg, db, o);
-    if (o.jobs !== false) await engine.startJobs();
+    if (!o.memory && !o.backend) await mkdir(host.paths.data, { recursive: true });
+    const backend = o.backend || (await openPglite(o.memory ? undefined : host.paths.data)).backend;
+    await migrate(backend, host.paths.migrations);
+    const engine = new Engine(owner, host, backend, backend.db, o);
+    if (o.jobs !== false) await engine.runner(true);
     return engine;
   }
 
+  /** Whether this engine runs Clem's jobs (sync, checks, sweeps, the Telegram inbox). Exactly one engine does
+   *  (core/vps/lease.ts): the desktop stops when the VPS worker holds the lease and starts again when it goes quiet. */
+  async runner(on: boolean) {
+    if (on === this.runnerOn) return;
+    this.runnerOn = on;
+    if (on) return this.startJobs();
+    this.organizer.detach();
+    await this.telegram.stop();
+    await this.jobs?.stop().catch(() => {});
+    this.jobs = undefined;
+  }
+  get isRunner() { return this.runnerOn; }
+
   private async startJobs() {
-    this.jobs = new Jobs(this.pg, (m) => this.host.log("warn", m));
+    this.jobs = new Jobs(this.backend, (m) => this.host.log("warn", m));
     await this.jobs.start();
     await this.jobs.queue("guc.sync", async () => {
       if (!(await this.credentials()) || await this.paused()) return;
@@ -241,7 +257,7 @@ export class Engine {
 
   // ---------- Subjects and their courses (core/guc/setup-flow.ts, src/guc/setup.ts) ----------
   links() { return subjects.links(this.db, this.owner); }
-  subject(subjectId: string) { return subjects.view(this.db, this.owner, subjectId); }
+  subject(subjectId: string) { const v = this.host.vps?.(); return subjects.view(this.db, this.owner, subjectId, { vps: !!v, vpsFiles: !!v?.files }); }
   /** Links a course and reads it now (a light sync in the background); its checks follow its settings. */
   async link(subjectId: string, courseKey: string, progress?: (p: GucProgress) => void) {
     const { movedFrom } = await subjects.link(this.db, this.owner, subjectId, courseKey);
@@ -351,7 +367,7 @@ export class Engine {
 
   /** Where a saved CMS file's bytes are, in whichever store holds them: this PC now; a VPS or Drive store plugs in by
    *  its location. A copy in a store this host can't reach reads as not saved (fetched from CMS instead). */
-  private stores(): Partial<Record<"device" | "vps" | "drive", FileStore>> { return { [this.store.location]: this.store }; }
+  private stores(): Partial<Record<"device" | "vps" | "drive", FileStore>> { return { device: this.deviceStore, ...(this.host.stores?.() || {}) }; }
   private async savedBytes(materialId: string) {
     const rows = await this.db.query<{ location: "device" | "vps" | "drive"; path: string }>("select location, path from file_objects where owner_id = $1 and file_id = $2", [this.owner, "guc:" + materialId]);
     for (const r of rows) {
@@ -400,8 +416,19 @@ export class Engine {
     const [m] = await this.db.query<{ title: string; url: string }>("select title, url from guc_materials where owner_id = $1 and material_id = $2", [this.owner, materialId]);
     if (!m?.url) throw new GucError("unavailable", "no such file", "This file is no longer on the CMS.");
     const { name, type } = materialFile(m.url, m.title);
-    const [saved] = await this.db.query<{ path: string; size: string }>("select path, size from file_objects where owner_id = $1 and file_id = $2 and location = 'device'", [this.owner, "guc:" + materialId]);
-    if (saved && await stat(saved.path).then(() => true, () => false)) return { id: materialId, name, type, size: Number(saved.size), stored: true, path: saved.path };
+    const [saved] = await this.db.query<{ path: string; size: string; location: "device" | "vps" | "drive" }>("select path, size, location from file_objects where owner_id = $1 and file_id = $2", [this.owner, "guc:" + materialId]);
+    if (saved?.location === "device" && await stat(saved.path).then(() => true, () => false)) return { id: materialId, name, type, size: Number(saved.size), stored: true, path: saved.path };
+    // Saved on the VPS: its checked bytes into this session's temp folder (the viewer reads a path).
+    const elsewhere = saved && saved.location !== "device" && this.stores()[saved.location];
+    if (elsewhere) {
+      const bytes = await elsewhere.read(saved.path).catch(() => null);
+      if (bytes) {
+        await mkdir(this.tempDir(), { recursive: true });
+        const path = join(this.tempDir(), materialId.replace(/[^\w-]/g, "_") + extname(name));
+        await writeFile(path, bytes);
+        return { id: materialId, name, type, size: bytes.length, stored: true, path };
+      }
+    }
     let job = this.temp.get(materialId);
     if (!job) {
       job = (async () => {
@@ -416,6 +443,11 @@ export class Engine {
       job.catch(() => this.temp.delete(materialId));
     }
     return job;
+  }
+  /** A CMS file's bytes as base64 (the desktop reads a worker's files this way through the tunnel). */
+  async fileBytes(materialId: string) {
+    const { path, ...f } = await this.file(materialId);
+    return { ...f, data: (await readFile(path)).toString("base64") };
   }
   private async dropTemp() { this.temp.clear(); this.texts.clear(); this.reader = undefined; await rm(this.tempDir(), { recursive: true, force: true }).catch(() => {}); }
 
@@ -443,6 +475,6 @@ export class Engine {
     await Promise.allSettled([this.running, this.light, ...this.checks.values()]);
     await this.jobs?.stop().catch(() => {});
     await this.dropTemp();
-    await this.pg.close();
+    await this.backend.close();
   }
 }

@@ -28,6 +28,8 @@ const str = (v: unknown, n = 200) => (typeof v === "string" ? v.slice(0, n) : ""
 /** The snapshot of a saved workspace (src/store.ts State); anything malformed is left out. */
 export function snapshotOf(state: unknown, now = Date.now()): Snapshot {
   const s = (state && typeof state === "object" ? state : {}) as Any;
+  // Already a snapshot (what the desktop sends a VPS worker): kept as it is.
+  if (s.__snapshot === true) { const { __snapshot: _, ...snap } = s; return snap as Snapshot; }
   const spaces = arr(s.spaces).filter((x) => x?.id && (x.kind === "subject" || x.kind === "project"))
     .map((x) => ({ id: str(x.id, 80), name: str(x.name, 120) || "Untitled", kind: x.kind, ...(/^[A-Z]{2,5} ?\d{3}/.test(str(x.description)) ? { code: str(x.description).match(/^[A-Z]{2,5} ?\d{3}/)![0] } : {}), ...(str(x.examDate, 10) ? { examDate: str(x.examDate, 10) } : {}) }));
   const plans = arr(s.plans).map((p) => ({ spaceId: str(p.spaceId, 80), rev: Number(p.rev) || 0, tasks: arr(p.tasks).slice(0, 200).map((t): SnapTask => ({ id: str(t.id, 40), title: str(t.title, 160), ...(t.due ? { due: str(t.due, 10) } : {}), ...(t.time ? { time: str(t.time, 5) } : {}), ...(t.kind === "milestone" ? { milestone: true } : {}), ...(t.done ? { done: true } : {}), ...(t.group ? { group: str(t.group, 60) } : {}) })) }));

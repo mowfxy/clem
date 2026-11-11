@@ -20,10 +20,12 @@ export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).
 
 /** This PC: Documents/Clem/Accounts/<owner>/Files/GUC/<sha256>.<ext>, beside the workspace's own Files/<id>.blob. */
 export class DeviceStore implements FileStore {
-  readonly location = "device" as const;
+  readonly location: "device" | "vps";
+  private sub: string;
   private files: string;
-  constructor(files: string) { this.files = files; }
-  private dir() { return join(this.files, "GUC"); }
+  /** `vps`: the worker keeps files on the VPS's own disk the same way (~/clem/<owner>/files, the same names as VpsStore). */
+  constructor(files: string, o: { location?: "device" | "vps"; sub?: string } = {}) { this.files = files; this.location = o.location || "device"; this.sub = o.sub ?? "GUC"; }
+  private dir() { return this.sub ? join(this.files, this.sub) : this.files; }
   async put(hash: string, ext: string, bytes: Uint8Array) {
     if (!/^[a-f0-9]{64}$/.test(hash)) throw Error("Invalid hash");
     const path = join(this.dir(), hash + (/^[a-z0-9]{1,5}$/.test(ext) ? "." + ext : ""));

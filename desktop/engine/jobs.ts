@@ -2,6 +2,7 @@
 // Jobs, retries and schedules live in the owner's database, so they survive a restart.
 import type { PGlite } from "@electric-sql/pglite";
 import { PgBoss, fromPglite } from "pg-boss";
+import type { Backend } from "./db.ts";
 
 export const TIMEZONE = "Africa/Cairo";
 export type JobHandler = (data: any) => Promise<void>;
@@ -9,9 +10,12 @@ export type JobHandler = (data: any) => Promise<void>;
 export class Jobs {
   private boss: PgBoss;
   private log: (message: string) => void;
-  constructor(pg: PGlite, log: (message: string) => void = () => {}) {
+  /** On the desktop's PGlite, or on Postgres (the worker) by connection string. */
+  constructor(pg: PGlite | Backend, log: (message: string) => void = () => {}) {
     this.log = log;
-    this.boss = new PgBoss({ db: fromPglite(pg), backend: "pglite", schema: "pgboss", supervise: true });
+    const b = pg as Backend;
+    this.boss = b.connectionString ? new PgBoss({ connectionString: b.connectionString, schema: "pgboss", supervise: true })
+      : new PgBoss({ db: fromPglite(b.pglite || (pg as PGlite)), backend: "pglite", schema: "pgboss", supervise: true });
     this.boss.on("error", (e: Error) => this.log("[jobs] " + e.message));
   }
   start() { return this.boss.start(); }
