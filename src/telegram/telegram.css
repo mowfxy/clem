@@ -1,0 +1,11 @@
+/* Pairing Telegram (TelegramPair.tsx): the code reads as two groups of three. */
+.edit-proposal.tg-card{max-width:440px}
+.tg-card header>.drawn-icon{flex:none;opacity:.8}
+.tg-code-box{display:grid;gap:4px}
+.tg-code{font:500 22px/1.2 var(--mono);letter-spacing:.12em;color:var(--c-ink,var(--ink));font-variant-numeric:tabular-nums}
+.tg-code-box small{font-size:var(--text-label);line-height:1.45;color:var(--c-muted,var(--muted))}
+.tg-code-box small b{font-weight:500}
+.tg-code-box[data-live=false] .tg-code{opacity:.4;text-decoration:line-through}
+.tg-left{white-space:nowrap}
+.st-row .tg-code-box{margin-top:4px}
+.st-row .tg-code{font-size:18px}

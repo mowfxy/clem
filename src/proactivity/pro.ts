@@ -71,19 +71,21 @@ export function createPro(deps: ProDeps) {
   async function undo(key: string) {
     try {
       const u = await ask<Undo | null>({ action: "proUndo", key });
-      if (!u) { deps.toast("That can’t be undone any more."); return; }
+      if (!u) { deps.toast("That can’t be undone any more."); return false; }
       deps.patch((s) => put(s, undoAction(pick(s), u)));
       setStatus(key, "undone");
-    } catch (e) { deps.toast(clean(e)); }
+      return true;
+    } catch (e) { deps.toast(clean(e)); return false; }
   }
   async function confirm(key: string) {
     try {
       const got = await ask<{ key: string; action: unknown } | null>({ action: "proConfirm", key });
-      if (!got) return;
+      if (!got) return false;
       const r = apply(got.key, got.action);
       await ask({ action: "proAck", results: [r] });
       if (!r.ok) deps.toast(r.error || "That couldn’t be done.");
-    } catch (e) { deps.toast(clean(e)); }
+      return r.ok;
+    } catch (e) { deps.toast(clean(e)); return false; }
   }
   async function dismiss(key: string) { try { await ask({ action: "proDismiss", key }); setStatus(key, "dismissed"); } catch (e) { deps.toast(clean(e)); } }
   async function mute(key: string) { try { await ask({ action: "proMute", key }); setStatus(key, "muted"); deps.toast("Got it. Clem won’t tell you about this kind of thing."); } catch (e) { deps.toast(clean(e)); } }

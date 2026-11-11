@@ -102,7 +102,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.exposeFunction("__renderSpec", async (json) => Array.from(await print(JSON.parse(json))));
-  // `guc`: answers GUC and organizer (pro*) requests (an in-memory engine, scripts/verify/guc-setup.mjs, proactivity.mjs);
+  // `guc`: answers GUC, organizer (pro*) and Telegram (tg*) requests (an in-memory engine, scripts/verify/guc-setup.mjs, proactivity.mjs);
   // window.fireGuc sends sync progress (and makes the window pull both inboxes).
   if (guc) await page.exposeFunction("__guc", async (json) => JSON.stringify(await guc(JSON.parse(json)) ?? null));
   await page.addInitScript(({ FOLDER, notes, replies, harderWorksheet, handoutEdits, worksheetSpec }) => {
@@ -138,7 +138,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       startDrag: (path) => window.drags.push(path),
       invoke: async (r) => {
         window.requests.push(r);
-        if (/^(guc|pro)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
+        if (/^(guc|pro|tg)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
         switch (r.action) {
           case "securityInfo": return { email: "sam@example.com", verified: true, factors: [], identities: [], google: false, password: true };
           case "essentialSync": return { skills: r.skills, notes: r.notes };

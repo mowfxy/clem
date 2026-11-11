@@ -4,6 +4,7 @@ import { DEFAULT_PRO, EVENT_KINDS, JOB_KINDS, readPro, type Channel, type EventK
 import { desktop } from "../desktop/bridge";
 import { ModelSelector } from "../ModelSelector";
 import { SettingsCard, SettingRow, Switch } from "./SettingsParts";
+import { useTelegram } from "../telegram/telegram";
 
 export type Organizer = { model?: string; reasoning?: string };
 type LogRow = { key: string; sweep: string; text: string; status: string; at: number; undo: boolean; type: string };
@@ -31,7 +32,7 @@ const STATUS: Record<string, string> = { applied: "Done", apply: "Doing it…", 
 
 /** Settings → Proactivity. Clem's organizer runs the main thread and every job Clem does on its own; below it, how much
  *  Clem speaks and where, its timed jobs, what you asked it to watch, and what it did today with Undo. */
-export function ProactivitySettings({ models, organizer, fallback, onChange, onConnect, onUndo }: { models: Model[]; organizer?: Organizer; fallback: string; onChange: (next: Organizer) => void; onConnect: () => void; onUndo?: (key: string) => Promise<void> }) {
+export function ProactivitySettings({ models, organizer, fallback, onChange, onConnect, onUndo }: { models: Model[]; organizer?: Organizer; fallback: string; onChange: (next: Organizer) => void; onConnect: () => void; onUndo?: (key: string) => Promise<unknown> }) {
   const chosen = organizer?.model && models.some((m) => m.id === organizer.model) ? organizer.model : fallback;
   const effort = organizer?.reasoning ?? models.find((m) => m.id === chosen)?.defaultReasoningEffort ?? "";
   const unset = !organizer?.model;
@@ -47,9 +48,10 @@ export function ProactivitySettings({ models, organizer, fallback, onChange, onC
   </>;
 }
 
-function Proactivity({ onUndo }: { onUndo?: (key: string) => Promise<void> }) {
+function Proactivity({ onUndo }: { onUndo?: (key: string) => Promise<unknown> }) {
   const [s, setS] = useState<ProSettings | null>(null), [failed, setFailed] = useState(false);
   const [log, setLog] = useState<LogRow[] | null>(null), [watches, setWatches] = useState<WatchRow[]>([]), [mutes, setMutes] = useState<MuteRow[]>([]);
+  const tg = useTelegram();
   const load = () => {
     setFailed(false);
     void desktop!.invoke({ action: "proSettings" } as never).then((v) => setS(readPro(v)), () => setFailed(true));
@@ -68,16 +70,16 @@ function Proactivity({ onUndo }: { onUndo?: (key: string) => Promise<void> }) {
       <SettingRow title="How much Clem speaks" description={LEVEL_TEXT[s.level]}>
         <span className="text-size" role="radiogroup" aria-label="How much Clem speaks">{(["quiet", "balanced", "proactive"] as const).map((l) => <button key={l} type="button" role="radio" aria-checked={s.level === l} onClick={() => change({ level: l }, (x) => ({ ...x, level: l }))}>{l[0].toUpperCase() + l.slice(1)}</button>)}</span>
       </SettingRow>
-      <SettingRow title="Quiet hours" description={s.quiet.on ? "Desktop notifications wait until they end. Nothing is dropped." : "Off: notifications can come any time."}>
+      <SettingRow title="Quiet hours" description={s.quiet.on ? "Desktop and Telegram notifications wait until they end. Nothing is dropped." : "Off: notifications can come any time."}>
         {s.quiet.on && <><input type="time" aria-label="Quiet hours start" className="reminder-time" value={s.quiet.from} onChange={(e) => { const v = e.target.value; if (/^\d\d:\d\d$/.test(v)) change({ quiet: { from: v } }, (x) => ({ ...x, quiet: { ...x.quiet, from: v } })); }} />
           <input type="time" aria-label="Quiet hours end" className="reminder-time" value={s.quiet.to} onChange={(e) => { const v = e.target.value; if (/^\d\d:\d\d$/.test(v)) change({ quiet: { to: v } }, (x) => ({ ...x, quiet: { ...x.quiet, to: v } })); }} /></>}
         <Switch label="Quiet hours" checked={s.quiet.on} onChange={(on) => change({ quiet: { on } }, (x) => ({ ...x, quiet: { ...x.quiet, on } }))} />
       </SettingRow>
     </SettingsCard>
-    <SettingsCard title="What Clem tells you about" note="Telegram arrives in a later update.">
+    <SettingsCard title="What Clem tells you about" note={!tg.status?.configured ? undefined : tg.status.paired ? `Telegram goes to ${tg.status.paired.name}.` : "Turn on Telegram for something and Clem puts the pairing card in your main thread. Nothing goes there until it’s paired."}>
       {EVENT_KINDS.map((k) => <SettingRow key={k} title={EVENT_TEXT[k][0]} description={EVENT_TEXT[k][1]}>
         {ev(k).on && <span className="text-size" role="group" aria-label={`Where to tell you about ${EVENT_TEXT[k][0].toLowerCase()}`}>
-          {CHANNELS.map(([c, label]) => { const on = ev(k).channels.includes(c), off = c === "telegram"; return <button key={c} type="button" role="checkbox" aria-checked={c === "app" || on} disabled={c === "app" || off} title={off ? "Connect Telegram first" : c === "app" ? "Always in your main thread" : undefined}
+          {CHANNELS.map(([c, label]) => { const on = ev(k).channels.includes(c), off = c === "telegram" && !tg.status?.configured; return <button key={c} type="button" role="checkbox" aria-checked={c === "app" || on} disabled={c === "app" || off} title={off ? "Telegram isn’t available yet" : c === "telegram" && !tg.status?.paired ? "Pair Telegram to get these there" : c === "app" ? "Always in your main thread" : undefined}
             onClick={() => { const channels = on ? ev(k).channels.filter((x) => x !== c) : [...ev(k).channels, c]; change({ events: { [k]: { channels } } }, (x) => ({ ...x, events: { ...x.events, [k]: { ...x.events[k], channels } } })); }}>{label}</button>; })}
         </span>}
         <Switch label={EVENT_TEXT[k][0]} checked={ev(k).on} onChange={(on) => change({ events: { [k]: { on } } }, (x) => ({ ...x, events: { ...x.events, [k]: { ...x.events[k], on } } }))} />

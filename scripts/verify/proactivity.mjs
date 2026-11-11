@@ -97,7 +97,7 @@ try {
       await page.locator(".st-nav button", { hasText: "Proactivity" }).click();
       await page.getByRole("radiogroup", { name: "How much Clem speaks" }).waitFor({ timeout: 4000 });
       check(await page.getByRole("radio", { name: "Proactive" }).getAttribute("aria-checked") === "true", `${theme}: proactive by default`);
-      check(await page.getByRole("checkbox", { name: "Telegram" }).first().isDisabled() && await page.getByRole("checkbox", { name: "Telegram" }).first().getAttribute("title") === "Connect Telegram first", `${theme}: Telegram shows, disabled until it is connected`);
+      check(await page.getByRole("checkbox", { name: "Telegram" }).first().isDisabled() && await page.getByRole("checkbox", { name: "Telegram" }).first().getAttribute("title") === "Telegram isn’t available yet", `${theme}: Telegram shows, disabled while the bot isn’t set up`);
       await page.getByRole("radio", { name: "Balanced" }).click();
       check(await until(async () => (await o.settings()).level === "balanced"), `${theme}: the level is saved in the engine`);
       await page.waitForTimeout(600);

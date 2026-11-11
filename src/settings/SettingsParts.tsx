@@ -21,6 +21,9 @@ export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
   {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Clem can read from.',keywords:'google drive apps'},
   {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Clem can read.',keywords:'folders files changes undo watch'},
  ]},
+ {label:'Channels',tabs:[
+  {name:'Telegram',icon:'send',scene:'plane',line:'Talk to Clem and get your updates in Telegram.',keywords:'telegram channels bot pair phone messages notifications'},
+ ]},
  {label:'Data',tabs:[
   {name:'Usage',icon:'analysis',scene:'telescope',line:'Your threads, tokens and habits.',keywords:'usage stats statistics tokens activity graph habits streak threads messages'},
   {name:'Data & privacy',icon:'files',scene:'house',line:'Your work stays on this device.',keywords:'export delete chats privacy policy backup restore new pc move'},
