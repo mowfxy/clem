@@ -191,3 +191,25 @@ export async function handleTelegram(request, env, user, path, o = {}) {
     return json({ error: "Telegram is unavailable. Try again shortly." }, 502);
   }
 }
+
+// ---------- A VPS worker's relay token ----------
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+const sha = async (s) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+/** POST /engine/token (a new token, shown once; replaces the old) and POST /engine/token/revoke, for a signed-in person. */
+export async function handleEngineTokens(request, env, user, path) {
+  if (path !== "/engine/token" && path !== "/engine/token/revoke") return undefined;
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (path === "/engine/token/revoke") { await env.DB.prepare("DELETE FROM engine_tokens WHERE user_id=?").bind(user.id).run(); return json({ ok: true }); }
+  const id = crypto.randomUUID().replace(/-/g, ""), secret = hex(crypto.getRandomValues(new Uint8Array(32)));
+  await env.DB.prepare("INSERT INTO engine_tokens(user_id,id,hash,created_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET id=excluded.id,hash=excluded.hash,created_at=excluded.created_at,last_used=NULL").bind(user.id, id, await sha(secret), now()).run();
+  return json({ token: id + "." + secret });
+}
+/** The account an `Authorization: Engine <id>.<secret>` header belongs to, or null. Only /telegram/* accepts it. */
+export async function engineUser(env, token) {
+  const [id, secret] = String(token || "").split(".");
+  if (!/^[a-f0-9]{32}$/.test(id || "") || !/^[a-f0-9]{64}$/.test(secret || "")) return null;
+  const row = await env.DB.prepare("SELECT user_id,hash FROM engine_tokens WHERE id=?").bind(id).first();
+  if (!row || !secretOk(await sha(secret), row.hash)) return null;
+  await env.DB.prepare("UPDATE engine_tokens SET last_used=? WHERE id=?").bind(now(), id).run();
+  return { id: row.user_id };
+}

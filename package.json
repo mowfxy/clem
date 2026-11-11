@@ -16,6 +16,7 @@
     "build:vercel": "node scripts/build-api.mjs --root && npm run build",
     "desktop:build": "npm run build && tsc -p desktop/tsconfig.json && node scripts/build-desktop.mjs",
     "desktop:dev": "npm run desktop:build && electron desktop-dist/main.cjs",
+    "worker:build": "node scripts/build-worker.mjs",
     "desktop:pack": "npm run desktop:build && electron-builder --config electron-builder.cjs --win --dir",
     "desktop:installer": "npm run desktop:build && electron-builder --config electron-builder.cjs --win && node scripts/publish-installer.mjs",
     "ledger": "node --experimental-strip-types scripts/answer-ledger.mjs",
@@ -40,6 +41,7 @@
     "emails:announce": "node scripts/announce-release.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@electric-sql/pglite": "^0.5.8",
     "@neondatabase/serverless": "^1.1.0",
     "@supabase/supabase-js": "2.116.0",
@@ -74,6 +76,8 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "ssh2": "^1.17.0",
+    "ssh2-sftp-client": "^12.1.1",
     "three": "^0.180.0",
     "zod": "^4.1.0"
   },
@@ -83,8 +87,11 @@
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/nodemailer": "7.0.1",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@types/ssh2": "^1.15.6",
+    "@types/ssh2-sftp-client": "^9.0.6",
     "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^5.0.0",
     "electron": "44.4.3",

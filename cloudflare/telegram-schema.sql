@@ -14,3 +14,8 @@ CREATE TABLE IF NOT EXISTS telegram_inbox (
  user_id TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('message','tap')), sealed BLOB NOT NULL,
  created_at INTEGER NOT NULL, lease_until INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(user_id, id)
 ) WITHOUT ROWID;
+-- A VPS worker's relay token (docs/GUC-VPS-ENGINE.md "What goes to the VPS"): works only for /telegram/*, kept as a
+-- SHA-256 hash, one per account (a new one replaces the old), revocable from the app.
+CREATE TABLE IF NOT EXISTS engine_tokens (
+ user_id TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, hash TEXT NOT NULL, created_at INTEGER NOT NULL, last_used INTEGER
+);

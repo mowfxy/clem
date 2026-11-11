@@ -74,7 +74,13 @@ export const telegramPairCard = z.object({ type: z.literal('telegram_pair') });
  *  live from the engine, so an old card says it works again once it does. */
 export const gucPasswordCard = z.object({ type: z.literal('guc_password') });
 
-export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, organizerCard, lectureCard, watchCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard, telegramPairCard, gucPasswordCard]);
+/** "Move everything to my VPS" (up) or back (down) finished: how many files, and any left where they were. */
+export const vpsMovedCard = z.object({ type: z.literal('vps_moved'), direction: z.enum(['up', 'down']), files: z.number().int().min(0), bytes: z.number().min(0), failed: z.number().int().min(0).optional() });
+/** A VPS command or overwrite the AI asked for that waits for the person's tap (Run it / Cancel); the action itself
+ *  stays in the main process under `id`. */
+export const vpsConfirmCard = z.object({ type: z.literal('vps_confirm'), id: z.string().regex(/^[a-f0-9]{16}$/), action: z.enum(['run', 'write']), command: z.string().max(600).optional(), path: z.string().max(300).optional(), reason: z.string().max(200).optional() });
+
+export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, organizerCard, lectureCard, watchCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard, telegramPairCard, gucPasswordCard, vpsMovedCard, vpsConfirmCard]);
 export type ClemCard = z.infer<typeof clemCard>;
 export type HandoffCard = z.infer<typeof handoffCard>;
 export type OrganizerCard = z.infer<typeof organizerCard>;

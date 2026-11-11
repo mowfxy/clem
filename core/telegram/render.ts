@@ -130,6 +130,10 @@ export function cardMessage(card: ClemCard, c: RenderContext = {}): TgMessage | 
     case "guc_password":
       return { html: `<b>${esc(PASSWORD_NOTICE.title)}</b>
 ${esc(PASSWORD_NOTICE.body)}`, buttons: [[{ text: "Update password", tap: { t: "open", route: "#" + PASSWORD_ROUTE } }]] };
+    case "vps_moved":
+      return { html: `<b>${card.direction === "up" ? "Your files are on your VPS" : "Your files are back on this device"}</b>\n${card.files} file${card.files === 1 ? "" : "s"} moved${card.failed ? `; ${card.failed} stayed where they were` : ""}.`, buttons: [[open("#/app/connectors/vps")]] };
+    case "vps_confirm":
+      return null;
   }
 }
 
