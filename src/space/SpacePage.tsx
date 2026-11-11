@@ -28,15 +28,20 @@ import type {DriveItem,DriveSyncState} from '../drive/drive';
 import {driveFolder} from '../drive/drive';
 import {menuKeys,useMenuKeys} from '../menuKeys';
 import {Squiggle,Templates,EmptyState} from '../ui/Calm';
+import {useGuc} from '../guc/useGuc';
+import {SubjectCms} from '../guc/GucHub';
+import type {HubOverview} from '../../core/guc/hub';
 import './space.css';
 import './space-calm.css';
 import './space-files.css';
 import './space-simple.css';
 
-export type SpaceTab='overview'|'chats'|'plan'|'flashcards'|'quizzes'|'files'|'visuals'|'memory';
+export type SpaceTab='overview'|'chats'|'plan'|'flashcards'|'quizzes'|'files'|'visuals'|'memory'|'cms';
 type Linked={id:string;scope:string;path:string};
 export type SpaceActions={
   onAsk:(prompt:string)=>void;
+  /** Opens a place in the GUC hub (#/app/guc/...): a subject's CMS tab deep-links to its course. */
+  onOpenHub?:(path:string)=>void;
   /** Opens a chat in this space with the message ready to review and send. */
   onDraft:(prompt:string)=>void;
   onOpenChat:(chat:Chat)=>void;
@@ -136,6 +141,9 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
   const late=plan?planStatus(plan).overdue.length:0;
   const tabs:[SpaceTab,string,number?][]=subject?[['overview','Overview'],['chats','Chats',chats.length],['plan','Plan',late],['flashcards','Flashcards',sets.filter(s=>s.kind==='flashcards').reduce((n,s)=>n+s.items.length,0)],['quizzes','Quizzes',sets.filter(s=>s.kind==='quiz').length],['files','Files',files.length],['visuals','Visuals',visuals.length]]:[['overview','Overview'],['chats','Chats',chats.length],['plan','Plan',late],['files','Files',files.length],['visuals','Visuals',visuals.length]];
   if(desktop)tabs.push(['memory','Memory']);
+  // GUC students see their CMS course beside the subject's own tabs once GUC is connected.
+  const guc=useGuc<HubOverview>(subject&&desktop?{action:'gucOverview'}:null).data;
+  if(subject&&guc?.connected&&actions.onOpenHub)tabs.splice(tabs.length-(desktop?1:0),0,['cms','CMS']);
   const recentChats=[...chats].sort((a,b)=>b.updated-a.updated);
   const chatMenu=useChatMenu(actions.onDeleteChat);
   const recentFiles=[...files].sort((a,b)=>(b.updated||b.created)-(a.updated||a.created));
@@ -234,6 +242,7 @@ export function SpacePage({space,chats,files,sets,visuals=[],tab,onTab,actions,d
       {tab==='quizzes'&&<SubjectStudy key="quiz" kind="quiz" sets={sets.filter(s=>s.kind==='quiz')} onGenerate={k=>actions.onDraft(`/${k} Create a study set from this subject’s sources.`)} onUpdate={actions.onUpdateSet} onDelete={actions.onDeleteSet}/>}
       {tab==='files'&&<FilesView space={space} files={files} actions={actions} driveSync={driveSync}/>}
       {tab==='visuals'&&<section className="lib sp-visuals" aria-label={`Visuals saved in ${space.name}`}>{visuals.length?<SavedVisuals visuals={visuals} chats={chats} spaces={[space]} showPlace={false} onOpen={id=>{const chat=chats.find(c=>c.id===id);if(chat)actions.onOpenChat(chat);}} onRemove={actions.onRemoveVisual}/>:<div className="sp-visuals-empty"><Icon name="visuals" size={22}/><p>Visuals you save in this {space.kind} appear here.</p><button className="sp-visuals-draw" onClick={()=>actions.onDraft('/visual ')}>Draw a visual</button></div>}</section>}
+      {tab==='cms'&&actions.onOpenHub&&<section className="sp-cms"><SubjectCms subjectId={space.id} go={actions.onOpenHub}/></section>}
       {tab==='memory'&&desktop&&<section className="sp-memory"><span className="sp-eyebrow">What Clem remembers here</span><MemoryConversation home={`${space.kind}:${space.id}`} only labelFor={memoryLabel||(()=>space.name)} places={memoryPlaces} empty={`Details you share in this ${space.kind}'s chats, like deadlines or goals, appear here.`}/></section>}
     </div>
     {instructions&&<InstructionsDialog space={space} onSave={memory=>actions.onUpdateSpace({...space,memory})} onClose={()=>setInstructions(false)}/>}

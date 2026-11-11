@@ -70,10 +70,12 @@ import {ProactivitySettings} from './settings/ProactivitySettings';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
 import {DriveLogo} from './BrandLogos';
-import {FilePanel,canEditInPanel,type FileFocus,type FilePanelHandle,type FilePointer,type PointerBox} from './files/FilePanel';
+import {FilePanel,canEditInPanel,remoteFile,type FileFocus,type FilePanelHandle,type FilePointer,type PointerBox} from './files/FilePanel';
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {GucManage,GucRow} from './guc/GucSettings';
+import {useGuc,gucPrefetch} from './guc/useGuc';
+import {parseHubRoute,type HubOverview} from '../core/guc/hub';
 import {visibleConnectors} from '../core/connectors';
 import {DriveIcon} from './drive/DriveIcon';
 import {refreshDrive,driveSources,driveFolder,driveList as driveListText,uploadToDrive,updateInDrive,renameInDrive,trashInDrive,driveBytes,driveError,isGoogleFormat,type DriveItem,type DriveSyncState} from './drive/drive';
@@ -196,6 +198,8 @@ const ShareSheet = lazy(() => import("./local/StudyPack").then(m => ({ default: 
 const PackPreview = lazy(() => import("./local/StudyPack").then(m => ({ default: m.PackPreview })));
 const FlashcardImport = lazy(() => import("./local/FlashcardImport").then(m => ({ default: m.FlashcardImport })));
 const SpacePage = lazy(() => import("./space/SpacePage").then(m => ({ default: m.SpacePage })));
+const loadHub = () => import("./guc/GucHub");
+const GucHub = lazy(() => loadHub().then(m => ({ default: m.GucHub })));
 const ProjectPage = lazy(() => import("./space/ProjectPage").then(m => ({ default: m.ProjectPage })));
 const Visual = lazy(() => import("./Visual"));
 const SavedVisuals = lazy(() => import("./visuals/SavedVisuals").then(m => ({ default: m.SavedVisuals })));
@@ -2569,10 +2573,14 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   /** A project or subject opens as its own page. */
   function openSpace(id:string,tab:SpaceTab='overview'){if(id!==spaceRoute)setProjectSection('coordinator');setSpaceId(id);setChatId(null);setSpaceTab(tab);navigate('/app/space/'+id);}
   const spaceRoute=route.match(/^\/app\/space\/([\w-]+)$/)?.[1];
+  // The GUC hub (#/app/guc/<tab>/<id>): in the sidebar only while GUC is connected; its routes are deep links.
+  const hubRoute=parseHubRoute(route);
+  const gucConnected=!!useGuc<HubOverview>(desktop&&ready?{action:'gucOverview'}:null).data?.connected;
+  const navItems=gucConnected?[...nav.slice(0,5),["guc","GUC"],...nav.slice(5)]:nav;
   const pageSpace=spaceRoute?state.spaces.find(x=>x.id===spaceRoute):undefined;
   useEffect(() => { if (pageSpace?.kind === "project") void projects.loadMemory(pageSpace.id); }, [pageSpace?.id]);
   // The window's title names where the person is (shown in the taskbar and when switching windows).
-  const placeName=route==="/app"?(activeChat?activeChat.title||"Conversation":temporaryNext?"Temporary chat":spaceId?"New chat":"Home"):pageSpace?pageSpace.name:nav.find(([icon])=>route===`/app/${icon}`)?.[1];
+  const placeName=route==="/app"?(activeChat?activeChat.title||"Conversation":temporaryNext?"Temporary chat":spaceId?"New chat":"Home"):pageSpace?pageSpace.name:hubRoute?"GUC":nav.find(([icon])=>route===`/app/${icon}`)?.[1];
   useEffect(()=>{if(route.startsWith("/app"))document.title=placeName?`${placeName} · Clem`:"Clem";},[route,placeName]);
   useEffect(()=>{if(spaceRoute&&spaceRoute!==spaceId){setSpaceId(spaceRoute);setChatId(null);}},[spaceRoute]);
   function spaceActions(space:Space):import('./space/SpacePage').SpaceActions{
@@ -2583,6 +2591,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       onDraft:prompt=>{newChat(space.id);setDraft(prompt);setTimeout(()=>composer.current?.focus(),80);},
       onOpenChat:chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');},
       onOpenFile:file=>setViewer(file),
+      onOpenHub:path=>navigate(path),
       onSaveVideo:folderId=>setSavingVideo({place:space.id,folderId}),
       onAskFile:askAboutFile,
       onEditFile:file=>{newChat(space.id);openInPanel(file);},
@@ -2975,14 +2984,15 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
             </a>
             <button type="button" className="icon-button side-close" aria-label="Close sidebar" aria-keyshortcuts="Control+B" aria-description="Ctrl B" onClick={() => setSideClosed(true)}><Icon name="sidebar" size={19} /></button>
             <nav aria-label="Workspace" ref={navBar} className="glide-nav">
-              {nav.map(([icon, label]) => {
-                const here = icon === "home" ? route === "/app" && !activeChat && !spaceId : icon === "main" ? route === "/app" && isMain : route === `/app/${icon}`;
+              {navItems.map(([icon, label]) => {
+                const here = icon === "home" ? route === "/app" && !activeChat && !spaceId : icon === "main" ? route === "/app" && isMain : icon === "guc" ? !!hubRoute : route === `/app/${icon}`;
                 return (
                 <button
                   key={icon}
                   className={`nav-item ${here ? "active" : ""} ${icon === "main" && mainChat && (mainChat.id in runs) ? "is-working" : ""}`}
                   aria-current={here ? "page" : undefined}
                   onClick={() => icon === "home" ? newChat() : icon === "main" ? openMain(false) : navigate(`/app/${icon}`)}
+                  onPointerEnter={icon === "guc" ? () => { void loadHub(); gucPrefetch({ action: "gucOverview" }, 30_000); } : undefined}
                 >
                   {icon === "main" ? <span className="nav-mark"><Logo size={17} /></span> : <Icon name={icon} />}
                   <span>{label}</span>
@@ -3229,6 +3239,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               <Suspense fallback={<div className="page"/>}><SpacePage key={pageSpace.id} space={pageSpace} tab={spaceTab} onTab={setSpaceTab} reviewNow={reviewFor===pageSpace.id} onReviewStarted={()=>setReviewFor(null)}
                 chats={savedChats.filter(c=>c.spaceId===pageSpace.id)} files={state.files.filter(f=>f.spaceId===pageSpace.id)} sets={state.studySets.filter(x=>x.spaceId===pageSpace.id)} visuals={state.visuals.filter(v=>state.chats.some(c=>c.id===v.chatId&&c.spaceId===pageSpace.id))} driveSync={driveSync} actions={spaceActions(pageSpace)}
                 plan={(state.plans||[]).find(p=>p.spaceId===pageSpace.id)} planDraft={planDrafts[pageSpace.id]||null} planActions={planActionsFor(pageSpace)} canAsk={models.some(m=>m.connected)&&!offline} memoryPlaces={memoryPlaces} memoryLabel={memoryLabel}/></Suspense>
+            ) : hubRoute ? (
+              <Suspense fallback={<div className="page lib guc-hub"><div className="guc-skel" aria-busy="true"><span className="tall"/><span className="tall"/><span className="tall"/></div></div>}>
+                <GucHub route={hubRoute} go={navigate} onOpenFile={(f) => setViewer(f)} onConnect={() => setModal("guc")} onToast={setToast} />
+              </Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (
               (() => {
                 const projects = route.endsWith("projects"), kind = projects ? "project" : "subject";
@@ -3631,10 +3645,10 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       {savingVideo && <SaveVideoDialog places={savingVideo.choose ? [{ id: null, name: "Personal" }, ...state.spaces.map((x) => ({ id: x.id, name: x.name }))] : []} place={savingVideo.place} folderId={savingVideo.folderId ?? null} existing={state.files} store={(id, blob) => storeBlob(id, blob)} onSaved={(r) => videosSaved(r, savingVideo.folderId ?? null)} onClose={() => setSavingVideo(null)} />}
       {viewer?.video && <VideoViewer key={"video-" + viewer.id} file={viewer} onClose={() => setViewer(null)} onAsk={askAboutFile} onRefresh={refreshVideoFile} />}
       {viewer && !viewer.video && <FilePanel key={"viewer-" + viewer.id} variant="modal" file={viewer} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
-        onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); if (f.id.startsWith("drive_")) { setPointers([p]); return; } newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
-        onChange={(next) => { if (next.id.startsWith("drive_")) return; changedFile(next); setViewer(next); }}
-        onApproved={(f) => { if (!f.id.startsWith("drive_")) void syncToDrive(f); }} sync={syncOf(viewer.id)}
-        onEditInChat={viewer.id.startsWith("drive_") ? undefined : (f) => { setViewer(null); newChat(f.spaceId); openInPanel(f); }} />}
+        onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); if (remoteFile(f.id)) { setPointers([p]); return; } newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
+        onChange={(next) => { if (remoteFile(next.id)) return; changedFile(next); setViewer(next); }}
+        onApproved={(f) => { if (!remoteFile(f.id)) void syncToDrive(f); }} sync={syncOf(viewer.id)}
+        onEditInChat={remoteFile(viewer.id) ? undefined : (f) => { setViewer(null); newChat(f.spaceId); openInPanel(f); }} />}
       <Toast message={toast} onDismiss={() => setToast("")} />
     </>
   );

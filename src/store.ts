@@ -59,6 +59,8 @@ export const emptyState: State = {
   quiet: false,
 };
 let namespace = "guest";
+/** The signed-in owner the stores on this device are keyed by ("guest" before sign-in). */
+export const storageNamespace = () => namespace;
 export function setStorageNamespace(value: string) {
   namespace = value;
 }
@@ -146,7 +148,13 @@ export async function storeBlob(id: string, file: Blob, owner = namespace) {
   await del(`clem-source:${owner}:${id}`);
 }
 export async function getBlob(id: string) {
-  // Google Drive files shown in chat are streamed into memory for viewing and never written to this PC.
+  // GUC CMS files ("guc_<material>") are fetched by the engine for viewing; Google Drive files shown in chat are
+  // streamed into memory. Neither is written to the workspace.
+  if (desktop && id.startsWith("guc_")) {
+    const response = await fetch("/api/local/guc/file/" + id.slice(4), { headers: { "X-Clem-Owner": namespace } });
+    if (!response.ok) throw Error((await response.json().catch(() => ({}))).error || "This CMS file could not be opened.");
+    return response.blob();
+  }
   if (desktop && id.startsWith("drive_")) {
     const response = await fetch("/api/drive/live/" + id.slice(6));
     if (!response.ok) throw Error((await response.json().catch(() => ({}))).error || "This Drive file could not be opened.");
