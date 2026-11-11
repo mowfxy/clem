@@ -1,18 +1,23 @@
 import { useMemo } from "react";
 import { readCard } from "../../core/guc/cards";
 import { Icon } from "../Icons";
+import { GUC_CARDS, GucCardView, type GucActions } from "../guc/GucCards";
 
 export type CardHandlers = {
   /** A hand-off card was pressed: open the chat it continued in (or its subject or project when the chat is gone). */
   onOpenChat?: (chatId: string, spaceId: string) => void;
   /** The space's name now, so a renamed subject reads right on older cards. */
   spaceName?: (spaceId: string) => string | undefined;
+  /** GUC cards' actions (src/guc/setup.ts), and the subject of the chat the card is in. */
+  guc?: GucActions;
+  chatSpace?: string | null;
 };
 
 /** A ```clem-card block, drawn like the other proposal cards. A body that is not a known card draws nothing. */
 export function ClemCardBlock({ body, handlers = {} }: { body: string; handlers?: CardHandlers }) {
   const card = useMemo(() => readCard(body), [body]);
   if (!card) return null;
+  if (GUC_CARDS.has(card.type)) return <GucCardView card={card as Parameters<typeof GucCardView>[0]["card"]} actions={handlers.guc} spaceId={handlers.chatSpace} />;
   if (card.type === "handoff") {
     const name = handlers.spaceName?.(card.spaceId) || card.spaceName;
     return (

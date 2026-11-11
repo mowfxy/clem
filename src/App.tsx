@@ -74,7 +74,8 @@ import {FilePanel,canEditInPanel,remoteFile,type FileFocus,type FilePanelHandle,
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {GucManage,GucRow} from './guc/GucSettings';
-import {useGuc,gucPrefetch} from './guc/useGuc';
+import {createSetup,cardActions} from './guc/setup';
+import {useGuc,gucPrefetch,gucCache,gucKey} from './guc/useGuc';
 import {parseHubRoute,type HubOverview} from '../core/guc/hub';
 import {visibleConnectors} from '../core/connectors';
 import {DriveIcon} from './drive/DriveIcon';
@@ -1023,6 +1024,33 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     const snippets = recall(recallIndex(docs), current, { k: 4 });
     return buildContext({ prefix, profile: memory, now: nowCard(), instructions, messages: earlier, current, recall: snippets }).messages;
   }
+  // GUC subject setup (src/guc/setup.ts): the setup thread, card answers, the AI's setting changes, new-term courses.
+  const gucAskRef = useRef<(messages: { role: string; content: string }[], subjectId: string) => Promise<string>>(async () => "");
+  gucAskRef.current = (messages, subjectId) => {
+    const s = stateRef.current, ok = (m?: string) => (m && modelsRef.current.some((x) => x.id === m && x.connected) ? m : undefined);
+    const chosen = ok(s.chats.find((c) => c.setup && c.spaceId === subjectId)?.model) || ok(s.organizer?.model) || ok(defaultModel) || "";
+    return streamChat(messages, chosen, new AbortController().signal, () => {}, "chat", undefined, undefined, { side: true, plain: true });
+  };
+  const gucSetup = useMemo(() => createSetup({
+    spaces: () => stateRef.current.spaces, chats: () => stateRef.current.chats,
+    addChat: (chat) => patch((s) => ({ ...s, chats: [chat, ...s.chats] })),
+    updateChat: (id, fn) => patch((s) => ({ ...s, chats: s.chats.map((c) => (c.id === id ? fn(c) : c)) })),
+    addSpace: (space) => patch((s) => ({ ...s, spaces: [space, ...s.spaces] })),
+    openChat: (id, space) => { setTemporaryNext(false); setChatId(id); setSpaceId(space); navigate("/app"); },
+    ask: (messages, subjectId) => gucAskRef.current(messages, subjectId),
+    toast: (message) => setToast(message),
+  }), []);
+  /** GUC is connected, as the hub last saw it (undefined: not known yet). */
+  const gucOn = () => gucCache.get<HubOverview>(gucKey({ action: "gucOverview" }))?.data?.connected;
+  // Opening a setup thread posts what a restart left unasked.
+  useEffect(() => { if (desktop && activeChat?.setup && activeChat.spaceId) void gucSetup.resume(activeChat.spaceId); }, [activeChat?.id]);
+  // A sync that found courses of a new term no subject has: one card in the main thread.
+  useEffect(() => {
+    if (!ready || !desktop) return;
+    const post = () => void gucSetup.postNewCourses(mainThreadOf(stateRef.current.chats)?.id);
+    post();
+    return desktop.onGuc?.((p) => { if (p.phase === "done") post(); });
+  }, [ready]);
   function updateChat(id: string, fn: (c: Chat) => Chat) {
     patch((s) => ({
       ...s,
@@ -1253,6 +1281,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!carry || turn) { setAttachments([]); setDriveRefs([]); setAttach(false); setPointers([]); }
     if (override === undefined || turn) setMentions([]);
     setPanelEdit(true);
+    // A subject's setup thread reads its own answers (core/guc/setup-flow.ts) until setup is done; then the AI answers.
+    if (next.setup && !isVisual && desktop && await gucSetup.reply(next, prompt)) return;
     if (editing) {
       const target = panelFile!;
       const say = (content: string) => updateChat(id, (c) => ({ ...c, messages: c.messages.some((m) => m.id === messageId) ? c.messages.map((m) => (m.id === messageId ? { ...m, content } : m)) : [...c.messages, { id: messageId, role: "assistant", content, model: model || undefined }] }));
@@ -1574,6 +1604,8 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       // has a plan, or plans were made earlier in this chat), so a chat anywhere can make or change any plan.
       const plansHere = !isVisual && (next.messages.some((m) => m.role === "assistant" && m.content.includes("```plan")) || (!!activeSpace && (stateRef.current.plans || []).some((p) => p.spaceId === activeSpace.id)));
       const planNote = !isVisual && (plansHere || planIntent.test(expandCommand(prompt))) ? planContext(stateRef.current.spaces, stateRef.current.plans || [], activeSpace?.id ?? null) : "";
+      // A GUC-linked subject: its settings, and how the AI changes them when asked (applied by gucSetup.applyUpdates).
+      const gucNote = desktop && activeSpace?.kind === "subject" ? await gucSetup.note(activeSpace.id) : "";
       // The same text on every message first, then what this message chose: a kept CLI session gets again only the part that changed.
       const systems: { role: string; content: string }[] = (isVisual ? [{ role: "system", content: `You are Clem. ${visualOnlyInstructions}` }] : [
             {
@@ -1591,6 +1623,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
                 workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere}),
                 memory ? `User-authorized memory for this scope: ${memory}` : "",
                 planNote,
+                gucNote,
                 titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined, chat.messages.some((m) => m.chapter) ? chaptersOf(chat).map((c) => c.title).slice(-12) : [], !!chat.renamed),
                 standing ? `Where the learner stands in this subject, from their own flashcards and quizzes (pitch explanations to it and suggest what to review when it helps; do not recite it): ${standing}` : "",
                 struggling.length ? `In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : "",
@@ -1651,6 +1684,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
         messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, at: Date.now(), ...(done ? { work: done.work } : {}),...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
       if (!isVisual) applyPlanUpdates(id, messageId, named.content, chat.spaceId);
+      if (!isVisual && desktop && named.content.includes("settings_update")) void gucSetup.applyUpdates(named.content, activeSpace?.id ?? chat.spaceId);
       const run = readCommand(prompt)?.command.id;
       if (run === "compact") updateChat(id, (c) => ({ ...c, messages: c.messages.map((m) => m.id === messageId ? { ...m, compact: true } : m) }));
       if (run === "handoff" && named.content.trim()) {
@@ -1975,8 +2009,18 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     if(kind==="chat")return state.chats.find(x=>x.id===id)?.title||"A past chat";
     return "Other";
   }
+  /** What GUC cards (chat, subject page, hub, Settings) ask of the app. */
+  const gucActions=cardActions(gucSetup,{
+    openHub:path=>navigate(path),openSpace:id=>openSpace(id),
+    spaceName:id=>stateRef.current.spaces.find(x=>x.id===id)?.name,
+    spaceDrive:id=>{const d=stateRef.current.spaces.find(x=>x.id===id)?.drive;return d?{folderId:d.folderId,folderName:d.folderName}:undefined;},
+    pickDrive:id=>{setDriveFolderFor(id);setModal('drive-folder');},
+    openDriveWeb:id=>void desktop?.invoke({action:'driveOpenWeb',id}).catch(e=>setToast(cleanError(e))),
+    toast:setToast,
+  });
   function bodyHandlers(chat:Chat,message:Chat["messages"][number]):BodyHandlers{
     return {
+      guc:desktop?gucActions:undefined,chatSpace:chat.spaceId,
       scope:desktopScope,edits:message.edits,canCite,onCite:openCitation,
       onOpenChat:(id,spaceId)=>{const c=stateRef.current.chats.find(x=>x.id===id);if(c){setChatId(c.id);setSpaceId(c.spaceId);navigate('/app');}else if(stateRef.current.spaces.some(x=>x.id===spaceId))openSpace(spaceId);else setToast('That chat isn’t here any more.');},
       spaceName:(id)=>stateRef.current.spaces.find(x=>x.id===id)?.name,
@@ -2307,7 +2351,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       if(owner!==ownerRef.current)return;setModal(null);newChat();
       const removed=await Promise.allSettled(blobs.map(id=>deleteBlob(id,owner)));
       // Projects and subjects each keep memory and linked folders under their own scope.
-      if(desktop){const scope=`${space.kind}:${space.id}`;await desktop.invoke({action:'memoryClear',scope});const folders=await desktop.invoke({action:'folders',scope});for(const folder of folders)await desktop.invoke({action:'unlinkFolder',id:folder.id});}
+      if(desktop){const scope=`${space.kind}:${space.id}`;if(space.kind==='subject')void desktop.invoke({action:'gucForgetSubject',subjectId:space.id}).catch(()=>{});await desktop.invoke({action:'memoryClear',scope});const folders=await desktop.invoke({action:'folders',scope});for(const folder of folders)await desktop.invoke({action:'unlinkFolder',id:folder.id});}
       setToast(removed.some(x=>x.status==='rejected')?'Subject removed. Some unused files could not be deleted; check disk permissions.':'Subject and its local data removed.');
     }catch(e){setToast(cleanError(e));}
   }
@@ -2592,6 +2636,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       onOpenChat:chat=>{setChatId(chat.id);setSpaceId(chat.spaceId);navigate('/app');},
       onOpenFile:file=>setViewer(file),
       onOpenHub:path=>navigate(path),
+      guc:desktop?gucActions:undefined,
       onSaveVideo:folderId=>setSavingVideo({place:space.id,folderId}),
       onAskFile:askAboutFile,
       onEditFile:file=>{newChat(space.id);openInPanel(file);},
@@ -3241,7 +3286,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 plan={(state.plans||[]).find(p=>p.spaceId===pageSpace.id)} planDraft={planDrafts[pageSpace.id]||null} planActions={planActionsFor(pageSpace)} canAsk={models.some(m=>m.connected)&&!offline} memoryPlaces={memoryPlaces} memoryLabel={memoryLabel}/></Suspense>
             ) : hubRoute ? (
               <Suspense fallback={<div className="page lib guc-hub"><div className="guc-skel" aria-busy="true"><span className="tall"/><span className="tall"/><span className="tall"/></div></div>}>
-                <GucHub route={hubRoute} go={navigate} onOpenFile={(f) => setViewer(f)} onConnect={() => setModal("guc")} onToast={setToast} />
+                <GucHub route={hubRoute} go={navigate} onOpenFile={(f) => setViewer(f)} onConnect={() => setModal("guc")} onToast={setToast} actions={gucActions} subjects={state.spaces.filter((x) => x.kind === "subject")} />
               </Suspense>
             ) : route === "/app/projects" || route === "/app/subjects" ? (
               (() => {
@@ -3463,7 +3508,11 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 if (files.length) upload(files, false, { spaceId: s.id, folderId: null });
                 setModal(null);
                 setSpacePreset(null);
-                openSpace(s.id);
+                // A new subject with GUC connected starts its setup thread; otherwise its page opens.
+                const guc = s.kind === "subject" && desktop ? gucOn() : false;
+                if (guc) void gucSetup.begin(s.id);
+                else openSpace(s.id);
+                if (guc === undefined) void desktop?.invoke({ action: "gucStatus" }).then((g) => { if (g.connected) void gucSetup.begin(s.id); }).catch(() => {});
               }}/>
           ) : modal === "skill-detail" && editingSkill ? (
             <><IconPicker value={editingSkill.icon} onChange={icon=>{setEditingSkill({...editingSkill,icon});patch(s=>({...s,skills:s.skills.map(x=>x.id===editingSkill.id?{...x,icon}:x)}));}}/>
@@ -3629,7 +3678,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               setTimeout(() => composer.current?.focus(), 80);
             }} />
           ) : modal === "guc" ? (
-            <GucManage />
+            <GucManage actions={gucActions} subjects={state.spaces.filter((x) => x.kind === "subject")} />
           ) : modal === "attach-existing" ? (
             <SavedFilePicker files={state.files} spaceId={spaceId} attached={attachments} onPick={(f) => { setAttachments((a) => (a.includes(f.id) ? a : [...a, f.id])); setModal(null); }} />
           ) : null}

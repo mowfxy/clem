@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import type { GucProgress, GucStatus } from "../../core/guc/types";
+import type { SubjectLink } from "../../core/guc/settings";
+import type { Space } from "../../core/types";
+import { CheckSchedule, DriveFolder, SaveRules, Storage, type GucActions } from "./GucCards";
+import { useGuc as useGucRead } from "./useGuc";
 import { Icon } from "../Icons";
 import { desktop } from "../desktop/bridge";
 import { confirmDialog } from "../dialogs";
@@ -33,7 +37,7 @@ export function GucRow({ onManage }: { onManage: () => void }) {
 }
 
 /** Sign in, watch the first sync, then sync now or disconnect. */
-export function GucManage() {
+export function GucManage({ actions, subjects = [] }: { actions?: GucActions; subjects?: Space[] }) {
   const { status, setStatus, refresh } = useGuc();
   const [username, setUsername] = useState(""), [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false), [progress, setProgress] = useState<GucProgress | null>(null), [error, setError] = useState("");
@@ -76,8 +80,24 @@ export function GucManage() {
     {status.error && <p className="gd-error" role="alert">{status.error.message}</p>}
     {error && <p className="gd-error" role="alert">{error}</p>}
     {working || <button className="gd-google" onClick={() => void run(() => desktop!.invoke({ action: "gucSync" }))}>Sync now</button>}
+    {actions && <LinkedSubjects actions={actions} subjects={subjects} />}
     <footer className="gd-foot guc-foot">
       <button className="gd-disconnect" disabled={busy} onClick={() => void confirmDialog({ title: "Disconnect GUC?", message: "Clem forgets your GUC password and the courses, grades and announcements it saved. Nothing on GUC changes.", confirm: "Disconnect", danger: true }).then((yes) => { if (yes) void run(() => desktop!.invoke({ action: "gucDisconnect" })); })}>Disconnect</button>
     </footer>
   </div>;
+}
+
+/** Each linked subject with its settings, the same cards as its chat and page. */
+function LinkedSubjects({ actions, subjects }: { actions: GucActions; subjects: Space[] }) {
+  const links = useGucRead<SubjectLink[]>({ action: "gucLinks" }), [open, setOpen] = useState<string | null>(null);
+  const shown = (links.data || []).filter((l) => subjects.some((s) => s.id === l.subjectId));
+  if (!links.data) return <div className="guc-linked-list"><div className="gd-skeleton" /></div>;
+  return <section className="guc-linked-list" aria-label="Linked subjects">
+    <h4>Subjects</h4>
+    {!shown.length ? <p className="guc-none">No subject is linked to a CMS course yet. Link one from its CMS tab or from GUC → CMS.</p>
+      : shown.map((l) => { const name = subjects.find((s) => s.id === l.subjectId)!.name; return <div key={l.subjectId} className="guc-linked-item">
+        <button type="button" aria-expanded={open === l.subjectId} onClick={() => setOpen(open === l.subjectId ? null : l.subjectId)}><span><b>{name}</b><small>{l.code} · {l.name}</small></span><Icon name="down" size={13} /></button>
+        {open === l.subjectId && <div className="guc-settings-cards"><SaveRules subjectId={l.subjectId} actions={actions} /><CheckSchedule subjectId={l.subjectId} actions={actions} /><DriveFolder subjectId={l.subjectId} actions={actions} /><Storage subjectId={l.subjectId} actions={actions} /></div>}
+      </div>; })}
+  </section>;
 }

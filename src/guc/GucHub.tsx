@@ -4,13 +4,16 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { hubPath, relativeDue, sortDeadlines, weekGrid, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
 import type { GucProgress } from "../../core/guc/types";
-import type { StoredFile } from "../../core/types";
+import { sameCode } from "../../core/guc/codes";
+import { matchSubject } from "../../core/guc/match";
+import type { Space, StoredFile } from "../../core/types";
 import { Icon } from "../Icons";
 import { desktop } from "../desktop/bridge";
 import { FileGlyph } from "../files/FileGlyph";
 import { download, getBlob } from "../store";
 import { EmptyState, PageHead } from "../ui/Calm";
 import { PickMenu } from "../ui/PickMenu";
+import type { GucActions } from "./GucCards";
 import { gucAsk, gucCache, gucPatch, gucPrefetch, useGuc } from "./useGuc";
 import "../library.css";
 import "./guc.css";
@@ -22,7 +25,6 @@ const ago = (t?: number) => { if (!t) return "Not synced yet"; const m = Math.ro
 /** "Week: 2026-11-07" → "Week of 7 November". */
 const weekLabel = (week: string, month: "long" | "short" = "long") => { const d = /(\d{4}-\d{2}-\d{2})/.exec(week)?.[1]; return d ? "Week of " + new Date(d + "T12:00:00Z").toLocaleDateString([], { day: "numeric", month, timeZone: "UTC" }) : week; };
 const asFile = (m: { id: string; name: string; type: string; firstSeen?: number }): StoredFile => ({ id: "guc_" + m.id, name: m.name, type: m.type, size: 0, created: m.firstSeen || Date.now(), spaceId: null, remote: true });
-const sameCode = (a: string, b: string) => a.replace(/\s+/g, "").toLowerCase() === b.replace(/\s+/g, "").toLowerCase();
 
 function useNow(every = 60_000) { const [now, setNow] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setNow(Date.now()), every); return () => clearInterval(t); }, [every]); return now; }
 function scrollerOf(node: Element | null): HTMLElement | null {
@@ -34,7 +36,7 @@ function scrollerOf(node: Element | null): HTMLElement | null {
 export function Skeleton({ rows = 5, tall = false }: { rows?: number; tall?: boolean }) {
   return <div className="guc-skel" aria-busy="true" aria-label="Loading">{Array.from({ length: rows }, (_, i) => <span key={i} className={tall ? "tall" : ""} />)}</div>;
 }
-function Problem({ message, onRetry, onConnect }: { message: string; onRetry: () => void; onConnect: () => void }) {
+export function Problem({ message, onRetry, onConnect }: { message: string; onRetry: () => void; onConnect: () => void }) {
   const auth = authFailed(message);
   return <div className="guc-problem" role="alert">
     <Icon name="alert" size={18} />
@@ -57,7 +59,7 @@ function VList<T>({ items, keyOf, estimate, render, onEnd, scrollTo, label }: { 
   </div>;
 }
 
-export function GucHub({ route, go, onOpenFile, onConnect, onToast }: { route: HubRoute; go: (path: string) => void; onOpenFile: (file: StoredFile) => void; onConnect: () => void; onToast: (message: string) => void }) {
+export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, subjects = [] }: { route: HubRoute; go: (path: string) => void; onOpenFile: (file: StoredFile) => void; onConnect: () => void; onToast: (message: string) => void; actions?: GucActions; subjects?: Space[] }) {
   const overview = useGuc<HubOverview>({ action: "gucOverview" });
   const o = overview.data;
   const [syncing, setSyncing] = useState(false), [progress, setProgress] = useState("");
@@ -103,7 +105,7 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast }: { route: H
     <section className="guc-panel" role="tabpanel" aria-label={TABS.find(([id]) => id === route.tab)?.[1]} key={route.tab}>
       {route.tab === "schedule" ? <Schedule week={route.id} go={go} onConnect={onConnect} />
         : route.tab === "announcements" ? <Announcements focus={route.id} onConnect={onConnect} />
-        : route.tab === "cms" ? <Cms course={route.id} material={route.sub} go={go} onOpenFile={onOpenFile} onConnect={onConnect} onToast={onToast} />
+        : route.tab === "cms" ? <Cms course={route.id} material={route.sub} go={go} onOpenFile={onOpenFile} onConnect={onConnect} onToast={onToast} actions={actions} subjects={subjects} />
         : route.tab === "grades" ? <Grades onConnect={onConnect} />
         : <Deadlines focus={route.id} onConnect={onConnect} />}
     </section>
@@ -159,8 +161,9 @@ function Schedule({ week, go, onConnect }: { week?: string; go: (path: string) =
 }
 
 // ---------- Announcements ----------
-function Announcements({ focus, onConnect }: { focus?: string; onConnect: () => void }) {
-  const [course, setCourse] = useState("");
+/** `only`: one course's announcements (a subject's page), without the course picker. */
+export function Announcements({ focus, onConnect, only }: { focus?: string; onConnect: () => void; only?: string }) {
+  const [picked, setCourse] = useState(""), course = only || picked;
   const courses = useGuc<HubCourse[]>({ action: "gucCourses" }).data || [];
   const first = useGuc<Page<HubAnnouncement>>({ action: "gucAnnouncements", ...(course ? { courseId: course } : {}) });
   const [more, setMore] = useState<{ items: HubAnnouncement[]; next?: string; loading?: boolean }>({ items: [] });
@@ -195,9 +198,9 @@ function Announcements({ focus, onConnect }: { focus?: string; onConnect: () => 
   useEffect(() => { if (focus && at < 0 && next && items.length < 400) loadMore(); }, [focus, at, next]);
   const options = [{ value: "", label: "All courses" }, ...courses.filter((c) => c.active).map((c) => ({ value: c.key, label: c.code || c.name }))];
   return <>
-    <div className="guc-bar">
+    {!only && <div className="guc-bar">
       <PickMenu label="Course" value={course} options={options} onChange={setCourse} />
-    </div>
+    </div>}
     {!first.data ? (first.error ? <Problem message={first.error} onRetry={() => void first.reload()} onConnect={onConnect} /> : <Skeleton rows={5} tall />)
       : !items.length ? <EmptyState scene="bell" line={course ? "No announcements in this course yet." : "No announcements yet. New ones show up here after each sync."} />
       : <VList items={items} keyOf={(a) => a.id} estimate={() => 96} scrollTo={at} onEnd={loadMore} label="Announcements" render={(a) => {
@@ -212,28 +215,56 @@ function Announcements({ focus, onConnect }: { focus?: string; onConnect: () => 
 }
 
 // ---------- CMS ----------
-function Cms({ course, material, go, onOpenFile, onConnect, onToast }: { course?: string; material?: string; go: (path: string) => void; onOpenFile: (file: StoredFile) => void; onConnect: () => void; onToast: (message: string) => void }) {
+/** One CMS file: preview on click, warmed on hover, download beside it. */
+function FileRow({ m, extra, focus, onOpenFile, onToast }: { m: HubMaterial; extra?: ReactNode; focus?: boolean; onOpenFile: (file: StoredFile) => void; onToast: (message: string) => void }) {
+  const dwell = useRef(0);
+  const warm = (id: string) => { clearTimeout(dwell.current); dwell.current = window.setTimeout(() => gucPrefetch({ action: "gucFile", materialId: id }, 10 * 60_000), 250); };
+  const save = async () => { try { const blob = await getBlob("guc_" + m.id); if (blob) download(blob, m.name); } catch (e) { onToast(clean(e) || "This file could not be downloaded."); } };
+  return <div className={`guc-file ${focus ? "is-focus" : ""}`} onPointerEnter={() => warm(m.id)} onPointerLeave={() => clearTimeout(dwell.current)}>
+    <button type="button" className="guc-file-open" onClick={() => onOpenFile(asFile(m))} onFocus={() => warm(m.id)} aria-label={`Preview ${m.title}`}>
+      <FileGlyph file={m} size={26} /><span><b>{m.title}</b><small>{extra || [m.kind, m.name].filter(Boolean).join(" · ")}</small></span>
+    </button>
+    <button type="button" className="icon-button" aria-label={`Download ${m.title}`} onClick={() => void save()}><Icon name="download" size={16} /></button>
+  </div>;
+}
+
+/** One course's files by week (the hub's CMS tab, and a linked subject's page). */
+export function CourseFiles({ courseKey, material, linked, onOpenFile, onConnect, onToast }: { courseKey: string; material?: string; linked?: boolean; onOpenFile: (file: StoredFile) => void; onConnect: () => void; onToast: (message: string) => void }) {
+  const mats = useGuc<HubMaterials>({ action: "gucMaterials", courseId: courseKey });
+  const rows = useMemo(() => (mats.data?.weeks || []).flatMap((w) => [{ kind: "week" as const, key: "w:" + w.week, week: w }, ...w.items.map((m) => ({ kind: "file" as const, key: m.id, m }))]), [mats.data]);
+  // A deep link to one file opens its preview once its course has loaded.
+  const opened = useRef("");
+  useEffect(() => { const m = material && mats.data?.weeks.flatMap((w) => w.items).find((x) => x.id === material); if (m && opened.current !== m.id) { opened.current = m.id; onOpenFile(asFile(m)); } }, [material, mats.data]);
+  if (!mats.data) return mats.error ? <Problem message={mats.error} onRetry={() => void mats.reload()} onConnect={onConnect} /> : <Skeleton rows={6} />;
+  if (!rows.length) return <EmptyState scene="folder" line={linked ? "No files in this course yet." : "No files read from this course yet. Clem reads the files of courses linked to a subject."} />;
+  return <VList key={courseKey} items={rows} keyOf={(r) => r.key} estimate={(r) => (r.kind === "week" ? 40 : 52)} label="Files" render={(r) => r.kind === "week"
+    ? <h3 className="guc-week">{weekLabel(r.week.week)}<span>{r.week.items.length}</span></h3>
+    : <FileRow m={r.m} focus={r.m.id === material} onOpenFile={onOpenFile} onToast={onToast} />} />;
+}
+
+/** A course's subject: open it, or make one from the course, or link one that has none. */
+function CourseSubject({ course, subjects, actions, onToast }: { course: HubCourse; subjects: Space[]; actions?: GucActions; onToast: (message: string) => void }) {
+  const courses = useGuc<HubCourse[]>({ action: "gucCourses" }).data || [];
+  if (!actions) return null;
+  const linked = course.subjectId && subjects.find((s) => s.id === course.subjectId);
+  if (linked) return <button type="button" className="lib-btn" onClick={() => actions.openSpace(linked.id)}><Icon name="subjects" size={15} />{linked.name}</button>;
+  const free = subjects.filter((s) => !courses.some((c) => c.subjectId === s.id));
+  const guess = matchSubject(course, free);
+  const ordered = [...(guess.best ? [guess.best.item] : []), ...free.filter((s) => s.id !== guess.best?.item.id)];
+  return <>
+    {ordered.length > 0 && <PickMenu label="Link to a subject" value="" placeholder="Link to a subject" options={ordered.map((s) => ({ value: s.id, label: s.name }))} onChange={(id) => id && void actions.answer(id, "link", { kind: "link", courseKey: course.key }).catch((e) => onToast(clean(e)))} />}
+    <button type="button" className="lib-btn strong" onClick={() => actions.createFromCourse(course)}><Icon name="plus" size={15} />Create subject from this course</button>
+  </>;
+}
+
+function Cms({ course, material, go, onOpenFile, onConnect, onToast, actions, subjects = [] }: { course?: string; material?: string; go: (path: string) => void; onOpenFile: (file: StoredFile) => void; onConnect: () => void; onToast: (message: string) => void; actions?: GucActions; subjects?: Space[] }) {
   const courses = useGuc<HubCourse[]>({ action: "gucCourses" });
   const list = (courses.data || []).filter((c) => c.active);
   const key = course || list.find((c) => c.materials)?.key || list[0]?.key;
-  const mats = useGuc<HubMaterials>(key ? { action: "gucMaterials", courseId: key } : null);
   const [q, setQ] = useState(""), [dq, setDq] = useState("");
   useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 180); return () => clearTimeout(t); }, [q]);
   const hits = useGuc<HubHit[]>(dq.length >= 2 ? { action: "gucSearch", query: dq } : null, { maxAge: 30_000 });
-  const rows = useMemo(() => (mats.data?.weeks || []).flatMap((w) => [{ kind: "week" as const, key: "w:" + w.week, week: w }, ...w.items.map((m) => ({ kind: "file" as const, key: m.id, m }))]), [mats.data]);
-  const open = (m: Pick<HubMaterial, "id" | "name" | "type" | "firstSeen">) => onOpenFile(asFile(m));
-  // A deep link to one file opens its preview once its course has loaded.
-  const opened = useRef("");
-  useEffect(() => { const m = material && mats.data?.weeks.flatMap((w) => w.items).find((x) => x.id === material); if (m && opened.current !== m.id) { opened.current = m.id; open(m); } }, [material, mats.data]);
-  const dwell = useRef(0);
-  const warm = (id: string) => { clearTimeout(dwell.current); dwell.current = window.setTimeout(() => gucPrefetch({ action: "gucFile", materialId: id }, 10 * 60_000), 250); };
-  const save = async (m: HubMaterial) => { try { const blob = await getBlob("guc_" + m.id); if (blob) download(blob, m.name); } catch (e) { onToast(clean(e) || "This file could not be downloaded."); } };
-  const fileRow = (m: HubMaterial, extra?: ReactNode) => <div className={`guc-file ${m.id === material ? "is-focus" : ""}`} onPointerEnter={() => warm(m.id)} onPointerLeave={() => clearTimeout(dwell.current)}>
-    <button type="button" className="guc-file-open" onClick={() => open(m)} onFocus={() => warm(m.id)} aria-label={`Preview ${m.title}`}>
-      <FileGlyph file={m} size={26} /><span><b>{m.title}</b><small>{extra || [m.kind, m.name].filter(Boolean).join(" · ")}</small></span>
-    </button>
-    <button type="button" className="icon-button" aria-label={`Download ${m.title}`} onClick={() => void save(m)}><Icon name="download" size={16} /></button>
-  </div>;
+  const subjectName = (id?: string) => (id ? subjects.find((s) => s.id === id)?.name : undefined);
 
   if (!courses.data) return courses.error ? <Problem message={courses.error} onRetry={() => void courses.reload()} onConnect={onConnect} /> : <Skeleton rows={6} />;
   if (!list.length) return <EmptyState scene="folder" line="No courses this term yet. They show up after your next sync." />;
@@ -245,33 +276,30 @@ function Cms({ course, material, go, onOpenFile, onConnect, onToast }: { course?
     {dq.length >= 2 ? <div className="guc-results" aria-live="polite">
       {!hits.data ? <Skeleton rows={3} /> : !hits.data.length ? <p className="guc-none">Nothing matches “{dq}”.</p>
         : hits.data.map((h) => h.type === "material"
-          ? <div key={"m" + h.id}>{fileRow({ id: h.id, courseKey: h.courseKey, week: h.week || "", title: h.title, kind: "", name: h.name || h.title, type: h.fileType || "", firstSeen: 0, stored: false }, [h.code, h.snippet].filter(Boolean).join(" · "))}</div>
+          ? <div key={"m" + h.id}><FileRow m={{ id: h.id, courseKey: h.courseKey, week: h.week || "", title: h.title, kind: "", name: h.name || h.title, type: h.fileType || "", firstSeen: 0, stored: false }} extra={[h.code, h.snippet].filter(Boolean).join(" · ")} onOpenFile={onOpenFile} onToast={onToast} /></div>
           : <button type="button" key={"a" + h.id} className="guc-hit" onClick={() => go(hubPath("announcements", h.id))}><Icon name="megaphone" size={18} /><span><b>{h.code || h.title}</b><small>{h.snippet}</small></span></button>)}
     </div>
       : <div className="guc-cms">
         <nav className="guc-courses" aria-label="Courses">
           {list.map((c) => <button key={c.key} type="button" className={c.key === key ? "active" : ""} aria-current={c.key === key ? "page" : undefined}
             onClick={() => go(hubPath("cms", c.key))} onPointerEnter={() => gucPrefetch({ action: "gucMaterials", courseId: c.key })} onFocus={() => gucPrefetch({ action: "gucMaterials", courseId: c.key })}>
-            <b>{c.code || c.name}</b><span>{c.name}</span>{c.unread > 0 && <span className="guc-dot" role="img" aria-label={`${c.unread} unread`} />}
+            <b>{c.code || c.name}</b><span>{subjectName(c.subjectId) ? `${c.name} · ${subjectName(c.subjectId)}` : c.name}</span>{c.unread > 0 && <span className="guc-dot" role="img" aria-label={`${c.unread} unread`} />}
           </button>)}
         </nav>
         <div className="guc-files">
-          {current && <h2 className="guc-course-title">{current.code} <span>{current.name}</span></h2>}
-          {!mats.data ? (mats.error ? <Problem message={mats.error} onRetry={() => void mats.reload()} onConnect={onConnect} /> : <Skeleton rows={6} />)
-            : !rows.length ? <EmptyState scene="folder" line={current?.subjectId ? "No files in this course yet." : "No files read from this course yet. Clem reads the files of courses linked to a subject."} />
-            : <VList key={key} items={rows} keyOf={(r) => r.key} estimate={(r) => (r.kind === "week" ? 40 : 52)} label="Files" render={(r) => r.kind === "week"
-              ? <h3 className="guc-week">{weekLabel(r.week.week)}<span>{r.week.items.length}</span></h3>
-              : fileRow(r.m)} />}
+          {current && <div className="guc-course-head"><h2 className="guc-course-title">{current.code} <span>{current.name}</span></h2><div className="guc-course-subject"><CourseSubject course={current} subjects={subjects} actions={actions} onToast={onToast} /></div></div>}
+          {key && <CourseFiles courseKey={key} material={material} linked={!!current?.subjectId} onOpenFile={onOpenFile} onConnect={onConnect} onToast={onToast} />}
         </div>
       </div>}
   </>;
 }
 
 // ---------- Grades ----------
-function Grades({ onConnect }: { onConnect: () => void }) {
-  const grades = useGuc<HubGrade[]>({ action: "gucGrades" });
+/** `courseKey`: one course's grades (a subject's page). */
+export function Grades({ onConnect, courseKey }: { onConnect: () => void; courseKey?: string }) {
+  const grades = useGuc<HubGrade[]>(courseKey ? { action: "gucGrades", courseId: courseKey } : { action: "gucGrades" });
   if (!grades.data) return grades.error ? <Problem message={grades.error} onRetry={() => void grades.reload()} onConnect={onConnect} /> : <Skeleton rows={5} />;
-  if (!grades.data.length) return <EmptyState scene="checklist" line="No grades on your transcript yet." />;
+  if (!grades.data.length) return <EmptyState scene="checklist" line={courseKey ? "No grade for this course on your transcript yet." : "No grades on your transcript yet."} />;
   const semesters = [...new Set(grades.data.map((g) => g.semester))];
   return <>{semesters.map((s) => {
     const rows = grades.data!.filter((g) => g.semester === s), latest = rows[0].latest;
@@ -288,10 +316,11 @@ function Grades({ onConnect }: { onConnect: () => void }) {
 }
 
 // ---------- Deadlines ----------
-function Deadlines({ focus, onConnect }: { focus?: string; onConnect: () => void }) {
+/** `courseKey`: one course's deadlines (a subject's page). */
+export function Deadlines({ focus, onConnect, courseKey }: { focus?: string; onConnect: () => void; courseKey?: string }) {
   const now = useNow();
   const data = useGuc<HubDeadline[]>({ action: "gucDeadlines" });
-  const list = useMemo(() => sortDeadlines(data.data || [], now), [data.data, now]);
+  const list = useMemo(() => sortDeadlines((data.data || []).filter((d) => !courseKey || d.courseKey === courseKey), now), [data.data, now, courseKey]);
   useEffect(() => { if (focus) document.querySelector(`[data-deadline="${CSS.escape(focus)}"]`)?.scrollIntoView({ block: "center" }); }, [focus, !!data.data]);
   if (!data.data) return data.error ? <Problem message={data.error} onRetry={() => void data.reload()} onConnect={onConnect} /> : <Skeleton rows={4} />;
   if (!list.length) return <EmptyState scene="alarm" line="No deadlines found. Clem picks them out of announcements and course pages." />;
@@ -303,22 +332,3 @@ function Deadlines({ focus, onConnect }: { focus?: string; onConnect: () => void
     </li>; })}
   </ol>;
 }
-
-/** A subject's CMS tab (src/space/SpacePage.tsx): its linked course, or a calm placeholder until linking arrives. */
-export function SubjectCms({ subjectId, go }: { subjectId: string; go: (path: string) => void }) {
-  const courses = useGuc<HubCourse[]>({ action: "gucCourses" });
-  const linked = courses.data?.find((c) => c.subjectId === subjectId);
-  useEffect(() => { if (linked) gucPrefetch({ action: "gucMaterials", courseId: linked.key }); }, [linked?.key]);
-  if (!courses.data) return courses.error ? <Problem message={courses.error} onRetry={() => void courses.reload()} onConnect={() => go("/app/guc")} /> : <Skeleton rows={3} />;
-  if (!linked) return <div className="guc-link-empty">
-    <EmptyState scene="link" line="Link a CMS course to this subject to see its files and announcements here.">
-      <button type="button" className="secondary" onClick={() => go(hubPath("cms"))}><Icon name="guc" size={16} />Browse CMS courses</button>
-    </EmptyState>
-  </div>;
-  return <div className="guc-linked">
-    <div><b>{linked.code}</b><span>{linked.name} · {linked.season}</span></div>
-    <button type="button" className="secondary" onClick={() => go(hubPath("cms", linked.key))}><Icon name="files" size={16} />Files</button>
-    <button type="button" className="secondary" onClick={() => go(hubPath("announcements"))}><Icon name="megaphone" size={16} />Announcements{linked.unread > 0 && <span className="guc-count">{linked.unread}</span>}</button>
-  </div>;
-}
-

@@ -4,7 +4,7 @@ import { codeKey, normCode, sameCode, withCode } from "../core/guc/codes.ts";
 import { matchCourse, matchSubject } from "../core/guc/match.ts";
 import { defaultSaveRules, describeSaveRules, materialKind, parseSaveRules, shouldSave } from "../core/guc/rules.ts";
 import { cairoTime, cronLines, defaultCheckSchedule, describeChecks, nextCheck, parseCheckSchedule, suggestChecks } from "../core/guc/schedule-rules.ts";
-import { answer, nextStep, readAiReply, readReply, setupMessage, startSetup, stepOfCard, toPost, type SetupStep } from "../core/guc/setup-flow.ts";
+import { answer, nextStep, readAiReply, readReply, setupMessage, startSetup, stepOfCard, toPost, updatePatch, updateSummary, type SetupStep } from "../core/guc/setup-flow.ts";
 import { cardBlock, cardsIn, readCard } from "../core/guc/cards.ts";
 import { mergeSettings, settingsPatch } from "../core/guc/settings.ts";
 import { parseSchedule } from "../core/guc/parse.ts";
@@ -194,4 +194,15 @@ test("settings patches are checked and merged deeply", () => {
   assert.equal(m.save.kinds.slides, true, "the rest stays");
   assert.equal(mergeSettings(m, { drive: { folderName: "Embedded" } }).drive.enabled, true);
   assert.equal(m.storage.location, "device");
+});
+
+test("the AI's settings_update becomes the same patch a card writes, and reads back in words", () => {
+  const u = readCard('{"type":"settings_update","save":{"videos":false,"links":true},"check":{"mode":"custom","times":[{"day":0,"time":"21:00"},{"day":2,"time":"21:00"}]}}');
+  assert.ok(u && u.type === "settings_update");
+  const patch = updatePatch(u);
+  assert.deepEqual(patch, { save: { kinds: { videos: false, links: true } }, check: { mode: "custom", times: [{ day: 0, time: "21:00" }, { day: 2, time: "21:00" }], tz: "Africa/Cairo" } });
+  assert.equal(settingsPatch.safeParse(patch).success, true);
+  assert.equal(updateSummary(u), "Saving links too · Stopped saving videos · Checks: Sun and Tue at 21:00");
+  assert.equal(updateSummary({ type: "settings_update", unlink: true }), "Unlinked from CMS");
+  assert.deepEqual(updatePatch({ type: "settings_update", check: { mode: "off", times: [{ day: 1, time: "10:00" }] } }).check?.times, []);
 });

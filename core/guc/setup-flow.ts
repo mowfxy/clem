@@ -1,10 +1,11 @@
 // A subject's setup thread as a small state machine: which question comes next, what Clem says, and how a typed reply
 // is read. It runs locally and instantly; only a reply it can't read goes to the AI (src/guc/setup.ts), whose JSON
 // comes back through `readAiReply`. The state lives in the engine's subject_settings, so a restart resumes it.
-import { cardBlock, type ClemCard } from "./cards.ts";
+import { cardBlock, type ClemCard, type SettingsUpdateCard } from "./cards.ts";
+import { TZ } from "./hub.ts";
 import { matchCourse, type MatchCourse } from "./match.ts";
-import { NO, YES, parseSaveRules, SAVE_KINDS, type SaveRules } from "./rules.ts";
-import { parseCheckSchedule, type CheckTime } from "./schedule-rules.ts";
+import { NO, YES, parseSaveRules, SAVE_KINDS, SAVE_LABELS, type SaveKind, type SaveRules } from "./rules.ts";
+import { describeChecks, parseCheckSchedule, type CheckTime } from "./schedule-rules.ts";
 import { checkSchema, type SettingsPatch } from "./settings.ts";
 
 export const SETUP_STEPS = ["link", "save", "check", "drive", "storage"] as const;
@@ -132,6 +133,28 @@ export function readAiReply(step: SetupStep, json: any, courses: MatchCourse[]):
   if (step === "drive" && typeof json.drive?.enabled === "boolean") return { kind: "settings", patch: { drive: { enabled: json.drive.enabled } } };
   if (step === "storage" && ["device", "vps"].includes(json.storage?.location)) return { kind: "settings", patch: { storage: { location: json.storage.location } } };
   return { kind: "unknown" };
+}
+
+/** A settings_update block as the settings patch it makes (the check's times in Cairo). */
+export function updatePatch(u: SettingsUpdateCard): SettingsPatch {
+  return {
+    ...(u.save ? { save: { kinds: u.save } } : {}),
+    ...(u.check ? { check: { ...u.check, times: u.check.mode === "off" ? [] : u.check.times, tz: TZ } } : {}),
+    ...(u.drive ? { drive: u.drive } : {}),
+    ...(u.storage ? { storage: u.storage } : {}),
+  };
+}
+/** "Stopped saving videos", "Saving links too", "Checks: Every day at 21:00", "Unlinked from CMS". */
+export function updateSummary(u: SettingsUpdateCard) {
+  const list = (ks: string[]) => ks.map((k) => SAVE_LABELS[k as SaveKind].toLowerCase()).join(" and ");
+  const off = Object.entries(u.save || {}).filter(([, v]) => !v).map(([k]) => k), on = Object.entries(u.save || {}).filter(([, v]) => v).map(([k]) => k);
+  const parts = [
+    on.length ? `Saving ${list(on)} too` : "", off.length ? `Stopped saving ${list(off)}` : "",
+    u.check ? (u.check.mode === "off" ? "Checks turned off" : u.check.mode === "after_lectures" ? "Checking after each lecture" : `Checks: ${describeChecks({ ...u.check, tz: TZ })}`) : "",
+    u.drive ? `Drive copy turned ${u.drive.enabled ? "on" : "off"}` : "", u.storage ? `Files now live ${u.storage.location === "vps" ? "on your VPS" : "on this device"}` : "",
+    u.unlink ? "Unlinked from CMS" : "", u.checkNow ? "Checking CMS now" : "",
+  ].filter(Boolean);
+  return parts.join(" · ") || "No change";
 }
 
 /** What Clem says when neither it nor the AI could read a reply. */

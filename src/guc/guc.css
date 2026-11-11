@@ -137,7 +137,88 @@ html:root[data-theme=light] .guc-skel span{background:linear-gradient(90deg,#1b2
 .guc-linked>div{flex:1;min-width:200px;display:flex;flex-direction:column;gap:2px;font-size:var(--text-s);color:var(--ink)}
 .guc-linked>div span{color:var(--muted);font-size:12px}
 
+/* A course's subject beside its title in the hub */
+.guc-course-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 6px}
+.guc-course-head .guc-course-title{margin:2px 0}
+.guc-course-subject{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---------- GUC cards (src/guc/GucCards.tsx): the proposal card, glass.css's scale, both themes from tokens ---------- */
+.edit-proposal.guc-card{max-width:560px}
+.guc-card header>.drawn-icon{flex:none;opacity:.8}
+.guc-card header strong b{font-weight:600}
+.guc-card footer{flex-wrap:wrap}
+.guc-card footer button .drawn-icon{width:14px;height:14px}
+.guc-card-body{display:grid;gap:8px;padding:0 14px 12px 40px}
+.guc-card-line{margin:0;font-size:var(--text-label);line-height:1.45;color:var(--muted)}
+.guc-card-skel{display:block;width:180px;height:12px;margin:3px 0;border-radius:6px;background:color-mix(in srgb,var(--ink) 9%,transparent)}
+.guc-card-skel.short{width:120px;height:10px}
+.guc-chips{display:flex;flex-wrap:wrap;gap:6px}
+.guc-chip{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:99px;border:0;background:color-mix(in srgb,var(--ink) 6%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 12%,transparent);color:var(--muted);font:500 var(--text-label)/1 var(--sans);cursor:pointer;transition:background .15s,color .15s}
+.guc-chip:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 10%,transparent)}
+.guc-chip[aria-pressed=true]{color:var(--ink);background:color-mix(in srgb,var(--sky) 20%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sky) 45%,transparent)}
+.guc-chip .drawn-icon{width:12px;height:12px}
+.guc-seg{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.guc-seg>button{height:30px;padding:0 12px;border-radius:9px;border:0;background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--muted);font:500 var(--text-label)/1 var(--sans);cursor:pointer}
+.guc-seg>button:hover:not(:disabled){color:var(--ink)}
+.guc-seg>button[aria-checked=true]{background:color-mix(in srgb,var(--ink) 14%,transparent);color:var(--ink);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 16%,transparent)}
+.guc-seg>button:disabled{opacity:.45;cursor:default}
+.guc-time{display:inline-flex;align-items:center;gap:6px;margin-left:4px;font-size:var(--text-label);color:var(--muted)}
+.guc-time input{height:30px;padding:0 8px;border-radius:9px;border:0;background:color-mix(in srgb,var(--ink) 6%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 12%,transparent);color:var(--ink);font:500 var(--text-label)/1 var(--sans);color-scheme:inherit}
+.guc-switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:var(--text-s);color:var(--ink)}
+.guc-summary{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.guc-summary li>button{display:grid;grid-template-columns:110px 1fr auto;align-items:center;gap:10px;width:100%;min-height:32px;padding:4px 8px;border:0;border-radius:8px;background:none;color:var(--ink);font-size:var(--text-label);text-align:left;cursor:pointer}
+.guc-summary li>button:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.guc-summary li>button span{color:var(--muted)}
+.guc-summary li>button b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guc-summary li>button .drawn-icon{opacity:.6;transition:transform .2s}
+.guc-summary li>button[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
+.guc-summary-edit .edit-proposal{margin:6px 0 0}
+.guc-new{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.guc-new li{display:flex;align-items:center;gap:10px;min-height:38px}
+.guc-new-name{flex:1;min-width:0;display:flex;gap:8px;font-size:var(--text-s);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guc-new-name b{flex:none;font-weight:600}
+.guc-new li>button{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:9px;font-size:var(--text-label)}
+html:root :is(.guc-new li,.guc-link-pick :is(li,footer))>button{border:0;background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--ink)}
+html:root :is(.guc-new li,.guc-link-pick :is(li,footer))>button.primary{background:#ffffffeb;color:#0a1020}
+html:root[data-theme=light] :is(.guc-new li,.guc-link-pick :is(li,footer))>button.primary,html:root[data-theme=light] .edit-proposal .guc-new li>button.primary{background:#141e33;color:#fff}
+.guc-updated header>.drawn-icon{color:var(--sky);opacity:1}
+
+/* A subject's CMS tab: its course, the hub's views for that course, and the setting cards */
+.guc-subject{display:grid;gap:14px;max-width:none}
+.guc-subject>.edit-proposal{margin:0}
+.guc-subject .guc-tabs{margin:0}
+.guc-settings-cards{display:grid;gap:10px}
+.guc-settings-cards>.edit-proposal{margin:0}
+.guc-classes{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.guc-classes li{display:grid;grid-template-columns:48px 110px 90px 1fr;align-items:center;gap:10px;min-height:var(--row);padding:4px 14px;border-radius:12px;background:var(--calm-tile);font-size:var(--text-s);color:var(--ink)}
+.guc-classes li small{color:var(--muted);font-size:12px}
+.guc-link-pick{padding:16px;border-radius:16px;background:var(--calm-tile);box-shadow:var(--glass-rim)}
+.guc-link-pick header{display:grid;gap:3px;font-size:var(--text-s);color:var(--ink)}
+.guc-link-pick header b{font-weight:600}
+.guc-link-pick header span{color:var(--muted);font-size:var(--text-label);line-height:1.45}
+.guc-link-pick ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.guc-link-pick li{display:flex;align-items:center;gap:12px;padding:6px 6px 6px 12px;border-radius:11px}
+.guc-link-pick li.is-best{background:color-mix(in srgb,var(--sky) 10%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sky) 30%,transparent)}
+.guc-link-pick li>span{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;font-size:var(--text-s);color:var(--ink)}
+.guc-link-pick li>span b{font-weight:600}
+.guc-link-pick li>span small{flex-basis:100%;color:var(--muted);font-size:12px}
+.guc-link-pick :is(li,footer)>button{height:var(--row-s);padding:0 14px;border-radius:10px;font-size:var(--text-label);gap:6px}
+.guc-link-pick footer{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Settings → Connectors → GUC: linked subjects and their settings */
+.guc-linked-list{align-self:stretch;display:grid;gap:4px;margin-top:18px;text-align:left}
+.guc-linked-list h4{margin:0 0 4px;font-size:var(--text-label);font-weight:600;color:var(--muted)}
+.guc-linked-item>button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:var(--row);padding:4px 10px;border:0;border-radius:10px;background:none;color:var(--ink);text-align:left;cursor:pointer}
+.guc-linked-item>button:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.guc-linked-item>button span{display:grid;gap:1px;min-width:0;font-size:var(--text-s)}
+.guc-linked-item>button small{color:var(--muted);font-size:12px}
+.guc-linked-item>button[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
+.guc-linked-item .guc-settings-cards{padding:4px 0 10px}
+.guc-linked-item .guc-card-body{padding-left:14px}
+
 @media(max-width:760px){
+  .guc-classes li{grid-template-columns:44px 1fr;row-gap:2px}
+  .guc-card-body{padding-left:14px}
   .guc-cms{grid-template-columns:1fr}
   .guc-courses{position:static;flex-direction:row;overflow-x:auto;scrollbar-width:none}
   .guc-courses button{flex:none}
