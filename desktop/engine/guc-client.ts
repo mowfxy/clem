@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { pageState } from "../../core/guc/parse.ts";
 import { GucError, asGucError } from "./errors.ts";
 
-export type HttpRequest = { method: "GET" | "POST"; url: string; headers?: Record<string, string>; form?: Record<string, string>; /** The body as bytes (a file), not text. */ binary?: boolean };
+export type HttpRequest = { method: "GET" | "POST" | "HEAD"; url: string; headers?: Record<string, string>; form?: Record<string, string>; /** The body as bytes (a file), not text. */ binary?: boolean };
 export type HttpResponse = { status: number; headers: Record<string, string | undefined>; body: string; bytes?: Uint8Array };
 export type Credentials = { username: string; password: string; domain?: string };
 /** One NTLM exchange. Swapped for a fake in tests. */
@@ -16,7 +16,7 @@ export type Http = (request: HttpRequest, credentials: Credentials) => Promise<H
 export function ntlmHttp(agent = new Agent({ keepAlive: true, maxSockets: 4 })): Http {
   return (request, c) => new Promise((resolve, reject) => {
     const options = { url: request.url, username: c.username, password: c.password, domain: c.domain || "", workstation: "", agent, headers: request.headers, parameters: request.form, timeout: request.binary ? 120_000 : 30_000, binary: request.binary };
-    (request.method === "POST" ? httpntlm.post : httpntlm.get)(options, (error, res) => error ? reject(error)
+    httpntlm.method(request.method.toLowerCase(), options, (error, res) => error ? reject(error)
       : resolve(request.binary ? { status: res.statusCode, headers: res.headers || {}, body: "", bytes: new Uint8Array(res.body as unknown as Buffer) } : { status: res.statusCode, headers: res.headers || {}, body: res.body || "" }));
   });
 }
@@ -97,6 +97,14 @@ export async function fetchFile(client: GucClient, url: string) {
   const type = (res.headers["content-type"] || "").split(";")[0].trim();
   if (/text\/html/i.test(type) && pageState(new TextDecoder().decode(res.bytes.slice(0, 20000)), res.url) !== "ok") throw new GucError("auth", "login page");
   return { bytes: res.bytes, type };
+}
+
+/** A CMS file's size from a HEAD request (asked only when a size rule needs it), or undefined when GUC doesn't say. */
+export async function fileSize(client: GucClient, url: string) {
+  if (!/^https:\/\/([\w-]+\.)*guc\.edu\.eg\//.test(url)) return undefined;
+  const res = await client.send({ method: "HEAD", url }).catch(() => undefined);
+  const n = Number(res?.status === 200 ? res.headers["content-length"] : NaN);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 /** Signs in to the CMS home page, as typed and then as GUC\username, and returns the client that worked. */

@@ -1180,8 +1180,11 @@ void app.whenReady().then(async () => {
       note.on("close", () => shown.delete(note));
       note.show();
     },
-    paths: { data: join(workspaceRoot, "Accounts", owner, "engine"), migrations: join(__dirname, "migrations") },
+    paths: { data: join(workspaceRoot, "Accounts", owner, "engine"), migrations: join(__dirname, "migrations"), files: join(workspaceRoot, "Accounts", owner, "Files") },
     log: (level, message) => console[level === "info" ? "log" : level](message),
+    // The subject copies go through the same Drive connection as the rest of Clem (desktop/drive-live.ts).
+    drive: { connected: () => driveLive.connected(), folder: (parent, name) => driveLive.folderIn(parent, name), upload: (folder, name, path, type) => driveLive.uploadFile(folder, name, path, type) },
+    changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }),
   });
   const engineFor = (owner: string) => {
     let engine = engines.get(owner);
@@ -1432,7 +1435,7 @@ void app.whenReady().then(async () => {
       // Reads open the engine only for a connected account; anything else has nothing to show yet.
       if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) {
         if (request.action === "gucOverview") return { connected: false, syncing: false, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } };
-        if (request.action === "gucLinks" || request.action === "gucNewCourses") return [];
+        if (request.action === "gucLinks" || request.action === "gucNewCourses" || request.action === "gucInbox") return [];
         if (request.action === "gucForgetSubject") return null;
         throw Error("Connect GUC first.");
       }
@@ -1456,6 +1459,8 @@ void app.whenReady().then(async () => {
       if (request.action === "gucForgetSubject") return engine.forgetSubject(request.subjectId);
       if (request.action === "gucNewCourses") return engine.newCourses();
       if (request.action === "gucAckNewCourses") return engine.ackNewCourses(request.keys);
+      if (request.action === "gucInbox") return engine.inbox();
+      if (request.action === "gucAckInbox") return engine.ackInbox(request.keys);
     }
     if (request.action === "driveConnect") {
       driveLive.forget();

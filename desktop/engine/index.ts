@@ -5,8 +5,12 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { materialFile, type HubFile, type HubOverview } from "../../core/guc/hub.ts";
 import { urls } from "../../core/guc/parse.ts";
-import { cronLines } from "../../core/guc/schedule-rules.ts";
-import type { SettingsPatch } from "../../core/guc/settings.ts";
+import { active, cronLines } from "../../core/guc/schedule-rules.ts";
+import type { InboxItem, SettingsPatch, SubjectView } from "../../core/guc/settings.ts";
+import { saveFiles, type SaveStats } from "./check.ts";
+import { mirror, type MirrorResult } from "./drive-mirror.ts";
+import { DeviceStore, type FileStore } from "./storage.ts";
+import type { SyncResult } from "./guc-sync.ts";
 import type { GucErrorKind, GucProgress, GucStatus, GucSyncStats } from "../../core/guc/types.ts";
 import { migrate, openPglite, type Db } from "./db.ts";
 import { GucError, asGucError } from "./errors.ts";
@@ -18,9 +22,13 @@ import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
 import type { PGlite } from "@electric-sql/pglite";
 
-const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account"];
+const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive"];
 /** Every three hours, Cairo time. */
 export const GUC_SYNC_CRON = "0 */3 * * *";
+/** A settings change that saves or copies files waits this long for the next tap, so a few quick taps are one run. */
+export const SETTLE_MS = 15_000;
+export type CheckTrigger = "schedule" | "now" | "rules";
+export type CheckOutcome = SaveStats & { trigger: CheckTrigger; pageChanged: boolean; uploaded: number; drive?: MirrorResult };
 
 export class Engine {
   readonly owner: string;
@@ -35,13 +43,19 @@ export class Engine {
   private reader?: GucClient;
   /** CMS files fetched for viewing: kept in a temp folder for this session only, never in the workspace. */
   private temp = new Map<string, Promise<HubFile & { path: string }>>();
+  /** Saved CMS files' bytes (this PC; a VPS store later). */
+  readonly store: FileStore;
+  /** One check per subject at a time; a second waits for the first. */
+  private checks = new Map<string, Promise<unknown>>();
+  private settling = new Map<string, { timer: ReturnType<typeof setTimeout>; files: boolean }>();
 
-  private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void> }) {
+  private constructor(owner: string, host: EngineHost, pg: PGlite, db: Db, o: { http?: Http; sleep?: (ms: number) => Promise<void>; store?: FileStore }) {
     this.owner = owner; this.host = host; this.pg = pg; this.db = db; this.http = o.http; this.sleep = o.sleep;
+    this.store = o.store || new DeviceStore(host.paths.files || (host.paths.data ? join(host.paths.data, "..", "Files") : join(tmpdir(), "clem-guc-files", owner)));
   }
 
   /** `memory` keeps the database in memory (tests); `jobs: false` runs no background jobs. */
-  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean } = {}) {
+  static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore } = {}) {
     if (!/^[\w-]{1,100}$/.test(owner)) throw Error("Invalid account");
     if (!o.memory) await mkdir(host.paths.data, { recursive: true });
     const { pg, db } = await openPglite(o.memory ? undefined : host.paths.data);
@@ -62,7 +76,7 @@ export class Engine {
     // A subject's own checks (its schedule rules): a light sync of its course.
     await this.jobs.queue("guc.check", async ({ subjectId }: { subjectId: string }) => {
       if (!(await this.credentials())) return;
-      try { await this.checkNow(subjectId); } catch (e) { if (!(e instanceof GucError && e.kind === "auth")) throw e; }
+      try { await this.check(subjectId, "schedule"); } catch (e) { if (!(e instanceof GucError && (e.kind === "auth" || e.detail === "not linked"))) throw e; }
     }, { retries: 2, delay: 120 });
     if (await this.credentials()) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
   }
@@ -95,19 +109,20 @@ export class Engine {
     return this.running;
   }
   /** A light sync of one course (just linked, "Check now", its scheduled check): its page only. */
-  syncCourse(courseKey: string, progress?: (p: GucProgress) => void) {
-    const job = Promise.allSettled([this.running, this.light]).then(() => this.run(progress, false, undefined, courseKey));
+  syncCourse(courseKey: string, progress?: (p: GucProgress) => void, client?: GucClient, out?: { result?: SyncResult }) {
+    const job = Promise.allSettled([this.running, this.light]).then(() => this.run(progress, false, client, courseKey, out));
     this.light = job.finally(() => { if (this.light === job) this.light = undefined; });
     return job;
   }
   private syncNow() { return this.sync(); }
 
-  private async run(progress: ((p: GucProgress) => void) | undefined, initial: boolean, client?: GucClient, only?: string) {
+  private async run(progress: ((p: GucProgress) => void) | undefined, initial: boolean, client?: GucClient, only?: string, out?: { result?: SyncResult }) {
     const credentials = await this.credentials();
     if (!credentials) throw Error("Connect GUC first.");
     client ||= new GucClient(credentials, this.http, this.sleep);
     try {
       const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress });
+      if (out) out.result = result;
       const { eventList, warnings, ...stats } = result;
       if (warnings.length) this.host.log("warn", "[guc] skipped: " + warnings.join(", "));
       if (!only) await this.db.query("update guc_account set last_sync = now(), last_error = null, stats = $2 where owner_id = $1", [this.owner, stats]);
@@ -151,27 +166,86 @@ export class Engine {
     return this.subject(subjectId);
   }
   async unlink(subjectId: string) { await subjects.unlink(this.db, this.owner, subjectId); await this.reschedule(subjectId); return this.subject(subjectId); }
+  /** Changes settings. New save rules save what they now keep, and turning the Drive copy on (or a new folder) copies
+   *  what is saved, once the taps settle; neither reads CMS pages again. */
   async setSettings(subjectId: string, patch: SettingsPatch) {
-    await subjects.saveSettings(this.db, this.owner, subjectId, patch);
+    const before = await subjects.settings(this.db, this.owner, subjectId);
+    const after = await subjects.saveSettings(this.db, this.owner, subjectId, patch);
     if (patch.check) await this.reschedule(subjectId);
+    const midSetup = !!after.setup && !after.setup.finished && !after.setup.done.save;
+    const files = !!patch.save && !midSetup || (!!patch.setup?.done.save && !before.setup?.done.save);
+    const copy = after.drive.enabled && (!before.drive.enabled || after.drive.folderId !== before.drive.folderId);
+    if (files || copy) this.settle(subjectId, files);
     return this.subject(subjectId);
   }
-  /** Reads the subject's course now ("Check now"), then its fresh view. */
+  private settle(subjectId: string, files: boolean) {
+    const was = this.settling.get(subjectId);
+    if (was) clearTimeout(was.timer);
+    const timer = setTimeout(() => {
+      this.settling.delete(subjectId);
+      void (files ? this.check(subjectId, "rules") : this.copyToDrive(subjectId)).then(() => this.host.changed?.(), (e) => this.host.log("warn", "[guc] settings run failed: " + asGucError(e).kind));
+    }, SETTLE_MS);
+    timer.unref?.();
+    this.settling.set(subjectId, { timer, files: files || !!was?.files });
+  }
+  /** Reads the subject's course now ("Check now") and saves what its rules keep, then its fresh view. */
   async checkNow(subjectId: string, progress?: (p: GucProgress) => void) {
-    const v = await this.subject(subjectId);
-    if (!v.course) throw new GucError("unavailable", "not linked", "Link a CMS course first.");
-    await this.syncCourse(v.course.key, progress);
+    await this.check(subjectId, "now", progress);
     return this.subject(subjectId);
   }
+  /** One check of a subject: its course page (only when it changed, by ETag or hash), then the files its rules keep
+   *  that aren't saved yet, then the Drive copy. "rules" skips the page. A scheduled check outside its date range does
+   *  nothing. Each check is a guc_checks row. */
+  check(subjectId: string, trigger: CheckTrigger, progress?: (p: GucProgress) => void): Promise<CheckOutcome | null> {
+    const job = (this.checks.get(subjectId) || Promise.resolve()).catch(() => {}).then(() => this.runCheck(subjectId, trigger, progress));
+    this.checks.set(subjectId, job);
+    void job.finally(() => { if (this.checks.get(subjectId) === job) this.checks.delete(subjectId); }).catch(() => {});
+    return job;
+  }
+  private async runCheck(subjectId: string, trigger: CheckTrigger, progress?: (p: GucProgress) => void): Promise<CheckOutcome | null> {
+    const started = Date.now(), v = await this.subject(subjectId);
+    if (!v.course) throw new GucError("unavailable", "not linked", "Link a CMS course first.");
+    if (trigger === "schedule" && !active(v.settings.check, started)) return null;
+    const credentials = await this.credentials();
+    if (!credentials) throw new GucError("auth", "not connected");
+    const client = new GucClient(credentials, this.http, this.sleep), out: { result?: SyncResult } = {};
+    let stats: SaveStats = { requests: 0, bytes: 0, saved: 0, skipped: 0, deduped: 0, ms: 0 }, drive: MirrorResult | undefined, error: string | undefined;
+    try {
+      if (trigger !== "rules") await this.syncCourse(v.course.key, progress, client, out);
+      stats = await saveFiles({ db: this.db, owner: this.owner, subjectId, courseKey: v.course.key, rules: v.settings.save, client: () => client, store: this.store });
+      if (v.settings.drive.enabled && (stats.saved || trigger !== "schedule" || (await this.subject(subjectId)).drive.waiting)) drive = await this.copyToDrive(subjectId, v);
+    } catch (e) { error = asGucError(e).kind; throw e; }
+    finally {
+      await this.db.query("insert into guc_checks (owner_id, subject_id, trigger, page_changed, requests, bytes, saved, skipped, deduped, uploaded, ms, error) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        [this.owner, subjectId, trigger, !!out.result?.changed, client.requests, stats.bytes, stats.saved, stats.skipped, stats.deduped, drive?.uploaded || 0, Date.now() - started, error ?? drive?.error ?? null]);
+      await this.db.query("delete from guc_checks where owner_id = $1 and subject_id = $2 and id not in (select id from guc_checks where owner_id = $1 and subject_id = $2 order by id desc limit 200)", [this.owner, subjectId]);
+    }
+    this.host.log("info", `[guc] check ${trigger}: ${client.requests} requests, ${stats.bytes} bytes, ${stats.saved} saved, ${stats.deduped} deduped, ${Date.now() - started} ms`);
+    if (stats.saved || out.result?.events) this.host.changed?.();
+    return { ...stats, requests: client.requests, ms: Date.now() - started, trigger, pageChanged: !!out.result?.changed, uploaded: drive?.uploaded || 0, drive };
+  }
+  /** Copies the subject's saved files Drive doesn't have yet (docs: Drive copy). */
+  async copyToDrive(subjectId: string, view?: SubjectView) {
+    const v = view || await this.subject(subjectId), d = v.settings.drive;
+    return mirror({ db: this.db, owner: this.owner, subjectId, drive: this.host.drive, course: v.course ? `${v.course.code} ${v.course.name}`.trim() : "Subject", folderId: d.folderId || undefined, folderName: d.folderName });
+  }
+  /** Files saved and news found for linked subjects that the window hasn't shown yet (its Files and Setup chats). */
+  inbox(): Promise<InboxItem[]> { return subjects.inbox(this.db, this.owner); }
+  ackInbox(keys: string[]) { return subjects.ackInbox(this.db, this.owner, keys); }
   async forgetSubject(subjectId: string) { await subjects.forget(this.db, this.owner, subjectId); await this.reschedule(subjectId); }
   newCourses() { return subjects.newCourses(this.db, this.owner); }
   ackNewCourses(keys: string[]) { return subjects.ackNewCourses(this.db, this.owner, keys); }
-  /** One pg-boss schedule per check time of a linked subject ("guc.check", key "<subject>/HHMM"); none once unlinked or off. */
+  /** Reconciles a subject's pg-boss schedules ("guc.check", key "<subject>/<line>") with its check rules: only lines
+   *  that changed are added or removed; none once unlinked or off. */
   private async reschedule(subjectId: string) {
-    if (!this.jobs) return;
+    if (!this.jobs) return { added: 0, removed: 0 };
     const v = await this.subject(subjectId);
-    for (const s of await this.jobs.schedules("guc.check")) if (s.key?.startsWith(subjectId + "/")) await this.jobs.unschedule("guc.check", s.key);
-    if (v.course) for (const { time, cron } of cronLines(v.settings.check)) await this.jobs.schedule("guc.check", cron, { subjectId }, subjectId + "/" + time.replace(":", ""));
+    const want = new Map((v.course ? cronLines(v.settings.check) : []).map((l) => [subjectId + "/" + l.key, l.cron]));
+    const have = (await this.jobs.schedules("guc.check")).filter((s) => s.key?.startsWith(subjectId + "/"));
+    let added = 0, removed = 0;
+    for (const s of have) if (want.get(s.key) !== s.cron) { await this.jobs.unschedule("guc.check", s.key); removed++; }
+    for (const [key, cron] of want) if (!have.some((s) => s.key === key && s.cron === cron)) { await this.jobs.schedule("guc.check", cron, { subjectId }, key); added++; }
+    return { added, removed };
   }
 
   private tempDir() { return this.host.paths.temp || join(tmpdir(), "clem-guc", this.owner); }
@@ -217,7 +291,9 @@ export class Engine {
   }
 
   async close() {
-    await Promise.allSettled([this.running, this.light]);
+    for (const { timer } of this.settling.values()) clearTimeout(timer);
+    this.settling.clear();
+    await Promise.allSettled([this.running, this.light, ...this.checks.values()]);
     await this.jobs?.stop().catch(() => {});
     await this.dropTemp();
     await this.pg.close();

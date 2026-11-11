@@ -98,9 +98,9 @@ test("a linked subject's checks are pg-boss schedules that follow its settings",
   try {
     await engine.connect("student.name", "secret");
     await engine.link("subj-1", "1201:64");
-    assert.deepEqual(await checks(), [["subj-1/1200", "0 12 * * 0", "Africa/Cairo"]]);
+    assert.deepEqual(await checks(), [["subj-1/m0h12.21d0", "0 12,21 * * 0", "Africa/Cairo"]], "after the Sunday lecture and that evening");
     await engine.setSettings("subj-1", { check: { mode: "custom", times: [{ day: 0, time: "18:00" }, { day: 2, time: "18:00" }, { day: 3, time: "09:30" }], tz: "Africa/Cairo" } });
-    assert.deepEqual(await checks(), [["subj-1/0930", "30 9 * * 3", "Africa/Cairo"], ["subj-1/1800", "0 18 * * 0,2", "Africa/Cairo"]]);
+    assert.deepEqual(await checks(), [["subj-1/m0h18d02", "0 18 * * 0,2", "Africa/Cairo"], ["subj-1/m30h9d3", "30 9 * * 3", "Africa/Cairo"]]);
     await engine.unlink("subj-1");
     assert.deepEqual(await checks(), []);
   } finally { await engine.close(); }

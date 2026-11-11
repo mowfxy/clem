@@ -16,6 +16,7 @@ export function fakeGuc(pages: Record<string, string>, o: { password?: string; d
     log.push({ url: r.url, method: r.method, domain: c.domain, conditional: !!r.headers?.["If-None-Match"], binary: r.binary });
     if (c.password !== (o.password ?? "secret") || (o.domain !== undefined && c.domain !== o.domain)) return { status: 401, headers: {}, body: "<h1>401 - Unauthorized: Access is denied due to invalid credentials.</h1>" };
     const file = o.files?.[r.url];
+    if (r.method === "HEAD") return file ? { status: 200, headers: { "content-length": String(file.length) }, body: "" } : { status: 404, headers: {}, body: "" };
     if (r.binary) return file ? { status: 200, headers: { "content-type": "application/pdf" }, body: "", bytes: file } : { status: 404, headers: {}, body: "", bytes: new Uint8Array() };
     const body = pages[r.url];
     if (body === undefined) return { status: 404, headers: {}, body: "Not found" };
@@ -26,13 +27,16 @@ export function fakeGuc(pages: Record<string, string>, o: { password?: string; d
   return { http, log };
 }
 
-export function host(o: { temp?: string } = {}): EngineHost & { notices: string[]; store: Map<string, unknown> } {
+export function host(o: { temp?: string; files?: string; drive?: EngineHost["drive"] } = {}): EngineHost & { notices: string[]; store: Map<string, unknown>; changes: number } {
   const store = new Map<string, unknown>(), notices: string[] = [];
   return {
     store, notices,
     secrets: { get: async (k) => store.get(k) as any, set: async (k, v) => { store.set(k, v); }, delete: async (k) => { store.delete(k); } },
     notify: (n) => notices.push(n.body),
-    paths: { data: "", migrations, temp: o.temp },
+    paths: { data: "", migrations, temp: o.temp, files: o.files },
+    drive: o.drive,
+    changes: 0,
+    changed() { this.changes++; },
     log: () => {},
   };
 }

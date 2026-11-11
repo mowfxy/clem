@@ -50,6 +50,9 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("gucForgetSubject"), subjectId: gucId }),
   z.object({ action: z.literal("gucNewCourses") }),
   z.object({ action: z.literal("gucAckNewCourses"), keys: z.array(gucCourse).min(1).max(50) }),
+  // What checks saved and found for linked subjects that the window has not shown yet, and marking it shown.
+  z.object({ action: z.literal("gucInbox") }),
+  z.object({ action: z.literal("gucAckInbox"), keys: z.array(z.string().min(1).max(300)).min(1).max(300) }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),
