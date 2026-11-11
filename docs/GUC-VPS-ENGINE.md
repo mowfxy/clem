@@ -69,6 +69,16 @@ These are the working notes for the `feature/guc-connector` branch. Every step f
   - Requests are batched, at most 2 at a time per host, with exponential backoff on errors.
 - **Errors:** sync failures are typed (`auth`, `site_changed`, `offline`, `unavailable`). The user gets one friendly notice, deduplicated, never repeated.
 
+## Password expiry (user, 2026-11-12)
+GUC can force a password change every 30 days. When sign-in fails with an `auth` error:
+- **Retry once,** after a short delay to rule out a blip.
+- **Mark the connection `password_needed`.** Pause all GUC checks for that owner without wiping any data or settings, so nothing hammers GUC and the account can't get locked out.
+- **Tell the user once** through the notifier at urgent level, on every channel they enabled (including Telegram), deduplicated by key `guc-auth:<date of first failure>`: "GUC isn't accepting your password. If the uni asked you to change it, enter the new one here." Show it as a card in the main thread with **Update password**.
+- **Update password** opens Settings → Connectors → GUC on an inline "New password" field. It is NOT a disconnect.
+- **On save:** verify the new password, store it in the Vault, clear the flag, resume the jobs, and run a catch-up check.
+- **Hub and subject pages** show the same banner.
+- **Reminders:** at most one gentle reminder per day while the flag is still set, and none during quiet hours.
+
 ## Jobs
 - **Runner:** pg-boss, running on PGlite on the desktop and on Postgres on the VPS.
   - **Decision (step 1, proven):** pg-boss 12 runs on PGlite 0.5 through its own `fromPglite` adapter (`backend: "pglite"`, schema `pgboss`). The spike and `tests/guc-jobs.test.ts` show a failed job retried with backoff, and jobs and cron schedules (with `tz`) surviving a close and reopen. So there is no `jobs` table and no croner (check schedules use pg-boss cron too; see Check schedules). The wrapper is `desktop/engine/jobs.ts`.
