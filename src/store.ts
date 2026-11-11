@@ -40,6 +40,10 @@ export type State = {
   name: string;
   memory: string;
   quiet: boolean;
+  /** Clem's organizer (Settings → Proactivity): the model that runs the main thread and Clem's own jobs. Unset: the default model. */
+  organizer?: { model?: string; reasoning?: string };
+  /** One-time workspace migrations already applied (core/main-thread/migrate.ts). */
+  migrations?: string[];
 };
 export const emptyState: State = {
   studySets: [],

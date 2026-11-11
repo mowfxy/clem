@@ -1,0 +1,77 @@
+/* The main thread, the sidebar's subjects and projects, @mentions and Clem's cards. Loaded after glass.css and uses its
+   scale (row, text, icon) and materials, so both themes follow it. Text sits small inside its control. */
+
+/* ---------- Sidebar: Clem's own row, then subjects and projects with their chats ---------- */
+body .sidebar .nav-item .nav-mark{display:inline-grid;place-items:center;width:var(--icon);height:var(--icon);flex:none;color:var(--ink);opacity:.82}
+body .sidebar .nav-item.active .nav-mark{opacity:1}
+body .sidebar .nav-item .nav-mark svg{width:16px;height:16px}
+body .sidebar .nav-item{position:relative}
+body .sidebar .nav-item .history-new{right:12px}
+
+body .sidebar .side-tree .side-label{min-height:26px;margin:6px 0 0;display:flex;align-items:center}
+body .sidebar .side-tree .side-vrow-static:first-child .side-label{margin-top:0}
+body .sidebar .side-vrow{position:absolute;top:0;left:0;width:100%}
+body .sidebar .side-space{display:flex;align-items:center}
+body .sidebar .side-chev{flex:none;display:grid;place-items:center;width:22px;height:var(--row-s);margin:0 -6px 0 2px;padding:0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer;position:relative;z-index:1}
+body .sidebar .side-chev:hover{color:var(--ink)}
+body .sidebar .side-chev:focus-visible{outline:2px solid var(--focus,#9fb4ff);outline-offset:-2px}
+body .sidebar .side-chev .drawn-icon{width:12px;height:12px}
+body .sidebar .side-space .side-space-item{padding-left:8px}
+body .sidebar .side-space .side-space-item:hover{padding-left:8px}
+body .sidebar .history-row.side-space.chosen{background:transparent}
+body .sidebar .side-space .side-new .drawn-icon{width:14px;height:14px}
+body .sidebar .side-chat{padding-left:16px}
+body .sidebar .side-more{height:30px;padding:0 10px 0 26px;font-size:var(--text-label);color:var(--muted);border-radius:9px;display:flex;align-items:center;background:none;border:0;cursor:pointer;text-align:left}
+body .sidebar .side-more:hover{color:var(--ink);background:#ffffff12}
+html:root[data-theme=light] body .sidebar .side-more:hover{background:#ffffff80}
+body .sidebar .side-create{display:flex;gap:4px;padding:2px 0}
+body .sidebar .side-create .history-more-chats{width:auto;border-radius:9px;font-size:var(--text-label)}
+
+/* ---------- The main thread ---------- */
+.main-thread-list .mt-row{position:absolute;top:0;left:0;width:100%;display:flow-root}
+/* Rows mount and unmount as the thread scrolls, so a message never plays its entrance again; the thread opens at once. */
+.messages.main-thread-list .message{animation:none!important}
+.chat-view.main-thread .main-thread-empty{flex:1;display:grid;align-content:center;min-height:min(52vh,460px);max-width:520px;margin:0 auto;padding:0 16px}
+.chat-view.main-thread .main-thread-empty .calm-empty{padding:24px 0}
+.chat-view.main-thread .main-thread-empty .calm-empty p{font-size:var(--text);line-height:1.6;color:var(--muted);max-width:440px}
+.chat-view.main-thread .main-thread-empty .calm-empty b{color:var(--ink);font-weight:600}
+
+/* ---------- @ mentions ---------- */
+.composer .mention-chips{padding:12px 14px 0;margin:0}
+.composer .mention-chip{gap:6px;padding:0 4px 0 9px;height:28px;font-size:12.5px}
+.mention-chip .drawn-icon{flex:none;opacity:.8}
+.mention-chip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+.mention-chip>button{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:6px;background:none;color:inherit;cursor:pointer;opacity:.7}
+.mention-chip>button:hover{opacity:1;background:#ffffff14}
+.message-mentions{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+.message-mentions .mention-chip{height:26px;padding:0 9px 0 7px;font-size:12.5px}
+.slash-menu.mention-menu .slash-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slash-menu.mention-menu .slash-desc{margin-left:auto;flex:none}
+
+/* A handed-off message: what the main thread said before it, folded. */
+.messages .message.user .carried-note{max-width:80%;margin:0 0 6px;font-size:12.5px;color:var(--muted)}
+.carried-note summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none;border-radius:8px;padding:2px 6px}
+.carried-note summary::-webkit-details-marker{display:none}
+.carried-note summary:hover{color:var(--ink)}
+.carried-note p{margin:6px 0 0;padding:8px 12px;border-radius:12px;background:#ffffff0a;white-space:pre-wrap;line-height:1.5}
+html:root[data-theme=light] .carried-note p{background:#1b27400a}
+
+/* ---------- Cards (```clem-card), drawn like the other proposal cards ---------- */
+.edit-proposal.clem-card{font-family:var(--sans)}
+button.edit-proposal.clem-handoff{display:block;width:100%;max-width:440px;padding:0;text-align:left;color:inherit;cursor:pointer;transition:background .16s,border-color .16s}
+button.edit-proposal.clem-handoff:hover{background:#ffffff0d}
+html:root[data-theme=light] button.edit-proposal.clem-handoff:hover{background:#ffffffb3}
+button.edit-proposal.clem-handoff:focus-visible{outline:2px solid var(--focus,#9fb4ff);outline-offset:2px}
+.clem-handoff header>.drawn-icon:last-child{opacity:.6}
+.clem-card-list{list-style:none;margin:0;padding:0 14px 12px 40px;display:grid;gap:6px;font-size:13px}
+.clem-card-list li{display:flex;gap:10px;align-items:baseline}
+.clem-card-list time{flex:none;font-variant-numeric:tabular-nums;color:var(--muted)}
+.clem-card-list small{margin-left:auto;flex:none;color:var(--muted);font-size:12px}
+
+/* ---------- Earlier chats ---------- */
+.earlier-bar{display:flex;align-items:center;gap:12px;max-width:760px;margin:0 auto;padding:12px 14px;border-radius:18px;background:var(--float-tint);box-shadow:var(--glass-rim);-webkit-backdrop-filter:var(--float-filter);backdrop-filter:var(--float-filter);color:var(--ink)}
+.earlier-bar>.drawn-icon{flex:none;opacity:.7}
+.earlier-bar>span{flex:1;min-width:0;display:grid;gap:1px}
+.earlier-bar strong{font-size:var(--text-s);font-weight:600}
+.earlier-bar small{font-size:var(--text-label);color:var(--muted)}
+.earlier-actions{display:inline-flex;align-items:center;gap:8px}
