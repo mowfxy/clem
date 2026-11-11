@@ -250,7 +250,7 @@ export class Engine {
 
   private tempDir() { return this.host.paths.temp || join(tmpdir(), "clem-guc", this.owner); }
   /** A CMS file to view: the saved copy when there is one, else fetched now into a temp folder (once per file per session).
-   *  Save rules (a later step) decide what is kept for good; until then nothing is. */
+   *  What save rules keep is saved by checks (desktop/engine/check.ts); anything else is only ever a temp copy. */
   async file(materialId: string): Promise<HubFile & { path: string }> {
     const [m] = await this.db.query<{ title: string; url: string }>("select title, url from guc_materials where owner_id = $1 and material_id = $2", [this.owner, materialId]);
     if (!m?.url) throw new GucError("unavailable", "no such file", "This file is no longer on the CMS.");
