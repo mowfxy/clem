@@ -1,5 +1,5 @@
 // Moving around the workspace: a chat opens at its latest message and follows a streaming answer, scrolling up offers
-// "Jump to latest", Alt+↑/↓ and Ctrl+1–5 move between chats and pages, Alt+←/→ go back and forward, Ctrl+F finds
+// "Jump to latest", Alt+↑/↓ and Ctrl+1–6 move between chats and pages, Alt+←/→ go back and forward, Ctrl+F finds
 // words on the page, Ctrl+/ lists every shortcut, chats rename in place, and Files filters and sorts.
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
@@ -11,13 +11,14 @@ const long = Array.from({ length: 14 }, (_, i) => [
 ]).flat();
 const reply = "## A longer answer\n\n" + "Mitochondria make ATP for the cell. ".repeat(150);
 const browser = await chromium.launch();
-const { page, close, errors } = await openFixture(browser, { port: 5191, replies: [reply], extraChats: [{ id: "c-long", title: "A long chat", spaceId: null, updated: Date.now(), messages: long }] });
+const { page, close, errors } = await openFixture(browser, { port: 5191, replies: [reply], extraChats: [{ id: "c-long", title: "A long chat", spaceId: "bio", updated: Date.now(), messages: long }] });
 const at = () => page.evaluate(() => { const w = document.querySelector(".workspace"); return { gap: w.scrollHeight - w.clientHeight - w.scrollTop, jump: !!document.querySelector(".jump-latest") }; });
 const title = () => page.locator(".top-title").textContent();
 // A sidebar chat by its title (a "new reply" mark can join the button's name).
 const row = (name) => page.locator(".sidebar-history .history-item").filter({ has: page.locator(".history-title", { hasText: new RegExp("^" + name + "$") }) });
 try {
-  // The sidebar marks the open chat once; "New chat" is not highlighted as well.
+  // The sidebar marks the open chat once; Home is not highlighted as well.
+  await page.getByRole("button", { name: "Show chats in Biology 101" }).click();
   await row("A long chat").click();
   await page.waitForTimeout(500);
   assert.equal(await page.locator(".nav-item.active").count(), 0, "no page is marked while a chat is open");
@@ -61,10 +62,10 @@ try {
   await page.waitForTimeout(300);
   assert.equal(await title(), "A long chat");
 
-  // Ctrl+1–5 open the sidebar's pages; Alt+← and Alt+→ retrace the way.
-  await page.keyboard.press("Control+5");
+  // Ctrl+1–6 open the sidebar's pages; Alt+← and Alt+→ retrace the way.
+  await page.keyboard.press("Control+6");
   await page.locator(".files-page").waitFor();
-  await page.keyboard.press("Control+3");
+  await page.keyboard.press("Control+4");
   await page.waitForFunction(() => location.hash === "#/app/projects");
   await page.keyboard.press("Alt+ArrowLeft");
   await page.waitForFunction(() => location.hash === "#/app/files");
@@ -79,7 +80,7 @@ try {
   assert.equal(await title(), "A long chat", "Forward goes the other way");
 
   // Files: kinds to filter by and an order to sort in.
-  await page.keyboard.press("Control+5");
+  await page.keyboard.press("Control+6");
   await page.locator(".files-kinds").waitFor();
   await page.locator(".files-kinds").getByRole("button", { name: /^PDFs/ }).click();
   assert.equal(await page.locator(".file-list .file-row").count(), 2);
