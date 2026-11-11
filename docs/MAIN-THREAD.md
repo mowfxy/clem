@@ -25,28 +25,37 @@ Decided by the user on 2026-11-11. It works alongside docs/GUC-VPS-ENGINE.md.
 ## Proactivity: maximum, and across everything (user, 2026-11-12)
 The organizer **acts first and asks only when it truly has to**. Proactivity covers ALL of Clem, not only CMS: subjects, projects, plans, deadlines, exams, flashcards and quizzes (spaced repetition), files, memory, automations and GUC.
 
+**Organizing and pinging, not usage-heavy AI work** (user, 2026-11-12). Rules decide almost everything; the organizer model is a last resort, short and batched. Nothing is read, summarized or generated on its own.
+
 **What it does on its own:**
-- **Plans the day:** when the morning brief fires (and on first open each day) it builds today's plan. It reads the timetable, deadlines, exam dates, open plan tasks, due flashcards and free slots, then **writes the time blocks into the plan** instead of only suggesting them.
-- **Turns new information into work:** examples:
-  - A new deadline adds a plan task with a sensible start date.
-  - A new lecture gets a 3-line summary, and its flashcards are generated and queued in the subject.
-  - A moved lab is checked against the calendar; if it clashes, Clem says so.
-- **Keeps plans honest:** overdue tasks are rescheduled into the next free slot, an exam date pulls a revision plan back from it, and a slipping project gets a nudge with the next concrete step.
-- **Closes loops:** it follows up on things the user said they'd do, on unread announcements that matter, and on grades (it celebrates, or offers a review of weak concepts using `weakConcepts`).
-- **Manages the workspace:** it files loose uploads into the right subject, saves durable facts to memory, and suggests or creates automations when the user repeats a request.
-- **Covers projects too:** daily or weekly status of each project's coordinator threads, blockers, and the next step.
+- **Plans the day:** the morning brief (and the first open each day after its time) writes today's time blocks into the plan: due and overdue work, due flashcards, the nearest exam, in free hours around classes.
+- **Turns new information into work:**
+  - A new deadline adds a "Start:" task two days before and marks the deadline on the timeline.
+  - A new lecture gets a card with one-tap **Summarize** and **Make flashcards** (they open a subject chat with the request typed). Nothing is made until the person taps.
+  - A cancelled class frees its slot for the next open task; a moved class or room change is said, and checked for clashes.
+- **Keeps plans honest:** overdue tasks move to the next day with room, an exam date pulls revision sessions back from it, and a quiet project gets a nudge with its next step.
+- **Closes loops:** follow-ups on what the person said they'd do, grade pings (a cheer, or a review of shaky cards from `weakConcepts`), and watches.
+- **Manages the workspace:** it files loose uploads whose name names one subject, saves durable facts to memory (model, only from new main-thread words), and offers a routine for a request repeated on 3 days.
+
+**Watches** ("tell me when the Circuits midterm room is posted", "ping me if lab 3 moves", "watch for grades in Math"): asked in any chat, kept by the organizer as the person's words plus a matcher (subject, kinds of change, keywords, an end date, 60 days by default), shown as a card with Stop. Every change is matched by rules; a partial keyword match goes to the model in the sweep's one call. A watch fires once unless the person asked for every time.
+
+**Attention (no spam):** every change gets a level by rules first:
+- **urgent** (pushed at once): a cancelled or moved class or a room change today or tomorrow, a deadline within 48 hours, an announcement that cancels or moves something today;
+- **notify** (in the sweep's card, and one push for the batch): other class changes, deadlines, grades, announcements with action words (cancel, postpone, moved, deadline, submit, quiz, exam, mandatory, attendance, compensation, room…);
+- **digest** (one "Also new" line): routine new material and routine announcements;
+- **silent**: trivial notes, and anything muted.
+
+Only announcements the rules can't place go to the model, batched with everything else in one short call per sweep, asking for a level and a reason. "Don't tell me about this kind of thing" (Mute on a card line) mutes that kind in that subject. Pushes have a daily cap by level (quiet 2, balanced 5, proactive 12); what is over it waits in the card.
 
 **Guardrails:**
-- **Reversible actions** happen on their own and appear as a card with **Undo**: adding or rescheduling plan tasks, generating flashcards, filing files, saving memory.
-- **One confirm tap first:** anything destructive, outward-facing (sending messages, Telegram to others) or costly.
-- **Proactivity level** (quiet / balanced / proactive; **default proactive**), quiet hours, per-event toggles and channels shape *when and where* Clem speaks. Quiet means fewer messages, not less organizing: plan upkeep still happens silently.
-- **No repeats:** every proactive action is deduplicated by a stable key, so it never repeats on any channel. Everything is logged so the user can see "what Clem did today".
+- **Reversible actions** happen on their own and appear as a card with **Undo**: plan tasks, time blocks, moves, revision plans, filing, memory.
+- **One confirm tap first:** anything destructive, outward-facing or costly; today that is making a routine.
+- **Proactivity level** (quiet / balanced / proactive; **default proactive**), quiet hours, per-event toggles and channels shape *when and where* Clem speaks. Quiet means fewer messages, not less organizing.
+- **No repeats:** every action, line and push has a stable key and is never repeated on any channel. Everything is logged as "What Clem did today".
 
 **How it runs:**
-- **Jobs:** the engine scheduler runs the organizer's sweeps; it never relies on the UI being open, and on a VPS it runs always-on. The sweeps are:
-  - event-driven: right after a sync or check, on a plan change, on new files;
-  - timed: morning brief, midday check, evening prep, weekly review, deadline reminders (default 48h and 3h before).
-- **Each sweep** gets a compact Now card plus a diff since its last sweep (not history), decides on actions through tools, applies them, and posts one concise card. If nothing changed, no model call is made.
+- **Jobs:** the engine's pg-boss runs the sweeps without the window: timed (morning, midday, evening, weekly; Cairo time, editable) and event sweeps a minute after a sync, a check or a workspace change, at most every 10 minutes. A 10-minute tick sends deadline reminders (48 h and 3 h before) and pushes held by quiet hours.
+- **Each sweep** gets the snapshot, GUC's changes and the timetable diff since the last sweep. Nothing changed: no model call, no card. The brief, reminders and lines are templates; the model is asked only when something changed **and** needs judgement (an announcement to rate, a half-matching watch, an unplaceable file, new words from the person), with the Now card plus the diff, for short JSON.
 
 ## Data
 - The main thread is a `Chat` with `kind: 'main'`. There is exactly one per owner. It is pinned and can't be deleted.
@@ -91,3 +100,10 @@ The thread UI is virtualized. It loads the newest page first, and older pages lo
 - A digest is an assistant message with `compact: true` and a `digest` range. The messages it covers stay in the thread and in recall. Folding runs from `src/main-thread/useFolding.ts` after 20 seconds with nothing answering.
 - Cards: `core/guc/cards.ts` (zod) and `src/main-thread/ClemCard.tsx`. A hand-off opens the subject's latest chat (or a new one) and answers there; the main thread keeps the question and the card.
 - UI: `src/main-thread/` (the virtualized thread, the sidebar's subjects and projects, Earlier chats) and `src/settings/ProactivitySettings.tsx`. The organizer is `State.organizer`; the main thread's model picker sets it too.
+- **Proactivity** (`core/proactivity/`, pure and tested in `tests/proactivity.test.ts`): `settings.ts` (level, quiet hours, events and channels, jobs; `delivery` decides what is said where), `snapshot.ts` (the compact workspace snapshot and its diff), `actions.ts` (the actions, their keys, appliers and Undo), `rules.ts`, `attention.ts` (levels, mutes, the push cap, timetable changes), `watches.ts`, `sweep.ts` (one sweep decided; the byte-stable `ORGANIZER_GUIDE`; the card).
+- **The engine runs it** (`desktop/engine/organizer.ts`, migration `004`): `organizer_settings`, `organizer_actions` (every action, line and reminder by key, with its status and Undo record), `organizer_sweeps` (last day per job; `_state`: the last snapshot, the last timetable and the events cursor), `organizer_runs`, `organizer_posts` (cards waiting for the window), `notify_queue` (quiet hours), `organizer_watches`, `organizer_mutes`. The engine now opens for every signed-in owner, GUC or not.
+- **Where workspace data comes from:** the workspace lives in the window and in `state.json`. The engine reads that saved file through `EngineHost.workspace()` and keeps only a compact snapshot (spaces, plans, due and weak cards, loose files, project rooms, recent words, routines, the organizer model). It never writes the workspace: decisions are `organizer_actions` rows with status `apply`, and the window applies them with the pure appliers when it pulls `proInbox` (on every engine "changed", and on start), then acknowledges with each Undo record (`proAck`). Posts become main-thread messages whose id is the post id. With the window closed to the tray the renderer still runs, so actions apply at once; a VPS host will be handed the snapshot by the desktop, and applies wait for the window. The window pokes a sweep (`proPoke`) when plans, loose files, study sets or exam dates change.
+- **The model path:** `EngineHost.complete` is the desktop's `answerWith` with the organizer's instructions as the system prompt and no tools (one turn, short JSON), on `State.organizer` or the default model. Left out (tests, a host without models), sweeps run on rules alone.
+- **Notifications:** pushes are Electron notifications through the host, once per key on each channel (`notifications_sent`, channels `app`, `push`); a click sends `clem:open` with a `#/app/…` route or a chat and message, and the window opens it and scrolls the main thread to the card. Telegram shows in Settings, disabled ("Connect Telegram first"), until the next step.
+- **AI tool:** `clem.watch` / `clem.unwatch` on the kinetra tool (`WATCH_GUIDE`, in the main thread's note and the GUC playbook); the reply carries the `watch` card.
+- **Cards:** `organizer` (a sweep's lines, keyed for Undo, Do it / Not now and Mute, live from `proStatus`), `lecture` (Summarize, Make flashcards), `watch` (Stop), and `reminder` for deadlines. `scripts/verify/proactivity.mjs` checks them, the digest line, Settings → Proactivity and "What Clem did today" in dark and light.

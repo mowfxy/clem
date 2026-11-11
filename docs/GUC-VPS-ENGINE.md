@@ -78,7 +78,7 @@ These are the working notes for the `feature/guc-connector` branch. Every step f
 - **Job names:**
   - `guc.check:<owner>:<subjectId>`: one per subject, from its schedule rules.
   - `guc.sync:<owner>`
-  - `brief.morning`, `reminders.deadline`, `brief.evening`, `summary.weekly`
+  - `organizer.sweep` (keys `morning`, `midday`, `evening`, `weekly`, Cairo time; event sweeps are sent with a singleton key) and `organizer.tick` every 10 minutes (deadline reminders, quiet-hours pushes). See docs/MAIN-THREAD.md "Proactivity".
 - **Timezone:** Africa/Cairo by default.
 
 ## Chat cards
