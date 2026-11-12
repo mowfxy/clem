@@ -13,7 +13,8 @@ export type ChangeKind = "new_grade" | "new_announcement" | "new_material" | "fi
  *  or tomorrow. */
 export type Change = { key: string; kind: ChangeKind; title: string; detail: string; subjectId?: string; code?: string; materialId?: string; soon?: boolean; day?: string; start?: string };
 export type Mute = { kind: ChangeKind; subjectId?: string; words?: string[] };
-export type Rated = { level: Importance; why: string; ambiguous?: true };
+/** `say`: the organizer's own line for it, in Clem's voice (when the model judged it). */
+export type Rated = { level: Importance; why: string; ambiguous?: true; say?: string };
 
 /** Words that make an announcement worth a message. */
 export const ACTION_WORDS = /\b(cancel(?:l?ed|lation)?|postpone[ds]?|moved?|reschedul\w*|deadline|due|submit|submission|quiz(?:zes)?|exams?|midterms?|finals?|mandatory|attendance|compensation|make-?up|room|venue|hall|location)\b/i;
@@ -55,12 +56,16 @@ export function capPushes<T extends { level: Importance }>(level: Level, sentTod
 
 /** One batch, ready for the organizer: the ambiguous announcements to rate, numbered. Empty when there are none. */
 export const rateLines = (items: Change[]) => items.map((c, i) => `${i}. ${c.title}: ${c.detail.replace(/\s+/g, " ").slice(0, 280)}`).join("\n");
-/** The model's levels for a batch ("levels":[{"i":0,"level":"notify","why":"…"}]); anything malformed keeps the rules' level. */
+/** The model's levels for a batch ("levels":[{"i":0,"level":"notify","why":"…","say":"…"}]); anything malformed keeps
+ *  the rules' level. */
 export function readLevels(json: unknown, n: number): Map<number, Rated> {
   const out = new Map<number, Rated>();
   for (const x of Array.isArray((json as { levels?: unknown })?.levels) ? (json as { levels: any[] }).levels : []) {
     const i = Number(x?.i), level = x?.level;
-    if (Number.isInteger(i) && i >= 0 && i < n && ["urgent", "notify", "digest", "silent"].includes(level)) out.set(i, { level, why: String(x.why || "").slice(0, 160) || "The organizer's call." });
+    if (Number.isInteger(i) && i >= 0 && i < n && ["urgent", "notify", "digest", "silent"].includes(level)) {
+      const say = typeof x.say === "string" ? x.say.replace(/\s+/g, " ").trim().slice(0, 280) : "";
+      out.set(i, { level, why: String(x.why || "").slice(0, 160) || "The organizer's call.", ...(say.length >= 3 ? { say } : {}) });
+    }
   }
   return out;
 }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { cardsIn } from "../core/guc/cards.ts";
 import { AUTH_RETRY_MS, authKey, PASSWORD_ROUTE, PASSWORD_SAID, passwordChannels, passwordDue, reminderKey } from "../core/guc/password.ts";
-import { cairoAt, DEFAULT_PRO, mergePro } from "../core/proactivity/settings.ts";
+import { cairoAt, DEFAULT_PRO } from "../core/proactivity/settings.ts";
 import { cardMessage } from "../core/telegram/render.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { fakeGuc, host, noWait, site } from "./guc-fake.ts";
@@ -21,10 +21,8 @@ test("password: the notice on the day it failed, then one reminder a day, never 
   assert.ok(AUTH_RETRY_MS >= 1000 && AUTH_RETRY_MS <= 30_000, "a short wait");
 });
 
-test("password: every channel turned on for anything; Telegram's card opens Settings on the field", () => {
-  assert.deepEqual(passwordChannels(DEFAULT_PRO), ["push"]);
-  assert.deepEqual(passwordChannels(mergePro(DEFAULT_PRO, { events: { grade: { channels: ["app", "telegram"] } } })).sort(), ["push", "telegram"]);
-  assert.deepEqual(passwordChannels(mergePro(DEFAULT_PRO, { events: { grade: { on: false, channels: ["telegram"] } } })), ["push"], "an event turned off doesn't count");
+test("password: everywhere they can be reached (Telegram only once paired); Telegram's card opens Settings on the field", () => {
+  assert.deepEqual(passwordChannels(DEFAULT_PRO), ["push", "telegram"]);
   const tg = cardMessage({ type: "guc_password" })!;
   assert.match(tg.html, /enter the new one/);
   assert.deepEqual(tg.buttons, [[{ text: "Update password", tap: { t: "open", route: "#" + PASSWORD_ROUTE } }]]);

@@ -16,14 +16,16 @@ export const handoffCard = z.object({ type: z.literal('handoff'), spaceId: text(
 /** The morning or evening brief. */
 export const briefCard = z.object({ type: z.literal('brief'), title: text(120), when: z.enum(['morning', 'evening']).optional(), items: z.array(z.object({ text: text(300), time: text(20).optional(), space: text(120).optional() })).max(20) });
 /** A deadline or task coming up. */
-export const reminderCard = z.object({ type: z.literal('reminder'), title: text(200), due: day.optional(), space: text(120).optional(), spaceId: text(80).optional(), note: text(400).optional() });
+/** A deadline coming up, or a reminder the person set (`id`: it can be cancelled; `at`: when it rings, `repeat`;
+ *  `rang`: this is it ringing, not being set). */
+export const reminderCard = z.object({ type: z.literal('reminder'), title: text(200), due: day.optional(), space: text(120).optional(), spaceId: text(80).optional(), note: text(400).optional(), id: z.string().regex(/^r[\w-]{1,40}$/).optional(), at: day.optional(), repeat: z.enum(['daily', 'weekly']).optional(), rang: z.boolean().optional() });
 /** A compact digest line of events from subjects and projects. */
 export const digestCard = z.object({ type: z.literal('digest'), title: text(120).optional(), lines: z.array(z.object({ text: text(300), space: text(120).optional(), spaceId: text(80).optional() })).min(1).max(30) });
 
 /** One organizer sweep (docs/MAIN-THREAD.md "Proactivity"): the brief's lines, and what Clem did or offers, each
  *  action line keyed so its Undo or one-tap confirm reads its live state from the engine's organizer_actions. */
 export const organizerCard = z.object({
-  type: z.literal('organizer'), title: text(120), when: z.enum(['morning', 'midday', 'evening', 'weekly', 'event', 'reminder']).optional(),
+  type: z.literal('organizer'), title: text(120), when: z.enum(['morning', 'midday', 'evening', 'weekly', 'event', 'reminder', 'study']).optional(),
   lines: z.array(z.object({ text: text(300), key: text(200).optional(), space: text(120).optional(), time: text(20).optional(), href: z.string().regex(/^#\/app\/[\w\/%.:-]{0,200}$/).optional() })).min(1).max(30),
 });
 /** New lectures in a subject: one tap to summarize one or make flashcards from it (nothing is generated on its own). */

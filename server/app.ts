@@ -522,7 +522,9 @@ app.get("/api/drive/connect", async (req, res) => {
   const pick = req.query.pick === "files" || req.query.pick === "folder" ? req.query.pick : undefined;
   const request = String(req.query.request || "");
   if (pick && !/^[\w-]{16,64}$/.test(request)) throw Error("Invalid Drive pick request.");
-  const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1", ...(pick ? { pick, request } : {}) });
+  // Google Calendar (read-only) connects through the same client and callback as Drive, stored as its own credential.
+  const calendar = req.query.for === "calendar";
+  const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1", ...(calendar ? { for: "calendar" } : pick ? { pick, request } : {}) });
   res.cookie("clem_oauth", nonce, {
     httpOnly: true,
     secure: !!process.env.VERCEL,
@@ -538,7 +540,7 @@ app.get("/api/drive/connect", async (req, res) => {
     // Browse Drive to choose files and link folders, read what people open or ask about, and add to the folders they link:
     // dropped files, Clem's own files and approved edits. drive.file only sees picked items, never a folder's contents,
     // and cannot add to folders Clem did not create, so linking someone's own folder needs the full Drive scope.
-    scope: "https://www.googleapis.com/auth/drive",
+    scope: calendar ? CALENDAR_SCOPE : "https://www.googleapis.com/auth/drive",
     access_type: "offline",
     prompt: "consent",
     state,
@@ -552,6 +554,7 @@ app.get("/api/drive/callback", async (req, res) => {
   if (state.sub !== u.id || state.nonce !== cookies(req).clem_oauth)
     throw new Error("OAuth state expired or did not match.");
   res.clearCookie("clem_oauth", { path: "/" });
+  if (state.for === "calendar") return void await calendarCallback(req, res, u.id, !!state.desktop);
   const pick = state.pick === "files" || state.pick === "folder" ? { request: String(state.request), at: Date.now() } : undefined;
   if (req.query.error) {
     // Closing the picker or declining still answers the waiting app, so it stops waiting.
@@ -581,6 +584,40 @@ app.get("/api/drive/callback", async (req, res) => {
   await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,${metadata}::jsonb) ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce,metadata=excluded.metadata`;
   driveDone(res, !!state.desktop, "Drive is connected.", "Return to Clem to choose your files.");
 });
+// ---------- Google Calendar (read-only; docs/MAIN-THREAD.md "Calendar, reminders and study time") ----------
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+async function calendarCallback(req: express.Request, res: express.Response, userId: string, desktop: boolean) {
+  if (req.query.error) return driveDone(res, desktop, "Google Calendar wasn't connected.", "Return to Clem.");
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ code: String(req.query.code), client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!, redirect_uri: process.env.APP_URL + "/api/drive/callback", grant_type: "authorization_code" }),
+  });
+  if (!response.ok) throw new Error("Google authorization failed. Connect Google Calendar again.");
+  const token = await response.json();
+  if (!token.refresh_token) throw new Error("Google did not provide offline access. Connect again and allow access.");
+  if (!String(token.scope || "").split(/\s+/).includes(CALENDAR_SCOPE)) throw new Error("Clem needs to see your calendar. Connect again and tick the calendar box.");
+  const enc = encrypt(token.refresh_token, userId);
+  await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${userId},'calendar',${enc.ciphertext},${enc.nonce},1,'{}'::jsonb) ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce,metadata=excluded.metadata`;
+  driveDone(res, desktop, "Google Calendar is connected.", "Return to Clem. It reads your calendar and never changes it.");
+}
+// A short-lived access token for the person's own calendar, so the desktop app reads it straight from Google.
+app.get("/api/calendar/token", async (req, res) => {
+  const u = await requireDriveUser(req, res);
+  if (!u) return;
+  const t = await googleToken(u.id, "calendar", "Google Calendar");
+  res.json({ accessToken: t.access_token, expiresIn: 3300, scope: t.scope || "" });
+});
+app.delete("/api/calendar/connection", async (req, res) => {
+  const user = await requireDriveUser(req, res); if (!user) return;
+  const saved = await credential(user.id, "calendar");
+  if (saved) {
+    const result = await fetch("https://oauth2.googleapis.com/revoke", {method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({token:saved.key}), signal:AbortSignal.timeout(15000)});
+    if (!result.ok && result.status !== 400) throw Error("Google could not revoke access. Try again.");
+  }
+  await db()`DELETE FROM clem_credentials WHERE owner_id=${user.id} AND provider='calendar'`;
+  res.json({ok:true});
+});
 function driveDone(res: express.Response, desktop: boolean, title: string, line: string) {
   if (!desktop) return res.redirect(process.env.APP_URL + "/#/app/connectors");
   res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'");
@@ -597,9 +634,11 @@ app.get("/api/drive/picked", async (req, res) => {
   await db()`UPDATE clem_credentials SET metadata='{}'::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
   res.json({done: true, ids: Array.isArray(pick.ids) ? pick.ids : []});
 });
-async function driveToken(userId: string) {
-  const c = await credential(userId, "drive");
-  if (!c) throw new Error("Connect Google Drive first.");
+async function driveToken(userId: string) { return googleToken(userId, "drive", "Google Drive"); }
+/** An access token from a stored Google connection (Drive or Calendar). */
+async function googleToken(userId: string, provider: "drive" | "calendar", name: string) {
+  const c = await credential(userId, provider);
+  if (!c) throw new Error(`Connect ${name} first.`);
   // Only a refused grant (revoked, or expired by Google) needs a reconnect. A dropped connection or a busy Google is
   // tried once more, then reported as brief, so the app keeps Drive connected instead of asking to reconnect.
   for (let attempt = 0; ; attempt++) {
@@ -616,8 +655,8 @@ async function driveToken(userId: string) {
     }).catch(() => null);
     if (r?.ok) return (await r.json()) as { access_token: string; scope?: string };
     const reason = r ? String(((await r.json().catch(() => ({}))) as { error?: string }).error || "") : "";
-    if (reason === "invalid_grant") throw new Error("Drive access expired. Reconnect.");
-    if (attempt >= 1) throw new Error("Google Drive is unavailable right now. Try again in a moment.");
+    if (reason === "invalid_grant") throw new Error(`${provider === "drive" ? "Drive" : "Calendar"} access expired. Reconnect.`);
+    if (attempt >= 1) throw new Error(`${name} is unavailable right now. Try again in a moment.`);
     await new Promise((go) => setTimeout(go, 700));
   }
 }

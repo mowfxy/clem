@@ -1,7 +1,7 @@
 // Clem's organizer against the real App and a real in-memory engine, in dark and light: the morning brief's card in
 // the main thread with blocks the window applied and Undo, the event sweep's card (a cancelled class pushed, the rest
-// as one digest line, a new lecture with Summarize and Make flashcards), Settings → Proactivity and "What Clem did
-// today" with Undo. The engine runs on a fixed Cairo morning; nothing calls a model (the rules decide).
+// and a new lecture as one digest line, no lecture card), Settings → Proactivity (nothing set by hand; Clem asks in chat) and
+// "What Clem did today" with Undo. The engine runs on a fixed Cairo morning; nothing calls a model (the rules decide).
 // Usage: node scripts/verify/proactivity.mjs [out-dir]   (screenshots are pro-*.png)
 import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
@@ -84,22 +84,19 @@ try {
       check(/lab is cancelled/i.test(await changes.textContent()), `${theme}: the cancelled lab is said`);
       check(await changes.locator("li", { hasText: "Also new" }).count() === 1, `${theme}: routine news is one digest line`);
       check(await changes.getByRole("button", { name: /Don’t tell me about this kind of thing/ }).count() >= 1, `${theme}: a change can be muted`);
-      const lecture = page.locator(".pro-card", { hasText: "New lecture" }).last();
-      check(await lecture.getByRole("button", { name: /^Summarize / }).count() === 1 && await lecture.getByRole("button", { name: /^Make flashcards from / }).count() === 1, `${theme}: a new lecture offers Summarize and Make flashcards, nothing made yet`);
+      check(await page.locator(".pro-card", { hasText: "New lecture" }).count() === 0 && await page.getByRole("button", { name: /^Make flashcards from / }).count() === 0, `${theme}: a new lecture gets no card of its own (only when asked)`);
       await changes.scrollIntoViewIfNeeded();
       await shot("digest", ".chat-view.main-thread");
-      await lecture.getByRole("button", { name: /^Make flashcards from / }).click();
-      check(await until(async () => /Make flashcards from the CMS file/.test(await page.locator(".composer textarea").inputValue())), `${theme}: Make flashcards opens a Circuits chat with the request typed`);
 
       // Settings → Proactivity.
       await page.keyboard.press("Control+,");
       await page.locator(".st-dialog").waitFor();
       await page.locator(".st-nav button", { hasText: "Proactivity" }).click();
-      await page.getByRole("radiogroup", { name: "How much Clem speaks" }).waitFor({ timeout: 4000 });
-      check(await page.getByRole("radio", { name: "Proactive" }).getAttribute("aria-checked") === "true", `${theme}: proactive by default`);
-      check(await page.getByRole("checkbox", { name: "Telegram" }).first().isDisabled() && await page.getByRole("checkbox", { name: "Telegram" }).first().getAttribute("title") === "Telegram isn’t available yet", `${theme}: Telegram shows, disabled while the bot isn’t set up`);
-      await page.getByRole("radio", { name: "Balanced" }).click();
-      check(await until(async () => (await o.settings()).level === "balanced"), `${theme}: the level is saved in the engine`);
+      await page.locator(".st-card-wrap", { hasText: "What Clem did today" }).waitFor({ timeout: 4000 });
+      for (const gone of ["What Clem tells you about", "How Clem keeps you posted", "Clem’s routines", "When you study"]) check(await page.locator(".st-card-title").filter({ hasText: new RegExp("^" + gone + "$") }).count() === 0, `${theme}: no "${gone}" settings (Clem asks in chat)`);
+      check(await page.getByRole("radiogroup").count() === 0 && await page.locator(".st-dialog input[type=time]").count() === 0, `${theme}: nothing left to set by hand`);
+      const prefs = await o.tool({ action: "clem.prefs", level: "balanced" });
+      check(prefs.ok && (await o.settings()).level === "balanced", `${theme}: how much Clem speaks is changed by telling it`);
       await page.waitForTimeout(600);
       await page.locator(".st-dialog").screenshot({ path: `${out}/pro-settings-${theme}.png` });
       const did = page.locator(".st-card-wrap", { hasText: "What Clem did today" });

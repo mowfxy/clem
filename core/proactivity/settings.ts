@@ -1,63 +1,69 @@
-// Settings → Proactivity (docs/MAIN-THREAD.md "Proactivity"): how much Clem speaks, quiet hours, which events reach
-// which channel, and the timed jobs. Kept in the engine (organizer_settings) so a VPS host reads the same thing.
+// Settings → Proactivity (docs/MAIN-THREAD.md "Proactivity"): how much Clem speaks, quiet hours and the timed jobs.
+// What is worth telling is Clem's judgement, not a switch per kind of news (user, 2026-11-12). Kept in the engine (organizer_settings) so a VPS host reads the same thing.
 // Times are Cairo wall-clock times.
 import { z } from "zod";
 import { cairo } from "../guc/hub.ts";
 
 export const LEVELS = ["quiet", "balanced", "proactive"] as const;
 export type Level = (typeof LEVELS)[number];
-/** What Clem can tell you about. `lecture`…`schedule` come from GUC; the rest from your plans, study sets and projects. */
-export const EVENT_KINDS = ["lecture", "announcement", "grade", "deadline", "schedule", "plan", "study", "project", "followup"] as const;
-export type EventKind = (typeof EVENT_KINDS)[number];
 export const CHANNELS = ["app", "push", "telegram"] as const;
 export type Channel = (typeof CHANNELS)[number];
 export const JOB_KINDS = ["morning", "midday", "evening", "weekly"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 const hm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
-const event = z.object({ on: z.boolean(), channels: z.array(z.enum(CHANNELS)).max(3) });
 const job = z.object({ on: z.boolean(), time: hm, day: z.number().int().min(0).max(6).optional() });
+/** When the person likes to study (docs/MAIN-THREAD.md "Calendar, reminders and study time"): the days (0 = Sunday)
+ *  and hours study sessions may go in, and the gap kept around anything else. How long a session is and any reminder
+ *  for it are the person's to say in chat. (Older saves also carried minutes, perDay and remind; they are dropped.) */
+export const studyPrefs = z.object({
+  days: z.array(z.number().int().min(0).max(6)).max(7),
+  from: hm, to: hm,
+  gap: z.number().int().min(0).max(120),
+});
+export type StudyPrefs = z.infer<typeof studyPrefs>;
 export const proSettings = z.object({
   level: z.enum(LEVELS),
   quiet: z.object({ on: z.boolean(), from: hm, to: hm }),
-  events: z.object(Object.fromEntries(EVENT_KINDS.map((k) => [k, event])) as Record<EventKind, typeof event>),
   jobs: z.object(Object.fromEntries(JOB_KINDS.map((k) => [k, job])) as Record<JobKind, typeof job>),
   /** Hours before a deadline that it is reminded (default 48 and 3). */
   deadlineHours: z.array(z.number().int().min(1).max(168)).min(1).max(4),
+  study: studyPrefs,
 });
 export type ProSettings = z.infer<typeof proSettings>;
 /** A change from Settings: any part, merged into what is saved. */
 export const proPatch = z.object({
   level: z.enum(LEVELS).optional(),
   quiet: proSettings.shape.quiet.partial().optional(),
-  events: z.partialRecord(z.enum(EVENT_KINDS), event.partial()).optional(),
   jobs: z.partialRecord(z.enum(JOB_KINDS), job.partial()).optional(),
   deadlineHours: proSettings.shape.deadlineHours.optional(),
+  study: studyPrefs.partial().optional(),
 });
 export type ProPatch = z.infer<typeof proPatch>;
 
-const both: Channel[] = ["app", "push"];
 export const DEFAULT_PRO: ProSettings = {
   level: "proactive",
   quiet: { on: true, from: "23:00", to: "07:30" },
-  events: { lecture: { on: true, channels: both }, announcement: { on: true, channels: both }, grade: { on: true, channels: both }, deadline: { on: true, channels: both }, schedule: { on: true, channels: both }, plan: { on: true, channels: ["app"] }, study: { on: true, channels: ["app"] }, project: { on: true, channels: ["app"] }, followup: { on: true, channels: both } },
   // Friday is the GUC weekend: the weekly review comes then.
   jobs: { morning: { on: true, time: "07:30" }, midday: { on: true, time: "13:30" }, evening: { on: true, time: "21:00" }, weekly: { on: true, time: "18:00", day: 5 } },
   deadlineHours: [48, 3],
+  // Saturday to Thursday (Friday is the GUC weekend), late afternoon and evening, 10 minutes kept around other things.
+  study: { days: [6, 0, 1, 2, 3, 4], from: "16:00", to: "22:00", gap: 10 },
 };
 
-/** Saved settings read leniently: anything missing or broken is the default. */
+/** Saved settings read leniently: anything missing or broken is the default. Older saves also carried a switch and
+ *  channels per kind of news (`events`); they are dropped. */
 export function readPro(saved: unknown): ProSettings {
   const s = (saved && typeof saved === "object" ? saved : {}) as Partial<ProSettings>;
-  const merged = mergePro(DEFAULT_PRO, { level: s.level, quiet: s.quiet, events: s.events, jobs: s.jobs, deadlineHours: s.deadlineHours } as ProPatch);
+  const merged = mergePro(DEFAULT_PRO, { level: s.level, quiet: s.quiet, jobs: s.jobs, deadlineHours: s.deadlineHours, study: s.study } as ProPatch);
   const ok = proSettings.safeParse(merged);
   return ok.success ? ok.data : structuredClone(DEFAULT_PRO);
 }
 export function mergePro(cur: ProSettings, patch: ProPatch): ProSettings {
-  const events = { ...cur.events }, jobs = { ...cur.jobs };
-  for (const [k, v] of Object.entries(patch.events || {})) if (v && k in events) events[k as EventKind] = { ...events[k as EventKind], ...v };
+  const jobs = { ...cur.jobs };
   for (const [k, v] of Object.entries(patch.jobs || {})) if (v && k in jobs) jobs[k as JobKind] = { ...jobs[k as JobKind], ...v };
-  return { level: patch.level || cur.level, quiet: { ...cur.quiet, ...(patch.quiet || {}) }, events, jobs, deadlineHours: patch.deadlineHours ? [...new Set(patch.deadlineHours)].sort((a, b) => b - a) : cur.deadlineHours };
+  return { level: patch.level || cur.level, quiet: { ...cur.quiet, ...(patch.quiet || {}) }, jobs, deadlineHours: patch.deadlineHours ? [...new Set(patch.deadlineHours)].sort((a, b) => b - a) : cur.deadlineHours,
+    study: { ...cur.study, ...(patch.study || {}), ...(patch.study?.days ? { days: [...new Set(patch.study.days)].sort((a, b) => a - b) } : {}) } };
 }
 
 /** A timed job's pg-boss cron line (Cairo time): daily, or weekly on its day. */
@@ -85,15 +91,15 @@ export function cairoAt(ymd: string, hm = "00:00") {
   return t;
 }
 
-/** What is said and where, by level. `urgent`: a 3-hour deadline reminder, a clash, something waiting on a tap. Quiet
- *  speaks only for urgent things; balanced adds the timed briefs and GUC news; proactive says everything turned on. */
+/** Where the person can be reached away from the window: the desktop and, once paired, Telegram. */
+export const OUTWARD = ["push", "telegram"] as const satisfies readonly Channel[];
+/** What is said and where, by level. `urgent`: a 3-hour deadline reminder, a clash, something waiting on a tap.
+ *  `news`: something Clem judged worth telling (a change that matters to them, a deadline). Quiet speaks only for urgent
+ *  things; balanced adds the timed briefs and news; proactive says everything worth saying. */
 export type Say = { post: boolean; channels: Channel[] };
-export function delivery(s: ProSettings, what: { event?: EventKind; job?: JobKind; urgent?: boolean }): Say {
-  const ev = what.event ? s.events[what.event] : undefined;
-  if (ev && !ev.on) return { post: false, channels: [] };
-  const speak = s.level === "proactive" || !!what.urgent || (s.level === "balanced" && (!!what.job && what.job !== "midday" || ["lecture", "announcement", "grade", "deadline", "schedule", "followup"].includes(what.event || "")));
+export function delivery(s: ProSettings, what: { news?: boolean; job?: JobKind; urgent?: boolean }): Say {
+  const speak = s.level === "proactive" || !!what.urgent || (s.level === "balanced" && (!!what.job && what.job !== "midday" || !!what.news));
   if (!speak) return { post: false, channels: [] };
-  // The app is where every post lands; push and Telegram only for events (a job's card is not worth a buzz).
-  const channels = (ev?.channels || ["app"]).filter((c) => c !== "app" && (s.level !== "quiet" || what.urgent));
-  return { post: true, channels: ["app", ...channels] };
+  // The app is where every post lands; the desktop and Telegram only for news (a job's card is not worth a buzz).
+  return { post: true, channels: ["app", ...(what.news || what.urgent) && (s.level !== "quiet" || what.urgent) ? OUTWARD : []] };
 }

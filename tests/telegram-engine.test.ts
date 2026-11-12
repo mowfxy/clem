@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cardBlock } from "../core/guc/cards.ts";
-import { cairoAt, mergePro, DEFAULT_PRO } from "../core/proactivity/settings.ts";
+import { cairoAt, readPro } from "../core/proactivity/settings.ts";
 import { cardMessage, esc, markdownHtml, replyMessages } from "../core/telegram/render.ts";
 import { TG_FILE_LIMIT } from "../core/telegram/pairing.ts";
 import { Engine } from "../desktop/engine/index.ts";
@@ -136,8 +136,7 @@ test("notifier: Telegram is a real channel, once per key, within quiet hours, on
     assert.equal(await o.flush(), 1);
     assert.equal(sent(tg).length, before + 1);
     assert.equal(await o.flush(), 0);
-    // A sweep's urgent change goes to Telegram when the event's channels include it.
-    await o.setSettings({ events: { announcement: { channels: ["app", "telegram"] } } });
+    // Paired, an urgent change goes to Telegram too.
     await o.sweep("event");
     clock.t = cairoAt("2026-11-16", "09:00");
     await engine.db.query("insert into guc_events (owner_id, event_key, kind, course_key, title, detail) values ('owner-1', 'ann:t1', 'new_announcement', null, 'New announcement in ELCT 201', 'Today''s lab is cancelled.')");
@@ -150,17 +149,15 @@ test("notifier: Telegram is a real channel, once per key, within quiet hours, on
   } finally { await engine.close(); }
 });
 
-test("pair card: posted once on first run, once when a Telegram channel is turned on, whenever asked; never when paired", async () => {
+test("pair card: posted once on first run, whenever asked; never when paired", async () => {
   const { engine, pairNow } = await setup();
   try {
     const o = engine.organizer;
     assert.ok(await o.offerTelegram("first"));
     assert.equal(await o.offerTelegram("first"), undefined, "once");
-    await o.setSettings({ events: { grade: { channels: ["app", "telegram"] } } });
-    await o.setSettings({ events: { deadline: { channels: ["app", "telegram"] } } });
     assert.ok(await o.offerTelegram("asked"));
     const posts = (await o.inbox()).posts.filter((p) => p.content.includes('"telegram_pair"'));
-    assert.equal(posts.length, 3, "first run, the channel (once), and asked");
+    assert.equal(posts.length, 2, "first run, and asked");
     await pairNow();
     assert.equal(await o.offerTelegram("first"), null);
     assert.equal(await o.offerTelegram("channel"), null);
@@ -207,6 +204,6 @@ test("AI tools: telegram.pair answers with the pair card; telegram.sendFile need
   } finally { await engine.close(); }
 });
 
-test("settings: a Telegram channel saves like any other", () => {
-  assert.deepEqual(mergePro(DEFAULT_PRO, { events: { grade: { channels: ["app", "push", "telegram"] } } }).events.grade.channels, ["app", "push", "telegram"]);
+test("settings: older saves with a channel list per kind of news still load", () => {
+  assert.equal("events" in readPro({ events: { grade: { channels: ["app", "push", "telegram"] } } }), false);
 });

@@ -116,7 +116,9 @@ export class Engine {
     if (await this.credentials() && !(await this.paused())) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
     await this.organizer.start(this.jobs);
     this.telegram.start();
-    // First run without Telegram paired: the pair card, once, in the main thread.
+    // First run: Clem asks how it should run (once), then, without Telegram paired, the pair card (once).
+    const setup = setTimeout(() => void this.organizer.offerSetup().catch(() => {}), 15_000);
+    setup.unref?.();
     const offer = setTimeout(() => void this.organizer.offerTelegram("first").catch(() => {}), 30_000);
     offer.unref?.();
   }
