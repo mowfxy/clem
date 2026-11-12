@@ -5,5 +5,5 @@
 /* GUC's own mark on a transparent background (user, 2026-11-12): red, yellow and a black arm (src/assets/guc-mark.png).
    In the dark theme the arm is drawn in the app's light ink instead (guc-mark-dark.png), so it never needs a chip
    behind it. Every selector names .brand-logo so the theme passes (scripts/glass-theme.mjs, light-theme.mjs) leave it be. */
-.brand-logo.brand-guc{display:inline-block;flex:none;box-sizing:border-box;padding:4%;background:none;object-fit:contain;vertical-align:middle;user-select:none}
+.brand-logo.brand-guc{display:inline-block;flex:none;box-sizing:border-box;padding:0;background:none;object-fit:contain;vertical-align:middle;user-select:none}
 html[data-theme=dark] .brand-logo.brand-guc{content:url(./assets/guc-mark-dark.png)}
