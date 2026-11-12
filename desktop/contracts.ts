@@ -3,6 +3,8 @@ import { z } from "zod";
 import { settingsPatch } from "../core/guc/settings.ts";
 import { proPatch } from "../core/proactivity/settings.ts";
 import { vpsHostOk, vpsUserOk } from "../core/vps/types.ts";
+/** A Telegram message, or a tap that needs the agent or the workspace, for the main thread to answer. */
+export type TelegramTurn = { id: string; text: string } | { id: string; tap: import("../core/telegram/render.ts").Tap };
 
 export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
 export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };
@@ -352,7 +354,7 @@ export type DesktopBridge = {
   onOpen?: (listener: (event: { review?: string; route?: string; chat?: string; message?: string }) => void) => () => void;
   /** A Telegram message (or a tap that needs the agent or the workspace) for the main thread to answer; the window
    *  replies with { action: "tgAnswered", id, text }. */
-  onTelegram?: (listener: (event: import("./engine/host").TelegramTurn) => void) => () => void;
+  onTelegram?: (listener: (event: TelegramTurn) => void) => () => void;
   startDrag?: (path: string) => void;
   /** Runs a chat code block on this computer (desktop/code-runner.ts): start it, send it a line of input (null ends input), or stop it. */
   runCode?: (request: { op: "start"; id: string; lang: string; code: string } | { op: "input"; id: string; text: string | null } | { op: "stop"; id: string }) => Promise<unknown>;
