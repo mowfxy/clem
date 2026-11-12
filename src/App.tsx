@@ -73,7 +73,7 @@ import {HomePicker} from './main-thread/HomePicker';
 import {SidebarSpaces} from './main-thread/SidebarSpaces';
 import {EarlierChats,MoveToSpace} from './main-thread/EarlierChats';
 import {useFolding} from './main-thread/useFolding';
-import {ProactivitySettings} from './settings/ProactivitySettings';
+// Settings screens and connector dialogs load when they open (docs/PERFORMANCE-GUC-VPS.md).
 import {TelegramSettings} from './telegram/TelegramPair';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
@@ -81,8 +81,8 @@ import {DriveLogo} from './BrandLogos';
 import {FilePanel,canEditInPanel,remoteFile,type FileFocus,type FilePanelHandle,type FilePointer,type PointerBox} from './files/FilePanel';
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
-import {GucManage,GucRow} from './guc/GucSettings';
-import {VpsManage,VpsRow} from './vps/VpsSettings';
+import {GucRow} from './guc/GucRow';
+import {VpsRow} from './vps/VpsRow';
 import {PASSWORD_ROUTE} from '../core/guc/password';
 import {createSetup,cardActions} from './guc/setup';
 import {editSubject} from './guc/subject';
@@ -213,6 +213,9 @@ const FlashcardImport = lazy(() => import("./local/FlashcardImport").then(m => (
 const SpacePage = lazy(() => import("./space/SpacePage").then(m => ({ default: m.SpacePage })));
 const loadHub = () => import("./guc/GucHub");
 const GucHub = lazy(() => loadHub().then(m => ({ default: m.GucHub })));
+const ProactivitySettings = lazy(() => import("./settings/ProactivitySettings").then(m => ({ default: m.ProactivitySettings })));
+const GucManage = lazy(() => import("./guc/GucSettings").then(m => ({ default: m.GucManage })));
+const VpsManage = lazy(() => import("./vps/VpsSettings").then(m => ({ default: m.VpsManage })));
 const ProjectPage = lazy(() => import("./space/ProjectPage").then(m => ({ default: m.ProjectPage })));
 const Visual = lazy(() => import("./Visual"));
 const SavedVisuals = lazy(() => import("./visuals/SavedVisuals").then(m => ({ default: m.SavedVisuals })));
@@ -2449,6 +2452,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     setSettingsOpen(true);
     setSidebar(false);
   };
+  // Settings' lazy screens load while it opens, so a tab or a connector's dialog draws at once when picked.
+  useEffect(() => { if (settingsOpen) { void import("./settings/ProactivitySettings"); void import("./guc/GucSettings"); void import("./vps/VpsSettings"); } }, [settingsOpen]);
   // Settings is a window over the workspace, not a page. Links to the old settings, account and connectors
   // pages open it over the page you were on.
   const lastRoute=useRef("/app");
@@ -3205,7 +3210,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                         {desktop?<LocalAutomations items={state.automations} onChange={update=>patch(s=>({...s,automations:update(s.automations)}))}/>:<p className="muted">Available in the desktop app.</p>}
                       </SettingsCard>
                     ) : settingsTab === "Proactivity" ? (
-                      <ProactivitySettings models={models} organizer={state.organizer} fallback={defaultModel} onChange={(organizer) => patch((s) => ({ ...s, organizer }))} onConnect={() => openSettings("Models")} onUndo={desktop ? (key) => pro.undo(key) : undefined} />
+                      <Suspense fallback={null}><ProactivitySettings models={models} organizer={state.organizer} fallback={defaultModel} onChange={(organizer) => patch((s) => ({ ...s, organizer }))} onConnect={() => openSettings("Models")} onUndo={desktop ? (key) => pro.undo(key) : undefined} /></Suspense>
                     ) : settingsTab === "Usage" ? (
                       <UsageSettings archive={state.usageArchive} chats={savedChats} spaces={state.spaces} files={state.files} studySets={state.studySets} visuals={state.visuals} automations={state.automations} models={models}/>
                     ) : settingsTab === "Help & support" ? (
@@ -3778,9 +3783,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
               setTimeout(() => composer.current?.focus(), 80);
             }} />
           ) : modal === "vps" ? (
-            <VpsManage files={state.files} />
+            <Suspense fallback={<div className="gd-picker gd-connect" aria-busy="true"><div className="gd-skeleton" /><div className="gd-skeleton" /></div>}><VpsManage files={state.files} /></Suspense>
           ) : modal === "guc" ? (
-            <GucManage actions={gucActions} subjects={state.spaces.filter((x) => x.kind === "subject")} />
+            <Suspense fallback={<div className="gd-picker gd-connect" aria-busy="true"><div className="gd-skeleton" /><div className="gd-skeleton" /></div>}><GucManage actions={gucActions} subjects={state.spaces.filter((x) => x.kind === "subject")} /></Suspense>
           ) : modal === "attach-existing" ? (
             <SavedFilePicker files={state.files} spaceId={spaceId} attached={attachments} onPick={(f) => { setAttachments((a) => (a.includes(f.id) ? a : [...a, f.id])); setModal(null); }} />
           ) : null}

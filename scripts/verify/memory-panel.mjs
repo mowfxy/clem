@@ -1,4 +1,5 @@
 // Memory in a subject: its own memories, what a project shares with it, deleting, editing and moving a memory.
+import { idleEngine } from "./fixture-engine.mjs";
 import { mockLocalStorage } from "./fixture-local-storage.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
@@ -8,6 +9,7 @@ await server.listen();
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+  await page.addInitScript(idleEngine);
   await page.addInitScript(() => {
     const at = "2026-10-20T10:00:00.000Z";
     const record = (id, scope, text, confirmed, extra = {}) => ({ id, scope, key: "note:" + id, text, kind: confirmed ? "fact" : "inference", confirmed, updatedAt: at, sharedWith: [], source: { locator: confirmed ? "Added by you in memory settings" : "Learned from your message in a chat" }, ...extra });

@@ -1,5 +1,6 @@
 // Settings → Connectors → GUC with a mocked desktop bridge: the row under Google Drive, sign-in, first-sync progress,
 // the connected state and a wrong password. Screenshots go to artifacts/ (or CLEM_SHOTS).
+import { idleEngine } from "./fixture-engine.mjs";
 import { mockLocalStorage } from "./fixture-local-storage.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
@@ -13,6 +14,7 @@ await server.listen();
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+  await page.addInitScript(idleEngine);
   await page.addInitScript(() => {
     const guc = new Set();
     window.requests = [];
@@ -60,7 +62,7 @@ try {
   await page.locator("dialog.st-dialog[open]").waitFor();
   const rows = page.locator(".st-body .st-row h4");
   await rows.filter({ hasText: "GUC" }).waitFor();
-  assert.deepEqual(await rows.allTextContents(), ["Google Drive", "GUC"], "GUC sits under Drive");
+  assert.deepEqual(await rows.allTextContents(), ["Google Drive", "GUC", "VPS"], "GUC sits under Drive, then the VPS");
   await page.screenshot({ path: join(shots, "guc-row.png") });
   await page.locator(".st-row").filter({ hasText: "GUC" }).getByRole("button", { name: "Connect" }).click();
   await page.getByRole("heading", { name: "Connect GUC" }).waitFor();

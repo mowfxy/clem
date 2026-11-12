@@ -11,33 +11,11 @@ import { confirmDialog } from "../dialogs";
 import { SettingRow } from "../settings/SettingsParts";
 import "../drive/drive.css";
 import "./guc.css";
+import { ago, useGuc } from "./GucRow";
 
-const offline: GucStatus = { connected: false, syncing: false, courses: 0, linked: 0 };
 const message = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
-const ago = (t?: number) => {
-  if (!t) return "not synced yet";
-  const m = Math.round((Date.now() - t) / 60000);
-  return m < 1 ? "synced just now" : m < 60 ? `synced ${m} min ago` : m < 1440 ? `synced ${Math.round(m / 60)} h ago` : "synced " + new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
-};
 
-/** The GUC status the main process keeps (desktop/engine), refreshed on mount and after every change. */
-export function useGuc() {
-  const [status, setStatus] = useState<GucStatus | null>(null);
-  const refresh = async () => { if (!desktop) return setStatus(offline); try { setStatus(await desktop.invoke({ action: "gucStatus" })); } catch { setStatus(offline); } };
-  useEffect(() => { void refresh(); }, []);
-  return { status, setStatus, refresh };
-}
-
-/** Settings → Connectors → GUC, under Google Drive. */
-export function GucRow({ onManage }: { onManage: () => void }) {
-  const { status } = useGuc();
-  const description = !status ? "Courses, grades and announcements." : status.connected ? (status.passwordNeeded ? "Needs your new password" : status.error ? "Needs attention" : `Connected · ${ago(status.lastSync)}`) : "Courses, grades and announcements.";
-  return <SettingRow lead={<span className="connector-tile"><Icon name="guc" size={22} /></span>} title="GUC" description={description}>
-    <button className="secondary" onClick={onManage}>{status?.connected ? "Manage" : "Connect"}</button>
-  </SettingRow>;
-}
-
-/** Sign in, watch the first sync, then sync now or disconnect. */
+/** Sign in, watch the first sync, then sync now or disconnect (loaded when the dialog opens; the row is GucRow.tsx). */
 export function GucManage({ actions, subjects = [] }: { actions?: GucActions; subjects?: Space[] }) {
   const { status, setStatus, refresh } = useGuc();
   const [username, setUsername] = useState(""), [password, setPassword] = useState("");

@@ -36,7 +36,7 @@ export function SidebarSpaces({ spaces, chats, activeChat, activeSpace, row, onO
   useEffect(() => { if (here) setOpen((o) => (o.includes(here) ? o : [...o, here])); }, [here]);
   const rows = useMemo(() => {
     const by = new Map<string, Chat[]>();
-    for (const c of chats) if (c.spaceId) by.set(c.spaceId, [...(by.get(c.spaceId) || []), c]);
+    for (const c of chats) if (c.spaceId) { const list = by.get(c.spaceId); if (list) list.push(c); else by.set(c.spaceId, [c]); }
     const out: Row[] = [];
     for (const [kind, label] of [["subject", "Subjects"], ["project", "Projects"]] as const) {
       const list = spaces.filter((s) => s.kind === kind);

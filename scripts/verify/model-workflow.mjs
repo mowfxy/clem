@@ -1,4 +1,8 @@
+// The plan editor, per-step reasoning, the chat menu (pin, delete) and the model picker, in a project chat: the sidebar
+// lists subjects and projects only, so the chats here live in "Local research" (open in the sidebar) and a new chat
+// starts from its "New chat in" button.
 import {mockLocalStorage} from './fixture-local-storage.mjs';
+import { idleEngine } from "./fixture-engine.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -12,7 +16,9 @@ try {
       viewport: { width: 1440, height: 960 },
     }),
     requests = [];
+  await page.addInitScript(idleEngine);
   await page.addInitScript(() => {
+    try { localStorage.setItem("clem-sidebar-open", JSON.stringify(["space-test"])); } catch {}
     const listeners = new Set();
     window.requests = [];
     window.clemDesktop = {
@@ -108,7 +114,7 @@ try {
         {
           id: "chat-fixture",
           title: "Research plan",model:"gpt-6-astra",reasoning:"high",
-          spaceId: null,
+          spaceId: "space-test",
           updated: 1,
           messages: [{id:"user-message",role:"user",content:"Help me understand the experiment."},
             {
@@ -215,7 +221,8 @@ try {
       .count(),
     0,
   );
-  await page.locator(".greeting-row").waitFor();
+  const newChat = async () => { await page.getByRole("button", { name: "New chat in Local research", exact: true }).first().click(); await page.locator(".chat-composer .composer").waitFor(); };
+  await newChat();
   await page.getByRole("button", { name: "Choose model", exact: true }).click();
   await page.screenshot({ path: "artifacts/model-picker.png", fullPage: true });
   await page.getByRole('menuitemradio',{name:'Astra',exact:true}).click();
@@ -276,7 +283,7 @@ try {
   await page.getByRole('button',{name:'Thinking level',exact:true}).click();
   await page.getByRole('slider',{name:'Reasoning effort'}).focus();
   await page.keyboard.press('End');await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'New chat',exact:true}).click();
+  await newChat();
   await page.getByRole('button',{name:'Choose model',exact:true}).click();
   await page.getByRole('menuitemradio',{name:'Sol',exact:true}).click();
   await page.getByRole('button',{name:'Make a PDF about charged rods',exact:true}).click();

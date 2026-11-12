@@ -3,6 +3,7 @@
 // Replies are scripted; nothing here calls a model.
 import { createServer } from "vite";
 import { mockLocalStorage } from "./fixture-local-storage.mjs";
+import { idleEngine } from "./fixture-engine.mjs";
 export { saved } from "./fixture-local-storage.mjs";
 import { specPrinter, worksheetSpec, handoutPdf } from "./fixture-docs.mjs";
 export { worksheetSpec };
@@ -105,6 +106,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
   // `guc`: answers GUC, organizer (pro*) and Telegram (tg*) requests (an in-memory engine, scripts/verify/guc-setup.mjs, proactivity.mjs);
   // window.fireGuc sends sync progress (and makes the window pull both inboxes).
   if (guc) await page.exposeFunction("__guc", async (json) => JSON.stringify(await guc(JSON.parse(json)) ?? null));
+  await page.addInitScript(idleEngine);
   await page.addInitScript(({ FOLDER, notes, replies, harderWorksheet, handoutEdits, worksheetSpec }) => {
     const chat = new Set(), folder = new Set(), pack = new Set(), gucs = new Set();
     window.fireGuc = (p) => { for (const fn of gucs) fn(p); };
@@ -139,9 +141,8 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       invoke: async (r) => {
         window.requests.push(r);
         if (/^(guc|pro|tg|vps)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
-        if (r.action === "vpsStatus") return { connected: false, storage: { mode: "device", device: 0, vps: 0, cache: 0, cap: 2 * 1024 ** 3, pinned: 0, files: { device: 0, vps: 0 } }, worker: { enabled: false, installed: false, runner: "desktop", model: "none" }, passwordAllowed: false };
-        // Without an engine, GUC is simply not connected (an empty object read as a subject view broke subject chats).
-        if (/^guc/.test(r.action)) { if (r.action === "gucStatus" || r.action === "gucOverview") return { connected: false, syncing: false, courses: 0, linked: 0, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } }; throw Error("Connect GUC first."); }
+        // Without an engine, guc*/pro*/tg*/vps* fall through to {} and fixture-engine.mjs answers "not connected" (an
+        // empty object read as a subject view broke subject chats).
         switch (r.action) {
           case "securityInfo": return { email: "sam@example.com", verified: true, factors: [], identities: [], google: false, password: true };
           case "essentialSync": return { skills: r.skills, notes: r.notes };

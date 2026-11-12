@@ -1,5 +1,6 @@
 // Clem's update indicator (beside the name in the sidebar) and Settings → General → Updates, driven through every
 // state the main process sends (desktop/app-update.ts). Screenshots go to artifacts/update-*.png.
+import { idleEngine } from "./fixture-engine.mjs";
 import {mockLocalStorage} from './fixture-local-storage.mjs';
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
@@ -9,6 +10,7 @@ await server.listen();
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  await page.addInitScript(idleEngine);
   await page.addInitScript(() => {
     const updates = new Set();
     window.updateRequests = [];

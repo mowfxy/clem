@@ -1,5 +1,6 @@
 // A failed account check (a bad connection) after the workspace opened must not close it: closing it stopped every
 // running answer and showed "Can't reach Clem" mid-answer. Opening Clem while offline still shows that screen.
+import { idleEngine } from "./fixture-engine.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -8,6 +9,7 @@ await server.listen();
 const browser = await chromium.launch({ headless: true });
 const open = async (startOffline) => {
   const page = await browser.newPage({ viewport: { width: 1100, height: 760 } });
+  await page.addInitScript(idleEngine);
   await page.addInitScript((startOffline) => {
     const online = { active: true, reason: "free" }, offline = { active: false, reason: "offline" };
     window.fixture = { entitlement: startOffline ? offline : online, offline, online };

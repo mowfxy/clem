@@ -1,5 +1,6 @@
 // The last setup step ("Connect your AI") and the sample subject it offers, with a scripted bridge.
 //   node scripts/verify/setup-connect.mjs   → test-results/setup-connect-*.png
+import { idleEngine } from "./fixture-engine.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -13,6 +14,7 @@ async function setupPage(pc) {
   const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  await page.addInitScript(idleEngine);
   await page.addInitScript((pc) => {
     const state = { configured: true, user: { id: "fixture", email: "sam@example.test", name: "Sam" }, setup: { step: 3, username: "sam", displayName: "Sam", memory: true }, entitlement: { active: true } };
     window.requests = [];
