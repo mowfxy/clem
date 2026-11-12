@@ -149,7 +149,7 @@ try {
   });
   await page.locator(".greeting-row").waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
-  await page.getByRole("button", { name: /^Calculus\b/ }).click();
+  await page.locator(".lib-card", { hasText: "Calculus" }).first().click();
   await page.getByRole("tab", { name: /^Quizzes/ }).click();
   await page.getByRole("button", { name: "Make a quiz", exact: true }).click();
   await page
@@ -158,7 +158,7 @@ try {
   await page.locator(".composer textarea").press("Enter");
   await page.getByText("Limits practice is ready:", { exact: false }).waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
-  await page.getByRole("button", { name: /^Calculus\b/ }).click();
+  await page.locator(".lib-card", { hasText: "Calculus" }).first().click();
   await page.getByRole("tab", { name: /^Quizzes/ }).click();
   await page
     .getByRole("button", { name: /^Limits practice/ })
@@ -197,7 +197,7 @@ try {
   await page.evaluate(() => (location.hash = "/app/subjects"));
   await page.locator(".lib-card").nth(1).waitFor();
   assert.equal(
-    await page.getByRole("button", { name: /^Calculus\b/ }).count(),
+    await page.locator(".lib-card", { hasText: "Calculus" }).count(),
     2,
   );
   await page.evaluate(() => (location.hash = "/app/settings"));
@@ -265,19 +265,22 @@ try {
     if (due) break;
     await page.waitForTimeout(2500);
   }
-  await page
-    .locator(".sidebar")
-    .getByRole("button", { name: "Daily review", exact: true })
-    .waitFor({ timeout: 20000 });
-  await saved(page);
-  const taskState = await page.evaluate(async () => {
-    const store = await import("/src/store.ts");
-    return store.loadState();
-  });
+  // A routine outside any subject or project posts its result in the main thread (since #53), once.
+  let taskState;
+  for (let i = 0; i < 20; i++) {
+    await saved(page);
+    taskState = await page.evaluate(async () => {
+      const store = await import("/src/store.ts");
+      return store.loadState();
+    });
+    if (taskState.chats.some((c) => c.kind === "main" && c.messages.some((m) => m.content.startsWith("**Daily review**")))) break;
+    await page.waitForTimeout(1000);
+  }
   assert.equal(
-    taskState.chats.filter((c) => c.title === "Daily review").length,
+    taskState.chats.find((c) => c.kind === "main").messages.filter((m) => m.content.startsWith("**Daily review**")).length,
     1,
   );
+  assert.equal(taskState.chats.filter((c) => c.title === "Daily review").length, 0, "no separate chat");
   assert.ok(taskState.automations[0].nextRun > Date.now());
   console.log(
     "PASS subject generation, quiz attempts, ZIP transfer, memory chat, local automation setup",

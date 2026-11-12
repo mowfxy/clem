@@ -56,7 +56,7 @@ try {
       const message = (id, from, content, more = {}) => ({ id, from, content, at: now, ...more });
       const rooms = [{ spaceId: "space-project", threads: [{ id: "t1", agent: "Researcher", title: "Check the facts", status: "done", summary: "The launch date holds.", created: now, updated: now, messages: [message("b", "coordinator", "Check the launch facts"), message("c", "Researcher", "The date holds.")] }, { id: "t2", agent: "Writer", title: "Draft the note", status: "working", created: now, updated: now, messages: [message("d", "coordinator", "Draft the note")] }],
         messages: [message("m1", "you", "Check the launch"), message("m2", "coordinator", "On it.", { threads: ["t1", "t2"] }), message("m3", "Researcher", "The launch date holds.", { report: "t1" })] }];
-      await store.saveState({ ...store.emptyState, rooms, chats: [{ id: "c1", title: "A long chat", updated: now, messages: [{ id: "m1", role: "user", content: text }, { id: "m2", role: "assistant", content: text }] }], spaces: [{ id: "space-project", kind: "project", name: "Thesis", description: "", memory: "", sources: [] }, { id: "space-subject", kind: "subject", name: "Calculus", description: "", memory: "", sources: [] }] });
+      await store.saveState({ ...store.emptyState, rooms, chats: [{ id: "c1", title: "A long chat", spaceId: "space-subject", updated: now, messages: [{ id: "m1", role: "user", content: text }, { id: "m2", role: "assistant", content: text }] }], spaces: [{ id: "space-project", kind: "project", name: "Thesis", description: "", memory: "", sources: [] }, { id: "space-subject", kind: "subject", name: "Calculus", description: "", memory: "", sources: [] }] });
       location.hash = "/";
       const { default: React } = await import("/node_modules/.vite/deps/react.js");
       const { default: ReactDOM } = await import("/node_modules/.vite/deps/react-dom_client.js");
@@ -66,7 +66,9 @@ try {
     await page.locator(".greeting-row").waitFor();
     await page.locator(".sw").first().waitFor();
     await page.waitForTimeout(900);
-    await page.locator(".history-item").first().click();
+    // The chat is in Calculus (standalone chats are Earlier chats since #53), folded in the sidebar until opened.
+    await page.getByRole("button", { name: "Show chats in Calculus" }).click();
+    await page.locator(".history-title", { hasText: "A long chat" }).first().click();
     await page.locator(".message").first().waitFor();
     await page.waitForTimeout(700);
     if (shots) await page.screenshot({ path: `${shots}/${scheme}-chat.png` });

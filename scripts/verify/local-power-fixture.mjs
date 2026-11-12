@@ -216,5 +216,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
     window.__root.render(React.createElement(App, {}));
   }, { workspace: { ...workspace, ...extraState, spaces: [...workspace.spaces, ...extraSpaces], chats: [...workspace.chats, ...extraChats] }, worksheet: Array.from(worksheet), handout: Array.from(handout), worksheetSpec });
   await page.locator(".greeting-row").waitFor();
+  // Subjects' chats are folded in the sidebar since the main thread: open them, as a person would to reach a chat.
+  for (const show of await page.getByRole("button", { name: /^Show chats in / }).all()) await show.click();
   return { page, context, errors, t0, close: async () => { await context.close(); await server.close(); } };
 }

@@ -76,7 +76,8 @@ try {
   });
   await page.locator(".greeting-row").waitFor();
   await page.evaluate(() => (location.hash = "/app/subjects"));
-  await page.getByRole("button", { name: /^Calculus\b/ }).click();
+  // The Subjects page's card (the sidebar has a Calculus row too since the main thread).
+  await page.locator(".lib-card", { hasText: "Calculus" }).first().click();
   await page.getByRole("tab", { name: /^Memory/ }).click();
   const panel = page.locator(".sp-memory .memory-panel");
   await panel.getByText("4 topics here, plus 2 about you that apply everywhere").waitFor();
