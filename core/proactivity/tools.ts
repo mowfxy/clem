@@ -1,9 +1,9 @@
-// The organizer's calendar, reminder and study tools for the AI (kinetra actions "clem.*", guide in calendar.ts
+// The organizer's schedule, reminder and study tools for the AI (kinetra actions "clem.*", guide in calendar.ts
 // CALENDAR_GUIDE): argument checks and the compact text each answer is written as. Pure; the engine's organizer runs
 // them (desktop/engine/organizer.ts) and desktop/main.ts dispatches them.
 import { z } from "zod";
 import { cairo } from "../guc/hub.ts";
-import { busyList, calendarClashes, clashText, dayLabel, type Busy, type CalEvent } from "./calendar.ts";
+import { busyList, clashText, dayLabel, type Busy } from "./calendar.ts";
 import type { Slot, Timed } from "./rules.ts";
 import { proPatch, type ProSettings, type StudyPrefs } from "./settings.ts";
 
@@ -50,7 +50,7 @@ export function findSpace(arg: string | undefined, spaces: { id: string; name: s
 
 const WD = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const hhmm = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
-const tag = (b: Busy) => (b.source === "class" ? "class" : b.source === "calendar" ? "calendar" : b.space ? `plan · ${b.space}` : "plan");
+const tag = (b: Busy) => (b.source === "class" ? "class" : b.space ? `plan · ${b.space}` : "plan");
 const JOB_NAMES = { morning: "morning plan", midday: "midday check", evening: "evening prep", weekly: "weekly review" } as const;
 const LEVEL_NAMES = { quiet: "only what can't wait", balanced: "what matters, with briefs", proactive: "anything that will help" } as const;
 /** How Clem runs for this person, in one short paragraph (clem.prefs' answer and the first-setup question). */
@@ -62,29 +62,25 @@ export const settingsText = (s: ProSettings) => [
 ].join(" ");
 export const prefsText = (p: StudyPrefs) => `Study preferences: ${p.days.length === 7 ? "every day" : p.days.map((d) => WD[d].slice(0, 3)).join(", ")}, ${p.from}–${p.to}, ${p.gap} min clear around other things.`;
 
-/** The agenda for some days: everything timed, all-day calendar items, every clash, and the study preferences. */
-export function agendaText(o: { days: string[]; slots: Slot[]; calendar: CalEvent[] | null; timed: Timed[]; prefs: StudyPrefs; now: number }) {
-  const busy = busyList({ slots: o.slots, calendar: o.calendar || [], timed: o.timed });
+/** The agenda for some days: classes and timed plan items, every clash between them, and the study preferences. */
+export function agendaText(o: { days: string[]; slots: Slot[]; timed: Timed[]; prefs: StudyPrefs; now: number }) {
+  const busy = busyList({ slots: o.slots, timed: o.timed });
   const out: string[] = [];
   for (const day of o.days) {
     const items = busy.filter((b) => b.day === day).sort((a, b) => a.start - b.start);
-    const allDay = (o.calendar || []).filter((e) => e.allDay && e.start <= day && day < e.end);
     out.push(`${dayLabel(day)}${day === cairo(o.now).ymd ? " (today)" : ""}:`);
-    if (!items.length && !allDay.length) out.push("- nothing scheduled");
-    for (const e of allDay) out.push(`- all day: ${e.title} (calendar)`);
+    if (!items.length) out.push("- nothing scheduled");
     for (const b of items) out.push(`- ${hhmm(b.start)}–${hhmm(b.end)} ${b.title} (${tag(b)})`);
   }
-  const clashes = o.days.length ? calendarClashes(busy, o.days[0], o.days.length).filter((c) => o.days.includes(c.a.day)) : [];
-  // Classes against plan items too, here: this answer is the one place all of it is seen together.
+  const clashes: { a: Busy; b: Busy }[] = [];
   for (const day of o.days) {
     const list = busy.filter((b) => b.day === day).sort((a, b) => a.start - b.start);
     for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length && list[j].start < list[i].end; j++) {
       const pair = [list[i].source, list[j].source].sort().join("+");
-      if (pair === "class+plan") clashes.push({ a: list[i], b: list[j], key: "" });
+      if (pair === "class+plan") clashes.push({ a: list[i], b: list[j] });
     }
   }
   out.push(clashes.length ? "Clashes:\n" + clashes.map((c) => "- " + clashText(c)).join("\n") : "No clashes.");
-  if (o.calendar === null) out.push("Google Calendar isn't connected (Settings → Connectors), so only classes and plans are shown.");
   out.push(prefsText(o.prefs));
   return out.join("\n");
 }

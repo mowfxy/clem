@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { busyList, busyOf, calendarClashes, calendarDeadlines, calendarDiff, fromGoogle, studySlots, whenOf, type CalEvent } from "../core/proactivity/calendar.ts";
+import { busyList, studySlots, whenOf } from "../core/proactivity/calendar.ts";
 import { clashNotes, morningBlocks, type Facts } from "../core/proactivity/rules.ts";
 import { cairoAt, DEFAULT_PRO, mergePro, readPro } from "../core/proactivity/settings.ts";
 import { snapshotOf } from "../core/proactivity/snapshot.ts";
@@ -12,51 +12,11 @@ import { host as fakeHost } from "./guc-fake.ts";
 const T = (day: string, hm: string) => cairoAt(day, hm);
 // Sunday 15 November 2026, Cairo (UTC+2).
 const SUN = "2026-11-15", MON = "2026-11-16", TUE = "2026-11-17";
-const iso = (day: string, hm: string) => new Date(T(day, hm)).toISOString();
-const ev = (id: string, title: string, day: string, from: string, to: string, extra: Partial<CalEvent> = {}): CalEvent => ({ id, title, start: iso(day, from), end: iso(day, to), ...extra });
 const space = (id: string, name: string, extra = {}) => ({ id, name, kind: "subject" as const, description: "", memory: "", sources: [], ...extra });
-
-test("google events: cancelled, declined and out-of-office left out; all-day and free kept but never busy", () => {
-  assert.equal(fromGoogle({ id: "a", status: "cancelled", start: { dateTime: iso(SUN, "10:00") }, end: { dateTime: iso(SUN, "11:00") } }), null);
-  assert.equal(fromGoogle({ id: "b", summary: "Party", start: { dateTime: iso(SUN, "10:00") }, end: { dateTime: iso(SUN, "11:00") }, attendees: [{ self: true, responseStatus: "declined" }] }), null);
-  assert.equal(fromGoogle({ id: "c", eventType: "outOfOffice", start: { dateTime: iso(SUN, "10:00") }, end: { dateTime: iso(SUN, "11:00") } }), null);
-  const allDay = fromGoogle({ id: "d", summary: "Holiday", start: { date: SUN }, end: { date: MON } })!;
-  assert.deepEqual(allDay, { id: "d", title: "Holiday", start: SUN, end: MON, allDay: true });
-  const free = fromGoogle({ id: "e", start: { dateTime: iso(SUN, "10:00") }, end: { dateTime: iso(SUN, "11:00") }, transparency: "transparent" })!;
-  assert.equal(free.title, "Busy");
-  assert.deepEqual(busyOf([allDay, free]), []);
-  // An overnight event is busy on both days, in Cairo time.
-  const late = busyOf([{ id: "f", title: "Trip", start: iso(SUN, "22:00"), end: iso(MON, "02:00") }]);
-  assert.deepEqual(late.map((b) => [b.day, b.time, b.minutes]), [[SUN, "22:00", 120], [MON, "00:00", 120]]);
-});
-
-test("quizzes, exams and assignments in the calendar become deadlines, matched to their subject", () => {
-  const spaces = [{ id: "circ", name: "Circuits", code: "ELCT 201" }, { id: "math", name: "Math" }];
-  const list = calendarDeadlines([
-    ev("q", "ELCT201 Quiz 2", MON, "10:00", "10:30"),
-    { id: "a", title: "Math assignment 3 due", start: TUE, end: "2026-11-18", allDay: true },
-    ev("g", "Gym", MON, "18:00", "19:00"),
-  ], spaces, T(SUN, "09:00"));
-  assert.deepEqual(list, [
-    { id: "gcal-q", title: "ELCT201 Quiz 2", due: iso(MON, "10:00"), spaceId: "circ" },
-    { id: "gcal-a", title: "Math assignment 3 due", due: TUE, spaceId: "math" },
-  ]);
-});
-
-test("clashes: calendar against classes, plan items and itself, each pair once; classes against plans left to clashNotes", () => {
-  const busy = busyList({
-    slots: [{ day: MON, start: "10:00", end: "11:30", title: "ELCT 201 Lecture" }],
-    calendar: [ev("dentist", "Dentist", MON, "11:00", "12:00"), ev("call", "Call", MON, "11:45", "12:15"), ev("late", "Late", TUE, "20:00", "21:00")],
-    timed: [{ title: "Study: Math", day: TUE, time: "20:30", minutes: 50 }, { title: "Review", day: MON, time: "10:30" }],
-  });
-  const c = calendarClashes(busy, SUN);
-  assert.deepEqual(c.map((x) => [x.a.title, x.b.title]), [["ELCT 201 Lecture", "Dentist"], ["Review", "Dentist"], ["Dentist", "Call"], ["Late", "Study: Math"]]);
-  assert.equal(new Set(c.map((x) => x.key)).size, c.length, "one key each");
-});
 
 test("study slots: only allowed days and hours, clear of everything with the gap, spread one a day first", () => {
   const p = { ...DEFAULT_PRO.study, days: [0, 1, 2], from: "16:00", to: "20:00", gap: 10 };
-  const busy = busyList({ calendar: [ev("x", "Club", SUN, "16:00", "17:00")], slots: [{ day: MON, start: "16:00", end: "18:00", title: "Lab" }] });
+  const busy = busyList({ timed: [{ title: "Club", day: SUN, time: "16:00", minutes: 60 }], slots: [{ day: MON, start: "16:00", end: "18:00", title: "Lab" }] });
   const picks = studySlots(p, busy, { now: T(SUN, "09:00"), until: TUE, count: 4 });
   assert.equal(picks[0].minutes, 50, "50 minutes when the person doesn't say");
   assert.deepEqual(picks.map((x) => `${x.day} ${x.time}`), [`${SUN} 17:15`, `${SUN} 18:15`, `${MON} 18:15`, `${TUE} 16:00`], "one a day across the days, then a second where it fits");
@@ -94,15 +54,15 @@ test("reminder times: ISO, Cairo wall clock and words; never the past", () => {
   assert.equal(whenOf("whenever", now), null);
 });
 
-test("rules: morning blocks go around calendar events; calendar clashes are notes", () => {
+test("rules: morning blocks go around classes and timed plan items; a class against a plan item is a note", () => {
   const now = T(SUN, "07:30");
-  const snap = snapshotOf({ spaces: [space("phys", "Physics")], plans: [{ spaceId: "phys", rev: 1, tasks: [{ id: "t1", title: "Problem set", due: SUN }] }] }, now);
-  const f: Facts = { now, snap, slots: [{ day: SUN, start: "09:00", end: "10:00", title: "PHYS Lecture" }], deadlines: [], events: [], calendar: [ev("c", "Coffee", SUN, "09:30", "11:00"), ev("w", "Work", SUN, "11:00", "12:00")] };
+  const snap = snapshotOf({ spaces: [space("phys", "Physics")], plans: [{ spaceId: "phys", rev: 1, tasks: [{ id: "t1", title: "Problem set", due: SUN }, { id: "t2", title: "Coffee", due: SUN, time: "09:30" }, { id: "t3", title: "Work", due: SUN, time: "10:30" }] }] }, now);
+  const f: Facts = { now, snap, slots: [{ day: SUN, start: "09:00", end: "10:00", title: "PHYS Lecture" }], deadlines: [], events: [] };
   const [block] = morningBlocks(f);
-  assert.equal(block.type === "time_block" && block.time, "12:00", "after the class, coffee and work");
+  assert.equal(block.type === "time_block" && block.time, "11:30", "after the class, coffee and work");
   const notes = clashNotes(f);
   assert.equal(notes.length, 1);
-  assert.match((notes[0] as { text: string }).text, /PHYS Lecture clashes with “Coffee” \(calendar\)/);
+  assert.match((notes[0] as { text: string }).text, /PHYS Lecture on Sunday at 09:00 clashes with “Coffee” \(Physics\)/);
 });
 
 test("tools: arguments are checked, subjects found by code or name, and the agenda shows clashes and preferences", () => {
@@ -112,18 +72,13 @@ test("tools: arguments are checked, subjects found by code or name, and the agen
   const spaces = [{ id: "circ", name: "Circuits", code: "ELCT 201" }, { id: "math", name: "Math" }];
   assert.equal(findSpace("elct201", spaces)?.id, "circ");
   assert.equal(findSpace("@Math", spaces)?.id, "math");
-  const text = agendaText({ days: [MON], slots: [{ day: MON, start: "10:00", end: "11:30", title: "ELCT 201 Lecture" }], calendar: [ev("d", "Dentist", MON, "11:00", "12:00")], timed: [], prefs: DEFAULT_PRO.study, now: T(SUN, "12:00") });
+  const text = agendaText({ days: [MON], slots: [{ day: MON, start: "10:00", end: "11:30", title: "ELCT 201 Lecture" }], timed: [{ title: "Review", day: MON, time: "11:00", space: "Circuits" }], prefs: DEFAULT_PRO.study, now: T(SUN, "12:00") });
   assert.match(text, /10:00–11:30 ELCT 201 Lecture \(class\)/);
-  assert.match(text, /Clashes:\n- Monday 11:00: ELCT 201 Lecture clashes with “Dentist” \(calendar\)\./);
+  assert.match(text, /11:00–12:00 Review \(plan · Circuits\)/);
+  assert.match(text, /Clashes:\n- Monday 11:00: ELCT 201 Lecture clashes with “Review” \(Circuits\)\./);
   assert.match(text, /Study preferences: Sat, Sun, Mon, Tue, Wed, Thu, 16:00–22:00/);
-  assert.match(agendaText({ days: [MON], slots: [], calendar: null, timed: [], prefs: DEFAULT_PRO.study, now: T(SUN, "12:00") }), /isn't connected/);
-});
-
-test("calendar diff: a first look is the baseline; then new and moved events", () => {
-  const a = ev("a", "Study group", MON, "18:00", "19:00"), now = T(SUN, "12:00");
-  assert.deepEqual(calendarDiff(undefined, [a], now), []);
-  assert.deepEqual(calendarDiff([a], [{ ...a, start: iso(MON, "19:00"), end: iso(MON, "20:00") }, ev("b", "Quiz review", TUE, "10:00", "11:00")], now),
-    ["Moved in your calendar: Study group, now Mon, Nov 16 19:00", "New in your calendar: Quiz review (Tue, Nov 17 10:00)"]);
+  assert.match(agendaText({ days: [MON], slots: [], timed: [], prefs: DEFAULT_PRO.study, now: T(SUN, "12:00") }), /nothing scheduled\nNo clashes\./);
+  assert.doesNotMatch(text, /calendar/i, "no calendar app is mentioned");
 });
 
 test("reminder cards carry an id and when they ring", () => {
@@ -132,17 +87,18 @@ test("reminder cards carry an id and when they ring", () => {
 });
 
 // ---------- In the engine ----------
-async function engine(calendar: CalEvent[] | null, clock: { t: number }) {
+/** `club`: a timed plan item on Sunday 16:00–17:00 in Circuits, to plan around. */
+async function engine(clock: { t: number }, o: { club?: boolean } = {}) {
   const h = Object.assign(fakeHost(), { pushed: [] as { title: string; body: string }[] });
-  h.workspace = async () => ({ spaces: [space("circ", "Circuits", { description: "ELCT 201" })], plans: [], chats: [{ id: "main", kind: "main", messages: [] }], files: [], studySets: [], automations: [] });
-  h.calendar = async () => calendar;
+  const plans = o.club ? [{ spaceId: "circ", rev: 1, tasks: [{ id: "club", title: "Club", due: SUN, time: "16:00" }] }] : [];
+  h.workspace = async () => ({ spaces: [space("circ", "Circuits", { description: "ELCT 201" })], plans, chats: [{ id: "main", kind: "main", messages: [] }], files: [], studySets: [], automations: [] });
   h.notify = (n) => { h.pushed.push({ title: n.title, body: n.body }); };
   const e = await Engine.open("cal-owner", h, { memory: true, jobs: false, clock: () => clock.t });
   return { e, o: e.organizer, h };
 }
 
 test("engine: a reminder rings once at its time (through quiet hours when the person set it), then a daily one moves on", async () => {
-  const clock = { t: T(SUN, "12:00") }, { e, o, h } = await engine(null, clock);
+  const clock = { t: T(SUN, "12:00") }, { e, o, h } = await engine(clock);
   try {
     const r = await o.tool({ action: "clem.remind", text: "Submit the lab report", at: "2026-11-15T23:30", subject: "circuits" }) as { ok: boolean; card: string };
     assert.equal(r.ok, true);
@@ -167,28 +123,28 @@ test("engine: a reminder rings once at its time (through quiet hours when the pe
   } finally { await e.close(); }
 });
 
-test("engine: study sessions avoid the calendar, land in the plan with Undo, and set no reminders", async () => {
+test("engine: study sessions avoid other plans, land in the plan with Undo, and set no reminders", async () => {
   const clock = { t: T(SUN, "09:00") };
-  const { e, o } = await engine([ev("club", "Club", SUN, "16:00", "18:00")], clock);
+  const { e, o } = await engine(clock, { club: true });
   try {
     await o.setSettings({ study: { days: [0, 1], from: "16:00", to: "20:00" } });
     const r = await o.tool({ action: "clem.study", subject: "ELCT 201", sessions: 5, minutes: 90, until: TUE }) as { ok: boolean; planned: string[]; note?: string; card: string };
     assert.equal(r.ok, true);
-    assert.deepEqual(r.planned, ["Sun, Nov 15 · Study: Circuits (90 min) at 18:15", "Mon, Nov 16 · Study: Circuits (90 min) at 16:00", "Mon, Nov 16 · Study: Circuits (90 min) at 17:45"]);
+    assert.deepEqual(r.planned, ["Sun, Nov 15 · Study: Circuits (90 min) at 17:15", "Mon, Nov 16 · Study: Circuits (90 min) at 16:00", "Mon, Nov 16 · Study: Circuits (90 min) at 17:45"]);
     assert.match(String(r.note), /Only 3 of 5/);
     assert.equal((cardsIn(r.card)[0] as { type: string }).type, "organizer");
     const { apply } = await o.inbox();
-    assert.deepEqual(apply.map((a) => `${a.action.type} ${(a.action as { due?: string }).due} ${(a.action as { time?: string }).time}`).sort(), [`plan_task ${SUN} 18:15`, `plan_task ${MON} 16:00`, `plan_task ${MON} 17:45`]);
+    assert.deepEqual(apply.map((a) => `${a.action.type} ${(a.action as { due?: string }).due} ${(a.action as { time?: string }).time}`).sort(), [`plan_task ${SUN} 17:15`, `plan_task ${MON} 16:00`, `plan_task ${MON} 17:45`]);
     assert.deepEqual(await o.reminders(), [], "the person sets reminders themselves");
     const again = await o.tool({ action: "clem.study", subject: "Circuits", sessions: 2, minutes: 90, until: TUE }) as { error?: string };
     assert.match(String(again.error), /No free time/, "the same sessions aren't planned twice");
-    assert.match(String((await o.tool({ action: "clem.calendar", range: SUN }) as { text: string }).text), /16:00–18:00 Club \(calendar\)/);
+    assert.match(String((await o.tool({ action: "clem.calendar", range: SUN }) as { text: string }).text), /16:00–17:00 Club \(plan · Circuits\)/);
   } finally { await e.close(); }
 });
 
 test("engine: Clem asks once how it should run, and everything it asks about is changed in chat (clem.prefs)", async () => {
   const clock = { t: T(SUN, "09:00") };
-  const { e, o } = await engine(null, clock);
+  const { e, o } = await engine(clock);
   try {
     assert.ok(await o.offerSetup());
     assert.equal(await o.offerSetup(), undefined, "once");

@@ -24,9 +24,6 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("announcements") }),
   z.object({action:z.literal("essentialSync"),skills:syncSchemas.skills,notes:syncSchemas.notes,noBaseline:z.boolean().optional()}),
   z.object({ action: z.literal("browserLogin") }),
-  z.object({ action: z.literal("calendarStatus"), refresh: z.boolean().optional() }),
-  z.object({ action: z.literal("calendarConnect") }),
-  z.object({ action: z.literal("calendarDisconnect") }),
   // GUC (desktop/engine): the password goes straight to the Vault and is never sent back.
   z.object({ action: z.literal("gucConnect"), username: z.string().trim().regex(/^(guc\\)?[\w.@-]{2,80}$/i, "Enter your GUC username."), password: z.string().min(1).max(200) }),
   z.object({ action: z.literal("gucStatus") }),

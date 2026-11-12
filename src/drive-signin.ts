@@ -5,17 +5,17 @@ const store = { get: () => { try { return localStorage.getItem(key); } catch { r
   set: (value: string) => { try { localStorage.setItem(key, value); } catch {} },
   clear: () => { try { localStorage.removeItem(key); } catch {} } };
 /** A desktop request to choose files or a folder in Google's own picker, matched back to the app by `request`. */
-type Pick = { pick?: "files" | "folder"; request?: string; for?: "calendar" };
+type Pick = { pick?: "files" | "folder"; request?: string };
 export function rememberDriveReturn() {
   if (!location.hash.startsWith("#/drive-connect?")) return;
   const query = new URLSearchParams(location.hash.split("?")[1]);
-  const account = query.get("account"), pick = query.get("pick"), request = query.get("request"), calendar = query.get("for") === "calendar";
+  const account = query.get("account"), pick = query.get("pick"), request = query.get("request");
   if (!account || !/^[a-f0-9-]{36}$/.test(account))
     throw Error("Invalid Drive connection link.");
   if ((pick && pick !== "files" && pick !== "folder") || (request && !/^[\w-]{16,64}$/.test(request)) || !pick !== !request)
     throw Error("Invalid Drive connection link.");
   store.set(
-    JSON.stringify({ account, ...(calendar ? { for: "calendar" } : pick ? { pick, request } : {}), expires: Date.now() + 600000 }),
+    JSON.stringify({ account, ...(pick ? { pick, request } : {}), expires: Date.now() + 600000 }),
   );
 }
 export function returnToDrive() {
@@ -27,8 +27,6 @@ export function returnToDrive() {
     if (saved.expires < Date.now() || !/^[a-f0-9-]{36}$/.test(saved.account))
       return false;
     const query = new URLSearchParams({ desktop: "1", account: saved.account });
-    // The same round trip connects Google Calendar (read-only) when the desktop asked for it.
-    if (saved.for === "calendar") query.set("for", "calendar");
     if ((saved.pick === "files" || saved.pick === "folder") && saved.request && /^[\w-]{16,64}$/.test(saved.request))
       query.set("pick", saved.pick), query.set("request", saved.request);
     location.assign("/api/drive/connect?" + query);

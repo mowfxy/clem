@@ -85,7 +85,6 @@ import {FilePanel,canEditInPanel,remoteFile,type FileFocus,type FilePanelHandle,
 import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {GucRow} from './guc/GucRow';
-import {GoogleCalendarRow} from './settings/CalendarSettings';
 import {VpsRow} from './vps/VpsRow';
 import {PASSWORD_ROUTE} from '../core/guc/password';
 import {createSetup,cardActions} from './guc/setup';
@@ -3217,7 +3216,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       <ModelsSettings key={accountRevision} locked={anyRunning} liveData={accountData} models={models} onConnect={()=>setModal("connect-model")} onRefresh={refreshModels}/>
                     ) : settingsTab === "Connectors" ? (
                       <SettingsCard>
-                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Only what you choose. Read live, never copied."><button className="secondary" onClick={()=>setModal("drive-access")}>Manage</button></SettingRow>{desktop&&<GoogleCalendarRow/>}
+                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Only what you choose. Read live, never copied."><button className="secondary" onClick={()=>setModal("drive-access")}>Manage</button></SettingRow>
                         {visibleConnectors().map(c=>c.id==="guc"?<GucRow key={c.id+(modal==="guc"?"-open":"")} onManage={()=>setModal("guc")}/>:c.id==="vps"&&desktop?<VpsRow key={c.id+(modal==="vps"?"-open":"")} onManage={()=>setModal("vps")}/>:null)}
                       </SettingsCard>
                     ) : settingsTab === "Telegram" ? (

@@ -11,7 +11,6 @@ import { renderNow, type NowCard } from "../main-thread/context.ts";
 import { actionKey, describe, proAction, type ProAction } from "./actions.ts";
 import { importance, rateLines, readLevels, type Change, type Importance, type Mute } from "./attention.ts";
 import * as rules from "./rules.ts";
-import { dayEvents } from "./calendar.ts";
 import type { JobKind } from "./settings.ts";
 import { diffSnapshots, type Snapshot } from "./snapshot.ts";
 import { live, matchWatch, type Watch } from "./watches.ts";
@@ -55,7 +54,7 @@ const addDay = (ymd: string, n = 1) => new Date(Date.parse(ymd + "T00:00:00Z") +
 export function planSweep(kind: SweepKind, f: rules.Facts, o: { done: Set<string>; lastDay?: string; now?: NowCard; model?: boolean; mutes?: Mute[]; watches?: WatchRow[] }): SweepPlan {
   const c = cairo(f.now), today = c.ymd;
   const rated = f.events.map((change) => ({ change, ...importance(change, o.mutes) }));
-  const diff = [...diffSnapshots(f.prev, f.snap), ...(f.calendarDiff || []), ...rated.filter((r) => r.level !== "silent").map((r) => r.change.title)];
+  const diff = [...diffSnapshots(f.prev, f.snap), ...rated.filter((r) => r.level !== "silent").map((r) => r.change.title)];
   const newDay = kind !== "event" && o.lastDay !== today;
   const changed = diff.length > 0 || f.events.length > 0 || newDay;
   const plan: SweepPlan = { changed, diff, actions: [], rated, hits: [], maybe: [], brief: [], rate: [] };
@@ -128,14 +127,11 @@ function briefLines(kind: SweepKind, f: rules.Facts) {
   const soon = f.deadlines.filter((d) => { const t = rules.dueAt(d.due); return t > f.now && t - f.now < 48 * 3600e3; });
   if (kind === "morning") {
     for (const s of f.slots.filter((s) => s.day === c.ymd)) out.push({ time: s.start, text: s.title });
-    for (const e of dayEvents(f.calendar || [], c.ymd)) out.push(e);
     for (const d of soon) out.push({ text: `Due ${rules.leftText(rules.dueAt(d.due) - f.now)}: ${d.title}`, ...(name(d.spaceId) ? { space: name(d.spaceId) } : {}) });
   }
   if (kind === "evening") {
     const classes = f.slots.filter((s) => s.day === tomorrow);
     out.push({ text: classes.length ? `Tomorrow (${dayName(tomorrow)}): ${classes.map((s) => `${s.start} ${s.title}`).join(", ")}` : `No classes tomorrow (${dayName(tomorrow)}).` });
-    const events = dayEvents(f.calendar || [], tomorrow);
-    if (events.length) out.push({ text: `In your calendar tomorrow: ${events.map((e) => ("time" in e && e.time ? `${e.time} ` : "") + e.text).join(", ")}`.slice(0, 300) });
     for (const p of f.snap.plans) for (const t of p.tasks) if (!t.done && t.due === tomorrow) out.push({ text: `Due tomorrow: ${t.title}`, ...(name(p.spaceId) ? { space: name(p.spaceId) } : {}) });
     for (const d of soon) out.push({ text: `Due ${rules.leftText(rules.dueAt(d.due) - f.now)}: ${d.title}` });
   }
