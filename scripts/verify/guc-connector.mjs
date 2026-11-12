@@ -62,7 +62,7 @@ try {
   await page.locator("dialog.st-dialog[open]").waitFor();
   const rows = page.locator(".st-body .st-row h4");
   await rows.filter({ hasText: "GUC" }).waitFor();
-  assert.deepEqual(await rows.allTextContents(), ["Google Drive", "GUC", "VPS"], "GUC sits under Drive, then the VPS");
+  assert.deepEqual(await rows.allTextContents(), ["Google Drive", "Google Calendar", "GUC", "VPS"], "Calendar sits under Drive, then GUC and the VPS");
   await page.screenshot({ path: join(shots, "guc-row.png") });
   await page.locator(".st-row").filter({ hasText: "GUC" }).getByRole("button", { name: "Connect" }).click();
   await page.getByRole("heading", { name: "Connect GUC" }).waitFor();

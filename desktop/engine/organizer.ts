@@ -63,6 +63,7 @@ export class Organizer {
     const next = mergePro(await this.settings(), proPatch.parse(patch));
     await this.db.query("insert into organizer_settings (owner_id, settings) values ($1, $2) on conflict (owner_id) do update set settings = excluded.settings, updated_at = now()", [this.owner, next]);
     if (patch.jobs) await this.reschedule(next);
+    if (patch.googleReminders !== undefined) void this.syncGoogle();
     return next;
   }
   async start(jobs: Jobs) {
@@ -292,6 +293,7 @@ export class Organizer {
   async tick() {
     const s = await this.settings(), now = this.clock();
     await this.ring().catch((e) => this.host.log("warn", "[organizer] reminders: " + (e as Error).message));
+    await this.syncGoogle();
     const cal = await this.calendarWeek(cairo(now).ymd);
     // The calendar changed since the last look: an event sweep says what moved and any new clash.
     if (cal) { const seen = cal.map((e) => `${e.id}@${e.start}-${e.end}`).sort().join("|"); if (this.calSeen !== undefined && seen !== this.calSeen) void this.poke("calendar").catch(() => {}); this.calSeen = seen; }
@@ -397,6 +399,7 @@ export class Organizer {
     await this.db.query("insert into organizer_reminders (owner_id, id, text, at, space_id, repeat, source) values ($1, $2, $3, $4, $5, $6, $7)",
       [this.owner, id, o.text.slice(0, 300), new Date(o.at), o.spaceId ?? null, o.repeat ?? null, o.source || "person"]);
     await this.jobs?.send("organizer.remind", {}, { startAfter: Math.max(1, Math.ceil((o.at - this.clock()) / 1000)) }).catch(() => null);
+    void this.syncGoogle();
     return { id, text: o.text.slice(0, 300), at: o.at, ...(o.repeat ? { repeat: o.repeat } : {}), ...(o.spaceId ? { spaceId: o.spaceId } : {}) };
   }
   /** Upcoming reminders, soonest first. */
@@ -407,7 +410,36 @@ export class Organizer {
   }
   async cancelReminder(id: string) {
     const rows = await this.db.query("update organizer_reminders set cancelled = true where owner_id = $1 and id = $2 and not cancelled and fired_at is null returning 1", [this.owner, id]);
+    if (rows.length) void this.syncGoogle();
     return { ok: rows.length > 0 };
+  }
+  private googleSync: Promise<void> = Promise.resolve();
+  /** Keeps Clem's "Clem" calendar in Google in step with the reminders (Settings → Connectors → Google Calendar →
+   *  Add reminders to Google Calendar): upcoming reminders the person set get an event there; a cancelled one, or every
+   *  upcoming one once the option is off, loses it. Rung one-off reminders keep theirs. One sync at a time; whatever
+   *  fails (offline, Calendar not connected) is tried again on the next tick. */
+  syncGoogle(): Promise<void> {
+    const run = async () => {
+      const g = this.host.calendarEvents;
+      if (!g) return;
+      const on = (await this.settings()).googleReminders;
+      const gone = await this.db.query<{ id: string; google_event: string }>(
+        "select id, google_event from organizer_reminders where owner_id = $1 and google_event is not null and (cancelled or ($2 and fired_at is null)) limit 50", [this.owner, !on]);
+      for (const r of gone) {
+        await g.remove(r.google_event);
+        await this.db.query("update organizer_reminders set google_event = null where owner_id = $1 and id = $2", [this.owner, r.id]);
+      }
+      if (!on) return;
+      const add = await this.db.query<{ id: string; text: string; at: Date; repeat: "daily" | "weekly" | null }>(
+        "select id, text, at, repeat from organizer_reminders where owner_id = $1 and not cancelled and fired_at is null and google_event is null and source = 'person' and at > $2 order by at limit 20", [this.owner, new Date(this.clock())]);
+      for (const r of add) {
+        const event = await g.add({ text: r.text, at: ms(r.at), ...(r.repeat ? { repeat: r.repeat } : {}) });
+        if (!event) return;
+        await this.db.query("update organizer_reminders set google_event = $3 where owner_id = $1 and id = $2", [this.owner, r.id, event]);
+      }
+    };
+    this.googleSync = this.googleSync.then(run).catch((e) => this.host.log("warn", "[organizer] Google Calendar reminders: " + (e as Error).message));
+    return this.googleSync;
   }
   /** Rings every reminder whose time has come: a card in the main thread and, once per time, a notification. A
    *  repeating one moves on to its next time; the rest are done. One rung hours late (Clem was off) is posted, not pushed. */

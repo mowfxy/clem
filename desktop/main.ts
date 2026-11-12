@@ -1226,6 +1226,11 @@ void app.whenReady().then(async () => {
     workspace: () => disk.readState(owner),
     // The person's Google Calendar, while this owner is the one signed in (null when it isn't connected).
     calendar: async (from, to) => ((await auth.user(false))?.id === owner ? calendarLive.between(from, to) : null),
+    // Reminders in Clem's own "Clem" calendar in Google, when the person turned that on (desktop/calendar-live.ts).
+    calendarEvents: {
+      add: async (e) => ((await auth.user(false))?.id === owner ? calendarLive.addReminder(e) : null),
+      remove: async (id) => { if ((await auth.user(false))?.id !== owner) throw Error("Another account is signed in."); await calendarLive.removeReminder(id); },
+    },
     complete: async ({ system, user, model, reasoning }) => {
       let text = "";
       await answerWith(owner, "organizer-" + randomUUID(), model, reasoning, user, (event) => { if (event?.type === "delta") text += event.text || ""; }, { instructions: system });

@@ -539,7 +539,7 @@ app.get("/api/drive/connect", async (req, res) => {
     response_type: "code",
     // Drive: only the files and folders people choose, and the files Clem makes. Google grants a chosen folder by itself,
     // not what is already inside it, so the picker takes many items at once: a folder and everything in it.
-    scope: calendar ? CALENDAR_SCOPE : "https://www.googleapis.com/auth/drive.file",
+    scope: calendar ? `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}` : "https://www.googleapis.com/auth/drive.file",
     access_type: "offline",
     prompt: "consent",
     state,
@@ -591,6 +591,8 @@ app.get("/api/drive/callback", async (req, res) => {
 });
 // ---------- Google Calendar (read-only; docs/MAIN-THREAD.md "Calendar, reminders and study time") ----------
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+/** Only the calendars Clem makes itself: its "Clem" calendar, where reminders go when the person turns that on. */
+const CALENDAR_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
 async function calendarCallback(req: express.Request, res: express.Response, userId: string, desktop: boolean) {
   if (req.query.error) return driveDone(res, desktop, "Google Calendar wasn't connected.", "Return to Clem.");
   const response = await fetch("https://oauth2.googleapis.com/token", {
