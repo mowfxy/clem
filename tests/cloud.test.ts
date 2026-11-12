@@ -212,17 +212,28 @@ test('desktop Drive enforces identity, consent state, exports and disconnect',as
   const wrong=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie},redirect:'manual'});assert.equal(wrong.status,400);
   const callback=await rawFetch(base+'callback?code=test&state='+state,{headers:{Cookie:cookie+'; '+oauthCookie},redirect:'manual'});assert.equal(callback.status,200);assert.match(await callback.text(),/Drive is connected/);
   assert.equal((await rawFetch(base+'files',{headers})).status,200);
-  assert.equal(google.searchParams.get('scope'),'https://www.googleapis.com/auth/drive');assert.equal(google.searchParams.get('trigger_onepick'),null);
-  // A 0.3.0 preview build still asks for a pick: it gets the plain consent screen, and its wait is answered once, with nothing picked.
+  // Clem asks only for drive.file, with Google's picker in the consent screen taking many files and folders at once.
+  assert.equal(google.searchParams.get('scope'),'https://www.googleapis.com/auth/drive.file');assert.equal(google.searchParams.get('trigger_onepick'),'true');
+  assert.equal(google.searchParams.get('allow_folder_selection'),'true');assert.equal(google.searchParams.get('allow_multiple'),'true');assert.equal(google.searchParams.get('mimetypes'),null);
+  // Items taken out of Clem's access stay out, and choosing one again in the picker gives it back.
+  assert.deepEqual(await (await rawFetch(base+'hidden',{headers})).json(),{hidden:[]});
+  const hide=await rawFetch(base+'hidden',{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({hide:['fold1234567','keep1234567']})});
+  assert.deepEqual(await hide.json(),{hidden:['fold1234567','keep1234567']});
+  assert.equal((await rawFetch(base+'hidden',{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({hide:['bad id']})})).status,400);
+  // The desktop collects what was picked exactly once.
   const pickRequest='0123456789abcdef0123';
-  const picking=await rawFetch(base+'connect?desktop=1&pick=folder&request='+pickRequest+'&account='+uid,{headers:{Cookie:cookie},redirect:'manual'});
+  const picking=await rawFetch(base+'connect?desktop=1&pick=files&request='+pickRequest+'&account='+uid,{headers:{Cookie:cookie},redirect:'manual'});
   const pickUrl=new URL(picking.headers.get('location')!);
-  assert.equal(pickUrl.searchParams.get('trigger_onepick'),null);assert.equal(pickUrl.searchParams.get('scope'),'https://www.googleapis.com/auth/drive');
+  assert.equal(pickUrl.searchParams.get('trigger_onepick'),'true');assert.equal(pickUrl.searchParams.get('scope'),'https://www.googleapis.com/auth/drive.file');
   assert.equal((await (await rawFetch(base+'picked?request='+pickRequest,{headers})).json()).done,false);
-  const picked=await rawFetch(base+'callback?code=test&picked_file_ids=fold1234567,bad%20id&state='+pickUrl.searchParams.get('state'),{headers:{Cookie:cookie+'; '+picking.headers.get('set-cookie')!.split(';')[0]},redirect:'manual'});
-  assert.equal(picked.status,200);assert.match(await picked.text(),/Drive is connected/);
-  assert.deepEqual(await (await rawFetch(base+'picked?request='+pickRequest,{headers})).json(),{done:true,ids:[]});
+  const picked=await rawFetch(base+'callback?code=test&picked_file_ids=fold1234567,file1234567,bad%20id&state='+pickUrl.searchParams.get('state'),{headers:{Cookie:cookie+'; '+picking.headers.get('set-cookie')!.split(';')[0]},redirect:'manual'});
+  assert.equal(picked.status,200);assert.match(await picked.text(),/Clem can open the 2 items you chose/);
+  assert.deepEqual(await (await rawFetch(base+'picked?request='+pickRequest,{headers})).json(),{done:true,ids:['fold1234567','file1234567']});
   assert.equal((await (await rawFetch(base+'picked?request='+pickRequest,{headers})).json()).done,false);
+  assert.deepEqual(await (await rawFetch(base+'hidden',{headers})).json(),{hidden:['keep1234567']});
+  // Linking a folder can ask the picker for folders only.
+  const folderPick=new URL((await rawFetch(base+'connect?desktop=1&pick=folder&request='+pickRequest+'&account='+uid,{headers:{Cookie:cookie},redirect:'manual'})).headers.get('location')!);
+  assert.equal(folderPick.searchParams.get('mimetypes'),'application/vnd.google-apps.folder');
   const download=await rawFetch(base+'file/doc123',{headers});assert.equal(download.status,200);assert.equal(decodeURIComponent(download.headers.get('X-Clem-File-Name')!),'Research.docx');assert.match(exportUrl,/wordprocessingml/);
   // Drive decides the type, so a shared HTML file opened by URL must download, not run on this origin.
   assert.equal(download.headers.get('Content-Disposition'),'attachment');assert.match(download.headers.get('Content-Security-Policy')!,/sandbox/);

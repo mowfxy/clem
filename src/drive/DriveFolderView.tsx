@@ -6,7 +6,7 @@ import { FileGlyph } from "../files/FileGlyph";
 import { RenameField, PencilIcon } from "../files/RenameField";
 import { Menu, FolderIcon } from "../space/SpaceMenu";
 import { sizeLabel } from "../store";
-import { connectDrive, driveFolder, isGoogleFormat, moveInDrive, useDrive, type DriveItem, type DriveSyncState } from "./drive";
+import { connectDrive, driveError, pickFromDrive, driveFolder, isGoogleFormat, moveInDrive, useDrive, type DriveItem, type DriveSyncState } from "./drive";
 import type { SpaceActions } from "../space/SpacePage";
 import type { Space, StoredFile } from "../../core/types";
 import "./drive.css";
@@ -41,7 +41,8 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   copy?: { key: string; id: string } | null;
 }) {
   const { folderId, folderName } = space.drive!;
-  const { connected } = useDrive();
+  const { connected, version } = useDrive();
+  const [choosing, setChoosing] = useState(false);
   const [items, setItems] = useState<DriveItem[] | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [at, setAt] = useState("");
   const [over, setOver] = useState<string | null>(null);
@@ -65,6 +66,11 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
   useEffect(() => { request.current++; setItems(null); setAt(""); setError(""); setBusy(false); setExtras(false); }, [folderId]);
   useEffect(() => { if (!space.driveFiles?.length) setExtras(false); }, [space.driveFiles?.length]);
   useEffect(() => { if (connected !== false) void load(); const t = setInterval(() => { if (!document.hidden) void load(true, true); }, 5 * 60_000); return () => clearInterval(t); }, [folderId, connected]);
+  // Something chosen in Google's picker (or taken out of Clem's access) since this folder was read: read it again.
+  const seen = useRef(version);
+  useEffect(() => { if (seen.current === version) return; seen.current = version; if (connected !== false) void load(true); }, [version]);
+  /** Google gives Clem a folder without what is already in it, so its files are chosen in Google's picker too. */
+  const choose = () => { setChoosing(true); setError(""); void pickFromDrive().catch((e) => setError(driveError(e))).finally(() => setChoosing(false)); };
   const full = (i: DriveItem) => (i.path ? i.path + " / " : "") + i.name;
   /** Where a Drive folder sits inside the linked folder, as the rows' `path`. */
   const pathOf = (id: string) => { if (id === folderId) return ""; const f = (items || []).find((i) => i.id === id); return f ? full(f) : ""; };
@@ -166,6 +172,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
         <input ref={picker} type="file" multiple hidden onChange={(e) => { const chosen = Array.from(e.target.files || []); e.target.value = ""; save(hereId, chosen, []); }} />
         <Menu label="Google Drive folder options" items={[
           ...(busy ? [] : [{ label: "Refresh", run: () => void load(true) }]),
+          { label: "Choose files from it in Google Drive", run: choose },
           { label: "Open in Google Drive", run: () => actions.onOpenDriveWeb({ id: hereId, name: folderName, mimeType: "application/vnd.google-apps.folder" }) },
           ...more,
           { label: "Link another folder", run: actions.onLinkDrive }, { label: "Unlink folder", danger: true, run: actions.onUnlinkDrive }]} />
@@ -178,7 +185,7 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
         return <span className="gd-crumb-wrap" key={i}><span className="gd-chev"><Icon name="right" size={12} /></span><button className={"gd-crumb" + (i === parts.length - 1 ? " here" : "") + (over === id && i < parts.length - 1 ? " over" : "")} onClick={() => setAt(path)} {...(i < parts.length - 1 ? target(id) : {})}>{p}</button></span>; })}
     </nav>}
     {connected === false && <p className="gd-space-empty">Google Drive is disconnected. Connect it in Settings → Connectors to see this folder.</p>}
-    {error && <p className="gd-error">{error} {/^Reconnect Google Drive/.test(error) && <button className="gd-retry" onClick={() => void connectDrive().catch((e) => setError((e as Error).message))}>Reconnect</button>} {!busy && <button className="gd-retry" onClick={() => void load(true)}>Try again</button>}</p>}
+    {error && <p className="gd-error">{error} {/^(Reconnect Google Drive|Clem now opens only)/.test(error) && <button className="gd-retry" onClick={() => void connectDrive().catch((e) => setError((e as Error).message))}>Reconnect</button>} {/^Clem no longer has access/.test(error) && <button className="gd-retry" disabled={choosing} onClick={choose}>{choosing ? "Finish in your browser…" : "Choose it again"}</button>} {!busy && <button className="gd-retry" onClick={() => void load(true)}>Try again</button>}</p>}
     {reconnect && <p className="gd-reconnect">Clem saves into your own Drive folders, which needs one more permission from Google.
       <button onClick={() => void connectDrive().then(() => failed.forEach(send)).catch((e) => setError((e as Error).message))}>Reconnect Google Drive</button></p>}
     {!items && !error && connected !== false && <div className="sp-file-list">{Array.from({ length: 3 }, (_, i) => <div key={i} className="gd-skeleton" />)}</div>}
@@ -216,7 +223,10 @@ export function DriveFolderView({ space, files, driveSync, actions, onItems, mor
           ]} />
         </div>; })}
     </div>}
-    {items && !here.length && !incoming.length && <div className="gd-space-empty">This folder is empty in Drive. Drop files here to save them to it.</div>}
+    {items && !here.length && !incoming.length && <div className="gd-space-empty gd-choose-inside">
+      <span>Clem sees only what you chose in Google Drive. Google shares a folder without what's already in it, so choose its files too, or drop files here to save them to it.</span>
+      <button disabled={choosing} onClick={choose}><DriveLogo size={14} />{choosing ? "Finish in your browser…" : "Choose files from Google Drive"}</button>
+    </div>}
     </>}
   </section>;
 }

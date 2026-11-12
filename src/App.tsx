@@ -93,6 +93,7 @@ import {editSubject} from './guc/subject';
 import {useGuc,gucPrefetch,gucCache,gucKey} from './guc/useGuc';
 import {parseHubRoute,type HubOverview} from '../core/guc/hub';
 import {visibleConnectors} from '../core/connectors';
+import {DriveAccess} from './drive/DriveAccess';
 import {DriveIcon} from './drive/DriveIcon';
 import {refreshDrive,driveSources,driveFolder,driveList as driveListText,uploadToDrive,updateInDrive,renameInDrive,trashInDrive,driveBytes,driveError,isGoogleFormat,type DriveItem,type DriveSyncState} from './drive/drive';
 import {capabilityIndex,clemPlaybooks,plansPlaybook,planIntent} from '../core/clem-skills';
@@ -3216,7 +3217,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                       <ModelsSettings key={accountRevision} locked={anyRunning} liveData={accountData} models={models} onConnect={()=>setModal("connect-model")} onRefresh={refreshModels}/>
                     ) : settingsTab === "Connectors" ? (
                       <SettingsCard>
-                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Read live, never copied."><button className="secondary" onClick={()=>setModal("drive")}>Manage</button></SettingRow>{desktop&&<GoogleCalendarRow/>}
+                        <SettingRow lead={<span className="connector-tile"><DriveLogo size={22}/></span>} title="Google Drive" description="Only what you choose. Read live, never copied."><button className="secondary" onClick={()=>setModal("drive-access")}>Manage</button></SettingRow>{desktop&&<GoogleCalendarRow/>}
                         {visibleConnectors().map(c=>c.id==="guc"?<GucRow key={c.id+(modal==="guc"?"-open":"")} onManage={()=>setModal("guc")}/>:c.id==="vps"&&desktop?<VpsRow key={c.id+(modal==="vps"?"-open":"")} onManage={()=>setModal("vps")}/>:null)}
                       </SettingsCard>
                     ) : settingsTab === "Telegram" ? (
@@ -3553,6 +3554,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                                 ? "VPS"
                                 : modal === "guc"
                                 ? "GUC"
+                                : modal === "drive-access"
+                                ? "Google Drive access"
                                 : modal === "drive-folder"
                                 ? "Link a Google Drive folder"
                                 : modal === "drive-space-files"
@@ -3790,17 +3793,19 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           ) : modal === "guc-drive-folder" ? (
             <DrivePicker mode="folder" onFolder={(folder)=>{const id=driveFolderFor;setModal(null);if(!id)return;
               void editSubject(id,{drive:{enabled:true,folderId:folder.id,folderName:folder.name}}).then(()=>setToast(`CMS copies go to ${folder.name} now, a folder per week.`),e=>setToast(cleanError(e)));}}/>
+          ) : modal === "drive-access" ? (
+            <DriveAccess onDone={() => setModal(null)} />
           ) : modal === "drive-folder" ? (
-            <DrivePicker mode="folder" onFolder={(folder)=>{const id=driveFolderFor;setModal(null);if(!id)return;// A new folder is linked beside the others and shown; one already linked is just shown.
+            <DrivePicker mode="folder" onManage={() => setModal("drive-access")} onFolder={(folder)=>{const id=driveFolderFor;setModal(null);if(!id)return;// A new folder is linked beside the others and shown; one already linked is just shown.
               patch(s=>({...s,spaces:s.spaces.map(x=>{if(x.id!==id)return x;const all=[...(x.drive?[x.drive]:[]),...(x.drives||[])],had=all.find(d=>d.folderId===folder.id);
                 return {...x,drive:had||{folderId:folder.id,folderName:folder.name,saveBack:false},drives:all.filter(d=>d.folderId!==folder.id)};})}));setToast(`Linked ${folder.name} · read live from Google Drive.`);}}/>
           ) : modal === "drive-space-files" ? (
-            <DrivePicker mode="files" confirmLabel={`Add to ${state.spaces.find(x=>x.id===driveFolderFor)?.name||"this space"}`} onFiles={(picked)=>{const id=driveFolderFor;setModal(null);if(!id)return;
+            <DrivePicker mode="files" onManage={() => setModal("drive-access")} confirmLabel={`Add to ${state.spaces.find(x=>x.id===driveFolderFor)?.name||"this space"}`} onFiles={(picked)=>{const id=driveFolderFor;setModal(null);if(!id)return;
               const refs=picked.filter(f=>!f.folder).map(({id,name,mimeType,modified,size,durationMs})=>({id,name,mimeType,modified,size,durationMs}));
               patch(s=>({...s,spaces:s.spaces.map(x=>x.id===id?{...x,driveFiles:[...(x.driveFiles||[]).filter(o=>!refs.some(r=>r.id===o.id)),...refs].slice(-40)}:x)}));
               setToast(refs.length===1?`Added ${refs[0].name} · read live from Google Drive.`:`Added ${refs.length} Drive files · read live from Google Drive.`);}}/>
           ) : modal === "drive" ? (
-            <DrivePicker mode="files" onFiles={(files) => {
+            <DrivePicker mode="files" onManage={() => setModal("drive-access")} onFiles={(files) => {
               setDriveRefs((all) => [...all, ...files.filter((f) => !all.some((x) => x.id === f.id))].slice(0, 10));
               setModal(null);
               if (route !== "/app") navigate("/app");
