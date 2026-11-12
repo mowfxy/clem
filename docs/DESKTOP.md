@@ -85,8 +85,8 @@ Tests: `tests/telegram-worker.test.ts` (codes, expiry, single use, limits, only 
 
 ### Deploying Telegram (owner)
 
-1. In Telegram, ask @BotFather for `/newbot` (name "Clem", a username ending in `bot`). Keep the token private. Optionally `/setdescription` and `/setuserpic`; `/setjoingroups` → Disable.
-2. Put the username (without @) in `TELEGRAM_BOT_USERNAME` in `cloudflare/account.wrangler.jsonc`.
+1. The bot is **@M4ClemBot** (already made in @BotFather). Keep its token private. Optionally `/setdescription` and `/setuserpic`; `/setjoingroups` → Disable.
+2. `TELEGRAM_BOT_USERNAME` in `cloudflare/account.wrangler.jsonc` is `M4ClemBot`.
 3. Set the secrets: `npx wrangler secret put TELEGRAM_BOT_TOKEN --config cloudflare/account.wrangler.jsonc`, and `TELEGRAM_WEBHOOK_SECRET` the same way (a random string of 32 to 256 letters, digits, `_` or `-`). `PROVIDER_VAULT_KEY` must already be set (it is, for linked accounts).
 4. Create the tables: `npm run db:telegram`.
 5. Deploy the Worker: `npm run deploy:accounts`.

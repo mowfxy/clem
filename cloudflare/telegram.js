@@ -9,7 +9,7 @@ import { CODE_TTL_MS, TG_FILE_LIMIT, TG_TEXT_LIMIT, TRIES_PER_MINUTE, canIssue, 
 import { HttpError, json, limit, readJson } from "./lib/http.js";
 import { key as vaultKey, open, seal } from "./provider-vault.js";
 
-export const NOT_PAIRED = "Hi! I only talk to paired Clem accounts. To pair this chat, open Clem and send me the 6-digit code from your main thread (or Settings → Channels → Telegram).";
+export const NOT_PAIRED = "Hi! I only talk to paired Clem accounts. To pair this chat, open Clem and tap Connect Telegram (in your main thread or Settings → Channels → Telegram), then tap Start here.";
 export const PAIRED = "Paired. This chat now talks to your Clem: ask anything, and your updates can come here too. Send /unpair to stop.";
 export const BAD_CODE = "That code didn't work. Codes work once and last 10 minutes; ask Clem for a new one.";
 export const OFFLINE = "Got it. Your Clem isn't online right now, so I'll answer as soon as it's back.";

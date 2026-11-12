@@ -1,4 +1,5 @@
 import { MARK_PATH } from '../core/mark';
+import gucMark from './assets/guc-mark.png';
 // Icons: one even line on a 32-unit grid, rounded ends, and at most one soft grey fill per icon.
 // A drawing is a list of strokes; a stroke starting with "F " is also filled. Hover motion in CSS
 // targets strokes by index (`.icon-<name> .stroke-<i>`), so keep each icon's stroke order.
@@ -47,7 +48,7 @@ subjects:['F M16 8c-3-2.5-7-3-12-2v19c5-1 9-.5 12 2Z','M16 8c3-2.5 7-3 12-2v19c-
 connectors:['F M11 4v6M17 4v6M8 10h12v5a6 6 0 0 1-12 0Z','M14 21v2a4 4 0 0 0 4 4h5a4 4 0 0 0 4-4v-2'],
 models:['F '+box(8,8,16,16),'M13 8V4M19 8V4M13 24v4M19 24v4M8 13H4M8 19H4M24 13h4M24 19h4',box(13,13,6,6,1)],
 drive:['F M11.5 5h9l8.5 15H20Z','M11.5 5L3 20l4.5 7M20 20H3','M7.5 27h17l4.5-7'],
-// GUC (Settings → Connectors): a mortarboard, not the university's mark.
+// GUC draws the university's own mark (see Icon); this mortarboard is only a fallback outline.
 guc:['F M16 6l13 6-13 6-13-6Z','M8.5 14.5v6c0 2.2 3.4 4 7.5 4s7.5-1.8 7.5-4v-6','M29 12v7.5'],
 github:['F '+c(10,7,3),c(10,25,3),c(22,10,3),'M10 10v12','M22 13c0 6-12 4-12 9'],
 skills:['M7 16v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V16','F '+box(5,11,22,5,1.5),'M16 11v17','M16 11c-2-4-7-5-7-2s5 2 7 2c2 0 7 1 7-2s-5-2-7 2'],
@@ -124,7 +125,7 @@ device:['F '+box(6,6,20,14),'M3 25.5h26'],
 server:['F '+box(6,5,20,9),'F '+box(6,18,20,9),'M10.5 9.5h.01','M10.5 22.5h.01','M15 9.5h6','M15 22.5h6']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
-export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
+export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){if(name==='guc')return <img className={`brand-logo brand-guc icon-guc${className?' '+className:''}`} src={gucMark} width={size} height={size} alt="" aria-hidden="true" draggable={false}/>;return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
 /** Clem's mark (geometry in core/mark.ts), drawn in the text colour: white on dark themes, black on light. It never moves;
  *  while thinking it gives way to one soft shape tumbling, the identity's thinking animation. */
 export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){

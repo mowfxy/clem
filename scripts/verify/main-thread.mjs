@@ -65,6 +65,8 @@ try {
       const older = Number(await page.locator(".main-thread-list").getAttribute("data-older"));
       check(rows > 0 && rows < 30 && older === 60, `${theme}: newest page first, virtualized (${rows} rows drawn, ${older} older not loaded)`);
       check(await page.locator(".main-thread-list .message").last().textContent().then((t) => /block 89/.test(t || "")), `${theme}: the newest message is shown`);
+      check(await page.locator(".chat-view.main-thread .model-selector").count() === 0, `${theme}: no model picker in the main thread (it is chosen in Settings → Proactivity)`);
+      check(await page.locator(".workspace-top .chat-files").count() === 0, `${theme}: no Files button in the main thread's top bar`);
       await shot("thread");
       // Older pages load on scroll up.
       for (let i = 0; i < 12; i++) { await page.locator(".workspace").evaluate((el) => { el.scrollTop = 0; }); await page.waitForTimeout(120); }

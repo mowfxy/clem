@@ -73,7 +73,7 @@ import {HomePicker} from './main-thread/HomePicker';
 import {SidebarSpaces} from './main-thread/SidebarSpaces';
 import {EarlierChats,MoveToSpace} from './main-thread/EarlierChats';
 import {useFolding} from './main-thread/useFolding';
-// Settings screens and connector dialogs load when they open (docs/PERFORMANCE-GUC-VPS.md).
+// Settings screens and connector dialogs load when they open.
 import {TelegramSettings} from './telegram/TelegramPair';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
@@ -3067,7 +3067,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           </button>
         </div>
         <div className="composer-tools">
-          <ModelSelector models={models} value={model} effort={reasoning} onEffort={chooseReasoning} onChange={chooseModel} onConnect={()=>openSettings("Models")}/>
+          {/* The main thread runs on Clem's organizer model, chosen only in Settings → Proactivity. */}
+          {!inMain && <ModelSelector models={models} value={model} effort={reasoning} onEffort={chooseReasoning} onChange={chooseModel} onConnect={()=>openSettings("Models")}/>}
           {running && !draft.trim() ? (
             <button
               type="button"
@@ -3268,7 +3269,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                   {activeChat?.archived && <span className="breadcrumb top-space">Earlier chat</span>}
                 </>) : pageSpace ? <span className="top-title">{pageSpace.name}</span> : null}
               </span>
-              {route === "/app" && activeChat && activeChat.messages.length > 0 && <ChatFiles chat={activeChat} files={state.files}
+              {route === "/app" && activeChat && !isMain && activeChat.messages.length > 0 && <ChatFiles chat={activeChat} files={state.files}
                 onOpen={(f) => setViewer(f)}
                 onDownload={(f) => void getBlob(f.id).then((blob) => blob ? download(blob, f.name) : setToast("This file is no longer available on this device."), (e) => setToast(cleanError(e) || "This file could not be downloaded. Try again."))} />}
               {route === "/app" && (activeChat?.temporary ? (

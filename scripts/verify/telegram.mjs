@@ -37,7 +37,7 @@ try {
     };
     const fx = await openFixture(browser, {
       port: 5243, viewport: { width: 1360, height: 900 },
-      initScripts: [`try{localStorage.setItem("clem-theme",${JSON.stringify(theme)})}catch{}`],
+      initScripts: [`try{localStorage.setItem("clem-theme",${JSON.stringify(theme)})}catch{}`, "window.opened=[];window.open=(u)=>{window.opened.push(String(u));return null;}"],
       extraChats: [main],
       guc: async (r) => { const fn = call[r.action]; return fn ? fn(r) : null; },
     });
@@ -58,10 +58,11 @@ try {
       check(await until(async () => (await card.getAttribute("data-state")) === "code"), `${theme}: Connect shows a code`);
       const digits = (await card.locator(".tg-code").textContent()).replace(/\s/g, "");
       check(/^\d{6}$/.test(digits), `${theme}: a 6-digit code (${digits})`);
+      check((await page.evaluate(() => window.opened)).some((u) => u.endsWith("?start=" + digits)), `${theme}: Connect opens the bot with the code in the link (one tap on Start)`);
       check(/^(10:00|9:[0-5]\d)$/.test(await card.locator(".tg-left").textContent()), `${theme}: a 10-minute countdown`);
       const first = await card.locator(".tg-left").textContent();
       check(await until(async () => (await card.locator(".tg-left").textContent()) !== first, 3000), `${theme}: the countdown runs`);
-      check(await card.getByRole("button", { name: /Open Telegram/ }).count() === 1 && await card.getByRole("button", { name: "New code" }).count() === 1, `${theme}: Open Telegram and New code`);
+      check(await card.getByRole("button", { name: /Open Telegram again/ }).count() === 1 && await card.getByRole("button", { name: "New code" }).count() === 1, `${theme}: Open Telegram again and New code`);
       await shot("card-code", ".tg-card");
 
       // The person sends the code to the bot: the card turns into Connected, live.
@@ -86,7 +87,7 @@ try {
       await settings.getByText("Not connected").waitFor({ timeout: 4000 });
       check(!(await t.status(true)).paired && tg.said().some((m) => /Unpaired/.test(m.text)), `${theme}: unpaired with the account, and the chat is told`);
       await shot("settings-unpaired", ".st-dialog");
-      await settings.getByRole("button", { name: "Get a code" }).click();
+      await settings.getByRole("button", { name: "Connect Telegram" }).click();
       await settings.locator(".tg-code").waitFor({ timeout: 4000 });
       check(/Expires in/.test(await settings.textContent()), `${theme}: settings show a code with its countdown`);
       await shot("settings-code", ".st-dialog");

@@ -1,6 +1,7 @@
 // Pairing Telegram: the telegram_pair card in the main thread, and Settings → Channels → Telegram, both drawn from the
-// one shared state (./telegram.ts) so they never disagree. A live code counts down from 10 minutes; once the chat
-// sends it, both turn into "Connected as @name" with Unpair.
+// one shared state (./telegram.ts) so they never disagree. Connect opens Clem's one bot in Telegram with a code already
+// in the link, so the person only taps Start; the code is also shown (10-minute countdown) to type by hand. Once the
+// chat sends it, both turn into "Connected as @name" with Unpair.
 import { left } from "../../core/telegram/pairing";
 import { Icon } from "../Icons";
 import { SettingRow, SettingsCard } from "../settings/SettingsParts";
@@ -16,22 +17,22 @@ function CodeBox({ code, now, bot }: { code: { code: string; link: string; expir
   const live = code.expires > now;
   return <span className="tg-code-box" data-live={live}>
     <span className="tg-code" aria-label={`Pairing code ${code.code.split("").join(" ")}`}>{spaced(code.code)}</span>
-    <small>{live ? <>Send it to <b>@{bot || "the Clem bot"}</b>, or open the link. Expires in <time className="tg-left">{left(code.expires, now)}</time></> : "This code expired. Get a new one."}</small>
+    <small>{live ? <>Tap <b>Start</b> in Telegram, or send this code to <b>@{bot || "the Clem bot"}</b>. Expires in <time className="tg-left">{left(code.expires, now)}</time></> : "This code expired. Get a new one."}</small>
   </span>;
 }
 
 export function TelegramPairCard() {
   const t = useTelegram(), paired = t.status?.paired, code = !paired ? t.code : null, live = !!code && code.expires > t.now;
   const title = !t.status ? "Telegram" : !t.status.configured ? "Telegram isn’t available yet" : paired ? `Connected as ${paired.name}` : live ? "Pair Telegram" : "Talk to Clem on Telegram";
-  const line = !t.status ? "Checking…" : !t.status.configured ? "Clem’s Telegram bot isn’t switched on yet. This card updates when it is." : paired ? `Since ${since(paired.since)}. Ask anything there; updates follow Settings → Proactivity.` : live ? "Open Telegram and send the code below." : "Ask anything from Telegram and get your updates there. It takes a minute.";
+  const line = !t.status ? "Checking…" : !t.status.configured ? "Clem’s Telegram bot isn’t switched on yet. This card updates when it is." : paired ? `Since ${since(paired.since)}. Ask anything there; updates follow Settings → Proactivity.` : live ? "Telegram opened on Clem’s bot. Tap Start there and you’re done." : "Ask anything from Telegram and get your updates there. One tap to connect.";
   return <div className="edit-proposal clem-card guc-card tg-card" data-state={paired ? "paired" : live ? "code" : "unpaired"} aria-busy={!t.status}>
     <header><Icon name="send" size={16} /><div><strong>{title}</strong><small>{line}</small></div></header>
     {code && <div className="guc-card-body"><CodeBox code={code} now={t.now} bot={t.status?.bot} /></div>}
     {t.error && <p className="edit-problem" role="alert">{t.error}</p>}
     {t.status?.configured && <footer>
       {paired ? <button type="button" disabled={t.busy} onClick={() => void unpair()}>Unpair</button>
-        : live ? <><button type="button" disabled={t.busy} onClick={() => void newCode()}>New code</button><button type="button" className="primary" onClick={() => openLink(code!.link)}>Open Telegram <Icon name="external" size={14} /></button></>
-        : <button type="button" className="primary" disabled={t.busy} onClick={() => void newCode()}>{code ? "New code" : "Connect Telegram"}</button>}
+        : live ? <><button type="button" disabled={t.busy} onClick={() => void newCode()}>New code</button><button type="button" className="primary" onClick={() => openLink(code!.link)}>Open Telegram again <Icon name="external" size={14} /></button></>
+        : <button type="button" className="primary" disabled={t.busy} onClick={() => void newCode(true)}>Connect Telegram <Icon name="external" size={14} /></button>}
     </footer>}
   </div>;
 }
@@ -42,17 +43,17 @@ export function TelegramSettings({ onPairInChat, onProactivity }: { onPairInChat
   if (!t.status) return <SettingsCard title="Telegram"><div className="st-row" aria-busy="true"><div className="st-row-text"><span className="st-skel" /><span className="st-skel short" /></div></div></SettingsCard>;
   if (!t.status.configured) return <SettingsCard title="Telegram"><SettingRow title="Not available yet" description={t.error || "Clem’s Telegram bot isn’t switched on yet."} /></SettingsCard>;
   return <>
-    <SettingsCard title="Pairing" note={paired ? undefined : "Pairing links one Telegram chat to your Clem. Only that chat is answered."}>
+    <SettingsCard title="Pairing" note={paired ? undefined : `Connect opens @${t.status.bot || "Clem’s bot"} in Telegram; tap Start and this chat is yours. Only that chat is answered.`}>
       {paired ? <SettingRow title={`Connected as ${paired.name}`} description={`Since ${since(paired.since)}${paired.online === false ? " · Clem on this PC answers when it’s open" : ""}`}>
           <button type="button" className="secondary danger" disabled={t.busy} onClick={() => void unpair()}>Unpair</button>
         </SettingRow>
-        : live ? <SettingRow title="Send this code" description={<CodeBox code={code!} now={t.now} bot={t.status.bot} />}>
+        : live ? <SettingRow title="Tap Start in Telegram" description={<CodeBox code={code!} now={t.now} bot={t.status.bot} />}>
           <button type="button" className="secondary" disabled={t.busy} onClick={() => void newCode()}>New code</button>
-          <button type="button" className="secondary" onClick={() => openLink(code!.link)}>Open Telegram</button>
+          <button type="button" className="secondary" onClick={() => openLink(code!.link)}>Open Telegram again</button>
         </SettingRow>
         : <SettingRow title="Not connected" description={code ? "That code expired." : "Talk to Clem and get your updates in Telegram."}>
           <button type="button" className="secondary" onClick={onPairInChat}>Pair in chat</button>
-          <button type="button" className="secondary" disabled={t.busy} onClick={() => void newCode()}>{code ? "New code" : "Get a code"}</button>
+          <button type="button" className="secondary" disabled={t.busy} onClick={() => void newCode(true)}>Connect Telegram</button>
         </SettingRow>}
       {t.error && <SettingRow title="Something went wrong" description={t.error} />}
     </SettingsCard>

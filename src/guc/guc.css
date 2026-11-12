@@ -1,6 +1,5 @@
 /* GUC in Settings → Connectors: the Drive picker's connect card (src/drive/drive.css), narrower, with a sign-in form */
 dialog.app-modal:has(.gd-picker.guc-manage){width:min(460px,calc(100vw - 32px))}
-.guc-manage .gd-hero-tile.guc-tile{background:color-mix(in srgb,var(--ink) 9%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 12%,transparent) inset;color:var(--ink)}
 .guc-manage>p b{font-weight:700;color:var(--ink)}
 .guc-field{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%;max-width:340px;margin:0 0 12px;text-align:left;font-size:12px;color:var(--muted)}
 .guc-note{display:flex;align-items:center;gap:8px;max-width:340px;margin:2px 0 16px;font-size:12px;line-height:1.45;color:var(--muted);text-align:left}

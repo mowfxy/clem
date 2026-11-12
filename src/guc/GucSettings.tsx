@@ -37,7 +37,7 @@ export function GucManage({ actions, subjects = [] }: { actions?: GucActions; su
   if (!status) return <div className="gd-picker gd-connect guc-manage"><div className="gd-skeleton" /><div className="gd-skeleton" /></div>;
 
   if (!status.connected) return <form className="gd-picker gd-connect guc-manage" onSubmit={(e) => { e.preventDefault(); connect(); }}>
-    <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile guc-tile"><Icon name="guc" size={34} /></span></div>
+    <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile guc-tile"><Icon name="guc" size={42} /></span></div>
     <h3>Connect GUC</h3>
     <p>Sign in with your GUC username and password. Clem reads your courses, schedule, grades and announcements from the CMS and the student portal.</p>
     <label className="guc-field"><span>Username</span><input autoComplete="username" spellCheck={false} value={username} disabled={busy} onChange={(e) => setUsername(e.target.value)} placeholder="first.last" autoFocus /></label>
@@ -48,7 +48,7 @@ export function GucManage({ actions, subjects = [] }: { actions?: GucActions; su
   </form>;
 
   return <div className="gd-picker gd-connect guc-manage">
-    <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile guc-tile"><Icon name="guc" size={34} /></span></div>
+    <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile guc-tile"><Icon name="guc" size={42} /></span></div>
     <h3>GUC is connected</h3>
     <p>Signed in as <b>{status.username}</b> · {ago(status.lastSync)}</p>
     <ul>

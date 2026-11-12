@@ -31,10 +31,11 @@ function watch() {
     void refresh(true);
   }, 3000);
 }
-export async function newCode() {
+/** A fresh code; with `open`, Telegram opens on Clem's bot with it filled in, so pairing is one tap on Start. */
+export async function newCode(open = false) {
   if (shared.busy) return;
   set({ busy: true, error: "" });
-  try { set({ code: await ask<TgCode>({ action: "tgPair" }) }); watch(); }
+  try { const code = await ask<TgCode>({ action: "tgPair" }); set({ code }); watch(); if (open) window.open(code.link, "_blank", "noopener"); }
   catch (e) { set({ error: clean(e) }); }
   finally { set({ busy: false }); }
 }
