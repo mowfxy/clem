@@ -41,19 +41,6 @@ export function DriveLogo({ size = 20, title }: { size?: number; title?: string 
     <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
   </svg>;
 }
-/** Google Calendar's mark: the page with its coloured edges, folded corner and "31". */
-export function GoogleCalendarLogo({ size = 20, title }: { size?: number; title?: string }) {
-  return <svg className="brand-logo brand-gcal" width={size} height={size} viewBox="0 0 200 200" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
-    <path d="M152.6 47.4H47.4v105.2h105.2z" fill="#fff" />
-    <path d="M152.6 200 200 152.6l-23.7-4-23.7 4-4.3 21.7z" fill="#EA4335" />
-    <path d="M0 152.6v31.6C0 192.9 7.1 200 15.8 200h31.6l4.8-23.7-4.8-23.7-25.8-4z" fill="#188038" />
-    <path d="M200 47.4V15.8C200 7.1 192.9 0 184.2 0h-31.6c-2.9 11.7-4.3 20.4-4.3 25.9s1.4 12.7 4.3 21.4c10.5 3 18.4 4.5 23.7 4.5s13.2-1.5 23.7-4.5z" fill="#1967D2" />
-    <path d="M200 47.4h-47.4v105.2H200z" fill="#FBBC04" />
-    <path d="M152.6 152.6H47.4V200h105.2z" fill="#34A853" />
-    <path d="M152.6 0H15.8C7.1 0 0 7.1 0 15.8v136.8h47.4V47.4h105.2z" fill="#4285F4" />
-    <text x="100" y="127" textAnchor="middle" fontFamily="'Google Sans', 'Product Sans', Arial, sans-serif" fontWeight="700" fontSize="66" fill="#4285F4">31</text>
-  </svg>;
-}
 export function YouTubeLogo({ size = 20, title }: { size?: number; title?: string }) {
   return <svg className="brand-logo brand-youtube" width={size} height={size} viewBox="0 0 28 28" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
     <path d="M27.4 7.1a3.5 3.5 0 0 0-2.5-2.5C22.7 4 14 4 14 4s-8.7 0-10.9.6A3.5 3.5 0 0 0 .6 7.1C0 9.3 0 14 0 14s0 4.7.6 6.9a3.5 3.5 0 0 0 2.5 2.5C5.3 24 14 24 14 24s8.7 0 10.9-.6a3.5 3.5 0 0 0 2.5-2.5C28 18.7 28 14 28 14s0-4.7-.6-6.9Z" fill="#FF0000" />

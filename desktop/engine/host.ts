@@ -20,13 +20,6 @@ export type EngineHost = {
   /** The saved workspace (desktop: the window's state.json; a VPS: the snapshot the desktop sends). The organizer reads
    *  a compact snapshot of it (core/proactivity/snapshot.ts); left out, sweeps see GUC only. */
   workspace?(): Promise<unknown>;
-  /** The person's Google Calendar events between two instants, read-only (desktop: CalendarLive); null when it isn't
-   *  connected. Left out, the organizer works from GUC and the plans alone. */
-  calendar?(from: number, to: number): Promise<import("../../core/proactivity/calendar.ts").CalEvent[] | null>;
-  /** Clem's own "Clem" calendar in Google Calendar, for the person's reminders when they turned that on (desktop:
-   *  CalendarLive, calendar.app.created). `add` gives the event's id, or null when Calendar isn't connected or Clem may
-   *  not add events. Left out (a VPS), reminders stay in Clem. */
-  calendarEvents?: { add(e: { text: string; at: number; repeat?: "daily" | "weekly" }): Promise<string | null>; remove(id: string): Promise<void> };
   /** One short answer from Clem's organizer model (desktop: answerWith, no tools). Left out, sweeps use rules only. */
   complete?(request: { system: string; user: string; model?: string; reasoning?: string }): Promise<string>;
   /** Clem's account service as this owner (desktop: the signed-in Supabase session; a VPS: its own). Telegram's relay

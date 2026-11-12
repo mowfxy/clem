@@ -15,7 +15,7 @@ import { localNowCard, withGuc } from "../../core/main-thread/context.ts";
 import { actionKey, describe, needsConfirm, type ProAction, type Undo } from "../../core/proactivity/actions.ts";
 import { capPushes, muteFor, muteKey, slotChanges, type Change, type ChangeKind, type Mute } from "../../core/proactivity/attention.ts";
 import { datedSlots, deadlineReminders, dueAt, leftText, timedItems, type Deadline } from "../../core/proactivity/rules.ts";
-import { busyList, calendarDeadlines, calendarDiff, dayLabel, studySlots, whenOf, type CalEvent } from "../../core/proactivity/calendar.ts";
+import { busyList, dayLabel, studySlots, whenOf } from "../../core/proactivity/calendar.ts";
 import { agendaText, clemAction, findSpace, prefsText, readClemArgs, remindersText, settingsText, type ReminderRow } from "../../core/proactivity/tools.ts";
 import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, OUTWARD, quietEnd, readPro, type Channel, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
@@ -48,8 +48,6 @@ export class Organizer {
   telegram?: TelegramChannel;
   private timer?: ReturnType<typeof setTimeout>;
   private running?: Promise<unknown>;
-  /** The calendar's events as the last tick saw them (ids and times), to notice a change. */
-  private calSeen?: string;
   constructor(o: { db: Db; owner: string; host: EngineHost; guc: () => Promise<GucFacts>; clock?: () => number }) {
     this.db = o.db; this.owner = o.owner; this.host = o.host; this.guc = o.guc; this.clock = o.clock || Date.now;
   }
@@ -63,7 +61,6 @@ export class Organizer {
     const next = mergePro(await this.settings(), proPatch.parse(patch));
     await this.db.query("insert into organizer_settings (owner_id, settings) values ($1, $2) on conflict (owner_id) do update set settings = excluded.settings, updated_at = now()", [this.owner, next]);
     if (patch.jobs) await this.reschedule(next);
-    if (patch.googleReminders !== undefined) void this.syncGoogle();
     return next;
   }
   async start(jobs: Jobs) {
@@ -125,9 +122,9 @@ export class Organizer {
     });
     return { changes, last: rows.at(-1)?.created_at };
   }
-  private deadlines(g: GucFacts, snap: Snapshot, cal: CalEvent[] = []): Deadline[] {
+  private deadlines(g: GucFacts, snap: Snapshot): Deadline[] {
     const subject = new Map(g.links.map((l) => [l.courseKey, l.subjectId]));
-    return [...calendarDeadlines(cal, snap.spaces, this.clock()), ...g.deadlines.map((d) => ({ id: d.id, title: d.title, due: d.due, code: d.code, ...(subject.get(d.courseKey) ? { spaceId: subject.get(d.courseKey) } : {}) })),
+    return [...g.deadlines.map((d) => ({ id: d.id, title: d.title, due: d.due, code: d.code, ...(subject.get(d.courseKey) ? { spaceId: subject.get(d.courseKey) } : {}) })),
       ...snap.plans.flatMap((p) => p.tasks.filter((t) => t.milestone && !t.done && t.due).map((t) => ({ id: `plan-${p.spaceId}-${t.id}`, title: t.title, due: t.time ? new Date(cairoAt(t.due!, t.time)).toISOString() : t.due!, spaceId: p.spaceId })))];
   }
 
@@ -142,16 +139,13 @@ export class Organizer {
     const started = this.clock(), s = await this.settings();
     if (kind !== "event" && !s.jobs[kind].on) return { changed: false, called: false, actions: 0, posted: false };
     const [snap, g, done, mutes] = await Promise.all([this.workspace(), this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null })), this.done(), this.mutes()]);
-    const [state] = await this.db.query<{ snapshot: Snapshot | null; slots: GucSlot[] | null; events_after: Date | null; calendar: CalEvent[] | null }>("select snapshot, slots, events_after, calendar from organizer_sweeps where owner_id = $1 and kind = '_state'", [this.owner]);
+    const [state] = await this.db.query<{ snapshot: Snapshot | null; slots: GucSlot[] | null; events_after: Date | null }>("select snapshot, slots, events_after from organizer_sweeps where owner_id = $1 and kind = '_state'", [this.owner]);
     const [last] = await this.db.query<{ last_day: string | null }>("select last_day from organizer_sweeps where owner_id = $1 and kind = $2", [this.owner, kind]);
     const ev = await this.events(state?.events_after || null, g.links);
     const subjectOfCode = (code: string) => g.links.find((l) => l.code === code)?.subjectId;
     const slotCh = state?.slots && g.slots.length ? slotChanges(state.slots, g.slots, started, subjectOfCode) : [];
     const today = cairo(started).ymd;
-    // The calendar for the coming week (null: not connected, or not reachable now; then last time's stands).
-    const cal = await this.calendarWeek(today);
-    const facts = { now: started, snap, prev: state?.snapshot || undefined, slots: datedSlots(g.slots, today, 8), deadlines: this.deadlines(g, snap, cal || state?.calendar || []), events: [...ev.changes, ...slotCh],
-      calendar: cal || state?.calendar || [], calendarDiff: cal ? calendarDiff(state?.calendar || undefined, cal, started) : [] };
+    const facts = { now: started, snap, prev: state?.snapshot || undefined, slots: datedSlots(g.slots, today, 8), deadlines: this.deadlines(g, snap), events: [...ev.changes, ...slotCh] };
     const watches = await this.watchRows();
     const nowCard = withGuc({ ...localNowCard({ spaces: snap.spaces, plans: snap.plans.map((p) => ({ spaceId: p.spaceId, tasks: p.tasks.map((t) => ({ title: t.title, due: t.due, done: t.done ? 1 : undefined, kind: t.milestone ? "milestone" as const : "task" as const })) })), today }) }, g.now);
     let plan = planSweep(kind, facts, { done, lastDay: last?.last_day || undefined, now: nowCard, mutes, watches, model: !!this.host.complete });
@@ -161,9 +155,9 @@ export class Organizer {
       catch (e) { this.host.log("warn", "[organizer] model: " + (e as Error).message); }
     }
     // What this sweep saw, so the next one sees only what changes after it. A first sweep only sets the baseline.
-    await this.db.query(`insert into organizer_sweeps (owner_id, kind, snapshot, slots, events_after, calendar, last_at) values ($1, '_state', $2, $3, $4, $5, now())
-      on conflict (owner_id, kind) do update set snapshot = excluded.snapshot, slots = case when jsonb_array_length(excluded.slots) > 0 then excluded.slots else organizer_sweeps.slots end, events_after = coalesce(excluded.events_after, organizer_sweeps.events_after), calendar = coalesce(excluded.calendar, organizer_sweeps.calendar), last_at = now()`,
-      [this.owner, snap, JSON.stringify(g.slots), ev.last || state?.events_after || null, cal ? JSON.stringify(cal) : null]);
+    await this.db.query(`insert into organizer_sweeps (owner_id, kind, snapshot, slots, events_after, last_at) values ($1, '_state', $2, $3, $4, now())
+      on conflict (owner_id, kind) do update set snapshot = excluded.snapshot, slots = case when jsonb_array_length(excluded.slots) > 0 then excluded.slots else organizer_sweeps.slots end, events_after = coalesce(excluded.events_after, organizer_sweeps.events_after), last_at = now()`,
+      [this.owner, snap, JSON.stringify(g.slots), ev.last || state?.events_after || null]);
     await this.db.query("insert into organizer_sweeps (owner_id, kind, last_day, last_at) values ($1, $2, $3, now()) on conflict (owner_id, kind) do update set last_day = excluded.last_day, last_at = now()", [this.owner, kind, today]);
     let posted = false;
     if (plan.changed) posted = await this.deliverSweep(kind, plan, s, snap);
@@ -293,14 +287,10 @@ export class Organizer {
   async tick() {
     const s = await this.settings(), now = this.clock();
     await this.ring().catch((e) => this.host.log("warn", "[organizer] reminders: " + (e as Error).message));
-    await this.syncGoogle();
-    const cal = await this.calendarWeek(cairo(now).ymd);
-    // The calendar changed since the last look: an event sweep says what moved and any new clash.
-    if (cal) { const seen = cal.map((e) => `${e.id}@${e.start}-${e.end}`).sort().join("|"); if (this.calSeen !== undefined && seen !== this.calSeen) void this.poke("calendar").catch(() => {}); this.calSeen = seen; }
     {
       const [snap, g] = await Promise.all([this.workspace(), this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null }))]);
       const name = (id?: string) => snap.spaces.find((x) => x.id === id)?.name;
-      const due = deadlineReminders(this.deadlines(g, snap, cal || []), now, s.deadlineHours);
+      const due = deadlineReminders(this.deadlines(g, snap), now, s.deadlineHours);
       const cards: ClemCard[] = [], said: typeof due = [];
       for (const r of due) {
         const text = `${r.deadline.title} is due ${leftText(r.left)}`;
@@ -313,7 +303,7 @@ export class Organizer {
         const postId = await this.post(cards.map((c) => cardBlock(c)).join("\n\n"), "reminders:" + said.map((r) => r.key).join(","));
         const channels = ASKED;
         if (postId && (s.level !== "quiet" || tight) && channels.length) for (const [i, r] of said.entries()) {
-          const guc = !r.deadline.id.startsWith("plan-") && !r.deadline.id.startsWith("gcal-");
+          const guc = !r.deadline.id.startsWith("plan-");
           await this.push(r.key, `Due ${leftText(r.left)}`, r.deadline.title, guc ? { route: "#/app/guc/deadlines/" + encodeURIComponent(r.deadline.id) } : { chat: snap.mainId || "main", message: postId }, s, { channels, cards: cardBlock(cards[i]) });
         }
       }
@@ -387,19 +377,13 @@ export class Organizer {
   async unmute(key: string) { await this.db.query("delete from organizer_mutes where owner_id = $1 and mute_key = $2", [this.owner, key]); }
   async mutesList() { return (await this.db.query<{ mute_key: string; mute: Mute }>("select mute_key, mute from organizer_mutes where owner_id = $1 order by created_at", [this.owner])).map((r) => ({ key: r.mute_key, ...r.mute })); }
 
-  // ---------- Calendar, reminders and study time (docs/MAIN-THREAD.md) ----------
-  /** The person's calendar from Cairo midnight `from` for `days` days; null when it isn't connected or can't be read. */
-  private async calendarWeek(from: string, days = 8): Promise<CalEvent[] | null> {
-    if (!this.host.calendar) return null;
-    return this.host.calendar(cairoAt(from), cairoAt(addDays(from, days))).catch((e) => { this.host.log("warn", "[organizer] calendar: " + (e as Error).message); return null; });
-  }
+  // ---------- Reminders and study time (docs/MAIN-THREAD.md) ----------
   /** A reminder at `at`. It rings in the main thread and, for the person's own, on the desktop and Telegram. */
-  async remind(o: { text: string; at: number; spaceId?: string; repeat?: "daily" | "weekly"; source?: "person" | "study" | "calendar" }) {
+  async remind(o: { text: string; at: number; spaceId?: string; repeat?: "daily" | "weekly"; source?: "person" | "study" }) {
     const id = "r" + randomUUID().replace(/-/g, "").slice(0, 16);
     await this.db.query("insert into organizer_reminders (owner_id, id, text, at, space_id, repeat, source) values ($1, $2, $3, $4, $5, $6, $7)",
       [this.owner, id, o.text.slice(0, 300), new Date(o.at), o.spaceId ?? null, o.repeat ?? null, o.source || "person"]);
     await this.jobs?.send("organizer.remind", {}, { startAfter: Math.max(1, Math.ceil((o.at - this.clock()) / 1000)) }).catch(() => null);
-    void this.syncGoogle();
     return { id, text: o.text.slice(0, 300), at: o.at, ...(o.repeat ? { repeat: o.repeat } : {}), ...(o.spaceId ? { spaceId: o.spaceId } : {}) };
   }
   /** Upcoming reminders, soonest first. */
@@ -410,36 +394,7 @@ export class Organizer {
   }
   async cancelReminder(id: string) {
     const rows = await this.db.query("update organizer_reminders set cancelled = true where owner_id = $1 and id = $2 and not cancelled and fired_at is null returning 1", [this.owner, id]);
-    if (rows.length) void this.syncGoogle();
     return { ok: rows.length > 0 };
-  }
-  private googleSync: Promise<void> = Promise.resolve();
-  /** Keeps Clem's "Clem" calendar in Google in step with the reminders (Settings → Connectors → Google Calendar →
-   *  Add reminders to Google Calendar): upcoming reminders the person set get an event there; a cancelled one, or every
-   *  upcoming one once the option is off, loses it. Rung one-off reminders keep theirs. One sync at a time; whatever
-   *  fails (offline, Calendar not connected) is tried again on the next tick. */
-  syncGoogle(): Promise<void> {
-    const run = async () => {
-      const g = this.host.calendarEvents;
-      if (!g) return;
-      const on = (await this.settings()).googleReminders;
-      const gone = await this.db.query<{ id: string; google_event: string }>(
-        "select id, google_event from organizer_reminders where owner_id = $1 and google_event is not null and (cancelled or ($2 and fired_at is null)) limit 50", [this.owner, !on]);
-      for (const r of gone) {
-        await g.remove(r.google_event);
-        await this.db.query("update organizer_reminders set google_event = null where owner_id = $1 and id = $2", [this.owner, r.id]);
-      }
-      if (!on) return;
-      const add = await this.db.query<{ id: string; text: string; at: Date; repeat: "daily" | "weekly" | null }>(
-        "select id, text, at, repeat from organizer_reminders where owner_id = $1 and not cancelled and fired_at is null and google_event is null and source = 'person' and at > $2 order by at limit 20", [this.owner, new Date(this.clock())]);
-      for (const r of add) {
-        const event = await g.add({ text: r.text, at: ms(r.at), ...(r.repeat ? { repeat: r.repeat } : {}) });
-        if (!event) return;
-        await this.db.query("update organizer_reminders set google_event = $3 where owner_id = $1 and id = $2", [this.owner, r.id, event]);
-      }
-    };
-    this.googleSync = this.googleSync.then(run).catch((e) => this.host.log("warn", "[organizer] Google Calendar reminders: " + (e as Error).message));
-    return this.googleSync;
   }
   /** Rings every reminder whose time has come: a card in the main thread and, once per time, a notification. A
    *  repeating one moves on to its next time; the rest are done. One rung hours late (Clem was off) is posted, not pushed. */
@@ -469,17 +424,16 @@ export class Organizer {
     return due.length;
   }
   /** Study sessions for a subject or project before `until`: only where the person's preferences allow and nothing else
-   *  is (classes, the calendar, timed plan items), added to its plan (with Undo). `minutes`: the length the person asked
-   *  for (50 when they didn't). No reminders: the person asks for those (clem.remind).
-   *  `calendar`: the events for those days, or null when the calendar isn't connected. */
-  async planStudy(o: { spaceId: string; sessions: number; minutes?: number; until: string; title?: string }, calendar: CalEvent[] | null) {
+   *  is (classes, timed plan items), added to its plan (with Undo). `minutes`: the length the person asked for (50 when
+   *  they didn't). No reminders: the person asks for those (clem.remind). */
+  async planStudy(o: { spaceId: string; sessions: number; minutes?: number; until: string; title?: string }) {
     const s = await this.settings(), now = this.clock(), today = cairo(now).ymd, last = addDays(o.until, -1);
     const [snap, g] = await Promise.all([this.workspace(), this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null }))]);
     const space = snap.spaces.find((x) => x.id === o.spaceId);
     if (!space) return { error: "That subject or project isn't in Clem." };
     if (last < today) return { error: `${o.until} is today or already past: there's no day left before it.` };
     const n = Math.min(90, Math.round((Date.parse(last + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 864e5) + 1);
-    const timed = timedItems(snap), busy = busyList({ slots: datedSlots(g.slots, today, n), calendar: calendar || [], timed });
+    const timed = timedItems(snap), busy = busyList({ slots: datedSlots(g.slots, today, n), timed });
     const picks = studySlots(s.study, busy, { now, until: last, count: o.sessions, minutes: o.minutes });
     const title = `Study: ${o.title || space.name}`.slice(0, 160), lines: { text: string; time: string; key: string; space: string }[] = [];
     for (const p of picks) {
@@ -492,24 +446,22 @@ export class Organizer {
     return { picks, lines, space: space.name, short: picks.length < o.sessions };
   }
 
-  /** The AI's clem.* tools (core/proactivity/tools.ts). `calendar(from, to)`: the person's events when the caller reads
-   *  Google itself (null: not connected); else the host's. `scope`: the chat's own subject or project. Answers are short
+  /** The AI's clem.* tools (core/proactivity/tools.ts). `scope`: the chat's own subject or project. Answers are short
    *  text, plus a card to put in the reply. */
-  async tool(request: Record<string, unknown>, o: { calendar?: (from: number, to: number) => Promise<CalEvent[] | null>; scope?: string } = {}) {
+  async tool(request: Record<string, unknown>, o: { scope?: string } = {}) {
     const action = clemAction(request?.action);
     if (!action) return { error: "Unknown clem action." };
     const read = readClemArgs(action, request);
     if (!read.ok) return { error: read.error };
     const args = read.args as Record<string, any>, now = this.clock(), today = cairo(now).ymd;
-    const cal = (from: string, days: number) => (o.calendar ? o.calendar(cairoAt(from), cairoAt(addDays(from, days))).catch(() => null) : this.calendarWeek(from, days));
     const snap = await this.workspace(), spaces = snap.spaces;
     const nameOf = (id?: string) => spaces.find((x) => x.id === id)?.name;
     const spaceArg = (arg?: string) => (arg ? findSpace(arg, spaces) : spaces.find((x) => x.id === o.scope));
     if (action === "clem.calendar") {
       const r = scheduleDays(args.range, now);
       if ("error" in r) return { error: r.error };
-      const [g, events, s] = await Promise.all([this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null })), cal(r.days[0], r.days.length), this.settings()]);
-      return { text: agendaText({ days: r.days, slots: datedSlots(g.slots, r.days[0], r.days.length), calendar: events, timed: timedItems(snap), prefs: s.study, now }) };
+      const [g, s] = await Promise.all([this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null })), this.settings()]);
+      return { text: agendaText({ days: r.days, slots: datedSlots(g.slots, r.days[0], r.days.length), timed: timedItems(snap), prefs: s.study, now }) };
     }
     if (action === "clem.remind") {
       const at = whenOf(args.at, now);
@@ -528,12 +480,11 @@ export class Organizer {
     const space = spaceArg(args.subject);
     if (!space) return { error: args.subject ? `No subject or project matches "${args.subject}".` : "Say which subject or project to study (\"subject\")." };
     if (args.until <= today) return { error: `${args.until} is today or already past.` };
-    const events = await cal(today, Math.min(90, Math.round((Date.parse(args.until + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 864e5) + 1));
-    const r = await this.planStudy({ spaceId: space.id, sessions: args.sessions, minutes: args.minutes, until: args.until, title: args.title }, events);
+    const r = await this.planStudy({ spaceId: space.id, sessions: args.sessions, minutes: args.minutes, until: args.until, title: args.title });
     if ("error" in r) return { error: r.error };
     if (!r.lines.length) return { error: "No free time fits before then within their study preferences (or those sessions are already planned). Suggest fewer or shorter sessions, a later date, or changing the days and hours they study.", prefs: prefsText((await this.settings()).study) };
     const card: ClemCard = { type: "organizer", title: `Study sessions for ${r.space}`.slice(0, 120), when: "study", lines: r.lines };
-    return { ok: true, planned: r.lines.map((l) => `${l.text} at ${l.time}`), ...(r.short ? { note: `Only ${r.lines.length} of ${args.sessions} fit within their preferences.` } : {}), ...(events === null ? { calendar: "Google Calendar isn't connected, so only classes and plans were avoided." } : {}),
+    return { ok: true, planned: r.lines.map((l) => `${l.text} at ${l.time}`), ...(r.short ? { note: `Only ${r.lines.length} of ${args.sessions} fit within their preferences.` } : {}),
       card: "Put this card in your reply (each session can be undone):\n" + cardBlock(card) };
   }
 
