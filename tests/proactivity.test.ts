@@ -5,10 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { actionKey, applyAction, undoAction, type Workspace } from "../core/proactivity/actions.ts";
 import { capPushes, importance, slotChanges, type Change } from "../core/proactivity/attention.ts";
-import { deadlineReminders, extractCommitments, findClashes, freedSlots, type Facts } from "../core/proactivity/rules.ts";
+import { deadlineReminders, extractCommitments, findClashes, followUps, freedSlots, gradeNotes, type Facts } from "../core/proactivity/rules.ts";
 import { cairoAt, delivery, DEFAULT_PRO, inQuiet, mergePro, quietEnd, readPro } from "../core/proactivity/settings.ts";
 import { snapshotOf } from "../core/proactivity/snapshot.ts";
-import { planSweep, readReply } from "../core/proactivity/sweep.ts";
+import { planSweep, readReply, sweepCard } from "../core/proactivity/sweep.ts";
+import { turnText } from "../core/main-thread/context.ts";
 import { live, matchWatch, parseWatch } from "../core/proactivity/watches.ts";
 import { readCard, cardsIn } from "../core/guc/cards.ts";
 import { Engine } from "../desktop/engine/index.ts";
@@ -164,9 +165,12 @@ test("a sweep with nothing changed decides nothing and asks no model", () => {
   const p = planSweep("event", facts, { done: new Set() });
   assert.equal(p.changed, false); assert.equal(p.ask, undefined); assert.deepEqual(p.actions, []);
   assert.equal(planSweep("midday", facts, { done: new Set(), lastDay: SUN }).changed, false, "a timed job that already ran today with no change");
-  const morning = planSweep("morning", { ...facts, now: T(SUN, "07:30"), snap: snapshotOf({ spaces: [space("phys", "Physics")], plans: [{ spaceId: "phys", rev: 1, tasks: [{ id: "t1", title: "Problem set", due: "2026-11-14" }] }] }) }, { done: new Set(), lastDay: "2026-11-14" });
-  assert.deepEqual(morning.actions.map((a) => a.type), ["time_block", "plan_move"], "a new day: today's blocks, and the overdue task moved");
-  assert.equal(morning.ask, undefined, "the rules needed no model");
+  const morning0 = () => snapshotOf({ spaces: [space("phys", "Physics")], plans: [{ spaceId: "phys", rev: 1, tasks: [{ id: "t1", title: "Problem set", due: "2026-11-14" }] }] });
+  const morning = planSweep("morning", { ...facts, now: T(SUN, "07:30"), snap: morning0() }, { done: new Set(), lastDay: "2026-11-14" });
+  assert.deepEqual(morning.actions, [{ type: "plan_move", spaceId: "phys", taskId: "t1", title: "Problem set", due: SUN, time: "09:00" }], "a new day: the overdue task gets today and an hour, as one task, not a copy");
+  assert.ok(morning.ask?.user.includes("Sweep: the morning plan, Sunday 07:30.") && /In the card[^\n]*\n- Moved “Problem set”/.test(morning.ask.user), "the brief is said in Clem's words: one short call");
+  const silent = planSweep("morning", { ...facts, now: T(SUN, "07:30"), snap: morning0() }, { done: new Set(), lastDay: "2026-11-14", voice: false });
+  assert.equal(silent.ask, undefined, "kept quiet (or no model): the rules needed no model");
 });
 
 test("the organizer's reply is checked: levels, watches, and only allowed actions", () => {
@@ -179,6 +183,54 @@ test("the organizer's reply is checked: levels, watches, and only allowed action
   assert.equal(read.rated[0].say, "Read chapter 3 before Thursday's quiz.", "Clem says it in its own words");
   assert.deepEqual(read.actions.map((a) => a.type), ["file_move"], "an offer or an unknown file from the model is dropped");
   assert.equal(readReply("not json", plan, snap, new Set()), plan);
+  assert.equal(read.message, undefined);
+  const voiced = readReply('{"message":"Heads up: **read chapter 3** before Thursday. ```clem-card {} ```","actions":[{"type":"note","kind":"followup","text":"You said you would read it."}]}', plan, snap, new Set());
+  assert.equal(voiced.message, "Heads up: read chapter 3 before Thursday. clem-card {}", "its words are plain text: no fences, no markdown");
+  assert.deepEqual(voiced.actions, [], "a follow-up is asked when its day comes (the rules), not the minute it was said");
+});
+
+test("human timing: follow-ups in the evening of the day named, never for a reminder asked for or loose talk", () => {
+  const said = [{ id: "m1", text: "I'll finish the lab report tomorrow.", at: T(SUN, "20:00"), main: true as const }, { id: "m2", text: "remind me to email Dr. Amr tomorrow", at: T(SUN, "20:00"), main: true as const },
+    { id: "m3", text: "I should understand how op-amps work", at: T("2026-11-10", "20:00"), main: true as const }, { id: "m4", text: "I need to submit the sheet tomorrow", at: T(SUN, "20:00"), main: true as const }];
+  const at = (day: string, hm: string): Facts => ({ now: T(day, hm), snap: { ...snapshotOf({}), said }, slots: [], deadlines: [], events: [] });
+  assert.deepEqual(followUps(at("2026-11-16", "07:30")), [], "not at breakfast on the day they said they'd do it");
+  assert.deepEqual(followUps(at("2026-11-16", "21:00")).map((a) => (a as any).text), ["You said you'd finish the lab report. Done, or should I put it in your plan?", "You said you'd submit the sheet. Done, or should I put it in your plan?"]);
+  assert.equal(followUps(at("2026-11-17", "07:30")).length, 2, "or the morning after");
+});
+
+test("human tone: a grade is met as the mark deserves", () => {
+  const g = (detail: string): Facts => ({ now: T(SUN, "13:00"), snap: snapshotOf({}), slots: [], deadlines: [], events: [{ key: "grade:1", kind: "new_grade", title: "Grade out: MATH 103", detail }] });
+  const text = (detail: string) => (gradeNotes(g(detail))[0] as any).text;
+  assert.equal(text("Quiz 1 · 18/20 (Winter 2026)"), "Your MATH 103 grade is out (18/20 (Winter 2026)). Nice work.");
+  assert.equal(text("Quiz 1 · 3/10 (Winter 2026)"), "Your MATH 103 grade is out (3/10 (Winter 2026)). A rough one. Want to go over what went wrong?");
+  assert.equal(text("Quiz 1 · 13/20 (Winter 2026)"), "Your MATH 103 grade is out (13/20 (Winter 2026)).");
+  assert.equal(text("Final · B+ (Winter 2026)"), "Your MATH 103 grade is out (B+ (Winter 2026)).", "a letter is not guessed at");
+});
+
+test("a task that keeps slipping is asked about once, then left alone", () => {
+  const now = T(SUN, "07:30"), snap = snapshotOf({ spaces: [space("phys", "Physics")], plans: [{ spaceId: "phys", rev: 3, tasks: [{ id: "t1", title: "Problem set", due: "2026-11-14" }, { id: "b1", title: "Review 5 flashcards", due: "2026-11-14", time: "09:00", group: "Today" }] }] });
+  const facts: Facts = { now, snap, prev: snap, slots: [], deadlines: [], events: [] };
+  const done = new Set(["move:phys:t1:2026-11-13", "move:phys:t1:2026-11-14"]);
+  const p = planSweep("morning", facts, { done, lastDay: "2026-11-14", voice: false });
+  assert.deepEqual(p.actions, [{ type: "note", kind: "followup", spaceId: "phys", key: "slip:phys:t1:2026-11-14", text: "I've moved “Problem set” twice and it's still open. Still worth doing? I can find it a real slot, break it down, or drop it." }], "asked, not rolled a third time; yesterday's block of Clem's own is not rolled on either");
+  done.add("slip:phys:t1:2026-11-14");
+  assert.deepEqual(planSweep("morning", facts, { done, lastDay: "2026-11-14", voice: false }).actions, [], "once");
+});
+
+test("the brief: exams are said, a late brief skips classes already over, a timed move reads as a block", () => {
+  const snap = snapshotOf({ spaces: [space("phys", "Physics", "subject", { examDate: SUN }), space("math", "Math", "subject", { examDate: "2026-11-16" })], plans: [] });
+  const slots = [{ day: SUN, start: "08:15", end: "09:45", title: "PHYS 101 Lecture" }, { day: SUN, start: "13:45", end: "15:15", title: "MATH 103 Lab" }];
+  const brief = (kind: "morning" | "evening", hm: string) => planSweep(kind, { now: T(SUN, hm), snap, prev: snap, slots, deadlines: [], events: [] }, { done: new Set(), voice: false }).brief.map((b) => b.text);
+  assert.deepEqual(brief("morning", "11:00"), ["Physics exam today. Good luck.", "MATH 103 Lab"]);
+  assert.equal(brief("evening", "21:00")[0], "Math exam tomorrow. A light review tonight, then sleep.");
+  const card = sweepCard("morning", T(SUN, "07:30"), { said: [], hits: [], brief: [], actions: [{ type: "plan_move", spaceId: "phys", taskId: "t1", title: "Problem set", due: SUN, time: "09:00" }] }, () => "Physics");
+  assert.deepEqual(card?.lines, [{ text: "Problem set", key: "move:phys:t1:" + SUN, time: "09:00", space: "Physics" }]);
+});
+
+test("the main thread's AI reads what Clem told them, not just that a card was there", () => {
+  const t = turnText('Quiz 2 moved, so I shifted your revision.\n\n```clem-card\n{"type":"organizer","title":"Since you last looked","when":"event","lines":[{"text":"Quiz 2 is now on Sunday","key":"change:a","space":"Math"},{"text":"Revise chapter 4","time":"16:00"}]}\n```');
+  assert.equal(t, 'Quiz 2 moved, so I shifted your revision.\n\n[You told them, in a card "Since you last looked":\n- Quiz 2 is now on Sunday (Math)\n- 16:00 Revise chapter 4]');
+  assert.equal(turnText('```clem-card\n{"type":"reminder","title":"Email Dr. Amr","at":"2026-11-16T07:00Z","id":"r1","rang":true}\n```'), "[Reminder you sent them: Email Dr. Amr · 2026-11-16T07:00Z]");
 });
 
 test("organizer and lecture cards parse; lecture cards never generate anything", () => {
@@ -283,15 +335,18 @@ test("engine: quiet hours hold a push until they end; sent once on any channel",
 
 test("engine: the morning brief writes blocks the window applies, logs them, and Undo works once", async () => {
   const clock = { t: T(SUN, "07:30") }, ws = empty();
-  ws.plans.push({ id: "p1", spaceId: "phys", title: "Physics plan", start: "2026-11-01", created: 1, updated: 1, rev: 1, tasks: [{ id: "t1", title: "Problem set 2", due: "2026-11-13" }] });
-  const { engine, o } = await engineWith(ws, clock);
+  ws.spaces[0].examDate = "2026-11-22";
+  ws.plans.push({ id: "p1", spaceId: "phys", title: "Physics plan", start: "2026-11-01", created: 1, updated: 1, rev: 1, tasks: [{ id: "t1", title: "Problem set 2", due: "2026-11-13" }, { id: "t9", title: "Session", due: "2026-11-21", group: "Before the exam" }] });
+  const { engine, h, o } = await engineWith(ws, clock, () => '{"message":"Problem set 2 slipped past Friday, so it\'s first at 9. Exam in a week: I added an hour for it.","levels":[]}');
   try {
     const r = await o.sweep("morning");
-    assert.ok(r.changed && r.posted && !r.called);
+    assert.ok(r.changed && r.posted && r.called, "one short call for Clem's own words");
     const box = await o.inbox();
-    assert.deepEqual(box.apply.map((a) => a.action.type), ["time_block", "plan_move"]);
+    assert.deepEqual(box.apply.map((a) => a.action), [{ type: "plan_move", spaceId: "phys", taskId: "t1", title: "Problem set 2", due: SUN, time: "09:00" }, { type: "time_block", spaceId: "phys", title: "Revise for the Physics exam", day: SUN, time: "10:00" }]);
+    assert.ok(box.posts[0].content.startsWith("Problem set 2 slipped past Friday, so it's first at 9. Exam in a week: I added an hour for it.\n\n```clem-card"), "its words first, the card under them");
     const card = cardsIn(box.posts[0].content)[0] as any;
     assert.equal(card.title, "Your Sunday, planned");
+    assert.deepEqual(h.notices, ["Problem set 2 slipped past Friday, so it's first at 9. Exam in a week: I added an hour for it."], "the push says what Clem said");
     const w = { spaces: ws.spaces, plans: ws.plans, files: [], memory: "", automations: [] };
     let state: any = w;
     const results = box.apply.map((a) => { const x = applyAction(state, a.action, { now: clock.t }) as any; state = x.state; return { key: a.key, ok: true, undo: x.undo }; });
@@ -299,9 +354,10 @@ test("engine: the morning brief writes blocks the window applies, logs them, and
     assert.deepEqual(await o.inbox(), { posts: [], apply: [] });
     const log = await o.log();
     assert.equal(log.filter((l) => l.status === "applied" && l.undo).length, 2, JSON.stringify(log));
-    const undo = await o.undo(results[1].key);
+    assert.deepEqual([state.plans[0].tasks[0].due, state.plans[0].tasks[0].time, state.plans[0].tasks.length], [SUN, "09:00", 3], "the task itself got its hour");
+    const undo = await o.undo(results[0].key);
     assert.equal(undoAction(state, undo!).plans[0].tasks[0].due, "2026-11-13");
-    assert.equal(await o.undo(results[1].key), null, "once");
+    assert.equal(await o.undo(results[0].key), null, "once");
     assert.equal((await o.sweep("morning")).posted, false, "the same morning twice says nothing new");
   } finally { await engine.close(); }
 });
@@ -340,4 +396,53 @@ test("engine: the timed jobs' schedules follow settings and survive a restart", 
     assert.equal((await jobs.schedules("organizer.tick")).length, 1);
     await engine.close();
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("engine: news is never lost to the level: balanced says it at midday, quiet keeps it for the next card", async () => {
+  const clock = { t: T(SUN, "13:30") };
+  const { engine, h, o } = await engineWith(empty(), clock, () => '{"levels":[{"i":0,"level":"notify","why":"Reading","say":"Read chapter 3 before the quiz."}]}');
+  try {
+    await o.sweep("event");
+    await o.setSettings({ level: "balanced" });
+    await event(engine, "ann:1", "new_announcement", "New announcement in PHYS 101", "Please read chapter 3 carefully and think about how it relates to the lecture.");
+    assert.equal((await o.sweep("midday")).posted, true, "found by the midday check, still told");
+    assert.match((await o.inbox()).posts[0].content, /Read chapter 3 before the quiz\./);
+    await o.setSettings({ level: "quiet" });
+    await event(engine, "ann:2", "new_announcement", "New announcement in PHYS 101", "Please read chapter 4 carefully and think about how it relates to the lecture.");
+    assert.equal((await o.sweep("event")).posted, false, "quiet: not worth a message of its own");
+    assert.equal((await o.log()).find((l) => l.key === "change:ann:2")?.status, "held");
+    assert.equal(h.notices.length, 1);
+    await engine.db.query("insert into guc_events (owner_id, event_key, kind, course_key, title, detail, created_at) values ($1, 'dl:x', 'deadline_added', null, 'Deadline in PHYS 101', $2, now() + interval '1 hour')", ["pro-owner", "Sheet 5 · " + new Date(T(SUN, "23:00")).toISOString()]);
+    assert.equal((await o.sweep("event")).posted, true, "something urgent");
+    const card = cardsIn((await o.inbox()).posts.at(-1)!.content)[0] as any;
+    assert.deepEqual(card.lines.map((l: any) => l.key), ["change:dl:x", "change:ann:2"], "what was kept back rides along");
+    assert.equal((await o.log()).find((l) => l.key === "change:ann:2")?.status, "said");
+  } finally { await engine.close(); }
+});
+
+test("engine: the first sweep is a baseline even when GUC already holds events; opened at night, the evening prep runs, not the morning plan", async () => {
+  const clock = { t: T(SUN, "22:10") };
+  const { engine, h, o } = await engineWith(empty(), clock);
+  try {
+    await event(engine, "ann:old", "new_announcement", "New announcement in PHYS 101", "Today's lecture is cancelled; a compensation lecture will follow.");
+    assert.deepEqual(await o.catchUp(), ["evening"]);
+    assert.deepEqual(h.notices, ["No classes tomorrow (Monday)."], "the evening prep reaches out; old news is not news");
+    assert.doesNotMatch((await o.inbox()).posts.map((p) => p.content).join(), /cancelled|planned/);
+    assert.deepEqual(await o.catchUp(), [], "once");
+  } finally { await engine.close(); }
+});
+
+test("engine: a deadline just told as news is not repeated by the 48-hour reminder; the 3-hour one still comes", async () => {
+  const clock = { t: T(SUN, "13:00") };
+  const { engine, h, o } = await engineWith(empty(), clock);
+  try {
+    await o.sweep("event");
+    const due = new Date(T("2026-11-16", "10:00")).toISOString();
+    await engine.db.query("insert into guc_deadlines (owner_id, deadline_id, course_key, title, due, source) values ($1, 'd1', 'c1', 'Sheet 5', $2, 'announcement')", ["pro-owner", due]);
+    await event(engine, "dl:d1", "deadline_added", "Deadline in PHYS 101", "Sheet 5 · " + due);
+    await o.sweep("event");
+    const told = h.notices.length;
+    await o.tick();
+    assert.equal(h.notices.length, told, "no second buzz for the same thing");
+  } finally { await engine.close(); }
 });

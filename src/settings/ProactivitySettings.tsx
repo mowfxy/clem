@@ -11,7 +11,7 @@ type WatchRow = { id: string; text: string; live: boolean; fired: number; repeat
 type MuteRow = { key: string; kind: string; subjectId?: string };
 
 const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-const STATUS: Record<string, string> = { applied: "Done", apply: "Doing it…", undone: "Undone", confirm: "Waiting for you", dismissed: "Skipped", failed: "Couldn’t do it", said: "Told you" };
+const STATUS: Record<string, string> = { applied: "Done", apply: "Doing it…", undone: "Undone", confirm: "Waiting for you", dismissed: "Skipped", failed: "Couldn’t do it", said: "Told you", held: "Kept for your next update" };
 
 /** Settings → Proactivity. Clem's organizer runs the main thread and every job Clem does on its own; below it, the
  *  reminders still to ring, what it did today with Undo, and what you asked it to watch. How much it speaks, quiet hours,

@@ -100,6 +100,8 @@ export type Say = { post: boolean; channels: Channel[] };
 export function delivery(s: ProSettings, what: { news?: boolean; job?: JobKind; urgent?: boolean }): Say {
   const speak = s.level === "proactive" || !!what.urgent || (s.level === "balanced" && (!!what.job && what.job !== "midday" || !!what.news));
   if (!speak) return { post: false, channels: [] };
-  // The app is where every post lands; the desktop and Telegram only for news (a job's card is not worth a buzz).
-  return { post: true, channels: ["app", ...(what.news || what.urgent) && (s.level !== "quiet" || what.urgent) ? OUTWARD : []] };
+  // The app is where every post lands; the desktop and Telegram for news. A brief is not worth a buzz, except at
+  // proactive, where the morning plan, evening prep and weekly review are Clem reaching out first (never the midday check).
+  const reach = !!what.news || !!what.urgent || (s.level === "proactive" && !!what.job && what.job !== "midday");
+  return { post: true, channels: ["app", ...reach && (s.level !== "quiet" || what.urgent) ? OUTWARD : []] };
 }

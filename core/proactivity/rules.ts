@@ -57,20 +57,23 @@ export function findClashes(slots: Slot[], items: Timed[]) {
   return out;
 }
 
-/** Things the person said they'd do ("I'll finish the lab report tomorrow"), with a day when they gave one. */
-const PROMISE = /\b(?:i'?ll|i will|i'm going to|im going to|i am going to|i need to|i have to|i must|i plan to|remind me to|i should)\s+([^.!?\n]{3,140})/gi;
+/** Things the person said they'd do ("I'll finish the lab report tomorrow"), with a day when they gave one. `asked`:
+ *  they asked for a reminder ("remind me to…"), which the reminder itself answers. `loose`: "I need to", "I should":
+ *  a plan only when it came with a day, otherwise just talk. */
+const PROMISE = /\b(i'?ll|i will|i'm going to|im going to|i am going to|i need to|i have to|i must|i plan to|remind me to|i should)\s+([^.!?\n]{3,140})/gi;
+const LOOSE = /^i (need|have|must|should)/i;
 export function extractCommitments(said: { id: string; text: string; at: number }[]) {
-  const out: { key: string; text: string; day?: string; at: number }[] = [];
+  const out: { key: string; text: string; day?: string; at: number; asked?: true; loose?: true }[] = [];
   for (const m of said) {
     if (/\?\s*$/.test(m.text.trim())) continue;
     // Titles keep their dot: "Dr. Amr" is not the end of a sentence.
     const text = m.text.replace(/\b(Dr|Mr|Mrs|Ms|Prof|Eng|St)\./g, "$1\u2024");
     for (const hit of text.matchAll(PROMISE)) {
-      let what = hit[1].trim().replace(/\s+/g, " ").replace(/\u2024/g, ".");
+      let what = hit[2].trim().replace(/\s+/g, " ").replace(/\u2024/g, ".");
       if (/^(be|try|think|let you know|see)\b/i.test(what) || what.split(" ").length < 2) continue;
       const date = chrono.parse(what, { instant: new Date(m.at), timezone: "EET" }, { forwardDate: true })[0];
       if (date) what = what.replace(date.text, " ").replace(/\s+(by|on|before|at)?\s*$/i, "").replace(/\s+/g, " ").trim();
-      out.push({ key: `commit:${m.id}:${norm(what).slice(0, 60)}`, text: what, at: m.at, ...(date ? { day: cairo(date.start.date().getTime()).ymd } : {}) });
+      out.push({ key: `commit:${m.id}:${norm(what).slice(0, 60)}`, text: what, at: m.at, ...(date ? { day: cairo(date.start.date().getTime()).ymd } : {}), ...(/^remind/i.test(hit[1]) ? { asked: true as const } : {}), ...(LOOSE.test(hit[1]) ? { loose: true as const } : {}) });
     }
   }
   return out;
@@ -92,19 +95,22 @@ const timedOf = (snap: Snapshot): Timed[] => snap.plans.flatMap((p) => p.tasks.f
 /** The morning brief's blocks for today: due and overdue work, due flashcards and the nearest exam, in free hours. */
 export function morningBlocks(f: Facts): ProAction[] {
   const c = cairo(f.now), today = c.ymd, timed = timedOf(f.snap);
-  const want: { spaceId: string; title: string }[] = [];
-  for (const p of f.snap.plans) for (const t of p.tasks) if (!t.done && !t.milestone && !t.time && t.due && t.due <= today && t.group !== "Today") want.push({ spaceId: p.spaceId, title: t.title });
+  const want: { spaceId: string; title: string; taskId?: string }[] = [];
+  for (const p of f.snap.plans) for (const t of p.tasks) if (!t.done && !t.milestone && !t.time && t.due && t.due <= today && t.group !== "Today") want.push({ spaceId: p.spaceId, title: t.title, taskId: t.id });
   for (const s of f.snap.study) if (s.due) want.push({ spaceId: s.spaceId, title: `Review ${s.due} flashcard${s.due === 1 ? "" : "s"}` });
   const exam = f.snap.spaces.filter((s) => s.examDate && s.examDate >= today && days(today, s.examDate) <= 14).sort((a, b) => a.examDate!.localeCompare(b.examDate!))[0];
   if (exam) want.push({ spaceId: exam.id, title: `Revise for the ${exam.name} exam` });
   const free = freeHours(today, f.slots, timed, mins(c.time));
-  return want.slice(0, Math.min(5, free.length)).map((w, i) => ({ type: "time_block" as const, spaceId: w.spaceId, title: w.title, day: today, time: free[i] }));
+  // A task already in the plan gets its hour (a move: one task, not a copy of it); the rest are new blocks.
+  return want.slice(0, Math.min(5, free.length)).map((w, i): ProAction => (w.taskId ? { type: "plan_move", spaceId: w.spaceId, taskId: w.taskId, title: w.title, due: today, time: free[i] }
+    : { type: "time_block", spaceId: w.spaceId, title: w.title, day: today, time: free[i] }));
 }
 
-/** Overdue tasks moved to the next day with room (today in the morning, tomorrow later on), at most 5 a sweep. */
+/** Overdue tasks moved to the next day with room (today in the morning, tomorrow later on), at most 5 a sweep. An old
+ *  time block of Clem's own ("Today") is not rolled on: the next morning plans the day afresh. */
 export function reschedule(f: Facts): ProAction[] {
   const c = cairo(f.now), to = mins(c.time) < 12 * 60 ? c.ymd : addDays(c.ymd, 1);
-  return f.snap.plans.flatMap((p) => p.tasks.filter((t) => !t.done && !t.milestone && t.due && t.due < c.ymd).map((t) => ({ type: "plan_move" as const, spaceId: p.spaceId, taskId: t.id, title: t.title, due: to }))).slice(0, 5);
+  return f.snap.plans.flatMap((p) => p.tasks.filter((t) => !t.done && !t.milestone && t.group !== "Today" && t.due && t.due < c.ymd).map((t) => ({ type: "plan_move" as const, spaceId: p.spaceId, taskId: t.id, title: t.title, due: to }))).slice(0, 5);
 }
 
 /** A new or moved GUC deadline becomes a task to start two days before (today at the latest), and the deadline itself
@@ -152,14 +158,34 @@ export function fileLoose(snap: Snapshot): { actions: ProAction[]; unsure: Snaps
   return { actions, unsure };
 }
 
-/** A grade: a cheer, or, when the subject has shaky cards, an offer to review them. */
+/** How a mark reads, when it can be told: "17/20", "85%", "8 out of 10". Letters and anything else: unknown. */
+export function gradeShare(mark: string): number | undefined {
+  const m = /(\d+(?:\.\d+)?)\s*(?:\/|out of)\s*(\d+(?:\.\d+)?)/i.exec(mark), pct = /(\d+(?:\.\d+)?)\s*%/.exec(mark);
+  const v = m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : pct ? Number(pct[1]) / 100 : undefined;
+  return v !== undefined && v >= 0 && v <= 1.5 ? v : undefined;
+}
+/** A grade, said the way the mark deserves: a cheer for a good one, nothing forced for a middling or unreadable one, a
+ *  hand for a rough one; the subject's shaky cards are offered unless the mark was good. */
 export function gradeNotes(f: Facts): ProAction[] {
   return f.events.filter((e) => e.kind === "new_grade").map((e) => {
     const weak = f.snap.study.find((s) => s.spaceId === e.subjectId)?.weak.length || 0;
-    const what = e.title.replace(/^Grade out:\s*/, "");
-    return { type: "note" as const, kind: "grade" as const, key: "grade:" + e.key, ...(e.subjectId ? { spaceId: e.subjectId } : {}),
-      text: weak ? `Your ${what} grade is out (${e.detail.split(" · ").pop()}). ${weak} card${weak === 1 ? " is" : "s are"} still shaky: a 10-minute review would help.` : `Your ${what} grade is out (${e.detail.split(" · ").pop()}). Nice work!` };
+    const what = e.title.replace(/^Grade out:\s*/, ""), mark = e.detail.split(" · ").pop() || "", share = gradeShare(mark);
+    const tail = share === undefined ? "" : share >= 0.8 ? " Nice work." : share < 0.5 ? " A rough one. Want to go over what went wrong?" : "";
+    const review = weak && !(share !== undefined && share >= 0.8) ? ` ${weak} card${weak === 1 ? " is" : "s are"} still shaky there: ten minutes on them would help.` : "";
+    return { type: "note" as const, kind: "grade" as const, key: "grade:" + e.key, ...(e.subjectId ? { spaceId: e.subjectId } : {}), text: `Your ${what} grade is out${mark ? ` (${mark})` : ""}.${review || tail}`.slice(0, 300) };
   });
+}
+
+/** A project thread that stopped with an error: said in the next sweep, whatever its kind (not kept for the morning). */
+export function roomNotes(f: Facts): ProAction[] {
+  const out: ProAction[] = [];
+  for (const s of f.snap.spaces.filter((x) => x.kind === "project")) {
+    const room = f.snap.rooms.find((r) => r.spaceId === s.id);
+    if (!room?.failed || !f.prev || !(room.failed > (f.prev.rooms.find((r) => r.spaceId === s.id)?.failed || 0))) continue;
+    const next = f.snap.plans.find((p) => p.spaceId === s.id)?.tasks.filter((t) => !t.done && !t.milestone).sort((a, b) => (a.due || "9").localeCompare(b.due || "9"))[0];
+    out.push({ type: "note", kind: "project", spaceId: s.id, key: `project:${s.id}:failed:${room.failed}`, text: `A thread in ${s.name} stopped with an error. Open the project to retry it${next ? `, then: ${next.title}` : ""}.` });
+  }
+  return out;
 }
 
 /** A project quiet for 5+ days with open tasks, or with a failed thread: a nudge with its next step. Weekly key. */
@@ -192,10 +218,12 @@ export function repeatedRequests(snap: Snapshot): ProAction[] {
   });
 }
 
-/** Follow-ups: a commitment whose day has come (or, without a day, one made 2+ days ago). */
+/** Follow-ups, asked when a person would ask: the evening of the day they named (or any time after it), or two days on
+ *  when they named none. Never for "remind me to…" (the reminder answers it), nor for a loose "I should…" with no day. */
 export function followUps(f: Facts): ProAction[] {
-  const today = cairo(f.now).ymd;
-  return extractCommitments(f.snap.said.filter((m) => m.main)).filter((c) => (c.day ? c.day <= today : f.now - c.at > 2 * 864e5) && f.now - c.at < 10 * 864e5)
+  const c0 = cairo(f.now), today = c0.ymd;
+  return extractCommitments(f.snap.said.filter((m) => m.main)).filter((c) => !c.asked && !(c.loose && !c.day))
+    .filter((c) => (c.day ? c.day < today || (c.day === today && c0.time >= "18:00") : f.now - c.at > 2 * 864e5) && f.now - c.at < 10 * 864e5)
     .slice(0, 3).map((c) => ({ type: "note" as const, kind: "followup" as const, key: c.key, text: `You said you'd ${c.text}. Done, or should I put it in your plan?` }));
 }
 
