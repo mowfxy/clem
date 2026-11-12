@@ -16,7 +16,7 @@ import { actionKey, describe, needsConfirm, type ProAction, type Undo } from "..
 import { capPushes, muteFor, muteKey, slotChanges, type Change, type ChangeKind, type Mute } from "../../core/proactivity/attention.ts";
 import { datedSlots, deadlineReminders, dueAt, leftText, timedItems, type Deadline } from "../../core/proactivity/rules.ts";
 import { busyList, calendarDeadlines, calendarDiff, dayLabel, studySlots, whenOf, type CalEvent } from "../../core/proactivity/calendar.ts";
-import { agendaText, clemAction, findSpace, prefsText, readClemArgs, remindersText, type ReminderRow } from "../../core/proactivity/tools.ts";
+import { agendaText, clemAction, findSpace, prefsText, readClemArgs, remindersText, settingsText, type ReminderRow } from "../../core/proactivity/tools.ts";
 import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, OUTWARD, quietEnd, readPro, type Channel, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
 import { changeText, digestLine, planSweep, readReply, sweepCard, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
@@ -265,6 +265,23 @@ export class Organizer {
   // ---------- Telegram ----------
   /** The pair card in the main thread, when Telegram isn't paired: once on first run, once when a Telegram channel is
    *  turned on, and whenever the person asks (Settings → Pair in chat). Never twice for the same reason. */
+  /** The first time: Clem asks, in a few plain questions in the main thread, how it should run (its routines, quiet
+   *  hours, how much it speaks, when they study), with what it does now. The answer comes back through the AI's
+   *  clem.prefs; there are no settings screens for these. Once per owner. */
+  async offerSetup() {
+    const s = await this.settings(), j = s.jobs;
+    const text = [
+      "Before I start looking after your week, a few quick questions. Answer in your own words, or skip any of them and I'll keep what's in brackets:",
+      "",
+      `1. When should your morning plan come, and do you want a midday check, an evening prep for tomorrow and a weekly review? (morning ${j.morning.time}, midday ${j.midday.time}, evening ${j.evening.time}, weekly review on ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][j.weekly.day ?? 5]}s at ${j.weekly.time})`,
+      `2. When are you usually asleep or offline? I'll hold notifications until then ends. (${s.quiet.on ? `${s.quiet.from} to ${s.quiet.to}` : "no quiet hours"})`,
+      `3. How much do you want to hear from me: only what can't wait, what matters, or anything I think will help? (${s.level === "proactive" ? "anything that will help" : s.level === "balanced" ? "what matters" : "only what can't wait"})`,
+      `4. Which days and hours do you usually study? (${prefsText(s.study).replace(/^Study preferences: /, "").replace(/\.$/, "")})`,
+      "",
+      "You can change any of this later. Just tell me.",
+    ].join("\n");
+    return this.post(text, "setup:first");
+  }
   async offerTelegram(why: "first" | "channel" | "asked") {
     const t = this.telegram;
     if (!t?.available || (why !== "asked" && await t.paired())) return null;
@@ -474,7 +491,7 @@ export class Organizer {
     }
     if (action === "clem.reminders") return { text: remindersText((await this.reminders()).map((r) => ({ ...r, ...(nameOf(r.spaceId) ? { space: nameOf(r.spaceId) } : {}) }))) };
     if (action === "clem.unremind") return (await this.cancelReminder(args.id)).ok ? { ok: true } : { error: "No upcoming reminder has that id." };
-    if (action === "clem.prefs") return { ok: true, text: prefsText((await this.setSettings({ study: args.study })).study) };
+    if (action === "clem.prefs") return { ok: true, text: settingsText(await this.setSettings(args as ProPatch)) };
     // clem.study
     const space = spaceArg(args.subject);
     if (!space) return { error: args.subject ? `No subject or project matches "${args.subject}".` : "Say which subject or project to study (\"subject\")." };

@@ -102,7 +102,7 @@ try {
       const upcoming = page.locator(".st-card-wrap", { hasText: "Upcoming reminders" });
       await upcoming.waitFor({ timeout: 4000 });
       check(await upcoming.getByRole("button", { name: "Cancel" }).count() === 1, `${theme}: the person's own reminder is listed with Cancel`);
-      for (const gone of ["When you study", "Google Calendar"]) check(await page.locator(".st-card-wrap", { hasText: gone }).count() === 0, `${theme}: no "${gone}" card in Proactivity`);
+      for (const gone of ["When you study", "Google Calendar"]) check(await page.locator(".st-card-title").filter({ hasText: new RegExp("^" + gone + "$") }).count() === 0, `${theme}: no "${gone}" card in Proactivity`);
       check(await page.locator(".st-dialog select").count() === 0, `${theme}: no native dropdowns in Proactivity`);
       await upcoming.scrollIntoViewIfNeeded();
       await page.waitForTimeout(500);

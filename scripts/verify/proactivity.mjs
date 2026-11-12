@@ -1,6 +1,6 @@
 // Clem's organizer against the real App and a real in-memory engine, in dark and light: the morning brief's card in
 // the main thread with blocks the window applied and Undo, the event sweep's card (a cancelled class pushed, the rest
-// and a new lecture as one digest line, no lecture card), Settings → Proactivity (no switch per kind of news) and
+// and a new lecture as one digest line, no lecture card), Settings → Proactivity (nothing set by hand; Clem asks in chat) and
 // "What Clem did today" with Undo. The engine runs on a fixed Cairo morning; nothing calls a model (the rules decide).
 // Usage: node scripts/verify/proactivity.mjs [out-dir]   (screenshots are pro-*.png)
 import { chromium } from "@playwright/test";
@@ -92,11 +92,11 @@ try {
       await page.keyboard.press("Control+,");
       await page.locator(".st-dialog").waitFor();
       await page.locator(".st-nav button", { hasText: "Proactivity" }).click();
-      await page.getByRole("radiogroup", { name: "How much Clem speaks" }).waitFor({ timeout: 4000 });
-      check(await page.getByRole("radio", { name: "Proactive" }).getAttribute("aria-checked") === "true", `${theme}: proactive by default`);
-      check(await page.locator(".st-card-wrap", { hasText: "What Clem tells you about" }).count() === 0, `${theme}: no switch per kind of news`);
-      await page.getByRole("radio", { name: "Balanced" }).click();
-      check(await until(async () => (await o.settings()).level === "balanced"), `${theme}: the level is saved in the engine`);
+      await page.locator(".st-card-wrap", { hasText: "What Clem did today" }).waitFor({ timeout: 4000 });
+      for (const gone of ["What Clem tells you about", "How Clem keeps you posted", "Clem’s routines", "When you study"]) check(await page.locator(".st-card-title").filter({ hasText: new RegExp("^" + gone + "$") }).count() === 0, `${theme}: no "${gone}" settings (Clem asks in chat)`);
+      check(await page.getByRole("radiogroup").count() === 0 && await page.locator(".st-dialog input[type=time]").count() === 0, `${theme}: nothing left to set by hand`);
+      const prefs = await o.tool({ action: "clem.prefs", level: "balanced" });
+      check(prefs.ok && (await o.settings()).level === "balanced", `${theme}: how much Clem speaks is changed by telling it`);
       await page.waitForTimeout(600);
       await page.locator(".st-dialog").screenshot({ path: `${out}/pro-settings-${theme}.png` });
       const did = page.locator(".st-card-wrap", { hasText: "What Clem did today" });

@@ -185,3 +185,22 @@ test("engine: study sessions avoid the calendar, land in the plan with Undo, and
     assert.match(String((await o.tool({ action: "clem.calendar", range: SUN }) as { text: string }).text), /16:00–18:00 Club \(calendar\)/);
   } finally { await e.close(); }
 });
+
+test("engine: Clem asks once how it should run, and everything it asks about is changed in chat (clem.prefs)", async () => {
+  const clock = { t: T(SUN, "09:00") };
+  const { e, o } = await engine(null, clock);
+  try {
+    assert.ok(await o.offerSetup());
+    assert.equal(await o.offerSetup(), undefined, "once");
+    const [ask] = (await o.inbox()).posts;
+    for (const q of [/morning plan/, /asleep or offline/, /How much do you want to hear/, /study\?/, /07:30/, /tell me/]) assert.match(ask.content, q);
+    const r = await o.tool({ action: "clem.prefs", level: "balanced", quiet: { from: "00:30", to: "08:00" }, jobs: { morning: { time: "08:15" }, midday: { on: false } }, study: { days: [0, 1, 2] } }) as { ok: boolean; text: string };
+    assert.equal(r.ok, true);
+    const s = await o.settings();
+    assert.equal(s.level, "balanced");
+    assert.deepEqual([s.quiet.from, s.quiet.to, s.jobs.morning.time, s.jobs.midday.on, s.jobs.evening.on], ["00:30", "08:00", "08:15", false, true]);
+    assert.deepEqual(s.study.days, [0, 1, 2]);
+    assert.match(r.text, /balanced[\s\S]*00:30–08:00[\s\S]*morning plan 08:15, midday check off/);
+    assert.match(String((await o.tool({ action: "clem.prefs" }) as { error?: string }).error), /nothing to change/);
+  } finally { await e.close(); }
+});

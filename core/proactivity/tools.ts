@@ -5,7 +5,7 @@ import { z } from "zod";
 import { cairo } from "../guc/hub.ts";
 import { busyList, calendarClashes, clashText, dayLabel, type Busy, type CalEvent } from "./calendar.ts";
 import type { Slot, Timed } from "./rules.ts";
-import { studyPrefs, type StudyPrefs } from "./settings.ts";
+import { proPatch, type ProSettings, type StudyPrefs } from "./settings.ts";
 
 export const CLEM_ACTIONS = ["clem.calendar", "clem.remind", "clem.reminders", "clem.unremind", "clem.study", "clem.prefs"] as const;
 export type ClemAction = (typeof CLEM_ACTIONS)[number];
@@ -25,7 +25,8 @@ export const clemArgs = {
   "clem.reminders": z.object({}),
   "clem.unremind": z.object({ id: z.string().regex(/^r[\w-]{1,40}$/) }),
   "clem.study": z.object({ subject, sessions: z.number().int().min(1).max(30), minutes: z.number().int().min(15).max(240).optional(), until: ymd, title: z.string().trim().min(2).max(120).optional() }),
-  "clem.prefs": z.object({ study: studyPrefs.partial() }),
+  // Everything the person can tell Clem about how it runs: how much it speaks, quiet hours, its routines, study time.
+  "clem.prefs": proPatch.omit({ deadlineHours: true }).refine((p) => Object.values(p).some((v) => v !== undefined), "says nothing to change"),
 } satisfies Record<ClemAction, z.ZodType>;
 
 /** A request's fields for `action`, checked (numbers sent as text are read); an error says what was wrong in one line. */
@@ -50,6 +51,15 @@ export function findSpace(arg: string | undefined, spaces: { id: string; name: s
 const WD = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const hhmm = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
 const tag = (b: Busy) => (b.source === "class" ? "class" : b.source === "calendar" ? "calendar" : b.space ? `plan · ${b.space}` : "plan");
+const JOB_NAMES = { morning: "morning plan", midday: "midday check", evening: "evening prep", weekly: "weekly review" } as const;
+const LEVEL_NAMES = { quiet: "only what can't wait", balanced: "what matters, with briefs", proactive: "anything that will help" } as const;
+/** How Clem runs for this person, in one short paragraph (clem.prefs' answer and the first-setup question). */
+export const settingsText = (s: ProSettings) => [
+  `How much Clem speaks: ${s.level} (${LEVEL_NAMES[s.level]}).`,
+  `Quiet hours: ${s.quiet.on ? `${s.quiet.from}–${s.quiet.to}` : "off"}.`,
+  "Routines: " + (Object.keys(JOB_NAMES) as (keyof typeof JOB_NAMES)[]).map((k) => `${JOB_NAMES[k]} ${s.jobs[k].on ? `${s.jobs[k].day !== undefined ? WD[s.jobs[k].day!] + "s " : ""}${s.jobs[k].time}` : "off"}`).join(", ") + ".",
+  prefsText(s.study),
+].join(" ");
 export const prefsText = (p: StudyPrefs) => `Study preferences: ${p.days.length === 7 ? "every day" : p.days.map((d) => WD[d].slice(0, 3)).join(", ")}, ${p.from}–${p.to}, ${p.gap} min clear around other things.`;
 
 /** The agenda for some days: everything timed, all-day calendar items, every clash, and the study preferences. */
