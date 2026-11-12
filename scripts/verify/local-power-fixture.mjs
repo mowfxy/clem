@@ -91,7 +91,7 @@ export const handoutEdits = { summary: "Moved the due date to Monday and made qu
 
 
 /** Starts Vite, installs the fake desktop bridge and opens the workspace. Returns helpers. */
-export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1, extraChats = [], extraSpaces = [], extraState = {}, guc } = {}) {
+export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1, extraChats = [], extraSpaces = [], extraState = {}, guc, unfold = true } = {}) {
   const server = await createServer({ server: { host: "127.0.0.1", port, strictPort: true }, logLevel: "error" });
   await server.listen();
   const print = await specPrinter(browser);
@@ -217,6 +217,8 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
   }, { workspace: { ...workspace, ...extraState, spaces: [...workspace.spaces, ...extraSpaces], chats: [...workspace.chats, ...extraChats] }, worksheet: Array.from(worksheet), handout: Array.from(handout), worksheetSpec });
   await page.locator(".greeting-row").waitFor();
   // Subjects' chats are folded in the sidebar since the main thread: open them, as a person would to reach a chat.
-  for (const show of await page.getByRole("button", { name: /^Show chats in / }).all()) await show.click();
+  // (Each one opened stops being a "Show chats" button, so the first is taken each time.)
+  const show = page.getByRole("button", { name: /^Show chats in / });
+  for (let i = 0; unfold && i < 20 && await show.count(); i++) await show.first().click();
   return { page, context, errors, t0, close: async () => { await context.close(); await server.close(); } };
 }

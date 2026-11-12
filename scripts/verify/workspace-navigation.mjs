@@ -11,7 +11,7 @@ const long = Array.from({ length: 14 }, (_, i) => [
 ]).flat();
 const reply = "## A longer answer\n\n" + "Mitochondria make ATP for the cell. ".repeat(150);
 const browser = await chromium.launch();
-const { page, close, errors } = await openFixture(browser, { port: 5191, replies: [reply], extraChats: [{ id: "c-long", title: "A long chat", spaceId: "bio", updated: Date.now(), messages: long }] });
+const { page, close, errors } = await openFixture(browser, { unfold: false, port: 5191, replies: [reply], extraChats: [{ id: "c-long", title: "A long chat", spaceId: "bio", updated: Date.now(), messages: long }] });
 const at = () => page.evaluate(() => { const w = document.querySelector(".workspace"); return { gap: w.scrollHeight - w.clientHeight - w.scrollTop, jump: !!document.querySelector(".jump-latest") }; });
 const title = () => page.locator(".top-title").textContent();
 // A sidebar chat by its title (a "new reply" mark can join the button's name).

@@ -56,7 +56,7 @@ const record = (metric, ms, budget, longTasks = 0) => {
   if (!ok) failed = true;
 };
 try {
-  const fx = await openFixture(browser, {
+  const fx = await openFixture(browser, { unfold: false,
     port: 5251, viewport: { width: 1360, height: 900 }, extraChats, extraSpaces,
     initScripts: [`try{localStorage.setItem("clem-theme","dark");localStorage.removeItem("clem-sidebar-open")}catch{}`,
       // Long tasks, from page start.

@@ -31,7 +31,7 @@ let failed = false;
 const check = (ok, what) => { console.log((ok ? "ok   " : "FAIL ") + what); if (!ok) failed = true; };
 try {
   for (const theme of ["dark", "light"]) {
-    const fixture = await openFixture(browser, {
+    const fixture = await openFixture(browser, { unfold: false,
       port: 5231, viewport: { width: 1360, height: 860 }, extraChats, extraSpaces,
       initScripts: [`try{localStorage.setItem("clem-theme",${JSON.stringify(theme)});localStorage.removeItem("clem-sidebar-open")}catch{}`],
       replies: [theme === "dark" ? "Osmosis moves water toward the side with more solute, so the potato cells took water in." : "The Krebs cycle turns acetyl-CoA into CO2 and energy carriers.", "Here is a calm evening: one hour of review, then rest."],
