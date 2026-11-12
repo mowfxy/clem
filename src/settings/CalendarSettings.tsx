@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { desktop } from "../desktop/bridge";
-import { Icon } from "../Icons";
+import { GoogleCalendarLogo } from "../BrandLogos";
 import { SettingsCard, SettingRow } from "./SettingsParts";
 
 // The calendar parts of Settings (docs/MAIN-THREAD.md "Calendar, reminders and study time"): Google Calendar
@@ -32,7 +32,7 @@ export function GoogleCalendarRow() {
   };
   const disconnect = () => { setBusy(true); void ask({ action: "calendarDisconnect" }).then(() => setState({ connected: false }), (e: Error) => setState((x) => ({ connected: x?.connected ?? true, error: e.message }))).finally(() => setBusy(false)); };
   const status = state === null ? "Checking…" : state.error || (state.connected ? "Connected. Read-only: Clem plans around it and never changes it." : "Read-only: Clem plans around your events and reminds you about quizzes and exams in it.");
-  return <SettingRow lead={<span className="connector-tile"><Icon name="plan-upcoming" size={22} /></span>} title="Google Calendar" description={status}>
+  return <SettingRow lead={<span className="connector-tile"><GoogleCalendarLogo size={22} /></span>} title="Google Calendar" description={status}>
     {state !== null && (state.connected
       ? <button type="button" className="secondary" disabled={busy} onClick={disconnect}>Disconnect</button>
       : <button type="button" className="secondary" disabled={busy} onClick={() => void connect()}>Connect</button>)}

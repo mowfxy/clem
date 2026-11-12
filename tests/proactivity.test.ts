@@ -23,9 +23,11 @@ const slot = (day: string, start: string, end: string, code = "ELCT 201", type =
 test("settings: proactive by default, merged patches, Cairo quiet hours that cross midnight", () => {
   assert.equal(readPro(undefined).level, "proactive");
   assert.deepEqual(readPro({ level: "loud" }), DEFAULT_PRO, "a broken value is the default");
-  const s = mergePro(DEFAULT_PRO, { quiet: { from: "23:00", to: "07:30" }, events: { grade: { channels: ["app"] } } });
-  assert.deepEqual(s.events.grade, { on: true, channels: ["app"] });
-  assert.equal(s.events.deadline.channels.includes("push"), true, "other events keep theirs");
+  const s = mergePro(DEFAULT_PRO, { quiet: { from: "23:00", to: "07:30" } });
+  // Saved when each kind of news had its own switch and channels: still read, those dropped.
+  const old = readPro({ level: "balanced", events: { grade: { on: false, channels: ["app"] } } });
+  assert.equal(old.level, "balanced");
+  assert.equal("events" in old, false);
   assert.equal(inQuiet(s, T(SUN, "01:00")), true);
   assert.equal(inQuiet(s, T(SUN, "23:30")), true);
   assert.equal(inQuiet(s, T(SUN, "12:00")), false);
@@ -35,13 +37,13 @@ test("settings: proactive by default, merged patches, Cairo quiet hours that cro
 
 test("levels: quiet speaks only for urgent things, balanced for news and briefs, proactive for all", () => {
   const at = (level: "quiet" | "balanced" | "proactive") => ({ ...DEFAULT_PRO, level });
-  assert.deepEqual(delivery(at("quiet"), { event: "announcement" }), { post: false, channels: [] });
-  assert.deepEqual(delivery(at("quiet"), { event: "deadline", urgent: true }), { post: true, channels: ["app", "push"] });
+  assert.deepEqual(delivery(at("quiet"), { news: true }), { post: false, channels: [] });
+  assert.deepEqual(delivery(at("quiet"), { news: true, urgent: true }), { post: true, channels: ["app", "push", "telegram"] }, "urgent reaches them wherever they are");
+  assert.deepEqual(delivery(at("balanced"), { news: true }), { post: true, channels: ["app", "push", "telegram"] });
   assert.equal(delivery(at("balanced"), { job: "midday" }).post, false);
-  assert.equal(delivery(at("balanced"), { job: "morning" }).post, true);
-  assert.equal(delivery(at("balanced"), { event: "plan" }).post, false);
+  assert.deepEqual(delivery(at("balanced"), { job: "morning" }), { post: true, channels: ["app"] }, "a brief is not worth a buzz");
+  assert.equal(delivery(at("balanced"), {}).post, false, "plan tidying alone stays quiet");
   assert.equal(delivery(at("proactive"), { job: "midday" }).post, true);
-  assert.deepEqual(delivery(mergePro(at("proactive"), { events: { grade: { on: false } } }), { event: "grade", urgent: true }), { post: false, channels: [] }, "an event turned off says nothing");
 });
 
 test("deadline reminders: 48 hours, then 3 hours before, on Cairo's clock, each once", () => {
@@ -171,9 +173,10 @@ test("the organizer's reply is checked: levels, watches, and only allowed action
   const now = T(SUN, "13:00"), snap = snapshotOf({ spaces: [space("phys", "Physics")], files: [{ id: "f1", name: "notes.pdf", spaceId: null, created: 1 }] }, now);
   const amb: Change = { key: "ann:1", kind: "new_announcement", title: "New announcement", detail: "Please read chapter 3 carefully and think about how it relates to the lecture." };
   const plan = planSweep("event", { now, snap, prev: snap, slots: [], deadlines: [], events: [amb] }, { done: new Set() });
-  assert.ok(plan.ask && plan.ask.user.includes("Rate:\n0. New announcement"));
-  const read = readReply('{"levels":[{"i":0,"level":"notify","why":"Reading for the quiz"}],"actions":[{"type":"file_move","fileId":"f1","name":"notes.pdf","spaceId":"phys"},{"type":"automation","name":"x","prompt":"xyz","schedule":"daily","time":"10:00"},{"type":"file_move","fileId":"nope","name":"n","spaceId":"phys"}]}', plan, snap, new Set());
+  assert.ok(plan.ask && plan.ask.user.includes("News:\n0. New announcement"));
+  const read = readReply('{"levels":[{"i":0,"level":"notify","why":"Reading for the quiz","say":"Read chapter 3 before Thursday\'s quiz."}],"actions":[{"type":"file_move","fileId":"f1","name":"notes.pdf","spaceId":"phys"},{"type":"automation","name":"x","prompt":"xyz","schedule":"daily","time":"10:00"},{"type":"file_move","fileId":"nope","name":"n","spaceId":"phys"}]}', plan, snap, new Set());
   assert.equal(read.rated[0].level, "notify");
+  assert.equal(read.rated[0].say, "Read chapter 3 before Thursday's quiz.", "Clem says it in its own words");
   assert.deepEqual(read.actions.map((a) => a.type), ["file_move"], "an offer or an unknown file from the model is dropped");
   assert.equal(readReply("not json", plan, snap, new Set()), plan);
 });
@@ -216,9 +219,9 @@ test("engine: no change, no model call; new words in the main thread ask once", 
   } finally { await engine.close(); }
 });
 
-test("engine: ambiguous announcements go to the model once per batch; urgent ones are pushed at once, deduped", async () => {
+test("engine: Clem judges all the news in one call and says it in its own words; urgent is pushed at once, deduped; no lecture cards", async () => {
   const clock = { t: T(SUN, "13:00") };
-  const { engine, h, o } = await engineWith(empty(), clock, () => '{"levels":[{"i":0,"level":"notify","why":"Reading for the quiz"},{"i":1,"level":"silent","why":"Nothing to do"}]}');
+  const { engine, h, o } = await engineWith(empty(), clock, () => '{"levels":[{"i":0,"level":"notify","why":"Reading for the quiz","say":"Read chapter 3 before the quiz."},{"i":1,"level":"silent","why":"Nothing to do"},{"i":3,"level":"digest","why":"Routine"}]}');
   try {
     await o.sweep("event");
     await event(engine, "ann:1", "new_announcement", "New announcement in PHYS 101", "Please read chapter 3 carefully and think about how it relates to the lecture.");
@@ -227,13 +230,15 @@ test("engine: ambiguous announcements go to the model once per batch; urgent one
     await event(engine, "mat:m1", "new_material", "New in PHYS 101: Lecture 5", "slides · Week 5");
     const r = await o.sweep("event");
     assert.equal(h.calls.length, 1, "one call for the whole batch");
-    assert.ok(/Rate:\n0\. .*chapter 3[\s\S]*\n1\. .*history/.test(h.calls[0].user));
+    assert.ok(/News:\n0\. .*chapter 3[\s\S]*\n1\. .*history[\s\S]*\n2\. .*cancelled[\s\S]*\n3\. .*Lecture 5/.test(h.calls[0].user), "every piece of news is judged, not only the unclear ones");
     assert.ok(r.posted);
     const { posts } = await o.inbox();
     const card = cardsIn(posts[0].content).find((c) => c.type === "organizer") as any;
     assert.deepEqual(card.lines.map((l: any) => l.key?.split(":").slice(0, 2).join(":")).filter(Boolean), ["change:ann", "change:ann"], "the urgent one and the one the model raised");
+    assert.ok(card.lines.some((l: any) => l.text === "Read chapter 3 before the quiz."), "the line is Clem's own words");
     assert.ok(card.lines.some((l: any) => /Also new: 1 update/.test(l.text)), "routine material is one digest line");
-    assert.deepEqual(h.notices, ["Today's lecture is cancelled; a compensation lecture will follow.", "New announcement in PHYS 101"], "the urgent one alone, the rest in one push");
+    assert.equal(cardsIn(posts[0].content).some((c) => c.type === "lecture"), false, "no new-lecture card unless asked");
+    assert.deepEqual(h.notices, ["Today's lecture is cancelled; a compensation lecture will follow.", "Read chapter 3 before the quiz."], "the urgent one alone, the rest in one push");
     assert.deepEqual(h.opened[0], { chat: "main", message: posts[0].id }, "the push opens the card");
     assert.equal((await o.sweep("event")).called, false);
     assert.equal(await o.push("change:ann:3", "x", "y", {}), "sent-before", "never twice on a channel");

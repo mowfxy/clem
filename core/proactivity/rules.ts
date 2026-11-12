@@ -1,6 +1,6 @@
 // The organizer's rules: what it decides without a model (docs/MAIN-THREAD.md "Proactivity"). Deadline reminders,
 // clashes, commitments, today's time blocks, rescheduling, revision plans, deadline tasks, filing, grade pings,
-// project nudges, repeated requests and new-lecture cards. Pure; all days and times are Cairo's.
+// project nudges and repeated requests. Pure; all days and times are Cairo's.
 import * as chrono from "chrono-node";
 import { addDays, cairo } from "../guc/hub.ts";
 import type { ProAction } from "./actions.ts";
@@ -212,13 +212,6 @@ export function clashNotes(f: Facts): ProAction[] {
 }
 /** Timed plan items (study sessions, quizzes put in a plan), for the calendar tools. */
 export const timedItems = timedOf;
-
-/** New lectures (CMS files) for linked subjects: cards with Summarize and Make flashcards. Nothing is read or made. */
-export const lectures = (events: Change[]) => {
-  const seen = new Set<string>();
-  return events.filter((e) => (e.kind === "new_material" || e.kind === "file_saved") && e.subjectId && e.materialId && !seen.has(e.materialId) && seen.add(e.materialId))
-    .map((e) => ({ key: "lecture:" + e.materialId, subjectId: e.subjectId!, materialId: e.materialId!, title: e.title.replace(/^New in [^:]+:\s*/, ""), saved: e.kind === "file_saved" }));
-};
 
 /** A cancelled class in the coming week frees its slot: the next open task (the subject's first) goes there. */
 export function freedSlots(f: Facts): ProAction[] {

@@ -17,7 +17,7 @@ import { capPushes, muteFor, muteKey, slotChanges, type Change, type ChangeKind,
 import { datedSlots, deadlineReminders, dueAt, leftText, timedItems, type Deadline } from "../../core/proactivity/rules.ts";
 import { busyList, calendarDeadlines, calendarDiff, dayLabel, studySlots, whenOf, type CalEvent } from "../../core/proactivity/calendar.ts";
 import { agendaText, clemAction, findSpace, prefsText, readClemArgs, remindersText, type ReminderRow } from "../../core/proactivity/tools.ts";
-import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, quietEnd, readPro, type Channel, type EventKind, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
+import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, OUTWARD, quietEnd, readPro, type Channel, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
 import { changeText, digestLine, planSweep, readReply, sweepCard, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
 import { live, parseWatch, type Watch } from "../../core/proactivity/watches.ts";
@@ -33,13 +33,11 @@ export type ProInbox = { posts: { id: string; content: string; at: number }[]; a
 
 /** Event sweeps wait a minute for more changes, and run at most every 10 minutes. */
 export const EVENT_DEBOUNCE_S = 60, EVENT_GAP_S = 600;
-const KIND_OF: Record<ChangeKind, EventKind> = { new_grade: "grade", new_announcement: "announcement", new_material: "lecture", file_saved: "lecture", deadline_added: "deadline", deadline_changed: "deadline", schedule_changed: "schedule", slot_cancelled: "schedule", slot_moved: "schedule", slot_added: "schedule", room_changed: "schedule" };
 const ms = (t: Date | string | null | undefined) => (t ? new Date(t).getTime() : 0);
 /** Channels that reach the person away from the window. */
 export type Outward = Exclude<Channel, "app">;
-const outward = (channels: Channel[]) => channels.filter((c): c is Outward => c !== "app");
-/** What the person asked to be told about goes wherever they can be reached. */
-const ASKED: Outward[] = ["push", "telegram"];
+/** What is worth telling away from the window goes wherever the person can be reached (Telegram once paired). */
+const ASKED: Outward[] = [...OUTWARD];
 /** The Telegram relay as the organizer sees it (desktop/engine/telegram.ts). */
 export type TelegramChannel = { available: boolean; paired(): Promise<boolean>; status(): Promise<{ configured: boolean }>; deliver(n: { title: string; body: string; cards?: string; open?: Open }): Promise<void> };
 
@@ -65,8 +63,6 @@ export class Organizer {
     const next = mergePro(await this.settings(), proPatch.parse(patch));
     await this.db.query("insert into organizer_settings (owner_id, settings) values ($1, $2) on conflict (owner_id) do update set settings = excluded.settings, updated_at = now()", [this.owner, next]);
     if (patch.jobs) await this.reschedule(next);
-    // Telegram turned on for something while it isn't paired: the pair card, once, in the main thread.
-    if (Object.values(patch.events || {}).some((e) => e?.channels?.includes("telegram"))) await this.offerTelegram("channel").catch(() => null);
     return next;
   }
   async start(jobs: Jobs) {
@@ -188,19 +184,17 @@ export class Organizer {
     const fresh = async (key: string) => !(await this.db.query("select 1 from organizer_actions where owner_id = $1 and key = $2", [this.owner, key])).length;
     const said: RatedChange[] = [];
     for (const r of plan.rated.filter((r) => r.level === "urgent" || r.level === "notify")) if (await fresh("change:" + r.change.key)) said.push(r);
-    // What the person asked to hear is pushed (once) even when its kind isn't; a change is never pushed twice.
-    const asked = plan.hits.filter((h) => h.watch.channel !== "app").map((h) => ({ change: h.change, level: "urgent" as const, why: "You asked." }));
-    const out = (r: RatedChange) => (asked.some((a) => a.change.key === r.change.key) ? ASKED : outward(s.events[KIND_OF[r.change.kind]].channels));
-    const pushable = [...said.filter((r) => out(r).length && s.events[KIND_OF[r.change.kind]].on && !asked.some((a) => a.change.key === r.change.key)), ...asked];
+    // What the person asked to hear is pushed (once) whatever its level; a change is never pushed twice.
+    const asked = plan.hits.filter((h) => h.watch.channel !== "app").map((h): RatedChange => ({ change: h.change, level: "urgent", why: "You asked." }));
+    const out = (_r: RatedChange) => ASKED;
+    const pushable = [...said.filter((r) => !asked.some((a) => a.change.key === r.change.key)), ...asked];
     const capped = capPushes(s.level, await this.pushedToday(), pushable.filter((p) => s.level !== "quiet" || p.level === "urgent"));
     const digest = plan.rated.filter((r) => r.level === "digest");
-    for (const r of said) await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: changeText(r.change).slice(0, 300) }, changeText(r.change), "said", { change: r.change, level: r.level });
-    const lectures = plan.lectures.filter((l) => !plan.rated.some((r) => r.level === "silent" && r.change.materialId === l.materialId));
-    for (const l of lectures) await this.record(l.key, kind, { type: "note", kind: "lecture", text: `New lecture: ${l.title}`.slice(0, 300), spaceId: l.subjectId, key: l.key }, `New lecture: ${l.title}`, "said");
+    for (const r of said) { const text = r.say || changeText(r.change); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, "said", { change: r.change, level: r.level }); }
     const urgent = said.some((r) => r.level === "urgent") || plan.hits.length > 0 || taken.some((a) => needsConfirm(a) || (a.type === "note" && a.kind === "clash"));
-    const say = delivery(s, kind === "event" ? { event: said[0] ? KIND_OF[said[0].change.kind] : lectures.length ? "lecture" : "plan", urgent } : { job: kind as JobKind, urgent });
+    const say = delivery(s, kind === "event" ? { news: said.length > 0, urgent } : { job: kind as JobKind, urgent });
     const card = sweepCard(kind, now, { said, digest: digestLine(digest, name), hits: plan.hits, brief: plan.brief, actions: taken }, name);
-    const blocks: ClemCard[] = [...(card ? [card] : []), ...Object.entries(groupBy(lectures, (l) => l.subjectId)).map(([subjectId, ls]) => ({ type: "lecture" as const, subjectId, files: ls.slice(0, 10).map((l) => ({ id: l.materialId, name: l.title.slice(0, 300), saved: l.saved })) }))];
+    const blocks: ClemCard[] = card ? [card] : [];
     // Quiet speaks only for what is urgent or waits on a tap; organizing above still happened and is in the log.
     if (!blocks.length || !say.post) return false;
     const postId = await this.post(blocks.map((b) => cardBlock(b)).join("\n\n"), `sweep:${kind}:${now}`);
@@ -208,9 +202,10 @@ export class Organizer {
     const open: Open = { chat: snap.mainId || "main", message: postId };
     // Telegram gets the card itself (with its buttons); a desktop notification gets a title and a line.
     const cards = blocks.map((b) => cardBlock(b)).join("\n\n");
-    for (const p of capped.push.filter((p) => p.level === "urgent")) await this.push("change:" + p.change.key, p.change.title, p.change.detail || "Tap to see it in Clem.", open, s, { channels: out(p) });
+    const words = (p: RatedChange) => p.say || p.change.title;
+    for (const p of capped.push.filter((p) => p.level === "urgent")) await this.push("change:" + p.change.key, p.say ? "Clem" : p.change.title, p.say || p.change.detail || "Tap to see it in Clem.", open, s, { channels: out(p) });
     const batch = capped.push.filter((p) => p.level !== "urgent");
-    if (batch.length) await this.push(`batch:${postId}`, batch.length === 1 ? batch[0].change.title : `${batch.length} updates`, batch.map((b) => b.change.title).join(" · ").slice(0, 240), open, s, { channels: [...new Set(batch.flatMap(out))], cards });
+    if (batch.length) await this.push(`batch:${postId}`, batch.length === 1 ? (batch[0].say ? "Clem" : batch[0].change.title) : `${batch.length} things for you`, batch.length === 1 ? words(batch[0]).slice(0, 240) : batch.map(words).join(" · ").slice(0, 240), open, s, { channels: [...new Set(batch.flatMap(out))], cards });
     const jobOut = say.channels.filter((c): c is Outward => c !== "app");
     if (!pushable.length && kind !== "event" && kind !== "midday" && jobOut.length && s.level === "proactive") await this.push(`job:${kind}:${cairo(now).ymd}`, card?.title || "Clem", (card?.lines || []).slice(0, 3).map((l) => l.text).join(" · ").slice(0, 240), open, s, { channels: jobOut, cards });
     return true;
@@ -283,7 +278,7 @@ export class Organizer {
     const cal = await this.calendarWeek(cairo(now).ymd);
     // The calendar changed since the last look: an event sweep says what moved and any new clash.
     if (cal) { const seen = cal.map((e) => `${e.id}@${e.start}-${e.end}`).sort().join("|"); if (this.calSeen !== undefined && seen !== this.calSeen) void this.poke("calendar").catch(() => {}); this.calSeen = seen; }
-    if (s.events.deadline.on) {
+    {
       const [snap, g] = await Promise.all([this.workspace(), this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null }))]);
       const name = (id?: string) => snap.spaces.find((x) => x.id === id)?.name;
       const due = deadlineReminders(this.deadlines(g, snap, cal || []), now, s.deadlineHours);
@@ -295,9 +290,9 @@ export class Organizer {
         cards.push({ type: "reminder", title: text.slice(0, 200), due: new Date(dueAt(r.deadline.due)).toISOString().slice(0, 16) + "Z", ...(name(r.deadline.spaceId) ? { space: name(r.deadline.spaceId)!.slice(0, 120) } : {}), ...(r.deadline.spaceId ? { spaceId: r.deadline.spaceId } : {}) });
       }
       const tight = said.some((r) => r.hours <= 3);
-      if (cards.length && delivery(s, { event: "deadline", urgent: tight }).post) {
+      if (cards.length && delivery(s, { news: true, urgent: tight }).post) {
         const postId = await this.post(cards.map((c) => cardBlock(c)).join("\n\n"), "reminders:" + said.map((r) => r.key).join(","));
-        const channels = outward(s.events.deadline.channels);
+        const channels = ASKED;
         if (postId && (s.level !== "quiet" || tight) && channels.length) for (const [i, r] of said.entries()) {
           const guc = !r.deadline.id.startsWith("plan-") && !r.deadline.id.startsWith("gcal-");
           await this.push(r.key, `Due ${leftText(r.left)}`, r.deadline.title, guc ? { route: "#/app/guc/deadlines/" + encodeURIComponent(r.deadline.id) } : { chat: snap.mainId || "main", message: postId }, s, { channels, cards: cardBlock(cards[i]) });
@@ -407,13 +402,11 @@ export class Organizer {
     const s = await this.settings(), snap = await this.workspace();
     for (const r of due) {
       const at = ms(r.at), key = `reminder:${r.id}:${new Date(at).toISOString()}`, space = snap.spaces.find((x) => x.id === r.space_id)?.name;
-      // A study session's ping follows the Flashcards/study switch; what the person asked for always rings.
-      const asked = r.source !== "study";
-      if (asked || s.events.study.on) {
+      {
         const card: ClemCard = { type: "reminder", title: r.text.slice(0, 200), at: new Date(at).toISOString().slice(0, 16) + "Z", id: r.id, rang: true, ...(space ? { space: space.slice(0, 120), spaceId: r.space_id! } : {}), ...(r.repeat ? { repeat: r.repeat } : {}) };
         const postId = await this.post(cardBlock(card), key);
-        const channels: Outward[] = asked ? ASKED : outward(s.events.study.channels);
-        if (postId && channels.length && now - at < 6 * 3600e3) await this.push(key, "Reminder", r.text, { chat: snap.mainId || "main", message: postId }, s, { channels, cards: cardBlock(card), loud: r.source === "person" });
+        const channels: Outward[] = ASKED;
+        if (postId && now - at < 6 * 3600e3) await this.push(key, "Reminder", r.text, { chat: snap.mainId || "main", message: postId }, s, { channels, cards: cardBlock(card), loud: r.source === "person" });
         await this.record(key, "reminder", { type: "note", kind: "info", text: ("Reminded you: " + r.text).slice(0, 300) }, "Reminded you: " + r.text, "said");
       }
       if (r.repeat) {
