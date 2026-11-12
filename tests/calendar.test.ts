@@ -59,7 +59,7 @@ test("rules: morning blocks go around classes and timed plan items; a class agai
   const snap = snapshotOf({ spaces: [space("phys", "Physics")], plans: [{ spaceId: "phys", rev: 1, tasks: [{ id: "t1", title: "Problem set", due: SUN }, { id: "t2", title: "Coffee", due: SUN, time: "09:30" }, { id: "t3", title: "Work", due: SUN, time: "10:30" }] }] }, now);
   const f: Facts = { now, snap, slots: [{ day: SUN, start: "09:00", end: "10:00", title: "PHYS Lecture" }], deadlines: [], events: [] };
   const [block] = morningBlocks(f);
-  assert.equal(block.type === "time_block" && block.time, "11:30", "after the class, coffee and work");
+  assert.deepEqual(block, { type: "plan_move", spaceId: "phys", taskId: "t1", title: "Problem set", due: SUN, time: "11:30" }, "after the class, coffee and work: the task itself gets the hour");
   const notes = clashNotes(f);
   assert.equal(notes.length, 1);
   assert.match((notes[0] as { text: string }).text, /PHYS Lecture on Sunday at 09:00 clashes with “Coffee” \(Physics\)/);

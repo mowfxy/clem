@@ -75,11 +75,17 @@ export class Organizer {
     const t = setTimeout(() => void this.catchUp().catch((e) => this.host.log("warn", "[organizer] catch-up: " + (e as Error).message)), 20_000);
     t.unref?.();
   }
-  private async catchUp() {
+  /** Clem was closed when a routine was due: the latest one missed today runs now, once. Opened at night, that is the
+   *  evening prep, not a morning plan for a day that is over; the weekly review too, on its day. */
+  async catchUp() {
     const s = await this.settings(), c = cairo(this.clock());
-    if (!s.jobs.morning.on || c.time < s.jobs.morning.time) return;
-    const [row] = await this.db.query<{ last_day: string }>("select last_day from organizer_sweeps where owner_id = $1 and kind = 'morning'", [this.owner]);
-    if (row?.last_day !== c.ymd) await this.sweep("morning");
+    const ran = async (kind: JobKind) => (await this.db.query<{ last_day: string }>("select last_day from organizer_sweeps where owner_id = $1 and kind = $2", [this.owner, kind]))[0]?.last_day === c.ymd;
+    const due = (kind: JobKind) => s.jobs[kind].on && c.time >= s.jobs[kind].time && (s.jobs[kind].day === undefined || s.jobs[kind].day === c.weekday);
+    const out: JobKind[] = [];
+    const daily = (["evening", "morning"] as const).find(due);
+    if (daily && !(await ran(daily)) && !(daily === "morning" && await ran("evening"))) { await this.sweep(daily); out.push(daily); }
+    if (due("weekly") && !(await ran("weekly"))) { await this.sweep("weekly"); out.push("weekly"); }
+    return out;
   }
   /** The timed jobs' pg-boss schedules (Cairo time), one key per job. */
   private async reschedule(s: ProSettings) {
@@ -141,14 +147,16 @@ export class Organizer {
     const [snap, g, done, mutes] = await Promise.all([this.workspace(), this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null })), this.done(), this.mutes()]);
     const [state] = await this.db.query<{ snapshot: Snapshot | null; slots: GucSlot[] | null; events_after: Date | null }>("select snapshot, slots, events_after from organizer_sweeps where owner_id = $1 and kind = '_state'", [this.owner]);
     const [last] = await this.db.query<{ last_day: string | null }>("select last_day from organizer_sweeps where owner_id = $1 and kind = $2", [this.owner, kind]);
-    const ev = await this.events(state?.events_after || null, g.links);
+    // The very first sweep only sets the baseline: what GUC already held is not news.
+    const ev = state ? await this.events(state.events_after || null, g.links)
+      : { changes: [] as Change[], last: (await this.db.query<{ t: Date | null }>("select max(created_at) as t from guc_events where owner_id = $1", [this.owner]))[0]?.t || undefined };
     const subjectOfCode = (code: string) => g.links.find((l) => l.code === code)?.subjectId;
     const slotCh = state?.slots && g.slots.length ? slotChanges(state.slots, g.slots, started, subjectOfCode) : [];
     const today = cairo(started).ymd;
     const facts = { now: started, snap, prev: state?.snapshot || undefined, slots: datedSlots(g.slots, today, 8), deadlines: this.deadlines(g, snap), events: [...ev.changes, ...slotCh] };
     const watches = await this.watchRows();
     const nowCard = withGuc({ ...localNowCard({ spaces: snap.spaces, plans: snap.plans.map((p) => ({ spaceId: p.spaceId, tasks: p.tasks.map((t) => ({ title: t.title, due: t.due, done: t.done ? 1 : undefined, kind: t.milestone ? "milestone" as const : "task" as const })) })), today }) }, g.now);
-    let plan = planSweep(kind, facts, { done, lastDay: last?.last_day || undefined, now: nowCard, mutes, watches, model: !!this.host.complete });
+    let plan = planSweep(kind, facts, { done, lastDay: last?.last_day || undefined, now: nowCard, mutes, watches, model: !!this.host.complete, voice: s.level !== "quiet" });
     let called = false;
     if (plan.ask && this.host.complete) {
       try { const reply = await this.host.complete({ ...plan.ask, model: snap.organizer?.model, reasoning: snap.organizer?.reasoning }); called = true; plan = readReply(reply, plan, snap, done); }
@@ -185,24 +193,38 @@ export class Organizer {
     const pushable = [...said.filter((r) => !asked.some((a) => a.change.key === r.change.key)), ...asked];
     const capped = capPushes(s.level, await this.pushedToday(), pushable.filter((p) => s.level !== "quiet" || p.level === "urgent"));
     const digest = plan.rated.filter((r) => r.level === "digest");
-    for (const r of said) { const text = r.say || changeText(r.change); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, "said", { change: r.change, level: r.level }); }
     const urgent = said.some((r) => r.level === "urgent") || plan.hits.length > 0 || taken.some((a) => needsConfirm(a) || (a.type === "note" && a.kind === "clash"));
-    const say = delivery(s, kind === "event" ? { news: said.length > 0, urgent } : { job: kind as JobKind, urgent });
-    const card = sweepCard(kind, now, { said, digest: digestLine(digest, name), hits: plan.hits, brief: plan.brief, actions: taken }, name);
+    // News is news whichever sweep found it: a timed sweep that carries some speaks as an event sweep would.
+    const say = delivery(s, kind === "event" ? { news: said.length > 0, urgent } : { job: kind as JobKind, news: said.length > 0, urgent });
+    // News a quieter level kept back (it was worth knowing, not worth a message of its own) rides along with the next
+    // card, for a week; then it is only in the log.
+    const heldRows = say.post ? await this.db.query<{ key: string; text: string; action: { change?: Change; level?: RatedChange["level"] } }>(
+      "select key, text, action from organizer_actions where owner_id = $1 and status = 'held' and created_at > $2 order by created_at desc limit 6", [this.owner, new Date(now - 7 * 864e5)]) : [];
+    const held = heldRows.flatMap((r): RatedChange[] => (r.action?.change ? [{ change: r.action.change, level: r.action.level || "notify", why: "Kept for later.", say: r.text }] : [])).reverse();
+    // One thing, one line: a watch's own line stands for its change, and a grade is said once (in Clem's words when it
+    // has them, else by the grade note).
+    const hitKeys = new Set(plan.hits.map((h) => h.change.key)), graded = new Set(taken.flatMap((a) => (a.type === "note" && a.kind === "grade" && a.key ? [a.key.slice("grade:".length)] : [])));
+    const lines = [...said, ...held].filter((r) => !hitKeys.has(r.change.key) && !(graded.has(r.change.key) && !r.say));
+    const shown = taken.filter((a) => !(a.type === "note" && a.kind === "grade" && said.some((r) => r.say && "grade:" + r.change.key === a.key)));
+    const card = sweepCard(kind, now, { said: lines, digest: digestLine(digest, name), hits: plan.hits, brief: plan.brief, actions: shown }, name);
     const blocks: ClemCard[] = card ? [card] : [];
+    const posting = blocks.length > 0 && say.post;
+    for (const r of said) { const text = r.say || changeText(r.change); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, posting ? "said" : "held", { change: r.change, level: r.level }); }
     // Quiet speaks only for what is urgent or waits on a tap; organizing above still happened and is in the log.
-    if (!blocks.length || !say.post) return false;
-    const postId = await this.post(blocks.map((b) => cardBlock(b)).join("\n\n"), `sweep:${kind}:${now}`);
+    if (!posting) return false;
+    // Clem's own words come first, the card under them.
+    const cards = blocks.map((b) => cardBlock(b)).join("\n\n"), content = (plan.message ? plan.message + "\n\n" : "") + cards;
+    const postId = await this.post(content, `sweep:${kind}:${now}`);
     if (!postId) return false;
+    if (heldRows.length) await this.db.query("update organizer_actions set status = 'said', updated_at = now() where owner_id = $1 and key = any($2::text[]) and status = 'held'", [this.owner, heldRows.map((r) => r.key)]);
     const open: Open = { chat: snap.mainId || "main", message: postId };
-    // Telegram gets the card itself (with its buttons); a desktop notification gets a title and a line.
-    const cards = blocks.map((b) => cardBlock(b)).join("\n\n");
-    const words = (p: RatedChange) => p.say || p.change.title;
+    // Telegram gets the message and the card (with its buttons); a desktop notification gets a title and a line.
+    const words = (p: RatedChange) => p.say || changeText(p.change);
     for (const p of capped.push.filter((p) => p.level === "urgent")) await this.push("change:" + p.change.key, p.say ? "Clem" : p.change.title, p.say || p.change.detail || "Tap to see it in Clem.", open, s, { channels: out(p) });
     const batch = capped.push.filter((p) => p.level !== "urgent");
-    if (batch.length) await this.push(`batch:${postId}`, batch.length === 1 ? (batch[0].say ? "Clem" : batch[0].change.title) : `${batch.length} things for you`, batch.length === 1 ? words(batch[0]).slice(0, 240) : batch.map(words).join(" · ").slice(0, 240), open, s, { channels: [...new Set(batch.flatMap(out))], cards });
+    if (batch.length) await this.push(`batch:${postId}`, batch.length === 1 ? (batch[0].say ? "Clem" : batch[0].change.title) : plan.message ? "Clem" : `${batch.length} things for you`, (batch.length === 1 ? words(batch[0]) : plan.message || batch.map(words).join(" · ")).slice(0, 240), open, s, { channels: [...new Set(batch.flatMap(out))], cards: content });
     const jobOut = say.channels.filter((c): c is Outward => c !== "app");
-    if (!pushable.length && kind !== "event" && kind !== "midday" && jobOut.length && s.level === "proactive") await this.push(`job:${kind}:${cairo(now).ymd}`, card?.title || "Clem", (card?.lines || []).slice(0, 3).map((l) => l.text).join(" · ").slice(0, 240), open, s, { channels: jobOut, cards });
+    if (!pushable.length && kind !== "event" && kind !== "midday" && jobOut.length && s.level === "proactive") await this.push(`job:${kind}:${cairo(now).ymd}`, card?.title || "Clem", (plan.message || (card?.lines || []).slice(0, 3).map((l) => l.text).join(" · ")).slice(0, 240), open, s, { channels: jobOut, cards: content });
     return true;
   }
   /** Records an action once (by key); false when it was already there. */
@@ -226,7 +248,7 @@ export class Organizer {
   // ---------- Notifications ----------
   private async pushedToday() {
     // One thing told on both channels counts once against the cap.
-    const [{ n }] = await this.db.query<{ n: number }>("select count(distinct event_key)::int as n from notifications_sent where owner_id = $1 and channel in ('push', 'telegram') and sent_at >= $2", [this.owner, new Date(cairoAt(cairo(this.clock()).ymd))]);
+    const [{ n }] = await this.db.query<{ n: number }>("select count(distinct event_key)::int as n from notifications_sent where owner_id = $1 and channel in ('push', 'telegram') and event_key not like 'reminder:%' and sent_at >= $2", [this.owner, new Date(cairoAt(cairo(this.clock()).ymd))]);
     return n;
   }
   /** A notification on each of `channels` (default: the desktop), once per key and channel ever
@@ -293,6 +315,11 @@ export class Organizer {
       const due = deadlineReminders(this.deadlines(g, snap), now, s.deadlineHours);
       const cards: ClemCard[] = [], said: typeof due = [];
       for (const r of due) {
+        // Just told as news (a deadline that appeared already inside the window): the 48-hour reminder would only repeat it.
+        if (r.hours > 3 && (await this.db.query("select 1 from organizer_actions where owner_id = $1 and (key = $2 or key like $3) and created_at > $4 limit 1", [this.owner, "change:dl:" + r.deadline.id, "change:dl:" + r.deadline.id.replace(/[\\%_]/g, "\\$&") + ":%", new Date(now - 12 * 3600e3)])).length) {
+          await this.record(r.key, "reminder", { type: "note", kind: "info", text: `${r.deadline.title}: told as news, not reminded again` }, `Skipped a repeat reminder for ${r.deadline.title}`.slice(0, 300), "skipped");
+          continue;
+        }
         const text = `${r.deadline.title} is due ${leftText(r.left)}`;
         if (!(await this.record(r.key, "reminder", { type: "note", kind: "info", text: text.slice(0, 300) }, text, "said"))) continue;
         said.push(r);
@@ -348,7 +375,7 @@ export class Organizer {
   /** "What Clem did today": everything since Cairo midnight (or `since`), newest first. */
   async log(since?: number): Promise<LogRow[]> {
     const from = since ?? cairoAt(cairo(this.clock()).ymd);
-    const rows = await this.db.query<{ key: string; sweep: string; text: string; status: string; created_at: Date; undo: unknown; action: ProAction }>("select key, sweep, text, status, created_at, undo, action from organizer_actions where owner_id = $1 and created_at >= $2 order by created_at desc limit 200", [this.owner, new Date(from)]);
+    const rows = await this.db.query<{ key: string; sweep: string; text: string; status: string; created_at: Date; undo: unknown; action: ProAction }>("select key, sweep, text, status, created_at, undo, action from organizer_actions where owner_id = $1 and created_at >= $2 and status <> 'skipped' order by created_at desc limit 200", [this.owner, new Date(from)]);
     return rows.map((r) => ({ key: r.key, sweep: r.sweep, text: r.text, status: r.status, at: ms(r.created_at), undo: r.status === "applied" && !!r.undo, type: r.action?.type || "note" }));
   }
   async statuses(keys: string[]) {
