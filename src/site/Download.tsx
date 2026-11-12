@@ -1,11 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
-import {Icon} from '../Icons';
-import {Illustration} from '../Illustrations';
-import {Thinking} from './Landing';
-import {Site} from './SiteHeader';
+import {Icon,Logo} from '../Icons';
 import {SecuritySettings} from '../AccountSettings';
 import {getSupabase} from '../supabase';
-import {REPO} from './sections';
+import {Card,REPO,Site} from './Site';
 
 type Release={url:string;version:string;signed:boolean;sha256?:string;size?:number;released?:string;notes?:string};
 
@@ -42,25 +39,20 @@ export function Download({account=false,returning=false}:{account?:boolean;retur
     addEventListener('hashchange',onHash);
     return()=>{abort.abort();removeEventListener('hashchange',onHash);};
   },[]);
-  return <Site>
-    <article className="cl-page"><div className="cl-wrap">
-      <header className="cl-page-head">
-        <div>{returning?<><h1>Welcome back.</h1><p className="cl-lede">Return to the Clem app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></>:<>
-          <h1>{started?<>Your download<br/>has started.</>:<>Get Clem<br/>for Windows.</>}</h1>
-          <p className="cl-lede">Free and open source, for Windows 10 and 11.</p>
-          {link?<div className="cl-actions"><a className="cl-btn" href={link} onClick={()=>setStarted(true)}><Icon name="download" size={18}/>{started?'Download again':'Download for Windows'}</a><a className="cl-link" href={REPO}><Icon name="github" size={18}/>Source on GitHub</a></div>
-          :failed?<p role="alert" className="cl-lede">We couldn’t load the latest release. <a href="/download/windows">Try the direct link</a> or email <a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a>.</p>
-          :<p className="cl-actions"><Thinking label="Finding the latest version"/></p>}
-        </>}</div>
-        <Illustration scene={returning?'door':started?'plane':'box'} className="cl-plate cl-page-plate"/>
-      </header>
-      {!returning&&link?<div className="cl-page-body"><ul className="cl-rows">
-        <li><b>Version</b><span>{release!.version}</span></li>
-        <li><b>System</b><span>Windows 10 and 11, 64-bit</span></li>
-        {release!.size?<li><b>Size</b><span>{Math.round(release!.size/1048576)} MB</span></li>:null}
-        {release!.sha256?<li><b>SHA-256</b><span className="cl-hash">{release!.sha256}</span></li>:null}
-      </ul></div>:null}
-      {account&&signedIn&&<div className="cl-account"><SecuritySettings/></div>}
-    </div></article>
-  </Site>;
+  if(returning)return <Site page="download"><Card title="Welcome back."><p>Return to the Clem app to finish. Your plan is confirmed securely by our account service, usually within a minute.</p></Card></Site>;
+  return <Site page="download"><Card wide title={started?'Your download has started.':'Clem for Windows.'}>
+    <p>Free and open source, for Windows 10 and 11.</p>
+    {link?<a className="o-btn" href={link} onClick={()=>setStarted(true)}><Icon name="download" size={18}/>{started?'Download again':'Download for Windows'}</a>
+    :failed?<p role="alert">We couldn’t load the latest release. <a href="/download/windows">Try the direct link</a> or email <a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a>.</p>
+    :<p className="o-finding" role="status"><Logo size={20} thinking/>Finding the latest version</p>}
+    {link?<ul className="o-rows">
+      <li><b>Version</b><span>{release!.version}</span></li>
+      <li><b>System</b><span>Windows 10 and 11, 64-bit</span></li>
+      {release!.size?<li><b>Size</b><span>{Math.round(release!.size/1048576)} MB</span></li>:null}
+      {release!.sha256?<li><b>SHA-256</b><span className="o-hash">{release!.sha256}</span></li>:null}
+      {release!.signed?null:<li><b>On first run</b><span>The installer isn’t code-signed yet, so Windows may show a SmartScreen warning. Choose More info, then Run anyway.</span></li>}
+    </ul>:null}
+    <a className="o-link" href={REPO}><Icon name="github" size={18}/>Source on GitHub</a>
+    {account&&signedIn&&<div className="o-account"><SecuritySettings/></div>}
+  </Card></Site>;
 }

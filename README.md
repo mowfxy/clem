@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://clem.m4labs.xyz"><img src="docs/assets/banner.png" alt="Clem: your space to think" width="100%"></a>
+  <a href="https://clem.m4labs.xyz"><img src="docs/assets/banner.png" alt="Clem: a quiet Windows app for study, research and writing" width="100%"></a>
 </p>
 
 <p align="center">
@@ -78,7 +78,7 @@ Clem is one quiet place for the work you bring to an AI: a course, a research qu
 </table>
 
 <p align="center">
-  <img src="docs/assets/screenshots/website-visual.png" alt="A live graph of why a long cable rings, with a slider for the cable length" width="92%">
+  <img src="docs/assets/screenshots/visual.png" alt="A live graph of why a long cable rings, with a slider for the cable length" width="92%">
 </p>
 
 <details>
@@ -88,8 +88,8 @@ Clem is one quiet place for the work you bring to an AI: a course, a research qu
 | A subject | Your files |
 | :---: | :---: |
 | <img src="docs/assets/screenshots/subject.png" alt="The Biology 101 subject page with flashcards to review, recent chats and files"> | <img src="docs/assets/screenshots/files.png" alt="The Files page showing a linked folder and PDFs kept on this PC"> |
-| **A chat** | **Open source, on the website** |
-| <img src="docs/assets/screenshots/chat.png" alt="A chat about an osmosis lab with Second opinion, Check sources and Export"> | <img src="docs/assets/screenshots/website-open-source.png" alt="The website section saying Clem is open source under the MIT License"> |
+| **A chat** | **The home screen** |
+| <img src="docs/assets/screenshots/chat.png" alt="A chat about an osmosis lab with Second opinion, Check sources and Export"> | <img src="docs/assets/screenshots/home.png" alt="Clem's home screen"> |
 
 <sub>Screenshots come from the built-in demo workspace with scripted replies. Re-shoot them with <code>node scripts/readme-screenshots.mjs</code>.</sub>
 </details>

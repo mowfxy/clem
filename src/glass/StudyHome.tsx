@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Chat, Space, StudySet } from '../../core/types';
 import { dayLabel, localDay, type SpacePlan } from '../../core/plans';
 import { dueBySubject } from '../../core/study-due';
@@ -32,13 +32,34 @@ function activity(chats: Chat[], now: number) {
   const cells: { key: string; label: string; count: number; future: boolean }[] = [];
   for (let i = WEEKS * 7 - 1; i >= 0; i--) {
     const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i), key = dayKey(d.getTime()), count = days.get(key) || 0;
-    cells.push({ key, count, future: d.getTime() > now, label: `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}: ${plural(count, 'question')}` });
+    cells.push({ key, count, future: d.getTime() > now, label: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) });
   }
   let streak = 0;
   for (let i = 0; ; i++) { const n = days.get(dayKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i).getTime())); if (n) streak++; else if (i) break; }
   const shown = cells.filter((c) => !c.future), total = shown.reduce((n, c) => n + c.count, 0), active = shown.filter((c) => c.count).length;
   const month = (key: string) => new Date(key + 'T12:00').toLocaleDateString(undefined, { month: 'short' });
   return { cells, total, active, streak, range: `${month(cells[0].key)} – ${month(cells[cells.length - 1].key)}` };
+}
+
+type Cell = ReturnType<typeof activity>['cells'][number];
+
+/** The activity grid. Hovering a day shows its count in the app's own floating glass, not the system tooltip. */
+function Heat({ cells, label }: { cells: Cell[]; label: string }) {
+  const [tip, setTip] = useState<{ cell: Cell; x: number; y: number; side: 'start' | 'mid' | 'end' } | null>(null);
+  const columns = Math.ceil(cells.length / 7);
+  const show = (el: HTMLElement, i: number) => {
+    const cell = cells[i];
+    if (!cell || cell.future) return setTip(null);
+    const col = Math.floor(i / 7);
+    setTip({ cell, x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop, side: col < 3 ? 'start' : col > columns - 4 ? 'end' : 'mid' });
+  };
+  return <div className="sw-heat" role="img" aria-label={label} onPointerLeave={() => setTip(null)}>
+    {cells.map((c, i) => <i key={c.key} data-level={level(c.count)} data-future={c.future || undefined} data-on={tip?.cell.key === c.key || undefined}
+      onPointerEnter={(e) => show(e.currentTarget, i)} />)}
+    {tip && <span key={tip.cell.key} className="sw-tip" data-side={tip.side} style={{ left: tip.x, top: tip.y }} aria-hidden="true">
+      <b>{tip.cell.label}</b>{plural(tip.cell.count, 'question')}
+    </span>}
+  </div>;
 }
 
 function Delta({ now, before }: { now: number; before: number }) {
@@ -74,9 +95,7 @@ export function StudyHome({ chats, spaces, studySets, plans, onChat, onSpace, on
   const a = data.activity;
   return <div className="study-home">
     <Widget title="Study activity" icon="analysis" className="sw-activity">
-      <div className="sw-heat" role="img" aria-label={`${plural(a.total, 'question')} on ${plural(a.active, 'day')} since ${a.range.split(' ')[0]}`}>
-        {a.cells.map((c) => <i key={c.key} data-level={level(c.count)} data-future={c.future || undefined} title={c.future ? undefined : c.label} />)}
-      </div>
+      <Heat cells={a.cells} label={`${plural(a.total, 'question')} on ${plural(a.active, 'day')} since ${a.range.split(' ')[0]}`} />
       <p className="sw-foot"><span>{plural(a.active, 'day')} · {plural(a.total, 'question')}{a.streak > 1 ? ` · ${a.streak} day streak` : ''}</span><span>{a.range}</span></p>
     </Widget>
     <Widget title="Recent chats" icon="chat" className="sw-recent">

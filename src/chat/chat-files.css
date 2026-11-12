@@ -1,5 +1,7 @@
 /* The chat's files: a button in the top bar and a card that grows out of it (src/chat/ChatFiles.tsx). */
 .chat-files{position:relative;display:flex;align-items:center;-webkit-app-region:no-drag}
+/* In the top bar the files button sits with the chat controls on the right, never adrift in the middle. */
+.workspace-top>.chat-files{margin-left:auto}
 .chat-files-button{position:relative;border-radius:10px;transition:background .15s,color .15s}
 .chat-files-button.on{background:color-mix(in srgb,var(--ink) 9%,transparent)}
 .cf-count{position:absolute;top:2px;right:1px;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--ink);color:var(--bg);font:700 9.5px/15px var(--sans);text-align:center;pointer-events:none;box-shadow:0 0 0 2px var(--bg)}

@@ -1,4 +1,4 @@
-# Clem website — Kern record
+# Clem — Kern record
 
 ## Brief (user, 2026-10-24)
 Asked: feel, how loud, how much M4 Labs, never.
@@ -92,3 +92,12 @@ Later the same day (user): the home chips stay small pills, centred under the te
 Memory has no Keep or Forget (user, 2026-11-07): one Delete button on every memory and on the notice, the add field stays at the bottom. Learned memories stay unconfirmed in the data.
 
 Rollout (2026-11-07): the top bar has no surface. Text scrolling under it goes soft beneath a veil (.workspace::before) that fades out with no edge, and Windows' caption buttons sit on a transparent overlay. glass-base.css holds the materials plus sign-in and setup, because those screens show before the workspace's stylesheets load; glass.css stays last. Sign-in and first-run setup are one glass sheet over the horizon. Do not set z-index on .workspace or .desktop-titlebar: a stacking context there puts the title bar over the top bar's buttons.
+
+
+## 2026-11-07 New website (user): replaces everything above about the site
+Brief (user): fully remove the old site and let nothing from it influence the new one. One long orbit; expressive; real screenshots only as whole, uncropped windows; anything smaller is HTML; all pages rebuilt with URLs kept; Mowafy Sans and Serif only.
+Thesis: the page is one orbit, because the app is the view of a sunrise from orbit: night side, the sun clears the limb, and it comes out in the app's daylight, ending on the app's own welcome sheet.
+Median left: left-stacked headline with lede and two buttons, provider logo rows, three feature columns, FAQ accordion, CTA band, four-column footer.
+System: src/site/Orbit.tsx (horizon in type on two canvases, moved only by scroll), site.css (the app's glass tokens, Serif Display for anything large, the app's control scale), Panels.tsx (HTML panels on real glass), Shot (whole windows only).
+Defended risk: the first screen is only the name, set full width on the horizon.
+Scripts: scripts/site/capture.mjs (real desktop build in a throwaway profile), look.mjs (scrolls every width), social.mjs (og image and README banner).

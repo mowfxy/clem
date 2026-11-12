@@ -1,8 +1,7 @@
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useState} from 'react';
 import {GoogleLogo,Icon} from '../Icons';
 import {AdminError,adminApi,adminClient,demo,type Staff} from './api';
 import {Avatar,I,ToastHost} from './ui';
-import {useDarkOnly} from '../site/SiteHeader';
 import {products,type ProductSection} from './products';
 import {Overview} from './Overview';
 import {Stats} from './Stats';
@@ -13,6 +12,10 @@ import {Team} from './Team';
 import {Audit} from './Audit';
 import {Emails} from './Emails';
 import './admin.css';
+
+/** Holds the page in the dark theme while it is shown. */
+
+function useDarkOnly(){useLayoutEffect(()=>{const root=document.documentElement,was=root.dataset.theme;root.dataset.theme='dark';return()=>{if(was)root.dataset.theme=was;};},[]);}
 
 /** The lab's logo, set like m4labs.xyz's: a bold M4 and a ringed "labs". */
 function LabLogo(){return <span className="adm-lab-logo" aria-label="M4 Labs"><b>M4</b><i>labs</i></span>;}
