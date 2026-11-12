@@ -37,4 +37,6 @@ export type EngineHost = {
   /** A VPS is connected (subject cards offer "My VPS" for files). */
   vps?(): { files: boolean } | undefined;
 };
-export type TelegramTurn = { id: string; text: string } | { id: string; tap: import("../../core/telegram/render.ts").Tap };
+// Defined in contracts.ts, which the website build copies on its own (scripts/prepare-deploy.mjs); engine/ is not shipped there.
+import type { TelegramTurn } from "../contracts.ts";
+export type { TelegramTurn };
