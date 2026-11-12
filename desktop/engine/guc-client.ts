@@ -41,9 +41,11 @@ export class GucClient {
   get domain() { return this.credentials.domain; }
 
   private async slot(host: string) {
+    // A finished request hands its place straight to the next one waiting (the count stays), so a request arriving in
+    // between can't take it too and run a third at once.
     if ((this.active.get(host) || 0) >= 2) await new Promise<void>((r) => this.waiting.set(host, [...(this.waiting.get(host) || []), r]));
-    this.active.set(host, (this.active.get(host) || 0) + 1);
-    return () => { this.active.set(host, (this.active.get(host) || 1) - 1); const next = this.waiting.get(host)?.shift(); next?.(); };
+    else this.active.set(host, (this.active.get(host) || 0) + 1);
+    return () => { const next = this.waiting.get(host)?.shift(); if (next) next(); else this.active.set(host, (this.active.get(host) || 1) - 1); };
   }
 
   /** One request with up to 3 tries (0.5 s, 1 s, 2 s apart) on network errors and 5xx, following redirects. */
@@ -62,7 +64,10 @@ export class GucClient {
       } finally { release(); }
       if (!response) throw asGucError(failure);
       if (response.status >= 500) throw new GucError("unavailable", "http " + response.status);
-      if (response.status === 401 || response.status === 403) throw new GucError("auth", "http " + response.status);
+      // NTLM answers a wrong password with 401. 403 is one page or file the account may not open: skipped, not a
+      // reason to pause every check and ask for a new password.
+      if (response.status === 401) throw new GucError("auth", "http 401");
+      if (response.status === 403) throw new GucError("unavailable", "http 403");
       const location = response.headers.location;
       if (response.status >= 300 && response.status < 400 && response.status !== 304 && location) {
         url = new URL(location, url).href;

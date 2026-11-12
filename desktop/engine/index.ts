@@ -143,6 +143,12 @@ export class Engine {
     const [row] = await this.db.query<{ at: Date | null }>("select password_needed as at from guc_account where owner_id = $1", [this.owner]);
     return row?.at ? new Date(row.at).getTime() : null;
   }
+  /** Whether GUC still takes the password, asked of the home page after the retry's wait. Unreachable counts as yes:
+   *  only a refusal is a reason to ask the person. */
+  private async passwordWorks(credentials: Credentials) {
+    await (this.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(AUTH_RETRY_MS);
+    return new GucClient(credentials, this.http, this.sleep).page(urls.home).then(() => true, (e) => asGucError(e).kind !== "auth");
+  }
   /** The retry failed too: mark `password_needed`, pause every GUC job (no data or settings change), tell the person once. */
   private async passwordFailed() {
     await this.db.query("update guc_account set password_needed = coalesce(password_needed, $2), last_error = $3 where owner_id = $1", [this.owner, new Date(this.clock()), { kind: "auth", message: PASSWORD_SAID }]);
@@ -319,7 +325,9 @@ export class Engine {
     } catch (e) {
       const err = asGucError(e);
       error = err.kind;
-      if (err.kind === "auth" && !(await this.paused())) await this.passwordFailed();
+      // The course page's own sign-in failure was already retried (run). A file that answered with a sign-in page is
+      // checked against the home page first: only a password GUC really refuses pauses the checks.
+      if (err.kind === "auth" && !(await this.paused()) && !(await this.passwordWorks(credentials))) await this.passwordFailed();
       throw e;
     }
     finally {
