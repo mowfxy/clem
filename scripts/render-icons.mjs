@@ -2,11 +2,12 @@
 //   desktop/icon.ico               the app, window, taskbar and shortcut icon (16–256 px, PNG entries)
 //   public/logo.png, logo.svg      a large copy for drag previews and the plain mark
 //   public/favicon.ico, favicon.svg  the browser tab icon (same tile as Windows), apple-touch-icon.png for iOS
-// The icon is the identity's black app tile: the paper-coloured mark on a near-black rounded tile with a hairline
-// edge, so it reads on any taskbar, light or dark. Run: node scripts/render-icons.mjs  (needs Playwright's Chromium).
+// The Windows icon and logo.png are the glow tile (glowTileSvg, the same picture as @M4ClemBot): the paper mark on the
+// app's dark tile with the main thread's red and blue glows. Below 32 px the mark grows, since the glow can't show there.
+// The favicon stays the plain black tile. Run: node scripts/render-icons.mjs  (needs Playwright's Chromium).
 import { chromium } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
-import { CLEM_PAPER, CLEM_TILE, MARK_TILE_SCALE, markInner, markSvg, tileSvg } from "../core/mark.ts";
+import { CLEM_PAPER, CLEM_TILE, MARK_TILE_SCALE, glowTileSvg, markInner, markSvg, tileSvg } from "../core/mark.ts";
 
 await writeFile("public/logo.svg", markSvg({ color: CLEM_PAPER }) + "\n");
 const icoSizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
@@ -15,10 +16,11 @@ const tileShare = (size) => (size <= 24 ? 1 : size <= 48 ? 0.94 : 0.9);
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ deviceScaleFactor: 1 });
-async function render(size) {
-  const tile = size * tileShare(size);
+async function render(size, glow = true) {
+  const tile = size * tileShare(size), attrs = ` width="${tile}" height="${tile}"`;
+  const svg = glow ? glowTileSvg({ attrs, scale: size < 32 ? MARK_TILE_SCALE : undefined }) : tileSvg({ attrs });
   await page.setViewportSize({ width: size, height: size });
-  await page.setContent(`<html><body style="margin:0;width:${size}px;height:${size}px;display:grid;place-items:center;background:transparent">${tileSvg({ attrs: ` width="${tile}" height="${tile}"` })}</body></html>`);
+  await page.setContent(`<html><body style="margin:0;width:${size}px;height:${size}px;display:grid;place-items:center;background:transparent">${svg}</body></html>`);
   return page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } });
 }
 
@@ -37,11 +39,12 @@ images.forEach(({ size, png }, i) => {
 });
 return Buffer.concat([header, ...images.map((x) => x.png)]);
 }
-const images = [];
+const images = [], plain = [];
 for (const size of icoSizes) images.push({ size, png: await render(size) });
+for (const size of [16, 32, 48]) plain.push({ size, png: await render(size, false) });
 await writeFile("desktop/icon.ico", ico(images));
 await writeFile("public/logo.png", await render(1024));
-await writeFile("public/favicon.ico", ico(images.filter((x) => [16, 32, 48].includes(x.size))));
+await writeFile("public/favicon.ico", ico(plain));
 await writeFile("public/favicon.svg", tileSvg() + "\n");
 // iOS rounds the corners itself, so the touch icon is a full square tile.
 await page.setViewportSize({ width: 180, height: 180 });

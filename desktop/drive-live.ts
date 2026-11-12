@@ -4,17 +4,22 @@ import {Readable} from "node:stream";
 import {driveQuery, driveTerms, viewFormat, type DriveHit} from "../core/drive-search.ts";
 import {decodeEntities, isMediaType, parseCaptions, pickTrack, transcriptText, type CaptionTrack, type VideoCaptions} from "../core/captions.ts";
 
-// Google Drive, live: search, browse folders (with subfolders and thumbnails), read text and stream files straight from
-// Google with byte ranges so long videos seek instantly. Nothing is written to disk; the short-lived access token stays
-// in the main process.
+// Google Drive, live, under drive.file: Clem opens only what people choose in Google's own picker and the files it makes.
+// It browses and searches those (with subfolders and thumbnails), reads text and streams files straight from Google with
+// byte ranges so long videos seek instantly. Nothing is written to disk; the short-lived access token stays in the main
+// process.
+//
+// Google grants a chosen folder by itself, not the files and subfolders already inside it. Whatever is chosen with it in
+// the same pick (or later) shows up in its real place inside that folder; the rest of the folder stays out of Clem's reach.
 
 const API = "https://www.googleapis.com/drive/v3/files";
 const FOLDER = "application/vnd.google-apps.folder";
 const RECONNECT = "Reconnect Google Drive once so Clem can save files into your folders.";
-const BROWSE = "Reconnect Google Drive once so Clem can show all your folders and files.";
+const CHOOSE = "Clem now opens only the Drive files and folders you choose. Reconnect Google Drive and choose them.";
+const GONE = "Clem no longer has access to this Drive folder. Add it again in Settings → Connectors → Google Drive.";
+/** The whole-Drive scope earlier builds asked for. A connection still holding it is asked to reconnect and choose. */
 const FULL_SCOPE = "https://www.googleapis.com/auth/drive";
-/** Grants that let Clem save into a linked folder: the full Drive scope Clem asks for, or drive.file from a 0.3.0 preview
- *  (enough for folders picked then). */
+/** Grants that let Clem save into a chosen folder. */
 const WRITE_SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"];
 /** Why Google refused a save: missing permission on the connection (reconnect), or on the folder itself (shared read-only). */
 const refusal = async (r: Response) => {
@@ -43,8 +48,9 @@ const untimed = (f: Meta) => /\.txt$/i.test(f.name) || f.mimeType.startsWith("ap
 const resolve = <T extends Meta>(f: T): T => f.mimeType === SHORTCUT && f.shortcutDetails?.targetId && f.shortcutDetails.targetMimeType
   ? { ...f, id: f.shortcutDetails.targetId, mimeType: f.shortcutDetails.targetMimeType, size: undefined, thumbnailLink: f.shortcutDetails.targetMimeType === FOLDER ? undefined : f.thumbnailLink }
   : f;
-/** A file or folder as the app shows it. `path` is the subfolder it sits in, inside a linked folder. */
-export type DriveItem = {id:string;name:string;mimeType:string;size?:number;modified?:string;thumbnail?:boolean;durationMs?:number;path?:string;folder?:boolean};
+/** A file or folder as the app shows it. `path` is the subfolder it sits in, inside a linked folder. `inside` (folders
+ *  in Clem's access list) is how many items in it Clem can open. */
+export type DriveItem = {id:string;name:string;mimeType:string;size?:number;modified?:string;thumbnail?:boolean;durationMs?:number;path?:string;folder?:boolean;inside?:number};
 const FIELDS = "id,name,mimeType,size,modifiedTime,thumbnailLink,hasThumbnail,webViewLink,iconLink,videoMediaMetadata(durationMillis),shortcutDetails(targetId,targetMimeType)";
 const quote = (s: string) => "'" + s.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
 const OFFLINE = "Clem couldn't reach Google Drive. Check your connection and try again.";
@@ -126,12 +132,83 @@ export class DriveLive {
     if(!full())await this.token(true);
     if(!full())throw Object.assign(Error(RECONNECT),{code:"reconnect"});
   }
-  /** A connection from a 0.3.0 preview (drive.file) sees only items picked then, so My Drive and linked folders would
-   *  look empty; it asks for a reconnect instead. An unknown scope (older service) is let through. */
+  /** A connection made when Clem asked for the whole Drive is asked to reconnect, so what Clem opens is only what was
+   *  chosen. An unknown scope (older service) is let through. */
   private async canBrowse(){
-    const full=()=>{const scope=this.cached?.scope||"";return !scope||scope.split(/\s+/).includes(FULL_SCOPE);};
-    if(!full())await this.token(true);
-    if(!full())throw Object.assign(Error(BROWSE),{code:"reconnect"});
+    const whole=()=>(this.cached?.scope||"").split(/\s+/).includes(FULL_SCOPE);
+    if(whole())await this.token(true);
+    if(whole())throw Object.assign(Error(CHOOSE),{code:"reconnect"});
+  }
+  /** Items taken out of Clem's access (kept with the account), read again after a minute or any change. */
+  private hiddenIds:{at:number;ids:Set<string>}|null=null;
+  private async hidden():Promise<Set<string>>{
+    if(this.hiddenIds&&Date.now()-this.hiddenIds.at<60_000)return this.hiddenIds.ids;
+    const generation=this.generation;
+    const session=await this.session();if(!session)return new Set();
+    const r=await sturdy(this.fetcher,this.service+"/api/drive/hidden",{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",timeout:15000}).catch(()=>null);
+    // An older service without the list, or a brief failure, hides nothing rather than blocking Drive.
+    const ids=new Set(r?.ok?(((await r.json().catch(()=>({}))) as {hidden?:string[]}).hidden||[]):this.hiddenIds?[...this.hiddenIds.ids]:[]);
+    if(generation===this.generation)this.hiddenIds={at:Date.now(),ids};
+    return ids;
+  }
+  /** Takes items out of Clem's access (`hide`) or gives them back (`show`). */
+  async setHidden({hide,show}:{hide?:string[];show?:string[]}){
+    const session=await this.session();if(!session)throw Error("Sign in to Clem again.");
+    const r=await sturdy(this.fetcher,this.service+"/api/drive/hidden",{method:"PUT",headers:{Authorization:"Bearer "+session,Origin:this.service,"Content-Type":"application/json"},body:JSON.stringify({hide,show}),redirect:"error",timeout:15000});
+    if(!r.ok)throw Error(((await r.json().catch(()=>({}))) as {error?:string}).error||"Clem could not change its Drive access. Try again.");
+    const {hidden}=await r.json() as {hidden:string[]};
+    this.hiddenIds={at:Date.now(),ids:new Set(hidden)};this.trees.clear();
+    return {ok:true};
+  }
+  /** What was chosen in Google's picker for this request; not done while the person is still choosing. */
+  async picked(request:string):Promise<{done:boolean;files:DriveItem[]}>{
+    const session=await this.session();if(!session)return {done:false,files:[]};
+    const r=await sturdy(this.fetcher,this.service+"/api/drive/picked?request="+encodeURIComponent(request),{headers:{Authorization:"Bearer "+session,Origin:this.service},redirect:"error",timeout:20000});
+    if(!r.ok)return {done:false,files:[]};
+    const body=await r.json() as {done?:boolean;ids?:string[]};
+    if(!body.done)return {done:false,files:[]};
+    // The picker gave a new grant (and may have given back removed items); what was cached predates it.
+    this.cached=null;this.trees.clear();this.hiddenIds=null;
+    let refused="";
+    const files=(await Promise.all((body.ids||[]).slice(0,60).map(async id=>{
+      const m=await this.google(`${API}/${encodeURIComponent(id)}?supportsAllDrives=true&fields=${encodeURIComponent(FIELDS)}`,{timeout:20000});
+      if(!m.ok){refused=await unread(m,"Google Drive could not open what you chose. Try choosing it again.");return null;}
+      const f=resolve(await m.json() as Meta);this.meta.set(f.id,f);return item(f);
+    }))).filter((f):f is DriveItem=>!!f);
+    // Something was chosen but none of it opens: say why, rather than acting as if nothing was chosen.
+    if(refused&&!files.length&&body.ids?.length)throw Error(refused);
+    return {done:true,files};
+  }
+  /**
+   * Everything Clem can open, as the person chose it: each chosen item at the top, unless what holds it was chosen too,
+   * in which case it sits inside that folder. Folders say how many items inside them Clem can open.
+   */
+  async access():Promise<{connected:boolean;files:DriveItem[]}>{
+    if(!await this.token())return {connected:false,files:[]};
+    await this.canBrowse();
+    const hidden=await this.hidden();
+    const all=new Map<string,Meta&{parents?:string[]}>();
+    let page:string|undefined;
+    do{
+      const url=new URL(API);
+      url.search=new URLSearchParams({q:"trashed = false",pageSize:"1000",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
+        fields:`nextPageToken,files(${FIELDS},parents)`,...(page?{pageToken:page}:{})}).toString();
+      const r=await this.google(url.href,{timeout:25000});
+      if(!r.ok)throw Error(await unread(r,"Google Drive could not list what Clem can open."));
+      const body=await r.json() as {files?:(Meta&{parents?:string[]})[];nextPageToken?:string};
+      for(const f of body.files||[])all.set(f.id,f);
+      page=body.nextPageToken;
+    }while(page&&all.size<5000);
+    // Removed items take what sits inside them along.
+    const out=(f:Meta&{parents?:string[]},depth=0):boolean=>hidden.has(f.id)||(depth<20&&(f.parents||[]).some(p=>{const up=all.get(p);return !!up&&out(up,depth+1);}));
+    const kept=[...all.values()].filter(f=>!out(f));
+    const inside=new Map<string,number>();
+    for(const f of kept)for(const p of f.parents||[])inside.set(p,(inside.get(p)||0)+1);
+    const files=kept.filter(f=>!(f.parents||[]).some(p=>all.has(p))).map(raw=>{
+      const f=resolve(raw);this.meta.set(f.id,f);
+      return {...item(f),...(f.mimeType===FOLDER?{inside:inside.get(raw.id)||0}:{})};
+    }).sort((a,b)=>Number(!!b.folder)-Number(!!a.folder)||a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:"base"}));
+    return {connected:true,files};
   }
   async connected(){try{return !!await this.token();}catch{return false;}}
   /** The connection as last confirmed. A network hiccup keeps the last answer instead of asking to reconnect. */
@@ -142,17 +219,18 @@ export class DriveLive {
   }
   private generation=0;
   /** Drops everything held for the signed-in person (token, connection state, folder trees, file details). */
-  forget(){this.generation++;this.cached=null;this.asking=null;this.known=null;this.trees.clear();this.meta.clear();}
+  forget(){this.generation++;this.cached=null;this.asking=null;this.known=null;this.trees.clear();this.meta.clear();this.hiddenIds=null;}
 
   async search(question:string):Promise<{connected:boolean;files:DriveHit[]}>{
     if(!await this.token())return {connected:false,files:[]};
     await this.canBrowse();
     const url=new URL(API);
     url.search=new URLSearchParams({q:driveQuery(question),pageSize:"12",supportsAllDrives:"true",includeItemsFromAllDrives:"true",
-      fields:`files(${FIELDS})`}).toString();
+      fields:`files(${FIELDS},parents)`}).toString();
     const r=await this.google(url.href,{timeout:20000});
     if(!r.ok)throw Error(await unread(r,"Google Drive search failed. Try again."));
-    const files=(((await r.json()).files||[]) as Meta[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&f.mimeType!==FOLDER);
+    const hidden=await this.hidden();
+    const files=(((await r.json()).files||[]) as (Meta&{parents?:string[]})[]).filter(f=>!hidden.has(f.id)&&!(f.parents||[]).some(p=>hidden.has(p))).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&f.mimeType!==FOLDER);
     for(const f of files)this.meta.set(f.id,f);
     const hits:DriveHit[]=files.map(f=>({id:f.id,name:f.name,mimeType:f.mimeType,modified:f.modifiedTime,size:f.size?Number(f.size):undefined,durationMs:f.videoMediaMetadata?.durationMillis?Number(f.videoMediaMetadata.durationMillis):undefined}));
     // A short excerpt of the best text matches helps the model pick the right file.
@@ -160,10 +238,14 @@ export class DriveLive {
     return {connected:true,files:hits};
   }
 
-  /** One page of a folder ("root" is My Drive, "shared" is Shared with me), folders first; or a search across Drive. */
-  async list({folder="root",page,query,kind="all"}:{folder?:string;page?:string;query?:string;kind?:"all"|"folders"}={}){
+  /** One page of a folder, folders first; "access" (the default) is everything Clem can open, as chosen; or a search
+   *  across what Clem can open. */
+  async list({folder="access",page,query,kind="all"}:{folder?:string;page?:string;query?:string;kind?:"all"|"folders"}={}):Promise<{connected:boolean;files:DriveItem[];next?:string}>{
+    if(!(query||"").trim()&&folder==="access")return this.access().then(r=>kind==="folders"?{...r,files:r.files.filter(f=>f.folder)}:r);
     if(!await this.token())return {connected:false,files:[] as DriveItem[]};
     await this.canBrowse();
+    const hidden=await this.hidden();
+    if(hidden.has(folder))throw Error(GONE);
     const clauses=["trashed = false"];
     const words=(query||"").trim();
     if(words)clauses.push(`name contains ${quote(words.slice(0,100))}`);
@@ -176,7 +258,7 @@ export class DriveLive {
     const r=await this.google(url.href,{timeout:20000});
     if(!r.ok)throw Error(r.status===404?"This Drive folder is no longer available.":await unread(r,"Google Drive could not list these files."));
     const body=await r.json() as {files?:Meta[];nextPageToken?:string};
-    const resolved=(body.files||[]).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&(kind!=="folders"||f.mimeType===FOLDER));
+    const resolved=(body.files||[]).filter(f=>!hidden.has(f.id)).map(resolve).filter(f=>f.mimeType!==SHORTCUT&&(kind!=="folders"||f.mimeType===FOLDER));
     for(const f of resolved)this.meta.set(f.id,f);
     const files=resolved.map(f=>item(f)).sort((a,b)=>Number(!!b.folder)-Number(!!a.folder));
     return {connected:true,files,next:body.nextPageToken};
@@ -214,6 +296,22 @@ export class DriveLive {
     if(!made.ok)throw Error("Google Drive did not make the Clem backups folder.");
     return ((await made.json()) as {id:string}).id;
   }
+  /** The folder `name` in `parentId` ("root": My Drive), made when missing (the GUC copy: Clem/GUC/<course>/<week>). */
+  async folderIn(parentId:string,name:string){
+    await this.canWrite();
+    const url=new URL(API);
+    url.search=new URLSearchParams({q:`name = ${quote(name)} and mimeType = '${FOLDER}' and ${quote(parentId)} in parents and trashed = false`,fields:"files(id)",pageSize:"1",supportsAllDrives:"true",includeItemsFromAllDrives:"true"}).toString();
+    const found=await this.google(url.href,{timeout:20000});
+    if(!found.ok)throw Error(found.status===404?"This Drive folder is no longer available.":await unread(found,"Google Drive could not be read."));
+    const id=((await found.json()) as {files?:{id:string}[]}).files?.[0]?.id;
+    if(id)return id;
+    const made=await this.google(`${API}?fields=id&supportsAllDrives=true`,{method:"POST",timeout:20000,headers:{"Content-Type":"application/json; charset=UTF-8"},body:JSON.stringify({name,mimeType:FOLDER,parents:[parentId]})});
+    if(made.status===403)throw Error(await refusal(made));
+    if(made.status===404)throw Error("This Drive folder is no longer available.");
+    if(!made.ok)throw Error("Google Drive did not make the folder.");
+    for(const [id,tree] of this.trees)if(id===parentId||tree.folders.includes(parentId))this.trees.delete(id);
+    return ((await made.json()) as {id:string}).id;
+  }
   /** Backup files in a folder, newest first. */
   async backupFiles(folderId:string){
     const url=new URL(API);
@@ -223,12 +321,12 @@ export class DriveLive {
     return (((await r.json()) as {files?:{id:string;name:string;size?:string;createdTime?:string}[]}).files||[]).map(f=>({id:f.id,name:f.name,size:Number(f.size||0),at:Date.parse(f.createdTime||"")||0}));
   }
   /** Uploads a file from disk in 8 MB pieces (resumable), so a large backup is never held in memory whole. */
-  async uploadFile(folderId:string,name:string,path:string){
+  async uploadFile(folderId:string,name:string,path:string,mime="application/octet-stream"){
     await this.canWrite();
     const {open}=await import("node:fs/promises");
     const handle=await open(path,"r");
     try{
-      const size=(await handle.stat()).size,mime="application/octet-stream";
+      const size=(await handle.stat()).size;
       const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",{
         method:"POST",timeout:30000,
         headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(size)},
@@ -341,6 +439,8 @@ export class DriveLive {
     const generation=this.generation;
     if(!await this.token())throw Object.assign(Error("Connect Google Drive in Settings → Connectors first."),{code:"not_connected"});
     await this.canBrowse();
+    const hidden=await this.hidden();
+    if(hidden.has(folderId))throw Object.assign(Error(GONE),{code:"hidden"});
     const items:DriveItem[]=[],folders=[folderId],paths=new Map<string,string>([[folderId,""]]),seen=new Set([folderId]);
     let level=[folderId];
     for(let depth=0;depth<8&&level.length&&items.length<5000;depth++){
@@ -359,7 +459,8 @@ export class DriveLive {
           for(const raw of body.files||[]){
             const parent=raw.parents?.find(p=>paths.has(p))||group[0],path=paths.get(parent)||"";
             const f=resolve(raw);
-            if(f.mimeType===SHORTCUT||seen.has(f.id))continue;
+            // A removed subfolder is skipped, and with it everything inside it.
+            if(f.mimeType===SHORTCUT||seen.has(f.id)||hidden.has(raw.id)||hidden.has(f.id))continue;
             seen.add(f.id);
             this.meta.set(f.id,f);
             if(f.mimeType===FOLDER){paths.set(f.id,path?path+" / "+f.name:f.name);next.push(f.id);folders.push(f.id);}
@@ -421,6 +522,7 @@ export class DriveLive {
     return (await r.text()).slice(0,limit);
   }
   private async info(id:string){
+    if((await this.hidden()).has(id))throw Error("Clem no longer has access to this Drive file.");
     const known=this.meta.get(id);if(known)return known;
     const r=await this.google(`${API}/${id}?fields=${FIELDS}&supportsAllDrives=true`,{timeout:15000});
     if(!r.ok)throw Error("This Drive file is unavailable.");

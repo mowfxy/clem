@@ -34,22 +34,14 @@ async function deleteChat(title) {
   await saved(page); await page.waitForTimeout(800);
 }
 try {
-  // A normal chat: the sent file and the made PDF both go.
-  await sendWithFile("lecture notes.txt", "Make a worksheet PDF from these notes");
-  let s = await state();
-  const sent = s.files.find((f) => f.name === "lecture notes.txt"), made = s.files.find((f) => f.made && f.name === "Week 3 worksheet.pdf");
-  assert.ok(sent?.chatId, "the sent file is tagged with its chat");
-  assert.ok(made, "the made PDF is in Files");
-  assert.ok(await onDisk(sent.id) && await onDisk(made.id), "both are on disk");
-  await deleteChat("Make a worksheet PDF from these notes");
-  s = await state();
-  assert.ok(!s.files.some((f) => f.id === sent.id || f.id === made.id), "both left Files");
-  assert.ok(!(await onDisk(sent.id)) && !(await onDisk(made.id)), "both left the disk");
-  assert.ok(s.files.some((f) => f.id === "syllabus") && await onDisk("syllabus"), "other files stay");
+  // There are no standalone chats since the main thread (#53): what Home sends goes there, and the main thread is never
+  // deleted (its files leave by the size cap, tests/main-thread-trim.test.ts). Chats that are deleted live in subjects and
+  // projects.
+  let s;
 
   // A subject chat: the sent file waits in the normal Files tab and goes with the chat; the made PDF stays in the subject.
   await page.evaluate(() => { location.hash = "/app/subjects"; });
-  await page.getByRole("button", { name: "New chat in Biology 101" }).click();
+  await page.getByRole("button", { name: "New chat in Biology 101" }).last().click();
   await sendWithFile("lab notes.txt", "Make a worksheet PDF for this lab");
   s = await state();
   const sent2 = s.files.find((f) => f.name === "lab notes.txt"), made2 = s.files.find((f) => f.made && f.name === "Week 3 worksheet.pdf");
@@ -64,7 +56,7 @@ try {
 
   // Asked to keep it in the subject: the sent file joins the subject's files and stays when the chat is deleted.
   await page.evaluate(() => { location.hash = "/app/subjects"; });
-  await page.getByRole("button", { name: "New chat in Biology 101" }).click();
+  await page.getByRole("button", { name: "New chat in Biology 101" }).last().click();
   await sendWithFile("reading list.txt", "Save this to the subject", false);
   s = await state();
   await saved(page); s = await state();

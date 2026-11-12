@@ -517,12 +517,14 @@ app.get("/api/drive/connect", async (req, res) => {
     );
   const nonce = randomUUID();
   if (req.query.account && u.id !== "supabase:" + String(req.query.account)) throw Error("Sign in to the same Clem account as your desktop, then reconnect Drive.");
-  // `pick` and `request` come only from 0.3.0 preview builds, which waited for Google's picker. Clem browses Drive itself
-  // now; the callback still answers such a request (with nothing picked) so those builds stop waiting and list Drive.
-  const pick = req.query.pick === "files" || req.query.pick === "folder" ? req.query.pick : undefined;
+  // Clem asks only for drive.file: it opens what people choose in Google's own picker (shown inside the consent screen)
+  // and the files it makes, never the rest of Drive. `request` lets the desktop app collect what was chosen.
+  const pick = req.query.pick === "folder" ? "folder" : "files";
   const request = String(req.query.request || "");
-  if (pick && !/^[\w-]{16,64}$/.test(request)) throw Error("Invalid Drive pick request.");
-  const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1", ...(pick ? { pick, request } : {}) });
+  if (request && !/^[\w-]{16,64}$/.test(request)) throw Error("Invalid Drive pick request.");
+  // Google Calendar (read-only) connects through the same client and callback as Drive, stored as its own credential.
+  const calendar = req.query.for === "calendar";
+  const state = await signState({ sub: u.id, nonce, desktop: req.query.desktop === "1", ...(calendar ? { for: "calendar" } : { pick, ...(request ? { request } : {}) }) });
   res.cookie("clem_oauth", nonce, {
     httpOnly: true,
     secure: !!process.env.VERCEL,
@@ -535,13 +537,14 @@ app.get("/api/drive/connect", async (req, res) => {
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: process.env.APP_URL + "/api/drive/callback",
     response_type: "code",
-    // Browse Drive to choose files and link folders, read what people open or ask about, and add to the folders they link:
-    // dropped files, Clem's own files and approved edits. drive.file only sees picked items, never a folder's contents,
-    // and cannot add to folders Clem did not create, so linking someone's own folder needs the full Drive scope.
-    scope: "https://www.googleapis.com/auth/drive",
+    // Drive: only the files and folders people choose, and the files Clem makes. Google grants a chosen folder by itself,
+    // not what is already inside it, so the picker takes many items at once: a folder and everything in it.
+    scope: calendar ? `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}` : "https://www.googleapis.com/auth/drive.file",
     access_type: "offline",
     prompt: "consent",
     state,
+    // Google's picker inside the consent screen is for Drive only.
+    ...(calendar ? {} : { trigger_onepick: "true", allow_folder_selection: "true", allow_multiple: "true", ...(pick === "folder" ? { mimetypes: "application/vnd.google-apps.folder" } : {}) }),
   }).toString();
   res.redirect(url.href);
 });
@@ -552,12 +555,15 @@ app.get("/api/drive/callback", async (req, res) => {
   if (state.sub !== u.id || state.nonce !== cookies(req).clem_oauth)
     throw new Error("OAuth state expired or did not match.");
   res.clearCookie("clem_oauth", { path: "/" });
-  const pick = state.pick === "files" || state.pick === "folder" ? { request: String(state.request), at: Date.now() } : undefined;
+  if (state.for === "calendar") return void await calendarCallback(req, res, u.id, !!state.desktop);
+  const request = /^[\w-]{16,64}$/.test(String(state.request || "")) ? String(state.request) : "";
+  const before = await driveMeta(u.id);
   if (req.query.error) {
     // Closing the picker or declining still answers the waiting app, so it stops waiting.
-    if (pick) await db()`UPDATE clem_credentials SET metadata=${JSON.stringify({ pick: { ...pick, ids: [] } })}::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
+    if (request) await db()`UPDATE clem_credentials SET metadata=${JSON.stringify({ ...before, pick: { request, ids: [], at: Date.now() } })}::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
     return void driveDone(res, !!state.desktop, "Nothing was chosen.", "Return to Clem.");
   }
+  const picked = [...new Set(String(req.query.picked_file_ids || "").split(",").filter((id) => DRIVE_ID.test(id)))].slice(0, 1000);
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -577,29 +583,89 @@ app.get("/api/drive/callback", async (req, res) => {
       "Google did not provide offline access. Reconnect and grant access.",
     );
   const enc = encrypt(token.refresh_token, u.id);
-  const metadata = JSON.stringify(pick ? { pick: { ...pick, ids: [] } } : {});
+  // Choosing something again gives it back to Clem if it was taken out of Clem's access earlier.
+  const hidden = (before.hidden || []).filter((id) => !picked.includes(id));
+  const metadata = JSON.stringify({ ...(hidden.length ? { hidden } : {}), ...(request ? { pick: { request, ids: picked, at: Date.now() } } : {}) });
   await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${u.id},'drive',${enc.ciphertext},${enc.nonce},1,${metadata}::jsonb) ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce,metadata=excluded.metadata`;
-  driveDone(res, !!state.desktop, "Drive is connected.", "Return to Clem to choose your files.");
+  driveDone(res, !!state.desktop, !picked.length ? "Drive is connected." : picked.length === 1 ? "Clem can open what you chose." : `Clem can open the ${picked.length} items you chose.`, "Return to Clem.");
 });
+// ---------- Google Calendar (read-only; docs/MAIN-THREAD.md "Calendar, reminders and study time") ----------
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+/** Only the calendars Clem makes itself: its "Clem" calendar, where reminders go when the person turns that on. */
+const CALENDAR_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
+async function calendarCallback(req: express.Request, res: express.Response, userId: string, desktop: boolean) {
+  if (req.query.error) return driveDone(res, desktop, "Google Calendar wasn't connected.", "Return to Clem.");
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ code: String(req.query.code), client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!, redirect_uri: process.env.APP_URL + "/api/drive/callback", grant_type: "authorization_code" }),
+  });
+  if (!response.ok) throw new Error("Google authorization failed. Connect Google Calendar again.");
+  const token = await response.json();
+  if (!token.refresh_token) throw new Error("Google did not provide offline access. Connect again and allow access.");
+  if (!String(token.scope || "").split(/\s+/).includes(CALENDAR_SCOPE)) throw new Error("Clem needs to see your calendar. Connect again and tick the calendar box.");
+  const enc = encrypt(token.refresh_token, userId);
+  await db()`INSERT INTO clem_credentials(owner_id,provider,ciphertext,nonce,key_version,metadata) VALUES(${userId},'calendar',${enc.ciphertext},${enc.nonce},1,'{}'::jsonb) ON CONFLICT(owner_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext,nonce=excluded.nonce,metadata=excluded.metadata`;
+  driveDone(res, desktop, "Google Calendar is connected.", "Return to Clem. It reads your calendar and never changes it.");
+}
+// A short-lived access token for the person's own calendar, so the desktop app reads it straight from Google.
+app.get("/api/calendar/token", async (req, res) => {
+  const u = await requireDriveUser(req, res);
+  if (!u) return;
+  const t = await googleToken(u.id, "calendar", "Google Calendar");
+  res.json({ accessToken: t.access_token, expiresIn: 3300, scope: t.scope || "" });
+});
+app.delete("/api/calendar/connection", async (req, res) => {
+  const user = await requireDriveUser(req, res); if (!user) return;
+  const saved = await credential(user.id, "calendar");
+  if (saved) {
+    const result = await fetch("https://oauth2.googleapis.com/revoke", {method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams({token:saved.key}), signal:AbortSignal.timeout(15000)});
+    if (!result.ok && result.status !== 400) throw Error("Google could not revoke access. Try again.");
+  }
+  await db()`DELETE FROM clem_credentials WHERE owner_id=${user.id} AND provider='calendar'`;
+  res.json({ok:true});
+});
+/** The Drive connection's stored settings: `hidden` (items taken out of Clem's access) and `pick` (the latest choice). */
+type DriveMeta = { hidden?: string[]; pick?: { request: string; ids: string[]; at: number } };
+async function driveMeta(userId: string): Promise<DriveMeta> {
+  const [row] = await db()`SELECT metadata FROM clem_credentials WHERE owner_id=${userId} AND provider='drive'`;
+  return (row?.metadata || {}) as DriveMeta;
+}
+const DRIVE_ID = /^[\w-]{10,150}$/;
 function driveDone(res: express.Response, desktop: boolean, title: string, line: string) {
   if (!desktop) return res.redirect(process.env.APP_URL + "/#/app/connectors");
   res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'");
   res.type("html").send(`<!doctype html><title>${title}</title><style>@font-face{font-family:"Mowafy Sans";src:url(/fonts/MowafySans-Regular.woff2) format("woff2")}</style><body style="background:#141414;color:#eeece4;font:18px Mowafy Sans,system-ui,sans-serif;display:grid;place-content:center;min-height:90vh;text-align:center"><h1>${title}</h1><p>${line}</p></body>`);
 }
-// Answers a 0.3.0 preview build waiting on Google's picker (always with nothing picked now), for the request that opened it. Read once.
+// What was just chosen in Google's picker, for the desktop request that opened it. Read once.
 app.get("/api/drive/picked", async (req, res) => {
   const u = await requireDriveUser(req, res); if (!u) return;
   const request = String(req.query.request || "");
   if (!/^[\w-]{16,64}$/.test(request)) { res.status(400).json({error: "Invalid Drive pick request."}); return; }
-  const [row] = await db()`SELECT metadata FROM clem_credentials WHERE owner_id=${u.id} AND provider='drive'`;
-  const pick = row?.metadata?.pick as {request?: string; ids?: string[]; at?: number} | undefined;
+  const { pick, ...rest } = await driveMeta(u.id);
   if (!pick || pick.request !== request || Date.now() - Number(pick.at) > 15 * 60_000) { res.json({done: false}); return; }
-  await db()`UPDATE clem_credentials SET metadata='{}'::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
+  await db()`UPDATE clem_credentials SET metadata=${JSON.stringify(rest)}::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
   res.json({done: true, ids: Array.isArray(pick.ids) ? pick.ids : []});
 });
-async function driveToken(userId: string) {
-  const c = await credential(userId, "drive");
-  if (!c) throw new Error("Connect Google Drive first.");
+// Items taken out of Clem's access. Google keeps a drive.file grant until Drive is disconnected, so Clem keeps this list
+// with the account and stops opening those items, and what is inside them.
+app.get("/api/drive/hidden", async (req, res) => {
+  const u = await requireDriveUser(req, res); if (!u) return;
+  res.json({ hidden: (await driveMeta(u.id)).hidden || [] });
+});
+app.put("/api/drive/hidden", async (req, res) => {
+  const u = await requireDriveUser(req, res); if (!u) return;
+  const { hide, show } = z.object({ hide: z.array(z.string().regex(DRIVE_ID)).max(200).optional(), show: z.array(z.string().regex(DRIVE_ID)).max(200).optional() }).parse(req.body);
+  const { hidden: had = [], ...rest } = await driveMeta(u.id);
+  const hidden = [...new Set([...had.filter((id) => !show?.includes(id)), ...(hide || [])])].slice(-2000);
+  await db()`UPDATE clem_credentials SET metadata=${JSON.stringify({ ...rest, hidden })}::jsonb WHERE owner_id=${u.id} AND provider='drive'`;
+  res.json({ hidden });
+});
+async function driveToken(userId: string) { return googleToken(userId, "drive", "Google Drive"); }
+/** An access token from a stored Google connection (Drive or Calendar). */
+async function googleToken(userId: string, provider: "drive" | "calendar", name: string) {
+  const c = await credential(userId, provider);
+  if (!c) throw new Error(`Connect ${name} first.`);
   // Only a refused grant (revoked, or expired by Google) needs a reconnect. A dropped connection or a busy Google is
   // tried once more, then reported as brief, so the app keeps Drive connected instead of asking to reconnect.
   for (let attempt = 0; ; attempt++) {
@@ -616,8 +682,8 @@ async function driveToken(userId: string) {
     }).catch(() => null);
     if (r?.ok) return (await r.json()) as { access_token: string; scope?: string };
     const reason = r ? String(((await r.json().catch(() => ({}))) as { error?: string }).error || "") : "";
-    if (reason === "invalid_grant") throw new Error("Drive access expired. Reconnect.");
-    if (attempt >= 1) throw new Error("Google Drive is unavailable right now. Try again in a moment.");
+    if (reason === "invalid_grant") throw new Error(`${provider === "drive" ? "Drive" : "Calendar"} access expired. Reconnect.`);
+    if (attempt >= 1) throw new Error(`${name} is unavailable right now. Try again in a moment.`);
     await new Promise((go) => setTimeout(go, 700));
   }
 }

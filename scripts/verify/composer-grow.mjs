@@ -14,6 +14,9 @@ const check = (ok, what) => { console.log((ok ? "ok   " : "FAIL ") + what); if (
 const box = page.locator(".composer textarea");
 const measure = () => box.evaluate((el) => { const m = el.previousElementSibling; return { h: el.clientHeight, scroll: el.scrollHeight, top: el.scrollTop, mirrorTop: m.scrollTop, width: el.clientWidth, mirrorWidth: m.clientWidth }; });
 try {
+  // Home's box expands into the main thread first (since #53): measure once it has settled.
+  await page.waitForFunction(() => (document.querySelector(".composer textarea")?.clientHeight || 0) > 0);
+  await page.waitForTimeout(700);
   await box.fill("Short question");
   const short = await measure();
   await box.fill(Array.from({ length: 4 }, (_, i) => `Line ${i + 1} of a longer message`).join("\n"));

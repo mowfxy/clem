@@ -2,6 +2,7 @@ import { build } from "esbuild";
 import { mkdir, copyFile, readFile, writeFile, cp,rm } from "node:fs/promises";
 import {resolve,sep} from 'node:path';
 import { config } from "dotenv";
+import { buildWorker } from "./build-worker.mjs";
 config({ path: ".env.local", quiet: true });
 for(const folder of ['desktop-dist','desktop-package']){
  const root=resolve('.'),target=resolve(folder);
@@ -28,7 +29,12 @@ await build({
   bundle: true,
   platform: "node",
   format: "cjs",
-  external: ["electron"],
+  // pg-native is node-postgres' optional native driver; pg-boss runs on PGlite through its adapter instead.
+  // ssh2's optional native crypto and cpu-features: it falls back to pure JavaScript when they are missing.
+  external: ["electron", "pg-native", "cpu-features", "*.node"],
+  // ES modules bundled into CommonJS (PGlite finds its .wasm files from import.meta.url) see this file's own URL.
+  banner: { js: 'const __importMetaUrl = require("url").pathToFileURL(__filename).href;' },
+  define: { "import.meta.url": "__importMetaUrl" },
   plugins: [
     {
       name: "public-config",
@@ -43,6 +49,12 @@ await build({
 });
 await build({entryPoints:["desktop/kinetra-worker.ts"],outfile:"desktop-dist/kinetra-worker.cjs",bundle:true,platform:"node",format:"cjs"});
 await build({entryPoints:["desktop/anki-worker.ts"],outfile:"desktop-dist/anki-worker.cjs",bundle:true,platform:"node",format:"cjs"});
+// The engine's database: PGlite loads its WebAssembly and data files from beside the bundle, and the engine applies
+// its SQL migrations from desktop-dist/migrations (desktop/engine).
+for (const file of ["pglite.wasm", "pglite.data", "initdb.wasm"]) await copyFile("node_modules/@electric-sql/pglite/dist/" + file, "desktop-dist/" + file);
+await cp("desktop/engine/migrations", "desktop-dist/migrations", { recursive: true });
+// The VPS worker (worker/index.ts), uploaded over SFTP from here when the person turns it on.
+await buildWorker("desktop-dist/worker");
 // KaTeX's stylesheet and woff2 fonts, inlined into the print page of generated PDFs (desktop/katex-print.ts).
 await mkdir("desktop-dist/katex/fonts", { recursive: true });
 await copyFile("node_modules/katex/dist/katex.min.css", "desktop-dist/katex/katex.min.css");

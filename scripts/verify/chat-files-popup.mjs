@@ -53,7 +53,9 @@ await page.exposeFunction("__kinetra", async (json) => { const f = JSON.parse(js
 let failed = false;
 const check = (ok, what) => { console.log((ok ? "ok   " : "FAIL ") + what); if (!ok) failed = true; };
 try {
-  // An explanation with two circuit figures, with a lecture file attached.
+  // An explanation with two circuit figures, with a lecture file attached, in a subject chat (Home sends to the main
+  // thread, which has no Files button).
+  await page.getByRole("button", { name: "New chat in Biology 101" }).first().click();
   await page.locator('input[type="file"][multiple]').setInputFiles({ name: "Circuits lecture 4.txt", mimeType: "text/plain", buffer: Buffer.from("Thevenin and Norton equivalents.") });
   await page.locator(".composer").getByText("Circuits lecture 4.txt").waitFor();
   await page.getByLabel("Your message").fill("Explain how the left sub-circuit reduces to a Thévenin branch, and remember the rule for dependent sources");

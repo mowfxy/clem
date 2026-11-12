@@ -97,11 +97,17 @@ function xlsx(files: Record<string, Uint8Array>, name: string) {
 
 /** The readable text of an Office file on disk; a short note instead when it has none or cannot be read. */
 export async function officeText(path: string, name: string) {
+  if (!/\.(docx|pptx|xlsx)$/i.test(name)) return "";
+  try { return officeBytesText(new Uint8Array(await readFile(path)), name); }
+  catch (error) { return `[${name}: its text could not be read (${(error as Error).message}).]`; }
+}
+/** The same from the file's bytes (a CMS file read on demand and never written to disk: desktop/engine/file-text.ts). */
+export function officeBytesText(bytes: Uint8Array, name: string) {
   const kind = /\.(docx|pptx|xlsx)$/i.exec(name)?.[1].toLowerCase();
   if (!kind) return "";
   try {
     let total = 0;
-    const files = unzipSync(new Uint8Array(await readFile(path)), {
+    const files = unzipSync(bytes, {
       filter: (f) => {
         const wanted = kind === "docx" ? /^word\/(document|footnotes|endnotes)\.xml$/ : kind === "pptx" ? /^ppt\/((slides|notesSlides)\/[^/]+\.xml|presentation\.xml|(_rels\/presentation|slides\/_rels\/[^/]+)\.xml\.rels)$/ : /^xl\/(worksheets\/[^/]+\.xml|sharedStrings\.xml|workbook\.xml|_rels\/workbook\.xml\.rels)$/;
         if (!wanted.test(f.name)) return false;

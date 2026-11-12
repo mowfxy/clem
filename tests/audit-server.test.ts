@@ -45,14 +45,14 @@ test('the database Worker still accepts subqueries, joins, lists and plain audit
   ])assert.equal(allowedStatement(sql),true,sql);
 });
 
-test('the D1 schema and the Telegram removal can be applied again safely',()=>{
+test('the D1 schema, Telegram\'s tables and the old bot-token cleanup can be applied again safely',()=>{
   const db=database();
   db.prepare("INSERT INTO provider_links(user_id,id,kind,sealed,created_at,updated_at) VALUES('u','a','telegram',x'00',1,1),('u','b','codex',x'00',1,1)").run();
-  db.exec('CREATE TABLE telegram_inbox(x)');
   for(let i=0;i<2;i++){
-    for(const file of ['schema.sql','admin-schema.sql','account-schema.sql','provider-links.sql'])assert.doesNotThrow(()=>db.exec(sqlFile(file)),file);
+    for(const file of ['schema.sql','admin-schema.sql','account-schema.sql','provider-links.sql','telegram-schema.sql'])assert.doesNotThrow(()=>db.exec(sqlFile(file)),file);
     assert.doesNotThrow(()=>db.exec(sqlFile('remove-telegram.sql')));
   }
   assert.deepEqual(db.prepare('SELECT kind FROM provider_links').all().map(r=>r.kind),['codex']);
-  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'telegram_%'").get()!.n,0);
+  // The cleanup only removes the first Telegram's bot tokens; the Clem bot's tables stay.
+  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name LIKE 'telegram_%'").get()!.n,3);
 });

@@ -82,9 +82,7 @@ export class ProviderLink {
       if (!(await this.signedIn(owner))) return result;
       const { items } = (await this.auth.cloud("/providers")) as { items: Linked[] };
       const uploaded = await this.uploaded(owner);
-      for (const item of items as (Linked | { id: string; kind: "telegram" })[]) {
-        // Telegram was removed: a bot connection an earlier Clem kept with the account is deleted from it.
-        if (item.kind === "telegram") { await this.auth.cloud("/providers/delete", { id: item.id }).catch(() => {}); delete uploaded[item.id]; continue; }
+      for (const item of items) {
         // The id becomes a folder name: never let a stored entry write outside this account's folders.
         if ((item.kind !== "codex" && item.kind !== "claude") || typeof item.id !== "string" || !/^[\w-]{1,64}$/.test(item.id) || typeof item.data !== "string") continue;
         if (item.kind === "claude" && item.id !== CLAUDE_LINK_ID && !/^claude-[\w-]{1,57}$/.test(item.id)) continue;

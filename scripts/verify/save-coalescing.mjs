@@ -16,7 +16,9 @@ try {
   await page.getByLabel("Your message").press("Enter");
   const deltas = Math.ceil(reply.length / 24);
   await page.locator(".message.assistant .message-text", { hasText: reply.slice(-40) }).waitFor({ timeout: 30000 });
-  await page.waitForTimeout(1200);
+  // The final write comes when the answer ends, which is after the text: its after-answer steps finish first.
+  const hasReply = () => last?.chats?.flatMap((c) => c.messages).some((m) => m.role === "assistant" && m.content.includes(reply.slice(-40)));
+  for (let i = 0; i < 40 && !hasReply(); i++) await page.waitForTimeout(250);
   console.log(`     ${deltas} streamed deltas, ${writes} workspace writes`);
   check(writes > 0, "the conversation was saved");
   check(writes < deltas / 4, "saves are coalesced while the answer streams");

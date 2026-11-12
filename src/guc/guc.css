@@ -1,0 +1,233 @@
+/* GUC in Settings → Connectors: the Drive picker's connect card (src/drive/drive.css), narrower, with a sign-in form */
+dialog.app-modal:has(.gd-picker.guc-manage){width:min(460px,calc(100vw - 32px))}
+.guc-manage>p b{font-weight:700;color:var(--ink)}
+.guc-field{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%;max-width:340px;margin:0 0 12px;text-align:left;font-size:12px;color:var(--muted)}
+.guc-note{display:flex;align-items:center;gap:8px;max-width:340px;margin:2px 0 16px;font-size:12px;line-height:1.45;color:var(--muted);text-align:left}
+.guc-note svg{flex:none}
+.guc-progress{display:flex;align-items:center;gap:10px;height:42px;margin:0;font-size:13px;color:var(--ink)}
+.guc-manage .gd-error{margin-top:12px;max-width:380px}
+.guc-new-password{display:flex;flex-direction:column;align-items:center;width:100%}
+.guc-foot{align-self:stretch;justify-content:center;margin-top:16px}
+
+/* ---------- The GUC hub (src/guc/GucHub.tsx): the library page's head and buttons, glass.css's scale and tokens ---------- */
+.guc-hub{max-width:1180px}
+.guc-hub .calm-head{padding-bottom:18px}
+.guc-hub .lib-btn{height:var(--row-s);padding:0 13px;border-radius:10px;font-size:var(--text-label);gap:7px}
+.guc-hub .lib-btn .drawn-icon{width:15px;height:15px}
+.guc-count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:color-mix(in srgb,var(--sky) 22%,transparent);color:var(--ink);font-size:11px;font-weight:600;line-height:1}
+.guc-dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--sky)}
+.guc-tag{display:inline-flex;align-items:center;height:20px;padding:0 7px;margin-left:8px;border-radius:6px;background:color-mix(in srgb,var(--sky) 18%,transparent);color:var(--ink);font-size:11px;font-weight:600}
+
+/* Tabs: the subject page's gliding underline */
+.guc-tabs{position:relative;display:flex;gap:4px;margin:0 0 18px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.guc-tabs button{height:var(--row);padding:0 12px;border-radius:9px 9px 0 0;font-size:var(--text);color:var(--muted);white-space:nowrap;transition:color .2s}
+.guc-tabs button:hover{background:none;color:var(--ink)}
+.guc-tabs button.active{color:var(--ink);font-weight:600}
+.guc-tabs::after{content:'';position:absolute;left:0;bottom:0;width:var(--tab-w,0);height:2px;border-radius:2px;background:var(--ink);transform:translateX(var(--tab-x,0));opacity:0;pointer-events:none}
+.guc-tabs[data-ready]::after{opacity:1;transition:transform .45s cubic-bezier(.16,1,.3,1),width .45s cubic-bezier(.16,1,.3,1)}
+.guc-panel{min-height:320px}
+.guc-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;flex-wrap:wrap}
+.guc-find{width:min(420px,100%)}
+.guc-banner,.guc-problem{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;margin:0 0 16px;border-radius:12px;background:color-mix(in srgb,var(--ember) 12%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ember) 28%,transparent);font-size:var(--text-s);color:var(--ink)}
+.guc-banner>span,.guc-problem>p{flex:1;margin:0;line-height:1.45}
+.guc-banner .drawn-icon,.guc-problem>.drawn-icon{color:var(--ember)}
+.guc-problem{margin-top:8px}
+.guc-none{color:var(--muted);font-size:var(--text-s);padding:12px 4px}
+
+/* Skeletons: a soft shimmer, never a blank panel */
+.guc-skel{display:grid;gap:8px}
+.guc-skel span{height:44px;border-radius:11px;background:linear-gradient(90deg,#ffffff06,#ffffff10,#ffffff06);background-size:200% 100%;animation:guc-shimmer 1.2s ease-in-out infinite}
+.guc-skel span.tall{height:78px}
+html:root[data-theme=light] .guc-skel span{background:linear-gradient(90deg,#1b27400a,#1b274016,#1b27400a);background-size:200% 100%}
+@keyframes guc-shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.guc-skel span{animation:none}}
+
+/* Virtual lists sit in the page's own scroll */
+.guc-vlist{position:relative;width:100%}
+.guc-vrow{position:absolute;top:0;left:0;width:100%}
+
+/* Schedule */
+.guc-weeknav{display:flex;align-items:center;gap:6px}
+.guc-weeknav strong{min-width:150px;text-align:center;font-size:var(--text);font-weight:600;color:var(--ink)}
+.guc-weeknav .icon-button{width:var(--row-s);height:var(--row-s);border-radius:10px;color:var(--ink)}
+.guc-weeknav .guc-prev .drawn-icon{transform:scaleX(-1)}
+.guc-grid-wrap{overflow-x:auto;padding-bottom:6px}
+.guc-grid{display:grid;gap:6px;min-width:760px}
+.guc-grid-row{display:contents}
+.guc-day,.guc-period{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 10px;border-radius:10px;font-size:var(--text-s);color:var(--ink)}
+.guc-day small,.guc-period small{font-size:11.5px;color:var(--muted)}
+.guc-day.is-today{background:color-mix(in srgb,var(--sky) 16%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sky) 40%,transparent)}
+.guc-period{align-items:flex-start}
+.guc-cell{display:flex;flex-direction:column;gap:4px;min-height:74px;padding:4px;border-radius:12px;background:var(--calm-tile)}
+.guc-cell.is-today{background:color-mix(in srgb,var(--sky) 7%,var(--calm-tile))}
+.guc-cell.is-now{box-shadow:inset 0 0 0 1.5px var(--sky)}
+.guc-slot{flex:1;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px;padding:8px 10px;border-radius:9px;background:color-mix(in srgb,var(--ink) 6%,transparent);text-align:left;font-size:12.5px;color:var(--ink)}
+.guc-slot:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 11%,transparent)}
+.guc-slot:disabled{opacity:1;cursor:default}
+.guc-slot b{font-size:var(--text-s);font-weight:600}
+.guc-slot span,.guc-slot small{color:var(--muted);font-size:11.5px}
+.guc-slot.kind-lecture{box-shadow:inset 3px 0 0 color-mix(in srgb,var(--sky) 70%,transparent)}
+.guc-slot.kind-lab{box-shadow:inset 3px 0 0 color-mix(in srgb,var(--ember) 70%,transparent)}
+
+/* Announcements */
+.guc-ann{margin:0 0 8px;padding:12px 14px;border-radius:12px;background:var(--calm-tile);font-size:var(--text-s);color:var(--ink)}
+.guc-ann header{display:flex;align-items:center;gap:8px;margin-bottom:6px;min-width:0}
+.guc-ann header b{font-weight:600}
+.guc-ann header span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.guc-ann header small{flex:none;color:var(--muted);font-size:11.5px}
+.guc-ann p{margin:0;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--calm-soft)}
+.guc-ann.is-unread p{color:var(--ink);font-weight:600}
+.guc-hub .is-focus{box-shadow:inset 0 0 0 1.5px var(--sky)}
+
+/* CMS browser */
+.guc-cms{display:grid;grid-template-columns:minmax(200px,250px) 1fr;gap:18px;align-items:start}
+.guc-courses{display:flex;flex-direction:column;gap:2px;position:sticky;top:calc(var(--tb,0px) + 12px)}
+.guc-courses button{display:grid;grid-template-columns:1fr auto;align-items:center;justify-items:start;column-gap:8px;padding:7px 10px;border-radius:10px;text-align:left;color:var(--ink)}
+.guc-courses button b{font-size:var(--text-s);font-weight:600}
+.guc-courses button span:not(.guc-dot){grid-column:1;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.guc-courses button .guc-dot{grid-column:2;grid-row:1}
+.guc-courses button:hover{background:var(--calm-hover)}
+.guc-courses button.active{background:var(--calm-tile);box-shadow:var(--glass-rim)}
+.guc-hub .guc-course-title{margin:2px 0 10px;font:600 var(--text)/1.3 var(--sans);color:var(--ink)}
+.guc-hub .guc-course-title span{font-weight:400;color:var(--muted)}
+.guc-hub .guc-week{display:flex;align-items:center;gap:8px;height:40px;margin:0;padding:12px 4px 4px;font:600 var(--text-label)/1 var(--sans);color:var(--muted)}
+.guc-hub .guc-week span{font-weight:400;opacity:.7}
+.guc-file{display:flex;align-items:center;gap:4px;margin:0 0 4px;border-radius:11px}
+.guc-file:hover{background:var(--calm-hover)}
+.guc-file-open{flex:1;min-width:0;justify-content:flex-start;gap:11px;height:48px;padding:0 10px;border-radius:11px;text-align:left}
+.guc-file-open:hover{background:none}
+.guc-file-open span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.guc-file-open b{font-size:var(--text-s);font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guc-file-open small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guc-file .icon-button{width:var(--row-s);height:var(--row-s);margin-right:6px;border-radius:9px;color:var(--muted);opacity:0;transition:opacity .15s}
+.guc-file:hover .icon-button,.guc-file .icon-button:focus-visible{opacity:1;color:var(--ink)}
+.guc-results{display:flex;flex-direction:column;gap:2px}
+.guc-hit{justify-content:flex-start;gap:11px;padding:8px 10px;border-radius:11px;text-align:left;color:var(--ink)}
+.guc-hit:hover{background:var(--calm-hover)}
+.guc-hit span{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:var(--text-s)}
+.guc-hit small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Grades */
+.guc-sem{margin:0 0 18px;padding:6px 6px 8px;border-radius:14px}
+.guc-sem.is-latest{background:var(--calm-tile);box-shadow:var(--glass-rim)}
+.guc-hub .guc-sem h3{display:flex;align-items:center;margin:4px 8px 6px;font:600 var(--text-s)/1.3 var(--sans);color:var(--ink)}
+.guc-grade{display:grid;grid-template-columns:1fr auto auto 48px;align-items:center;gap:12px;min-height:var(--row);padding:4px 8px;border-radius:9px;font-size:var(--text-s);color:var(--ink)}
+.guc-grade>span:first-child{display:flex;gap:10px;min-width:0}
+.guc-grade>span:first-child b{flex:none;font-weight:600;min-width:72px}
+.guc-grade small{color:var(--muted);font-size:12px}
+.guc-grade strong{text-align:right;font-size:var(--text);font-weight:600}
+.guc-grade.is-fresh{background:color-mix(in srgb,var(--sky) 10%,transparent)}
+.guc-grade .guc-tag{margin:0}
+
+/* Deadlines */
+.guc-deadlines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.guc-deadline{display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:12px;background:var(--calm-tile);font-size:var(--text-s);color:var(--ink)}
+.guc-deadlines li.is-focus{box-shadow:none}
+.guc-deadlines li.is-focus .guc-deadline{box-shadow:inset 0 0 0 1.5px var(--sky)}
+.guc-when{flex:none;width:136px;font-weight:600}
+.tone-soon .guc-when{color:var(--ember)}
+.tone-past .guc-deadline{opacity:.62}
+.guc-deadline span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.guc-deadline span strong{font-weight:500;overflow-wrap:anywhere}
+.guc-deadline small{font-size:12px;color:var(--muted)}
+.guc-hub .guc-past-head{margin:14px 4px 6px;font:600 var(--text-label)/1 var(--sans);color:var(--muted)}
+
+/* A subject's CMS tab */
+.guc-linked{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px;border-radius:14px;background:var(--calm-tile);box-shadow:var(--glass-rim)}
+.guc-linked>div{flex:1;min-width:200px;display:flex;flex-direction:column;gap:2px;font-size:var(--text-s);color:var(--ink)}
+.guc-linked>div span{color:var(--muted);font-size:12px}
+
+/* A course's subject beside its title in the hub */
+.guc-course-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 6px}
+.guc-course-head .guc-course-title{margin:2px 0}
+.guc-course-subject{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---------- GUC cards (src/guc/GucCards.tsx): the proposal card, glass.css's scale, both themes from tokens ---------- */
+.edit-proposal.guc-card{max-width:560px}
+.guc-card header>.drawn-icon{flex:none;opacity:.8}
+.guc-card header strong b{font-weight:600}
+.guc-card footer{flex-wrap:wrap}
+.guc-card footer button .drawn-icon{width:14px;height:14px}
+.guc-card-body{display:grid;gap:8px;padding:0 14px 12px 40px}
+.guc-card-line{margin:0;font-size:var(--text-label);line-height:1.45;color:var(--muted)}
+.guc-card-skel{display:block;width:180px;height:12px;margin:3px 0;border-radius:6px;background:color-mix(in srgb,var(--ink) 9%,transparent)}
+.guc-card-skel.short{width:120px;height:10px}
+.guc-chips{display:flex;flex-wrap:wrap;gap:6px}
+.guc-chip{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:99px;border:0;background:color-mix(in srgb,var(--ink) 6%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 12%,transparent);color:var(--muted);font:500 var(--text-label)/1 var(--sans);cursor:pointer;transition:background .15s,color .15s}
+.guc-chip:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 10%,transparent)}
+.guc-chip[aria-pressed=true]{color:var(--ink);background:color-mix(in srgb,var(--sky) 20%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sky) 45%,transparent)}
+.guc-chip .drawn-icon{width:12px;height:12px}
+.guc-seg{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.guc-seg>button{height:30px;padding:0 12px;border-radius:9px;border:0;background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--muted);font:500 var(--text-label)/1 var(--sans);cursor:pointer}
+.guc-seg>button:hover:not(:disabled){color:var(--ink)}
+.guc-seg>button[aria-checked=true]{background:color-mix(in srgb,var(--ink) 14%,transparent);color:var(--ink);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 16%,transparent)}
+.guc-seg>button:disabled{opacity:.45;cursor:default}
+.guc-time{display:inline-flex;align-items:center;gap:6px;margin-left:4px;font-size:var(--text-label);color:var(--muted)}
+.guc-time input{height:30px;padding:0 8px;border-radius:9px;border:0;background:color-mix(in srgb,var(--ink) 6%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 12%,transparent);color:var(--ink);font:500 var(--text-label)/1 var(--sans);color-scheme:inherit}
+.guc-switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:var(--text-s);color:var(--ink)}
+.guc-summary{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.guc-summary li>button{display:grid;grid-template-columns:110px 1fr auto;align-items:center;gap:10px;width:100%;min-height:32px;padding:4px 8px;border:0;border-radius:8px;background:none;color:var(--ink);font-size:var(--text-label);text-align:left;cursor:pointer}
+.guc-summary li>button:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.guc-summary li>button span{color:var(--muted)}
+.guc-summary li>button b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guc-summary li>button .drawn-icon{opacity:.6;transition:transform .2s}
+.guc-summary li>button[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
+.guc-summary-edit .edit-proposal{margin:6px 0 0}
+.guc-new{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.guc-new li{display:flex;align-items:center;gap:10px;min-height:38px}
+.guc-new-name{flex:1;min-width:0;display:flex;gap:8px;font-size:var(--text-s);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guc-new-name b{flex:none;font-weight:600}
+.guc-new li>button{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:9px;font-size:var(--text-label)}
+html:root :is(.guc-new li,.guc-link-pick :is(li,footer))>button{border:0;background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--ink)}
+html:root :is(.guc-new li,.guc-link-pick :is(li,footer))>button.primary{background:#ffffffeb;color:#0a1020}
+html:root[data-theme=light] :is(.guc-new li,.guc-link-pick :is(li,footer))>button.primary,html:root[data-theme=light] .edit-proposal .guc-new li>button.primary{background:#141e33;color:#fff}
+.guc-updated header>.drawn-icon{color:var(--sky);opacity:1}
+/* Files a check saved: name over size and week, Preview and Summarize beside it */
+.guc-saved .guc-new-name{flex-direction:column;gap:2px}
+.guc-saved-name{overflow:hidden;text-overflow:ellipsis}
+.guc-saved .guc-new-name small{font-size:var(--text-label);color:var(--muted)}
+.guc-saved li>button{height:28px;padding:0 10px}
+.guc-news header small{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+
+/* A subject's CMS tab: its course, the hub's views for that course, and the setting cards */
+.guc-subject{display:grid;gap:14px;max-width:none}
+.guc-subject>.edit-proposal{margin:0}
+.guc-subject .guc-tabs{margin:0}
+.guc-settings-cards{display:grid;gap:10px}
+.guc-settings-cards>.edit-proposal{margin:0}
+.guc-classes{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.guc-classes li{display:grid;grid-template-columns:48px 110px 90px 1fr;align-items:center;gap:10px;min-height:var(--row);padding:4px 14px;border-radius:12px;background:var(--calm-tile);font-size:var(--text-s);color:var(--ink)}
+.guc-classes li small{color:var(--muted);font-size:12px}
+.guc-link-pick{padding:16px;border-radius:16px;background:var(--calm-tile);box-shadow:var(--glass-rim)}
+.guc-link-pick header{display:grid;gap:3px;font-size:var(--text-s);color:var(--ink)}
+.guc-link-pick header b{font-weight:600}
+.guc-link-pick header span{color:var(--muted);font-size:var(--text-label);line-height:1.45}
+.guc-link-pick ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.guc-link-pick li{display:flex;align-items:center;gap:12px;padding:6px 6px 6px 12px;border-radius:11px}
+.guc-link-pick li.is-best{background:color-mix(in srgb,var(--sky) 10%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sky) 30%,transparent)}
+.guc-link-pick li>span{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;font-size:var(--text-s);color:var(--ink)}
+.guc-link-pick li>span b{font-weight:600}
+.guc-link-pick li>span small{flex-basis:100%;color:var(--muted);font-size:12px}
+.guc-link-pick :is(li,footer)>button{height:var(--row-s);padding:0 14px;border-radius:10px;font-size:var(--text-label);gap:6px}
+.guc-link-pick footer{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Settings → Connectors → GUC: linked subjects and their settings */
+.guc-linked-list{align-self:stretch;display:grid;gap:4px;margin-top:18px;text-align:left}
+.guc-linked-list h4{margin:0 0 4px;font-size:var(--text-label);font-weight:600;color:var(--muted)}
+.guc-linked-item>button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:var(--row);padding:4px 10px;border:0;border-radius:10px;background:none;color:var(--ink);text-align:left;cursor:pointer}
+.guc-linked-item>button:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.guc-linked-item>button span{display:grid;gap:1px;min-width:0;font-size:var(--text-s)}
+.guc-linked-item>button small{color:var(--muted);font-size:12px}
+.guc-linked-item>button[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
+.guc-linked-item .guc-settings-cards{padding:4px 0 10px}
+.guc-linked-item .guc-card-body{padding-left:14px}
+
+@media(max-width:760px){
+  .guc-classes li{grid-template-columns:44px 1fr;row-gap:2px}
+  .guc-card-body{padding-left:14px}
+  .guc-cms{grid-template-columns:1fr}
+  .guc-courses{position:static;flex-direction:row;overflow-x:auto;scrollbar-width:none}
+  .guc-courses button{flex:none}
+  .guc-when{width:96px}
+  .guc-file .icon-button{opacity:1}
+}

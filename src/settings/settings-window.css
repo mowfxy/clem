@@ -229,6 +229,11 @@ dialog.settings-dialog .settings-dialog-body .backup-list button.chosen{border-c
 /* Sized like the schedule switch beside it; its list is the shared dropdown (src/popups.css). */
 .st select.backup-keep{width:auto;height:36px;min-height:0;padding:0 10px 0 12px;border-radius:10px;background:#1b1b1a;border-color:#30302e;font-size:13.5px}
 .st input.reminder-time{width:auto;min-height:36px;padding:6px 10px}
+/* Settings → Proactivity: loading rows and channel choices that can't be picked yet. */
+.st-skel{display:block;width:200px;height:12px;margin:4px 0;border-radius:6px;background:color-mix(in srgb,var(--st-ink) 9%,transparent)}
+.st-skel.short{width:130px;height:10px}
+.st .text-size button:disabled{opacity:.45;cursor:default}
+.st .text-size button[role=checkbox][aria-checked=true]:disabled{opacity:.8}
 /* Help & support (src/support/SupportInbox.tsx): three ways in, laid out like Subjects' starting points (a drawn tile,
    a title, one line), then your requests and the other ways to reach us on hairlines. */
 .help{display:grid;gap:34px}

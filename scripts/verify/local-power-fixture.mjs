@@ -3,6 +3,7 @@
 // Replies are scripted; nothing here calls a model.
 import { createServer } from "vite";
 import { mockLocalStorage } from "./fixture-local-storage.mjs";
+import { idleEngine } from "./fixture-engine.mjs";
 export { saved } from "./fixture-local-storage.mjs";
 import { specPrinter, worksheetSpec, handoutPdf } from "./fixture-docs.mjs";
 export { worksheetSpec };
@@ -90,7 +91,7 @@ export const handoutEdits = { summary: "Moved the due date to Monday and made qu
 
 
 /** Starts Vite, installs the fake desktop bridge and opens the workspace. Returns helpers. */
-export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1, extraChats = [] } = {}) {
+export async function openFixture(browser, { port = 5198, viewport = { width: 1440, height: 900 }, replies = [editReply], recordVideo, models = fixtureModels, initScripts = [], deviceScaleFactor = 1, extraChats = [], extraSpaces = [], extraState = {}, guc, unfold = true } = {}) {
   const server = await createServer({ server: { host: "127.0.0.1", port, strictPort: true }, logLevel: "error" });
   await server.listen();
   const print = await specPrinter(browser);
@@ -102,8 +103,13 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.exposeFunction("__renderSpec", async (json) => Array.from(await print(JSON.parse(json))));
+  // `guc`: answers GUC, organizer (pro*), Google Calendar (calendar*) and Telegram (tg*) requests (an in-memory engine, scripts/verify/guc-setup.mjs, proactivity.mjs);
+  // window.fireGuc sends sync progress (and makes the window pull both inboxes).
+  if (guc) await page.exposeFunction("__guc", async (json) => JSON.stringify(await guc(JSON.parse(json)) ?? null));
+  await page.addInitScript(idleEngine);
   await page.addInitScript(({ FOLDER, notes, replies, harderWorksheet, handoutEdits, worksheetSpec }) => {
-    const chat = new Set(), folder = new Set(), pack = new Set();
+    const chat = new Set(), folder = new Set(), pack = new Set(), gucs = new Set();
+    window.fireGuc = (p) => { for (const fn of gucs) fn(p); };
     const files = { ...notes };
     window.requests = [];
     window.drags = [];
@@ -130,9 +136,13 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       onChat: (fn) => { chat.add(fn); return () => chat.delete(fn); },
       onFolder: (fn) => { folder.add(fn); return () => folder.delete(fn); },
       onPack: (fn) => { pack.add(fn); return () => pack.delete(fn); },
+      onGuc: (fn) => { gucs.add(fn); return () => gucs.delete(fn); },
       startDrag: (path) => window.drags.push(path),
       invoke: async (r) => {
         window.requests.push(r);
+        if (/^(guc|pro|tg|vps|calendar)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
+        // Without an engine, guc*/pro*/tg*/vps* fall through to {} and fixture-engine.mjs answers "not connected" (an
+        // empty object read as a subject view broke subject chats).
         switch (r.action) {
           case "securityInfo": return { email: "sam@example.com", verified: true, factors: [], identities: [], google: false, password: true };
           case "essentialSync": return { skills: r.skills, notes: r.notes };
@@ -204,7 +214,11 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
     const { default: App } = await import("/src/App.tsx");
     window.__root = ReactDOM.createRoot(document.getElementById("root"));
     window.__root.render(React.createElement(App, {}));
-  }, { workspace: { ...workspace, chats: [...workspace.chats, ...extraChats] }, worksheet: Array.from(worksheet), handout: Array.from(handout), worksheetSpec });
+  }, { workspace: { ...workspace, ...extraState, spaces: [...workspace.spaces, ...extraSpaces], chats: [...workspace.chats, ...extraChats] }, worksheet: Array.from(worksheet), handout: Array.from(handout), worksheetSpec });
   await page.locator(".greeting-row").waitFor();
+  // Subjects' chats are folded in the sidebar since the main thread: open them, as a person would to reach a chat.
+  // (Each one opened stops being a "Show chats" button, so the first is taken each time.)
+  const show = page.getByRole("button", { name: /^Show chats in / });
+  for (let i = 0; unfold && i < 20 && await show.count(); i++) await show.first().click();
   return { page, context, errors, t0, close: async () => { await context.close(); await server.close(); } };
 }

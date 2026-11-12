@@ -10,13 +10,20 @@ import type { DriveRef } from "../../core/drive-search";
  */
 /** Characters read from one Drive file; each request then sends what fits its budget. */
 const DRIVE_TEXT_LIMIT = 2_000_000;
-export type DriveItem = DriveRef & { thumbnail?: boolean; path?: string; folder?: boolean };
+export type DriveItem = DriveRef & { thumbnail?: boolean; path?: string; folder?: boolean; inside?: number };
 /** Where a file's Drive copy stands: uploading shows a turning ring, synced a check, failed a mark with Google's reason. */
 export type DriveSyncState = { state: "uploading" | "synced" | "failed"; error?: string };
-type State = { connected: boolean | null; error?: string };
-let state: State = { connected: null };
+/** `version` goes up whenever what Clem can open changes (something chosen in Google's picker, or removed), so every
+ *  Drive view reads again. */
+type State = { connected: boolean | null; error?: string; version: number };
+let state: State = { connected: null, version: 0 };
 const listeners = new Set<() => void>();
-const set = (next: State) => { if (next.connected === state.connected && next.error === state.error) return; state = next; listeners.forEach((l) => l()); };
+const set = (next: Omit<State, "version"> & { version?: number }) => {
+  const version = next.version ?? state.version;
+  if (next.connected === state.connected && next.error === state.error && version === state.version) return;
+  state = { ...next, version }; listeners.forEach((l) => l());
+};
+const changed = () => set({ connected: true, version: state.version + 1 });
 const subscribe = (l: () => void) => { listeners.add(l); return () => listeners.delete(l); };
 /** `connected` is null until the first check finishes, so nothing flashes a "Connect" screen in the meantime. */
 export const useDrive = () => useSyncExternalStore(subscribe, () => state);
@@ -32,17 +39,39 @@ export function refreshDrive(force = false) {
   return checking;
 }
 
-/** After "Continue with Google" the browser finishes the sign-in; Clem notices on its own and carries on. */
-let waiting: ReturnType<typeof setInterval> | undefined;
-export async function connectDrive() {
-  if (!desktop) return;
-  await desktop.invoke({ action: "driveConnect" });
-  clearInterval(waiting);
+/**
+ * Opens Google's own picker in the browser (inside Google's consent screen) and waits for the choice. Clem can open only
+ * what is chosen there, plus the files it makes. Google gives a chosen folder without what is already inside it, so the
+ * picker takes many items at once. Resolves with what was chosen, or nothing if the picker was closed or never finished.
+ */
+let picking: AbortController | undefined;
+export async function pickFromDrive(kind: "files" | "folder" = "files"): Promise<DriveItem[]> {
+  if (!desktop) return [];
+  // A second "Add" replaces a pick still waiting in an earlier browser tab.
+  picking?.abort();
+  const own = picking = new AbortController();
+  const request = crypto.randomUUID();
+  await desktop.invoke({ action: "driveConnect", pick: kind, request });
   const started = Date.now();
-  waiting = setInterval(() => {
-    if (Date.now() - started > 5 * 60_000 || state.connected) { clearInterval(waiting); return; }
-    void refreshDrive(true);
-  }, 2500);
+  try {
+    while (Date.now() - started < 10 * 60_000 && !own.signal.aborted) {
+      await new Promise((go) => setTimeout(go, 2000));
+      if (own.signal.aborted) break;
+      // A dropped connection is asked again; a refusal from Google (the choice already collected) is shown, not waited out.
+      const r = await desktop.invoke({ action: "drivePicked", request }).catch((e: Error) => { if (/couldn't reach/i.test(String(e?.message))) return null; throw e; }) as { done: boolean; files: DriveItem[] } | null;
+      if (r?.done) { changed(); return r.files; }
+    }
+    return [];
+  } finally { if (picking === own) picking = undefined; }
+}
+/** Stops waiting for a pick (the person went back without finishing in the browser). */
+export const stopPicking = () => picking?.abort();
+/** "Continue with Google": connecting and choosing what Clem may open are one step in Google's consent screen. */
+export const connectDrive = () => pickFromDrive("files");
+/** Takes items out of Clem's access (Clem stops opening them and what is inside them), or gives them back. */
+export async function setDriveAccess(change: { hide?: string[]; show?: string[] }) {
+  await desktop!.invoke({ action: "driveAccess", ...change });
+  changed();
 }
 export async function disconnectDrive() {
   const r = await fetch("/api/drive/connection", { method: "DELETE" });

@@ -44,7 +44,9 @@ type Saved = { summary: string; before: View; after: View };
 
 export const kindOf = (name: string, type = ""): Kind =>
   /\.pdf$/i.test(name) || type === "application/pdf" ? "pdf" : /\.(docx|pptx|xlsx)$/i.test(name) ? "office" : /\.(txt|md|markdown|csv|json|tex|html?|xml|ya?ml|log)$/i.test(name) ? "text" : /\.(png|jpe?g|gif|webp|svg)$/i.test(name) || type.startsWith("image/") ? "image" : /\.(mp4|m4v|webm|mov|ogv)$/i.test(name) || type.startsWith("video/") ? "video" : /\.(mp3|m4a|wav|ogg|flac)$/i.test(name) || type.startsWith("audio/") ? "audio" : "other";
-export const canEditInPanel = (file: StoredFile) => !!desktop && !file.id.startsWith("drive_") && ["pdf", "office", "text"].includes(kindOf(file.name, file.type));
+/** A file read from elsewhere for viewing (Google Drive, GUC's CMS): shown, never edited or kept. */
+export const remoteFile = (id: string) => /^(drive|guc)_/.test(id);
+export const canEditInPanel = (file: StoredFile) => !!desktop && !remoteFile(file.id) && ["pdf", "office", "text"].includes(kindOf(file.name, file.type));
 const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 
 /** Replaces a file's contents, keeping the previous bytes as a version that Undo restores. */
@@ -121,7 +123,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     addEventListener("pointerdown", close); addEventListener("keydown", key); addEventListener("wheel", close, { passive: true });
     return () => { removeEventListener("pointerdown", close); removeEventListener("keydown", key); removeEventListener("wheel", close); };
   }, [menu]);
-  const point = (pointer: Omit<FilePointer, "id" | "file">) => { onPoint({ id: crypto.randomUUID(), file: file.name, ...(file.id.startsWith("drive_") ? {} : { fileId: file.id }), ...pointer }); setMenu(null); window.getSelection()?.removeAllRanges(); setFlash("Added to chat"); };
+  const point = (pointer: Omit<FilePointer, "id" | "file">) => { onPoint({ id: crypto.randomUUID(), file: file.name, ...(remoteFile(file.id) ? {} : { fileId: file.id }), ...pointer }); setMenu(null); window.getSelection()?.removeAllRanges(); setFlash("Added to chat"); };
   /** An area drawn on a page, as fractions of that page. */
   const areaBox = (a: Area): PointerBox => { const w = a.page.clientWidth || 1, h = a.page.clientHeight || 1; return { x: round(a.x / w), y: round(a.y / h), w: round(a.w / w), h: round(a.h / h) }; };
   /** The selected text's outline on its page, as fractions of that page. */
@@ -422,7 +424,7 @@ export const FilePanel = forwardRef<FilePanelHandle, {
     style={variant === "panel" && width ? { "--fp-w": width + "px" } as CSSProperties : undefined}>
     {resizer}
     <header className="fp-head">
-      <div className="fp-title">{variant === "modal" && <span className="fp-crumb">Files /</span>}<strong aria-description={file.name}>{file.name}</strong></div>
+      <div className="fp-title">{variant === "modal" && <span className="fp-crumb">{file.id.startsWith("guc_") ? "GUC CMS" : "Files"} /</span>}<strong aria-description={file.name}>{file.name}</strong></div>
       {sync && <span className={"fp-sync is-" + sync} role="status" aria-label={sync === "uploading" ? "Saving the change to Google Drive" : sync === "synced" ? "In sync with Google Drive" : sync === "pending" ? "Changed here · not in Google Drive until approved" : "Not saved to Google Drive"}>{sync === "synced" ? <Icon name="check" size={11} /> : sync === "pending" ? <Icon name="cloud-up" size={15} /> : sync === "failed" ? "!" : null}</span>}
       {(kind !== "pdf" || !!current.versions?.length) && <small className="fp-meta">{[kind === "pdf" ? "" : detail, current.versions?.length ? `edited ${current.versions.length}×` : ""].filter(Boolean).join(" · ")}</small>}
       {!!current.versions?.length && !proposal && !working && <button className="fp-icon" aria-description="Undo last edit" aria-label="Undo last edit" onClick={() => void undo()}><Icon name="undo" size={16} /></button>}

@@ -1,3 +1,4 @@
+import { idleEngine } from "./fixture-engine.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -10,6 +11,7 @@ try {
   const page = await browser.newPage({
     viewport: { width: 1000, height: 720 },
   });
+  await page.addInitScript(idleEngine);
   await page.addInitScript(() => {
     let state = {
       configured: true,

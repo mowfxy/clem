@@ -7,7 +7,8 @@ import { openFixture } from "./local-power-fixture.mjs";
 const out = process.argv[2] || "test-results/sidebar-status";
 await mkdir(out, { recursive: true });
 const now = Date.now();
-const chat = (id, title, updated) => ({ id, title, spaceId: null, updated, messages: [{ id: id + "-m", role: "user", content: title }, { id: id + "-a", role: "assistant", content: "Earlier answer." }] });
+// In Biology 101: since the main thread (#53), chats outside a subject or project are read-only Earlier chats.
+const chat = (id, title, updated) => ({ id, title, spaceId: "bio", updated, messages: [{ id: id + "-m", role: "user", content: title }, { id: id + "-a", role: "assistant", content: "Earlier answer." }] });
 const extraChats = [
   chat("c-a", "Functions of several variables study guide", now - 60e3),
   chat("c-b", "Payment methods and tax questions", now - 120e3),
