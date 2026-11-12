@@ -10,10 +10,9 @@ import { SettingRow, Switch } from "../settings/SettingsParts";
 import "../drive/drive.css";
 import "../guc/guc.css";
 import "./vps.css";
-import { StatusDot, dotOf, useVps } from "./VpsRow";
+import { StatusDot, bytes, dotOf, useVps } from "./VpsRow";
 
 const message = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
-export const bytes = (n = 0) => n < 1024 ** 2 ? `${Math.max(0, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`;
 const ago = (t?: number) => { if (!t) return "not yet"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 const CAPS = [0.5, 1, 2, 5, 10, 20].map((g) => g * 1024 ** 3);
 

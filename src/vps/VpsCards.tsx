@@ -5,7 +5,7 @@ import type { z } from "zod";
 import type { vpsConfirmCard, vpsMovedCard } from "../../core/guc/cards";
 import { Icon } from "../Icons";
 import { desktop } from "../desktop/bridge";
-import { bytes } from "./VpsSettings";
+import { bytes } from "./VpsRow";
 import "../guc/guc.css";
 import "./vps.css";
 

@@ -16,6 +16,7 @@ export function useVps() {
   useEffect(() => { void refresh(); return desktop?.onVps?.((e) => { if (e.what.startsWith("progress:")) setStep(e.what.slice(9)); else void refresh(); }); }, []);
   return { status, setStatus, refresh, step };
 }
+export const bytes = (n = 0) => n < 1024 ** 2 ? `${Math.max(0, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`;
 type Dot = "on" | "warn" | "off";
 export const dotOf = (s: VpsStatus | null): Dot => !s?.connected ? "off" : s.lastTest?.ok === false || s.online === false || s.worker.error ? "warn" : s.online || s.lastTest?.ok ? "on" : "off";
 export const StatusDot = ({ dot, label }: { dot: Dot; label: string }) => <span className={`vps-dot is-${dot}`} role="img" aria-label={label} />;
