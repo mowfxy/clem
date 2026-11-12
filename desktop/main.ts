@@ -1255,9 +1255,13 @@ void app.whenReady().then(async () => {
     await selectProvider(user.id);
     if (request.action === "driveConnect") {
       driveLive.forget();
-      await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id));
+      // Google's picker opens in the browser, inside the consent screen; `request` lets Clem collect what was chosen.
+      const pick = request.request ? "&pick=" + (request.pick || "files") + "&request=" + request.request : "";
+      await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id) + pick);
       return {ok:true};
     }
+    if (request.action === "drivePicked") return driveLive.picked(request.request);
+    if (request.action === "driveAccess") return driveLive.setHidden({hide:request.hide,show:request.show});
     if(request.action==="essentialSync") {
       void usageTally.flush(user.id);
       const [skills,notes]=await Promise.all([essentialSync.exchange(user.id,"skills",request.skills),essentialSync.exchange(user.id,"notes",request.notes)]);

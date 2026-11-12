@@ -151,24 +151,56 @@ test('saving into a folder asks for a reconnect under a read-only scope, and goe
   assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123'});
 });
 
-test('My Drive, Shared with me and folders list by place; a drive.file connection from a preview asks for a reconnect',async()=>{
-  let scope='https://www.googleapis.com/auth/drive';const lists:string[]=[];
-  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
+test('Clem lists only what was chosen: chosen items at the top, the rest inside the chosen folder that holds them',async()=>{
+  let scope='https://www.googleapis.com/auth/drive.file',hidden:string[]=[];const lists:string[]=[];
+  const F='application/vnd.google-apps.folder';
+  const files=[
+    {id:'course123456',name:'Course',mimeType:F,parents:['root']},
+    {id:'week1234567',name:'Week 1',mimeType:F,parents:['course123456']},
+    {id:'notes1234567',name:'Notes.pdf',mimeType:'application/pdf',parents:['week1234567']},
+    {id:'lone12345678',name:'Syllabus.pdf',mimeType:'application/pdf',parents:['unchosen1234']},
+    {id:'empty1234567',name:'Empty pick',mimeType:F,parents:['root']},
+  ];
+  const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const url=String(input);
     if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope});
-    if(url.includes('/drive/v3/files?')){lists.push(new URL(url).searchParams.get('q')!);return Response.json({files:[]});}
+    if(url.endsWith('/api/drive/hidden')){if(init.method==='PUT'){const b=JSON.parse(init.body);hidden=[...hidden.filter(h=>!b.show?.includes(h)),...(b.hide||[])];}return Response.json({hidden});}
+    if(url.includes('/drive/v3/files?')){const q=new URL(url).searchParams.get('q')!;lists.push(q);const parent=/'([\w-]+)' in parents/.exec(q)?.[1];return Response.json({files:parent?files.filter(f=>f.parents.includes(parent)):files});}
     throw Error('unexpected '+url);}) as any,'https://x.example');
-  await drive.list({});await drive.list({folder:'shared'});await drive.list({folder:'folder123456'});
-  assert.deepEqual(lists,["trashed = false and 'root' in parents",'trashed = false and sharedWithMe = true',"trashed = false and 'folder123456' in parents"]);
-  // drive.file sees only what was picked, so a folder's contents would look empty: say so instead of listing nothing.
-  scope='https://www.googleapis.com/auth/drive.file';drive.forget();
-  await assert.rejects(drive.list({}),/Reconnect Google Drive once so Clem can show all your folders/);
-  await assert.rejects(drive.tree('folder123456',true),/Reconnect Google Drive once so Clem can show all your folders/);
-  assert.equal(lists.length,3,'nothing is listed under drive.file');
+  const top=await drive.list({});
+  assert.deepEqual(top.files.map(f=>[f.name,f.inside]),[['Course',1],['Empty pick',0],['Syllabus.pdf',undefined]]);
+  assert.equal(lists[0],'trashed = false','the access list asks Google for everything Clem can open');
+  // A chosen folder shows the chosen subfolders and files inside it, at any depth.
+  const tree=await drive.tree('course123456',true);
+  assert.deepEqual(tree.items.map(i=>[i.name,i.path||'']),[['Week 1',''],['Notes.pdf','Week 1']]);
+  // Removing a subfolder takes it, and what is inside it, out of Clem's reach everywhere.
+  await drive.setHidden({hide:['week1234567']});
+  assert.deepEqual((await drive.tree('course123456',true)).items,[]);
+  assert.deepEqual((await drive.list({})).files.find(f=>f.id==='course123456')?.inside,0);
+  await assert.rejects(drive.list({folder:'week1234567'}),/no longer has access/);
+  await drive.setHidden({show:['week1234567']});
+  assert.equal((await drive.tree('course123456',true)).items.length,2);
+  // A connection still holding the whole-Drive scope is asked to reconnect and choose.
+  scope='https://www.googleapis.com/auth/drive';drive.forget();
+  await assert.rejects(drive.list({}),/Clem now opens only the Drive files and folders you choose/);
+  await assert.rejects(drive.tree('course123456',true),/Clem now opens only/);
+});
+
+test('what was chosen in Google\'s picker comes back once, read from Drive',async()=>{
+  let done=false;
+  const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
+    if(url.includes('/api/drive/picked?'))return Response.json(done?{done:true,ids:['pick12345678']}:{done:false});
+    if(url.endsWith('/api/drive/hidden'))return Response.json({hidden:[]});
+    if(url.includes('/drive/v3/files/pick12345678'))return Response.json({id:'pick12345678',name:'Lecture.pdf',mimeType:'application/pdf'});
+    throw Error('unexpected '+url);}) as any,'https://x.example');
+  assert.deepEqual(await drive.picked('0123456789abcdef0123'),{done:false,files:[]});
+  done=true;
+  assert.deepEqual((await drive.picked('0123456789abcdef0123')).files.map(f=>f.name),['Lecture.pdf']);
 });
 
 test('Google refusing every read (Drive API off) says so when listing, instead of looking empty',async()=>{
   const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
-    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
     return Response.json({error:{code:403,message:'Google Drive API has not been used in project 1 before or it is disabled.',errors:[{reason:'accessNotConfigured'}],details:[{reason:'SERVICE_DISABLED'}]}},{status:403});}) as any,'https://x.example');
   await assert.rejects(drive.list({}),/switched off for Clem on Google's side/);
   await assert.rejects(drive.tree('folder123456',true),/switched off for Clem on Google's side/);
@@ -177,7 +209,7 @@ test('Google refusing every read (Drive API off) says so when listing, instead o
 test('a file renamed or moved to the trash from Clem is changed in Drive itself, in place',async()=>{
   const calls:{url:string;method?:string;body?:string}[]=[];
   const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const url=String(input);
-    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
     calls.push({url,method:init.method,body:init.body});
     return Response.json({id:'file-id-12345',name:JSON.parse(init.body||'{}').name,modifiedTime:'2026-10-05T10:00:00Z'});}) as any,'https://x.example');
   assert.deepEqual(await drive.rename('file-id-12345','Week 2.pdf'),{id:'file-id-12345',name:'Week 2.pdf',modifiedTime:'2026-10-05T10:00:00Z'});
@@ -187,7 +219,7 @@ test('a file renamed or moved to the trash from Clem is changed in Drive itself,
 
 test('a saved file reports Drive’s modified time, so Clem knows its own upload is not a change made in Drive',async()=>{
   const drive=new DriveLive(async()=>'s',(async(input:any)=>{const url=String(input);
-    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
     if(url.includes('uploadType=resumable')){assert.match(url,/fields=id,modifiedTime/);return new Response('{}',{headers:{Location:'https://upload.example/session'}});}
     return Response.json({id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});}) as any,'https://x.example');
   assert.deepEqual(await drive.upload('folder-id-12345','a.txt','text/plain',new Uint8Array([1])),{id:'new-file-id-123',modifiedTime:'2026-10-05T10:00:00Z'});
@@ -202,7 +234,7 @@ test('a file goes to Drive under the type its bytes and name show, so a PDF kept
   assert.equal(uploadType('text/markdown','a.md',new TextEncoder().encode('# Hi')),'text/markdown');
   let sent='',meta:any;
   const drive=new DriveLive(async()=>'s',(async(input:any,init:any={})=>{const url=String(input);
-    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive'});
+    if(url.endsWith('/api/drive/token'))return Response.json({accessToken:'t',expiresIn:3300,scope:'https://www.googleapis.com/auth/drive.file'});
     if(url.includes('uploadType=resumable')){sent=init.headers['X-Upload-Content-Type'];meta=JSON.parse(init.body);return new Response('{}',{headers:{Location:'https://upload.example/session'}});}
     return Response.json({id:'new-file-id-123'});}) as any,'https://x.example');
   await drive.upload('folder-id-12345','Notes.pdf','',pdf);
