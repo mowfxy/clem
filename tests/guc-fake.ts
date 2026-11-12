@@ -6,7 +6,8 @@ import { stableId, urls } from "../core/guc/parse.ts";
 import type { Http } from "../desktop/engine/guc-client.ts";
 import type { EngineHost } from "../desktop/engine/host.ts";
 
-export const fixture = (name: string) => readFileSync(new URL(`./fixtures/guc/${name}.html`, import.meta.url), "utf8");
+// Line endings are normalized: a Windows checkout turns the saved pages to CRLF, and tests edit them by LF text.
+export const fixture = (name: string) => readFileSync(new URL(`./fixtures/guc/${name}.html`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 export const migrations = fileURLToPath(new URL("../desktop/engine/migrations/", import.meta.url));
 export const noWait = async () => {};
 
