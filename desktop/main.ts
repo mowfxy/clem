@@ -71,6 +71,7 @@ import {AntigravityEngine} from './antigravity-engine';
 import {endOrphanedAgents} from './agent-sweep';
 import {CliAccounts} from './cli-accounts';
 import {DriveLive,DriveMediaServer} from './drive-live';
+import {CalendarLive} from './calendar-live';
 import { Engine } from './engine/index';
 import type { EngineHost } from './engine/host';
 import { VpsManager } from './engine/vps/manager';
@@ -82,6 +83,7 @@ import { runGucTool, runTelegramTool } from './engine/ai-tools';
 import { ANSWER_MS } from './engine/telegram';
 import { TG_FILE_LIMIT } from '../core/telegram/pairing';
 import { isGucAction } from '../core/guc/ai-tools';
+import { isClemAction } from '../core/proactivity/tools';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
 import {LiveScreen,NOTE_HOLD} from './live-reply';
@@ -321,6 +323,8 @@ void app.whenReady().then(async () => {
   const claudeLinkId=(id:string)=>id==='default'?CLAUDE_LINK_ID:'claude-'+id;
   const driveLive=new DriveLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   const driveMedia=new DriveMediaServer(driveLive,async()=>!!await auth.user());
+  // Google Calendar, read-only, through the same Clem account (desktop/calendar-live.ts).
+  const calendarLive=new CalendarLive(async()=>{if(!await auth.user())return null;const {data}=await auth.client!.auth.getSession();return data.session?.access_token||null;});
   app.on("before-quit",()=>driveMedia.stop());
   /** Runs a backup's IndexedDB script (desktop/backup-service.ts) in the window, where the store is. */
   const inWindow=(script:string)=>{
@@ -404,7 +408,7 @@ void app.whenReady().then(async () => {
     if(providerOwner!==owner){
       providerAccounts.stop();providerOwner=owner;
       // Nothing from the previous person carries over: Drive's token and caches, and the folders being watched.
-      driveLive.forget();driveMedia.forget();
+      driveLive.forget();driveMedia.forget();calendarLive.forget();
       // Kept CLI sessions are the previous person's conversations: none carries over.
       chatSessions.clear();
       if(owner==='signed-out'){folderWatcher?.stop();watchOwner='';}else void watchFolders(owner).catch(()=>{});
@@ -1220,6 +1224,8 @@ void app.whenReady().then(async () => {
     // The organizer's sweeps read the saved workspace (the window writes it) and ask Clem's organizer model for short
     // JSON answers through the same path as any answer, without tools.
     workspace: () => disk.readState(owner),
+    // The person's Google Calendar, while this owner is the one signed in (null when it isn't connected).
+    calendar: async (from, to) => ((await auth.user(false))?.id === owner ? calendarLive.between(from, to) : null),
     complete: async ({ system, user, model, reasoning }) => {
       let text = "";
       await answerWith(owner, "organizer-" + randomUUID(), model, reasoning, user, (event) => { if (event?.type === "delta") text += event.text || ""; }, { instructions: system });
@@ -1520,7 +1526,7 @@ void app.whenReady().then(async () => {
       grokAccounts?.stop();
       antigravityAccounts?.stop();
       await selectProvider("signed-out");
-      driveLive.forget();driveMedia.forget();
+      driveLive.forget();driveMedia.forget();calendarLive.forget();
       await closeEngines?.();
       await auth.client?.auth.signOut().catch(() => {});
       await auth.forget();
@@ -1591,6 +1597,8 @@ void app.whenReady().then(async () => {
       if (request.action === "proPoke") return o.poke(request.reason);
       if (request.action === "proWatches") return o.watches();
       if (request.action === "proStopWatch") return o.stopWatch(request.id);
+      if (request.action === "proReminders") return o.reminders();
+      if (request.action === "proCancelReminder") return o.cancelReminder(request.id);
     }
     // Telegram (desktop/engine/telegram.ts; docs/DESKTOP.md "Telegram").
     if (request.action.startsWith("tg")) {
@@ -1645,6 +1653,16 @@ void app.whenReady().then(async () => {
       if (request.action === "gucAckNewCourses") return engine.ackNewCourses(request.keys);
       if (request.action === "gucInbox") return engine.inbox();
       if (request.action === "gucAckInbox") return engine.ackInbox(request.keys);
+    }
+    // Google Calendar (read-only): connected in the browser like Drive, then read live (desktop/calendar-live.ts).
+    if (request.action === "calendarStatus") return calendarLive.state(!!request.refresh);
+    if (request.action === "calendarConnect") {
+      calendarLive.forget();
+      await shell.openExternal("https://clem.m4labs.xyz/#/drive-connect?account=" + encodeURIComponent(user.id) + "&for=calendar");
+      return {ok:true};
+    }
+    if (request.action === "calendarDisconnect") {
+      return calendarLive.disconnect();
     }
     if (request.action === "driveConnect") {
       driveLive.forget();
@@ -2531,6 +2549,10 @@ void app.whenReady().then(async () => {
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string }[];
           const w = await o.watch(tool.text.slice(0, 300), spaces.map((s) => ({ id: s.id, name: s.name, ...(/^[A-Z]{2,5} ?\d{3}/.test(s.description || "") ? { code: s.description!.match(/^[A-Z]{2,5} ?\d{3}/)![0] } : {}) })), { repeat: tool.repeat === true, channel: tool.push === false ? "app" : "push" });
           return { ok: true, watch: w, card: "Put this card in your reply so they can stop it:\n```clem-card\n" + JSON.stringify({ type: "watch", id: w.id, text: w.text }) + "\n```" };
+        }
+        // Calendar, reminders and study time (core/proactivity/tools.ts): the organizer runs them; Google is read here.
+        if (isClemAction(tool?.action)) {
+          return (await engineFor(user.id)).organizer.tool(tool, { calendar: (from, to) => calendarLive.between(from, to), scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
         }
         // Telegram: the pair card, and a CMS file sent to the paired chat ("send me lecture 3 slides").
         if (typeof tool?.action === "string" && tool.action.startsWith("telegram.")) {

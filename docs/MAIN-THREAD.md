@@ -63,6 +63,28 @@ Only announcements the rules can't place go to the model, batched with everythin
 - **Jobs:** the engine's pg-boss runs the sweeps without the window: timed (morning, midday, evening, weekly; Cairo time, editable) and event sweeps a minute after a sync, a check or a workspace change, at most every 10 minutes. A 10-minute tick sends deadline reminders (48 h and 3 h before) and pushes held by quiet hours.
 - **Each sweep** gets the snapshot, GUC's changes and the timetable diff since the last sweep. Nothing changed: no model call, no card. The brief, reminders and lines are templates; the model is asked only when something changed **and** needs judgement (an announcement to rate, a half-matching watch, an unplaceable file, new words from the person), with the Now card plus the diff, for short JSON.
 
+## Calendar, reminders and study time (user, 2026-11-12)
+The main thread can read the person's Google Calendar, set reminders, and plan study time around everything else, by their preferences, and it says when things clash.
+
+- **Google Calendar is read-only** (`calendar.readonly`). Settings → Connectors → Google Calendar (a row beside Google Drive; desktop only) → Connect opens `clem.m4labs.xyz/#/drive-connect?account=…&for=calendar` in the browser: the same sign-in hop, Google client and registered redirect (`/api/drive/callback`) as Drive, with `for: "calendar"` in the signed state. The refresh token is its own `clem_credentials` row (`provider = 'calendar'`, `database/008_calendar.sql`); `/api/calendar/token` mints short-lived access tokens and `DELETE /api/calendar/connection` revokes it. The desktop reads Google directly (`desktop/calendar-live.ts`): every calendar the person shows, events expanded (`singleEvents`), kept in memory for 5 minutes. Cancelled events, ones they declined, and working-location and out-of-office markers are dropped. All-day and "free" events are listed but never count as busy. **Google Cloud project:** turn on the Google Calendar API and add `calendar.readonly` to the consent screen.
+- **What the organizer does with it** (`core/proactivity/calendar.ts`, pure):
+  - Timed events are busy time (`busyOf`): morning blocks go around them.
+  - Events that look like schoolwork (quiz, exam, midterm, assignment, due, submission, lab report…) become deadlines (`gcal-…`), matched to a subject by course code or name. They get the usual 48 h and 3 h reminders and, with a subject, a "Start:" task.
+  - Clashes are said once each (`calendarClashes`): a calendar event against a class, a plan item, or another calendar event. Classes against plan items stay with `rules.clashNotes`.
+  - The briefs list today's and tomorrow's events. The 10-minute tick notices when the calendar changes and runs an event sweep, which says what is new or moved (`calendarDiff`; the last calendar seen is in `organizer_sweeps.calendar`). A VPS worker has no calendar: it works from GUC and the plans.
+- **Study preferences** (`ProSettings.study`; only through chat, the AI's `clem.prefs`; Settings has no card for them, user 2026-11-12): days (default Saturday to Thursday), hours (default 16:00 to 22:00) and breathing room kept around anything else (10 min). How long a session is and whether it gets a reminder are the person's to say in chat too ("user manages this"). Settings saved when session length, sessions a day and a reminder before each session were settings still load; `readPro` drops those three.
+- **Study sessions** (`clem.study`, `Organizer.planStudy`, `studySlots`): N sessions before a day, each as long as the person said (`minutes`; 50 when they didn't). They go only on allowed days and hours, clear of classes, calendar events and timed plan items (with the breathing room), and are spread one a day first, then as many more a day as fit. Today needs an hour's notice. Each becomes a timed `plan_task` "Study: …", applied by the window with Undo. No reminder is set for them: the person asks with `clem.remind`. The reply carries an `organizer` card (`when: "study"`) with Undo per session.
+- **Reminders** (`organizer_reminders`, migration `009`; `clem.remind` / `clem.reminders` / `clem.unremind`):
+  - the time is read in Cairo time from ISO or the person's words (`whenOf`; a bare day is 09:00), with an optional `before` and `repeat` (daily or weekly);
+  - each one sends a pg-boss `organizer.remind` job for its minute, and the tick catches any that slip;
+  - ringing posts a `reminder` card (`rang: true`) in the main thread and pushes it once (desktop and Telegram);
+  - the person's own reminders ring through quiet hours; `study` reminders (only from older versions, which set one per study session) follow the Flashcards event switch and channels;
+  - one rung more than 6 hours late (Clem was off) is posted but not pushed, and a repeating one moves on to its next time.
+
+  A reminder card that was just set, or that repeats, has Cancel. Settings lists the upcoming ones.
+- **The AI's view** (`clem.calendar`): the agenda for a range: classes, calendar events (all-day too) and timed plan items by day, every clash including class-against-plan, and the study preferences. The guide is `CALENDAR_GUIDE`, in the main thread's note.
+- Checked by `tests/calendar.test.ts` and `scripts/verify/calendar.mjs`. The verify script shows the reminders, the study card, the clash in the brief and Settings in dark and light.
+
 ## Data
 - The main thread is a `Chat` with `kind: 'main'`. There is exactly one per owner. It is pinned and can't be deleted.
 - Standalone chats get `archived: 'earlier'` in a one-time, idempotent migration. They are not deleted.

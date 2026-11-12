@@ -7,6 +7,7 @@ import type { ProAction } from "./actions.ts";
 import { cairoAt } from "./settings.ts";
 import type { Snapshot } from "./snapshot.ts";
 import type { Change } from "./attention.ts";
+import { busyList, busyOf, calendarClashes, clashText, type CalEvent } from "./calendar.ts";
 
 const WEEK = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const mins = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + m; };
@@ -85,13 +86,14 @@ export function freeHours(day: string, slots: Slot[], timed: Timed[], after = 0)
   return out;
 }
 
-export type Facts = { now: number; snap: Snapshot; prev?: Snapshot; slots: Slot[]; deadlines: Deadline[]; events: Change[] };
+/** `calendar`: the person's Google Calendar events for the coming week (empty or left out when it isn't connected). */
+export type Facts = { now: number; snap: Snapshot; prev?: Snapshot; slots: Slot[]; deadlines: Deadline[]; events: Change[]; calendar?: CalEvent[]; calendarDiff?: string[] };
 const nameOf = (snap: Snapshot, id?: string) => snap.spaces.find((s) => s.id === id)?.name;
 const timedOf = (snap: Snapshot): Timed[] => snap.plans.flatMap((p) => p.tasks.filter((t) => !t.done && t.due && t.time).map((t) => ({ title: t.title, day: t.due!, time: t.time!, space: nameOf(snap, p.spaceId) })));
 
 /** The morning brief's blocks for today: due and overdue work, due flashcards and the nearest exam, in free hours. */
 export function morningBlocks(f: Facts): ProAction[] {
-  const c = cairo(f.now), today = c.ymd, timed = timedOf(f.snap);
+  const c = cairo(f.now), today = c.ymd, timed = [...timedOf(f.snap), ...busyOf(f.calendar || [])];
   const want: { spaceId: string; title: string }[] = [];
   for (const p of f.snap.plans) for (const t of p.tasks) if (!t.done && !t.milestone && !t.time && t.due && t.due <= today && t.group !== "Today") want.push({ spaceId: p.spaceId, title: t.title });
   for (const s of f.snap.study) if (s.due) want.push({ spaceId: s.spaceId, title: `Review ${s.due} flashcard${s.due === 1 ? "" : "s"}` });
@@ -199,10 +201,17 @@ export function followUps(f: Facts): ProAction[] {
     .slice(0, 3).map((c) => ({ type: "note" as const, kind: "followup" as const, key: c.key, text: `You said you'd ${c.text}. Done, or should I put it in your plan?` }));
 }
 
-/** Clashes between this week's classes and timed plan items, said once each. */
+/** Clashes this week, said once each: classes against timed plan items, and calendar events against classes, plan
+ *  items and each other. */
 export function clashNotes(f: Facts): ProAction[] {
-  return findClashes(f.slots, timedOf(f.snap)).map((c) => ({ type: "note" as const, kind: "clash" as const, key: c.key, text: `${c.slot.title} on ${new Date(c.slot.day + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })} at ${c.slot.start} clashes with “${c.item.title}”${c.item.space ? ` (${c.item.space})` : ""}.` }));
+  const today = cairo(f.now).ymd;
+  return [
+    ...findClashes(f.slots, timedOf(f.snap)).map((c) => ({ type: "note" as const, kind: "clash" as const, key: c.key, text: `${c.slot.title} on ${new Date(c.slot.day + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })} at ${c.slot.start} clashes with “${c.item.title}”${c.item.space ? ` (${c.item.space})` : ""}.` })),
+    ...(f.calendar?.length ? calendarClashes(busyList({ slots: f.slots, calendar: f.calendar, timed: timedOf(f.snap) }), today).map((c) => ({ type: "note" as const, kind: "clash" as const, key: c.key, text: clashText(c).slice(0, 300) })) : []),
+  ];
 }
+/** Timed plan items (study sessions, quizzes put in a plan), for the calendar tools. */
+export const timedItems = timedOf;
 
 /** New lectures (CMS files) for linked subjects: cards with Summarize and Make flashcards. Nothing is read or made. */
 export const lectures = (events: Change[]) => {

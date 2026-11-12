@@ -25,6 +25,9 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({action:z.literal("essentialSync"),skills:syncSchemas.skills,notes:syncSchemas.notes,noBaseline:z.boolean().optional()}),
   z.object({ action: z.literal("browserLogin") }),
   z.object({ action: z.literal("driveConnect") }),
+  z.object({ action: z.literal("calendarStatus"), refresh: z.boolean().optional() }),
+  z.object({ action: z.literal("calendarConnect") }),
+  z.object({ action: z.literal("calendarDisconnect") }),
   // GUC (desktop/engine): the password goes straight to the Vault and is never sent back.
   z.object({ action: z.literal("gucConnect"), username: z.string().trim().regex(/^(guc\\)?[\w.@-]{2,80}$/i, "Enter your GUC username."), password: z.string().min(1).max(200) }),
   z.object({ action: z.literal("gucStatus") }),
@@ -91,6 +94,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("proPoke"), reason: z.enum(["plans", "files", "study", "spaces", "open"]) }),
   z.object({ action: z.literal("proWatches") }),
   z.object({ action: z.literal("proStopWatch"), id: z.string().regex(/^[\w-]{1,80}$/) }),
+  z.object({ action: z.literal("proReminders") }),
+  z.object({ action: z.literal("proCancelReminder"), id: z.string().regex(/^r[\w-]{1,40}$/) }),
   // Telegram (desktop/engine/telegram.ts): status, a pairing code, unpair, the pair card in the main thread, and the
   // window's answer to a Telegram message (its text and the files it made).
   z.object({ action: z.literal("tgStatus"), fresh: z.boolean().optional() }),

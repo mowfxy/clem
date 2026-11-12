@@ -15,7 +15,7 @@ export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
   {name:'Memory',icon:'subjects',scene:'jar',line:'What Clem keeps in mind for you.',keywords:'remember notes'},
   {name:'Skills',icon:'skills',scene:'cards',line:'Ways of working Clem brings to every chat.',keywords:'skills workflows steps playbook create import practice'},
   {name:'Automations',icon:'clock',scene:'hourglass',line:'Routines you set up in a chat.',keywords:'routines schedule recurring'},
-  {name:'Proactivity',icon:'spark',scene:'bell',line:'Clem’s organizer and what it does on its own.',keywords:'organizer main thread proactive brief reminders digest model clem'},
+  {name:'Proactivity',icon:'bell',scene:'bell',line:'Clem’s organizer and what it does on its own.',keywords:'organizer main thread proactive brief reminders digest model clem'},
  ]},
  {label:'Connections',tabs:[
   {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Clem can read from.',keywords:'google drive apps'},

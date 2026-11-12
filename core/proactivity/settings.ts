@@ -17,6 +17,15 @@ export type JobKind = (typeof JOB_KINDS)[number];
 const hm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const event = z.object({ on: z.boolean(), channels: z.array(z.enum(CHANNELS)).max(3) });
 const job = z.object({ on: z.boolean(), time: hm, day: z.number().int().min(0).max(6).optional() });
+/** When the person likes to study (docs/MAIN-THREAD.md "Calendar, reminders and study time"): the days (0 = Sunday)
+ *  and hours study sessions may go in, and the gap kept around anything else. How long a session is and any reminder
+ *  for it are the person's to say in chat. (Older saves also carried minutes, perDay and remind; they are dropped.) */
+export const studyPrefs = z.object({
+  days: z.array(z.number().int().min(0).max(6)).max(7),
+  from: hm, to: hm,
+  gap: z.number().int().min(0).max(120),
+});
+export type StudyPrefs = z.infer<typeof studyPrefs>;
 export const proSettings = z.object({
   level: z.enum(LEVELS),
   quiet: z.object({ on: z.boolean(), from: hm, to: hm }),
@@ -24,6 +33,7 @@ export const proSettings = z.object({
   jobs: z.object(Object.fromEntries(JOB_KINDS.map((k) => [k, job])) as Record<JobKind, typeof job>),
   /** Hours before a deadline that it is reminded (default 48 and 3). */
   deadlineHours: z.array(z.number().int().min(1).max(168)).min(1).max(4),
+  study: studyPrefs,
 });
 export type ProSettings = z.infer<typeof proSettings>;
 /** A change from Settings: any part, merged into what is saved. */
@@ -33,6 +43,7 @@ export const proPatch = z.object({
   events: z.partialRecord(z.enum(EVENT_KINDS), event.partial()).optional(),
   jobs: z.partialRecord(z.enum(JOB_KINDS), job.partial()).optional(),
   deadlineHours: proSettings.shape.deadlineHours.optional(),
+  study: studyPrefs.partial().optional(),
 });
 export type ProPatch = z.infer<typeof proPatch>;
 
@@ -44,12 +55,14 @@ export const DEFAULT_PRO: ProSettings = {
   // Friday is the GUC weekend: the weekly review comes then.
   jobs: { morning: { on: true, time: "07:30" }, midday: { on: true, time: "13:30" }, evening: { on: true, time: "21:00" }, weekly: { on: true, time: "18:00", day: 5 } },
   deadlineHours: [48, 3],
+  // Saturday to Thursday (Friday is the GUC weekend), late afternoon and evening, 10 minutes kept around other things.
+  study: { days: [6, 0, 1, 2, 3, 4], from: "16:00", to: "22:00", gap: 10 },
 };
 
 /** Saved settings read leniently: anything missing or broken is the default. */
 export function readPro(saved: unknown): ProSettings {
   const s = (saved && typeof saved === "object" ? saved : {}) as Partial<ProSettings>;
-  const merged = mergePro(DEFAULT_PRO, { level: s.level, quiet: s.quiet, events: s.events, jobs: s.jobs, deadlineHours: s.deadlineHours } as ProPatch);
+  const merged = mergePro(DEFAULT_PRO, { level: s.level, quiet: s.quiet, events: s.events, jobs: s.jobs, deadlineHours: s.deadlineHours, study: s.study } as ProPatch);
   const ok = proSettings.safeParse(merged);
   return ok.success ? ok.data : structuredClone(DEFAULT_PRO);
 }
@@ -57,7 +70,8 @@ export function mergePro(cur: ProSettings, patch: ProPatch): ProSettings {
   const events = { ...cur.events }, jobs = { ...cur.jobs };
   for (const [k, v] of Object.entries(patch.events || {})) if (v && k in events) events[k as EventKind] = { ...events[k as EventKind], ...v };
   for (const [k, v] of Object.entries(patch.jobs || {})) if (v && k in jobs) jobs[k as JobKind] = { ...jobs[k as JobKind], ...v };
-  return { level: patch.level || cur.level, quiet: { ...cur.quiet, ...(patch.quiet || {}) }, events, jobs, deadlineHours: patch.deadlineHours ? [...new Set(patch.deadlineHours)].sort((a, b) => b - a) : cur.deadlineHours };
+  return { level: patch.level || cur.level, quiet: { ...cur.quiet, ...(patch.quiet || {}) }, events, jobs, deadlineHours: patch.deadlineHours ? [...new Set(patch.deadlineHours)].sort((a, b) => b - a) : cur.deadlineHours,
+    study: { ...cur.study, ...(patch.study || {}), ...(patch.study?.days ? { days: [...new Set(patch.study.days)].sort((a, b) => a - b) } : {}) } };
 }
 
 /** A timed job's pg-boss cron line (Cairo time): daily, or weekly on its day. */

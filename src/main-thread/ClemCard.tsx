@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { readCard } from "../../core/guc/cards";
 import { Icon } from "../Icons";
 import { GUC_CARDS, GucCardView, type GucActions } from "../guc/GucCards";
-import { LectureCardView, OrganizerCardView, WatchCardView, type ProActions } from "../proactivity/ProCards";
+import { LectureCardView, OrganizerCardView, ReminderCardView, WatchCardView, type ProActions } from "../proactivity/ProCards";
 import { TelegramPairCard } from "../telegram/TelegramPair";
 import { GucPasswordCard } from "../guc/GucPassword";
 import { PASSWORD_ROUTE } from "../../core/guc/password";
@@ -50,6 +50,7 @@ export function ClemCardBlock({ body, handlers = {} }: { body: string; handlers?
       {card.items.length > 0 && <ul className="clem-card-list">{card.items.map((it, i) => <li key={i}>{it.time && <time>{it.time}</time>}<span>{it.text}</span>{it.space && <small>{it.space}</small>}</li>)}</ul>}
     </div>
   );
+  if (card.type === "reminder" && (card.id || card.at)) return <ReminderCardView card={card} />;
   if (card.type === "reminder") return (
     <div className="edit-proposal clem-card">
       <header><Icon name="clock" size={16} /><div><strong>{card.title}</strong><small>{[card.due && "Due " + card.due.slice(0, 10), card.space].filter(Boolean).join(" · ") || "Reminder"}</small></div></header>

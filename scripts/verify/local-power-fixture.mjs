@@ -103,7 +103,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.exposeFunction("__renderSpec", async (json) => Array.from(await print(JSON.parse(json))));
-  // `guc`: answers GUC, organizer (pro*) and Telegram (tg*) requests (an in-memory engine, scripts/verify/guc-setup.mjs, proactivity.mjs);
+  // `guc`: answers GUC, organizer (pro*), Google Calendar (calendar*) and Telegram (tg*) requests (an in-memory engine, scripts/verify/guc-setup.mjs, proactivity.mjs);
   // window.fireGuc sends sync progress (and makes the window pull both inboxes).
   if (guc) await page.exposeFunction("__guc", async (json) => JSON.stringify(await guc(JSON.parse(json)) ?? null));
   await page.addInitScript(idleEngine);
@@ -140,7 +140,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
       startDrag: (path) => window.drags.push(path),
       invoke: async (r) => {
         window.requests.push(r);
-        if (/^(guc|pro|tg|vps)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
+        if (/^(guc|pro|tg|vps|calendar)/.test(r.action) && window.__guc) return JSON.parse(await window.__guc(JSON.stringify(r)));
         // Without an engine, guc*/pro*/tg*/vps* fall through to {} and fixture-engine.mjs answers "not connected" (an
         // empty object read as a subject view broke subject chats).
         switch (r.action) {

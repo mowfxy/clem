@@ -5,6 +5,7 @@ import { desktop } from "../desktop/bridge";
 import { ModelSelector } from "../ModelSelector";
 import { SettingsCard, SettingRow, Switch } from "./SettingsParts";
 import { useTelegram } from "../telegram/telegram";
+import { CalendarSettings } from "./CalendarSettings";
 
 export type Organizer = { model?: string; reasoning?: string };
 type LogRow = { key: string; sweep: string; text: string; status: string; at: number; undo: boolean; type: string };
@@ -76,6 +77,7 @@ function Proactivity({ onUndo }: { onUndo?: (key: string) => Promise<unknown> })
         <Switch label="Quiet hours" checked={s.quiet.on} onChange={(on) => change({ quiet: { on } }, (x) => ({ ...x, quiet: { ...x.quiet, on } }))} />
       </SettingRow>
     </SettingsCard>
+    <CalendarSettings />
     <SettingsCard title="What Clem tells you about" note={!tg.status?.configured ? undefined : tg.status.paired ? `Telegram goes to ${tg.status.paired.name}.` : "Turn on Telegram for something and Clem puts the pairing card in your main thread. Nothing goes there until it’s paired."}>
       {EVENT_KINDS.map((k) => <SettingRow key={k} title={EVENT_TEXT[k][0]} description={EVENT_TEXT[k][1]}>
         {ev(k).on && <span className="text-size" role="group" aria-label={`Where to tell you about ${EVENT_TEXT[k][0].toLowerCase()}`}>

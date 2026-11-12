@@ -10,7 +10,7 @@ export const RPC_METHODS = new Set([
   "status", "connect", "updatePassword", "sync", "disconnect", "overview", "courses", "schedule", "announcements", "markRead", "materials", "search", "grades", "deadlines",
   "links", "subject", "link", "unlink", "setSettings", "checkNow", "inbox", "ackInbox", "forgetSubject", "newCourses", "ackNewCourses", "now", "fileText", "fileBytes",
   "organizer.settings", "organizer.setSettings", "organizer.inbox", "organizer.ack", "organizer.log", "organizer.statuses", "organizer.undo", "organizer.confirm", "organizer.dismiss",
-  "organizer.mute", "organizer.unmute", "organizer.mutesList", "organizer.poke", "organizer.watches", "organizer.stopWatch", "organizer.offerTelegram", "organizer.watch",
+  "organizer.mute", "organizer.unmute", "organizer.mutesList", "organizer.poke", "organizer.watches", "organizer.stopWatch", "organizer.offerTelegram", "organizer.watch", "organizer.reminders", "organizer.cancelReminder",
   "telegram.status", "telegram.pair", "telegram.unpair",
 ]);
 
