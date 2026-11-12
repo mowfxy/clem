@@ -62,6 +62,8 @@ import {buildContext,localNowCard,withGuc,type NowCard} from '../core/main-threa
 import type {GucNow} from '../core/guc/ai-tools';
 import {recallIndex,recall} from '../core/main-thread/recall';
 import {applyFold,foldPrompt} from '../core/main-thread/fold';
+import {applyTrim,trimLine,TRIM_LIMIT,MB,type TrimPlan} from '../core/main-thread/trim';
+import {useSizeCap} from './main-thread/useSizeCap';
 import {cardBlock} from '../core/guc/cards';
 import {WATCH_GUIDE} from '../core/proactivity/watches';
 import {TELEGRAM_GUIDE} from '../core/telegram/guide';
@@ -1042,7 +1044,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   /** The main thread's request: its layers within the budget (core/main-thread/context.ts), never the whole thread.
    *  Recall searches the thread, folded notes and the summaries of subject and project chats. */
   function mainRequest(chat: Chat, current: string, { prefix, instructions, memory, guc }: { prefix: string[]; instructions: string; memory: string; guc?: GucNow | null }) {
-    const s = stateRef.current, earlier = chat.messages.slice(0, -1);
+    const s = stateRef.current, earlier = chat.messages.slice(0, -1).filter((m) => !m.trim);
     const docs = [
       ...earlier.filter((m) => m.content.trim() && !m.content.includes("```clem-card") && (!m.digest || m.digest.into)).map((m) => ({ id: m.id, text: m.content, source: m.digest ? `Notes (${m.digest.level})` : "Main thread", at: m.at })),
       ...s.chats.filter((c) => isSpaceChat(c) && c.summary).map((c) => ({ id: "chat:" + c.id, text: `${c.title}. ${c.summary}`, source: `${s.spaces.find((x) => x.id === c.spaceId)?.name || "A"} chat`, at: c.updated })),
@@ -2202,6 +2204,22 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     },
     apply: (job, summary) => { const main = mainThreadOf(stateRef.current.chats); if (main) updateChat(main.id, (c) => ({ ...c, messages: applyFold(c.messages, job, summary, uid()) as Chat["messages"] })); },
   });
+  // The main thread's size cap (core/main-thread/trim.ts): over 650 MB of its own messages and files, the oldest go.
+  useSizeCap({ enabled: ready && !!mainChat, idle: !anyRunning, read: () => stateRef.current as State & Record<string, unknown>, trim: trimMainThread }, [state.chats, state.files]);
+  /** Applies a size-cap plan like deleting a chat's files: the workspace (with the notes and the quiet line) is saved
+   *  first, then the files' blobs go, so an interruption cannot leave references to deleted files. */
+  function trimMainThread(plan: TrimPlan) {
+    const current = stateRef.current, main = mainThreadOf(current.chats), owner = ownerRef.current;
+    if (!main) return;
+    const ids = new Set(plan.files.map((f) => f.id)), at = Date.now();
+    const line = { id: uid(), role: "assistant" as const, content: trimLine(plan, TRIM_LIMIT), at, trim: { bytes: plan.before - plan.after, files: plan.files.length, messages: plan.messages.length } };
+    patch((s) => ({ ...s, files: s.files.filter((f) => !ids.has(f.id)), chats: s.chats.map((c) => { if (c.id !== main.id) return c; const trimmed = applyTrim(c, plan, at); return { ...trimmed, messages: [...trimmed.messages, line] }; }) }));
+    if (panelFile && ids.has(panelFile.id)) setPanelFile(null);
+    setAttachments((a) => a.filter((x) => !ids.has(x)));
+    console.info(`[main-thread] size cap: ${(plan.before / MB).toFixed(1)} MB → ${(plan.after / MB).toFixed(1)} MB; removed ${plan.files.length} files (${(plan.fileBytes / MB).toFixed(1)} MB) and ${plan.messages.length} folded messages (${(plan.messageBytes / MB).toFixed(1)} MB)`, { files: plan.files.map((f) => f.name), messages: plan.messages });
+    const next = stateRef.current, persistence = saveQueue.current.then(() => saveState(next, owner)); saveQueue.current = persistence.catch(() => {});
+    void persistence.then(() => Promise.allSettled(plan.files.flatMap((f) => [...(f.remote ? [api("files/" + f.id, "DELETE")] : []), deleteBlob(f.id, owner), deleteBlob("spec-" + f.id, owner), ...(f.versions || []).flatMap((v) => [deleteBlob(v.blob, owner), deleteBlob("spec-" + v.blob, owner)])]))).catch(() => {});
+  }
   async function runPlan(plan: Plan, messageId: string) {
     if (!chatId) return;
     const id = chatId;
@@ -2919,6 +2937,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   const onlyCard = (content: string) => /^```clem-card\n[\s\S]*?\n```$/.test(content.trim());
   /** One message as every conversation shows it: chats, earlier chats (read-only) and the main thread. */
   const renderMessage = (chat: Chat, m: Chat["messages"][number], index: number) => {
+    if (m.trim) return <p key={m.id} data-message-id={m.id} className="mt-quiet" role="note">{m.content}</p>;
     const streaming = chat.id in runs && m.id === chat.messages.at(-1)?.id && m.role === "assistant";
     const latest = m.role === "assistant" && index === chat.messages.length - 1;
     const sources = m.role === "assistant" ? openChatFiles : [];
@@ -2949,6 +2968,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       {m.limit && !streaming && <LimitNotice limit={m.limit} model={planOf(m.model)} latest={m.id === chat.messages.at(-1)?.id} onAuto={(auto) => updateChat(chat.id, (c) => ({ ...c, messages: c.messages.map((x) => x.id === m.id && x.limit ? { ...x, limit: { ...x.limit, auto } } : x) }))} onContinue={() => continueAfterLimit(chat.id, m.id)} />}
       {m.role === "user" && !!m.drive?.length && <div className="message-drive">{m.drive.map((d) => <button type="button" key={d.id} className="drive-attached" onClick={() => openDrive(d)} aria-description={"Open " + d.name}><DriveIcon mime={d.mimeType} name={d.name} size={18} /><span>{d.name}</span></button>)}</div>}
       {m.attachments?.map(id=>state.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).map(f=>{const Card=m.role==='assistant'?DocumentCard:FileCard;return <Card key={f.id} file={f} onOpen={()=>openInPanel(f)} onError={setToast}/>;})}
+      {m.removed?.map((r,i)=><p key={'removed'+i} className="mt-removed"><Icon name="files" size={13} /><span>{r.name}</span><small>removed to save space</small></p>)}
       {/* Visuals from older chats, drawn by the ready-made models Clem used to have. */}
       {typeof m.visual === "string" && m.visual !== "choose" && (
         <Suspense fallback={<p className="fine">Opening the visual…</p>}>

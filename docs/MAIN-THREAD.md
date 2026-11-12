@@ -95,6 +95,16 @@ Every turn the context is assembled within a fixed budget (default about 12k tok
 
 The thread UI is virtualized. It loads the newest page first, and older pages load in as you scroll up.
 
+## Size cap (user, 2026-11-12)
+The main thread never ends, so its own data is kept **under 650 MB** (`core/main-thread/trim.ts`, pure and tested in `tests/main-thread-trim.test.ts`):
+- **What counts:** its messages as saved in the workspace (their JSON bytes), plus the files only its messages use (a file's recorded size and its kept earlier versions). A file is the thread's only when it was sent or made in the main thread (`chatId`), has no subject or project, is not in a library folder, is not from Drive, and its id appears nowhere else in the workspace (another chat, a space's sources, a plan, a room…). Anything else is not counted and is never deleted.
+- **When over 650 MB**, the oldest material goes until the thread is at **600 MB**, so it does not trim again on the next save:
+  1. its files, oldest last use first, each leaving a small "removed to save space" note (`Message.removed`) where it was;
+  2. if that is not enough, old messages a digest already covers. The digest stays, so the summary, recall and context keep working.
+- **Never cut:** the last 30 days; messages no digest covers (their files can go, their words stay); digests; messages without a time; and any message whose card still waits on the person: Undo (`organizer`), a confirm (`vps_confirm`), a watch, an upcoming reminder, lecture buttons, setup questions, pairing, a card this build can't read, a plan with steps left, or a limit that will continue by itself. A file one of those messages (or a recent one) uses stays too. Messages have no pin or star today; the thread itself is pinned.
+- **When it runs:** `src/main-thread/useSizeCap.ts`, 2 seconds after start and then 15 seconds after the workspace stops changing, with nothing answering. The window applies the plan like deleting a chat's files: the workspace is saved first (notes and all), then the blobs go. It logs what went to the console (`[main-thread] size cap: …`) and adds one quiet line to the thread, e.g. "Cleared 52 MB of old main-thread files to stay under 650 MB." (`Message.trim`: shown small, left out of folds, recall and context).
+- 650 / 600 MB and 30 days are constants (`TRIM_LIMIT`, `TRIM_TARGET`, `KEEP_DAYS`), not a setting.
+
 ## Libraries
 `minisearch` for local recall: no dependencies, maintained, small.
 
@@ -102,7 +112,7 @@ The thread UI is virtualized. It loads the newest page first, and older pages lo
 - `core/main-thread/`: pure and tested.
   - `migrate.ts`: one main thread per workspace; standalone chats get `archived: 'earlier'` once, recorded in `State.migrations`.
   - `route.ts`: the hand-off. An @mention, or one subject or project clearly ahead by name, alias or course code; anything ambiguous stays.
-  - `context.ts`: the budgeted layers and the local Now card. `fold.ts`: day, week and month folding. `recall.ts`: MiniSearch.
+  - `context.ts`: the budgeted layers and the local Now card. `fold.ts`: day, week and month folding. `recall.ts`: MiniSearch. `trim.ts`: the 650 MB size cap.
 - A digest is an assistant message with `compact: true` and a `digest` range. The messages it covers stay in the thread and in recall. Folding runs from `src/main-thread/useFolding.ts` after 20 seconds with nothing answering.
 - Cards: `core/guc/cards.ts` (zod) and `src/main-thread/ClemCard.tsx`. A hand-off opens the subject's latest chat (or a new one) and answers there; the main thread keeps the question and the card.
 - UI: `src/main-thread/` (the virtualized thread, the sidebar's subjects and projects, Earlier chats) and `src/settings/ProactivitySettings.tsx`. The organizer is `State.organizer`; the main thread's model picker sets it too.

@@ -7,7 +7,7 @@ import type { Digest, Message } from '../types.ts';
  * thread to scroll and to recall. Folding runs in the background on the organizer model, never inside a reply.
  */
 export type FoldJob = { level: Digest['level']; from: number; to: number; ids: string[]; texts: string[] };
-type Msg = Pick<Message, 'id' | 'role' | 'content' | 'at' | 'digest'>;
+type Msg = Pick<Message, 'id' | 'role' | 'content' | 'at' | 'digest' | 'trim'>;
 
 /** The local calendar day of a time, YYYY-MM-DD. */
 export function dayKey(t: number) {
@@ -30,7 +30,7 @@ export function planFolds(messages: Msg[], now = Date.now(), { keepDays = 2, min
   const jobs: FoldJob[] = [];
   const days = new Map<string, Msg[]>();
   for (const m of messages) {
-    if (m.digest || m.at === undefined || m.at >= cutoff || covered(m.at) || !m.content.trim()) continue;
+    if (m.digest || m.trim || m.at === undefined || m.at >= cutoff || covered(m.at) || !m.content.trim()) continue;
     const k = dayKey(m.at);
     days.set(k, [...(days.get(k) || []), m]);
   }
