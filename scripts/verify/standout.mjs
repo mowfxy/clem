@@ -1,5 +1,6 @@
 // Browser check for answer blocks: model-drawn visuals, checked numbers, citations,
 // second opinions, source checks, proposed file changes, screen capture and offline reading.
+import { idleEngine } from "./fixture-engine.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import assert from "node:assert/strict";
@@ -30,6 +31,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  await page.addInitScript(idleEngine);
   await page.addInitScript((replies) => {
     const listeners = new Set(), captures = new Set();
     window.requests = [];

@@ -1,4 +1,5 @@
 // Checks the notice stack above the account button and the two-way support inbox with mocked desktop IPC.
+import { idleEngine } from "./fixture-engine.mjs";
 import {mockLocalStorage} from './fixture-local-storage.mjs';
 import {chromium} from '@playwright/test';
 import {createServer} from 'vite';
@@ -11,6 +12,7 @@ await server.listen();
 const browser=await chromium.launch();
 try{
   const page=await browser.newPage({viewport:{width:1440,height:900}});
+  await page.addInitScript(idleEngine);
   await page.addInitScript(()=>{
     window.requests=[];
     const reply={id:'m1',author:'staff',body:'Fixed in the next build — thanks for the report!',created_at:new Date().toISOString()};

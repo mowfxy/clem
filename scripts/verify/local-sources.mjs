@@ -1,3 +1,4 @@
+import { idleEngine } from "./fixture-engine.mjs";
 import {mockLocalStorage} from './fixture-local-storage.mjs';
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
@@ -12,6 +13,7 @@ try {
       viewport: { width: 1440, height: 960 },
     }),
     requests = [];
+  await page.addInitScript(idleEngine);
   await page.addInitScript(() => {
     const listeners = new Set();
     window.requests = [];

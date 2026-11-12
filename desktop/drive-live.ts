@@ -214,6 +214,22 @@ export class DriveLive {
     if(!made.ok)throw Error("Google Drive did not make the Clem backups folder.");
     return ((await made.json()) as {id:string}).id;
   }
+  /** The folder `name` in `parentId` ("root": My Drive), made when missing (the GUC copy: Clem/GUC/<course>/<week>). */
+  async folderIn(parentId:string,name:string){
+    await this.canWrite();
+    const url=new URL(API);
+    url.search=new URLSearchParams({q:`name = ${quote(name)} and mimeType = '${FOLDER}' and ${quote(parentId)} in parents and trashed = false`,fields:"files(id)",pageSize:"1",supportsAllDrives:"true",includeItemsFromAllDrives:"true"}).toString();
+    const found=await this.google(url.href,{timeout:20000});
+    if(!found.ok)throw Error(found.status===404?"This Drive folder is no longer available.":await unread(found,"Google Drive could not be read."));
+    const id=((await found.json()) as {files?:{id:string}[]}).files?.[0]?.id;
+    if(id)return id;
+    const made=await this.google(`${API}?fields=id&supportsAllDrives=true`,{method:"POST",timeout:20000,headers:{"Content-Type":"application/json; charset=UTF-8"},body:JSON.stringify({name,mimeType:FOLDER,parents:[parentId]})});
+    if(made.status===403)throw Error(await refusal(made));
+    if(made.status===404)throw Error("This Drive folder is no longer available.");
+    if(!made.ok)throw Error("Google Drive did not make the folder.");
+    for(const [id,tree] of this.trees)if(id===parentId||tree.folders.includes(parentId))this.trees.delete(id);
+    return ((await made.json()) as {id:string}).id;
+  }
   /** Backup files in a folder, newest first. */
   async backupFiles(folderId:string){
     const url=new URL(API);
@@ -223,12 +239,12 @@ export class DriveLive {
     return (((await r.json()) as {files?:{id:string;name:string;size?:string;createdTime?:string}[]}).files||[]).map(f=>({id:f.id,name:f.name,size:Number(f.size||0),at:Date.parse(f.createdTime||"")||0}));
   }
   /** Uploads a file from disk in 8 MB pieces (resumable), so a large backup is never held in memory whole. */
-  async uploadFile(folderId:string,name:string,path:string){
+  async uploadFile(folderId:string,name:string,path:string,mime="application/octet-stream"){
     await this.canWrite();
     const {open}=await import("node:fs/promises");
     const handle=await open(path,"r");
     try{
-      const size=(await handle.stat()).size,mime="application/octet-stream";
+      const size=(await handle.stat()).size;
       const start=await this.google("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",{
         method:"POST",timeout:30000,
         headers:{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":mime,"X-Upload-Content-Length":String(size)},

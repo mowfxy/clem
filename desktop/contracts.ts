@@ -1,5 +1,8 @@
 import {syncSchemas} from "../core/sync.ts";
 import { z } from "zod";
+import { settingsPatch } from "../core/guc/settings.ts";
+import { proPatch } from "../core/proactivity/settings.ts";
+import { vpsHostOk, vpsUserOk } from "../core/vps/types.ts";
 
 export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
 export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };
@@ -9,6 +12,9 @@ export const scopeSchema = z
   .regex(/^(chat|project|subject|user):[a-zA-Z0-9_-]{1,100}$/);
 /** A backup to preview or restore (desktop/backup-service.ts): a file in a folder the person chose, or one in Drive. */
 const backupItem = z.union([z.object({ source: z.literal("folder"), path: z.string().min(3).max(1000) }), z.object({ source: z.literal("drive"), id: z.string().regex(/^[\w-]{10,150}$/) })]);
+/** A CMS course key ("<courseId>:<seasonId>") and a GUC row id. */
+const proKey = z.string().min(1).max(300);
+const gucCourse = z.string().regex(/^\d{1,10}:\d{1,10}$/), gucId = z.string().regex(/^[\w-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000), diagnostics:z.boolean().optional() }),
@@ -19,6 +25,79 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({action:z.literal("essentialSync"),skills:syncSchemas.skills,notes:syncSchemas.notes,noBaseline:z.boolean().optional()}),
   z.object({ action: z.literal("browserLogin") }),
   z.object({ action: z.literal("driveConnect") }),
+  // GUC (desktop/engine): the password goes straight to the Vault and is never sent back.
+  z.object({ action: z.literal("gucConnect"), username: z.string().trim().regex(/^(guc\\)?[\w.@-]{2,80}$/i, "Enter your GUC username."), password: z.string().min(1).max(200) }),
+  z.object({ action: z.literal("gucStatus") }),
+  // A new password after GUC stopped accepting the old one (docs/GUC-VPS-ENGINE.md "Password expiry"); never sent back.
+  z.object({ action: z.literal("gucPassword"), password: z.string().min(1).max(200) }),
+  z.object({ action: z.literal("gucSync") }),
+  // The VPS connector (desktop/engine/vps): keys and passwords go to the Vault and never come back.
+  z.object({ action: z.literal("vpsStatus") }),
+  z.object({ action: z.literal("vpsSetup"), host: z.string().trim().min(1).max(253).refine(vpsHostOk, "Enter the server's address, like 203.0.113.5 or vps.example.com."), port: z.number().int().min(1).max(65535), user: z.string().trim().refine(vpsUserOk, "Enter the user name you sign in with on the server."), auth: z.enum(["key", "password"]), password: z.string().min(1).max(200).optional(), allowPassword: z.boolean().optional() }),
+  z.object({ action: z.literal("vpsGenerateKey") }),
+  z.object({ action: z.literal("vpsPasteKey"), privateKey: z.string().min(40).max(20_000), passphrase: z.string().max(200).optional() }),
+  z.object({ action: z.literal("vpsTest") }),
+  z.object({ action: z.literal("vpsForget") }),
+  z.object({ action: z.literal("vpsMove"), direction: z.enum(["up", "down"]) }),
+  z.object({ action: z.literal("vpsAbortMove") }),
+  z.object({ action: z.literal("vpsCap"), bytes: z.number().min(0).max(2 ** 50) }),
+  z.object({ action: z.literal("vpsPin"), id: gucId, on: z.boolean() }),
+  z.object({ action: z.literal("vpsPinned") }),
+  z.object({ action: z.literal("vpsWorker"), on: z.boolean() }),
+  z.object({ action: z.literal("vpsModelKey"), key: z.string().trim().max(300).optional(), model: z.string().trim().regex(/^[\w.-]{1,80}$/).optional() }),
+  z.object({ action: z.literal("vpsConfirm"), id: z.string().regex(/^[a-f0-9]{16}$/) }),
+  z.object({ action: z.literal("vpsCancel"), id: z.string().regex(/^[a-f0-9]{16}$/) }),
+  z.object({ action: z.literal("gucDisconnect") }),
+  // The GUC hub's reads (desktop/engine/guc-read.ts), all for the signed-in owner only.
+  z.object({ action: z.literal("gucOverview") }),
+  z.object({ action: z.literal("gucCourses") }),
+  z.object({ action: z.literal("gucSchedule"), weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  z.object({ action: z.literal("gucAnnouncements"), courseId: gucCourse.optional(), cursor: z.string().regex(/^\d{1,15}\.[\w-]{1,100}$/).optional() }),
+  z.object({ action: z.literal("gucMarkRead"), ids: z.array(gucId).min(1).max(200) }),
+  z.object({ action: z.literal("gucMaterials"), courseId: gucCourse }),
+  z.object({ action: z.literal("gucSearch"), query: z.string().trim().min(2).max(200) }),
+  z.object({ action: z.literal("gucGrades"), courseId: gucCourse.optional() }),
+  z.object({ action: z.literal("gucDeadlines") }),
+  /** The main thread's Now card from GUC (today's classes, deadlines in 7 days, unread): cached in the engine. */
+  z.object({ action: z.literal("gucNow") }),
+  /** Makes a CMS file ready to view (saved copy, or fetched to a temp folder) and returns its name, type and size; the
+   *  bytes come from clem://app/api/local/guc/file/<id>. */
+  z.object({ action: z.literal("gucFile"), materialId: gucId }),
+  // Subjects and their courses (desktop/engine/subjects.ts): links, settings, checks and new-term courses.
+  z.object({ action: z.literal("gucLinks") }),
+  z.object({ action: z.literal("gucLink"), subjectId: gucId, courseId: gucCourse }),
+  z.object({ action: z.literal("gucUnlink"), subjectId: gucId }),
+  z.object({ action: z.literal("gucSubject"), subjectId: gucId }),
+  z.object({ action: z.literal("gucSetSettings"), subjectId: gucId, patch: settingsPatch }),
+  z.object({ action: z.literal("gucCheckNow"), subjectId: gucId }),
+  z.object({ action: z.literal("gucForgetSubject"), subjectId: gucId }),
+  z.object({ action: z.literal("gucNewCourses") }),
+  z.object({ action: z.literal("gucAckNewCourses"), keys: z.array(gucCourse).min(1).max(50) }),
+  // What checks saved and found for linked subjects that the window has not shown yet, and marking it shown.
+  z.object({ action: z.literal("gucInbox") }),
+  z.object({ action: z.literal("gucAckInbox"), keys: z.array(z.string().min(1).max(300)).min(1).max(300) }),
+  // Clem's organizer (desktop/engine/organizer.ts).
+  z.object({ action: z.literal("proSettings"), set: proPatch.optional() }),
+  z.object({ action: z.literal("proInbox") }),
+  z.object({ action: z.literal("proAck"), posts: z.array(z.string().regex(/^pro-[\w-]{1,60}$/)).max(100).optional(), results: z.array(z.object({ key: proKey, ok: z.boolean(), undo: z.any().optional(), error: z.string().max(300).optional() })).max(200).optional() }),
+  z.object({ action: z.literal("proLog") }),
+  z.object({ action: z.literal("proStatus"), keys: z.array(proKey).min(1).max(100) }),
+  z.object({ action: z.literal("proUndo"), key: proKey }),
+  z.object({ action: z.literal("proConfirm"), key: proKey }),
+  z.object({ action: z.literal("proDismiss"), key: proKey }),
+  z.object({ action: z.literal("proMute"), key: proKey }),
+  z.object({ action: z.literal("proUnmute"), key: proKey }),
+  z.object({ action: z.literal("proMutes") }),
+  z.object({ action: z.literal("proPoke"), reason: z.enum(["plans", "files", "study", "spaces", "open"]) }),
+  z.object({ action: z.literal("proWatches") }),
+  z.object({ action: z.literal("proStopWatch"), id: z.string().regex(/^[\w-]{1,80}$/) }),
+  // Telegram (desktop/engine/telegram.ts): status, a pairing code, unpair, the pair card in the main thread, and the
+  // window's answer to a Telegram message (its text and the files it made).
+  z.object({ action: z.literal("tgStatus"), fresh: z.boolean().optional() }),
+  z.object({ action: z.literal("tgPair") }),
+  z.object({ action: z.literal("tgUnpair") }),
+  z.object({ action: z.literal("tgOffer") }),
+  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(/^[mt]\d{1,20}$/), text: z.string().max(200_000), files: z.array(z.object({ id: z.string().regex(/^[\w-]{1,100}$/), name: z.string().min(1).max(300), type: z.string().max(200) })).max(5).optional() }),
   z.object({ action: z.literal("logout") }),
   z.object({
     action: z.literal("mfa"),
@@ -261,8 +340,15 @@ export type DesktopBridge = {
   onCapture?: (listener: (event: { bytes: Uint8Array; name: string; mime: string }) => void) => () => void;
   onFolder?: (listener: (event: FolderEvent) => void) => () => void;
   onPack?: (listener: (event: { bytes: Uint8Array; name: string }) => void) => () => void;
+  /** Progress of a GUC sync the window asked for ("Checking your courses… 3 of 7"). */
+  onGuc?: (listener: (event: import("../core/guc/types").GucProgress) => void) => () => void;
+  /** The VPS connector changed: status, a move's progress, the worker, or an install step ("progress:<label>"). */
+  onVps?: (listener: (event: { what: string }) => void) => () => void;
   /** Something to open from outside the window: a flashcard reminder's subject, at its review (desktop/study-reminders.ts). */
-  onOpen?: (listener: (event: { review?: string }) => void) => () => void;
+  onOpen?: (listener: (event: { review?: string; route?: string; chat?: string; message?: string }) => void) => () => void;
+  /** A Telegram message (or a tap that needs the agent or the workspace) for the main thread to answer; the window
+   *  replies with { action: "tgAnswered", id, text }. */
+  onTelegram?: (listener: (event: import("./engine/host").TelegramTurn) => void) => () => void;
   startDrag?: (path: string) => void;
   /** Runs a chat code block on this computer (desktop/code-runner.ts): start it, send it a line of input (null ends input), or stop it. */
   runCode?: (request: { op: "start"; id: string; lang: string; code: string } | { op: "input"; id: string; text: string | null } | { op: "stop"; id: string }) => Promise<unknown>;

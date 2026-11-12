@@ -28,6 +28,7 @@ import { readAutomationBlock, type AutomationBlock } from '../LocalAutomations';
 import { PlanProposal, type PlanCardInfo } from './PlanProposal';
 import { readPlanBlock, type PlanBlock } from '../../core/plans';
 import type { EditOutcome } from '../../core/types';
+import { ClemCardBlock, type CardHandlers } from '../main-thread/ClemCard';
 
 const SpecVisual = lazy(() => import('../visuals/SpecVisual'));
 /** While a block is still arriving: the pencil at work for a visual, a quiet line for the rest. */
@@ -40,7 +41,7 @@ export function prepareMarkdown(text: string) {
   return linkCitations(normalizeMath(text));
 }
 
-export type BodyHandlers = {
+export type BodyHandlers = CardHandlers & {
   onCite?: (c: Citation) => void;
   canCite?: (c: Citation) => boolean;
   edits?: Record<string, EditOutcome>;
@@ -244,6 +245,8 @@ function MessageBodyImpl({ content, streaming = false, handlers = {} }: { conten
           if (lang === 'check') return <CheckBlock body={code} streaming={streaming} />;
           if (lang === 'kinetra') return <KinetraFigure body={code} streaming={streaming} />;
           if (lang === 'memory') return <MemoryNote body={code} />;
+          // Cards Clem posts (core/guc/cards.ts): one that is unknown or does not match its schema draws nothing.
+          if (lang === 'clem-card') return streaming ? <Drafting>Preparing a card…</Drafting> : <ClemCardBlock body={code} handlers={handlers} />;
           if (lang === 'edit') {
             let block: EditBlock | null = null;
             try { block = parseModelJson(code); } catch { /* still streaming or malformed */ }

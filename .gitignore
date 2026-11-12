@@ -48,3 +48,4 @@ emails/preview/
 
 .vercel
 .env*
+worker-dist/

@@ -1,4 +1,5 @@
 import { handleProviders } from "./provider-vault.js";
+import { engineUser, handleEngineTokens, handleTelegram, telegramWebhook } from "./telegram.js";
 import { pack, unpack } from "./lib/pack.js";
 import { validateSync } from "../core/sync.ts";
 import {
@@ -148,6 +149,8 @@ async function route(request, env) {
       const path = new URL(request.url).pathname;
       if (path === "/webhooks/lemon" && request.method === "POST")
         return await webhook(request, env);
+      if (path === "/webhooks/telegram" && request.method === "POST")
+        return await telegramWebhook(request, env);
       if (request.method !== "GET" && request.method !== "POST")
         return json({ error: "Method not allowed" }, 405);
       if (
@@ -159,6 +162,14 @@ async function route(request, env) {
       )
         return json({ error: "Try again shortly." }, 429);
       const authorization = request.headers.get("Authorization");
+      // A VPS worker (docs/GUC-VPS-ENGINE.md): its relay token reaches /telegram/* only.
+      if (authorization?.startsWith("Engine ")) {
+        const owner = await engineUser(env, authorization.slice(7));
+        if (!owner) return json({ error: "Session expired" }, 401);
+        if (!(await limit(env, "user:" + owner.id, 60))) return json({ error: "Try again shortly." }, 429);
+        if (await suspension(env, owner.id)) return json({ error: "This account is suspended.", reason: "suspended" }, 403);
+        return (await handleTelegram(request, env, owner, path)) || json({ error: "Not allowed" }, 403);
+      }
       if (!authorization?.startsWith("Bearer "))
         return json({ error: "Sign in required" }, 401);
       const user = await verifiedUser(env, authorization);
@@ -214,6 +225,10 @@ async function route(request, env) {
       if (usageResponse) return usageResponse;
       const providerResponse = await handleProviders(request, env, user, path);
       if (providerResponse) return providerResponse;
+      const engineTokenResponse = await handleEngineTokens(request, env, user, path);
+      if (engineTokenResponse) return engineTokenResponse;
+      const telegramResponse = await handleTelegram(request, env, user, path);
+      if (telegramResponse) return telegramResponse;
       if (path.startsWith("/sync/")) {
         const kind = path.slice(6);
         if (!["skills", "memory", "notes"].includes(kind))

@@ -15,10 +15,14 @@ export const settingsGroups:{label:string;tabs:SettingsTab[]}[]=[
   {name:'Memory',icon:'subjects',scene:'jar',line:'What Clem keeps in mind for you.',keywords:'remember notes'},
   {name:'Skills',icon:'skills',scene:'cards',line:'Ways of working Clem brings to every chat.',keywords:'skills workflows steps playbook create import practice'},
   {name:'Automations',icon:'clock',scene:'hourglass',line:'Routines you set up in a chat.',keywords:'routines schedule recurring'},
+  {name:'Proactivity',icon:'spark',scene:'bell',line:'Clem’s organizer and what it does on its own.',keywords:'organizer main thread proactive brief reminders digest model clem'},
  ]},
  {label:'Connections',tabs:[
   {name:'Connectors',icon:'connectors',scene:'link',line:'Apps Clem can read from.',keywords:'google drive apps'},
   {name:'Linked folders',icon:'projects',scene:'folder',line:'Folders on this PC that Clem can read.',keywords:'folders files changes undo watch'},
+ ]},
+ {label:'Channels',tabs:[
+  {name:'Telegram',icon:'send',scene:'plane',line:'Talk to Clem and get your updates in Telegram.',keywords:'telegram channels bot pair phone messages notifications'},
  ]},
  {label:'Data',tabs:[
   {name:'Usage',icon:'analysis',scene:'telescope',line:'Your threads, tokens and habits.',keywords:'usage stats statistics tokens activity graph habits streak threads messages'},

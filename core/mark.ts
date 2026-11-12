@@ -50,6 +50,22 @@ export function tileSvg({ tone = "black", attrs = "" }: { tone?: "black" | "whit
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"${attrs}>${tile}<g transform="translate(50 50) scale(${MARK_TILE_SCALE}) translate(-50 -50)">${markInner(black ? CLEM_PAPER : CLEM_INK)}</g></svg>`;
 }
 
+/** The mark's share of a glow tile, as on @M4ClemBot's picture: roomier than the black tile's. */
+export const MARK_GLOW_SCALE = 0.66;
+/**
+ * The Windows app icon (and @M4ClemBot's picture): the paper mark on the app's dark tile, lit by the main thread's two
+ * glows, red low on the left and blue high on the right. `scale` is the mark's share of the tile.
+ */
+export function glowTileSvg({ attrs = "", scale = MARK_GLOW_SCALE }: { attrs?: string; scale?: number } = {}) {
+  const defs = `<defs><radialGradient id="cg-base" cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#151a2a"/><stop offset=".8" stop-color="${CLEM_TILE}"/></radialGradient>`
+    + `<radialGradient id="cg-red" cx=".18" cy=".82" r=".58"><stop offset="0" stop-color="#8a2a17" stop-opacity=".8"/><stop offset=".7" stop-color="#8a2a17" stop-opacity="0"/></radialGradient>`
+    + `<radialGradient id="cg-blue" cx=".88" cy=".3" r=".58"><stop offset="0" stop-color="#1f4fd0" stop-opacity=".73"/><stop offset=".7" stop-color="#1f4fd0" stop-opacity="0"/></radialGradient>`
+    + `<clipPath id="cg-clip"><rect width="100" height="100" rx="23"/></clipPath></defs>`;
+  const tile = `<g clip-path="url(#cg-clip)"><rect width="100" height="100" fill="url(#cg-base)"/><rect width="100" height="100" fill="url(#cg-red)"/><rect width="100" height="100" fill="url(#cg-blue)"/></g>`
+    + `<rect x="0.5" y="0.5" width="99" height="99" rx="22.5" fill="none" stroke="#262a38"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"${attrs}>${defs}${tile}<g transform="translate(50 50) scale(${scale}) translate(-50 -50)">${markInner(CLEM_PAPER)}</g></svg>`;
+}
+
 /** The thinking animation: one soft shape rolling a quarter turn at a time, 2.4 s a full turn. Shared CSS keyframes. */
 export const TUMBLE_PERIOD = 2.4;
 export function tumbleKeyframes(name = "clem-tumble") {

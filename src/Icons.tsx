@@ -1,4 +1,5 @@
 import { MARK_PATH } from '../core/mark';
+import gucMark from './assets/guc-mark.png';
 // Icons: one even line on a 32-unit grid, rounded ends, and at most one soft grey fill per icon.
 // A drawing is a list of strokes; a stroke starting with "F " is also filled. Hover motion in CSS
 // targets strokes by index (`.icon-<name> .stroke-<i>`), so keep each icon's stroke order.
@@ -38,6 +39,7 @@ pin:['F M12 4h8l-1.5 7.5L23 16v3H9v-3l4.5-4.5Z','M16 19v9'],
 unpin:['F M12 4h8l-1.5 7.5L23 16v3H9v-3l4.5-4.5Z','M16 19v9','M4 4l24 24'],
 new:['M26 17v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h8','F M24 3.8a2.4 2.4 0 0 1 3.4 3.4L17 17.6l-4.6 1 1-4.6Z'],
 chat:['F '+bubble,'M11 13h10M11 18h6'],
+home:['F M5 14.5 16 5l11 9.5V25a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3Z','M13 28v-7h6v7'],
 temp:['F M6 27V14a10 10 0 0 1 20 0v13l-3.3-2.6L19.3 27 16 24.4 12.7 27 9.3 24.4Z','M12.5 14v.1','M19.5 14v.1'],
 // Visuals: a circle, a triangle and a square, the parts every figure is made of. The triangle turns on hover.
 visuals:['F '+c(22.5,9.5,5.5),'M10 4.5l6.5 11h-13Z',box(9,18.5,14,9.5)],
@@ -46,6 +48,8 @@ subjects:['F M16 8c-3-2.5-7-3-12-2v19c5-1 9-.5 12 2Z','M16 8c3-2.5 7-3 12-2v19c-
 connectors:['F M11 4v6M17 4v6M8 10h12v5a6 6 0 0 1-12 0Z','M14 21v2a4 4 0 0 0 4 4h5a4 4 0 0 0 4-4v-2'],
 models:['F '+box(8,8,16,16),'M13 8V4M19 8V4M13 24v4M19 24v4M8 13H4M8 19H4M24 13h4M24 19h4',box(13,13,6,6,1)],
 drive:['F M11.5 5h9l8.5 15H20Z','M11.5 5L3 20l4.5 7M20 20H3','M7.5 27h17l4.5-7'],
+// GUC draws the university's own mark (see Icon); this mortarboard is only a fallback outline.
+guc:['F M16 6l13 6-13 6-13-6Z','M8.5 14.5v6c0 2.2 3.4 4 7.5 4s7.5-1.8 7.5-4v-6','M29 12v7.5'],
 github:['F '+c(10,7,3),c(10,25,3),c(22,10,3),'M10 10v12','M22 13c0 6-12 4-12 9'],
 skills:['M7 16v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V16','F '+box(5,11,22,5,1.5),'M16 11v17','M16 11c-2-4-7-5-7-2s5 2 7 2c2 0 7 1 7-2s-5-2-7 2'],
 files:['F '+page,'M19 4v7h7','M10.5 17h11M10.5 22h8'],
@@ -117,10 +121,11 @@ offline:['F '+cloud,'M5 5l22 22'],
 'cloud-up':['F '+cloud,'M16 22v-7.5','M12.5 18l3.5-3.5 3.5 3.5'],
 plug:['F M10 11h12v4.5a6 6 0 0 1-12 0Z','M13 4.5V11M19 4.5V11','M16 21.5V28'],
 hourglass:['M8 4h16M8 28h16','F M10 4c0 6.5 6 8 6 12s-6 5.5-6 12h12c0-6.5-6-8-6-12s6-5.5 6-12Z'],
-device:['F '+box(6,6,20,14),'M3 25.5h26']};
+device:['F '+box(6,6,20,14),'M3 25.5h26'],
+server:['F '+box(6,5,20,9),'F '+box(6,18,20,9),'M10.5 9.5h.01','M10.5 22.5h.01','M15 9.5h6','M15 22.5h6']};
 /** Draws a list of strokes (see `drawings`) as paths, filling the ones marked "F ". */
 export function strokes(list:string[]){return list.map((d,i)=>{const filled=d.startsWith('F ');return <path key={i} pathLength={1} d={filled?d.slice(2):d} className={`stroke stroke-${i}`} {...(filled?{fill:'currentColor',fillOpacity:.3}:{})}/>;});}
-export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
+export function Icon({name,size=22,className}:{name:string;size?:number;className?:string}){if(name==='guc')return <img className={`brand-logo brand-guc icon-guc${className?' '+className:''}`} src={gucMark} width={size} height={size} alt="" aria-hidden="true" draggable={false}/>;return <svg className={`drawn-icon ink-icon icon-${name}${className?' '+className:''}`} width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{strokes(drawings[name]||drawings.files)}</svg>;}
 /** Clem's mark (geometry in core/mark.ts), drawn in the text colour: white on dark themes, black on light. It never moves;
  *  while thinking it gives way to one soft shape tumbling, the identity's thinking animation. */
 export function Logo({size=34,thinking=false}:{size?:number;thinking?:boolean}){

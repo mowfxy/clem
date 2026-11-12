@@ -35,13 +35,13 @@ export const kinetraToolSpec = {
   name: TOOL_NAME,
   title: "Kinetra",
   description:
-    'Runs one Kinetra request: verified calculations, textbook figures, and real files (PDF, Word, PowerPoint, Excel, text files, images), plus reading the person\'s files. The arguments are exactly the object the instructions write inside {"kinetra":…}: an "action" and its fields, for example {"action":"call","module":"clem","fn":"solveCircuit","args":[…]} or {"action":"pdf","title":…,"sections":[…]}. Use it for every PDF, Word, PowerPoint or Excel file, every figure or chart, and every calculation whose numbers matter; never make these with your own file, shell or code tools. When its guide is not already in the conversation, call {"action":"help"} once first.',
+    'Runs one Kinetra request: verified calculations, textbook figures, and real files (PDF, Word, PowerPoint, Excel, text files, images), plus reading the person\'s files and their GUC university data (guc.* actions: schedule, deadlines, announcements, CMS files and grades). The arguments are exactly the object the instructions write inside {"kinetra":…}: an "action" and its fields, for example {"action":"call","module":"clem","fn":"solveCircuit","args":[…]} or {"action":"pdf","title":…,"sections":[…]}. Use it for every PDF, Word, PowerPoint or Excel file, every figure or chart, and every calculation whose numbers matter; never make these with your own file, shell or code tools. When its guide is not already in the conversation, call {"action":"help"} once first.',
   inputSchema: {
     type: "object",
     // A call's own fields are named too: a model that fills arguments from the schema (Gemini) otherwise left "fn" out of
     // calls now and then, and each such call cost a round trip to correct.
     properties: {
-      action: { type: "string", enum: [...ACTIONS], description: "call, pdf, docx, pptx, xlsx, file, image, open, recipes, api, skill, help, files, read, search, look, regions, crop, editpdf, find, attach, or batch (several requests in one call: {\"action\":\"batch\",\"requests\":[…]})" },
+      action: { type: "string", enum: [...ACTIONS], description: "call, pdf, docx, pptx, xlsx, file, image, open, recipes, api, skill, help, files, read, search, look, regions, crop, editpdf, find, attach, guc.* (GUC: guc.help lists them), or batch (several requests in one call: {\"action\":\"batch\",\"requests\":[…]})" },
       module: { type: "string", description: "For call: the module, e.g. \"clem\" or \"diagram/circuit_schematic\" (required with call). For api: the module to describe." },
       fn: { type: "string", description: "For call: the function in that module, e.g. \"solveCircuit\" (required with call)." },
       args: { type: "array", items: {}, description: "For call: the function's arguments in order, e.g. [model] (required with call)." },

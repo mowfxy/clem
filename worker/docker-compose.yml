@@ -1,0 +1,38 @@
+# Clem's worker and its Postgres. The worker's port is published on 127.0.0.1 only: the desktop reaches it through
+# its SSH tunnel, never from the internet. POSTGRES_PASSWORD is in .env (made at install, mode 600).
+services:
+  worker:
+    build: .
+    # The VPS user's own uid, so the worker reads its key (mode 600) and writes state/ and ../files as that user.
+    user: "${CLEM_UID:-10001}:${CLEM_GID:-10001}"
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://clem:${POSTGRES_PASSWORD}@db:5432/clem
+      CLEM_DATA: /data
+      CLEM_FILES: /files
+      CLEM_KEY_FILE: /run/clem.key
+    ports:
+      - "127.0.0.1:${CLEM_PORT:-7717}:7717"
+    volumes:
+      - ./state:/data
+      - ../files:/files
+      - ./.key:/run/clem.key:ro
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clem
+      POSTGRES_DB: clem
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clem"]
+      interval: 5s
+      retries: 20
+volumes:
+  pg:

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { commandsFor, readCommand, type SlashCommand } from "../../core/commands";
+import { mentionMatches } from "../../core/main-thread/route";
 import { Icon } from "../Icons";
 import "./slash.css";
 
@@ -11,16 +12,23 @@ export function CommandChip({ command, onRemove }: { command: SlashCommand; onRe
     : <span className="command-chip" aria-description={command.description}>{inner}</span>;
 }
 
-/** The composer's text box. Typing "/" at the start or after a space lists the commands; choosing one (or finishing
+/** A subject or project the composer can @mention. */
+export type MentionSpace = { id: string; name: string; kind: "subject" | "project"; description?: string };
+
+/** The composer's text box. Typing "@" lists subjects and projects (fuzzy, keyboard-first); choosing one takes the
+ *  "@name" out of the text and hands the space to `onMention`, which shows it as a chip and scopes the message to it. Typing "/" at the start or after a space lists the commands; choosing one (or finishing
  *  its name with a space) leaves "/name" right where it was typed, drawn as a small pill behind the words so the
  *  sentence reads straight through. The message is moved to "/name words" only when it is sent (see core/commands.ts). */
-export function SlashField({ value, onChange, onEnter, placeholder, inSubject, inputRef }: {
+export function SlashField({ value, onChange, onEnter, placeholder, inSubject, inputRef, spaces, onMention, onFocus }: {
   value: string;
   onChange: (value: string) => void;
   onEnter: () => void;
   placeholder: string;
   inSubject: boolean;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  spaces?: MentionSpace[];
+  onMention?: (space: MentionSpace) => void;
+  onFocus?: () => void;
 }) {
   const [caret, setCaret] = useState(value.length);
   // The "/word" being typed just before the caret, if any (only one command per message).
@@ -29,12 +37,16 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
   const token = [...value.matchAll(/(^|\s)\/([a-z]+(?:-[a-z]+)*)(?=\s|$)/gi)].find((m) => readCommand(`/${m[2]}`) && !(typed && m.index + m[0].length === caret));
   const command = token ? readCommand(`/${token[2]}`)!.command : null;
   const options = typed && !command ? commandsFor(typed[2], inSubject) : [];
+  // The "@name" being typed just before the caret, when the composer can mention subjects and projects.
+  const mention = !typed && spaces?.length && onMention ? /(^|\s)@([^\s@]{0,40})$/.exec(value.slice(0, caret)) : null;
+  const mentions = mention ? mentionMatches(mention[2], spaces!) : [];
   const [index, setIndex] = useState(0);
   const [closed, setClosed] = useState(false);
-  const typing = typed ? typed[2] : null;
+  const typing = typed ? typed[2] : mention ? "@" + mention[2] : null;
   useEffect(() => { setIndex(0); if (typing === null) setClosed(false); }, [typing]);
-  const open = options.length > 0 && !closed;
-  const at = Math.min(index, options.length - 1);
+  const count = options.length || mentions.length;
+  const open = count > 0 && !closed;
+  const at = Math.min(index, count - 1);
   const mirror = useRef<HTMLDivElement>(null);
   // The words are painted by the pill layer (so the command can be tinted); the box keeps only the caret.
   // Read fresh each time so switching between light and dark repaints the words in the new ink.
@@ -73,11 +85,31 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
     onChange(next);
     focusAt(start + c.id.length + 2, next);
   };
+  const chooseMention = (s: MentionSpace) => {
+    const start = mention!.index + mention![1].length;
+    const next = value.slice(0, start) + value.slice(caret).replace(/^[ \t]+/, "");
+    onChange(next);
+    focusAt(start, next);
+    onMention!(s);
+  };
   const split = token ? token.index + token[1].length : 0;
 
   return (
     <div className="slash-field">
-      {open && (
+      {open && !options.length && (
+        <div className="slash-menu mention-menu" role="listbox" aria-label="Subjects and projects">
+          {mentions.map((s, i) => (
+            <button type="button" role="option" key={s.id} aria-selected={i === at} className={i === at ? "on" : ""}
+              ref={i === at ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+              onMouseDown={(e) => { e.preventDefault(); chooseMention(s); }} onMouseEnter={() => setIndex(i)}>
+              <Icon name={s.kind === "project" ? "projects" : "subjects"} size={16} />
+              <span className="slash-name">{s.name}</span>
+              <span className="slash-desc">{s.kind === "project" ? "Project" : "Subject"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {open && options.length > 0 && (
         <div className="slash-menu" role="listbox" aria-label="Commands">
           {options.map((c, i) => (
             <button type="button" role="option" key={c.id} aria-selected={i === at} className={i === at ? "on" : ""}
@@ -103,13 +135,14 @@ export function SlashField({ value, onChange, onEnter, placeholder, inSubject, i
         placeholder={placeholder}
         value={value}
         onChange={(e) => { setCaret(e.target.selectionStart); onChange(e.target.value); }}
+        onFocus={onFocus}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
         onScroll={(e) => { if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop; }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return;
           if (open) {
-            if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setIndex((at + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length); return; }
-            if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); choose(options[at]); return; }
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setIndex((at + (e.key === "ArrowDown" ? 1 : -1) + count) % count); return; }
+            if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); if (options.length) choose(options[at]); else chooseMention(mentions[at]); return; }
             if (e.key === "Escape") { e.preventDefault(); setClosed(true); return; }
           }
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onEnter(); }

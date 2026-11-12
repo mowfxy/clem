@@ -1,6 +1,7 @@
 // The glass UI's details: the settings window is frosted from its first frame, scrollbars are the app's own, the wavy
 // rule is ink in both themes, menus inside a settings dialog are menus, the profile greeting is serif at Regular, nothing
 // fades around glass, popovers in a glass dialog sit at their trigger, and the Drive search is a single field.
+import { idleEngine } from "./fixture-engine.mjs";
 import { mockLocalStorage } from "./fixture-local-storage.mjs";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
@@ -14,6 +15,7 @@ const browser = await chromium.launch({ ignoreDefaultArgs: ["--hide-scrollbars"]
 try {
   for (const scheme of ["dark", "light"]) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 800 }, colorScheme: scheme });
+    await page.addInitScript(idleEngine);
     await page.addInitScript(() => {
       // Opacity on a parent cuts the glass inside it off from what is behind, so the glass snaps in when the fade ends.
       window.fades = new Set();

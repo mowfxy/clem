@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, unlink, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile, rename, unlink, stat } from "node:fs/promises";
 import { join } from "node:path";
 export class WorkspaceDisk {
   private root: string;
@@ -53,6 +53,17 @@ export class WorkspaceDisk {
     const tmp = target + "." + crypto.randomUUID() + ".tmp";
     await writeFile(tmp, data);
     await rename(tmp, target);
+  }
+  /** Every file this device holds for the owner, with its size (the VPS storage router and mover). */
+  async listFiles(owner: string) {
+    const dir = join(this.folder(owner), "Files");
+    const names = await readdir(dir).catch(() => [] as string[]);
+    const out: { id: string; size: number }[] = [];
+    for (const n of names) {
+      const m = /^([a-zA-Z0-9_-]{1,100})\.blob$/.exec(n);
+      if (m) { const s = await stat(join(dir, n)).catch(() => null); if (s?.isFile()) out.push({ id: m[1], size: s.size }); }
+    }
+    return out;
   }
   async deleteFile(owner: string, id: string) {
     await unlink(this.file(owner, id)).catch((e) => {
