@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Venturi meter: continuity and Bernoulli",
-  "caption": "D₁ = 20 cm, D₂ = 10 cm, Q = 40 L/s; heads differ by (v₂² − v₁²)/2g",
+  "caption": "D_1 = 20 cm, D_2 = 10 cm, Q = 40 L/s; heads differ by (v_2^2 − v_1^2)/2g",
   "canvas": { "width": 820, "height": 560, "world": { "xMin": -12, "xMax": 312, "yMin": -42, "yMax": 200 }, "worldUnit": "cm" },
   "vars": { "D1": "20 cm", "D2": "10 cm", "Q": "40 litre/s", "g": "9.81 m/s^2",
             "A1": "pi*D1^2/4", "A2": "pi*D2^2/4", "v1": "Q/A1", "v2": "Q/A2",

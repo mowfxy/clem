@@ -75,8 +75,12 @@ Reading errors (stage tells you where it failed):
   convention requires it. A pinned label that collides is an error; an unpinned
   one tries every side, a local swap and leader lines.
 - **Text markup:** `F_N`, `V_{CC}`, `x^2`, `\theta`, `\omega_n` in labels and
-  part text render as real SVG sub/superscripts. **Titles and captions are
-  plain text**: use Unicode there (`T₁`, `x²`) or words.
+  part text render as real SVG sub/superscripts. Captions take the same
+  markup (`T_H`, `m/s^2`, `v_{out}`). **Titles are plain text**: use Unicode
+  there (`T₁`, `x²`) or words. Everywhere else prefer markup to Unicode
+  scripts: `n_1` renders as an even, full-size subscript, `n₁` does not.
+- **Reactions at supports:** point a reaction arrow at `<support>.under`, not
+  `.base`, so it stops clear of the ground hatching.
 - **Contacts that are allowed without `mayTouch`:** connectors, wires, ropes,
   springs, loads, leaders with the parts their ends name; series and plot
   annotations with their axes; phasors that share the polar origin; wires and

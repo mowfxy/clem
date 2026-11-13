@@ -81,6 +81,7 @@ const supportBase = (kind: "pin" | "roller" | "fixed", i: PartInstance<SupportPr
     prims.push(...hatch(base[1], base[0], 1, ctx));
     anchors.base = P2(0, -0.12);
     anchors.left = base[0]; anchors.right = base[1];
+    anchors.under = add(P2(0, 0), mul(unit(sub(P2(0, -1), P2(0, 0))), px(ctx, 10)));
   } else {
     const h = 0.26, w = 0.2;
     const tri = [P2(0, 0), P2(w, -h), P2(-w, -h)];
@@ -97,6 +98,8 @@ const supportBase = (kind: "pin" | "roller" | "fixed", i: PartInstance<SupportPr
     prims.push(...hatch(base[1], base[0], 1, ctx));
     anchors.base = lerp(base[0], base[1], 0.5);
     anchors.left = base[0]; anchors.right = base[1];
+    // Just clear of the hatching (7 px deep), for a reaction arrow that should not be drawn through it.
+    anchors.under = add(anchors.base, mul(unit(sub(P2(0, -1), P2(0, 0))), px(ctx, 10)));
   }
   anchors.center = anchors.top!;
   return { prims, anchors, label: { at: anchors.base!, candidates: ["below", "below-right", "below-left", "right", "left"] } };
@@ -109,7 +112,7 @@ for (const kind of ["pin", "roller", "fixed"] as const) {
     positioning: "placed", touchPlacement: true,
     propKeys: ["rotation", "scale", "flip", "fill"],
     props: (s, ctx) => ({ ...frameProps(s, ctx), fill: colorProp(s, "fill", "#d6e1e6") }),
-    anchors: ["top", "contact", "base", "left", "right"],
+    anchors: ["top", "contact", "base", "under", "left", "right"],
     geometry: (i, ctx) => supportBase(kind, i, ctx),
   });
 }
@@ -275,8 +278,8 @@ definePart<RopeProps>({
 addSample("rope", (id, c) => [
   { id, type: "rope", route: [`${id}_m1.top`, { around: `${id}_p`, dir: "cw" }, `${id}_m2.top`] },
   { id: `${id}_p`, type: "pulley", at: P(c.x, c.y + 0.7), r: 0.5 },
-  { id: `${id}_m1`, type: "mass", at: P(c.x - 0.5, c.y - 0.6), w: 0.5, h: 0.4, text: "m₁" },
-  { id: `${id}_m2`, type: "mass", at: P(c.x + 0.5, c.y - 0.4), w: 0.5, h: 0.4, text: "m₂" },
+  { id: `${id}_m1`, type: "mass", at: P(c.x - 0.5, c.y - 0.6), w: 0.6, h: 0.48, text: "m_1" },
+  { id: `${id}_m2`, type: "mass", at: P(c.x + 0.5, c.y - 0.4), w: 0.6, h: 0.48, text: "m_2" },
 ]);
 
 // --- spring ----------------------------------------------------------------------------------
@@ -657,7 +660,7 @@ definePart<MomentProps>({
     return { prims, anchors: { center: c, start: polar(c, p.r, a0), end: polar(c, p.r, a1) }, label: { at: polar(c, p.r, mid), candidates: outwardCandidates(v(Math.cos(mid), Math.sin(mid))) } };
   },
 });
-addSample("moment", (id, c, r) => [{ id, type: "moment", at: P(c.x, c.y), r: 0.6, direction: pickOf(r, ["ccw", "cw"] as const), label: "M₀" }]);
+addSample("moment", (id, c, r) => [{ id, type: "moment", at: P(c.x, c.y), r: 0.6, direction: pickOf(r, ["ccw", "cw"] as const), label: "M_0" }]);
 
 // --- coordinate triad -------------------------------------------------------------------------------
 

@@ -6,7 +6,7 @@
   "scales": { "current": { "per": "1.25 A" } },
   "elements": [
     { "id": "node", "type": "point", "at": { "x": 0, "y": 0 }, "label": { "text": "node", "position": "above" } },
-    { "id": "a1", "type": "arrow", "from": { "ref": "node", "dx": -2.2 }, "angle": 0, "magnitude": "I1", "color": "rayAlt", "label": "I_1 = 2 A" },
+    { "id": "a1", "type": "arrow", "from": { "ref": "node", "dx": -2.2 }, "angle": 0, "magnitude": "I1", "color": "rayAlt", "label": { "text": "I_1 = 2 A", "candidates": ["above", "above-left", "below", "below-left"] } },
     { "id": "a2", "type": "arrow", "from": { "ref": "node", "dy": -2.0 }, "angle": 90, "magnitude": "I2", "color": "rayAlt", "label": "I_2 = 1.5 A" },
     { "id": "a3", "type": "arrow", "from": { "ref": "node", "dx": 0.4 }, "angle": 0, "magnitude": "I3", "color": "ray", "label": "I_3 = 3.5 A" }
   ],

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Block at rest on a rough incline",
-  "caption": "m = 5 kg, θ = 25°, μₛ = 0.6, block at rest",
+  "caption": "m = 5 kg, θ = 25°, μ_s = 0.6, block at rest",
   "canvas": { "width": 780, "height": 420, "world": { "xMin": -0.6, "xMax": 12.4, "yMin": -0.9, "yMax": 6.1 } },
   "vars": { "m": "5 kg", "g": "9.81 m/s^2", "theta": "25 deg", "mus": "0.6",
             "Wt": "m*g", "N": "m*g*cos(theta)", "f": "m*g*sin(theta)" },

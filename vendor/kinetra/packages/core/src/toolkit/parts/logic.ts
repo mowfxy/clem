@@ -102,9 +102,10 @@ function ansiBody(kind: GateKind, H: number): { outline: Vec2[]; extra?: Vec2[];
   return { outline, extra: xor ? Array.from({ length: N + 1 }, (_, k) => { const y = -h + 2 * h * k / N; return v(back(y) - 7, y); }) : undefined, backX: y => back(y) - (xor ? 7 : 0), right: 56 };
 }
 addSample("logicGate", (id, c, r) => {
-  // The main gate uses the default IEC style; the helper shows the ANSI shapes.
+  // The main gate uses the default IEC style; the helper shows the ANSI shapes. They sit side by
+  // side on one row with a clear gap (each gate spans about 1.43 w including its leads), inside the 4-unit cell.
   const kind = pickOf(r, KINDS), other = pickOf(r, KINDS.filter(k => k !== "NOT" && k !== "BUF"));
-  return [{ id, type: "logicGate", at: P(c.x - 0.5, c.y + 0.25), kind, inputs: kind === "NOT" || kind === "BUF" ? 1 : pickOf(r, [2, 3]), w: 1.1 }, { id: `${id}_b`, type: "logicGate", at: P(c.x + 1.0, c.y - 0.9), kind: other, style: "ansi", w: 0.8 }];
+  return [{ id, type: "logicGate", at: P(c.x - 0.85, c.y + 0.1), kind, inputs: kind === "NOT" || kind === "BUF" ? 1 : pickOf(r, [2, 3]), w: 1.1 }, { id: `${id}_b`, type: "logicGate", at: P(c.x + 0.95, c.y + 0.1), kind: other, style: "ansi", w: 0.8 }];
 });
 
 // --- flip-flop -------------------------------------------------------------------------------------
@@ -240,7 +241,7 @@ definePart<StateProps>({
     return { prims, fits, radius: r, outline, anchors, argAnchors: { rim: a => polar(c, r, a) }, label: { at: c, candidates: ["above-right", "below-right", "above-left", "below-left", "above", "below"] } };
   },
 });
-addSample("state", (id, c, r) => [{ id, type: "state", at: P(c.x + 0.3, c.y), r: 0.5, text: pickOf(r, ["q₀", "S1", "idle"]), accepting: r() < 0.5, initial: 180 }]);
+addSample("state", (id, c, r) => [{ id, type: "state", at: P(c.x + 0.3, c.y), r: 0.5, text: pickOf(r, ["q_0", "S1", "idle"]), accepting: r() < 0.5, initial: 180 }]);
 
 // --- transition between states ---------------------------------------------------------------------
 
@@ -323,7 +324,7 @@ definePart<LoopProps>({
 });
 addSample("selfLoop", (id, c) => [
   { id, type: "selfLoop", state: `${id}_s`, angle: 90, label: "a" },
-  { id: `${id}_s`, type: "state", at: P(c.x, c.y - 0.35), r: 0.45, text: "q₁" },
+  { id: `${id}_s`, type: "state", at: P(c.x, c.y - 0.35), r: 0.45, text: "q_1" },
 ]);
 
 export type { PartContext, PartInstance };

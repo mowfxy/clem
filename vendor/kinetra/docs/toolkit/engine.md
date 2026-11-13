@@ -50,7 +50,7 @@ Output is deterministic: the same model always gives the same bytes.
   "version": 1,
   "canvas": { "width": 800, "height": 520, "world": { "xMin": -1, "xMax": 9, "yMin": -0.8, "yMax": 5.6 }, "worldUnit": "m" },
   "title": "optional (Inter 14/600, y = 16)",
-  "caption": "optional (11 px #555, y = H - 8); arrow scales are appended",
+  "caption": "optional (11 px #555, y = H - 8); label markup (T_H, x^2) allowed; arrow scales are appended",
   "vars": { "theta": "30 deg", "m": "4 kg", "g": "9.81 m/s^2" },
   "scales": { "force": { "per": "20 N" } },          // 1 world unit of arrow = 20 N
   "elements": [ { "id": "block", "type": "block", "w": 1.4, "h": 0.9, "place": { "attach": "bottom", "to": "wedge.edge(1)" } } ],
@@ -340,3 +340,18 @@ rules are in [rules.md](rules.md).
 | Units | `expr.ts` | eV, keV, MeV, nm, um/µm, pm. |
 | Plain text in reports | `labels.ts`, `compose.ts` | Error messages and `report.labels[].text` show visible text, not the script carriers. |
 
+## Visual audit additions
+
+Additive; no export, signature or error code changed. Tests:
+`packages/core/test/toolkit/audit_fixes.test.ts`.
+
+| Addition | Where | Behaviour |
+| --- | --- | --- |
+| Backdrop clean-up | `backdrops.ts` (`tidyLabelBackdrops`), `compose.ts` | Runs on the SVG from `renderScene2D`. Each label backdrop is narrowed to the measured glyphs, and one that lies wholly inside a filled shape takes that fill, so text on filled parts shows no white box. The grid halo is treated the same way and is now drawn immediately before its own label. |
+| Caption markup | `compose.ts` | The caption (and the appended arrow scales) goes through `formatLabelMarkup`, so `T_H` and `m/s^2` render as scripts. A caption that is not valid markup is kept as written. `report.caption` holds the visible text. |
+| Left-aligned legends | `parts/general.ts` | Legend entries share one left edge; the frame is sized for it. |
+| `under` anchor | `parts/mechanics.ts` (supports) | 10 px beyond the ground line, clear of the 7 px hatching. Reaction arrows should end there. |
+| `label.clearPx` | `PartDefinition.label`, `parts/kit.ts` (`Geo.label`), `compose.ts` | Extra gap between an open part's anchor and its label, for parts wider than a line there. `heatFlow` sets 3 px for its wave. |
+| Arrow tip clearance | `parts.ts` (`arrow` label hook) | An arrow's label sets `clearPx` 1.5, so the candidates beside the tip sit 3 + 1.5 + 1.8 px off it, clear of the 3.5 px arrowhead plus 2 px text clearance. Before, those candidates always hit the arrow's own head, and an arrow ending near the canvas edge fell back to a leader line. |
+| logicGate sample | `parts/logic.ts` | The IEC and ANSI gates sit side by side on one row with a clear gap inside the 4 x 3.4 sample cell. |
+| Script markup in examples | `examples/toolkit/**/*.json`, part samples | Labels, part text, axis units and table cells use markup (`n_1`, `m^3`, `\theta_p` written as `θ_p`) instead of Unicode sub/superscripts, which render smaller and unevenly. Titles stay Unicode. A test rejects Unicode scripts outside titles. |

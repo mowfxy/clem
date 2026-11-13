@@ -94,7 +94,8 @@ export interface PartDefinition<P = any> {
   /** View-space collision shapes, stroke widths included. */
   collide(inst: PartInstance<P>, ctx: PartContext): CollisionShape[];
   /** Label anchor and default candidate order. */
-  label?(inst: PartInstance<P>, ctx: PartContext): { anchor: Vec2; candidates: LabelPosition[] };
+  /** `clearPx` widens the gap around the anchor for parts drawn wider than a line there (a wavy shaft). */
+  label?(inst: PartInstance<P>, ctx: PartContext): { anchor: Vec2; candidates: LabelPosition[]; clearPx?: number };
   /** Part-specific gate checks (e.g. minimum arrow length). */
   gate?(inst: PartInstance<P>, ctx: PartContext): void;
   /** Element ids this part reads beyond its point references (e.g. the pulleys a rope wraps); they become dependencies. */
@@ -423,6 +424,11 @@ const QUANTITY_DIMS: [string, QDim][] = [
 ];
 
 export const ARROW_HEAD = { back: 6, forward: 1, halfWidth: 3.5, minLength: 12 } as const;
+/**
+ * Extra label gap at an arrow tip. A diagonal candidate sits 3 + clearPx + 1.8 px
+ * (0.6 x LABEL_GAP) off the tip, which must exceed halfWidth + 2 px text clearance.
+ */
+const ARROW_LABEL_CLEAR_PX = 1.5;
 
 const arrowTip = (i: PartInstance<ArrowProps>): Vec2 => i.props.mode === "to"
   ? i.points.to as Vec2
@@ -493,7 +499,10 @@ registerPart({
   },
   label: (i: PartInstance<ArrowProps>, ctx) => {
     const a = i.points.from as Vec2, b = arrowTip(i);
-    return { anchor: b, candidates: arrowCandidates(Math.atan2(b.y - a.y, b.x - a.x)) };
+    // The tip extent must clear the arrowhead's half-width plus text clearance, or the
+    // candidates beside the tip (above-left, below-left for a rightward arrow) always hit
+    // the arrow's own head and the label falls back to a leader near the canvas edge.
+    return { anchor: b, candidates: arrowCandidates(Math.atan2(b.y - a.y, b.x - a.x)), clearPx: ARROW_LABEL_CLEAR_PX };
   },
   gate: (i: PartInstance<ArrowProps>, ctx) => {
     const a = ctx.view.toView(i.points.from as Vec2), b = ctx.view.toView(arrowTip(i));

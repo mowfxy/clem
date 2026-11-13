@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Unit step response of a second-order system (ζ = 0.3, ωₙ = 4 rad/s)",
-  "caption": "Overshoot M_p = exp(−ζπ/√(1−ζ²)) = 37.2% at t_p = π/ω_d; 2% settling time ≈ 4/(ζωₙ)",
+  "caption": "Overshoot M_p = exp(−ζπ/√(1−ζ^2)) = 37.2% at t_p = π/ω_d; 2% settling time ≈ 4/(ζω_n)",
   "canvas": { "width": 800, "height": 480, "world": { "xMin": -1.4, "xMax": 11.4, "yMin": -1.5, "yMax": 6.2 } },
   "vars": { "z": "0.3", "wn": "4", "wd": "wn*sqrt(1 - z^2)", "phi": "acos(z)",
             "tp": "pi/wd", "Mp": "exp(-z*pi/sqrt(1 - z^2))", "ts": "4/(z*wn)" },

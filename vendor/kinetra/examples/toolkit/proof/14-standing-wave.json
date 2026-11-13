@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Standing wave on a string fixed at both ends: third harmonic",
-  "caption": "L = 1.2 m, wave speed v = 48 m/s: λ₃ = 2L/3, f₃ = 3v/(2L) = 60 Hz; nodes λ/2 apart",
+  "caption": "L = 1.2 m, wave speed v = 48 m/s: λ_3 = 2L/3, f_3 = 3v/(2L) = 60 Hz; nodes λ/2 apart",
   "canvas": { "width": 880, "height": 440, "world": { "xMin": -1.2, "xMax": 12.6, "yMin": -2.8, "yMax": 3.6 } },
   "vars": { "L": "1.2", "n": "3", "v": "48 m/s", "lam": "2*L/n", "f": "n*v/(2*L*1 m)", "A": "1" },
   "elements": [

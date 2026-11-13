@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Refraction and total internal reflection at a glass–air boundary",
-  "caption": "n₁ = 1.5 (glass), n₂ = 1.0 (air): critical angle θc = 41.8°",
+  "caption": "n_1 = 1.5 (glass), n_2 = 1.0 (air): critical angle θ_c = 41.8°",
   "canvas": { "width": 820, "height": 480, "world": { "xMin": -6.4, "xMax": 6.4, "yMin": -3.7, "yMax": 3.6 } },
   "vars": { "n1": "1.5", "n2": "1.0", "t1": "30 deg", "t2": "asin(n1*sin(t1)/n2)", "tb": "50 deg", "tc": "asin(n2/n1)", "L": "3 m" },
   "elements": [
@@ -17,10 +17,10 @@
     { "id": "a2", "type": "angleArc", "vertex": { "x": -2.6, "y": 0 }, "fromAngle": "90 deg - t2", "toAngle": 90, "r": 1.0, "text": "θ_2", "mayTouch": ["nA", "outA"] },
     { "id": "ab", "type": "angleArc", "vertex": { "x": 2.6, "y": 0 }, "fromAngle": "180 deg + 90 deg - tb", "toAngle": 270, "r": 0.9, "text": "50°", "mayTouch": ["nB", "inB"] },
     { "id": "ar", "type": "angleArc", "vertex": { "x": 2.6, "y": 0 }, "fromAngle": 270, "toAngle": "-(90 deg - tb)", "r": 1.2, "text": "50°", "mayTouch": ["nB", "rfB"] },
-    { "id": "airT", "type": "text", "text": "air, n₂ = 1.0", "at": { "x": -5.0, "y": 0.45 } },
-    { "id": "glT", "type": "text", "text": "glass, n₁ = 1.5", "at": { "x": -4.9, "y": -0.45 } },
+    { "id": "airT", "type": "text", "text": "air, n_2 = 1.0", "at": { "x": -5.0, "y": 0.45 } },
+    { "id": "glT", "type": "text", "text": "glass, n_1 = 1.5", "at": { "x": -4.9, "y": -0.45 } },
     { "id": "rA", "type": "text", "text": "refracted (48.6°)", "at": { "x": -0.2, "y": 2.4 } },
-    { "id": "rB", "type": "text", "text": "totally reflected (50° > θc)", "at": { "x": 4.6, "y": -2.7 } }
+    { "id": "rB", "type": "text", "text": "totally reflected (50° > θ_c)", "at": { "x": 4.6, "y": -2.7 } }
   ],
   "checks": [
     { "id": "snell", "type": "equal", "left": "n1*cos(inA.angle)", "right": "n2*cos(outA.angle)", "tol": 1e-12 },

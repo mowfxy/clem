@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Carnot cycle on a P–V diagram (1 mol ideal diatomic gas)",
-  "caption": "T_H = 500 K, T_C = 300 K, γ = 1.4; shaded area = net work W = nR(T_H − T_C) ln(V₂/V₁)",
+  "caption": "T_H = 500 K, T_C = 300 K, γ = 1.4; shaded area = net work W = nR(T_H − T_C) ln(V_2/V_1)",
   "canvas": { "width": 800, "height": 520, "world": { "xMin": -1.4, "xMax": 10.4, "yMin": -1.5, "yMax": 6.2 } },
   "vars": { "nR": "8.314", "TH": "500", "TC": "300", "g": "1.4",
             "V1": "10", "V2": "20", "r": "(TH/TC)^(1/(g - 1))", "V3": "V2*r", "V4": "V1*r",

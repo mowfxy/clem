@@ -29,10 +29,14 @@ construction. The checker guards against regressions.
 | Caption | `Arial, Helvetica, sans-serif` | 11 | normal | `#555` | x = W/2, y = H − 8, middle |
 | Labels | `Arial, Helvetica, sans-serif` | 11, 12 (default) or 13 | normal | palette | `label` shape: a white backdrop rect, then the text |
 
-Label backdrops are opaque white rectangles that are `len × size × 0.62` wide,
-as drawn by Scene2D. The toolkit's collision box for a label is the union of
-the measured glyph box and this backdrop, so the backdrop can never hide
-geometry.
+Scene2D draws each label backdrop as an opaque white rectangle `len × size ×
+0.62` wide. The toolkit's collision box for a label is the union of the
+measured glyph box and this backdrop, so the backdrop can never hide geometry.
+Before the SVG is returned, `tidyLabelBackdrops` narrows each backdrop to the
+measured glyphs plus 1 px a side (never beyond that collision box). A backdrop
+that lies wholly inside one filled shape takes that shape's fill, so text on a
+filled part shows no white box; on white, or across a shape's edge, it stays
+`fill="#ffffff"`.
 
 ## Strokes and markers
 
@@ -88,9 +92,9 @@ Sub- and superscripts in toolkit labels are `<tspan>` children of the label
 | Shift | `dy` = +0.3 em (subscript) or −0.4 em (superscript), one decimal; a following base run gets the opposite `dy` |
 | Limits | `|dy|` ≤ 0.71 em; no tspans in the title |
 
-Labels over plot grid lines additionally get a white halo: a
-`<rect fill="#fff" stroke="none">` covering the label box, drawn just before
-the label. `checkToolkitStyle` enforces the tspan rules (`TOOLKIT_SCRIPT`).
+Labels over plot grid lines additionally get a halo: a
+`<rect fill="#fff" stroke="none">` covering the label box's height, drawn just
+before the label. It is narrowed and tinted with the backdrop. `checkToolkitStyle` enforces the tspan rules (`TOOLKIT_SCRIPT`).
 
 ## Scope
 

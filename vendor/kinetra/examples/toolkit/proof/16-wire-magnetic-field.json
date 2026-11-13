@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Magnetic field of a long straight wire",
-  "caption": "I = 10 A; B = μ₀I/(2πr), circulating by the right-hand rule",
+  "caption": "I = 10 A; B = μ_0I/(2πr), circulating by the right-hand rule",
   "canvas": { "width": 860, "height": 490, "world": { "xMin": -3.6, "xMax": 11.4, "yMin": -4.3, "yMax": 4.2 }, "worldUnit": "cm" },
   "vars": { "I": "10 A", "mu0": "4e-7*pi*T*m/A", "r1": "1.2 cm", "r2": "2.4 cm", "B1": "mu0*I/(2*pi*r1)", "B2": "mu0*I/(2*pi*r2)" },
   "scales": { "magneticField": { "per": "0.25 mT" } },

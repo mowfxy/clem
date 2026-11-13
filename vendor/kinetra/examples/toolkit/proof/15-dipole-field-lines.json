@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Electric dipole: field lines and equipotentials",
-  "caption": "Streamlines integrated from E; equipotentials of V = kq(1/r₊ − 1/r₋)",
+  "caption": "Streamlines integrated from E; equipotentials of V = kq(1/r_+ − 1/r_-)",
   "canvas": {
     "width": 640,
     "height": 600,

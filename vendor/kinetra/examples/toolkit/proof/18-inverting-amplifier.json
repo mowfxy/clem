@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Inverting amplifier with an ideal op-amp",
-  "caption": "Virtual ground at the inverting input: i_in = i_f, so v_out = −(R_f/R_in) v_in",
+  "caption": "Virtual ground at the inverting input: i_{in} = i_f, so v_{out} = −(R_f/R_{in}) v_{in}",
   "canvas": { "width": 720, "height": 420, "world": { "xMin": -0.9, "xMax": 7.9, "yMin": -1.7, "yMax": 3.4 } },
   "vars": { "vin": "0.5 V", "Rin": "10 kohm", "Rf": "47 kohm", "iin": "vin/Rin", "vout": "-Rf/Rin*vin", "iF": "(0 V - vout)/Rf" },
   "elements": [

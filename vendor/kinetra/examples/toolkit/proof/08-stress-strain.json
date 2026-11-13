@@ -19,7 +19,7 @@
     { "id": "neck", "type": "series", "axes": "ax", "fn": "U - (U - F)*((x - eu)/(ef - eu))^2", "domain": ["eu", "ef"], "color": "ink", "mayTouch": ["hard", "sh3", "sh2"] },
     { "id": "fr", "type": "series", "axes": "ax", "data": [["ef", "F"], ["ef", 0]], "style": "line", "dashed": true, "color": "guide", "width": 1, "mayTouch": ["neck", "sh3"] },
     { "id": "yp", "type": "plotPoint", "axes": "ax", "series": "hard", "x": "ey", "marker": "circle", "mayTouch": ["el", "sh1", "sh2"] },
-    { "id": "ypc", "type": "leader", "target": "yp", "text": "yield σ_Y = 250 MPa", "dx": 0.35, "dy": 2.2, "marker": "none", "mayTouch": ["el", "hard", "sh1", "sh2"] },
+    { "id": "ypc", "type": "leader", "target": "yp", "text": "yield σ_Y = 250 MPa", "dx": 0.6, "dy": 2.2, "marker": "none", "mayTouch": ["el", "hard", "sh1", "sh2"] },
     { "id": "up", "type": "plotPoint", "axes": "ax", "series": "hard", "x": "eu", "marker": "circle", "mayTouch": ["neck", "sh2", "sh3"], "label": { "text": "UTS σ_U = 400 MPa", "position": "above" } },
     { "id": "fp", "type": "plotPoint", "axes": "ax", "series": "neck", "x": "ef", "marker": "x", "mayTouch": ["fr", "sh3"], "label": "fracture" }
   ],

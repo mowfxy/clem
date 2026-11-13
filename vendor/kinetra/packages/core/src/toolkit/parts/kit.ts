@@ -183,7 +183,7 @@ export interface Geo {
   /** Closed outline (world) for inside relations and centre labels. */
   outline?: Vec2[];
   /** Label anchor (world) and candidate order. */
-  label?: { at: Vec2; candidates: LabelPosition[] };
+  label?: { at: Vec2; candidates: LabelPosition[]; clearPx?: number };
   radius?: number;
   segment?: [Vec2, Vec2];
   curve?: Vec2[];
@@ -274,7 +274,7 @@ export function definePart<P extends object>(d: KitDef<P>): PartDefinition<P> {
     refs: (inst, ctx) => ({ ...posRefs(inst, ctx, d.positioning), ...(geoOf(d, inst, ctx).refs ?? {}) }),
     gate: (inst, ctx) => { const g = geoOf(d, inst, ctx); checkFits(inst, g, ctx); checkOwnText(inst, g, ctx); d.gate?.(inst, ctx, g); },
   };
-  if (d.labels !== false) def.label = (inst, ctx) => { const g = geoOf(d, inst, ctx); return { anchor: g.label?.at ?? inst.origin, candidates: g.label?.candidates ?? AROUND }; };
+  if (d.labels !== false) def.label = (inst, ctx) => { const g = geoOf(d, inst, ctx); return { anchor: g.label?.at ?? inst.origin, candidates: g.label?.candidates ?? AROUND, ...(g.label?.clearPx ? { clearPx: g.label.clearPx } : {}) }; };
   // Optional hooks exist only for parts that declare them, so the engine's
   // "is it round / straight / closed / a curve" tests stay meaningful.
   if (d.hooks?.includes("outline")) def.outline = inst => geoOf(d, inst).outline ?? [];

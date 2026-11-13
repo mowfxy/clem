@@ -195,7 +195,7 @@ definePart<HeatProps>({
     const waves = i.props.waves || Math.max(1, Math.round((Lpx - 8) / 18));
     const shaft = wavy(a, tipBase, px(ctx, 3), waves);
     const prims: Prim[] = [poly([...shaft, sub(b, mul(u, px(ctx, 3)))], i.props.color, i.props.width), head(b, angleOf(u), i.props.color)];
-    return { prims, anchors: { start: a, end: b, mid: lerp(a, b, 0.5) }, label: { at: lerp(a, b, 0.5), candidates: Math.abs(u.x) >= Math.abs(u.y) ? ABOVE_FIRST : ["right", "left", "above", "below"] } };
+    return { prims, anchors: { start: a, end: b, mid: lerp(a, b, 0.5) }, label: { at: lerp(a, b, 0.5), candidates: Math.abs(u.x) >= Math.abs(u.y) ? ABOVE_FIRST : ["right", "left", "above", "below"], clearPx: 3 } };
   },
 });
 addSample("heatFlow", (id, c) => [{ id, type: "heatFlow", from: P(c.x - 1.2, c.y), to: P(c.x + 1.2, c.y), label: "Q" }]);
@@ -206,7 +206,7 @@ interface ResProps { w: number; h: number; kind: "hot" | "cold"; text?: string; 
 definePart<ResProps>({
   type: "reservoir", aliases: ["thermalReservoir"], category: "fluids",
   description: "Thermal reservoir: a box outlined in force red (hot) or rayAlt blue (cold) with a heavier bottom or top edge and centred text (default \"Hot reservoir\" / \"Cold reservoir\"). Origin at the centre.",
-  options: { w: "width", h: "height", kind: "hot | cold", text: "centred text, e.g. T₁ = 500 K", textSize: "11-13" },
+  options: { w: "width", h: "height", kind: "hot | cold", text: "centred text, e.g. T_1 = 500 K", textSize: "11-13" },
   positioning: "placed",
   propKeys: ["w", "h", "kind", "text", "textSize"],
   props: (s, ctx) => { const kind = enumProp(s, "kind", ["hot", "cold"] as const, "hot"); return { w: lengthProp(s, "w", ctx, { positive: true }), h: lengthProp(s, "h", ctx, { positive: true }), kind, text: textProp(s, "text", kind === "hot" ? "Hot reservoir" : "Cold reservoir"), textSize: sizeProp(s) }; },
@@ -222,7 +222,7 @@ definePart<ResProps>({
     return { prims, fits, outline, anchors: { center: c, top: add(c, v(0, H)), bottom: add(c, v(0, -H)), left: add(c, v(-W, 0)), right: add(c, v(W, 0)) }, argAnchors: { topAt: t => t >= 0 && t <= 1 ? add(c, v(-W + p.w * t, H)) : undefined, bottomAt: t => t >= 0 && t <= 1 ? add(c, v(-W + p.w * t, -H)) : undefined }, label: { at: c, candidates: ["right", "left", "above", "below"] } };
   },
 });
-addSample("reservoir", (id, c, r) => [{ id, type: "reservoir", at: P(c.x, c.y), w: 2.6, h: 0.8, kind: pickOf(r, ["hot", "cold"] as const), text: pickOf(r, ["T₁ = 600 K", "Hot reservoir"]) }]);
+addSample("reservoir", (id, c, r) => [{ id, type: "reservoir", at: P(c.x, c.y), w: 2.6, h: 0.8, kind: pickOf(r, ["hot", "cold"] as const), text: pickOf(r, ["T_1 = 600 K", "Hot reservoir"]) }]);
 
 // --- liquid surface ----------------------------------------------------------------------------------
 
