@@ -1266,7 +1266,7 @@ void app.whenReady().then(async () => {
       m = new VpsManager({
         owner, secrets: { get: async (k) => vault.read(k, undefined), set: (k, v) => vault.write(k, v), delete: (k) => vault.remove(k) },
         local: localBlobs(owner), files: join(workspaceRoot, "Accounts", owner, "Files"), engine: () => rawEngineFor(owner),
-        bundle: join(__dirname, "worker"), accountService: config.service,
+        bundle: join(__dirname, "worker"), accountService: config.service, version: app.isPackaged ? app.getVersion() : undefined,
         engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
         log: (msg) => console.warn(msg),
         changed: (what) => { void m!.mode().then((mode) => vpsModes.set(owner, mode)); vpsEvent(what); },

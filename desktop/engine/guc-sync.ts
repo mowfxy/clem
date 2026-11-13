@@ -2,7 +2,7 @@
 // the first sync, for announcements). Unchanged pages are skipped; changes become rows, a snapshot and events.
 import { diffSnapshots, newCourses, type Seen } from "../../core/guc/diff.ts";
 import { extractDeadlines } from "../../core/guc/deadlines.ts";
-import { courseworkOptions, formFields, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, transcriptYears, urls } from "../../core/guc/parse.ts";
+import { courseworkOptions, formFields, nextTranscriptYear, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, studyYear, transcriptYears, urls } from "../../core/guc/parse.ts";
 import { readMail } from "./guc-mail.ts";
 import { emptySnapshot, type GucEvent, type GucProgress, type GucSnapshot, type GucSyncStats } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
@@ -109,17 +109,34 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
       next.exams = parseExamSeats(page.body); pages[portalUrls.exams] = page.memo; return true;
     }, () => { seen.exams = true; readAt("exams"); });
     say("grades", 1, 2, "Reading your transcript…");
+    // The landing page holds no grades (only the bounce and the year dropdown), so it is never compared: one study
+    // year is posted back per sync (nextTranscriptYear), and while past years are unread the part stays due, so the
+    // next pulse reads the next one.
+    let transcriptMore = false;
     if (want("transcript")) await part("transcript", async () => {
-      let page = await client.page(urls.transcript, pages[urls.transcript]);
-      if (page.unchanged) return page.unavailable ? undefined : false;
-      const challenge = portalBounce(page.body, page.url);
+      let page = await client.page(urls.transcript);
+      const challenge = !page.unavailable && portalBounce(page.body, page.url);
       if (challenge) page = await client.page(challenge);
+      if (page.unavailable) return undefined;
       const years = transcriptYears(page.body);
-      // The transcript shows a year only after its dropdown posts back; ask for the newest when it isn't shown.
-      if (years && !years.latest.selected) page = await client.page(page.url, {}, { method: "POST", form: { ...formFields(page.body), [years.field]: years.latest.value, __EVENTTARGET: years.field, __EVENTARGUMENT: "" } });
-      if (page.memo.hash && page.memo.hash === pages[urls.transcript]?.hash) return false;
-      next.grades = parseTranscript(page.body); pages[urls.transcript] = page.memo; return true;
-    }, () => { seen.grades = true; readAt("transcript"); });
+      if (!years) { const before = sameJson(next.grades); next.grades = parseTranscript(page.body); return sameJson(next.grades) !== before; }
+      const pick = nextTranscriptYear(years.options, seen.transcript, now);
+      if (!pick) return false;
+      const { year } = pick;
+      if (year.text !== years.options.find((o) => o.selected)?.text) page = await client.page(page.url, {}, { method: "POST", form: { ...formFields(page.body), [years.field]: year.value, __EVENTTARGET: years.field, __EVENTARGUMENT: "" } });
+      if (page.unavailable) return undefined;
+      const grades = parseTranscript(page.body, year.text);
+      const state: NonNullable<Seen["transcript"]> = { at: { ...seen.transcript?.at, [year.text]: Date.now() }, ...(seen.transcript?.end ? { end: seen.transcript.end } : {}) };
+      // A past year with no grades is before the student started (GUC still shows it empty semester tables): no older
+      // year is read.
+      if (!grades.length && Number(/20\d{2}/.exec(year.text)?.[0]) < studyYear(now)) { state.end = year.text; transcriptMore = false; }
+      else transcriptMore = pick.more;
+      seen.transcript = state;
+      const before = sameJson(next.grades);
+      // Grades read before years were tracked (no year) are replaced as the years come in.
+      next.grades = [...next.grades.filter((g) => g.year && g.year !== year.text), ...grades];
+      return sameJson(next.grades) !== before;
+    }, () => { seen.grades = true; if (!transcriptMore) readAt("transcript"); });
     if (o.mail !== false && want("mail")) {
       say("mail", 0, 1, "Checking your GUC mail…");
       // Mail is its own server: anything but no connection there (even a refused sign-in) is skipped, not a reason to

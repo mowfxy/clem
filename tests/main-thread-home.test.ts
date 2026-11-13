@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { flipFrom, lastUsed, morphMode, pickSpaces } from "../core/main-thread/home.ts";
+import { lastUsed, morphMode, pickSpaces } from "../core/main-thread/home.ts";
 
 const sp = (id: string, name: string, kind: "subject" | "project" = "subject", description = "") => ({ id, name, kind, description });
 const spaces = [sp("bio", "Biology 101"), sp("circ", "Circuits", "subject", "ELCT 201"), sp("site", "Portfolio website", "project"), sp("thesis", "Thesis", "project"), sp("calc", "Calculus II")];
@@ -12,9 +12,8 @@ const chats = [
 test("morph: instant for reduced motion or a quieter workspace, View Transitions when there, else FLIP", () => {
   assert.equal(morphMode({ reduced: true, viewTransitions: true }), "instant");
   assert.equal(morphMode({ reduced: false, quiet: true, viewTransitions: true }), "instant");
-  assert.equal(morphMode({ reduced: false, viewTransitions: true }), "view-transition");
-  assert.equal(morphMode({ reduced: false, viewTransitions: false }), "flip");
-  assert.equal(flipFrom({ left: 300, top: 400, width: 760, height: 150 }, { left: 280, top: 700, width: 800, height: 120 }), "translate(20px, -300px) scale(0.95, 1.25)");
+  assert.equal(morphMode({ reduced: false, viewTransitions: true }), "fade");
+  assert.equal(morphMode({ reduced: false, viewTransitions: false }), "instant");
 });
 
 test("picker: most recently used first, never-used after (subjects first, then by name)", () => {

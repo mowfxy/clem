@@ -31,7 +31,8 @@ const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 export type PageState = "ok" | "login" | "unavailable";
 /** A login form, or the portal's "Page will be available from…" message page, instead of the page asked for. */
 export function pageState(html: string, url = ""): PageState {
-  if (/\/main\/messagepage\.aspx/i.test(url) || /page\s+will\s+be\s+available\s+from/i.test(html)) return "unavailable";
+  // "Your request to refresh the transcript page has been temporarily paused": GUC allows one load a minute.
+  if (/\/main\/messagepage\.aspx/i.test(url) || /page\s+will\s+be\s+available\s+from/i.test(html) || /has been temporarily paused/i.test(html)) return "unavailable";
   if (/<input[^>]+type\s*=\s*["']?password/i.test(html) || /\/login/i.test(url)) return "login";
   return "ok";
 }
@@ -59,13 +60,17 @@ export function parseCourseList(html: string): GucCourse[] {
     const rows = grid.find("tr").toArray();
     const head = $(rows[0]).children("th,td").toArray().map((c) => oneLine($(c).text()).toLowerCase());
     const col = (re: RegExp, fallback: number) => { const i = head.findIndex((h) => re.test(h)); return i >= 0 ? i : fallback; };
-    const nameAt = col(/course|name/, 1), seasonAt = col(/season|semester|sid/, 5), statusAt = head.findIndex((h) => /status|active/.test(h));
-    const seasonTitleAt = head.findIndex((h, i) => i !== seasonAt && /title/.test(h));
+    // The live grid's headers are "Name, Active, Season, ID, SeasonId": "Season" is the term's title ("Winter 2026"),
+    // "SeasonId" the number the course link needs. The row's own View Course link is the surest source of both ids.
+    const idCol = head.findIndex((h) => /^(season\s*id|sid)$/.test(h));
+    const nameAt = col(/course|name/, 1), seasonAt = idCol >= 0 ? idCol : col(/season|semester|sid/, 5), statusAt = head.findIndex((h) => /status|active/.test(h));
+    const seasonTitleAt = head.findIndex((h, i) => i !== seasonAt && /title|^season$|^semester$/.test(h));
     for (const row of rows.slice(1)) {
       const cells = $(row).children("td");
       if (cells.length < 2) continue;
       const label = courseLabel(cells.eq(nameAt).text());
-      const sid = Number(oneLine(cells.eq(seasonAt).text()).match(/\d+/)?.[0]);
+      const link = /[?&]sid=(\d+)/i.exec($(row).find("a[href*='sid=']").attr("href") || "")?.[1];
+      const sid = Number(link || oneLine(cells.eq(seasonAt).text()).match(/\d+/)?.[0]);
       if (!label?.id || !sid) continue;
       const status = statusAt >= 0 ? oneLine(cells.eq(statusAt).text()) : "";
       const season = (seasonTitleAt >= 0 && oneLine(cells.eq(seasonTitleAt).text())) || `Season ${sid}`;
@@ -203,7 +208,7 @@ export function parseSchedule(html: string): GucSlot[] {
 }
 
 /** Transcript_001.aspx: each semester is a table whose first row holds a <strong> label, then a header row, then courses. */
-export function parseTranscript(html: string): GucGrade[] {
+export function parseTranscript(html: string, year?: string): GucGrade[] {
   const $ = cheerio.load(html);
   const grades: GucGrade[] = [];
   $("table").each((_, t) => {
@@ -226,7 +231,7 @@ export function parseTranscript(html: string): GucGrade[] {
       const courseCode = normCode(code >= 0 ? cells[code] || "" : title) || (code >= 0 ? cells[code] || "" : "");
       if (!title) return;
       const n = Number.parseFloat(cells[numeric] ?? ""), h = Number.parseInt(cells[hours] ?? "");
-      grades.push({ id: stableId(label + "|" + (courseCode || title)), semester: label, code: courseCode, name: title, hours: Number.isFinite(h) ? h : null, numeric: Number.isFinite(n) ? n : null, letter: letter >= 0 ? cells[letter] || "" : "" });
+      grades.push({ id: stableId(label + "|" + (courseCode || title)), semester: label, code: courseCode, name: title, hours: Number.isFinite(h) ? h : null, numeric: Number.isFinite(n) ? n : null, letter: letter >= 0 ? cells[letter] || "" : "", ...(year ? { year } : {}) });
     });
   });
   if (!grades.length && !/transcript/i.test(html)) throw new SiteChanged("the transcript");
@@ -250,6 +255,22 @@ export function transcriptYears(html: string) {
     if (options.length) return { field: $(el).attr("name") || "", options, latest: [...options].sort((a, b) => b.text.localeCompare(a.text))[0] };
   }
   return undefined;
+}
+
+/** The study year (its first calendar year) that `now` falls in; GUC's year starts in September. */
+export const studyYear = (now: Date) => now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+type YearOption = { value: string; text: string };
+/** The transcript year to read next. GUC lets the transcript load only once a minute and shows one study year per load,
+ *  so a sync reads one year: past years Clem hasn't read yet first (newest first, stopping at `end`, the first past
+ *  year with no grades), then whichever of this year and last year was read longer ago. `more`: past years still unread. */
+export function nextTranscriptYear(options: YearOption[], state: { at: Record<string, number>; end?: string } | undefined, now: Date) {
+  const start = (text: string) => Number(/20\d{2}/.exec(text)?.[0]);
+  const current = studyYear(now), endAt = state?.end ? start(state.end) : -Infinity;
+  const years = options.filter((o) => start(o.text) <= current && start(o.text) > endAt && start(o.text) > current - 8).sort((a, b) => start(b.text) - start(a.text));
+  const pending = years.filter((o) => start(o.text) < current && !state?.at?.[o.text]);
+  if (pending.length) return { year: pending[0], more: pending.length > 1 };
+  const recent = years.slice(0, 2).sort((a, b) => (state?.at?.[a.text] || 0) - (state?.at?.[b.text] || 0))[0];
+  return recent ? { year: recent, more: false } : undefined;
 }
 
 /** Undoes Dean Edwards' p,a,c,k,e,r packing, which the transcript page uses to hide its `sTo('…')` redirect. */

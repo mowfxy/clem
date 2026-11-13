@@ -4,7 +4,7 @@ import { stableId } from "./parse.ts";
 import type { GucEvent, GucSnapshot } from "./types.ts";
 
 /** What was read at least once, so its first read is a baseline. `mailIds`: hashes of every Inbox id seen. */
-export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number> };
+export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number>; /** The transcript's study years: when each was last read, and the oldest one there is. */ transcript?: { at: Record<string, number>; end?: string } };
 const short = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 export const scheduleHash = (s: GucSnapshot) => stableId(s.slots.map((x) => [x.day, x.period, x.code, x.type, x.group, x.location].join("|")).sort().join("\n"));
@@ -35,6 +35,8 @@ export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen):
     for (const g of next.grades) {
       const mark = g.letter || (g.numeric ?? "");
       if (mark === "") continue;
+      // The transcript is read a study year at a time; a year read for the first time is a baseline, not news.
+      if (g.year && !seen.transcript?.at?.[g.year]) continue;
       const was = oldGrades.get(g.id), before = was ? was.letter || (was.numeric ?? "") : "";
       // A grade belongs to the newest course with its code, so it reaches that course's subject.
       const courseKey = g.code ? next.courses.filter((c) => sameCode(c.code, g.code)).sort((a, b) => b.seasonId - a.seasonId)[0]?.key : undefined;

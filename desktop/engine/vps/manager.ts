@@ -21,7 +21,7 @@ import { VpsTools } from "./tools.ts";
 export type VpsVault = {
   config?: VpsConfig; privateKey?: string; passphrase?: string; password?: string; allowPassword?: boolean;
   storage?: { mode: StorageMode; cap?: number };
-  worker?: { enabled: boolean; kind?: "docker" | "systemd"; key: string; rpc: string; installedAt?: number };
+  worker?: { enabled: boolean; kind?: "docker" | "systemd"; key: string; rpc: string; installedAt?: number; /** The app version whose bundle it runs. */ version?: string };
   modelKey?: { provider: "anthropic"; key: string; model?: string };
 };
 export type Secrets = { get<T>(key: string): Promise<T | undefined>; set(key: string, value: unknown): Promise<void>; delete(key: string): Promise<void> };
@@ -30,6 +30,8 @@ export type ManagerDeps = {
   engine: () => Promise<Engine>;
   /** The worker bundle on this device (desktop-dist/worker). */
   bundle: string; accountService: string;
+  /** This app's version: a worker installed by another version is refreshed with this one's bundle. */
+  version?: string;
   /** A fresh relay token for the worker (POST /engine/token as the signed-in person). */
   engineToken?: () => Promise<string | undefined>;
   connect?: (c: LinkConfig) => Promise<VpsLink & { fingerprint?: string; firstTime?: boolean }>;
@@ -195,6 +197,15 @@ export class VpsManager {
   /** "Run Clem's background jobs on my VPS": install or refresh the worker, send its secrets sealed, start the
    *  heartbeat. The desktop keeps running jobs until the worker's first beat takes the lease. */
   async enableWorker(progress?: (label: string) => void) {
+    await this.install(progress);
+    // Its database starts empty: subject links and settings, the organizer's settings, watches and mutes follow.
+    await this.handover().catch((e) => this.log("[vps] handover: " + (e as Error).message));
+    this.startHeartbeat();
+    await this.pushWorkspace(true);
+    return this.status();
+  }
+  /** Uploads this app's worker bundle with the worker's key and secrets, and starts it (its database is kept). */
+  private async install(progress?: (label: string) => void) {
     const v = await this.vault();
     const l = await this.link();
     const key = v.worker?.key || randomBytes(32).toString("base64"), rpc = v.worker?.rpc || randomBytes(32).toString("hex");
@@ -202,12 +213,22 @@ export class VpsManager {
     const guc = await this.d.secrets.get("guc-" + this.owner);
     const secrets: Record<string, unknown> = { rpc, ...(guc ? { ["guc-" + this.owner]: guc } : {}), ...(engineToken ? { "engine-token": engineToken } : {}), ...(v.modelKey ? { model: v.modelKey } : {}) };
     const r = await installWorker({ link: l, owner: this.owner, bundle: this.d.bundle, key: Buffer.from(key, "base64"), secrets, accountService: this.d.accountService, publicHost: v.config?.host, progress });
-    await this.save({ worker: { enabled: true, kind: r.kind, key, rpc, installedAt: Date.now() } });
-    // Its database starts empty: subject links and settings, the organizer's settings, watches and mutes follow.
-    await this.handover().catch((e) => this.log("[vps] handover: " + (e as Error).message));
-    this.startHeartbeat();
-    await this.pushWorkspace(true);
-    return this.status();
+    await this.save({ worker: { enabled: true, kind: r.kind, key, rpc, installedAt: Date.now(), ...(this.d.version ? { version: this.d.version } : {}) } });
+  }
+  private refreshing?: Promise<void>;
+  /** After an app update the worker on the VPS still runs the old version's code (its GUC reading, its jobs): it is
+   *  refreshed with this version's bundle once, in the background, keeping its database. The desktop keeps the
+   *  lease meanwhile as usual (an unreachable worker is covered by desktopRunsOffline). */
+  refreshWorker() {
+    this.refreshing ||= (async () => {
+      const v = await this.vault();
+      if (!v.worker?.enabled || !this.d.version || v.worker.version === this.d.version) return;
+      this.log("[vps] refreshing the worker to " + this.d.version);
+      await this.install();
+      this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
+      await this.pushWorkspace(true);
+    })().catch((e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; });
+    return this.refreshing;
   }
   async disableWorker() {
     const v = await this.vault();
@@ -263,7 +284,7 @@ export class VpsManager {
     if (!desktopRuns && this.workerModel === "none") engine.telegram.start();
     this.d.changed?.("worker");
   }
-  startHeartbeat() { if (this.beat) return; void this.heartbeat(); this.beat = setInterval(() => void this.heartbeat(), BEAT_MS); this.beat.unref?.(); }
+  startHeartbeat() { if (this.beat) return; void this.refreshWorker(); void this.heartbeat(); this.beat = setInterval(() => void this.heartbeat(), BEAT_MS); this.beat.unref?.(); }
   stopHeartbeat() { if (this.beat) clearInterval(this.beat); this.beat = undefined; }
   /** The compact workspace snapshot the organizer reads, sent when the workspace changes (at most every 20 s). */
   async pushWorkspace(now = false, state?: unknown) {

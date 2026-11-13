@@ -8,7 +8,7 @@ import { pageState } from "../../core/guc/parse.ts";
 import { GucError, asGucError } from "./errors.ts";
 
 export type HttpRequest = { method: "GET" | "POST" | "HEAD"; url: string; headers?: Record<string, string>; form?: Record<string, string>; /** A raw request body (EWS SOAP), sent as is. */ body?: string; /** A 3xx is an error, not followed (mail). */ noRedirect?: boolean; /** The body as bytes (a file), not text. */ binary?: boolean };
-export type HttpResponse = { status: number; headers: Record<string, string | undefined>; body: string; bytes?: Uint8Array };
+export type HttpResponse = { status: number; headers: Record<string, string | string[] | undefined>; body: string; bytes?: Uint8Array };
 export type Credentials = { username: string; password: string; domain?: string };
 /** One NTLM exchange. Swapped for a fake in tests. */
 export type Http = (request: HttpRequest, credentials: Credentials) => Promise<HttpResponse>;
@@ -27,8 +27,15 @@ export const contentHash = (html: string) => createHash("sha256").update(html.re
 export type PageMemo = { hash?: string; etag?: string; modified?: string };
 export type Fetched = { url: string; status: number; body: string; memo: PageMemo; unchanged: boolean; unavailable?: boolean };
 
+/** GUC's student portal throws a server error (500) at any request without a browser's User-Agent, so every request
+ *  says it is one. */
+const BROWSER = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+const one = (v: string | string[] | undefined) => Array.isArray(v) ? v[0] : v;
+
 export class GucClient {
   requests = 0;
+  /** Session cookies per host (the portal ties its sTo bounce token to ASP.NET_SessionId), only for this client's run. */
+  private cookies = new Map<string, Map<string, string>>();
   private active = new Map<string, number>();
   private waiting = new Map<string, (() => void)[]>();
   private credentials: Credentials;
@@ -58,7 +65,10 @@ export class GucClient {
         for (let attempt = 0; attempt < 3; attempt++) {
           if (attempt) await this.sleep(500 * 2 ** (attempt - 1));
           this.requests++;
-          try { response = await this.http({ ...request, url }, this.credentials); failure = undefined; } catch (e) { failure = e; continue; }
+          const jar = this.cookies.get(new URL(url).host), cookie = jar && [...jar].map(([k, v]) => k + "=" + v).join("; ");
+          const headers = { ...BROWSER, ...request.headers, ...(cookie ? { Cookie: cookie } : {}) };
+          try { response = await this.http({ ...request, url, headers }, this.credentials); failure = undefined; } catch (e) { failure = e; continue; }
+          this.keep(url, response.headers["set-cookie"]);
           if (response.status < 500) break;
         }
       } finally { release(); }
@@ -68,7 +78,7 @@ export class GucClient {
       // reason to pause every check and ask for a new password.
       if (response.status === 401) throw new GucError("auth", "http 401");
       if (response.status === 403) throw new GucError("unavailable", "http 403");
-      const location = response.headers.location;
+      const location = one(response.headers.location);
       if (request.noRedirect && response.status >= 300 && response.status < 400 && response.status !== 304) throw new GucError("unavailable", "unexpected_redirect");
       if (response.status >= 300 && response.status < 400 && response.status !== 304 && location) {
         url = new URL(location, url).href;
@@ -81,6 +91,16 @@ export class GucClient {
     throw new GucError("unavailable", "too many redirects");
   }
 
+  private keep(url: string, set: string | string[] | undefined) {
+    if (!set) return;
+    const host = new URL(url).host, jar = this.cookies.get(host) || new Map<string, string>();
+    for (const line of Array.isArray(set) ? set : [set]) {
+      const [pair] = line.split(";"), at = pair.indexOf("=");
+      if (at > 0) jar.set(pair.slice(0, at).trim(), pair.slice(at + 1).trim());
+    }
+    this.cookies.set(host, jar);
+  }
+
   /** A page, asked for conditionally; `unchanged` when the server says 304 or the content hash matches `memo`. */
   async page(url: string, memo: PageMemo = {}, request?: Omit<HttpRequest, "url">): Promise<Fetched> {
     const headers: Record<string, string> = { ...request?.headers };
@@ -91,7 +111,7 @@ export class GucClient {
     if (state === "login") throw new GucError("auth", "login page");
     if (state === "unavailable") return { url: res.url, status: res.status, body: "", memo, unchanged: true, unavailable: true };
     const hash = contentHash(res.body);
-    return { url: res.url, status: res.status, body: res.body, memo: { hash, etag: res.headers.etag, modified: res.headers["last-modified"] }, unchanged: hash === memo.hash };
+    return { url: res.url, status: res.status, body: res.body, memo: { hash, etag: one(res.headers.etag), modified: one(res.headers["last-modified"]) }, unchanged: hash === memo.hash };
   }
 }
 
@@ -100,7 +120,7 @@ export async function fetchFile(client: GucClient, url: string) {
   if (!/^https:\/\/([\w-]+\.)*guc\.edu\.eg\//.test(url)) throw new GucError("unavailable", "not a GUC file");
   const res = await client.send({ method: "GET", url, binary: true });
   if (res.status !== 200 || !res.bytes) throw new GucError("unavailable", "http " + res.status);
-  const type = (res.headers["content-type"] || "").split(";")[0].trim();
+  const type = (one(res.headers["content-type"]) || "").split(";")[0].trim();
   if (/text\/html/i.test(type) && pageState(new TextDecoder().decode(res.bytes.slice(0, 20000)), res.url) !== "ok") throw new GucError("auth", "login page");
   return { bytes: res.bytes, type };
 }
@@ -109,7 +129,7 @@ export async function fetchFile(client: GucClient, url: string) {
 export async function fileSize(client: GucClient, url: string) {
   if (!/^https:\/\/([\w-]+\.)*guc\.edu\.eg\//.test(url)) return undefined;
   const res = await client.send({ method: "HEAD", url }).catch(() => undefined);
-  const n = Number(res?.status === 200 ? res.headers["content-length"] : NaN);
+  const n = Number(res?.status === 200 ? one(res.headers["content-length"]) : NaN);
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
