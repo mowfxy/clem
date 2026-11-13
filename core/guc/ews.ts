@@ -9,6 +9,8 @@ export const EWS_URL = "https://mail.guc.edu.eg/EWS/Exchange.asmx";
 export const EWS_OPS = ["GetFolder", "FindItem", "GetItem"] as const;
 export type EwsOp = (typeof EWS_OPS)[number];
 export const PAGE = 100, BODY_BATCH = 20, PREVIEW = 300;
+/** The most of one message's text Clem reads when the person (or the AI, for them) opens it. */
+export const FULL = 60_000;
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const envelope = (body: string) => `<?xml version="1.0" encoding="utf-8"?>
@@ -74,14 +76,15 @@ export function parseFind(xml: string): { items: EwsItem[]; last: boolean; next:
   return { items, last, next: Number.isFinite(next) ? next : NaN };
 }
 
-/** GetItem bodies → id → first 300 characters of the text, whitespace collapsed. */
-export function parseBodies(xml: string) {
+/** GetItem bodies → id → the text, whitespace collapsed, cut at `max` (a 300-character preview by default). */
+export function parseBodies(xml: string, max = PREVIEW) {
   const fault = ewsFault(xml);
   if (fault) throw new EwsError(fault);
   const $ = $x(xml), out = new Map<string, string>();
   $("*").filter((_, n) => /(^|:)(Message|Item|MeetingRequest|MeetingCancellation|MeetingResponse|PostItem)$/.test((n as { name?: string }).name || "")).each((_, el) => {
     const id = pick($, el, "ItemId").first().attr("Id"), body = pick($, el, "Body").first().text();
-    if (id) out.set(id, body.replace(/\s+/g, " ").trim().slice(0, PREVIEW));
+    // A preview is one line; the full text keeps its paragraphs.
+    if (id) out.set(id, max > PREVIEW ? body.replace(/\r\n?/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, max) : body.replace(/\s+/g, " ").trim().slice(0, max));
   });
   return out;
 }

@@ -234,3 +234,31 @@ test("end to end: a CLI's kinetra tool call over MCP reaches the GUC tools", asy
     assert.match(body.result.content[0].text, /CSEN 701[^]*Lecture 3\.pdf/);
   } finally { endpoint.close(); kinetraMcp.close(); await t.close(); }
 });
+
+test("save: a CMS file is saved only when asked (guc.save), once; reading never saves", async () => {
+  const t = await open();
+  try {
+    await t.run({ action: "guc.read", file: "900301" });
+    assert.equal((await t.engine.db.query("select * from file_objects")).length, 0, "guc.read saves nothing");
+    const saved = await t.run({ action: "guc.save", file: "900301" }) as string;
+    assert.match(saved, /^Saved Lecture 3\.pdf to their files \(under its subject\)/);
+    const rows = await t.engine.db.query<{ subject_id: string }>("select subject_id from file_objects");
+    assert.deepEqual(rows.map((r) => r.subject_id), ["subj-emb"], "only the file asked for, under the course's subject");
+    const before = t.binaries();
+    assert.match(await t.run({ action: "guc.save", file: "900301" }) as string, /^Already saved/);
+    assert.equal(t.binaries(), before, "saved and unchanged: not downloaded again");
+    assert.match(String((await t.run({ action: "guc.save", file: "deck1", drive: "Uni/CSEN 701" }) as { error: string }).error), /Google Drive isn't connected/, "Drive needs connecting; the file is still saved");
+  } finally { await t.close(); }
+});
+
+test("mail: the Inbox lists with previews (the baseline too) and one message opens in full", async () => {
+  const t = await open();
+  try {
+    const list = await t.run({ action: "guc.mail" }) as string;
+    assert.match(list, /Student Affairs: Welcome back[^\n]*— Classes start Saturday\./);
+    const id = /^- ([\w-]+) ·/m.exec(list)![1];
+    const one = await t.run({ action: "guc.mail", id }) as string;
+    assert.match(one, /^From: Student Affairs[^]*Subject: Welcome back[^]*\n\nClasses start Saturday\.$/);
+    assert.ok("error" in (await t.run({ action: "guc.mail", id: "nope" }) as object));
+  } finally { await t.close(); }
+});

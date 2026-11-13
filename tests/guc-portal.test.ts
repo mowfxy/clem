@@ -63,7 +63,8 @@ test("mail is read-only: only Get/Find requests can be built, the first read is 
   const client = new GucClient({ username: "s", password: "secret" }, guc.http, noWait);
   const first = await readMail(client, undefined);
   assert.equal(first.fresh.length, 0, "the first read is a baseline");
-  assert.equal(guc.log.filter((r) => r.url === EWS_URL).length, 1, "no bodies fetched on the baseline");
+  assert.equal(guc.log.filter((r) => r.url === EWS_URL).length, 2, "the baseline's messages are previewed once (not news)");
+  assert.equal(first.mail[0].preview, "first");
   inbox.push({ id: "AAMk2", subject: "Lab moved", from: "TA B", at: "2026-11-12T08:00:00Z", body: "Lab 3   moved\n to Thursday." });
   const second = await readMail(client, first.seen, first.mail);
   assert.deepEqual(second.fresh.map((m) => [m.subject, m.preview]), [["Lab moved", "Lab 3 moved to Thursday."]]);

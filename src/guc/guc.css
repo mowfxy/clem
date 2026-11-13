@@ -274,6 +274,10 @@ html:root[data-theme=light] :is(.guc-new li,.guc-link-pick :is(li,footer))>butto
 .guc-mail-head time{flex:none;font-variant-numeric:tabular-nums}
 .guc-mail strong{display:flex;align-items:center;gap:6px;font-size:var(--text-s);font-weight:500;color:var(--ink)}
 .guc-mail .is-unread strong{font-weight:650}
+.guc-mail-open{all:unset;display:grid;gap:3px;cursor:pointer;min-width:0}
+.guc-mail-open:focus-visible{outline:2px solid var(--ember);outline-offset:4px;border-radius:6px}
+.guc-mail-body{margin:8px 0 2px;font-size:13px;line-height:1.55;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;user-select:text}
+.guc-mail-body.is-loading,.guc-mail-body.is-error{color:var(--muted)}
 .guc-mail p{margin:0;font-size:12.5px;line-height:1.45;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .guc-mail>li.guc-mail-note{padding-top:14px}
 .guc-mail-note small{color:var(--muted);font-size:12px}

@@ -46,7 +46,7 @@ test("routine checks: any trigger the person describes, never a schedule that is
 
 test("the GUC pulse reads only what is due: mail and pages often, heavy pages rarely, slower at night", () => {
   const now = Date.UTC(2026, 10, 13, 10, 0);
-  assert.deepEqual(dueParts(undefined, now, 12), ["mail", "pages", "grades", "exams", "courses", "schedule", "transcript"], "everything the first time");
+  assert.deepEqual(dueParts(undefined, now, 12), ["mail", "pages", "catalog", "grades", "exams", "courses", "schedule", "transcript"], "everything the first time");
   const just = Object.fromEntries(Object.keys(PACE).map((p) => [p, now - 4 * 60_000]));
   assert.deepEqual(dueParts(just, now, 12), ["mail"], "four minutes on, only mail");
   assert.deepEqual(dueParts(just, now, 3), [], "at night the same gap is not enough");

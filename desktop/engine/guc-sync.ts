@@ -32,10 +32,11 @@ async function portalPage(client: GucClient, url: string, memo?: PageMemo): Prom
 
 /** The parts of GUC a sync reads. A pulse reads only the ones whose pace (PACE) has come round, so GUC is checked
  *  every few minutes in small bites instead of all at once every few hours. */
-export const PARTS = ["mail", "pages", "grades", "exams", "courses", "schedule", "transcript"] as const;
+export const PARTS = ["mail", "pages", "catalog", "grades", "exams", "courses", "schedule", "transcript"] as const;
 export type Part = (typeof PARTS)[number];
-/** Minutes between reads of each part, daytime (Cairo). At night (01:00–07:00) they are four times as far apart. */
-export const PACE: Record<Part, number> = { mail: 3, pages: 5, grades: 15, exams: 30, courses: 60, schedule: 180, transcript: 360 };
+/** Minutes between reads of each part, daytime (Cairo). At night (01:00–07:00) they are four times as far apart.
+ *  "pages" is linked courses; "catalog" is every current course (announcements and the file list, never the files). */
+export const PACE: Record<Part, number> = { mail: 3, pages: 5, catalog: 20, grades: 15, exams: 30, courses: 60, schedule: 180, transcript: 360 };
 /** The parts due at `now`, given when each was last read. */
 export function dueParts(lastRead: Record<string, number> | undefined, now: number, cairoHour: number): Part[] {
   const night = cairoHour >= 1 && cairoHour < 7 ? 4 : 1;
@@ -154,9 +155,15 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
 
   const linked = new Set(await linkedCourses(db, owner));
   const latestSeason = Math.max(0, ...next.courses.map((c) => c.seasonId));
-  // A pulse reads the linked courses' pages (conditionally: an unchanged page is one cheap request) when they are due.
-  const wanted = o.only || want("pages") ? next.courses.filter((c) => (o.only ? c.key === o.only : linked.has(c.key) || (o.initial && c.active && c.seasonId === latestSeason))) : [];
+  // A pulse reads the linked courses' pages (conditionally: an unchanged page is one cheap request) when they are due,
+  // and every current course's page at the catalog's slower pace, so each course's announcements and file list are
+  // there for the hub and the AI whether or not it is linked. Reading a page lists files; it never downloads them.
+  const current = (c: (typeof next.courses)[number]) => c.active && c.seasonId === latestSeason;
+  const all = !o.only && (o.initial || want("catalog"));
+  const wanted = o.only ? next.courses.filter((c) => c.key === o.only)
+    : next.courses.filter((c) => (want("pages") && linked.has(c.key)) || (all && current(c)));
   if (!o.only && want("pages")) readAt("pages");
+  if (all) readAt("catalog");
   let done = 0;
   await Promise.all(wanted.map(async (course) => {
     const url = urls.course(course.id, course.seasonId);

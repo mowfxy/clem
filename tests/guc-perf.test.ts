@@ -8,7 +8,7 @@ test("syncs and checks keep their request and statement budgets on a large CMS",
   const { out, plans } = await bench();
   assert.deepEqual(
     [out.initialSyncRequests, out.resyncRequests, out.firstCheckRequests, out.oneNewFileRequests, out.unchangedCheckRequests],
-    [11, 8, 169, 2, 1], "requests: initial sync (now with CheckGrade, exam seats and mail), unchanged re-sync (it posts back the transcript's older year once), first check (168 files + page), one new file, unchanged check");
+    [11, 10, 169, 2, 1], "requests: initial sync (now with CheckGrade, exam seats and mail), unchanged re-sync (every current course's page, and it posts back the transcript's older year once), first check (168 files + page), one new file, unchanged check");
   assert.equal(out.oneNewFileSaved, 1);
   assert.ok(Number(out.initialSyncStatements) <= 60, `initial sync wrote row by row (${out.initialSyncStatements} statements)`);
   assert.ok(Number(out.oneNewFileStatements) <= 60, `a changed page rewrote row by row (${out.oneNewFileStatements} statements)`);
