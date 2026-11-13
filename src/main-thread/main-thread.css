@@ -106,19 +106,36 @@ html:root body .home-pick .home-pick-chip:hover,html:root body .home-pick .home-
 .home-pick-input{display:block;width:100%;height:30px;margin:0 0 3px;padding:0 9px;border:0!important;border-radius:7px;background:color-mix(in srgb,var(--ink) 6%,transparent)!important;outline:none!important;color:var(--ink);font-size:var(--text-label)}
 .home-pick-none{margin:6px 8px;font-size:var(--text-label);color:var(--muted)}
 
-/* ---------- Home ⇄ main thread (src/main-thread/morph.ts): the box grows into the thread's, the thread rises in and
-   home's widgets recede; reversed on the way back. Names exist only while it runs. The composer's group carries the
-   glass's own backdrop-filter, so its blur is live throughout instead of a flat snapshot snapping in at the end. */
+/* ---------- Home ⇄ main thread (src/main-thread/morph.ts): the box glides into the thread's, the thread rises in and
+   home's widgets recede; reversed on the way back. Names exist only while it runs.
+   The glass is the group itself: while the box is in flight the composer's own surface is off (data-morph-surface=group)
+   and ::view-transition-group(clem-composer) paints the tint, sheen, rim, shadow and live backdrop blur at every size
+   between the two boxes. The snapshots then hold only the box's contents, kept at their own size (never stretched) and
+   handed over old-out-then-new-in so the two placeholders never sit on top of each other. When the glide ends the real
+   surface comes back (=live) while the transition is still up, so nothing changes on the frame it lets go. */
+:root{--mt-glide:.44s;--mt-glide-ease:cubic-bezier(.32,.72,0,1)}
 html[data-morph] body .composer{view-transition-name:clem-composer}
 html[data-morph] .new-chat-content{view-transition-name:clem-home}
 html[data-morph] .main-thread-list,html[data-morph] .main-thread-empty{view-transition-name:clem-thread}
-::view-transition-group(clem-composer){animation-duration:.32s;animation-timing-function:var(--ease-out);border-radius:22px;-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter)}
-::view-transition-old(clem-composer),::view-transition-new(clem-composer){height:100%;object-fit:fill;animation-duration:.32s;animation-timing-function:var(--ease-out)}
-::view-transition-old(root),::view-transition-new(root){animation-duration:.32s}
-:root[data-morph=in]::view-transition-old(clem-home){animation:mt-recede .24s var(--ease-out) both}
-:root[data-morph=in]::view-transition-new(clem-thread){animation:mt-rise .32s var(--ease-out) .04s both}
-:root[data-morph=out]::view-transition-old(clem-thread){animation:mt-sink .22s var(--ease-out) both}
-:root[data-morph=out]::view-transition-new(clem-home){animation:mt-return .32s var(--ease-out) .04s both}
+html:root[data-morph-surface] body form.composer{transition:none}
+/* Tint and shadow move to the group; the blur stays on the box, since the browser carries an element's backdrop-filter
+   onto its group itself (and the group's own blur below covers a browser that does not). */
+html:root[data-morph-surface=group] body form.composer{background:transparent;box-shadow:none}
+::view-transition-group(clem-composer){animation-duration:var(--mt-glide);animation-timing-function:var(--mt-glide-ease);border-radius:22px;overflow:clip}
+html[data-morph-surface=group]::view-transition-group(clem-composer){background:var(--glass-sheen),var(--glass-tint);box-shadow:var(--glass-rim),var(--glass-drop);-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter)}
+html[data-morph-surface=group][data-morph-focus]::view-transition-group(clem-composer){box-shadow:inset 0 1px 0 #ffffff4d,inset 0 0 0 1px #ffffff24,var(--glass-drop)}
+html[data-theme=light][data-morph-surface=group][data-morph-focus]::view-transition-group(clem-composer){box-shadow:inset 0 1px 0 #fff,0 0 0 1px #1b274029,var(--glass-drop)}
+::view-transition-old(clem-composer),::view-transition-new(clem-composer){inline-size:auto;block-size:auto;inset-block-start:50%;translate:0 -50%;object-fit:none}
+::view-transition-old(clem-composer){animation:mt-out .14s linear both}
+::view-transition-new(clem-composer){animation:mt-in .22s linear .12s both}
+/* The page around them crossfades a little longer than the glide, so the transition is still up when the surface returns. */
+::view-transition-old(root),::view-transition-new(root){animation-duration:calc(var(--mt-glide) + 60ms)}
+:root[data-morph=in]::view-transition-old(clem-home){animation:mt-recede .2s var(--ease-out) both}
+:root[data-morph=in]::view-transition-new(clem-thread){animation:mt-rise .36s var(--mt-glide-ease) .08s both}
+:root[data-morph=out]::view-transition-old(clem-thread){animation:mt-sink .2s var(--ease-out) both}
+:root[data-morph=out]::view-transition-new(clem-home){animation:mt-return .36s var(--mt-glide-ease) .08s both}
+@keyframes mt-out{to{opacity:0}}
+@keyframes mt-in{from{opacity:0}}
 @keyframes mt-recede{to{opacity:0;transform:translateY(14px) scale(.97)}}
 @keyframes mt-rise{from{opacity:0;transform:translateY(18px)}}
 @keyframes mt-sink{to{opacity:0;transform:translateY(18px)}}
