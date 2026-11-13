@@ -108,43 +108,47 @@ test("checks: suggested after lectures, next run in Cairo time, cron lines and t
 });
 
 const ctx = { linked: true, vps: false };
-test("setup asks only for the course (when unsure) and what to save", () => {
+test("setup asks only which course it is, and only when Clem can't tell", () => {
   let s = startSetup(0);
   const order: SetupStep[] = [];
   for (let step = nextStep(s, ctx); step; step = nextStep(s, ctx)) { order.push(step); s = answer(s, step, "answered", ctx); }
-  assert.deepEqual(order, ["link", "save"]);
+  assert.deepEqual(order, ["link"]);
   assert.equal(s.finished, true);
-  assert.equal(nextStep(startSetup(0, true), { linked: true, vps: true }), "save", "made from a course: already linked");
-  assert.equal(nextStep(answer(startSetup(0, true), "save", "answered", { linked: true, vps: true }), { linked: true, vps: true }), null, "no check, Drive or storage questions");
+  assert.equal(nextStep(startSetup(0, true), { linked: true, vps: true }), null, "made from a course: nothing to ask, not what to save, when to check, Drive or storage");
+  assert.equal(toPost(startSetup(0, true), { linked: true, vps: true }, []), "done", "only the line that says what Clem does");
+  // A thread an older Clem left waiting on "what to save" just closes.
+  assert.equal(toPost({ done: { link: "answered" }, started: 0 }, ctx, ["link", "save"]), "done");
   const skipped = answer(startSetup(0), "link", "skipped", { linked: false, vps: false });
   assert.equal(skipped.finished, true, "no course: nothing left to ask");
 });
 
 test("setup resumes after a restart and editing an earlier answer keeps its place", () => {
-  let s = answer(startSetup(0), "link", "answered", ctx);
-  assert.equal(toPost(s, ctx, ["link"]), "save", "the app closed before the next question went out");
-  assert.equal(toPost(s, ctx, ["link", "save"]), null, "already asked: wait for the answer");
-  s = answer(s, "save", "skipped", ctx);
+  assert.equal(toPost(startSetup(0), ctx, []), "link");
+  assert.equal(toPost(startSetup(0), ctx, ["link"]), null, "already asked: wait for the answer");
+  const s = answer(startSetup(0), "link", "answered", ctx);
+  assert.equal(toPost(s, ctx, ["link"]), "done", "the app closed before the closing line went out");
   const again = answer(s, "link", "answered", ctx);
   assert.deepEqual(again.done, s.done);
   assert.equal(nextStep(again, ctx), null, "changing the link later doesn't go back");
-  assert.equal(toPost(s, ctx, ["link", "save"]), "done");
-  assert.equal(toPost(s, ctx, ["link", "save", "done"]), null);
+  assert.equal(toPost(s, ctx, ["link", "done"]), null, "said once");
   // Old threads' cards still count as asked.
   assert.equal(stepOfCard(readCard('{"type":"save_rules","subjectId":"s1","setup":true}')!), "save");
   assert.equal(stepOfCard(readCard('{"type":"save_rules","subjectId":"s1"}')!), undefined, "a card outside setup asks nothing");
 });
 
-test("setup messages are plain chat text, one natural question, no cards", () => {
+test("setup messages are plain chat text, no cards, and never ask what to keep", () => {
   const info = { subjectId: "s1", subject: "Embedded", course: { key: "1201:64", code: "CSEN 701", name: "Embedded Systems Architecture" }, linked: false, sure: false, save: "Slides and assignments", check: "", first: true, choices: ["CSEN 702 Microprocessors"] };
   const link = setupMessage("link", info);
   assert.ok(link.startsWith("Is **Embedded** **CSEN 701** (Embedded Systems Architecture) on CMS?"), link);
   assert.ok(link.includes("CSEN 702 Microprocessors"));
   assert.ok(setupMessage("link", { ...info, course: undefined }).startsWith("Which CMS course is **Embedded**?"));
-  const save = setupMessage("save", { ...info, linked: true });
-  assert.ok(save.startsWith("**Embedded** is linked to **CSEN 701**"), save);
-  assert.ok(save.includes("What should I keep from it? Right now that's slides and assignments"));
-  assert.ok(setupMessage("save", { ...info, linked: true, lead: "I found it and linked it." }).startsWith("I found it and linked it. I watch it"));
+  assert.equal(setupMessage("save", { ...info, linked: true }), "", "not a question any more");
+  const done = setupMessage("done", { ...info, linked: true });
+  assert.ok(done.startsWith("**Embedded** is linked to **CSEN 701**"), done);
+  assert.ok(done.includes("I keep slides and assignments the moment they're posted"), done);
+  assert.ok(done.includes("for this course or for all of them"));
+  assert.ok(setupMessage("done", { ...info, linked: true, lead: "I found it and linked it." }).startsWith("I found it and linked it. I watch it"));
+  assert.match(setupMessage("done", { ...info, course: undefined }), /stays off CMS/);
   for (const step of ["link", "save", "done"] as const) assert.equal(cardsIn(setupMessage(step, info)).length, 0, step);
 });
 

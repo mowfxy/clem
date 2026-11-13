@@ -1,5 +1,6 @@
 // Snapshot diff → events. A course, the grades or the schedule seen for the first time is a baseline, not news.
 import { sameCode } from "./codes.ts";
+import { mailAbout } from "./mail-about.ts";
 import { DEADLINE_VERSION, dueText } from "./deadlines.ts";
 import { stableId } from "./parse.ts";
 import type { GucEvent, GucSnapshot } from "./types.ts";
@@ -10,7 +11,8 @@ const short = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1) + "…" 
 
 export const scheduleHash = (s: GucSnapshot) => stableId(s.slots.map((x) => [x.day, x.period, x.code, x.type, x.group, x.location].join("|")).sort().join("\n"));
 
-export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen, at = Date.now()): GucEvent[] {
+/** `username`: the GUC sign-in name, so a mail written to the student alone is told apart from one sent to everybody. */
+export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen, at = Date.now(), o: { username?: string } = {}): GucEvent[] {
   const events: GucEvent[] = [], known = new Set(seen.courses);
   const names = new Map(next.courses.map((c) => [c.key, c.code ? `${c.code} ${c.name}` : c.name]));
   const course = (key: string) => names.get(key) || "a course";
@@ -78,8 +80,11 @@ export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen, 
   }
   if (seen.mailIds) {
     const known = new Set(seen.mailIds);
-    for (const m of next.mail || []) if (!known.has(m.id))
-      events.push({ kind: "new_mail", key: "mail:" + m.id, title: `Email from ${m.from.replace(/\s*<[^>]+>$/, "")}: ${short(m.subject, 100)}`, detail: short(m.preview || "", 280) });
+    // A new mail is the student's news only when it names a course they take or was written to them (mail-about.ts).
+    // One sent to everybody is still an event (key "mail:all:…"), so a watch or routine they asked for can see it, but
+    // the organizer never tells it.
+    for (const m of next.mail || []) if (!known.has(m.id)) { const a = mailAbout(m, { courses: next.courses, username: o.username });
+      events.push({ kind: "new_mail", key: (a.about === "everyone" ? "mail:all:" : "mail:") + m.id, ...(a.about === "course" ? { courseKey: a.courseKey } : {}), title: `Email from ${m.from.replace(/\s*<[^>]+>$/, "")}: ${short(m.subject, 100)}`, detail: short(m.preview || "", 280) }); }
   }
 
   if (seen.schedule && next.slots.length) {

@@ -1,6 +1,7 @@
 /// <reference path="./httpntlm.d.ts" />
-// Talks to GUC over NTLM: one keep-alive agent per owner, at most 2 requests per host at a time, backoff on errors,
-// conditional requests, and typed failures. The password lives only in this object's closure while it runs.
+// Talks to GUC over NTLM: each sign-in exchange on a connection of its own, at most 2 requests per host at a time,
+// backoff on errors, conditional requests, and typed failures. The password lives only in this object's closure while
+// it runs.
 import httpntlm from "httpntlm";
 import { Agent } from "node:https";
 import { createHash } from "node:crypto";
@@ -13,11 +14,18 @@ export type Credentials = { username: string; password: string; domain?: string 
 /** One NTLM exchange. Swapped for a fake in tests. */
 export type Http = (request: HttpRequest, credentials: Credentials) => Promise<HttpResponse>;
 
-export function ntlmHttp(agent = new Agent({ keepAlive: true, maxSockets: 4 })): Http {
+/** NTLM signs in a connection, not a request: the two messages of one exchange must travel on the same socket. On an
+ *  agent shared by requests running side by side the second message can land on another request's socket, and GUC
+ *  answers that with 401, as if the password were wrong. So every exchange has a one-socket agent to itself. */
+export function ntlmHttp(): Http {
+  const idle: Agent[] = [];
   return (request, c) => new Promise((resolve, reject) => {
+    const agent = idle.pop() || new Agent({ keepAlive: true, maxSockets: 1 });
+    let settled = false;
+    const free = (ok: boolean) => { if (settled) return; settled = true; if (ok && idle.length < 4) idle.push(agent); else agent.destroy(); };
     const options = { url: request.url, username: c.username, password: c.password, domain: c.domain || "", workstation: "", agent, headers: request.headers, parameters: request.form, ...(request.body !== undefined ? { body: request.body } : {}), timeout: request.binary ? 120_000 : 30_000, binary: request.binary };
-    httpntlm.method(request.method.toLowerCase(), options, (error, res) => error ? reject(error)
-      : resolve(request.binary ? { status: res.statusCode, headers: res.headers || {}, body: "", bytes: new Uint8Array(res.body as unknown as Buffer) } : { status: res.statusCode, headers: res.headers || {}, body: res.body || "" }));
+    httpntlm.method(request.method.toLowerCase(), options, (error, res) => { free(!error); return error ? reject(error)
+      : resolve(request.binary ? { status: res.statusCode, headers: res.headers || {}, body: "", bytes: new Uint8Array(res.body as unknown as Buffer) } : { status: res.statusCode, headers: res.headers || {}, body: res.body || "" }); });
   });
 }
 

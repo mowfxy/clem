@@ -51,6 +51,8 @@ export const setupDoneCard = z.object({ type: z.literal('setup_done'), subjectId
  *  finishes (src/guc/setup.ts), through the same request a card's edit uses; then drawn as what changed. */
 export const settingsUpdateCard = z.object({
   type: z.literal('settings_update'), subjectId: text(80).optional(),
+  /** For every course: each linked subject changes, and subjects linked later start from it. */
+  everywhere: z.boolean().optional(),
   save: z.partialRecord(z.enum(['slides', 'assignments', 'sheets', 'videos', 'links', 'other']), z.boolean()).optional(),
   /** Kinds and filters together, through core/guc/rules.ts's strict schema. */
   rules: aiSaveRules.optional(),

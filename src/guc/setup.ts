@@ -1,15 +1,18 @@
-// The setup thread and the other ways GUC settings change from a chat (docs/GUC-VPS-ENGINE.md → Subject setup).
-// core/guc/setup-flow.ts decides; this posts Clem's questions into the subject's pinned "Setup" chat, applies answers
-// from cards and typed replies through the engine (src/guc/subject.ts), asks the AI only to read a reply the local
-// parser can't, applies the settings_update blocks a subject chat's AI writes, and posts new-semester courses in the
-// main thread, and shows what checks saved and found (the engine's inbox): saved files join the subject's Files and a
-// card goes into its Setup chat. App.tsx gives it the workspace through `SetupDeps`.
+// How GUC settings change from a chat (docs/GUC-VPS-ENGINE.md → Subject setup). Nothing here speaks first: no chat is
+// made, opened or written to unless the person asked. A subject that clearly matches a CMS course is linked without
+// a word (a toast says so); one Clem can't place is left alone, and its CMS tab offers the likeliest courses. What
+// Clem keeps from a course is what the person said for all their courses. The "Setup" chat exists only when the
+// person taps "Set up in a chat": there core/guc/setup-flow.ts asks which course it is and reads the typed reply
+// (the AI only for a reply the local parser can't read). This also applies the settings_update blocks a chat's AI
+// writes because the person asked, links a new term's courses to the subjects that are clearly theirs, and puts the
+// files checks saved into their subject's Files. News about a course is said once, by the organizer in the main
+// thread, never here. App.tsx gives it the workspace through `SetupDeps`.
 import { cardBlock, cardsIn } from "../../core/guc/cards";
 import type { HubCourse } from "../../core/guc/hub";
 import { matchCourse } from "../../core/guc/match";
 import { describeSaveRules } from "../../core/guc/rules";
 import { describeChecks } from "../../core/guc/schedule-rules";
-import type { InboxItem, NewCourse, SubjectView } from "../../core/guc/settings";
+import { ALL_SUBJECTS, type InboxItem, type NewCourse, type SubjectView } from "../../core/guc/settings";
 import type { ClemCard } from "../../core/guc/cards";
 import { NOT_UNDERSTOOD, interpretPrompt, readAiReply, readReply, setupMessage, startSetup, stepOfCard, toPost, answer as answerStep, updatePatch, updateSummary, type Reply, type SetupStep } from "../../core/guc/setup-flow";
 import { parseModelJson } from "../../core/model-json";
@@ -68,7 +71,7 @@ export function createSetup(deps: SetupDeps) {
 
   /** Posts the question the thread is missing (after an answer, on opening it, after a restart). A course that clearly
    *  matches the subject is linked without asking, so the one question left is what to save. */
-  async function postNext(subjectId: string, lead = ""): Promise<void> {
+  async function postNext(subjectId: string, lead = ""): Promise<SetupStep | "done" | undefined> {
     let v = await subjectView(subjectId, true);
     const st = v.settings.setup, chat = setupChatOf(deps.chats(), subjectId);
     if (!st || !chat) return;
@@ -86,13 +89,37 @@ export function createSetup(deps: SetupDeps) {
     }
     const course = v.course || guess?.best?.item;
     if (step === "link" && course) suggested.set(subjectId, course.key);
+    // "I found it and linked it." opens the closing note; "Got it." and the like stand before it.
+    const opens = step === "done" && /linked it\.$/.test(lead);
     const text = setupMessage(step, { subjectId, subject, course: course && { key: course.key, code: course.code, name: course.name }, linked: !!v.course, sure: guess?.sure, save: describeSaveRules(v.settings.save), check: "", first: !posted(chat).length, vpsFiles: !!v.vpsFiles,
-      choices: free.filter((c) => c.key !== course?.key).map((c) => `${c.code} ${c.name}`.trim()), ...(step === "save" && lead ? { lead } : {}) });
-    say(chat.id, step === "save" && lead ? text : (lead ? lead + "\n\n" : "") + text, step);
+      choices: free.filter((c) => c.key !== course?.key).map((c) => `${c.code} ${c.name}`.trim()), ...(opens ? { lead } : {}) });
+    say(chat.id, opens || !lead ? text : lead + text, step);
+    return step;
   }
 
-  /** Opens the subject's setup thread, starting it the first time (linked to `courseKey` when made from a course). */
-  function begin(subjectId: string, o: { courseKey?: string } = {}) {
+  /** Links a subject to its CMS course without a word: to `courseKey` when it was made from a course, else to the
+   *  course it clearly is. No chat is made and nothing is asked; when Clem can't tell, the subject stays unlinked and
+   *  its CMS tab offers the likeliest courses. A toast says what was linked. */
+  async function linkQuietly(subjectId: string, courseKey?: string) {
+    let v = await subjectView(subjectId, true);
+    const was = v.course?.key;
+    if (courseKey && was !== courseKey) v = await linkSubject(subjectId, { key: courseKey });
+    if (!v.course) {
+      const space = deps.spaces().find((s) => s.id === subjectId);
+      const free = (await courses()).filter((c) => c.active && (!c.subjectId || c.subjectId === subjectId));
+      const guess = space ? matchCourse({ name: space.name, description: space.description }, free) : undefined;
+      if (guess?.best && guess.sure) v = await linkSubject(subjectId, { key: guess.best.item.key });
+    }
+    if (!v.course) return;
+    if (!v.settings.setup?.finished) await editSubject(subjectId, { setup: startSetup(Date.now(), true) });
+    if (v.course.key !== was) deps.toast(`Linked to ${v.course.code} on CMS. Clem is watching it.`);
+  }
+
+  /** `quiet` (a new subject, a course set up from a card, a link made on the subject's page): the subject is linked
+   *  when Clem is sure, and that is all. Otherwise the person tapped "Set up in a chat": its Setup chat opens and
+   *  asks which course it is. */
+  function begin(subjectId: string, o: { courseKey?: string; quiet?: boolean } = {}) {
+    if (o.quiet) return serial(subjectId, () => linkQuietly(subjectId, o.courseKey)).catch((e) => deps.toast(clean(e) || "That course couldn't be linked. Try again."));
     const chatId = ensureChat(subjectId);
     deps.openChat(chatId, subjectId);
     return serial(subjectId, async () => {
@@ -127,7 +154,8 @@ export function createSetup(deps: SetupDeps) {
       await postNext(subjectId, lead);
       return false;
     });
-    if (first) await begin(subjectId);
+    // Linked from the subject's own page: it stays where the person is, and nothing is posted anywhere.
+    if (first) await begin(subjectId, { quiet: true });
   }
 
   /** A message typed in a setup thread while it waits on a question. False once setup is done (the AI answers). */
@@ -158,14 +186,19 @@ export function createSetup(deps: SetupDeps) {
   async function applyUpdates(content: string, spaceId: string | null) {
     for (const card of cardsIn(content)) {
       if (card.type !== "settings_update") continue;
-      const subjectId = card.subjectId || spaceId;
-      if (!subjectId || !deps.spaces().some((s) => s.id === subjectId && s.kind === "subject")) continue;
+      const subjectId = card.everywhere ? ALL_SUBJECTS : card.subjectId || spaceId;
+      if (!subjectId || (!card.everywhere && !deps.spaces().some((s) => s.id === subjectId && s.kind === "subject"))) continue;
       try {
         const v = await subjectView(subjectId);
+        if (card.everywhere) {
+          // For every course: what to keep and the Drive copy; each linked subject's cards then read it fresh.
+          const { save, drive } = updatePatch(card, { save: v.settings.save });
+          if (save || drive) { await editSubject(ALL_SUBJECTS, { ...(save ? { save } : {}), ...(drive ? { drive } : {}) }); void gucCache.revalidateAll(); }
+          deps.toast(updateSummary(card) + ".");
+          continue;
+        }
         const patch = updatePatch(card, { save: v.settings.save, ...scheduleContext(v) });
         if (Object.keys(patch).length) await editSubject(subjectId, patch);
-        // The answer to setup's question, given in the AI's words: setup moves on.
-        if (patch.save && pendingStep(await subjectView(subjectId, true)) === "save") await answer(subjectId, "save", { kind: "confirm" });
         if (card.unlink) await unlinkSubject(subjectId);
         if (card.checkNow) void checkSubjectNow(subjectId).catch(() => {});
         deps.toast(updateSummary(card) + ".");
@@ -181,32 +214,41 @@ export function createSetup(deps: SetupDeps) {
     try { v = await subjectView(space.id); } catch { return ""; }
     if (!v.course && !v.settings.setup) return "";
     const s = v.settings;
-    const asking = pendingStep(v) === "save" ? `
-Clem just asked what to save from CMS for this subject. If the user's message answers it (in any words), reply in one short natural sentence saying what you'll keep and end with the settings_update block using "saveText" (their words). If they ask something else, answer that and remind them in one line that you still need to know what to save.` : "";
-    return `GUC: ${v.course ? `this subject is linked to the CMS course ${v.course.code} (${v.course.name}). Clem saves ${describeSaveRules(s.save).toLowerCase()}, as soon as new files are posted (it looks every few minutes); scheduled checks: ${describeChecks(s.check)} (Africa/Cairo); Drive copy ${s.drive.enabled ? "on" : "off"}.` : "this subject has no CMS course linked."}${asking}
-When the user asks to change one of these (e.g. "stop saving videos", "check every day at 9pm", "unlink CMS", "check now"), change it by ending your answer with one block, giving only what changes, and say in one short sentence what you changed:
+    return `GUC: ${v.course ? `this subject is linked to the CMS course ${v.course.code} (${v.course.name}). Clem saves ${describeSaveRules(s.save).toLowerCase()}, as soon as new files are posted (it looks every few minutes); Drive copy ${s.drive.enabled ? "on" : "off"}.` : "this subject has no CMS course linked."}
+Never ask the user what to save, when to check or where files go: Clem already has defaults and they can change them whenever they like. When the user asks to change one of these (e.g. "stop saving videos", "unlink CMS", "check now"), change it by ending your answer with one block, giving only what changes, and say in one short sentence what you changed:
 \`\`\`clem-card
 {"type":"settings_update","save":{"videos":false}}
 \`\`\`
-Fields: "saveText": the user's own words about what to save (Clem reads them, e.g. "only PDFs from week 3"); "checkText": their own words about when to check (e.g. "every 2 hours on weekdays 8am-10pm"; GUC weekdays are Sat-Thu); "save": {"slides"|"assignments"|"sheets"|"videos"|"links"|"other": true|false}; "check": {"mode":"after_lectures"|"custom"|"off","times":[{"day":0-6 (0 is Sunday),"time":"HH:MM"}]}; "drive": {"enabled": true|false}; "unlink": true; "checkNow": true. Never write it unless the user asked for that change.`;
+Fields: "saveText": the user's own words about what to save (Clem reads them, e.g. "only PDFs from week 3"); "checkText": their own words about when to check (e.g. "every 2 hours on weekdays 8am-10pm"; GUC weekdays are Sat-Thu); "save": {"slides"|"assignments"|"sheets"|"videos"|"links"|"other": true|false}; "check": {"mode":"after_lectures"|"custom"|"off","times":[{"day":0-6 (0 is Sunday),"time":"HH:MM"}]}; "drive": {"enabled": true|false}; "unlink": true; "checkNow": true; "everywhere": true when they mean all their courses, not just this one (only what to save and the Drive copy). Never write it unless the user asked for that change.`;
   }
 
-  /** Courses of a new term that no subject has: one card in the main thread, each with Set up. */
+  /** Courses of a new term that no subject has: a subject that is clearly one of them is linked, quietly. Nothing is
+   *  posted and nothing is offered; the rest wait in the hub's CMS tab, or for the person to ask. */
   let posting = false;
-  async function postNewCourses(mainId: string | undefined) {
-    if (!mainId || posting) return;
+  async function linkNewCourses() {
+    if (posting) return;
     posting = true;
     try {
       const found = await gucAsk<NewCourse[]>({ action: "gucNewCourses" });
       if (!found.length) return;
       const shown = found.slice(0, 20);
-      say(mainId, `${shown.length === 1 ? "A new course is" : `${shown.length} new courses are`} on CMS this semester. Want me to set ${shown.length === 1 ? "it" : "them"} up?\n\n` + cardBlock({ type: "new_courses", courses: shown.map(({ key, code, name }) => ({ key, code, name })) }));
+      // A subject that is clearly one of them (and has no course yet) is linked now, without a question.
+      const all = await courses().catch(() => [] as HubCourse[]), taken = new Set(all.filter((c) => c.subjectId).map((c) => c.subjectId)), linked: string[] = [];
+      for (const space of deps.spaces().filter((s) => s.kind === "subject" && !taken.has(s.id))) {
+        const m = matchCourse({ name: space.name, description: space.description }, shown.filter((c) => !linked.includes(c.key)));
+        if (!m.best || !m.sure) continue;
+        const c = m.best.item;
+        try { await linkSubject(space.id, { key: c.key }); linked.push(c.key); if (!(await subjectView(space.id)).settings.setup) await editSubject(space.id, { setup: { ...startSetup(Date.now(), true), finished: true } }); } catch { /* offered below instead */ }
+      }
+      const names = shown.filter((c) => linked.includes(c.key)).map((c) => c.code);
+      if (names.length) deps.toast(`Linked ${names.join(", ")} on CMS to the subject${names.length === 1 ? "" : "s"} you already have.`);
       await gucAsk({ action: "gucAckNewCourses", keys: shown.map((c) => c.key) });
     } catch { /* not connected, or nothing new */ } finally { posting = false; }
   }
 
-  /** What checks saved and found since last time: files into the subject's Files (once each, by material), and one
-   *  message per subject in its Setup chat with a file_saved card and a card per piece of news. Then acknowledged. */
+  /** What checks saved since last time: the files join their subject's Files (once each, by material). Nothing is
+   *  written into any chat: news about a course (an announcement, a grade, a deadline, files that were saved) is said
+   *  once, by the organizer in the main thread. Then acknowledged. */
   let inboxing = false;
   async function applyInbox() {
     if (inboxing) return;
@@ -221,19 +263,6 @@ Fields: "saveText": the user's own words about what to save (Clem reads them, e.
         add.push({ id: "guc_" + i.file.id, name: i.file.name, size: i.file.size, type: i.file.type, created: i.at || Date.now(), spaceId: i.subjectId, folderId: null });
       }
       if (add.length) deps.addFiles(add);
-      for (const subjectId of new Set(items.map((i) => i.subjectId))) {
-        if (!subjects.has(subjectId)) continue;
-        const mine = items.filter((i) => i.subjectId === subjectId), files = mine.filter((i) => i.file), news = mine.filter((i) => !i.file).slice(-10);
-        // Files keep their card (open, preview, summarize); news is written out in full as ordinary chat text.
-        const card: ClemCard | null = files.length ? { type: "file_saved", subjectId, files: files.slice(0, 50).map((i) => ({ id: i.file!.id, name: i.file!.name, size: i.file!.size, type: i.file!.type, ...(i.file!.week ? { week: i.file!.week } : {}) })), ...(files.length > 50 ? { more: files.length - 50 } : {}) } : null;
-        const said = news.map((i) => i.kind === "new_announcement" ? `**${i.title}**\n\n${i.detail.split("\n").map((l) => "> " + l).join("\n")}`
-          : `**${i.title}**${i.detail ? "\n" + i.detail : ""}`);
-        const lead = files.length ? `Saved ${files.length} new file${files.length === 1 ? "" : "s"} from CMS.` : "";
-        let block = "";
-        try { block = card ? cardBlock(card) : ""; } catch { block = ""; }
-        const parts = [...said, lead, block].filter(Boolean);
-        if (parts.length) say(ensureChat(subjectId), parts.join("\n\n"));
-      }
       await gucAsk({ action: "gucAckInbox", keys: items.map((i) => i.key) });
     } catch { /* not connected, or the window closed mid-way: picked up next time */ } finally { inboxing = false; }
   }
@@ -244,11 +273,12 @@ Fields: "saveText": the user's own words about what to save (Clem reads them, e.
     deps.addSpace(space);
     // The subject whose card offered this goes on without a course.
     if (from) void answer(from, "link", { kind: "skip" }).catch(() => {});
-    void begin(space.id, { courseKey: course.key });
+    // Nothing to ask (the course is known), so nothing opens: the card shows it linked, and a line says so.
+    void begin(space.id, { courseKey: course.key, quiet: true });
     return space.id;
   }
 
-  return { begin, resume, answer, reply, applyUpdates, note, postNewCourses, applyInbox, createFromCourse };
+  return { begin, resume, answer, reply, applyUpdates, note, linkNewCourses, applyInbox, createFromCourse };
 }
 export type Setup = ReturnType<typeof createSetup>;
 

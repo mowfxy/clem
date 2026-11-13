@@ -2,7 +2,7 @@
 // read, and the new courses a sync found. Every query filters on owner_id.
 import { normCode, sameCode } from "../../core/guc/codes.ts";
 import { defaultCheckSchedule, nextCheck } from "../../core/guc/schedule-rules.ts";
-import { mergeSettings, type InboxItem, type NewCourse, type SettingsPatch, type SubjectLink, type SubjectSettings, type SubjectView } from "../../core/guc/settings.ts";
+import { ALL_SUBJECTS, mergeSettings, type InboxItem, type NewCourse, type SettingsPatch, type SubjectLink, type SubjectSettings, type SubjectView } from "../../core/guc/settings.ts";
 import type { GucSlot } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
 import { GucError } from "./errors.ts";
@@ -31,9 +31,17 @@ export async function unlink(db: Db, owner: string, subjectId: string) {
   return (await db.query("delete from subject_links where owner_id = $1 and subject_id = $2 returning course_key", [owner, subjectId])).length > 0;
 }
 
+/** What a subject with no settings of its own starts from: what the person said for all their courses, else what they
+ *  answered the last time a setup asked (before Clem stopped asking per subject). Only what to keep and the Drive copy. */
+export async function defaults(db: Db, owner: string): Promise<Partial<SubjectSettings> | undefined> {
+  const [row] = await db.query<{ settings: Partial<SubjectSettings> }>(`select settings from subject_settings
+    where owner_id = $1 and (subject_id = $2 or settings->'setup'->'done'->>'save' = 'answered')
+    order by (subject_id = $2) desc, (settings->'setup'->>'started')::numeric desc nulls last limit 1`, [owner, ALL_SUBJECTS]);
+  return row ? { ...(row.settings.save ? { save: row.settings.save } : {}), drive: { enabled: !!row.settings.drive?.enabled } } : undefined;
+}
 export async function settings(db: Db, owner: string, subjectId: string): Promise<SubjectSettings> {
   const [row] = await db.query<{ settings: Partial<SubjectSettings> }>("select settings from subject_settings where owner_id = $1 and subject_id = $2", [owner, subjectId]);
-  return mergeSettings(row?.settings, {});
+  return mergeSettings(row?.settings || await defaults(db, owner), {});
 }
 export async function saveSettings(db: Db, owner: string, subjectId: string, patch: SettingsPatch) {
   return db.tx(async (t) => {

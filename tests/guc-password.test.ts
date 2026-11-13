@@ -6,6 +6,7 @@ import { cairoAt, DEFAULT_PRO } from "../core/proactivity/settings.ts";
 import { cardMessage } from "../core/telegram/render.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { fakeGuc, host, noWait, site } from "./guc-fake.ts";
+import { urls } from "../core/guc/parse.ts";
 
 // Sunday 15 November 2026, Cairo; quiet hours 23:00–07:30 by default.
 const T = (day: string, hm: string) => cairoAt(day, hm);
@@ -88,5 +89,46 @@ test("engine: retry once, then password_needed: jobs paused, nothing wiped, told
     assert.deepEqual((h.store.get("guc-owner-pw") as any).password, "new-secret", "kept in the Vault");
     clock.t = T("2026-11-17", "10:00"); await engine.organizer.tick();
     assert.equal(told().length, 2, "no reminder once it works");
+  } finally { await engine.close(); }
+});
+
+test("engine: a sign-in refused past the home page is that page's trouble, never a password notice", async () => {
+  const guc = fakeGuc(site()), h = host(), broken = { on: false };
+  const http: typeof guc.http = async (r, c) => (broken.on && r.url !== urls.home ? { status: 401, headers: {}, body: "" } : guc.http(r, c));
+  const engine = await Engine.open("owner-pw-false", h, { http, sleep: noWait, memory: true });
+  try {
+    await engine.connect("student.name", "secret");
+    broken.on = true;
+    await assert.rejects(engine.sync(), (e: Error) => e.message !== PASSWORD_SAID);
+    const status = await engine.status();
+    assert.equal(status.passwordNeeded, undefined, "the home page took the password: not flagged");
+    assert.notEqual(status.error?.kind, "auth");
+    assert.ok(!h.notices.includes(PASSWORD_SAID), "nobody is asked for a new password");
+    assert.equal((await engine.organizer.inbox()).posts.filter((p) => p.content.includes("guc_password")).length, 0);
+    broken.on = false;
+    assert.equal((await engine.sync()).error, undefined, "and the next sync is fine");
+  } finally { await engine.close(); }
+});
+
+test("engine: a flag that turns out false clears by itself: the saved password is tried again, quietly", async () => {
+  const pw = { password: "secret" }, guc = fakeGuc(site(), pw), h = host();
+  const engine = await Engine.open("owner-pw-heal", h, { http: guc.http, sleep: noWait, memory: true });
+  const jobs = (engine as any).jobs, schedules = async () => (await jobs.schedules()).filter((s: any) => s.name === "guc.sync").length;
+  try {
+    await engine.connect("student.name", "secret");
+    pw.password = "hiccup";
+    await assert.rejects(engine.sync());
+    assert.equal((await engine.status()).passwordNeeded, true);
+    guc.log.length = 0;
+    assert.equal(await engine.recheckPassword(), false, "still refused: still paused");
+    assert.equal(guc.log.length, 1, "one request, no more");
+    assert.equal((await engine.status()).passwordNeeded, true);
+    pw.password = "secret";
+    assert.equal(await engine.recheckPassword(), true);
+    await engine.catchUp;
+    const status = await engine.status();
+    assert.equal(status.passwordNeeded, undefined); assert.equal(status.error, undefined);
+    assert.equal(await schedules(), 1, "the sync is back on");
+    assert.equal(await engine.recheckPassword(), false, "nothing to do once it works");
   } finally { await engine.close(); }
 });

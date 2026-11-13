@@ -13,3 +13,9 @@ export const withCode = (text: string) => (text || "").replace(CODE, (_, a: stri
 /** For comparing: "CSEN701", or the text itself (lowercased, no spaces) when it holds no code. */
 export const codeKey = (text: string) => normCode(text).replace(" ", "") || (text || "").replace(/\s+/g, "").toLowerCase();
 export const sameCode = (a: string, b: string) => !!a && !!b && codeKey(a) === codeKey(b);
+/** Every course code in `text`, canonical and once each ("CSEN 301", "MATH 301"). */
+export function codesIn(text: string) {
+  const out = new Set<string>();
+  for (const m of (text || "").matchAll(new RegExp(CODE.source, "g"))) out.add(`${m[1].toUpperCase()} ${m[2].toUpperCase()}`);
+  return [...out];
+}

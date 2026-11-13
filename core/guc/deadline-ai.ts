@@ -55,12 +55,12 @@ export function readerPrompt(i: ReaderInput) {
   const system = `You keep a GUC student's deadlines for one course, reading its new CMS posts. Times are Cairo (${TZ}). Answer with JSON only, no prose.
 A deadline is something the student must hand in, sit or attend for marks: quizzes, assignments and submissions, in-class assignments and evaluations, lab reports, projects and milestones, presentations, midterms and finals. Not lectures, office hours or general news.
 - Resolve every date with the calendar and the student's classes below. "During the second tutorial of the week starting Saturday 7 November" is that week's second tutorial of THEIR schedule: its date and its start time. "In your lab" is their lab slot. When the post gives a time ("3:30-5:15"), use the start; GUC classes run 08:15–22:30, so 3:30 means 15:30.
-- A date with no year is in the current academic year. A weekday that doesn't match the date means the text is left over from an earlier year: skip it.
+- A date with no year is in the current academic year. A weekday that doesn't match the date ("Tuesday November 18th" when the 18th is a Wednesday) is a slip in the post: use the earlier of the two days and say so in "doubt" (one short sentence).
 - Skip anything already past by more than a day, and anything you can't date.
 - Name each one shortly and specifically: "Quiz 2", "Assignment 3", "In-class assignment 3", "Lab 4 report", "Project milestone 2", "Midterm". Never a sentence.
 - If a post moves or corrects a tracked deadline, return it with that id and the new date. If a post cancels one, list its id in "cancel". Don't repeat a tracked deadline that nothing changed.
 - "quote" is the post's own words that say it (under 200 characters).
-Reply: {"deadlines":[{"id":"<tracked id, only when it is one>","title":"Quiz 2","due":"YYYY-MM-DD HH:MM","timeKnown":true|false,"from":"<text id>","quote":"..."}],"cancel":["<tracked id>"]}. With nothing new: {"deadlines":[],"cancel":[]}.`;
+Reply: {"deadlines":[{"id":"<tracked id, only when it is one>","title":"Quiz 2","due":"YYYY-MM-DD HH:MM","timeKnown":true|false,"from":"<text id>","quote":"...","doubt":"<only when the post contradicts itself>"}],"cancel":["<tracked id>"]}. With nothing new: {"deadlines":[],"cancel":[]}.`;
   const user = `Today: ${dayName(today)} ${today}.
 Course: ${i.course.code} ${i.course.name}.
 GUC weeks (Saturday to Thursday):
@@ -82,6 +82,7 @@ const item = z.object({
     timeKnown: z.boolean().optional(),
     from: z.string().max(40).optional().nullable(),
     quote: z.string().max(1000).optional().nullable(),
+    doubt: z.string().max(300).optional().nullable(),
   }).passthrough();
 const reply = z.object({ deadlines: z.array(z.unknown()).max(40), cancel: z.array(z.string().max(40)).max(40).optional() }).passthrough();
 
@@ -106,7 +107,8 @@ export function applyReader(json: unknown, i: ReaderInput): GucDeadline[] | null
     const was = d.id ? byId.get(d.id) : undefined;
     const id = was?.id || stableId(i.course.key + "|n|" + title.toLowerCase());
     const from = d.from ? texts.get(d.from) : undefined;
-    const note = (d.quote || "").trim() || from?.text.slice(0, 200) || was?.note;
+    const doubt = (d.doubt || "").trim().slice(0, 120);
+    const said = (d.quote || "").trim() || from?.text.slice(0, 200) || was?.note, note = said && doubt ? said.slice(0, 150) + " " + doubt : said || doubt || undefined;
     byId.set(id, { id, courseKey: i.course.key, title, due: new Date(due).toISOString(), source: from?.source || was?.source || "announcement", ...(note ? { note: note.slice(0, 280) } : {}) });
   }
   return [...byId.values()].sort((a, b) => a.due.localeCompare(b.due));
