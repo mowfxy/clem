@@ -257,18 +257,12 @@ export function transcriptYears(html: string) {
   return undefined;
 }
 
-/** How many semester tables a transcript year shows (none: a year before the student started). */
-export function transcriptSemesters(html: string) {
-  const $ = cheerio.load(html);
-  return $("table").toArray().filter((t) => /\b(winter|spring|summer|fall|makeup|round)\b/i.test(oneLine($(t).find("tr").first().text()))).length;
-}
-
 /** The study year (its first calendar year) that `now` falls in; GUC's year starts in September. */
 export const studyYear = (now: Date) => now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
 type YearOption = { value: string; text: string };
 /** The transcript year to read next. GUC lets the transcript load only once a minute and shows one study year per load,
- *  so a sync reads one year: past years Clem hasn't read yet first (newest first, stopping at `end`, the first year
- *  with no semesters), then whichever of this year and last year was read longer ago. `more`: past years still unread. */
+ *  so a sync reads one year: past years Clem hasn't read yet first (newest first, stopping at `end`, the first past
+ *  year with no grades), then whichever of this year and last year was read longer ago. `more`: past years still unread. */
 export function nextTranscriptYear(options: YearOption[], state: { at: Record<string, number>; end?: string } | undefined, now: Date) {
   const start = (text: string) => Number(/20\d{2}/.exec(text)?.[0]);
   const current = studyYear(now), endAt = state?.end ? start(state.end) : -Infinity;

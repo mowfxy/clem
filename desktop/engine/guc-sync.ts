@@ -2,7 +2,7 @@
 // the first sync, for announcements). Unchanged pages are skipped; changes become rows, a snapshot and events.
 import { diffSnapshots, newCourses, type Seen } from "../../core/guc/diff.ts";
 import { extractDeadlines } from "../../core/guc/deadlines.ts";
-import { courseworkOptions, formFields, nextTranscriptYear, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, studyYear, transcriptSemesters, transcriptYears, urls } from "../../core/guc/parse.ts";
+import { courseworkOptions, formFields, nextTranscriptYear, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, studyYear, transcriptYears, urls } from "../../core/guc/parse.ts";
 import { readMail } from "./guc-mail.ts";
 import { emptySnapshot, type GucEvent, type GucProgress, type GucSnapshot, type GucSyncStats } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
@@ -127,8 +127,9 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
       if (page.unavailable) return undefined;
       const grades = parseTranscript(page.body, year.text);
       const state: NonNullable<Seen["transcript"]> = { at: { ...seen.transcript?.at, [year.text]: Date.now() }, ...(seen.transcript?.end ? { end: seen.transcript.end } : {}) };
-      // A past year with no semesters at all is before the student started: no older year is read.
-      if (!transcriptSemesters(page.body) && Number(/20\d{2}/.exec(year.text)?.[0]) < studyYear(now)) { state.end = year.text; transcriptMore = false; }
+      // A past year with no grades is before the student started (GUC still shows it empty semester tables): no older
+      // year is read.
+      if (!grades.length && Number(/20\d{2}/.exec(year.text)?.[0]) < studyYear(now)) { state.end = year.text; transcriptMore = false; }
       else transcriptMore = pick.more;
       seen.transcript = state;
       const before = sameJson(next.grades);
