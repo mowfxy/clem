@@ -7,10 +7,10 @@ import { busyList, clashText, dayLabel, type Busy } from "./calendar.ts";
 import type { Slot, Timed } from "./rules.ts";
 import { proPatch, type ProSettings, type StudyPrefs } from "./settings.ts";
 
-export const CLEM_ACTIONS = ["clem.calendar", "clem.remind", "clem.reminders", "clem.unremind", "clem.study", "clem.prefs"] as const;
+export const CLEM_ACTIONS = ["clem.calendar", "clem.remind", "clem.reminders", "clem.unremind", "clem.study", "clem.prefs", "clem.routine", "clem.routines", "clem.unroutine", "clem.run_routine"] as const;
 export type ClemAction = (typeof CLEM_ACTIONS)[number];
 /** Names a model may guess, read as the action they mean. */
-const ALIASES: Record<string, ClemAction> = { "clem.agenda": "clem.calendar", "clem.schedule": "clem.calendar", "clem.reminder": "clem.remind", "clem.cancel_reminder": "clem.unremind", "clem.plan_study": "clem.study", "clem.preferences": "clem.prefs" };
+const ALIASES: Record<string, ClemAction> = { "clem.agenda": "clem.calendar", "clem.schedule": "clem.calendar", "clem.reminder": "clem.remind", "clem.cancel_reminder": "clem.unremind", "clem.plan_study": "clem.study", "clem.preferences": "clem.prefs", "clem.automation": "clem.routine", "clem.webhook": "clem.routine", "clem.list_routines": "clem.routines", "clem.stop_routine": "clem.unroutine" };
 export function clemAction(action: unknown): ClemAction | null {
   const a = String(action || "");
   return (CLEM_ACTIONS as readonly string[]).includes(a) ? (a as ClemAction) : ALIASES[a] || null;
@@ -27,6 +27,11 @@ export const clemArgs = {
   "clem.study": z.object({ subject, sessions: z.number().int().min(1).max(30), minutes: z.number().int().min(15).max(240).optional(), until: ymd, title: z.string().trim().min(2).max(120).optional() }),
   // Everything the person can tell Clem about how it runs: how much it speaks, quiet hours, its routines, study time.
   "clem.prefs": proPatch.omit({ deadlineHours: true }).refine((p) => Object.values(p).some((v) => v !== undefined), "says nothing to change"),
+  // Checked in full by the organizer (core/proactivity/routines.ts), which says exactly what was wrong.
+  "clem.routine": z.object({ title: z.string() }).passthrough(),
+  "clem.routines": z.object({}),
+  "clem.unroutine": z.object({ id: z.string().regex(/^rt[\w-]{4,40}$/) }),
+  "clem.run_routine": z.object({ id: z.string().regex(/^rt[\w-]{4,40}$/) }),
 } satisfies Record<ClemAction, z.ZodType>;
 
 /** A request's fields for `action`, checked (numbers sent as text are read); an error says what was wrong in one line. */

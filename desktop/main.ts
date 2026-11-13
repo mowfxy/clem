@@ -82,6 +82,9 @@ import { runGucTool, runTelegramTool } from './engine/ai-tools';
 import { ANSWER_MS } from './engine/telegram';
 import { TG_FILE_LIMIT } from '../core/telegram/pairing';
 import { isGucAction } from '../core/guc/ai-tools';
+import { serveHooks } from './engine/hooks';
+/** Routines' webhooks on this PC (desktop/engine/hooks.ts). */
+const HOOK_PORT = Number(process.env.CLEM_HOOK_PORT || 7718);
 import { isClemAction } from '../core/proactivity/tools';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
@@ -1243,6 +1246,7 @@ void app.whenReady().then(async () => {
     fileStore: () => { const m = vpsManagers.get(owner); return m && vpsModes.get(owner) === "vps" ? m.vpsStore() : undefined; },
     fileStores: () => { const s = vpsManagers.get(owner)?.vpsStore(); return s ? { vps: s } : {}; },
     vps: () => (vpsSet.get(owner) ? { files: vpsModes.get(owner) === "vps" } : undefined),
+    hookBase: () => "http://127.0.0.1:" + HOOK_PORT,
   });
   const rawEngineFor = (owner: string) => {
     let engine = engines.get(owner);
@@ -1318,6 +1322,14 @@ void app.whenReady().then(async () => {
   // Scheduled GUC syncs run while Clem is open (in the tray too), so the engine starts with a connected account.
   // The organizer runs for every signed-in owner, GUC or not, so its sweeps and reminders work with Clem in the tray.
   void authReady.then(async () => { const user = await auth.user(false); if (user) await engineFor(user.id); }).catch(() => {});
+  // Routines' webhooks on this PC (desktop/engine/hooks.ts), for the person's local scripts and tools: 127.0.0.1 only.
+  // With a VPS running the jobs, the call goes on to the worker (organizer.hook is an RPC method).
+  void serveHooks({ port: HOOK_PORT, host: "127.0.0.1", log: (m) => console.warn(m), target: async () => {
+    const user = await auth.user(false).catch(() => null);
+    if (!user) return undefined;
+    const o = (await engineFor(user.id)).organizer;
+    return (id, key, payload) => o.hook(id, key, payload);
+  } }).catch((e) => console.warn("[hooks] off: " + (e as Error).message));
   const reminderTick = () => void auth.user(false).then((user) => user && reminders.tick(user.id)).catch((error) => console.warn("[reminders]", (error as Error)?.message));
   setTimeout(reminderTick, 90_000).unref();
   setInterval(reminderTick, 5 * 60_000).unref();
@@ -1592,6 +1604,8 @@ void app.whenReady().then(async () => {
       if (request.action === "proPoke") return o.poke(request.reason);
       if (request.action === "proWatches") return o.watches();
       if (request.action === "proStopWatch") return o.stopWatch(request.id);
+      if (request.action === "proStopRoutine") return o.stopRoutine(String(request.id || ""));
+      if (request.action === "proRoutines") return o.routines();
       if (request.action === "proReminders") return o.reminders();
       if (request.action === "proCancelReminder") return o.cancelReminder(request.id);
     }
@@ -1635,6 +1649,8 @@ void app.whenReady().then(async () => {
       if (request.action === "gucSearch") return engine.search(request.query);
       if (request.action === "gucGrades") return engine.grades(request.courseId);
       if (request.action === "gucDeadlines") return engine.deadlines();
+      if (request.action === "gucTerm") return engine.term();
+      if (request.action === "gucMail") return engine.mail();
       if (request.action === "gucNow") return (await engine.status()).connected ? engine.now() : null;
       if (request.action === "gucFile") { const { path: _path, ...file } = await engine.file(request.materialId); return file; }
       if (request.action === "gucLinks") return engine.links();

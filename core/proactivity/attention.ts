@@ -8,7 +8,7 @@ import type { GucSlot } from "../guc/types.ts";
 import type { Level } from "./settings.ts";
 
 export type Importance = "urgent" | "notify" | "digest" | "silent";
-export type ChangeKind = "new_grade" | "new_announcement" | "new_material" | "file_saved" | "deadline_added" | "deadline_changed" | "schedule_changed" | "slot_cancelled" | "slot_moved" | "slot_added" | "room_changed";
+export type ChangeKind = "new_grade" | "new_announcement" | "new_material" | "file_saved" | "deadline_added" | "deadline_changed" | "schedule_changed" | "slot_cancelled" | "slot_moved" | "slot_added" | "room_changed" | "exam_posted" | "new_mail";
 /** A change since the last sweep: a GUC event, or a timetable change found by `slotChanges`. `soon`: it is about today
  *  or tomorrow. */
 export type Change = { key: string; kind: ChangeKind; title: string; detail: string; subjectId?: string; code?: string; materialId?: string; soon?: boolean; day?: string; start?: string };
@@ -34,9 +34,10 @@ export function importance(c: Change, mutes: Mute[] = []): Rated {
     case "slot_cancelled": case "slot_moved": case "room_changed": return { level: c.soon ? "urgent" : "notify", why: "Your timetable changed." };
     case "deadline_added": case "deadline_changed": return { level: c.soon ? "urgent" : "notify", why: "A deadline." };
     case "new_grade": return { level: "notify", why: "A grade." };
+    case "exam_posted": return { level: "notify", why: "Where and when an exam is." };
     case "new_material": case "file_saved": case "slot_added": return { level: "digest", why: "Routine." };
     case "schedule_changed": return { level: "silent", why: "Said by the class changes." };
-    case "new_announcement": {
+    case "new_mail": case "new_announcement": {
       const body = c.detail.trim();
       if (ACTION_WORDS.test(body)) return { level: URGENT_WORDS.test(body) && /\b(cancel|postpone|moved?|reschedul)/i.test(body) ? "urgent" : "notify", why: "It asks something of you." };
       if (!body || body.length < 25 || TRIVIAL.test(body)) return { level: "silent", why: "Nothing to act on." };

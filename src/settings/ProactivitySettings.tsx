@@ -4,11 +4,13 @@ import { desktop } from "../desktop/bridge";
 import { ModelSelector } from "../ModelSelector";
 import { SettingsCard, SettingRow } from "./SettingsParts";
 import { CalendarSettings } from "./CalendarSettings";
+import { describeTrigger, type Trigger } from "../../core/proactivity/routines";
 
 export type Organizer = { model?: string; reasoning?: string };
 type LogRow = { key: string; sweep: string; text: string; status: string; at: number; undo: boolean; type: string };
 type WatchRow = { id: string; text: string; live: boolean; fired: number; repeat?: boolean; until?: string };
 type MuteRow = { key: string; kind: string; subjectId?: string };
+type RoutineRow = { id: string; title: string; trigger: Trigger; post?: string; runs: number; lastRun?: number; lastResult?: string; live: boolean; stopped: boolean; hook?: string };
 
 const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const STATUS: Record<string, string> = { applied: "Done", apply: "Doing it…", undone: "Undone", confirm: "Waiting for you", dismissed: "Skipped", failed: "Couldn’t do it", said: "Told you", held: "Kept for your next update" };
@@ -22,7 +24,7 @@ export function ProactivitySettings({ models, organizer, fallback, onChange, onC
   const effort = organizer?.reasoning ?? models.find((m) => m.id === chosen)?.defaultReasoningEffort ?? "";
   const unset = !organizer?.model;
   return <>
-    <SettingsCard title="Clem’s organizer" note="It runs your main thread and decides on its own what is worth telling you. When your morning plan comes, quiet hours, how much you hear from it and when you study: just tell Clem, in any chat.">
+    <SettingsCard title="Clem’s organizer" note="It runs your main thread and decides on its own what is worth telling you. Anything you want it to do on its own (a look at your day, the moment a grade lands, a webhook to your own tools), quiet hours and how much you hear from it: just tell Clem, in any chat.">
       <SettingRow title="Model" description={unset ? "Uses your default model until you pick one." : models.find((m) => m.id === chosen && m.connected) ? undefined : "Not connected right now. Clem uses your default model meanwhile."}>
         <ModelSelector models={models} value={chosen} effort={effort} label="Choose Clem’s organizer model"
           onChange={(id) => onChange({ model: id, reasoning: models.find((m) => m.id === id)?.defaultReasoningEffort || undefined })}
@@ -34,15 +36,23 @@ export function ProactivitySettings({ models, organizer, fallback, onChange, onC
 }
 
 function Proactivity({ onUndo }: { onUndo?: (key: string) => Promise<unknown> }) {
-  const [log, setLog] = useState<LogRow[] | null>(null), [watches, setWatches] = useState<WatchRow[]>([]), [mutes, setMutes] = useState<MuteRow[]>([]);
+  const [log, setLog] = useState<LogRow[] | null>(null), [watches, setWatches] = useState<WatchRow[]>([]), [mutes, setMutes] = useState<MuteRow[]>([]), [routines, setRoutines] = useState<RoutineRow[]>([]);
   const load = () => {
     void desktop!.invoke({ action: "proLog" } as never).then((v) => setLog(Array.isArray(v) ? v as LogRow[] : []), () => setLog([]));
     void desktop!.invoke({ action: "proWatches" } as never).then((v) => setWatches(Array.isArray(v) ? v as WatchRow[] : []), () => {});
     void desktop!.invoke({ action: "proMutes" } as never).then((v) => setMutes(Array.isArray(v) ? v as MuteRow[] : []), () => {});
+    void desktop!.invoke({ action: "proRoutines" } as never).then((v) => setRoutines(Array.isArray(v) ? (v as RoutineRow[]).filter((r) => !r.stopped) : []), () => {});
   };
   useEffect(load, []);
   return <>
     <CalendarSettings />
+    <SettingsCard title="Routines" note={routines.length ? "They run on this PC, or on your VPS when it runs Clem’s jobs. Ask Clem in any chat to add or change one." : undefined}>
+      {!routines.length ? <p>None yet. Ask Clem for anything it should do on its own, like “tell me the second a grade is posted” or “every Thursday night, look at next week”.</p>
+        : routines.map((r) => <SettingRow key={r.id} title={r.title} description={[describeTrigger(r.trigger), r.post ? "posts to " + new URL(r.post).host : "", r.runs ? `ran ${r.runs}×${r.lastRun ? " · last " + new Date(r.lastRun).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}` : "hasn’t run yet", !r.live ? "finished" : ""].filter(Boolean).join(" · ")}>
+          {r.hook && <button type="button" className="secondary" onClick={() => void navigator.clipboard?.writeText(r.hook!)}>Copy URL</button>}
+          <button type="button" className="secondary" onClick={() => void desktop!.invoke({ action: "proStopRoutine", id: r.id } as never).then((v) => setRoutines(Array.isArray(v) ? (v as RoutineRow[]).filter((x) => !x.stopped) : []), () => {})}>Stop</button>
+        </SettingRow>)}
+    </SettingsCard>
     <SettingsCard title="What Clem did today" note={log?.length ? "Undo puts things back as they were; anything you changed since stays." : undefined}>
       {log === null ? [0, 1].map((i) => <div key={i} className="st-row" aria-busy="true"><div className="st-row-text"><span className="st-skel" /></div></div>)
         : !log.length ? <p>Nothing yet today. Clem’s morning brief and any changes from your subjects will show here.</p>

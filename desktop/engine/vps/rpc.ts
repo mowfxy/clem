@@ -7,10 +7,11 @@ import type { Lease } from "../../../core/vps/lease.ts";
 
 /** Engine methods the desktop may call on the worker's engine: what the window's requests use. */
 export const RPC_METHODS = new Set([
-  "status", "connect", "updatePassword", "sync", "disconnect", "overview", "courses", "schedule", "announcements", "markRead", "materials", "search", "grades", "deadlines",
+  "status", "connect", "updatePassword", "sync", "disconnect", "overview", "courses", "schedule", "announcements", "markRead", "materials", "search", "grades", "deadlines", "term", "mail",
   "links", "subject", "link", "unlink", "setSettings", "checkNow", "inbox", "ackInbox", "forgetSubject", "newCourses", "ackNewCourses", "now", "fileText", "fileBytes",
   "organizer.settings", "organizer.setSettings", "organizer.inbox", "organizer.ack", "organizer.log", "organizer.statuses", "organizer.undo", "organizer.confirm", "organizer.dismiss",
   "organizer.mute", "organizer.unmute", "organizer.mutesList", "organizer.poke", "organizer.watches", "organizer.stopWatch", "organizer.offerTelegram", "organizer.watch", "organizer.reminders", "organizer.cancelReminder",
+  "organizer.tool", "organizer.routines", "organizer.stopRoutine", "organizer.runRoutine", "organizer.hook",
   "telegram.status", "telegram.pair", "telegram.unpair",
 ]);
 

@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { urls } from "../core/guc/parse.ts";
+import { portalUrls, urls } from "../core/guc/parse.ts";
+import { EWS_URL } from "../core/guc/ews.ts";
 import { diffSnapshots } from "../core/guc/diff.ts";
 import { emptySnapshot } from "../core/guc/types.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { GucError } from "../desktop/engine/errors.ts";
 import { GucClient, login, type Http } from "../desktop/engine/guc-client.ts";
-import { fakeGuc, fixture, host, noWait, site } from "./guc-fake.ts";
+import { checkGrade, examSeats, fakeEws, fakeGuc, fixture, host, noWait, site } from "./guc-fake.ts";
 
 test("connecting checks the password, keeps it encrypted, and the first sync is a quiet baseline", async () => {
   const pages = site(), guc = fakeGuc(pages), h = host();
@@ -38,11 +39,14 @@ test("an incremental sync reads only linked courses, skips unchanged pages and t
     await engine.db.query("insert into subject_links (owner_id, subject_id, course_key) values ('owner-2', 'subject-a', '1201:64')");
     guc.log.length = 0;
     let status = await engine.sync();
-    assert.deepEqual(guc.log.map((r) => r.url), [urls.home, urls.schedule, urls.transcript, urls.course(1201, 64)], "only the linked course");
-    assert.ok(guc.log.every((r) => r.conditional), "every page is asked for conditionally");
-    assert.equal(status.stats!.requests, 4);
-    assert.equal(status.stats!.skipped, 4);
+    // CheckGrade is read every time (coursework only shows after a postback per course); mail is one FindItem.
+    assert.deepEqual([...new Set(guc.log.map((r) => r.url))], [urls.home, urls.schedule, portalUrls.grades, portalUrls.exams, urls.transcript, EWS_URL, urls.course(1201, 64)], "only the linked course");
+    assert.equal(guc.log.filter((r) => r.url === portalUrls.grades && r.method === "POST").length, 2, "one postback per course");
+    assert.ok(guc.log.filter((r) => r.method === "GET" && r.url !== portalUrls.grades).every((r) => r.conditional), "every other page is asked for conditionally");
+    assert.equal(status.stats!.requests, 9);
+    assert.equal(status.stats!.skipped, 7);
     assert.equal(status.stats!.changed, 0);
+    assert.equal(status.stats!.missed, undefined, "every part was read");
 
     pages[urls.course(1201, 64)] = fixture("cms-course")
       .replace("</div>\n    </div>\n  </div>\n  <div class=\"weeksdata\">", `<p>Project milestone 2 deadline is 3 December 2026.</p></div>\n    </div>\n  </div>\n  <div class="weeksdata">`)
@@ -51,19 +55,26 @@ test("an incremental sync reads only linked courses, skips unchanged pages and t
     pages[urls.transcript] = fixture("transcript").replace("<td>CSEN603</td><td>Software Engineering</td><td></td><td></td>", "<td>CSEN603</td><td>Software Engineering</td><td>1.70</td><td>B+</td>");
     pages[urls.schedule] = fixture("schedule").replace("C6.204", "C6.205");
     pages[urls.course(1202, 64)] += "<!-- changed, but not linked -->";
+    pages[portalUrls.grades] = checkGrade({ mid701: "17/20", quiz701: "9 / 10" });
+    pages[portalUrls.exams] = examSeats("C7.208");
+    pages[EWS_URL] = fakeEws([{ id: "AAMk1", subject: "Welcome back", from: "Student Affairs", at: "2026-09-01T08:00:00Z" }, { id: "AAMk2", subject: "Midterm hall change", from: "Exams Office", at: "2026-11-12T09:00:00Z", body: "Your CSEN 701 midterm moved to H14." }]);
     guc.log.length = 0;
     status = await engine.sync();
     assert.equal(guc.log.filter((r) => r.url.includes("CourseViewStn")).length, 1);
     const kinds = (await engine.db.query<{ kind: string }>("select kind from guc_events order by kind")).map((e) => e.kind);
     // The edited announcement (its date moved) reads as new, beside the new milestone paragraph.
-    assert.deepEqual(kinds, ["deadline_added", "deadline_changed", "new_announcement", "new_announcement", "new_grade", "new_material", "schedule_changed"], kinds.join());
-    assert.equal(status.stats!.events, 7);
+    assert.deepEqual(kinds, ["deadline_added", "deadline_changed", "exam_posted", "new_announcement", "new_announcement", "new_grade", "new_grade", "new_grade", "new_mail", "new_material", "schedule_changed"], kinds.join());
+    assert.equal(status.stats!.events, 11);
+    const mail = await engine.db.query<{ title: string; detail: string }>("select title, detail from guc_events where kind = 'new_mail'");
+    assert.match(mail[0].title, /Exams Office: Midterm hall change/);
+    assert.match(mail[0].detail, /moved to H14/, "a 300-character preview of the new message only");
+    assert.doesNotMatch(JSON.stringify(await engine.db.query("select data, seen from guc_snapshots")), /AAMk/, "EWS ids are kept only as hashes");
 
     // The same changes seen again are not news twice.
     guc.log.length = 0;
     status = await engine.sync();
     assert.equal(status.stats!.events, 0);
-    assert.equal((await engine.db.query("select * from guc_events")).length, 7);
+    assert.equal((await engine.db.query("select * from guc_events")).length, 11);
     assert.equal((await engine.db.query("select * from guc_snapshots")).length, 4, "the latest snapshots are kept, older ones pruned at 5");
   } finally { await engine.close(); }
 });
@@ -77,7 +88,7 @@ test("a content hash skips pages that come back identical without an ETag", asyn
     pages[urls.home] = pages[urls.home].replace("FAKEVIEWSTATE", "OTHERVIEWSTATE");
     const status = await engine.sync();
     assert.equal(status.stats!.changed, 0);
-    assert.equal(status.stats!.skipped, 3);
+    assert.equal(status.stats!.skipped, 6, "CheckGrade is read every time but its grades are the same");
   } finally { await engine.close(); }
 });
 

@@ -3,7 +3,8 @@ import { sameCode } from "./codes.ts";
 import { stableId } from "./parse.ts";
 import type { GucEvent, GucSnapshot } from "./types.ts";
 
-export type Seen = { courses: string[]; grades: boolean; schedule: boolean };
+/** What was read at least once, so its first read is a baseline. `mailIds`: hashes of every Inbox id seen. */
+export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number> };
 const short = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 export const scheduleHash = (s: GucSnapshot) => stableId(s.slots.map((x) => [x.day, x.period, x.code, x.type, x.group, x.location].join("|")).sort().join("\n"));
@@ -39,6 +40,39 @@ export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen):
       const courseKey = g.code ? next.courses.filter((c) => sameCode(c.code, g.code)).sort((a, b) => b.seasonId - a.seasonId)[0]?.key : undefined;
       if (String(before) !== String(mark)) events.push({ kind: "new_grade", key: `grade:${g.id}:${mark}`, ...(courseKey ? { courseKey } : {}), title: `Grade out: ${g.code || g.name}`, detail: `${g.name} · ${mark} (${g.semester})` });
     }
+  }
+
+  // This term's grades: a midterm, or a coursework mark, that wasn't there (or changed).
+  if (seen.portal) {
+    const courseOf = (code: string) => (code ? next.courses.filter((c) => sameCode(c.code, code)).sort((a, b) => b.seasonId - a.seasonId)[0]?.key : undefined);
+    const oldMid = new Map((prev.midterms || []).map((m) => [m.id, m.grade]));
+    for (const m of next.midterms || []) if (m.grade && oldMid.get(m.id) !== m.grade) {
+      const courseKey = courseOf(m.code);
+      events.push({ kind: "new_grade", key: `mid:${m.id}:${m.grade}`, ...(courseKey ? { courseKey } : {}), title: `Midterm grade out: ${m.code || m.course}`, detail: `${m.course} · ${m.grade}` });
+    }
+    const marks = (w: NonNullable<GucSnapshot["coursework"]>[number]) => new Map(w.entries.flatMap((e) => e.elements.map((x) => [`${e.name}|${x.name}`, x.grade] as const)));
+    const oldWork = new Map((prev.coursework || []).map((w) => [w.course, marks(w)]));
+    for (const w of next.coursework || []) {
+      const was = oldWork.get(w.course) || new Map<string, string>(), courseKey = courseOf(w.code);
+      for (const [k, grade] of marks(w)) if (grade && was.get(k) !== grade) {
+        const [entry, part] = k.split("|");
+        events.push({ kind: "new_grade", key: `cw:${stableId(w.course + "|" + k)}:${grade}`, ...(courseKey ? { courseKey } : {}), title: `New mark in ${w.code || w.course}: ${entry}`, detail: `${[entry, part].filter(Boolean).join(" · ")} · ${grade}` });
+      }
+    }
+  }
+  if (seen.exams) {
+    const old = new Map((prev.exams || []).map((e) => [e.id, `${e.hall}|${e.seat}`]));
+    for (const e of next.exams || []) {
+      const was = old.get(e.id), now = `${e.hall}|${e.seat}`;
+      if (was === now) continue;
+      const courseKey = e.code ? next.courses.filter((c) => sameCode(c.code, e.code)).sort((a, b) => b.seasonId - a.seasonId)[0]?.key : undefined;
+      events.push({ kind: "exam_posted", key: `exam:${e.id}:${stableId(now)}`, ...(courseKey ? { courseKey } : {}), title: `${was ? "Exam seat changed" : "Exam seat posted"}: ${e.code || e.course}`, detail: `${e.type} · ${[e.day, e.date].filter(Boolean).join(" ")} ${e.start}${e.end ? "–" + e.end : ""} · ${e.hall}${e.seat ? ", seat " + e.seat : ""}` });
+    }
+  }
+  if (seen.mailIds) {
+    const known = new Set(seen.mailIds);
+    for (const m of next.mail || []) if (!known.has(m.id))
+      events.push({ kind: "new_mail", key: "mail:" + m.id, title: `Email from ${m.from.replace(/\s*<[^>]+>$/, "")}: ${short(m.subject, 100)}`, detail: short(m.preview || "", 280) });
   }
 
   if (seen.schedule && next.slots.length) {

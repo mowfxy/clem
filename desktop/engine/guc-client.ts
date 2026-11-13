@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { pageState } from "../../core/guc/parse.ts";
 import { GucError, asGucError } from "./errors.ts";
 
-export type HttpRequest = { method: "GET" | "POST" | "HEAD"; url: string; headers?: Record<string, string>; form?: Record<string, string>; /** The body as bytes (a file), not text. */ binary?: boolean };
+export type HttpRequest = { method: "GET" | "POST" | "HEAD"; url: string; headers?: Record<string, string>; form?: Record<string, string>; /** A raw request body (EWS SOAP), sent as is. */ body?: string; /** A 3xx is an error, not followed (mail). */ noRedirect?: boolean; /** The body as bytes (a file), not text. */ binary?: boolean };
 export type HttpResponse = { status: number; headers: Record<string, string | undefined>; body: string; bytes?: Uint8Array };
 export type Credentials = { username: string; password: string; domain?: string };
 /** One NTLM exchange. Swapped for a fake in tests. */
@@ -15,7 +15,7 @@ export type Http = (request: HttpRequest, credentials: Credentials) => Promise<H
 
 export function ntlmHttp(agent = new Agent({ keepAlive: true, maxSockets: 4 })): Http {
   return (request, c) => new Promise((resolve, reject) => {
-    const options = { url: request.url, username: c.username, password: c.password, domain: c.domain || "", workstation: "", agent, headers: request.headers, parameters: request.form, timeout: request.binary ? 120_000 : 30_000, binary: request.binary };
+    const options = { url: request.url, username: c.username, password: c.password, domain: c.domain || "", workstation: "", agent, headers: request.headers, parameters: request.form, ...(request.body !== undefined ? { body: request.body } : {}), timeout: request.binary ? 120_000 : 30_000, binary: request.binary };
     httpntlm.method(request.method.toLowerCase(), options, (error, res) => error ? reject(error)
       : resolve(request.binary ? { status: res.statusCode, headers: res.headers || {}, body: "", bytes: new Uint8Array(res.body as unknown as Buffer) } : { status: res.statusCode, headers: res.headers || {}, body: res.body || "" }));
   });
@@ -69,6 +69,7 @@ export class GucClient {
       if (response.status === 401) throw new GucError("auth", "http 401");
       if (response.status === 403) throw new GucError("unavailable", "http 403");
       const location = response.headers.location;
+      if (request.noRedirect && response.status >= 300 && response.status < 400 && response.status !== 304) throw new GucError("unavailable", "unexpected_redirect");
       if (response.status >= 300 && response.status < 400 && response.status !== 304 && location) {
         url = new URL(location, url).href;
         if (!/^https:\/\/([\w-]+\.)*guc\.edu\.eg\//.test(url)) throw new GucError("unavailable", "redirected away");

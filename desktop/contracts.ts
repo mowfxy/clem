@@ -59,6 +59,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("gucSearch"), query: z.string().trim().min(2).max(200) }),
   z.object({ action: z.literal("gucGrades"), courseId: gucCourse.optional() }),
   z.object({ action: z.literal("gucDeadlines") }),
+  z.object({ action: z.literal("gucTerm") }),
+  z.object({ action: z.literal("gucMail") }),
   /** The main thread's Now card from GUC (today's classes, deadlines in 7 days, unread): cached in the engine. */
   z.object({ action: z.literal("gucNow") }),
   /** Makes a CMS file ready to view (saved copy, or fetched to a temp folder) and returns its name, type and size; the
@@ -92,6 +94,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("proPoke"), reason: z.enum(["plans", "files", "study", "spaces", "open"]) }),
   z.object({ action: z.literal("proWatches") }),
   z.object({ action: z.literal("proStopWatch"), id: z.string().regex(/^[\w-]{1,80}$/) }),
+  z.object({ action: z.literal("proRoutines") }),
+  z.object({ action: z.literal("proStopRoutine"), id: z.string().regex(/^rt[\w-]{4,40}$/) }),
   z.object({ action: z.literal("proReminders") }),
   z.object({ action: z.literal("proCancelReminder"), id: z.string().regex(/^r[\w-]{1,40}$/) }),
   // Telegram (desktop/engine/telegram.ts): status, a pairing code, unpair, the pair card in the main thread, and the

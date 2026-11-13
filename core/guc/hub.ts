@@ -1,6 +1,6 @@
 // The GUC hub's shared shapes and pure helpers: the read API's results, the Sat–Thu week grid, deadline order and
 // relative times in Cairo, semester order and the hub's #/app/guc routes. No I/O, no cheerio: the window imports it.
-import type { GucErrorKind, GucSlot } from "./types.ts";
+import type { GucCoursework, GucErrorKind, GucExam, GucMail, GucMidterm, GucSlot } from "./types.ts";
 
 export const TZ = "Africa/Cairo";
 /** GUC's teaching slots ("periods"), first to eighth. */
@@ -12,8 +12,12 @@ export type HubOverview = {
   connected: boolean; syncing: boolean; username?: string; lastSync?: number;
   error?: { kind: GucErrorKind; message: string };
   passwordNeeded?: boolean;
-  counts: { courses: number; unread: number; materials: number; deadlines: number; grades: number };
+  counts: { courses: number; unread: number; materials: number; deadlines: number; grades: number; exams?: number; mail?: number };
+  /** Parts of GUC the last sync couldn't read ("schedule", "grades", "mail"…). */
+  missed?: string[];
 };
+export type HubTerm = { midterms: (GucMidterm & { fresh?: boolean })[]; coursework: GucCoursework[]; exams: GucExam[] };
+export type HubMail = { items: GucMail[]; missed: boolean };
 export type HubCourse = { key: string; code: string; name: string; season: string; active: boolean; subjectId?: string; unread: number; materials: number };
 export type HubSchedule = { weekStart: string; slots: GucSlot[] };
 export type HubAnnouncement = { id: string; courseKey: string; code: string; course: string; scope: "course" | "week"; week?: string; text: string; firstSeen: number; read: boolean };
@@ -103,7 +107,7 @@ export function relativeDue(due: string | number, now: number): { label: string;
 }
 
 // ---------- Routes: #/app/guc/<tab>/<id>/<sub> ----------
-export const HUB_TABS = ["schedule", "announcements", "cms", "grades", "deadlines"] as const;
+export const HUB_TABS = ["schedule", "announcements", "cms", "grades", "exams", "deadlines", "mail"] as const;
 export type HubTab = (typeof HUB_TABS)[number];
 export type HubRoute = { tab: HubTab; id?: string; sub?: string };
 export function parseHubRoute(route: string): HubRoute | null {

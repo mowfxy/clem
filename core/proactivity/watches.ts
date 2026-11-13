@@ -7,7 +7,7 @@ import { z } from "zod";
 import { addDays, cairo } from "../guc/hub.ts";
 import type { Change, ChangeKind } from "./attention.ts";
 
-const KINDS = ["new_grade", "new_announcement", "new_material", "file_saved", "deadline_added", "deadline_changed", "slot_cancelled", "slot_moved", "slot_added", "room_changed"] as const satisfies readonly ChangeKind[];
+const KINDS = ["new_grade", "new_announcement", "new_material", "file_saved", "deadline_added", "deadline_changed", "slot_cancelled", "slot_moved", "slot_added", "room_changed", "exam_posted", "new_mail"] as const satisfies readonly ChangeKind[];
 export const watchSchema = z.object({
   id: z.string().regex(/^[\w-]{1,80}$/), text: z.string().trim().min(3).max(300),
   subjectId: z.string().max(80).optional(), kinds: z.array(z.enum(KINDS)).max(10), words: z.array(z.string().min(1).max(40)).max(8),
@@ -22,6 +22,8 @@ const KIND_WORDS: [RegExp, Watch["kinds"]][] = [
   [/\bdeadlines?|due\b/i, ["deadline_added", "deadline_changed"]],
   [/\bmoves?|moved|reschedul\w*|postpone\w*|cancel\w*|room|venue|hall\b/i, ["slot_moved", "slot_cancelled", "room_changed", "deadline_changed", "new_announcement"]],
   [/\bannounce\w*|posted|says?|news\b/i, ["new_announcement"]],
+  [/\b(e-?mails?|inbox)\b/i, ["new_mail"]],
+  [/\bseats?\b|\b(exam|final|midterm)s?\b.*\b(hall|room|venue)\b/i, ["exam_posted"]],
   [/\bslides?|lectures?|materials?|files?|uploads?|uploaded|sheets?|notes\b/i, ["new_material", "file_saved"]],
 ];
 const STOP = new Set("tell me when the a an is are be if of for in on to at ping notify let know watch track keep eye out any new gets got get posted post moves move moved changes change grade grades deadline deadlines announcement announcements slides slide lecture lectures file files please and or my about there it this that whenever every time each always until by".split(" "));

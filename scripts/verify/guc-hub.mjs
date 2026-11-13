@@ -28,7 +28,7 @@ const read = {
   gucOverview: () => engine.overview(), gucCourses: () => engine.courses(), gucSchedule: (r) => engine.schedule(r.weekStart),
   gucAnnouncements: (r) => engine.announcements({ courseKey: r.courseId, cursor: r.cursor }), gucMarkRead: (r) => engine.markRead(r.ids),
   gucMaterials: (r) => engine.materials(r.courseId), gucSearch: (r) => engine.search(r.query), gucGrades: (r) => engine.grades(r.courseId),
-  gucDeadlines: () => engine.deadlines(), gucFile: async (r) => { const { path, ...f } = await engine.file(r.materialId); return f; },
+  gucDeadlines: () => engine.deadlines(), gucTerm: () => engine.term(), gucMail: () => engine.mail(), gucFile: async (r) => { const { path, ...f } = await engine.file(r.materialId); return f; },
   gucStatus: () => engine.status(), gucSync: () => engine.status(),
   gucSubject: (r) => engine.subject(r.subjectId), gucLinks: () => engine.links(), gucNewCourses: () => engine.newCourses(),
 };
@@ -158,8 +158,9 @@ try {
       await shot("cms");
       const t0 = Date.now();
       await page.getByRole("button", { name: "Preview Lecture 3" }).click();
-      await page.locator(".ps-page canvas, .ps-page .ps-still").first().waitFor({ timeout: 15000 });
-      timings.push(`${theme}: PDF preview first page ${Date.now() - t0} ms`);
+      const drawn = await page.locator(".ps-page canvas, .ps-page .ps-still").first().waitFor({ timeout: 15000 }).then(() => true, () => false);
+      check(drawn, `${theme}: the PDF preview draws its first page`);
+      if (drawn) timings.push(`${theme}: PDF preview first page ${Date.now() - t0} ms`);
       check(await page.locator(".fp-crumb", { hasText: "GUC CMS" }).count() === 1, `${theme}: the CMS file opens in Clem's file viewer`);
       await shot("preview");
       await page.keyboard.press("Escape");
@@ -179,6 +180,16 @@ try {
       await timeTab("Deadlines", ".guc-deadline");
       check(await page.locator(".guc-when").first().textContent().then((t) => /^(in |today|tomorrow|\w{3} at)/.test(t)), `${theme}: deadlines read as relative times`);
       await shot("deadlines");
+      await timeTab("Exams", ".guc-exam");
+      check(await page.locator(".guc-exam").count() === 2, `${theme}: both exam seats show`);
+      await shot("exams");
+      await timeTab("Mail", ".guc-mail li");
+      check(await page.locator(".guc-mail li", { hasText: "Welcome back" }).count() === 1, `${theme}: the Inbox shows`);
+      await shot("mail");
+      await timeTab("Grades", ".guc-term");
+      check(await page.locator(".guc-term .guc-grade", { hasText: "81.5" }).count() === 1, `${theme}: this term's midterms show above the transcript`);
+      await page.locator(".guc-work summary").first().click();
+      await shot("term");
 
       const warm = {};
       for (const [label, sel] of tabs) warm[label] = await timeTab(label, sel);

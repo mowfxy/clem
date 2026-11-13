@@ -36,6 +36,8 @@ export type EngineHost = {
   fileStores?(): Partial<Record<"vps" | "drive", import("./storage.ts").FileStore>>;
   /** A VPS is connected (subject cards offer "My VPS" for files). */
   vps?(): { files: boolean } | undefined;
+  /** Where routines' webhooks are reached from outside (desktop: http://127.0.0.1:7718; a VPS: its address). */
+  hookBase?(): string | undefined;
 };
 // Defined in contracts.ts, which the website build copies on its own (scripts/prepare-deploy.mjs); engine/ is not shipped there.
 import type { TelegramTurn } from "../contracts.ts";

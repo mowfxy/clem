@@ -90,6 +90,7 @@ export function createPro(deps: ProDeps) {
   async function dismiss(key: string) { try { await ask({ action: "proDismiss", key }); setStatus(key, "dismissed"); } catch (e) { deps.toast(clean(e)); } }
   async function mute(key: string) { try { await ask({ action: "proMute", key }); setStatus(key, "muted"); deps.toast("Got it. Clem won’t tell you about this kind of thing."); } catch (e) { deps.toast(clean(e)); } }
   async function stopWatch(id: string) { try { await ask({ action: "proStopWatch", id }); setStatus("watch:" + id, "stopped"); } catch (e) { deps.toast(clean(e)); } }
-  return { pull, undo, confirm, dismiss, mute, stopWatch };
+  async function stopRoutine(id: string) { try { await ask({ action: "proStopRoutine", id }); setStatus("routine:" + id, "stopped"); } catch (e) { deps.toast(clean(e)); } }
+  return { pull, undo, confirm, dismiss, mute, stopWatch, stopRoutine };
 }
 export type Pro = ReturnType<typeof createPro>;

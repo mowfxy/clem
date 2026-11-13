@@ -67,6 +67,7 @@ import {useSizeCap} from './main-thread/useSizeCap';
 import {cardBlock} from '../core/guc/cards';
 import {WATCH_GUIDE} from '../core/proactivity/watches';
 import {CALENDAR_GUIDE} from '../core/proactivity/calendar';
+import {ROUTINE_GUIDE} from '../core/proactivity/routines';
 import {TELEGRAM_GUIDE} from '../core/telegram/guide';
 import {createPro} from './proactivity/pro';
 import type {ProActions} from './proactivity/ProCards';
@@ -111,7 +112,7 @@ type Carry = { attachments: string[]; drive: DriveItem[] };
 /** `tg`: the Telegram inbox item this turn answers (desktop/engine/telegram.ts); the answer goes back there. */
 type Turn = { mentions?: string[]; carried?: string; tg?: string };
 /** Said once, first, in every main-thread request, so it stays byte-stable for the CLIs' prompt caches. */
-const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. A question that clearly belongs to one subject or project is moved to that space's chat before you see it, so answer what is asked here; when a request needs one subject's files, suggest mentioning it with @.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + TELEGRAM_GUIDE;
+const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. A question that clearly belongs to one subject or project is moved to that space's chat before you see it, so answer what is asked here; when a request needs one subject's files, suggest mentioning it with @.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROUTINE_GUIDE + "\n" + TELEGRAM_GUIDE;
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
 const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Gemini" : "ChatGPT";
