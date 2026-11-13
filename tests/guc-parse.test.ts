@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { formFields, pageState, parseCourseList, parseCoursePage, parseSchedule, parseTranscript, SiteChanged, transcriptChallenge, transcriptYears, urls } from "../core/guc/parse.ts";
-import { extractDeadlines } from "../core/guc/deadlines.ts";
+import { courseDeadlines, DEADLINE_VERSION, dueText, extractDeadlines } from "../core/guc/deadlines.ts";
+import { diffSnapshots } from "../core/guc/diff.ts";
+import { emptySnapshot } from "../core/guc/types.ts";
 
 const page = (name: string) => readFileSync(new URL(`./fixtures/guc/${name}.html`, import.meta.url), "utf8");
 
@@ -68,10 +70,39 @@ test("deadlines come from sentences with a deadline word and a date, with ids th
   const ref = new Date("2026-11-11T10:00:00Z");
   const a = extractDeadlines("Welcome to the course. Assignment 1 is due on 20 November 2026 at 11:59 pm. Lectures start Sunday.", "1201:64", "ann", ref);
   assert.equal(a.length, 1);
-  assert.match(a[0].title, /^Assignment 1 is due/);
-  assert.equal(new Date(a[0].due).getDate(), 20);
+  assert.equal(a[0].title, "Assignment 1");
+  assert.match(a[0].note || "", /^Assignment 1 is due on 20 November 2026/);
+  assert.equal(a[0].due, "2026-11-20T21:59:00.000Z", "23:59 in Cairo");
   const moved = extractDeadlines("Welcome to the course. Assignment 1 is due on 24 November 2026 at 11:59 pm.", "1201:64", "ann", ref);
   assert.equal(moved[0].id, a[0].id);
   assert.notEqual(moved[0].due, a[0].due);
   assert.equal(extractDeadlines("The lecture is on 20 November.", "1201:64", "ann", ref).length, 0);
+});
+
+test("deadlines are named, dated in Cairo, never pushed into next year, and last year's text is dropped", () => {
+  const ref = new Date("2026-11-13T10:00:00Z");
+  const one = (text: string) => extractDeadlines(text, "1:1", "announcement", ref).map((d) => [d.title, dueText(d.due)]);
+  assert.deepEqual(one("Quiz 2 will be held on Tuesday November 17th, 3:30-5:15."), [["Quiz 2", "Tue 17 Nov, 15:30"]], "a class time is the afternoon");
+  assert.deepEqual(one("Quiz 2 will be held and Tuesday November 18th, 3:30-5:15."), [], "18 Nov was a Tuesday last year: old text");
+  assert.deepEqual(one("Quiz 1 will be held and Tuesday Sept 29th, 3:30-5:15."), [], "past, not next September");
+  assert.deepEqual(one("Assignment 3 is posted. Its submission deadline is (19/11/2026)."), [["Assignment 3", "Thu 19 Nov"]], "day-first, named from the sentence before");
+  assert.deepEqual(one("The Third in-class assignment is on Saturday 21st of November, 2026."), [["In-class assignment 3", "Sat 21 Nov"]]);
+  assert.deepEqual(one("Quiz 3 will be and Tue 1/12."), [["Quiz 3", "Tue 1 Dec"]]);
+  assert.deepEqual(one("Quiz 1 on 20 Nov and Quiz 2 on 27 Nov."), [["Quiz 1", "Fri 20 Nov"], ["Quiz 2", "Fri 27 Nov"]]);
+  assert.deepEqual(one("The midterm was postponed from 22 November to 29 November."), [["Midterm", "Sun 29 Nov"]]);
+  const merged = courseDeadlines([{ text: "Quiz 2 is on 17 Nov.", source: "week" }, { text: "Quiz 2 is postponed to 24 Nov at 3:30.", source: "announcement" }], "1:1", ref);
+  assert.deepEqual(merged.map((d) => [d.title, dueText(d.due)]), [["Quiz 2", "Tue 24 Nov, 15:30"]], "one Quiz 2; the move wins");
+});
+
+test("deadline events say what is due and when; a moved one says from when to when; a new extractor is a baseline", () => {
+  const course = { key: "1:1", id: 1, seasonId: 1, season: "Winter 2026", code: "CSEN 301", name: "Data Structures", active: true };
+  const dl = (due: string) => ({ id: "q2", courseKey: "1:1", title: "Quiz 2", due, source: "announcement", note: "Quiz 2 is on Tuesday." });
+  const snap = (due: string) => ({ ...emptySnapshot(), courses: [course], deadlines: [dl(due)] });
+  const seen = { courses: ["1:1"], grades: false, schedule: false, deadlines: { v: DEADLINE_VERSION, courses: ["1:1"] } };
+  const at = Date.parse("2026-11-13T10:00:00Z");
+  const [moved] = diffSnapshots(snap("2026-11-16T21:59:00.000Z"), snap("2026-11-24T13:30:00.000Z"), seen, at);
+  assert.equal(moved.title, "CSEN 301 Quiz 2 moved to Tue 24 Nov, 15:30");
+  assert.match(moved.detail, /^Was Mon 16 Nov\./);
+  assert.equal(diffSnapshots(snap("2026-11-16T21:59:00.000Z"), snap("2026-11-24T13:30:00.000Z"), { ...seen, deadlines: { v: 1, courses: ["1:1"] } }, at).length, 0, "read by an older extractor: baseline");
+  assert.equal(diffSnapshots({ ...emptySnapshot(), courses: [course] }, snap("2026-11-01T10:00:00.000Z"), seen, at).length, 0, "already past: not news");
 });

@@ -38,7 +38,7 @@ const uid = () => crypto.randomUUID();
 const clean = (e: unknown) => String((e as Error)?.message || e || "").replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
 export const setupChatOf = (chats: Chat[], subjectId: string) => chats.find((c) => c.setup && c.spaceId === subjectId);
 /** The setup steps whose questions are already in the thread. */
-const posted = (chat?: Chat) => (chat?.messages || []).flatMap((m) => (m.role === "assistant" ? cardsIn(m.content).map(stepOfCard).filter((s): s is SetupStep | "done" => !!s) : []));
+const posted = (chat?: Chat) => (chat?.messages || []).flatMap((m) => (m.role !== "assistant" ? [] : m.setupStep ? [m.setupStep as SetupStep | "done"] : cardsIn(m.content).map(stepOfCard).filter((s): s is SetupStep | "done" => !!s)));
 
 export function createSetup(deps: SetupDeps) {
   /** What the schedule converter needs: "after each lecture", the lecture days, the exam date. */
@@ -54,7 +54,9 @@ export function createSetup(deps: SetupDeps) {
     const k = gucKey({ action: "gucCourses" }), have = gucCache.get<HubCourse[]>(k)?.data;
     return have || gucCache.revalidate(k, () => gucAsk<HubCourse[]>({ action: "gucCourses" })).then((c) => c || []);
   };
-  const say = (chatId: string, content: string) => deps.updateChat(chatId, (c) => ({ ...c, updated: Date.now(), messages: [...c.messages, { id: uid(), role: "assistant", content, at: Date.now() }] }));
+  const say = (chatId: string, content: string, setupStep?: SetupStep | "done") => deps.updateChat(chatId, (c) => ({ ...c, updated: Date.now(), messages: [...c.messages, { id: uid(), role: "assistant", content, at: Date.now(), ...(setupStep ? { setupStep } : {}) }] }));
+  /** The course a link question suggested, so "yes" links it. */
+  const suggested = new Map<string, string>();
 
   function ensureChat(subjectId: string) {
     const have = setupChatOf(deps.chats(), subjectId);
@@ -64,18 +66,29 @@ export function createSetup(deps: SetupDeps) {
     return chat.id;
   }
 
-  /** Posts the question the thread is missing (after an answer, on opening it, after a restart). */
-  async function postNext(subjectId: string, lead = "") {
-    const v = await subjectView(subjectId, true), st = v.settings.setup, chat = setupChatOf(deps.chats(), subjectId);
+  /** Posts the question the thread is missing (after an answer, on opening it, after a restart). A course that clearly
+   *  matches the subject is linked without asking, so the one question left is what to save. */
+  async function postNext(subjectId: string, lead = ""): Promise<void> {
+    let v = await subjectView(subjectId, true);
+    const st = v.settings.setup, chat = setupChatOf(deps.chats(), subjectId);
     if (!st || !chat) return;
-    const step = toPost(st, { linked: !!v.course, vps: v.vps }, posted(chat));
+    const ctx = () => ({ linked: !!v.course, vps: v.vps });
+    const step = toPost(st, ctx(), posted(chat));
     if (!step) return;
-    const space = deps.spaces().find((s) => s.id === subjectId);
-    const all = await courses(), free = all.filter((c) => !c.subjectId || c.subjectId === subjectId);
-    const guess = !v.course && space ? matchCourse({ name: space.name, description: space.description }, free.filter((c) => c.active)) : undefined;
+    const space = deps.spaces().find((s) => s.id === subjectId), subject = space?.name || "this subject";
+    const all = await courses(), free = all.filter((c) => c.active && (!c.subjectId || c.subjectId === subjectId));
+    const guess = !v.course && space ? matchCourse({ name: space.name, description: space.description }, free) : undefined;
+    if (step === "link" && guess?.best && guess.sure) {
+      const c = guess.best.item;
+      v = await linkSubject(subjectId, { key: c.key });
+      await editSubject(subjectId, { setup: answerStep(st, "link", "answered", ctx()) });
+      return postNext(subjectId, `${lead}I found **${subject}** on CMS as **${c.code}** (${c.name}) and linked it.`);
+    }
     const course = v.course || guess?.best?.item;
-    const check = v.suggested.mode === "after_lectures" ? `Half an hour after each lecture works well: ${describeChecks(v.suggested).replace("After each lecture: ", "")}` : `I'd check ${describeChecks(v.suggested).replace(/^Every/, "every")}`;
-    say(chat.id, lead + setupMessage(step, { subjectId, subject: space?.name || "this subject", course: course && { key: course.key, code: course.code, name: course.name }, linked: !!v.course, sure: guess?.sure, save: describeSaveRules(v.settings.save), check, first: !posted(chat).length, vpsFiles: !!v.vpsFiles }));
+    if (step === "link" && course) suggested.set(subjectId, course.key);
+    const text = setupMessage(step, { subjectId, subject, course: course && { key: course.key, code: course.code, name: course.name }, linked: !!v.course, sure: guess?.sure, save: describeSaveRules(v.settings.save), check: "", first: !posted(chat).length, vpsFiles: !!v.vpsFiles,
+      choices: free.filter((c) => c.key !== course?.key).map((c) => `${c.code} ${c.name}`.trim()), ...(step === "save" && lead ? { lead } : {}) });
+    say(chat.id, step === "save" && lead ? text : (lead ? lead + "\n\n" : "") + text, step);
   }
 
   /** Opens the subject's setup thread, starting it the first time (linked to `courseKey` when made from a course). */
@@ -100,8 +113,9 @@ export function createSetup(deps: SetupDeps) {
       const st = v.settings.setup, waiting = !!st && !st.finished && pendingStep(v) === step;
       if (r.kind === "confirm" && step === "link") {
         const card = [...(setupChatOf(deps.chats(), subjectId)?.messages || [])].reverse().flatMap((m) => cardsIn(m.content)).find((c) => c.type === "course_link" && c.suggest);
-        if (!card || card.type !== "course_link" || !card.suggest) throw Error("Pick the course in the card above.");
-        r = { kind: "link", courseKey: card.suggest };
+        const key = suggested.get(subjectId) || (card?.type === "course_link" ? card.suggest : undefined);
+        if (!key) throw Error("Which course is it? Tell me its code, like CSEN 301.");
+        r = { kind: "link", courseKey: key };
       }
       if (r.kind === "link") v = await linkSubject(subjectId, { key: r.courseKey });
       else if (r.kind === "settings") v = await editSubject(subjectId, r.patch);
@@ -150,6 +164,8 @@ export function createSetup(deps: SetupDeps) {
         const v = await subjectView(subjectId);
         const patch = updatePatch(card, { save: v.settings.save, ...scheduleContext(v) });
         if (Object.keys(patch).length) await editSubject(subjectId, patch);
+        // The answer to setup's question, given in the AI's words: setup moves on.
+        if (patch.save && pendingStep(await subjectView(subjectId, true)) === "save") await answer(subjectId, "save", { kind: "confirm" });
         if (card.unlink) await unlinkSubject(subjectId);
         if (card.checkNow) void checkSubjectNow(subjectId).catch(() => {});
         deps.toast(updateSummary(card) + ".");
@@ -165,7 +181,9 @@ export function createSetup(deps: SetupDeps) {
     try { v = await subjectView(space.id); } catch { return ""; }
     if (!v.course && !v.settings.setup) return "";
     const s = v.settings;
-    return `GUC: ${v.course ? `this subject is linked to the CMS course ${v.course.code} (${v.course.name}). Clem saves ${describeSaveRules(s.save).toLowerCase()}; checks: ${describeChecks(s.check)} (Africa/Cairo); Drive copy ${s.drive.enabled ? "on" : "off"}.` : "this subject has no CMS course linked."}
+    const asking = pendingStep(v) === "save" ? `
+Clem just asked what to save from CMS for this subject. If the user's message answers it (in any words), reply in one short natural sentence saying what you'll keep and end with the settings_update block using "saveText" (their words). If they ask something else, answer that and remind them in one line that you still need to know what to save.` : "";
+    return `GUC: ${v.course ? `this subject is linked to the CMS course ${v.course.code} (${v.course.name}). Clem saves ${describeSaveRules(s.save).toLowerCase()}, as soon as new files are posted (it looks every few minutes); scheduled checks: ${describeChecks(s.check)} (Africa/Cairo); Drive copy ${s.drive.enabled ? "on" : "off"}.` : "this subject has no CMS course linked."}${asking}
 When the user asks to change one of these (e.g. "stop saving videos", "check every day at 9pm", "unlink CMS", "check now"), change it by ending your answer with one block, giving only what changes, and say in one short sentence what you changed:
 \`\`\`clem-card
 {"type":"settings_update","save":{"videos":false}}
@@ -206,15 +224,15 @@ Fields: "saveText": the user's own words about what to save (Clem reads them, e.
       for (const subjectId of new Set(items.map((i) => i.subjectId))) {
         if (!subjects.has(subjectId)) continue;
         const mine = items.filter((i) => i.subjectId === subjectId), files = mine.filter((i) => i.file), news = mine.filter((i) => !i.file).slice(-10);
-        const cards: ClemCard[] = [
-          ...(files.length ? [{ type: "file_saved" as const, subjectId, files: files.slice(0, 50).map((i) => ({ id: i.file!.id, name: i.file!.name, size: i.file!.size, type: i.file!.type, ...(i.file!.week ? { week: i.file!.week } : {}) })), ...(files.length > 50 ? { more: files.length - 50 } : {}) }] : []),
-          ...news.map((i): ClemCard => i.kind === "new_announcement" ? { type: "announcement", subjectId, id: i.key.replace(/^ann:/, ""), courseKey: i.courseKey, title: i.title, ...(i.detail ? { detail: i.detail } : {}) }
-            : i.kind === "new_grade" ? { type: "grade", subjectId, title: i.title, ...(i.detail ? { detail: i.detail } : {}) }
-            : { type: "deadline", subjectId, id: i.key.replace(/^dl:/, "").split(":")[0], changed: i.kind === "deadline_changed", title: i.title, ...(i.detail ? { detail: i.detail } : {}) }),
-        ];
-        const lead = [files.length ? `Saved ${files.length} new file${files.length === 1 ? "" : "s"} from CMS.` : "", news.length ? `${news.length === 1 ? "Something new" : news.length + " new things"} on CMS.` : ""].filter(Boolean).join(" ");
-        const blocks = cards.flatMap((c) => { try { return [cardBlock(c)]; } catch { return []; } });
-        if (blocks.length) say(ensureChat(subjectId), lead + "\n\n" + blocks.join("\n\n"));
+        // Files keep their card (open, preview, summarize); news is written out in full as ordinary chat text.
+        const card: ClemCard | null = files.length ? { type: "file_saved", subjectId, files: files.slice(0, 50).map((i) => ({ id: i.file!.id, name: i.file!.name, size: i.file!.size, type: i.file!.type, ...(i.file!.week ? { week: i.file!.week } : {}) })), ...(files.length > 50 ? { more: files.length - 50 } : {}) } : null;
+        const said = news.map((i) => i.kind === "new_announcement" ? `**${i.title}**\n\n${i.detail.split("\n").map((l) => "> " + l).join("\n")}`
+          : `**${i.title}**${i.detail ? "\n" + i.detail : ""}`);
+        const lead = files.length ? `Saved ${files.length} new file${files.length === 1 ? "" : "s"} from CMS.` : "";
+        let block = "";
+        try { block = card ? cardBlock(card) : ""; } catch { block = ""; }
+        const parts = [...said, lead, block].filter(Boolean);
+        if (parts.length) say(ensureChat(subjectId), parts.join("\n\n"));
       }
       await gucAsk({ action: "gucAckInbox", keys: items.map((i) => i.key) });
     } catch { /* not connected, or the window closed mid-way: picked up next time */ } finally { inboxing = false; }

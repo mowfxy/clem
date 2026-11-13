@@ -1645,6 +1645,7 @@ void app.whenReady().then(async () => {
       if (request.action === "gucSchedule") return engine.schedule(request.weekStart);
       if (request.action === "gucAnnouncements") return engine.announcements({ courseKey: request.courseId, cursor: request.cursor });
       if (request.action === "gucMarkRead") return engine.markRead(request.ids);
+      if (request.action === "gucMarkAllRead") return engine.markAllRead(request.courseId);
       if (request.action === "gucMaterials") return engine.materials(request.courseId);
       if (request.action === "gucSearch") return engine.search(request.query);
       if (request.action === "gucGrades") return engine.grades(request.courseId);

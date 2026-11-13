@@ -7,9 +7,10 @@ import { matchCourse } from "../../core/guc/match";
 import type { Space, StoredFile } from "../../core/types";
 import { Icon } from "../Icons";
 import { EmptyState } from "../ui/Calm";
-import { CheckSchedule, CourseLink, DriveFolder, SaveRules, Storage, dayShort, type GucActions } from "./GucCards";
+import { CheckSchedule, DriveFolder, SaveRules, Storage, dayShort, type GucActions } from "./GucCards";
 import { Announcements, CourseFiles, Deadlines, Grades, Problem, Skeleton } from "./GucHub";
-import { useSubject } from "./subject";
+import { unlinkSubject, useSubject } from "./subject";
+import { confirmDialog } from "../dialogs";
 import { useGuc } from "./useGuc";
 import { SubjectPasswordBanner } from "./GucPassword";
 import { PASSWORD_ROUTE } from "../../core/guc/password";
@@ -35,7 +36,7 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
   const slots = [...v.data.slots].sort((a, b) => ORDER.indexOf(a.day.toLowerCase()) - ORDER.indexOf(b.day.toLowerCase()) || a.period - b.period);
   return <div className="guc-hub guc-subject">
     <SubjectPasswordBanner onUpdate={() => actions.openHub(PASSWORD_ROUTE)} />
-    <CourseLink subjectId={space.id} actions={actions} />
+    <CourseBar subjectId={space.id} course={course} actions={actions} />
     <nav className="guc-tabs" role="tablist" aria-label={`${course.code} on GUC`} ref={bar}>
       {TABS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
         {label}{id === "announcements" && course.unread > 0 && <span className="guc-count">{course.unread}</span>}
@@ -56,6 +57,19 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
           <Storage subjectId={space.id} actions={actions} />
         </div>}
     </section>
+  </div>;
+}
+
+/** The linked course as one slim line across the tab: what it is on the left, Open in CMS and Unlink on the right. */
+function CourseBar({ subjectId, course, actions }: { subjectId: string; course: { key: string; code: string; name: string; season: string }; actions: GucActions }) {
+  const [busy, setBusy] = useState(false);
+  const unlink = () => void confirmDialog({ title: `Unlink ${course.code}?`, message: "Clem stops checking this course for this subject. Files already saved stay.", confirm: "Unlink" })
+    .then((yes) => { if (!yes) return; setBusy(true); return unlinkSubject(subjectId).catch((e) => actions.toast(String((e as Error)?.message || e))).finally(() => setBusy(false)); });
+  return <div className="guc-course-bar">
+    <Icon name="guc" size={16} />
+    <span><b>{course.code}</b> {course.name}<small>{course.season}</small></span>
+    <button type="button" className="lib-btn" onClick={() => actions.openHub(hubPath("cms", course.key))}><Icon name="external" size={14} />Open in CMS</button>
+    <button type="button" className="lib-btn" disabled={busy} onClick={unlink}>Unlink</button>
   </div>;
 }
 

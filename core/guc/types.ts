@@ -8,7 +8,8 @@ export type GucWeek = { title: string; date?: string; announcement: string; desc
 export type GucCoursePage = { courseKey: string; announcements: GucAnnouncement[]; weeks: GucWeek[]; materials: GucMaterial[] };
 export type GucSlot = { id: string; day: string; period: number; start: string; end: string; code: string; name: string; type: string; group: string; location: string };
 export type GucGrade = { id: string; semester: string; code: string; name: string; hours: number | null; numeric: number | null; letter: string; /** The study year it was read from ("2025-2026"). */ year?: string };
-export type GucDeadline = { id: string; courseKey: string; title: string; due: string; source: string };
+/** `title`: what is due ("Quiz 2"); `note`: the sentence it was read from. */
+export type GucDeadline = { id: string; courseKey: string; title: string; due: string; source: string; note?: string };
 /** This term's grades from the portal's CheckGrade page: midterms, and each course's coursework (quizzes, assignments). */
 export type GucMidterm = { id: string; course: string; code: string; grade: string };
 export type GucCoursework = { id: string; course: string; code: string; entries: { name: string; elements: { name: string; grade: string; professor: string }[] }[] };

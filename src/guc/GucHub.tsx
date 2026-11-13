@@ -206,10 +206,27 @@ export function Announcements({ focus, onConnect, only }: { focus?: string; onCo
   useEffect(() => () => { observer?.disconnect(); clearTimeout(timer.current); flush(); }, []);
   const at = focus ? items.findIndex((a) => a.id === focus) : -1;
   useEffect(() => { if (focus && at < 0 && next && items.length < 400) loadMore(); }, [focus, at, next]);
+  // Every unread announcement (this course's when one is picked), including ones not scrolled to or loaded yet.
+  const overview = useGuc<HubOverview>({ action: "gucOverview" }).data;
+  const loadedUnread = items.filter((a) => !a.read).length;
+  const unreadHere = Math.max(loadedUnread, (course ? courses.find((c) => c.key === course)?.unread : overview?.counts.unread) ?? 0);
+  const [marking, setMarking] = useState(false);
+  const markAll = () => {
+    if (marking) return;
+    setMarking(true);
+    const mine = (a: HubAnnouncement) => !course || a.courseKey === course;
+    fresh.current.clear(); pending.current.clear();
+    gucPatch<Page<HubAnnouncement>>("gucAnnouncements", (p) => ({ ...p, items: p.items.map((a) => (mine(a) ? { ...a, read: true } : a)) }));
+    setMore((m) => ({ ...m, items: m.items.map((a) => (mine(a) ? { ...a, read: true } : a)) }));
+    gucPatch<HubOverview>("gucOverview", (o) => ({ ...o, counts: { ...o.counts, unread: course ? Math.max(0, o.counts.unread - unreadHere) : 0 } }));
+    gucPatch<HubCourse[]>("gucCourses", (cs) => cs.map((c) => (!course || c.key === course ? { ...c, unread: 0 } : c)));
+    void gucAsk({ action: "gucMarkAllRead", ...(course ? { courseId: course } : {}) }).catch(() => void gucCache.revalidateAll()).finally(() => setMarking(false));
+  };
   const options = [{ value: "", label: "All courses" }, ...courses.filter((c) => c.active).map((c) => ({ value: c.key, label: c.code || c.name }))];
   return <>
-    {!only && <div className="guc-bar">
-      <PickMenu label="Course" value={course} options={options} onChange={setCourse} />
+    {(!only || unreadHere > 0) && <div className="guc-bar">
+      {!only ? <PickMenu label="Course" value={course} options={options} onChange={setCourse} /> : <span />}
+      {unreadHere > 0 && <button type="button" className="lib-btn" disabled={marking} onClick={markAll}><Icon name="check" size={15} />Mark all read</button>}
     </div>}
     {!first.data ? (first.error ? <Problem message={first.error} onRetry={() => void first.reload()} onConnect={onConnect} /> : <Skeleton rows={5} tall />)
       : !items.length ? <EmptyState scene="bell" line={course ? "No announcements in this course yet." : "No announcements yet. New ones show up here after each sync."} />
@@ -399,11 +416,12 @@ export function Deadlines({ focus, onConnect, courseKey }: { focus?: string; onC
   useEffect(() => { if (focus) document.querySelector(`[data-deadline="${CSS.escape(focus)}"]`)?.scrollIntoView({ block: "center" }); }, [focus, !!data.data]);
   if (!data.data) return data.error ? <Problem message={data.error} onRetry={() => void data.reload()} onConnect={onConnect} /> : <Skeleton rows={4} />;
   if (!list.length) return <EmptyState scene="alarm" line="No deadlines found. Clem picks them out of announcements and course pages." />;
-  const firstPast = list.findIndex((d) => d.past);
+  // Grouped by when they fall: this week, next week, later, then the last month's past ones.
+  const group = (d: (typeof list)[number]) => { if (d.past) return "Past"; const days = (Date.parse(d.due) - now) / 864e5; return days < 7 ? "Next 7 days" : days < 14 ? "The week after" : "Later"; };
   return <ol className="guc-deadlines">
-    {list.map((d, i) => { const r = relativeDue(d.due, now); return <li key={d.id} data-deadline={d.id} className={`tone-${r.tone} ${d.id === focus ? "is-focus" : ""}`}>
-      {i === firstPast && <h3 className="guc-past-head">Past</h3>}
-      <div className="guc-deadline"><b className="guc-when">{r.label}</b><span><strong>{d.title}</strong><small>{[d.code, r.date].filter(Boolean).join(" · ")}</small></span></div>
+    {list.map((d, i) => { const r = relativeDue(d.due, now), g = group(d); return <li key={d.id} data-deadline={d.id} className={`tone-${r.tone} ${d.id === focus ? "is-focus" : ""}`}>
+      {(i === 0 || group(list[i - 1]) !== g) && <h3 className={g === "Past" ? "guc-past-head" : "guc-group-head"}>{g}</h3>}
+      <div className="guc-deadline"><b className="guc-when">{r.label}</b><span><strong>{d.title}</strong><small>{[d.code, r.date].filter(Boolean).join(" · ")}</small>{d.note && <q className="guc-deadline-note">{d.note}</q>}</span></div>
     </li>; })}
   </ol>;
 }

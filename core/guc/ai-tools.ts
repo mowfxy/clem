@@ -167,7 +167,7 @@ export function deadlinesText(list: HubDeadline[], w: { from: number; to: number
   const inside = list.filter((d) => (!course || d.courseKey === course.courseKey) && Date.parse(d.due) >= w.from && Date.parse(d.due) <= w.to);
   const sorted = w.to === now ? inside.sort((a, b) => Date.parse(b.due) - Date.parse(a.due)) : inside.sort((a, b) => Date.parse(a.due) - Date.parse(b.due));
   if (!sorted.length) return `No deadlines${course ? " for " + label(course) : ""} in that range.`;
-  return `Deadlines${course ? " for " + label(course) : ""}:\n` + sorted.slice(0, LIST).map((d) => { const r = relativeDue(d.due, now); return `- ${d.code || "Course"}: ${clip(d.title, 160)} · ${r.date} (${r.label}) ${link("deadlines", d.id)}`; }).join("\n") + more(sorted.length - LIST, "deadlines", "narrow the range");
+  return `Deadlines${course ? " for " + label(course) : ""}:\n` + sorted.slice(0, LIST).map((d) => { const r = relativeDue(d.due, now); return `- ${d.code || "Course"}: ${clip(d.title, 160)} · ${r.date} (${r.label})${d.note ? ` — "${clip(d.note, 200)}"` : ""} ${link("deadlines", d.id)}`; }).join("\n") + more(sorted.length - LIST, "deadlines", "narrow the range");
 }
 
 export function announcementsText(items: HubAnnouncement[], total: { more: boolean }, course?: Resolved) {

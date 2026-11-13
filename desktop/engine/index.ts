@@ -216,6 +216,8 @@ export class Engine {
     this.light = job.finally(() => { if (this.light === job) this.light = undefined; });
     return job;
   }
+  /** The deadline reader: the main thread's model reads new course posts (core/guc/deadline-ai.ts). */
+  private get deadlineReader() { return this.host.complete ? (ask: { system: string; user: string }) => this.organizer.complete(ask.system, ask.user) : undefined; }
   /** One pulse: the parts of GUC that are due, nothing when none is or a sync is already running. */
   async pulse() {
     if (this.running || this.light) return null;
@@ -233,10 +235,10 @@ export class Engine {
     client ||= new GucClient(credentials, this.http, this.sleep);
     try {
       // A wrong password is tried once more after a short wait, to rule out a blip.
-      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts }).catch(async (e) => {
+      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts, reader: this.deadlineReader }).catch(async (e) => {
         if (asGucError(e).kind !== "auth") throw e;
         await (this.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(AUTH_RETRY_MS);
-        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts });
+        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts, reader: this.deadlineReader });
       });
       if (out) out.result = result;
       this.version++;
@@ -253,6 +255,9 @@ export class Engine {
         const of = new Map(links.map((l) => [l.courseKey, l]));
         return this.organizer.routineChanges(eventList.map((e) => ({ key: e.key, kind: e.kind, title: e.title, detail: e.detail, ...(e.courseKey && of.get(e.courseKey) ? { subjectId: of.get(e.courseKey)!.subjectId, code: of.get(e.courseKey)!.code } : {}) })));
       }).catch((e) => this.host.log("warn", "[routine] changes: " + (e as Error).message));
+      // New files on a linked course are saved as soon as a sync sees them, not at the next scheduled check.
+      const fresh = new Set(eventList.filter((e) => e.kind === "new_material" && e.courseKey).map((e) => e.courseKey!));
+      if (fresh.size && !only) void this.links().then((links) => Promise.all(links.filter((l) => fresh.has(l.courseKey)).map((l) => this.check(l.subjectId, "rules").catch((e) => this.host.log("warn", "[guc] save on change failed: " + asGucError(e).kind)))));
       return this.status();
     } catch (e) {
       const error = asGucError(e);
@@ -277,6 +282,7 @@ export class Engine {
   schedule(weekStart: string) { return read.schedule(this.db, this.owner, weekStart); }
   announcements(o: { courseKey?: string; cursor?: string } = {}) { return read.announcements(this.db, this.owner, o); }
   markRead(ids: string[]) { this.version++; return read.markRead(this.db, this.owner, ids); }
+  markAllRead(courseKey?: string) { this.version++; return read.markAllRead(this.db, this.owner, courseKey); }
   materials(courseKey: string) { return read.materials(this.db, this.owner, courseKey); }
   search(query: string) { return read.search(this.db, this.owner, query); }
   grades(courseKey?: string) { return read.grades(this.db, this.owner, courseKey); }

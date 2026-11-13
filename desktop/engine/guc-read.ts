@@ -57,6 +57,12 @@ export async function markRead(db: Db, owner: string, ids: string[]) {
   return { marked: rows.length };
 }
 
+/** Every unread announcement, or one course's, marked read ("Mark all read"). */
+export async function markAllRead(db: Db, owner: string, courseKey?: string) {
+  const rows = await db.query("update guc_announcements set read_at = now() where owner_id = $1 and read_at is null and ($2::text is null or course_key = $2) returning 1", [owner, courseKey ?? null]);
+  return { marked: rows.length };
+}
+
 const weekDate = (w: string) => /(\d{4}-\d{2}-\d{2})/.exec(w)?.[1];
 /** One course's files by week, newest week first, in the CMS's own order inside a week. */
 export async function materials(db: Db, owner: string, courseKey: string): Promise<HubMaterials> {
@@ -128,7 +134,7 @@ export async function mail(db: Db, owner: string): Promise<HubMail> {
 }
 
 export async function deadlines(db: Db, owner: string): Promise<HubDeadline[]> {
-  const rows = await db.query<{ deadline_id: string; course_key: string; code: string | null; title: string; due: Date; source: string }>(`select d.deadline_id, d.course_key, c.code, d.title, d.due, d.source
+  const rows = await db.query<{ deadline_id: string; course_key: string; code: string | null; title: string; due: Date; source: string; note: string | null }>(`select d.deadline_id, d.course_key, c.code, d.title, d.due, d.source, d.note
     from guc_deadlines d left join guc_courses c on c.owner_id = d.owner_id and c.course_key = d.course_key where d.owner_id = $1 order by d.due`, [owner]);
-  return rows.map((r) => ({ id: r.deadline_id, courseKey: r.course_key, code: canon(r.code), title: r.title, due: new Date(r.due).toISOString(), source: r.source }));
+  return rows.map((r) => ({ id: r.deadline_id, courseKey: r.course_key, code: canon(r.code), title: r.title, due: new Date(r.due).toISOString(), source: r.source, ...(r.note ? { note: r.note } : {}) }));
 }

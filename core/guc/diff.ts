@@ -1,33 +1,38 @@
 // Snapshot diff → events. A course, the grades or the schedule seen for the first time is a baseline, not news.
 import { sameCode } from "./codes.ts";
+import { DEADLINE_VERSION, dueText } from "./deadlines.ts";
 import { stableId } from "./parse.ts";
 import type { GucEvent, GucSnapshot } from "./types.ts";
 
 /** What was read at least once, so its first read is a baseline. `mailIds`: hashes of every Inbox id seen. */
-export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number>; /** The transcript's study years: when each was last read, and the oldest one there is. */ transcript?: { at: Record<string, number>; end?: string } };
+export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number>; /** The transcript's study years: when each was last read, and the oldest one there is. */ transcript?: { at: Record<string, number>; end?: string }; /** The deadline extractor's version, and the courses whose deadlines it read. */ deadlines?: { v: number; courses: string[]; /** Per course, the ids of the posts the deadline reader has read. */ read?: Record<string, string[]> } };
 const short = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 export const scheduleHash = (s: GucSnapshot) => stableId(s.slots.map((x) => [x.day, x.period, x.code, x.type, x.group, x.location].join("|")).sort().join("\n"));
 
-export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen): GucEvent[] {
+export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen, at = Date.now()): GucEvent[] {
   const events: GucEvent[] = [], known = new Set(seen.courses);
   const names = new Map(next.courses.map((c) => [c.key, c.code ? `${c.code} ${c.name}` : c.name]));
   const course = (key: string) => names.get(key) || "a course";
+  const code = (key: string) => next.courses.find((c) => c.key === key)?.code || course(key);
 
   const oldAnn = new Set(prev.announcements.map((a) => a.id));
   for (const a of next.announcements) if (known.has(a.courseKey) && !oldAnn.has(a.id))
-    events.push({ kind: "new_announcement", key: "ann:" + a.id, courseKey: a.courseKey, title: `New announcement in ${course(a.courseKey)}`, detail: short(a.text) });
+    events.push({ kind: "new_announcement", key: "ann:" + a.id, courseKey: a.courseKey, title: `New announcement in ${code(a.courseKey)}`, detail: short(a.text, 1000) });
 
   const oldMat = new Set(prev.materials.map((m) => m.id));
   for (const m of next.materials) if (known.has(m.courseKey) && !oldMat.has(m.id))
     events.push({ kind: "new_material", key: "mat:" + m.id, courseKey: m.courseKey, title: `New in ${course(m.courseKey)}: ${m.title}`, detail: [m.kind, m.week].filter(Boolean).join(" · ") });
 
-  const oldDl = new Map(prev.deadlines.map((d) => [d.id, d]));
+  // Deadlines: only from courses whose deadlines the same extractor read last time (a new extractor is a baseline), and
+  // only ones still ahead. Each says what is due and when, and a move says from when to when.
+  const sameReader = new Set(seen.deadlines?.v === DEADLINE_VERSION ? seen.deadlines.courses : []);
+  const oldDl = new Map(prev.deadlines.map((d) => [d.id, d])), now = at;
   for (const d of next.deadlines) {
-    if (!known.has(d.courseKey)) continue;
-    const was = oldDl.get(d.id);
-    if (!was) events.push({ kind: "deadline_added", key: "dl:" + d.id, courseKey: d.courseKey, title: `Deadline in ${course(d.courseKey)}`, detail: `${short(d.title)} · ${d.due}` });
-    else if (was.due !== d.due) events.push({ kind: "deadline_changed", key: `dl:${d.id}:${d.due}`, courseKey: d.courseKey, title: `Deadline moved in ${course(d.courseKey)}`, detail: `${short(d.title)} · ${was.due} → ${d.due}` });
+    if (!known.has(d.courseKey) || !sameReader.has(d.courseKey) || Date.parse(d.due) < now) continue;
+    const was = oldDl.get(d.id), quote = d.note ? ` “${short(d.note, 280)}”` : "";
+    if (!was) events.push({ kind: "deadline_added", key: "dl:" + d.id, courseKey: d.courseKey, title: `${code(d.courseKey)} ${d.title}: due ${dueText(d.due)}`, detail: `${course(d.courseKey)}.${quote}` });
+    else if (Math.abs(Date.parse(was.due) - Date.parse(d.due)) >= 60_000) events.push({ kind: "deadline_changed", key: `dl:${d.id}:${d.due}`, courseKey: d.courseKey, title: `${code(d.courseKey)} ${d.title} moved to ${dueText(d.due)}`, detail: `Was ${dueText(was.due)}.${quote}` });
   }
 
   if (seen.grades) {

@@ -114,6 +114,13 @@ export class Organizer {
   /** Another engine runs the jobs now (core/vps/lease.ts): no queue, no pending event sweep here. */
   detach() { this.jobs = undefined; if (this.timer) { clearTimeout(this.timer); this.timer = undefined; } }
 
+  /** One side request on the main thread's model (the organizer's model and reasoning), or null without a model. */
+  async complete(system: string, user: string): Promise<string | null> {
+    if (!this.host.complete) return null;
+    const snap = await this.workspace();
+    return this.host.complete({ system, user, model: snap.organizer?.model, reasoning: snap.organizer?.reasoning });
+  }
+
   // ---------- A sweep ----------
   private async workspace(): Promise<Snapshot> { return snapshotOf(await this.host.workspace?.().catch(() => null), this.clock()); }
   private async done() { return new Set((await this.db.query<{ key: string }>("select key from organizer_actions where owner_id = $1", [this.owner])).map((r) => r.key)); }

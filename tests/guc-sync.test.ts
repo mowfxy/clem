@@ -137,3 +137,20 @@ test("the diff only reports courses, grades and schedules it has seen before", (
   assert.equal(diffSnapshots(prev, next, { courses: [], grades: false, schedule: false }).length, 0);
   assert.deepEqual(diffSnapshots(prev, next, { courses: ["1:1"], grades: true, schedule: false }).map((e) => e.key), ["mat:1", "grade:g:A"]);
 });
+
+test("with a model, the AI reads each course's posts once, with the schedule, and keeps the deadlines it names", async () => {
+  const pages = site(), guc = fakeGuc(pages, { etags: true }), h = host(), asked: string[] = [];
+  h.complete = async ({ user }) => { asked.push(user); return JSON.stringify({ deadlines: /Course: CSEN 701/.test(user) ? [{ title: "Quiz 2", due: "2099-01-01 10:00" }, { title: "Assignment 5", due: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10) + " 15:30", timeKnown: true, quote: "Assignment 5 is due next week." }] : [], cancel: [] }); };
+  const engine = await Engine.open("owner-ai", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  try {
+    await engine.connect("student.name", "secret");
+    assert.ok(asked.length >= 1 && asked.length <= 3, "one request per course with posts to read");
+    assert.ok(asked.every((u) => /GUC weeks \(Saturday to Thursday\)/.test(u) && /The student's classes in this course each week/.test(u)));
+    const rows = await engine.db.query<{ title: string; note: string | null }>("select title, note from guc_deadlines where owner_id = 'owner-ai'");
+    assert.deepEqual(rows.map((r) => r.title), ["Assignment 5"], "named by the AI; an implausible date is dropped");
+    assert.equal(rows[0].note, "Assignment 5 is due next week.");
+    const before = asked.length;
+    await engine.sync();
+    assert.equal(asked.length, before, "nothing new on CMS: the AI isn't asked again");
+  } finally { await engine.close(); }
+});

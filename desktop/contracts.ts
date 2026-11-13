@@ -55,6 +55,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("gucSchedule"), weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   z.object({ action: z.literal("gucAnnouncements"), courseId: gucCourse.optional(), cursor: z.string().regex(/^\d{1,15}\.[\w-]{1,100}$/).optional() }),
   z.object({ action: z.literal("gucMarkRead"), ids: z.array(gucId).min(1).max(200) }),
+  z.object({ action: z.literal("gucMarkAllRead"), courseId: gucCourse.optional() }),
   z.object({ action: z.literal("gucMaterials"), courseId: gucCourse }),
   z.object({ action: z.literal("gucSearch"), query: z.string().trim().min(2).max(200) }),
   z.object({ action: z.literal("gucGrades"), courseId: gucCourse.optional() }),
