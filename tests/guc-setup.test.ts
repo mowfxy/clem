@@ -108,20 +108,16 @@ test("checks: suggested after lectures, next run in Cairo time, cron lines and t
 });
 
 const ctx = { linked: true, vps: false };
-test("setup asks in order, skips what doesn't apply, and storage only with a VPS", () => {
+test("setup asks only for the course (when unsure) and what to save", () => {
   let s = startSetup(0);
   const order: SetupStep[] = [];
   for (let step = nextStep(s, ctx); step; step = nextStep(s, ctx)) { order.push(step); s = answer(s, step, "answered", ctx); }
-  assert.deepEqual(order, ["link", "save", "check", "drive"]);
+  assert.deepEqual(order, ["link", "save"]);
   assert.equal(s.finished, true);
-  assert.equal(nextStep(startSetup(0), { linked: true, vps: true }), "link");
-  let v = startSetup(0, true);
-  assert.equal(nextStep(v, { linked: true, vps: true }), "save", "made from a course: already linked");
-  for (const step of ["save", "check", "drive"] as const) v = answer(v, step, "answered", { linked: true, vps: true });
-  assert.equal(nextStep(v, { linked: true, vps: true }), "storage");
-  // Skipping the link leaves only what makes sense without a course.
+  assert.equal(nextStep(startSetup(0, true), { linked: true, vps: true }), "save", "made from a course: already linked");
+  assert.equal(nextStep(answer(startSetup(0, true), "save", "answered", { linked: true, vps: true }), { linked: true, vps: true }), null, "no check, Drive or storage questions");
   const skipped = answer(startSetup(0), "link", "skipped", { linked: false, vps: false });
-  assert.equal(nextStep(skipped, { linked: false, vps: false }), "drive");
+  assert.equal(skipped.finished, true, "no course: nothing left to ask");
 });
 
 test("setup resumes after a restart and editing an earlier answer keeps its place", () => {
@@ -131,26 +127,25 @@ test("setup resumes after a restart and editing an earlier answer keeps its plac
   s = answer(s, "save", "skipped", ctx);
   const again = answer(s, "link", "answered", ctx);
   assert.deepEqual(again.done, s.done);
-  assert.equal(nextStep(again, ctx), "check", "changing the link later doesn't go back");
-  assert.equal(answer(s, "save", "answered", ctx).done.save, "answered");
-  for (const step of ["check", "drive"] as const) s = answer(s, step, "answered", ctx);
-  assert.equal(toPost(s, ctx, ["link", "save", "check", "drive"]), "done");
-  assert.equal(toPost(s, ctx, ["link", "save", "check", "drive", "done"]), null);
-  // The posted steps come back from the thread's cards.
-  const msg = setupMessage("save", { subjectId: "s1", subject: "Embedded", linked: true, save: "Slides", check: "" });
-  assert.equal(stepOfCard(cardsIn(msg)[0]), "save");
+  assert.equal(nextStep(again, ctx), null, "changing the link later doesn't go back");
+  assert.equal(toPost(s, ctx, ["link", "save"]), "done");
+  assert.equal(toPost(s, ctx, ["link", "save", "done"]), null);
+  // Old threads' cards still count as asked.
+  assert.equal(stepOfCard(readCard('{"type":"save_rules","subjectId":"s1","setup":true}')!), "save");
   assert.equal(stepOfCard(readCard('{"type":"save_rules","subjectId":"s1"}')!), undefined, "a card outside setup asks nothing");
 });
 
-test("setup messages ask one short question each with its card", () => {
-  const info = { subjectId: "s1", subject: "Embedded", course: { key: "1201:64", code: "CSEN 701", name: "Embedded Systems Architecture" }, linked: false, sure: true, save: "Slides and assignments", check: "Half an hour after each lecture works well: Sun 12:00", first: true };
+test("setup messages are plain chat text, one natural question, no cards", () => {
+  const info = { subjectId: "s1", subject: "Embedded", course: { key: "1201:64", code: "CSEN 701", name: "Embedded Systems Architecture" }, linked: false, sure: false, save: "Slides and assignments", check: "", first: true, choices: ["CSEN 702 Microprocessors"] };
   const link = setupMessage("link", info);
-  assert.match(link, /Let's set up \*\*Embedded\*\*/);
-  assert.match(link, /This looks like \*\*CSEN 701\*\* \(Embedded Systems Architecture\) on CMS\. Link it\?/);
-  assert.deepEqual(cardsIn(link), [{ type: "course_link", subjectId: "s1", setup: true, suggest: "1201:64" }]);
-  assert.match(setupMessage("link", { ...info, sure: false }), /Pick the right course/);
-  assert.match(setupMessage("link", { ...info, linked: true }), /\*\*CSEN 701\*\* is linked/);
-  for (const step of ["save", "check", "drive", "storage", "done"] as const) assert.equal(cardsIn(setupMessage(step, info)).length, 1, step);
+  assert.ok(link.startsWith("Is **Embedded** **CSEN 701** (Embedded Systems Architecture) on CMS?"), link);
+  assert.ok(link.includes("CSEN 702 Microprocessors"));
+  assert.ok(setupMessage("link", { ...info, course: undefined }).startsWith("Which CMS course is **Embedded**?"));
+  const save = setupMessage("save", { ...info, linked: true });
+  assert.ok(save.startsWith("**Embedded** is linked to **CSEN 701**"), save);
+  assert.ok(save.includes("What should I keep from it? Right now that's slides and assignments"));
+  assert.ok(setupMessage("save", { ...info, linked: true, lead: "I found it and linked it." }).startsWith("I found it and linked it. I watch it"));
+  for (const step of ["link", "save", "done"] as const) assert.equal(cardsIn(setupMessage(step, info)).length, 0, step);
 });
 
 test("typed setup replies are read locally, and the AI's JSON only when valid", () => {

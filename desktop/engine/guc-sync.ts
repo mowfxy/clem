@@ -1,10 +1,12 @@
 // One GUC sync: the light course list, the schedule and grades, and the pages of linked courses (every active course on
 // the first sync, for announcements). Unchanged pages are skipped; changes become rows, a snapshot and events.
 import { diffSnapshots, newCourses, type Seen } from "../../core/guc/diff.ts";
-import { extractDeadlines } from "../../core/guc/deadlines.ts";
+import { courseDeadlines, DEADLINE_VERSION } from "../../core/guc/deadlines.ts";
+import { applyReader, courseTexts, readerPrompt } from "../../core/guc/deadline-ai.ts";
+import { parseModelJson } from "../../core/model-json.ts";
 import { courseworkOptions, formFields, nextTranscriptYear, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, studyYear, transcriptYears, urls } from "../../core/guc/parse.ts";
 import { readMail } from "./guc-mail.ts";
-import { emptySnapshot, type GucEvent, type GucProgress, type GucSnapshot, type GucSyncStats } from "../../core/guc/types.ts";
+import { emptySnapshot, type GucDeadline, type GucEvent, type GucProgress, type GucSnapshot, type GucSyncStats } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
 import { GucError } from "./errors.ts";
 import type { Fetched, GucClient, PageMemo } from "./guc-client.ts";
@@ -45,7 +47,7 @@ export function dueParts(lastRead: Record<string, number> | undefined, now: numb
 
 /** `mail: false` leaves the Inbox out (tests, and a person who turned it off). `parts`: read only these (a pulse);
  *  every part when left out. */
-export async function syncGuc(o: { db: Db; owner: string; client: GucClient; initial?: boolean; only?: string; now?: Date; progress?: (p: GucProgress) => void; mail?: boolean; parts?: Part[] }): Promise<SyncResult> {
+export async function syncGuc(o: { db: Db; owner: string; client: GucClient; initial?: boolean; only?: string; now?: Date; progress?: (p: GucProgress) => void; mail?: boolean; parts?: Part[]; /** The main thread's model, to read deadlines (core/guc/deadline-ai.ts); left out, the rule reader does. */ reader?: (ask: { system: string; user: string }) => Promise<string | null> }): Promise<SyncResult> {
   const { db, owner, client } = o, started = Date.now(), now = o.now || new Date(), before = client.requests;
   const prev = await previousSnapshot(db, owner);
   const pages: Record<string, PageMemo> = { ...prev.pages }, warnings: string[] = [];
@@ -153,6 +155,12 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
     }
   }
 
+  // Deadlines read by an older extractor are replaced: their course pages are read again (not skipped as unchanged),
+  // and what the new one finds is a baseline, not news (core/guc/diff.ts).
+  const same = prev.seen.deadlines?.v === DEADLINE_VERSION;
+  const fresh = new Set(same ? prev.seen.deadlines!.courses : []);
+  const textsRead: Record<string, string[]> = same ? { ...prev.seen.deadlines!.read } : {};
+  if (!same) next.deadlines = [];
   const linked = new Set(await linkedCourses(db, owner));
   const latestSeason = Math.max(0, ...next.courses.map((c) => c.seasonId));
   // A pulse reads the linked courses' pages (conditionally: an unchanged page is one cheap request) when they are due,
@@ -168,18 +176,35 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   await Promise.all(wanted.map(async (course) => {
     const url = urls.course(course.id, course.seasonId);
     try {
-      const page = await client.page(url, pages[url]);
+      const page = await client.page(url, fresh.has(course.key) ? pages[url] : undefined);
       if (page.unchanged) skipped++;
       else {
         const read = parseCoursePage(page.body, course.key);
         next.announcements = [...next.announcements.filter((a) => a.courseKey !== course.key), ...read.announcements];
         next.materials = [...next.materials.filter((m) => m.courseKey !== course.key), ...read.materials];
-        const deadlines = [
-          ...read.announcements.flatMap((a) => extractDeadlines(a.text, course.key, "announcement", now)),
-          ...read.weeks.flatMap((w) => extractDeadlines(w.description, course.key, "week", now)),
-        ];
-        next.deadlines = [...next.deadlines.filter((d) => d.courseKey !== course.key), ...deadlines];
-        pages[url] = page.memo; changed++;
+        // Deadlines: the AI reads only the posts it hasn't read (recent ones), with the person's classes, and keeps the
+        // course's list; without a model the rule reader does. When the AI can't answer, the rule reader stands in and
+        // the page is read again next pulse (no memo kept) so the AI gets another go.
+        const texts = courseTexts(read, now.getTime()), had = new Set(textsRead[course.key] || []);
+        const unread = texts.filter((t) => !had.has(t.id));
+        const tracked = next.deadlines.filter((d) => d.courseKey === course.key && Date.parse(d.due) >= now.getTime() - 30 * 864e5);
+        let list = tracked, ok = true;
+        if (unread.length) {
+          let ai: GucDeadline[] | null = null;
+          if (o.reader) {
+            const input = { course, slots: next.slots, texts: unread, tracked, now: now.getTime() };
+            try { const raw = await o.reader(readerPrompt(input)); ai = raw == null ? null : applyReader(parseModelJson(raw), input); } catch { ai = null; }
+            if (!ai) { ok = false; warnings.push(course.code + ": deadline reader didn't answer"); }
+          }
+          if (ai) list = ai;
+          else {
+            const rules = new Map(courseDeadlines(unread.map((t) => ({ text: t.text, source: t.source })), course.key, now).map((d) => [d.id, d]));
+            list = [...tracked.filter((d) => !rules.has(d.id)), ...rules.values()];
+          }
+        }
+        next.deadlines = [...next.deadlines.filter((d) => d.courseKey !== course.key), ...list];
+        if (ok) { textsRead[course.key] = texts.map((t) => t.id); fresh.add(course.key); pages[url] = page.memo; }
+        changed++;
       }
       if (!seen.courses.includes(course.key)) seen.courses.push(course.key);
     } catch (e) {
@@ -189,7 +214,8 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
     say("course", ++done, wanted.length, `Checking your courses… ${done} of ${wanted.length}`);
   }));
 
-  const eventList = [...diffSnapshots(prev.data, next, prev.seen), ...newCourses(prev.data, next, linked)];
+  seen.deadlines = { v: DEADLINE_VERSION, courses: [...fresh], read: textsRead };
+  const eventList = [...diffSnapshots(prev.data, next, prev.seen, now.getTime()), ...newCourses(prev.data, next, linked)];
   const stats: GucSyncStats = { requests: client.requests - before, skipped, changed, events: eventList.length, ms: Date.now() - started, ...(missed.length ? { missed } : {}) };
   await db.tx(async (t) => {
     if (changed) await save(t, owner, next);
@@ -226,8 +252,8 @@ async function save(t: Db, owner: string, s: GucSnapshot) {
   await t.query("insert into guc_grades select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::real[], $8::text[]) on conflict do nothing",
     [owner, ...columns(s.grades, (g) => g.id, (g) => g.semester, (g) => g.code, (g) => g.name, (g) => g.hours, (g) => g.numeric, (g) => g.letter)]);
   await t.query("delete from guc_deadlines where owner_id = $1", [owner]);
-  await t.query("insert into guc_deadlines select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::text[]) on conflict do nothing",
-    [owner, ...columns(s.deadlines, (d) => d.id, (d) => d.courseKey, (d) => d.title, (d) => d.due, (d) => d.source)]);
+  await t.query("insert into guc_deadlines (owner_id, deadline_id, course_key, title, due, source, note) select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::text[], $7::text[]) on conflict do nothing",
+    [owner, ...columns(s.deadlines, (d) => d.id, (d) => d.courseKey, (d) => d.title, (d) => d.due, (d) => d.source, (d) => d.note ?? null)]);
   await t.query("delete from guc_announcements where owner_id = $1 and not (announcement_id = any($2::text[]))", [owner, s.announcements.map((a) => a.id)]);
   await t.query("insert into guc_announcements (owner_id, announcement_id, course_key, scope, week, body) select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) on conflict (owner_id, announcement_id) do nothing",
     [owner, ...columns(s.announcements, (a) => a.id, (a) => a.courseKey, (a) => a.scope, (a) => a.week ?? null, (a) => a.text)]);

@@ -114,7 +114,7 @@ export function cardMessage(card: ClemCard, c: RenderContext = {}): TgMessage | 
     case "grade":
       return { html: lines([`<b>${esc(card.title)}</b>`, card.detail ? esc(cut(card.detail, 800)) : ""]), buttons: [[open("#" + hubPath("grades"))]] };
     case "deadline":
-      return { html: lines([`<b>${card.changed ? "Deadline moved" : "New deadline"}:</b> ${esc(card.title)}`, card.detail ? esc(cut(card.detail, 800)) : ""]), buttons: [[open("#" + hubPath("deadlines", card.id))]] };
+      return { html: lines([`<b>${esc(card.title)}</b>`, card.detail ? esc(cut(card.detail, 800)) : ""]), buttons: [[open("#" + hubPath("deadlines", card.id))]] };
     case "handoff":
       return { html: `Continued in <b>${esc(card.spaceName)}</b>${card.title ? `: ${esc(card.title)}` : ""}.`, buttons: [[{ text: "Open in Clem", tap: { t: "open", chat: card.chatId } }]] };
     case "new_courses":

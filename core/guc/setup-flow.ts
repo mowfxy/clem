@@ -1,7 +1,7 @@
 // A subject's setup thread as a small state machine: which question comes next, what Clem says, and how a typed reply
 // is read. It runs locally and instantly; only a reply it can't read goes to the AI (src/guc/setup.ts), whose JSON
 // comes back through `readAiReply`. The state lives in the engine's subject_settings, so a restart resumes it.
-import { cardBlock, type ClemCard, type SettingsUpdateCard } from "./cards.ts";
+import type { ClemCard, SettingsUpdateCard } from "./cards.ts";
 import { TZ } from "./hub.ts";
 import { matchCourse, type MatchCourse } from "./match.ts";
 import { AI_RULES_FORMAT, aiSaveRules, NO, YES, convertSaveRules, describeSaveRules, fromAi, rulesPatch, SAVE_KINDS, SAVE_LABELS, type SaveKind, type SaveRules } from "./rules.ts";
@@ -15,11 +15,12 @@ export type SetupState = { done: Partial<Record<SetupStep, "answered" | "skipped
 export type SetupContext = { linked: boolean; vps: boolean };
 
 export const startSetup = (now: number, linked = false): SetupState => ({ done: linked ? { link: "answered" } : {}, started: now });
-/** Storage is asked only with a VPS; save rules and checks only once a course is linked. */
+/** Setup asks one thing: what to save (after the course is linked, which a sure match does by itself). When to check
+ *  isn't asked (new files are saved as soon as a sync sees them), and the Drive copy and storage keep their defaults
+ *  until the person says otherwise in the chat. */
 export function applies(step: SetupStep, ctx: SetupContext) {
-  if (step === "storage") return ctx.vps;
-  if (step === "save" || step === "check") return ctx.linked;
-  return true;
+  if (step === "save") return ctx.linked;
+  return step === "link";
 }
 /** The first step not yet answered or skipped that applies, or null when setup is done. */
 export function nextStep(state: SetupState, ctx: SetupContext): SetupStep | null {
@@ -49,25 +50,28 @@ export type SetupInfo = {
   save: string; check: string; first?: boolean;
   /** "Store my files on my VPS" is on: files go there, so the step only says so. */
   vpsFiles?: boolean;
+  /** This term's other courses, for a link question with no sure match ("CSEN 301 Data Structures"). */
+  choices?: string[];
+  /** Said before the question ("Linked to **CSEN 301**."). */
+  lead?: string;
 };
 const b = (s: string) => `**${s}**`;
-/** What Clem says for a step: one short question and its card. */
+/** What Clem says for a step, as plain chat text: no cards to tap, the person answers in their own words. */
 export function setupMessage(step: SetupStep | "done", i: SetupInfo) {
-  const hi = i.first ? (i.linked && i.course ? `${b(i.course.code)} is linked to ${b(i.subject)}. A few quick questions and it's set.\n\n` : `Let's set up ${b(i.subject)}. A few quick questions, one at a time.\n\n`) : "";
-  const card = (c: ClemCard) => "\n\n" + cardBlock(c);
-  const id = i.subjectId;
+  const course = i.course ? `${b(i.course.code)} (${i.course.name})` : "";
   switch (step) {
     case "link": {
-      const ask = i.course && i.sure ? `This looks like ${b(i.course.code)} (${i.course.name}) on CMS. Link it?`
-        : i.course ? `Is this ${b(i.course.code)} (${i.course.name}) on CMS? Pick the right course below, or skip if it isn't on CMS.`
-        : `I couldn't find ${b(i.subject)} among your CMS courses. Pick one below, or skip if it isn't on CMS.`;
-      return hi + ask + card({ type: "course_link", subjectId: id, setup: true, ...(i.course && !i.linked ? { suggest: i.course.key } : {}) });
+      const list = i.choices?.length ? `
+
+This term on CMS you have: ${i.choices.slice(0, 12).join(", ")}.` : "";
+      if (i.course) return `Is ${b(i.subject)} ${course} on CMS? Tell me yes, or which course it is instead, or that it isn't on CMS.` + list;
+      return `Which CMS course is ${b(i.subject)}? Just tell me its code or name, or that it isn't on CMS.` + list;
     }
-    case "save": return hi + `What should I save from CMS? I'd keep ${i.save.toLowerCase()}. Change anything below, or just tell me.` + card({ type: "save_rules", subjectId: id, setup: true });
-    case "check": return hi + `When should I check CMS for new files? ${i.check}.` + card({ type: "check_schedule", subjectId: id, setup: true });
-    case "drive": return hi + "Should I also keep a copy of saved files in a Google Drive folder?" + card({ type: "drive_folder", subjectId: id, setup: true });
-    case "storage": return hi + (i.vpsFiles ? "Files will be stored on your VPS, and this device keeps the recent ones. All good?" : "Where should the files live, on this device or on your VPS?") + card({ type: "storage", subjectId: id, setup: true });
-    default: return `All set${i.linked && i.course ? ` with ${b(i.course.code)}` : ""}. Change anything here or on the subject page, or just tell me (like "stop saving videos").` + card({ type: "setup_done", subjectId: id });
+    case "save": return (i.lead || (i.course ? `${b(i.subject)} is linked to ${course}.` : "")) + ` I watch it on CMS every few minutes, save new files the moment they're posted, and tell you here about announcements, grades and deadlines.
+
+What should I keep from it? Right now that's ${i.save.toLowerCase()}. Say it however you like: "everything", "just slides and sheets", "no solutions", "only PDFs from week 3 on".`;
+    case "check": case "drive": case "storage": return "";
+    default: return `Done. I'll keep ${i.save.toLowerCase()}${i.linked && i.course ? ` from ${b(i.course.code)}` : ""}. Tell me here anytime to change it, or to copy files to Google Drive.`;
   }
 }
 
@@ -168,8 +172,8 @@ export function updateSummary(u: SettingsUpdateCard) {
 
 /** What Clem says when neither it nor the AI could read a reply. */
 export const NOT_UNDERSTOOD: Record<SetupStep, string> = {
-  link: "Sorry, I didn't catch which course. Pick it in the card above, or say skip.",
-  save: 'Sorry, I didn\'t catch that. Tap what to keep in the card above, or say something like "only slides and assignments".',
+  link: "I couldn't tell which course you mean. Try its code (like CSEN 301), or say it isn't on CMS.",
+  save: 'I didn\'t quite get what to keep. Something like "everything", "only slides and assignments" or "no videos" works.',
   check: 'Sorry, I didn\'t catch the time. Try "after each lecture" or "every day at 8pm".',
   drive: "Should I copy files to Google Drive? Yes or no is fine.",
   storage: "On this device or on your VPS?",

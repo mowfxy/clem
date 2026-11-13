@@ -130,7 +130,9 @@ html:root[data-theme=light] .guc-skel span{background:linear-gradient(90deg,#1b2
 .guc-deadline span{display:flex;flex-direction:column;gap:2px;min-width:0}
 .guc-deadline span strong{font-weight:500;overflow-wrap:anywhere}
 .guc-deadline small{font-size:12px;color:var(--muted)}
-.guc-hub .guc-past-head{margin:14px 4px 6px;font:600 var(--text-label)/1 var(--sans);color:var(--muted)}
+.guc-hub .guc-past-head,.guc-hub .guc-group-head{margin:14px 4px 6px;font:600 var(--text-label)/1 var(--sans);color:var(--muted)}
+.guc-hub .guc-deadlines li:first-child .guc-group-head{margin-top:2px}
+.guc-deadline-note{margin-top:3px;font-size:12px;line-height:1.4;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 /* A subject's CMS tab */
 .guc-linked{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px;border-radius:14px;background:var(--calm-tile);box-shadow:var(--glass-rim)}
@@ -193,6 +195,13 @@ html:root[data-theme=light] :is(.guc-new li,.guc-link-pick :is(li,footer))>butto
 .guc-subject{display:grid;gap:14px;max-width:none}
 .guc-subject>.edit-proposal{margin:0}
 .guc-subject .guc-tabs{margin:0}
+/* The subject's CMS tab: the course on one line, and its tabs spread across the full width like the page's own. */
+.guc-course-bar{display:flex;align-items:center;gap:10px;min-height:var(--row);padding:0 4px;font-size:var(--text-s);color:var(--ink)}
+.guc-course-bar>span{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.guc-course-bar>span b{font-weight:600}
+.guc-course-bar>span small{font-size:12px;color:var(--muted)}
+.guc-course-bar>.brand-guc{flex:none}
+.guc-subject .guc-tabs button{flex:1 1 0;padding:0 8px}
 .guc-settings-cards{display:grid;gap:10px}
 .guc-settings-cards>.edit-proposal{margin:0}
 .guc-classes{list-style:none;margin:0;padding:0;display:grid;gap:6px}

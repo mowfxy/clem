@@ -55,7 +55,11 @@ test("the GUC pulse reads only what is due: mail and pages often, heavy pages ra
 test("a change routine fires right after the sync that found a grade, tells the person and posts to their webhook", async () => {
   const hook = await local();
   const pages = site(), guc = fakeGuc(pages), asked: string[] = [];
-  const { e, o } = await engine({ http: guc.http, complete: async (r) => { asked.push(r.user); return JSON.stringify({ say: "Your CSEN 701 midterm is out: 17/20.", important: true }); } });
+  // The same model also reads course posts for deadlines (core/guc/deadline-ai.ts): only the routine's request is kept here.
+  const { e, o } = await engine({ http: guc.http, complete: async (r) => {
+    if (/^Today: .*\nCourse: /.test(r.user)) return JSON.stringify({ deadlines: [], cancel: [] });
+    asked.push(r.user); return JSON.stringify({ say: "Your CSEN 701 midterm is out: 17/20.", important: true });
+  } });
   try {
     await e.connect("student.name", "secret");
     await e.db.query("insert into subject_links (owner_id, subject_id, course_key) values ('rt-owner', 'emb', '1201:64')");

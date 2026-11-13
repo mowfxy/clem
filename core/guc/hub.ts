@@ -26,7 +26,7 @@ export type HubWeek = { week: string; date?: string; items: HubMaterial[] };
 export type HubMaterials = { courseKey: string; weeks: HubWeek[] };
 export type HubHit = { type: "material" | "announcement"; id: string; courseKey: string; code: string; title: string; snippet: string; week?: string; name?: string; fileType?: string };
 export type HubGrade = { id: string; semester: string; code: string; name: string; hours: number | null; numeric: number | null; letter: string; latest: boolean; fresh: boolean };
-export type HubDeadline = { id: string; courseKey: string; code: string; title: string; due: string; source: string };
+export type HubDeadline = { id: string; courseKey: string; code: string; title: string; due: string; source: string; note?: string };
 export type HubFile = { id: string; name: string; type: string; size: number; stored: boolean };
 
 const TYPES: Record<string, string> = { pdf: "application/pdf", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ppt: "application/vnd.ms-powerpoint", doc: "application/msword", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", zip: "application/zip", txt: "text/plain", mp4: "video/mp4" };
