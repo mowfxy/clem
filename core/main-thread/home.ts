@@ -2,8 +2,11 @@
 // subjects and projects for a new chat. Pure, so the window and its tests share them.
 import { mentionMatches } from './route.ts';
 
-/** The morph's length: between the workspace's quick (.24s) and its entrance (.38s) motion. */
-export const MORPH_MS = 320;
+/** The box's glide between home and the thread (--mt-glide in src/main-thread/main-thread.css): long enough to read as
+ *  one piece of glass travelling the height of the window, not a jump. */
+export const MORPH_MS = 440;
+/** Its curve (--mt-glide-ease): a soft start that still answers the click at once, and a long settle. */
+export const MORPH_EASE = 'cubic-bezier(.32,.72,0,1)';
 export type Morph = 'view-transition' | 'flip' | 'instant';
 /** How home and the main thread trade places: instant when reduced motion or a quieter workspace is asked for, the
  *  View Transitions API when the browser has it, else a FLIP of the composer itself. */

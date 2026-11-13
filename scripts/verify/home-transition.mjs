@@ -1,5 +1,5 @@
 // Home ⇄ main thread and GUC's password expiry against the real App and a real in-memory engine, in dark and light:
-// the home box morphs into the thread's (frames at 0/120/240/320 ms with the animations held, so no frame is blank and
+// the home box morphs into the thread's (frames at 0/150/300/440 ms with the animations held, so no frame is blank and
 // the composer's glass is there throughout), the reverse back to Home, reduced motion swapping at once, the quick
 // picker opening a new chat (a chip, then Ctrl J and typing), then GUC refusing the password: the hub and subject
 // banners, the main-thread card, Update password on Settings → Connectors → GUC's "New password" field, and the card
@@ -85,7 +85,7 @@ try {
       const names = await page.evaluate(() => document.getAnimations().map((a) => a.effect?.pseudoElement).filter(Boolean).join(" "));
       check(/clem-composer/.test(names) && /clem-home/.test(names) && /clem-thread/.test(names), `${theme}: composer morphs, home recedes, thread rises`);
       const frames = [];
-      for (const t of [0, 120, 240, 320]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); frames.push(await shot(`home-in-${t}ms`)); }
+      for (const t of [0, 150, 300, 440]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); frames.push(await shot(`home-in-${t}ms`)); }
       await page.evaluate(() => window.__vtGo());
       await page.locator(".chat-view.main-thread").waitFor({ timeout: 3000 });
       await settle();
@@ -102,7 +102,7 @@ try {
       await box.fill("");
       await page.locator(".nav-item", { hasText: "Home" }).click();
       check(await until(() => page.evaluate(() => window.__vt?.held === true && document.documentElement.dataset.morph === "out"), 3000), `${theme}: Home reverses it`);
-      for (const t of [0, 160, 320]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); await shot(`home-out-${t}ms`); }
+      for (const t of [0, 220, 440]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); await shot(`home-out-${t}ms`); }
       await page.evaluate(() => window.__vtGo());
       await page.locator(".new-chat-content .home-pick").waitFor({ timeout: 3000 });
       check(await page.locator(".nav-item.active", { hasText: "Home" }).count() === 1, `${theme}: back on Home`);
