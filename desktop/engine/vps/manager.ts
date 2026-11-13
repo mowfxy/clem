@@ -201,7 +201,7 @@ export class VpsManager {
     const engineToken = await this.d.engineToken?.().catch(() => undefined);
     const guc = await this.d.secrets.get("guc-" + this.owner);
     const secrets: Record<string, unknown> = { rpc, ...(guc ? { ["guc-" + this.owner]: guc } : {}), ...(engineToken ? { "engine-token": engineToken } : {}), ...(v.modelKey ? { model: v.modelKey } : {}) };
-    const r = await installWorker({ link: l, owner: this.owner, bundle: this.d.bundle, key: Buffer.from(key, "base64"), secrets, accountService: this.d.accountService, progress });
+    const r = await installWorker({ link: l, owner: this.owner, bundle: this.d.bundle, key: Buffer.from(key, "base64"), secrets, accountService: this.d.accountService, publicHost: v.config?.host, progress });
     await this.save({ worker: { enabled: true, kind: r.kind, key, rpc, installedAt: Date.now() } });
     // Its database starts empty: subject links and settings, the organizer's settings, watches and mutes follow.
     await this.handover().catch((e) => this.log("[vps] handover: " + (e as Error).message));

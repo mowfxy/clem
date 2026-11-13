@@ -6,6 +6,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { GUC_GUIDE } from "../core/guc/ai-tools.ts";
 import { TELEGRAM_GUIDE } from "../core/telegram/guide.ts";
+import { CALENDAR_GUIDE } from "../core/proactivity/calendar.ts";
+import { ROUTINE_GUIDE } from "../core/proactivity/routines.ts";
+import { isClemAction } from "../core/proactivity/tools.ts";
 import { BEAT_MS, step, type Lease } from "../core/vps/lease.ts";
 import { runGucTool, runTelegramTool } from "../desktop/engine/ai-tools.ts";
 import { openPglite, openPostgres, type Backend } from "../desktop/engine/db.ts";
@@ -15,10 +18,11 @@ import { DeviceStore } from "../desktop/engine/storage.ts";
 import { apiComplete, cliComplete, headlessConverse, type Complete, type ModelKey } from "../desktop/engine/vps/headless.ts";
 import { callPath, serveWorker } from "../desktop/engine/vps/rpc.ts";
 import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
+import { serveHooks } from "../desktop/engine/hooks.ts";
 
 export const WORKER_VERSION = 1;
 const here = typeof __filename === "string" ? dirname(__filename) : process.cwd();
-type Config = { owner: string; accountService: string };
+type Config = { owner: string; accountService: string; publicHost?: string };
 
 export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: NodeJS.ProcessEnv; migrations?: string; backend?: Backend; beat?: number } = {}) {
   const env = o.env || process.env;
@@ -40,6 +44,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   log("info", `[worker] model: ${model}${cli ? " (" + cli.name + ")" : ""}`);
 
   const notices: { key: string; title: string; body: string; open?: object }[] = [];
+  const hookPort = Number(env.CLEM_HOOK_PORT || 7718);
   const disk = new DeviceStore(files, { location: "vps", sub: "" });
   const workspaceFile = join(data, "workspace.json");
   let engine: Engine | undefined;
@@ -64,10 +69,11 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     ...(complete ? {
       converse: headlessConverse({
         complete,
-        guide: GUC_GUIDE + "\n\n" + TELEGRAM_GUIDE,
+        guide: GUC_GUIDE + "\n\n" + CALENDAR_GUIDE + "\n\n" + ROUTINE_GUIDE + "\n\n" + TELEGRAM_GUIDE,
         context: async () => "Now: " + JSON.stringify(await engine!.now().catch(() => null)),
         tools: async (tool) => {
           const ctx = { engine: engine!, owner: config.owner, subjects: await subjects() };
+          if (isClemAction(tool.action)) return engine!.organizer.tool(tool as Record<string, unknown>).catch((e: Error) => ({ error: e.message }));
           return String(tool.action || "").startsWith("telegram.") ? runTelegramTool(ctx, tool) : runGucTool(ctx, tool);
         },
       }),
@@ -75,6 +81,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     fileStore: () => disk,
     fileStores: () => ({ vps: disk }),
     vps: () => ({ files: true }),
+    hookBase: () => env.CLEM_HOOK_URL || `http://${config.publicHost || "YOUR-SERVER-ADDRESS"}:${hookPort}`,
   };
   const backend = o.backend || (env.DATABASE_URL ? await openPostgres(env.DATABASE_URL) : (await openPglite(join(data, "db"))).backend);
   engine = await Engine.open(config.owner, host, { backend, jobs: false, store: disk });
@@ -108,7 +115,10 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     },
   });
   log("info", `[worker] listening on ${env.CLEM_BIND || "127.0.0.1"}:${env.CLEM_PORT || 7717}`);
-  const stop = async () => { clearInterval(timer); server.close(); await engine!.close(); };
+  // Routines' webhooks, reachable from outside (CLEM_HOOK_PORT=0 turns them off). Only the runner answers them.
+  const hooks = hookPort ? await serveHooks({ port: hookPort, host: env.CLEM_HOOK_BIND || "0.0.0.0", log: (m) => log("warn", m),
+    target: async () => (engine!.isRunner ? (id, key, payload) => engine!.organizer.hook(id, key, payload) : undefined) }).catch((e) => { log("warn", "[worker] webhooks off: " + (e as Error).message); return undefined; }) : undefined;
+  const stop = async () => { clearInterval(timer); server.close(); hooks?.close(); await engine!.close(); };
   return { engine, server, stop, model };
 }
 

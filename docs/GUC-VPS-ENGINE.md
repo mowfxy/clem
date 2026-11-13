@@ -55,7 +55,7 @@ These are the working notes for the `feature/guc-connector` branch. Every step f
   - Detect the IIS 401 page as a credentials failure.
   - TLS checking stays on. If GUC's certificate chain is broken, pin or add the missing intermediate rather than disabling checks.
 - **CMS** (`https://cms.guc.edu.eg/apps/student/`):
-  - `HomePageStn.aspx`: the course grid.
+  - `HomePageStn.aspx`: the course grid (see "What is read" below).
   - `ViewAllCourseStn`: list of all courses.
   - `CourseViewStn.aspx?id=&sid=`: one course. Files are in `.card-body` blocks, week headings in `h2` ("Week: YYYY-MM-DD"), and downloads in `a#download`. The course description is `#ContentPlaceHolderright_ContentPlaceHoldercontent_desc` and weekly announcements are in `div.weeksdata`.
   - This layout is ported from AhmedAshrafAZ/cms-downloader (MIT); credit it in THIRD-PARTY-NOTICES.
@@ -69,6 +69,18 @@ These are the working notes for the `feature/guc-connector` branch. Every step f
   - Only fetch courses that are linked to a subject, plus the light course list.
   - Requests are batched, at most 2 at a time per host, with exponential backoff on errors.
 - **Errors:** sync failures are typed (`auth`, `site_changed`, `offline`, `unavailable`). The user gets one friendly notice, deduplicated, never repeated.
+
+## What is read, and how often (user, 2026-11-13)
+The layouts follow what the working Grok bot read (guc-cms-scrapper 0.2.5 and its check_portal.py / check_mail.py):
+- **CMS course list:** `HomePageStn.aspx`, table `…_GridViewcourses`: the label "(|CODE|) NAME (ID)" in the second cell, the season id in the sixth. The older season-header layout still reads. A course list Clem can't read keeps the last one and the rest of GUC is still read (then the sync reports `site_changed` once).
+- **Course pages:** each `.card-body`: title = first child of `[id^=content]`, kind = the text after it, file = the first link. An absolute href (Google Drive) is kept as is; "/Uploads/…" never gets a double slash. Week dates may be unpadded.
+- **This term's grades:** `Grade/CheckGrade_01.aspx`: midterms (`…_midDg`), then one postback per course on `…_smCrsLst` with every named input copied from the latest page (view state goes stale), coursework in `…_nttTr`.
+- **Exam seats:** `Exam/ViewExamSeat_01.aspx`: the first table whose header says "Exam Day" or "Exam Type".
+- **Portal bounce:** a short page calling `sTo('…')` is retried with `?v=<token>`.
+- **Mail:** EWS at `mail.guc.edu.eg/EWS/Exchange.asmx`, read-only by construction (core/guc/ews.ts builds only GetFolder/FindItem/GetItem). New = EWS ids not seen before (kept only as hashes); bodies only for new ids, 300 characters. The first read is a baseline. A mail failure never pauses the rest of GUC.
+- **TLS stays on everywhere.** Node trusts the Sectigo chain all three hosts serve.
+- **Pace (guc-sync.ts PACE):** a pulse every 2 minutes reads only what is due: mail 3 min, linked course pages 5, CheckGrade 15, exam seats 30, course list 60, schedule 180, transcript 360; four times slower 01:00–07:00 Cairo. A quiet pulse updates the latest snapshot in place instead of adding a row. "Sync now" and connecting read everything.
+- **Routines** (core/proactivity/routines.ts) with a `change` trigger run straight after the sync that found the news, not at the next sweep.
 
 ## Password expiry (user, 2026-11-12)
 GUC can force a password change every 30 days. When sign-in fails with an `auth` error:

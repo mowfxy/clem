@@ -1,7 +1,7 @@
 // The GUC hub's reads (docs/GUC-VPS-ENGINE.md): every query filters on owner_id, and lists that can grow are paged.
-import { materialFile, semesterOrder, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubSchedule, type Page } from "../../core/guc/hub.ts";
+import { materialFile, semesterOrder, type HubMail, type HubTerm, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubSchedule, type Page } from "../../core/guc/hub.ts";
 import { normCode, withCode } from "../../core/guc/codes.ts";
-import type { GucSlot } from "../../core/guc/types.ts";
+import type { GucSlot, GucSnapshot } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
 
 export const ANNOUNCEMENT_PAGE = 40;
@@ -109,6 +109,22 @@ export async function grades(db: Db, owner: string, courseKey?: string): Promise
   const latest = Math.max(0, ...rows.map((r) => semesterOrder(r.semester)));
   return rows.map((r): HubGrade => ({ id: r.grade_id, semester: r.semester, code: canon(r.code), name: r.name, hours: r.hours, numeric: r.numeric_grade, letter: r.letter, latest: semesterOrder(r.semester) === latest, fresh: fresh.has(r.grade_id) }))
     .sort((a, b) => semesterOrder(b.semester) - semesterOrder(a.semester) || Number(b.fresh) - Number(a.fresh) || a.code.localeCompare(b.code));
+}
+
+/** The latest snapshot's portal parts and Inbox (kept in the snapshot, not in tables of their own). */
+async function latest(db: Db, owner: string) {
+  const [row] = await db.query<{ data: Partial<GucSnapshot>; stats: { missed?: string[] } | null }>("select data, stats from guc_snapshots where owner_id = $1 order by id desc limit 1", [owner]);
+  return row;
+}
+export async function term(db: Db, owner: string): Promise<HubTerm> {
+  const row = await latest(db, owner), d = row?.data || {};
+  const fresh = new Set((await db.query<{ event_key: string }>("select event_key from guc_events where owner_id = $1 and kind in ('new_grade', 'exam_posted') and created_at > now() - interval '7 days'", [owner])).map((e) => e.event_key));
+  const freshMid = new Set([...fresh].filter((k) => k.startsWith("mid:")).map((k) => k.split(":")[1]));
+  return { midterms: (d.midterms || []).map((m) => ({ ...m, fresh: freshMid.has(m.id) })), coursework: d.coursework || [], exams: d.exams || [] };
+}
+export async function mail(db: Db, owner: string): Promise<HubMail> {
+  const row = await latest(db, owner);
+  return { items: row?.data.mail || [], missed: !!row?.stats?.missed?.includes("mail") };
 }
 
 export async function deadlines(db: Db, owner: string): Promise<HubDeadline[]> {

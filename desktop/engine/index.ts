@@ -20,7 +20,7 @@ import { GucError, asGucError } from "./errors.ts";
 import { GucClient, fetchFile, login, type Credentials, type Http } from "./guc-client.ts";
 import * as read from "./guc-read.ts";
 import * as subjects from "./subjects.ts";
-import { syncGuc } from "./guc-sync.ts";
+import { dueParts, previousSnapshot, syncGuc, type Part } from "./guc-sync.ts";
 import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
 import { Organizer } from "./organizer.ts";
@@ -28,8 +28,9 @@ import { TelegramRelay } from "./telegram.ts";
 import type { Backend } from "./db.ts";
 
 const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive"];
-/** Every three hours, Cairo time. */
-export const GUC_SYNC_CRON = "0 */3 * * *";
+/** The GUC pulse: every 2 minutes it reads only the parts whose pace has come round (guc-sync.ts PACE): mail and
+ *  course pages every few minutes, grades every 15, heavy pages rarely. Runs where the engine runs (this PC or the VPS). */
+export const GUC_SYNC_CRON = "*/2 * * * *";
 /** A settings change that saves or copies files waits this long for the next tap, so a few quick taps are one run. */
 export const SETTLE_MS = 15_000;
 export type CheckTrigger = "schedule" | "now" | "rules";
@@ -106,8 +107,8 @@ export class Engine {
     await this.jobs.queue("guc.sync", async () => {
       if (!(await this.credentials()) || await this.paused()) return;
       // A wrong password is not retried: it needs the person, and they have been told once.
-      try { await this.syncNow(); } catch (e) { if (!(e instanceof GucError && e.kind === "auth")) throw e; }
-    }, { retries: 3, delay: 120 });
+      try { await this.pulse(); } catch (e) { if (!(e instanceof GucError && e.kind === "auth")) throw e; }
+    }, { retries: 0 });
     // A subject's own checks (its schedule rules): a light sync of its course.
     await this.jobs.queue("guc.check", async ({ subjectId }: { subjectId: string }) => {
       if (!(await this.credentials()) || await this.paused()) return;
@@ -214,19 +215,27 @@ export class Engine {
     this.light = job.finally(() => { if (this.light === job) this.light = undefined; });
     return job;
   }
-  private syncNow() { return this.sync(); }
+  /** One pulse: the parts of GUC that are due, nothing when none is or a sync is already running. */
+  async pulse() {
+    if (this.running || this.light) return null;
+    const prev = await previousSnapshot(this.db, this.owner), now = this.clock();
+    const parts = dueParts(prev.seen.lastRead, now, Number(cairo(now).time.slice(0, 2)));
+    if (!parts.length) return null;
+    this.running = this.run(undefined, false, undefined, undefined, undefined, parts).finally(() => { this.running = undefined; });
+    return this.running;
+  }
 
-  private async run(progress: ((p: GucProgress) => void) | undefined, initial: boolean, client?: GucClient, only?: string, out?: { result?: SyncResult }) {
+  private async run(progress: ((p: GucProgress) => void) | undefined, initial: boolean, client?: GucClient, only?: string, out?: { result?: SyncResult }, parts?: Part[]) {
     const credentials = await this.credentials();
     if (!credentials) throw Error("Connect GUC first.");
     if (await this.paused()) throw new GucError("auth", "password needed", PASSWORD_SAID);
     client ||= new GucClient(credentials, this.http, this.sleep);
     try {
       // A wrong password is tried once more after a short wait, to rule out a blip.
-      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress }).catch(async (e) => {
+      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts }).catch(async (e) => {
         if (asGucError(e).kind !== "auth") throw e;
         await (this.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(AUTH_RETRY_MS);
-        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress });
+        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts });
       });
       if (out) out.result = result;
       this.version++;
@@ -238,6 +247,11 @@ export class Engine {
       await this.db.query("delete from notifications_sent where owner_id = $1 and event_key like 'guc-error:%'", [this.owner]);
       this.host.log("info", `[guc] synced: ${stats.requests} requests, ${stats.skipped} unchanged, ${stats.events} new, ${stats.ms} ms`);
       if (stats.events) void this.organizer.poke("sync").catch(() => {});
+      // Routines waiting for exactly this kind of news run now, not at the next sweep.
+      if (eventList.length) void this.links().then((links) => {
+        const of = new Map(links.map((l) => [l.courseKey, l]));
+        return this.organizer.routineChanges(eventList.map((e) => ({ key: e.key, kind: e.kind, title: e.title, detail: e.detail, ...(e.courseKey && of.get(e.courseKey) ? { subjectId: of.get(e.courseKey)!.subjectId, code: of.get(e.courseKey)!.code } : {}) })));
+      }).catch((e) => this.host.log("warn", "[routine] changes: " + (e as Error).message));
       return this.status();
     } catch (e) {
       const error = asGucError(e);
@@ -253,8 +267,10 @@ export class Engine {
 
   // ---------- The GUC hub's reads (src/guc/GucHub.tsx) ----------
   async overview(): Promise<HubOverview> {
-    const [status, counts] = await Promise.all([this.status(), read.counts(this.db, this.owner)]);
-    return { connected: status.connected, syncing: status.syncing, username: status.username, lastSync: status.lastSync, error: status.error, ...(status.passwordNeeded ? { passwordNeeded: true } : {}), counts };
+    const [status, counts, term, mail] = await Promise.all([this.status(), read.counts(this.db, this.owner), read.term(this.db, this.owner), read.mail(this.db, this.owner)]);
+    const today = cairo(this.clock()).ymd, missed = status.stats?.missed;
+    return { connected: status.connected, syncing: status.syncing, username: status.username, lastSync: status.lastSync, error: status.error, ...(status.passwordNeeded ? { passwordNeeded: true } : {}), ...(missed?.length ? { missed } : {}),
+      counts: { ...counts, exams: term.exams.filter((e) => !/^\d{4}-\d{2}-\d{2}/.test(e.date) || e.date >= today).length, mail: mail.items.filter((m) => !m.read).length } };
   }
   courses() { return read.courses(this.db, this.owner); }
   schedule(weekStart: string) { return read.schedule(this.db, this.owner, weekStart); }
@@ -264,6 +280,10 @@ export class Engine {
   search(query: string) { return read.search(this.db, this.owner, query); }
   grades(courseKey?: string) { return read.grades(this.db, this.owner, courseKey); }
   deadlines() { return read.deadlines(this.db, this.owner); }
+  /** This term from the portal: midterms, coursework and exam seats (the latest sync's snapshot). */
+  term() { return read.term(this.db, this.owner); }
+  /** The newest GUC Inbox messages (read-only). */
+  mail() { return read.mail(this.db, this.owner); }
 
   // ---------- Subjects and their courses (core/guc/setup-flow.ts, src/guc/setup.ts) ----------
   links() { return subjects.links(this.db, this.owner); }

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { readCard } from "../../core/guc/cards";
 import { Icon } from "../Icons";
 import { GUC_CARDS, GucCardView, type GucActions } from "../guc/GucCards";
-import { LectureCardView, OrganizerCardView, ReminderCardView, WatchCardView, type ProActions } from "../proactivity/ProCards";
+import { LectureCardView, OrganizerCardView, ReminderCardView, RoutineCardView, WatchCardView, type ProActions } from "../proactivity/ProCards";
 import { TelegramPairCard } from "../telegram/TelegramPair";
 import { GucPasswordCard } from "../guc/GucPassword";
 import { PASSWORD_ROUTE } from "../../core/guc/password";
@@ -40,6 +40,7 @@ export function ClemCardBlock({ body, handlers = {} }: { body: string; handlers?
   if (card.type === "organizer") return <OrganizerCardView card={card} actions={handlers.pro} />;
   if (card.type === "lecture") return <LectureCardView card={card} actions={handlers.pro} />;
   if (card.type === "watch") return <WatchCardView card={card} actions={handlers.pro} />;
+  if (card.type === "routine") return <RoutineCardView card={card} actions={handlers.pro} />;
   if (card.type === "telegram_pair") return <TelegramPairCard />;
   if (card.type === "vps_moved") return <VpsMovedCardView card={card} onOpen={handlers.guc ? () => handlers.guc!.openHub("/app/connectors/vps") : undefined} />;
   if (card.type === "vps_confirm") return <VpsConfirmCardView card={card} />;

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head><title>Check Grade</title></head>
+<body>
+<form method="post" action="./CheckGrade_01.aspx" id="form1">
+  <input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="" />
+  <input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" />
+  <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="FAKEVIEWSTATE{{STATE}}" />
+  <input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="FAKEVALIDATION" />
+  <h3>Midterm Results</h3>
+  <table id="ContentPlaceHolderright_ContentPlaceHoldercontent_midDg">
+    <tr><th>Course</th><th>Percentage</th></tr>
+    <tr><td>CSEN 701 - Embedded Systems</td><td>{{MID701}}</td></tr>
+    <tr><td>CSEN 702 - Microprocessors</td><td>81.5</td></tr>
+  </table>
+  <h3>Coursework</h3>
+  <select name="ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$smCrsLst" id="ContentPlaceHolderright_ContentPlaceHoldercontent_smCrsLst" onchange="javascript:setTimeout('__doPostBack(\'ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$smCrsLst\',\'\')', 0)">
+    <option value="0">Choose a Course</option>
+    <option value="17011">CSEN 701 - Embedded Systems</option>
+    <option value="17021">CSEN 702 - Microprocessors</option>
+  </select>
+  <input type="submit" name="ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$Button1" value="Show" />
+  {{COURSEWORK}}
+</form>
+</body>
+</html>

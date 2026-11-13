@@ -2,7 +2,7 @@
 // database. Every tab draws its cached copy on the first frame and refreshes behind it (src/guc/useGuc.ts).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { hubPath, relativeDue, sortDeadlines, weekGrid, weekLabel, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
+import { hubPath, relativeDue, sortDeadlines, weekGrid, weekLabel, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMail, type HubTerm, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
 import type { GucProgress } from "../../core/guc/types";
 import { sameCode } from "../../core/guc/codes";
 import { matchSubject } from "../../core/guc/match";
@@ -20,7 +20,9 @@ import { PASSWORD_ROUTE } from "../../core/guc/password";
 import "../library.css";
 import "./guc.css";
 
-const TABS: [HubTab, string][] = [["schedule", "Schedule"], ["announcements", "Announcements"], ["cms", "CMS"], ["grades", "Grades"], ["deadlines", "Deadlines"]];
+const TABS: [HubTab, string][] = [["schedule", "Schedule"], ["announcements", "Announcements"], ["cms", "CMS"], ["grades", "Grades"], ["exams", "Exams"], ["deadlines", "Deadlines"], ["mail", "Mail"]];
+/** What each part of GUC is called when a sync couldn't read it. */
+const PART_NAMES: Record<string, string> = { courses: "your course list", schedule: "your schedule", grades: "this term's grades", exams: "exam seats", transcript: "your transcript", mail: "your GUC mail" };
 const clean = (e: unknown) => String((e as Error)?.message || e || "").replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
 const authFailed = (m?: string) => !!m && /password|connect guc first|sign in again/i.test(m);
 const ago = (t?: number) => { if (!t) return "Not synced yet"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "Synced just now" : m < 60 ? `Synced ${m} min ago` : m < 1440 ? `Synced ${Math.round(m / 60)} h ago` : "Synced " + new Date(t).toLocaleDateString([], { month: "short", day: "numeric" }); };
@@ -85,7 +87,8 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
   </div>;
 
   const busy = syncing || o.syncing;
-  const counts: Partial<Record<HubTab, number>> = { announcements: o.counts.unread, deadlines: o.counts.deadlines };
+  const counts: Partial<Record<HubTab, number>> = { announcements: o.counts.unread, deadlines: o.counts.deadlines, exams: o.counts.exams, mail: o.counts.mail };
+  const missed = (o.missed || []).filter((m) => m !== "courses" || !o.error).map((m) => PART_NAMES[m] || m);
   return <div className="page lib guc-hub">
     <PageHead title="GUC" line={busy ? progress || "Syncing…" : ago(o.lastSync)}>
       <button type="button" className="lib-btn" disabled={busy} onClick={() => void sync()}><Icon name="refresh" size={15} />{busy ? "Syncing" : "Sync now"}</button>
@@ -93,6 +96,9 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
     {o.passwordNeeded ? <PasswordBanner onUpdate={() => go(PASSWORD_ROUTE)} /> : o.error && <div className="guc-banner" role="status">
       <Icon name="alert" size={16} /><span>{o.error.kind === "auth" ? "GUC didn't accept your password, so this may be out of date." : o.error.message}</span>
       {o.error.kind === "auth" ? <button type="button" className="lib-btn strong" onClick={onConnect}>Reconnect</button> : <button type="button" className="lib-btn" disabled={busy} onClick={() => void sync()}>Try again</button>}
+    </div>}
+    {!o.passwordNeeded && !o.error && missed.length > 0 && !busy && <div className="guc-banner is-soft" role="status">
+      <Icon name="alert" size={16} /><span>GUC didn’t let Clem read {missed.length > 1 ? missed.slice(0, -1).join(", ") + " and " + missed.at(-1) : missed[0]} this time. The rest is up to date; Clem keeps trying every few minutes.</span>
     </div>}
     <nav className="guc-tabs" role="tablist" aria-label="GUC" ref={tabBar}>
       {TABS.map(([id, label], i) => <button key={id} type="button" role="tab" aria-selected={route.tab === id} tabIndex={route.tab === id ? 0 : -1} className={route.tab === id ? "active" : ""}
@@ -106,7 +112,9 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
       {route.tab === "schedule" ? <Schedule week={route.id} go={go} onConnect={onConnect} />
         : route.tab === "announcements" ? <Announcements focus={route.id} onConnect={onConnect} />
         : route.tab === "cms" ? <Cms course={route.id} material={route.sub} go={go} onOpenFile={onOpenFile} onConnect={onConnect} onToast={onToast} actions={actions} subjects={subjects} />
-        : route.tab === "grades" ? <Grades onConnect={onConnect} />
+        : route.tab === "grades" ? <><ThisTerm onConnect={onConnect} /><Grades onConnect={onConnect} /></>
+        : route.tab === "exams" ? <Exams onConnect={onConnect} />
+        : route.tab === "mail" ? <Mail onConnect={onConnect} />
         : <Deadlines focus={route.id} onConnect={onConnect} />}
     </section>
   </div>;
@@ -117,7 +125,9 @@ function prefetchTab(tab: HubTab) {
   if (tab === "schedule") gucPrefetch({ action: "gucSchedule", weekStart: weekStart(Date.now()) });
   else if (tab === "announcements") gucPrefetch({ action: "gucAnnouncements" });
   else if (tab === "cms") gucPrefetch({ action: "gucCourses" });
-  else if (tab === "grades") gucPrefetch({ action: "gucGrades" });
+  else if (tab === "grades") { gucPrefetch({ action: "gucGrades" }); gucPrefetch({ action: "gucTerm" }); }
+  else if (tab === "exams") gucPrefetch({ action: "gucTerm" });
+  else if (tab === "mail") gucPrefetch({ action: "gucMail" });
   else gucPrefetch({ action: "gucDeadlines" });
 }
 
@@ -313,6 +323,53 @@ export function Grades({ onConnect, courseKey }: { onConnect: () => void; course
       </div>)}
     </section>;
   })}</>;
+}
+
+// ---------- This term (CheckGrade), exam seats and mail ----------
+/** Midterms and coursework from the portal's CheckGrade page, above the transcript. Nothing posted yet: nothing shown. */
+export function ThisTerm({ onConnect, code }: { onConnect: () => void; code?: string }) {
+  const term = useGuc<HubTerm>({ action: "gucTerm" });
+  if (!term.data) return term.error ? <Problem message={term.error} onRetry={() => void term.reload()} onConnect={onConnect} /> : null;
+  const mine = (c: string) => !code || sameCode(c, code);
+  const mids = term.data.midterms.filter((m) => mine(m.code) && m.grade);
+  const work = term.data.coursework.filter((w) => mine(w.code) && w.entries.some((e) => e.elements.some((x) => x.grade)));
+  if (!mids.length && !work.length) return null;
+  return <section className="guc-sem is-latest guc-term" aria-label="This term">
+    <h3>This term<span className="guc-tag">Live</span></h3>
+    {mids.map((m) => <div key={m.id} className={`guc-grade ${m.fresh ? "is-fresh" : ""}`}>
+      <span><b>{m.code}</b>{m.course.replace(m.code, "").replace(/^\s*[-–:]\s*/, "") || "Midterm"}</span>
+      {m.fresh ? <span className="guc-tag">New</span> : <small>Midterm</small>}<small />
+      <strong>{m.grade}</strong>
+    </div>)}
+    {work.map((w) => <details key={w.id} className="guc-work">
+      <summary><span><b>{w.code}</b>Coursework</span><small>{w.entries.length} {w.entries.length === 1 ? "assessment" : "assessments"}</small></summary>
+      <ul>{w.entries.map((e, i) => <li key={i}><span>{e.name}</span><span className="guc-work-parts">{e.elements.map((x, j) => <span key={j}>{x.name && x.name !== e.name ? <small>{x.name}</small> : null}<strong>{x.grade || "—"}</strong></span>)}</span></li>)}</ul>
+    </details>)}
+  </section>;
+}
+
+export function Exams({ onConnect, code }: { onConnect: () => void; code?: string }) {
+  const term = useGuc<HubTerm>({ action: "gucTerm" });
+  if (!term.data) return term.error ? <Problem message={term.error} onRetry={() => void term.reload()} onConnect={onConnect} /> : <Skeleton rows={3} />;
+  const exams = term.data.exams.filter((e) => !code || sameCode(e.code, code));
+  if (!exams.length) return <EmptyState scene="checklist" line="No exam seats posted yet. Clem checks the portal every half hour and tells you when they are." />;
+  return <ol className="guc-exams">{exams.map((e) => <li key={e.id} className="guc-exam">
+    <div className="guc-exam-when"><b>{e.day || e.date}</b><small>{[e.day ? e.date : "", e.start && `${e.start}${e.end ? "–" + e.end : ""}`].filter(Boolean).join(" · ")}</small></div>
+    <span><strong>{e.course}</strong><small>{e.type}</small></span>
+    <div className="guc-exam-seat"><small>Hall</small><b>{e.hall || "—"}</b><small>Seat</small><b>{e.seat || "—"}</b></div>
+  </li>)}</ol>;
+}
+
+export function Mail({ onConnect }: { onConnect: () => void }) {
+  const mail = useGuc<HubMail>({ action: "gucMail" });
+  if (!mail.data) return mail.error ? <Problem message={mail.error} onRetry={() => void mail.reload()} onConnect={onConnect} /> : <Skeleton rows={5} />;
+  if (!mail.data.items.length) return <EmptyState scene="checklist" line={mail.data.missed ? "Clem couldn’t reach your GUC mail yet. It will try again in a few minutes." : "Your GUC Inbox will show here after the next check."} />;
+  const when = (iso: string) => { const t = Date.parse(iso); return Number.isFinite(t) ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""; };
+  return <ul className="guc-mail" aria-label="GUC mail">{mail.data.items.map((m) => <li key={m.id} className={m.read ? "" : "is-unread"}>
+    <div className="guc-mail-head"><b>{m.from.replace(/\s*<[^>]+>$/, "")}</b><time>{when(m.received)}</time></div>
+    <strong>{m.subject}{m.attachments && <Icon name="attach" size={13} />}</strong>
+    {m.preview && <p>{m.preview}</p>}
+  </li>)}<li className="guc-mail-note"><small>Read-only. Open Outlook to reply; Clem never sends, moves or marks your mail.</small></li></ul>;
 }
 
 // ---------- Deadlines ----------

@@ -91,6 +91,8 @@ export function cardMessage(card: ClemCard, c: RenderContext = {}): TgMessage | 
       return { html: lines([`<b>${esc(card.title || "Also new")}</b>`, ...card.lines.map((l) => `• ${esc(l.text)}${l.space ? ` <i>(${esc(l.space)})</i>` : ""}`)]), buttons: [] };
     case "watch":
       return { html: lines([`<b>Watching for you</b>`, esc(card.text), card.detail ? `<i>${esc(card.detail)}</i>` : ""]), buttons: [[{ text: "Stop watching", tap: { t: "stop", id: card.id } }]] };
+    case "routine":
+      return { html: lines([`<b>${esc(card.title)}</b>`, esc(card.when), card.does ? `<i>${esc(card.does)}</i>` : ""]), buttons: [] };
     case "lecture": {
       const where = name(card.subjectId);
       const n = card.files.length;

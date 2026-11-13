@@ -14,6 +14,8 @@ services:
       CLEM_KEY_FILE: /run/clem.key
     ports:
       - "127.0.0.1:${CLEM_PORT:-7717}:7717"
+      # Routines' incoming webhooks only (desktop/engine/hooks.ts): each needs its routine's secret key.
+      - "${CLEM_HOOK_PORT:-7718}:7718"
     volumes:
       - ./state:/data
       - ../files:/files

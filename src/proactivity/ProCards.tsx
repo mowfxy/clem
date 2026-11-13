@@ -1,4 +1,4 @@
-import type { LectureCard, OrganizerCard, WatchCard } from "../../core/guc/cards";
+import type { LectureCard, OrganizerCard, RoutineCard, WatchCard } from "../../core/guc/cards";
 import { useState } from "react";
 import { Icon } from "../Icons";
 import { desktop } from "../desktop/bridge";
@@ -6,7 +6,7 @@ import { useProStatus, type Pro } from "./pro";
 
 /** What the organizer's cards can do: Undo, one tap, mute, Stop, and the lecture buttons (a chat in the subject with the
  *  request typed; nothing is generated until the person sends it). */
-export type ProActions = Pick<Pro, "undo" | "confirm" | "dismiss" | "mute" | "stopWatch"> & {
+export type ProActions = Pick<Pro, "undo" | "confirm" | "dismiss" | "mute" | "stopWatch" | "stopRoutine"> & {
   lecture: (subjectId: string, file: { id: string; name: string; saved?: boolean }, want: "summary" | "flashcards") => void;
   open: (href: string) => void;
   spaceName: (id: string) => string | undefined;
@@ -61,6 +61,21 @@ export function WatchCardView({ card, actions }: { card: WatchCard; actions?: Pr
   return <div className="edit-proposal clem-card guc-card pro-card">
     <header><Icon name="clock" size={16} /><div><strong>{status === "stopped" ? "Stopped watching" : "Watching for you"}</strong><small>{card.text}</small></div></header>
     {actions && status !== "stopped" && <footer><button type="button" onClick={() => void actions.stopWatch(card.id)}>Stop</button></footer>}
+  </div>;
+}
+
+/** A routine Clem set up for the person: what starts it and what it does, its webhook URL to copy, and Stop. */
+export function RoutineCardView({ card, actions }: { card: RoutineCard; actions?: ProActions }) {
+  const status = useProStatus(["routine:" + card.id])("routine:" + card.id);
+  const [copied, setCopied] = useState(false);
+  const copy = () => void navigator.clipboard?.writeText(card.hook || "").then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => {});
+  return <div className="edit-proposal clem-card guc-card pro-card">
+    <header><Icon name="spark" size={16} /><div><strong>{status === "stopped" ? `Stopped: ${card.title}` : card.title}</strong><small>{[card.when, card.does].filter(Boolean).join(" · ")}</small></div></header>
+    {card.hook && status !== "stopped" && <p className="automation-prompt pro-hook"><code>{card.hook}</code></p>}
+    {actions && status !== "stopped" && <footer>
+      {card.hook && <button type="button" className="secondary" onClick={copy}>{copied ? "Copied" : "Copy URL"}</button>}
+      <button type="button" onClick={() => void actions.stopRoutine(card.id)}>Stop</button>
+    </footer>}
   </div>;
 }
 

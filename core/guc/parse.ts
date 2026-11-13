@@ -4,7 +4,7 @@
 import * as cheerio from "cheerio";
 import { normCode, withCode } from "./codes.ts";
 import { PERIOD_TIMES } from "./hub.ts";
-import type { GucAnnouncement, GucCourse, GucCoursePage, GucGrade, GucMaterial, GucSlot, GucWeek } from "./types.ts";
+import type { GucAnnouncement, GucCourse, GucCoursePage, GucCoursework, GucExam, GucGrade, GucMaterial, GucMidterm, GucSlot, GucWeek } from "./types.ts";
 
 const P = "ContentPlaceHolderright_ContentPlaceHoldercontent_";
 export const CMS = "https://cms.guc.edu.eg";
@@ -36,12 +36,49 @@ export function pageState(html: string, url = ""): PageState {
   return "ok";
 }
 
-/** HomePageStn.aspx: one "Season : N, Title: …" header per season, each with its GridView1_<i> course table. */
+/** "(|CSEN301|) Data Structures (351)" or "(CSEN301) Data Structures (351)" → code, name and CMS id. */
+function courseLabel(raw: string) {
+  const text = oneLine(raw);
+  const piped = /^\(\|([^|]*)\|\)\s*(.*?)\s*\((\d+)\)\s*$/.exec(text);
+  if (piped) return { code: normCode(piped[1]) || piped[1].trim(), name: piped[2].trim() || piped[1].trim(), id: Number(piped[3]) };
+  const flat = text.replaceAll("|", ""), id = Number(/\((\d+)\)\s*$/.exec(flat)?.[1]);
+  if (!id) return undefined;
+  const label = flat.slice(0, flat.lastIndexOf("(")).trim();
+  return { code: normCode(/^\(([^)]+)\)/.exec(label)?.[1] || label), name: label.replace(/^\([^)]*\)\s*/, "").trim() || label, id };
+}
+
+/** HomePageStn.aspx. Two layouts are read:
+ *  - the student grid GUC serves today, `…_GridViewcourses`: one row per course, the label "(|CODE|) NAME (ID)" in the
+ *    second cell and the season id in the sixth (as guc-cms-scrapper reads it);
+ *  - the older one, a "Season : N, Title: …" header per season, each with its GridView1_<i> table. */
 export function parseCourseList(html: string): GucCourse[] {
   const $ = cheerio.load(html);
-  const headers = $("div.menu-header-title").toArray();
-  if (!headers.length && !$(`table[id^="${P}r1_GridView1_"]`).length) throw new SiteChanged("the course list");
   const courses: GucCourse[] = [];
+  const grid = $(`#${P}GridViewcourses`);
+  if (grid.length) {
+    const rows = grid.find("tr").toArray();
+    const head = $(rows[0]).children("th,td").toArray().map((c) => oneLine($(c).text()).toLowerCase());
+    const col = (re: RegExp, fallback: number) => { const i = head.findIndex((h) => re.test(h)); return i >= 0 ? i : fallback; };
+    const nameAt = col(/course|name/, 1), seasonAt = col(/season|semester|sid/, 5), statusAt = head.findIndex((h) => /status|active/.test(h));
+    const seasonTitleAt = head.findIndex((h, i) => i !== seasonAt && /title/.test(h));
+    for (const row of rows.slice(1)) {
+      const cells = $(row).children("td");
+      if (cells.length < 2) continue;
+      const label = courseLabel(cells.eq(nameAt).text());
+      const sid = Number(oneLine(cells.eq(seasonAt).text()).match(/\d+/)?.[0]);
+      if (!label?.id || !sid) continue;
+      const status = statusAt >= 0 ? oneLine(cells.eq(statusAt).text()) : "";
+      const season = (seasonTitleAt >= 0 && oneLine(cells.eq(seasonTitleAt).text())) || `Season ${sid}`;
+      courses.push({ key: `${label.id}:${sid}`, id: label.id, seasonId: sid, season, code: label.code, name: label.name, active: !status || /^active$/i.test(status) });
+    }
+    if (courses.length) {
+      // The student grid lists this term's courses; without a status column, the newest season is the active one.
+      const latest = Math.max(...courses.map((c) => c.seasonId));
+      return statusAt >= 0 ? courses : courses.map((c) => ({ ...c, active: c.seasonId === latest }));
+    }
+  }
+  const headers = $("div.menu-header-title").toArray();
+  if (!headers.length && !$(`table[id^="${P}r1_GridView1_"]`).length && !grid.length) throw new SiteChanged("the course list");
   headers.forEach((h, index) => {
     const title = oneLine($(h).text());
     const sid = Number(/Season\s*:\s*(\d+)/i.exec(title)?.[1]);
@@ -50,13 +87,9 @@ export function parseCourseList(html: string): GucCourse[] {
     $(`table#${P}r1_GridView1_${index} tr`).slice(1).each((_, row) => {
       const cells = $(row).children("td");
       if (cells.length < 3) return;
-      const raw = oneLine(cells.eq(1).text()).replaceAll("|", "");
-      const id = Number(/\((\d+)\)\s*$/.exec(raw)?.[1]);
-      if (!id) return;
-      const label = raw.slice(0, raw.lastIndexOf("(")).trim();
-      const code = normCode(/^\(([^)]+)\)/.exec(label)?.[1] || label);
-      const name = label.replace(/^\([^)]*\)\s*/, "").trim() || label;
-      courses.push({ key: `${id}:${sid}`, id, seasonId: sid, season, code, name, active: /^active$/i.test(oneLine(cells.eq(2).text())) });
+      const label = courseLabel(cells.eq(1).text());
+      if (!label) return;
+      courses.push({ key: `${label.id}:${sid}`, id: label.id, seasonId: sid, season, code: label.code, name: label.name, active: /^active$/i.test(oneLine(cells.eq(2).text())) });
     });
   });
   return courses;
@@ -68,7 +101,26 @@ function paragraphs($: cheerio.CheerioAPI, el: ReturnType<cheerio.CheerioAPI>) {
   return cheerio.load(html).text().replace(/ /g, " ").split(/\n[ \t]*\n|\n(?=\s*[-•*]\s)/).map(clean).filter((t) => t.length > 2);
 }
 
-/** CourseViewStn.aspx: the course description/announcements box and one div.weeksdata per week. */
+/** A CMS link as an absolute URL. An href that is already http(s) (a Google Drive link) is kept as it is, and
+ *  "/Uploads/…" doesn't get a double slash. */
+export const cmsHref = (href: string) => { const h = href.trim(); return !h ? "" : /^https?:\/\//i.test(h) ? h : new URL(h, CMS + "/apps/student/").href; };
+/** "Week: 2026-9-7" or "Week: 2026-09-07" → "2026-09-07". */
+export const weekDay = (title: string) => { const m = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(title); return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : undefined; };
+/** What kind of item a CMS card is, from the words after its title ("(Lecture slides)"). */
+function itemKind(raw: string, title: string) {
+  const t = raw.replace(/[()]/g, " ").replace(/\s+/g, " ").trim(), l = t.toLowerCase();
+  if (l.includes("lecture")) return "Lecture slides";
+  if (l.includes("solution")) return "Solution";
+  if (l.includes("assignment")) return "Assignment";
+  if (l.includes("project")) return "Project";
+  if (l.includes("exam") || l.includes("quiz")) return "Exam";
+  if (l.includes("video") || l.includes("record")) return "Video";
+  return t ? t[0].toUpperCase() + t.slice(1) : /https?:\/\//.test(title) ? "Link" : "File";
+}
+
+/** CourseViewStn.aspx: the course description/announcements box and one div.weeksdata per week. Each card's title is
+ *  the first child of its `[id^=content]` block, its kind the text right after it and its file the first link
+ *  (guc-cms-scrapper's reading), with the older strong / a#download layout as a fallback. */
 export function parseCoursePage(html: string, courseKey: string): GucCoursePage {
   const $ = cheerio.load(html);
   const desc = $(`#${P}desc`);
@@ -77,19 +129,32 @@ export function parseCoursePage(html: string, courseKey: string): GucCoursePage 
   const weeks: GucWeek[] = [], materials: GucMaterial[] = [];
   $("div.weeksdata").each((_, el) => {
     const week = $(el), title = oneLine(week.find("h2").first().text()) || "Week";
-    const date = /(\d{4}-\d{2}-\d{2})/.exec(title)?.[1];
+    const date = weekDay(title);
+    // "Announcement" and "Description" are <strong> labels; their text is the <p> beside them (or after their box).
+    const labelled = (word: RegExp) => {
+      const strong = week.find("strong").filter((_, s) => word.test(oneLine($(s).text()))).first();
+      if (!strong.length) return undefined;
+      const near = strong.siblings("p").first();
+      return clean((near.length ? near : strong.parent().nextAll("p").first()).text());
+    };
     const body = week.children().eq(1).children();
     const part = (i: number) => { const el = body.eq(i), p = el.find("p"); return clean((p.length ? p : el).text()); };
-    const announcement = part(0), description = part(1);
+    const announcement = labelled(/^announcement/i) ?? part(0), description = labelled(/^description/i) ?? part(1);
     if (announcement) announcements.push({ id: stableId(courseKey + "|w|" + title + "|" + announcement), courseKey, scope: "week", week: title, text: announcement });
     const items: GucMaterial[] = [];
     week.find(".card-body").each((_, card) => {
-      const c = $(card), name = oneLine(c.find("strong").first().text() || c.children().first().text());
+      const c = $(card), box = c.find("[id^=content]").first(), head = box.children().first();
+      const titleEl = head.length ? head : c.find("strong").first().length ? c.find("strong").first() : c.children().first();
+      const name = oneLine(titleEl.text());
       if (!name) return;
-      const link = c.find("a#download, a[download]").first(), url = link.attr("href")?.trim() || "";
-      const id = c.find("[data-contentid]").first().attr("data-contentid") || stableId(courseKey + "|" + (url || name));
-      const kind = /\(([^()]+)\)\s*$/.exec(name)?.[1]?.trim() || (/https?:\/\//.test(name) ? "Link" : "File");
-      items.push({ id: String(id), courseKey, week: title, title: name.replace(/^\d+\s*-\s*/, "").replace(/\s*\([^()]+\)\s*$/, "") || name, kind, url: url && new URL(url, CMS + "/apps/student/").href });
+      // The words right after the title ("(Lecture slides)") are a text node, not an element.
+      const next = head.length ? head[0].nextSibling : null;
+      const after = next && next.type === "text" ? oneLine((next as unknown as { data: string }).data) : "";
+      const dl = c.find("a#download, a[download]").first(), link = dl.length ? dl : c.find("a[href]").first();
+      const url = cmsHref(link.attr("href") || "");
+      const id = c.find("[data-contentid]").first().attr("data-contentid") || /^content(\d+)$/.exec(box.attr("id") || "")?.[1] || stableId(courseKey + "|" + (url || name));
+      const bracket = /\(([^()]+)\)\s*$/.exec(name)?.[1]?.trim() || "";
+      items.push({ id: String(id), courseKey, week: title, title: name.replace(/^\d+\s*-\s*/, "").replace(/\s*\([^()]+\)\s*$/, "") || name, kind: itemKind(after || bracket, name), url });
     });
     weeks.push({ title, date, announcement, description, materials: items });
     materials.push(...items);
@@ -207,4 +272,92 @@ export function transcriptChallenge(html: string, url: string) {
   const next = new URL(url);
   next.searchParams.set("v", token);
   return next.href;
+}
+
+// ---------- Student portal: this term's grades and exam seats (as the Grok bot's check_portal.py reads them) ----------
+export const portalUrls = {
+  grades: PORTAL + "/Grade/CheckGrade_01.aspx",
+  exams: PORTAL + "/Exam/ViewExamSeat_01.aspx",
+};
+
+/** Some portal pages first answer with a short page whose script calls `sTo('<token>')`; the real page is the same path
+ *  with `?v=<token>`. Returns that URL, or undefined for a normal page. */
+export function portalBounce(html: string, url: string) {
+  const token = html.length < 2000 ? /sTo\(\s*'([^']+)'\s*\)/.exec(html)?.[1] : undefined;
+  if (!token) return transcriptChallenge(html, url);
+  const next = new URL(url);
+  next.searchParams.set("v", token);
+  return next.href;
+}
+
+/** CheckGrade_01.aspx: the midterm table (course, grade). */
+export function parseMidterms(html: string): GucMidterm[] {
+  const $ = cheerio.load(html);
+  const out: GucMidterm[] = [];
+  $(`#${P}midDg tr`).slice(1).each((_, r) => {
+    const tds = $(r).children("td").toArray().map((c) => oneLine($(c).text()));
+    if (tds.length < 2 || !tds[0]) return;
+    out.push({ id: stableId("mid|" + tds[0]), course: withCode(tds[0]), code: normCode(tds[0]) || "", grade: tds[1] });
+  });
+  return out;
+}
+
+/** CheckGrade_01.aspx: the course dropdown whose postback shows one course's coursework. */
+export function courseworkOptions(html: string) {
+  const $ = cheerio.load(html), select = $(`#${P}smCrsLst`);
+  if (!select.length) return undefined;
+  const options = select.find("option").toArray().map((o) => ({ value: ($(o).attr("value") || "").trim(), name: oneLine($(o).text()) }))
+    .filter((o) => o.value && o.value !== "0" && !/^(choose|select)\b|^-+$/i.test(o.name));
+  return { field: select.attr("name") || "", options };
+}
+
+/** The form to post back with `field` set to `value`: every named <input> as it is on the page (view state, event
+ *  validation, the button), plus the dropdown. The page must be the latest GET: view state goes stale. */
+export function postbackForm(html: string, field: string, value: string) {
+  const $ = cheerio.load(html), form = $("form").first(), fields: Record<string, string> = {};
+  (form.length ? form.find("input[name]") : $("input[name]")).each((_, el) => {
+    const i = $(el), type = (i.attr("type") || "text").toLowerCase();
+    if ((type === "checkbox" || type === "radio") && i.attr("checked") === undefined) return;
+    fields[i.attr("name")!] = i.attr("value") || "";
+  });
+  fields[field] = value;
+  return fields;
+}
+
+/** One course's coursework after the postback: a row with a first cell starts an assessment ("Quiz 1"), the rows
+ *  under it are its parts. */
+export function parseCoursework(html: string, course: { name: string; value: string }): GucCoursework {
+  const $ = cheerio.load(html);
+  const entries: GucCoursework["entries"] = [];
+  $(`#${P}nttTr tr`).slice(1).each((_, r) => {
+    const tds = $(r).children("td").toArray().map((c) => oneLine($(c).text()));
+    if (tds.length < 2) return;
+    const [first, element = "", grade = "", professor = ""] = tds;
+    if (first) entries.push({ name: first, elements: [] });
+    const at = entries.at(-1);
+    if (at && (element || grade)) at.elements.push({ name: element, grade, professor });
+  });
+  return { id: stableId("cw|" + course.value + "|" + course.name), course: withCode(course.name), code: normCode(course.name) || "", entries };
+}
+
+/** ViewExamSeat_01.aspx: the first table whose header names the exam day or type; a row of 8+ cells is one exam. */
+export function parseExamSeats(html: string): GucExam[] {
+  const $ = cheerio.load(html);
+  for (const t of $("table").toArray()) {
+    const rows = $(t).find("tr").toArray();
+    if (!rows.length) continue;
+    const head = $(rows[0]).children("th,td").toArray().map((c) => oneLine($(c).text()).toLowerCase());
+    if (!head.some((h) => /exam day|exam type/.test(h))) continue;
+    const at = (re: RegExp, fallback: number) => { const i = head.findIndex((h) => re.test(h)); return i >= 0 ? i : fallback; };
+    const ix = { course: at(/course/, 0), day: at(/day/, 1), date: at(/date/, 2), start: at(/start|from/, 3), end: at(/end|^to\b/, 4), hall: at(/hall|room|venue/, 5), seat: at(/seat/, 6), type: at(/type/, 7) };
+    const out: GucExam[] = [];
+    for (const r of rows.slice(1)) {
+      const tds = $(r).children("td").toArray().map((c) => oneLine($(c).text()));
+      if (tds.length < 8) continue;
+      const e = { course: withCode(tds[ix.course]), code: normCode(tds[ix.course]) || "", day: tds[ix.day], date: tds[ix.date], start: tds[ix.start], end: tds[ix.end], hall: tds[ix.hall], seat: tds[ix.seat], type: tds[ix.type] };
+      out.push({ id: stableId(["exam", e.course, e.date, e.start, e.type].join("|")), ...e });
+    }
+    return out;
+  }
+  return [];
 }

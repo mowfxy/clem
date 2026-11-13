@@ -3,7 +3,7 @@
 // It never touches the workspace: what it decides is stored in organizer_actions and the window applies it
 // (src/proactivity/pro.ts) from the inbox, as it does GUC's. The workspace it reads is a compact snapshot of the saved
 // state.json (EngineHost.workspace); a VPS host is handed the same snapshot by the desktop. No electron here.
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { cardBlock, type ClemCard } from "../../core/guc/cards.ts";
 import { addDays, cairo, type HubDeadline } from "../../core/guc/hub.ts";
 import { scheduleDays } from "../../core/guc/ai-tools.ts";
@@ -16,11 +16,13 @@ import { actionKey, describe, needsConfirm, type ProAction, type Undo } from "..
 import { capPushes, muteFor, muteKey, slotChanges, type Change, type ChangeKind, type Mute } from "../../core/proactivity/attention.ts";
 import { datedSlots, deadlineReminders, dueAt, leftText, timedItems, type Deadline } from "../../core/proactivity/rules.ts";
 import { busyList, dayLabel, studySlots, whenOf } from "../../core/proactivity/calendar.ts";
+import { cardBlock as routineCardBlock } from "../../core/guc/cards.ts";
 import { agendaText, clemAction, findSpace, prefsText, readClemArgs, remindersText, settingsText, type ReminderRow } from "../../core/proactivity/tools.ts";
 import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, OUTWARD, quietEnd, readPro, type Channel, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
 import { changeText, digestLine, planSweep, readReply, sweepCard, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
 import { live, parseWatch, type Watch } from "../../core/proactivity/watches.ts";
+import { cronTooOften, describeTrigger, matchChange, pageText, readRoutineReply, ROUTINE_SYSTEM, routineInput, routineLive, type Routine, type RoutineChange, type RoutineInput, type Trigger } from "../../core/proactivity/routines.ts";
 import type { Db } from "./db.ts";
 import type { EngineHost } from "./host.ts";
 import type { Jobs } from "./jobs.ts";
@@ -69,8 +71,10 @@ export class Organizer {
     await jobs.queue("organizer.tick", async () => { await this.tick(); }, { retries: 0 });
     // A reminder rings on its minute (each sends one of these when it is set); the tick catches any that slipped.
     await jobs.queue("organizer.remind", async () => { await this.ring(); }, { retries: 1, delay: 30 });
+    await jobs.queue("organizer.routine", async ({ id }: { id: string }) => { await this.runRoutine(id, { kind: "schedule" }); }, { retries: 1, delay: 60 });
     await jobs.schedule("organizer.tick", "*/10 * * * *");
     await this.reschedule(await this.settings());
+    await this.armRoutines().catch((e) => this.host.log("warn", "[organizer] routines: " + (e as Error).message));
     // Opened after the morning brief's time without one today (Clem was closed): it runs now, once.
     const t = setTimeout(() => void this.catchUp().catch((e) => this.host.log("warn", "[organizer] catch-up: " + (e as Error).message)), 20_000);
     t.unref?.();
@@ -282,20 +286,22 @@ export class Organizer {
   // ---------- Telegram ----------
   /** The pair card in the main thread, when Telegram isn't paired: once on first run, once when a Telegram channel is
    *  turned on, and whenever the person asks (Settings → Pair in chat). Never twice for the same reason. */
-  /** The first time: Clem asks, in a few plain questions in the main thread, how it should run (its routines, quiet
-   *  hours, how much it speaks, when they study), with what it does now. The answer comes back through the AI's
-   *  clem.prefs; there are no settings screens for these. Once per owner. */
+  /** The first time: Clem asks, openly, how the person wants it around. Nothing is assumed: a new person starts with no
+   *  timed routines (no morning plan they never asked for), only news worth knowing and deadline reminders. Whatever
+   *  they answer, the AI turns into routines (clem.routine) and preferences (clem.prefs). Once per owner. */
   async offerSetup() {
-    const s = await this.settings(), j = s.jobs;
+    const [saved] = await this.db.query("select 1 from organizer_settings where owner_id = $1", [this.owner]);
+    if (!saved && !(await this.db.query("select 1 from notifications_sent where owner_id = $1 and event_key = 'setup:first'", [this.owner])).length)
+      await this.setSettings({ jobs: { morning: { on: false }, midday: { on: false }, evening: { on: false }, weekly: { on: false } } });
     const text = [
-      "Before I start looking after your week, a few quick questions. Answer in your own words, or skip any of them and I'll keep what's in brackets:",
+      "Hi, I'm Clem. Before I do anything on my own, I'd rather hear how you'd like me around. Nothing is set up yet, so answer however you like, as much or as little as you want:",
       "",
-      `1. When should your morning plan come, and do you want a midday check, an evening prep for tomorrow and a weekly review? (morning ${j.morning.time}, midday ${j.midday.time}, evening ${j.evening.time}, weekly review on ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][j.weekly.day ?? 5]}s at ${j.weekly.time})`,
-      `2. When are you usually asleep or offline? I'll hold notifications until then ends. (${s.quiet.on ? `${s.quiet.from} to ${s.quiet.to}` : "no quiet hours"})`,
-      `3. How much do you want to hear from me: only what can't wait, what matters, or anything I think will help? (${s.level === "proactive" ? "anything that will help" : s.level === "balanced" ? "what matters" : "only what can't wait"})`,
-      `4. Which days and hours do you usually study? (${prefsText(s.study).replace(/^Study preferences: /, "").replace(/\.$/, "")})`,
+      "- **What's on your plate right now** that you'd like help keeping on top of? Uni, work, a project, a habit, anything.",
+      "- **When would you like to hear from me**, and about what? For example the moment a grade or announcement is posted, a heads-up before deadlines, a quick look at your day, a Sunday-night plan for the week, or only when something can't wait.",
+      "- **Anything I should keep an eye on for you?** A course, an email from someone, an exam hall, a web page, or a webhook from another app.",
+      "- **When should I leave you alone?** Hours you sleep or don't want notifications.",
       "",
-      "You can change any of this later. Just tell me.",
+      "Until you tell me otherwise I'll stay quiet and only tell you about new GUC news and deadlines coming up. You can change any of it later; just tell me.",
     ].join("\n");
     return this.post(text, "setup:first");
   }
@@ -336,6 +342,9 @@ export class Organizer {
       }
     }
     await this.gucPassword().catch((e) => this.host.log("warn", "[organizer] guc password: " + (e as Error).message));
+    await this.routinePages().catch((e) => this.host.log("warn", "[organizer] page routines: " + (e as Error).message));
+    // A one-time routine whose moment passed while Clem was closed runs now.
+    for (const r of (await this.routines()).filter((x) => x.live && x.trigger.type === "at" && Date.parse((x.trigger as { at: string }).at) <= now)) await this.runRoutine(r.id, { kind: "schedule" }).catch(() => {});
     return this.flush();
   }
   /** GUC stopped accepting the password (docs/GUC-VPS-ENGINE.md "Password expiry"): on the day it failed, the card in
@@ -503,6 +512,18 @@ export class Organizer {
     if (action === "clem.reminders") return { text: remindersText((await this.reminders()).map((r) => ({ ...r, ...(nameOf(r.spaceId) ? { space: nameOf(r.spaceId) } : {}) }))) };
     if (action === "clem.unremind") return (await this.cancelReminder(args.id)).ok ? { ok: true } : { error: "No upcoming reminder has that id." };
     if (action === "clem.prefs") return { ok: true, text: settingsText(await this.setSettings(args as ProPatch)) };
+    if (action === "clem.routine") {
+      const made = await this.addRoutine(args as RoutineInput);
+      if ("error" in made) return { error: made.error };
+      const r = made.routine, card = routineCardBlock({ type: "routine", id: r.id, title: r.title, when: describeTrigger(r.trigger).slice(0, 300), does: [r.tell ? (r.think ? "Clem decides what to tell you" : "tells you") : "", r.post ? "posts to your webhook" : ""].filter(Boolean).join(" and ").slice(0, 300) || undefined, ...(made.hook ? { hook: made.hook } : {}) });
+      return { ok: true, id: r.id, runs: describeTrigger(r.trigger), ...(made.hook ? { webhook: made.hook, note: "Other apps POST JSON or text to this URL to run it. Keep the key private." } : {}), card: "Put this card in your reply so they can see and stop it:\n" + card };
+    }
+    if (action === "clem.routines") {
+      const list = (await this.routines()).filter((r) => !r.stopped);
+      return { text: list.length ? list.map((r) => `- ${r.id}: ${r.title} · ${describeTrigger(r.trigger)}${r.post ? " · posts to " + new URL(r.post).host : ""} · ran ${r.runs}×${r.lastResult ? " (last: " + r.lastResult + ")" : ""}${r.live ? "" : " · finished"}`).join("\n") : "No routines yet." };
+    }
+    if (action === "clem.unroutine") { await this.stopRoutine(args.id); return { ok: true }; }
+    if (action === "clem.run_routine") return this.runRoutine(args.id, { kind: "manual" });
     // clem.study
     const space = spaceArg(args.subject);
     if (!space) return { error: args.subject ? `No subject or project matches "${args.subject}".` : "Say which subject or project to study (\"subject\")." };
@@ -513,6 +534,138 @@ export class Organizer {
     const card: ClemCard = { type: "organizer", title: `Study sessions for ${r.space}`.slice(0, 120), when: "study", lines: r.lines };
     return { ok: true, planned: r.lines.map((l) => `${l.text} at ${l.time}`), ...(r.short ? { note: `Only ${r.lines.length} of ${args.sessions} fit within their preferences.` } : {}),
       card: "Put this card in your reply (each session can be undone):\n" + cardBlock(card) };
+  }
+
+  // ---------- Routines (core/proactivity/routines.ts) ----------
+  /** Routines the person asked for, with how often they ran. */
+  async routines() {
+    const rows = await this.db.query<{ routine: Routine; runs: number; last_run: Date | null; last_result: string | null; stopped: boolean; secret: string | null }>(
+      "select routine, runs, last_run, last_result, stopped, secret from organizer_routines where owner_id = $1 order by created_at desc limit 200", [this.owner]);
+    return rows.map((r) => ({ ...r.routine, runs: r.runs, lastRun: ms(r.last_run) || undefined, lastResult: r.last_result || undefined, stopped: r.stopped, live: routineLive(r.routine, r, this.clock()), ...(r.secret ? { hook: this.hookUrl(r.routine.id, r.secret) } : {}) }));
+  }
+  private hookUrl(id: string, secret: string) { return `${(this.host.hookBase?.() || "http://127.0.0.1:7718").replace(/\/+$/, "")}/hook/${id}?key=${secret}`; }
+  /** A routine from the AI's clem.routine: checked, saved, and its schedule set. */
+  async addRoutine(input: RoutineInput) {
+    const parsed = routineInput.safeParse(input);
+    if (!parsed.success) { const i = parsed.error.issues[0]; return { error: `clem.routine: ${i.path.join(".") || "routine"} ${i.message.toLowerCase()}.` }; }
+    const r: Routine = { id: "rt" + randomUUID().replace(/-/g, "").slice(0, 14), ...parsed.data };
+    if (r.trigger.type === "schedule" && cronTooOften(r.trigger.cron)) return { error: "That schedule runs more often than every 15 minutes. Use a \"change\" trigger to hear about GUC news the moment it lands, or a slower schedule." };
+    if (r.trigger.type === "at") { const at = whenOf(r.trigger.at, this.clock()); if (at === null) return { error: `"${r.trigger.at}" isn't a future time Clem can read.` }; r.trigger = { type: "at", at: new Date(at).toISOString() }; }
+    if (!r.tell && !r.post) return { error: "A routine must tell the person (\"tell\": true) or post somewhere (\"post\")." };
+    const [{ n }] = await this.db.query<{ n: number }>("select count(*)::int as n from organizer_routines where owner_id = $1 and not stopped", [this.owner]);
+    if (n >= 50) return { error: "There are already 50 routines running. Stop some first (clem.routines lists them)." };
+    const secret = r.trigger.type === "webhook" ? randomBytes(24).toString("base64url") : null;
+    await this.db.query("insert into organizer_routines (owner_id, id, routine, secret) values ($1, $2, $3, $4)", [this.owner, r.id, r, secret]);
+    await this.armRoutine(r);
+    return { routine: r, ...(secret ? { hook: this.hookUrl(r.id, secret) } : {}) };
+  }
+  async stopRoutine(id: string) {
+    await this.db.query("update organizer_routines set stopped = true where owner_id = $1 and id = $2", [this.owner, id]);
+    await this.jobs?.unschedule("organizer.routine", id).catch(() => {});
+    return this.routines();
+  }
+  /** Its schedule in the job runner (Cairo time), or its one time. Change, webhook and page routines need none. */
+  private async armRoutine(r: Routine) {
+    if (!this.jobs) return;
+    if (r.trigger.type === "schedule") await this.jobs.schedule("organizer.routine", r.trigger.cron, { id: r.id }, r.id);
+    if (r.trigger.type === "at") await this.jobs.send("organizer.routine", { id: r.id }, { startAfter: Math.max(1, Math.ceil((Date.parse(r.trigger.at) - this.clock()) / 1000)) });
+  }
+  private async armRoutines() {
+    const live = (await this.routines()).filter((r) => r.live);
+    const have = new Set(((await this.jobs?.schedules("organizer.routine").catch(() => [])) || []).map((x: { key?: string }) => x.key));
+    for (const r of live) if (r.trigger.type === "schedule" && !have.has(r.id)) await this.armRoutine(r);
+    for (const key of have) if (key && !live.some((r) => r.id === key && r.trigger.type === "schedule")) await this.jobs?.unschedule("organizer.routine", key).catch(() => {});
+  }
+  private async routineRow(id: string) {
+    const [row] = await this.db.query<{ routine: Routine; secret: string | null; state: { hash?: string } | null; runs: number; last_run: Date | null; stopped: boolean }>(
+      "select routine, secret, state, runs, last_run, stopped from organizer_routines where owner_id = $1 and id = $2", [this.owner, id]);
+    return row;
+  }
+  /** GUC changes a sync just found: every `change` routine they match fires now, once per batch. */
+  async routineChanges(changes: RoutineChange[]) {
+    if (!changes.length) return 0;
+    const spaces = (await this.workspace().catch(() => null))?.spaces || [];
+    changes = changes.map((c) => ({ ...c, ...(c.subjectId && spaces.find((x) => x.id === c.subjectId) ? { subject: spaces.find((x) => x.id === c.subjectId)!.name } : {}) }));
+    const rows = await this.db.query<{ routine: Routine; runs: number; stopped: boolean }>("select routine, runs, stopped from organizer_routines where owner_id = $1 and not stopped and routine->'trigger'->>'type' = 'change'", [this.owner]);
+    let fired = 0;
+    for (const r of rows) {
+      if (!routineLive(r.routine, r, this.clock())) continue;
+      const hit = changes.filter((c) => matchChange(r.routine.trigger as Extract<Trigger, { type: "change" }>, c));
+      if (!hit.length) continue;
+      await this.runRoutine(r.routine.id, { kind: "change", changes: hit.slice(0, 20) }).catch((e) => this.host.log("warn", "[routine] " + (e as Error).message));
+      fired++;
+    }
+    return fired;
+  }
+  /** A call to a routine's webhook. The key must match; at most one run every 10 seconds. */
+  async hook(id: string, key: string, payload: unknown) {
+    const row = await this.routineRow(id);
+    if (!row?.secret || row.stopped || !safeEqual(row.secret, key || "")) return { status: 404 as const };
+    if (row.last_run && this.clock() - ms(row.last_run) < 10_000) return { status: 429 as const };
+    void this.runRoutine(id, { kind: "webhook", payload }).catch((e) => this.host.log("warn", "[routine] hook: " + (e as Error).message));
+    return { status: 202 as const };
+  }
+  /** Page routines whose time has come (the tick): read the page, and run when its words changed. The first read is a
+   *  baseline. */
+  async routinePages() {
+    const rows = await this.db.query<{ routine: Routine; state: { hash?: string } | null; last_run: Date | null; runs: number; stopped: boolean }>(
+      "select routine, state, last_run, runs, stopped from organizer_routines where owner_id = $1 and not stopped and routine->'trigger'->>'type' = 'page'", [this.owner]);
+    for (const r of rows) {
+      const t = r.routine.trigger as Extract<Trigger, { type: "page" }>;
+      if (!routineLive(r.routine, r, this.clock())) continue;
+      const checked = (r.state as { at?: number } | null)?.at || 0;
+      if (this.clock() - checked < t.every * 60_000 - 30_000) continue;
+      try {
+        const res = await fetch(t.url, { redirect: "follow", signal: AbortSignal.timeout(20_000), headers: { "user-agent": "Clem-Routine/1.0" } });
+        const text = pageText((await res.text()).slice(0, 2_000_000)), hash = createHash("sha256").update(text).digest("hex");
+        const was = r.state?.hash;
+        await this.db.query("update organizer_routines set state = $3 where owner_id = $1 and id = $2", [this.owner, r.routine.id, { hash, at: this.clock() }]);
+        if (was && was !== hash) await this.runRoutine(r.routine.id, { kind: "page", url: t.url, text: text.slice(0, 6000) });
+      } catch (e) { this.host.log("warn", `[routine] page ${r.routine.id}: ${(e as Error).message}`); await this.db.query("update organizer_routines set state = coalesce(state, '{}'::jsonb) || $3 where owner_id = $1 and id = $2", [this.owner, r.routine.id, { at: this.clock() }]); }
+    }
+  }
+  /** Runs a routine: the model decides what to say (when `think`), it is said in the main thread and pushed when it
+   *  matters, and posted to the person's own URL when it has one. */
+  async runRoutine(id: string, event: { kind: string; [k: string]: unknown } = { kind: "manual" }) {
+    const row = await this.routineRow(id);
+    if (!row || row.stopped) return { error: "No running routine has that id." };
+    const r = row.routine, now = this.clock(), s = await this.settings();
+    await this.db.query("update organizer_routines set runs = runs + 1, last_run = $3 where owner_id = $1 and id = $2", [this.owner, id, new Date(now)]);
+    let say: string | null = null, important = false;
+    if (r.tell) {
+      if (r.think && this.host.complete) {
+        const context = await this.routineContext().catch(() => "");
+        const user = `Routine: ${r.title}\nIts instructions: ${r.instructions || "Tell the person what happened, briefly."}\nTriggered: ${describeTrigger(r.trigger)}\nNow: ${cairo(now).ymd} ${cairo(now).time} (Cairo)\n\nEvent:\n${JSON.stringify(event).slice(0, 8000)}\n\nContext:\n${context}`;
+        try { ({ say, important } = readRoutineReply(await this.host.complete({ system: ROUTINE_SYSTEM, user }))); }
+        catch (e) { this.host.log("warn", "[routine] model: " + (e as Error).message); say = plainRoutine(r, event); }
+      } else say = plainRoutine(r, event);
+    }
+    let posted = "";
+    if (r.post) {
+      try {
+        const res = await fetch(r.post, { method: "POST", headers: { "content-type": "application/json", "user-agent": "Clem-Routine/1.0" }, body: JSON.stringify({ routine: { id: r.id, title: r.title }, at: new Date(now).toISOString(), event, ...(say ? { message: say } : {}) }), signal: AbortSignal.timeout(10_000) });
+        posted = res.ok ? "posted" : "post failed: http " + res.status;
+      } catch (e) { posted = "post failed: " + (e as Error).message.slice(0, 80); }
+    }
+    let postId: string | undefined;
+    if (say) {
+      postId = await this.post(`**${r.title}**\n\n${say}`, `routine:${id}:${now}`);
+      const urgent = important || event.kind === "change" && (event.changes as RoutineChange[] | undefined)?.some((c) => c.kind === "new_grade" || c.kind === "exam_posted");
+      const out = delivery(s, { news: true, urgent }).channels.filter((c): c is Outward => c !== "app");
+      if (postId && out.length) await this.push(`routine:${id}:${now}`, r.title, say.replace(/\*\*/g, "").slice(0, 240), { chat: (await this.workspace()).mainId || "main", message: postId }, s, { channels: out, loud: r.loud });
+    }
+    const result = [say ? "told" : r.tell ? "nothing worth saying" : "", posted].filter(Boolean).join(", ") || "ran";
+    await this.db.query("update organizer_routines set last_result = $3 where owner_id = $1 and id = $2", [this.owner, id, result.slice(0, 200)]);
+    await this.record(`routine:${id}:${now}`, "routine", { type: "note", kind: "info", text: `${r.title}: ${result}`.slice(0, 300) }, `${r.title}: ${result}`, "said");
+    return { ok: true, result, ...(say ? { said: say } : {}) };
+  }
+  /** What a routine's model sees besides its event: today's and tomorrow's agenda, upcoming deadlines, reminders. */
+  private async routineContext() {
+    const now = this.clock(), today = cairo(now).ymd;
+    const [snap, g, s, reminders] = await Promise.all([this.workspace(), this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null })), this.settings(), this.reminders()]);
+    const agenda = agendaText({ days: [today, addDays(today, 1)], slots: datedSlots(g.slots, today, 2), timed: timedItems(snap), prefs: s.study, now });
+    const due = this.deadlines(g, snap).filter((d) => dueAt(d.due) > now && dueAt(d.due) - now < 14 * 864e5).slice(0, 15).map((d) => `- ${d.title} · due ${d.due}`).join("\n");
+    return [agenda, due ? "Deadlines (next 2 weeks):\n" + due : "No deadlines in the next 2 weeks.", remindersText(reminders.slice(0, 10))].join("\n\n").slice(0, 6000);
   }
 
   // ---------- Watches ----------
@@ -532,5 +685,14 @@ export class Organizer {
   }
   async stopWatch(id: string) { await this.db.query("update organizer_watches set stopped = true where owner_id = $1 and id = $2", [this.owner, id]); return this.watches(); }
 }
+
+/** A routine's message without the model: its title's news, plainly. */
+function plainRoutine(r: Routine, event: { kind: string; [k: string]: unknown }) {
+  if (event.kind === "change") return ((event.changes as RoutineChange[]) || []).map((c) => `- ${c.title}${c.detail ? ": " + c.detail : ""}`).join("\n").slice(0, 1500);
+  if (event.kind === "page") return `${event.url} changed.`;
+  if (event.kind === "webhook") return `Webhook called${event.payload ? ": " + JSON.stringify(event.payload).slice(0, 600) : "."}`;
+  return r.instructions || r.title;
+}
+const safeEqual = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
 
 function groupBy<T>(xs: T[], key: (x: T) => string) { const out: Record<string, T[]> = {}; for (const x of xs) (out[key(x)] ||= []).push(x); return out; }

@@ -30,7 +30,7 @@ const nodeOk = (v?: string) => !!v && Number(v.replace(/^v/, "").split(".")[0]) 
 /** Uploads the worker bundle, its key, config and sealed secrets, then starts it. `secrets`: name → value (see
  *  core/vps/types.ts WORKER_SECRETS); each sealed with AES-256-GCM under `key` here, so the server only ever holds
  *  ciphertext plus the key file (mode 600). Returns how it runs. */
-export async function installWorker(o: { link: VpsLink; owner: string; bundle: string; key: Uint8Array; secrets: Record<string, unknown>; accountService: string; port?: number; progress?: (label: string) => void }) {
+export async function installWorker(o: { link: VpsLink; owner: string; bundle: string; key: Uint8Array; secrets: Record<string, unknown>; accountService: string; port?: number; /** The server's address, for routines' webhook URLs. */ publicHost?: string; progress?: (label: string) => void }) {
   const { link, owner } = o, dir = workerDir(owner), port = o.port || WORKER_PORT;
   o.progress?.("Checking the server…");
   const p = await probe(link);
@@ -48,7 +48,7 @@ export async function installWorker(o: { link: VpsLink; owner: string; bundle: s
   await send(o.bundle, dir);
   const text = (s: string) => new TextEncoder().encode(s);
   await link.put(`${dir}/.key`, text(Buffer.from(o.key).toString("base64")), 0o600);
-  await link.put(`${dir}/config.json`, text(JSON.stringify({ owner, accountService: o.accountService })));
+  await link.put(`${dir}/config.json`, text(JSON.stringify({ owner, accountService: o.accountService, ...(o.publicHost ? { publicHost: o.publicHost } : {}) })));
   // Keep Postgres's password across refreshes (its volume was made with it).
   const env = await link.get(`${dir}/.env`).then((b) => Buffer.from(b).toString("utf8"), () => "");
   const pgPass = env.match(/^POSTGRES_PASSWORD=(\w+)$/m)?.[1] || randomBytes(18).toString("hex");

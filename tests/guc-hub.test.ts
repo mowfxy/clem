@@ -115,7 +115,7 @@ test("the hub's reads: overview, courses, schedule, materials by week, grades an
   try {
     const o = await engine.overview();
     assert.equal(o.connected, true);
-    assert.deepEqual(o.counts, { courses: 4, unread: 9, materials: 9, deadlines: o.counts.deadlines, grades: 4 });
+    assert.deepEqual(o.counts, { courses: 4, unread: 9, materials: 9, deadlines: o.counts.deadlines, grades: 4, exams: 2, mail: 1 }, "the fake has two upcoming exam seats and one unread email");
     assert.ok(o.counts.deadlines >= 2);
 
     const courses = await engine.courses();

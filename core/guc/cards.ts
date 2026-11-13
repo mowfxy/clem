@@ -33,6 +33,9 @@ export const lectureCard = z.object({ type: z.literal('lecture'), subjectId: tex
 
 /** Something the person asked Clem to watch for ("tell me when the midterm room is posted"), with Stop. */
 export const watchCard = z.object({ type: z.literal('watch'), id: z.string().regex(/^[\w-]{1,80}$/), text: text(300), detail: text(300).optional() });
+/** A routine Clem made from the person's words (core/proactivity/routines.ts): what starts it, what it does, its webhook
+ *  URL when it has one, and Stop. */
+export const routineCard = z.object({ type: z.literal('routine'), id: z.string().regex(/^rt[\w-]{4,40}$/), title: text(80), when: text(300), does: text(300).optional(), hook: z.string().max(400).optional() });
 
 const subject = { subjectId: text(80), setup: z.boolean().optional() };
 const courseKey = z.string().regex(/^\d{1,10}:\d{1,10}$/);
@@ -82,12 +85,13 @@ export const vpsMovedCard = z.object({ type: z.literal('vps_moved'), direction: 
  *  stays in the main process under `id`. */
 export const vpsConfirmCard = z.object({ type: z.literal('vps_confirm'), id: z.string().regex(/^[a-f0-9]{16}$/), action: z.enum(['run', 'write']), command: z.string().max(600).optional(), path: z.string().max(300).optional(), reason: z.string().max(200).optional() });
 
-export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, organizerCard, lectureCard, watchCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard, telegramPairCard, gucPasswordCard, vpsMovedCard, vpsConfirmCard]);
+export const clemCard = z.discriminatedUnion('type', [handoffCard, briefCard, reminderCard, digestCard, organizerCard, lectureCard, watchCard, routineCard, courseLinkCard, saveRulesCard, checkScheduleCard, driveFolderCard, storageCard, setupDoneCard, settingsUpdateCard, newCoursesCard, fileSavedCard, announcementCard, gradeCard, deadlineCard, telegramPairCard, gucPasswordCard, vpsMovedCard, vpsConfirmCard]);
 export type ClemCard = z.infer<typeof clemCard>;
 export type HandoffCard = z.infer<typeof handoffCard>;
 export type OrganizerCard = z.infer<typeof organizerCard>;
 export type LectureCard = z.infer<typeof lectureCard>;
 export type WatchCard = z.infer<typeof watchCard>;
+export type RoutineCard = z.infer<typeof routineCard>;
 export type SettingsUpdateCard = z.infer<typeof settingsUpdateCard>;
 export type NewCoursesCard = z.infer<typeof newCoursesCard>;
 export type FileSavedCard = z.infer<typeof fileSavedCard>;

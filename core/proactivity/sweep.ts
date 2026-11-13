@@ -19,7 +19,7 @@ export type SweepKind = JobKind | "event";
 /** `say`: the organizer's own words for it, when it judged it. */
 export type RatedChange = { change: Change; level: Importance; why: string; ambiguous?: true; say?: string };
 /** News the organizer judges (everything else about a change is certain). */
-const JUDGED = new Set<Change["kind"]>(["new_announcement", "new_grade", "new_material", "file_saved"]);
+const JUDGED = new Set<Change["kind"]>(["new_announcement", "new_mail", "new_grade", "new_material", "file_saved"]);
 export type WatchRow = { watch: Watch; fired: number; stopped?: boolean };
 export type SweepPlan = {
   changed: boolean; diff: string[];
