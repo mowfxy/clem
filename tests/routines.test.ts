@@ -64,7 +64,8 @@ test("a change routine fires right after the sync that found a grade, tells the 
     assert.equal((cardsIn(made.card)[0] as { type: string }).type, "routine");
     pages[portalUrls.grades] = checkGrade({ mid701: "17/20" });
     await e.sync();
-    for (let i = 0; i < 50 && !hook.got.length; i++) await new Promise((r) => setTimeout(r, 20));
+    // The run posts to the webhook first, then says it in the main thread: wait for the whole run, not the POST.
+    for (let i = 0; i < 250 && !(await o.routines())[0]?.lastResult; i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(hook.got.length, 1, "posted once");
     const body = JSON.parse(hook.got[0].body);
     assert.equal(body.event.kind, "change");
