@@ -31,7 +31,7 @@ test("connecting checks the password, keeps it encrypted, and the first sync is 
   } finally { await engine.close(); }
 });
 
-test("an incremental sync reads only linked courses, skips unchanged pages and turns changes into events", async () => {
+test("a full sync reads every current course's page (files listed, none downloaded), skips unchanged pages and turns changes into events", async () => {
   const pages = site(), guc = fakeGuc(pages, { etags: true }), h = host();
   const engine = await Engine.open("owner-2", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
   try {
@@ -40,12 +40,13 @@ test("an incremental sync reads only linked courses, skips unchanged pages and t
     guc.log.length = 0;
     let status = await engine.sync();
     // CheckGrade is read every time (coursework only shows after a postback per course); mail is one FindItem.
-    assert.deepEqual([...new Set(guc.log.map((r) => r.url))], [urls.home, urls.schedule, portalUrls.grades, portalUrls.exams, urls.transcript, EWS_URL, urls.course(1201, 64)], "only the linked course");
+    assert.deepEqual([...new Set(guc.log.map((r) => r.url))], [urls.home, urls.schedule, portalUrls.grades, portalUrls.exams, urls.transcript, EWS_URL, urls.course(1201, 64), urls.course(1202, 64), urls.course(1203, 64)], "every current course, linked or not");
+    assert.ok(!guc.log.some((r) => /\/Uploads\//.test(r.url)), "reading a course page never downloads its files");
     assert.equal(guc.log.filter((r) => r.url === portalUrls.grades && r.method === "POST").length, 2, "one postback per course");
     // The transcript's landing page holds no grades (a year is posted back each time), so it is not asked conditionally.
     assert.ok(guc.log.filter((r) => r.method === "GET" && r.url !== portalUrls.grades && r.url !== urls.transcript).every((r) => r.conditional), "every other page is asked for conditionally");
-    assert.equal(status.stats!.requests, 10, "with the transcript's older year posted back once");
-    assert.equal(status.stats!.skipped, 7);
+    assert.equal(status.stats!.requests, 12, "with the transcript's older year posted back once");
+    assert.equal(status.stats!.skipped, 9);
     assert.equal(status.stats!.changed, 0);
     assert.equal(status.stats!.missed, undefined, "every part was read");
 
@@ -61,7 +62,7 @@ test("an incremental sync reads only linked courses, skips unchanged pages and t
     pages[EWS_URL] = fakeEws([{ id: "AAMk1", subject: "Welcome back", from: "Student Affairs", at: "2026-09-01T08:00:00Z" }, { id: "AAMk2", subject: "Midterm hall change", from: "Exams Office", at: "2026-11-12T09:00:00Z", body: "Your CSEN 701 midterm moved to H14." }]);
     guc.log.length = 0;
     status = await engine.sync();
-    assert.equal(guc.log.filter((r) => r.url.includes("CourseViewStn")).length, 1);
+    assert.equal(guc.log.filter((r) => r.url.includes("CourseViewStn")).length, 3);
     const kinds = (await engine.db.query<{ kind: string }>("select kind from guc_events order by kind")).map((e) => e.kind);
     // The edited announcement (its date moved) reads as new, beside the new milestone paragraph.
     assert.deepEqual(kinds, ["deadline_added", "deadline_changed", "exam_posted", "new_announcement", "new_announcement", "new_grade", "new_grade", "new_grade", "new_mail", "new_material", "schedule_changed"], kinds.join());
@@ -89,7 +90,7 @@ test("a content hash skips pages that come back identical without an ETag", asyn
     pages[urls.home] = pages[urls.home].replace("FAKEVIEWSTATE", "OTHERVIEWSTATE");
     const status = await engine.sync();
     assert.equal(status.stats!.changed, 0);
-    assert.equal(status.stats!.skipped, 6, "CheckGrade is read every time but its grades are the same");
+    assert.equal(status.stats!.skipped, 9, "CheckGrade is read every time but its grades are the same; every current course's page is unchanged");
   } finally { await engine.close(); }
 });
 

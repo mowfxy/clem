@@ -1,7 +1,7 @@
 // The AI's GUC tools, run for one owner (docs/GUC-VPS-ENGINE.md → AI tools): each kinetra "guc.*" request becomes
 // owner-scoped engine reads, and the result is compact text with #/app/guc links to cite. The engine is per owner;
 // a request is refused when the engine is not the signed-in owner's.
-import { announcementsText, deadlinesText, deadlineWindow, fileTextPage, GUC_GUIDE, gradesText, gucAction, label, link, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
+import { announcementsText, deadlinesText, deadlineWindow, fileTextPage, GUC_GUIDE, gradesText, gucAction, label, link, mailListText, mailText, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
 import { settingsUpdateCard } from "../../core/guc/cards.ts";
 import { AI_RULES_FORMAT, describeSaveRules } from "../../core/guc/rules.ts";
 import { describeChecks } from "../../core/guc/schedule-rules.ts";
@@ -74,6 +74,19 @@ export async function runGucTool(ctx: GucToolContext, request: Record<string, un
       }
       case "guc.grades": return gradesText(await e.grades(), course || undefined);
       case "guc.read": return readFile(ctx, a.file, a.from, course || undefined);
+      case "guc.mail": {
+        if (a.id) return mailText(await e.mailMessage(a.id));
+        const m = await e.mail();
+        return mailListText(m.items, { limit: a.limit ?? 20, query: a.query, missed: m.missed });
+      }
+      case "guc.save": {
+        const id = await findMaterial(e, a.file, course || undefined);
+        if (!id) return { error: `No CMS file "${a.file}". List a subject's files with {"action":"guc.materials","subject":…}.` };
+        if (typeof id === "object") return id;
+        const r = await e.saveFile(id, a.drive !== undefined ? { drive: a.drive } : {});
+        ctx.changed?.();
+        return `${r.already ? "Already saved" : "Saved"} ${r.name} to their files${r.subjectId ? " (under its subject)" : ""}${r.drive ? `, and uploaded it to Google Drive → ${r.drive.folder}` : ""}. Say so in one short sentence.`;
+      }
       case "guc.settings": return settings(ctx, a, need());
     }
   } catch (error) {

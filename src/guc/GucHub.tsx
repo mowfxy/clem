@@ -246,7 +246,7 @@ export function CourseFiles({ courseKey, material, linked, onOpenFile, onConnect
   const opened = useRef("");
   useEffect(() => { const m = material && mats.data?.weeks.flatMap((w) => w.items).find((x) => x.id === material); if (m && opened.current !== m.id) { opened.current = m.id; onOpenFile(asFile(m)); } }, [material, mats.data]);
   if (!mats.data) return mats.error ? <Problem message={mats.error} onRetry={() => void mats.reload()} onConnect={onConnect} /> : <Skeleton rows={6} />;
-  if (!rows.length) return <EmptyState scene="folder" line={linked ? "No files in this course yet." : "No files read from this course yet. Clem reads the files of courses linked to a subject."} />;
+  if (!rows.length) return <EmptyState scene="folder" line={linked ? "No files in this course yet." : "No files listed for this course yet. Clem lists every current course's files on its next check."} />;
   return <VList key={courseKey} items={rows} keyOf={(r) => r.key} estimate={(r) => (r.kind === "week" ? 40 : 52)} label="Files" render={(r) => r.kind === "week"
     ? <h3 className="guc-week">{weekLabel(r.week.week)}<span>{r.week.items.length}</span></h3>
     : <FileRow m={r.m} focus={r.m.id === material} onOpenFile={onOpenFile} onToast={onToast} />} />;
@@ -365,11 +365,29 @@ export function Mail({ onConnect }: { onConnect: () => void }) {
   if (!mail.data) return mail.error ? <Problem message={mail.error} onRetry={() => void mail.reload()} onConnect={onConnect} /> : <Skeleton rows={5} />;
   if (!mail.data.items.length) return <EmptyState scene="checklist" line={mail.data.missed ? "Clem couldn’t reach your GUC mail yet. It will try again in a few minutes." : "Your GUC Inbox will show here after the next check."} />;
   const when = (iso: string) => { const t = Date.parse(iso); return Number.isFinite(t) ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""; };
-  return <ul className="guc-mail" aria-label="GUC mail">{mail.data.items.map((m) => <li key={m.id} className={m.read ? "" : "is-unread"}>
-    <div className="guc-mail-head"><b>{m.from.replace(/\s*<[^>]+>$/, "")}</b><time>{when(m.received)}</time></div>
-    <strong>{m.subject}{m.attachments && <Icon name="attach" size={13} />}</strong>
-    {m.preview && <p>{m.preview}</p>}
-  </li>)}<li className="guc-mail-note"><small>Read-only. Open Outlook to reply; Clem never sends, moves or marks your mail.</small></li></ul>;
+  return <ul className="guc-mail" aria-label="GUC mail">{mail.data.items.map((m) => <MailItem key={m.id} m={m} when={when} />)}<li className="guc-mail-note"><small>Read-only. Open Outlook to reply; Clem never sends, moves or marks your mail.</small></li></ul>;
+}
+
+type OpenMail = { text: string; cut: boolean } | { error: string } | "loading";
+/** One message: its preview, and its whole text once opened (read from GUC then, kept only on screen). */
+function MailItem({ m, when }: { m: HubMail["items"][number]; when: (iso: string) => string }) {
+  const [open, setOpen] = useState<OpenMail | null>(null);
+  const toggle = () => {
+    if (open === "loading") return;
+    if (open) return setOpen(null);
+    setOpen("loading");
+    gucAsk<{ text: string; cut: boolean }>({ action: "gucMailMessage", id: m.id }).then((r) => setOpen({ text: r.text, cut: r.cut }), (e) => setOpen({ error: (e as Error)?.message || "Clem couldn’t open this message." }));
+  };
+  return <li className={(m.read ? "" : "is-unread") + (open ? " is-open" : "")}>
+    <button type="button" className="guc-mail-open" aria-expanded={!!open} onClick={toggle}>
+      <div className="guc-mail-head"><b>{m.from.replace(/\s*<[^>]+>$/, "")}</b><time>{when(m.received)}</time></div>
+      <strong>{m.subject}{m.attachments && <Icon name="attach" size={13} />}</strong>
+      {!open && m.preview && <p>{m.preview}</p>}
+    </button>
+    {open === "loading" ? <p className="guc-mail-body is-loading">Opening…</p>
+      : open && "error" in open ? <p className="guc-mail-body is-error">{open.error}</p>
+      : open ? <div className="guc-mail-body">{open.text || "This message has no text."}{open.cut && <small> (The message continues; open it in Outlook for the rest.)</small>}</div> : null}
+  </li>;
 }
 
 // ---------- Deadlines ----------

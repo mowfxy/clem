@@ -61,6 +61,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("gucDeadlines") }),
   z.object({ action: z.literal("gucTerm") }),
   z.object({ action: z.literal("gucMail") }),
+  /** One message's whole text, read from GUC when opened; never cached. */
+  z.object({ action: z.literal("gucMailMessage"), id: gucId }),
   /** The main thread's Now card from GUC (today's classes, deadlines in 7 days, unread): cached in the engine. */
   z.object({ action: z.literal("gucNow") }),
   /** Makes a CMS file ready to view (saved copy, or fetched to a temp folder) and returns its name, type and size; the

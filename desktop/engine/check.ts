@@ -57,6 +57,23 @@ export async function saveFiles(o: { db: Db; owner: string; subjectId: string; c
   return { ...stats, ms: Date.now() - started };
 }
 
+/** One CMS file the person asked for by name ("download this lecture", "save the sheet and solve it"), whatever the
+ *  save rules say; the AI's guc.save. `subjectId` is the subject it shows under in Files (the course's linked one), or
+ *  null. Saved before and unchanged: nothing is downloaded again. */
+export async function saveOne(o: { db: Db; owner: string; subjectId: string | null; materialId: string; client: () => GucClient; store: FileStore }) {
+  const { db, owner } = o;
+  const [m] = await db.query<{ material_id: string; course_key: string; week: string; title: string; url: string }>("select material_id, course_key, week, title, url from guc_materials where owner_id = $1 and material_id = $2", [owner, o.materialId]);
+  if (!m?.url) throw new GucError("unavailable", "no such file", "This file is no longer on the CMS.");
+  if (!GUC_HOST.test(m.url)) throw new GucError("unavailable", "not a GUC file", "That item is a link to another site, not a CMS file Clem can save.");
+  const { name } = materialFile(m.url, m.title);
+  const [was] = await db.query<{ url: string | null }>("select url from file_objects where owner_id = $1 and file_id = $2", [owner, "guc:" + m.material_id]);
+  if (was?.url === m.url) return { name, saved: false, already: true };
+  const stats: SaveStats = { requests: 0, bytes: 0, saved: 0, skipped: 0, deduped: 0, ms: 0 };
+  const file = await fetchFile(o.client(), m.url);
+  await keep({ db, owner, subjectId: o.subjectId as string, courseKey: m.course_key, store: o.store }, m, file, stats);
+  return { name, saved: true, already: false, size: file.bytes.length };
+}
+
 async function keep(o: { db: Db; owner: string; subjectId: string; courseKey: string; store: FileStore }, m: { material_id: string; week: string; title: string; url: string }, file: { bytes: Uint8Array; type: string }, stats: SaveStats) {
   const { db, owner, store } = o, hash = sha256(file.bytes), { name, type } = materialFile(m.url, m.title);
   const mime = type === "application/octet-stream" && file.type ? file.type : type, ext = /\.([a-z0-9]{1,5})$/i.exec(name)?.[1]?.toLowerCase() || "";

@@ -1651,6 +1651,7 @@ void app.whenReady().then(async () => {
       if (request.action === "gucDeadlines") return engine.deadlines();
       if (request.action === "gucTerm") return engine.term();
       if (request.action === "gucMail") return engine.mail();
+      if (request.action === "gucMailMessage") return engine.mailMessage(request.id);
       if (request.action === "gucNow") return (await engine.status()).connected ? engine.now() : null;
       if (request.action === "gucFile") { const { path: _path, ...file } = await engine.file(request.materialId); return file; }
       if (request.action === "gucLinks") return engine.links();

@@ -9,7 +9,8 @@ import { urls } from "../../core/guc/parse.ts";
 import { AUTH_RETRY_MS, PASSWORD_SAID } from "../../core/guc/password.ts";
 import { active, cronLines } from "../../core/guc/schedule-rules.ts";
 import type { InboxItem, SettingsPatch, SubjectView } from "../../core/guc/settings.ts";
-import { saveFiles, type SaveStats } from "./check.ts";
+import { saveFiles, saveOne, type SaveStats } from "./check.ts";
+import { readMessage, type MailMessage } from "./guc-mail.ts";
 import { mirror, type MirrorResult } from "./drive-mirror.ts";
 import { DeviceStore, type FileStore } from "./storage.ts";
 import { extractText, textCache, type TextCacheOptions } from "./file-text.ts";
@@ -284,6 +285,34 @@ export class Engine {
   term() { return read.term(this.db, this.owner); }
   /** The newest GUC Inbox messages (read-only). */
   mail() { return read.mail(this.db, this.owner); }
+  /** One message's whole text, read from GUC now (never stored): the hub's open message and the AI's guc.mail. */
+  async mailMessage(id: string): Promise<MailMessage> {
+    this.reader ||= new GucClient(await this.signIn(), this.http, this.sleep);
+    return readMessage(this.reader, id);
+  }
+
+  /** One CMS file the person asked for (guc.save), saved to their files under the course's linked subject, and, when
+   *  `drive` names a folder path ("Uni/ELCT 301"), copied there in Google Drive too. Nothing is saved without a request:
+   *  the AI's guc.read only ever reads a file into memory. */
+  async saveFile(materialId: string, o: { drive?: string } = {}) {
+    const [m] = await this.db.query<{ course_key: string }>("select course_key from guc_materials where owner_id = $1 and material_id = $2", [this.owner, materialId]);
+    if (!m) throw new GucError("unavailable", "no such file", "This file is no longer on the CMS.");
+    const link = (await this.links()).find((l) => l.courseKey === m.course_key);
+    const credentials = await this.signIn(), client = new GucClient(credentials, this.http, this.sleep);
+    const r = await saveOne({ db: this.db, owner: this.owner, subjectId: link?.subjectId ?? null, materialId, client: () => client, store: this.store });
+    if (r.saved) { this.version++; this.host.changed?.(); }
+    let drive: { folder: string; id: string } | undefined;
+    if (o.drive !== undefined) {
+      const d = this.host.drive;
+      if (!d || !(await d.connected().catch(() => false))) throw new GucError("unavailable", "drive not connected", `Saved ${r.name}, but Google Drive isn't connected. Connect it in Settings → Connectors → Google Drive.`);
+      const parts = o.drive.split(/[\\/]+/).map((p) => p.replace(/[:*?"<>|\x00-\x1f]+/g, " ").trim()).filter(Boolean).slice(0, 8);
+      let folder = "root";
+      for (const p of parts) folder = await d.folder(folder, p.slice(0, 120));
+      const f = await this.file(materialId);
+      drive = { folder: parts.join("/") || "My Drive", id: (await d.upload(folder, f.name, f.path, f.type)).id };
+    }
+    return { ...r, subjectId: link?.subjectId, drive };
+  }
 
   // ---------- Subjects and their courses (core/guc/setup-flow.ts, src/guc/setup.ts) ----------
   links() { return subjects.links(this.db, this.owner); }
