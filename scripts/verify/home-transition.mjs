@@ -80,12 +80,10 @@ try {
       // A suggestion types into the box and focuses it, which opens the thread.
       await page.locator(".suggestions button", { hasText: "Research a question" }).click();
       check(await until(() => page.evaluate(() => window.__vt?.held === true), 3000), `${theme}: the box opens the thread as a view transition`);
-      const glass = await page.evaluate(() => getComputedStyle(document.documentElement, "::view-transition-group(clem-composer)").backdropFilter);
-      check(/blur/.test(glass), `${theme}: the composer's group carries the glass's backdrop-filter (${glass})`);
       const names = await page.evaluate(() => document.getAnimations().map((a) => a.effect?.pseudoElement).filter(Boolean).join(" "));
-      check(/clem-composer/.test(names) && /clem-home/.test(names) && /clem-thread/.test(names), `${theme}: composer morphs, home recedes, thread rises`);
+      check(/view-transition-old\(root\)/.test(names) && /view-transition-new\(root\)/.test(names) && !/clem-/.test(names), `${theme}: one crossfade of the window, nothing flies (${names})`);
       const frames = [];
-      for (const t of [0, 150, 300, 440]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); frames.push(await shot(`home-in-${t}ms`)); }
+      for (const t of [0, 90, 180, 260]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); frames.push(await shot(`home-in-${t}ms`)); }
       await page.evaluate(() => window.__vtGo());
       await page.locator(".chat-view.main-thread").waitFor({ timeout: 3000 });
       await settle();
@@ -102,7 +100,7 @@ try {
       await box.fill("");
       await page.locator(".nav-item", { hasText: "Home" }).click();
       check(await until(() => page.evaluate(() => window.__vt?.held === true && document.documentElement.dataset.morph === "out"), 3000), `${theme}: Home reverses it`);
-      for (const t of [0, 220, 440]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); await shot(`home-out-${t}ms`); }
+      for (const t of [0, 130, 260]) { await page.evaluate((t) => window.__vtAt(t), t); await page.waitForTimeout(60); await shot(`home-out-${t}ms`); }
       await page.evaluate(() => window.__vtGo());
       await page.locator(".new-chat-content .home-pick").waitFor({ timeout: 3000 });
       check(await page.locator(".nav-item.active", { hasText: "Home" }).count() === 1, `${theme}: back on Home`);

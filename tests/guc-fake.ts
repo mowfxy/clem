@@ -22,6 +22,9 @@ export function fakeGuc(pages: Record<string, FakePage>, o: { password?: string;
     const file = o.files?.[r.url];
     if (r.method === "HEAD") return file ? { status: 200, headers: { "content-length": String(file.length) }, body: "" } : { status: 404, headers: {}, body: "" };
     if (r.binary) return file ? { status: 200, headers: { "content-type": "application/pdf" }, body: "", bytes: file } : { status: 404, headers: {}, body: "", bytes: new Uint8Array() };
+    // The transcript's 2024-2025 year, posted back, is a year before the student started: its dropdown and no semesters.
+    if (r.url === urls.transcript && r.method === "POST" && Object.values(r.form || {}).includes("2024"))
+      return { status: 200, headers: {}, body: '<html><body>Transcript<select name="ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$stdYrLst"><option selected="selected" value="2024">2024-2025</option><option value="2025">2025-2026</option></select></body></html>' };
     const page = pages[r.url], body = typeof page === "function" ? page(r) : page;
     if (body === undefined) return { status: 404, headers: {}, body: "Not found" };
     const etag = '"' + stableId(body) + '"';

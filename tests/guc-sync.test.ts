@@ -42,8 +42,9 @@ test("an incremental sync reads only linked courses, skips unchanged pages and t
     // CheckGrade is read every time (coursework only shows after a postback per course); mail is one FindItem.
     assert.deepEqual([...new Set(guc.log.map((r) => r.url))], [urls.home, urls.schedule, portalUrls.grades, portalUrls.exams, urls.transcript, EWS_URL, urls.course(1201, 64)], "only the linked course");
     assert.equal(guc.log.filter((r) => r.url === portalUrls.grades && r.method === "POST").length, 2, "one postback per course");
-    assert.ok(guc.log.filter((r) => r.method === "GET" && r.url !== portalUrls.grades).every((r) => r.conditional), "every other page is asked for conditionally");
-    assert.equal(status.stats!.requests, 9);
+    // The transcript's landing page holds no grades (a year is posted back each time), so it is not asked conditionally.
+    assert.ok(guc.log.filter((r) => r.method === "GET" && r.url !== portalUrls.grades && r.url !== urls.transcript).every((r) => r.conditional), "every other page is asked for conditionally");
+    assert.equal(status.stats!.requests, 10, "with the transcript's older year posted back once");
     assert.equal(status.stats!.skipped, 7);
     assert.equal(status.stats!.changed, 0);
     assert.equal(status.stats!.missed, undefined, "every part was read");
