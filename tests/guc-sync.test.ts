@@ -131,6 +131,36 @@ test("logins are retried as GUC\\username, and failures are typed and told once"
   } finally { await engine.close(); }
 });
 
+test("reconnecting after a disconnect is a quiet baseline: no events, and the organizer's next sweep says nothing", async () => {
+  const pages = site(), guc = fakeGuc(pages), h = Object.assign(host(), { calls: 0 });
+  h.workspace = async () => ({ spaces: [], plans: [], chats: [{ id: "main", kind: "main", messages: [] }], files: [], studySets: [], automations: [] });
+  h.complete = async () => { h.calls++; return '{"levels":[],"actions":[]}'; };
+  const engine = await Engine.open("owner-re", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  try {
+    await engine.connect("student.name", "secret");
+    await engine.sync();
+    await engine.organizer.sweep("event");
+    await engine.disconnect();
+    // While disconnected, GUC moves on: a new post, a new file, a new grade and a room change.
+    pages[urls.course(1201, 64)] = fixture("cms-course")
+      .replace("</div>\n    </div>\n  </div>\n  <div class=\"weeksdata\">", `<p>Project milestone 2 deadline is 3 December 2026.</p></div>\n    </div>\n  </div>\n  <div class="weeksdata">`)
+      .replace("<strong>Content:</strong>", '<strong>Content:</strong><div class="card mb-4"><div class="card-body"><div><strong>0 - Lecture 4 (Lecture slides)</strong></div><div><div><a id="download" download="L4" href="/Uploads/1201/64/lecture-4.pdf">Download</a><input type="button" id="900401" data-contentid="900401" /></div></div></div></div>');
+    pages[urls.transcript] = fixture("transcript").replace("<td>CSEN603</td><td>Software Engineering</td><td></td><td></td>", "<td>CSEN603</td><td>Software Engineering</td><td>1.70</td><td>B+</td>");
+    pages[urls.schedule] = fixture("schedule").replace("C6.204", "C6.205");
+    await engine.connect("student.name", "secret");
+    await engine.sync();
+    assert.equal((await engine.db.query("select * from guc_events")).length, 0, "nothing already on GUC is news after a reconnect");
+    assert.deepEqual(await engine.organizer.sweep("event"), { changed: false, called: false, actions: 0, posted: false }, "the first sweep after it says nothing");
+    assert.equal((await engine.organizer.inbox()).posts.length, 0, "nothing in the main thread");
+    assert.equal(h.notices.length, 0);
+    // From there on, news is news again: the next room change is told.
+    pages[urls.schedule] = fixture("schedule").replace("C6.204", "C6.206");
+    await engine.sync();
+    await engine.organizer.sweep("event");
+    assert.ok((await engine.organizer.inbox()).posts.some((p) => p.content.includes("C6.206")), "a later change is told");
+  } finally { await engine.close(); }
+});
+
 test("the diff only reports courses, grades and schedules it has seen before", () => {
   const prev = emptySnapshot(), next = emptySnapshot();
   next.materials.push({ id: "1", courseKey: "1:1", week: "w", title: "t", kind: "File", url: "" });

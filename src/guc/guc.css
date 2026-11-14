@@ -1,5 +1,8 @@
 /* GUC in Settings → Connectors: the Drive picker's connect card (src/drive/drive.css), narrower, with a sign-in form */
 dialog.app-modal:has(.gd-picker.guc-manage){width:min(460px,calc(100vw - 32px))}
+/* GUC's mark follows the theme (production.css swaps it), so its tile does too: not Drive's fixed paper tile, which
+   put the dark-theme mark on white and the light one on a dark chip. Same tile as the VPS's. */
+.guc-manage .gd-hero-tile.guc-tile{background:color-mix(in srgb,var(--ink) 9%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 12%,transparent) inset}
 .guc-manage>p b{font-weight:700;color:var(--ink)}
 .guc-field{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%;max-width:340px;margin:0 0 12px;text-align:left;font-size:12px;color:var(--muted)}
 .guc-note{display:flex;align-items:center;gap:8px;max-width:340px;margin:2px 0 16px;font-size:12px;line-height:1.45;color:var(--muted);text-align:left}
@@ -240,17 +243,6 @@ html:root[data-theme=light] :is(.guc-new li,.guc-link-pick :is(li,footer))>butto
 .guc-link-pick li>span small{flex-basis:100%;color:var(--muted);font-size:12px}
 .guc-link-pick :is(li,footer)>button{height:var(--row-s);padding:0 14px;border-radius:10px;font-size:var(--text-label);gap:6px}
 .guc-link-pick footer{display:flex;flex-wrap:wrap;gap:8px}
-
-/* Settings → Connectors → GUC: linked subjects and their settings */
-.guc-linked-list{align-self:stretch;display:grid;gap:4px;margin-top:18px;text-align:left}
-.guc-linked-list h4{margin:0 0 4px;font-size:var(--text-label);font-weight:600;color:var(--muted)}
-.guc-linked-item>button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:var(--row);padding:4px 10px;border:0;border-radius:10px;background:none;color:var(--ink);text-align:left;cursor:pointer}
-.guc-linked-item>button:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
-.guc-linked-item>button span{display:grid;gap:1px;min-width:0;font-size:var(--text-s)}
-.guc-linked-item>button small{color:var(--muted);font-size:12px}
-.guc-linked-item>button[aria-expanded=true] .drawn-icon{transform:rotate(180deg)}
-.guc-linked-item .guc-settings-cards{padding:4px 0 10px}
-.guc-linked-item .guc-card-body{padding-left:14px}
 
 @media(max-width:760px){
   .guc-classes li{grid-template-columns:44px 1fr;row-gap:2px}
