@@ -34,6 +34,7 @@ function fakeMain() {
       return status();
     },
     vpsGenerateKey: () => ({ publicKey: PUB }),
+    vpsPasteKey: () => ({ publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOwnKey own-key" }),
     vpsSetup: (r) => { s.config = { host: r.host, port: r.port, user: r.user, auth: r.auth }; return status(); },
     vpsTest: () => (s.test = { ok: true, ms: 38, os: "Ubuntu 24.04.1 LTS", diskFree: 61.5 * GB, diskTotal: 80 * GB, docker: true, systemd: true, node: "v22.11.0", fingerprint: FP, firstTime: true }),
     vpsMove: (r) => { s.move = { direction: r.direction, status: "running", total: 415, done: 168, failed: 0, bytesTotal: 6.3 * GB, bytesDone: 2.5 * GB, startedAt: Date.now() }; s.ticks = 0; return s.move; },
@@ -78,6 +79,16 @@ try {
       await dialog.waitFor({ timeout: 4000 });
       check((await dialog.locator("h3").textContent()) === "Connect your VPS" && await dialog.locator(".vps-port input").inputValue() === "22", `${theme}: the setup asks for the server, port 22 by default`);
       await shot("setup", ".app-modal");
+      // Use my own: once the key is read its form goes, and it never shows under "Make one for me" (nor the other way).
+      await dialog.getByRole("radio", { name: "Use my own" }).click();
+      await dialog.locator("textarea").fill(["-----BEGIN OPENSSH PRIVATE KEY-----", "b3Blbg==", "-----END OPENSSH PRIVATE KEY-----"].join("\n"));
+      await dialog.getByRole("button", { name: "Use this key" }).click();
+      await dialog.getByRole("button", { name: "Use a different key" }).waitFor({ timeout: 4000 });
+      check(await dialog.locator("textarea").count() === 0 && (await dialog.locator(".vps-code").last().textContent()).includes("own-key"), `${theme}: a pasted key replaces its form with the command to add it`);
+      await shot("own", ".app-modal");
+      await dialog.getByRole("radio", { name: "Make one for me" }).click();
+      check(await dialog.locator(".vps-code").count() === 0 && await dialog.getByRole("button", { name: "Generate a key for me" }).count() === 1, `${theme}: the pasted key doesn't show under Make one for me`);
+      check(await dialog.locator(".vps-steps .vps-advanced").count() === 1, `${theme}: password sign-in sits in the key step, before Save and test`);
       await dialog.getByRole("button", { name: "Generate a key for me" }).click();
       await dialog.locator(".vps-code").first().waitFor();
       check((await dialog.locator(".vps-code").first().textContent()).includes(">> ~/.ssh/authorized_keys"), `${theme}: the one-line command to add the key`);
@@ -113,7 +124,14 @@ try {
       check(/Your VPS/.test(facts) && /Docker, with Postgres/.test(facts) && /min ago|just now/.test(facts) && /CLI signed in/.test(facts), `${theme}: the worker runs on the VPS, its heartbeat and model`);
       await dialog.locator(".vps-facts").scrollIntoViewIfNeeded();
       await shot("worker", ".app-modal");
-      check(!m.s.config?.privateKey && !JSON.stringify(await page.evaluate(() => window.requests)).includes("PRIVATE KEY"), `${theme}: no private key crosses to the window`);
+      const lay = await dialog.evaluate((d) => {
+        const r = (el) => el.getBoundingClientRect(), box = r(d), head = r(d.querySelector(".modal-heading"));
+        const h = d.querySelectorAll(".vps-section>header"), last = h[h.length - 1], title = r(last.querySelector("h4")), sw = r(last.querySelector(".mw-switch"));
+        return { scrolled: d.querySelector(".vps-manage").scrollTop, headTop: head.top - box.top, off: Math.abs((title.top + title.bottom) / 2 - (sw.top + sw.bottom) / 2), pageScroll: d.scrollTop };
+      });
+      check(lay.scrolled > 0 && lay.pageScroll === 0 && lay.headTop < 40, `${theme}: the heading and close button stay put while the card scrolls`);
+      check(lay.off <= 2, `${theme}: the Background jobs switch sits level with its title (off by ${lay.off.toFixed(1)}px)`);
+      check(!m.s.config?.privateKey && !JSON.stringify((await page.evaluate(() => window.requests)).filter((r) => r?.action !== "vpsPasteKey")).includes("PRIVATE KEY"), `${theme}: no private key crosses to the window`);
       await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
       await page.locator(".st-dialog").waitFor({ state: "detached", timeout: 4000 }).catch(() => {});
       // The main thread's cards.

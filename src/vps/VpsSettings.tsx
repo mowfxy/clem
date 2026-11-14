@@ -30,18 +30,21 @@ function VpsSetup({ status, onDone, refresh }: { status: VpsStatus; onDone: (s: 
   const c = status.config;
   const [host, setHost] = useState(c?.host || ""), [port, setPort] = useState(String(c?.port || 22)), [user, setUser] = useState(c?.user || "root");
   const [keyMode, setKeyMode] = useState<"make" | "paste">("make"), [publicKey, setPublicKey] = useState(c?.publicKey || "");
+  // Which tab the key came from, so a key made here never shows (or saves) under "Use my own", nor the other way round.
+  const [keyFrom, setKeyFrom] = useState<"make" | "paste" | "">(c?.publicKey ? "make" : "");
+  const key = keyFrom === keyMode ? publicKey : "";
   const [pasted, setPasted] = useState(""), [passphrase, setPassphrase] = useState("");
   const [advanced, setAdvanced] = useState(status.passwordAllowed), [password, setPassword] = useState("");
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [test, setTest] = useState<VpsTest | undefined>(status.lastTest);
   const run = async (label: string, task: () => Promise<void>) => { setBusy(label); setError(""); try { await task(); } catch (e) { setError(message(e)); } finally { setBusy(""); } };
-  const generate = () => run("Making a key…", async () => { setPublicKey((await desktop!.invoke({ action: "vpsGenerateKey" })).publicKey); });
-  const usePasted = () => run("Reading the key…", async () => { setPublicKey((await desktop!.invoke({ action: "vpsPasteKey", privateKey: pasted, ...(passphrase ? { passphrase } : {}) })).publicKey); setPasted(""); setPassphrase(""); });
+  const generate = () => run("Making a key…", async () => { setPublicKey((await desktop!.invoke({ action: "vpsGenerateKey" })).publicKey); setKeyFrom("make"); });
+  const usePasted = () => run("Reading the key…", async () => { setPublicKey((await desktop!.invoke({ action: "vpsPasteKey", privateKey: pasted, ...(passphrase ? { passphrase } : {}) })).publicKey); setKeyFrom("paste"); setPasted(""); setPassphrase(""); });
   const save = () => run("Connecting…", async () => {
     const p = Number(port);
     if (!host.trim()) throw Error("Enter your server's address.");
     if (!Number.isInteger(p) || p < 1 || p > 65535) throw Error("The port is a number, usually 22.");
-    if (!publicKey && !(advanced && password)) throw Error(advanced ? "Make or paste a key, or enter the password." : "Make a key or paste your own first.");
-    await desktop!.invoke({ action: "vpsSetup", host: host.trim(), port: p, user: user.trim(), auth: publicKey ? "key" : "password", ...(advanced && password ? { password, allowPassword: true } : { allowPassword: advanced }) });
+    if (!key && !(advanced && password)) throw Error(advanced ? "Make or paste a key, or enter the password." : keyMode === "make" ? "Generate a key first." : "Paste your key and tap Use this key first.");
+    await desktop!.invoke({ action: "vpsSetup", host: host.trim(), port: p, user: user.trim(), auth: key ? "key" : "password", ...(advanced && password ? { password, allowPassword: true } : { allowPassword: advanced }) });
     const t = await desktop!.invoke({ action: "vpsTest" });
     setTest(t);
     if (t.ok) { await refresh(); onDone(await desktop!.invoke({ action: "vpsStatus" })); }
@@ -63,13 +66,20 @@ function VpsSetup({ status, onDone, refresh }: { status: VpsStatus; onDone: (s: 
           <button type="button" role="radio" aria-checked={keyMode === "make"} onClick={() => setKeyMode("make")}>Make one for me</button>
           <button type="button" role="radio" aria-checked={keyMode === "paste"} onClick={() => setKeyMode("paste")}>Use my own</button>
         </div>
-        {keyMode === "make" ? (publicKey ? <AddKey publicKey={publicKey} /> : <button type="button" className="secondary vps-small" onClick={() => void generate()} disabled={!!busy}>Generate a key for me</button>)
+        {key ? <AddKey publicKey={key} />
+          : keyMode === "make" ? <button type="button" className="secondary vps-small" onClick={() => void generate()} disabled={!!busy}>Generate a key for me</button>
           : <>
             <label className="guc-field vps-wide"><span>Private key</span><textarea rows={4} value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" spellCheck={false} disabled={!!busy} /></label>
             <label className="guc-field"><span>Passphrase (if it has one)</span><input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} disabled={!!busy} /></label>
-            {publicKey && !pasted ? <AddKey publicKey={publicKey} /> : <button type="button" className="secondary vps-small" onClick={() => void usePasted()} disabled={!pasted || !!busy}>Use this key</button>}
+            <button type="button" className="secondary vps-small" onClick={() => void usePasted()} disabled={!pasted || !!busy}>Use this key</button>
           </>}
+        {key && keyMode === "paste" && <button type="button" className="vps-link vps-again" onClick={() => setKeyFrom("")} disabled={!!busy}>Use a different key</button>}
         <p className="guc-note"><Icon name="lock" size={14} />The private key stays encrypted on this PC. Clem never shows it again or sends it to the AI.</p>
+        <details className="vps-advanced" open={advanced}>
+          <summary>Sign in with a password instead</summary>
+          <SettingRow title="Allow password sign-in" description="Less safe than a key. Off unless you need it."><Switch checked={advanced} onChange={setAdvanced} label="Allow password sign-in" /></SettingRow>
+          {advanced && <label className="guc-field"><span>Server password</span><input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!!busy} /></label>}
+        </details>
       </li>
       <li><h4><span>3</span>Check it works</h4>
         {test && <TestResult test={test} />}
@@ -77,11 +87,6 @@ function VpsSetup({ status, onDone, refresh }: { status: VpsStatus; onDone: (s: 
         {error && <p className="gd-error" role="alert">{error}</p>}
       </li>
     </ol>
-    <details className="vps-advanced" open={advanced}>
-      <summary>Advanced</summary>
-      <SettingRow title="Allow password sign-in" description="Less safe than a key. Off unless you need it."><Switch checked={advanced} onChange={setAdvanced} label="Allow password sign-in" /></SettingRow>
-      {advanced && <label className="guc-field"><span>Server password</span><input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>}
-    </details>
   </form>;
 }
 
