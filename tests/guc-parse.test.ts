@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { formFields, pageState, parseCourseList, parseCoursePage, parseSchedule, parseTranscript, SiteChanged, transcriptChallenge, transcriptYears, urls } from "../core/guc/parse.ts";
+import * as cheerio from "cheerio";
+import { announcementPosts, ANNOUNCEMENT_VERSION, formFields, pageState, parseCourseList, parseCoursePage, stableId, parseSchedule, parseTranscript, SiteChanged, transcriptChallenge, transcriptYears, urls } from "../core/guc/parse.ts";
 import { courseDeadlines, DEADLINE_VERSION, dueText, extractDeadlines } from "../core/guc/deadlines.ts";
-import { diffSnapshots } from "../core/guc/diff.ts";
+import { announcementEdits, diffSnapshots } from "../core/guc/diff.ts";
+import { markText } from "../core/guc/hub.ts";
+import { fixture } from "./guc-fake.ts";
 import { emptySnapshot } from "../core/guc/types.ts";
 
 const page = (name: string) => readFileSync(new URL(`./fixtures/guc/${name}.html`, import.meta.url), "utf8");
@@ -110,11 +113,102 @@ test("deadline events say what is due and when; a moved one says from when to wh
   const course = { key: "1:1", id: 1, seasonId: 1, season: "Winter 2026", code: "CSEN 301", name: "Data Structures", active: true };
   const dl = (due: string) => ({ id: "q2", courseKey: "1:1", title: "Quiz 2", due, source: "announcement", note: "Quiz 2 is on Tuesday." });
   const snap = (due: string) => ({ ...emptySnapshot(), courses: [course], deadlines: [dl(due)] });
-  const seen = { courses: ["1:1"], grades: false, schedule: false, deadlines: { v: DEADLINE_VERSION, courses: ["1:1"] } };
+  const seen = { courses: ["1:1"], grades: false, schedule: false, deadlines: { v: DEADLINE_VERSION, courses: ["1:1"] }, announcements: { v: ANNOUNCEMENT_VERSION, courses: ["1:1"] } };
   const at = Date.parse("2026-11-13T10:00:00Z");
   const [moved] = diffSnapshots(snap("2026-11-16T21:59:00.000Z"), snap("2026-11-24T13:30:00.000Z"), seen, at);
-  assert.equal(moved.title, "CSEN 301 Quiz 2 moved to Tue 24 Nov, 15:30");
+  assert.equal(moved.title, "CSEN 301 Quiz 2 moved to Tuesday 24 Nov at 15:30");
   assert.match(moved.detail, /^Was Mon 16 Nov\./);
   assert.equal(diffSnapshots(snap("2026-11-16T21:59:00.000Z"), snap("2026-11-24T13:30:00.000Z"), { ...seen, deadlines: { v: 1, courses: ["1:1"] } }, at).length, 0, "read by an older extractor: baseline");
   assert.equal(diffSnapshots({ ...emptySnapshot(), courses: [course] }, snap("2026-11-01T10:00:00.000Z"), seen, at).length, 0, "already past: not news");
+});
+
+// ---------- Announcements: whole posts, as written ----------
+const boxes = cheerio.load(page("cms-announcements"));
+const posts = (id: string) => announcementPosts(boxes("#" + id));
+
+test("a box split by dash lines is its posts, and a rowspan table reads as complete rows inside its post", () => {
+  const math = posts("math");
+  assert.equal(math.length, 3, "dash and underscore lines end a post and are dropped");
+  assert.match(math[0], /^The Fourth in-class assignment .* Divergence Theorem\.$/);
+  assert.equal(math[1], [
+    "Quiz 2 will be held on Monday November 16th and Tuesday November 17th. It will cover chapter 16.1, 16.2 and 16.3.",
+    "",
+    "Date · Time · Tutorial · Location",
+    "Monday 16.11 · 3:45 P.M. · T21 - T22 · D1.001",
+    "Monday 16.11 · 3:45 P.M. · T23 - T28 · D1.002",
+    "Monday 16.11 · 3:45 P.M. · T29 - T30 · D1.003",
+    "Monday 16.11 · 4:30 P.M. · T31 - T32 · D1.001",
+    "Monday 16.11 · 4:30 P.M. · T33 - T34 · D1.002",
+    "Tuesday 17.11 · 3:45 P.M. · T41 - T42 · Exam Hall 1",
+  ].join("\n"), "the header first; a cell's own lines joined with a space");
+  assert.equal(math[2], "Office hours this week are on Wednesday.");
+});
+
+test("dated entries start posts and keep their tables; a colspan cell is said once", () => {
+  const elct = posts("elct");
+  assert.equal(elct.length, 3);
+  assert.match(elct[0], /^\[4\/11\/2026\]: Assignment 2 is now posted online\./, "the stamp stays in its post");
+  assert.match(elct[0], /\nWeek · Date · Lecture Content · Tutorials · Assessments\n6 · 31\/10 - 05\/11 · Nodal Analysis · T6\n7 · 07\/11 - 12\/11 · Mesh Analysis · T7 · Quiz 2$/, "an empty cell is left out of its row");
+  assert.match(elct[1], /^\[7\/11\/2026\]: Kindly note/);
+  assert.match(elct[2], /^\(22\/9\/2026\) Depending on your tutorial group/);
+  assert.match(elct[2], /\nOctober 15, 2026 · 3:30-4:15 · C7\.01 · T6,T7,T8,T9\nOctober 16, 2026 3:30-4:15 · C7\.02 · T10,T11$/);
+});
+
+test("a letter is one post; <br> lines, lists and links read as written; an empty box has none", () => {
+  const [letter, ...rest] = posts("physics");
+  assert.equal(rest.length, 0);
+  assert.match(letter, /^Dear Students,\n\nPlease note .*\n\nLate arrivals .*\n\nBest regards,\n\nPhysics Lab Team$/);
+  const csen = posts("csen");
+  assert.deepEqual(csen, [
+    "Quiz 1, Mon 5/10, 3:45 to 4:30\nBring your university ID.\n\n- Location H8: BI groups\n- Location H9: MET groups",
+    "Lecture recordings are on the course drive (https://drive.google.com/drive/folders/abc), and the slides on https://cms.guc.edu.eg/.",
+  ], "an <hr> ends a post; a link keeps its address unless its text is the address");
+  assert.deepEqual(posts("empty"), []);
+  assert.deepEqual(announcementPosts(cheerio.load("<div id='x'>No boundary here.<p>Second paragraph.</p><table><tr><td>H8</td><td>BI: T26</td></tr><tr><td>H9</td><td>MET: T1</td></tr></table></div>")("#x")).length, 1, "a box with no boundary is one post");
+  assert.doesNotThrow(() => announcementPosts(cheerio.load("<div id='x'><table><tr><td><table><tr><td>a</td><td>b</td></tr></table></td><td>c</td></tr></table></div>")("#x")), "nested tables");
+});
+
+test("a course page's posts keep their page order; a week's announcement keeps its table", () => {
+  const html = fixture("cms-course").replace(/(<div id="ContentPlaceHolderright_ContentPlaceHoldercontent_desc">)[\s\S]*?(\n {6}<\/div>)/, `$1${boxes("#math").html()}$2`)
+    .replace('<p class="m-2 p2">Quiz 1 will be held on Sunday 15 November 2026 during the tutorial.</p>', '<p class="m-2 p2">Quiz 1 rooms:</p><table><tr><td>T1</td><td>H8</td></tr><tr><td>T2</td><td>H9</td></tr></table>');
+  const read = parseCoursePage(html, "1201:64");
+  assert.deepEqual(read.announcements.map((a) => [a.scope, a.order, a.text.slice(0, 14)]), [["course", 0, "The Fourth in-"], ["course", 1, "Quiz 2 will be"], ["course", 2, "Office hours t"], ["week", 3, "Quiz 1 rooms:\n"]]);
+  assert.match(read.announcements[3].text, /\nT1 · H8\nT2 · H9$/);
+  assert.equal(read.weeks[0].description, "Memory-mapped I/O and interrupts.");
+  assert.equal(parseCoursePage(html, "1201:64").announcements[1].id, read.announcements[1].id, "ids are stable");
+});
+
+test("an edited post is one Updated announcement with what changed first; spacing alone is no news; a new reader is a baseline", () => {
+  const course = { key: "1:1", id: 1, seasonId: 1, season: "Winter 2026", code: "MATH 301", name: "Calculus", active: true };
+  const post = (text: string) => ({ id: stableId("1:1|c|" + text), courseKey: "1:1", scope: "course" as const, text, order: 0 });
+  const quiz = "Quiz 2 will be held on Monday.\n\nDate · Time · Tutorial · Location\nMonday 16.11 · 3:45 P.M. · T21 - T22 · D1.001\nMonday 16.11 · 3:45 P.M. · T23 - T28 · D1.002";
+  const snap = (...texts: string[]) => ({ ...emptySnapshot(), courses: [course], announcements: texts.map(post) });
+  const seen = { courses: ["1:1"], grades: false, schedule: false, announcements: { v: ANNOUNCEMENT_VERSION, courses: ["1:1"] } };
+  const grown = quiz + "\nTuesday 17.11 · 3:45 P.M. · T41 - T42 · Exam Hall 1";
+  const events = diffSnapshots(snap(quiz, "Office hours on Wednesday."), snap(grown, "Office hours on Wednesday."), seen);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].title, "Updated announcement in MATH 301");
+  assert.equal(events[0].key, "ann:" + post(grown).id);
+  assert.match(events[0].detail, /^Tuesday 17\.11 · 3:45 P\.M\. · T41 - T42 · Exam Hall 1\nQuiz 2 will be held on Monday\.\nDate · Time/, "the new row first, then the rest");
+  assert.equal(diffSnapshots(snap(quiz), snap(quiz.replace("Monday.", "Monday .")), seen).length, 0, "punctuation and spacing only: not news");
+  const fresh = diffSnapshots(snap(quiz), snap(quiz, "A brand new post about Lab 4."), seen);
+  assert.deepEqual(fresh.map((e) => [e.title, e.detail]), [["New announcement in MATH 301", "A brand new post about Lab 4."]]);
+  const long = "x".repeat(2000);
+  assert.equal(diffSnapshots(snap(), snap(long), seen)[0].detail.length, 1500, "a whole post, up to 1500 characters");
+  assert.equal(diffSnapshots(snap("T21 - T22", "D1.001"), snap(quiz), { ...seen, announcements: { v: ANNOUNCEMENT_VERSION - 1, courses: ["1:1"] } }).length, 0, "read by an older announcement reader: baseline");
+  assert.equal(diffSnapshots(snap(), snap(quiz), { ...seen, announcements: undefined }).length, 0);
+  const edits = announcementEdits(snap(quiz).announcements, snap(grown).announcements);
+  assert.equal(edits.get(post(grown).id)?.material, true);
+});
+
+test("grades and marks show at most one decimal", () => {
+  assert.equal(markText("92.5926"), "92.6");
+  assert.equal(markText("97.5"), "97.5");
+  assert.equal(markText("60"), "60");
+  assert.equal(markText("9 / 10"), "9 / 10");
+  assert.equal(markText("8.75 / 10"), "8.8 / 10");
+  assert.equal(markText("/ 10"), "/ 10");
+  assert.equal(markText(1.7), "1.7");
+  assert.equal(markText("A+"), "A+");
+  assert.equal(markText(null), "");
 });

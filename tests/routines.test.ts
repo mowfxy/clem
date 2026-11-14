@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { cronTooOften, matchChange, readRoutineReply, triggerSchema } from "../core/proactivity/routines.ts";
-import { cardsIn } from "../core/guc/cards.ts";
 import { dueParts, PACE } from "../desktop/engine/guc-sync.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
@@ -63,9 +62,9 @@ test("a change routine fires right after the sync that found a grade, tells the 
   try {
     await e.connect("student.name", "secret");
     await e.db.query("insert into subject_links (owner_id, subject_id, course_key) values ('rt-owner', 'emb', '1201:64')");
-    const made = await o.tool({ action: "clem.routine", title: "Grades the moment they land", instructions: "Tell me the grade and how it compares.", trigger: { type: "change", kinds: ["new_grade"] }, post: hook.url + "/clem" }) as { ok: boolean; card: string };
+    const made = await o.tool({ action: "clem.routine", title: "Grades the moment they land", instructions: "Tell me the grade and how it compares.", trigger: { type: "change", kinds: ["new_grade"] }, post: hook.url + "/clem" }) as { ok: boolean; card?: string; runs: string };
     assert.equal(made.ok, true);
-    assert.equal((cardsIn(made.card)[0] as { type: string }).type, "routine");
+    assert.equal(made.card, undefined, "facts for the AI to confirm in a sentence, no card");
     pages[portalUrls.grades] = checkGrade({ mid701: "17/20" });
     await e.sync();
     // The run posts to the webhook first, then says it in the main thread: wait for the whole run, not the POST.
@@ -77,7 +76,7 @@ test("a change routine fires right after the sync that found a grade, tells the 
     assert.equal(body.message, "Your CSEN 701 midterm is out: 17/20.");
     assert.match(asked[0], /Event:[\s\S]*Midterm grade out/, "the model saw the change as data");
     const posts = (await o.inbox()).posts.map((p) => p.content);
-    assert.ok(posts.some((p) => /Grades the moment they land[\s\S]*17\/20/.test(p)), "said in the main thread");
+    assert.ok(posts.includes("Your CSEN 701 midterm is out: 17/20."), "said in the main thread as a plain message");
     const [row] = await o.routines();
     assert.equal(row.runs, 1);
     assert.match(String(row.lastResult), /told, posted/);

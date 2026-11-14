@@ -1,16 +1,21 @@
-// The organizer's schedule, reminder and study tools for the AI (kinetra actions "clem.*", guide in calendar.ts
-// CALENDAR_GUIDE): argument checks and the compact text each answer is written as. Pure; the engine's organizer runs
-// them (desktop/engine/organizer.ts) and desktop/main.ts dispatches them.
+// The organizer's tools for the AI (kinetra actions "clem.*", guide in calendar.ts CALENDAR_GUIDE): the schedule,
+// reminders, study time, watches, routines, and, since what Clem says by itself has no buttons, what the person steers
+// by text (mute, unmute, undo). Argument checks and the compact text each answer is written as: facts, never a card to
+// embed. Pure; the engine's organizer runs them (desktop/engine/organizer.ts), from the window (desktop/main.ts), from
+// Telegram through it, and on the VPS worker.
 import { z } from "zod";
 import { cairo } from "../guc/hub.ts";
+import { MUTE_KINDS, type ChangeKind } from "./attention.ts";
 import { busyList, clashText, dayLabel, type Busy } from "./calendar.ts";
 import type { Slot, Timed } from "./rules.ts";
 import { proPatch, type ProSettings, type StudyPrefs } from "./settings.ts";
 
-export const CLEM_ACTIONS = ["clem.calendar", "clem.remind", "clem.reminders", "clem.unremind", "clem.study", "clem.prefs", "clem.routine", "clem.routines", "clem.unroutine", "clem.run_routine"] as const;
+export const CLEM_ACTIONS = ["clem.calendar", "clem.remind", "clem.reminders", "clem.unremind", "clem.study", "clem.prefs", "clem.routine", "clem.routines", "clem.unroutine", "clem.run_routine",
+  "clem.watch", "clem.unwatch", "clem.watches", "clem.mute", "clem.unmute", "clem.mutes", "clem.undo"] as const;
 export type ClemAction = (typeof CLEM_ACTIONS)[number];
 /** Names a model may guess, read as the action they mean. */
-const ALIASES: Record<string, ClemAction> = { "clem.agenda": "clem.calendar", "clem.schedule": "clem.calendar", "clem.reminder": "clem.remind", "clem.cancel_reminder": "clem.unremind", "clem.plan_study": "clem.study", "clem.preferences": "clem.prefs", "clem.automation": "clem.routine", "clem.webhook": "clem.routine", "clem.list_routines": "clem.routines", "clem.stop_routine": "clem.unroutine" };
+const ALIASES: Record<string, ClemAction> = { "clem.agenda": "clem.calendar", "clem.schedule": "clem.calendar", "clem.reminder": "clem.remind", "clem.cancel_reminder": "clem.unremind", "clem.plan_study": "clem.study", "clem.preferences": "clem.prefs", "clem.automation": "clem.routine", "clem.webhook": "clem.routine", "clem.list_routines": "clem.routines", "clem.stop_routine": "clem.unroutine",
+  "clem.stop_watch": "clem.unwatch", "clem.list_watches": "clem.watches", "clem.list_mutes": "clem.mutes", "clem.silence": "clem.mute", "clem.revert": "clem.undo" };
 export function clemAction(action: unknown): ClemAction | null {
   const a = String(action || "");
   return (CLEM_ACTIONS as readonly string[]).includes(a) ? (a as ClemAction) : ALIASES[a] || null;
@@ -32,6 +37,14 @@ export const clemArgs = {
   "clem.routines": z.object({}),
   "clem.unroutine": z.object({ id: z.string().regex(/^rt[\w-]{4,40}$/) }),
   "clem.run_routine": z.object({ id: z.string().regex(/^rt[\w-]{4,40}$/) }),
+  "clem.watch": z.object({ text: z.string().trim().min(3).max(300), repeat: z.boolean().optional(), push: z.boolean().optional() }),
+  "clem.unwatch": z.object({ id: z.string().regex(/^[\w-]{1,80}$/) }),
+  "clem.watches": z.object({}),
+  // A kind in the person's words ("files", "announcements"…, see muteKinds), optionally one subject and some words.
+  "clem.mute": z.object({ kind: z.string().trim().min(2).max(40), subject, words: z.union([z.string().trim().min(1).max(40), z.array(z.string().trim().min(1).max(40)).max(5)]).optional() }),
+  "clem.unmute": z.object({ id: z.string().trim().min(3).max(200) }),
+  "clem.mutes": z.object({}),
+  "clem.undo": z.object({ what: z.string().trim().max(200).optional() }),
 } satisfies Record<ClemAction, z.ZodType>;
 
 /** A request's fields for `action`, checked (numbers sent as text are read); an error says what was wrong in one line. */
@@ -42,6 +55,16 @@ export function readClemArgs<A extends ClemAction>(action: A, request: Record<st
   if (r.success) return { ok: true, args: r.data as never };
   const i = r.error.issues[0];
   return { ok: false, error: `${action}: ${i.path.join(".") || "request"} ${i.message.toLowerCase()}.` };
+}
+
+/** The kinds of news a mute names, read from the person's words ("new files", "emails", "classes") or a change kind. */
+const MUTE_WORDS: [RegExp, string][] = [[/^(new )?(files?|materials?|slides?|uploads?|lectures?)$/, "files"], [/^(course )?(announcements?|posts?|news)$/, "announcements"], [/^(e-?mails?|mails?|inbox)$/, "mail"],
+  [/^(grades?|marks?|results?)$/, "grades"], [/^(deadlines?|due dates?)$/, "deadlines"], [/^(timetable|schedule|classes|class changes?|rooms?)$/, "timetable"], [/^(exams?|exam seats?|seats?)$/, "exams"]];
+export function muteKinds(kind: string): ChangeKind[] | null {
+  const k = kind.trim().toLowerCase();
+  const named = MUTE_WORDS.find(([re]) => re.test(k))?.[1];
+  if (named) return MUTE_KINDS[named];
+  return (Object.values(MUTE_KINDS).flat() as string[]).includes(k) ? [k as ChangeKind] : null;
 }
 
 /** A subject or project named by id, @mention, course code or name (exact, then contained). */

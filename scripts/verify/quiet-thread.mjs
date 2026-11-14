@@ -2,7 +2,7 @@
 // real in-memory engine, in dark and light. A first run posts nothing (no hello, no Telegram card, no new-courses
 // card, no Setup chat); mail GUC sent to every student and a routine upload make no message, no push and no model
 // call; then a cancelled tutorial mailed for a course the student takes, a mail written to them, and a deadline that
-// moved twice are told once, in one card, each as one line.
+// moved twice are told once, each as its own plain message (no card, no button, no system sender).
 // This is the test build in a browser, not the installed app.
 // Usage: node scripts/verify/quiet-thread.mjs [out-dir]   (screenshots are quiet-*.png)
 import { chromium } from "@playwright/test";
@@ -53,7 +53,7 @@ try {
       gucNewCourses: () => [{ key: "20:70", code: "ELCT 301", name: "Electrical Circuits I", season: "Winter 2026" }], gucAckNewCourses: () => ({}),
       gucInbox: () => [{ key: "ann:w1", subjectId: "math", kind: "new_announcement", courseKey: "45:70", title: "New announcement in MATH 301", detail: "Sheet 6 is posted.", at: Date.now() }], gucAckInbox: () => ({}),
       gucSubject: (r) => engine.subject(r.subjectId),
-      proInbox: () => o.inbox(), proAck: (r) => o.ack(r), proStatus: (r) => o.statuses(r.keys), proMute: (r) => o.mute(r.key), proMutes: () => o.mutesList(), proSettings: (r) => (r.set ? o.setSettings(r.set) : o.settings()), proLog: () => o.log(0),
+      proInbox: () => o.inbox(), proAck: (r) => o.ack(r), proStatus: (r) => o.statuses(r.keys), proMutes: () => o.mutesList(), proSettings: (r) => (r.set ? o.setSettings(r.set) : o.settings()), proLog: () => o.log(0),
       proWatches: () => o.watches(), proPoke: () => 60,
     };
     const fx = await openFixture(browser, {
@@ -85,19 +85,18 @@ try {
       await ev("dl:q1:" + today + "T12:00:00.000Z", "deadline_changed", "MATH 301 Quiz 2 moved to Friday", "Was Thursday.", "45:70");
       const news = await o.sweep("event");
       check(news.posted, `${theme}: their own course's news is told`);
-      check(pushes.length === 2 && /cancelled/.test(pushes[0].body), `${theme}: the cancelled tutorial is pushed now, the rest in one push (${pushes.length})`);
+      check(pushes.length === 3 && /cancelled/.test(pushes[0].body) && pushes.every((p) => p.title === "Clem"), `${theme}: one notification per message, the cancelled tutorial first (${pushes.length})`);
       await page.evaluate(() => window.fireGuc({ phase: "done", done: 1, total: 1, label: "Up to date" }));
-      const card = thread.locator(".pro-card").last();
-      await card.waitFor({ timeout: 8000 });
-      check(await thread.locator(".pro-card").count() === 1, `${theme}: one card`);
-      const text = await card.textContent();
-      check(/Cancellation of Today.s Tutorial/.test(text) && /Best of in Presentations/.test(text), `${theme}: the course mail and the personal mail are in it`);
-      check(/moved to Friday/.test(text) && !/moved to Thursday/.test(text), `${theme}: the deadline is one line, at the date it has now`);
-      check(!/Midterm exams|remarking/i.test(text), `${theme}: nothing from the mail sent to everyone`);
-      check(await page.getByText(/midterm is on the 27th/).count() === 0, `${theme}: no invented words above the card`);
+      const tutorial = thread.getByText(/Cancellation of Today.s Tutorial: please be informed that today.s tutorial is cancelled\./);
+      await tutorial.waitFor({ timeout: 8000 });
+      check(await thread.getByText(/^Best of in Presentations \(from Reem Hassan\): /).count() === 1, `${theme}: the personal mail is its own message, with who wrote it`);
+      check(await thread.getByText("MATH 301 Quiz 2 moved to Friday.").count() === 1 && await thread.getByText(/moved to Thursday/).count() === 0, `${theme}: the deadline is one message, at the date it has now`);
+      check(await thread.locator(".pro-card").count() === 0 && await thread.getByRole("button", { name: /Mute|Undo|Stop|Cancel/ }).count() === 0, `${theme}: no card and no button`);
+      check(await thread.getByText(/Email from|Notification System|Midterm exams|remarking/i).count() === 0, `${theme}: no system sender, nothing from the mail sent to everyone`);
+      check(await page.getByText(/midterm is on the 27th/).count() === 0, `${theme}: no invented words`);
       const again = await o.sweep("event");
-      check(!again.posted && pushes.length === 2, `${theme}: said once`);
-      await card.scrollIntoViewIfNeeded();
+      check(!again.posted && pushes.length === 3, `${theme}: said once`);
+      await tutorial.scrollIntoViewIfNeeded();
       await shot("news");
       check(errors.length === 0, `${theme}: no page errors${errors.length ? ": " + errors.slice(0, 3).join(" | ") : ""}`);
     } finally { await fx.close(); await engine.close(); }

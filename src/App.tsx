@@ -112,7 +112,7 @@ type Carry = { attachments: string[]; drive: DriveItem[] };
 /** `tg`: the Telegram inbox item this turn answers (desktop/engine/telegram.ts); the answer goes back there. */
 type Turn = { mentions?: string[]; carried?: string; tg?: string };
 /** Said once, first, in every main-thread request, so it stays byte-stable for the CLIs' prompt caches. */
-const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. A question that clearly belongs to one subject or project is moved to that space's chat before you see it, so answer what is asked here; when a request needs one subject's files, suggest mentioning it with @.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROUTINE_GUIDE + "\n" + TELEGRAM_GUIDE;
+const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. A question that clearly belongs to one subject or project is moved to that space's chat before you see it, so answer what is asked here; when a request needs one subject's files, suggest mentioning it with @. Your messages here that answer nothing they asked are what Clem told them by itself (news, briefs, reminders, what it did): they are yours, so \"yes\", \"undo that\" or \"which one?\" is about them.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROUTINE_GUIDE + "\n" + TELEGRAM_GUIDE;
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
 const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Gemini" : "ChatGPT";
@@ -2049,17 +2049,18 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     return "Other";
   }
   /** What GUC cards (chat, subject page, hub, Settings) ask of the app. */
-  // Clem's organizer (src/proactivity/pro.ts): what it decided is applied here, its cards land in the main thread.
-  const pro=useMemo(()=>createPro({state:()=>stateRef.current,patch,toast:(m)=>setToast(m)}),[]);
+  // Clem's organizer (src/proactivity/pro.ts): what it decided is applied here, its messages land in the main thread.
+  const pro=useMemo(()=>createPro({state:()=>stateRef.current,patch}),[]);
   const [focusMessage,setFocusMessage]=useState<string>();
-  const proActions:ProActions={...pro,spaceName:(id)=>stateRef.current.spaces.find(x=>x.id===id)?.name,open:(href)=>navigate(href.slice(1)),
+  const proActions:ProActions={spaceName:(id)=>stateRef.current.spaces.find(x=>x.id===id)?.name,open:(href)=>navigate(href.slice(1)),
     // A new lecture's one-tap buttons: a chat in the subject with the request typed, the saved file attached when there is one.
     lecture:(id,file,want)=>{const saved=stateRef.current.files.some(f=>f.id==="guc_"+file.id);setTemporaryNext(false);setSpaceId(id);setChatId(null);navigate('/app');setAttachments(saved?["guc_"+file.id]:[]);
       setDraft(want==="summary"?`Summarize ${saved?file.name:`the CMS file “${file.name}”`} in 3 lines, then what I should remember for the exam.`:`Make flashcards from ${saved?file.name:`the CMS file “${file.name}”`} for this subject.`);setTimeout(()=>composer.current?.focus(),80);}};
   // Telegram (desktop/engine/telegram.ts): a message from the paired chat is sent in the main thread as if typed there
   // (the same agent, tools and hand-off), marked as from Telegram, one at a time; its finished answer (and the files it
-  // made) goes back. Undo and Do it run through the organizer's own appliers; Summarize and Make flashcards ask in the
-  // subject, as the lecture card's buttons do.
+  // made) goes back. What Clem says by itself reaches Telegram as plain messages with no buttons; a tap on an older
+  // message's Undo or Do it still runs through the organizer's own appliers, and Summarize and Make flashcards ask in
+  // the subject, as the lecture card's buttons do.
   const telegramTurns=useRef(new Map<string,{tg:string;seen:boolean}>());
   const tgQueue=useRef<{prompt:string;chat:string;carry:Carry;turn:Turn}[]>([]);
   const [tgTick,setTgTick]=useState(0);

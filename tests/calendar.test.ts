@@ -5,7 +5,7 @@ import { clashNotes, morningBlocks, type Facts } from "../core/proactivity/rules
 import { cairoAt, DEFAULT_PRO, mergePro, readPro } from "../core/proactivity/settings.ts";
 import { snapshotOf } from "../core/proactivity/snapshot.ts";
 import { agendaText, findSpace, readClemArgs } from "../core/proactivity/tools.ts";
-import { cardsIn, readCard } from "../core/guc/cards.ts";
+import { readCard } from "../core/guc/cards.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { host as fakeHost } from "./guc-fake.ts";
 
@@ -100,23 +100,21 @@ async function engine(clock: { t: number }, o: { club?: boolean } = {}) {
 test("engine: a reminder rings once at its time (through quiet hours when the person set it), then a daily one moves on", async () => {
   const clock = { t: T(SUN, "12:00") }, { e, o, h } = await engine(clock);
   try {
-    const r = await o.tool({ action: "clem.remind", text: "Submit the lab report", at: "2026-11-15T23:30", subject: "circuits" }) as { ok: boolean; card: string };
-    assert.equal(r.ok, true);
-    const card = cardsIn(r.card)[0] as { type: string; id: string; space?: string };
-    assert.equal(card.type, "reminder"); assert.equal(card.space, "Circuits");
+    const r = await o.tool({ action: "clem.remind", text: "Submit the lab report", at: "2026-11-15T23:30", subject: "circuits" }) as Record<string, unknown>;
+    assert.deepEqual({ ...r, id: undefined }, { ok: true, id: undefined, text: "Submit the lab report", rings: "Sun, Nov 15 23:30 Cairo time", subject: "Circuits" }, "facts for the AI to say in a sentence, no card to embed");
     const daily = await o.remind({ text: "Flashcards", at: T(SUN, "13:00"), repeat: "daily" });
     assert.equal(await o.ring(), 0, "nothing due yet");
     clock.t = T(SUN, "13:01");
     assert.equal(await o.ring(), 1);
-    assert.deepEqual(h.pushed, [{ title: "Reminder", body: "Flashcards" }]);
+    assert.deepEqual(h.pushed, [{ title: "Clem", body: "Reminder: Flashcards." }]);
     assert.equal((await o.reminders()).find((x) => x.id === daily.id)?.at, T(MON, "13:00"), "the next day");
     clock.t = T(SUN, "23:31");
     await o.tick();
-    assert.equal(h.pushed.at(-1)?.body, "Submit the lab report", "rings in quiet hours: they asked for that time");
+    assert.equal(h.pushed.at(-1)?.body, "Reminder: Submit the lab report.", "rings in quiet hours: they asked for that time");
     await o.tick();
-    assert.equal(h.pushed.filter((p) => p.body === "Submit the lab report").length, 1, "once");
+    assert.equal(h.pushed.filter((p) => p.body === "Reminder: Submit the lab report.").length, 1, "once");
     const { posts } = await o.inbox();
-    assert.equal(posts.filter((p) => cardsIn(p.content).some((c) => c.type === "reminder")).length, 2);
+    assert.deepEqual(posts.map((p) => p.content), ["Reminder: Flashcards.", "Reminder: Submit the lab report."], "a plain message each, no card");
     assert.deepEqual(await o.tool({ action: "clem.unremind", id: daily.id }), { ok: true });
     assert.deepEqual((await o.reminders()).map((x) => x.id), []);
     assert.match(String((await o.tool({ action: "clem.remind", text: "Too late", at: "2026-11-01T09:00" }) as { error?: string }).error), /passed/);
@@ -128,11 +126,11 @@ test("engine: study sessions avoid other plans, land in the plan with Undo, and 
   const { e, o } = await engine(clock, { club: true });
   try {
     await o.setSettings({ study: { days: [0, 1], from: "16:00", to: "20:00" } });
-    const r = await o.tool({ action: "clem.study", subject: "ELCT 201", sessions: 5, minutes: 90, until: TUE }) as { ok: boolean; planned: string[]; note?: string; card: string };
+    const r = await o.tool({ action: "clem.study", subject: "ELCT 201", sessions: 5, minutes: 90, until: TUE }) as { ok: boolean; planned: string[]; note?: string; card?: string };
     assert.equal(r.ok, true);
     assert.deepEqual(r.planned, ["Sun, Nov 15 · Study: Circuits (90 min) at 17:15", "Mon, Nov 16 · Study: Circuits (90 min) at 16:00", "Mon, Nov 16 · Study: Circuits (90 min) at 17:45"]);
     assert.match(String(r.note), /Only 3 of 5/);
-    assert.equal((cardsIn(r.card)[0] as { type: string }).type, "organizer");
+    assert.equal(r.card, undefined, "no card: the AI says when, in a line each");
     const { apply } = await o.inbox();
     assert.deepEqual(apply.map((a) => `${a.action.type} ${(a.action as { due?: string }).due} ${(a.action as { time?: string }).time}`).sort(), [`plan_task ${SUN} 17:15`, `plan_task ${MON} 16:00`, `plan_task ${MON} 17:45`]);
     assert.deepEqual(await o.reminders(), [], "the person sets reminders themselves");

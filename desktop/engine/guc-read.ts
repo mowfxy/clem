@@ -1,10 +1,12 @@
 // The GUC hub's reads (docs/GUC-VPS-ENGINE.md): every query filters on owner_id, and lists that can grow are paged.
-import { materialFile, semesterOrder, type HubMail, type HubTerm, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubSchedule, type Page } from "../../core/guc/hub.ts";
+import { comingUp, materialFile, semesterOrder, type HubMail, type HubTerm, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterial, type HubMaterials, type HubSchedule, type Page } from "../../core/guc/hub.ts";
 import { normCode, withCode } from "../../core/guc/codes.ts";
 import type { GucSlot, GucSnapshot } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
 
 export const ANNOUNCEMENT_PAGE = 40;
+/** Where a post with no page position (kept before positions were read) sorts: after the ones with one. */
+const NO_POSITION = 2147483647;
 const ms = (t: Date | string | null) => (t ? new Date(t).getTime() : 0);
 /** Rows saved before codes were canonical ("CSEN701") read as "CSEN 701" until the next sync rewrites them. */
 const canon = (code: string | null) => (code ? normCode(code) || code : "");
@@ -37,19 +39,25 @@ export async function schedule(db: Db, owner: string, weekStart: string): Promis
   return { weekStart, slots };
 }
 
-/** Newest first, `ANNOUNCEMENT_PAGE` at a time; `cursor` is the last row's "<ms>.<id>". */
+/** Newest first, `ANNOUNCEMENT_PAGE` at a time; posts first seen together keep their order on the course page (then id,
+ *  so the order is total). `cursor` is the last row's "<ms>.<position>.<id>" (an older "<ms>.<id>" reads as position 0). */
 export async function announcements(db: Db, owner: string, o: { courseKey?: string; cursor?: string } = {}): Promise<Page<HubAnnouncement>> {
   const params: unknown[] = [owner, ANNOUNCEMENT_PAGE + 1];
   let where = "a.owner_id = $1";
   if (o.courseKey) { params.push(o.courseKey); where += ` and a.course_key = $${params.length}`; }
-  const at = o.cursor && /^(\d{1,15})\.([\w-]{1,100})$/.exec(o.cursor);
-  if (at) { params.push(new Date(Number(at[1])), at[2]); where += ` and (date_trunc('milliseconds', a.first_seen), a.announcement_id) < ($${params.length - 1}::timestamptz, $${params.length})`; }
-  const rows = await db.query<{ announcement_id: string; course_key: string; code: string | null; name: string | null; scope: "course" | "week"; week: string | null; body: string; first_seen: Date; read_at: Date | null }>(`select a.announcement_id, a.course_key, c.code, c.name, a.scope, a.week, a.body, date_trunc('milliseconds', a.first_seen) as first_seen, a.read_at
+  const at = o.cursor && /^(\d{1,15})\.(?:(\d{1,10})\.)?([\w-]{1,100})$/.exec(o.cursor);
+  const seenAt = "date_trunc('milliseconds', a.first_seen)", pos = `coalesce(a.position, ${NO_POSITION})`;
+  if (at) {
+    params.push(new Date(Number(at[1])), Math.min(NO_POSITION, Number(at[2] || 0)), at[3]);
+    const [t, p, id] = [params.length - 2, params.length - 1, params.length].map((n) => "$" + n);
+    where += ` and (${seenAt} < ${t}::timestamptz or (${seenAt} = ${t}::timestamptz and (${pos} > ${p}::int or (${pos} = ${p}::int and a.announcement_id < ${id}))))`;
+  }
+  const rows = await db.query<{ announcement_id: string; course_key: string; code: string | null; name: string | null; scope: "course" | "week"; week: string | null; body: string; first_seen: Date; read_at: Date | null; pos: number }>(`select a.announcement_id, a.course_key, c.code, c.name, a.scope, a.week, a.body, ${seenAt} as first_seen, a.read_at, ${pos} as pos
     from guc_announcements a left join guc_courses c on c.owner_id = a.owner_id and c.course_key = a.course_key
-    where ${where} order by date_trunc('milliseconds', a.first_seen) desc, a.announcement_id desc limit $2`, params);
+    where ${where} order by ${seenAt} desc, ${pos}, a.announcement_id desc limit $2`, params);
   const items = rows.slice(0, ANNOUNCEMENT_PAGE).map((r): HubAnnouncement => ({ id: r.announcement_id, courseKey: r.course_key, code: canon(r.code), course: r.name || "A course", scope: r.scope, week: r.week || undefined, text: r.body, firstSeen: ms(r.first_seen), read: !!r.read_at }));
-  const last = items.at(-1);
-  return { items, next: rows.length > ANNOUNCEMENT_PAGE && last ? `${last.firstSeen}.${last.id}` : undefined };
+  const last = items.at(-1), lastPos = rows[ANNOUNCEMENT_PAGE - 1]?.pos;
+  return { items, next: rows.length > ANNOUNCEMENT_PAGE && last ? `${last.firstSeen}.${lastPos}.${last.id}` : undefined };
 }
 
 export async function markRead(db: Db, owner: string, ids: string[]) {
@@ -119,8 +127,23 @@ export async function grades(db: Db, owner: string, courseKey?: string): Promise
 
 /** The latest snapshot's portal parts and Inbox (kept in the snapshot, not in tables of their own). */
 async function latest(db: Db, owner: string) {
-  const [row] = await db.query<{ data: Partial<GucSnapshot>; stats: { missed?: string[] } | null }>("select data, stats from guc_snapshots where owner_id = $1 order by id desc limit 1", [owner]);
+  const [row] = await db.query<{ data: Partial<GucSnapshot>; stats: { missed?: string[] } | null; seen: { mailRead?: string[] } | null }>("select data, stats, seen from guc_snapshots where owner_id = $1 order by id desc limit 1", [owner]);
   return row;
+}
+
+/** Messages the person opened in the hub (ids, hashed), kept so they show read even before Exchange says so. */
+export const KEEP_MAIL_READ = 500;
+/** Mail with what the person opened shown read. */
+export const withOpened = <T extends { id: string; read: boolean }>(items: T[], opened: string[] | undefined) => { const o = new Set(opened || []); return items.map((m) => (!m.read && o.has(m.id) ? { ...m, read: true } : m)); };
+/** The person opened a message in the hub: it is read from now on, whatever Exchange says or when the next sync runs.
+ *  Kept in the latest snapshot (its row in the list, and `seen.mailRead`, which the sync carries forward). */
+export async function markMailOpened(db: Db, owner: string, id: string) {
+  await db.tx(async (t) => {
+    const [row] = await t.query<{ id: number; data: Partial<GucSnapshot>; seen: { mailRead?: string[] } }>("select id, data, seen from guc_snapshots where owner_id = $1 order by id desc limit 1", [owner]);
+    if (!row) return;
+    const opened = [...(row.seen?.mailRead || []).filter((x) => x !== id), id].slice(-KEEP_MAIL_READ);
+    await t.query("update guc_snapshots set data = $2, seen = $3 where id = $1", [row.id, { ...row.data, mail: withOpened(row.data.mail || [], [id]) }, { ...row.seen, mailRead: opened }]);
+  });
 }
 export async function term(db: Db, owner: string): Promise<HubTerm> {
   const row = await latest(db, owner), d = row?.data || {};
@@ -130,11 +153,20 @@ export async function term(db: Db, owner: string): Promise<HubTerm> {
 }
 export async function mail(db: Db, owner: string): Promise<HubMail> {
   const row = await latest(db, owner);
-  return { items: row?.data.mail || [], missed: !!row?.stats?.missed?.includes("mail") };
+  return { items: withOpened(row?.data.mail || [], row?.seen?.mailRead), missed: !!row?.stats?.missed?.includes("mail") };
 }
 
-export async function deadlines(db: Db, owner: string): Promise<HubDeadline[]> {
-  const rows = await db.query<{ deadline_id: string; course_key: string; code: string | null; title: string; due: Date; source: string; note: string | null }>(`select d.deadline_id, d.course_key, c.code, d.title, d.due, d.source, d.note
-    from guc_deadlines d left join guc_courses c on c.owner_id = d.owner_id and c.course_key = d.course_key where d.owner_id = $1 order by d.due`, [owner]);
-  return rows.map((r) => ({ id: r.deadline_id, courseKey: r.course_key, code: canon(r.code), title: r.title, due: new Date(r.due).toISOString(), source: r.source, ...(r.note ? { note: r.note } : {}) }));
+/** Coming up: the tracked items (read from posts, week notes and course mail) and the portal's exam seats as one list,
+ *  upcoming soonest first, then what is done (newest first) until it is removed 14 days after (core/guc/hub.ts
+ *  comingUp). The hub, the AI's guc.deadlines, the Now card and the organizer all read this. */
+export async function deadlines(db: Db, owner: string, now = Date.now()): Promise<HubDeadline[]> {
+  const [rows, row, courses] = await Promise.all([
+    db.query<{ deadline_id: string; course_key: string; code: string | null; title: string; due: Date; source: string; note: string | null; kind: string | null; place: string | null; covers: string | null; time_known: boolean | null; either: string | null }>(`select d.deadline_id, d.course_key, c.code, d.title, d.due, d.source, d.note, d.kind, d.place, d.covers, d.time_known, d.either
+      from guc_deadlines d left join guc_courses c on c.owner_id = d.owner_id and c.course_key = d.course_key where d.owner_id = $1 order by d.due`, [owner]),
+    latest(db, owner),
+    db.query<{ course_key: string; code: string; season_id: number }>("select course_key, code, season_id from guc_courses where owner_id = $1", [owner]),
+  ]);
+  const tracked = rows.map((r) => ({ id: r.deadline_id, courseKey: r.course_key, code: canon(r.code), title: r.title, due: new Date(r.due).toISOString(), source: r.source,
+    ...(r.note ? { note: r.note } : {}), ...(r.kind ? { kind: r.kind } : {}), ...(r.place ? { place: r.place } : {}), ...(r.covers ? { covers: r.covers } : {}), ...(r.time_known !== null ? { timeKnown: r.time_known } : {}), ...(r.either ? { either: r.either } : {}) }));
+  return comingUp(tracked, row?.data.exams || [], courses.map((c) => ({ key: c.course_key, code: canon(c.code), seasonId: c.season_id })), now);
 }

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cardBlock } from "../core/guc/cards.ts";
 import { cairoAt, readPro } from "../core/proactivity/settings.ts";
-import { cardMessage, esc, markdownHtml, replyMessages } from "../core/telegram/render.ts";
+import { cardMessage, esc, markdownHtml, plainMessage, replyMessages } from "../core/telegram/render.ts";
 import { TG_FILE_LIMIT } from "../core/telegram/pairing.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { TelegramRelay } from "../desktop/engine/telegram.ts";
@@ -27,16 +27,17 @@ test("render: Markdown answers become escaped Telegram HTML, split under 4096 ch
   assert.ok(parts.map((p) => p.html).join("\n\n").includes("Paragraph 59"), "nothing is lost");
 });
 
-test("render: every card type is compact, escaped, with buttons where they make sense", () => {
+test("render: every card type is compact, escaped; Clem's own older cards have no buttons, flows keep theirs", () => {
   const name = (id?: string) => ({ circ: "Circuits <1>" } as Record<string, string>)[id || ""];
-  const status = (k: string) => ({ "block:1": "applied", "routine:1": "confirm", "change:ann:1": "said" } as Record<string, string>)[k];
-  const org = cardMessage({ type: "organizer", title: "Your morning", when: "morning", lines: [{ text: "Study <Thevenin> 10:00", key: "block:1" }, { text: "Make a routine", key: "routine:1" }, { text: "Lab cancelled & moved", key: "change:ann:1" }, { text: "Plain line" }] }, { name, status })!;
+  const org = cardMessage({ type: "organizer", title: "Your morning", when: "morning", lines: [{ text: "Study <Thevenin> 10:00", key: "block:1" }, { text: "Make a routine", key: "routine:1" }, { text: "Lab cancelled & moved", key: "change:ann:1" }, { text: "Plain line" }] }, { name })!;
   assert.match(org.html, /^<b>Your morning<\/b>\n• Study &lt;Thevenin&gt; 10:00/);
-  assert.deepEqual(org.buttons.map((r) => r.map((b) => b.tap.t)), [["undo"], ["confirm", "dismiss"], ["mute"], ["open"]]);
+  assert.deepEqual(org.buttons, [], "no Undo, Do it, Not now or Mute: the person says it in words");
   const lec = cardMessage({ type: "lecture", subjectId: "circ", files: [{ id: "m1", name: "Lecture 3" }] }, { name })!;
   assert.match(lec.html, /New lecture in Circuits &lt;1&gt;/);
   assert.deepEqual(lec.buttons[0].map((b) => b.text), ["Summarize", "Make flashcards"]);
-  assert.deepEqual(cardMessage({ type: "watch", id: "w1", text: "midterm room" })!.buttons[0][0].tap, { t: "stop", id: "w1" });
+  assert.deepEqual(cardMessage({ type: "watch", id: "w1", text: "midterm room" })!.buttons, [], "no Stop");
+  assert.deepEqual(cardMessage({ type: "reminder", title: "Sheet 3", id: "r1", at: "2026-11-16T07:00Z" })!.buttons, [], "no Cancel");
+  assert.deepEqual(plainMessage("Math 301 Quiz 2 is tomorrow at 3:45 pm in D1.003 <b>"), { html: "Math 301 Quiz 2 is tomorrow at 3:45 pm in D1.003 &lt;b&gt;", buttons: [] }, "what Clem says by itself: plain text");
   assert.deepEqual(cardMessage({ type: "file_saved", subjectId: "circ", files: [{ id: "m2", name: "Sheet 2" }] }, { name })!.buttons.flat().map((b) => b.tap.t), ["summarize", "send", "check"]);
   for (const card of [
     { type: "brief", title: "Morning", items: [{ text: "x" }] }, { type: "reminder", title: "Sheet 3 is due in 3 hours" }, { type: "digest", lines: [{ text: "Also new: 2" }] },
@@ -49,7 +50,7 @@ test("render: every card type is compact, escaped, with buttons where they make 
   }
   assert.equal(cardMessage({ type: "telegram_pair" }), null, "the pair card is for Clem's window");
   const reply = replyMessages("Here it is.\n\n" + cardBlock({ type: "watch", id: "w2", text: "grades in Math" }));
-  assert.deepEqual(reply.map((m) => m.buttons.length), [0, 1], "text first, then the card with its button");
+  assert.deepEqual(reply.map((m) => m.buttons.length), [0, 0], "text first, then the card, without a button");
 });
 
 // ---------- The engine's relay against the Worker and a fake Telegram ----------
@@ -85,8 +86,8 @@ test("relay: a paired chat's message is answered by Clem's agent once, with typi
   } finally { await engine.close(); }
 });
 
-test("relay: taps round-trip through the inbox to the same appliers; old buttons are explained", async () => {
-  const { env, tg, engine, relay, turns, opened, pairNow } = await setup();
+test("relay: taps round-trip through the inbox to the same appliers; old buttons still work or are explained", async () => {
+  const { env, tg, engine, relay, turns, pairNow } = await setup();
   try {
     await pairNow();
     const o = engine.organizer;
@@ -94,10 +95,12 @@ test("relay: taps round-trip through the inbox to the same appliers; old buttons
     await relay.reply("Watching.\n\n" + cardBlock({ type: "watch", id: w.id, text: w.text }) + "\n\n" + cardBlock({ type: "lecture", subjectId: "circ", files: [{ id: "m1", name: "Lecture 3" }] }));
     const keyboards = tg.said().filter((b) => b.reply_markup).map((b) => b.reply_markup.inline_keyboard);
     assert.match(tg.said().at(-1).text, /New lecture in Circuits/, "names come from the workspace");
-    const stop = keyboards[0][0][0], summarize = keyboards[1][0][0];
-    assert.equal(stop.text, "Stop watching");
-    assert.match(stop.callback_data, /^b:[\w-]{12}$/, "Telegram carries only a short token");
-    await hook(env, tg, tap(42, stop.callback_data));
+    assert.equal(keyboards.length, 1, "the watch has no Stop button any more; the lecture keeps Summarize");
+    const summarize = keyboards[0][0][0];
+    assert.match(summarize.callback_data, /^b:[\w-]{12}$/, "Telegram carries only a short token");
+    // A Stop button on a message sent before this version still stops the watch.
+    await engine.db.query("insert into telegram_buttons (owner_id, token, tap) values ('owner-1', 'oldstop', $1)", [{ t: "stop", id: w.id }]);
+    await hook(env, tg, tap(42, "b:oldstop"));
     await hook(env, tg, tap(42, summarize.callback_data));
     await hook(env, tg, tap(42, "b:unknown-token"));
     await relay.pullOnce();
@@ -105,11 +108,10 @@ test("relay: taps round-trip through the inbox to the same appliers; old buttons
     assert.deepEqual(turns.map((t) => "tap" in t && t.tap), [{ t: "summarize", subjectId: "circ", fileId: "m1", name: "Lecture 3" }], "Summarize goes to the agent");
     assert.ok(sent(tg).includes("Stopped watching."));
     assert.ok(sent(tg).some((t) => /older message/.test(t)));
-    // Open in Clem opens on the PC.
-    await relay.deliver({ title: "Lab moved", body: "Thursday 13:45", open: { route: "#/app/guc/schedule" } });
-    await hook(env, tg, tap(42, tg.said().at(-1).reply_markup.inline_keyboard[0][0].callback_data));
-    await relay.pullOnce();
-    assert.deepEqual(opened, [{ route: "#/app/guc/schedule", chat: undefined, message: undefined }]);
+    // What Clem says by itself is a plain message: no keyboard at all.
+    await relay.deliver({ title: "Clem", body: "Your Circuits lab moved to Thursday at 1:45 pm.", open: { chat: "main", message: "pro-1" } });
+    assert.equal(tg.said().at(-1).text, "Your Circuits lab moved to Thursday at 1:45 pm.");
+    assert.equal(tg.said().at(-1).reply_markup, undefined);
   } finally { await engine.close(); }
 });
 
@@ -125,9 +127,10 @@ test("notifier: Telegram is a real channel, once per key, within quiet hours, on
     assert.equal(sent(tg).filter((t) => /Lab moved/.test(t)).length, 1);
     const rows = await engine.db.query<{ channel: string }>("select channel from notifications_sent where event_key = 'k1' order by channel");
     assert.deepEqual(rows.map((r) => r.channel), ["push", "telegram"]);
-    // With a card, Telegram gets the card and its buttons.
+    // A push queued by an older version with a card goes as plain words too.
     await o.push("k2", "Due in 3 hours", "Sheet 3", {}, undefined, { channels: ["telegram"], cards: cardBlock({ type: "reminder", title: "Sheet 3 is due in 3 hours", spaceId: "circ" }) });
-    assert.match(sent(tg).at(-1), /^<b>Reminder:<\/b> Sheet 3/);
+    assert.equal(sent(tg).at(-1), "Due in 3 hours: Sheet 3");
+    assert.equal(tg.said().at(-1).reply_markup, undefined);
     // Quiet hours hold it until they end.
     clock.t = cairoAt("2026-11-16", "01:00");
     assert.equal(await o.push("k3", "Room changed", "C7.02", {}, undefined, { channels: ["telegram"] }), "deferred");
@@ -141,7 +144,8 @@ test("notifier: Telegram is a real channel, once per key, within quiet hours, on
     clock.t = cairoAt("2026-11-16", "09:00");
     await engine.db.query("insert into guc_events (owner_id, event_key, kind, course_key, title, detail) values ('owner-1', 'ann:t1', 'new_announcement', null, 'New announcement in ELCT 201', 'Today''s lab is cancelled.')");
     await o.sweep("event");
-    assert.ok(sent(tg).some((t) => /lab is cancelled/i.test(t)));
+    const told = tg.said().filter((b) => /lab is cancelled/i.test(b.text));
+    assert.deepEqual(told.map((b) => [b.text, b.reply_markup]), [["ELCT 201: Today's lab is cancelled.", undefined]], "one plain message, no Mute or Open button");
     // Unpaired: Telegram is skipped again.
     await call(env, tg, "owner-1", "/telegram/unpair", {});
     await engine.telegram.status(true);

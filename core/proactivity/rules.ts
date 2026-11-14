@@ -15,7 +15,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").tri
 const days = (a: string, b: string) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5);
 
 export type Slot = { day: string; start: string; end: string; title: string; code?: string };
-export type Deadline = { id: string; title: string; due: string; code?: string; spaceId?: string };
+export type Deadline = { id: string; title: string; due: string; code?: string; spaceId?: string; /** "quiz", "exam", "assignment", "in-class"… and the room, when GUC said them. */ kind?: string; place?: string; /** The day isn't certain yet ("Monday or Tuesday, by tutorial group"). */ either?: string };
 
 /** A deadline's instant: an ISO time, or a bare day meaning its end (23:59 Cairo). */
 export const dueAt = (due: string) => (/^\d{4}-\d{2}-\d{2}$/.test(due) ? cairoAt(due, "23:59") : Date.parse(due));
@@ -25,9 +25,12 @@ export const dueAt = (due: string) => (/^\d{4}-\d{2}-\d{2}$/.test(due) ? cairoAt
 export function deadlineReminders(deadlines: Deadline[], now: number, hours = [48, 3]) {
   const sorted = [...hours].sort((a, b) => a - b), out: { key: string; hours: number; deadline: Deadline; left: number }[] = [];
   for (const d of deadlines) {
-    const at = dueAt(d.due), left = at - now;
+    // A quiz or exam with a day but no time is sat during the day, not at 23:59: its reminders count from the first
+    // slot (08:15), and the short one comes the evening before instead of in the small hours.
+    const dayOnly = /^\d{4}-\d{2}-\d{2}$/.test(d.due) && /^(quiz|exam|in-class|lab|presentation)$/.test(d.kind || "");
+    const at = dayOnly ? cairoAt(d.due, "08:15") : dueAt(d.due), left = at - now;
     if (!(left > 0)) continue;
-    const h = sorted.find((x) => left <= x * 3600e3);
+    const h = (dayOnly ? [...new Set(sorted.map((x) => (x < 12 ? 14 : x)))].sort((a, b) => a - b) : sorted).find((x) => left <= x * 3600e3);
     if (h !== undefined) out.push({ key: `remind:${d.id}:${h}h`, hours: h, deadline: d, left });
   }
   return out.sort((a, b) => a.left - b.left);
@@ -88,7 +91,10 @@ export function freeHours(day: string, slots: Slot[], timed: Timed[], after = 0)
   return out;
 }
 
-export type Facts = { now: number; snap: Snapshot; prev?: Snapshot; slots: Slot[]; deadlines: Deadline[]; events: Change[] };
+/** `classes`: the person's own GUC classes as GUC lists them (type, group, room), so a post with a table by tutorial
+ *  group can be read for their row. */
+export type Class = { code: string; type: string; group?: string; day: string; start: string; end: string; location?: string };
+export type Facts = { now: number; snap: Snapshot; prev?: Snapshot; slots: Slot[]; deadlines: Deadline[]; events: Change[]; classes?: Class[] };
 const nameOf = (snap: Snapshot, id?: string) => snap.spaces.find((s) => s.id === id)?.name;
 const timedOf = (snap: Snapshot): Timed[] => snap.plans.flatMap((p) => p.tasks.filter((t) => !t.done && t.due && t.time).map((t) => ({ title: t.title, day: t.due!, time: t.time!, space: nameOf(snap, p.spaceId) })));
 
@@ -201,7 +207,8 @@ export function projectNudges(f: Facts): ProAction[] {
   return out;
 }
 
-/** The same request on 3+ different days, with no routine for it: offer one (made after a tap). */
+/** The same request on 3+ different days, with no routine for it: Clem asks once, in words, whether to make it one
+ *  (the person answers in the thread; a yes is clem.routine). Keyed as the old offer was, so it is never asked again. */
 export function repeatedRequests(snap: Snapshot): ProAction[] {
   const groups = new Map<string, { text: string; days: Set<string>; hours: number[] }>();
   for (const m of snap.said) {
@@ -213,8 +220,8 @@ export function repeatedRequests(snap: Snapshot): ProAction[] {
   }
   const have = new Set(snap.automations.map((a) => norm(a.prompt)));
   return [...groups.values()].filter((g) => g.days.size >= 3 && !have.has(norm(g.text))).slice(0, 1).map((g) => {
-    const at = g.hours.sort((a, b) => a - b)[Math.floor(g.hours.length / 2)];
-    return { type: "automation" as const, name: g.text.slice(0, 60), prompt: g.text.slice(0, 600), schedule: "daily" as const, time: hhmm(Math.floor(at / 30) * 30) };
+    const at = hhmm(Math.floor(g.hours.sort((a, b) => a - b)[Math.floor(g.hours.length / 2)] / 30) * 30), name = g.text.replace(/\s+/g, " ").slice(0, 60);
+    return { type: "note" as const, kind: "followup" as const, key: `auto:${norm(name).slice(0, 80)}`, text: `You've asked “${name}” on ${g.days.size} different days. Want me to do it for you every day at ${at}?`.slice(0, 300) };
   });
 }
 

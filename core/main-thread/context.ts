@@ -137,8 +137,9 @@ export function buildContext(input: ContextInput): BuiltContext {
   add('user', input.current);
   return { messages: out, used, turns: turns.length, digests: kept.length, recall: quoted.length, coveredUntil };
 }
-/** A turn as sent again: card blocks become their meaning in words, not JSON. What Clem told the person on its own (an
- *  organizer card's lines, a reminder) is kept, so "yes, do that" or "which one?" can be answered. */
+/** A turn as sent again: card blocks become their meaning in words, not JSON. What Clem tells the person by itself is
+ *  plain text now and is read as it is; an older post's organizer card or reminder is read as what Clem said, so
+ *  "yes, do that" or "which one?" can still be answered. */
 export function turnText(content: string) {
   return content.replace(/```clem-card\s*([\s\S]*?)```/g, (_, body: string) => {
     try {
@@ -146,7 +147,7 @@ export function turnText(content: string) {
       if (c.type === 'handoff') return `[Continued in ${c.spaceName}]`;
       if (c.type === 'organizer' && Array.isArray(c.lines)) {
         const lines = c.lines.slice(0, 14).map((l: { text?: unknown; time?: unknown; space?: unknown }) => `- ${l.time ? l.time + ' ' : ''}${String(l.text || '').slice(0, 220)}${l.space ? ' (' + l.space + ')' : ''}`);
-        return `[You told them, in a card "${c.title || ''}":\n${lines.join('\n')}${c.lines.length > 14 ? '\n- …' : ''}]`;
+        return `[You told them (${c.title || 'Clem'}):\n${lines.join('\n')}${c.lines.length > 14 ? '\n- …' : ''}]`;
       }
       if (c.type === 'reminder') return `[${c.rang ? 'Reminder you sent them' : c.id ? 'Reminder you set' : 'Deadline reminder you sent them'}: ${c.title || ''}${c.at || c.due ? ' · ' + (c.at || c.due) : ''}${c.space ? ' · ' + c.space : ''}]`;
       if (c.type === 'watch') return `[You are watching for: ${c.text || ''}]`;

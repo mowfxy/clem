@@ -6,7 +6,7 @@ import { TELEGRAM_GUIDE } from "../telegram/guide.ts";
 import { z } from "zod";
 import { settingsUpdateCard } from "./cards.ts";
 import { codeKey, normCode } from "./codes.ts";
-import { addDays, cairo, hubPath, relativeDue, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterials } from "./hub.ts";
+import { addDays, cairo, endsAt, hubPath, relativeDue, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterials } from "./hub.ts";
 import { matchCourse } from "./match.ts";
 import type { SubjectLink } from "./settings.ts";
 import type { GucSlot } from "./types.ts";
@@ -167,7 +167,12 @@ export function deadlinesText(list: HubDeadline[], w: { from: number; to: number
   const inside = list.filter((d) => (!course || d.courseKey === course.courseKey) && Date.parse(d.due) >= w.from && Date.parse(d.due) <= w.to);
   const sorted = w.to === now ? inside.sort((a, b) => Date.parse(b.due) - Date.parse(a.due)) : inside.sort((a, b) => Date.parse(a.due) - Date.parse(b.due));
   if (!sorted.length) return `No deadlines${course ? " for " + label(course) : ""} in that range.`;
-  return `Deadlines${course ? " for " + label(course) : ""}:\n` + sorted.slice(0, LIST).map((d) => { const r = relativeDue(d.due, now); return `- ${d.code || "Course"}: ${clip(d.title, 160)} · ${r.date} (${r.label})${d.note ? ` — "${clip(d.note, 200)}"` : ""} ${link("deadlines", d.id)}`; }).join("\n") + more(sorted.length - LIST, "deadlines", "narrow the range");
+  // Each says what it is, when (a day-only one says so, one by group names the days), where, and what it covers; the
+  // portal's exam seats are in the same list.
+  return `Deadlines${course ? " for " + label(course) : ""}:\n` + sorted.slice(0, LIST).map((d) => {
+    const r = relativeDue(d.due, now), when = d.timeKnown === false ? r.date.replace(/, \d{2}:\d{2}$/, "") + " (time not given)" : `${r.date} (${r.label})`;
+    return `- ${d.code || "Course"}: ${d.kind ? `[${d.kind}] ` : ""}${clip(d.title, 160)} · ${when}${d.either ? ` · ${d.either}` : ""}${d.place ? ` · ${d.place}` : ""}${d.covers ? ` · covers ${clip(d.covers, 140)}` : ""}${endsAt(d) <= now ? " · done" : ""}${d.note ? ` — "${clip(d.note, 200)}"` : ""} ${link("deadlines", d.id)}`;
+  }).join("\n") + more(sorted.length - LIST, "deadlines", "narrow the range");
 }
 
 export function announcementsText(items: HubAnnouncement[], total: { more: boolean }, course?: Resolved) {
@@ -233,7 +238,7 @@ export function gucNow(d: { slots: GucSlot[]; deadlines: HubDeadline[]; unread: 
   return {
     schedule: d.slots.filter((s) => s.day.toLowerCase() === name).sort((a, b) => a.period - b.period).map((s) => ({ time: s.start, title: `${s.code} ${s.type}`.trim(), ...(s.location ? { where: s.location } : {}) })),
     deadlines: d.deadlines.filter((x) => Date.parse(x.due) >= now && Date.parse(x.due) <= now + 7 * 864e5).sort((a, b) => Date.parse(a.due) - Date.parse(b.due)).slice(0, 8)
-      .map((x) => ({ title: clip(x.title, 80), due: relativeDue(x.due, now).date, ...(x.code ? { space: x.code } : {}) })),
+      .map((x) => ({ title: clip(x.title + (x.place ? " · " + x.place : ""), 80), due: x.timeKnown === false ? relativeDue(x.due, now).date.replace(/, \d{2}:\d{2}$/, "") : relativeDue(x.due, now).date, ...(x.code ? { space: x.code } : {}) })),
     unread: d.unread,
   };
 }

@@ -4,7 +4,7 @@
 // (src/proactivity/pro.ts) from the inbox, as it does GUC's. The workspace it reads is a compact snapshot of the saved
 // state.json (EngineHost.workspace); a VPS host is handed the same snapshot by the desktop. No electron here.
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { cardBlock, type ClemCard } from "../../core/guc/cards.ts";
+import { cardBlock } from "../../core/guc/cards.ts";
 import { addDays, cairo, type HubDeadline } from "../../core/guc/hub.ts";
 import { scheduleDays } from "../../core/guc/ai-tools.ts";
 import { PASSWORD_NOTICE, PASSWORD_REMINDER, PASSWORD_ROUTE, passwordChannels, passwordDue } from "../../core/guc/password.ts";
@@ -13,14 +13,14 @@ import type { SubjectLink } from "../../core/guc/settings.ts";
 import type { GucSlot } from "../../core/guc/types.ts";
 import { localNowCard, withGuc } from "../../core/main-thread/context.ts";
 import { actionKey, describe, needsConfirm, type ProAction, type Undo } from "../../core/proactivity/actions.ts";
-import { capPushes, muteFor, muteKey, slotChanges, type Change, type ChangeKind, type Mute } from "../../core/proactivity/attention.ts";
-import { datedSlots, deadlineReminders, dueAt, leftText, timedItems, type Deadline } from "../../core/proactivity/rules.ts";
+import { muteFor, muteKey, muteText, slotChanges, type Change, type ChangeKind, type Mute } from "../../core/proactivity/attention.ts";
+import { datedSlots, deadlineReminders, dueAt, timedItems, type Deadline } from "../../core/proactivity/rules.ts";
 import { busyList, dayLabel, studySlots, whenOf } from "../../core/proactivity/calendar.ts";
-import { cardBlock as routineCardBlock } from "../../core/guc/cards.ts";
-import { agendaText, clemAction, findSpace, prefsText, readClemArgs, remindersText, settingsText, type ReminderRow } from "../../core/proactivity/tools.ts";
+import { agendaText, clemAction, findSpace, muteKinds, prefsText, readClemArgs, remindersText, settingsText, type ReminderRow } from "../../core/proactivity/tools.ts";
+import { deadlineText, plainText, reminderText, type SayContext } from "../../core/proactivity/say.ts";
 import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, OUTWARD, quietEnd, readPro, type Channel, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
-import { changeText, digestLine, planSweep, readReply, sweepCard, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
+import { planSweep, readReply, sweepMessages, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
 import { live, parseWatch, type Watch } from "../../core/proactivity/watches.ts";
 import { cronTooOften, describeTrigger, matchChange, pageText, readRoutineReply, ROUTINE_SYSTEM, routineInput, routineLive, type Routine, type RoutineChange, type RoutineInput, type Trigger } from "../../core/proactivity/routines.ts";
 import type { Db } from "./db.ts";
@@ -31,7 +31,8 @@ import type { Jobs } from "./jobs.ts";
 export type GucFacts = { slots: GucSlot[]; deadlines: HubDeadline[]; links: SubjectLink[]; now: GucNow | null };
 export type Open = { route?: string; chat?: string; message?: string };
 export type LogRow = { key: string; sweep: string; text: string; status: string; at: number; undo: boolean; type: string };
-export type ProInbox = { posts: { id: string; content: string; at: number }[]; apply: { key: string; action: ProAction }[] };
+/** `revert`: Clem's own changes the person asked to undo in words (clem.undo), for the window to put back. */
+export type ProInbox = { posts: { id: string; content: string; at: number }[]; apply: { key: string; action: ProAction }[]; revert: { key: string; undo: Undo }[] };
 
 /** Event sweeps wait a minute for more changes, and run at most every 10 minutes. */
 export const EVENT_DEBOUNCE_S = 60, EVENT_GAP_S = 600;
@@ -42,6 +43,8 @@ export type Outward = Exclude<Channel, "app">;
 const ASKED: Outward[] = [...OUTWARD];
 /** The Telegram relay as the organizer sees it (desktop/engine/telegram.ts). */
 export type TelegramChannel = { available: boolean; paired(): Promise<boolean>; status(): Promise<{ configured: boolean }>; deliver(n: { title: string; body: string; cards?: string; open?: Open }): Promise<void> };
+const RECENT_UNDO_MS = 7 * 864e5;
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 export class Organizer {
   private db: Db; private owner: string; private host: EngineHost; private guc: () => Promise<GucFacts>; private clock: () => number;
@@ -170,7 +173,8 @@ export class Organizer {
   }
   private deadlines(g: GucFacts, snap: Snapshot): Deadline[] {
     const subject = new Map(g.links.map((l) => [l.courseKey, l.subjectId]));
-    return [...g.deadlines.map((d) => ({ id: d.id, title: d.title, due: d.due, code: d.code, ...(subject.get(d.courseKey) ? { spaceId: subject.get(d.courseKey) } : {}) })),
+    // A sitting whose time GUC didn't give is a day, not 23:59; what is already done is never reminded.
+    return [...g.deadlines.filter((d) => !d.done).map((d) => ({ id: d.id, title: d.title, due: d.timeKnown === false ? cairo(Date.parse(d.due)).ymd : d.due, code: d.code, ...(d.kind ? { kind: d.kind } : {}), ...(d.place ? { place: d.place } : {}), ...(d.either ? { either: d.either } : {}), ...(subject.get(d.courseKey) ? { spaceId: subject.get(d.courseKey) } : {}) })),
       ...snap.plans.flatMap((p) => p.tasks.filter((t) => t.milestone && !t.done && t.due).map((t) => ({ id: `plan-${p.spaceId}-${t.id}`, title: t.title, due: t.time ? new Date(cairoAt(t.due!, t.time)).toISOString() : t.due!, spaceId: p.spaceId })))];
   }
 
@@ -190,10 +194,14 @@ export class Organizer {
     // The very first sweep only sets the baseline: what GUC already held is not news.
     const ev = state ? await this.events(state.events_after || null, g.links, g.deadlines)
       : { changes: [] as Change[], last: (await this.db.query<{ t: Date | null }>("select max(created_at) as t from guc_events where owner_id = $1", [this.owner]))[0]?.t || undefined };
-    const subjectOfCode = (code: string) => g.links.find((l) => l.code === code)?.subjectId;
+    // A slot names its course by code once sync resolves it ("MATH 301"), by name before ("Mathematics III").
+    const flatCode = (x?: string) => (x || "").toUpperCase().replace(/\s+/g, "");
+    const subjectOfCode = (code: string, name?: string) => g.links.find((l) => (!!l.code && flatCode(l.code) === flatCode(code)) || (!!l.name && [code, name].some((x) => x && x.toLowerCase().trim() === l.name.toLowerCase().trim())))?.subjectId;
     const slotCh = state?.slots && g.slots.length ? slotChanges(state.slots, g.slots, started, subjectOfCode) : [];
     const today = cairo(started).ymd;
-    const facts = { now: started, snap, prev: state?.snapshot || undefined, slots: datedSlots(g.slots, today, 8), deadlines: this.deadlines(g, snap), events: [...ev.changes, ...slotCh] };
+    const facts = { now: started, snap, prev: state?.snapshot || undefined, slots: datedSlots(g.slots, today, 8), deadlines: this.deadlines(g, snap), events: [...ev.changes, ...slotCh],
+      // A class by its course code when the slot only names the course: read through the subject links.
+      classes: g.slots.map((x) => ({ code: /^[A-Z]{2,5} ?\d{3}/.test(x.code) ? x.code : g.links.find((l) => l.name && [x.code, x.name].some((n) => n?.toLowerCase().trim() === l.name.toLowerCase().trim()))?.code || x.code, type: x.type, group: x.group, day: x.day, start: x.start, end: x.end, location: x.location })) };
     const watches = await this.watchRows();
     const nowCard = withGuc({ ...localNowCard({ spaces: snap.spaces, plans: snap.plans.map((p) => ({ spaceId: p.spaceId, tasks: p.tasks.map((t) => ({ title: t.title, due: t.due, done: t.done ? 1 : undefined, kind: t.milestone ? "milestone" as const : "task" as const })) })), today }) }, g.now);
     let plan = planSweep(kind, facts, { done, lastDay: last?.last_day || undefined, now: nowCard, mutes, watches, model: !!this.host.complete, voice: s.level !== "quiet" });
@@ -201,8 +209,6 @@ export class Organizer {
     if (plan.ask && this.host.complete) {
       try {
         const reply = await this.host.complete({ ...plan.ask, model: snap.organizer?.model, reasoning: snap.organizer?.reasoning }); called = true; plan = readReply(reply, plan, snap, done);
-        // After a change, Clem's own words stand only over news it judged; over certain facts the card's lines say it.
-        if (kind === "event" && !plan.rate.length) delete plan.message;
       }
       catch (e) { this.host.log("warn", "[organizer] model: " + (e as Error).message); }
     }
@@ -212,64 +218,61 @@ export class Organizer {
       [this.owner, snap, JSON.stringify(g.slots), ev.last || state?.events_after || null]);
     await this.db.query("insert into organizer_sweeps (owner_id, kind, last_day, last_at) values ($1, $2, $3, now()) on conflict (owner_id, kind) do update set last_day = excluded.last_day, last_at = now()", [this.owner, kind, today]);
     let posted = false;
-    if (plan.changed) posted = await this.deliverSweep(kind, plan, s, snap);
+    if (plan.changed) posted = await this.deliverSweep(kind, plan, s, snap, facts.deadlines);
     await this.db.query("insert into organizer_runs (owner_id, kind, changed, model, actions, ms) values ($1, $2, $3, $4, $5, $6)", [this.owner, kind, plan.changed, called, plan.actions.length, this.clock() - started]);
     await this.db.query("delete from organizer_runs where owner_id = $1 and id not in (select id from organizer_runs where owner_id = $1 order by id desc limit 300)", [this.owner]);
     return { changed: plan.changed, called, actions: plan.actions.length, posted };
   }
 
-  private async deliverSweep(kind: SweepKind, plan: ReturnType<typeof planSweep>, s: ProSettings, snap: Snapshot) {
+  /** A sweep said as plain messages, one per thing (core/proactivity/sweep.ts sweepMessages): each its own post, its own
+   *  notification and Telegram message. Nothing waits on a tap: what Clem did is applied by the window (undone in
+   *  words, clem.undo), and what it asks is a question the person answers in the thread. */
+  private async deliverSweep(kind: SweepKind, plan: ReturnType<typeof planSweep>, s: ProSettings, snap: Snapshot, deadlines: Deadline[]) {
     const name = (id?: string) => snap.spaces.find((x) => x.id === id)?.name, now = this.clock();
-    // Actions: notes are said; offers wait for a tap; the rest wait for the window to apply them (with Undo).
+    // Actions: notes are said; the rest wait for the window to apply them.
     const taken: ProAction[] = [];
     for (const a of plan.actions) {
       const status = a.type === "note" ? "said" : needsConfirm(a) ? "confirm" : "apply";
       if (await this.record(actionKey(a), kind, a, describe(a, name), status)) taken.push(a);
     }
     for (const h of plan.hits) await this.db.query("update organizer_watches set fired = fired + 1, last_fired = now() where owner_id = $1 and id = $2", [this.owner, h.watch.id]);
-    // Attention: urgent and notify are said (urgent pushed now, notify in one push), digest is one line, silent nothing.
+    // Attention: urgent and notify are said (urgent pushed now), digest is named in passing, silent nothing.
     const fresh = async (key: string) => !(await this.db.query("select 1 from organizer_actions where owner_id = $1 and key = $2", [this.owner, key])).length;
     const said: RatedChange[] = [];
     for (const r of plan.rated.filter((r) => r.level === "urgent" || r.level === "notify")) if (await fresh("change:" + r.change.key)) said.push(r);
-    // What the person asked to hear is pushed (once) whatever its level; a change is never pushed twice.
-    const asked = plan.hits.filter((h) => h.watch.channel !== "app").map((h): RatedChange => ({ change: h.change, level: "urgent", why: "You asked." }));
-    const out = (_r: RatedChange) => ASKED;
-    const pushable = [...said.filter((r) => !asked.some((a) => a.change.key === r.change.key)), ...asked];
-    const capped = capPushes(s.level, await this.pushedToday(), pushable.filter((p) => s.level !== "quiet" || p.level === "urgent"));
-    const digest = plan.rated.filter((r) => r.level === "digest");
+    // What the person asked to hear is told (once) whatever its level, in Clem's words when it has them.
+    const hitKeys = new Set(plan.hits.map((h) => h.change.key)), asked: RatedChange[] = [];
+    for (const h of plan.hits) if (!said.some((r) => r.change.key === h.change.key) && await fresh("change:" + h.change.key)) { const r = plan.rated.find((x) => x.change.key === h.change.key); asked.push({ change: h.change, level: "urgent", why: "You asked.", ...(r?.say ? { say: r.say } : {}) }); }
     const urgent = said.some((r) => r.level === "urgent") || plan.hits.length > 0 || taken.some((a) => needsConfirm(a) || (a.type === "note" && a.kind === "clash"));
     // News is news whichever sweep found it: a timed sweep that carries some speaks as an event sweep would.
-    const say = delivery(s, kind === "event" ? { news: said.length > 0, urgent } : { job: kind as JobKind, news: said.length > 0, urgent });
-    // News a quieter level kept back (it was worth knowing, not worth a message of its own) rides along with the next
-    // card, for a week; then it is only in the log.
-    const heldRows = say.post ? await this.db.query<{ key: string; text: string; action: { change?: Change; level?: RatedChange["level"] } }>(
-      "select key, text, action from organizer_actions where owner_id = $1 and status = 'held' and created_at > $2 order by created_at desc limit 6", [this.owner, new Date(now - 7 * 864e5)]) : [];
-    const held = heldRows.flatMap((r): RatedChange[] => (r.action?.change ? [{ change: r.action.change, level: r.action.level || "notify", why: "Kept for later.", say: r.text }] : [])).reverse();
-    // One thing, one line: a watch's own line stands for its change, and a grade is said once (in Clem's words when it
-    // has them, else by the grade note).
-    const hitKeys = new Set(plan.hits.map((h) => h.change.key)), graded = new Set(taken.flatMap((a) => (a.type === "note" && a.kind === "grade" && a.key ? [a.key.slice("grade:".length)] : [])));
-    const lines = [...said, ...held].filter((r) => !hitKeys.has(r.change.key) && !(graded.has(r.change.key) && !r.say));
-    const shown = taken.filter((a) => !(a.type === "note" && a.kind === "grade" && said.some((r) => r.say && "grade:" + r.change.key === a.key)));
-    const card = sweepCard(kind, now, { said: lines, digest: digestLine(digest, name), hits: plan.hits, brief: plan.brief, actions: shown }, name);
-    const blocks: ClemCard[] = card ? [card] : [];
-    const posting = blocks.length > 0 && say.post;
-    for (const r of said) { const text = r.say || changeText(r.change); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, posting ? "said" : "held", { change: r.change, level: r.level }); }
-    // Quiet speaks only for what is urgent or waits on a tap; organizing above still happened and is in the log.
+    const news = said.length + asked.length > 0;
+    const say = delivery(s, kind === "event" ? { news, urgent } : { job: kind as JobKind, news, urgent });
+    // News a quieter level kept back (worth knowing, not worth a message then) is told with the next thing Clem says,
+    // for a week; then it is only in the log.
+    const heldRows = say.post ? await this.db.query<{ key: string; action: { change?: Change; level?: RatedChange["level"]; say?: string } }>(
+      "select key, action from organizer_actions where owner_id = $1 and status = 'held' and created_at > $2 order by created_at desc limit 6", [this.owner, new Date(now - 7 * 864e5)]) : [];
+    const told = [...asked, ...said];
+    const held = heldRows.flatMap((r): RatedChange[] => (r.action?.change && !told.some((t) => t.change.key === r.action.change!.key) ? [{ change: r.action.change, level: r.action.level || "notify", why: "Kept for later.", held: true, ...(r.action.say ? { say: r.action.say } : {}) }] : [])).reverse();
+    const x: SayContext = { now, name, deadlines };
+    const also = plan.rated.filter((r) => r.level === "digest" && !hitKeys.has(r.change.key)).map((r) => r.change);
+    const msgs = sweepMessages(kind, { told: [...told, ...held], asked: hitKeys, also, message: plan.message, brief: plan.brief, actions: taken }, x);
+    const posting = msgs.length > 0 && say.post;
+    const textOf = new Map(msgs.flatMap((m) => m.tells.map((k) => [k, m.text] as const)));
+    for (const r of told) { const text = textOf.get(r.change.key) || r.say || plainText(r.change, x); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, posting ? "said" : "held", { change: r.change, level: r.level, ...(r.say ? { say: r.say } : {}) }); }
+    // Quiet speaks only for what is urgent; organizing above still happened and is in the log.
     if (!posting) return false;
-    // Clem's own words come first, the card under them.
-    const cards = blocks.map((b) => cardBlock(b)).join("\n\n"), content = (plan.message ? plan.message + "\n\n" : "") + cards;
-    const postId = await this.post(content, `sweep:${kind}:${now}`);
-    if (!postId) return false;
-    if (heldRows.length) await this.db.query("update organizer_actions set status = 'said', updated_at = now() where owner_id = $1 and key = any($2::text[]) and status = 'held'", [this.owner, heldRows.map((r) => r.key)]);
-    const open: Open = { chat: snap.mainId || "main", message: postId };
-    // Telegram gets the message and the card (with its buttons); a desktop notification gets a title and a line.
-    const words = (p: RatedChange) => p.say || changeText(p.change);
-    for (const p of capped.push.filter((p) => p.level === "urgent")) await this.push("change:" + p.change.key, p.say ? "Clem" : p.change.title, p.say || p.change.detail || "Tap to see it in Clem.", open, s, { channels: out(p) });
-    const batch = capped.push.filter((p) => p.level !== "urgent");
-    if (batch.length) await this.push(`batch:${postId}`, batch.length === 1 ? (batch[0].say ? "Clem" : batch[0].change.title) : plan.message ? "Clem" : `${batch.length} things for you`, (batch.length === 1 ? words(batch[0]) : plan.message || batch.map(words).join(" · ")).slice(0, 240), open, s, { channels: [...new Set(batch.flatMap(out))], cards: content });
-    const jobOut = say.channels.filter((c): c is Outward => c !== "app");
-    if (!pushable.length && kind !== "event" && kind !== "midday" && jobOut.length && s.level === "proactive") await this.push(`job:${kind}:${cairo(now).ymd}`, card?.title || "Clem", (plan.message || (card?.lines || []).slice(0, 3).map((l) => l.text).join(" · ")).slice(0, 240), open, s, { channels: jobOut, cards: content });
-    return true;
+    // Whatever Clem writes in the main thread is worth a notification (user, 2026-11-14): one per message, on the desktop
+    // and Telegram, with no daily limit. What isn't worth interrupting them for is not written at all (the levels above).
+    let posted = false;
+    for (const [i, m] of msgs.entries()) {
+      const postId = await this.post(m.text, `sweep:${kind}:${now}:${i}`);
+      if (!postId) continue;
+      posted = true;
+      const open: Open = { chat: snap.mainId || "main", message: postId };
+      await this.push(m.tells.length ? m.key : `sweep:${kind}:${now}:${i}`, "Clem", m.text, open, s, { channels: ASKED });
+    }
+    if (posted && heldRows.length) await this.db.query("update organizer_actions set status = 'said', updated_at = now() where owner_id = $1 and key = any($2::text[]) and status = 'held'", [this.owner, heldRows.map((r) => r.key)]);
+    return posted;
   }
   /** Records an action once (by key); false when it was already there. */
   private async record(key: string, sweep: string, action: ProAction, text: string, status: string, extra?: object) {
@@ -290,11 +293,6 @@ export class Organizer {
   }
 
   // ---------- Notifications ----------
-  private async pushedToday() {
-    // One thing told on both channels counts once against the cap.
-    const [{ n }] = await this.db.query<{ n: number }>("select count(distinct event_key)::int as n from notifications_sent where owner_id = $1 and channel in ('push', 'telegram') and event_key not like 'reminder:%' and sent_at >= $2", [this.owner, new Date(cairoAt(cairo(this.clock()).ymd))]);
-    return n;
-  }
   /** A notification on each of `channels` (default: the desktop), once per key and channel ever
    *  (notifications_sent). In quiet hours it waits (notify_queue) and goes when they end. Telegram goes only while it is
    *  paired, with the cards when there are any; one that fails waits ten minutes and is tried again. */
@@ -351,26 +349,23 @@ export class Organizer {
       const [snap, g] = await Promise.all([this.workspace(), this.guc().catch((): GucFacts => ({ slots: [], deadlines: [], links: [], now: null }))]);
       const name = (id?: string) => snap.spaces.find((x) => x.id === id)?.name;
       const due = deadlineReminders(this.deadlines(g, snap), now, s.deadlineHours);
-      const cards: ClemCard[] = [], said: typeof due = [];
+      const said: (typeof due[number] & { text: string })[] = [];
       for (const r of due) {
         // Just told as news (a deadline that appeared already inside the window): the 48-hour reminder would only repeat it.
         if (r.hours > 3 && (await this.db.query("select 1 from organizer_actions where owner_id = $1 and (key = $2 or key like $3) and created_at > $4 limit 1", [this.owner, "change:dl:" + r.deadline.id, "change:dl:" + r.deadline.id.replace(/[\\%_]/g, "\\$&") + ":%", new Date(now - 12 * 3600e3)])).length) {
           await this.record(r.key, "reminder", { type: "note", kind: "info", text: `${r.deadline.title}: told as news, not reminded again` }, `Skipped a repeat reminder for ${r.deadline.title}`.slice(0, 300), "skipped");
           continue;
         }
-        const text = `${r.deadline.title} is due ${leftText(r.left)}`;
+        // One message each: "MATH 301 Quiz 2 is tomorrow at 3:45 pm in D1.003.", "Assignment 2 is due in 3 hours, at 11:59 pm."
+        const text = deadlineText(r.deadline, now, name, { left: r.left });
         if (!(await this.record(r.key, "reminder", { type: "note", kind: "info", text: text.slice(0, 300) }, text, "said"))) continue;
-        said.push(r);
-        cards.push({ type: "reminder", title: text.slice(0, 200), due: new Date(dueAt(r.deadline.due)).toISOString().slice(0, 16) + "Z", ...(name(r.deadline.spaceId) ? { space: name(r.deadline.spaceId)!.slice(0, 120) } : {}), ...(r.deadline.spaceId ? { spaceId: r.deadline.spaceId } : {}) });
+        said.push({ ...r, text });
       }
       const tight = said.some((r) => r.hours <= 3);
-      if (cards.length && delivery(s, { news: true, urgent: tight }).post) {
-        const postId = await this.post(cards.map((c) => cardBlock(c)).join("\n\n"), "reminders:" + said.map((r) => r.key).join(","));
-        const channels = ASKED;
-        if (postId && (s.level !== "quiet" || tight) && channels.length) for (const [i, r] of said.entries()) {
-          const guc = !r.deadline.id.startsWith("plan-");
-          await this.push(r.key, `Due ${leftText(r.left)}`, r.deadline.title, guc ? { route: "#/app/guc/deadlines/" + encodeURIComponent(r.deadline.id) } : { chat: snap.mainId || "main", message: postId }, s, { channels, cards: cardBlock(cards[i]) });
-        }
+      // A click opens the message itself.
+      if (said.length && delivery(s, { news: true, urgent: tight }).post) for (const r of said) {
+        const postId = await this.post(r.text, "reminders:" + r.key);
+        if (postId) await this.push(r.key, "Clem", r.text, { chat: snap.mainId || "main", message: postId }, s, { channels: ASKED });
       }
     }
     await this.gucPassword().catch((e) => this.host.log("warn", "[organizer] guc password: " + (e as Error).message));
@@ -402,15 +397,17 @@ export class Organizer {
   }
 
   // ---------- The window ----------
-  /** Posts for the main thread and actions to apply, until acknowledged. */
+  /** Posts for the main thread, actions to apply and changes to put back, until acknowledged. */
   async inbox(): Promise<ProInbox> {
     const posts = await this.db.query<{ id: string; content: string; created_at: Date }>("select id, content, created_at from organizer_posts where owner_id = $1 and delivered_at is null order by created_at limit 50", [this.owner]);
     const apply = await this.db.query<{ key: string; action: ProAction }>("select key, action from organizer_actions where owner_id = $1 and status = 'apply' order by created_at limit 100", [this.owner]);
-    return { posts: posts.map((p) => ({ id: p.id, content: p.content, at: ms(p.created_at) })), apply: apply.map((a) => ({ key: a.key, action: a.action })) };
+    const revert = await this.db.query<{ key: string; undo: Undo }>("select key, undo from organizer_actions where owner_id = $1 and status = 'revert' order by updated_at limit 50", [this.owner]);
+    return { posts: posts.map((p) => ({ id: p.id, content: p.content, at: ms(p.created_at) })), apply: apply.map((a) => ({ key: a.key, action: a.action })), revert: revert.map((r) => ({ key: r.key, undo: r.undo })) };
   }
-  async ack(o: { posts?: string[]; results?: { key: string; ok: boolean; undo?: Undo | null; error?: string }[] }) {
+  async ack(o: { posts?: string[]; results?: { key: string; ok: boolean; undo?: Undo | null; error?: string }[]; reverted?: string[] }) {
     for (const id of o.posts || []) await this.db.query("update organizer_posts set delivered_at = now() where owner_id = $1 and id = $2", [this.owner, id]);
     for (const r of o.results || []) await this.db.query("update organizer_actions set status = $3, undo = $4, error = $5, updated_at = now() where owner_id = $1 and key = $2 and status = 'apply'", [this.owner, r.key, r.ok ? "applied" : "failed", r.undo ?? null, r.error?.slice(0, 200) ?? null]);
+    for (const key of o.reverted || []) await this.db.query("update organizer_actions set status = 'undone', updated_at = now() where owner_id = $1 and key = $2 and status = 'revert'", [this.owner, key]);
     await this.db.query("delete from organizer_posts where owner_id = $1 and delivered_at < now() - interval '7 days'", [this.owner]);
   }
   /** "What Clem did today": everything since Cairo midnight (or `since`), newest first. */
@@ -434,7 +431,32 @@ export class Organizer {
     return row ? { key, action: row.action } : null;
   }
   async dismiss(key: string) { await this.db.query("update organizer_actions set status = 'dismissed', updated_at = now() where owner_id = $1 and key = $2 and status = 'confirm'", [this.owner, key]); }
-  /** "Don't tell me about this kind of thing": the change behind a card line becomes a mute (its kind, in its subject). */
+  /** "Undo that", said in words (clem.undo): Clem's own latest change of the last week (or the one `what` names best)
+   *  is put back through the same path as applying it: marked `revert` here, undone by the window when it next pulls
+   *  (src/proactivity/pro.ts), then `undone`. One not applied yet is simply dropped. */
+  async undoByText(what?: string) {
+    const rows = await this.db.query<{ key: string; text: string; status: string }>(
+      "select key, text, status from organizer_actions where owner_id = $1 and created_at > $2 and ((status = 'applied' and undo is not null) or status = 'apply') order by updated_at desc, created_at desc limit 40", [this.owner, new Date(this.clock() - RECENT_UNDO_MS)]);
+    if (!rows.length) return { error: "Clem hasn't changed anything in the last week that can be undone." };
+    const words = norm(what || "").split(" ").filter((w) => w.length > 2), score = (t: string) => words.filter((w) => norm(t).includes(w)).length;
+    const pick = words.length ? rows.map((r) => ({ r, n: score(r.text) })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n)[0]?.r : rows[0];
+    if (!pick) return { error: `Nothing Clem did lately matches "${what}". Recent changes:\n` + rows.slice(0, 6).map((r) => "- " + r.text).join("\n") };
+    const [row] = await this.db.query<{ status: string }>("update organizer_actions set status = case when status = 'apply' then 'dismissed' else 'revert' end, updated_at = now() where owner_id = $1 and key = $2 and status in ('apply', 'applied') returning status", [this.owner, pick.key]);
+    if (!row) return { error: "That was already undone." };
+    this.host.changed?.();
+    return { ok: true, undone: pick.text, ...(row.status === "dismissed" ? { note: "It hadn't been applied yet, so it simply won't be." } : {}) };
+  }
+  /** A mute from the person's words (clem.mute): kinds of news, optionally in one subject and with some words. */
+  async muteBy(o: { kinds: ChangeKind[]; subjectId?: string; words?: string[] }) {
+    const made: Mute[] = [];
+    for (const kind of o.kinds) {
+      const m: Mute = { kind, ...(o.subjectId ? { subjectId: o.subjectId } : {}), ...(o.words?.length ? { words: o.words } : {}) };
+      await this.db.query("insert into organizer_mutes (owner_id, mute_key, mute) values ($1, $2, $3) on conflict do nothing", [this.owner, muteKey(m), m]);
+      made.push(m);
+    }
+    return made;
+  }
+  /** What an old message's Mute button did: the change behind it becomes a mute (its kind, in its subject). */
   async mute(key: string) {
     const [row] = await this.db.query<{ action: { change?: Change } }>("select action from organizer_actions where owner_id = $1 and key = $2", [this.owner, key]);
     if (!row?.action?.change) return null;
@@ -464,7 +486,7 @@ export class Organizer {
     const rows = await this.db.query("update organizer_reminders set cancelled = true where owner_id = $1 and id = $2 and not cancelled and fired_at is null returning 1", [this.owner, id]);
     return { ok: rows.length > 0 };
   }
-  /** Rings every reminder whose time has come: a card in the main thread and, once per time, a notification. A
+  /** Rings every reminder whose time has come: "Reminder: …" in the main thread and, once per time, a notification. A
    *  repeating one moves on to its next time; the rest are done. One rung hours late (Clem was off) is posted, not pushed. */
   async ring() {
     const now = this.clock();
@@ -473,12 +495,11 @@ export class Organizer {
     if (!due.length) return 0;
     const s = await this.settings(), snap = await this.workspace();
     for (const r of due) {
-      const at = ms(r.at), key = `reminder:${r.id}:${new Date(at).toISOString()}`, space = snap.spaces.find((x) => x.id === r.space_id)?.name;
+      const at = ms(r.at), key = `reminder:${r.id}:${new Date(at).toISOString()}`;
       {
-        const card: ClemCard = { type: "reminder", title: r.text.slice(0, 200), at: new Date(at).toISOString().slice(0, 16) + "Z", id: r.id, rang: true, ...(space ? { space: space.slice(0, 120), spaceId: r.space_id! } : {}), ...(r.repeat ? { repeat: r.repeat } : {}) };
-        const postId = await this.post(cardBlock(card), key);
-        const channels: Outward[] = ASKED;
-        if (postId && now - at < 6 * 3600e3) await this.push(key, "Reminder", r.text, { chat: snap.mainId || "main", message: postId }, s, { channels, cards: cardBlock(card), loud: r.source === "person" });
+        const text = reminderText(r.text);
+        const postId = await this.post(text, key);
+        if (postId) await this.push(key, "Clem", text, { chat: snap.mainId || "main", message: postId }, s, { channels: ASKED, loud: r.source === "person" });
         await this.record(key, "reminder", { type: "note", kind: "info", text: ("Reminded you: " + r.text).slice(0, 300) }, "Reminded you: " + r.text, "said");
       }
       if (r.repeat) {
@@ -514,8 +535,8 @@ export class Organizer {
     return { picks, lines, space: space.name, short: picks.length < o.sessions };
   }
 
-  /** The AI's clem.* tools (core/proactivity/tools.ts). `scope`: the chat's own subject or project. Answers are short
-   *  text, plus a card to put in the reply. */
+  /** The AI's clem.* tools (core/proactivity/tools.ts). `scope`: the chat's own subject or project. Answers are facts in
+   *  short text; the AI says them back in a sentence (nothing Clem says has a card or a button any more). */
   async tool(request: Record<string, unknown>, o: { scope?: string } = {}) {
     const action = clemAction(request?.action);
     if (!action) return { error: "Unknown clem action." };
@@ -525,6 +546,7 @@ export class Organizer {
     const snap = await this.workspace(), spaces = snap.spaces;
     const nameOf = (id?: string) => spaces.find((x) => x.id === id)?.name;
     const spaceArg = (arg?: string) => (arg ? findSpace(arg, spaces) : spaces.find((x) => x.id === o.scope));
+    const at = (t: number) => `${dayLabel(cairo(t).ymd)} ${cairo(t).time} Cairo time`;
     if (action === "clem.calendar") {
       const r = scheduleDays(args.range, now);
       if ("error" in r) return { error: r.error };
@@ -532,14 +554,13 @@ export class Organizer {
       return { text: agendaText({ days: r.days, slots: datedSlots(g.slots, r.days[0], r.days.length), timed: timedItems(snap), prefs: s.study, now }) };
     }
     if (action === "clem.remind") {
-      const at = whenOf(args.at, now);
-      if (at === null) return { error: `"${args.at}" isn't a time Clem can read, or it has passed. Give an ISO time (2026-11-14T09:00) or words like "tomorrow 9am".` };
-      const when = at - (args.before || 0) * 60_000;
+      const t = whenOf(args.at, now);
+      if (t === null) return { error: `"${args.at}" isn't a time Clem can read, or it has passed. Give an ISO time (2026-11-14T09:00) or words like "tomorrow 9am".` };
+      const when = t - (args.before || 0) * 60_000;
       if (when <= now) return { error: "That reminder would ring in the past. Pick a later time or a shorter \"before\"." };
       const space = spaceArg(args.subject);
       const r = await this.remind({ text: args.text, at: when, spaceId: space?.id, repeat: args.repeat });
-      const card: ClemCard = { type: "reminder", title: r.text.slice(0, 200), at: new Date(when).toISOString().slice(0, 16) + "Z", id: r.id, ...(space ? { space: space.name.slice(0, 120), spaceId: space.id } : {}), ...(args.repeat ? { repeat: args.repeat } : {}) };
-      return { ok: true, id: r.id, rings: `${dayLabel(cairo(when).ymd)} ${cairo(when).time} Cairo time`, card: "Put this card in your reply so they can see and cancel it:\n" + cardBlock(card) };
+      return { ok: true, id: r.id, text: r.text, rings: at(when), ...(args.repeat ? { repeats: args.repeat === "daily" ? "every day" : "every week" } : {}), ...(space ? { subject: space.name } : {}) };
     }
     if (action === "clem.reminders") return { text: remindersText((await this.reminders()).map((r) => ({ ...r, ...(nameOf(r.spaceId) ? { space: nameOf(r.spaceId) } : {}) }))) };
     if (action === "clem.unremind") return (await this.cancelReminder(args.id)).ok ? { ok: true } : { error: "No upcoming reminder has that id." };
@@ -547,8 +568,8 @@ export class Organizer {
     if (action === "clem.routine") {
       const made = await this.addRoutine(args as RoutineInput);
       if ("error" in made) return { error: made.error };
-      const r = made.routine, card = routineCardBlock({ type: "routine", id: r.id, title: r.title, when: describeTrigger(r.trigger).slice(0, 300), does: [r.tell ? (r.think ? "Clem decides what to tell you" : "tells you") : "", r.post ? "posts to your webhook" : ""].filter(Boolean).join(" and ").slice(0, 300) || undefined, ...(made.hook ? { hook: made.hook } : {}) });
-      return { ok: true, id: r.id, runs: describeTrigger(r.trigger), ...(made.hook ? { webhook: made.hook, note: "Other apps POST JSON or text to this URL to run it. Keep the key private." } : {}), card: "Put this card in your reply so they can see and stop it:\n" + card };
+      const r = made.routine;
+      return { ok: true, id: r.id, title: r.title, runs: describeTrigger(r.trigger), does: [r.tell ? (r.think ? "Clem decides what to tell them" : "tells them") : "", r.post ? "posts to their webhook" : ""].filter(Boolean).join(" and "), ...(made.hook ? { webhook: made.hook, note: "Give them this URL: other apps POST JSON or text to it to run the routine. Keep the key private." } : {}) };
     }
     if (action === "clem.routines") {
       const list = (await this.routines()).filter((r) => !r.stopped);
@@ -556,6 +577,37 @@ export class Organizer {
     }
     if (action === "clem.unroutine") { await this.stopRoutine(args.id); return { ok: true }; }
     if (action === "clem.run_routine") return this.runRoutine(args.id, { kind: "manual" });
+    if (action === "clem.watch") {
+      const w = await this.watch(args.text, spaces, { repeat: args.repeat === true, channel: args.push === false ? "app" : "push" });
+      return { ok: true, id: w.id, watching: w.text, ...(w.subjectId ? { subject: nameOf(w.subjectId) } : {}), ...(w.until ? { until: w.until } : {}), tells: w.repeat ? "every time" : "once" };
+    }
+    if (action === "clem.unwatch") {
+      const was = (await this.watches()).find((w) => w.id === args.id);
+      if (!was) return { error: "No watch has that id. clem.watches lists them." };
+      await this.stopWatch(args.id);
+      return { ok: true, stopped: was.text };
+    }
+    if (action === "clem.watches") {
+      const list = (await this.watches()).filter((w) => w.live);
+      return { text: list.length ? list.map((w) => `- ${w.id}: ${w.text}${w.until ? ` (until ${w.until})` : ""}${w.repeat ? " · every time" : ""}`).join("\n") : "Not watching for anything." };
+    }
+    if (action === "clem.mute") {
+      const kinds = muteKinds(args.kind);
+      if (!kinds) return { error: `"${args.kind}" isn't a kind of news. Use files, announcements, mail, grades, deadlines, timetable or exams.` };
+      const space = args.subject ? findSpace(args.subject, spaces) : undefined;
+      if (args.subject && !space) return { error: `No subject or project matches "${args.subject}".` };
+      const words = (Array.isArray(args.words) ? args.words : args.words ? [args.words] : []).map((w: string) => w.toLowerCase());
+      const made = await this.muteBy({ kinds, subjectId: space?.id, words });
+      return { ok: true, muted: muteText(made[0], nameOf), ids: made.map(muteKey) };
+    }
+    if (action === "clem.mutes") { const list = await this.mutesList(); return { text: list.length ? list.map((m) => `- ${m.key}: ${muteText(m, nameOf)}`).join("\n") : "Nothing is muted." }; }
+    if (action === "clem.unmute") {
+      const m = (await this.mutesList()).find((x) => x.key === args.id);
+      if (!m) return { error: "No mute has that id. clem.mutes lists them." };
+      await this.unmute(m.key);
+      return { ok: true, unmuted: muteText(m, nameOf) };
+    }
+    if (action === "clem.undo") return this.undoByText(args.what);
     // clem.study
     const space = spaceArg(args.subject);
     if (!space) return { error: args.subject ? `No subject or project matches "${args.subject}".` : "Say which subject or project to study (\"subject\")." };
@@ -563,9 +615,7 @@ export class Organizer {
     const r = await this.planStudy({ spaceId: space.id, sessions: args.sessions, minutes: args.minutes, until: args.until, title: args.title });
     if ("error" in r) return { error: r.error };
     if (!r.lines.length) return { error: "No free time fits before then within their study preferences (or those sessions are already planned). Suggest fewer or shorter sessions, a later date, or changing the days and hours they study.", prefs: prefsText((await this.settings()).study) };
-    const card: ClemCard = { type: "organizer", title: `Study sessions for ${r.space}`.slice(0, 120), when: "study", lines: r.lines };
-    return { ok: true, planned: r.lines.map((l) => `${l.text} at ${l.time}`), ...(r.short ? { note: `Only ${r.lines.length} of ${args.sessions} fit within their preferences.` } : {}),
-      card: "Put this card in your reply (each session can be undone):\n" + cardBlock(card) };
+    return { ok: true, planned: r.lines.map((l) => `${l.text} at ${l.time}`), ...(r.short ? { note: `Only ${r.lines.length} of ${args.sessions} fit within their preferences.` } : {}), undo: "If they want one back out, clem.undo with its day." };
   }
 
   // ---------- Routines (core/proactivity/routines.ts) ----------
@@ -681,10 +731,12 @@ export class Organizer {
     }
     let postId: string | undefined;
     if (say) {
-      postId = await this.post(`**${r.title}**\n\n${say}`, `routine:${id}:${now}`);
+      // A plain message like anything else Clem says by itself: no title over it, no markdown.
+      say = say.replace(/\*\*|__|`/g, "").replace(/^\s*[-*•]\s+/gm, "").trim();
+      postId = await this.post(say, `routine:${id}:${now}`);
       const urgent = important || event.kind === "change" && (event.changes as RoutineChange[] | undefined)?.some((c) => c.kind === "new_grade" || c.kind === "exam_posted");
       const out = delivery(s, { news: true, urgent }).channels.filter((c): c is Outward => c !== "app");
-      if (postId && out.length) await this.push(`routine:${id}:${now}`, r.title, say.replace(/\*\*/g, "").slice(0, 240), { chat: (await this.workspace()).mainId || "main", message: postId }, s, { channels: out, loud: r.loud });
+      if (postId) await this.push(`routine:${id}:${now}`, "Clem", say, { chat: (await this.workspace()).mainId || "main", message: postId }, s, { channels: ASKED, loud: r.loud });
     }
     const result = [say ? "told" : r.tell ? "nothing worth saying" : "", posted].filter(Boolean).join(", ") || "ran";
     await this.db.query("update organizer_routines set last_result = $3 where owner_id = $1 and id = $2", [this.owner, id, result.slice(0, 200)]);
@@ -718,11 +770,13 @@ export class Organizer {
   async stopWatch(id: string) { await this.db.query("update organizer_watches set stopped = true where owner_id = $1 and id = $2", [this.owner, id]); return this.watches(); }
 }
 
-/** A routine's message without the model: its title's news, plainly. */
+/** A routine's message without the model: its news, plainly. */
 function plainRoutine(r: Routine, event: { kind: string; [k: string]: unknown }) {
-  if (event.kind === "change") return ((event.changes as RoutineChange[]) || []).map((c) => `- ${c.title}${c.detail ? ": " + c.detail : ""}`).join("\n").slice(0, 1500);
-  if (event.kind === "page") return `${event.url} changed.`;
-  if (event.kind === "webhook") return `Webhook called${event.payload ? ": " + JSON.stringify(event.payload).slice(0, 600) : "."}`;
+  if (event.kind === "change") return ((event.changes as RoutineChange[]) || []).map((c) => plainText({ ...c, kind: c.kind as ChangeKind }, { now: Date.now(), name: () => c.subject })).join("\n").slice(0, 1500);
+  // Said plainly, under the routine's own name, since no model put it in words.
+  if (event.kind === "page") return `${r.title}: ${event.url} changed.`;
+  const p = event.payload, said = p && typeof p === "object" ? Object.entries(p as Record<string, unknown>).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ") : p ? String(p) : "";
+  if (event.kind === "webhook") return `${r.title}: ${said ? said.slice(0, 600) : "it was called."}`;
   return r.instructions || r.title;
 }
 const safeEqual = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };

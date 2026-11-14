@@ -113,7 +113,7 @@ try {
       const tick = () => document.querySelector(".guc-panel " + selector) ? done(Math.round(performance.now() - t0)) : requestAnimationFrame(tick);
       tick();
     }), { label, selector });
-    const tabs = [["Schedule", ".guc-slot"], ["Announcements", ".guc-ann"], ["CMS", ".guc-file"], ["Grades", ".guc-grade"], ["Deadlines", ".guc-deadline"]];
+    const tabs = [["Schedule", ".guc-slot"], ["Announcements", ".guc-ann"], ["CMS", ".guc-file"], ["Grades", ".guc-grade"], ["Coming up", ".guc-deadline"]];
 
     try {
       await boot("/app");
@@ -177,12 +177,13 @@ try {
       await timeTab("Grades", ".guc-grade");
       check(await page.locator(".guc-sem.is-latest h3", { hasText: "Spring 2026" }).count() === 1, `${theme}: the newest semester is highlighted`);
       await shot("grades");
-      await timeTab("Deadlines", ".guc-deadline");
-      check(await page.locator(".guc-when").first().textContent().then((t) => /^(in |today|tomorrow|\w{3} at)/.test(t)), `${theme}: deadlines read as relative times`);
+      // Coming up: exam seats and what was read from posts, in one list grouped by when.
+      await timeTab("Coming up", ".guc-deadline");
+      check(await page.locator(".guc-when").first().textContent().then((t) => /^(in |today|tomorrow|\w{3} at|\w{3} \d{1,2} \w{3}$)/i.test(t)), `${theme}: Coming up reads as relative times`);
+      check(await page.locator(".guc-group-head").count() >= 1, `${theme}: Coming up is grouped by when`);
+      check(await page.locator(".guc-deadline", { hasText: "Final exam" }).count() === 2, `${theme}: both exam seats show in Coming up`);
+      check(!(await page.locator(".guc-tabs [role=tab]", { hasText: /^Exams/ }).count()), `${theme}: Exams is part of Coming up`);
       await shot("deadlines");
-      await timeTab("Exams", ".guc-exam");
-      check(await page.locator(".guc-exam").count() === 2, `${theme}: both exam seats show`);
-      await shot("exams");
       await timeTab("Mail", ".guc-mail li");
       check(await page.locator(".guc-mail li", { hasText: "Welcome back" }).count() === 1, `${theme}: the Inbox shows`);
       await shot("mail");

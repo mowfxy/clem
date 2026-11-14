@@ -2,7 +2,7 @@
 // database. Every tab draws its cached copy on the first frame and refreshes behind it (src/guc/useGuc.ts).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { hubPath, relativeDue, sortDeadlines, weekGrid, weekLabel, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMail, type HubTerm, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
+import { dueGroup, hubPath, markText, relativeDue, weekGrid, weekLabel, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMail, type HubTerm, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
 import type { GucProgress } from "../../core/guc/types";
 import { sameCode } from "../../core/guc/codes";
 import { matchSubject } from "../../core/guc/match";
@@ -20,7 +20,9 @@ import { PASSWORD_ROUTE } from "../../core/guc/password";
 import "../library.css";
 import "./guc.css";
 
-const TABS: [HubTab, string][] = [["schedule", "Schedule"], ["announcements", "Announcements"], ["cms", "CMS"], ["grades", "Grades"], ["exams", "Exams"], ["deadlines", "Deadlines"], ["mail", "Mail"]];
+// Exams and deadlines are one tab, "Coming up" (route id `deadlines`, so #/app/guc/deadlines/<id> links still work; the
+// old `exams` route opens it too).
+const TABS: [HubTab, string][] = [["schedule", "Schedule"], ["announcements", "Announcements"], ["cms", "CMS"], ["grades", "Grades"], ["deadlines", "Coming up"], ["mail", "Mail"]];
 /** What each part of GUC is called when a sync couldn't read it. */
 const PART_NAMES: Record<string, string> = { courses: "your course list", schedule: "your schedule", grades: "this term's grades", exams: "exam seats", transcript: "your transcript", mail: "your GUC mail" };
 const clean = (e: unknown) => String((e as Error)?.message || e || "").replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
@@ -87,7 +89,7 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
   </div>;
 
   const busy = syncing || o.syncing;
-  const counts: Partial<Record<HubTab, number>> = { announcements: o.counts.unread, deadlines: o.counts.deadlines, exams: o.counts.exams, mail: o.counts.mail };
+  const counts: Partial<Record<HubTab, number>> = { announcements: o.counts.unread, deadlines: o.counts.deadlines, mail: o.counts.mail };
   const missed = (o.missed || []).filter((m) => m !== "courses" || !o.error).map((m) => PART_NAMES[m] || m);
   return <div className="page lib guc-hub">
     <PageHead title="GUC" line={busy ? progress || "Syncing…" : ago(o.lastSync)}>
@@ -113,7 +115,7 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
         : route.tab === "announcements" ? <Announcements focus={route.id} onConnect={onConnect} />
         : route.tab === "cms" ? <Cms course={route.id} material={route.sub} go={go} onOpenFile={onOpenFile} onConnect={onConnect} onToast={onToast} actions={actions} subjects={subjects} />
         : route.tab === "grades" ? <><ThisTerm onConnect={onConnect} /><Grades onConnect={onConnect} /></>
-        : route.tab === "exams" ? <Exams onConnect={onConnect} />
+        : route.tab === "exams" ? <Deadlines onConnect={onConnect} />
         : route.tab === "mail" ? <Mail onConnect={onConnect} />
         : <Deadlines focus={route.id} onConnect={onConnect} />}
     </section>
@@ -126,7 +128,7 @@ function prefetchTab(tab: HubTab) {
   else if (tab === "announcements") gucPrefetch({ action: "gucAnnouncements" });
   else if (tab === "cms") gucPrefetch({ action: "gucCourses" });
   else if (tab === "grades") { gucPrefetch({ action: "gucGrades" }); gucPrefetch({ action: "gucTerm" }); }
-  else if (tab === "exams") gucPrefetch({ action: "gucTerm" });
+  else if (tab === "exams") gucPrefetch({ action: "gucDeadlines" });
   else if (tab === "mail") gucPrefetch({ action: "gucMail" });
   else gucPrefetch({ action: "gucDeadlines" });
 }
@@ -222,6 +224,9 @@ export function Announcements({ focus, onConnect, only }: { focus?: string; onCo
     gucPatch<HubCourse[]>("gucCourses", (cs) => cs.map((c) => (!course || c.key === course ? { ...c, unread: 0 } : c)));
     void gucAsk({ action: "gucMarkAllRead", ...(course ? { courseId: course } : {}) }).catch(() => void gucCache.revalidateAll()).finally(() => setMarking(false));
   };
+  // Long posts the person opened stay open when the list scrolls them out and back.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const flip = (id: string) => setOpened((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n; });
   const options = [{ value: "", label: "All courses" }, ...courses.filter((c) => c.active).map((c) => ({ value: c.key, label: c.code || c.name }))];
   return <>
     {(!only || unreadHere > 0) && <div className="guc-bar">
@@ -234,10 +239,35 @@ export function Announcements({ focus, onConnect, only }: { focus?: string; onCo
         const unread = fresh.current.has(a.id);
         return <article className={`guc-ann ${unread ? "is-unread" : ""} ${a.id === focus ? "is-focus" : ""}`} data-unread={a.read ? undefined : a.id} ref={(el) => { if (el && !a.read) observer?.observe(el); }}>
           <header>{unread && <span className="guc-dot" role="img" aria-label="Unread" />}<b>{a.code || a.course}</b><span>{a.course}</span>{a.week && <small>{weekLabel(a.week, "short")}</small>}</header>
-          <p>{a.text}</p>
+          <PostText text={a.text} open={opened.has(a.id)} onToggle={() => flip(a.id)} />
         </article>;
       }} />}
     {more.loading && <Skeleton rows={2} />}
+  </>;
+}
+
+/** A post as written: its lines and paragraph breaks, runs of " · " table rows as an aligned table, and a long post
+ *  held to about eight lines with Show more. The virtual list measures the row again when it opens. */
+function PostText({ text, open, onToggle }: { text: string; open: boolean; onToggle: () => void }) {
+  const box = useRef<HTMLDivElement>(null), [long, setLong] = useState(false);
+  const blocks = useMemo(() => {
+    const out: ({ line: string } | { rows: string[][] })[] = [];
+    for (const line of text.split("\n")) {
+      const last = out.at(-1);
+      if (line.includes(" · ")) { if (last && "rows" in last) last.rows.push(line.split(" · ")); else out.push({ rows: [line.split(" · ")] }); }
+      else out.push({ line });
+    }
+    // One " · " line alone is a sentence, not a table.
+    return out.map((b) => ("rows" in b && b.rows.length < 2 ? { line: b.rows[0].join(" · ") } : b));
+  }, [text]);
+  useLayoutEffect(() => { const el = box.current; if (el && !open) setLong(el.scrollHeight > el.clientHeight + 4); }, [text]);
+  return <>
+    <div ref={box} className={`guc-post ${open ? "" : "is-clamped"}`}>
+      {blocks.map((b, i) => "rows" in b
+        ? <div key={i} className="guc-post-table"><table><tbody>{b.rows.map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k}>{c}</td>)}</tr>)}</tbody></table></div>
+        : b.line ? <p key={i}>{b.line}</p> : <span key={i} className="guc-post-gap" />)}
+    </div>
+    {(long || open) && <button type="button" className="guc-post-more" aria-expanded={open} onClick={onToggle}>{open ? "Show less" : "Show more"}</button>}
   </>;
 }
 
@@ -336,7 +366,7 @@ export function Grades({ onConnect, courseKey }: { onConnect: () => void; course
         <span><b>{g.code}</b>{g.name}</span>
         {g.fresh && <span className="guc-tag">New</span>}
         <small>{g.hours ? `${g.hours} h` : ""}</small>
-        <strong aria-label={g.letter ? `Grade ${g.letter}` : "No grade yet"}>{g.letter || (g.numeric ?? "—")}</strong>
+        <strong aria-label={g.letter ? `Grade ${g.letter}` : "No grade yet"}>{g.letter || (g.numeric !== null ? markText(g.numeric) : "—")}</strong>
       </div>)}
     </section>;
   })}</>;
@@ -356,25 +386,13 @@ export function ThisTerm({ onConnect, code }: { onConnect: () => void; code?: st
     {mids.map((m) => <div key={m.id} className={`guc-grade ${m.fresh ? "is-fresh" : ""}`}>
       <span><b>{m.code}</b>{m.course.replace(m.code, "").replace(/^\s*[-–:]\s*/, "") || "Midterm"}</span>
       {m.fresh ? <span className="guc-tag">New</span> : <small>Midterm</small>}<small />
-      <strong>{m.grade}</strong>
+      <strong>{markText(m.grade)}</strong>
     </div>)}
     {work.map((w) => <details key={w.id} className="guc-work">
       <summary><span><b>{w.code}</b>Coursework</span><small>{w.entries.length} {w.entries.length === 1 ? "assessment" : "assessments"}</small></summary>
-      <ul>{w.entries.map((e, i) => <li key={i}><span>{e.name}</span><span className="guc-work-parts">{e.elements.map((x, j) => <span key={j}>{x.name && x.name !== e.name ? <small>{x.name}</small> : null}<strong>{x.grade || "—"}</strong></span>)}</span></li>)}</ul>
+      <ul>{w.entries.map((e, i) => <li key={i}><span>{e.name}</span><span className="guc-work-parts">{e.elements.map((x, j) => <span key={j}>{x.name && x.name !== e.name ? <small>{x.name}</small> : null}<strong>{markText(x.grade) || "—"}</strong></span>)}</span></li>)}</ul>
     </details>)}
   </section>;
-}
-
-export function Exams({ onConnect, code }: { onConnect: () => void; code?: string }) {
-  const term = useGuc<HubTerm>({ action: "gucTerm" });
-  if (!term.data) return term.error ? <Problem message={term.error} onRetry={() => void term.reload()} onConnect={onConnect} /> : <Skeleton rows={3} />;
-  const exams = term.data.exams.filter((e) => !code || sameCode(e.code, code));
-  if (!exams.length) return <EmptyState scene="checklist" line="No exam seats posted yet. Clem checks the portal every half hour and tells you when they are." />;
-  return <ol className="guc-exams">{exams.map((e) => <li key={e.id} className="guc-exam">
-    <div className="guc-exam-when"><b>{e.day || e.date}</b><small>{[e.day ? e.date : "", e.start && `${e.start}${e.end ? "–" + e.end : ""}`].filter(Boolean).join(" · ")}</small></div>
-    <span><strong>{e.course}</strong><small>{e.type}</small></span>
-    <div className="guc-exam-seat"><small>Hall</small><b>{e.hall || "—"}</b><small>Seat</small><b>{e.seat || "—"}</b></div>
-  </li>)}</ol>;
 }
 
 export function Mail({ onConnect }: { onConnect: () => void }) {
@@ -382,7 +400,7 @@ export function Mail({ onConnect }: { onConnect: () => void }) {
   if (!mail.data) return mail.error ? <Problem message={mail.error} onRetry={() => void mail.reload()} onConnect={onConnect} /> : <Skeleton rows={5} />;
   if (!mail.data.items.length) return <EmptyState scene="checklist" line={mail.data.missed ? "Clem couldn’t reach your GUC mail yet. It will try again in a few minutes." : "Your GUC Inbox will show here after the next check."} />;
   const when = (iso: string) => { const t = Date.parse(iso); return Number.isFinite(t) ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""; };
-  return <ul className="guc-mail" aria-label="GUC mail">{mail.data.items.map((m) => <MailItem key={m.id} m={m} when={when} />)}<li className="guc-mail-note"><small>Read-only. Open Outlook to reply; Clem never sends, moves or marks your mail.</small></li></ul>;
+  return <ul className="guc-mail" aria-label="GUC mail">{mail.data.items.map((m) => <MailItem key={m.id} m={m} when={when} />)}<li className="guc-mail-note"><small>Opening a message here marks it read. Open Outlook to reply; Clem never sends, moves or deletes your mail.</small></li></ul>;
 }
 
 type OpenMail = { text: string; cut: boolean } | { error: string } | "loading";
@@ -393,7 +411,12 @@ function MailItem({ m, when }: { m: HubMail["items"][number]; when: (iso: string
     if (open === "loading") return;
     if (open) return setOpen(null);
     setOpen("loading");
-    gucAsk<{ text: string; cut: boolean }>({ action: "gucMailMessage", id: m.id }).then((r) => setOpen({ text: r.text, cut: r.cut }), (e) => setOpen({ error: (e as Error)?.message || "Clem couldn’t open this message." }));
+    // Opening it marks it read (the engine does so on GUC and keeps it read itself): the list and the tab's count at once.
+    if (!m.read) {
+      gucPatch<HubMail>("gucMail", (d) => ({ ...d, items: d.items.map((x) => (x.id === m.id ? { ...x, read: true } : x)) }));
+      gucPatch<HubOverview>("gucOverview", (o) => ({ ...o, counts: { ...o.counts, mail: Math.max(0, (o.counts.mail ?? 0) - 1) } }));
+    }
+    gucAsk<{ text: string; cut: boolean }>({ action: "gucMailMessage", id: m.id }).then((r) => setOpen({ text: r.text, cut: r.cut }), (e) => { setOpen({ error: (e as Error)?.message || "Clem couldn’t open this message." }); if (!m.read) void gucCache.revalidateAll(); });
   };
   return <li className={(m.read ? "" : "is-unread") + (open ? " is-open" : "")}>
     <button type="button" className="guc-mail-open" aria-expanded={!!open} onClick={toggle}>
@@ -409,19 +432,41 @@ function MailItem({ m, when }: { m: HubMail["items"][number]; when: (iso: string
 
 // ---------- Deadlines ----------
 /** `courseKey`: one course's deadlines (a subject's page). */
+const KIND_NAMES: Record<string, string> = { quiz: "Quiz", exam: "Exam", assignment: "Assignment", "in-class": "In-class", lab: "Lab", project: "Project", presentation: "Presentation", other: "Due" };
+const dayOnly = (date: string) => date.replace(/, \d{2}:\d{2}$/, "");
+/** Coming up: everything at uni with a time, exam seats and what Clem read from posts and course mail, in Today /
+ *  Tomorrow / This week / Next week / Later, then Done (folded) until each is removed 14 days after. `courseKey`: one
+ *  course's (a subject's page). */
 export function Deadlines({ focus, onConnect, courseKey }: { focus?: string; onConnect: () => void; courseKey?: string }) {
   const now = useNow();
   const data = useGuc<HubDeadline[]>({ action: "gucDeadlines" });
-  const list = useMemo(() => sortDeadlines((data.data || []).filter((d) => !courseKey || d.courseKey === courseKey), now), [data.data, now, courseKey]);
-  useEffect(() => { if (focus) document.querySelector(`[data-deadline="${CSS.escape(focus)}"]`)?.scrollIntoView({ block: "center" }); }, [focus, !!data.data]);
+  const mine = useMemo(() => (data.data || []).filter((d) => !courseKey || d.courseKey === courseKey), [data.data, courseKey]);
+  const ahead = mine.filter((d) => !d.done && (!d.ends || Date.parse(d.ends) > now)), done = mine.filter((d) => !ahead.includes(d));
+  const [showDone, setShowDone] = useState(false);
+  useEffect(() => { if (focus) { if (done.some((d) => d.id === focus)) setShowDone(true); requestAnimationFrame(() => document.querySelector(`[data-deadline="${CSS.escape(focus)}"]`)?.scrollIntoView({ block: "center" })); } }, [focus, !!data.data]);
   if (!data.data) return data.error ? <Problem message={data.error} onRetry={() => void data.reload()} onConnect={onConnect} /> : <Skeleton rows={4} />;
-  if (!list.length) return <EmptyState scene="alarm" line="No deadlines found. Clem picks them out of announcements and course pages." />;
-  // Grouped by when they fall: this week, next week, later, then the last month's past ones.
-  const group = (d: (typeof list)[number]) => { if (d.past) return "Past"; const days = (Date.parse(d.due) - now) / 864e5; return days < 7 ? "Next 7 days" : days < 14 ? "The week after" : "Later"; };
-  return <ol className="guc-deadlines">
-    {list.map((d, i) => { const r = relativeDue(d.due, now), g = group(d); return <li key={d.id} data-deadline={d.id} className={`tone-${r.tone} ${d.id === focus ? "is-focus" : ""}`}>
-      {(i === 0 || group(list[i - 1]) !== g) && <h3 className={g === "Past" ? "guc-past-head" : "guc-group-head"}>{g}</h3>}
-      <div className="guc-deadline"><b className="guc-when">{r.label}</b><span><strong>{d.title}</strong><small>{[d.code, r.date].filter(Boolean).join(" · ")}</small>{d.note && <q className="guc-deadline-note">{d.note}</q>}</span></div>
-    </li>; })}
-  </ol>;
+  if (!mine.length) return <EmptyState scene="alarm" line={courseKey ? "Nothing coming up in this course." : "Nothing coming up. Clem reads quizzes, assignments and exams from course posts, course mail and the portal."} />;
+  const row = (d: HubDeadline, past = false) => {
+    const r = relativeDue(d.due, now), day = d.timeKnown === false;
+    const when = past ? dayOnly(r.date) : day ? (dueGroup(d.due, now) === "Today" ? "Today" : dueGroup(d.due, now) === "Tomorrow" ? "Tomorrow" : dayOnly(r.date)) : r.label;
+    const sub = [d.code, past || day ? "" : r.date, d.place].filter(Boolean).join(" · ");
+    return <li key={d.id} data-deadline={d.id} className={`tone-${past ? "past" : r.tone} ${d.id === focus ? "is-focus" : ""}`}>
+      <div className="guc-deadline"><b className="guc-when">{when}</b><span>
+        <strong>{d.kind && <em className="guc-tag guc-kind">{KIND_NAMES[d.kind] || d.kind}</em>}{d.title}</strong>
+        <small>{sub}</small>
+        {d.either && !past && <small className="guc-either">{d.either}</small>}
+        {d.covers && <small>Covers {d.covers}</small>}
+        {past ? <small>Removed {dayOnly(relativeDue(d.removeAt || d.due, now).date)}</small> : d.note && <q className="guc-deadline-note">{d.note}</q>}
+      </span></div>
+    </li>;
+  };
+  const groups = ["Today", "Tomorrow", "This week", "Next week", "Later"] as const;
+  return <>
+    {ahead.length ? <ol className="guc-deadlines">{groups.flatMap((g) => { const items = ahead.filter((d) => dueGroup(d.due, now) === g); return items.length ? [<li key={"h-" + g} className="guc-group"><h3 className="guc-group-head">{g}</h3></li>, ...items.map((d) => row(d))] : []; })}</ol>
+      : <EmptyState scene="alarm" line={courseKey ? "Nothing coming up in this course." : "Nothing coming up right now."} />}
+    {done.length > 0 && <section className="guc-done" aria-label="Done">
+      <button type="button" className="guc-done-toggle" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}><Icon name="chevron" size={13} />Done · {done.length}</button>
+      {showDone && <ol className="guc-deadlines">{done.map((d) => row(d, true))}</ol>}
+    </section>}
+  </>;
 }

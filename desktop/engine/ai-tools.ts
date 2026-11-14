@@ -75,7 +75,8 @@ export async function runGucTool(ctx: GucToolContext, request: Record<string, un
       case "guc.grades": return gradesText(await e.grades(), course || undefined);
       case "guc.read": return readFile(ctx, a.file, a.from, course || undefined);
       case "guc.mail": {
-        if (a.id) return mailText(await e.mailMessage(a.id));
+        // The AI reading a message for the person never marks it read; only their own open in the hub does.
+        if (a.id) return mailText(await e.mailMessage(a.id, { markRead: false }));
         const m = await e.mail();
         return mailListText(m.items, { limit: a.limit ?? 20, query: a.query, missed: m.missed });
       }

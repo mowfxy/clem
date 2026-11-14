@@ -1,6 +1,7 @@
 // The GUC hub's shared shapes and pure helpers: the read API's results, the Sat–Thu week grid, deadline order and
 // relative times in Cairo, semester order and the hub's #/app/guc routes. No I/O, no cheerio: the window imports it.
-import type { GucCoursework, GucErrorKind, GucExam, GucMail, GucMidterm, GucSlot } from "./types.ts";
+import { sameCode } from "./codes.ts";
+import type { GucCoursework, GucDeadline, GucErrorKind, GucExam, GucMail, GucMidterm, GucSlot } from "./types.ts";
 
 export const TZ = "Africa/Cairo";
 /** GUC's teaching slots ("periods"), first to eighth. */
@@ -26,7 +27,9 @@ export type HubWeek = { week: string; date?: string; items: HubMaterial[] };
 export type HubMaterials = { courseKey: string; weeks: HubWeek[] };
 export type HubHit = { type: "material" | "announcement"; id: string; courseKey: string; code: string; title: string; snippet: string; week?: string; name?: string; fileType?: string };
 export type HubGrade = { id: string; semester: string; code: string; name: string; hours: number | null; numeric: number | null; letter: string; latest: boolean; fresh: boolean };
-export type HubDeadline = { id: string; courseKey: string; code: string; title: string; due: string; source: string; note?: string };
+/** One thing at uni with a time: a tracked item read from a post or a mail, or an exam seat from the portal ("Coming
+ *  up"). `due`: when it is (its start); `ends`: when it is over; `done`: over; `removeAt`: when it leaves the list. */
+export type HubDeadline = { id: string; courseKey: string; code: string; title: string; due: string; /** "announcement", "week", "mail" or "portal". */ source: string; note?: string; kind?: string; place?: string; covers?: string; timeKnown?: boolean; either?: string; ends?: string; done?: boolean; removeAt?: string };
 export type HubFile = { id: string; name: string; type: string; size: number; stored: boolean };
 
 const TYPES: Record<string, string> = { pdf: "application/pdf", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ppt: "application/vnd.ms-powerpoint", doc: "application/msword", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", zip: "application/zip", txt: "text/plain", mp4: "video/mp4" };
@@ -43,6 +46,13 @@ export function materialFile(url: string, title: string) {
   const ext = /\.([a-z0-9]{1,5})$/i.exec(base)?.[1]?.toLowerCase() || "";
   const name = ext ? (title && !title.toLowerCase().endsWith("." + ext) ? `${title.replace(/[\\/:*?"<>|]+/g, " ").trim()}.${ext}` : base) : title || base || "file";
   return { name, type: TYPES[ext] || "application/octet-stream" };
+}
+
+/** A GUC grade or mark with at most one decimal, everywhere one is shown: "92.5926" → "92.6", "97.5" and "60" as they
+ *  are, "8.75 / 10" → "8.8 / 10"; "/ 10" (not graded yet) and letters unchanged. */
+export function markText(mark: string | number | null | undefined): string {
+  if (mark === null || mark === undefined) return "";
+  return String(mark).replace(/\d+(?:\.\d+)?/g, (n) => (n.includes(".") ? String(Math.round(Number(n) * 10) / 10) : n));
 }
 
 /** Winter 2025 → Spring 2026 → Summer 2026 → Winter 2026: year, then term (winter is the autumn term). */
@@ -118,3 +128,67 @@ export function parseHubRoute(route: string): HubRoute | null {
   return { tab, id: dec(m[2]), sub: dec(m[3]) };
 }
 export const hubPath = (tab: HubTab, id?: string, sub?: string) => "/app/guc/" + [tab, id, sub].filter(Boolean).map((s) => encodeURIComponent(s!)).join("/");
+
+// ---------- Coming up: everything at uni with a time ----------
+/** Kept this long after it is over, in the Done section; then removed (tracked items are pruned by the sync). */
+export const DONE_DAYS = 14;
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+/** Cairo wall clock → instant (the offset is looked up: Egypt has summer time). */
+function cairoAt(ymd: string, h: number, m: number) {
+  const want = Date.UTC(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10), h, m);
+  let t = want - 2 * 3600e3;
+  for (let i = 0; i < 3; i++) { const c = cairo(t), shown = Date.UTC(+c.ymd.slice(0, 4), +c.ymd.slice(5, 7) - 1, +c.ymd.slice(8, 10), +c.time.slice(0, 2), +c.time.slice(3, 5)); if (shown === want) break; t += want - shown; }
+  return t;
+}
+const clock = (s: string) => { const m = /(\d{1,2})[:.](\d{2})(?::\d{2})?\s*([ap])?\.?\s*m?\.?/i.exec(s || ""); if (!m) return undefined; let h = +m[1]; if (/p/i.test(m[3] || "") && h < 12) h += 12; if (/a/i.test(m[3] || "") && h === 12) h = 0; return h < 24 && +m[2] < 60 ? { h, m: +m[2] } : undefined; };
+/** An exam seat's date and times: "29 - October - 2026" (or "2026-10-29", "29/10/2026") with "8:30:00 AM"–"10:30:00 AM". */
+export function examWhen(e: Pick<GucExam, "date" | "start" | "end">): { start: string; end?: string; timed: boolean } | undefined {
+  const d = e.date || "";
+  let ymd = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(d)?.slice(1).map(Number);
+  if (!ymd) { const m = /(\d{1,2})\s*[-/ ]\s*([A-Za-z]+|\d{1,2})\s*[-/ ]\s*(\d{4})/.exec(d); if (m) { const mo = /^\d+$/.test(m[2]) ? +m[2] : MONTHS.findIndex((x) => x.startsWith(m[2].toLowerCase().slice(0, 3))) + 1; if (mo > 0) ymd = [+m[3], mo, +m[1]]; } }
+  if (!ymd) return undefined;
+  const day = `${ymd[0]}-${String(ymd[1]).padStart(2, "0")}-${String(ymd[2]).padStart(2, "0")}`, a = clock(e.start), b = clock(e.end);
+  return { start: new Date(cairoAt(day, a?.h ?? 23, a ? a.m : 59)).toISOString(), ...(a && b ? { end: new Date(cairoAt(day, b.h, b.m)).toISOString() } : {}), timed: !!a };
+}
+
+/** Sat in a room at a time (over two hours after it starts, unless its end is known), rather than handed in. */
+export const isSitting = (kind?: string) => /^(quiz|exam|in-class|lab|presentation)$/.test(kind || "");
+/** When it is over: its end; a timed sitting two hours after it starts; anything else at its time (a day-only item's
+ *  `due` is already the end of its day). */
+export function endsAt(d: { due: string; ends?: string; kind?: string; timeKnown?: boolean }) {
+  if (d.ends) return Date.parse(d.ends);
+  const t = Date.parse(d.due);
+  return d.timeKnown !== false && isSitting(d.kind) ? t + 2 * 3600e3 : t;
+}
+
+/** The exam seats and the tracked items as one list. A seat and a read item that are the same sitting (same course, an
+ *  exam, within a day) are one row: the portal's date, hall and seat, the post's title and what it covers. A seat over
+ *  for more than DONE_DAYS is left out (the portal keeps listing them for weeks). */
+export function comingUp(tracked: (GucDeadline & { code: string })[], exams: GucExam[], courses: { key: string; code: string; seasonId?: number }[], now: number): HubDeadline[] {
+  const out: HubDeadline[] = tracked.map((d) => ({ ...d }));
+  for (const e of exams) {
+    const when = examWhen(e);
+    if (!when) continue;
+    const place = [e.hall, e.seat ? "seat " + e.seat : ""].filter(Boolean).join(", ");
+    const course = courses.filter((c) => sameCode(c.code, e.code)).sort((a, b) => (b.seasonId || 0) - (a.seasonId || 0))[0];
+    const same = out.find((d) => d.source !== "portal" && sameCode(d.code, e.code) && d.kind === "exam" && Math.abs(Date.parse(d.due) - Date.parse(when.start)) < 864e5);
+    const seat = { due: when.start, ...(when.end ? { ends: when.end } : {}), timeKnown: when.timed, ...(place ? { place } : {}) };
+    if (same) { Object.assign(same, seat); delete same.either; continue; }
+    const title = /mid|final|make-?up|re-?exam/i.test(e.type) ? e.type.replace(/\s+exam$/i, "") + " exam" : "Exam";
+    out.push({ id: "exam-" + e.id, courseKey: course?.key || "", code: e.code, title: title.replace(/^\w/, (c) => c.toUpperCase()), source: "portal", kind: "exam", ...seat });
+  }
+  return out.map((d) => { const end = endsAt(d), done = end <= now; return { ...d, ...(done ? { done: true, removeAt: new Date(end + DONE_DAYS * 864e5).toISOString() } : {}) }; })
+    .filter((d) => !d.done || Date.parse(d.removeAt!) > now)
+    .sort((a, b) => (a.done === b.done ? (a.done ? Date.parse(b.due) - Date.parse(a.due) : Date.parse(a.due) - Date.parse(b.due)) : a.done ? 1 : -1));
+}
+
+/** Where an upcoming item sits in Coming up: today, tomorrow, the rest of this GUC week (Saturday to Friday), next week,
+ *  or later; Cairo days. */
+export function dueGroup(due: string | number, now: number): "Today" | "Tomorrow" | "This week" | "Next week" | "Later" {
+  const t = typeof due === "number" ? due : Date.parse(due), d = cairo(t).ymd, today = cairo(now).ymd;
+  if (d <= today) return "Today";
+  if (d === addDays(today, 1)) return "Tomorrow";
+  const start = weekStart(now);
+  if (d < addDays(start, 7)) return "This week";
+  return d < addDays(start, 14) ? "Next week" : "Later";
+}

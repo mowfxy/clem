@@ -8,7 +8,7 @@ import type { Space, StoredFile } from "../../core/types";
 import { Icon } from "../Icons";
 import { EmptyState } from "../ui/Calm";
 import { DriveFolder, SaveRules, Storage, dayShort, type GucActions } from "./GucCards";
-import { Announcements, CourseFiles, Deadlines, Grades, Problem, Skeleton } from "./GucHub";
+import { Announcements, CourseFiles, Deadlines, Grades, Problem, Skeleton, ThisTerm } from "./GucHub";
 import { checkSubjectNow, unlinkSubject, useSubject } from "./subject";
 import { confirmDialog } from "../dialogs";
 import { useGuc } from "./useGuc";
@@ -17,7 +17,7 @@ import { PASSWORD_ROUTE } from "../../core/guc/password";
 import "../library.css";
 import "./guc.css";
 
-const TABS = [["files", "Files"], ["announcements", "Announcements"], ["deadlines", "Deadlines"], ["grades", "Grades"], ["classes", "Classes"], ["settings", "Settings"]] as const;
+const TABS = [["files", "Files"], ["announcements", "Announcements"], ["deadlines", "Coming up"], ["grades", "Grades"], ["classes", "Classes"], ["settings", "Settings"]] as const;
 type Tab = (typeof TABS)[number][0];
 const ORDER = ["saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"];
 
@@ -46,7 +46,7 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
       {tab === "files" ? <CourseFiles courseKey={course.key} linked onOpenFile={onOpenFile} onConnect={connect} onToast={onToast} />
         : tab === "announcements" ? <Announcements only={course.key} onConnect={connect} />
         : tab === "deadlines" ? <Deadlines courseKey={course.key} onConnect={connect} />
-        : tab === "grades" ? <Grades courseKey={course.key} onConnect={connect} />
+        : tab === "grades" ? <><ThisTerm code={course.code} onConnect={connect} /><Grades courseKey={course.key} onConnect={connect} /></>
         : tab === "classes" ? (slots.length ? <ul className="guc-classes">{slots.map((s) => <li key={s.id}>
             <b>{dayShort(s.day)}</b><span>{s.start || PERIOD_TIMES[s.period - 1]?.[0]}–{s.end || PERIOD_TIMES[s.period - 1]?.[1]}</span><span>{s.type || "Class"}</span><small>{[s.location, s.group].filter(Boolean).join(" · ")}</small>
           </li>)}</ul> : <EmptyState scene="calendar" line={`No ${course.code} classes on your GUC schedule yet.`} />)

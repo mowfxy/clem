@@ -9,7 +9,7 @@ import { mailAbout } from "../core/guc/mail-about.ts";
 import { emptySnapshot, type GucCourse, type GucMail } from "../core/guc/types.ts";
 import { importance, type Change } from "../core/proactivity/attention.ts";
 import { cairoAt } from "../core/proactivity/settings.ts";
-import { planSweep } from "../core/proactivity/sweep.ts";
+import { planSweep, readReply } from "../core/proactivity/sweep.ts";
 import { snapshotOf } from "../core/proactivity/snapshot.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { host as fakeHost } from "./guc-fake.ts";
@@ -56,10 +56,15 @@ test("new mail becomes an event that says who it is for; mail for everyone is ne
   assert.deepEqual(plan.rate, []);
 });
 
-test("after a change the model is not asked to reword what is certain", () => {
+test("a certain change is given words by the model, never a new level, and words it was not given are dropped", () => {
   const snap = snapshotOf({ spaces: [], plans: [], chats: [], files: [], studySets: [], automations: [] }, Date.now());
   const moved: Change = { key: "dl:a:2026-11-20T10:00:00.000Z", kind: "deadline_changed", title: "CSEN 301 Quiz 1 moved to Fri 20 Nov", detail: "Was Thu 19 Nov." };
-  assert.equal(planSweep("event", { now: Date.now(), snap, prev: snap, slots: [], deadlines: [], events: [moved] }, { done: new Set() }).ask, undefined);
+  const plan = planSweep("event", { now: Date.now(), snap, prev: snap, slots: [], deadlines: [], events: [moved] }, { done: new Set() });
+  assert.match(plan.ask!.user, /News:\n0\. deadline moved \(certain\) · CSEN 301 · CSEN 301 Quiz 1 moved to Fri 20 Nov: Was Thu 19 Nov\./);
+  const silenced = readReply('{"levels":[{"i":0,"level":"silent","why":"x","say":"Your CSEN 301 Quiz 1 is now Friday 20 Nov, a day later."}]}', plan, snap, new Set());
+  assert.deepEqual([silenced.rated[0].level, silenced.rated[0].say], ["notify", "Your CSEN 301 Quiz 1 is now Friday 20 Nov, a day later."], "its words, the rules' level");
+  const invented = readReply('{"levels":[{"i":0,"level":"notify","why":"x","say":"Quiz 1 moved to Friday, and the midterm is in room C7.02."}]}', plan, snap, new Set());
+  assert.equal(invented.rated[0].say, undefined, "a midterm and a room it was never told of: the rules say it instead");
 });
 
 // ---------- In the engine ----------
@@ -99,17 +104,19 @@ test("engine: a first run posts nothing; mail for everyone makes no post, push o
     r = await o.sweep("event");
     assert.equal(r.posted, true);
     const { posts } = await o.inbox();
-    assert.equal(posts.length, 1, "one message for both");
-    const card = cardsIn(posts[0].content).find((c) => c.type === "organizer") as { lines: { text: string; key?: string; space?: string }[] };
-    assert.deepEqual(card.lines.map((l) => l.key), ["change:mail:3", "change:mail:4"]);
-    assert.equal(card.lines[0].space, "Math 301", "under the right course");
-    assert.equal(h.notices.length, 1, "one push for the batch");
+    assert.deepEqual(posts.map((p) => p.content), [
+      "MATH 301, Extra Lecture: To the students of Lecture Group 2: We have an extra lecture this Thursday at 3:45 in H10.",
+      "Best of in Presentations (from Reem Hassan): Hello Sara, there is no best of in presentations, each one counts for ten percent.",
+    ], "one plain message each, course and subject first, no system sender, no card");
+    assert.ok(posts.every((p) => !cardsIn(p.content).length && !/Email from|Notification System|DO NOT REPLY/.test(p.content)));
+    assert.equal(h.notices.length, 2, "one notification per message");
+    assert.ok(h.notices.every((n) => n.startsWith("Clem | ")), "titled Clem, the message as the body");
     assert.equal((await o.sweep("event")).posted, false, "said once");
-    assert.equal((await o.inbox()).posts.length, 1);
+    assert.equal((await o.inbox()).posts.length, 2);
   } finally { await engine.close(); }
 });
 
-test("engine: a deadline that moved twice between sweeps is one line at the date it has now, in the card's words only; a mailed copy of a CMS announcement is not told twice", async () => {
+test("engine: a deadline that moved twice between sweeps is one message at the date it has now; a mailed copy of a CMS announcement is not told twice", async () => {
   const clock = { t: cairoAt(SUN, "13:00") };
   const { engine, h, o } = await engineAt(clock);
   try {
@@ -119,10 +126,9 @@ test("engine: a deadline that moved twice between sweeps is one line at the date
     await event(engine, "dl:a:2026-11-20T10:00:00.000Z", "deadline_changed", "CSEN 301 Quiz 1 moved to Fri 20 Nov", "Was Thu 19 Nov.");
     assert.equal((await o.sweep("event")).posted, true);
     let posts = (await o.inbox()).posts;
-    const card = cardsIn(posts[0].content).find((c) => c.type === "organizer") as { lines: { text: string }[] };
-    assert.deepEqual(card.lines.map((l) => l.text), ["CSEN 301 Quiz 1 moved to Fri 20 Nov"]);
-    assert.equal(h.calls.length, 0, "no model call to reword it");
-    assert.ok(posts[0].content.startsWith("```clem-card"), "nothing is said above the card that the card does not say");
+    assert.deepEqual(posts.map((p) => p.content), ["CSEN 301 Quiz 1 moved to Fri 20 Nov."], "once, at the date it has now");
+    assert.equal(h.calls.length, 1, "one short call for words; it gave none, so the rules say it");
+    assert.doesNotMatch(h.calls[0].user, /moved to Thu 19 Nov/, "the stale move is not even shown to it");
 
     // GUC mails out what a lecturer posted on CMS: the announcement is already there, so the mail is not news.
     const body = "Dear students, quiz 2 will be held next Tuesday in the tutorial. It covers chapters 3 and 4.";

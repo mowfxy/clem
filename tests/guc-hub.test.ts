@@ -206,3 +206,23 @@ test("a CMS week reads as a date, the same in the hub and on the file_saved card
   assert.match(weekLabel("Week: 2026-11-07", "short"), /^Week of (Nov 7|7 Nov)$/);
   assert.equal(weekLabel("Orientation"), "Orientation");
 });
+
+test("posts first seen together page in their page order, without repeats across pages", async () => {
+  const { engine } = await synced("hub-6");
+  try {
+    // 45 posts of one course first seen in the same moment (one read of its page), saved in a shuffled order.
+    const order = Array.from({ length: 45 }, (_, i) => (i * 17) % 45);
+    for (const i of order) await engine.db.query("insert into guc_announcements (owner_id, announcement_id, course_key, scope, body, first_seen, position) values ('hub-6', $1, '1202:64', 'course', $2, '2099-01-01T00:00:00Z', $3)", ["p" + String(44 - i).padStart(2, "0"), "Post " + i, i]);
+    const first = await engine.announcements();
+    assert.deepEqual(first.items.slice(0, 5).map((a) => a.text), ["Post 0", "Post 1", "Post 2", "Post 3", "Post 4"], "newest moment first, then the page's own order");
+    assert.match(first.next!, /^\d+\.39\.p05$/, "the cursor carries the position");
+    const second = await engine.announcements({ cursor: first.next });
+    assert.deepEqual(second.items.slice(0, 5).map((a) => a.text), ["Post 40", "Post 41", "Post 42", "Post 43", "Post 44"]);
+    const all = [...first.items, ...second.items];
+    assert.equal(new Set(all.map((a) => a.id)).size, all.length, "no row twice");
+    assert.equal(all.length, 54);
+    // A cursor from before positions were kept still pages (as position 0).
+    const old = await engine.announcements({ cursor: first.next!.replace(/\.39\./, ".") });
+    assert.ok(old.items.length > 0 && !old.items.some((a) => a.text === "Post 0"));
+  } finally { await engine.close(); }
+});

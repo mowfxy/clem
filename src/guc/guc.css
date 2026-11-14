@@ -73,10 +73,22 @@ html:root[data-theme=light] .guc-skel span{background:linear-gradient(90deg,#1b2
 .guc-ann{margin:0 0 8px;padding:12px 14px;border-radius:12px;background:var(--calm-tile);font-size:var(--text-s);color:var(--ink)}
 .guc-ann header{display:flex;align-items:center;gap:8px;margin-bottom:6px;min-width:0}
 .guc-ann header b{font-weight:600}
-.guc-ann header span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.guc-ann header span:not(.guc-dot){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .guc-ann header small{flex:none;color:var(--muted);font-size:11.5px}
 .guc-ann p{margin:0;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--calm-soft)}
 .guc-ann.is-unread p{color:var(--ink);font-weight:600}
+/* A whole post as written: lines, paragraph gaps, table rows aligned; long ones held to about eight lines. */
+.guc-post{line-height:1.55;color:var(--calm-soft)}
+.guc-post.is-clamped{max-height:calc(1.55em * 8);overflow:hidden}
+.guc-post-gap{display:block;height:.55em}
+.guc-post-table{margin:4px 0;overflow-x:auto}
+.guc-post-table table{border-collapse:collapse;font-size:12.5px}
+.guc-post-table td{padding:3px 14px 3px 0;vertical-align:top;border-top:1px solid color-mix(in srgb,var(--ink) 7%,transparent)}
+.guc-post-table tr:first-child td{border-top:0;color:var(--muted);font-weight:600}
+.guc-ann.is-unread .guc-post-table td{color:var(--ink)}
+.guc-post-more{all:unset;margin-top:6px;font-size:12px;line-height:1;padding:4px 0;color:var(--muted);cursor:pointer}
+.guc-post-more:hover{color:var(--ink)}
+.guc-post-more:focus-visible{outline:2px solid var(--ember);outline-offset:3px;border-radius:4px}
 .guc-hub .is-focus{box-shadow:inset 0 0 0 1.5px var(--sky)}
 
 /* CMS browser */
@@ -132,6 +144,15 @@ html:root[data-theme=light] .guc-skel span{background:linear-gradient(90deg,#1b2
 .guc-deadline small{font-size:12px;color:var(--muted)}
 .guc-hub .guc-past-head,.guc-hub .guc-group-head{margin:14px 4px 6px;font:600 var(--text-label)/1 var(--sans);color:var(--muted)}
 .guc-hub .guc-deadlines li:first-child .guc-group-head{margin-top:2px}
+.guc-group{list-style:none}
+.guc-kind{margin:0 8px 0 0;font-style:normal;vertical-align:1px}
+.guc-either{color:var(--ink)!important}
+.guc-done{margin-top:18px}
+.guc-done-toggle{all:unset;display:inline-flex;align-items:center;gap:6px;margin:0 4px 8px;font:600 var(--text-label)/1 var(--sans);color:var(--muted);cursor:pointer}
+.guc-done-toggle:hover{color:var(--ink)}
+.guc-done-toggle svg{transition:transform .16s}
+.guc-done-toggle[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.guc-done-toggle:focus-visible{outline:2px solid var(--ember);outline-offset:3px;border-radius:4px}
 .guc-deadline-note{margin-top:3px;font-size:12px;line-height:1.4;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 /* A subject's CMS tab */
