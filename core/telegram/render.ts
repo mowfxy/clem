@@ -144,10 +144,16 @@ function chunks(md: string) {
   push();
   return out;
 }
-/** A whole answer (Markdown with clem-card blocks) as Telegram messages: its text in order, then each card. */
+/** The visuals and textbook figures in an answer (```visual and ```kinetra blocks). The window draws each as a PNG and
+ *  sends it as a photo (src/telegram/figures.ts), so their JSON is never sent as text. */
+const FIGURE_FENCE = /```(visual|kinetra)[^\S\n]*\n([\s\S]*?)```/g;
+export function figureBlocks(content: string) { return [...content.matchAll(FIGURE_FENCE)].map((m) => ({ lang: m[1] as "visual" | "kinetra", body: m[2] })); }
+export function withoutFigures(content: string) { return content.replace(FIGURE_FENCE, "").replace(/\n{3,}/g, "\n\n"); }
+/** A whole answer (Markdown with clem-card blocks) as Telegram messages: its text in order, then each card. Visuals and
+ *  figures are left out of the text: they go as photos. */
 export function replyMessages(content: string, c: RenderContext = {}): TgMessage[] {
   const out: TgMessage[] = [];
-  const text = content.replace(/```clem-card\n[\s\S]*?\n```/g, "").replace(/```(?:plan|memory|settings_update)\n[\s\S]*?\n```/g, "").trim();
+  const text = withoutFigures(content.replace(/```clem-card\n[\s\S]*?\n```/g, "").replace(/```(?:plan|memory|settings_update)\n[\s\S]*?\n```/g, "")).trim();
   for (const part of chunks(text)) { const html = markdownHtml(part); if (html) out.push({ html: html.length > TG_TEXT_LIMIT ? esc(cut(part, CHUNK)) : html, buttons: [] }); }
   for (const card of cardsIn(content)) { const m = cardMessage(card, c); if (m) out.push(m); }
   return out;

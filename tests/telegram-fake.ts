@@ -34,6 +34,8 @@ export function fakeTelegram() {
     if (typeof init?.body === "string") body = JSON.parse(init.body);
     else if (init?.body) { const chunks: Buffer[] = []; for await (const c of init.body) chunks.push(Buffer.from(c)); body = { multipart: Buffer.concat(chunks).toString("latin1") }; }
     calls.push({ method, body });
+    // A photo Telegram won't take (its name says so), to check the fall back to a document.
+    if (method === "sendPhoto" && /refused/.test(body.multipart || "")) return Response.json({ ok: false, error_code: 400, description: "Bad Request: PHOTO_INVALID_DIMENSIONS" }, { status: 400 });
     if (method === "sendMessage" && /<broken/.test(body.text || "") && body.parse_mode) return Response.json({ ok: false, error_code: 400, description: "Bad Request: can't parse entities" }, { status: 400 });
     return Response.json({ ok: true, result: method === "sendChatAction" || method === "answerCallbackQuery" ? true : { message_id: n++, date: 0, chat: { id: 1, type: "private" } } });
   };

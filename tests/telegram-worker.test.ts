@@ -117,6 +117,15 @@ test("worker: inbox pull and ack are idempotent; taps round-trip; replies, typin
   assert.ok((await call(env, tg, "u1", "/telegram/file", form)).ok);
   assert.equal(tg.calls.at(-1)!.method, "sendDocument");
   assert.match(tg.calls.at(-1)!.body.multipart, /Lecture 3\.pdf/);
+  // A visual Clem drew goes as a photo; one Telegram refuses as a photo still arrives, as a file.
+  const photo = new FormData();
+  photo.set("file", new File([new Uint8Array([137, 80, 78, 71])], "Heap.png", { type: "image/png" })); photo.set("as", "photo");
+  assert.ok((await call(env, tg, "u1", "/telegram/file", photo)).ok);
+  assert.equal(tg.calls.at(-1)!.method, "sendPhoto");
+  const refused = new FormData();
+  refused.set("file", new File([new Uint8Array([137, 80, 78, 71])], "refused.png", { type: "image/png" })); refused.set("as", "photo");
+  assert.ok((await call(env, tg, "u1", "/telegram/file", refused)).ok);
+  assert.deepEqual(tg.calls.slice(-2).map((c) => c.method), ["sendPhoto", "sendDocument"]);
   const big = new FormData();
   big.set("file", new File([new Uint8Array(TG_FILE_LIMIT + 1)], "huge.mp4"));
   assert.match((await call(env, tg, "u1", "/telegram/file", big)).error, /50 MB/);

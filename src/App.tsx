@@ -58,6 +58,7 @@ import {PACK_EXTENSION} from '../core/study-pack';
 import {FileCard,DocumentCard} from './FileCard';
 import {withMainThread,mainThreadOf,isSpaceChat,earlierChats,moveEarlier} from '../core/main-thread/migrate';
 import {routeMessage,carriedNote} from '../core/main-thread/route';
+import {HANDOFF_GUIDE,organizerAsk,workAsk,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtText} from '../core/main-thread/handoff';
 import {buildContext,localNowCard,withGuc,type NowCard} from '../core/main-thread/context';
 import type {GucNow} from '../core/guc/ai-tools';
 // Recall (MiniSearch) loads with the first main-thread turn, not with the window.
@@ -109,10 +110,15 @@ const REPLY_SOURCE = "reply";
 type Carry = { attachments: string[]; drive: DriveItem[] };
 /** What a message brings beyond its text: the subjects or projects it @mentions, and, on a message the main thread
  *  handed to a subject's chat, the note of what came before. */
-/** `tg`: the Telegram inbox item this turn answers (desktop/engine/telegram.ts); the answer goes back there. */
-type Turn = { mentions?: string[]; carried?: string; tg?: string };
+/** `tg`: the Telegram inbox item this turn answers (desktop/engine/telegram.ts); the answer goes back there.
+ *  `into`: a hand-off's new subject or project chat (core/main-thread/handoff.ts). The turn runs there in the background,
+ *  on that chat's own model, while the person stays where they are; its result comes back to the main thread. */
+type Turn = { mentions?: string[]; carried?: string; tg?: string; into?: { id: string; spaceId: string; model: string; reasoning?: string } };
+/** A hand-off running in its subject or project chat: where its result goes when it ends. `tg` answers that Telegram
+ *  turn with it; `post` sends it to Telegram as a new message (the turn was answered already). */
+type Handoff = { chat: string; main: string; space: string; name: string; tg?: string; post?: boolean };
 /** Said once, first, in every main-thread request, so it stays byte-stable for the CLIs' prompt caches. */
-const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. A question that clearly belongs to one subject or project is moved to that space's chat before you see it, so answer what is asked here; when a request needs one subject's files, suggest mentioning it with @. Your messages here that answer nothing they asked are what Clem told them by itself (news, briefs, reminders, what it did): they are yours, so \"yes\", \"undo that\" or \"which one?\" is about them.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROUTINE_GUIDE + "\n" + TELEGRAM_GUIDE;
+const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. " + HANDOFF_GUIDE + " Your messages here that answer nothing they asked are what Clem told them by itself (news, briefs, reminders, what it did): they are yours, so \"yes\", \"undo that\" or \"which one?\" is about them.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROUTINE_GUIDE + "\n" + TELEGRAM_GUIDE;
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
 const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Gemini" : "ChatGPT";
@@ -168,7 +174,6 @@ import { Marketing } from "./site/Marketing";
 import { PlanEditor } from "./PlanEditor";
 import { ChatMenu } from "./ChatMenu";
 import { MessageBody, type BodyHandlers } from "./chat/MessageBody";
-import { WorkSummary } from "./chat/WorkSummary";
 import { LimitNotice, resumeTime } from "./chat/LimitNotice";
 import { MessageTools, ReviewPanel, VerifyPanel, UserMessageTools, UserMessageEdit, parseClaims } from "./chat/MessageExtras";
 import { FOLDER_FILE_CHANGED, type EditBlock } from "./chat/EditProposal";
@@ -1016,25 +1021,59 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   /** Home ⇄ main thread: the box morphs between them (src/main-thread/morph.ts); anywhere else it is a plain swap. */
   function goMain(carry = false) { if (placeRef.current === "home") morph("in", () => openMain(carry)); else openMain(carry); }
   function goHome() { if (placeRef.current === "main") morph("out", () => newChat()); else newChat(); }
-  /** A main-thread message that belongs to one subject or project carries on in that space's latest chat (or a new one).
-   *  The thread keeps the question and a card linking there; the chat gets the question with a short note of what was
-   *  said before, and answers it. */
-  function handOff(main: Chat, spaceId: string, reason: "mention" | "match", prompt: string, carry: Carry, typed: boolean, tg?: string) {
-    const current = stateRef.current, space = current.spaces.find((x) => x.id === spaceId);
-    if (!space) return;
-    const recent = current.chats.filter((c) => c.spaceId === space.id && !c.temporary && !c.archived && c.kind !== "main").sort((a, b) => b.updated - a.updated)[0];
-    const target = recent?.id || uid(), now = Date.now();
+  // ---------- Hand-off (core/main-thread/handoff.ts; docs/MAIN-THREAD.md) ----------
+  // Subject and project work asked in the main thread runs in a NEW chat in that space, on the AI the person used last,
+  // in the background: the person stays in the main thread, which gets a card linking to the chat now and the chat's
+  // answer and files when it ends (and Telegram, when it was asked from there).
+  const handoffRuns = useRef(new Map<string, Handoff>());
+  const handoffQueue = useRef<{ prompt: string; carry: Carry; turn: Turn }[]>([]);
+  const [handoffTick, setHandoffTick] = useState(0);
+  /** `ask`: the person's message goes into the main thread with the card (a hand-off by the rules, before any answer);
+   *  the AI's own clem.handoff comes from a turn that already has it. */
+  function startHandoff(main: Chat, space: Space, task: string, o: { carry?: Carry; ask?: { reason: "mention" | "match" }; tg?: string; post?: boolean }) {
+    const now = Date.now(), id = uid();
+    const pick = lastUsedModel(stateRef.current.chats, (m) => modelsRef.current.some((x) => x.id === m && x.connected), { model: defaultModel, reasoning: defaultReasoning || undefined });
     const note = carriedNote(main.messages.filter((m) => !m.digest).map((m) => ({ role: m.role, content: m.content })));
-    const card = cardBlock({ type: "handoff", spaceId: space.id, spaceName: space.name, spaceKind: space.kind, chatId: target, reason, ...(recent ? { title: recent.title.slice(0, 160) } : {}) });
+    const card = cardBlock({ type: "handoff", spaceId: space.id, spaceName: space.name, spaceKind: space.kind, chatId: id, title: taskTitle(task).slice(0, 160), back: true, ...(o.ask ? { reason: o.ask.reason } : {}) });
     patch((s) => ({ ...s, chats: [
-      ...(recent ? [] : [{ id: target, title: prompt.slice(0, 70), spaceId: space.id, messages: [], updated: now } as Chat]),
-      ...s.chats.map((c) => c.id === main.id ? { ...c, updated: now, messages: [...c.messages, { id: uid(), role: "user" as const, content: prompt, at: now, ...(reason === "mention" ? { mentions: [space.id] } : {}), ...(tg ? { via: "telegram" as const } : {}) }, { id: uid(), role: "assistant" as const, content: card, at: now }] } : c),
+      { id, title: taskTitle(task), spaceId: space.id, messages: [], updated: now, ...(pick.model ? { model: pick.model } : {}), ...(pick.reasoning ? { reasoning: pick.reasoning } : {}) },
+      ...s.chats.map((c) => c.id === main.id ? { ...c, updated: now, messages: [...c.messages,
+        ...(o.ask ? [{ id: uid(), role: "user" as const, content: task, at: now, ...(o.ask.reason === "mention" ? { mentions: [space.id] } : {}), ...(o.tg ? { via: "telegram" as const } : {}) }] : []),
+        { id: uid(), role: "assistant" as const, content: card, at: now }] } : c),
     ] }));
-    if (typed) { setDraft(""); drafts.current.delete(main.id); }
-    setMentions([]);
-    setChatId(target); setSpaceId(space.id); navigate("/app");
-    setQueued({ prompt, chat: target, carry, turn: { carried: note || undefined, tg } });
+    handoffRuns.current.set(id, { chat: id, main: main.id, space: space.id, name: space.name, ...(o.tg ? { tg: o.tg } : {}), ...(o.post ? { post: true } : {}) });
+    handoffQueue.current.push({ prompt: task, carry: o.carry ?? { attachments: [], drive: [] }, turn: { carried: note || undefined, into: { id, spaceId: space.id, model: pick.model, reasoning: pick.reasoning } } });
+    setHandoffTick((n) => n + 1);
+    return id;
   }
+  /** The main-thread AI's clem.handoff: only from the main thread. From a Telegram turn the result follows the AI's
+   *  short reply as its own Telegram message. */
+  function handoffTool(chat: Chat, args: { space?: unknown; task?: unknown }, tg?: string) {
+    if (chat.kind !== "main") return { error: "clem.handoff works only in the main thread; you are already in a subject or project chat, so do the work here." };
+    const spaces = stateRef.current.spaces, task = String(args.task || "").trim(), space = spaceNamed(String(args.space || ""), spaces);
+    if (!task) return { error: 'clem.handoff needs "task": the request, complete.' };
+    if (!space) return { error: `No subject or project matches "${String(args.space || "")}". Theirs: ${spaces.map((s) => s.name).join(", ") || "none"}. Ask which one they mean.` };
+    const main = stateRef.current.chats.find((c) => c.id === chat.id) || chat;
+    startHandoff(main, space, task, { ...(tg ? { post: true } : {}) });
+    return { ok: true, space: space.name, note: `A new chat in ${space.name} is doing it on their latest AI; the result comes back to this thread by itself${tg ? " and to their Telegram" : ""}. Reply with one short line, not the answer.` };
+  }
+  /** A hand-off's chat finished: its answer and files come back to the main thread as one plain message. */
+  function finishHandoff(chatId: string) {
+    const h = handoffRuns.current.get(chatId);
+    if (!h) return;
+    handoffRuns.current.delete(chatId);
+    const last = stateRef.current.chats.find((c) => c.id === chatId)?.messages.at(-1), reply = last?.role === "assistant" ? last : undefined;
+    const content = broughtText(reply?.content, h.name), attachments = reply?.attachments || [], now = Date.now();
+    patch((s) => ({ ...s, chats: s.chats.map((c) => c.id === h.main ? { ...c, updated: now, messages: [...c.messages, { id: uid(), role: "assistant" as const, content, at: now, ...(attachments.length ? { attachments } : {}), brought: { chat: chatId, space: h.space, name: h.name } }] } : c) }));
+    if (!h.tg && !h.post) return;
+    const files = attachments.map((id) => stateRef.current.files.find((f) => f.id === id)).filter((f): f is StoredFile => !!f).slice(0, 5).map((f) => ({ id: f.id, name: f.name.slice(0, 300), type: f.type || "" }));
+    void telegramOut(content, files).then((out) => {
+      if (h.tg) answerTelegram(h.tg, out.text, out.files, out.photos);
+      else void desktop?.invoke({ action: "tgPost", text: out.text, ...(out.files.length ? { files: out.files } : {}), ...(out.photos.length ? { photos: out.photos } : {}) }).catch(() => {});
+    });
+  }
+  /** One at a time into `send`, whenever nothing else is waiting to be sent. */
+  useEffect(() => { if (queued || !handoffQueue.current.length) return; setQueued(handoffQueue.current.shift()!); }, [queued, handoffTick]);
   /** The Now card for the main thread: rebuilt only when the plans, the spaces or the day change. */
   const nowCache = useRef<{ spaces: unknown; plans: unknown; day: string; card: NowCard } | null>(null);
   function nowCard() {
@@ -1204,8 +1243,19 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     });
   };
   const projects = useProjects({ stateRef, patch, ask: projectAsk, fallbackModel: () => defaultModel || undefined, onError: (message) => setToast(message) });
+  // What `send` reads of the chat on screen. A hand-off turn (`turn.into`) reads its own chat instead, so it runs in the
+  // background while the person stays where they are.
+  const onScreen = { activeChat, chatId, spaceId, viewSpace, model, reasoning, panelFile, panelEdit, pointers, temporaryNext, running, long };
   async function send(e?: FormEvent, override?: string, carry?: Carry, turn?: Turn) {
     e?.preventDefault();
+    const into = turn?.into, here = onScreen;
+    const activeChat = into ? stateRef.current.chats.find((c) => c.id === into.id) : here.activeChat;
+    if (into && !activeChat) return;
+    const chatId = into ? into.id : here.chatId, spaceId = into ? into.spaceId : here.spaceId;
+    const viewSpace = into ? stateRef.current.spaces.find((s) => s.id === into.spaceId) : here.viewSpace;
+    const model = into ? into.model : here.model, reasoning = into ? into.reasoning || "" : here.reasoning;
+    const panelFile = into ? null : here.panelFile, panelEdit = into ? false : here.panelEdit, pointers = into ? [] : here.pointers;
+    const temporaryNext = into ? false : here.temporaryNext, running = into ? into.id in runs : here.running, long = into ? false : here.long;
     // A command typed mid-message is read as if it came first (see core/commands.ts).
     const prompt = leadingCommand((override ?? draft).trim()).trim();
     if (!prompt) return;
@@ -1243,10 +1293,18 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       setQueued({ prompt, chat: main.id, carry: { attachments: carry?.attachments ?? attachments, drive: carry?.drive ?? driveRefs }, turn: { ...turn, mentions: mentionIds } });
       return;
     }
-    // In the main thread a message that clearly belongs to one subject or project (or @mentions it) moves there.
-    if (activeChat?.kind === "main" && !isVisual && !long) {
+    // In the main thread a task on the material of one clearly named subject or project (or @mentioned) goes to a new chat
+    // there at once, as does anything @mentioning one. Plain questions and the organizer's own business (what a quiz covers, reminders, deadlines…) stay, and anything the rules
+    // can't place is the main-thread AI's call (clem.handoff, core/main-thread/handoff.ts).
+    if (activeChat?.kind === "main" && !long && !into) {
       const route = routeMessage(expandCommand(prompt), stateRef.current.spaces.map(({ id, name, kind, description }) => ({ id, name, kind, description })), { mentions: mentionIds });
-      if (route.kind === "handoff") { handOff(activeChat, route.spaceId, route.reason, prompt, { attachments: files, drive: carry?.drive ?? driveRefs }, override === undefined, turn?.tg); return; }
+      const space = route.kind === "handoff" && !organizerAsk(prompt) && (route.reason === "mention" || workAsk(prompt)) ? stateRef.current.spaces.find((x) => x.id === route.spaceId) : undefined;
+      if (space && route.kind === "handoff") {
+        startHandoff(activeChat, space, prompt, { carry: { attachments: files, drive: carry?.drive ?? driveRefs }, ask: { reason: route.reason }, tg: turn?.tg });
+        if (override === undefined) { setDraft(""); drafts.current.delete(activeChat.id); }
+        setMentions([]); setAttachments([]); setDriveRefs([]); setAttach(false);
+        return;
+      }
     }
     const id = chatId || (desktop?draftChatId.current:uid());
     const messageId = uid();
@@ -1309,15 +1367,18 @@ export default function App({offline=false}:{offline?:boolean}={}) {
         ? s.chats.map((c) => (c.id === id ? next : c))
         : [next, ...s.chats],
     }));
-    if (!chatId) { carriedChat.current = id; panelByChat.current.set(id, panelFile?.id || ""); }
-    setChatId(id);
-    if (turn?.tg) telegramTurns.current.set(id, { tg: turn.tg, seen: false });
-    // The message has gone, so the box it was typed in keeps no draft of it. A message sent for the person (a retry, a
-    // queued prompt) leaves what they are writing alone; a resent or continued one leaves the box's files too.
-    if (override === undefined) { setDraft(""); drafts.current.delete(chatId || "new"); }
-    if (!carry || turn) { setAttachments([]); setDriveRefs([]); setAttach(false); setPointers([]); }
-    if (override === undefined || turn) setMentions([]);
-    setPanelEdit(true);
+    // A hand-off runs where it is, off screen: nothing on screen changes, and its result goes back through `handoffs`.
+    if (!into) {
+      if (!chatId) { carriedChat.current = id; panelByChat.current.set(id, panelFile?.id || ""); }
+      setChatId(id);
+      if (turn?.tg) telegramTurns.current.set(id, { tg: turn.tg, seen: false });
+      // The message has gone, so the box it was typed in keeps no draft of it. A message sent for the person (a retry, a
+      // queued prompt) leaves what they are writing alone; a resent or continued one leaves the box's files too.
+      if (override === undefined) { setDraft(""); drafts.current.delete(chatId || "new"); }
+      if (!carry || turn) { setAttachments([]); setDriveRefs([]); setAttach(false); setPointers([]); }
+      if (override === undefined || turn) setMentions([]);
+    }
+    if (!into) setPanelEdit(true);
     // A subject's setup thread reads its own answers (core/guc/setup-flow.ts) until setup is done; then the AI answers.
     if (next.setup && !isVisual && desktop && await gucSetup.reply(next, prompt)) return;
     if (editing) {
@@ -1708,10 +1769,10 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
             ),
           }));
         },
-        "chat", undefined, images, { chat: id, scope: activeSpace ? `${activeSpace.kind}:${activeSpace.id}` : undefined, queuedSince, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => { const at = byId(name); return at ? pageImages([at], at.name, pages) : pageImages(lookable(), name, pages); }, pdfTask: isVisual ? undefined : (op, args) => { if (op === "find" || op === "attach") return import("./files/finder").then((m) => m.findTask(finder, op, args)); const at = byId(args?.file); return import("./desktop/pdf-tasks").then((m) => at ? m.pdfTask([at], op, { ...args, file: at.name }) : m.pdfTask(lookable(), op, args)); } },
+        "chat", undefined, images, { chat: id, scope: activeSpace ? `${activeSpace.kind}:${activeSpace.id}` : undefined, queuedSince, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => { const at = byId(name); return at ? pageImages([at], at.name, pages) : pageImages(lookable(), name, pages); }, pdfTask: isVisual ? undefined : (op, args) => { if (op === "handoff") return Promise.resolve({ data: handoffTool(chat, args, turn?.tg) }); if (op === "find" || op === "attach") return import("./files/finder").then((m) => m.findTask(finder, op, args)); const at = byId(args?.file); return import("./desktop/pdf-tasks").then((m) => at ? m.pdfTask([at], op, { ...args, file: at.name }) : m.pdfTask(lookable(), op, args)); } },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
-      // A reply that used tools: the notes written on the way fold under "Task completed in …" and the answer stands below it.
+      // A reply that used tools: the notes written on the way are dropped and only the answer is shown.
       const done = isVisual || work === undefined ? undefined : splitWork(reply, work, Date.now() - started);
       if (done?.answer) named.content = done.answer;
       updateChat(id, (c) => ({
@@ -2064,15 +2125,22 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   const telegramTurns=useRef(new Map<string,{tg:string;seen:boolean}>());
   const tgQueue=useRef<{prompt:string;chat:string;carry:Carry;turn:Turn}[]>([]);
   const [tgTick,setTgTick]=useState(0);
-  const answerTelegram=(id:string,text:string,files?:{id:string;name:string;type:string}[])=>void desktop?.invoke({action:"tgAnswered",id,text,...(files?.length?{files}:{})}).catch(()=>{});
-  useEffect(()=>{if(queued||Object.keys(runs).length||!tgQueue.current.length)return;setQueued(tgQueue.current.shift()!);},[queued,runs,tgTick]);
+  type TgFile={id:string;name:string;type:string};type TgPhoto={name:string;data:string};
+  const answerTelegram=(id:string,text:string,files?:TgFile[],photos?:TgPhoto[])=>void desktop?.invoke({action:"tgAnswered",id,text,...(files?.length?{files}:{}),...(photos?.length?{photos}:{})}).catch(()=>{});
+  /** An answer for Telegram: its words, the files it made, and its visuals drawn as PNGs (sent as photos; src/telegram/figures.ts). */
+  const telegramOut=async(text:string,files:TgFile[])=>{
+    const photos=/```(visual|kinetra)/.test(text)?await import('./telegram/figures').then(m=>m.figurePhotos(text)).catch(()=>[] as TgPhoto[]):[];
+    return {text,files,photos};
+  };
+  // Hand-offs run in the background, so they don't hold up the next Telegram message.
+  useEffect(()=>{if(queued||Object.keys(runs).some(id=>!handoffRuns.current.has(id))||!tgQueue.current.length)return;setQueued(tgQueue.current.shift()!);},[queued,runs,tgTick]);
   useEffect(()=>{for(const [chat,t] of telegramTurns.current){
     if(chat in runs){t.seen=true;continue;}
     if(!t.seen)continue;
     telegramTurns.current.delete(chat);
     const last=stateRef.current.chats.find(x=>x.id===chat)?.messages.at(-1),reply=last?.role==='assistant'?last:undefined;
     const files=(reply?.attachments||[]).map(id=>stateRef.current.files.find(f=>f.id===id)).filter((f):f is StoredFile=>!!f).slice(0,5).map(f=>({id:f.id,name:f.name.slice(0,300),type:f.type||''}));
-    answerTelegram(t.tg,reply?.content.trim()||"Clem couldn’t finish that answer. It’s in your main thread.",files);
+    void telegramOut(reply?.content.trim()||"Clem couldn’t finish that answer. It’s in your main thread.",files).then(out=>answerTelegram(t.tg,out.text,out.files,out.photos));
   }},[runs]);
   useEffect(()=>{if(!desktop?.onTelegram)return;return desktop.onTelegram((turn)=>{
     const main=mainThreadOf(stateRef.current.chats);
@@ -2598,7 +2666,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       setQueued({prompt:queued.prompt,chat:queued.chat,carry:{attachments:sent?.attachments||[],drive:sent?.drive||[]}});
       return;
     }
-    if(!running){const {prompt,carry,turn}=queued;setQueued(null);void send(undefined,prompt,carry,turn);}
+    // A hand-off runs in its own chat, so it need not wait for the chat on screen; when it ends its result goes back.
+    if(!running||queued.turn?.into){const {prompt,carry,turn}=queued;setQueued(null);void send(undefined,prompt,carry,turn).finally(()=>{if(turn?.into)finishHandoff(turn.into.id);});}
   },[queued,running,conversationTarget,runs]);
   /** Continues a task a usage limit stopped, in its own chat; `auto` when the reset time came rather than the person asking. */
   function continueAfterLimit(chat:string,messageId:string,auto=false){
@@ -2957,7 +3026,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       {m.role === "user" && editingMessage === m.id ? <UserMessageEdit content={m.content} onCancel={() => setEditingMessage(null)} onSend={(text) => resend(chat.id, m.id, text)} /> : <div className="message-text">
         {m.content ? (
           m.role === "assistant" ? (
-            <>{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Clem continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}{m.work && !streaming && <WorkSummary work={m.work} handlers={bodyHandlers(chat, m)} />}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(chat, m)} /></>
+            <>{m.brought && <button type="button" className="brought-from" onClick={() => { const c = stateRef.current.chats.find((x) => x.id === m.brought!.chat); if (c) { setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); } else setToast(`That chat in ${m.brought!.name} was deleted.`); }}><Icon name={stateRef.current.spaces.find((x) => x.id === m.brought!.space)?.kind === "project" ? "projects" : "subjects"} size={13} />From {stateRef.current.spaces.find((x) => x.id === m.brought!.space)?.name || m.brought.name}<Icon name="arrow" size={12} /></button>}{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Clem continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(chat, m)} /></>
           ) : (
             <>{m.mentions?.length ? <span className="message-mentions">{m.mentions.map((id) => { const sp = state.spaces.find((x) => x.id === id); return sp ? <button type="button" key={id} className="pointer-chip mention-chip" onClick={() => openSpace(sp.id)} aria-label={`Open ${sp.name}`}><Icon name={sp.kind === "project" ? "projects" : "subjects"} size={13} />{sp.name}</button> : null; })}</span> : null}{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => { const inner = <>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</>; return p.file !== REPLY_SOURCE && p.page ? <button type="button" className="pointer-chip" key={i} aria-label={`Show in ${p.file}, page ${p.page}`} title={`${p.file} · page ${p.page}`} onClick={() => showPointer(p)}>{inner}</button> : <span className="pointer-chip" key={i}>{inner}</span>; })}</span> : null}</>
           )
@@ -3319,12 +3388,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     <VisualSaveContext.Provider value={chatVisualSaves}>
                       {activeChat.messages.some((m) => !m.digest)
                         ? <MainThread chat={activeChat} listRef={chatScroll.messages} focus={focusMessage} render={(m, i) => renderMessage(activeChat, m, i)} />
-                        : <div className="main-thread-empty"><EmptyState scene="conversation" line={<>This is your thread with Clem. Plan the day, ask anything, or type <b>@</b> to bring in a subject or project. Questions about one of them continue in its chat.</>} /></div>}
+                        : <div className="main-thread-empty"><EmptyState scene="conversation" line={<>This is your thread with Clem. Plan the day, ask anything, or type <b>@</b> to bring in a subject or project. Work on one of them runs in its own chat and comes back here.</>} /></div>}
                     </VisualSaveContext.Provider>
                     <div className="chat-composer">
                       {chatScroll.away && <button type="button" className="jump-latest" onClick={() => chatScroll.toEnd(true)}><Icon name="down" size={15} />{running ? "Clem is writing" : "Jump to latest"}</button>}
                       {composerUI}
-                      <p className="composer-note">Your main thread. Questions about one subject or project continue in its chat.</p>
+                      <p className="composer-note">Your main thread. Work on a subject or project runs in its own chat and comes back here.</p>
                     </div>
                   </>
                 ) : !activeChat?.messages.length ? (

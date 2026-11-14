@@ -12,7 +12,7 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/);
 
 /** A main-thread message continued in a subject's or project's chat. */
-export const handoffCard = z.object({ type: z.literal('handoff'), spaceId: text(80), spaceName: text(120), spaceKind: z.enum(['subject', 'project']).optional(), chatId: text(80), title: text(160).optional(), reason: z.enum(['mention', 'match']).optional() });
+export const handoffCard = z.object({ type: z.literal('handoff'), spaceId: text(80), spaceName: text(120), spaceKind: z.enum(['subject', 'project']).optional(), chatId: text(80), title: text(160).optional(), reason: z.enum(['mention', 'match']).optional(), /** A hand-off whose answer comes back to the main thread (core/main-thread/handoff.ts). */ back: z.boolean().optional() });
 /** The morning or evening brief. */
 export const briefCard = z.object({ type: z.literal('brief'), title: text(120), when: z.enum(['morning', 'evening']).optional(), items: z.array(z.object({ text: text(300), time: text(20).optional(), space: text(120).optional() })).max(20) });
 /** A deadline or task coming up. */

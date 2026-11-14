@@ -12,7 +12,7 @@ const KINETRA: Record<string, string> = {
   "guc.schedule": "Checking your GUC schedule…", "guc.deadlines": "Checking your deadlines…", "guc.announcements": "Reading CMS announcements…",
   "guc.materials": "Listing the course's CMS files…", "guc.read": "Reading a CMS file…", "guc.search": "Searching CMS…", "guc.grades": "Checking your grades…",
   "guc.settings": "Changing the subject's GUC settings…", "guc.help": "Checking the GUC tools…", "clem.watch": "Setting up a watch…", "clem.unwatch": "Stopping a watch…", "clem.watches": "Checking what Clem watches for…", "clem.mute": "Muting that kind of news…", "clem.unmute": "Unmuting…", "clem.mutes": "Checking what is muted…", "clem.undo": "Undoing that…", "clem.calendar": "Checking your schedule…", "clem.remind": "Setting a reminder…", "clem.reminders": "Checking your reminders…", "clem.unremind": "Cancelling a reminder…", "clem.study": "Finding time to study…", "clem.prefs": "Saving your preferences…", "clem.routine": "Setting up a routine…", "clem.routines": "Checking your routines…", "clem.unroutine": "Stopping a routine…", "clem.run_routine": "Running a routine…",
-  "telegram.sendFile": "Sending the file to Telegram…", "telegram.pair": "Getting Telegram ready…",
+  "clem.handoff": "Opening a chat for it…", "telegram.sendFile": "Sending the file to Telegram…", "telegram.pair": "Getting Telegram ready…",
 };
 
 /** The last two parts of a path ("Lectures/Week 3.pdf"), without Clem's own folders in front. */

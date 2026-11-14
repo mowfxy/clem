@@ -92,3 +92,14 @@ html:root[data-theme=light] .vps-dot.is-on{background:#1f8a55}
 .vps-manage .vps-test ul{gap:0}
 /* Main-thread cards */
 .vps-card-output{margin:8px 0 0;max-height:220px;overflow:auto;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--ink) 7%,transparent);font:400 11.5px/1.5 ui-monospace,Consolas,monospace;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+/* The heading and close button stay put; only the card under them scrolls. */
+dialog.app-modal[open]:has(.gd-picker.vps-manage){display:flex;flex-direction:column;overflow:hidden}
+dialog.app-modal:has(.gd-picker.vps-manage)>.modal-heading{flex:none}
+dialog.app-modal .gd-picker.vps-manage{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;margin:0 -20px -16px;padding:4px 22px 22px 32px;scrollbar-gutter:stable}
+/* A switch is a <label>, which the dialog would otherwise stack with a 14px gap under it, pushing it off its row. */
+.vps-manage label.mw-switch{flex-direction:row;gap:0;margin:0}
+.vps-section>header>.mw-switch{flex:none}
+/* Buttons in a section start where its text does. */
+.vps-section .gd-google{margin:6px 0 10px}
+.vps-again{display:block;margin:-4px 0 10px -8px}
+.vps-steps .vps-advanced{margin-top:10px}

@@ -27,7 +27,7 @@ export type EngineHost = {
   account?(path: string, init?: { method?: string; body?: BodyInit; headers?: Record<string, string> }, signal?: AbortSignal, timeout?: number): Promise<Response>;
   /** A Telegram message (or a tap that needs the agent or the workspace) answered as the main thread answers: the same
    *  agent, tools, data and hand-off (desktop: the window). The reply is Markdown with clem-cards, and any files made. */
-  converse?(turn: TelegramTurn): Promise<{ text: string; files?: { name: string; type: string; bytes: Uint8Array }[] }>;
+  converse?(turn: TelegramTurn): Promise<{ text: string; files?: { name: string; type: string; bytes: Uint8Array; photo?: boolean }[] }>;
   /** Shows a route or a chat's message in Clem (a tap on Open in Clem). */
   open?(o: { route?: string; chat?: string; message?: string }): void;
   /** Where newly saved CMS files go (the VPS store while files live there and it is reachable); left out: this PC. */

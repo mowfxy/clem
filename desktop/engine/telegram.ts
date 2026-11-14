@@ -127,8 +127,7 @@ export class TelegramRelay {
     try {
       const reply = await Promise.race([this.host.converse(turn), new Promise<never>((_, no) => { const t = setTimeout(() => no(Error("timeout")), ANSWER_MS); t.unref?.(); })]);
       done = true;
-      await this.reply(reply.text || "Done.");
-      for (const f of reply.files || []) await this.upload(f.name, f.type, f.bytes);
+      await this.post(reply.text || "Done.", reply.files || []);
     } catch (e) {
       done = true;
       this.host.log("warn", "[telegram] answer: " + errorText(e));
@@ -184,10 +183,20 @@ export class TelegramRelay {
     if (n.cards && cardsIn(n.cards).some((c) => c.type === "guc_password")) return this.reply(n.cards);
     return this.send([plainMessage(n.title === "Clem" || !n.title ? n.body : `${n.title}: ${n.body}`)]);
   }
-  private async upload(name: string, type: string, bytes: Uint8Array, caption?: string) {
+  /** An answer as Telegram messages: its text, then the files it made, then its visuals and figures as photos. A
+   *  visual-only answer is just its photos. */
+  async post(text: string, files: { name: string; type: string; bytes: Uint8Array; photo?: boolean }[] = []) {
+    const photos = files.filter((f) => f.photo);
+    if (!photos.length || replyMessages(text).length) await this.reply(text);
+    for (const f of files.filter((f) => !f.photo)) await this.upload(f.name, f.type, f.bytes);
+    for (const f of photos) await this.upload(f.name, f.type, f.bytes, undefined, true);
+  }
+  private async upload(name: string, type: string, bytes: Uint8Array, caption?: string, photo = false) {
     const form = new FormData();
     form.set("file", new Blob([new Uint8Array(bytes)], { type: type || "application/octet-stream" }), name);
     if (caption) form.set("caption", caption);
+    // A visual goes as a photo (shown inline); the Worker falls back to a document when Telegram refuses it as one.
+    if (photo) form.set("as", "photo");
     await this.call("/telegram/file", undefined, { form, timeout: 180_000 });
   }
   /** A CMS file to the paired chat (the AI's telegram.sendFile, or Send me the file). Telegram takes 50 MB; a bigger file

@@ -226,8 +226,8 @@ html:root .message.user .message-text,html:root[data-theme=light] .message.user 
 html:root[data-theme=light] .message.user .message-text{background:#ffffffa6;box-shadow:inset 0 1px 0 #fff,0 0 0 1px #1b27400f}
 
 /* ---------- What floats ---------- */
-html:root :is(.popover,.chapters-list,.cf-card,.review-menu,.slash-menu,.sp-menu-list,.gd-switch-list,.fp-menu,.unified-picker-panel,.visual-menu,.ag-tip,.history-filter-menu,.toast,dialog:not(.st-dialog,.settings-dialog,.app-modal)),
-html:root[data-theme=light] :is(.popover,.toast,dialog:not(.st-dialog,.settings-dialog,.app-modal)){border:0;background:var(--float-tint);-webkit-backdrop-filter:var(--float-filter);backdrop-filter:var(--float-filter);box-shadow:var(--glass-rim),var(--glass-drop)}
+html:root :is(.popover,.chapters-list,.cf-card,.review-menu,.slash-menu,.sp-menu-list,.gd-switch-list,.fp-menu,.unified-picker-panel,.visual-menu,.ag-tip,.history-filter-menu,.toast,dialog:not(.st-dialog,.settings-dialog,.app-modal,.fp-dialog)),
+html:root[data-theme=light] :is(.popover,.toast,dialog:not(.st-dialog,.settings-dialog,.app-modal,.fp-dialog)){border:0;background:var(--float-tint);-webkit-backdrop-filter:var(--float-filter);backdrop-filter:var(--float-filter);box-shadow:var(--glass-rim),var(--glass-drop)}
 
 /* ---------- Notices: small glass slips above the account row, inside the sidebar's width ---------- */
 html:root .notice-stack,html:root .account-handoff{left:18px;bottom:64px;width:calc(var(--rail) - 16px)}

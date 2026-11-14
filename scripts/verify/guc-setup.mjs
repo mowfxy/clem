@@ -116,12 +116,7 @@ try {
       check(await page.locator(".guc-subject .guc-ann header b").evaluateAll((bs) => bs.every((b) => b.textContent === "CSEN 701")), `${theme}: only this course's announcements`);
       await page.locator(".guc-subject").getByRole("tab", { name: "Classes" }).click();
       check(await page.locator(".guc-classes li").count() === 2, `${theme}: the course's classes from the schedule`);
-      await page.locator(".guc-subject").getByRole("tab", { name: "Settings" }).click();
-      await card("When Clem checks CMS").waitFor();
-      check(await card("When Clem checks CMS").getByRole("radio", { name: "Daily" }).getAttribute("aria-checked") === "true", `${theme}: the subject page shows the same live settings`);
-      await card("When Clem checks CMS").getByRole("radio", { name: "After lectures" }).click();
-      check(await until(async () => (await settings()).check.mode === "after_lectures"), `${theme}: settings are editable on the subject page`);
-      await shot("subject-settings");
+      check(await page.locator(".guc-subject").getByRole("tab", { name: "Settings" }).count() === 0, `${theme}: the subject's CMS tab has no Settings (they are said in a chat: guc.settings)`);
 
       // Settings → Connectors → GUC lists linked subjects with their settings.
       await page.evaluate(() => { location.hash = "/app/guc"; });
