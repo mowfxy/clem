@@ -570,6 +570,9 @@ export class Engine {
     await this.db.tx(async (t) => {
       for (const table of GUC_TABLES) await t.query(`delete from ${table} where owner_id = $1`, [this.owner]);
       await t.query("delete from notifications_sent where owner_id = $1 and event_key like 'guc-%'", [this.owner]);
+      // The organizer's copy of the timetable goes too, so a reconnect is a quiet baseline: a class that moved while
+      // GUC was disconnected is not told as news on the first sweep after it.
+      await t.query("update organizer_sweeps set slots = null where owner_id = $1 and kind = '_state'", [this.owner]);
     });
     return this.status();
   }

@@ -3816,7 +3816,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
           ) : modal === "vps" ? (
             <Suspense fallback={<div className="gd-picker gd-connect" aria-busy="true"><div className="gd-skeleton" /><div className="gd-skeleton" /></div>}><VpsManage files={state.files} /></Suspense>
           ) : modal === "guc" ? (
-            <Suspense fallback={<div className="gd-picker gd-connect" aria-busy="true"><div className="gd-skeleton" /><div className="gd-skeleton" /></div>}><GucManage actions={gucActions} subjects={state.spaces.filter((x) => x.kind === "subject")} /></Suspense>
+            <Suspense fallback={<div className="gd-picker gd-connect" aria-busy="true"><div className="gd-skeleton" /><div className="gd-skeleton" /></div>}><GucManage /></Suspense>
           ) : modal === "attach-existing" ? (
             <SavedFilePicker files={state.files} spaceId={spaceId} attached={attachments} onPick={(f) => { setAttachments((a) => (a.includes(f.id) ? a : [...a, f.id])); setModal(null); }} />
           ) : null}
